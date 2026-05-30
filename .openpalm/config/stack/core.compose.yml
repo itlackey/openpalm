@@ -43,7 +43,7 @@ services:
       # scheduler now runs as a co-process inside this container so it
       # reaches OpenCode via http://localhost:4096.
       # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, you MUST set
-      # op_opencode_password in config/stack/secrets/
+      # op_opencode_password in stash/vaults/secrets/
       # and set OPENCODE_AUTH to "true".
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}

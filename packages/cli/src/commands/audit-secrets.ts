@@ -6,6 +6,7 @@ import {
   auditFileBasedSecrets,
   createState,
   discoverStackOverlays,
+  resolveSecretsDir,
   type SecretAuditIssue,
 } from '@openpalm/lib';
 
@@ -34,7 +35,7 @@ export default defineCommand({
 
     issues.push(...auditFileBasedSecrets({
       stackEnvPath: existsSync(stackEnvPath) ? stackEnvPath : undefined,
-      secretsDir: join(state.stackDir, 'secrets'),
+      secretsDir: resolveSecretsDir(state.stackDir),
     }).issues);
 
     for (const file of discoverStackOverlays(state.stackDir)) {

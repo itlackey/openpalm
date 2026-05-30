@@ -1,12 +1,10 @@
 /** Secrets and capability key management. */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync } from "node:fs";
-import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir } from "./home.js";
 import { listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
-import { PROVIDER_KEY_MAP } from '../provider-constants.js';
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
 const logger = createLogger("secrets");
@@ -104,30 +102,26 @@ function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomm
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
   const systemEnvPath = `${state.stackDir}/stack.env`;
-  const existing = readStackSecretEnv(state.stackDir);
   const updates: Record<string, string> = {};
 
-  // OP_UI_LOGIN_PASSWORD seeds the operator login secret. ensureSecrets
-  // generates a random fallback the first time so the stack is never
-  // installed with an empty password slot; the wizard / CLI install path
-  // overwrites it with the operator's chosen value via
-  // buildSystemSecretsFromSetup().
-  if (!existing.OP_UI_LOGIN_PASSWORD) {
-    updates.OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? randomBytes(32).toString("hex");
+  // Bootstrap only explicit host-provided overrides. Setup is allowed to be
+  // genuinely unconfigured until the wizard/CLI writes the chosen password.
+  if (process.env.OP_UI_LOGIN_PASSWORD) {
+    updates.OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD;
   }
-  if (!existing.OP_OPENCODE_PASSWORD) {
-    updates.OP_OPENCODE_PASSWORD = process.env.OP_OPENCODE_PASSWORD ?? randomBytes(32).toString("hex");
+  if (process.env.OP_OPENCODE_PASSWORD) {
+    updates.OP_OPENCODE_PASSWORD = process.env.OP_OPENCODE_PASSWORD;
   }
 
   writeStackSecretEnv(state, updates);
 
   if (!existsSync(systemEnvPath)) {
-    const header = [
-      "# OpenPalm — Stack Configuration",
-      "# Non-secret stack configuration only. Secrets live in config/stack/secrets/.",
-      "",
-      "# ── Authentication ──────────────────────────────────────────────────",
-      "OP_SETUP_COMPLETE=false",
+      const header = [
+        "# OpenPalm — Stack Configuration",
+        "# Non-secret stack configuration only. File-based secrets live in stash/vaults/secrets/.",
+        "",
+        "# ── Authentication ──────────────────────────────────────────────────",
+        "OP_SETUP_COMPLETE=false",
       "",
     ].join("\n");
     writeVaultFile(systemEnvPath, header.endsWith("\n") ? header : header + "\n");
@@ -197,13 +191,6 @@ export function writeAuthJsonProviderKeys(
   providerKeys: Record<string, string>
 ): void {
   if (Object.keys(providerKeys).length === 0) return;
-
-  const secretUpdates: Record<string, string> = {};
-  for (const [providerId, key] of Object.entries(providerKeys)) {
-    const envKey = PROVIDER_KEY_MAP[providerId] ?? `${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
-    secretUpdates[envKey] = key;
-  }
-  writeStackSecretEnv(state, secretUpdates);
 
   const authJsonPath = `${state.configDir}/auth.json`;
   mkdirSync(state.configDir, { recursive: true, mode: VAULT_DIR_MODE });

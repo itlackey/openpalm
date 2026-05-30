@@ -6,7 +6,7 @@
  *   - backs up stack.env (caller restores after the test via
  *     restoreWizardState)
  *   - rewrites stack.env without OP_SETUP_COMPLETE (the only setup-complete
- *     sentinel; login secrets live in config/stack/secrets/)
+ *     sentinel; login secrets live in stash/vaults/secrets/)
  *   - removes any persisted voice profile selection so the wizard
  *     starts from a known blank state
  *

@@ -9,7 +9,7 @@ const REPO_ROOT = resolve(HERE, "../../..");
 // so Playwright tests don't accidentally target a developer's running dev stack.
 const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/config/stack/stack.env");
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
-const SECRETS_ENV = resolve(OP_HOME_DIR, "stash/vaults/user.env");
+const UI_LOGIN_PASSWORD_SECRET = resolve(OP_HOME_DIR, "stash/vaults/secrets/op_ui_login_password");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 
 /**
@@ -30,16 +30,11 @@ function writeInPlace(path: string, data: string): void {
 }
 
 export default async function globalSetup() {
-	// Load user.env into process.env so integration tests can read user-managed
-	// secrets without manual env setup.
-	// Only backfills — does not overwrite values already set by the caller.
-	if (existsSync(SECRETS_ENV)) {
-		const secrets = dotenvParse(readFileSync(SECRETS_ENV, "utf8"));
-		for (const [key, value] of Object.entries(secrets)) {
-			if (!process.env[key] && value) {
-				process.env[key] = value;
-			}
-		}
+	// Backfill the admin login from the file-based stack secret. The AKM user
+	// vault is not a Compose/admin login source.
+	if (!process.env.OP_UI_LOGIN_PASSWORD && existsSync(UI_LOGIN_PASSWORD_SECRET)) {
+		const password = readFileSync(UI_LOGIN_PASSWORD_SECRET, "utf8").trimEnd();
+		if (password) process.env.OP_UI_LOGIN_PASSWORD = password;
 	}
 
 	if (!existsSync(STACK_ENV)) return;

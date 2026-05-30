@@ -16,7 +16,7 @@ bun add @openpalm/channels-sdk
 import { BaseChannel, type HandleResult } from "@openpalm/channels-sdk";
 
 export default class MyChannel extends BaseChannel {
-  name = "my-channel"; // used to resolve CHANNEL_MY_CHANNEL_SECRET
+  name = "my-channel"; // forwarded payload channel identifier
 
   async handleRequest(req: Request): Promise<HandleResult | null> {
     const body = await req.json() as Record<string, unknown>;
@@ -36,10 +36,10 @@ Set `CHANNEL_PACKAGE=@scope/my-channel` in your registry overlay to have the cha
 
 | Member | Description |
 |---|---|
-| `name` | Channel identifier — used to resolve the `CHANNEL_<NAME>_SECRET` env var |
+| `name` | Channel identifier used in forwarded guardian payloads |
 | `port` | Listen port (default: `PORT` env or `8080`) |
 | `guardianUrl` | Guardian target — hardcoded to `http://guardian:8080` (the in-network service name) |
-| `secret` | HMAC secret — auto-resolved from env |
+| `secret` | HMAC secret — loaded from the file path in `CHANNEL_SECRET_FILE` |
 | `handleRequest(req)` | **Implement this** — parse request, return `{ userId, text }` or `null` |
 | `route(req, url)` | Optional — override for custom routing before `handleRequest` |
 | `start()` | Start the Bun HTTP server |
@@ -75,6 +75,12 @@ expect(resp.status).toBe(200);
 ```
 
 See `src/channel-base.test.ts` for a full test suite.
+
+## Secret configuration
+
+Channel containers read their outbound HMAC secret from `CHANNEL_SECRET_FILE`, which must point at a mounted secret file. The guardian reads the matching verification secret from `CHANNEL_<NAME>_SECRET_FILE`, where `<NAME>` is the uppercase channel ID used by the addon overlay, for example `CHANNEL_SLACK_SECRET_FILE`.
+
+Do not pass raw HMAC secrets through `stack.env`, service-level `env_file`, or direct environment values. Stack overlays should grant a Docker Compose secret to both the channel service and guardian, then set only the `*_FILE` variables to the in-container secret paths.
 
 ## Full guide
 

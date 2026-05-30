@@ -6,9 +6,9 @@
 # machine with only Docker installed. Exercises:
 #
 #   1. Production setup.sh (asset download, dir creation, secrets seeding)
-#   2. Admin container health (image pull, startup, HTTP 200)
+#   2. Admin host process health (HTTP 200)
 #   3. Setup wizard API (GET status, POST complete, deploy-status polling)
-#   4. All-service health checks (admin, assistant, guardian)
+#   4. Core-service health checks (assistant, guardian)
 #   5. Chat channel message round-trip (if installed)
 #   6. Cleanup (or --keep to leave stack running)
 #
@@ -16,7 +16,7 @@
 # no interactive prompts, no browser opens.
 #
 # Required environment variables:
-#   OP_UI_LOGIN_PASSWORD         Admin token to set during setup (default: test-admin-token)
+#   OP_UI_LOGIN_PASSWORD         Admin password to set during setup (default: test-admin-token)
 #
 # Provider configuration (at least one required):
 #   OPENAI_API_KEY      OpenAI API key (if using OpenAI)
@@ -36,6 +36,7 @@
 # Options:
 #   --keep              Leave the stack running after tests (skip cleanup)
 #   --skip-install      Skip setup.sh and test against an already-running stack
+#   --local-setup       Use the local repo's setup.sh instead of GitHub raw
 #   --version TAG       GitHub ref / release tag to test (default: main)
 #   --provider PROVIDER Provider to use: ollama, openai (default: ollama)
 #   --timeout SECS      Max seconds to wait for services (default: 300)
@@ -47,6 +48,7 @@ set -euo pipefail
 
 KEEP=0
 SKIP_INSTALL=0
+LOCAL_SETUP=0
 VERSION="main"
 PROVIDER="ollama"
 SERVICE_TIMEOUT=300
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --keep) KEEP=1 ;;
     --skip-install) SKIP_INSTALL=1 ;;
+    --local-setup) LOCAL_SETUP=1 ;;
     --version) shift; VERSION="${1:?--version requires a value}" ;;
     --provider) shift; PROVIDER="${1:?--provider requires a value}" ;;
     --timeout) shift; SERVICE_TIMEOUT="${1:?--timeout requires a value}" ;;
@@ -111,8 +114,6 @@ fi
 
 OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
 CONFIG_HOME="${OP_HOME}/config"
-DATA_HOME="${OP_HOME}/data"
-STATE_HOME="${OP_HOME}/state"
 STASH_HOME="${OP_HOME}/stash"
 
 # ── Cleanup handler ──────────────────────────────────────────────────
@@ -221,9 +222,9 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   SETUP_ARGS=(--force --no-open --version "$VERSION")
   SETUP_LOG="$(mktemp)"
 
-  # Run setup.sh from the repo (or could curl from GitHub for true production test)
+  # Prefer the published install script so this exercises the release path.
   SETUP_EXIT=0
-  if [ -f "$ROOT_DIR/scripts/setup.sh" ]; then
+  if [ "$LOCAL_SETUP" -eq 1 ] && [ -f "$ROOT_DIR/scripts/setup.sh" ]; then
     echo "  Running setup.sh from local repo..."
     bash "$ROOT_DIR/scripts/setup.sh" "${SETUP_ARGS[@]}" > "$SETUP_LOG" 2>&1 || SETUP_EXIT=$?
   else
@@ -247,7 +248,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   fi
 
   # Verify directory structure was created
-  for dir in "$CONFIG_HOME" "$DATA_HOME" "$STASH_HOME"; do
+  for dir in "$CONFIG_HOME" "$OP_HOME/state" "$STASH_HOME"; do
     if [ -d "$dir" ]; then
       pass "Directory created: $dir"
     else
@@ -273,9 +274,9 @@ else
   echo "  Testing against already-running stack"
 fi
 
-# ── Step 4: Wait for admin to be healthy ──────────────────────────────
+# ── Step 4: Wait for admin host process to be healthy ─────────────────
 
-step "Wait for admin container health"
+step "Wait for admin host process health"
 
 ADMIN_URL="http://127.0.0.1:8100"
 ADMIN_HEALTHY=false
@@ -306,16 +307,14 @@ fi
 
 step "Verify setup wizard API"
 
-SETUP_RESPONSE=$(curl -sf "$ADMIN_URL/admin/setup" 2>/dev/null || echo '{}')
+SETUP_RESPONSE=$(curl -sf "$ADMIN_URL/api/setup/status" 2>/dev/null || echo '{}')
 SETUP_COMPLETE=$(json_get "$SETUP_RESPONSE" "setupComplete")
-SETUP_TOKEN=$(json_get "$SETUP_RESPONSE" "setupToken")
 
 if [ "$SKIP_INSTALL" -eq 1 ]; then
   # If skip-install, setup might already be complete
   if [ "$SETUP_COMPLETE" = "True" ] || [ "$SETUP_COMPLETE" = "true" ]; then
     pass "Setup is already complete (--skip-install mode)"
-    # Use provided admin token for subsequent requests
-    SETUP_TOKEN=""
+    :
   else
     pass "Setup API responds (setupComplete=$SETUP_COMPLETE)"
   fi
@@ -326,11 +325,6 @@ else
     fail "Expected setup to be incomplete on fresh install, got: $SETUP_COMPLETE"
   fi
 
-  if [ -n "$SETUP_TOKEN" ]; then
-    pass "Setup token received (for wizard authentication)"
-  else
-    fail "No setup token in response"
-  fi
 fi
 
 # ── Step 6: Complete setup wizard ─────────────────────────────────────
@@ -350,7 +344,8 @@ if [ "$NEED_SETUP" = "true" ]; then
     ollama)
       SETUP_PAYLOAD=$(cat <<PAYLOAD
 {
-  "adminToken": "$OP_UI_LOGIN_PASSWORD",
+  "version": 2,
+  "security": { "uiLoginPassword": "$OP_UI_LOGIN_PASSWORD" },
   "connections": [
     {
       "id": "ollama-local",
@@ -360,17 +355,8 @@ if [ "$NEED_SETUP" = "true" ]; then
       "apiKey": ""
     }
   ],
-  "assignments": {
-    "llm": {
-      "connectionId": "ollama-local",
-      "model": "$SYSTEM_MODEL"
-    },
-    "embeddings": {
-      "connectionId": "ollama-local",
-      "model": "$EMBED_MODEL",
-      "embeddingDims": $EMBED_DIMS
-    }
-  }
+  "llm": { "provider": "ollama", "model": "$SYSTEM_MODEL", "baseUrl": "$OLLAMA_URL" },
+  "embedding": { "provider": "ollama", "model": "$EMBED_MODEL", "dims": $EMBED_DIMS, "baseUrl": "$OLLAMA_URL" }
 }
 PAYLOAD
 )
@@ -383,7 +369,8 @@ PAYLOAD
       fi
       SETUP_PAYLOAD=$(cat <<PAYLOAD
 {
-  "adminToken": "$OP_UI_LOGIN_PASSWORD",
+  "version": 2,
+  "security": { "uiLoginPassword": "$OP_UI_LOGIN_PASSWORD" },
   "connections": [
     {
       "id": "openai",
@@ -393,17 +380,8 @@ PAYLOAD
       "apiKey": "$OPENAI_API_KEY"
     }
   ],
-  "assignments": {
-    "llm": {
-      "connectionId": "openai",
-      "model": "gpt-4o-mini"
-    },
-    "embeddings": {
-      "connectionId": "openai",
-      "model": "text-embedding-3-small",
-      "embeddingDims": 1536
-    }
-  }
+  "llm": { "provider": "openai", "model": "gpt-4o-mini", "baseUrl": "" },
+  "embedding": { "provider": "openai", "model": "text-embedding-3-small", "dims": 1536, "baseUrl": "" }
 }
 PAYLOAD
 )
@@ -414,11 +392,7 @@ PAYLOAD
       ;;
   esac
 
-  # Determine auth token for the setup POST
-  AUTH_TOKEN="${SETUP_TOKEN:-$OP_UI_LOGIN_PASSWORD}"
-
-  SETUP_RESULT=$(curl -sf -X POST "$ADMIN_URL/admin/setup" \
-    -b "op_session=$AUTH_TOKEN" \
+  SETUP_RESULT=$(curl -sf -X POST "$ADMIN_URL/api/setup/complete" \
     -H "content-type: application/json" \
     -d "$SETUP_PAYLOAD" 2>&1 || echo '{"ok": false, "error": "curl failed"}')
 
@@ -430,8 +404,7 @@ PAYLOAD
     # The setup POST may drop the connection during deploy.
     # Wait and re-check the status.
     sleep 10
-    RETRY_RESPONSE=$(curl -sf "$ADMIN_URL/admin/setup" \
-      -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null || echo '{}')
+    RETRY_RESPONSE=$(curl -sf "$ADMIN_URL/api/setup/status" 2>/dev/null || echo '{}')
     RETRY_COMPLETE=$(json_get "$RETRY_RESPONSE" "setupComplete")
 
     if [ "$RETRY_COMPLETE" = "True" ] || [ "$RETRY_COMPLETE" = "true" ]; then
@@ -450,8 +423,7 @@ PAYLOAD
   deploy_elapsed=0
   DEPLOY_DONE=false
   while [ $deploy_elapsed -lt "$SERVICE_TIMEOUT" ]; do
-    DEPLOY_STATUS=$(curl -sf "$ADMIN_URL/admin/setup/deploy-status" \
-      -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null || echo '{}')
+    DEPLOY_STATUS=$(curl -sf "$ADMIN_URL/api/setup/deploy-status" 2>/dev/null || echo '{}')
     DEPLOY_ACTIVE=$(json_get "$DEPLOY_STATUS" "active")
 
     if [ "$DEPLOY_ACTIVE" = "False" ] || [ "$DEPLOY_ACTIVE" = "false" ]; then
@@ -521,8 +493,7 @@ done
 
 step "Verify setup is marked complete"
 
-FINAL_STATUS=$(curl -sf "$ADMIN_URL/admin/setup" \
-  -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null || echo '{}')
+FINAL_STATUS=$(curl -sf "$ADMIN_URL/api/setup/status" 2>/dev/null || echo '{}')
 FINAL_COMPLETE=$(json_get "$FINAL_STATUS" "setupComplete")
 
 if [ "$FINAL_COMPLETE" = "True" ] || [ "$FINAL_COMPLETE" = "true" ]; then
@@ -560,10 +531,21 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fi
   }
 
-  # UI login password lives in config/stack/stack.env as OP_UI_LOGIN_PASSWORD.
-  check_stack_env_val "OP_UI_LOGIN_PASSWORD" "$OP_UI_LOGIN_PASSWORD"
+  if grep -Eq '^(export )?(.*SECRET|.*TOKEN|.*PASSWORD|.*API_KEY|.*PRIVATE_KEY|.*CLIENT_SECRET|.*AUTH_JSON|.*CREDENTIALS)=' "$stack_env"; then
+    fail "stack.env contains a secret-like key"
+  else
+    pass "stack.env contains non-secret runtime configuration only"
+  fi
+
+  password_secret="$STASH_HOME/vaults/secrets/op_ui_login_password"
+  if [ -f "$password_secret" ] && [ "$(tr -d '\n' < "$password_secret")" = "$OP_UI_LOGIN_PASSWORD" ]; then
+    pass "UI login password is stored in stash/vaults/secrets/op_ui_login_password"
+  else
+    fail "UI login password secret file missing or incorrect"
+  fi
+
   # LLM and embedding configuration live in config/akm/config.json, NOT stack.env.
-  if [ -f "$OPENPALM_HOME/config/akm/config.json" ]; then
+  if [ -f "$CONFIG_HOME/akm/config.json" ]; then
     pass "config/akm/config.json exists"
   else
     fail "config/akm/config.json missing"
@@ -576,10 +558,13 @@ fi
 
 step "Verify admin API authentication"
 
-# Authenticated request should succeed
-AUTH_RESPONSE=$(curl -sf "$ADMIN_URL/admin/setup" \
-  -b "op_session=$OP_UI_LOGIN_PASSWORD" 2>/dev/null)
-if [ -n "$AUTH_RESPONSE" ]; then
+COOKIE_JAR="$(mktemp)"
+LOGIN_RESPONSE=$(curl -sf -c "$COOKIE_JAR" -X POST "$ADMIN_URL/admin/auth/login" \
+  -H "content-type: application/json" \
+  -d "{\"password\":\"$OP_UI_LOGIN_PASSWORD\"}" 2>/dev/null || true)
+AUTH_RESPONSE=$(curl -sf -b "$COOKIE_JAR" "$ADMIN_URL/admin/health" 2>/dev/null || true)
+rm -f "$COOKIE_JAR"
+if echo "$LOGIN_RESPONSE" | grep -q '"ok":true' && echo "$AUTH_RESPONSE" | grep -q '"ok":true'; then
   pass "Authenticated admin API request succeeds"
 else
   fail "Authenticated admin API request failed"
@@ -615,10 +600,16 @@ check_container_env() {
   fi
 }
 
-# Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md removed the
-# assistant container's OP_UI_TOKEN / OP_ASSISTANT_TOKEN env vars. The UI
-# login password is host-side only.
-check_container_env "openpalm-assistant-1" "OPENAI_BASE_URL" "endswith" "/v1"
+# Provider credentials live in OpenCode auth.json and AKM/user vault, not in
+# assistant process env from stack.env. The UI login password is host-side only.
+for forbidden in OP_UI_LOGIN_PASSWORD OPENAI_API_KEY GROQ_API_KEY; do
+  actual=$(docker exec "openpalm-assistant-1" printenv "$forbidden" 2>/dev/null || true)
+  if [ -z "$actual" ]; then
+    pass "assistant does not receive $forbidden"
+  else
+    fail "assistant unexpectedly receives $forbidden"
+  fi
+done
 
 # ── Step 12: Test chat channel (if installed) ─────────────────────────
 
@@ -675,10 +666,10 @@ docker ps --filter "name=openpalm" --format "    {{.Names}}\t{{.Status}}" 2>/dev
 echo ""
 
 container_count=$(docker ps --filter "name=openpalm" --format '{{.Names}}' 2>/dev/null | wc -l)
-if [ "$container_count" -ge 5 ]; then
-  pass "$container_count containers running (expected >= 5 core services)"
+if [ "$container_count" -ge 2 ]; then
+  pass "$container_count containers running (expected >= 2 core services)"
 else
-  fail "Only $container_count containers running (expected >= 5)"
+  fail "Only $container_count containers running (expected >= 2)"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

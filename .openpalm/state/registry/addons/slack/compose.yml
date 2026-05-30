@@ -37,14 +37,15 @@ services:
 
   guardian:
     environment:
+      GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
       CHANNEL_SLACK_SECRET_FILE: /run/secrets/channel_slack_secret
     secrets:
       - channel_slack_secret
 
 secrets:
   channel_slack_secret:
-    file: ${OP_HOME}/config/stack/secrets/channel_slack_secret
+    file: ${OP_HOME}/stash/vaults/secrets/channel_slack_secret
   slack_bot_token:
-    file: ${OP_HOME}/config/stack/secrets/slack_bot_token
+    file: ${OP_HOME}/stash/vaults/secrets/slack_bot_token
   slack_app_token:
-    file: ${OP_HOME}/config/stack/secrets/slack_app_token
+    file: ${OP_HOME}/stash/vaults/secrets/slack_app_token

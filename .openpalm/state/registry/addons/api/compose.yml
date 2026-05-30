@@ -31,10 +31,11 @@ services:
 
   guardian:
     environment:
+      GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
       CHANNEL_API_SECRET_FILE: /run/secrets/channel_api_secret
     secrets:
       - channel_api_secret
 
 secrets:
   channel_api_secret:
-    file: ${OP_HOME}/config/stack/secrets/channel_api_secret
+    file: ${OP_HOME}/stash/vaults/secrets/channel_api_secret

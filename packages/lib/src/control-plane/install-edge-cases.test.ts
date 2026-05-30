@@ -183,7 +183,7 @@ describe("Fresh Install", () => {
     const stackContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(stackContent).not.toContain("OPENAI_API_KEY=");
     expect(stackContent).toContain("OP_SETUP_COMPLETE=false");
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBeTruthy();
+    expect(readSecret(stackDir, 'op_ui_login_password')).toBeNull();
   });
 
   // Scenario 2: isSetupComplete returns false before setup
@@ -264,7 +264,7 @@ describe("Existing Install", () => {
 
     const afterContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
     expect(afterContent).not.toContain("OP_UI_LOGIN_PASSWORD=");
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBeTruthy();
+    expect(readSecret(stackDir, 'op_ui_login_password')).toBeNull();
   });
 
   // Scenario 6: performSetup re-run rewrites OP_UI_LOGIN_PASSWORD when the

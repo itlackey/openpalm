@@ -7,7 +7,7 @@
  *
  * Security pipeline:
  *   1. Parse JSON body
- *   2. Look up channel secret from environment variables
+ *   2. Look up channel secret from file-based CHANNEL_<NAME>_SECRET_FILE grants
  *   3. Verify HMAC-SHA256 signature (x-channel-signature header)
  *   4. Reject replayed nonces (5-minute window)
  *   5. Rate limit per-user (120 req/min) and per-channel (200 req/min)
@@ -18,7 +18,7 @@ import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
 import { verifySignature } from "@openpalm/channels-sdk/crypto";
 import { createLogger } from "@openpalm/channels-sdk/logger";
 
-import { GuardianSecretFileError, loadChannelSecrets } from "./signature";
+import { GuardianNoChannelSecretsError, GuardianSecretFileError, loadChannelSecrets } from "./signature";
 import { checkNonce, nonceCacheSize, NONCE_WINDOW_MS, NONCE_MAX_SIZE } from "./replay";
 import {
   allow,
@@ -43,12 +43,20 @@ const logger = createLogger("guardian");
 // ── Config ──────────────────────────────────────────────────────────────
 
 const PORT = Number(Bun.env.PORT ?? 8080);
+const REQUIRE_CHANNEL_SECRETS = Bun.env.GUARDIAN_REQUIRE_CHANNEL_SECRETS === "true";
+
+function secretLoadFailureReason(err: unknown): string {
+  if (err instanceof GuardianSecretFileError || err instanceof GuardianNoChannelSecretsError) {
+    return err.message;
+  }
+  return "channel secret files could not be loaded";
+}
 
 try {
-  loadChannelSecrets();
+  loadChannelSecrets({ allowEmpty: !REQUIRE_CHANNEL_SECRETS });
 } catch (err) {
   logger.error("startup_error", {
-    reason: err instanceof GuardianSecretFileError ? err.message : "channel secret file could not be read",
+    reason: secretLoadFailureReason(err),
   });
   process.exit(1);
 }
@@ -83,6 +91,18 @@ Bun.serve({
     const rid = req.headers.get("x-request-id") ?? crypto.randomUUID();
 
     if (url.pathname === "/health" && req.method === "GET") {
+      try {
+        loadChannelSecrets({ allowEmpty: !REQUIRE_CHANNEL_SECRETS, forceReload: true });
+      } catch (err) {
+        logger.error("health_secret_load_failed", { requestId: rid, reason: secretLoadFailureReason(err) });
+        return json(503, {
+          ok: false,
+          service: "guardian",
+          error: "channel_secrets_unavailable",
+          requestId: rid,
+          time: new Date().toISOString(),
+        });
+      }
       return json(200, { ok: true, service: "guardian", time: new Date().toISOString() });
     }
 
@@ -150,11 +170,11 @@ Bun.serve({
       // Both unknown channels and bad signatures return invalid_signature.
       let channelSecrets: Record<string, string>;
       try {
-        channelSecrets = loadChannelSecrets();
+        channelSecrets = loadChannelSecrets({ allowEmpty: !REQUIRE_CHANNEL_SECRETS });
       } catch (err) {
         logger.error("channel_secret_load_failed", {
           requestId: rid,
-          reason: err instanceof GuardianSecretFileError ? err.message : "channel secret file could not be read",
+          reason: secretLoadFailureReason(err),
         });
         return json(500, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
       }

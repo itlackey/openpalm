@@ -1,5 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 
 const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
 const SECRETS_DIR_MODE = 0o700;
@@ -9,10 +9,21 @@ export function validateSecretName(name: string): void {
   if (!SECRET_NAME_RE.test(name)) throw new Error(`Invalid secret name: ${name}`);
 }
 
+function resolveHomeDirFromStackDir(stackDir: string): string {
+  const parentDir = dirname(stackDir);
+  if (basename(stackDir) === 'stack' && basename(parentDir) === 'config') {
+    return dirname(parentDir);
+  }
+  return stackDir;
+}
+
 export function resolveSecretsDir(stackDir: string): string {
-  const dir = join(stackDir, 'secrets');
+  const dir = join(resolveHomeDirFromStackDir(stackDir), 'stash', 'vaults', 'secrets');
   mkdirSync(dir, { recursive: true, mode: SECRETS_DIR_MODE });
   chmodSync(dir, SECRETS_DIR_MODE);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile()) chmodSync(join(dir, entry.name), SECRET_FILE_MODE);
+  }
   return dir;
 }
 

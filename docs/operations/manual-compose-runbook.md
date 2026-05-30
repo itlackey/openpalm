@@ -30,7 +30,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/config/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian |
 | `~/.openpalm/config/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
 | `~/.openpalm/config/stack/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, profiles, paths |
-| `~/.openpalm/config/stack/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
+| `~/.openpalm/stash/vaults/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
 | `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
 
 The project name defaults to `openpalm` and can be overridden with the
@@ -278,7 +278,7 @@ Precedence for substitution (highest to lowest):
 
 Service-level `environment:` entries become the container process environment.
 Secret-like values must not be placed there directly; expose only a `*_FILE`
-variable that points at a Compose secret mounted from `config/stack/secrets/`.
+variable that points at a Compose secret mounted from `stash/vaults/secrets/`.
 
 Service-level `env_file:` is intentionally disallowed because it grants broad,
 hard-to-audit environment access. Grant each service only the secret files it
@@ -331,17 +331,17 @@ file that contains the `extends` directive.
 
 ## Secret Rotation
 
-### LLM provider keys and system secrets (`config/stack/secrets/`)
+### LLM provider keys and system secrets (`stash/vaults/secrets/`)
 
 API keys, HMAC secrets, and service auth tokens live as files under
-`config/stack/secrets/` and are granted through Compose `secrets:`. `stack.env`
+`stash/vaults/secrets/` and are granted through Compose `secrets:`. `stack.env`
 is non-secret. Changes require a full container recreate for services that read
 the file only at startup:
 
 ```bash
-chmod 700 ~/.openpalm/config/stack/secrets
-install -m 600 /dev/null ~/.openpalm/config/stack/secrets/provider_openai_api_key
-$EDITOR ~/.openpalm/config/stack/secrets/provider_openai_api_key
+chmod 700 ~/.openpalm/stash/vaults/secrets
+install -m 600 /dev/null ~/.openpalm/stash/vaults/secrets/provider_openai_api_key
+$EDITOR ~/.openpalm/stash/vaults/secrets/provider_openai_api_key
 
 # Recreate all containers to pick up new values
 op up -d --force-recreate

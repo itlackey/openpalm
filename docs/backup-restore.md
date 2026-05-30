@@ -111,7 +111,7 @@ the current model.
 |---|---|
 | `~/.openpalm/stash/vaults/user.env` | AKM vault backing file for user-managed secrets |
 | `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, profiles |
-| `~/.openpalm/config/stack/secrets/` | System-managed service secret files |
+| `~/.openpalm/stash/vaults/secrets/` | System-managed service secret files |
 | `~/.openpalm/state/registry/addons/<name>/` | Available addon catalog entries |
 | `~/.openpalm/state/registry/automations/` | Available automation catalog entries |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |

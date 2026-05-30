@@ -15,7 +15,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
       core.compose.yml Core services (always used)
       stack.yml        Capabilities only (metadata)
       stack.env        System-managed non-secret env vars (written by CLI/admin)
-      secrets/         System-managed service secrets (0600 files)
+      secrets/         System-managed service secrets (0700 dir, 0600 files)
       addons/          Enabled addon overlays
     assistant/         OpenCode user tools, plugins, skills, commands
     akm/               AKM config directory
@@ -49,16 +49,17 @@ This repo directory contains source assets embedded by the CLI during build. The
 
 ```text
 .openpalm/               Repo source assets (embedded by CLI)
-  stack/                 core.compose.yml source
-  registry/              Addon and automation catalog sources
-    addons/
-    automations/
-  stash-seeds/           Built-in stash skills/commands
   config/
-    stack/               Seed files for config/stack/
+    stack/               Seed files for runtime config/stack/
+      core.compose.yml   Core Compose file copied to OP_HOME
       stack.yml          Template for capabilities (copied at install)
+      secrets/           Empty directory marker; runtime secret files are generated
     assistant/           Seed files for config/assistant/
     guardian/            Guardian config placeholders
+  state/registry/        Addon and automation catalog sources
+    addons/
+    automations/
+  stash/                 Built-in AKM stash assets (skills, tasks, vault path)
 ```
 
 ## Quick start
@@ -74,6 +75,8 @@ Manual setup:
 ```bash
 cp -r .openpalm/ ~/.openpalm/
 $EDITOR ~/.openpalm/config/stack/stack.env
+mkdir -m 700 -p ~/.openpalm/stash/vaults/secrets
+# Create required secret files here, mode 0600, before enabling addons.
 docker compose \
   --project-name openpalm \
   --env-file ~/.openpalm/config/stack/stack.env \
@@ -86,7 +89,7 @@ Before running that command, enable each addon you want by copying it from the
 catalog into the runtime stack, for example:
 
 ```bash
-cp -r ~/.openpalm/registry/addons/chat ~/.openpalm/config/stack/addons/chat
+cp -r ~/.openpalm/state/registry/addons/chat ~/.openpalm/config/stack/addons/chat
 ```
 
 See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.
@@ -101,7 +104,7 @@ truth.
 | Directory | Owner | Who writes |
 |---|---|---|
 | `config/` | User | User edits, explicit admin actions, assistant via authenticated admin API |
-| `config/stack/` | System | CLI/admin (`stack.env`, `secrets/`, `core.compose.yml`, `addons/`) |
+| `config/stack/` | System | CLI/admin (`stack.env`, `core.compose.yml`, `addons/`) |
 | `stash/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
 | `stash/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
 | `state/` | Services | Containers and processes at runtime |
@@ -111,7 +114,7 @@ truth.
 ## Runtime notes
 
 - Docker Compose global env file: `config/stack/stack.env` (system-managed, non-secret).
-- Service secrets live under `config/stack/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
+- Service secrets live under `stash/vaults/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
 - The assistant workspace is `workspace/`, mounted at `/work`.
 - The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm` — no container is needed.
 - Scheduled automations are stored as markdown task files in `stash/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.

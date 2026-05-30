@@ -34,10 +34,11 @@ services:
 
   guardian:
     environment:
+      GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
       CHANNEL_CHAT_SECRET_FILE: /run/secrets/channel_chat_secret
     secrets:
       - channel_chat_secret
 
 secrets:
   channel_chat_secret:
-    file: ${OP_HOME}/config/stack/secrets/channel_chat_secret
+    file: ${OP_HOME}/stash/vaults/secrets/channel_chat_secret

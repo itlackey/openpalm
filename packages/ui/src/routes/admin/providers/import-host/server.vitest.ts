@@ -78,6 +78,13 @@ beforeEach(() => {
 	vi.mocked(composeRestart).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
 });
 
+function writeImportedAuth(auth: Record<string, unknown>): string {
+	const path = join(rootDir, 'config', 'auth.json');
+	mkdirSync(join(rootDir, 'config'), { recursive: true });
+	writeFileSync(path, JSON.stringify(auth));
+	return path;
+}
+
 afterEach(() => {
 	process.env.OP_HOME = originalHome;
 	rmSync(rootDir, { recursive: true, force: true });
@@ -144,12 +151,11 @@ describe('POST /admin/providers/import-host', () => {
 	// logs (D6a in docs/technical/auth-and-proxy-refactor-plan.md).
 
 	test('live push: calls opencodeFetch twice and reports livePushed:2', async () => {
-		// Write a fixture auth.json with two entries
-		const authPath = join(rootDir, 'auth.json');
-		writeFileSync(authPath, JSON.stringify({
+		// Write the merged imported auth.json that importHostOpenCode would create.
+		const authPath = writeImportedAuth({
 			openai: { type: 'api', key: 'sk-test' },
 			groq: { type: 'api', key: 'gsk-test' },
-		}));
+		});
 
 		vi.mocked(detectHostOpenCode).mockReturnValue({
 			providerCount: 2,
@@ -167,15 +173,14 @@ describe('POST /admin/providers/import-host', () => {
 		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith('/auth/groq', expect.objectContaining({ method: 'PUT' }));
 	});
 
-	test('restarts assistant + guardian after a successful import', async () => {
+	test('restarts assistant after a successful import', async () => {
 		const res = await POST(makeEvent());
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { restarted: string[]; restartFailed: { service: string }[] };
-		expect(body.restarted).toEqual(['assistant', 'guardian']);
+		expect(body.restarted).toEqual(['assistant']);
 		expect(body.restartFailed).toHaveLength(0);
-		expect(vi.mocked(composeRestart)).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(composeRestart)).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(composeRestart)).toHaveBeenCalledWith(['assistant'], expect.any(Object));
-		expect(vi.mocked(composeRestart)).toHaveBeenCalledWith(['guardian'], expect.any(Object));
 	});
 
 	test('reports restartFailed without failing the import when docker is down', async () => {
@@ -185,27 +190,24 @@ describe('POST /admin/providers/import-host', () => {
 		const body = (await res.json()) as { ok: boolean; restarted: string[]; restartFailed: { service: string; error: string }[] };
 		expect(body.ok).toBe(true);
 		expect(body.restarted).toHaveLength(0);
-		expect(body.restartFailed.map((f) => f.service)).toEqual(['assistant', 'guardian']);
+		expect(body.restartFailed.map((f) => f.service)).toEqual(['assistant']);
 		expect(vi.mocked(composeRestart)).not.toHaveBeenCalled();
 	});
 
-	test('one service restart failure does not block the other', async () => {
-		vi.mocked(composeRestart)
-			.mockResolvedValueOnce({ ok: false, stdout: '', stderr: 'no such service', code: 1 })
-			.mockResolvedValueOnce({ ok: true, stdout: '', stderr: '', code: 0 });
+	test('reports assistant restart failure without failing the import', async () => {
+		vi.mocked(composeRestart).mockResolvedValueOnce({ ok: false, stdout: '', stderr: 'no such service', code: 1 });
 		const res = await POST(makeEvent());
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { restarted: string[]; restartFailed: { service: string; error: string }[] };
-		expect(body.restarted).toEqual(['guardian']);
+		expect(body.restarted).toEqual([]);
 		expect(body.restartFailed).toEqual([{ service: 'assistant', error: 'no such service' }]);
 	});
 
 	test('live push: one provider fails → livePushFailed includes that provider ID and livePushed:1', async () => {
-		const authPath = join(rootDir, 'auth-partial.json');
-		writeFileSync(authPath, JSON.stringify({
+		const authPath = writeImportedAuth({
 			openai: { type: 'api', key: 'sk-test' },
 			anthropic: { type: 'api', key: 'sk-ant' },
-		}));
+		});
 
 		vi.mocked(detectHostOpenCode).mockReturnValue({
 			providerCount: 2,

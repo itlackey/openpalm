@@ -2,7 +2,7 @@
  * Tests for validateProposedState().
  *
  * Post-#391 the validator no longer shells out to varlock. It reads the live
- * `config/stack/stack.env` and `config/stack/secrets/` files directly and emits
+ * `config/stack/stack.env` and `stash/vaults/secrets/` files directly and emits
  * presence-based errors/warnings. These tests stub the on-disk files and
  * assert the resulting shape.
  */
@@ -21,8 +21,9 @@ function seedStack(stateDir: string, env: string): void {
 }
 
 function seedLoginSecret(stackDir: string, value: string): void {
-  mkdirSync(join(stackDir, "secrets"), { recursive: true, mode: 0o700 });
-  writeFileSync(join(stackDir, "secrets", "op_ui_login_password"), value, { mode: 0o600 });
+  const secretDir = join(stackDir, '..', '..', 'stash', 'vaults', 'secrets');
+  mkdirSync(secretDir, { recursive: true, mode: 0o700 });
+  writeFileSync(join(secretDir, 'op_ui_login_password'), value, { mode: 0o600 });
 }
 
 describe("validateProposedState", () => {

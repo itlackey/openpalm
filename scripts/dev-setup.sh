@@ -10,7 +10,7 @@ Creates local .dev directories and seeds dev config files.
 Options:
   --seed-env          Seed .dev/stash/vaults/user.env for akm vault:user, generate
                       .dev/config/stack/stack.env with auto-detected values, and
-                      write system secrets under .dev/config/stack/secrets/.
+                      write system secrets under .dev/stash/vaults/secrets/.
   --force             Overwrite seeded files even if they already exist.
   --enable-addon <n>  Copy .dev/state/registry/addons/<n>/ into .dev/config/stack/addons/<n>/.
                       Repeat to enable multiple dev addons.
@@ -130,7 +130,7 @@ rsync_flags=(-a)
 
 rsync "${rsync_flags[@]}" \
 	--exclude=config/stack/stack.env \
-	--exclude=config/stack/secrets \
+	--exclude=stash/vaults/secrets \
 	--exclude=config/auth.json \
 	--exclude=stash/vaults/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
@@ -146,7 +146,7 @@ rsync -a --delete \
 # Dirs the compose stack expects to bind-mount but `.openpalm/` doesn't
 # ship (they're per-container state, not config). All must exist before
 # `docker compose up` or bind-mount creation runs as root.
-	mkdir -p \
+mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" "$CONFIG_DIR/stack/secrets" \
 	"$STASH_DIR/vaults" \
@@ -260,7 +260,7 @@ EOF
 	fi
 fi
 
-# Ensure non-secret env and user vault files exist.
+# Ensure non-secret stack env, user vault, and file-secret directory exist.
 touch "$STASH_DIR/vaults/user.env" "$CONFIG_DIR/stack/stack.env"
 
 secrets_dir="$CONFIG_DIR/stack/secrets"

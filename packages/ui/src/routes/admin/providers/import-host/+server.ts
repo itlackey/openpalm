@@ -11,16 +11,16 @@
  * - Live push: best-effort PUT to OpenCode /auth/{id} per credential.
  *   If OpenCode is unreachable, the file copy still applies and OpenCode
  *   will pick up the credentials on next restart.
- * - Service restart: assistant + guardian are restarted after the import
- *   so opencode.json provider blocks and user.env-derived process env are
- *   re-read (live push only updates the auth store, not config).
+ * - Service restart: assistant is restarted after the import so opencode.json
+ *   provider blocks are re-read (live push only updates the auth store, not
+ *   config).
  *
  * Body (optional JSON):
  *   { overwriteConflicts?: boolean }   — default false
  *
  * Auth: admin token required.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { RequestHandler } from './$types';
 import {
 	requireAdmin,
@@ -41,18 +41,17 @@ import { opencodeFetch } from '$lib/server/opencode/http.js';
 import { withSerialQueue } from '$lib/server/serial-queue.js';
 
 /**
- * Restart services that hold provider state in their process env / startup config.
+ * Restart services that hold provider state in startup config.
  * Best-effort: the file-level import is the durable part; this is the polish
  * that makes the change visible without the user having to bounce things by hand.
- * OpenCode caches auth.json + opencode.json at startup, and the entrypoint
- * sources user.env into its own env tree — both need a fresh process to pick up
- * imported provider config.
+ * OpenCode caches opencode.json provider blocks at startup, so imported
+ * provider config needs a fresh assistant process.
  */
 async function restartProviderConsumers(): Promise<{
 	restarted: string[];
 	failed: { service: string; error: string }[];
 }> {
-	const services = ['assistant', 'guardian'];
+	const services = ['assistant'];
 	const docker = await checkDocker();
 	if (!docker.ok) {
 		return { restarted: [], failed: services.map((s) => ({ service: s, error: 'docker unavailable' })) };
@@ -126,17 +125,21 @@ export const POST: RequestHandler = async (event) => {
 			return errorResponse(500, 'import_failed', err instanceof Error ? err.message : 'Import failed', {}, requestId);
 		}
 
-		// Live push to OpenCode (best-effort — if OpenCode isn't up, the file copy is enough)
+		// Live push the merged imported auth.json (best-effort — if OpenCode isn't
+		// up, the file copy is enough). Do not push the host auth.json directly:
+		// conflict-preserving imports may intentionally leave existing credentials
+		// untouched in OP_HOME/config/auth.json.
 		const hostStatus = detectHostOpenCode();
 		let livePush: { pushed: number; failed: string[] } = { pushed: 0, failed: [] };
-		if (hostStatus.authPath) {
+		const importedAuthPath = `${state.configDir}/auth.json`;
+		if (existsSync(importedAuthPath)) {
+			livePush = await pushAuthToOpenCode(importedAuthPath);
+		} else if (hostStatus.authPath) {
 			livePush = await pushAuthToOpenCode(hostStatus.authPath);
 		}
 
-		// Restart assistant + guardian so they re-read auth.json / opencode.json /
-		// user.env. Live push handles the OpenCode auth store at runtime, but
-		// opencode.json provider blocks and any provider-derived env from user.env
-		// are only loaded at process start.
+		// Live push handles the OpenCode auth store at runtime, but opencode.json
+		// provider blocks are only loaded at assistant process start.
 		const restart = await restartProviderConsumers();
 
 		return jsonResponse(

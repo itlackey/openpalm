@@ -4,7 +4,7 @@
  * Verifies that:
  * 1. Stack compose overlays live in config/stack/ (not config/components/)
  * 2. Compose file list uses config/stack/ paths
- * 3. User vault data lives in stash/vaults/user.env; stack secrets live in config/stack/secrets/
+ * 3. User vault data lives in stash/vaults/user.env; stack secrets live in stash/vaults/secrets/
  * 4. Runtime validation checks the stack spec for channels
  * 5. Configuration persistence is idempotent
  */

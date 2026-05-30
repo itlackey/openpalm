@@ -173,7 +173,7 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     expect(res.status).toBe(503);
   });
 
-  test('does NOT write to stack.env — credentials live in OpenCode auth.json only', async () => {
+  test('does NOT write stack secrets — credentials live in OpenCode auth.json only', async () => {
     setProviderApiKey.mockResolvedValueOnce({ ok: true, data: true });
 
     const res = await POST(makeEvent('POST', {
@@ -185,10 +185,11 @@ describe('/admin/opencode/providers/[id]/auth route', () => {
     const { existsSync, readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const { getState } = await import('$lib/server/state.js');
-    const stackEnvPath = join(getState().stackDir, "stack.env");
+    const stackEnvPath = join(getState().stackDir, 'stack.env');
     if (existsSync(stackEnvPath)) {
       expect(readFileSync(stackEnvPath, 'utf-8')).not.toContain('GROQ_API_KEY=gsk-test-key');
     }
+    expect(existsSync(join(getState().stackDir, 'secrets', 'groq_api_key'))).toBe(false);
   });
 
   // ── Invalid mode ───────────────────────────────────────────────────

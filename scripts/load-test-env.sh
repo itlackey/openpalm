@@ -6,7 +6,7 @@
 #   source scripts/load-test-env.sh
 #
 # Exports:
-#   OP_UI_LOGIN_PASSWORD — read directly from .dev/config/stack/secrets/op_ui_login_password.
+#   OP_UI_LOGIN_PASSWORD — read directly from .dev/stash/vaults/secrets/op_ui_login_password.
 #     Exported for Playwright tests that authenticate against the host UI.
 
 # Guard: this script must be sourced, not executed. Direct execution would
@@ -20,7 +20,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LOGIN_PASSWORD_SECRET="$ROOT_DIR/.dev/config/stack/secrets/op_ui_login_password"
+LOGIN_PASSWORD_SECRET="$ROOT_DIR/.dev/stash/vaults/secrets/op_ui_login_password"
 
 if [[ -f "$LOGIN_PASSWORD_SECRET" ]]; then
   export OP_UI_LOGIN_PASSWORD

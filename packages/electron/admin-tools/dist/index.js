@@ -12464,7 +12464,7 @@ function opHome() {
   return process.env.OP_HOME ?? join(process.env.HOME ?? "", ".openpalm");
 }
 var secrets_list_keys_default = tool({
-  description: "List stack.env keys and config/stack/secrets file names. " + "Never returns values. Use the admin UI to " + "view or change a value.",
+  description: "List stack.env keys and stash/vaults/secrets file names. " + "Never returns values. Use the admin UI to " + "view or change a value.",
   args: {
     file: tool.schema.enum(["stack", "secrets", "all"]).optional().default("all").describe("Which source to inspect. Defaults to all.")
   },

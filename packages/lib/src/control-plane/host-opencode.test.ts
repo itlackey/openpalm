@@ -132,6 +132,8 @@ describe("importHostOpenCode", () => {
     writeFileSync(join(hostConfigDir, "opencode.json"), JSON.stringify({
       provider: { anthropic: { name: "Anthropic" }, groq: {} },
       model: "anthropic/claude-3-5-sonnet",
+      small_model: "openai/gpt-4o-mini",
+      disabled_providers: ["groq"],
       // These should be stripped:
       plugin: [{ module: "some-plugin" }],
       mcp: { server: {} },
@@ -153,6 +155,8 @@ describe("importHostOpenCode", () => {
     const destConfig = JSON.parse(readFileSync(join(opHome, "config", "assistant", "opencode.json"), "utf-8"));
     expect(destConfig.provider).toEqual({ anthropic: { name: "Anthropic" }, groq: {} });
     expect(destConfig.model).toBe("anthropic/claude-3-5-sonnet");
+    expect(destConfig.small_model).toBe("openai/gpt-4o-mini");
+    expect(destConfig.disabled_providers).toEqual(["groq"]);
     expect(destConfig.plugin).toBeUndefined();
     expect(destConfig.mcp).toBeUndefined();
 
@@ -215,6 +219,34 @@ describe("importHostOpenCode", () => {
 
     const written = JSON.parse(readFileSync(join(opHome, "config", "assistant", "opencode.json"), "utf-8"));
     expect(written.provider.anthropic.name).toBe("Host Anthropic");
+  });
+
+  it("keeps existing model defaults and fills only missing host fields", () => {
+    const hostConfigDir = join(xdgRoot, "config", "opencode");
+    mkdirSync(hostConfigDir, { recursive: true });
+    writeFileSync(join(hostConfigDir, "opencode.json"), JSON.stringify({
+      provider: { openai: { name: "Host OpenAI" } },
+      model: "openai/gpt-4.1",
+      small_model: "openai/gpt-4.1-mini",
+      disabled_providers: ["groq"],
+    }));
+
+    const state = makeState(opHome);
+    const destDir = join(opHome, "config", "assistant");
+    mkdirSync(destDir, { recursive: true });
+    writeFileSync(join(destDir, "opencode.json"), JSON.stringify({
+      provider: { anthropic: { name: "Existing Anthropic" } },
+      model: "anthropic/claude-sonnet-4",
+    }));
+
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      importHostOpenCode(state);
+    });
+
+    const written = JSON.parse(readFileSync(join(destDir, "opencode.json"), "utf-8"));
+    expect(written.model).toBe("anthropic/claude-sonnet-4");
+    expect(written.small_model).toBe("openai/gpt-4.1-mini");
+    expect(written.disabled_providers).toEqual(["groq"]);
   });
 
   it("returns zero counts when no host config is present", () => {

@@ -24,7 +24,7 @@ const ANTHROPIC_MODELS = [
  *
  * - Empty input → empty string.
  * - `env:NAME` form → looks up `NAME` in `process.env` first, then falls back
-   *   to `config/stack/secrets/<NAME>` resolved against `stackDir`.
+   *   to `stash/vaults/secrets/<NAME>` resolved against `stackDir`.
  * - Anything else → returned verbatim (treated as a literal key value).
  */
 function resolveApiKey(apiKeyRef: string, stackDir: string): string {

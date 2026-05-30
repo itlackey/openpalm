@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { signPayload } from "@openpalm/channels-sdk/crypto";
 import type { Subprocess } from "bun";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, unlinkSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,6 +53,7 @@ let guardianProc: Subprocess;
 let mockAssistantServer: ReturnType<typeof Bun.serve>;
 let guardianUrl: string;
 let tmpDir: string;
+let secretPath: string;
 let sessionCreateCount = 0;
 let messageCount = 0;
 let guardianPort = 0;
@@ -86,13 +87,20 @@ function getAvailablePort(): Promise<number> {
   });
 }
 
+async function waitForGuardianExit(proc: Subprocess): Promise<number | null> {
+  return await Promise.race([
+    proc.exited,
+    Bun.sleep(2_000).then(() => null),
+  ]);
+}
+
 beforeAll(async () => {
   assistantPort = await getAvailablePort();
   guardianPort = await getAvailablePort();
 
   // Create temp secrets file
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-test-"));
-  const secretPath = join(tmpDir, "test-secret");
+  secretPath = join(tmpDir, "test-secret");
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
 
   const auditPath = join(tmpDir, "audit.log");
@@ -204,6 +212,40 @@ describe("Guardian security contract", () => {
     const data = await resp.json();
     expect(data.ok).toBe(true);
     expect(data.service).toBe("guardian");
+  });
+
+  it("GET /health → 503 when a granted secret file is lost at runtime", async () => {
+    unlinkSync(secretPath);
+
+    try {
+      const resp = await fetch(`${guardianUrl}/health`);
+      expect(resp.status).toBe(503);
+      const data = await resp.json();
+      expect(data.ok).toBe(false);
+      expect(data.error).toBe("channel_secrets_unavailable");
+    } finally {
+      writeFileSync(secretPath, `${TEST_SECRET}\n`);
+    }
+
+    const restoredResp = await fetch(`${guardianUrl}/health`);
+    expect(restoredResp.status).toBe(200);
+  });
+
+  it("GET /health → 503 when a granted secret file is empty at runtime", async () => {
+    writeFileSync(secretPath, "");
+
+    try {
+      const resp = await fetch(`${guardianUrl}/health`);
+      expect(resp.status).toBe(503);
+      const data = await resp.json();
+      expect(data.ok).toBe(false);
+      expect(data.error).toBe("channel_secrets_unavailable");
+    } finally {
+      writeFileSync(secretPath, `${TEST_SECRET}\n`);
+    }
+
+    const restoredResp = await fetch(`${guardianUrl}/health`);
+    expect(restoredResp.status).toBe(200);
   });
 
   it("valid signed payload → 200 with answer", async () => {
@@ -531,6 +573,72 @@ describe("Guardian security contract", () => {
           return new Response("not found", { status: 404 });
         },
       });
+    }
+  });
+});
+
+describe("Guardian channel secret startup contract", () => {
+  it("fails fast when channel secrets are required but no CHANNEL_<NAME>_SECRET_FILE grants are configured", async () => {
+    const port = await getAvailablePort();
+    const localTmpDir = mkdtempSync(join(tmpdir(), "guardian-no-secrets-"));
+    const proc = Bun.spawn(["bun", "run", "src/server.ts"], {
+      cwd: join(import.meta.dir, ".."),
+      env: {
+        PATH: process.env.PATH ?? "",
+        PORT: String(port),
+        OP_ASSISTANT_URL: "http://127.0.0.1:1",
+        GUARDIAN_AUDIT_PATH: join(localTmpDir, "audit.log"),
+        GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    try {
+      const exitCode = await waitForGuardianExit(proc);
+      expect(exitCode).toBe(1);
+    } finally {
+      proc.kill();
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows zero channel grants for a core-only no-channel stack", async () => {
+    const port = await getAvailablePort();
+    const localTmpDir = mkdtempSync(join(tmpdir(), "guardian-empty-secrets-"));
+    const proc = Bun.spawn(["bun", "run", "src/server.ts"], {
+      cwd: join(import.meta.dir, ".."),
+      env: {
+        PATH: process.env.PATH ?? "",
+        PORT: String(port),
+        OP_ASSISTANT_URL: "http://127.0.0.1:1",
+        GUARDIAN_AUDIT_PATH: join(localTmpDir, "audit.log"),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    try {
+      const url = `http://127.0.0.1:${port}`;
+      let ready = false;
+      for (let i = 0; i < 50; i++) {
+        if (proc.exitCode !== null) break;
+        try {
+          const resp = await fetch(`${url}/health`);
+          if (resp.ok) {
+            ready = true;
+            break;
+          }
+        } catch {
+          // not ready yet
+        }
+        await Bun.sleep(100);
+      }
+
+      expect(ready).toBe(true);
+    } finally {
+      proc.kill();
+      rmSync(localTmpDir, { recursive: true, force: true });
     }
   });
 });

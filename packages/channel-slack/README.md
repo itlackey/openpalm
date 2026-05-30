@@ -19,7 +19,7 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 - Shipped addon source: `.openpalm/state/registry/addons/slack/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/slack/compose.yml`
 - Non-secret values: `~/.openpalm/config/stack/stack.env`
-- Secret values: files under `~/.openpalm/config/stack/secrets/`
+- Secret values: files under `~/.openpalm/stash/vaults/secrets/`
 
 Manual start example:
 
@@ -35,7 +35,7 @@ docker compose \
 
 The shipped addon overlay uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 
-`CHANNEL_SLACK_SECRET_FILE` points to the system-managed secret grant from `config/stack/secrets/`.
+The Slack channel container uses `CHANNEL_SECRET_FILE` to sign guardian messages. The guardian uses `CHANNEL_SLACK_SECRET_FILE` to verify Slack channel messages.
 
 See `docs/channels/slack-setup.md` for the full setup guide.
 
@@ -43,12 +43,15 @@ See `docs/channels/slack-setup.md` for the full setup guide.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `CHANNEL_SLACK_SECRET_FILE` | system-managed | Guardian HMAC secret file path |
+| `CHANNEL_SECRET_FILE` | system-managed | Slack channel outbound guardian HMAC secret file path |
+| `CHANNEL_SLACK_SECRET_FILE` | system-managed | Guardian verification HMAC secret file path for Slack |
 | `SLACK_BOT_TOKEN_FILE` | yes | Bot User OAuth token file path |
 | `SLACK_APP_TOKEN_FILE` | yes | App-level Socket Mode token file path |
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
+
+Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` for setup, but setup persists them under `stash/vaults/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and `SLACK_APP_TOKEN_FILE`, not raw tokens.
 
 ## Slack app configuration
 

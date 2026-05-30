@@ -1,7 +1,7 @@
 # Password & Secret Management
 
 OpenPalm keeps user secrets under `~/.openpalm/stash/vaults/` and system-managed
-service secrets under `~/.openpalm/config/stack/secrets/`. `stack.env` is
+service secrets under `~/.openpalm/stash/vaults/secrets/`. `stack.env` is
 non-secret runtime configuration only.
 
 ---
@@ -19,7 +19,7 @@ non-secret runtime configuration only.
 
 - `stash/vaults/user.env` is the AKM vault backing file for user-managed secrets.
 - `config/stack/stack.env` is system-managed non-secret runtime env.
-- `config/stack/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
+- `stash/vaults/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
 - Compose is run with `--env-file ../config/stack/stack.env` for non-secret substitution only.
 
 ---

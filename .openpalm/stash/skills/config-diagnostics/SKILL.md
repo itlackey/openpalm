@@ -1,7 +1,7 @@
 ---
 name: config-diagnostics
 type: skill
-description: Diagnose OpenPalm configuration issues (missing API keys, validation errors, connection problems) using the admin /admin/config/validate endpoint and schema metadata, without exposing any actual secret values.
+description: Diagnose OpenPalm configuration issues (missing API keys, validation errors, connection problems) using the admin /admin/config/validate endpoint and secret presence metadata, without exposing any actual secret values.
 when_to_use: Use when the user reports configuration issues, missing API keys, validation errors, or connection problems and needs guidance on what to fix without leaking secrets.
 license: Proprietary
 metadata:
@@ -12,7 +12,7 @@ metadata:
 # Config Diagnostics Skill
 
 When a user asks about configuration issues, connection problems, missing API
-keys, or validation errors, use the admin API and schema files to diagnose
+keys, or validation errors, use the admin API and non-secret metadata to diagnose
 and guide them — without ever exposing actual secret values.
 
 ## Procedure
@@ -24,27 +24,23 @@ and guide them — without ever exposing actual secret values.
    ```
    Response: `{ ok: boolean, errors: string[], warnings: string[] }`
 
-2. **Read the canonical schema files** to understand variable descriptions,
-   types, and requirements:
-   - `stash/vaults/user.env.schema` — schema for `~/.openpalm/stash/vaults/user.env`
-   - `config/stack/stack.env.schema` — schema for `~/.openpalm/config/stack/stack.env`
+2. **Interpret validation errors** using the variable name and documented
+   filesystem contract:
+   - Non-secret stack configuration belongs in `config/stack/stack.env`
+   - Stack/runtime secrets belong in `stash/vaults/secrets/<lowercase_name>`
+   - User AKM vault state belongs in `stash/vaults/user.env`
 
-3. **Interpret validation errors** using the schema metadata:
-   - Match error variable names to schema entries for human-readable descriptions
-   - Use `# @type` annotations to explain the expected format
-   - Use `# @required` annotations to explain why the variable is needed
-
-4. **Guide the user to fix issues** via:
-   - The admin UI (Settings > Secrets) for secret variables
-   - Direct editing of `~/.openpalm/stash/vaults/user.env` for advanced users
-   - The admin UI (Settings > Stack) for system configuration
+3. **Guide the user to fix issues** via:
+   - The admin UI for secret variables when available
+   - Direct creation of `~/.openpalm/stash/vaults/secrets/<name>` with mode 0600 for stack/runtime secrets
+   - Direct editing of `~/.openpalm/stash/vaults/user.env` for AKM user vault values
+   - The admin UI or direct edits to `config/stack/stack.env` for non-secret stack configuration
 
 ## Critical Rules
 
-- **NEVER read, display, echo, or reference actual `.env` file contents.**
-  Schema files describe variable structure — they contain no real values.
+- **NEVER read, display, echo, or reference actual `.env` or secret file contents.**
 - **NEVER suggest `cat ~/.openpalm/stash/vaults/user.env` or any command that exposes secret values.**
-- When referring to a variable, use its name and schema description only.
+- When referring to a variable, use its name and expected storage location only.
   Example: "OPENAI_API_KEY is missing — this is your OpenAI API key (string,
   sensitive, required when using the openai provider)."
 - Always direct users to fix secrets through the admin UI or direct file edits,
@@ -59,7 +55,7 @@ and guide them — without ever exposing actual secret values.
 2. Reads non-secret provider configuration and secret presence metadata
 3. Responds: "Validation shows OPENAI_API_KEY is not set. This variable holds
    your OpenAI API key — set it in Settings > Secrets in the admin UI, or write
-   the value to `~/.openpalm/config/stack/secrets/openai_api_key` with mode 0600."
+   the value to `~/.openpalm/stash/vaults/secrets/openai_api_key` with mode 0600."
 
 **User:** "Can you show me my vault files?"
 

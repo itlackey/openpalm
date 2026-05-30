@@ -11,7 +11,7 @@ This document describes the Admin API routes currently implemented in
   The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
   removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
   `OP_UI_LOGIN_PASSWORD` is supplied to the admin process from
-  `config/stack/secrets/op_ui_login_password`.
+  `stash/vaults/secrets/op_ui_login_password`.
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
 
@@ -98,7 +98,7 @@ Policy for this section:
   automatic lifecycle operations: non-destructive for existing user config files
   in `config/`; they only seed missing defaults.
 - Explicit mutation endpoints (`POST /admin/addons`, `POST /admin/addons/:name`,
-  `POST /admin/setup`, `PATCH /admin/akm`) are the allowed write path
+  `POST /api/setup/complete`, `PATCH /admin/akm`) are the allowed write path
   for requested config changes.
 
 ### `POST /admin/install`
@@ -106,14 +106,14 @@ Policy for this section:
 - Ensures directories + OpenCode starter config + starter user secrets.
 - Seeds only missing defaults in `config/`; never overwrites existing user files.
 - Writes configuration files to their final locations.
-- Runs `docker compose up -d` using `stack/core.compose.yml`, installed addon overlays, non-secret `stack.env`, and file-based Compose secret grants.
+- Runs `docker compose up -d` using `config/stack/core.compose.yml`, installed addon overlays, non-secret `stack.env`, and file-based Compose secret grants.
 
 Response:
 
 ```json
 {
   "ok": true,
-  "started": ["assistant", "guardian", "admin", "chat"],
+  "started": ["assistant", "guardian", "chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" }
 }
@@ -552,7 +552,7 @@ Response:
 ### `GET /admin/config/validate`
 
 Run the in-house key-presence and secret-audit checks against non-secret
-`config/stack/stack.env`, resolved Compose config, and `config/stack/secrets/`.
+`config/stack/stack.env`, resolved Compose config, and `stash/vaults/secrets/`.
 The validator confirms secret-like values use file grants and that required
 secret files are present — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit
@@ -571,7 +571,7 @@ When validation finds issues:
 ```json
 {
   "ok": false,
-  "errors": ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in config/stack/secrets/op_ui_login_password"],
+  "errors": ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in stash/vaults/secrets/op_ui_login_password"],
   "warnings": ["WARN: OPENAI_BASE_URL is not a valid URL"]
 }
 ```

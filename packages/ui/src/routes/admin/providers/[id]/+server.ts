@@ -29,8 +29,7 @@ import {
 } from '$lib/server/opencode/config.js';
 import type { ProviderActionResult } from '$lib/types/providers.js';
 import { detectLocalProviders } from '@openpalm/lib';
-import { createLogger, PROVIDER_KEY_MAP, writeStackSecretEnv } from '@openpalm/lib';
-import { getState } from '$lib/server/state.js';
+import { createLogger } from '@openpalm/lib';
 import {
   asStringOrEmpty,
   updateNumberOption,
@@ -166,9 +165,6 @@ export const PATCH: RequestHandler = async (event) => {
           const authResult = await getOpenCodeClient().setProviderApiKey(providerId, apiKey);
           if (!authResult.ok) {
             logger.warn('custom provider apiKey save failed', { providerId, code: authResult.code, message: authResult.message, requestId });
-          } else {
-            const envKey = PROVIDER_KEY_MAP[providerId] ?? `${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
-            writeStackSecretEnv(getState(), { [envKey]: apiKey });
           }
         } catch (err) {
           logger.warn('custom provider apiKey threw', { providerId, error: String(err), requestId });

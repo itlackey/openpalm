@@ -8,9 +8,7 @@ import {
   jsonBodyError,
   getOpenCodeClient,
 } from '$lib/server/helpers.js';
-import { createLogger, writeStackSecretEnv } from '@openpalm/lib';
-import { getState } from '$lib/server/state.js';
-import { PROVIDER_KEY_MAP } from '@openpalm/lib';
+import { createLogger } from '@openpalm/lib';
 
 const logger = createLogger('opencode.auth');
 
@@ -114,21 +112,18 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', keyError, {}, requestId);
     }
 
-    // Connections is a thin wrapper around OpenCode's auth API — the
+    // Connections is a thin wrapper around OpenCode's auth API. The
     // single source of truth for provider credentials is OpenCode's
     // own auth.json, which is bind-mounted into the assistant
-    // container. We do NOT write the key to stack.env or the akm user
-    // vault; those are separate concerns (assistant env / akm tools).
+    // container. We do not duplicate provider keys into stack secrets
+    // or the AKM user vault.
     const result = await getOpenCodeClient().setProviderApiKey(providerId, apiKey);
     if (!result.ok) {
       logger.warn('provider api key save failed', { providerId, requestId, error: result.code });
       return errorResponse(result.status, result.code, result.message, {}, requestId);
     }
 
-    const envKey = PROVIDER_KEY_MAP[providerId] ?? `${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`;
-    writeStackSecretEnv(getState(), { [envKey]: apiKey });
-
-    logger.info('provider API key saved', { providerId, envKey, requestId });
+    logger.info('provider API key saved to OpenCode auth.json', { providerId, requestId });
 
     return jsonResponse(200, { ok: true, mode: 'api_key' }, requestId);
   }

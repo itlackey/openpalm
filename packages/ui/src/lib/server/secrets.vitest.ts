@@ -47,7 +47,7 @@ describe("ensureSecrets", () => {
     expect(secrets).toContain("OP_SETUP_COMPLETE=false");
     expect(secrets).not.toContain("OPENAI_API_KEY=");
     expect(secrets).not.toContain("OP_UI_LOGIN_PASSWORD=");
-    expect(readSecret(stackDir, "op_ui_login_password")).toBeTruthy();
+    expect(readSecret(stackDir, "op_ui_login_password")).toBeNull();
   });
 
   test("is idempotent — does not overwrite existing non-secret stack.env", () => {

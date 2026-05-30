@@ -385,7 +385,7 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
-  it("writes the UI login password to a secret file", async () => {
+  it("writes the UI login password to stash/vaults/secrets", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
@@ -469,9 +469,16 @@ describe("performSetup", () => {
     const spec = readStackSpec(stackDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
+
+    const stackEnv = readFileSync(join(stackDir, 'stack.env'), 'utf-8');
+    expect(stackEnv).not.toContain('OPENAI_API_KEY=');
+    expect(readSecret(stackDir, 'openai_api_key')).toBeNull();
+
+    const authJson = JSON.parse(readFileSync(join(configDir, 'auth.json'), 'utf-8')) as Record<string, { key: string }>;
+    expect(authJson.openai.key).toBe('sk-secondary');
   });
 
-  it("writes channel credentials to secret files when channelCredentials provided", async () => {
+  it("splits channel credentials between secret files and stack.env", async () => {
     const input = makeValidSpec({
       channelCredentials: {
         discord: {
@@ -485,7 +492,10 @@ describe("performSetup", () => {
     expect(result.ok).toBe(true);
 
     expect(readSecret(stackDir, 'discord_bot_token')).toBe("discord-bot-token-xyz\n");
-    expect(readSecret(stackDir, 'discord_application_id')).toBe("discord-app-id-123\n");
+    expect(readSecret(stackDir, 'discord_application_id')).toBeNull();
+    const stackEnv = readFileSync(join(stackDir, 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain('DISCORD_APPLICATION_ID=discord-app-id-123');
+    expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');
   });
 
   it("ensureOpenCodeConfig never writes forbidden keys (providers, smallModel, model) to the user config", async () => {

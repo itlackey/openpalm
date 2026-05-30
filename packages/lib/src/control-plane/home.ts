@@ -3,12 +3,12 @@
  *
  * Single ~/.openpalm/ root:
  *   config/    — user-editable config + system config files (auth.json, akm/)
- *   config/stack/ — compose runtime + stack config (stack.env, secrets/, stack.yml, addons/)
+ *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, addons/)
  *   cache/     — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
  *   state/     — persistent service data (assistant, admin, guardian, logs, backups, registry)
  *   stash/     — akm knowledge (skills, vaults, agents)
  *   workspace/ — shared assistant work area
- *   config/stack/ — compose runtime assets + stack config (stack.env, secrets/, stack.yml)
+ *   config/stack/ — compose runtime assets + stack config (stack.env, stack.yml)
  */
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -116,6 +116,7 @@ export function ensureHomeDirs(): void {
     // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
     `${home}/stash`,
     `${home}/stash/vaults`,
+    `${home}/stash/vaults/secrets`,
     `${home}/stash/tasks`,
 
     // workspace/ — shared assistant work area

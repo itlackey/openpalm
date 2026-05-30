@@ -21,7 +21,7 @@ Streaming is not supported.
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/api/compose.yml`
 - Default host URL: `http://localhost:3821`
 - Container port: `8182`
-- System-managed HMAC secret: file under `~/.openpalm/config/stack/secrets/`
+- System-managed HMAC secret: file under `~/.openpalm/stash/vaults/secrets/`, mounted into both the API channel and guardian
 
 Manual start example:
 
@@ -40,8 +40,11 @@ current install API instead of editing the compose file list by hand.
 
 ## Environment variables
 
-| Variable | Purpose |
-|---|---|
-| `PORT` | Container listen port, default `8182` |
-| `CHANNEL_API_SECRET_FILE` | Guardian HMAC secret file path |
-| `OPENAI_COMPAT_API_KEY_FILE` | Optional incoming Bearer or `x-api-key` auth token file path |
+| Variable | Scope | Purpose |
+|---|---|---|
+| `PORT` | API channel | Container listen port, default `8182` |
+| `CHANNEL_SECRET_FILE` | API channel | Outbound guardian HMAC secret file path |
+| `OPENAI_COMPAT_API_KEY_FILE` | API channel | Optional incoming Bearer or `x-api-key` auth token file path |
+| `CHANNEL_API_SECRET_FILE` | guardian | Verification HMAC secret file path for the API channel |
+
+Secret values are stored as files and exposed only through `*_FILE` variables. Do not put raw API keys or HMAC secrets in `stack.env` or service-level `env_file` entries.

@@ -40,12 +40,13 @@ services:
 
   guardian:
     environment:
+      GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
       CHANNEL_DISCORD_SECRET_FILE: /run/secrets/channel_discord_secret
     secrets:
       - channel_discord_secret
 
 secrets:
   channel_discord_secret:
-    file: ${OP_HOME}/config/stack/secrets/channel_discord_secret
+    file: ${OP_HOME}/stash/vaults/secrets/channel_discord_secret
   discord_bot_token:
-    file: ${OP_HOME}/config/stack/secrets/discord_bot_token
+    file: ${OP_HOME}/stash/vaults/secrets/discord_bot_token

@@ -7,7 +7,7 @@
  * Copies host OpenCode config + auth into OP_HOME and live-pushes credentials
  * to the running OpenCode subprocess so providers appear connected immediately.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { json } from '@sveltejs/kit';
 import {
   importHostOpenCode,
@@ -55,12 +55,12 @@ async function pushAuthToOpenCode(authPath: string): Promise<PushResult> {
   return { pushed, errors };
 }
 
-/** Restart provider-consuming services so they re-read auth.json / user.env. */
+/** Restart provider-consuming services so they re-read imported startup config. */
 async function restartProviderConsumers(state: ReturnType<typeof getState>): Promise<{
   restarted: string[];
   failed: { service: string; error: string }[];
 }> {
-  const services = ['assistant', 'guardian'];
+  const services = ['assistant'];
   const docker = await checkDocker();
   if (!docker.ok) {
     return { restarted: [], failed: services.map((s) => ({ service: s, error: 'docker unavailable' })) };
@@ -86,7 +86,10 @@ export const POST: RequestHandler = async () => {
     const result = importHostOpenCode(state, { overwriteConflicts: false });
     const hostStatus = detectHostOpenCode();
     let pushResult: PushResult = { pushed: [], errors: [] };
-    if (hostStatus.authPath) {
+    const importedAuthPath = `${state.configDir}/auth.json`;
+    if (existsSync(importedAuthPath)) {
+      pushResult = await pushAuthToOpenCode(importedAuthPath);
+    } else if (hostStatus.authPath) {
       pushResult = await pushAuthToOpenCode(hostStatus.authPath);
     }
     const restart = await restartProviderConsumers(state);

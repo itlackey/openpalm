@@ -177,13 +177,13 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/config/stack/addons/chat/compose.yml  -> addon overlay
 ~/.openpalm/state/registry/addons/chat/.env.schema -> addon config contract
 ~/.openpalm/config/stack/stack.env          -> non-secret values passed via --env-file
-~/.openpalm/config/stack/secrets/           -> system-managed Compose secret files
+~/.openpalm/stash/vaults/secrets/           -> system-managed Compose secret files
 ~/.openpalm/stash/vaults/user.env           -> user-managed secrets (akm vault:user)
 ```
 
 Docker reads compose files, the non-secret env file, and secret files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`config/stack/stack.env`; Compose `secrets:` grants files from `config/stack/secrets/`.
+`config/stack/stack.env`; Compose `secrets:` grants files from `stash/vaults/secrets/`.
 
 ---
 

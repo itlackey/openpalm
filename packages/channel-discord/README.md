@@ -16,7 +16,7 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 - Shipped addon source: `.openpalm/state/registry/addons/discord/compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/discord/compose.yml`
 - Non-secret values: `~/.openpalm/config/stack/stack.env`
-- Secret values: files under `~/.openpalm/config/stack/secrets/`
+- Secret values: files under `~/.openpalm/stash/vaults/secrets/`
 
 Manual start example:
 
@@ -38,7 +38,8 @@ The shipped addon overlay uses explicit non-secret environment entries and Docke
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `CHANNEL_DISCORD_SECRET_FILE` | system-managed | Guardian HMAC secret file path |
+| `CHANNEL_SECRET_FILE` | system-managed | Discord channel outbound guardian HMAC secret file path |
+| `CHANNEL_DISCORD_SECRET_FILE` | system-managed | Guardian verification HMAC secret file path for Discord |
 | `DISCORD_APPLICATION_ID` | yes for command registration | Discord application ID |
 | `DISCORD_BOT_TOKEN_FILE` | yes | Bot token file path |
 | `DISCORD_REGISTER_COMMANDS` | no | Disable startup command registration when `false` |
@@ -47,6 +48,8 @@ The shipped addon overlay uses explicit non-secret environment entries and Docke
 | `DISCORD_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom command definitions |
+
+Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `DISCORD_BOT_TOKEN` for setup, but setup persists it under `stash/vaults/secrets/` and the runtime receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
 
 ## Conversation behavior
 

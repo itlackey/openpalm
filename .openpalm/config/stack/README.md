@@ -48,7 +48,6 @@ Repo addon sources live under `.openpalm/state/registry/addons/`. At runtime,
 | `chat` | `3820 -> 8181` | OpenAI-compatible chat edge |
 | `discord` | none | Discord bot adapter |
 | `ollama` | `11434` | Local LLM inference server |
-| `openviking` | none | Knowledge management engine |
 | `slack` | none | Slack bot adapter |
 | `voice` | `3810 -> 8186` | Voice channel |
 

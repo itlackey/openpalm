@@ -12,10 +12,22 @@ const logger = createLogger("guardian");
 
 const CHANNEL_SECRET_FILE_RE = /^CHANNEL_([A-Z0-9_]+)_SECRET_FILE$/;
 
+type LoadChannelSecretsOptions = {
+  allowEmpty?: boolean;
+  forceReload?: boolean;
+};
+
 export class GuardianSecretFileError extends Error {
   constructor(public readonly envKey: string, reason: string) {
     super(`${envKey}: ${reason}`);
     this.name = "GuardianSecretFileError";
+  }
+}
+
+export class GuardianNoChannelSecretsError extends Error {
+  constructor() {
+    super("GUARDIAN_REQUIRE_CHANNEL_SECRETS=true but no CHANNEL_<NAME>_SECRET_FILE grants are configured");
+    this.name = "GuardianNoChannelSecretsError";
   }
 }
 
@@ -38,9 +50,12 @@ function secretFileEntries(): Array<[string, string, string]> {
     .map(([key, val]) => [key, channelFromEnvKey(key), val!.trim()]);
 }
 
-export function loadChannelSecrets(): Record<string, string> {
+export function loadChannelSecrets(options: LoadChannelSecretsOptions = {}): Record<string, string> {
   const entries = secretFileEntries();
-  if (entries.length === 0) return {};
+  if (entries.length === 0) {
+    if (options.allowEmpty) return {};
+    throw new GuardianNoChannelSecretsError();
+  }
 
   const stats = entries.map(([envKey, _channel, path]) => {
     try {
@@ -52,7 +67,8 @@ export function loadChannelSecrets(): Record<string, string> {
   });
 
   const fingerprint = stats.join("|");
-  if (secretsCache
+  if (!options.forceReload
+    && secretsCache
     && secretsCache.fingerprint === fingerprint
     && Date.now() - secretsCache.loadedAt < SECRETS_CACHE_TTL_MS) {
     return secretsCache.secrets;

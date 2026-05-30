@@ -11,7 +11,8 @@
  *   - auth.json is copied byte-for-byte and chmodded 0o600. Its contents
  *     are never parsed, logged, or returned to callers.
  *   - opencode.json is parsed to strip plugin/mcp/permission keys before
- *     writing; only provider/model/small_model/disabled_providers are kept.
+ *     writing; provider definitions are always kept, and top-level model
+ *     defaults are imported only when OP_HOME does not already define them.
  *   - Conflict detection compares provider IDs; existing credentials are
  *     preserved unless overwriteConflicts=true.
  */
@@ -64,7 +65,7 @@ function hostAuthJsonPath(): string {
 
 // ── opencode.json parsing ────────────────────────────────────────────────────
 
-/** Keys that are safe to import from host opencode.json into OP_HOME config */
+/** Keys that are safe to import from host opencode.json into OP_HOME config. */
 const ALLOWED_CONFIG_KEYS = new Set(["$schema", "provider", "model", "small_model", "disabled_providers"]);
 
 type OpenCodeJson = Record<string, unknown>;
@@ -78,8 +79,18 @@ function readJsonFileSafe(path: string): OpenCodeJson | null {
 }
 
 function stripDisallowedKeys(obj: OpenCodeJson): OpenCodeJson {
+  const next: OpenCodeJson = {};
+  if (typeof obj.$schema === 'string') next.$schema = obj.$schema;
+  if (obj.provider && typeof obj.provider === 'object' && !Array.isArray(obj.provider)) {
+    next.provider = obj.provider;
+  }
+  if (typeof obj.model === 'string') next.model = obj.model;
+  if (typeof obj.small_model === 'string') next.small_model = obj.small_model;
+  if (Array.isArray(obj.disabled_providers) && obj.disabled_providers.every((entry) => typeof entry === 'string')) {
+    next.disabled_providers = obj.disabled_providers;
+  }
   return Object.fromEntries(
-    Object.entries(obj).filter(([k]) => ALLOWED_CONFIG_KEYS.has(k))
+    Object.entries(next).filter(([k]) => ALLOWED_CONFIG_KEYS.has(k))
   );
 }
 
@@ -181,14 +192,22 @@ export function importHostOpenCode(
         }
       }
 
-      const merged: OpenCodeJson = {
-        ...existing,
-        ...sanitized,
-        ...(Object.keys(mergedProviders).length > 0 ? { provider: mergedProviders } : {}),
-      };
+       const merged: OpenCodeJson = {
+         ...existing,
+         ...(typeof existing.$schema === 'undefined' && typeof sanitized.$schema !== 'undefined'
+           ? { $schema: sanitized.$schema }
+           : {}),
+         ...(Object.keys(mergedProviders).length > 0 ? { provider: mergedProviders } : {}),
+       };
 
-      writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n");
-    }
+       for (const key of ["model", "small_model", "disabled_providers"] as const) {
+         if (typeof merged[key] === 'undefined' && typeof sanitized[key] !== 'undefined') {
+           merged[key] = sanitized[key];
+         }
+       }
+
+       writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n");
+     }
   }
 
   // ── auth.json ──────────────────────────────────────────────────────────

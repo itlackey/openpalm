@@ -5,6 +5,22 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0-beta.11] - 2026-05-29
+
+### Fixed
+
+- **Secret files now live under `stash/vaults/secrets/`** — Compose file grants,
+  dev/release scripts, validation, and setup docs now use the stash-backed
+  secret path instead of `config/stack/secrets/`, keeping assistant-readable
+  secrets out of the general stack config tree.
+- **First-run auth no longer auto-materializes an admin password** — secret
+  bootstrap now leaves `OP_UI_LOGIN_PASSWORD` unset until setup explicitly
+  writes it, so setup/login routes correctly preserve the unconfigured state.
+- **Host OpenCode import now preserves model defaults** — host imports fill in
+  `model`, `small_model`, and `disabled_providers` only when the destination
+  config has not already set them, avoiding silent resets while still carrying
+  forward useful defaults.
+
 ## [0.11.0-beta.10] - 2026-05-26
 
 ### Changed

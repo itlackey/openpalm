@@ -22,10 +22,10 @@ Compose files are the source of truth; the admin UI/API is optional convenience.
 Store the bot token as a file-based secret and keep the application ID in `stack.env`:
 
 ```bash
-mkdir -p ~/.openpalm/config/stack/secrets
-printf '%s\n' 'your-bot-token' > ~/.openpalm/config/stack/secrets/discord_bot_token
-chmod 700 ~/.openpalm/config/stack/secrets
-chmod 600 ~/.openpalm/config/stack/secrets/discord_bot_token
+mkdir -p ~/.openpalm/stash/vaults/secrets
+printf '%s\n' 'your-bot-token' > ~/.openpalm/stash/vaults/secrets/discord_bot_token
+chmod 700 ~/.openpalm/stash/vaults/secrets
+chmod 600 ~/.openpalm/stash/vaults/secrets/discord_bot_token
 ```
 
 Add non-secret Discord settings to `~/.openpalm/config/stack/stack.env`:
@@ -113,4 +113,4 @@ Conversation notes:
 | `DISCORD_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom slash commands |
-| `CHANNEL_DISCORD_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `config/stack/secrets/` |
+| `CHANNEL_DISCORD_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `stash/vaults/secrets/` |

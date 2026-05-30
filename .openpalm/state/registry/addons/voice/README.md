@@ -15,17 +15,15 @@ container image itself; this README is for the compose overlay only.
 
 ## Enable
 
-This addon is registered in the OpenPalm addon catalog. Once the admin UI
-exposes the "voice" provider as a one-click toggle (Phase D in
-`docs/technical/openpalm-voice-addon.md`), enabling it is a single click.
-In the interim, enable manually:
+This addon is registered in the OpenPalm addon catalog. Enable it with the CLI
+or admin UI, or manually copy the overlay into the runtime stack:
 
 ```bash
-# From OP_HOME (the runtime stack directory):
-ln -s ../../state/registry/addons/voice config/stack/addons/voice
+# From OP_HOME:
+cp -r state/registry/addons/voice config/stack/addons/voice
 
 # Then restart the stack so compose picks up the new overlay.
-openpalm stack restart
+./run.sh up -d
 ```
 
 The compose driver materializes the model bind-mount directory the first
@@ -33,10 +31,13 @@ time the container starts.
 
 ## GPU (optional)
 
-Layer `gpu.compose.yml` on top of `compose.yml` to:
+Hardware variants are Compose profiles in `compose.yml`:
 
-- switch to the `-cu121` image tag
-- reserve one NVIDIA GPU device on the host
+| Profile | Image suffix | Hardware |
+|---|---|---|
+| `addon.voice.cpu` | `-cpu` | CPU |
+| `addon.voice.cuda` | `-cu121` | NVIDIA CUDA 12.1 |
+| `addon.voice.rocm` | `-rocm6` | AMD ROCm 6.x |
 
 Requirements on the host:
 
@@ -44,13 +45,10 @@ Requirements on the host:
 - [`nvidia-container-toolkit`](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
   installed and `docker info` lists `nvidia` under "Runtimes"
 
-To opt in, include the GPU overlay alongside the base overlay in your
-stack:
+Select a profile in `config/stack/stack.env`:
 
 ```bash
-ln -s ../../state/registry/addons/voice/gpu.compose.yml \
-      config/stack/addons/voice/gpu.compose.yml
-openpalm stack restart
+OP_VOICE_PROFILE=addon.voice.cuda
 ```
 
 Verify GPU passthrough by checking the container logs at boot — the

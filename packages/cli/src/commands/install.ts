@@ -15,8 +15,10 @@ import {
   performSetup,
   applyInstall,
   buildManagedServices,
+  createState,
   createLogger,
   resolveRequestedImageTag,
+  writeRunScript,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -231,6 +233,7 @@ async function prepareInstallFiles(
   console.log('Configuring secrets...');
   await ensureSecrets(stateDir);
   await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
+  writeRunScript(createState());
 
   for (const [path, content] of [
     [join(configDir, 'stack', 'auth.json'), '{}\n'],
@@ -300,4 +303,3 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   await requireDocker();
   await deployServices('install');
 }
-

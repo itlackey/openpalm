@@ -107,13 +107,13 @@ reading it.
 **Fix:**
 
 1. check the assistant container status and logs
-2. verify at least one provider is configured in OpenCode auth state or `~/.openpalm/config/stack/secrets/`
+2. verify at least one provider is configured in OpenCode auth state or `~/.openpalm/stash/vaults/secrets/`
 3. confirm the provider endpoint is reachable from Docker if you use a local model server
 
 Useful checks:
 
 ```bash
-ls ~/.openpalm/config/stack/secrets
+ls ~/.openpalm/stash/vaults/secrets
 grep -E 'BASE_URL' ~/.openpalm/config/stack/stack.env
 ```
 
@@ -150,11 +150,11 @@ Then recreate any services that depend on that value.
 **Fix:**
 
 - verify the channel addon is part of the compose file set you started
-- check `~/.openpalm/config/stack/secrets/` for the relevant channel HMAC secret file and verify the service has a matching `*_FILE` grant
+- check `~/.openpalm/stash/vaults/secrets/` for the relevant channel HMAC secret file and verify the service has a matching `*_FILE` grant
 - recreate the affected channel and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the
-live non-secret values come straight from `config/stack/stack.env`; service secrets come from `config/stack/secrets/`.
+live non-secret values come straight from `config/stack/stack.env`; service secrets come from `stash/vaults/secrets/`.
 
 ---
 
@@ -189,7 +189,7 @@ restart-loop.
 - rerun `docker compose pull` and then `docker compose up -d` with the same file set
 
 There is no XDG staging or artifacts directory to clear. The live deployment is
-the compose files under `~/.openpalm/config/stack/`, non-secret `stack.env`, and file-based secrets under `config/stack/secrets/`.
+the compose files under `~/.openpalm/config/stack/`, non-secret `stack.env`, and file-based secrets under `stash/vaults/secrets/`.
 
 ---
 

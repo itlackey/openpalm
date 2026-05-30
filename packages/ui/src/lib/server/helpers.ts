@@ -5,7 +5,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
 import { getActiveEndpoint } from "./endpoints.js";
-import { createOpenCodeClient } from "@openpalm/lib";
+import { createOpenCodeClient, readSecret, resolveStackDir } from "@openpalm/lib";
 import { validateSession } from "./session-store.js";
 
 /**
@@ -68,20 +68,23 @@ export function getRequestId(event: RequestEvent): string {
 }
 
 /**
- * Read the operator UI login password from the host environment.
+ * Read the operator UI login password from the host environment or the
+ * file-based stack secret.
  *
  * Phase 4 of the auth/proxy refactor collapsed
  * `ControlPlaneState.adminToken` (and the assistant token alongside it).
- * The cookie value is the operator-supplied password itself; on every
- * authenticated request we re-read `process.env.OP_UI_LOGIN_PASSWORD` and
- * compare it against the cookie with the existing constant-time compare.
+ * Runtime persistence lives in `stash/vaults/secrets/op_ui_login_password`.
+ * `process.env.OP_UI_LOGIN_PASSWORD` is still accepted for tests and explicit
+ * host-process overrides.
  *
  * Returns the empty string when the env var is unset — `requireNonEmptyUiLoginPassword()`
  * surfaces that case as a 503 so all authenticated routes fail loudly
  * rather than silently accepting any cookie.
  */
 export function getUiLoginPassword(): string {
-  return process.env.OP_UI_LOGIN_PASSWORD ?? "";
+  const envValue = process.env.OP_UI_LOGIN_PASSWORD;
+  if (envValue) return envValue;
+  return readSecret(resolveStackDir(), 'op_ui_login_password')?.trimEnd() ?? "";
 }
 
 /**

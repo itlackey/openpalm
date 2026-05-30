@@ -8,7 +8,7 @@
  */
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { resolveOpenPalmHome, resolveConfigDir, resolveUiBuildDir, createLogger, readStackEnv } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveConfigDir, resolveUiBuildDir, createLogger, readSecret } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { startOpenCodeSubprocess, type OpenCodeSubprocess } from './opencode-subprocess.ts';
 import { openBrowser } from './browser.ts';
@@ -66,10 +66,9 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   // OP_UI_LOGIN_PASSWORD is unset during first-run install — the SvelteKit
   // hooks detect that and redirect /* to /setup, where the wizard sets
   // it. Don't short-circuit here, or the install wizard can never come up.
-  const stackEnv = readStackEnv(state.stackDir);
   const uiLoginPassword =
     process.env.OP_UI_LOGIN_PASSWORD
-      ?? stackEnv.OP_UI_LOGIN_PASSWORD
+      ?? readSecret(state.stackDir, 'op_ui_login_password')?.trimEnd()
       ?? '';
 
   // Start OpenCode subprocess (non-fatal — UI still works without it)

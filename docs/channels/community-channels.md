@@ -46,7 +46,7 @@ services:
 
 secrets:
   channel_my_channel_hmac:
-    file: ${OP_HOME}/config/stack/secrets/channel_my_channel_hmac
+    file: ${OP_HOME}/stash/vaults/secrets/channel_my_channel_hmac
 ```
 
 ## What the SDK gives you
