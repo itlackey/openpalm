@@ -86,9 +86,9 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 - `~/.openpalm/config/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/config/stack/core.compose.yml`.
-- First-party addons are enabled through `~/.openpalm/config/stack/enabled-addons.json` and materialized into `~/.openpalm/config/stack/addons.compose.yml`; custom overlays can live in `~/.openpalm/config/stack/addons/<name>/compose.yml`.
-- Available addons live in `~/.openpalm/state/registry/addons/<name>/` until you enable them.
-- `~/.openpalm/config/stack/stack.yml` is a version marker only. It is not deployment truth.
+- First-party addons are defined in `services.compose.yml` and `channels.compose.yml`, then enabled by name in `~/.openpalm/config/stack/stack.yml`.
+- Custom services and overlays live in `~/.openpalm/config/stack/custom.compose.yml`.
+- OpenPalm resolves enabled addon names to Compose profiles; the fixed compose files remain deployment truth.
 
 This keeps the live system understandable: if a compose file is not in the command, it is not part of the stack.
 
@@ -115,7 +115,7 @@ op logs -f      # follow all logs
 
 Repo setup scripts can still help bootstrap files on a fresh machine, but they should be understood as convenience tooling that prepares the same `~/.openpalm/` layout. They do not replace the compose-first model.
 
-If you use helper tooling that reads `config/stack.yml`, treat that file as input to the tool - not as the thing Docker Compose deploys.
+If you use helper tooling that reads `config/stack/stack.yml`, treat that file as OpenPalm addon state - not as a Compose file.
 
 ---
 
@@ -160,13 +160,13 @@ docker info
 
 Re-check the exact compose file list in your command. Docker Compose only deploys the files you pass.
 
-### `config/stack.yml` had no effect
+### `config/stack/stack.yml` had no effect
 
-That file is optional metadata. It only matters when a helper tool reads it.
+That file is OpenPalm addon state. Regenerate or rerun the OpenPalm compose command so the selected addon names become `--profile` arguments.
 
 ### An addon fails to start
 
-Inspect `~/.openpalm/config/stack/addons.compose.yml` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
+Inspect `~/.openpalm/config/stack/services.compose.yml`, `channels.compose.yml`, and logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 ### Start over
 

@@ -27,21 +27,21 @@ variable). The relevant files for running the stack are:
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/config/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian |
+| `~/.openpalm/config/stack/core.compose.yml` | Core assistant runtime services; assistant also runs the scheduler co-process |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services, profile-gated |
 | `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels, profile-gated |
 | `~/.openpalm/config/stack/custom.compose.yml` | User custom services and overlays |
-| `~/.openpalm/config/stack/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, profiles, paths |
+| `~/.openpalm/config/stack/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
 | `~/.openpalm/stash/vaults/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
-| `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
+| `~/.openpalm/config/stack/stack.yml` | Stack schema marker and enabled first-party addon names |
 
 The project name defaults to `openpalm` and can be overridden with the
 `OP_PROJECT_NAME` environment variable.
 
-To see which first-party profiles are enabled:
+To see which first-party addons are enabled:
 
 ```bash
-grep '^COMPOSE_PROFILES=' ~/.openpalm/config/stack/stack.env
+sed -n '/^addons:/,$p' ~/.openpalm/config/stack/stack.yml
 ```
 
 ---
@@ -62,7 +62,6 @@ and profiles selected by OpenPalm tooling:
 op() {
   local OP_HOME="${OP_HOME:-$HOME/.openpalm}"
   local PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
-  local profile_args=""
 
   if [ -f "$OP_HOME/config/stack/stack.env" ]; then
     set -a
@@ -71,11 +70,6 @@ op() {
     set +a
   fi
 
-  IFS=',' read -r -a compose_profiles <<< "${COMPOSE_PROFILES:-}"
-  for profile in "${compose_profiles[@]}" "${OP_VOICE_PROFILE:-}" "${OP_OLLAMA_PROFILE:-}"; do
-    [ -n "$profile" ] && profile_args="$profile_args --profile $profile"
-  done
-
   docker compose \
     --project-name "$PROJECT_NAME" \
     --env-file "$OP_HOME/config/stack/stack.env" \
@@ -83,14 +77,15 @@ op() {
     -f "$OP_HOME/config/stack/services.compose.yml" \
     -f "$OP_HOME/config/stack/channels.compose.yml" \
     -f "$OP_HOME/config/stack/custom.compose.yml" \
-    $profile_args \
     "$@"
 }
 ```
 
+Pass manual profile flags before the compose subcommand when needed, for example `op --profile addon.chat config`.
+
 The generated `run.sh` remains the primary operator-facing entrypoint for
 starting/restarting the stack. It records the fixed compose file list and the
-live profile selection in one place.
+profile selection derived from `stack.yml` in one place.
 
 ### Manual command (without the helper)
 
@@ -111,8 +106,7 @@ docker compose \
   <command>
 ```
 
-Use the same fixed `-f` file list every time. Enable built-ins with `--profile`
-or `COMPOSE_PROFILES`; put custom services and overlays in `custom.compose.yml`.
+Use the same fixed `-f` file list every time. OpenPalm-managed built-ins are tracked in `stack.yml`; for manual Docker Compose commands, pass the corresponding `--profile addon.<name>` arguments directly. Put custom services and overlays in `custom.compose.yml`.
 
 ---
 
@@ -240,7 +234,7 @@ op pull
 
 ### Disabling a built-in optional service
 
-1. Remove the built-in profile from `COMPOSE_PROFILES`:
+1. Remove the built-in addon name from `stack.yml`:
    ```bash
    openpalm addon disable <name>
    ```

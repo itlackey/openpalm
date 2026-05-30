@@ -69,7 +69,7 @@ describe('/admin/addons/:name route', () => {
   test('returns enabled state and schema metadata', async () => {
     const state = getState();
     seedFixedAddon(state.homeDir, 'chat');
-    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
+    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'version: 2\naddons:\n  - chat\n');
 
     const res = await GET(makeGetEvent('chat'));
     expect(res.status).toBe(200);
@@ -113,7 +113,7 @@ describe('POST /admin/addons/:name', () => {
     expect(res.status).toBe(404);
   });
 
-  test('enables an addon by updating COMPOSE_PROFILES', async () => {
+  test('enables an addon by updating stack.yml', async () => {
     const state = getState();
     seedFixedAddon(state.homeDir, 'chat');
 
@@ -126,13 +126,13 @@ describe('POST /admin/addons/:name', () => {
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
 
-    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'utf-8')).toContain('COMPOSE_PROFILES=addon.chat');
+    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'utf-8')).toContain('- chat');
   });
 
-  test('disables an addon by updating COMPOSE_PROFILES', async () => {
+  test('disables an addon by updating stack.yml', async () => {
     const state = getState();
     seedFixedAddon(state.homeDir, 'chat');
-    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
+    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'version: 2\naddons:\n  - chat\n');
 
     const res = await POST(makePostEvent('chat', { enabled: false }));
     expect(res.status).toBe(200);
@@ -142,7 +142,7 @@ describe('POST /admin/addons/:name', () => {
     expect(body.enabled).toBe(false);
     expect(body.changed).toBe(true);
 
-    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'utf-8')).not.toContain('COMPOSE_PROFILES=addon.chat');
+    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'utf-8')).not.toContain('- chat');
   });
 
   test('reports changed=false when already in target state', async () => {

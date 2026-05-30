@@ -130,17 +130,43 @@ services:
       openpalm.healthcheck: http://slack:8185/health
 
   guardian:
+    profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
+      HOME: /app/data
+      PORT: "8080"
+      OP_ASSISTANT_URL: http://assistant:4096
+      OPENCODE_TIMEOUT_MS: "0"
+      GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
       CHANNEL_CHAT_SECRET_FILE: /run/secrets/channel_chat_secret
       CHANNEL_API_SECRET_FILE: /run/secrets/channel_api_secret
       CHANNEL_DISCORD_SECRET_FILE: /run/secrets/channel_discord_secret
       CHANNEL_SLACK_SECRET_FILE: /run/secrets/channel_slack_secret
+    # No host port mapping: guardian is reachable only via the
+    # channel_lan / assistant_net Docker networks as `http://guardian:8080`.
+    # Channels (api, discord, slack, chat) talk to it over channel_lan; the
+    # host UI checks its health via `docker container inspect` instead of HTTP.
+    # To debug, use `docker exec openpalm-guardian-1 curl localhost:8080/health`.
+    volumes:
+      - ${OP_HOME}/state/guardian:/app/data
+      - ${OP_HOME}/state/logs:/app/audit
     secrets:
       - channel_chat_secret
       - channel_api_secret
       - channel_discord_secret
       - channel_slack_secret
+    networks: [channel_lan, assistant_net]
+    depends_on:
+      assistant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 secrets:
   channel_chat_secret:

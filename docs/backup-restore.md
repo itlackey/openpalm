@@ -110,17 +110,15 @@ the current model.
 | File or directory | Purpose |
 |---|---|
 | `~/.openpalm/stash/vaults/user.env` | AKM vault backing file for user-managed secrets |
-| `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, profiles |
+| `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
 | `~/.openpalm/stash/vaults/secrets/` | System-managed service secret files |
-| `~/.openpalm/state/registry/addons/<name>/` | Available addon catalog entries |
-| `~/.openpalm/state/registry/automations/` | Available automation catalog entries |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
-| `~/.openpalm/config/stack/enabled-addons.json` | Enabled first-party addons |
-| `~/.openpalm/config/stack/addons.compose.yml` | Generated first-party addon compose bundle |
-| `~/.openpalm/config/stack/addons/<name>/compose.yml` | Custom/third-party addon overlays |
+| `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |
+| `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels and guardian |
+| `~/.openpalm/config/stack/custom.compose.yml` | Custom services and overlays |
+| `~/.openpalm/config/stack/stack.yml` | Stack schema marker and enabled first-party addons |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/stash/tasks/` | Active AKM automation task files (markdown) |
-| `~/.openpalm/config/stack.yml` | Capabilities only |
 | `~/.openpalm/stash/` | Shared akm stash (assistant + admin memory and knowledge) |
 | `~/.openpalm/workspace/` | Shared workspace |
 | `~/.openpalm/logs/` | Logs and audit files |

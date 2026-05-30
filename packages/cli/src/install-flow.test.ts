@@ -49,7 +49,7 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   }
 
   if (enabledAddons.length > 0) {
-    writeFileSync(join(stackDir, 'stack.env'), `COMPOSE_PROFILES=${enabledAddons.map((addon) => `addon.${addon}`).join(',')}\n`);
+    writeFileSync(join(stackDir, 'stack.yml'), `version: 2\naddons:\n${enabledAddons.map((addon) => `  - ${addon}`).join('\n')}\n`);
   }
 
   // stash/tasks/ — active AKM task files (populated by setup)
@@ -166,11 +166,11 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(result.ok).toBe(true);
 
     // ── Validate stack.yml via lib parser ─────────────────────────
-    const configDir = join(homeDir, 'config');
     const stackSpec = readStackSpec(join(homeDir, 'config', 'stack'));
     expect(stackSpec).not.toBeNull();
     expect(stackSpec!.version).toBe(2);
-    // stack.yml carries only { version: 2 } — LLM config lives in akm config.json
+    expect(stackSpec!.addons).toContain('chat');
+    // LLM config lives in akm config.json.
     const akmConfigPath = join(homeDir, 'config/akm/config.json');
     expect(existsSync(akmConfigPath)).toBe(true);
     const akmConfig = JSON.parse(readFileSync(akmConfigPath, 'utf-8'));
@@ -182,7 +182,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'config/stack/services.compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/channels.compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/custom.compose.yml'))).toBe(true);
-    expect(readFileSync(join(homeDir, 'config/stack/stack.env'), 'utf-8')).toContain('COMPOSE_PROFILES=addon.chat');
+    expect(readFileSync(join(homeDir, 'config/stack/stack.yml'), 'utf-8')).toContain('- chat');
 
     // ── Validate vault files are regular files (not directories) ─────
     // Note: vault/user/user.env is no longer
@@ -374,7 +374,7 @@ describe('install flow — tier 1 (file validation)', () => {
     ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });
 
     const services = new TextDecoder().decode(proc.stdout).trim().split('\n').sort();
-    expect(services).toEqual(['assistant', 'guardian']);
+    expect(services).toEqual(['assistant']);
   }, 30_000);
 });
 

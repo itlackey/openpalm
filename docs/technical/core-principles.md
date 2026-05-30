@@ -91,14 +91,14 @@ Subtrees:
 
 Subtrees:
 
-- `stack.yml` — version marker only (`{ version: 2 }`)
-- `stack.env` — system-managed non-secret environment variables written by CLI/admin (paths, ports, image tags, Compose profiles, feature flags)
-- `core.compose.yml` — base compose definition for core services
+- `stack.yml` — stack schema marker and enabled first-party addon names (`version: 2`, optional `addons: []`)
+- `stack.env` — system-managed non-secret environment variables written by CLI/admin (paths, ports, image tags, hardware profile selections, feature flags)
+- `core.compose.yml` — base compose definition for core assistant runtime services
 - `services.compose.yml` — system-managed first-party optional services, profile-gated
 - `channels.compose.yml` — system-managed first-party optional channels, profile-gated
 - `custom.compose.yml` — user-editable custom services and overlays, seeded once and never overwritten automatically
 
-First-party optional services are enabled by adding `addon.*` profile IDs to `COMPOSE_PROFILES` in `stack.env` or by passing `--profile` to Docker Compose. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
+First-party optional services are enabled by adding their addon names to `stack.yml`; OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit manual `--profile` arguments remain valid for ad hoc Docker Compose use. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
 
 ### 2) Stash / Vaults (user-managed secrets and knowledge)
 

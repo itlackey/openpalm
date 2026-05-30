@@ -6,7 +6,9 @@ and runtime files under `OP_HOME`.
 Primary sources:
 
 - `.openpalm/config/stack/core.compose.yml`
-- `.openpalm/state/registry/addons/*/compose.yml`
+- `.openpalm/config/stack/services.compose.yml`
+- `.openpalm/config/stack/channels.compose.yml`
+- `.openpalm/config/stack/custom.compose.yml`
 - `core/*/entrypoint.sh` and service source where runtime defaults matter
 
 When this document conflicts with older prose elsewhere, the compose files win.
@@ -20,7 +22,7 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | Host path | Purpose |
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
-| `~/.openpalm/config/stack/` | Live compose assembly; non-secret runtime env (`stack.env`), file-based service secrets (`secrets/`), `core.compose.yml`, `addons/` |
+| `~/.openpalm/config/stack/` | Live compose assembly; non-secret runtime env (`stack.env`), `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, `custom.compose.yml`, `stack.yml` |
 | `~/.openpalm/stash/` | AKM knowledge base (user-managed: `vaults/`, `tasks/`) |
 | `~/.openpalm/stash/vaults/` | User-managed secrets (`user.env`, AKM vault backing store) |
 | `~/.openpalm/state/` | Durable service data |

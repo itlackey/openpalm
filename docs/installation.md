@@ -48,8 +48,9 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 | `~/.openpalm/state/` | Durable service data |
 | `~/.openpalm/state/logs/` | Logs and audit output |
 
-`~/.openpalm/config/stack/stack.yml` is a version marker only. It is not the
-deployment truth.
+`~/.openpalm/config/stack/stack.yml` stores the stack schema marker and enabled
+first-party addon names. Docker Compose deployment still comes from the fixed
+compose files and profiles derived by OpenPalm tooling.
 
 ---
 
@@ -84,14 +85,14 @@ preferences and addon-specific values.
 
 ## Addons
 
-Addons are available in `~/.openpalm/state/registry/addons/` and first-party addons become active when their names are recorded in `~/.openpalm/config/stack/enabled-addons.json` and materialized into `~/.openpalm/config/stack/addons.compose.yml`. Custom overlays can still live under `~/.openpalm/config/stack/addons/`.
+First-party addons are defined in `services.compose.yml` and `channels.compose.yml`. They become active when their names are recorded in `~/.openpalm/config/stack/stack.yml`; OpenPalm converts those names to Compose profiles. Custom services and overlays live in `custom.compose.yml`.
 
 | Addon | Compose file |
 |---|---|
 
-| `chat` | `addons/chat/compose.yml` |
-| `api` | `addons/api/compose.yml` |
-| `discord` | `addons/discord/compose.yml` |
+| `chat` | `channels.compose.yml` |
+| `api` | `channels.compose.yml` |
+| `discord` | `channels.compose.yml` |
 | `slack` | `addons/slack/compose.yml` |
 | `voice` | `addons/voice/compose.yml` |
 | `ollama` | `addons/ollama/compose.yml` |

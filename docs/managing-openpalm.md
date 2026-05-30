@@ -20,12 +20,11 @@ normal operation you do not edit `data/` directly, and stack runtime files live
 under `~/.openpalm/config/stack/`.
 
 Keep this split in mind:
-- `~/.openpalm/state/registry/` is the available catalog
-- `~/.openpalm/config/stack/enabled-addons.json` contains enabled first-party addons
-- `~/.openpalm/config/stack/addons.compose.yml` contains the generated first-party addon compose bundle
-- `~/.openpalm/config/stack/addons/` contains custom/third-party addon overlays
-- `~/.openpalm/stash/tasks/` contains active AKM automation task files
-- `~/.openpalm/config/stack/stack.yml` is a version marker only
+- `~/.openpalm/config/stack/services.compose.yml` contains first-party optional services
+- `~/.openpalm/config/stack/channels.compose.yml` contains first-party optional channels and the channel-scoped guardian
+- `~/.openpalm/config/stack/custom.compose.yml` contains user custom services and overlays
+- `~/.openpalm/config/stack/stack.yml` contains the stack schema marker and enabled first-party addon names
+- `~/.openpalm/stash/tasks/` contains AKM automation task files
 
 ---
 
@@ -36,13 +35,11 @@ Keep this split in mind:
 ├── config/
 │   ├── stack/
 │   │   ├── core.compose.yml          # Base compose file for the runtime stack
-│   │   ├── addons.compose.yml        # Generated first-party addon compose bundle
+│   │   ├── services.compose.yml      # First-party optional services, profile-gated
+│   │   ├── channels.compose.yml      # First-party optional channels, profile-gated
+│   │   ├── custom.compose.yml        # User custom services and overlays
 │   │   ├── stack.env                 # System-managed non-secret runtime env
-│   │   ├── enabled-addons.json       # Explicit first-party addon activation state
-│   │   ├── stack.yml                 # Version marker only ({ version: 2 })
-│   │   └── addons/
-│   │       └── chat/
-│   │           └── compose.yml       # Custom/third-party addon overlays
+│   │   └── stack.yml                 # Version marker + enabled addons
 │   ├── assistant/
 │   │   ├── opencode.json             # OpenCode config (LLM provider, settings)
 │   │   ├── tools/                    # Drop custom tools here
@@ -61,9 +58,6 @@ Keep this split in mind:
 │   ├── assistant/
 │   ├── guardian/
 │   ├── akm/                          # akm state.db (execution history)
-│   ├── registry/
-│   │   ├── addons/                   # Available addon catalog
-│   │   └── automations/              # Available automation catalog
 │   └── logs/                         ← AUDIT AND DEBUG LOGS
 │
 ├── cache/
@@ -81,7 +75,7 @@ Secrets are split by ownership and grant boundary:
 
 - **`~/.openpalm/stash/vaults/user.env`** -- AKM vault backing file for user-managed secrets; never passed to Docker Compose.
 - **`~/.openpalm/stash/vaults/secrets/`** -- System-managed service secret files granted through Compose `secrets:` and exposed as `*_FILE` variables.
-- **`~/.openpalm/config/stack/stack.env`** -- System-managed non-secret runtime env: ports, paths, image tags, profiles, and other infrastructure values.
+- **`~/.openpalm/config/stack/stack.env`** -- System-managed non-secret runtime env: ports, paths, image tags, hardware profile selections, and other infrastructure values.
 
 ```env
 # ~/.openpalm/config/stack/stack.env
@@ -106,10 +100,10 @@ via the AKM tab in the admin UI -- no manual file editing required.
 ## Addons (Channels, Services, Integrations)
 
 An addon has two states:
-- available in the catalog at `~/.openpalm/state/registry/addons/<name>/`
-- enabled at runtime in `~/.openpalm/config/stack/enabled-addons.json`
+- available as a built-in service in `services.compose.yml` or `channels.compose.yml`
+- enabled at runtime in `~/.openpalm/config/stack/stack.yml`
 
-OpenPalm materializes enabled first-party addons into `config/stack/addons.compose.yml`. Custom or multi-instance overlays remain under `config/stack/addons/<name>/compose.yml`.
+OpenPalm resolves enabled first-party addon names to Compose profiles. Custom or multi-instance services belong in `config/stack/custom.compose.yml`.
 
 Channels, services, and integrations are all addons.
 
@@ -134,11 +128,10 @@ curl -b cookies.txt -X POST http://localhost:3880/admin/addons/chat \
   -d '{"enabled":true}'
 ```
 
-This records the addon in explicit activation state and uses the catalog compose file at runtime. `config/stack.yml` does not store addon state.
+This records the addon name in `config/stack/stack.yml`; runtime Compose uses the fixed compose files plus the derived profiles.
 
 ### Configure an addon
 
-- Read the addon's schema at `~/.openpalm/state/registry/addons/<name>/.env.schema`
 - Put secret values in `~/.openpalm/stash/vaults/secrets/` and non-secret settings in `~/.openpalm/config/stack/stack.env`
 - Rerun your compose command or restart affected services
 
@@ -147,12 +140,12 @@ Addon config is schema-driven and file-based. There is no addon config block in 
 ### Add an addon manually
 
 1. Enable first-party addons with `openpalm addon enable <name>` or the admin UI.
-2. Author `~/.openpalm/config/stack/addons/<name>/` manually if you want a custom or multi-instance layout.
-3. Run preflight to confirm the merge is clean, then rerun `docker compose` with that addon included
+2. Author custom or multi-instance services in `~/.openpalm/config/stack/custom.compose.yml`.
+3. Run preflight to confirm the merge is clean, then rerun `docker compose`.
 
 ### Uninstall an addon
 
-Disable first-party addons with `openpalm addon disable <name>` or the admin UI. Remove custom addon directories from `~/.openpalm/config/stack/addons/`, then rerun `docker compose` without them.
+Disable first-party addons with `openpalm addon disable <name>` or the admin UI. Remove custom services from `custom.compose.yml`, then rerun `docker compose` without them.
 
 ---
 

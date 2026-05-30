@@ -35,15 +35,6 @@ export function resolveActiveProfiles(state: ControlPlaneState): string[] {
   let env: Record<string, string> = {};
   if (existsSync(stackEnvPath)) {
     env = parseEnvFile(stackEnvPath);
-    for (const addon of listStackSpecAddons(state.stackDir)) {
-      if (addon === 'voice') {
-        profiles.push(canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '') || 'addon.voice.cpu');
-      } else if (addon === 'ollama') {
-        profiles.push(canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '') || 'addon.ollama.cpu');
-      } else {
-        profiles.push(`addon.${addon}`);
-      }
-    }
     for (const profile of (env.COMPOSE_PROFILES ?? '').split(',')) {
       const trimmed = profile.trim();
       if (trimmed) profiles.push(trimmed);
@@ -52,6 +43,16 @@ export function resolveActiveProfiles(state: ControlPlaneState): string[] {
     if (voiceProfile) profiles.push(voiceProfile);
     const ollamaProfile = canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '');
     if (ollamaProfile) profiles.push(ollamaProfile);
+  }
+
+  for (const addon of listStackSpecAddons(state.stackDir)) {
+    if (addon === 'voice') {
+      profiles.push(canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '') || 'addon.voice.cpu');
+    } else if (addon === 'ollama') {
+      profiles.push(canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '') || 'addon.ollama.cpu');
+    } else {
+      profiles.push(`addon.${addon}`);
+    }
   }
 
   return [...new Set(profiles)];

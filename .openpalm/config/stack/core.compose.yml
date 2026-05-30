@@ -105,37 +105,6 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── Guardian ────────────────────────────────────────────────────────
-  # Channel HMAC secrets are granted by channel addon overlays as Compose
-  # secrets. Guardian receives only channel_* secret files for enabled channels.
-  guardian:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      HOME: /app/data
-      PORT: "8080"
-      OP_ASSISTANT_URL: http://assistant:4096
-      OPENCODE_TIMEOUT_MS: "0"
-      GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
-    # No host port mapping: guardian is reachable only via the
-    # channel_lan / assistant_net Docker networks as `http://guardian:8080`.
-    # Channels (api, discord, slack, chat) talk to it over channel_lan; the
-    # host UI checks its health via `docker container inspect` instead of HTTP.
-    # To debug, use `docker exec openpalm-guardian-1 curl localhost:8080/health`.
-    volumes:
-      - ${OP_HOME}/state/guardian:/app/data
-      - ${OP_HOME}/state/logs:/app/audit
-    networks: [ channel_lan, assistant_net ]
-    depends_on:
-      assistant:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
 # Channel networks: services join channel_lan (LAN-restricted) to reach
 # the guardian. Public exposure is opt-in per-service via host port bindings.
 networks:

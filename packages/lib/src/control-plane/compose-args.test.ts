@@ -49,7 +49,7 @@ function seedAddon(name: string): void {
   const stackDir = join(tempDir, "config", "stack");
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(join(stackDir, "channels.compose.yml"), `services:\n  ${name}:\n    profiles: [\"addon.${name}\"]\n    image: test\n`);
-  writeFileSync(join(stackDir, "stack.env"), `COMPOSE_PROFILES=addon.${name}\n`);
+  writeFileSync(join(stackDir, "stack.yml"), `version: 2\naddons:\n  - ${name}\n`);
 }
 
 beforeEach(() => {
@@ -72,7 +72,7 @@ describe("buildComposeOptions", () => {
     expect(opts.files[0]).toContain("core.compose.yml");
   });
 
-  it("includes fixed channel compose and profile from stack env", () => {
+  it("includes fixed channel compose and profile from stack.yml", () => {
     seedCoreCompose();
     seedAddon("chat");
 

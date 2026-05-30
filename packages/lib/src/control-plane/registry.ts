@@ -305,6 +305,7 @@ function readAddonServiceNamesFromContent(composeContent: string, composePath: s
     if (!addonName) return entries.map(([name]) => name);
     return entries
       .filter(([serviceName, raw]) => {
+        if (serviceName === 'guardian') return false;
         if (serviceName === addonName || serviceName.startsWith(`${addonName}-`)) return true;
         if (!raw || typeof raw !== 'object') return false;
         const profiles = (raw as { profiles?: unknown }).profiles;

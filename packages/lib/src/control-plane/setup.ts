@@ -23,7 +23,7 @@ import {
   writeAuthJsonProviderKeys,
 } from "./secrets.js";
 import { createState } from "./lifecycle.js";
-import { writeStackSpec } from "./stack-spec.js";
+import { readStackSpec, writeStackSpec } from "./stack-spec.js";
 import { writeVoiceVars } from "./spec-to-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
@@ -239,8 +239,8 @@ export async function performSetup(
     // single try/catch so that a disk-full or permission-denied mid-way returns a
     // clean error rather than leaving a broken half-installed ~/.openpalm/.
     try {
-      // Write stack.yml (version marker only)
-      writeStackSpec(state.stackDir, { version: 2 });
+      // Preserve addon enablement while refreshing the stack schema marker.
+      writeStackSpec(state.stackDir, readStackSpec(state.stackDir) ?? { version: 2 });
 
       // Write image tag and AKM mount paths to stack.env — atomic to avoid
       // partial writes if the process is interrupted mid-write.

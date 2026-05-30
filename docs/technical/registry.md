@@ -7,7 +7,7 @@ First-party optional services are defined in the fixed compose files under `conf
 - `services.compose.yml`
 - `channels.compose.yml`
 
-Activation is profile-based through `COMPOSE_PROFILES` in `config/stack/stack.env` or explicit Docker Compose `--profile addon.<name>` arguments. OpenPalm does not generate `addons.compose.yml` and does not write `enabled-addons.json`.
+Activation is recorded in `config/stack/stack.yml` as addon names. OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit Docker Compose `--profile addon.<name>` arguments remain valid for manual runs. OpenPalm does not generate `addons.compose.yml` and does not write `enabled-addons.json`.
 
 User custom services and overlays belong in `config/stack/custom.compose.yml`.
 

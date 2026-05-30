@@ -45,7 +45,7 @@ Responsibilities:
 - Writes runtime configuration directly to `~/.openpalm/config/stack/` and `~/.openpalm/config/akm/`
 - Runs `docker compose` for all lifecycle operations (install, update, up, down, restart)
 - Exposes an authenticated API used by the browser UI and the assistant
-- Manages first-party addon activation in `~/.openpalm/config/stack/enabled-addons.json`, materializes it into `~/.openpalm/config/stack/addons.compose.yml`, supports custom overlays in `~/.openpalm/config/stack/addons/`, and reads addon metadata from `~/.openpalm/state/registry/`
+- Manages first-party addon activation in `~/.openpalm/config/stack/stack.yml`, resolves enabled addons to Compose profiles, and supports custom services in `custom.compose.yml`
 - Writes the audit log
 
 ### Guardian (Bun server, port 8080)
@@ -173,14 +173,14 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
   allowlisted admin API actions
 
 ```
-~/.openpalm/config/stack/core.compose.yml         -> base compose definition
-~/.openpalm/config/stack/enabled-addons.json      -> first-party addon activation
-~/.openpalm/config/stack/addons.compose.yml       -> generated first-party addon compose bundle
-~/.openpalm/config/stack/addons/custom/compose.yml -> custom addon overlay
-~/.openpalm/state/registry/addons/chat/.env.schema -> addon config contract
-~/.openpalm/config/stack/stack.env          -> non-secret values passed via --env-file
-~/.openpalm/stash/vaults/secrets/           -> system-managed Compose secret files
-~/.openpalm/stash/vaults/user.env           -> user-managed secrets (akm vault:user)
+~/.openpalm/config/stack/core.compose.yml     -> core assistant runtime compose definition
+~/.openpalm/config/stack/services.compose.yml -> first-party optional services
+~/.openpalm/config/stack/channels.compose.yml -> first-party optional channels and guardian
+~/.openpalm/config/stack/custom.compose.yml   -> custom services and overlays
+~/.openpalm/config/stack/stack.yml            -> first-party addon activation state
+~/.openpalm/config/stack/stack.env            -> non-secret values passed via --env-file
+~/.openpalm/stash/vaults/secrets/             -> system-managed Compose secret files
+~/.openpalm/stash/vaults/user.env             -> user-managed secrets (akm vault:user)
 ```
 
 Docker reads compose files, the non-secret env file, and secret files directly from their final locations.
@@ -219,10 +219,9 @@ Anything not on the list is rejected with `400 invalid_service` or
 
 ## Adding a Channel (the whole process)
 
-1. Browse the available catalog entry in `~/.openpalm/state/registry/addons/<name>/` via admin API, admin UI, or direct file inspection
-2. Enable it by adding `<name>` to `~/.openpalm/config/stack/enabled-addons.json`
-3. OpenPalm materializes first-party addons into `~/.openpalm/config/stack/addons.compose.yml`, or you can hand-author `~/.openpalm/config/stack/addons/<name>/` for a custom or multi-instance setup
-4. Rerun `docker compose` with that addon included
-5. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first
+1. Add or reuse a service definition in `channels.compose.yml` or `custom.compose.yml`.
+2. Enable first-party channels by adding their addon name to `~/.openpalm/config/stack/stack.yml` through the CLI or admin UI.
+3. Rerun the OpenPalm compose command so the addon name becomes a `--profile` argument.
+4. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first.
 
 No code changes. No image rebuild. The channel is live.

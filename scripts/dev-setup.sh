@@ -12,7 +12,7 @@ Options:
                       .dev/config/stack/stack.env with auto-detected values, and
                       write system secrets under .dev/stash/vaults/secrets/.
   --force             Overwrite seeded files even if they already exist.
-  --enable-addon <n>  Add addon.<n> to COMPOSE_PROFILES. Repeat to enable multiple dev addons.
+  --enable-addon <n>  Add <n> to config/stack/stack.yml. Repeat to enable multiple dev addons.
   --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
                       seconds on a warm cache). Default: build only when missing.
   --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
@@ -150,25 +150,18 @@ mkdir -p \
 	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/workspace"
 
-# Enable requested addons in the dev runtime
+# Enable requested addons in the dev runtime. stack.yml is templated from
+# .openpalm/config/stack/stack.yml via the rsync above; when addons are passed,
+# rewrite only the small declarative enablement file.
 if [[ ${#enabled_addons[@]} -gt 0 ]]; then
-	profiles=()
-	for addon in "${enabled_addons[@]}"; do
-		profiles+=("addon.$addon")
-	done
-	profiles_csv="$(IFS=,; printf '%s' "${profiles[*]}")"
-	if [[ -f "$CONFIG_DIR/stack/stack.env" ]]; then
-		if grep -q '^COMPOSE_PROFILES=' "$CONFIG_DIR/stack/stack.env"; then
-			perl -0pi -e "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$profiles_csv/m" "$CONFIG_DIR/stack/stack.env"
-		else
-			printf '\nCOMPOSE_PROFILES=%s\n' "$profiles_csv" >>"$CONFIG_DIR/stack/stack.env"
-		fi
-	fi
+ 	stack_spec="$CONFIG_DIR/stack/stack.yml"
+ 	{
+ 		printf 'version: 2\naddons:\n'
+ 		for addon in "${enabled_addons[@]}"; do
+ 			printf '  - %s\n' "$addon"
+ 		done
+ 	} >"$stack_spec"
 fi
-
-# stack.yml (version marker only — LLM/embedding config lives in
-# config/akm/config.json) is templated from .openpalm/config/stack/stack.yml
-# via the rsync above. No separate seed needed.
 
 # Seed auth.json (empty — prevents Docker creating it as directory)
 AUTH_JSON="$CONFIG_DIR/auth.json"
