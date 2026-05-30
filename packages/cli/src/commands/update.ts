@@ -30,7 +30,7 @@ export async function runUpgradeAction(): Promise<void> {
   // Check for a newer UI build on GitHub and install it if available.
   // Passes the pre-upgrade image tag as the reference version so any newer
   // release (including the one just upgraded to) triggers a download.
-  // Existing state/ui/ is backed up to state/backups/ui-{timestamp}/ before
+  // Existing state/ui/ is backed up to cache/backups/ui-{timestamp}/ before
   // replacement. Non-fatal — existing build remains on any error.
   const currentVersion = state.imageTag ?? '0.0.0';
   console.log('Checking for UI build update...');

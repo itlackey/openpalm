@@ -8,18 +8,18 @@ function timestampDirName(now = new Date()): string {
 /**
  * Create a durable backup snapshot of the current OP_HOME contents.
  *
- * The backup is written under OP_HOME/backups/<timestamp>/ and excludes the
- * backups directory itself to avoid recursive copies.
+ * The backup is written under OP_HOME/cache/backups/<timestamp>/ and excludes
+ * cache/ to avoid recursive copies and other regenerable artifacts.
  */
 export function backupOpenPalmHome(homeDir: string): string | null {
   if (!existsSync(homeDir)) return null;
 
-  const backupDir = join(homeDir, "backups", timestampDirName());
+  const backupDir = join(homeDir, "cache", "backups", timestampDirName());
   mkdirSync(backupDir, { recursive: true });
 
   let copiedAny = false;
   for (const entry of readdirSync(homeDir, { withFileTypes: true })) {
-    if (entry.name === "backups") continue;
+    if (entry.name === "cache") continue;
 
     const sourcePath = join(homeDir, entry.name);
     const targetPath = join(backupDir, entry.name);

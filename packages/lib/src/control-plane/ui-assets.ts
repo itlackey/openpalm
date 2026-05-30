@@ -18,7 +18,7 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
-import { resolveStateDir } from './home.js';
+import { resolveCacheDir, resolveStateDir } from './home.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('lib:ui-assets');
@@ -328,7 +328,7 @@ export interface UiBuildUpdateResult {
  * Check GitHub for a newer UI build and apply it if one exists.
  *
  * When an update is available:
- *   1. Move state/ui/ → state/backups/ui-{timestamp}/ (preserves the old build)
+ *   1. Move state/ui/ → cache/backups/ui-{timestamp}/ (preserves the old build)
  *   2. Download ui-build.tar.gz from the latest release and extract to state/ui/
  *
  * Non-fatal: any network or extraction error returns { updated: false, error }.
@@ -369,8 +369,8 @@ export async function checkAndUpdateUiBuild(
     // Back up the existing UI build before replacing it
     const uiDir = join(stateDir, 'ui');
     if (existsSync(join(uiDir, 'index.js'))) {
-      const backupDir = join(stateDir, 'backups', `ui-${Date.now()}`);
-      mkdirSync(join(stateDir, 'backups'), { recursive: true });
+      const backupDir = join(resolveCacheDir(), 'backups', `ui-${Date.now()}`);
+      mkdirSync(join(resolveCacheDir(), 'backups'), { recursive: true });
       renameSync(uiDir, backupDir);
       logger.debug('backed up UI build before update', { backup: backupDir });
     }

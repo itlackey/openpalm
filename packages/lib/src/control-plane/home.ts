@@ -4,8 +4,8 @@
  * Single ~/.openpalm/ root:
  *   config/    — user-editable config + system config files (auth.json, akm/)
  *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
- *   cache/     — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
- *   state/     — persistent service data (assistant, admin, guardian, logs, backups)
+ *   cache/     — regenerable/semi-persistent data (akm, guardian, rollback, logs, backups)
+ *   state/     — persistent service data (assistant, admin, guardian)
  *   stash/     — akm knowledge (skills, vaults, agents)
  *   workspace/ — shared assistant work area
  *   config/stack/ — compose runtime assets + stack config (stack.env, stack.yml)
@@ -53,13 +53,12 @@ export function resolveStackDir(): string {
   return `${resolveConfigDir()}/stack`;
 }
 
-// Derived from stateDir — used by registry.ts, rollback.ts, backup.ts, core-assets.ts
 export function resolveLogsDir(): string {
-  return `${resolveStateDir()}/logs`;
+  return `${resolveCacheDir()}/logs`;
 }
 
 export function resolveBackupsDir(): string {
-  return `${resolveStateDir()}/backups`;
+  return `${resolveCacheDir()}/backups`;
 }
 
 export function resolveRegistryDir(): string {
@@ -95,20 +94,19 @@ export function ensureHomeDirs(): void {
 
     // cache/ — regenerable/semi-persistent data
     `${home}/cache`,
-    `${home}/cache/akm`,            // akm registry index, downloaded artifacts
+    `${home}/cache/akm`,            // akm operational data and cache
+    `${home}/cache/akm/data`,
+    `${home}/cache/akm/state`,
+    `${home}/cache/akm/cache`,
     `${home}/cache/rollback`,       // rollback snapshots
+    `${home}/cache/logs`,           // service logs and audit files
+    `${home}/cache/backups`,        // lifecycle backup snapshots
 
     // state/ — persistent service data
     `${home}/state`,
     `${home}/state/assistant`,      // assistant HOME bind mount
     `${home}/state/admin`,          // admin home bind mount
     `${home}/state/guardian`,       // guardian runtime data
-    `${home}/state/akm`,            // shared akm operational data (NOT config)
-    `${home}/state/akm/data`,
-    `${home}/state/akm/state`,
-    `${home}/state/logs`,
-    `${home}/state/logs/opencode`,
-    `${home}/state/backups`,
     // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
     `${home}/stash`,
     `${home}/stash/vaults`,

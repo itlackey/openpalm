@@ -57,9 +57,9 @@ These are hard constraints that must never be violated during development. See a
 
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin UI is a host process (a Bun.serve server started by `openpalm`) that embeds the SvelteKit UI as a pre-built tarball and manages Docker Compose via the host Docker socket. There is no admin container. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any container.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant. Channel secrets are distributed during addon install (see § Addon secret lifecycle below).
-3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/ -> /etc/openpalm`, `config/assistant/ -> /home/opencode/.config/opencode`, `config/auth.json -> /home/opencode/.local/share/opencode/auth.json`, `state/assistant/ -> /home/opencode/`, `stash/ -> /akm` (shared akm stash), `state/akm/ -> /akm-op`, `cache/akm/ -> /akm-cache`, `workspace/ -> /work`, `state/logs/opencode/ -> /home/opencode/.local/state/opencode`, and `state/logs/ -> /openpalm/logs`. There is no `/etc/vault/` mount; user secrets are read via `akm vault:user`. The assistant has no network path to the host admin process (which binds to `127.0.0.1` only) and no admin tools — it cannot perform stack operations. Stack operations are handled exclusively by the host CLI and admin UI.
+3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/ -> /etc/openpalm`, `config/auth.json -> /home/opencode/.local/share/opencode/auth.json`, `state/assistant/ -> /home/opencode/`, `stash/ -> /akm` (shared akm stash), `cache/akm/ -> /akm-op`, and `workspace/ -> /work`. There is no `/etc/vault/` mount; user secrets are read via `akm vault:user`. The assistant has no network path to the host admin process (which binds to `127.0.0.1` only) and no admin tools — it cannot perform stack operations. Stack operations are handled exclusively by the host CLI and admin UI.
 4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI uses an `httpOnly` `SameSite=Strict` session cookie (no `localStorage` token). A `Host` header allowlist on every handler closes DNS rebinding. The admin process binds to `127.0.0.1` only and is never publicly exposed. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must provide the OpenCode password as a file-based secret and enable `OPENCODE_AUTH` — the compose comments document this requirement.
-5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's mounts and environment and shares `stash/tasks/`, `cache/akm/`, `state/akm/`, and `state/logs/`. It calls `http://localhost:4096` for `assistant`-type actions only. Stack-level cron jobs run via host OS cron using the CLI (`openpalm` commands), not via an in-container admin API call.
+5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's mounts and environment and shares `stash/tasks/` and `cache/akm/`. It calls `http://localhost:4096` for `assistant`-type actions only. Stack-level cron jobs run via host OS cron using the CLI (`openpalm` commands), not via an in-container admin API call.
 6. **Admin is host-only.** Admin binds exclusively to `127.0.0.1` and is never reachable from the Docker bridge network or any container. Containers cannot reach admin under any configuration. The admin process manages Docker Compose directly on the host via the host Docker socket — there is no docker-socket-proxy container.
 
 ---
@@ -123,22 +123,22 @@ System-managed runtime files live in `config/stack/`:
 
 **Rule:** every persistence-requiring container path is a bind mount into this tree.
 
-Subtrees: `assistant/`, `guardian/`, `akm/` (akm operational state and state.db), `logs/` (consolidated log output).
+Subtrees: `assistant/`, `guardian/`.
 
 Shared user knowledge lives in `stash/` (not `state/`) — see § Stash / Vaults above.
-Regenerable artifacts live in `cache/akm/` — see § Cache below.
+AKM operational data, logs, backups, and other non-service-state artifacts live in `cache/` — see § Cache below.
 The shared work area lives in `workspace/`.
 
-**Write policy:** Each container may write only to its own designated subdirectories via its mounts. The assistant writes to `state/assistant/`, `stash/`, `state/akm/`, `cache/akm/`, and `workspace/`; the guardian writes to `state/guardian/`; and so on. No container may access another service's data directories. Stack-wide data operations (creating new subtrees, managing other services' data) require the admin API.
+**Write policy:** Each container may write only to its own designated subdirectories via its mounts. The assistant writes to `state/assistant/`, `stash/`, `cache/akm/`, and `workspace/`; the guardian writes to `state/guardian/` and `cache/logs/`; and so on. No container may access another service's data directories. Stack-wide data operations require the host CLI or admin UI.
 
 ### 4) Logs (audit and debug)
 
-**Location:** `~/.openpalm/state/logs/`
+**Location:** `~/.openpalm/cache/logs/`
 **Purpose:** consolidated log output from all services.
 
 Files: `guardian-audit.log` (channel ingress — guardian's own audit), plus
 OpenCode session and tool-invocation logs under
-`state/assistant/opencode/log/` and `state/admin-opencode/log/`.
+`state/assistant/.local/state/opencode/` and `state/admin-opencode/log/`.
 
 The OpenPalm-side `admin-audit.jsonl` writer was removed in v0.11.0
 (Phase 6 of `auth-and-proxy-refactor-plan.md` / D6a). OpenCode session
@@ -152,15 +152,17 @@ logs are the audit trail for chat + tool activity. UI/admin actions
 **Purpose:** regenerable data that does not need backing up.
 
 Subtrees:
-- `cache/akm/` — regenerable akm registry artifacts and per-run task logs; bind-mounted at `/akm-cache` in the assistant container.
+- `cache/akm/` — akm operational data, state.db, cache, registry artifacts, and per-run task logs; bind-mounted at `/akm-op` in the assistant container.
 - `cache/rollback/` — previous known-good config snapshots for automated rollback on deploy failure (also mirrored to `~/.cache/openpalm/rollback/`).
+- `cache/logs/` — service logs and guardian audit output.
+- `cache/backups/` — lifecycle backup snapshots.
 
 ### 6) Backups
 
-**Location:** `~/.openpalm/state/backups/`
+**Location:** `~/.openpalm/cache/backups/`
 **Purpose:** durable upgrade backup snapshots created by lifecycle operations before destructive transitions.
 
-**Rule:** CLI/admin writes backup snapshots here before upgrades and major lifecycle changes. These are user-accessible for manual restore and are included in `tar` backups of `~/.openpalm/`. Unlike rollback snapshots (in `~/.cache/openpalm/rollback/`), backups are durable and not automatically cleaned up.
+**Rule:** CLI/admin writes backup snapshots here before upgrades and major lifecycle changes. These are user-accessible for manual restore. They are outside `state/` because they are control-plane artifacts, not service-owned runtime state.
 
 ---
 

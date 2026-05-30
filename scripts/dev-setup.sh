@@ -111,7 +111,8 @@ DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
 STASH_DIR="$DEV_ROOT/stash"
 STATE_DIR="$DEV_ROOT/state"
-LOGS_DIR="$STATE_DIR/logs"
+CACHE_DIR="$DEV_ROOT/cache"
+LOGS_DIR="$DEV_ROOT/cache/logs"
 
 # ── Template sync ────────────────────────────────────────────────
 # `.openpalm/` in the repo IS the canonical OP_HOME template (per
@@ -143,11 +144,9 @@ mkdir -p \
 	"$CONFIG_DIR/automations" \
 	"$STASH_DIR/vaults" "$STASH_DIR/vaults/secrets" \
 	"$STATE_DIR" "$STATE_DIR/admin" "$STATE_DIR/assistant" "$STATE_DIR/assistant/.config/opencode" "$STATE_DIR/guardian" \
-	"$STATE_DIR/akm" "$STATE_DIR/akm/data" "$STATE_DIR/akm/state" \
-	"$STATE_DIR/logs" "$STATE_DIR/logs/opencode" \
-	"$STATE_DIR/backups" \
+	"$DEV_ROOT/cache/akm" "$DEV_ROOT/cache/akm/data" "$DEV_ROOT/cache/akm/state" "$DEV_ROOT/cache/akm/cache" \
+	"$DEV_ROOT/cache/logs" "$DEV_ROOT/cache/backups" \
 	"$STATE_DIR/voice" "$STATE_DIR/voice/models" "$STATE_DIR/ollama" \
-	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/workspace"
 
 # Enable requested addons in the dev runtime. stack.yml is templated from
@@ -279,7 +278,7 @@ if docker info >/dev/null 2>&1; then
 fi
 
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$STATE_DIR" "$LOGS_DIR" 2>/dev/null || true
+	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$STATE_DIR" "$CACHE_DIR" 2>/dev/null || true
 else
 	echo "Note: running as root; ownership left as-is." >&2
 fi

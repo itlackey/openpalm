@@ -18,8 +18,7 @@ The assistant is deliberately isolated:
   - `${OP_HOME}/state/assistant` → `/home/opencode` (the assistant's home; survives recreates)
   - `${OP_HOME}/workspace` → `/work` (shared work area)
   - `${OP_HOME}/stash` → `/akm` (knowledge stash)
-  - `${OP_HOME}/state/logs` → `/openpalm/logs`
-  - Named volume `assistant-persistent` → `/opt/persistent` (persistent install prefix)
+  - `${OP_HOME}/cache/akm` → `/akm-op` (akm state and cache)
 
 ## Plugin Architecture
 
@@ -45,7 +44,6 @@ Assistant config is **seeded from the repo and bind-mounted at runtime**. There 
 | `.openpalm/config/assistant/system.md` | `config/assistant/system.md` | `/etc/openpalm/assistant/system.md` | System prompt (memory, tools, secrets, built-in skills) |
 | `packages/assistant-tools/` | — | npm-installed at startup | Plugin source (tools, skills, AGENTS.md contributor pointer) |
 | `${OP_HOME}/state/assistant/` | (the assistant's `$HOME`) | `/home/opencode` | Persistent home — bun cache, pipx tools, user state |
-| `assistant-persistent` (named volume) | — | `/opt/persistent` | Persistent install prefix; survives recreate/upgrade |
 
 ### Updating tools
 
@@ -65,4 +63,3 @@ Authoritative source: `.openpalm/config/assistant/openpalm.md` and `.openpalm/co
 | `OPENCODE_CONFIG_DIR` | Set to `/etc/openpalm/assistant` — where OpenCode reads project + user config |
 | `OPENCODE_AUTH` | `false` by default (LAN-internal); set to `true` and supply `OP_OPENCODE_PASSWORD` if exposing to LAN |
 | `BUN_INSTALL` | `/home/opencode/.bun` — bun global installs persist via the home bind mount |
-| `OP_HOME` | `/openpalm` inside the container — bind-mounted from the host's `~/.openpalm/` |

@@ -253,9 +253,6 @@ export async function performSetup(
         const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
         if (home) {
           akmUpdates.OP_AKM_STASH = `${home}/akm`;
-          akmUpdates.OP_AKM_DATA = `${home}/.local/share/akm`;
-          akmUpdates.OP_AKM_STATE = `${home}/.local/state/akm`;
-          akmUpdates.OP_AKM_CACHE = `${home}/.cache/akm`;
           akmUpdates.OP_AKM_CONFIG = `${home}/.config/akm`;
         }
       }

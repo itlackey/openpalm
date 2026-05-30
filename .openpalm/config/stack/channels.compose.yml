@@ -151,7 +151,7 @@ services:
     # To debug, use `docker exec openpalm-guardian-1 curl localhost:8080/health`.
     volumes:
       - ${OP_HOME}/state/guardian:/app/data
-      - ${OP_HOME}/state/logs:/app/audit
+      - ${OP_HOME}/cache/logs:/app/audit
     secrets:
       - channel_chat_secret
       - channel_api_secret

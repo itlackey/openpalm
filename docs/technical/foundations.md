@@ -26,13 +26,12 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 │   └── stack/       live compose assembly (core.compose.yml, stack.env, secrets/, addons/)
 ├── stash/           AKM knowledge base (vaults/, tasks/, skills/)
 │   └── vaults/      user-managed secrets (user.env = vault:user)
-├── state/           durable service data (assistant/, guardian/, akm/, logs/, registry/)
-│   └── registry/    available addon + automation catalog
-├── cache/           regenerable data (akm/, rollback/, guardian/)
+├── state/           durable service data (assistant/, guardian/)
+├── cache/           regenerable/control-plane data (akm/, logs/, backups/, rollback/, guardian/)
 └── workspace/       shared work area
 ```
 
-Ephemeral backups live under `~/.openpalm/state/backups/`.
+Lifecycle backups live under `~/.openpalm/cache/backups/`.
 
 ### Compose env sources
 
@@ -91,15 +90,11 @@ Mounts:
 
 - image-baked `/etc/opencode`
 - `$OP_HOME/config -> /etc/openpalm`
-- `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
 - `$OP_HOME/config/auth.json -> /home/opencode/.local/share/opencode/auth.json`
 - `$OP_HOME/state/assistant -> /home/opencode/`
 - `$OP_HOME/stash -> /akm` (shared akm stash)
-- `$OP_HOME/state/akm -> /akm-op` (akm operational state)
-- `$OP_HOME/cache/akm -> /akm-cache` (regenerable registry artifacts)
+- `$OP_HOME/cache/akm -> /akm-op` (akm operational data and cache)
 - `$OP_HOME/workspace -> /work`
-- `$OP_HOME/state/logs/opencode -> /home/opencode/.local/state/opencode`
-- `$OP_HOME/state/logs -> /openpalm/logs`
 
 Ports and network:
 
@@ -151,7 +146,7 @@ Key env:
 Mounts:
 
 - `$OP_HOME/state/guardian -> /app/data`
-- `$OP_HOME/state/logs -> /app/audit`
+- `$OP_HOME/cache/logs -> /app/audit`
 - Compose secret mounts under `/run/secrets/<name>` for guardian/channel HMAC verification
 
 Ports and network:
@@ -206,7 +201,7 @@ Control plane:
 - Definitions: `${OP_HOME}/stash/tasks/*.yml` (AKM YAML task files; `akm tasks sync` registers with OS cron)
 - Manual triggers: `POST /admin/automations/<name>/run` spawns `akm tasks run <name>` directly
 - Per-run logs: `${OP_HOME}/cache/akm/tasks/logs/<name>/` (written by akm)
-- Sync log: `${OP_HOME}/state/logs/akm-tasks-sync.log`
+- Sync output is emitted to container stdout/stderr.
 
 Env sources (inherits the assistant container's environment):
 
@@ -217,9 +212,7 @@ Mounts (provided by the assistant service):
 
 - `$OP_HOME/config -> /etc/openpalm:ro`
 - `$OP_HOME/stash/tasks -> /akm/tasks` (rw, AKM YAML task files)
-- `$OP_HOME/cache/akm -> /akm-cache` (rw, per-run task logs)
-- `$OP_HOME/state/akm -> /akm-op` (rw, akm state.db)
-- `$OP_HOME/state/logs -> /openpalm/logs` (rw)
+- `$OP_HOME/cache/akm -> /akm-op` (rw, akm state.db, cache, and per-run task logs)
 
 Design note — scheduler scope: The scheduler runs as part of the
 assistant container, so it shares the assistant's identity and trust

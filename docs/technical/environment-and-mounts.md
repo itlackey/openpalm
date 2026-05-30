@@ -26,19 +26,17 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | `~/.openpalm/stash/` | AKM knowledge base (user-managed: `vaults/`, `tasks/`) |
 | `~/.openpalm/stash/vaults/` | User-managed secrets (`user.env`, AKM vault backing store) |
 | `~/.openpalm/state/` | Durable service data |
-| `~/.openpalm/state/registry/` | Available addon and automation catalog |
-| `~/.openpalm/state/logs/` | Audit and debug logs |
-| `~/.openpalm/cache/` | Regenerable data (akm cache, rollback snapshots) |
+| `~/.openpalm/cache/logs/` | Audit and debug logs |
+| `~/.openpalm/cache/` | Regenerable/control-plane data (akm, logs, backups, rollback snapshots) |
 | `~/.cache/openpalm/` | Ephemeral system cache |
 
 Current durable data subdirectories used by the shipped stack:
 
 - `state/assistant`
 - `state/guardian`
-- `state/akm`
-- `state/registry`
-- `state/logs`
 - `cache/akm`
+- `cache/logs`
+- `cache/backups`
 - `stash/` (shared akm stash mounted at `/akm` for assistant)
 - `workspace/` (shared work area)
 
@@ -80,15 +78,11 @@ Mounts:
 |---|---|---|---|
 | baked into image | `/etc/opencode` | image content | Core OpenCode config and built-in extensions |
 | `$OP_HOME/config` | `/etc/openpalm` | rw | OpenPalm config tree available inside container |
-| `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User OpenCode tools, plugins, skills, commands |
 | `$OP_HOME/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
 | `$OP_HOME/state/assistant` | `/home/opencode` | rw | Assistant persistent data |
 | `$OP_HOME/stash` | `/akm` | rw | AKM stash |
-| `$OP_HOME/state/akm` | `/akm-op` | rw | akm operational state (state.db, execution history) |
-| `$OP_HOME/cache/akm` | `/akm-cache` | rw | Regenerable akm registry artifacts |
+| `$OP_HOME/cache/akm` | `/akm-op` | rw | akm operational data and cache |
 | `$OP_HOME/workspace` | `/work` | rw | Shared workspace |
-| `$OP_HOME/state/logs/opencode` | `/home/opencode/.local/state/opencode` | rw | OpenCode logs and local state |
-| `$OP_HOME/state/logs` | `/openpalm/logs` | rw | Consolidated OpenPalm log directory |
 
 Ports and networks:
 
@@ -104,7 +98,7 @@ Key env:
 
 | Variable | Value / source | Purpose |
 |---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Core OpenCode config root |
+| `OPENCODE_CONFIG_DIR` | `/etc/openpalm/assistant` | OpenPalm-managed OpenCode config root |
 | `OPENCODE_PORT` | `4096` | OpenCode web server listen port |
 | `OPENCODE_AUTH` | `false` | Auth disabled because host binding is loopback-only by default |
 | `OPENCODE_ENABLE_SSH` | `stack.env` | Optional SSH enablement |
@@ -127,7 +121,7 @@ Mounts:
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/state/guardian` | `/app/data` | rw | Runtime nonce / rate-limit state |
-| `$OP_HOME/state/logs` | `/app/audit` | rw | Guardian audit log directory |
+| `$OP_HOME/cache/logs` | `/app/audit` | rw | Guardian audit log directory |
 | `$OP_HOME/stash/vaults/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
 
 Ports and networks:
@@ -166,9 +160,7 @@ Scheduling control plane (crond started by `core/assistant/entrypoint.sh`):
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/stash/tasks` | `/akm/tasks` | rw | AKM task markdown files |
-| `$OP_HOME/cache/akm` | `/akm-cache` | rw | Per-run task logs |
-| `$OP_HOME/state/akm` | `/akm-op` | rw | akm state.db (execution history) |
-| `$OP_HOME/state/logs` | `/openpalm/logs` | rw | akm-tasks-sync.log |
+| `$OP_HOME/cache/akm` | `/akm-op` | rw | akm state.db, cache, and per-run task logs |
 
 Notes:
 

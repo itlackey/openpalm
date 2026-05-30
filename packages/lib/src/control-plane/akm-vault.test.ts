@@ -54,7 +54,7 @@ describe("writeAkmVaultKey", () => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-akm-write-"));
     state = makeState(homeDir);
     mkdirSync(state.stashDir, { recursive: true });
-    mkdirSync(`${state.stateDir}/cache/akm`, { recursive: true });
+    mkdirSync(`${state.cacheDir}/akm`, { recursive: true });
   });
 
   afterEach(() => {

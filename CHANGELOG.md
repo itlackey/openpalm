@@ -7,6 +7,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.11.0-beta.11] - 2026-05-29
 
+### Changed
+
+- **Assistant compose mounts simplified** — AKM operational data now uses the
+  single `cache/akm` mount, logs and lifecycle backups moved under `cache/`,
+  and the redundant `/opt/persistent` named volume was removed in favor of the
+  already-persistent assistant home (`$HOME/.local/bin` is on `PATH`).
+
 ### Fixed
 
 - **Secret files now live under `stash/vaults/secrets/`** — Compose file grants,

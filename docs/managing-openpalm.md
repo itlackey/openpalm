@@ -56,12 +56,12 @@ Keep this split in mind:
 │
 ├── state/                            ← DURABLE SERVICE DATA
 │   ├── assistant/
-│   ├── guardian/
-│   ├── akm/                          # akm state.db (execution history)
-│   └── logs/                         ← AUDIT AND DEBUG LOGS
+│   └── guardian/
 │
 ├── cache/
-│   ├── akm/                          # Regenerable akm artifacts, per-run task logs
+│   ├── akm/                          # akm state.db, cache, per-run task logs
+│   ├── logs/                         # Audit and debug logs
+│   ├── backups/                      # Lifecycle backup snapshots
 │   └── rollback/                     # Config rollback snapshots
 │
 └── workspace/                        # Shared work area
@@ -339,7 +339,7 @@ All ports are `127.0.0.1`-bound by default.
 **View audit / activity logs:**
 ```bash
 # Channel ingress (HMAC, replay, rate limit) — guardian's structured audit
-tail -f ~/.openpalm/state/logs/guardian-audit.log
+tail -f ~/.openpalm/cache/logs/guardian-audit.log
 
 # Chat + tool activity (the audit trail since v0.11.0)
 ls ~/.openpalm/state/assistant/opencode/log/        # in-container OpenCode

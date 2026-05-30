@@ -278,8 +278,8 @@ describe('cli main', () => {
     try {
       await main(['install', '--force', '--no-start', '--file', specFile]);
 
-      const backupsDir = join(base, 'backups');
-      const backups = readdirSync(backupsDir);
+      const backupsDir = join(base, 'cache', 'backups');
+      const backups = readdirSync(backupsDir).filter((name) => name !== '.gitkeep');
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_OWNER_NAME=existing-owner');

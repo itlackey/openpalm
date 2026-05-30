@@ -15,8 +15,8 @@
 #
 # Directory model:
 #   ~/.openpalm/config/       — user-editable + system config (stack.env, auth.json, akm/)
-#   ~/.openpalm/cache/        — regenerable data (akm cache, rollback)
-#   ~/.openpalm/state/        — persistent service data (assistant, guardian, logs)
+#   ~/.openpalm/cache/        — regenerable/control-plane data (akm, logs, backups, rollback)
+#   ~/.openpalm/state/        — persistent service data (assistant, guardian)
 #   ~/.openpalm/stash/        — akm knowledge (skills, vaults, agents) — vault:user lives here
 #   ~/.openpalm/workspace/    — shared work area
 #   ~/.openpalm/config/stack/ — compose runtime (core/services/channels/custom compose files, env files)
@@ -50,19 +50,14 @@ services:
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
       HOME: /home/opencode
-      OP_HOME: /openpalm
-      # akm-cli XDG layout (AKM 0.8.0+). akm does NOT derive .data/.state/.config
-      # from AKM_STASH_DIR — each path resolves independently against XDG/HOME
-      # fallbacks. We pin all four explicitly so admin and assistant share the
-      # same stash root AND the same index/state/config (otherwise they would
-      # silently diverge into per-container HOME-based defaults). Cache is
-      # separately bind-mounted so registry artifacts survive container
-      # recreate (regenerable but expensive to refetch).
+      # akm-cli XDG layout (AKM 0.8.0+). The assistant is the only container
+      # running akm, so operational data and cache share one cache/akm mount.
+      # The user-owned stash stays separate at /akm.
       AKM_STASH_DIR: /akm
       AKM_CONFIG_DIR: /etc/openpalm/akm
       AKM_DATA_DIR: /akm-op/data
       AKM_STATE_DIR: /akm-op/state
-      AKM_CACHE_DIR: /akm-cache
+      AKM_CACHE_DIR: /akm-op/cache
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096
@@ -80,23 +75,10 @@ services:
       - ${OP_HOME}/config:/etc/openpalm
       - ${OP_HOME}/config/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/state/assistant:/home/opencode
-      # AKM mount paths. Defaults to OP_HOME-relative dirs; override via
-      # OP_AKM_STASH/DATA/STATE/CACHE/CONFIG in stack.env to share the
-      # host's own akm environment with the assistant container.
       - ${OP_AKM_STASH:-${OP_HOME}/stash}:/akm
-      - ${OP_AKM_DATA:-${OP_HOME}/state/akm}:/akm-op/data
-      - ${OP_AKM_STATE:-${OP_HOME}/state/akm}:/akm-op/state
-      - ${OP_AKM_CACHE:-${OP_HOME}/cache/akm}:/akm-cache
+      - ${OP_HOME}/cache/akm:/akm-op
       - ${OP_AKM_CONFIG:-${OP_HOME}/config/akm}:/etc/openpalm/akm
       - ${OP_HOME}/workspace:/work
-      - ${OP_HOME}/state/logs/opencode:/home/opencode/.local/state/opencode
-      - ${OP_HOME}/state/logs:/openpalm/logs
-      # Persistent install prefix. Survives `docker compose up --force-recreate`
-      # and image upgrades, unlike apt installs which go to the container's
-      # writable layer. Anything installed with a prefix (cargo install --root,
-      # go install with GOBIN, make install PREFIX=…, curl-to-/opt/persistent/bin)
-      # persists here. The Dockerfile puts /opt/persistent/bin on PATH.
-      - assistant-persistent:/opt/persistent
     networks: [ assistant_net ]
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
@@ -110,8 +92,3 @@ services:
 networks:
   channel_lan:
   assistant_net:
-
-volumes:
-  # Persistent install prefix for assistant-managed tools. See the comment
-  # on the assistant service for usage.
-  assistant-persistent:

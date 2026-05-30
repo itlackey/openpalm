@@ -6,33 +6,25 @@ OpenPalm ships with one persistence pattern enabled out of the box (Pattern 1), 
 
 ---
 
-## Pattern 1 — `/opt/persistent` named volume (enabled by default)
+## Pattern 1 — Assistant Home (enabled by default)
 
-The assistant container mounts a Docker named volume at `/opt/persistent`, and `/opt/persistent/bin` is prepended to `PATH`. Anything installed with an explicit prefix lands here and survives recreates, upgrades, and even `openpalm uninstall && openpalm install` (named volumes are kept unless removed with `docker volume rm`).
+The assistant container bind-mounts `${OP_HOME}/state/assistant` at `/home/opencode`, and `/home/opencode/.local/bin` is first on `PATH`. Anything installed under `$HOME` or `$HOME/.local` survives recreates and image upgrades.
 
 | Installer | How to use it | Notes |
 |---|---|---|
-| `cargo install` | `cargo install --root /opt/persistent <crate>` | Drops binaries into `/opt/persistent/bin` |
-| `go install` | `GOBIN=/opt/persistent/bin go install <pkg>@latest` | |
-| `make install` | `make install PREFIX=/opt/persistent` | Most autotools/make projects respect `PREFIX` |
-| Pre-built tarballs | `tar -xJf …; mv ./<bin> /opt/persistent/bin/` | Standard "extract a binary" pattern |
-| Direct download | `curl -L … -o /opt/persistent/bin/<tool> && chmod +x /opt/persistent/bin/<tool>` | |
+| `cargo install` | `cargo install --root "$HOME/.local" <crate>` | Drops binaries into `$HOME/.local/bin` |
+| `go install` | `GOBIN="$HOME/.local/bin" go install <pkg>@latest` | |
+| `make install` | `make install PREFIX="$HOME/.local"` | Most autotools/make projects respect `PREFIX` |
+| Pre-built tarballs | `tar -xJf …; mv ./<bin> "$HOME/.local/bin/"` | Standard "extract a binary" pattern |
+| Direct download | `curl -L … -o "$HOME/.local/bin/<tool>" && chmod +x "$HOME/.local/bin/<tool>"` | |
 | Self-installers | Many provide `--install-dir` or `--prefix` flags | Check `<installer> --help` |
 
-`$HOME`-based installers (`bun install -g`, `pipx install`, `uv tool install`, etc.) already persist via the existing `/home/opencode/` bind mount — Pattern 1 is purely for tools that install to a prefix.
+`$HOME`-based installers (`bun install -g`, `pipx install`, `uv tool install`, etc.) already persist via the same `/home/opencode/` bind mount.
 
 ### Verifying
 
 ```bash
-docker compose exec assistant ls /opt/persistent/bin
-docker volume inspect openpalm_assistant-persistent
-```
-
-### Removing the volume
-
-```bash
-docker compose down
-docker volume rm openpalm_assistant-persistent
+docker compose exec assistant ls /home/opencode/.local/bin
 ```
 
 ---
@@ -60,11 +52,10 @@ For most use cases, **prefer adding packages to `core/assistant/Dockerfile`** �
       - assistant-apt-lib:/var/lib/apt
 ```
 
-And at the bottom of the file, alongside the existing `assistant-persistent` declaration:
+And at the bottom of the file:
 
 ```yaml
 volumes:
-  assistant-persistent:
   assistant-apt-cache:
   assistant-apt-lib:
 ```
@@ -124,7 +115,7 @@ For anything that should be present on **every** OpenPalm install (e.g. `ripgrep
 
 | Need | Use |
 |---|---|
-| Persist a Cargo / Go / `make install` tool | **Pattern 1** — install to `/opt/persistent` |
+| Persist a Cargo / Go / `make install` tool | **Pattern 1** — install to `$HOME/.local` |
 | Persist a `bun install -g`, `pipx`, `uv tool install` | Already works via the home bind mount — no extra setup |
 | Persist a one-off `apt install` for this session only | Plain `sudo apt install <pkg>` — survives restart, not recreate |
 | Persist a small set of distro packages across upgrades | **Pattern 2** — manifest + cache volume |

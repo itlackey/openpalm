@@ -32,9 +32,14 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "config", "guardian"))).toBe(true);
     expect(existsSync(join(home, "config", "akm"))).toBe(true);
 
-    // cache/ — regenerable data
+    // cache/ — regenerable/control-plane data
     expect(existsSync(join(home, "cache", "akm"))).toBe(true);
+    expect(existsSync(join(home, "cache", "akm", "data"))).toBe(true);
+    expect(existsSync(join(home, "cache", "akm", "state"))).toBe(true);
+    expect(existsSync(join(home, "cache", "akm", "cache"))).toBe(true);
     expect(existsSync(join(home, "cache", "rollback"))).toBe(true);
+    expect(existsSync(join(home, "cache", "logs"))).toBe(true);
+    expect(existsSync(join(home, "cache", "backups"))).toBe(true);
     // guardian AKM cache removed — guardian has no akm CLI invocations
     expect(existsSync(join(home, "cache", "guardian"))).toBe(false);
 
@@ -45,18 +50,16 @@ describe("ensureHomeDirs", () => {
     // guardian AKM subdirs removed — guardian has no akm CLI invocations
     expect(existsSync(join(home, "state", "guardian", "stash"))).toBe(false);
     expect(existsSync(join(home, "state", "guardian", "akm"))).toBe(false);
-    expect(existsSync(join(home, "state", "akm", "data"))).toBe(true);
-    expect(existsSync(join(home, "state", "akm", "state"))).toBe(true);
-    expect(existsSync(join(home, "state", "logs", "opencode"))).toBe(true);
-    expect(existsSync(join(home, "state", "backups"))).toBe(true);
-    expect(existsSync(join(home, "state", "registry", "addons"))).toBe(true);
-    expect(existsSync(join(home, "state", "registry", "automations"))).toBe(true);
+    expect(existsSync(join(home, "state", "akm"))).toBe(false);
+    expect(existsSync(join(home, "state", "logs"))).toBe(false);
+    expect(existsSync(join(home, "state", "registry"))).toBe(false);
 
     // stash/, workspace/, config/stack/
     expect(existsSync(join(home, "stash", "tasks"))).toBe(true);
     expect(existsSync(join(home, "stash"))).toBe(true);
     expect(existsSync(join(home, "workspace"))).toBe(true);
-    expect(existsSync(join(home, "config", "stack", "addons"))).toBe(true);
+    expect(existsSync(join(home, "config", "stack"))).toBe(true);
+    expect(existsSync(join(home, "config", "stack", "addons"))).toBe(false);
 
     // removed top-levels must NOT exist
     expect(existsSync(join(home, "vault"))).toBe(false);

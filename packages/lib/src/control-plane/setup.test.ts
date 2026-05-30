@@ -342,12 +342,15 @@ describe("performSetup", () => {
       join(homeDir, "workspace"),
       join(homeDir, "cache"),
       join(homeDir, "cache", "akm"),
+      join(homeDir, "cache", "akm", "data"),
+      join(homeDir, "cache", "akm", "state"),
+      join(homeDir, "cache", "akm", "cache"),
+      join(homeDir, "cache", "logs"),
+      join(homeDir, "cache", "backups"),
       stateDir,
       join(stateDir, "assistant"),
       join(stateDir, "admin"),
       join(stateDir, "guardian"),
-      join(stateDir, "logs"),
-      join(stateDir, "logs", "opencode"),
     ]) {
       mkdirSync(dir, { recursive: true });
     }

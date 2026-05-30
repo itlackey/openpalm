@@ -16,7 +16,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
       services.compose.yml Optional first-party services (profile-gated)
       channels.compose.yml Optional first-party channels (profile-gated)
       custom.compose.yml User custom services/overlays
-      stack.yml        Capabilities only (metadata)
+      stack.yml        Stack schema marker and enabled first-party addons
       stack.env        System-managed non-secret env vars (written by CLI/admin)
     assistant/         OpenCode user tools, plugins, skills, commands
     akm/               AKM config directory
@@ -27,17 +27,16 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     tasks/             Scheduled automation task files (*.yml)
 
   cache/
-    akm/               AKM cache (regenerable)
+    akm/               AKM operational data and cache
     guardian/          Guardian cache (regenerable)
+    logs/              Service logs
+    backups/           Snapshot backups (created by CLI/admin during upgrades)
     rollback/          Rollback snapshots (regenerable)
 
   state/
     assistant/         Assistant home and local runtime state
     admin/             Admin runtime home
     guardian/          Guardian nonce and rate-limit state
-    akm/               AKM operational data
-    logs/              Service logs
-    backups/           Snapshot backups (created by CLI/admin during upgrades)
 
   workspace/           Shared `/work` mount (durable, shared by services)
 ```
@@ -54,7 +53,7 @@ This repo directory contains source assets embedded by the CLI during build. The
       services.compose.yml Optional services Compose file
       channels.compose.yml Optional channels Compose file
       custom.compose.yml User-editable custom Compose stub
-      stack.yml          Template for capabilities (copied at install)
+      stack.yml          Template stack spec (copied at install)
     assistant/           Seed files for config/assistant/
     guardian/            Guardian config placeholders
   stash/                 Built-in AKM stash assets (skills, tasks, vault path)

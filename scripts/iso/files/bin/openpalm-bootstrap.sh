@@ -8,19 +8,20 @@ set -euo pipefail
 export OP_HOME='/var/lib/openpalm'
 INSTALL_HOME='/opt/openpalm'
 
-	mkdir -p \
+mkdir -p \
 	"$OP_HOME/config/stack" \
-	"$OP_HOME/config/stack/addons" \
 	"$OP_HOME/stash/vaults/secrets" \
 	"$OP_HOME/config/assistant" \
 	"$OP_HOME/config/akm" \
 	"$OP_HOME/stash/vaults" \
 	"$OP_HOME/state/assistant" \
 	"$OP_HOME/state/guardian" \
-	"$OP_HOME/state/registry/addons" \
-	"$OP_HOME/state/registry/automations" \
-	"$OP_HOME/state/logs" \
-	"$OP_HOME/cache" \
+	"$OP_HOME/cache/akm/data" \
+	"$OP_HOME/cache/akm/state" \
+	"$OP_HOME/cache/akm/cache" \
+	"$OP_HOME/cache/logs" \
+	"$OP_HOME/cache/backups" \
+	"$OP_HOME/cache/rollback" \
 	"$OP_HOME/workspace"
 
 if [[ ! -f "$OP_HOME/stash/vaults/user.env" ]]; then

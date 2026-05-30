@@ -115,18 +115,17 @@ function createFullDirTree(): void {
     join(stateDir, "assistant"),
     join(stateDir, "admin"),
     join(stateDir, "guardian"),
-    join(stateDir, "logs"),
-    join(stateDir, "logs", "opencode"),
     join(stateDir, "registry"),
     join(stateDir, "registry", "addons"),
-    join(stateDir, "backups"),
-    join(stateDir, "akm"),
-    join(stateDir, "akm", "data"),
-    join(stateDir, "akm", "state"),
     cacheDir,
     join(cacheDir, "akm"),
+    join(cacheDir, "akm", "data"),
+    join(cacheDir, "akm", "state"),
+    join(cacheDir, "akm", "cache"),
     join(cacheDir, "guardian"),
     join(cacheDir, "rollback"),
+    join(cacheDir, "logs"),
+    join(cacheDir, "backups"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }

@@ -82,7 +82,7 @@ OpenPalm uses one host home directory: `~/.openpalm/`.
 | `~/.openpalm/stash/vaults/` | User-managed secret env files |
 | `~/.openpalm/config/` | User-editable config |
 | `~/.openpalm/state/` | Durable service data |
-| `~/.openpalm/state/logs/` | Logs and audit files |
+| `~/.openpalm/cache/logs/` | Logs and audit files |
 
 Approximate storage use:
 

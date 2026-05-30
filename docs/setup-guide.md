@@ -140,7 +140,7 @@ The copied bundle gives you a predictable host layout:
 | `~/.openpalm/stash/vaults/user.env` | Optional user extensions |
 | `~/.openpalm/config/` | User-managed config |
 | `~/.openpalm/state/` | Persistent container data |
-| `~/.openpalm/state/logs/` | Logs |
+| `~/.openpalm/cache/logs/` | Logs |
 
 If you include the `admin` addon, the UI is available on its configured host port from `stack.env`.
 

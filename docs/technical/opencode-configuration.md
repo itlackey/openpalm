@@ -35,7 +35,7 @@ Primary runtime sources:
 | `~/.openpalm/stash/` | `/akm` | AKM stash (memory, skills, vaults; read via akm) |
 | `~/.openpalm/state/assistant/` | `/home/opencode` | Assistant home |
 | `~/.openpalm/workspace/` | `/work` | Shared workspace |
-| `~/.openpalm/logs/opencode/` | `/home/opencode/.local/state/opencode` | Logs and OpenCode state |
+| `~/.openpalm/state/assistant/.local/state/opencode/` | `/home/opencode/.local/state/opencode` | Logs and OpenCode state |
 
 ### Key environment variables
 
@@ -47,7 +47,7 @@ Primary runtime sources:
 | `OPENCODE_ENABLE_SSH` | from `stack.env` | Optional SSH server toggle |
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_STASH_DIR` | `/akm` | Shared akm stash bind-mounted from `${OP_HOME}/stash` (memory + skills) |
-| `AKM_CACHE_DIR` | `/akm-cache` | akm cache bind-mounted from `${OP_HOME}/data/akm-cache` |
+| `AKM_CACHE_DIR` | `/akm-op/cache` | akm cache under `${OP_HOME}/cache/akm` |
 
 ### Operational notes
 

@@ -85,9 +85,11 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     join(homeDir, 'workspace'),
     join(homeDir, 'cache'),
     join(homeDir, 'cache', 'akm'),
-    join(stateDir, 'logs'),
-    join(stateDir, 'logs', 'opencode'),
-    join(stateDir, 'backups'),
+    join(homeDir, 'cache', 'akm', 'data'),
+    join(homeDir, 'cache', 'akm', 'state'),
+    join(homeDir, 'cache', 'akm', 'cache'),
+    join(homeDir, 'cache', 'logs'),
+    join(homeDir, 'cache', 'backups'),
   ]) {
     mkdirSync(dir, { recursive: true });
   }

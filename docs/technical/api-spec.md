@@ -155,7 +155,7 @@ Response:
 {
   "ok": true,
   "imageTag": "0.9.0",
-  "backupDir": "/home/user/.openpalm/backups/2025-01-01T00-00-00",
+  "backupDir": "/home/user/.openpalm/cache/backups/2025-01-01T00-00-00",
   "assetsUpdated": ["core.compose.yml"],
   "restarted": ["guardian"],
   "adminRecreateScheduled": true

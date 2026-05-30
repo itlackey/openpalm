@@ -7,8 +7,8 @@
  * Layout:
  *   config/        — user-editable config + system config files (auth.json, akm/)
  *   config/stack/  — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
- *   cache/         — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
- *   state/         — persistent service data (assistant, admin, guardian, logs, backups)
+ *   cache/         — regenerable/semi-persistent data (akm, guardian, rollback, logs, backups)
+ *   state/         — persistent service data (assistant, admin, guardian)
  *   stash/         — akm knowledge (skills, vaults, agents)
  *   workspace/     — shared work area
  */
@@ -35,6 +35,17 @@ export const stackEnvPath          = (s: ControlPlaneState): string => `${s.stac
 export const akmCacheDir           = (s: ControlPlaneState): string => `${s.cacheDir}/akm`;
 export const guardianCacheDir      = (s: ControlPlaneState): string => `${s.cacheDir}/guardian`;
 export const rollbackDir           = (s: ControlPlaneState): string => `${s.cacheDir}/rollback`;
+export const logsDir               = (s: ControlPlaneState): string => `${s.cacheDir}/logs`;
+/**
+ * Guardian's own audit log of channel ingress (HMAC verify, replay, rate
+ * limit). Phase 6 of the auth/proxy refactor removed the OpenPalm-side
+ * `admin-audit.jsonl` — OpenCode session logs are the audit trail for
+ * chat + tool activity.
+ */
+export const guardianAuditPath     = (s: ControlPlaneState): string => `${s.cacheDir}/logs/guardian-audit.log`;
+/** One-shot 0.11.0 migration log (OP_UI_TOKEN → OPENCODE_SERVER_PASSWORD, endpoints.json move) */
+export const migration0110LogPath  = (s: ControlPlaneState): string => `${s.cacheDir}/logs/migration-0.11.0.log`;
+export const backupsDir            = (s: ControlPlaneState): string => `${s.cacheDir}/backups`;
 
 // ── State directory — persistent service data ───────────────────────────────
 
@@ -43,21 +54,10 @@ export const adminServiceDir       = (s: ControlPlaneState): string => `${s.stat
 export const guardianServiceDir    = (s: ControlPlaneState): string => `${s.stateDir}/guardian`;
 export const guardianStashDir      = (s: ControlPlaneState): string => `${s.stateDir}/guardian/stash`;
 export const guardianAkmDir        = (s: ControlPlaneState): string => `${s.stateDir}/guardian/akm`;
-/** Shared akm operational data (data/, state/ — NOT config, which lives in config/akm/) */
-export const akmStateDir           = (s: ControlPlaneState): string => `${s.stateDir}/akm`;
+/** akm operational data and cache (data/, state/, cache/ — NOT config, which lives in config/akm/) */
+export const akmStateDir           = (s: ControlPlaneState): string => `${s.cacheDir}/akm`;
 export const taskLogDir            = (s: ControlPlaneState, id: string): string => `${s.cacheDir}/akm/tasks/logs/${id}`;
 export const taskLogsRootDir       = (s: ControlPlaneState): string => `${s.cacheDir}/akm/tasks/logs`;
-export const logsDir               = (s: ControlPlaneState): string => `${s.stateDir}/logs`;
-/**
- * Guardian's own audit log of channel ingress (HMAC verify, replay, rate
- * limit). Phase 6 of the auth/proxy refactor removed the OpenPalm-side
- * `admin-audit.jsonl` — OpenCode session logs are the audit trail for
- * chat + tool activity.
- */
-export const guardianAuditPath     = (s: ControlPlaneState): string => `${s.stateDir}/logs/guardian-audit.log`;
-/** One-shot 0.11.0 migration log (OP_UI_TOKEN → OPENCODE_SERVER_PASSWORD, endpoints.json move) */
-export const migration0110LogPath  = (s: ControlPlaneState): string => `${s.stateDir}/logs/migration-0.11.0.log`;
-export const backupsDir            = (s: ControlPlaneState): string => `${s.stateDir}/backups`;
 export const secretsDir            = (s: ControlPlaneState): string => `${s.stateDir}/secrets`;
 export const secretProviderPath    = (s: ControlPlaneState): string => `${s.stateDir}/secrets/provider.json`;
 export const secretsIndexPath      = (s: ControlPlaneState): string => `${s.stateDir}/secrets/plaintext-index.json`;
