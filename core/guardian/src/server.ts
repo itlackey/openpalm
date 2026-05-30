@@ -11,7 +11,9 @@
  *   3. Verify HMAC-SHA256 signature (x-channel-signature header)
  *   4. Reject replayed nonces (5-minute window)
  *   5. Rate limit per-user (120 req/min) and per-channel (200 req/min)
- *   6. Forward to assistant and return response
+ *   6. Content validation (opt-in): heuristic screen + local OpenCode moderator,
+ *      fail-closed. See moderation.ts. Disabled unless GUARDIAN_CONTENT_VALIDATION.
+ *   7. Forward to assistant and return response
  */
 
 import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
@@ -37,6 +39,7 @@ import {
   SESSION_TTL_MS,
 } from "./forward";
 import { audit } from "./audit";
+import { moderateMessage } from "./moderation";
 
 const logger = createLogger("guardian");
 
@@ -236,6 +239,24 @@ Bun.serve({
           cleared: true,
           userId: payload.userId,
         });
+      }
+
+      // Content validation (opt-in via GUARDIAN_CONTENT_VALIDATION): heuristic
+      // pre-screen, escalating only suspicious messages to the local OpenCode
+      // moderator. Fail-closed — an escalated message the moderator cannot
+      // clear is blocked. No-op (allow) when the feature is disabled.
+      const moderation = await moderateMessage(payload.text, payload.metadata);
+      if (moderation.verdict === "block") {
+        countRequest(ERROR_CODES.CONTENT_BLOCKED, payload.channel);
+        audit({ requestId: rid, action: "inbound", status: "denied", reason: ERROR_CODES.CONTENT_BLOCKED, channel: payload.channel, userId: payload.userId });
+        logger.warn("content_blocked", { requestId: rid, channel: payload.channel, userId: payload.userId, source: moderation.source, reason: moderation.reason, signals: moderation.signals, score: moderation.score });
+        return json(403, { error: ERROR_CODES.CONTENT_BLOCKED, requestId: rid });
+      }
+      if (moderation.verdict === "flag") {
+        // Forwarded, but recorded as suspicious for operator visibility. (The
+        // forward path sends only the message text to the assistant, so there
+        // is no metadata channel to carry the annotation today.)
+        logger.warn("content_flagged", { requestId: rid, channel: payload.channel, userId: payload.userId, reason: moderation.reason, signals: moderation.signals, score: moderation.score });
       }
 
       try {

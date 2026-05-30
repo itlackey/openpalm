@@ -49,7 +49,8 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
     && rm -f bun.lock bun.lockb \
     && bun install --production
 
-RUN mkdir -p /opt/openpalm/guardian /app/audit /app/secrets
+RUN mkdir -p /opt/openpalm/guardian /app/audit /app/secrets \
+    && chmod +x /app/entrypoint.sh
 
 ENV HOME=/opt/openpalm/guardian
 ENV PORT=8080
@@ -58,4 +59,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -sf http://localhost:8080/health || exit 1
 
-CMD ["bun", "run", "src/server.ts"]
+# The entrypoint starts the local OpenCode moderator (when content validation is
+# enabled) and then launches the guardian server.
+CMD ["./entrypoint.sh"]

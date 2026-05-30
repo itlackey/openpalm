@@ -16,6 +16,7 @@ export const ERROR_CODES = {
   REPLAY_DETECTED: "replay_detected",
   RATE_LIMITED: "rate_limited",
   ASSISTANT_UNAVAILABLE: "assistant_unavailable",
+  CONTENT_BLOCKED: "content_blocked",
   NOT_FOUND: "not_found",
 } as const;
 

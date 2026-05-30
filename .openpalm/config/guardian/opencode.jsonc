@@ -2,16 +2,41 @@
   // Guardian OpenCode global config. Bind-mounted at /etc/opencode
   // (OPENCODE_CONFIG_DIR) — see .openpalm/config/stack/channels.compose.yml.
   //
+  // This OpenCode instance is the guardian's *content moderator*: it classifies
+  // untrusted inbound channel messages for prompt-injection / jailbreak /
+  // exfiltration. It is started on loopback (127.0.0.1:4097) by the guardian
+  // entrypoint and is only reached from inside the guardian container.
+  //
   // Operator-managed and never overwritten by lifecycle operations. Provider
   // credentials are NOT here — they live in the shared auth.json mounted from
-  // config/stack/auth.json, so the guardian uses the same providers as the
+  // config/stack/auth.json, so the guardian reuses the same provider as the
   // assistant.
   "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "akm-opencode@latest"
-  ],
 
+  // The moderation taxonomy + output contract. Loaded as global context so the
+  // self-contained prompt the guardian sends is reinforced by the agent config.
+  "instructions": ["./instructions/moderation.md"],
+
+  // Pin a SMALL, fast model from your provider for moderation — it runs on
+  // suspicious messages and should be cheap. Use the same provider as the
+  // assistant (credentials are shared via auth.json); just pick a smaller
+  // model, e.g. "anthropic/claude-haiku-4-5", "openai/gpt-4o-mini", or a small
+  // local model. Override per-deployment by editing this line.
+  "model": "anthropic/claude-haiku-4-5",
+
+  // Loopback server. The guardian's moderation client calls 127.0.0.1:4097.
+  "server": {
+    "port": 4097,
+    "hostname": "127.0.0.1",
+    "mdns": false
+  },
+
+  // The moderator is a classifier, not an agent: it must never run tools or
+  // touch the filesystem, and must never read its own credential files.
   "permission": {
+    "bash": "deny",
+    "edit": "deny",
+    "webfetch": "deny",
     "read": {
       "/opt/openpalm/guardian/.local/share/opencode/auth.json": "deny",
       "/opt/openpalm/guardian/.local/share/opencode/mcp-auth.json": "deny"

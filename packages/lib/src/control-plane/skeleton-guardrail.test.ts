@@ -80,6 +80,10 @@ describe("skeleton: .openpalm/config/ structure", () => {
   test("config/guardian/ has the OpenCode global config (mounted at /etc/opencode)", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "guardian", "opencode.jsonc"))).toBe(true);
   });
+
+  test("config/guardian/ ships the message-moderation instructions", () => {
+    expect(existsSync(join(SKELETON_DIR, "config", "guardian", "instructions", "moderation.md"))).toBe(true);
+  });
 });
 
 // ── no runtime registry ───────────────────────────────────────────────

@@ -39,3 +39,10 @@ export { parseIdList, type PermissionResult } from "./permissions.ts";
 
 // ── Assistant client ─────────────────────────────────────────────────────
 export { type AssistantClientOptions } from "./assistant-client.ts";
+
+// ── Content screening (guardian content-validation pre-filter) ───────────
+export {
+  screenContent,
+  type ContentScreenResult,
+  type ContentSignal,
+} from "./content-screen.ts";

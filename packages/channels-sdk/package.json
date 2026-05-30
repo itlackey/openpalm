@@ -26,6 +26,7 @@
     "./crypto": "./src/crypto.ts",
     "./logger": "./src/logger.ts",
     "./utils": "./src/utils.ts",
-    "./assistant-client": "./src/assistant-client.ts"
+    "./assistant-client": "./src/assistant-client.ts",
+    "./content-screen": "./src/content-screen.ts"
   }
 }
