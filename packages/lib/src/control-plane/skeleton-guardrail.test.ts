@@ -76,6 +76,10 @@ describe("skeleton: .openpalm/config/ structure", () => {
   test("config/assistant/ has seed files", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "assistant", "opencode.jsonc"))).toBe(true);
   });
+
+  test("config/guardian/ has the OpenCode global config (mounted at /etc/opencode)", () => {
+    expect(existsSync(join(SKELETON_DIR, "config", "guardian", "opencode.jsonc"))).toBe(true);
+  });
 });
 
 // ── no runtime registry ───────────────────────────────────────────────

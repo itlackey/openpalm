@@ -146,6 +146,7 @@ Key env:
 Mounts:
 
 - `$OP_HOME/data/guardian -> /opt/openpalm/guardian`
+- `$OP_HOME/config/guardian -> /etc/opencode` (guardian OpenCode global config, `OPENCODE_CONFIG_DIR`)
 - `$OP_HOME/config/stack/auth.json -> /opt/openpalm/guardian/.local/share/opencode/auth.json` (ro; shared OpenCode provider credentials, same file the assistant mounts)
 - `$OP_HOME/data/logs -> /opt/openpalm/logs`
 - Compose secret mounts under `/run/secrets/<name>` for guardian/channel HMAC verification

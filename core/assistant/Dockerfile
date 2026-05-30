@@ -3,9 +3,9 @@
 # and tools. Config, plugins, and persona are mounted at runtime — not baked
 # into the image.
 #
-# v0.11.0: this is the only image that needs Bun + OpenCode + akm-cli, so
-# the previously-shared `openpalm-base` image has been inlined here.
-# Guardian/channel use `oven/bun:1.3-slim` directly. CI keeps AKM_CLI_VERSION
+# v0.11.0: the previously-shared `openpalm-base` image has been inlined here.
+# The guardian also ships OpenCode + akm-cli (on `oven/bun:1.3-slim`); channels
+# use `oven/bun:1.3-slim` directly. CI keeps AKM_CLI_VERSION and OPENCODE_VERSION
 # between this file and core/guardian/Dockerfile in lockstep.
 # ──────────────────────────────────────────────────────────────────────────────
 

@@ -20,6 +20,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
       stack.env        System-managed non-secret env vars (written by CLI/admin)
       auth.json        OpenCode provider credentials (shared by assistant + guardian)
     assistant/         OpenCode user tools, plugins, skills, commands
+    guardian/          Guardian OpenCode global config (mounted at /etc/opencode)
     akm/               AKM config directory
 
   knowledge/
@@ -61,8 +62,8 @@ This repo directory contains source assets embedded by the CLI during build. The
       channels.compose.yml Optional channels Compose file
       custom.compose.yml User-editable custom Compose stub
       stack.yml          Template stack spec (copied at install)
-    assistant/           Seed files for config/assistant/
-    guardian/            Guardian config placeholders
+    assistant/           Seed files for config/assistant/ (OpenCode config)
+    guardian/            Guardian OpenCode global config (opencode.jsonc → /etc/opencode)
   knowledge/             Built-in AKM stash assets (skills, tasks, vault path)
   openpalm.sh            Power-user docker compose helper (bash)
   openpalm.ps1           Power-user docker compose helper (PowerShell)

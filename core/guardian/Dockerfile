@@ -1,11 +1,29 @@
 # ── Guardian Service ───────────────────────────────────────────────────────────
-# Minimal Bun-based message guardian. Receives signed channel messages,
-# validates HMAC + nonce + rate limits, forwards to the assistant.
+# Bun-based message guardian. Receives signed channel messages, validates
+# HMAC + nonce + rate limits, forwards to the assistant. Ships the OpenCode
+# binary so guardian-side OpenCode instances share provider config with the
+# assistant (auth.json) and read their global config from /etc/opencode.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM oven/bun:1.3-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+# curl + unzip + bash + ca-certificates are required by the OpenCode installer.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl unzip bash ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# OpenCode binary. Mirrors the assistant image: install with HOME=/usr/local so
+# the binary lands at /usr/local/.opencode/bin and is reachable from any user.
+# Keep OPENCODE_VERSION in lockstep with core/assistant/Dockerfile.
+ARG OPENCODE_VERSION=1.3.3
+ENV OPENCODE_VERSION=${OPENCODE_VERSION}
+RUN HOME=/usr/local curl -fsSL https://opencode.ai/install \
+        | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
+ENV PATH="/usr/local/.opencode/bin:$PATH"
+
+# OpenCode reads its operator-managed global config from /etc/opencode, which
+# is bind-mounted from OP_HOME/config/guardian (see channels.compose.yml).
+ENV OPENCODE_CONFIG_DIR=/etc/opencode
 
 # Install akm-cli for shared stash, vault, and skill management.
 # Pinned via build arg so the install step is reproducible. Install globally

@@ -26,6 +26,8 @@ export const akmConfigDir          = (s: ControlPlaneState): string => `${s.conf
 export const akmConfigPath         = (s: ControlPlaneState): string => `${s.configDir}/akm/config.json`;
 export const tasksDir              = (s: ControlPlaneState): string => `${s.stashDir}/tasks`;
 export const assistantConfigDir    = (s: ControlPlaneState): string => `${s.configDir}/assistant`;
+/** Guardian OpenCode global config dir — bind-mounted at /etc/opencode */
+export const guardianConfigDir     = (s: ControlPlaneState): string => `${s.configDir}/guardian`;
 
 // ── Config/stack directory — compose runtime + stack config ─────────────────
 

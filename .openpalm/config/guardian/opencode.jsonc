@@ -1,0 +1,20 @@
+{
+  // Guardian OpenCode global config. Bind-mounted at /etc/opencode
+  // (OPENCODE_CONFIG_DIR) — see .openpalm/config/stack/channels.compose.yml.
+  //
+  // Operator-managed and never overwritten by lifecycle operations. Provider
+  // credentials are NOT here — they live in the shared auth.json mounted from
+  // config/stack/auth.json, so the guardian uses the same providers as the
+  // assistant.
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "akm-opencode@latest"
+  ],
+
+  "permission": {
+    "read": {
+      "/opt/openpalm/guardian/.local/share/opencode/auth.json": "deny",
+      "/opt/openpalm/guardian/.local/share/opencode/mcp-auth.json": "deny"
+    }
+  }
+}

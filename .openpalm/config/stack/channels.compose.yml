@@ -138,6 +138,9 @@ services:
       PORT: "8080"
       OP_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
+      # OpenCode global config (opencode.jsonc) lives in OP_HOME/config/guardian,
+      # bind-mounted at /etc/opencode below.
+      OPENCODE_CONFIG_DIR: /etc/opencode
       GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
       GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
       CHANNEL_CHAT_SECRET_FILE: /run/secrets/channel_chat_secret
@@ -152,6 +155,9 @@ services:
     volumes:
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
+      # OpenCode global config (opencode.jsonc, instructions). Operator-managed,
+      # bind-mounted as the OPENCODE_CONFIG_DIR for guardian OpenCode instances.
+      - ${OP_HOME}/config/guardian:/etc/opencode
       # Shared OpenCode provider credentials (read-only). Same file the
       # assistant mounts, so any OpenCode instance in the guardian uses the
       # same provider configuration. HOME=/opt/openpalm/guardian, so OpenCode
