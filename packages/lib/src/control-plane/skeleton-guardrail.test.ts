@@ -45,6 +45,15 @@ describe("skeleton: .openpalm/ top-level directories", () => {
   });
 });
 
+// ── power-user helper scripts ─────────────────────────────────────────
+
+describe("skeleton: helper scripts", () => {
+  test("openpalm.sh and openpalm.ps1 ship at the skeleton root", () => {
+    expect(existsSync(join(SKELETON_DIR, "openpalm.sh"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "openpalm.ps1"))).toBe(true);
+  });
+});
+
 // ── config/ subdirectory ──────────────────────────────────────────────
 
 describe("skeleton: .openpalm/config/ structure", () => {

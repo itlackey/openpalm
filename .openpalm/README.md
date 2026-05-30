@@ -37,7 +37,16 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     rollback/          Rollback snapshots
 
   workspace/           Shared `/work` mount
+  openpalm.sh          Power-user helper: docker compose up/down/restart/upgrade (bash)
+  openpalm.ps1         Power-user helper: docker compose up/down/restart/upgrade (PowerShell)
 ```
+
+> `openpalm.sh` / `openpalm.ps1` are example convenience wrappers around the
+> same `docker compose` invocation the CLI and admin UI use. The canonical
+> orchestrator remains the `openpalm` CLI and the admin UI; the helpers let
+> power users drive the stack directly. Their `upgrade` only pulls images and
+> recreates containers — it does not refresh shipped assets or the UI build the
+> way `openpalm update` does.
 
 ## Repo source asset structure (.openpalm/)
 
@@ -55,6 +64,8 @@ This repo directory contains source assets embedded by the CLI during build. The
     assistant/           Seed files for config/assistant/
     guardian/            Guardian config placeholders
   knowledge/             Built-in AKM stash assets (skills, tasks, vault path)
+  openpalm.sh            Power-user docker compose helper (bash)
+  openpalm.ps1           Power-user docker compose helper (PowerShell)
 ```
 
 ## Quick start
