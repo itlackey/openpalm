@@ -18,7 +18,8 @@ and built-in skill list are defined in:
 - `.openpalm/config/assistant/openpalm.md` — operational guidelines and
   isolation invariants. Includes the **install-location matrix** the
   assistant uses to decide between `$HOME`-based installers and `$HOME/.local`
-  prefix installs (persist automatically), and `apt` (ephemeral — survives restart only). The
+  prefix installs (persist automatically), `/opt/persistent` for global-prefix
+  escape hatches, and `apt` (ephemeral — survives restart only). The
   assistant has no stack management capability; only the host CLI and
   admin UI can manage the stack.
 

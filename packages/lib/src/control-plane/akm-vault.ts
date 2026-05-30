@@ -17,7 +17,8 @@
  *
  * Layout:
  *   stash/         — AKM_STASH_DIR: asset content (skills, vaults, knowledge, agents)
- *   cache/akm/     — AKM_DATA_DIR / AKM_STATE_DIR / AKM_CACHE_DIR: operational metadata and cache
+ *   state/akm/     — AKM_DATA_DIR / AKM_STATE_DIR: operational metadata to back up
+ *   cache/akm/     — AKM_CACHE_DIR: regenerable artifacts
  */
 import { existsSync, readFileSync } from "node:fs";
 import { execFile as execFileCb, spawn } from "node:child_process";
@@ -43,14 +44,14 @@ export const AKM_USER_VAULT_REF = "vault:user";
  * are regenerable and should not be indexed alongside stash assets.
  */
 export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
-  const akmOperational = `${state.cacheDir}/akm`;
+  const akmOperational = `${state.stateDir}/akm`;
   return {
     ...process.env,
     AKM_STASH_DIR: state.stashDir,
     AKM_CONFIG_DIR: `${state.configDir}/akm`,
     AKM_DATA_DIR: `${akmOperational}/data`,
     AKM_STATE_DIR: `${akmOperational}/state`,
-    AKM_CACHE_DIR: `${akmOperational}/cache`,
+    AKM_CACHE_DIR: `${state.cacheDir}/akm`,
   };
 }
 

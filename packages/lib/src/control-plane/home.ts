@@ -94,10 +94,7 @@ export function ensureHomeDirs(): void {
 
     // cache/ — regenerable/semi-persistent data
     `${home}/cache`,
-    `${home}/cache/akm`,            // akm operational data and cache
-    `${home}/cache/akm/data`,
-    `${home}/cache/akm/state`,
-    `${home}/cache/akm/cache`,
+    `${home}/cache/akm`,            // akm cache and regenerable artifacts
     `${home}/cache/rollback`,       // rollback snapshots
     `${home}/cache/logs`,           // service logs and audit files
     `${home}/cache/backups`,        // lifecycle backup snapshots
@@ -107,6 +104,9 @@ export function ensureHomeDirs(): void {
     `${home}/state/assistant`,      // assistant HOME bind mount
     `${home}/state/admin`,          // admin home bind mount
     `${home}/state/guardian`,       // guardian runtime data
+    `${home}/state/akm`,            // akm operational data (backed up)
+    `${home}/state/akm/data`,
+    `${home}/state/akm/state`,
     // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
     `${home}/stash`,
     `${home}/stash/vaults`,

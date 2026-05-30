@@ -26,7 +26,7 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 │   └── stack/       live compose assembly (core.compose.yml, stack.env, secrets/, addons/)
 ├── stash/           AKM knowledge base (vaults/, tasks/, skills/)
 │   └── vaults/      user-managed secrets (user.env = vault:user)
-├── state/           durable service data (assistant/, guardian/)
+├── state/           durable service data (assistant/, guardian/, akm/)
 ├── cache/           regenerable/control-plane data (akm/, logs/, backups/, rollback/, guardian/)
 └── workspace/       shared work area
 ```
@@ -93,8 +93,10 @@ Mounts:
 - `$OP_HOME/config/auth.json -> /home/opencode/.local/share/opencode/auth.json`
 - `$OP_HOME/state/assistant -> /home/opencode/`
 - `$OP_HOME/stash -> /akm` (shared akm stash)
-- `$OP_HOME/cache/akm -> /akm-op` (akm operational data and cache)
+- `$OP_HOME/state/akm -> /akm-op` (akm operational data; backed up)
+- `$OP_HOME/cache/akm -> /akm-cache` (akm cache)
 - `$OP_HOME/workspace -> /work`
+- `assistant-persistent -> /opt/persistent` (global-prefix escape hatch)
 
 Ports and network:
 
@@ -212,7 +214,8 @@ Mounts (provided by the assistant service):
 
 - `$OP_HOME/config -> /etc/openpalm:ro`
 - `$OP_HOME/stash/tasks -> /akm/tasks` (rw, AKM YAML task files)
-- `$OP_HOME/cache/akm -> /akm-op` (rw, akm state.db, cache, and per-run task logs)
+- `$OP_HOME/state/akm -> /akm-op` (rw, akm state.db and execution history)
+- `$OP_HOME/cache/akm -> /akm-cache` (rw, akm cache and per-run task logs)
 
 Design note — scheduler scope: The scheduler runs as part of the
 assistant container, so it shares the assistant's identity and trust

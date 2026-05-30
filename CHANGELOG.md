@@ -9,10 +9,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **Assistant compose mounts simplified** — AKM operational data now uses the
-  single `cache/akm` mount, logs and lifecycle backups moved under `cache/`,
-  and the redundant `/opt/persistent` named volume was removed in favor of the
-  already-persistent assistant home (`$HOME/.local/bin` is on `PATH`).
+- **Assistant compose mounts simplified** — logs and lifecycle backups moved
+  under `cache/`, AKM cache remains separate from backed-up `state/akm` runtime
+  data, and `/opt/persistent` is documented as an escape hatch for global-prefix
+  installs while `$HOME/.local/bin` remains the preferred install target.
 
 ### Fixed
 

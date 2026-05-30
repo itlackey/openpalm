@@ -101,9 +101,9 @@ RUN set -e; \
 # Prepend opencode user's local bin so per-user installs win.
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /akm \
-    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /akm \
-    && chown opencode:opencode /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /akm \
+RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /akm /opt/persistent/bin \
+    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /akm /opt/persistent /opt/persistent/bin \
+    && chown opencode:opencode /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /akm /opt/persistent /opt/persistent/bin \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
@@ -121,10 +121,11 @@ ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 
 # PATH precedence (highest first):
+#   /opt/persistent/bin — prefix-style global installs that need an escape hatch
 #   /home/opencode/.local/bin — assistant-installed tools in the persistent home bind mount
 #   /home/opencode/.bun/bin   — bun install -g (BUN_INSTALL points here)
 #   /usr/local/bin            — image-baked tools
-ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
+ENV PATH="/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
 # OpenCode config (opencode.jsonc, openpalm.md, system.md) lives in
 # OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.

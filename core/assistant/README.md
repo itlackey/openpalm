@@ -18,7 +18,9 @@ The assistant is deliberately isolated:
   - `${OP_HOME}/state/assistant` → `/home/opencode` (the assistant's home; survives recreates)
   - `${OP_HOME}/workspace` → `/work` (shared work area)
   - `${OP_HOME}/stash` → `/akm` (knowledge stash)
-  - `${OP_HOME}/cache/akm` → `/akm-op` (akm state and cache)
+  - `${OP_HOME}/state/akm` → `/akm-op` (akm runtime state; backed up)
+  - `${OP_HOME}/cache/akm` → `/akm-cache` (akm cache)
+  - Named volume `assistant-persistent` → `/opt/persistent` (escape hatch for prefix-style global installs)
 
 ## Plugin Architecture
 
@@ -44,6 +46,7 @@ Assistant config is **seeded from the repo and bind-mounted at runtime**. There 
 | `.openpalm/config/assistant/system.md` | `config/assistant/system.md` | `/etc/openpalm/assistant/system.md` | System prompt (memory, tools, secrets, built-in skills) |
 | `packages/assistant-tools/` | — | npm-installed at startup | Plugin source (tools, skills, AGENTS.md contributor pointer) |
 | `${OP_HOME}/state/assistant/` | (the assistant's `$HOME`) | `/home/opencode` | Persistent home — bun cache, pipx tools, user state |
+| `assistant-persistent` (named volume) | — | `/opt/persistent` | Escape hatch for prefix-style global installs |
 
 ### Updating tools
 

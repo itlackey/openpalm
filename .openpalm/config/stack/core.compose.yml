@@ -50,14 +50,14 @@ services:
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
       HOME: /home/opencode
-      # akm-cli XDG layout (AKM 0.8.0+). The assistant is the only container
-      # running akm, so operational data and cache share one cache/akm mount.
-      # The user-owned stash stays separate at /akm.
+      # akm-cli XDG layout (AKM 0.8.0+). Keep data/state under state/akm
+      # because execution history and operational state must be backed up.
+      # Regenerable artifacts stay under cache/akm.
       AKM_STASH_DIR: /akm
       AKM_CONFIG_DIR: /etc/openpalm/akm
       AKM_DATA_DIR: /akm-op/data
       AKM_STATE_DIR: /akm-op/state
-      AKM_CACHE_DIR: /akm-op/cache
+      AKM_CACHE_DIR: /akm-cache
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096
@@ -76,9 +76,14 @@ services:
       - ${OP_HOME}/config/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/state/assistant:/home/opencode
       - ${OP_AKM_STASH:-${OP_HOME}/stash}:/akm
-      - ${OP_HOME}/cache/akm:/akm-op
+      - ${OP_HOME}/state/akm:/akm-op
+      - ${OP_HOME}/cache/akm:/akm-cache
       - ${OP_AKM_CONFIG:-${OP_HOME}/config/akm}:/etc/openpalm/akm
       - ${OP_HOME}/workspace:/work
+      # Escape hatch for prefix-style global installs that cannot cleanly live
+      # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
+      # tools that require an explicit non-home prefix.
+      - assistant-persistent:/opt/persistent
     networks: [ assistant_net ]
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
@@ -92,3 +97,6 @@ services:
 networks:
   channel_lan:
   assistant_net:
+
+volumes:
+  assistant-persistent:

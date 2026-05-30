@@ -105,16 +105,12 @@ describe("skeleton: .openpalm/state/ service directories", () => {
     });
   }
 
-  test("cache/akm/data/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "cache", "akm", "data"))).toBe(true);
+  test("state/akm/data/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "state", "akm", "data"))).toBe(true);
   });
 
-  test("cache/akm/state/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "cache", "akm", "state"))).toBe(true);
-  });
-
-  test("cache/akm/cache/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "cache", "akm", "cache"))).toBe(true);
+  test("state/akm/state/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "state", "akm", "state"))).toBe(true);
   });
 
   test("cache/logs/ exists", () => {

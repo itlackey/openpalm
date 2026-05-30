@@ -2,7 +2,7 @@
 
 The assistant container's writable layer (everything outside the bind-mounted directories) is **discarded on `docker compose up --force-recreate`, on image upgrades, and on any other container recreate**. Tools installed with `apt install`, `npm i -g`, `pip install` into the system Python, etc. all live in that writable layer and disappear at the next recreate.
 
-OpenPalm ships with one persistence pattern enabled out of the box (Pattern 1), and supports a second more involved pattern (Pattern 2) if the assistant needs to keep distro packages across upgrades.
+OpenPalm ships with two persistence patterns enabled out of the box (home-based installs and the `/opt/persistent` escape hatch), and supports a more involved apt pattern if the assistant needs to keep distro packages across upgrades.
 
 ---
 
@@ -19,12 +19,13 @@ The assistant container bind-mounts `${OP_HOME}/state/assistant` at `/home/openc
 | Direct download | `curl -L … -o "$HOME/.local/bin/<tool>" && chmod +x "$HOME/.local/bin/<tool>"` | |
 | Self-installers | Many provide `--install-dir` or `--prefix` flags | Check `<installer> --help` |
 
-`$HOME`-based installers (`bun install -g`, `pipx install`, `uv tool install`, etc.) already persist via the same `/home/opencode/` bind mount.
+`$HOME`-based installers (`bun install -g`, `pipx install`, `uv tool install`, etc.) already persist via the same `/home/opencode/` bind mount. If an installer cannot use `$HOME/.local`, use `/opt/persistent` as an escape hatch: binaries in `/opt/persistent/bin` are also on `PATH`.
 
 ### Verifying
 
 ```bash
 docker compose exec assistant ls /home/opencode/.local/bin
+docker compose exec assistant ls /opt/persistent/bin
 ```
 
 ---
@@ -116,6 +117,7 @@ For anything that should be present on **every** OpenPalm install (e.g. `ripgrep
 | Need | Use |
 |---|---|
 | Persist a Cargo / Go / `make install` tool | **Pattern 1** — install to `$HOME/.local` |
+| Persist a tool that requires a global-style prefix | Install to `/opt/persistent` |
 | Persist a `bun install -g`, `pipx`, `uv tool install` | Already works via the home bind mount — no extra setup |
 | Persist a one-off `apt install` for this session only | Plain `sudo apt install <pkg>` — survives restart, not recreate |
 | Persist a small set of distro packages across upgrades | **Pattern 2** — manifest + cache volume |

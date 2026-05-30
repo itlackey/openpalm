@@ -7,8 +7,8 @@
  * Layout:
  *   config/        — user-editable config + system config files (auth.json, akm/)
  *   config/stack/  — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
- *   cache/         — regenerable/semi-persistent data (akm, guardian, rollback, logs, backups)
- *   state/         — persistent service data (assistant, admin, guardian)
+ *   cache/         — regenerable/semi-persistent data (akm cache, guardian, rollback, logs, backups)
+ *   state/         — persistent service data (assistant, admin, guardian, akm)
  *   stash/         — akm knowledge (skills, vaults, agents)
  *   workspace/     — shared work area
  */
@@ -54,8 +54,8 @@ export const adminServiceDir       = (s: ControlPlaneState): string => `${s.stat
 export const guardianServiceDir    = (s: ControlPlaneState): string => `${s.stateDir}/guardian`;
 export const guardianStashDir      = (s: ControlPlaneState): string => `${s.stateDir}/guardian/stash`;
 export const guardianAkmDir        = (s: ControlPlaneState): string => `${s.stateDir}/guardian/akm`;
-/** akm operational data and cache (data/, state/, cache/ — NOT config, which lives in config/akm/) */
-export const akmStateDir           = (s: ControlPlaneState): string => `${s.cacheDir}/akm`;
+/** akm operational data (data/, state/ — NOT config, which lives in config/akm/) */
+export const akmStateDir           = (s: ControlPlaneState): string => `${s.stateDir}/akm`;
 export const taskLogDir            = (s: ControlPlaneState, id: string): string => `${s.cacheDir}/akm/tasks/logs/${id}`;
 export const taskLogsRootDir       = (s: ControlPlaneState): string => `${s.cacheDir}/akm/tasks/logs`;
 export const secretsDir            = (s: ControlPlaneState): string => `${s.stateDir}/secrets`;

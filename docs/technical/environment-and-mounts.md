@@ -35,6 +35,7 @@ Current durable data subdirectories used by the shipped stack:
 - `state/assistant`
 - `state/guardian`
 - `cache/akm`
+- `state/akm`
 - `cache/logs`
 - `cache/backups`
 - `stash/` (shared akm stash mounted at `/akm` for assistant)
@@ -81,8 +82,10 @@ Mounts:
 | `$OP_HOME/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
 | `$OP_HOME/state/assistant` | `/home/opencode` | rw | Assistant persistent data |
 | `$OP_HOME/stash` | `/akm` | rw | AKM stash |
-| `$OP_HOME/cache/akm` | `/akm-op` | rw | akm operational data and cache |
+| `$OP_HOME/state/akm` | `/akm-op` | rw | akm operational data (state.db, execution history) |
+| `$OP_HOME/cache/akm` | `/akm-cache` | rw | akm cache and regenerable artifacts |
 | `$OP_HOME/workspace` | `/work` | rw | Shared workspace |
+| `assistant-persistent` | `/opt/persistent` | rw | Escape hatch for prefix-style global installs |
 
 Ports and networks:
 
@@ -160,7 +163,8 @@ Scheduling control plane (crond started by `core/assistant/entrypoint.sh`):
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/stash/tasks` | `/akm/tasks` | rw | AKM task markdown files |
-| `$OP_HOME/cache/akm` | `/akm-op` | rw | akm state.db, cache, and per-run task logs |
+| `$OP_HOME/state/akm` | `/akm-op` | rw | akm state.db and execution history |
+| `$OP_HOME/cache/akm` | `/akm-cache` | rw | akm cache and per-run task logs |
 
 Notes:
 

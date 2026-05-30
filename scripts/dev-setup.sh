@@ -144,7 +144,8 @@ mkdir -p \
 	"$CONFIG_DIR/automations" \
 	"$STASH_DIR/vaults" "$STASH_DIR/vaults/secrets" \
 	"$STATE_DIR" "$STATE_DIR/admin" "$STATE_DIR/assistant" "$STATE_DIR/assistant/.config/opencode" "$STATE_DIR/guardian" \
-	"$DEV_ROOT/cache/akm" "$DEV_ROOT/cache/akm/data" "$DEV_ROOT/cache/akm/state" "$DEV_ROOT/cache/akm/cache" \
+	"$STATE_DIR/akm" "$STATE_DIR/akm/data" "$STATE_DIR/akm/state" \
+	"$DEV_ROOT/cache/akm" \
 	"$DEV_ROOT/cache/logs" "$DEV_ROOT/cache/backups" \
 	"$STATE_DIR/voice" "$STATE_DIR/voice/models" "$STATE_DIR/ollama" \
 	"$DEV_ROOT/workspace"
