@@ -4,6 +4,7 @@ import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir } from "./home.js";
+import { authJsonPath as resolveAuthJsonPath } from "./paths.js";
 import { listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
@@ -133,12 +134,12 @@ export function ensureSecrets(state: ControlPlaneState): void {
   enforceVaultDirMode(state.stackDir);
 
   ensureSystemSecrets(state);
-  ensureAuthJson(state.configDir);
+  ensureAuthJson(state);
 }
 
-function ensureAuthJson(configDir: string): void {
-  const authJsonPath = `${configDir}/auth.json`;
-  mkdirSync(configDir, { recursive: true, mode: VAULT_DIR_MODE });
+function ensureAuthJson(state: ControlPlaneState): void {
+  const authJsonPath = resolveAuthJsonPath(state);
+  mkdirSync(state.stackDir, { recursive: true, mode: VAULT_DIR_MODE });
 
   if (existsSync(authJsonPath)) {
     try {
@@ -176,12 +177,12 @@ export function updateSecretsEnv(
 
 /**
  * Merge-write provider API keys into OpenCode's auth.json at
- * `${configDir}/auth.json`. Each entry uses OpenCode's schema for
- * api-key auth: `{ <providerId>: { type: "api", key: "..." } }`.
+ * `${stackDir}/auth.json` (config/stack/auth.json). Each entry uses
+ * OpenCode's schema for api-key auth: `{ <providerId>: { type: "api", key } }`.
  *
- * This file is bind-mounted into the assistant container so the chat
- * assistant picks up new credentials on its next OpenCode restart —
- * see core.compose.yml.
+ * This file is bind-mounted into both the assistant and guardian containers
+ * so every OpenCode instance picks up new credentials on its next restart —
+ * see core.compose.yml (assistant) and channels.compose.yml (guardian).
  *
  * Existing entries (OAuth tokens, other providers) are preserved.
  * Empty values DELETE the corresponding entry.
@@ -192,8 +193,8 @@ export function writeAuthJsonProviderKeys(
 ): void {
   if (Object.keys(providerKeys).length === 0) return;
 
-  const authJsonPath = `${state.configDir}/auth.json`;
-  mkdirSync(state.configDir, { recursive: true, mode: VAULT_DIR_MODE });
+  const authJsonPath = resolveAuthJsonPath(state);
+  mkdirSync(state.stackDir, { recursive: true, mode: VAULT_DIR_MODE });
 
   let current: Record<string, unknown> = {};
   if (existsSync(authJsonPath)) {

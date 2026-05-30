@@ -18,9 +18,9 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
       custom.compose.yml User custom services/overlays
       stack.yml        Stack schema marker and enabled first-party addons
       stack.env        System-managed non-secret env vars (written by CLI/admin)
+      auth.json        OpenCode provider credentials (shared by assistant + guardian)
     assistant/         OpenCode user tools, plugins, skills, commands
     akm/               AKM config directory
-    auth.json          Optional auth metadata
 
   knowledge/
     vaults/            User-managed secrets (akm vault:user)

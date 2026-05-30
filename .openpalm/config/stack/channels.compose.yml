@@ -152,6 +152,11 @@ services:
     volumes:
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
+      # Shared OpenCode provider credentials (read-only). Same file the
+      # assistant mounts, so any OpenCode instance in the guardian uses the
+      # same provider configuration. HOME=/opt/openpalm/guardian, so OpenCode
+      # resolves auth.json under $HOME/.local/share/opencode/.
+      - ${OP_HOME}/config/stack/auth.json:/opt/openpalm/guardian/.local/share/opencode/auth.json:ro
     secrets:
       - channel_chat_secret
       - channel_api_secret

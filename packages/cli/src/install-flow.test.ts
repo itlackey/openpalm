@@ -67,8 +67,8 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
 
   // Seed file-based volume mount targets (CLI bootstrapInstall does this)
   mkdirSync(stackDir, { recursive: true });
-  if (!existsSync(join(configDir, 'auth.json'))) {
-    writeFileSync(join(configDir, 'auth.json'), '{}\n');
+  if (!existsSync(join(stackDir, 'auth.json'))) {
+    writeFileSync(join(stackDir, 'auth.json'), '{}\n');
   }
 
   // Create required directories
@@ -193,7 +193,7 @@ describe('install flow — tier 1 (file validation)', () => {
     // has been removed too.
     for (const relPath of [
       'config/stack/stack.env',
-      'config/auth.json',
+      'config/stack/auth.json',
     ]) {
       const fullPath = join(homeDir, relPath);
       expect(existsSync(fullPath)).toBe(true);

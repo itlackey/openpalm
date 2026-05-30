@@ -18,7 +18,7 @@ const SNAPSHOT_FILES = [
   "config/stack/services.compose.yml",
   "config/stack/channels.compose.yml",
   "config/stack/custom.compose.yml",
-  "config/auth.json",
+  "config/stack/auth.json",
 ];
 
 /**

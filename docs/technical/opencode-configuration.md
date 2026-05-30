@@ -30,7 +30,7 @@ Primary runtime sources:
 |---|---|---|
 | `~/.openpalm/config/assistant/` | `/etc/opencode` | OpenCode config, tools, plugins, skills, commands |
 | `~/.openpalm/config/akm/` | `/etc/akm` | AKM config |
-| `~/.openpalm/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
+| `~/.openpalm/config/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
 | `~/.openpalm/knowledge/` | `/stash` | AKM stash (memory, skills, vaults; read via akm) |
 | `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
 | `~/.openpalm/data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |

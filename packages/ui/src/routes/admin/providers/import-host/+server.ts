@@ -34,6 +34,7 @@ import {
 	detectHostOpenCode,
 	buildComposeOptions,
 	checkDocker,
+	authJsonPath,
 } from '@openpalm/lib';
 import { composeRestart } from '$lib/server/docker.js';
 import { getState } from '$lib/server/state.js';
@@ -128,10 +129,10 @@ export const POST: RequestHandler = async (event) => {
 		// Live push the merged imported auth.json (best-effort — if OpenCode isn't
 		// up, the file copy is enough). Do not push the host auth.json directly:
 		// conflict-preserving imports may intentionally leave existing credentials
-		// untouched in OP_HOME/config/auth.json.
+		// untouched in OP_HOME/config/stack/auth.json.
 		const hostStatus = detectHostOpenCode();
 		let livePush: { pushed: number; failed: string[] } = { pushed: 0, failed: [] };
-		const importedAuthPath = `${state.configDir}/auth.json`;
+		const importedAuthPath = authJsonPath(state);
 		if (existsSync(importedAuthPath)) {
 			livePush = await pushAuthToOpenCode(importedAuthPath);
 		} else if (hostStatus.authPath) {

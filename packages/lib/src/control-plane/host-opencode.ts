@@ -213,7 +213,7 @@ export function importHostOpenCode(
   // ── auth.json ──────────────────────────────────────────────────────────
   if (status.authPath) {
     const destPath = authJsonPath(state);
-    const destDir = state.configDir;
+    const destDir = state.stackDir;
     mkdirSync(destDir, { recursive: true });
 
     if (existsSync(destPath) && !overwriteConflicts) {

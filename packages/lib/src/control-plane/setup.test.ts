@@ -475,7 +475,7 @@ describe("performSetup", () => {
     expect(stackEnv).not.toContain('OPENAI_API_KEY=');
     expect(readSecret(stackDir, 'openai_api_key')).toBeNull();
 
-    const authJson = JSON.parse(readFileSync(join(configDir, 'auth.json'), 'utf-8')) as Record<string, { key: string }>;
+    const authJson = JSON.parse(readFileSync(join(configDir, 'stack', 'auth.json'), 'utf-8')) as Record<string, { key: string }>;
     expect(authJson.openai.key).toBe('sk-secondary');
   });
 

@@ -7,7 +7,7 @@ relevant tabs **must not bleed into each other**:
 | Tab | Owns | Files written | Endpoints |
 |---|---|---|---|
 | **AKM** | AKM's internal LLM/embedding config | `OP_HOME/config/akm/config.json` (`llm`, `embedding` top-level fields) | `PATCH /admin/akm` |
-| **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/config/auth.json` | `PATCH /admin/providers/[id]`, `POST /admin/opencode/model`, `POST/DELETE /admin/opencode/providers/[id]/auth`, `POST /admin/providers/import-host` |
+| **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/config/stack/auth.json` | `PATCH /admin/providers/[id]`, `POST /admin/opencode/model`, `POST/DELETE /admin/opencode/providers/[id]/auth`, `POST /admin/providers/import-host` |
 | **Voice** | TTS/STT channel configuration | `OP_HOME/config/stack/stack.env` (`TTS_*`, `STT_*` vars) | `PUT /admin/voice` |
 
 ## What the AKM tab is for

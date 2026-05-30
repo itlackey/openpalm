@@ -5,8 +5,8 @@
  * When the directory layout changes, update this file only.
  *
  * Layout:
- *   config/        — user-editable config + system config files (auth.json, akm/)
- *   config/stack/  — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
+ *   config/        — user-editable config + system config files (akm/)
+ *   config/stack/  — compose runtime + stack config (stack.env, stack.yml, auth.json, fixed compose files)
  *   data/          — persistent service data, logs, backups, rollback
  *   knowledge/     — akm knowledge (skills, vaults, agents)
  *   workspace/     — shared work area
@@ -15,8 +15,11 @@ import type { ControlPlaneState } from "./types.js";
 
 // ── Config directory — user + system config ─────────────────────────────────
 
-/** OpenCode auth token store */
-export const authJsonPath          = (s: ControlPlaneState): string => `${s.configDir}/auth.json`;
+/**
+ * OpenCode auth token store. Lives under config/stack/ so it is shared by
+ * every OpenCode-based container (assistant + guardian) via a single mount.
+ */
+export const authJsonPath          = (s: ControlPlaneState): string => `${s.stackDir}/auth.json`;
 /** akm config directory mounted at /etc/akm */
 export const akmConfigDir          = (s: ControlPlaneState): string => `${s.configDir}/akm`;
 /** akm setup config file (written by admin on capability save) */

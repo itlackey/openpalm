@@ -14,11 +14,12 @@
 # entrypoint sources that file at startup via `akm vault path vault:user`.
 #
 # Directory model:
-#   ~/.openpalm/config/       — user-editable + system config (stack.env, auth.json, akm/)
+#   ~/.openpalm/config/       — user-editable + system config (akm/)
+#   ~/.openpalm/config/stack/ — compose runtime + stack config (core/services/channels/custom
+#                               compose files, stack.env, auth.json)
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
 #   ~/.openpalm/knowledge/    — akm knowledge (skills, vaults, agents) — vault:user lives here
 #   ~/.openpalm/workspace/    — shared work area
-#   ~/.openpalm/config/stack/ — compose runtime (core/services/channels/custom compose files, env files)
 
 services:
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
@@ -66,7 +67,7 @@ services:
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
       - ${OP_HOME}/config/assistant:/etc/opencode
-      - ${OP_HOME}/config/auth.json:/home/opencode/.local/share/opencode/auth.json
+      - ${OP_HOME}/config/stack/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/data/assistant:/home/opencode
       - ${OP_AKM_STASH:-${OP_HOME}/knowledge}:/stash
       - ${OP_AKM_CONFIG:-${OP_HOME}/config/akm}:/etc/akm

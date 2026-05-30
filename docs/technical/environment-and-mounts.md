@@ -79,7 +79,7 @@ Mounts:
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/config/assistant` | `/etc/opencode` | rw | OpenCode config and assistant extensions |
-| `$OP_HOME/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Host-managed OpenCode auth copy |
+| `$OP_HOME/config/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Host-managed OpenCode auth copy |
 | `$OP_HOME/config/akm` | `/etc/akm` | rw | AKM config |
 | `$OP_HOME/data/assistant` | `/home/opencode` | rw | Assistant persistent home |
 | `$OP_HOME/knowledge` | `/stash` | rw | AKM stash |
@@ -128,6 +128,7 @@ Mounts:
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/data/guardian` | `/opt/openpalm/guardian` | rw | Runtime nonce / rate-limit state |
+| `$OP_HOME/config/stack/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` | ro | Shared OpenCode provider credentials (same file the assistant mounts) |
 | `$OP_HOME/data/logs` | `/opt/openpalm/logs` | rw | Guardian audit log directory |
 | `$OP_HOME/knowledge/vaults/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
 

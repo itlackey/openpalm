@@ -89,7 +89,7 @@ Mounts:
 
 - `$OP_HOME/config/assistant -> /etc/opencode`
 - `$OP_HOME/config/akm -> /etc/akm`
-- `$OP_HOME/config/auth.json -> /home/opencode/.local/share/opencode/auth.json`
+- `$OP_HOME/config/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
 - `$OP_HOME/data/assistant -> /home/opencode`
 - `$OP_HOME/knowledge -> /stash` (shared akm stash)
 - `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data`
@@ -146,6 +146,7 @@ Key env:
 Mounts:
 
 - `$OP_HOME/data/guardian -> /opt/openpalm/guardian`
+- `$OP_HOME/config/stack/auth.json -> /opt/openpalm/guardian/.local/share/opencode/auth.json` (ro; shared OpenCode provider credentials, same file the assistant mounts)
 - `$OP_HOME/data/logs -> /opt/openpalm/logs`
 - Compose secret mounts under `/run/secrets/<name>` for guardian/channel HMAC verification
 

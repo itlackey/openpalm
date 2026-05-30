@@ -318,7 +318,7 @@ describe("Existing Install", () => {
     expect(specAfterSecond).not.toBeNull();
     expect(specAfterSecond!.version).toBe(2);
 
-    const auth = JSON.parse(readFileSync(join(configDir, "auth.json"), "utf-8"));
+    const auth = JSON.parse(readFileSync(join(configDir, "stack", "auth.json"), "utf-8"));
     expect(auth.groq.key).toBe("gsk-test-key-456");
   });
 });

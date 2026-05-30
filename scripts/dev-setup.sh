@@ -118,7 +118,7 @@ LOGS_DIR="$DEV_ROOT/data/logs"
 # CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
 # whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. Generated
-# files (stack.env, knowledge/vaults/secrets/, user.env, auth.json) are excluded
+# files (stack.env, config/stack/auth.json, knowledge/vaults/secrets/, user.env) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
 # --force does a destructive resync (drop stale files that no longer
@@ -130,7 +130,7 @@ rsync_flags=(-a)
 rsync "${rsync_flags[@]}" \
 	--exclude=config/stack/stack.env \
 	--exclude=knowledge/vaults/secrets \
-	--exclude=config/auth.json \
+	--exclude=config/stack/auth.json \
 	--exclude=knowledge/vaults/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
 
@@ -164,7 +164,8 @@ if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 fi
 
 # Seed auth.json (empty — prevents Docker creating it as directory)
-AUTH_JSON="$CONFIG_DIR/auth.json"
+mkdir -p "$CONFIG_DIR/stack"
+AUTH_JSON="$CONFIG_DIR/stack/auth.json"
 if [[ ! -f "$AUTH_JSON" || $force -eq 1 ]]; then
 	echo '{}' >"$AUTH_JSON"
 	chmod 600 "$AUTH_JSON"
@@ -182,7 +183,7 @@ if [[ $seed_env -eq 1 ]]; then
 # Seeded by dev-setup.sh; safe to edit.
 #
 # Provider credentials are NOT seeded here — they live in OpenCode's
-# auth.json (mounted from config/auth.json). Import them from the host
+# auth.json (mounted from config/stack/auth.json). Import them from the host
 # via the Providers panel, or set OPENAI_API_KEY / OPENAI_BASE_URL
 # below if you want to override a provider globally (e.g. point the
 # openai provider at a local Ollama for offline dev).

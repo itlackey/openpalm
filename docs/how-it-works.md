@@ -69,7 +69,7 @@ actions and service names are legal -- the assistant can't do anything
 unauthorized.
 
 The assistant uses OpenCode config from `/etc/opencode`, mounts
-`~/.openpalm/config/auth.json` for host-managed OpenCode auth state, mounts AKM
+`~/.openpalm/config/stack/auth.json` for host-managed OpenCode auth state, mounts AKM
 config at `/etc/akm`, mounts the full AKM stash from `~/.openpalm/knowledge/` at
 `/stash`, and stores AKM cache/data under `/opt/akm/cache` and `/opt/akm/data`.
 Provider API keys are stored in OpenCode's auth.json via the Connections tab.

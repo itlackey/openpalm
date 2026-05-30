@@ -14,6 +14,7 @@ import {
   detectHostOpenCode,
   buildComposeOptions,
   checkDocker,
+  authJsonPath,
 } from '@openpalm/lib';
 import { composeRestart } from '$lib/server/docker.js';
 import { getState } from '$lib/server/state.js';
@@ -86,7 +87,7 @@ export const POST: RequestHandler = async () => {
     const result = importHostOpenCode(state, { overwriteConflicts: false });
     const hostStatus = detectHostOpenCode();
     let pushResult: PushResult = { pushed: [], errors: [] };
-    const importedAuthPath = `${state.configDir}/auth.json`;
+    const importedAuthPath = authJsonPath(state);
     if (existsSync(importedAuthPath)) {
       pushResult = await pushAuthToOpenCode(importedAuthPath);
     } else if (hostStatus.authPath) {

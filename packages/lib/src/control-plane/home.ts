@@ -2,8 +2,8 @@
  * Home directory layout for the OpenPalm control plane (v0.11.0+).
  *
  * Single ~/.openpalm/ root:
- *   config/    — user-editable config + system config files (auth.json, akm/)
- *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
+ *   config/    — user-editable config + system config files (akm/)
+ *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, auth.json, fixed compose files)
  *   data/      — persistent service data, logs, backups, rollback
  *   knowledge/ — akm knowledge (skills, vaults, agents)
  *   workspace/ — shared assistant work area
