@@ -1,6 +1,6 @@
 export type HardwareProfileVariant = 'cpu' | 'cuda' | 'rocm';
 
-const PROFILE_ID_RE = /^addon\.([a-z0-9-]+)\.(cpu|cuda|rocm)$/;
+const PROFILE_ID_RE = /^addon\.([a-z0-9-]+)(?:\.(cpu|cuda|rocm))?$/;
 
 export function addonProfileId(addon: string, variant: HardwareProfileVariant): string {
   return `addon.${addon}.${variant}`;

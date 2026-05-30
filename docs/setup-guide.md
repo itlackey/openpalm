@@ -86,7 +86,7 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 - `~/.openpalm/config/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/config/stack/core.compose.yml`.
-- Addons come from enabled overlays in `~/.openpalm/config/stack/addons/<name>/compose.yml`.
+- First-party addons are enabled through `~/.openpalm/config/stack/enabled-addons.json` and materialized into `~/.openpalm/config/stack/addons.compose.yml`; custom overlays can live in `~/.openpalm/config/stack/addons/<name>/compose.yml`.
 - Available addons live in `~/.openpalm/state/registry/addons/<name>/` until you enable them.
 - `~/.openpalm/config/stack/stack.yml` is a version marker only. It is not deployment truth.
 
@@ -101,9 +101,9 @@ below are typing shortcuts only.
 
 ### `op` helper function
 
-The [Manual Compose Runbook](operations/manual-compose-runbook.md) defines an
-`op` shell function that auto-discovers enabled addons and builds the full
-`docker compose` command for you. After adding it to your shell profile:
+The [Manual Compose Runbook](operations/manual-compose-runbook.md) documents the
+generated `run.sh` and an optional `op` shell helper for custom compose work.
+After adding it to your shell profile:
 
 ```bash
 op up -d        # start the stack
@@ -166,7 +166,7 @@ That file is optional metadata. It only matters when a helper tool reads it.
 
 ### An addon fails to start
 
-Inspect the addon's compose file in `~/.openpalm/state/registry/addons/<name>/compose.yml` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
+Inspect `~/.openpalm/config/stack/addons.compose.yml` and then inspect logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 ### Start over
 

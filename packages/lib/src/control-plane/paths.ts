@@ -6,9 +6,9 @@
  *
  * Layout:
  *   config/        — user-editable config + system config files (auth.json, akm/)
- *   config/stack/  — compose runtime + stack config (stack.env, secrets/, stack.yml, addons/)
+ *   config/stack/  — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
  *   cache/         — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
- *   state/         — persistent service data (assistant, admin, guardian, logs, backups, registry)
+ *   state/         — persistent service data (assistant, admin, guardian, logs, backups)
  *   stash/         — akm knowledge (skills, vaults, agents)
  *   workspace/     — shared work area
  */
@@ -58,9 +58,6 @@ export const guardianAuditPath     = (s: ControlPlaneState): string => `${s.stat
 /** One-shot 0.11.0 migration log (OP_UI_TOKEN → OPENCODE_SERVER_PASSWORD, endpoints.json move) */
 export const migration0110LogPath  = (s: ControlPlaneState): string => `${s.stateDir}/logs/migration-0.11.0.log`;
 export const backupsDir            = (s: ControlPlaneState): string => `${s.stateDir}/backups`;
-export const registryDir           = (s: ControlPlaneState): string => `${s.stateDir}/registry`;
-export const registryAddonsDir     = (s: ControlPlaneState): string => `${s.stateDir}/registry/addons`;
-export const registryAutomationsDir = (s: ControlPlaneState): string => `${s.stateDir}/registry/automations`;
 export const secretsDir            = (s: ControlPlaneState): string => `${s.stateDir}/secrets`;
 export const secretProviderPath    = (s: ControlPlaneState): string => `${s.stateDir}/secrets/provider.json`;
 export const secretsIndexPath      = (s: ControlPlaneState): string => `${s.stateDir}/secrets/plaintext-index.json`;
@@ -74,5 +71,7 @@ export const akmUserVaultPath      = (s: ControlPlaneState): string => `${s.stas
 // ── Stack directory ─────────────────────────────────────────────────────────
 
 export const coreComposePath       = (s: ControlPlaneState): string => `${s.stackDir}/core.compose.yml`;
-export const addonsStackDir        = (s: ControlPlaneState): string => `${s.stackDir}/addons`;
+export const servicesComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/services.compose.yml`;
+export const channelsComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/channels.compose.yml`;
+export const customComposePath     = (s: ControlPlaneState): string => `${s.stackDir}/custom.compose.yml`;
 export const addonComposePath      = (s: ControlPlaneState, name: string): string => `${s.stackDir}/addons/${name}/compose.yml`;

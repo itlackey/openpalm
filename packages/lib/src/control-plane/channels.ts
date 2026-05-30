@@ -1,7 +1,7 @@
 /**
  * Channel validation, discovery, and allowlist checks for the OpenPalm control plane.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parse as yamlParse } from "yaml";
 import type { ChannelInfo } from "./types.js";
@@ -14,6 +14,43 @@ const CHANNEL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 function isValidChannelName(name: string): boolean {
   return CHANNEL_NAME_RE.test(name);
+}
+
+function addonComposePaths(homeDir: string): string[] {
+  const paths: string[] = [];
+
+  for (const name of ['channels.compose.yml', 'services.compose.yml', 'custom.compose.yml']) {
+    const composePath = `${homeDir}/config/stack/${name}`;
+    if (existsSync(composePath)) paths.push(composePath);
+  }
+
+  return paths;
+}
+
+function channelNamesFromCompose(composePath: string): string[] {
+  try {
+    const content = readFileSync(composePath, "utf-8");
+    const doc = yamlParse(content);
+    if (typeof doc !== "object" || doc === null) return [];
+    const services = (doc as Record<string, unknown>).services;
+    if (typeof services !== "object" || services === null) return [];
+
+    const names: string[] = [];
+    for (const [svcName, svcDef] of Object.entries(services as Record<string, unknown>)) {
+      if (typeof svcDef !== "object" || svcDef === null) continue;
+      const env = (svcDef as Record<string, unknown>).environment;
+      if (typeof env === "object" && env !== null) {
+        if (Array.isArray(env)) {
+          if (env.some((e: unknown) => typeof e === "string" && e.startsWith("CHANNEL_NAME="))) names.push(svcName);
+        } else if ("CHANNEL_NAME" in (env as Record<string, unknown>)) {
+          names.push(svcName);
+        }
+      }
+    }
+    return names;
+  } catch {
+    return [];
+  }
 }
 
 // ── Channel Discovery ─────────────────────────────────────────────────
@@ -51,7 +88,8 @@ export function isChannelAddon(composePath: string): boolean {
 }
 
 /**
- * Discover installed channels by scanning stack/addons/ for channel addons.
+ * Discover installed channels from explicit first-party addon state plus
+ * custom stack/addons/ overlays.
  * A channel addon is identified by compose-derived truth: its compose.yml
  * defines services with a CHANNEL_NAME environment variable.
  *
@@ -62,20 +100,8 @@ export function isChannelAddon(composePath: string): boolean {
  */
 export function discoverChannels(configDir: string): ChannelInfo[] {
   const homeDir = dirname(configDir);
-  const addonsDir = `${homeDir}/config/stack/addons`;
-  if (!existsSync(addonsDir)) return [];
-
-  const entries = readdirSync(addonsDir, { withFileTypes: true });
-  return entries
-    .filter((entry) => {
-      if (!entry.isDirectory()) return false;
-      const composePath = `${addonsDir}/${entry.name}/compose.yml`;
-      return existsSync(composePath) && isChannelAddon(composePath);
-    })
-    .map((entry) => ({
-      name: entry.name,
-      ymlPath: `${addonsDir}/${entry.name}/compose.yml`,
-    }))
+  return addonComposePaths(homeDir)
+    .flatMap((composePath) => channelNamesFromCompose(composePath).map((name) => ({ name, ymlPath: composePath })))
     .filter((ch) => isValidChannelName(ch.name));
 }
 
@@ -84,8 +110,8 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 /**
  * Check if a service name is allowed. Core services are always allowed.
  * Addon services are allowed if they appear as a compose service defined in
- * any addon compose file under stack/addons/. This is compose-derived: the
- * actual compose content is checked, not directory naming conventions.
+ * any active addon compose file. This is compose-derived: the actual compose
+ * content is checked, not directory naming conventions.
  */
 export function isAllowedService(value: string, configDir?: string): boolean {
   if (!value || !value.trim() || value !== value.toLowerCase()) return false;
@@ -93,14 +119,8 @@ export function isAllowedService(value: string, configDir?: string): boolean {
 
   if (configDir) {
     const homeDir = dirname(configDir);
-    const addonsDir = `${homeDir}/config/stack/addons`;
-    if (!existsSync(addonsDir)) return false;
-
-    // Check if any addon compose.yml defines this service name (YAML-parsed)
-    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const composePath = `${addonsDir}/${entry.name}/compose.yml`;
-      if (!existsSync(composePath)) continue;
+    // Check if any active addon compose.yml defines this service name (YAML-parsed)
+    for (const composePath of addonComposePaths(homeDir)) {
       try {
         const content = readFileSync(composePath, "utf-8");
         const doc = yamlParse(content);
@@ -120,14 +140,13 @@ export function isAllowedService(value: string, configDir?: string): boolean {
 
 /**
  * Check if a channel name is valid and installed.
- * Accepts any channel with a compose.yml in stack/addons/<name>/.
+ * Accepts enabled first-party channels and custom channel overlays.
  */
 export function isValidChannel(value: string, configDir?: string): boolean {
   if (!value || !value.trim()) return false;
   if (!isValidChannelName(value)) return false;
   if (configDir) {
-    const homeDir = dirname(configDir);
-    return existsSync(`${homeDir}/config/stack/addons/${value}/compose.yml`);
+    return discoverChannels(configDir).some((channel) => channel.name === value);
   }
   return false;
 }

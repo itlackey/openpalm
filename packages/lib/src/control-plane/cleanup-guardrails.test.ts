@@ -112,7 +112,7 @@ describe("guardrail: compose preflight before mutation", () => {
     // Verify composePreflight is imported
     expect(lifecycleTs).toContain("composePreflight");
     // Verify preflight appears BEFORE snapshot in the source
-    const preflightIdx = lifecycleTs.indexOf("composePreflight({ files, envFiles })");
+    const preflightIdx = lifecycleTs.indexOf("composePreflight({ files, envFiles, profiles })");
     const snapshotIdx = lifecycleTs.indexOf("snapshotCurrentState(state)");
     expect(preflightIdx).toBeGreaterThan(0);
     expect(snapshotIdx).toBeGreaterThan(0);

@@ -115,7 +115,9 @@ the current model.
 | `~/.openpalm/state/registry/addons/<name>/` | Available addon catalog entries |
 | `~/.openpalm/state/registry/automations/` | Available automation catalog entries |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
-| `~/.openpalm/config/stack/addons/<name>/compose.yml` | Addon overlays |
+| `~/.openpalm/config/stack/enabled-addons.json` | Enabled first-party addons |
+| `~/.openpalm/config/stack/addons.compose.yml` | Generated first-party addon compose bundle |
+| `~/.openpalm/config/stack/addons/<name>/compose.yml` | Custom/third-party addon overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/stash/tasks/` | Active AKM automation task files (markdown) |
 | `~/.openpalm/config/stack.yml` | Capabilities only |

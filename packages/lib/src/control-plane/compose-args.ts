@@ -12,6 +12,7 @@ import { buildEnvFiles } from "./config-persistence.js";
 import { resolveComposeProjectName } from "./docker.js";
 import { parseEnvFile } from "./env.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
+import { listStackSpecAddons } from "./stack-spec.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -31,13 +32,28 @@ export type ComposeOptions = {
 export function resolveActiveProfiles(state: ControlPlaneState): string[] {
   const profiles: string[] = [];
   const stackEnvPath = `${state.stackDir}/stack.env`;
+  let env: Record<string, string> = {};
   if (existsSync(stackEnvPath)) {
-    const env = parseEnvFile(stackEnvPath);
+    env = parseEnvFile(stackEnvPath);
+    for (const addon of listStackSpecAddons(state.stackDir)) {
+      if (addon === 'voice') {
+        profiles.push(canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '') || 'addon.voice.cpu');
+      } else if (addon === 'ollama') {
+        profiles.push(canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '') || 'addon.ollama.cpu');
+      } else {
+        profiles.push(`addon.${addon}`);
+      }
+    }
+    for (const profile of (env.COMPOSE_PROFILES ?? '').split(',')) {
+      const trimmed = profile.trim();
+      if (trimmed) profiles.push(trimmed);
+    }
     const voiceProfile = canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '');
     if (voiceProfile) profiles.push(voiceProfile);
     const ollamaProfile = canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '');
     if (ollamaProfile) profiles.push(ollamaProfile);
   }
+
   return [...new Set(profiles)];
 }
 
@@ -103,9 +119,8 @@ function collectEnvOverrides(envFiles: string[]): Record<string, string> {
 
 /**
  * Write the effective docker compose command to OP_HOME/run.sh.
- * Uses environment variable references (${OP_HOME}, ${OP_PROJECT_NAME},
- * ${OP_VOICE_PROFILE}, ${OP_OLLAMA_PROFILE}) so the script is portable
- * and self-documenting.
+ * Uses environment variable references (${OP_HOME}, ${OP_PROJECT_NAME}) so
+ * the script is portable and self-documenting.
  *
  * Wraps `source stack.env` in `set -a` / `set +a` so variables without
  * explicit `export` are still available to child processes (docker compose).
@@ -114,7 +129,7 @@ function collectEnvOverrides(envFiles: string[]): Record<string, string> {
  * profile change, or upgrade.
  */
 export function writeRunScript(state: ControlPlaneState): void {
-  const { files, envFiles } = buildComposeOptions(state);
+  const { files, envFiles, profiles } = buildComposeOptions(state);
   const stackEnvRef = toOpHomeRelative(`${state.stackDir}/stack.env`, state.homeDir);
 
   const lines: string[] = [
@@ -130,12 +145,7 @@ export function writeRunScript(state: ControlPlaneState): void {
     `set -a`,
     `source ${shellArg(stackEnvRef)}`,
     `set +a`,
-    `profile_args=()`,
-    `for profile in "${"${OP_VOICE_PROFILE:-}"}" "${"${OP_OLLAMA_PROFILE:-}"}"; do`,
-    `  if [[ -n "$profile" ]]; then`,
-    `    profile_args+=(--profile "$profile")`,
-    `  fi`,
-    `done`,
+    `profile_args=(${profiles.map(shellArg).join(' ')})`,
     `docker compose --project-name "${"${OP_PROJECT_NAME:-${COMPOSE_PROJECT_NAME:-openpalm}}"}" \\`,
     `    "${"${profile_args[@]}"}" \\`,
     ...files.flatMap((f) => [`    -f ${shellArg(toOpHomeRelative(f, state.homeDir))} \\`]),

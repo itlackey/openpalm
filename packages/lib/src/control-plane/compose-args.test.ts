@@ -46,13 +46,15 @@ function seedEnvFiles(files: { stack?: boolean } = {}): void {
 }
 
 function seedAddon(name: string): void {
-  const addonDir = join(tempDir, "config", "stack", "addons", name);
-  mkdirSync(addonDir, { recursive: true });
-  writeFileSync(join(addonDir, "compose.yml"), "services: {}");
+  const stackDir = join(tempDir, "config", "stack");
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, "channels.compose.yml"), `services:\n  ${name}:\n    profiles: [\"addon.${name}\"]\n    image: test\n`);
+  writeFileSync(join(stackDir, "stack.env"), `COMPOSE_PROFILES=addon.${name}\n`);
 }
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "compose-args-test-"));
+  process.env.OP_HOME = tempDir;
 });
 
 afterEach(() => {
@@ -70,14 +72,26 @@ describe("buildComposeOptions", () => {
     expect(opts.files[0]).toContain("core.compose.yml");
   });
 
-  it("includes addon overlays when compose files are present in stack/addons", () => {
+  it("includes fixed channel compose and profile from stack env", () => {
     seedCoreCompose();
     seedAddon("chat");
 
     const state = makeState();
     const opts = buildComposeOptions(state);
     expect(opts.files).toHaveLength(2);
-    expect(opts.files[1]).toContain("chat");
+    expect(opts.files[1]).toContain("channels.compose.yml");
+    expect(opts.profiles).toContain("addon.chat");
+  });
+
+  it("includes the user custom compose file", () => {
+    seedCoreCompose();
+    const stackDir = join(tempDir, "config", "stack");
+    writeFileSync(join(stackDir, "custom.compose.yml"), "services: {}");
+
+    const state = makeState();
+    const opts = buildComposeOptions(state);
+    expect(opts.files).toHaveLength(2);
+    expect(opts.files[1]).toContain("custom.compose.yml");
   });
 
   it("returns env files in correct order", () => {
@@ -154,7 +168,7 @@ describe("buildComposeCliArgs", () => {
     // Note: vault/user/user.env is no longer
     // listed in the compose env_file set. Only stack.env is passed via --env-file.
     seedCoreCompose();
-    seedEnvFiles({ stack: true, guardian: true });
+    seedEnvFiles({ stack: true });
     const state = makeState();
     const args = buildComposeCliArgs(state);
     const envFileIndices = args.reduce<number[]>((acc, arg, i) => {
@@ -171,7 +185,7 @@ describe("buildComposeCliArgs", () => {
     expect(args).not.toContain("--env-file");
   });
 
-  it("includes addon overlays in -f flags", () => {
+  it("includes fixed channel compose in -f flags", () => {
     seedCoreCompose();
     seedAddon("chat");
 
@@ -182,16 +196,16 @@ describe("buildComposeCliArgs", () => {
       return acc;
     }, []);
     expect(fFlags).toHaveLength(2);
-    expect(fFlags[1]).toContain("chat");
+    expect(fFlags[1]).toContain("channels.compose.yml");
   });
 });
 
 // ── writeRunScript ───────────────────────────────────────────────────────
 
 describe("writeRunScript", () => {
-  it("sources stack.env and skips empty profile vars", () => {
+  it("sources stack.env and writes resolved profile args", () => {
     seedCoreCompose();
-    seedEnvFiles({ stack: true, guardian: true });
+    seedEnvFiles({ stack: true });
     const state = makeState();
 
     writeRunScript(state);
@@ -200,8 +214,7 @@ describe("writeRunScript", () => {
     expect(script).toContain("set -a");
     expect(script).toContain('OP_HOME="${OP_HOME:-$SCRIPT_DIR}"');
     expect(script).toContain('source "${OP_HOME}/config/stack/stack.env"');
-    expect(script).toContain('for profile in "${OP_VOICE_PROFILE:-}" "${OP_OLLAMA_PROFILE:-}"; do');
-    expect(script).toContain('if [[ -n "$profile" ]]; then');
+    expect(script).toContain('profile_args=()');
     expect(script).toContain('docker compose --project-name "${OP_PROJECT_NAME:-${COMPOSE_PROJECT_NAME:-openpalm}}"');
     expect(script).not.toContain('--profile ${OP_VOICE_PROFILE}');
     expect(script).not.toContain('--profile ${OP_OLLAMA_PROFILE}');

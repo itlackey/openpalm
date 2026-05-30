@@ -1,5 +1,5 @@
 schedule: '*/5 * * * *'
-enabled: true
+enabled: false
 description: Monitor that all services are running
 tags:
   - openpalm

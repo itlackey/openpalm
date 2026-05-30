@@ -117,8 +117,6 @@ export async function seedOpenPalmDir(
   if (local) {
     logger.debug('seeding .openpalm from local source', { src: local });
     copyTree(local, homeDir, { skipExisting: true });
-    // Registry is system-managed — always refresh so addon overlays stay current.
-    copyTree(join(local, 'state', 'registry'), join(homeDir, 'state', 'registry'));
     return;
   }
 
@@ -139,8 +137,6 @@ export async function seedOpenPalmDir(
     const srcOpenpalm = join(tmpDir, '.openpalm');
     if (!existsSync(srcOpenpalm)) throw new Error('.openpalm/ not found in tarball');
     copyTree(srcOpenpalm, homeDir, { skipExisting: true });
-    // Registry is system-managed — always refresh so addon overlays stay current.
-    copyTree(join(srcOpenpalm, 'state', 'registry'), join(homeDir, 'state', 'registry'));
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -1,5 +1,5 @@
 schedule: '0 8 * * *'
-enabled: true
+enabled: false
 description: Ask the assistant for a daily system health summary
 tags:
   - openpalm

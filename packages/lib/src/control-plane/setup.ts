@@ -301,7 +301,7 @@ export async function performSetup(
       }
 
       // Enable requested addons (channels like discord, slack, etc.)
-      // setAddonEnabled copies the compose overlay and ensures a channel secret file.
+      // setAddonEnabled records explicit activation state and ensures channel secret files.
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
           if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true, state);

@@ -1,8 +1,9 @@
 /**
- * Registry catalog discovery and refresh.
+ * Built-in addon/profile discovery and legacy registry helpers.
  *
- * `OP_HOME/state/registry` is the only persistent catalog location.
- * Install seeds it once; refresh replaces it explicitly.
+ * Runtime addon enablement is recorded in stack.yml and resolved to Compose
+ * profiles. The fixed compose files under config/stack are the runtime source
+ * of truth.
  */
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
@@ -11,22 +12,25 @@ import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
-import { isChannelAddon } from './channels.js';
 import { ensureChannelSecret } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
 import { writeRunScript } from './compose-args.js';
+import { readBundledStackAsset } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
+import { listStackSpecAddons, setStackSpecAddon } from './stack-spec.js';
 import type { ControlPlaneState } from './types.js';
 import {
   resolveRegistryAddonsDir,
   resolveRegistryAutomationsDir,
   resolveRegistryDir,
+  resolveStashDir,
 } from './home.js';
 
 const BRANCH_RE = /^[a-zA-Z0-9._\/-]+$/;
 const URL_RE = /^(https:\/\/|git@)/;
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
+const BUILTIN_ADDONS = ['api', 'chat', 'discord', 'ollama', 'slack', 'ssh', 'voice'] as const;
 
 let warnedMissingRegistryAddonsDir = false;
 
@@ -209,7 +213,10 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
 }
 
 export function discoverRegistryAutomations(stashDir: string): RegistryAutomationEntry[] {
-  const automationsDir = resolveRegistryAutomationsDir();
+  const localOpenpalmDir = resolveLocalOpenpalmDir();
+  const automationsDir = localOpenpalmDir
+    ? join(localOpenpalmDir, 'stash', 'tasks')
+    : join(stashDir, 'tasks');
   if (!existsSync(automationsDir)) return [];
 
   return readdirSync(automationsDir)
@@ -246,75 +253,64 @@ export function discoverRegistryAutomations(stashDir: string): RegistryAutomatio
 
 export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
-  const ymlPath = join(resolveRegistryAutomationsDir(), `${name}.yml`);
-  if (!existsSync(ymlPath)) return null;
-  return readFileSync(ymlPath, 'utf-8');
+  const localOpenpalmDir = resolveLocalOpenpalmDir();
+  const candidates = [
+    localOpenpalmDir ? join(localOpenpalmDir, 'stash', 'tasks', `${name}.yml`) : '',
+    join(resolveStashDir(), 'tasks', `${name}.yml`),
+    join(resolveRegistryAutomationsDir(), `${name}.yml`),
+  ].filter(Boolean);
+  for (const ymlPath of candidates) {
+    if (existsSync(ymlPath)) return readFileSync(ymlPath, 'utf-8');
+  }
+  return null;
 }
 
-export function getRegistryAddonConfig(homeDir: string, name: string): RegistryAddonConfig {
+export function getRegistryAddonConfig(_homeDir: string, name: string): RegistryAddonConfig {
   if (!VALID_NAME_RE.test(name)) {
     throw new Error(`Invalid addon name: ${name}`);
   }
 
-  // Overlay-only addons (compose.yml only, no .env.schema) have no env vars
-  // to render, so the schema reads as an empty string.
-  const schemaPath = `state/registry/addons/${name}/.env.schema`;
-  const schemaFile = join(homeDir, schemaPath);
   return {
-    schemaPath,
+    schemaPath: '',
     userEnvPath: 'config/stack/stack.env',
-    envSchema: existsSync(schemaFile) ? readFileSync(schemaFile, 'utf-8') : '',
+    envSchema: '',
   };
 }
 
 export function listAvailableAddonIds(): string[] {
-  const addonsDir = resolveRegistryAddonsDir();
-  if (!existsSync(addonsDir) && !warnedMissingRegistryAddonsDir) {
-    warnedMissingRegistryAddonsDir = true;
-    logger.warn('registry addons directory is missing', { addonsDir });
-  }
-  return Object.keys(discoverRegistryComponents()).sort();
+  return [...BUILTIN_ADDONS].sort();
 }
 
 export function listEnabledAddonIds(homeDir: string): string[] {
-  const addonsDir = join(homeDir, 'config', 'stack', 'addons');
-  if (!existsSync(addonsDir)) return [];
-
-  return readdirSync(addonsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && existsSync(join(addonsDir, entry.name, 'compose.yml')))
-    .map((entry) => entry.name)
-    .sort();
-}
-
-function copyAddonFromRegistry(homeDir: string, name: string): void {
-  if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-
-  const sourceDir = join(resolveRegistryAddonsDir(), name);
-  // compose.yml is the only required file. Overlay-only addons may omit
-  // .env.schema entirely.
-  if (!existsSync(join(sourceDir, 'compose.yml'))) {
-    throw new Error(`Addon "${name}" not found in registry`);
+  const enabled = new Set(listStackSpecAddons(join(homeDir, 'config', 'stack')));
+  const env = readStackEnv(join(homeDir, 'config', 'stack'));
+  const profiles = new Set((env.COMPOSE_PROFILES ?? '').split(',').map((p) => p.trim()).filter(Boolean));
+  for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
+    const profile = env[key]?.trim();
+    if (profile) profiles.add(profile);
   }
-
-  const targetDir = join(homeDir, 'config', 'stack', 'addons', name);
-  rmSync(targetDir, { recursive: true, force: true });
-  mkdirSync(join(homeDir, 'config', 'stack', 'addons'), { recursive: true });
-  cpSync(sourceDir, targetDir, { recursive: true });
+  for (const profile of profiles) {
+    const match = profile.match(/^addon\.([a-z0-9-]+)(?:\.|$)/);
+    if (match?.[1]) enabled.add(match[1]);
+  }
+  return [...enabled].sort();
 }
 
-function removeEnabledAddon(homeDir: string, name: string): void {
-  if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-  rmSync(join(homeDir, 'config', 'stack', 'addons', name), { recursive: true, force: true });
-}
-
-function readAddonServiceNames(composePath: string): string[] {
-  if (!existsSync(composePath)) return [];
-
+function readAddonServiceNamesFromContent(composeContent: string, composePath: string, addonName?: string): string[] {
   try {
-    const parsed = parseYaml(readFileSync(composePath, "utf-8"));
+    const parsed = parseYaml(composeContent);
     const services = parsed && typeof parsed === "object" ? (parsed as { services?: unknown }).services : undefined;
     if (!services || typeof services !== "object" || Array.isArray(services)) return [];
-    return Object.keys(services as Record<string, unknown>);
+    const entries = Object.entries(services as Record<string, unknown>);
+    if (!addonName) return entries.map(([name]) => name);
+    return entries
+      .filter(([serviceName, raw]) => {
+        if (serviceName === addonName || serviceName.startsWith(`${addonName}-`)) return true;
+        if (!raw || typeof raw !== 'object') return false;
+        const profiles = (raw as { profiles?: unknown }).profiles;
+        return Array.isArray(profiles) && profiles.some((p) => typeof p === 'string' && p.startsWith(`addon.${addonName}`));
+      })
+      .map(([serviceName]) => serviceName);
   } catch (error) {
     logger.warn("failed to parse addon compose services", {
       composePath,
@@ -324,16 +320,27 @@ function readAddonServiceNames(composePath: string): string[] {
   }
 }
 
+function readAddonServiceNames(composePath: string, addonName?: string): string[] {
+  if (!existsSync(composePath)) return [];
+  return readAddonServiceNamesFromContent(readFileSync(composePath, "utf-8"), composePath, addonName);
+}
+
 export function getAddonServiceNames(homeDir: string, name: string): string[] {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "config", "stack", "addons", name, "compose.yml"),
-    join(homeDir, "state", "registry", "addons", name, "compose.yml"),
+    join(homeDir, "config", "stack", "channels.compose.yml"),
+    join(homeDir, "config", "stack", "services.compose.yml"),
+    join(homeDir, "config", "stack", "custom.compose.yml"),
   ];
 
   for (const composePath of composeCandidates) {
-    const services = readAddonServiceNames(composePath);
+    const services = readAddonServiceNames(composePath, name);
+    if (services.length > 0) return services;
+  }
+
+  for (const assetName of ["channels.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+    const services = readAddonServiceNamesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`, name);
     if (services.length > 0) return services;
   }
 
@@ -565,12 +572,10 @@ export async function annotateAddonProfileAvailability(
   return results;
 }
 
-function readAddonProfiles(composePath: string): AddonProfile[] {
-  if (!existsSync(composePath)) return [];
-
+function readAddonProfilesFromContent(composeContent: string, composePath: string): AddonProfile[] {
   let parsed: unknown;
   try {
-    parsed = parseYaml(readFileSync(composePath, "utf-8"));
+    parsed = parseYaml(composeContent);
   } catch (error) {
     logger.warn("failed to parse addon compose profiles", {
       composePath,
@@ -617,6 +622,11 @@ function readAddonProfiles(composePath: string): AddonProfile[] {
   return [...byProfile.values()];
 }
 
+function readAddonProfiles(composePath: string): AddonProfile[] {
+  if (!existsSync(composePath)) return [];
+  return readAddonProfilesFromContent(readFileSync(composePath, "utf-8"), composePath);
+}
+
 function readServiceLabels(raw: unknown): Record<string, string> {
   if (!raw) return {};
   const out: Record<string, string> = {};
@@ -639,22 +649,27 @@ function readServiceLabels(raw: unknown): Record<string, string> {
 export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
-  // Registry is authoritative for the profile catalog — it always reflects
-  // the current release. The enabled-addon copy in config/stack/addons/ can
-  // be stale (copied from an earlier release that had fewer profiles), so
-  // we only fall back to it when the registry entry is missing entirely.
   const composeCandidates = [
-    join(homeDir, "state", "registry", "addons", name, "compose.yml"),
-    join(homeDir, "config", "stack", "addons", name, "compose.yml"),
+    join(homeDir, "config", "stack", "channels.compose.yml"),
+    join(homeDir, "config", "stack", "services.compose.yml"),
+    join(homeDir, "config", "stack", "custom.compose.yml"),
   ];
 
 	const localOpenpalmDir = resolveLocalOpenpalmDir();
 	if (localOpenpalmDir) {
-		composeCandidates.push(join(localOpenpalmDir, 'state', 'registry', 'addons', name, 'compose.yml'));
+		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'channels.compose.yml'));
+		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'services.compose.yml'));
+		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'custom.compose.yml'));
 	}
 
   for (const composePath of composeCandidates) {
-    const profiles = readAddonProfiles(composePath);
+    const profiles = readAddonProfiles(composePath).filter((profile) => profile.id.startsWith(`addon.${name}`));
+    if (profiles.length > 0) return profiles;
+  }
+
+  for (const assetName of ["channels.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+    const profiles = readAddonProfilesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`)
+      .filter((profile) => profile.id.startsWith(`addon.${name}`));
     if (profiles.length > 0) return profiles;
   }
 
@@ -680,9 +695,11 @@ export function setAddonProfileSelection(stackDir: string, name: string, profile
   if (state) writeRunScript(state);
 }
 
-function enableAddon(homeDir: string, name: string): MutationResult {
+function enableAddon(homeDir: string, stackDir: string, name: string): MutationResult {
   try {
-    copyAddonFromRegistry(homeDir, name);
+    if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
+    setStackSpecAddon(stackDir, name, true);
+    if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '1' });
     // Pre-create the addon services directory so Docker doesn't create it as root
     mkdirSync(join(homeDir, 'services', name), { recursive: true });
     return { ok: true };
@@ -691,9 +708,11 @@ function enableAddon(homeDir: string, name: string): MutationResult {
   }
 }
 
-function disableAddonByName(homeDir: string, name: string): MutationResult {
+function disableAddonByName(homeDir: string, stackDir: string, name: string): MutationResult {
   try {
-    removeEnabledAddon(homeDir, name);
+    if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
+    setStackSpecAddon(stackDir, name, false);
+    if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '0' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -706,7 +725,7 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
   }
 
   if (!listAvailableAddonIds().includes(name)) {
-    return { ok: false, error: `Addon "${name}" not found in registry` };
+    return { ok: false, error: `Addon "${name}" is not built in` };
   }
 
   const wasEnabled = listEnabledAddonIds(homeDir).includes(name);
@@ -721,13 +740,14 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
     };
   }
 
-  const mutation = enabled ? enableAddon(homeDir, name) : disableAddonByName(homeDir, name);
+  const mutation = enabled ? enableAddon(homeDir, stackDir, name) : disableAddonByName(homeDir, stackDir, name);
   if (!mutation.ok) return mutation;
 
   if (enabled) {
-    const composePath = join(homeDir, "config", "stack", "addons", name, "compose.yml");
-    if (isChannelAddon(composePath)) {
-      ensureChannelSecret(stackDir, name);
+    if (['api', 'chat', 'discord', 'slack'].includes(name)) {
+      for (const channel of ['api', 'chat', 'discord', 'slack']) {
+        ensureChannelSecret(stackDir, channel);
+      }
     }
   }
 

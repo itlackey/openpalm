@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -39,16 +39,15 @@ function makePostEvent(body: Record<string, unknown>, token = 'admin-token'): Pa
 }
 
 function seedRegistryAddon(homeDir: string, name: string): void {
-  const addonDir = join(homeDir, 'state', 'registry', 'addons', name);
-  mkdirSync(addonDir, { recursive: true });
-  writeFileSync(join(addonDir, 'compose.yml'), `services:\n  ${name}:\n    image: test\n`);
-  writeFileSync(join(addonDir, '.env.schema'), `CHANNEL_${name.toUpperCase()}_SECRET=\n`);
+  const stackDir = join(homeDir, 'config', 'stack');
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, 'channels.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
 }
 
 function enableAddon(homeDir: string, name: string): void {
-  const dir = join(homeDir, 'config', 'stack', 'addons', name);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'compose.yml'), `services:\n  ${name}:\n    image: test\n`);
+  const stackDir = join(homeDir, 'config', 'stack');
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, 'stack.env'), `COMPOSE_PROFILES=addon.${name}\n`);
 }
 
 let originalHome: string | undefined;
@@ -71,24 +70,22 @@ describe('GET /admin/addons', () => {
     expect(res.status).toBe(401);
   });
 
-  test('returns empty list when no addons in registry', async () => {
+  test('returns built-in addons without requiring a registry', async () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = await res.json() as { addons: unknown[] };
-    expect(body.addons).toEqual([]);
+    expect(body.addons).toHaveLength(7);
   });
 
   test('lists available addons with enabled status', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat');
-    seedRegistryAddon(state.homeDir, 'discord');
     enableAddon(state.homeDir, 'chat');
 
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
 
     const body = await res.json() as { addons: Array<{ name: string; enabled: boolean; available: boolean }> };
-    expect(body.addons).toHaveLength(2);
+    expect(body.addons).toHaveLength(7);
 
     const chat = body.addons.find((a) => a.name === 'chat');
     const discord = body.addons.find((a) => a.name === 'discord');
@@ -125,7 +122,7 @@ describe('POST /admin/addons', () => {
     expect(body.addon).toBe('chat');
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
-    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'utf-8')).toContain('COMPOSE_PROFILES=addon.chat');
   });
 
   test('disables an enabled addon', async () => {
@@ -139,6 +136,7 @@ describe('POST /admin/addons', () => {
     const body = await res.json() as { ok: boolean; enabled: boolean };
     expect(body.ok).toBe(true);
     expect(body.enabled).toBe(false);
-    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'))).toBe(false);
+    expect(existsSync(join(state.homeDir, 'config', 'stack', 'stack.env'))).toBe(true);
+    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'utf-8')).not.toContain('COMPOSE_PROFILES=addon.chat');
   });
 });

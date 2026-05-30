@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -40,11 +40,10 @@ function makePostEvent(name: string, body: Record<string, unknown>, token = 'adm
   } as Parameters<typeof POST>[0];
 }
 
-function seedRegistryAddon(homeDir: string, name: string, schema = 'CHANNEL_CHAT_SECRET=\n'): void {
-  const addonDir = join(homeDir, 'state', 'registry', 'addons', name);
-  mkdirSync(addonDir, { recursive: true });
-  writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  chat:\n    image: test\n');
-  writeFileSync(join(addonDir, '.env.schema'), schema);
+function seedFixedAddon(homeDir: string, name: string): void {
+  const stackDir = join(homeDir, 'config', 'stack');
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, 'channels.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
 }
 
 let originalHome: string | undefined;
@@ -69,9 +68,8 @@ describe('/admin/addons/:name route', () => {
 
   test('returns enabled state and schema metadata', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat', '# chat schema\nCHANNEL_CHAT_SECRET=\n');
-    mkdirSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'), { recursive: true });
-    writeFileSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'), 'services:\n  chat:\n    image: test\n');
+    seedFixedAddon(state.homeDir, 'chat');
+    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
 
     const res = await GET(makeGetEvent('chat'));
     expect(res.status).toBe(200);
@@ -83,9 +81,9 @@ describe('/admin/addons/:name route', () => {
     };
     expect(body.name).toBe('chat');
     expect(body.enabled).toBe(true);
-    expect(body.config.schemaPath).toBe('state/registry/addons/chat/.env.schema');
+    expect(body.config.schemaPath).toBe('');
     expect(body.config.userEnvPath).toBe('config/stack/stack.env');
-    expect(body.config.envSchema).toContain('CHANNEL_CHAT_SECRET');
+    expect(body.config.envSchema).toBe('');
   });
 
   test('returns 404 for unknown addons', async () => {
@@ -95,7 +93,7 @@ describe('/admin/addons/:name route', () => {
 
   test('returns disabled when addon is in catalog but not in stack/addons', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'chat');
 
     const res = await GET(makeGetEvent('chat'));
     expect(res.status).toBe(200);
@@ -115,9 +113,9 @@ describe('POST /admin/addons/:name', () => {
     expect(res.status).toBe(404);
   });
 
-  test('enables an addon by copying from registry to stack/addons', async () => {
+  test('enables an addon by updating COMPOSE_PROFILES', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'chat');
 
     const res = await POST(makePostEvent('chat', { enabled: true }));
     expect(res.status).toBe(200);
@@ -128,17 +126,13 @@ describe('POST /admin/addons/:name', () => {
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
 
-    // Verify file was copied to stack/addons
-    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'utf-8')).toContain('COMPOSE_PROFILES=addon.chat');
   });
 
-  test('disables an addon by removing from stack/addons', async () => {
+  test('disables an addon by updating COMPOSE_PROFILES', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat');
-
-    // First enable it
-    mkdirSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'), { recursive: true });
-    writeFileSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat', 'compose.yml'), 'services:\n  chat:\n    image: test\n');
+    seedFixedAddon(state.homeDir, 'chat');
+    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
 
     const res = await POST(makePostEvent('chat', { enabled: false }));
     expect(res.status).toBe(200);
@@ -148,13 +142,12 @@ describe('POST /admin/addons/:name', () => {
     expect(body.enabled).toBe(false);
     expect(body.changed).toBe(true);
 
-    // Verify file was removed from stack/addons
-    expect(existsSync(join(state.homeDir, 'config', 'stack', 'addons', 'chat'))).toBe(false);
+    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.env'), 'utf-8')).not.toContain('COMPOSE_PROFILES=addon.chat');
   });
 
   test('reports changed=false when already in target state', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'chat');
 
     // Already disabled, request disable again
     const res = await POST(makePostEvent('chat', { enabled: false }));

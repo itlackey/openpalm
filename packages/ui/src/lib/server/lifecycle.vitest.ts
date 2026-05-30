@@ -96,21 +96,17 @@ describe("buildComposeFileList", () => {
     expect(files[0]).toBe(`${state.stackDir}/core.compose.yml`);
   });
 
-  test("includes addon overlays from config/stack/addons/", () => {
+  test("includes fixed custom compose file", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    const addonsDir = join(state.stackDir, "addons");
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
-
-    // Create the addon compose file
-    mkdirSync(join(addonsDir, "chat"), { recursive: true });
-    writeFileSync(join(addonsDir, "chat", "compose.yml"), "services: {}");
+    writeFileSync(join(state.stackDir, "custom.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(2);
-    expect(files[1]).toContain("chat");
+    expect(files[1]).toContain("custom.compose.yml");
   });
 
   test("does not include removed overlays", () => {

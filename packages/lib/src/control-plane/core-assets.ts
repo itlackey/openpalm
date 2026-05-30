@@ -5,7 +5,8 @@
  *   stack/              — compose runtime assets (core.compose.yml)
  *
  * This module manages runtime-owned core files only.
- * Registry catalog refresh is handled separately in registry.ts.
+ * Addon compose bundle generation and registry catalog refresh are handled
+ * separately in registry.ts.
  * Env validation has moved to `akm vault` + the in-house redactor — the
  * historical `.env.schema` files (varlock format) were retired in #391.
  */
@@ -18,6 +19,10 @@ import { sha256 } from "./crypto.js";
 
 const logger = createLogger("core-assets");
 
+function bundledAssetPath(relPath: string): string {
+  return join(dirname(fileURLToPath(import.meta.url)), '../../../../.openpalm', relPath);
+}
+
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
 export function ensureCoreCompose(): string {
@@ -27,7 +32,15 @@ export function ensureCoreCompose(): string {
 }
 
 export function readCoreCompose(): string {
-  return readFileSync(`${resolveOpenPalmHome()}/config/stack/core.compose.yml`, "utf-8");
+  const livePath = `${resolveOpenPalmHome()}/config/stack/core.compose.yml`;
+  if (existsSync(livePath)) {
+    return readFileSync(livePath, 'utf-8');
+  }
+  return readFileSync(bundledAssetPath('config/stack/core.compose.yml'), 'utf-8');
+}
+
+export function readBundledStackAsset(name: string): string {
+  return readFileSync(bundledAssetPath(`config/stack/${name}`), 'utf-8');
 }
 
 // ── OpenCode System Config ──────────────────────────────────────────
@@ -100,12 +113,15 @@ const VERSION = resolveAssetVersion();
 // overwritten) via seedOpenPalmDir (skipExisting) or SEEDED_ASSETS below.
 const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/config/stack/core.compose.yml" },
+  { relPath: "config/stack/services.compose.yml", githubFilename: ".openpalm/config/stack/services.compose.yml" },
+  { relPath: "config/stack/channels.compose.yml", githubFilename: ".openpalm/config/stack/channels.compose.yml" },
 ];
 
 // Seeded once — written only when the file does not exist yet.
 // User edits always win; upgrade never touches these files.
 const SEEDED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/assistant/opencode.jsonc", githubFilename: ".openpalm/config/assistant/opencode.jsonc" },
+  { relPath: "config/stack/custom.compose.yml", githubFilename: ".openpalm/config/stack/custom.compose.yml" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {

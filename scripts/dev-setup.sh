@@ -12,8 +12,7 @@ Options:
                       .dev/config/stack/stack.env with auto-detected values, and
                       write system secrets under .dev/stash/vaults/secrets/.
   --force             Overwrite seeded files even if they already exist.
-  --enable-addon <n>  Copy .dev/state/registry/addons/<n>/ into .dev/config/stack/addons/<n>/.
-                      Repeat to enable multiple dev addons.
+  --enable-addon <n>  Add addon.<n> to COMPOSE_PROFILES. Repeat to enable multiple dev addons.
   --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
                       seconds on a warm cache). Default: build only when missing.
   --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
@@ -119,7 +118,7 @@ LOGS_DIR="$STATE_DIR/logs"
 # CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
 # whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. Generated
-# files (stack.env, secrets/, user.env, auth.json) are excluded
+# files (stack.env, stash/vaults/secrets/, user.env, auth.json) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
 # --force does a destructive resync (drop stale files that no longer
@@ -135,40 +134,37 @@ rsync "${rsync_flags[@]}" \
 	--exclude=stash/vaults/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
 
-# Always force-refresh the registry catalog. Operators don't hand-edit
-# addon manifests — they edit them in .openpalm/state/registry/ and
-# expect .dev to follow. Stale copies in .dev cause silent
-# path-mismatch bugs (see commit 5e9609b7 for one example).
-rsync -a --delete \
-	"$ROOT_DIR/.openpalm/state/registry/" "$DEV_ROOT/state/registry/"
-
 # ── Runtime-only mount targets ───────────────────────────────────
 # Dirs the compose stack expects to bind-mount but `.openpalm/` doesn't
 # ship (they're per-container state, not config). All must exist before
 # `docker compose up` or bind-mount creation runs as root.
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
-	"$CONFIG_DIR/automations" "$CONFIG_DIR/stack/addons" "$CONFIG_DIR/stack/secrets" \
-	"$STASH_DIR/vaults" \
+	"$CONFIG_DIR/automations" \
+	"$STASH_DIR/vaults" "$STASH_DIR/vaults/secrets" \
 	"$STATE_DIR" "$STATE_DIR/admin" "$STATE_DIR/assistant" "$STATE_DIR/assistant/.config/opencode" "$STATE_DIR/guardian" \
 	"$STATE_DIR/akm" "$STATE_DIR/akm/data" "$STATE_DIR/akm/state" \
 	"$STATE_DIR/logs" "$STATE_DIR/logs/opencode" \
-	"$STATE_DIR/backups" "$STATE_DIR/registry" "$STATE_DIR/registry/addons" "$STATE_DIR/registry/automations" \
+	"$STATE_DIR/backups" \
 	"$STATE_DIR/voice" "$STATE_DIR/voice/models" "$STATE_DIR/ollama" \
 	"$LOGS_DIR/opencode" \
 	"$DEV_ROOT/workspace"
 
 # Enable requested addons in the dev runtime
-for addon in "${enabled_addons[@]}"; do
-	src_dir="$DEV_ROOT/state/registry/addons/$addon"
-	dest_dir="$CONFIG_DIR/stack/addons/$addon"
-	if [[ ! -d "$src_dir" ]]; then
-		echo "Error: dev registry addon not found: $addon" >&2
-		exit 1
+if [[ ${#enabled_addons[@]} -gt 0 ]]; then
+	profiles=()
+	for addon in "${enabled_addons[@]}"; do
+		profiles+=("addon.$addon")
+	done
+	profiles_csv="$(IFS=,; printf '%s' "${profiles[*]}")"
+	if [[ -f "$CONFIG_DIR/stack/stack.env" ]]; then
+		if grep -q '^COMPOSE_PROFILES=' "$CONFIG_DIR/stack/stack.env"; then
+			perl -0pi -e "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$profiles_csv/m" "$CONFIG_DIR/stack/stack.env"
+		else
+			printf '\nCOMPOSE_PROFILES=%s\n' "$profiles_csv" >>"$CONFIG_DIR/stack/stack.env"
+		fi
 	fi
-	rm -rf "$dest_dir"
-	cp -r "$src_dir" "$dest_dir"
-done
+fi
 
 # stack.yml (version marker only — LLM/embedding config lives in
 # config/akm/config.json) is templated from .openpalm/config/stack/stack.yml
@@ -247,7 +243,7 @@ OP_SETUP_COMPLETE=true
 EOF
 	fi
 
-	secrets_dir="$CONFIG_DIR/stack/secrets"
+	secrets_dir="$STASH_DIR/vaults/secrets"
 	mkdir -p "$secrets_dir"
 	chmod 700 "$secrets_dir"
 	if [[ ! -f "$secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
@@ -262,8 +258,14 @@ fi
 
 # Ensure non-secret stack env, user vault, and file-secret directory exist.
 touch "$STASH_DIR/vaults/user.env" "$CONFIG_DIR/stack/stack.env"
+if ! grep -q '^OP_HOME=' "$CONFIG_DIR/stack/stack.env"; then
+	printf '\nOP_HOME=%s\n' "$DEV_ROOT" >>"$CONFIG_DIR/stack/stack.env"
+fi
+if ! grep -q '^OP_PROJECT_NAME=' "$CONFIG_DIR/stack/stack.env"; then
+	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$CONFIG_DIR/stack/stack.env"
+fi
 
-secrets_dir="$CONFIG_DIR/stack/secrets"
+secrets_dir="$STASH_DIR/vaults/secrets"
 mkdir -p "$secrets_dir"
 chmod 700 "$secrets_dir"
 for secret_name in channel_chat_secret channel_api_secret channel_discord_secret channel_slack_secret; do

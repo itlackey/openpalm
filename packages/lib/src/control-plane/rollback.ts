@@ -5,7 +5,7 @@
  * is snapshotted to ~/.cache/openpalm/rollback/. On deploy failure
  * (or manual `openpalm rollback`), the snapshot is restored.
  */
-import { mkdirSync, copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import { resolveRollbackDir } from "./home.js";
@@ -15,6 +15,9 @@ import { resolveRollbackDir } from "./home.js";
  *  are never overwritten by lifecycle operations. */
 const SNAPSHOT_FILES = [
   "config/stack/stack.env",
+  "config/stack/services.compose.yml",
+  "config/stack/channels.compose.yml",
+  "config/stack/custom.compose.yml",
   "config/auth.json",
 ];
 
@@ -29,8 +32,7 @@ function safeCopy(src: string, dest: string): void {
 
 /**
  * Save the current live configuration files to the rollback directory.
- * Also snapshots stack/core.compose.yml and all addon compose.yml files
- * under stack/addons/.
+ * Also snapshots stack/core.compose.yml.
  */
 export function snapshotCurrentState(state: ControlPlaneState): void {
   const rollbackDir = resolveRollbackDir();
@@ -46,22 +48,6 @@ export function snapshotCurrentState(state: ControlPlaneState): void {
   // Snapshot config/stack/core.compose.yml
   const coreCompose = join(state.homeDir, "config/stack/core.compose.yml");
   safeCopy(coreCompose, join(rollbackDir, "config/stack/core.compose.yml"));
-
-  // Snapshot config/stack/addons/*/compose.yml
-  const addonsDir = join(state.homeDir, "config/stack/addons");
-  if (existsSync(addonsDir)) {
-    for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        const addonCompose = join(addonsDir, entry.name, "compose.yml");
-        if (existsSync(addonCompose)) {
-          safeCopy(
-            addonCompose,
-            join(rollbackDir, "config/stack/addons", entry.name, "compose.yml"),
-          );
-        }
-      }
-    }
-  }
 
   // Write a timestamp marker
   writeFileSync(
@@ -93,21 +79,6 @@ export function restoreSnapshot(state: ControlPlaneState): void {
     safeCopy(srcCoreCompose, join(state.homeDir, "config/stack/core.compose.yml"));
   }
 
-  // Restore config/stack/addons/*/compose.yml
-  const srcAddons = join(rollbackDir, "config/stack/addons");
-  if (existsSync(srcAddons)) {
-    for (const entry of readdirSync(srcAddons, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        const srcAddonCompose = join(srcAddons, entry.name, "compose.yml");
-        if (existsSync(srcAddonCompose)) {
-          safeCopy(
-            srcAddonCompose,
-            join(state.homeDir, "config/stack/addons", entry.name, "compose.yml"),
-          );
-        }
-      }
-    }
-  }
 }
 
 /**

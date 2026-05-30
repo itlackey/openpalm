@@ -20,6 +20,7 @@ import {
   getRegistryAutomation,
   getRegistryAddonConfig,
   listAvailableAddonIds,
+  listEnabledAddonIds,
   getAddonServiceNames,
   getAddonProfiles,
   getAddonProfileSelection,
@@ -242,8 +243,8 @@ describe("materialized registry catalog", () => {
 
     expect(Object.keys(components)).toEqual(['chat']);
     expect(components.chat?.schema).toContain('CHANNEL_CHAT_SECRET');
-    expect(automations.map((entry) => entry.name)).toEqual(['cleanup']);
-    expect(getRegistryAutomation('cleanup')).toContain('schedule: "0 3 * * *"');
+    expect(automations.map((entry) => entry.name)).toContain('akm-improve');
+    expect(getRegistryAutomation('akm-improve')).toContain('akm improve');
   });
 
   it("returns addon config metadata from the materialized registry", () => {
@@ -260,9 +261,9 @@ describe("materialized registry catalog", () => {
     materializeRegistryCatalog(sourceRoot);
 
     expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
-      schemaPath: 'state/registry/addons/chat/.env.schema',
+      schemaPath: '',
       userEnvPath: 'config/stack/stack.env',
-      envSchema: 'CHANNEL_CHAT_SECRET=\n',
+      envSchema: '',
     });
   });
 
@@ -286,8 +287,8 @@ describe("materialized registry catalog", () => {
     });
   });
 
-  it("returns no available addons when the registry addons directory is missing", () => {
-    expect(listAvailableAddonIds()).toEqual([]);
+  it("returns static built-in addons without requiring a registry directory", () => {
+    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'ollama', 'slack', 'ssh', 'voice']);
   });
 
   it("fails when source catalog is incomplete", () => {
@@ -298,7 +299,7 @@ describe("materialized registry catalog", () => {
     expect(() => materializeRegistryCatalog(sourceRoot)).toThrow('Registry catalog is incomplete');
   });
 
-  it("enables and disables addons through the runtime stack directory", () => {
+  it("enables and disables addons through explicit runtime state", () => {
     const sourceRoot = join(tmpDir, 'repo');
     const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
     const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
@@ -313,26 +314,19 @@ describe("materialized registry catalog", () => {
 
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
     expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', true)).toMatchObject({ ok: true });
-    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
+    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(false);
 
     expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false)).toMatchObject({ ok: true });
-    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat'))).toBe(false);
+    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
   });
 
-  it("returns addon service names from stack or registry compose files", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'proxy-test');
-    const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
+  it("returns addon service names from fixed compose files", () => {
+    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'custom.compose.yml'), 'services:\n  proxy-test:\n    profiles: ["addon.proxy-test"]\n    image: image-a\n  proxy-test-worker:\n    profiles: ["addon.proxy-test"]\n    image: image-b\n');
 
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  svc-a:\n    image: image-a\n  svc-b:\n    image: image-b\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'PROXY_TOKEN=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    expect(getAddonServiceNames(process.env.OP_HOME!, 'proxy-test')).toEqual(['svc-a', 'svc-b']);
+    expect(getAddonServiceNames(process.env.OP_HOME!, 'proxy-test')).toEqual(['proxy-test', 'proxy-test-worker']);
   });
 
   it("toggles addons and generates channel secrets when enabling channel addons", () => {
@@ -354,7 +348,7 @@ describe("materialized registry catalog", () => {
       changed: true,
       services: ['chat'],
     });
-    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
     expect(readSecret(join(process.env.OP_HOME!, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
 
     expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'config', 'stack'), 'chat', false)).toEqual({
@@ -363,7 +357,7 @@ describe("materialized registry catalog", () => {
       changed: true,
       services: ['chat'],
     });
-    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat'))).toBe(false);
+    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
   });
 
   it("backs up OP_HOME without recursively copying backups", () => {
@@ -431,7 +425,8 @@ describe("materialized registry catalog", () => {
     const profiles = getAddonProfiles(process.env.OP_HOME!, 'voice');
     expect(profiles).toEqual([
       { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },
-      { id: 'addon.voice.cuda', services: ['voice-cuda'], label: 'NVIDIA', requires: 'nvidia-container-toolkit' },
+      { id: 'addon.voice.cuda', services: ['voice-cuda'], label: 'NVIDIA (CUDA 12.1)', requires: 'nvidia-container-toolkit' },
+      { id: 'addon.voice.rocm', services: ['voice-rocm'], label: 'AMD (ROCm 6.x)', requires: 'amdgpu kernel module' },
     ]);
   });
 

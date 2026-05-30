@@ -84,8 +84,7 @@ preferences and addon-specific values.
 
 ## Addons
 
-Addons are available in `~/.openpalm/state/registry/addons/` and become active when
-copied into `~/.openpalm/config/stack/addons/`.
+Addons are available in `~/.openpalm/state/registry/addons/` and first-party addons become active when their names are recorded in `~/.openpalm/config/stack/enabled-addons.json` and materialized into `~/.openpalm/config/stack/addons.compose.yml`. Custom overlays can still live under `~/.openpalm/config/stack/addons/`.
 
 | Addon | Compose file |
 |---|---|

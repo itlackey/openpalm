@@ -13,10 +13,11 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
   config/
     stack/             Stack configuration and composition
       core.compose.yml Core services (always used)
+      services.compose.yml Optional first-party services (profile-gated)
+      channels.compose.yml Optional first-party channels (profile-gated)
+      custom.compose.yml User custom services/overlays
       stack.yml        Capabilities only (metadata)
       stack.env        System-managed non-secret env vars (written by CLI/admin)
-      secrets/         System-managed service secrets (0700 dir, 0600 files)
-      addons/          Enabled addon overlays
     assistant/         OpenCode user tools, plugins, skills, commands
     akm/               AKM config directory
     auth.json          Optional auth metadata
@@ -37,8 +38,6 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     akm/               AKM operational data
     logs/              Service logs
     backups/           Snapshot backups (created by CLI/admin during upgrades)
-    registry/addons/   Enabled addon metadata (read from source during install)
-    registry/automations/  Automation catalog
 
   workspace/           Shared `/work` mount (durable, shared by services)
 ```
@@ -52,13 +51,12 @@ This repo directory contains source assets embedded by the CLI during build. The
   config/
     stack/               Seed files for runtime config/stack/
       core.compose.yml   Core Compose file copied to OP_HOME
+      services.compose.yml Optional services Compose file
+      channels.compose.yml Optional channels Compose file
+      custom.compose.yml User-editable custom Compose stub
       stack.yml          Template for capabilities (copied at install)
-      secrets/           Empty directory marker; runtime secret files are generated
     assistant/           Seed files for config/assistant/
     guardian/            Guardian config placeholders
-  state/registry/        Addon and automation catalog sources
-    addons/
-    automations/
   stash/                 Built-in AKM stash assets (skills, tasks, vault path)
 ```
 
@@ -81,30 +79,25 @@ docker compose \
   --project-name openpalm \
   --env-file ~/.openpalm/config/stack/stack.env \
   -f ~/.openpalm/config/stack/core.compose.yml \
-  -f ~/.openpalm/config/stack/addons/chat/compose.yml \
+  -f ~/.openpalm/config/stack/services.compose.yml \
+  -f ~/.openpalm/config/stack/channels.compose.yml \
+  -f ~/.openpalm/config/stack/custom.compose.yml \
+  --profile addon.chat \
   up -d
-```
-
-Before running that command, enable each addon you want by copying it from the
-catalog into the runtime stack, for example:
-
-```bash
-cp -r ~/.openpalm/state/registry/addons/chat ~/.openpalm/config/stack/addons/chat
 ```
 
 See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.
 
-The live stack is defined by `config/stack/core.compose.yml` plus whichever enabled
-addon compose files you include from `config/stack/addons/`. `config/stack/stack.yml`
-stores capabilities only; it does not replace Compose as the runtime source of
-truth.
+The live stack is defined by the fixed compose file set in `config/stack/`.
+Built-in optional services are activated with Compose profiles; manual custom
+services and overlays belong in `custom.compose.yml`.
 
 ## Ownership rules
 
 | Directory | Owner | Who writes |
 |---|---|---|
 | `config/` | User | User edits, explicit admin actions, assistant via authenticated admin API |
-| `config/stack/` | System | CLI/admin (`stack.env`, `core.compose.yml`, `addons/`) |
+| `config/stack/` | System/User | CLI/admin manage fixed runtime assets and `stack.env`; users edit `custom.compose.yml` |
 | `stash/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
 | `stash/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
 | `state/` | Services | Containers and processes at runtime |

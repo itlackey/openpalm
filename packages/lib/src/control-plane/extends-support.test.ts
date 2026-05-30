@@ -1,8 +1,8 @@
 /**
- * Verify that Compose `extends` is supported as an optional addon pattern.
+ * Verify that Compose `extends` is supported in the custom compose file.
  *
  * This is a narrow smoke test proving the canonical compose resolution
- * works when an addon uses Compose `extends` to inherit from a base service.
+ * works when custom.compose.yml uses Compose `extends` to inherit from a base service.
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
@@ -15,7 +15,7 @@ describe("compose extends support", () => {
 
   beforeAll(() => {
     fixtureDir = join(tmpdir(), `openpalm-extends-test-${Date.now()}`);
-    mkdirSync(join(fixtureDir, "stack/addons/extended-addon"), { recursive: true });
+    mkdirSync(join(fixtureDir, "stack"), { recursive: true });
 
     // Write a minimal core compose
     writeFileSync(
@@ -30,9 +30,9 @@ describe("compose extends support", () => {
       ].join("\n")
     );
 
-    // Write an addon that uses `extends`
+    // Write custom compose content that uses `extends`
     writeFileSync(
-      join(fixtureDir, "stack/addons/extended-addon/compose.yml"),
+      join(fixtureDir, "stack/custom.compose.yml"),
       [
         "services:",
         "  extended-service:",
@@ -54,16 +54,16 @@ describe("compose extends support", () => {
 
   test("fixture files exist", () => {
     expect(existsSync(join(fixtureDir, "stack/core.compose.yml"))).toBe(true);
-    expect(existsSync(join(fixtureDir, "stack/addons/extended-addon/compose.yml"))).toBe(true);
+    expect(existsSync(join(fixtureDir, "stack/custom.compose.yml"))).toBe(true);
   });
 
-  test("extends addon composes correctly with discoverStackOverlays", async () => {
+  test("extends custom compose works with discoverStackOverlays", async () => {
     const { discoverStackOverlays } = await import("./config-persistence.js");
     const overlays = discoverStackOverlays(join(fixtureDir, "stack"));
 
     expect(overlays.length).toBe(2);
     expect(overlays[0]).toContain("core.compose.yml");
-    expect(overlays[1]).toContain("extended-addon/compose.yml");
+    expect(overlays[1]).toContain("custom.compose.yml");
   });
 
   test.skipIf(skipDockerAssertions)("extends addon passes docker compose config preflight (requires Docker)", async () => {

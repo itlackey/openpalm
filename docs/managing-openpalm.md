@@ -21,7 +21,9 @@ under `~/.openpalm/config/stack/`.
 
 Keep this split in mind:
 - `~/.openpalm/state/registry/` is the available catalog
-- `~/.openpalm/config/stack/addons/` contains enabled addons only
+- `~/.openpalm/config/stack/enabled-addons.json` contains enabled first-party addons
+- `~/.openpalm/config/stack/addons.compose.yml` contains the generated first-party addon compose bundle
+- `~/.openpalm/config/stack/addons/` contains custom/third-party addon overlays
 - `~/.openpalm/stash/tasks/` contains active AKM automation task files
 - `~/.openpalm/config/stack/stack.yml` is a version marker only
 
@@ -34,12 +36,13 @@ Keep this split in mind:
 ├── config/
 │   ├── stack/
 │   │   ├── core.compose.yml          # Base compose file for the runtime stack
+│   │   ├── addons.compose.yml        # Generated first-party addon compose bundle
 │   │   ├── stack.env                 # System-managed non-secret runtime env
-│   │   ├── secrets/                  # System-managed service secrets (0700 dir, 0600 files)
+│   │   ├── enabled-addons.json       # Explicit first-party addon activation state
 │   │   ├── stack.yml                 # Version marker only ({ version: 2 })
 │   │   └── addons/
 │   │       └── chat/
-│   │           └── compose.yml       # Enabled addons only
+│   │           └── compose.yml       # Custom/third-party addon overlays
 │   ├── assistant/
 │   │   ├── opencode.json             # OpenCode config (LLM provider, settings)
 │   │   ├── tools/                    # Drop custom tools here
@@ -50,7 +53,8 @@ Keep this split in mind:
 │
 ├── stash/
 │   ├── vaults/
-│   │   └── user.env                  # AKM vault backing file for user-managed secrets
+│   │   ├── user.env                  # AKM vault backing file for user-managed secrets
+│   │   └── secrets/                  # System-managed service secrets (0700 dir, 0600 files)
 │   └── tasks/                        # AKM automation task files
 │
 ├── state/                            ← DURABLE SERVICE DATA
@@ -103,7 +107,9 @@ via the AKM tab in the admin UI -- no manual file editing required.
 
 An addon has two states:
 - available in the catalog at `~/.openpalm/state/registry/addons/<name>/`
-- enabled at runtime under `~/.openpalm/config/stack/addons/<name>/compose.yml`
+- enabled at runtime in `~/.openpalm/config/stack/enabled-addons.json`
+
+OpenPalm materializes enabled first-party addons into `config/stack/addons.compose.yml`. Custom or multi-instance overlays remain under `config/stack/addons/<name>/compose.yml`.
 
 Channels, services, and integrations are all addons.
 
@@ -128,7 +134,7 @@ curl -b cookies.txt -X POST http://localhost:3880/admin/addons/chat \
   -d '{"enabled":true}'
 ```
 
-This copies the addon from the catalog into the active runtime overlays. `config/stack.yml` does not store addon state.
+This records the addon in explicit activation state and uses the catalog compose file at runtime. `config/stack.yml` does not store addon state.
 
 ### Configure an addon
 
@@ -140,13 +146,13 @@ Addon config is schema-driven and file-based. There is no addon config block in 
 
 ### Add an addon manually
 
-1. Copy `~/.openpalm/state/registry/addons/<name>/` into `~/.openpalm/config/stack/addons/<name>/`
-2. Or author `~/.openpalm/config/stack/addons/<name>/` manually if you want a custom or multi-instance layout
+1. Enable first-party addons with `openpalm addon enable <name>` or the admin UI.
+2. Author `~/.openpalm/config/stack/addons/<name>/` manually if you want a custom or multi-instance layout.
 3. Run preflight to confirm the merge is clean, then rerun `docker compose` with that addon included
 
 ### Uninstall an addon
 
-Remove the addon directory from `~/.openpalm/config/stack/addons/`, then rerun `docker compose` without it.
+Disable first-party addons with `openpalm addon disable <name>` or the admin UI. Remove custom addon directories from `~/.openpalm/config/stack/addons/`, then rerun `docker compose` without them.
 
 ---
 
@@ -280,7 +286,7 @@ The running stack is whatever compose file set you launch. To change it:
 1. Edit files under `~/.openpalm/config/`, `~/.openpalm/stash/vaults/`, or `~/.openpalm/config/stack/`
 2. Rerun compose: `op up -d` (or the full `docker compose` command)
 
-The `op` helper function auto-discovers enabled addons under `config/stack/addons/`.
+The generated `run.sh` records the active first-party addon state and custom overlays used by the control plane.
 For the full compose command reference and helper setup, see the
 [Manual Compose Runbook](operations/manual-compose-runbook.md).
 

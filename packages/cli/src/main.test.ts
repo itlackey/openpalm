@@ -158,8 +158,10 @@ describe('cli main', () => {
       await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(base, 'state', 'admin'))).toBe(true);
-      expect(existsSync(join(base, 'state', 'registry', 'addons', 'chat', 'compose.yml'))).toBe(true);
-      expect(existsSync(join(base, 'state', 'registry', 'automations', 'cleanup-logs.yml'))).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'services.compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'channels.compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'stash', 'tasks', 'akm-improve.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'guardian.env'))).toBe(false);
     } finally {
       rmSync(base, { recursive: true, force: true });
@@ -289,19 +291,12 @@ describe('cli main', () => {
   it('supports addon enable/disable commands', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-addon-cli-'));
     const coreCompose = join(base, 'config', 'stack', 'core.compose.yml');
-    const adminAddonDir = join(base, 'state', 'registry', 'addons', 'admin');
-    const chatAddonDir = join(base, 'state', 'registry', 'addons', 'chat');
     const logs: string[] = [];
 
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
     mkdirSync(join(base, 'state'), { recursive: true });
-    mkdirSync(adminAddonDir, { recursive: true });
-    mkdirSync(chatAddonDir, { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(adminAddonDir, 'compose.yml'), 'services:\n  admin:\n    image: admin\n');
-    writeFileSync(join(adminAddonDir, '.env.schema'), 'OP_UI_LOGIN_PASSWORD=\n');
-    writeFileSync(join(chatAddonDir, 'compose.yml'), 'services:\n  chat:\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
-    writeFileSync(join(chatAddonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
+    writeFileSync(join(base, 'config', 'stack', 'channels.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
 
     process.env.OP_HOME = base;
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -311,11 +306,11 @@ describe('cli main', () => {
 
     try {
       await main(['addon', 'enable', 'chat']);
-      expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(true);
+      expect(readFileSync(join(base, 'config', 'stack', 'stack.env'), 'utf-8')).toContain('COMPOSE_PROFILES=addon.chat');
       expect(readSecret(join(base, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
 
       await main(['addon', 'disable', 'chat']);
-      expect(existsSync(join(base, 'config', 'stack', 'addons', 'chat'))).toBe(false);
+      expect(readFileSync(join(base, 'config', 'stack', 'stack.env'), 'utf-8')).not.toContain('COMPOSE_PROFILES=addon.chat');
     } finally {
       delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       rmSync(base, { recursive: true, force: true });

@@ -16,7 +16,6 @@ import { ensureSecrets, readStackSecretEnv } from "./secrets.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
-  buildEnvFiles,
   discoverStackOverlays,
   ensureComposeVolumeTargets,
 } from "./config-persistence.js";
@@ -26,7 +25,7 @@ import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { buildComposeOptions, writeRunScript } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
-import { listEnabledAddonIds } from "./registry.js";
+import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -90,8 +89,7 @@ async function reconcileCore(
   // Preflight: validate compose merge before mutation.
   // Mandatory when compose files exist and OP_SKIP_COMPOSE_PREFLIGHT is not set.
   // Fails if Docker is unavailable (Docker is required for any compose operation).
-  const files = buildComposeFileList(state);
-  const envFiles = buildEnvFiles(state);
+  const { files, envFiles, profiles } = buildComposeOptions(state);
   if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const dockerCheck = await checkDocker();
     if (!dockerCheck.ok) {
@@ -100,12 +98,13 @@ async function reconcileCore(
         "Docker must be running before install/update/apply operations."
       );
     }
-    const preflight = await composePreflight({ files, envFiles });
+    const preflight = await composePreflight({ files, envFiles, profiles });
     if (!preflight.ok) {
       const projectName = resolveComposeProjectName(Object.assign({}, ...envFiles.map((f) => parseEnvFile(f))));
       const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
       const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
-      const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet`;
+      const profileArgs = profiles.flatMap((p) => ["--profile", p]).join(" ");
+      const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} ${profileArgs} config --quiet`;
       throw new Error(
         `Compose preflight failed: ${preflight.stderr}\n` +
         `Resolved command: ${resolvedCmd}\n` +
@@ -323,7 +322,7 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  return discoverStackOverlays(state.stackDir);
+  return discoverStackOverlays(state.stackDir, state.homeDir);
 }
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
@@ -339,7 +338,9 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
 
   // Fallback: static inference from CORE_SERVICES + active addon overlays
   const services: string[] = [...CORE_SERVICES];
-  services.push(...listEnabledAddonIds(state.homeDir));
+  for (const addon of listEnabledAddonIds(state.homeDir)) {
+    services.push(...getAddonServiceNames(state.homeDir, addon));
+  }
   return services;
 }
 

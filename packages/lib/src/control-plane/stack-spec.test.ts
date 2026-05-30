@@ -36,6 +36,11 @@ describe("readStackSpec / writeStackSpec round-trip", () => {
     expect(read!.version).toBe(2);
   });
 
+  it("round-trips enabled addons", () => {
+    writeStackSpec(configDir, { version: 2, addons: ['chat', 'api'] });
+    expect(readStackSpec(configDir)).toEqual({ version: 2, addons: ['api', 'chat'] });
+  });
+
   it("writes to the canonical filename", () => {
     writeStackSpec(configDir, MINIMAL_SPEC);
     const expectedPath = join(configDir, STACK_SPEC_FILENAME);
@@ -76,6 +81,11 @@ describe("readStackSpec edge cases", () => {
     const spec = readStackSpec(configDir);
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
+  });
+
+  it("ignores malformed addon names", () => {
+    writeFileSync(join(configDir, STACK_SPEC_FILENAME), "version: 2\naddons:\n  - chat\n  - ../bad\n  - API\n");
+    expect(readStackSpec(configDir)).toEqual({ version: 2, addons: ['chat'] });
   });
 });
 

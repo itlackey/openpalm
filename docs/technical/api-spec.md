@@ -325,7 +325,7 @@ Body:
 { "name": "chat", "enabled": true }
 ```
 
-- `name` (required) -- Addon name (must exist under `~/.openpalm/state/registry/addons/<name>/compose.yml`).
+- `name` (required) -- Built-in addon/profile name.
 - `enabled` (optional) -- Set to `true` or `false` to enable/disable.
 
 Response:
@@ -337,7 +337,7 @@ Response:
 Error responses:
 
 - `400 bad_request` -- `name` is missing.
-- `404 not_found` -- Addon name is not available in `~/.openpalm/state/registry/addons/`.
+- `404 not_found` -- Addon name is not a built-in optional service.
 - `500 internal_error` -- Failed to update addon state on disk.
 
 ### `GET /admin/addons/:name`
@@ -351,16 +351,16 @@ Response:
   "name": "chat",
   "enabled": true,
   "config": {
-    "schemaPath": "registry/addons/chat/.env.schema",
-    "userEnvPath": "stash/vaults/user.env",
-    "envSchema": "# ..."
+    "schemaPath": "",
+    "userEnvPath": "config/stack/stack.env",
+    "envSchema": ""
   }
 }
 ```
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in `~/.openpalm/state/registry/addons/`.
+- `404 not_found` -- Addon name is not a built-in optional service.
 
 ### `POST /admin/addons/:name`
 
@@ -385,17 +385,17 @@ Response:
 
 Error responses:
 
-- `404 not_found` -- Addon name is not available in `~/.openpalm/state/registry/addons/`.
+- `404 not_found` -- Addon name is not a built-in optional service.
 - `500 internal_error` -- Failed to update addon state on disk.
 
-## Registry
+## Automations
 
-Runtime catalog endpoints for automations. Channel/addon management is handled by `/admin/addons` endpoints against `~/.openpalm/state/registry/addons/` and active `~/.openpalm/config/stack/addons/`.
+Automation task files live under `~/.openpalm/stash/tasks/` and are owned by AKM.
 
 ### `GET /admin/automations/catalog`
 
-Lists available registry automations with install status. Channel addons are
-managed via `/admin/addons`. Reads from `~/.openpalm/state/registry/automations/`.
+Lists available automation tasks from `~/.openpalm/stash/tasks/`. Channel addons
+are managed via `/admin/addons` and Compose profiles.
 
 Response:
 

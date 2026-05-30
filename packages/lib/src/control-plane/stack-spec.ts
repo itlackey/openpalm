@@ -14,7 +14,10 @@ import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 
 export type StackSpec = {
   version: 2;
+  addons?: string[];
 };
+
+const ADDON_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 // ── Constants ───────────────────────────────────────────────────────────
 
@@ -59,5 +62,29 @@ export function readStackSpec(configDir: string): StackSpec | null {
   if (typeof raw !== "object" || raw === null) return null;
   const obj = raw as Record<string, unknown>;
   if (obj.version !== 2) return null;
-  return { version: 2 };
+  const spec: StackSpec = { version: 2 };
+  if (Array.isArray(obj.addons)) {
+    const addons = obj.addons
+      .filter((value): value is string => typeof value === 'string' && ADDON_NAME_RE.test(value))
+      .filter((value, index, all) => all.indexOf(value) === index)
+      .sort();
+    if (addons.length > 0) spec.addons = addons;
+  }
+  return spec;
+}
+
+export function listStackSpecAddons(configDir: string): string[] {
+  return readStackSpec(configDir)?.addons ?? [];
+}
+
+export function setStackSpecAddon(configDir: string, name: string, enabled: boolean): void {
+  if (!ADDON_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
+  const current = readStackSpec(configDir) ?? { version: 2 };
+  const addons = new Set(current.addons ?? []);
+  if (enabled) addons.add(name);
+  else addons.delete(name);
+  const next: StackSpec = { version: 2 };
+  const sorted = [...addons].sort();
+  if (sorted.length > 0) next.addons = sorted;
+  writeStackSpec(configDir, next);
 }

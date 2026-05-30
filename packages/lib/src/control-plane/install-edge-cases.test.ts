@@ -60,11 +60,11 @@ function seedRequiredAssets(homeDir: string): void {
   writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
   writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "state"), { recursive: true });
-  // Automations live in state/registry/automations (shipped catalog) and stash/tasks (user tasks)
-  mkdirSync(join(homeDir, "state", "registry", "automations"), { recursive: true });
-  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
-  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
-  writeFileSync(join(homeDir, "state", "registry", "automations", "validate-config.yml"), "schedule: \"0 3 * * *\"\ndescription: validate config\ncommand: [\"echo\",\"clean\"]\n");
+  // Automations live in stash/tasks as AKM-owned task files.
+  mkdirSync(join(homeDir, "stash", "tasks"), { recursive: true });
+  writeFileSync(join(homeDir, "stash", "tasks", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "stash", "tasks", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "stash", "tasks", "validate-config.yml"), "schedule: \"0 3 * * *\"\ndescription: validate config\ncommand: [\"echo\",\"clean\"]\n");
 }
 
 // ── Shared test fixture ──────────────────────────────────────────────────
@@ -79,11 +79,20 @@ const savedEnv: Record<string, string | undefined> = {};
 
 function saveAndSetEnv(): void {
   savedEnv.OP_HOME = process.env.OP_HOME;
+  savedEnv.OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD;
+  savedEnv.OP_OPENCODE_PASSWORD = process.env.OP_OPENCODE_PASSWORD;
   process.env.OP_HOME = homeDir;
+  delete process.env.OP_UI_LOGIN_PASSWORD;
+  delete process.env.OP_OPENCODE_PASSWORD;
 }
 
 function restoreEnv(): void {
-  process.env.OP_HOME = savedEnv.OP_HOME;
+  if (savedEnv.OP_HOME === undefined) delete process.env.OP_HOME;
+  else process.env.OP_HOME = savedEnv.OP_HOME;
+  if (savedEnv.OP_UI_LOGIN_PASSWORD === undefined) delete process.env.OP_UI_LOGIN_PASSWORD;
+  else process.env.OP_UI_LOGIN_PASSWORD = savedEnv.OP_UI_LOGIN_PASSWORD;
+  if (savedEnv.OP_OPENCODE_PASSWORD === undefined) delete process.env.OP_OPENCODE_PASSWORD;
+  else process.env.OP_OPENCODE_PASSWORD = savedEnv.OP_OPENCODE_PASSWORD;
 }
 
 /** Create a full directory tree matching ensureHomeDirs() output. */
@@ -97,13 +106,11 @@ function createFullDirTree(): void {
   for (const dir of [
     homeDir,
     configDir,
-    join(homeDir, "state", "registry", "automations"),
     join(configDir, "assistant"),
     join(configDir, "akm"),
     join(homeDir, "stash"),
     join(homeDir, "workspace"),
     stackDir,
-    join(stackDir, "addons"),
     stateDir,
     join(stateDir, "assistant"),
     join(stateDir, "admin"),

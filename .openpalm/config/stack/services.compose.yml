@@ -1,34 +1,93 @@
-# Addon: voice — bundled Kokoro TTS + Whisper STT in one container
-# (openpalm/voice image). OpenAI-compatible /v1/audio/speech and
-# /v1/audio/transcriptions.
-#
-# Hardware variants are exposed as addon-scoped Docker Compose profiles.
-# The UI (Voice Settings tab) lists every service whose `profiles:` is set,
-# reads its `openpalm.profile.*` labels, and writes the user's choice to
-# OP_VOICE_PROFILE in stack.env. composeUp then passes
-# --profile $OP_VOICE_PROFILE so exactly one variant runs at a time.
-# All variants share the network alias "voice", so dependents inside
-# Docker reach the service as http://voice:8880 regardless of which
-# profile is active.
-#
-# ── Host port binding ────────────────────────────────────────────────
-# Every variant publishes 127.0.0.1:${OP_VOICE_PORT_HOST:-8880}:8880.
-# The bind is loopback-only (safe by default) and exists because the
-# UI server's /api/speak proxy runs on the HOST (not inside the
-# assistant_net network) and needs a routable address to forward
-# the operator's audio uploads to.
-#
-# If you hit a port collision (something else already binds 8880),
-# set OP_VOICE_PORT_HOST in OP_HOME/config/stack/stack.env to a free
-# port (e.g. 8881). The /api/speak proxy reads the same variable to
-# stay in sync — no other change required.
-#
-# We deliberately do NOT switch to "no host bind" by default, because
-# /api/speak (host process) cannot reach the container by DNS alias
-# from outside the docker network. A future change can introduce a
-# sidecar reverse proxy on assistant_net to avoid the host bind, but
-# that's a UX-impacting change that belongs in its own PR.
+# OpenPalm first-party optional services.
+# Services are gated by Compose profiles (addon.ollama.*, addon.voice.*, addon.ssh).
+
 services:
+  ollama:
+    profiles: ["addon.ollama.cpu"]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    environment:
+      OLLAMA_MODELS: /data/models
+    volumes:
+      - ${OP_HOME}/state/ollama:/data
+    networks: [assistant_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      openpalm.name: Ollama
+      openpalm.description: Local LLM inference server for running AI models
+      openpalm.icon: cpu
+      openpalm.category: ai
+      openpalm.profile.label: CPU
+      openpalm.profile.default: "true"
+
+  ollama-cuda:
+    profiles: ["addon.ollama.cuda"]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    runtime: nvidia
+    environment:
+      OLLAMA_MODELS: /data/models
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ${OP_HOME}/state/ollama:/data
+    networks:
+      assistant_net:
+        aliases: [ollama]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      openpalm.name: Ollama
+      openpalm.description: Local LLM inference server on NVIDIA CUDA
+      openpalm.icon: cpu
+      openpalm.category: ai
+      openpalm.profile.label: NVIDIA (CUDA)
+      openpalm.profile.requires: nvidia-container-toolkit
+
+  ollama-rocm:
+    profiles: ["addon.ollama.rocm"]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    environment:
+      OLLAMA_MODELS: /data/models
+      HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
+    volumes:
+      - ${OP_HOME}/state/ollama:/data
+    networks:
+      assistant_net:
+        aliases: [ollama]
+    devices:
+      - "/dev/kfd"
+      - "/dev/dri"
+    group_add:
+      - video
+      - render
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      openpalm.name: Ollama
+      openpalm.description: Local LLM inference server on AMD ROCm
+      openpalm.icon: cpu
+      openpalm.category: ai
+      openpalm.profile.label: AMD (ROCm)
+      openpalm.profile.requires: amdgpu kernel module
+
   voice:
     profiles: ["addon.voice.cpu"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}-cpu}
@@ -64,15 +123,6 @@ services:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}-cu121}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    # Routes the container through the nvidia-container-runtime binary
-    # registered by `nvidia-ctk runtime configure --runtime=docker` (which
-    # the user already did the moment they installed nvidia-container-toolkit
-    # via apt/yum). NVIDIA_VISIBLE_DEVICES tells the runtime which GPUs to
-    # expose. Works on every toolkit install since v1.4 (2020) regardless
-    # of whether the host has CDI specs generated — the runtime handles
-    # device injection itself rather than going through Docker's `--gpus`
-    # / `deploy.resources.devices` path (which on CDI-enabled daemons
-    # requires /etc/cdi/nvidia.yaml — root setup we don't want to demand).
     runtime: nvidia
     environment:
       OP_VOICE_PORT: "8880"

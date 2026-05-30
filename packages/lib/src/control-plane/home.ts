@@ -3,9 +3,9 @@
  *
  * Single ~/.openpalm/ root:
  *   config/    — user-editable config + system config files (auth.json, akm/)
- *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, addons/)
+ *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
  *   cache/     — regenerable/semi-persistent data (akm cache, guardian cache, rollback)
- *   state/     — persistent service data (assistant, admin, guardian, logs, backups, registry)
+ *   state/     — persistent service data (assistant, admin, guardian, logs, backups)
  *   stash/     — akm knowledge (skills, vaults, agents)
  *   workspace/ — shared assistant work area
  *   config/stack/ — compose runtime assets + stack config (stack.env, stack.yml)
@@ -109,10 +109,6 @@ export function ensureHomeDirs(): void {
     `${home}/state/logs`,
     `${home}/state/logs/opencode`,
     `${home}/state/backups`,
-    `${home}/state/registry`,
-    `${home}/state/registry/addons`,
-    `${home}/state/registry/automations`,
-
     // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
     `${home}/stash`,
     `${home}/stash/vaults`,
@@ -122,9 +118,8 @@ export function ensureHomeDirs(): void {
     // workspace/ — shared assistant work area
     `${home}/workspace`,
 
-    // config/stack/ — compose runtime (addon overlays + stack config files)
+    // config/stack/ — compose runtime + stack config files
     `${home}/config/stack`,
-    `${home}/config/stack/addons`,
   ]) {
     mkdirSync(dir, { recursive: true });
   }

@@ -1,5 +1,5 @@
 schedule: '0 4 * * 0'
-enabled: true
+enabled: false
 description: Trim old audit log entries to prevent unbounded disk growth
 tags:
   - openpalm

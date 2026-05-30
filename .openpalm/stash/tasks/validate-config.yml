@@ -1,5 +1,5 @@
 schedule: '0 3 * * *'
-enabled: true
+enabled: false
 description: Periodic check of environment configuration against the schema
 tags:
   - openpalm

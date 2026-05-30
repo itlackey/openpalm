@@ -42,21 +42,18 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   const stateDir = join(homeDir, 'state');
   const stackDir = join(configDir, 'stack');
 
-  // config/stack/ — seed core compose only
+  // config/stack/ — seed fixed compose files
   mkdirSync(stackDir, { recursive: true });
-  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'config', 'stack', 'core.compose.yml'), join(stackDir, 'core.compose.yml')]);
+  for (const name of ['core.compose.yml', 'services.compose.yml', 'channels.compose.yml', 'custom.compose.yml']) {
+    Bun.spawnSync(['cp', join(OPENPALM_SRC, 'config', 'stack', name), join(stackDir, name)]);
+  }
 
-  // state/registry/ — shipped catalog source
-  cpTree(join(OPENPALM_SRC, 'state', 'registry', 'addons'), join(stateDir, 'registry', 'addons'));
-  cpTree(join(OPENPALM_SRC, 'state', 'registry', 'automations'), join(stateDir, 'registry', 'automations'));
-
-  // config/stack/addons/ — enabled runtime overlays only
-  for (const addon of enabledAddons) {
-    cpTree(join(OPENPALM_SRC, 'state', 'registry', 'addons', addon), join(stackDir, 'addons', addon));
+  if (enabledAddons.length > 0) {
+    writeFileSync(join(stackDir, 'stack.env'), `COMPOSE_PROFILES=${enabledAddons.map((addon) => `addon.${addon}`).join(',')}\n`);
   }
 
   // stash/tasks/ — active AKM task files (populated by setup)
-  mkdirSync(join(homeDir, 'stash', 'tasks'), { recursive: true });
+  cpTree(join(OPENPALM_SRC, 'stash', 'tasks'), join(homeDir, 'stash', 'tasks'));
 
   // config/assistant/ — opencode project config (opencode.jsonc, openpalm.md, system.md)
   // OPENCODE_CONFIG_DIR points at this directory inside the container.
@@ -80,7 +77,6 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     join(configDir, 'assistant'),
     join(configDir, 'akm'),
     stackDir,
-    join(stackDir, 'addons'),
     stateDir,
     join(stateDir, 'assistant'),
     join(stateDir, 'admin'),
@@ -183,10 +179,10 @@ describe('install flow — tier 1 (file validation)', () => {
 
     // ── Validate compose files exist ─────────────────────────────────
     expect(existsSync(join(homeDir, 'config/stack/core.compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'config/stack/addons/chat/compose.yml'))).toBe(true);
-
-    expect(existsSync(join(homeDir, 'state/registry/addons/chat/compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'state/registry/automations/cleanup-logs.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'config/stack/services.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'config/stack/channels.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'config/stack/custom.compose.yml'))).toBe(true);
+    expect(readFileSync(join(homeDir, 'config/stack/stack.env'), 'utf-8')).toContain('COMPOSE_PROFILES=addon.chat');
 
     // ── Validate vault files are regular files (not directories) ─────
     // Note: vault/user/user.env is no longer
@@ -214,7 +210,9 @@ describe('install flow — tier 1 (file validation)', () => {
 
     const allComposeFiles = [
       join(homeDir, 'config/stack/core.compose.yml'),
-      join(homeDir, 'config/stack/addons/chat/compose.yml'),
+      join(homeDir, 'config/stack/services.compose.yml'),
+      join(homeDir, 'config/stack/channels.compose.yml'),
+      join(homeDir, 'config/stack/custom.compose.yml'),
     ];
     const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
     expect(mounts.length).toBeGreaterThan(0);
@@ -250,13 +248,11 @@ describe('install flow — tier 1 (file validation)', () => {
     }
 
     // ── Validate akm-improve is seeded into stash/tasks/ ──
-    // performSetup seeds the akm-improve maintenance automation on first
-    // install as an AKM markdown task; everything else stays in the registry
-    // catalog until enabled.
+    // Tasks are AKM-owned stash files. performSetup preserves user edits.
     const tasksDir = join(homeDir, 'stash/tasks');
     expect(existsSync(tasksDir)).toBe(true);
     const tasks = readdirSync(tasksDir).sort();
-    expect(tasks).toEqual(['akm-improve.yml']);
+    expect(tasks).toContain('akm-improve.yml');
 
     const akmImprovePath = join(homeDir, 'stash/tasks/akm-improve.yml');
     const akmImproveContent = readFileSync(akmImprovePath, 'utf-8');
@@ -288,7 +284,9 @@ describe('install flow — tier 1 (file validation)', () => {
     const stackEnv = join(homeDir, 'config/stack/stack.env');
     const composeFiles = [
       join(homeDir, 'config/stack/core.compose.yml'),
-      join(homeDir, 'config/stack/addons/chat/compose.yml'),
+      join(homeDir, 'config/stack/services.compose.yml'),
+      join(homeDir, 'config/stack/channels.compose.yml'),
+      join(homeDir, 'config/stack/custom.compose.yml'),
     ];
     const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');
     ensureComposeVolumeTargets(createState());
@@ -299,7 +297,10 @@ describe('install flow — tier 1 (file validation)', () => {
       'docker', 'compose', '--project-name', 'openpalm-test',
       '-f', composeFiles[0],
       '-f', composeFiles[1],
+      '-f', composeFiles[2],
+      '-f', composeFiles[3],
       '--env-file', stackEnv,
+      '--profile', 'addon.chat',
       'config', '--quiet',
     ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });
 

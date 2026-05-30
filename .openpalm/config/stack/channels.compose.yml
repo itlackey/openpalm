@@ -1,0 +1,159 @@
+# OpenPalm first-party channel services.
+# Services are gated by Compose profiles (addon.chat, addon.api,
+# addon.discord, addon.slack). Enable profiles through the OpenPalm CLI/UI or
+# by passing --profile manually.
+
+services:
+  chat:
+    profiles: ["addon.chat"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    ports:
+      - "${OP_CHAT_BIND_ADDRESS:-127.0.0.1}:${OP_CHAT_PORT:-3820}:8181"
+    environment:
+      PORT: "8181"
+      CHANNEL_NAME: "Chat"
+      CHANNEL_ID: "chat"
+      CHANNEL_PACKAGE: "@openpalm/channel-api"
+      CHANNEL_SECRET_FILE: /run/secrets/channel_chat_secret
+    secrets: [channel_chat_secret]
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8181' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Chat
+      openpalm.description: OpenAI-compatible chat edge for conversational clients
+      openpalm.icon: message-circle
+      openpalm.category: messaging
+      openpalm.healthcheck: http://chat:8181/health
+
+  api:
+    profiles: ["addon.api"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    ports:
+      - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
+    environment:
+      PORT: "8182"
+      CHANNEL_NAME: "API"
+      CHANNEL_PACKAGE: "@openpalm/channel-api"
+      CHANNEL_SECRET_FILE: /run/secrets/channel_api_secret
+    secrets: [channel_api_secret]
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8182' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: API Gateway
+      openpalm.description: OpenAI and Anthropic compatible API facade
+      openpalm.icon: code
+      openpalm.category: integration
+      openpalm.healthcheck: http://api:8182/health
+
+  discord:
+    profiles: ["addon.discord"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8184"
+      CHANNEL_NAME: "Discord Bot"
+      CHANNEL_PACKAGE: "@openpalm/channel-discord"
+      CHANNEL_SECRET_FILE: /run/secrets/channel_discord_secret
+      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
+      DISCORD_ALLOWED_GUILDS: ${DISCORD_ALLOWED_GUILDS:-}
+      DISCORD_ALLOWED_ROLES: ${DISCORD_ALLOWED_ROLES:-}
+      DISCORD_ALLOWED_USERS: ${DISCORD_ALLOWED_USERS:-}
+      DISCORD_BLOCKED_USERS: ${DISCORD_BLOCKED_USERS:-}
+      DISCORD_REGISTER_COMMANDS: ${DISCORD_REGISTER_COMMANDS:-}
+      DISCORD_THREAD_TTL_HOURS: ${DISCORD_THREAD_TTL_HOURS:-}
+      DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
+    secrets: [channel_discord_secret, discord_bot_token]
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8184' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Discord
+      openpalm.description: Discord bot channel adapter via WebSocket gateway
+      openpalm.icon: message-circle
+      openpalm.category: messaging
+      openpalm.healthcheck: http://discord:8184/health
+
+  slack:
+    profiles: ["addon.slack"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8185"
+      CHANNEL_NAME: "Slack Bot"
+      CHANNEL_PACKAGE: "@openpalm/channel-slack"
+      CHANNEL_SECRET_FILE: /run/secrets/channel_slack_secret
+      SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
+      SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
+      SLACK_ALLOWED_CHANNELS: ${SLACK_ALLOWED_CHANNELS:-}
+      SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
+      SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
+    secrets: [channel_slack_secret, slack_bot_token, slack_app_token]
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8185' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      openpalm.name: Slack
+      openpalm.description: Slack bot adapter via Socket Mode WebSocket
+      openpalm.icon: hash
+      openpalm.category: messaging
+      openpalm.healthcheck: http://slack:8185/health
+
+  guardian:
+    environment:
+      GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
+      CHANNEL_CHAT_SECRET_FILE: /run/secrets/channel_chat_secret
+      CHANNEL_API_SECRET_FILE: /run/secrets/channel_api_secret
+      CHANNEL_DISCORD_SECRET_FILE: /run/secrets/channel_discord_secret
+      CHANNEL_SLACK_SECRET_FILE: /run/secrets/channel_slack_secret
+    secrets:
+      - channel_chat_secret
+      - channel_api_secret
+      - channel_discord_secret
+      - channel_slack_secret
+
+secrets:
+  channel_chat_secret:
+    file: ${OP_HOME}/stash/vaults/secrets/channel_chat_secret
+  channel_api_secret:
+    file: ${OP_HOME}/stash/vaults/secrets/channel_api_secret
+  channel_discord_secret:
+    file: ${OP_HOME}/stash/vaults/secrets/channel_discord_secret
+  discord_bot_token:
+    file: ${OP_HOME}/stash/vaults/secrets/discord_bot_token
+  channel_slack_secret:
+    file: ${OP_HOME}/stash/vaults/secrets/channel_slack_secret
+  slack_bot_token:
+    file: ${OP_HOME}/stash/vaults/secrets/slack_bot_token
+  slack_app_token:
+    file: ${OP_HOME}/stash/vaults/secrets/slack_app_token

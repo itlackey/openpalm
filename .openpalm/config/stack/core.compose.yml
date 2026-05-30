@@ -1,7 +1,8 @@
 # OpenPalm — Core Services
 #
-# This file defines the core infrastructure. Addon services are added
-# via compose overlays in config/stack/addons/.
+# This file defines the core infrastructure. Optional first-party services are
+# defined in services.compose.yml and channels.compose.yml, then activated with
+# Compose profiles. User customizations live in custom.compose.yml.
 #
 # Docker Compose reads variable values via --env-file for stack config:
 #   config/stack/stack.env    — system config (ports, image tag)
@@ -15,10 +16,10 @@
 # Directory model:
 #   ~/.openpalm/config/       — user-editable + system config (stack.env, auth.json, akm/)
 #   ~/.openpalm/cache/        — regenerable data (akm cache, rollback)
-#   ~/.openpalm/state/        — persistent service data (assistant, guardian, logs, registry)
+#   ~/.openpalm/state/        — persistent service data (assistant, guardian, logs)
 #   ~/.openpalm/stash/        — akm knowledge (skills, vaults, agents) — vault:user lives here
 #   ~/.openpalm/workspace/    — shared work area
-#   ~/.openpalm/config/stack/ — compose runtime (core.compose.yml, addons/, env files)
+#   ~/.openpalm/config/stack/ — compose runtime (core/services/channels/custom compose files, env files)
 
 services:
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
@@ -71,11 +72,10 @@ services:
       # the key up via OpenCode at call time.
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
-      # SSH port (2222 → :22) is published only when the `ssh` addon is
-      # enabled. The overlay at registry/addons/ssh/compose.yml adds the
-      # port binding and flips OPENCODE_ENABLE_SSH=1 so sshd starts
-      # inside the container. See registry/addons/ssh/README.md for the
-      # security implications (passwordless sudo, key-only auth).
+      # SSH remains loopback-bound. The port is always declared so enabling
+      # SSH only needs OPENCODE_ENABLE_SSH=1 in stack.env; sshd is not started
+      # when that flag is 0.
+      - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
       - ${OP_HOME}/config:/etc/openpalm
       - ${OP_HOME}/config/auth.json:/home/opencode/.local/share/opencode/auth.json

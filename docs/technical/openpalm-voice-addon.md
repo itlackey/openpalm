@@ -225,7 +225,7 @@ End-to-end on click of **"Enable OpenPalm Voice"** in the Voice tab:
   → POST /admin/voice/openpalm-voice/enable
 [Server runs in order]
   1. setAddonEnabled(homeDir, stackDir, "openpalm-voice", true)
-     — copies registry overlay into config/stack/addons/voice/
+     — records voice in config/stack/enabled-addons.json
      — mkdirs state/voice/{tts-cache,stt-cache} as OP_UID:OP_GID
   2. writeVoiceVars({
        tts: { enabled: true, engine: "openpalm-voice", provider: "kokoro",

@@ -43,7 +43,7 @@ function seedRequiredAssets(homeDir: string): void {
   writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
   writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "state"), { recursive: true });
-  // Automations live in state/registry/automations (shipped catalog) and stash/tasks (user tasks)
+  // Automations live in stash/tasks as AKM-owned task files.
   mkdirSync(join(homeDir, "state", "registry", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
   writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");

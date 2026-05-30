@@ -28,7 +28,9 @@ variable). The relevant files for running the stack are:
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/config/stack/core.compose.yml` | Core services: assistant (also runs the scheduler co-process), guardian |
-| `~/.openpalm/config/stack/addons/<name>/compose.yml` | One file per enabled addon (admin, chat, api, etc.) |
+| `~/.openpalm/config/stack/services.compose.yml` | First-party optional services, profile-gated |
+| `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels, profile-gated |
+| `~/.openpalm/config/stack/custom.compose.yml` | User custom services and overlays |
 | `~/.openpalm/config/stack/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, profiles, paths |
 | `~/.openpalm/stash/vaults/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
 | `~/.openpalm/config/stack.yml` | Optional tooling metadata (helper scripts read this; it is not deployment truth) |
@@ -36,10 +38,10 @@ variable). The relevant files for running the stack are:
 The project name defaults to `openpalm` and can be overridden with the
 `OP_PROJECT_NAME` environment variable.
 
-To see which addon compose files are present:
+To see which first-party profiles are enabled:
 
 ```bash
-ls ~/.openpalm/config/stack/addons/
+grep '^COMPOSE_PROFILES=' ~/.openpalm/config/stack/stack.env
 ```
 
 ---
@@ -52,13 +54,14 @@ includes the correct compose files, non-secret env file, and profile selection.
 ### Helper: `op` shell function
 
 Typing the full command every time is tedious. Add this shell function to your
-`~/.bashrc` or `~/.zshrc` for ad hoc compose operations:
+`~/.bashrc` or `~/.zshrc` for ad hoc compose operations with core plus custom
+overlays. Use generated `run.sh` when you need the exact first-party addon list
+and profiles selected by OpenPalm tooling:
 
 ```bash
 op() {
   local OP_HOME="${OP_HOME:-$HOME/.openpalm}"
   local PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
-  local addon_files=""
   local profile_args=""
 
   if [ -f "$OP_HOME/config/stack/stack.env" ]; then
@@ -68,27 +71,26 @@ op() {
     set +a
   fi
 
-  for profile in "${OP_VOICE_PROFILE:-}" "${OP_OLLAMA_PROFILE:-}"; do
+  IFS=',' read -r -a compose_profiles <<< "${COMPOSE_PROFILES:-}"
+  for profile in "${compose_profiles[@]}" "${OP_VOICE_PROFILE:-}" "${OP_OLLAMA_PROFILE:-}"; do
     [ -n "$profile" ] && profile_args="$profile_args --profile $profile"
-  done
-
-  for f in "$OP_HOME"/config/stack/addons/*/compose.yml; do
-    [ -f "$f" ] && addon_files="$addon_files -f $f"
   done
 
   docker compose \
     --project-name "$PROJECT_NAME" \
     --env-file "$OP_HOME/config/stack/stack.env" \
     -f "$OP_HOME/config/stack/core.compose.yml" \
-    $addon_files \
+    -f "$OP_HOME/config/stack/services.compose.yml" \
+    -f "$OP_HOME/config/stack/channels.compose.yml" \
+    -f "$OP_HOME/config/stack/custom.compose.yml" \
     $profile_args \
     "$@"
 }
 ```
 
 The generated `run.sh` remains the primary operator-facing entrypoint for
-starting/restarting the stack. It discovers enabled addons and keeps the live
-stack command aligned with the current runtime state.
+starting/restarting the stack. It records the fixed compose file list and the
+live profile selection in one place.
 
 ### Manual command (without the helper)
 
@@ -102,14 +104,15 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
-  --profile "$OP_VOICE_PROFILE" \
-  --profile "$OP_OLLAMA_PROFILE" \
-  -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
+  -f "$OP_HOME/config/stack/services.compose.yml" \
+  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
+  --profile addon.chat \
   <command>
 ```
 
-Include only the `-f` flags for addons that are actually installed. Referencing
-a file that does not exist will cause Compose to fail with a clear error.
+Use the same fixed `-f` file list every time. Enable built-ins with `--profile`
+or `COMPOSE_PROFILES`; put custom services and overlays in `custom.compose.yml`.
 
 ---
 
@@ -124,7 +127,10 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
+  -f "$OP_HOME/config/stack/services.compose.yml" \
+  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
+  --profile addon.chat \
   config --quiet
 
 # List resolved service names
@@ -132,7 +138,10 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/addons/chat/compose.yml" \
+  -f "$OP_HOME/config/stack/services.compose.yml" \
+  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
+  --profile addon.chat \
   config --services
 ```
 
@@ -144,6 +153,9 @@ docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/config/stack/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
+  -f "$OP_HOME/config/stack/services.compose.yml" \
+  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile "$OP_VOICE_PROFILE" \
   --profile "$OP_OLLAMA_PROFILE" \
   config --quiet
@@ -209,41 +221,36 @@ op pull
 
 ---
 
-## Addon Management
+## Optional Service Management
 
-### Adding an addon
+### Enabling a built-in optional service
 
-1. Verify the addon is available in the registry:
+1. Enable the built-in profile:
    ```bash
-   ls ~/.openpalm/state/registry/addons/
+   openpalm addon enable <name>
    ```
-2. Copy the addon directory into the active stack:
-   ```bash
-   cp -R ~/.openpalm/state/registry/addons/<name> ~/.openpalm/config/stack/addons/<name>
-   ```
-3. Run preflight to confirm the merge is clean:
+2. Run preflight to confirm the merge is clean:
    ```bash
    op config --quiet
    ```
-4. Start or recreate (the helper auto-discovers the new addon):
+3. Start or recreate:
    ```bash
    op up -d
    ```
 
-### Removing an addon
+### Disabling a built-in optional service
 
-1. Remove the addon directory:
+1. Remove the built-in profile from `COMPOSE_PROFILES`:
    ```bash
-   rm -rf ~/.openpalm/config/stack/addons/<name>
+   openpalm addon disable <name>
    ```
-2. Recreate the stack (the helper automatically excludes the removed addon):
+2. Recreate the stack:
    ```bash
    op up -d --remove-orphans
    ```
 
-The `--remove-orphans` flag stops and removes containers from addons no longer
-in the file list. If you are not using the helper, omit the removed addon's
-`-f` flag from your manual command.
+The `--remove-orphans` flag stops and removes containers from profiles no longer
+enabled.
 
 Using `--remove-orphans` on `up -d` is the least-disruptive approach when you
 want to drop an addon without restarting everything:

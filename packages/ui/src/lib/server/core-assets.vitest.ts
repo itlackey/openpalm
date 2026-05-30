@@ -76,8 +76,10 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     expect(content).toBe(composeContent);
   });
 
-  test("readCoreCompose throws when file does not exist", () => {
-    expect(() => readCoreCompose()).toThrow();
+  test("readCoreCompose falls back to the bundled repo asset when live file is missing", () => {
+    const content = readCoreCompose();
+    expect(content).toContain('services:');
+    expect(content).toContain('assistant:');
   });
 });
 

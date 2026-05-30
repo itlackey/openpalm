@@ -40,7 +40,7 @@ For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; 
 - Simplified docker compose commands
 - Assists in managing secrets
 - Admin provides:
-  - Way to manage addons by copying the compose file to the stack if needed and providing an easy way to provide values or assign secrets to the addons required environment variables.
+  - Way to manage addon activation state and custom compose overlays, while providing an easy way to set values or assign secrets required by addon environment variables.
   - Editor for automation configuration files, simple yaml editor/form and copy from registry function.
   - Editor to manage AKM configuration (LLM, embedding settings)
   - Editor to manage account/assistant details
@@ -92,22 +92,13 @@ Subtrees:
 Subtrees:
 
 - `stack.yml` — version marker only (`{ version: 2 }`)
-- `stack.env` — system-managed non-secret environment variables written by CLI/admin (paths, ports, image tags, profiles, feature flags)
-- `stash/vaults/secrets/` — system-managed file-based secrets granted to services through Compose `secrets:` and exposed to containers through `*_FILE` environment variables. Directory mode must be `0700`; secret files must be `0600`.
+- `stack.env` — system-managed non-secret environment variables written by CLI/admin (paths, ports, image tags, Compose profiles, feature flags)
 - `core.compose.yml` — base compose definition for core services
-- `addons/<n>/compose.yml` — addon overlays such as `chat`, `api`, `voice`, `admin`
+- `services.compose.yml` — system-managed first-party optional services, profile-gated
+- `channels.compose.yml` — system-managed first-party optional channels, profile-gated
+- `custom.compose.yml` — user-editable custom services and overlays, seeded once and never overwritten automatically
 
-### 1c) Registry (system-managed catalog)
-
-**Location:** `~/.openpalm/state/registry/`
-**Purpose:** available addon and automation catalog materialized on the host.
-
-Subtrees:
-
-- `addons/<n>/` — available addon directories with `compose.yml`, `.env.schema`, and optional support files
-- `automations/<n>.yml` — available automation YAML files
-
-**Rule:** the CLI/admin may write and update files here as part of lifecycle operations and explicit addon install/uninstall actions. Users may inspect or edit them directly, but this tree is system-assembled runtime state rather than the primary user config surface.
+First-party optional services are enabled by adding `addon.*` profile IDs to `COMPOSE_PROFILES` in `stack.env` or by passing `--profile` to Docker Compose. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
 
 ### 2) Stash / Vaults (user-managed secrets and knowledge)
 
@@ -117,7 +108,7 @@ Subtrees:
 Subtrees:
 
 - `vaults/user.env` — AKM vault backing file for user-managed secrets. It is not a Compose `--env-file`; secrets are accessible inside the assistant container via `akm vault:user`.
-- `tasks/` — AKM markdown task files for scheduled automations.
+- `tasks/` — AKM YAML task files for scheduled automations. AKM owns task enablement state.
 
 System-managed runtime files live in `config/stack/`:
 - `config/stack/stack.env` — system-managed non-secret configuration: paths, ports, image tags, profiles, and feature flags. Written by CLI/admin. Advanced users may edit directly with understanding of the compose substitution model.
@@ -132,7 +123,7 @@ System-managed runtime files live in `config/stack/`:
 
 **Rule:** every persistence-requiring container path is a bind mount into this tree.
 
-Subtrees: `assistant/`, `guardian/`, `akm/` (akm operational state and state.db), `registry/` (addon and automation catalog), `logs/` (consolidated log output).
+Subtrees: `assistant/`, `guardian/`, `akm/` (akm operational state and state.db), `logs/` (consolidated log output).
 
 Shared user knowledge lives in `stash/` (not `state/`) — see § Stash / Vaults above.
 Regenerable artifacts live in `cache/akm/` — see § Cache below.
@@ -177,8 +168,8 @@ Subtrees:
 
 ### A) Compose: modular by native multi-file composition
 
-The stack is defined by combining a base Compose file with addon overlays using Compose's native multi-file mechanisms (merge rules and/or `include`). ([Docker Documentation][3])
-**Implication:** adding an addon is dropping a `compose.yml` overlay into `config/stack/addons/<n>/`, then rerunning `docker compose` with the updated file list.
+The stack is defined by combining the fixed Compose file set with Compose's native multi-file merge rules. ([Docker Documentation][3])
+**Implication:** the default file list is `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and `custom.compose.yml`. First-party optional services are activated with Compose profiles. Custom containers and overlays belong in `custom.compose.yml`; rerunning Docker Compose with the same fixed file list and updated profiles applies changes.
 
 ### B) OpenCode: core precedence via baked-in `/etc/opencode`
 
@@ -191,7 +182,7 @@ The stack is defined by combining a base Compose file with addon overlays using 
 To guarantee lifecycle operations never clobber user configuration:
 
 - **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits, CLI/admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested.
-- **`config/stack/` is the live runtime assembly and system-managed configuration.** Automatic lifecycle sync may update `core.compose.yml`, non-secret `stack.env`, `secrets/`, and addon overlays there to keep runtime assets aligned with the current release and installed addon set.
+- **`config/stack/` is the live runtime assembly and system-managed configuration.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and non-secret `stack.env`. `custom.compose.yml` is seeded once and user edits always win.
 - **`stash/vaults/` has strict access rules.** The assistant accesses user secrets via `akm vault:user` from its `/akm` stash mount. There is no separate `/etc/vault/` mount. No container mounts `stash/vaults/` directly. Lifecycle operations never overwrite `stash/vaults/user.env`; they may update non-secret `config/stack/stack.env` and system-managed secret files in `stash/vaults/secrets/`.
 - **`state/` is service-writable within ownership boundaries.** Each container owns its designated state subdirectories. No container may access another service's data directories. Stack-wide data operations require the admin API.
 - **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies (in `/tmp/openpalm`) before writing to live paths (`$OP_HOME/config/stack`). A snapshot of the current state is saved to `~/.cache/openpalm/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored. See § Rollback scope below for what is included in the snapshot.

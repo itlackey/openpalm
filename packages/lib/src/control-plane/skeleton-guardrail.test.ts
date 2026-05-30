@@ -16,7 +16,7 @@ const SKELETON_DIR = join(REPO_ROOT, ".openpalm");
 const ALLOWED_SOURCE_DIRS = new Set([
   "config",     // seed files for config/ (assistant, guardian, stack/, akm/)
   "stash",      // stash source assets: skills/ and vaults/
-  "state",      // state/registry/ + empty service dirs (.gitkeep)
+  "state",      // empty service dirs (.gitkeep)
   "cache",      // empty cache dirs (.gitkeep — regenerable at runtime)
   "workspace",  // empty workspace dir (.gitkeep)
 ]);
@@ -37,7 +37,7 @@ describe("skeleton: .openpalm/ top-level directories", () => {
     expect(existsSync(join(SKELETON_DIR, "stack"))).toBe(false);
   });
 
-  test("registry/ no longer exists (moved to state/registry/)", () => {
+  test("registry/ no longer exists", () => {
     expect(existsSync(join(SKELETON_DIR, "registry"))).toBe(false);
   });
 
@@ -49,13 +49,16 @@ describe("skeleton: .openpalm/ top-level directories", () => {
 // ── config/ subdirectory ──────────────────────────────────────────────
 
 describe("skeleton: .openpalm/config/ structure", () => {
-  test("config/stack/ exists with core.compose.yml and stack.yml", () => {
+  test("config/stack/ exists with fixed compose files and stack.yml", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "core.compose.yml"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "stack", "services.compose.yml"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "stack", "channels.compose.yml"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "stack", "custom.compose.yml"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "stack.yml"))).toBe(true);
   });
 
-  test("config/stack/addons/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "addons"))).toBe(true);
+  test("config/stack/addons/ does not exist", () => {
+    expect(existsSync(join(SKELETON_DIR, "config", "stack", "addons"))).toBe(false);
   });
 
   test("config/akm/ exists", () => {
@@ -67,30 +70,11 @@ describe("skeleton: .openpalm/config/ structure", () => {
   });
 });
 
-// ── state/registry/ subdirectory ─────────────────────────────────────
+// ── no runtime registry ───────────────────────────────────────────────
 
-describe("skeleton: .openpalm/state/registry/ structure", () => {
-  test("state/registry/addons/ exists with addon subdirectories", () => {
-    const addonsDir = join(SKELETON_DIR, "state", "registry", "addons");
-    expect(existsSync(addonsDir)).toBe(true);
-    const addons = readdirSync(addonsDir);
-    expect(addons).toContain("chat");
-    expect(addons).toContain("api");
-    expect(addons).toContain("discord");
-  });
-
-  test("state/registry/automations/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "state", "registry", "automations"))).toBe(true);
-  });
-
-  test("each addon has compose.yml", () => {
-    const addonsDir = join(SKELETON_DIR, "state", "registry", "addons");
-    const addons = readdirSync(addonsDir).filter(e => {
-      try { return statSync(join(addonsDir, e)).isDirectory(); } catch { return false; }
-    });
-    for (const addon of addons) {
-      expect(existsSync(join(addonsDir, addon, "compose.yml"))).toBe(true);
-    }
+describe("skeleton: no runtime registry", () => {
+  test("state/registry/ does not exist", () => {
+    expect(existsSync(join(SKELETON_DIR, "state", "registry"))).toBe(false);
   });
 });
 

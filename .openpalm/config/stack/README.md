@@ -1,7 +1,6 @@
 # config/stack/
 
-This directory contains the runtime stack composition and configuration. OpenPalm runs from `core.compose.yml`
-plus whichever addon compose files you include from `addons/`.
+This directory contains the runtime stack composition and configuration. OpenPalm runs from the fixed compose file set: `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and `custom.compose.yml`.
 
 ## Quick start
 
@@ -12,14 +11,20 @@ docker compose \
   --project-name openpalm \
   --env-file stack.env \
   -f core.compose.yml \
+  -f services.compose.yml \
+  -f channels.compose.yml \
+  -f custom.compose.yml \
   up -d
 
-# Add addons by adding more -f files
+# Enable built-in optional services with profiles
 docker compose \
   --project-name openpalm \
   --env-file stack.env \
   -f core.compose.yml \
-  -f addons/chat/compose.yml \
+  -f services.compose.yml \
+  -f channels.compose.yml \
+  -f custom.compose.yml \
+  --profile addon.chat \
   up -d
 ```
 
@@ -35,12 +40,10 @@ status, logs, and all other operations.
 
 ## Addons
 
-Each addon is a compose overlay in `addons/<name>/compose.yml`. Compose file
-selection is the deployment model. `./stack.yml` is optional tooling
-metadata that can help choose addons, but it does not replace these files.
-
-Repo addon sources live under `.openpalm/state/registry/addons/`. At runtime,
-`addons/` should contain enabled addons only.
+Built-in optional services are defined in `services.compose.yml` and
+`channels.compose.yml`, then enabled with `addon.*` Compose profiles.
+`custom.compose.yml` is the operator-owned place for extra containers or manual
+overlays.
 
 | Addon | Host port | Purpose |
 |-------|-----------|---------|
@@ -64,13 +67,14 @@ Repo addon sources live under `.openpalm/state/registry/addons/`. At runtime,
 |------|---------|-------|
 | `stack.yml` | Capabilities only (metadata) | User, explicit admin actions |
 | `stack.env` | Non-secret runtime configuration | CLI/admin (automated) |
-| `secrets/` | File-based service secrets, mode 0700 | CLI/admin (automated) |
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
-| `addons/` | Enabled addon compose overlays | CLI/admin (via install/enable operations) |
+| `services.compose.yml` | Optional first-party services | System (managed via CLI/admin) |
+| `channels.compose.yml` | Optional first-party channels | System (managed via CLI/admin) |
+| `custom.compose.yml` | User custom services and overlays | User |
 
 ## Env files
 
 Compose receives **only one env file** from this directory:
 - `stack.env` — Non-secret runtime configuration only
 
-Secrets live in `secrets/` and are granted to services through Compose `secrets:` entries. Do not add other `--env-file` arguments to the compose command.
+Secrets live in `stash/vaults/secrets/` and are granted to services through Compose `secrets:` entries. Do not add other `--env-file` arguments to the compose command.
