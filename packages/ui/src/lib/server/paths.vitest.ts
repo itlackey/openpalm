@@ -50,16 +50,16 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "data", "akm", "data"))).toBe(true);
     expect(existsSync(join(home, "data", "akm", "state"))).toBe(false);
     // guardian AKM subdirs removed — guardian has no akm CLI invocations
-    expect(existsSync(join(home, "data", "guardian", "stash"))).toBe(false);
+    expect(existsSync(join(home, "data", "guardian", "knowledge"))).toBe(false);
     expect(existsSync(join(home, "data", "guardian", "akm"))).toBe(false);
     expect(existsSync(join(home, "data", "logs"))).toBe(true);
     expect(existsSync(join(home, "data", "backups"))).toBe(true);
     expect(existsSync(join(home, "data", "rollback"))).toBe(true);
     expect(existsSync(join(home, "data", "registry"))).toBe(false);
 
-    // stash/, workspace/, config/stack/
-    expect(existsSync(join(home, "stash", "tasks"))).toBe(true);
-    expect(existsSync(join(home, "stash"))).toBe(true);
+    // knowledge/, workspace/, config/stack/
+    expect(existsSync(join(home, "knowledge", "tasks"))).toBe(true);
+    expect(existsSync(join(home, "knowledge"))).toBe(true);
     expect(existsSync(join(home, "workspace"))).toBe(true);
     expect(existsSync(join(home, "config", "stack"))).toBe(true);
     expect(existsSync(join(home, "config", "stack", "addons"))).toBe(false);

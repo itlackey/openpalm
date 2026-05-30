@@ -17,7 +17,7 @@ export default defineCommand({
     },
     purge: {
       type: 'boolean',
-      description: 'Remove all OpenPalm directories (config, data, stash, workspace)',
+      description: 'Remove all OpenPalm directories (config, data, knowledge, workspace)',
       default: false,
     },
   },

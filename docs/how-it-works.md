@@ -70,7 +70,7 @@ unauthorized.
 
 The assistant uses OpenCode config from `/etc/opencode`, mounts
 `~/.openpalm/config/auth.json` for host-managed OpenCode auth state, mounts AKM
-config at `/etc/akm`, mounts the full AKM stash from `~/.openpalm/stash/` at
+config at `/etc/akm`, mounts the full AKM stash from `~/.openpalm/knowledge/` at
 `/stash`, and stores AKM cache/data under `/opt/akm/cache` and `/opt/akm/data`.
 Provider API keys are stored in OpenCode's auth.json via the Connections tab.
 Its durable home is `~/.openpalm/data/assistant/`, and its shared workspace is
@@ -87,8 +87,8 @@ The runtime image for registry-backed adapters is the unified
 `channel`, built from `core/channel/Dockerfile`.
 
 ### Supporting services
-- **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM markdown task files in `~/.openpalm/stash/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
-- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/stash/`, mounted at `/stash` in the assistant. Skills, commands, memories, and knowledge files all live here. There is no separate memory service.
+- **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM markdown task files in `~/.openpalm/knowledge/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
+- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/knowledge/`, mounted at `/stash` in the assistant. Skills, commands, memories, and knowledge files all live here. There is no separate memory service.
 
 ---
 
@@ -179,13 +179,13 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/config/stack/custom.compose.yml   -> custom services and overlays
 ~/.openpalm/config/stack/stack.yml            -> first-party addon activation state
 ~/.openpalm/config/stack/stack.env            -> non-secret values passed via --env-file
-~/.openpalm/stash/vaults/secrets/             -> system-managed Compose secret files
-~/.openpalm/stash/vaults/user.env             -> user-managed secrets (akm vault:user)
+~/.openpalm/knowledge/vaults/secrets/             -> system-managed Compose secret files
+~/.openpalm/knowledge/vaults/user.env             -> user-managed secrets (akm vault:user)
 ```
 
 Docker reads compose files, the non-secret env file, and secret files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`config/stack/stack.env`; Compose `secrets:` grants files from `stash/vaults/secrets/`.
+`config/stack/stack.env`; Compose `secrets:` grants files from `knowledge/vaults/secrets/`.
 
 ---
 

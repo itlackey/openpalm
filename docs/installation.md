@@ -27,7 +27,7 @@ git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
 
 $EDITOR "$HOME/.openpalm/config/stack/stack.env"
-$EDITOR "$HOME/.openpalm/stash/vaults/user.env"
+$EDITOR "$HOME/.openpalm/knowledge/vaults/user.env"
 ```
 
 Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md). That example starts the core stack plus any addons you choose (e.g., `admin` and `chat`).
@@ -41,9 +41,9 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/config/stack/` | Live compose files and system-managed env |
-| `~/.openpalm/stash/tasks/` | Available automation task files |
+| `~/.openpalm/knowledge/tasks/` | Available automation task files |
 | `~/.openpalm/config/stack/stack.env` | System-managed stack values and tokens |
-| `~/.openpalm/stash/vaults/user.env` | Optional user-managed extension settings |
+| `~/.openpalm/knowledge/vaults/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config and assistant extensions |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/data/logs/` | Logs and audit output |
@@ -76,7 +76,7 @@ It also includes system-managed values such as:
 Review it before first start, especially if you need different host ports or
 paths.
 
-### `~/.openpalm/stash/vaults/user.env`
+### `~/.openpalm/knowledge/vaults/user.env`
 
 Optional user-managed extension settings. Starts empty; use for custom
 preferences and addon-specific values.

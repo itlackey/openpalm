@@ -49,7 +49,7 @@ For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; 
   - Editor for addon configurations/environments
     - This is for the standard .env.schema and any specific configuration files needed by the addon.
 
-All of this functionality exists to simplify managing files under the OP_HOME directory. The base line is managing compose and schema files under OP_HOME/config/stack, non-secret runtime env in OP_HOME/config/stack/stack.env, file-based service secrets under OP_HOME/stash/vaults/secrets, user-managed AKM vault data under OP_HOME/stash/vaults, configuration/automation files under OP_HOME/config, and service-specific files under OP_HOME/data. These tasks should be achievable by a technical user without the tooling by manually editing files and placing them in the proper locations.
+All of this functionality exists to simplify managing files under the OP_HOME directory. The base line is managing compose and schema files under OP_HOME/config/stack, non-secret runtime env in OP_HOME/config/stack/stack.env, file-based service secrets under OP_HOME/knowledge/vaults/secrets, user-managed AKM vault data under OP_HOME/knowledge/vaults, configuration/automation files under OP_HOME/config, and service-specific files under OP_HOME/data. These tasks should be achievable by a technical user without the tooling by manually editing files and placing them in the proper locations.
 
 ## Security invariants
 
@@ -59,7 +59,7 @@ These are hard constraints that must never be violated during development. See a
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant. Channel secrets are distributed during addon install (see § Addon secret lifecycle below).
 3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/assistant/ -> /etc/opencode`, `config/akm/ -> /etc/akm`, `config/auth.json -> /home/opencode/.local/share/opencode/auth.json`, `data/assistant/ -> /home/opencode`, `stash/ -> /stash` (shared akm stash), `data/akm/cache/ -> /opt/akm/cache`, `data/akm/data/ -> /opt/akm/data`, `workspace/ -> /work`, and the `assistant-persistent` named volume at `/opt/persistent`. There is no `/etc/vault/` mount; user secrets are read via `akm vault:user`. The assistant has no network path to the host admin process (which binds to `127.0.0.1` only) and no admin tools — it cannot perform stack operations. Stack operations are handled exclusively by the host CLI and admin UI.
 4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI uses an `httpOnly` `SameSite=Strict` session cookie (no `localStorage` token). A `Host` header allowlist on every handler closes DNS rebinding. The admin process binds to `127.0.0.1` only and is never publicly exposed. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must provide the OpenCode password as a file-based secret and enable `OPENCODE_AUTH` — the compose comments document this requirement.
-5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's mounts and environment and shares `stash/tasks/`, `data/akm/cache/`, and `data/akm/data/`. It calls `http://localhost:4096` for `assistant`-type actions only. Stack-level cron jobs run via host OS cron using the CLI (`openpalm` commands), not via an in-container admin API call.
+5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's mounts and environment and shares `knowledge/tasks/`, `data/akm/cache/`, and `data/akm/data/`. It calls `http://localhost:4096` for `assistant`-type actions only. Stack-level cron jobs run via host OS cron using the CLI (`openpalm` commands), not via an in-container admin API call.
 6. **Admin is host-only.** Admin binds exclusively to `127.0.0.1` and is never reachable from the Docker bridge network or any container. Containers cannot reach admin under any configuration. The admin process manages Docker Compose directly on the host via the host Docker socket — there is no docker-socket-proxy container.
 
 ---
@@ -101,8 +101,8 @@ First-party optional services are enabled by adding their addon names to `stack.
 
 ### 2) Stash / Vaults (user-managed secrets and knowledge)
 
-**Location:** `~/.openpalm/stash/`
-**Purpose:** AKM knowledge base and user-managed secrets. The `stash/` directory is bind-mounted into the assistant at `/stash`.
+**Location:** `~/.openpalm/knowledge/`
+**Purpose:** AKM knowledge base and user-managed secrets. The `knowledge/` directory is bind-mounted into the assistant at `/stash`.
 
 Subtrees:
 
@@ -111,7 +111,7 @@ Subtrees:
 
 System-managed runtime files live in `config/stack/`:
 - `config/stack/stack.env` — system-managed non-secret configuration: paths, ports, image tags, profiles, and feature flags. Written by CLI/admin. Advanced users may edit directly with understanding of the compose substitution model.
-- `stash/vaults/secrets/` — system-managed file secrets. Compose grants each service only the files it needs; containers receive secret paths through `*_FILE` variables.
+- `knowledge/vaults/secrets/` — system-managed file secrets. Compose grants each service only the files it needs; containers receive secret paths through `*_FILE` variables.
 
 **Rule:** the assistant reads user secrets via `akm vault:user` from its `/stash` stash bind mount. There is no separate `/etc/vault/` container mount. Guardian, channels, assistant, and any admin-adjacent service receive system secrets only as Compose secret files, never as broad env files or raw secret environment variables. The scheduler co-process inherits the assistant container's mounts and environment.
 
@@ -124,11 +124,11 @@ System-managed runtime files live in `config/stack/`:
 
 Subtrees: `assistant/`, `guardian/`, `akm/cache/`, `akm/data/`, `logs/`, `backups/`, `rollback/`.
 
-Shared user knowledge lives in `stash/` (not `data/`) — see § Stash / Vaults above.
+Shared user knowledge lives in `knowledge/` (not `data/`) — see § Stash / Vaults above.
 Ephemeral regenerable artifacts live outside `OP_HOME` under `~/.cache/openpalm/`.
 The shared work area lives in `workspace/`.
 
-**Write policy:** Each container may write only to its own designated subdirectories via its mounts. The assistant writes to `data/assistant/`, `stash/`, `data/akm/cache/`, `data/akm/data/`, `workspace/`, and `/opt/persistent`; the guardian writes to `data/guardian/` and `data/logs/`; and so on. No container may access another service's data directories. Stack-wide data operations require the host CLI or admin UI.
+**Write policy:** Each container may write only to its own designated subdirectories via its mounts. The assistant writes to `data/assistant/`, `knowledge/`, `data/akm/cache/`, `data/akm/data/`, `workspace/`, and `/opt/persistent`; the guardian writes to `data/guardian/` and `data/logs/`; and so on. No container may access another service's data directories. Stack-wide data operations require the host CLI or admin UI.
 
 ### 4) Logs (audit and debug)
 
@@ -180,7 +180,7 @@ To guarantee lifecycle operations never clobber user configuration:
 
 - **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits, CLI/admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested.
 - **`config/stack/` is the live runtime assembly and system-managed configuration.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and non-secret `stack.env`. `custom.compose.yml` is seeded once and user edits always win.
-- **`stash/vaults/` has strict access rules.** The assistant accesses user secrets via `akm vault:user` from its `/stash` stash mount. There is no separate `/etc/vault/` mount. No container mounts `stash/vaults/` directly. Lifecycle operations never overwrite `stash/vaults/user.env`; they may update non-secret `config/stack/stack.env` and system-managed secret files in `stash/vaults/secrets/`.
+- **`knowledge/vaults/` has strict access rules.** The assistant accesses user secrets via `akm vault:user` from its `/stash` stash mount. There is no separate `/etc/vault/` mount. No container mounts `knowledge/vaults/` directly. Lifecycle operations never overwrite `knowledge/vaults/user.env`; they may update non-secret `config/stack/stack.env` and system-managed secret files in `knowledge/vaults/secrets/`.
 - **`data/` is service-writable within ownership boundaries.** Each container owns its designated data subdirectories. No container may access another service's data directories. Stack-wide data operations require the admin API.
 - **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies (in `/tmp/openpalm`) before writing to live paths (`$OP_HOME/config/stack`). A snapshot of the current stack configuration is saved to `$OP_HOME/data/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored. See § Rollback scope below for what is included in the snapshot.
 
@@ -254,7 +254,7 @@ This ensures sdk transitive dependencies are available at runtime.
 When a channel addon is installed, the following secret distribution flow occurs:
 
 1. **Generation:** a shared HMAC secret is generated by the CLI or admin during addon install.
-2. **Guardian side:** the secret is written as a `0600` file under `stash/vaults/secrets/` and granted only to the guardian through Compose `secrets:`. Guardian receives the path through a `*_FILE` environment variable.
+2. **Guardian side:** the secret is written as a `0600` file under `knowledge/vaults/secrets/` and granted only to the guardian through Compose `secrets:`. Guardian receives the path through a `*_FILE` environment variable.
 3. **Channel side:** the same secret is granted only to the matching channel service through Compose `secrets:`. The channel receives the path through a `*_FILE` environment variable so the channels-sdk can sign outbound requests.
 4. **Verification:** on every inbound request, guardian verifies the HMAC signature using the channel's secret, rejects replayed nonces, and enforces rate limits before forwarding to the assistant.
 
@@ -278,7 +278,7 @@ When the CLI or admin performs an apply operation, a snapshot is saved to `$OP_H
 
 - `config/stack/` — the full live compose assembly, non-secret runtime env, file-based system secrets, and addon overlays (`core.compose.yml`, `stack.env`, `secrets/`, `addons/`)
 
-The snapshot does **not** include `config/` user files outside `config/stack/` (non-destructive for user edits), `stash/vaults/user.env` (never overwritten by lifecycle operations), or `data/` (service-owned runtime data).
+The snapshot does **not** include `config/` user files outside `config/stack/` (non-destructive for user edits), `knowledge/vaults/user.env` (never overwritten by lifecycle operations), or `data/` (service-owned runtime data).
 
 On health check failure after deploy, the snapshot is automatically restored and the stack is restarted. Manual rollback is available via `openpalm rollback`.
 
@@ -289,9 +289,9 @@ On health check failure after deploy, the snapshot is automatically restored and
 - **Add an addon:** drop `compose.yml` into `stack/addons/<n>/`, then rerun `docker compose up -d` with that addon included. ([Docker Documentation][3])
 - **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode's directory structure. ([OpenCode][1])
 - **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-- **Apply changes:** the CLI or admin validates proposed changes (compose config and secret-audit rules) before writing anything. If validation passes, a snapshot of current live files is saved to `$OP_HOME/data/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution for non-secret values. Compose is normally invoked with non-secret `config/stack/stack.env`; service secrets live under `stash/vaults/secrets/` and are granted via Compose `secrets:`. `stash/vaults/user.env` is not a Compose env-file. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` user files and `stash/vaults/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `config/stack/`.
+- **Apply changes:** the CLI or admin validates proposed changes (compose config and secret-audit rules) before writing anything. If validation passes, a snapshot of current live files is saved to `$OP_HOME/data/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution for non-secret values. Compose is normally invoked with non-secret `config/stack/stack.env`; service secrets live under `knowledge/vaults/secrets/` and are granted via Compose `secrets:`. `knowledge/vaults/user.env` is not a Compose env-file. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` user files and `knowledge/vaults/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `config/stack/`.
 - **Addon overlays may extend core services.** Addon compose files can inject environment variables or volumes into core service definitions via Compose multi-file merge. For example, an addon can add environment entries to the assistant service by defining an `assistant:` block with additional `environment:` entries in its overlay. This is standard Docker Compose merge behavior — no custom merging logic is involved. See § Addon conflict detection for limitations.
-- **API key changes require restart:** provider API keys live as files under `stash/vaults/secrets/` or in OpenCode auth state, depending on the provider path, and containers receive file paths through `*_FILE` variables. Changing keys requires a stack restart (`docker compose up -d`) for services that read the file only at startup.
+- **API key changes require restart:** provider API keys live as files under `knowledge/vaults/secrets/` or in OpenCode auth state, depending on the provider path, and containers receive file paths through `*_FILE` variables. Changing keys requires a stack restart (`docker compose up -d`) for services that read the file only at startup.
 - **Rollback:** `openpalm rollback` restores the most recent snapshot from `$OP_HOME/data/rollback/` and restarts the stack. Available both as an automated response to failed deploys and as a manual escape hatch. See § Rollback scope for snapshot contents.
 - **Backup/restore:** `tar czf backup.tar.gz ~/.openpalm` archives the entire stack. Restore is extract and `docker compose up -d` — no staging tier to reconstruct.
 

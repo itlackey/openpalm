@@ -19,7 +19,7 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 - Shipped addon source: `.openpalm/config/stack/channels.compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/slack/compose.yml`
 - Non-secret values: `~/.openpalm/config/stack/stack.env`
-- Secret values: files under `~/.openpalm/stash/vaults/secrets/`
+- Secret values: files under `~/.openpalm/knowledge/vaults/secrets/`
 
 Manual start example:
 
@@ -51,7 +51,7 @@ See `docs/channels/slack-setup.md` for the full setup guide.
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
 
-Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` for setup, but setup persists them under `stash/vaults/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and `SLACK_APP_TOKEN_FILE`, not raw tokens.
+Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` for setup, but setup persists them under `knowledge/vaults/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and `SLACK_APP_TOKEN_FILE`, not raw tokens.
 
 ## Slack app configuration
 

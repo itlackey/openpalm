@@ -59,7 +59,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
 const TEST_CHANNEL = 'chat';
-const CHANNEL_SECRET_PATH = resolve(REPO_ROOT, `.dev/stash/vaults/secrets/channel_${TEST_CHANNEL}_secret`);
+const CHANNEL_SECRET_PATH = resolve(REPO_ROOT, `.dev/knowledge/vaults/secrets/channel_${TEST_CHANNEL}_secret`);
 
 /**
  * Guardian URL: In test mode, guardian is published on OP_GUARDIAN_PORT

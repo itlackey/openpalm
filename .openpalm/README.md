@@ -22,7 +22,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     akm/               AKM config directory
     auth.json          Optional auth metadata
 
-  stash/
+  knowledge/
     vaults/            User-managed secrets (akm vault:user)
     tasks/             Scheduled automation task files (*.yml)
 
@@ -54,7 +54,7 @@ This repo directory contains source assets embedded by the CLI during build. The
       stack.yml          Template stack spec (copied at install)
     assistant/           Seed files for config/assistant/
     guardian/            Guardian config placeholders
-  stash/                 Built-in AKM stash assets (skills, tasks, vault path)
+  knowledge/             Built-in AKM stash assets (skills, tasks, vault path)
 ```
 
 ## Quick start
@@ -70,7 +70,7 @@ Manual setup:
 ```bash
 cp -r .openpalm/ ~/.openpalm/
 $EDITOR ~/.openpalm/config/stack/stack.env
-mkdir -m 700 -p ~/.openpalm/stash/vaults/secrets
+mkdir -m 700 -p ~/.openpalm/knowledge/vaults/secrets
 # Create required secret files here, mode 0600, before enabling addons.
 docker compose \
   --project-name openpalm \
@@ -95,15 +95,15 @@ services and overlays belong in `custom.compose.yml`.
 |---|---|---|
 | `config/` | User | User edits, explicit admin actions, assistant via authenticated admin API |
 | `config/stack/` | System/User | CLI/admin manage fixed runtime assets and `stack.env`; users edit `custom.compose.yml` |
-| `stash/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
-| `stash/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
+| `knowledge/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
+| `knowledge/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
 | `state/` | Services | Containers and processes at runtime |
 | `workspace/` | Services | Durable shared data (not a secret store) |
 
 ## Runtime notes
 
 - Docker Compose global env file: `config/stack/stack.env` (system-managed, non-secret).
-- Service secrets live under `stash/vaults/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
+- Service secrets live under `knowledge/vaults/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
 - The assistant workspace is `workspace/`, mounted at `/work`.
 - The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm` — no container is needed.
-- Scheduled automations are stored as markdown task files in `stash/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.
+- Scheduled automations are stored as markdown task files in `knowledge/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.

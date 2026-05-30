@@ -18,16 +18,16 @@
 #
 #   3. Seed some user state:
 #      - Install a channel
-#      - Note the operator password in stash/vaults/secrets/op_ui_login_password
+#      - Note the operator password in knowledge/vaults/secrets/op_ui_login_password
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
 #          | bash -s -- --force --version <target>
 #
 #   5. Verify:
-#      - stash/vaults/user.env is NOT overwritten (custom user vault keys preserved)
+#      - knowledge/vaults/user.env is NOT overwritten (custom user vault keys preserved)
 #      - config/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
-#      - stash/vaults/secrets/ files are NOT overwritten (operator password preserved)
+#      - knowledge/vaults/secrets/ files are NOT overwritten (operator password preserved)
 #      - All services come back healthy
 #      - No errors in container logs
 #
@@ -92,7 +92,7 @@ TEST_ROOT="${ROOT_DIR}/.upgrade-test"
 export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
 STACK_DIR="${OP_HOME}/config/stack"
 SECRETS_DIR="${STASH_DIR}/vaults/secrets"
-STASH_DIR="${OP_HOME}/stash"
+STASH_DIR="${OP_HOME}/knowledge"
 DATA_DIR="${OP_HOME}/data"
 
 PROJECT_NAME="openpalm-upgrade-test"
@@ -136,7 +136,7 @@ trap cleanup EXIT
 
 # ── Helper: compose command ──────────────────────────────────────────
 # Compose uses config/stack/stack.env for non-secret values only. Service secrets
-# live as files under stash/vaults/secrets and are granted by compose overlays.
+# live as files under knowledge/vaults/secrets and are granted by compose overlays.
 # No admin container. Admin is a host process (openpalm).
 
 compose_cmd() {
@@ -213,7 +213,7 @@ if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/d
   esac
 fi
 
-# Seed stash/vaults/user.env — user-managed secrets (akm vault:user)
+# Seed knowledge/vaults/user.env — user-managed secrets (akm vault:user)
 cat >"${STASH_DIR}/vaults/user.env" <<EOF
 # Upgrade test user-managed env
 OPENAI_BASE_URL=
@@ -315,7 +315,7 @@ pass "Custom user file written to stack/"
 
 header "Phase 3: Record pre-upgrade state"
 
-# Checksum stash/vaults/user.env
+# Checksum knowledge/vaults/user.env
 SECRETS_CHECKSUM_BEFORE=$(sha256sum "${STASH_DIR}/vaults/user.env" | awk '{print $1}')
 echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 
@@ -344,10 +344,10 @@ pass "Pre-upgrade state recorded (admin is a host process; no HTTP check at this
 header "Phase 4: Simulate upgrade"
 
 # The upgrade simulation mirrors what setup.sh does on re-run:
-#   1. Detects existing install (stash/vaults/user.env exists)
+#   1. Detects existing install (knowledge/vaults/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
 #   3. Refreshes compose to config/stack/
-#   4. Does NOT overwrite stash/vaults/user.env, config/stack/stack.env, or stash/vaults/secrets/
+#   4. Does NOT overwrite knowledge/vaults/user.env, config/stack/stack.env, or knowledge/vaults/secrets/
 #   5. Restarts services with compose up
 
 echo "  Simulating setup.sh re-run..."
@@ -365,12 +365,12 @@ mkdir -p \
 # Step 2: Refresh compose (simulate download from GitHub)
 cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
-# Step 3: stash/vaults/user.env — must NOT be overwritten on upgrade
+# Step 3: knowledge/vaults/user.env — must NOT be overwritten on upgrade
 if [[ -f "${STASH_DIR}/vaults/user.env" ]]; then
-  echo "  stash/vaults/user.env exists -- NOT overwriting (same as setup.sh)"
+  echo "  knowledge/vaults/user.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: stash/vaults/user.env was deleted during upgrade simulation!"
-  fail "stash/vaults/user.env should still exist"
+  echo "  BUG: knowledge/vaults/user.env was deleted during upgrade simulation!"
+  fail "knowledge/vaults/user.env should still exist"
 fi
 
 # Step 4: config/stack/stack.env — must NOT be overwritten on upgrade
@@ -409,27 +409,27 @@ fi
 
 header "Phase 5: Verification"
 
-# ── 5a: stash/vaults/user.env unchanged ──────────────────────────────
+# ── 5a: knowledge/vaults/user.env unchanged ──────────────────────────────
 echo ""
-echo "=== 5a: stash/vaults/user.env preservation ==="
+echo "=== 5a: knowledge/vaults/user.env preservation ==="
 
 SECRETS_CHECKSUM_AFTER=$(sha256sum "${STASH_DIR}/vaults/user.env" | awk '{print $1}')
 if [[ "$SECRETS_CHECKSUM_BEFORE" == "$SECRETS_CHECKSUM_AFTER" ]]; then
-  pass "stash/vaults/user.env checksum unchanged"
+  pass "knowledge/vaults/user.env checksum unchanged"
 else
-  fail "stash/vaults/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
+  fail "knowledge/vaults/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
 OP_UI_LOGIN_PASSWORD_VALUE=$(tr -d '\n' <"${SECRETS_DIR}/op_ui_login_password")
 if [[ "$OP_UI_LOGIN_PASSWORD_VALUE" == "$OP_UI_LOGIN_PASSWORD" ]]; then
-  pass "OP_UI_LOGIN_PASSWORD preserved in stash/vaults/secrets/op_ui_login_password"
+  pass "OP_UI_LOGIN_PASSWORD preserved in knowledge/vaults/secrets/op_ui_login_password"
 else
   fail "OP_UI_LOGIN_PASSWORD changed (expected '${OP_UI_LOGIN_PASSWORD}', got '${OP_UI_LOGIN_PASSWORD_VALUE}')"
 fi
 
 CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${STASH_DIR}/vaults/user.env" | head -1 | cut -d= -f2-)
 if [[ "$CUSTOM_KEY_VALUE" == "my-custom-value-12345" ]]; then
-  pass "Custom user key preserved in stash/vaults/user.env"
+  pass "Custom user key preserved in knowledge/vaults/user.env"
 else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi
@@ -496,7 +496,7 @@ echo "=== 5f: UI login password preservation ==="
 # Admin is a host process — no HTTP auth check here. Verify the password secret file.
 PASSWORD_AFTER=$(tr -d '\n' <"${SECRETS_DIR}/op_ui_login_password")
 if [[ "$PASSWORD_AFTER" == "$OP_UI_LOGIN_PASSWORD" ]]; then
-  pass "OP_UI_LOGIN_PASSWORD preserved in stash/vaults/secrets/op_ui_login_password after upgrade"
+  pass "OP_UI_LOGIN_PASSWORD preserved in knowledge/vaults/secrets/op_ui_login_password after upgrade"
 else
   fail "OP_UI_LOGIN_PASSWORD changed after upgrade (expected '${OP_UI_LOGIN_PASSWORD}', got '${PASSWORD_AFTER}')"
 fi

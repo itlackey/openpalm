@@ -6,7 +6,7 @@ import { resolveOpenPalmHome } from '@openpalm/lib';
 
 async function automationsCheck(): Promise<void> {
   const home = resolveOpenPalmHome();
-  const tasksDir = join(home, 'stash', 'tasks');
+  const tasksDir = join(home, 'knowledge', 'tasks');
 
   if (!existsSync(tasksDir)) {
     console.log('No tasks directory found at', tasksDir);

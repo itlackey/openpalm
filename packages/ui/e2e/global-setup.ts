@@ -9,7 +9,7 @@ const REPO_ROOT = resolve(HERE, "../../..");
 // so Playwright tests don't accidentally target a developer's running dev stack.
 const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/config/stack/stack.env");
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
-const UI_LOGIN_PASSWORD_SECRET = resolve(OP_HOME_DIR, "stash/vaults/secrets/op_ui_login_password");
+const UI_LOGIN_PASSWORD_SECRET = resolve(OP_HOME_DIR, "knowledge/vaults/secrets/op_ui_login_password");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 
 /**

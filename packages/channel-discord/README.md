@@ -16,7 +16,7 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 - Shipped addon source: `.openpalm/config/stack/channels.compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/discord/compose.yml`
 - Non-secret values: `~/.openpalm/config/stack/stack.env`
-- Secret values: files under `~/.openpalm/stash/vaults/secrets/`
+- Secret values: files under `~/.openpalm/knowledge/vaults/secrets/`
 
 Manual start example:
 
@@ -49,7 +49,7 @@ The shipped addon overlay uses explicit non-secret environment entries and Docke
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom command definitions |
 
-Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `DISCORD_BOT_TOKEN` for setup, but setup persists it under `stash/vaults/secrets/` and the runtime receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
+Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `DISCORD_BOT_TOKEN` for setup, but setup persists it under `knowledge/vaults/secrets/` and the runtime receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
 
 ## Conversation behavior
 

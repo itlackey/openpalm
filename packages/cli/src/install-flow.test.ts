@@ -52,8 +52,8 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     writeFileSync(join(stackDir, 'stack.yml'), `version: 2\naddons:\n${enabledAddons.map((addon) => `  - ${addon}`).join('\n')}\n`);
   }
 
-  // stash/tasks/ — active AKM task files (populated by setup)
-  cpTree(join(OPENPALM_SRC, 'stash', 'tasks'), join(homeDir, 'stash', 'tasks'));
+  // knowledge/tasks/ — active AKM task files (populated by setup)
+  cpTree(join(OPENPALM_SRC, 'knowledge', 'tasks'), join(homeDir, 'knowledge', 'tasks'));
 
   // config/assistant/ — opencode project config (opencode.jsonc, openpalm.md, system.md)
   // OPENCODE_CONFIG_DIR points at this directory inside the container.
@@ -87,7 +87,7 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     join(dataDir, 'logs'),
     join(dataDir, 'backups'),
     join(dataDir, 'rollback'),
-    join(homeDir, 'stash'),
+    join(homeDir, 'knowledge'),
     join(homeDir, 'workspace'),
   ]) {
     mkdirSync(dir, { recursive: true });
@@ -188,7 +188,7 @@ describe('install flow — tier 1 (file validation)', () => {
     // ── Validate vault files are regular files (not directories) ─────
     // Note: vault/user/user.env is no longer
     // seeded — user-managed env secrets live in akm vault:user
-    // (stash/vaults/user.env) and the assistant entrypoint sources
+    // (knowledge/vaults/user.env) and the assistant entrypoint sources
     // it directly. The compose env_file mount for vault/user/user.env
     // has been removed too.
     for (const relPath of [
@@ -244,18 +244,18 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(rootFiles).toBe('');
 
     // ── Validate data and stash directories ─────────────────────────────────────
-    for (const dir of ['data/admin', 'data/assistant', 'data/guardian', 'stash', 'workspace']) {
+    for (const dir of ['data/admin', 'data/assistant', 'data/guardian', 'knowledge', 'workspace']) {
       expect(existsSync(join(homeDir, dir))).toBe(true);
     }
 
-    // ── Validate akm-improve is seeded into stash/tasks/ ──
+    // ── Validate akm-improve is seeded into knowledge/tasks/ ──
     // Tasks are AKM-owned stash files. performSetup preserves user edits.
-    const tasksDir = join(homeDir, 'stash/tasks');
+    const tasksDir = join(homeDir, 'knowledge/tasks');
     expect(existsSync(tasksDir)).toBe(true);
     const tasks = readdirSync(tasksDir).sort();
     expect(tasks).toContain('akm-improve.yml');
 
-    const akmImprovePath = join(homeDir, 'stash/tasks/akm-improve.yml');
+    const akmImprovePath = join(homeDir, 'knowledge/tasks/akm-improve.yml');
     const akmImproveContent = readFileSync(akmImprovePath, 'utf-8');
     expect(akmImproveContent).toContain('akm');
     expect(akmImproveContent).toContain('improve');
@@ -321,7 +321,7 @@ describe('install flow — tier 1 (file validation)', () => {
     await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
 
     // The shipped config-diagnostics skill must land on disk with valid frontmatter.
-    const skillPath = join(homeDir, 'stash/skills/config-diagnostics/SKILL.md');
+    const skillPath = join(homeDir, 'knowledge/skills/config-diagnostics/SKILL.md');
     expect(existsSync(skillPath)).toBe(true);
     const skill = readFileSync(skillPath, 'utf-8');
     expect(skill).toContain('name: config-diagnostics');
@@ -338,7 +338,7 @@ describe('install flow — tier 1 (file validation)', () => {
 
     // First install seeds the asset.
     await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
-    const skillPath = join(homeDir, 'stash/skills/config-diagnostics/SKILL.md');
+    const skillPath = join(homeDir, 'knowledge/skills/config-diagnostics/SKILL.md');
     expect(existsSync(skillPath)).toBe(true);
 
     // User edits the seeded skill.

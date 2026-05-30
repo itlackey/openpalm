@@ -24,7 +24,7 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ~/.openpalm/
 ├── config/          user-editable config (assistant/, akm/, guardian/)
 │   └── stack/       live compose assembly (core.compose.yml, stack.env, secrets/, addons/)
-├── stash/           AKM knowledge base (vaults/, tasks/, skills/)
+├── knowledge/           AKM knowledge base (vaults/, tasks/, skills/)
 │   └── vaults/      user-managed secrets (user.env = vault:user)
 ├── state/           durable service data, logs, backups, rollback, akm/cache, akm/data
 └── workspace/       shared work area
@@ -37,14 +37,14 @@ Lifecycle backups live under `~/.openpalm/data/backups/`; rollback snapshots liv
 The standard startup path uses:
 
 - `config/stack/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
-- `stash/vaults/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
-- `stash/vaults/user.env` — AKM vault backing file for user-managed secrets; not a Compose env file
+- `knowledge/vaults/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
+- `knowledge/vaults/user.env` — AKM vault backing file for user-managed secrets; not a Compose env file
 
 ### Security boundaries
 
 - The host CLI and host admin process access the Docker socket directly on the host. No container mounts the Docker socket.
 - The host admin process reads and writes `$OP_HOME` directly as a host process. No container mounts the full `$OP_HOME`.
-- `assistant` has no `/etc/vault/` mount — user secrets are read via `akm vault:user` from the `stash/` bind mount.
+- `assistant` has no `/etc/vault/` mount — user secrets are read via `akm vault:user` from the `knowledge/` bind mount.
 - `guardian` is the only path from channel ingress networks to the assistant.
 
 ---
@@ -91,7 +91,7 @@ Mounts:
 - `$OP_HOME/config/akm -> /etc/akm`
 - `$OP_HOME/config/auth.json -> /home/opencode/.local/share/opencode/auth.json`
 - `$OP_HOME/data/assistant -> /home/opencode`
-- `$OP_HOME/stash -> /stash` (shared akm stash)
+- `$OP_HOME/knowledge -> /stash` (shared akm stash)
 - `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data`
 - `$OP_HOME/workspace -> /work`
 - `assistant-persistent -> /opt/persistent` (global-prefix escape hatch)
@@ -133,7 +133,7 @@ Role:
 Env sources:
 
 - direct compose `environment:` block (non-secret config via ${VAR} substitution)
-- channel HMAC secret files granted through Compose `secrets:` from `stash/vaults/secrets/`
+- channel HMAC secret files granted through Compose `secrets:` from `knowledge/vaults/secrets/`
 
 Key env:
 
@@ -198,7 +198,7 @@ network port and no Docker socket.
 
 Control plane:
 
-- Definitions: `${OP_HOME}/stash/tasks/*.yml` (AKM YAML task files; `akm tasks sync` registers with OS cron)
+- Definitions: `${OP_HOME}/knowledge/tasks/*.yml` (AKM YAML task files; `akm tasks sync` registers with OS cron)
 - Manual triggers: `POST /admin/automations/<name>/run` spawns `akm tasks run <name>` directly
 - Per-run logs: `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` (written by akm)
 - Sync output is emitted to container stdout/stderr.
@@ -210,7 +210,7 @@ Env sources (inherits the assistant container's environment):
 Mounts (provided by the assistant service):
 
 - `$OP_HOME/config/assistant -> /etc/opencode` and `$OP_HOME/config/akm -> /etc/akm`
-- `$OP_HOME/stash/tasks -> /stash/tasks` (rw, AKM YAML task files)
+- `$OP_HOME/knowledge/tasks -> /knowledge/tasks` (rw, AKM YAML task files)
 - `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data` (rw, akm cache, task logs, databases, and durable data)
 
 Design note — scheduler scope: The scheduler runs as part of the
@@ -240,7 +240,7 @@ Key env:
 
 - `PORT` — listen port (default: `3880`)
 - `OP_HOME` — resolved from the host environment
-- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/stash/vaults/secrets/op_ui_login_password`; used to verify the admin login form
+- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/knowledge/vaults/secrets/op_ui_login_password`; used to verify the admin login form
 
 Bind address:
 
@@ -254,12 +254,12 @@ UI-first principle: the admin UI is the primary operator interface. CLI commands
 
 Shipped channel-style addons follow the same basic pattern:
 
-- receive their channel HMAC secret via a Compose secret file grant from `stash/vaults/secrets/` and a matching `*_FILE` environment variable
+- receive their channel HMAC secret via a Compose secret file grant from `knowledge/vaults/secrets/` and a matching `*_FILE` environment variable
 - join `channel_lan` by default (or `channel_public` for internet-facing channels once that network's access semantics are finalized)
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant
 
-Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated as a `0600` file under `stash/vaults/secrets/`. Compose grants that file only to the matching channel service and the guardian. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests.
+Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated as a `0600` file under `knowledge/vaults/secrets/`. Compose grants that file only to the matching channel service and the guardian. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests.
 
 Default host binds for shipped HTTP-ish edges:
 

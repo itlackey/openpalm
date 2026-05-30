@@ -39,7 +39,7 @@
   <div class="panel-header">
     <div>
       <h2>Automations</h2>
-      <p class="panel-subtitle">Scheduled tasks read from <code>~/.openpalm/stash/tasks/</code>. Add or edit task files there to manage automations — changes take effect on refresh.</p>
+      <p class="panel-subtitle">Scheduled tasks read from <code>~/.openpalm/knowledge/tasks/</code>. Add or edit task files there to manage automations — changes take effect on refresh.</p>
     </div>
     <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
       {#if loading}
@@ -96,7 +96,7 @@
           <button class="btn btn-secondary btn-sm" onclick={onRefresh}>Try Again</button>
         {:else}
           <p>No automations configured.</p>
-          <p class="empty-state-hint">Drop <code>.md</code> task files into <code>~/.openpalm/stash/tasks/</code>, or install via <code>akm</code>.</p>
+          <p class="empty-state-hint">Drop <code>.md</code> task files into <code>~/.openpalm/knowledge/tasks/</code>, or install via <code>akm</code>.</p>
         {/if}
       </div>
     {/if}

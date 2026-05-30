@@ -27,7 +27,7 @@ export type ArtifactMeta = {
 export type ControlPlaneState = {
   homeDir: string;
   configDir: string;
-  stashDir: string;      // homeDir/stash
+  stashDir: string;      // homeDir/knowledge
   workspaceDir: string;  // homeDir/workspace
   dataDir: string;       // homeDir/data (service data + operational files)
   stackDir: string;      // configDir/stack (compose runtime + stack config)

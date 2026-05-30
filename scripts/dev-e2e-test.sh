@@ -5,7 +5,7 @@
 # v0.11.0 architecture:
 #   - UI is a HOST PROCESS (`openpalm`), not a container
 #   - Compose stack: assistant + guardian containers only
-#   - Directory layout: config/stack/, data/, stash/vaults/, workspace/
+#   - Directory layout: config/stack/, data/, knowledge/vaults/, workspace/
 #
 # Cleans state, rebuilds all images from source, starts the stack and
 # admin process, then verifies:
@@ -110,7 +110,7 @@ mkdir -p "${OP_E2E_HOME}"
 cp -r .openpalm/. "${OP_E2E_HOME}/"
 
 # Seed stack.env with isolated non-secret values
-mkdir -p "${OP_E2E_HOME}/stash/vaults/secrets"
+mkdir -p "${OP_E2E_HOME}/knowledge/vaults/secrets"
 docker_sock="/var/run/docker.sock"
 cat > "${OP_E2E_HOME}/config/stack/stack.env" <<EOF
 OP_HOME=${OP_E2E_HOME}
@@ -130,18 +130,18 @@ OP_SETUP_COMPLETE=true
 EOF
 chmod 600 "${OP_E2E_HOME}/config/stack/stack.env"
 
-printf '%s\n' "e2e-test-password-$(date +%s)" > "${OP_E2E_HOME}/stash/vaults/secrets/op_ui_login_password"
-openssl rand -hex 16 > "${OP_E2E_HOME}/stash/vaults/secrets/channel_chat_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/stash/vaults/secrets/channel_api_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/stash/vaults/secrets/channel_discord_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/stash/vaults/secrets/channel_slack_secret"
-chmod 700 "${OP_E2E_HOME}/stash/vaults/secrets"
-chmod 600 "${OP_E2E_HOME}/stash/vaults/secrets/"*
+printf '%s\n' "e2e-test-password-$(date +%s)" > "${OP_E2E_HOME}/knowledge/vaults/secrets/op_ui_login_password"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/vaults/secrets/channel_chat_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/vaults/secrets/channel_api_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/vaults/secrets/channel_discord_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/vaults/secrets/channel_slack_secret"
+chmod 700 "${OP_E2E_HOME}/knowledge/vaults/secrets"
+chmod 600 "${OP_E2E_HOME}/knowledge/vaults/secrets/"*
 
 # Empty user.env (akm vault:user is the source of truth at runtime)
-mkdir -p "${OP_E2E_HOME}/stash/vaults"
-touch "${OP_E2E_HOME}/stash/vaults/user.env"
-chmod 600 "${OP_E2E_HOME}/stash/vaults/user.env"
+mkdir -p "${OP_E2E_HOME}/knowledge/vaults"
+touch "${OP_E2E_HOME}/knowledge/vaults/user.env"
+chmod 600 "${OP_E2E_HOME}/knowledge/vaults/user.env"
 
 pass "Isolated OP_HOME seeded from .openpalm/"
 
@@ -230,7 +230,7 @@ fi
 # ── Step 7: Verify UI endpoints ───────────────────────────────────
 echo ""
 echo "=== Step 7: Verify UI endpoints ==="
-UI_TOKEN=$(tr -d '\n' < "${OP_E2E_HOME}/stash/vaults/secrets/op_ui_login_password")
+UI_TOKEN=$(tr -d '\n' < "${OP_E2E_HOME}/knowledge/vaults/secrets/op_ui_login_password")
 
 # /health
 status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/health")

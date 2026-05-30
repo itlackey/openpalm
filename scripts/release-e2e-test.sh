@@ -114,7 +114,7 @@ fi
 
 OP_HOME="${OP_HOME:-${HOME}/.openpalm}"
 CONFIG_HOME="${OP_HOME}/config"
-STASH_HOME="${OP_HOME}/stash"
+STASH_HOME="${OP_HOME}/knowledge"
 
 # ── Cleanup handler ──────────────────────────────────────────────────
 
@@ -263,11 +263,11 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fail "Asset missing or empty: $CONFIG_HOME/stack/core.compose.yml"
   fi
 
-  # Verify stash/vaults/user.env was seeded
+  # Verify knowledge/vaults/user.env was seeded
   if [ -f "$STASH_HOME/vaults/user.env" ]; then
-    pass "stash/vaults/user.env created"
+    pass "knowledge/vaults/user.env created"
   else
-    fail "stash/vaults/user.env not created"
+    fail "knowledge/vaults/user.env not created"
   fi
 else
   step "Skipping install (--skip-install)"
@@ -539,7 +539,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
 
   password_secret="$STASH_HOME/vaults/secrets/op_ui_login_password"
   if [ -f "$password_secret" ] && [ "$(tr -d '\n' < "$password_secret")" = "$OP_UI_LOGIN_PASSWORD" ]; then
-    pass "UI login password is stored in stash/vaults/secrets/op_ui_login_password"
+    pass "UI login password is stored in knowledge/vaults/secrets/op_ui_login_password"
   else
     fail "UI login password secret file missing or incorrect"
   fi

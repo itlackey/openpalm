@@ -16,8 +16,8 @@ Primary runtime sources:
 - The optional admin-side OpenCode runtime is started by `openpalm` as a host subprocess on a random loopback port.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
 - `~/.openpalm/config/stack/stack.env` provides non-secret runtime and resolved capability env values.
-- `~/.openpalm/stash/vaults/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
-- `~/.openpalm/stash/vaults/user.env` is the AKM user vault backing file, not a Compose env file.
+- `~/.openpalm/knowledge/vaults/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
+- `~/.openpalm/knowledge/vaults/user.env` is the AKM user vault backing file, not a Compose env file.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 
 ---
@@ -31,7 +31,7 @@ Primary runtime sources:
 | `~/.openpalm/config/assistant/` | `/etc/opencode` | OpenCode config, tools, plugins, skills, commands |
 | `~/.openpalm/config/akm/` | `/etc/akm` | AKM config |
 | `~/.openpalm/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
-| `~/.openpalm/stash/` | `/stash` | AKM stash (memory, skills, vaults; read via akm) |
+| `~/.openpalm/knowledge/` | `/stash` | AKM stash (memory, skills, vaults; read via akm) |
 | `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
 | `~/.openpalm/data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |
 | `~/.openpalm/data/akm/data/` | `/opt/akm/data` | AKM databases and durable data |
@@ -46,7 +46,7 @@ Primary runtime sources:
 | `OPENCODE_AUTH` | `false` | Disabled by default because host exposure is loopback-only |
 | `OPENCODE_ENABLE_SSH` | from `stack.env` | Optional SSH server toggle |
 | `HOME` | `/home/opencode` | Runtime home |
-| `AKM_STASH_DIR` | `/stash` | Shared akm stash bind-mounted from `${OP_HOME}/stash` (memory + skills) |
+| `AKM_STASH_DIR` | `/stash` | Shared akm stash bind-mounted from `${OP_HOME}/knowledge` (memory + skills) |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config directory |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache directory |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data directory |
@@ -77,8 +77,8 @@ Compose remains the source of truth for that contract.
 ## Security Boundary
 
 - The assistant has no Docker socket.
-- The assistant mounts `stash/` at `/stash` for the shared AKM stash (memory, skills, vaults). User secrets are accessed via the akm CLI, not a separate `/etc/vault/` mount.
-- Stack-level secrets live as files under `stash/vaults/secrets/` and are granted only to services that need them. `stack.env` is non-secret Compose/runtime configuration.
+- The assistant mounts `knowledge/` at `/stash` for the shared AKM stash (memory, skills, vaults). User secrets are accessed via the akm CLI, not a separate `/etc/vault/` mount.
+- Stack-level secrets live as files under `knowledge/vaults/secrets/` and are granted only to services that need them. `stack.env` is non-secret Compose/runtime configuration.
 - Admin is a host process. It accesses the Docker socket directly on the host — no container is involved in admin operations.
 
 ---

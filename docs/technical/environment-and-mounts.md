@@ -23,8 +23,8 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
 | `~/.openpalm/config/stack/` | Live compose assembly; non-secret runtime env (`stack.env`), `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, `custom.compose.yml`, `stack.yml` |
-| `~/.openpalm/stash/` | AKM knowledge base (user-managed: `vaults/`, `tasks/`) |
-| `~/.openpalm/stash/vaults/` | User-managed secrets (`user.env`, AKM vault backing store) |
+| `~/.openpalm/knowledge/` | AKM knowledge base (user-managed: `vaults/`, `tasks/`) |
+| `~/.openpalm/knowledge/vaults/` | User-managed secrets (`user.env`, AKM vault backing store) |
 | `~/.openpalm/data/` | Durable service data, logs, lifecycle backups, and rollback snapshots |
 | `~/.openpalm/data/logs/` | Audit and debug logs |
 | `~/.cache/openpalm/` | Ephemeral system cache |
@@ -39,10 +39,10 @@ Current durable data subdirectories used by the shipped stack:
 - `data/logs`
 - `data/backups`
 - `data/rollback`
-- `stash/` (shared akm stash mounted at `/stash` for assistant)
+- `knowledge/` (shared akm stash mounted at `/stash` for assistant)
 - `workspace/` (shared work area)
 
-Persistent memory and knowledge live in `stash/` (the shared akm stash
+Persistent memory and knowledge live in `knowledge/` (the shared akm stash
 mounted at `/stash` for the assistant). There is no separate memory service.
 
 ---
@@ -58,15 +58,15 @@ Docker Compose is invoked with the non-secret stack env file (see [Manual Compos
 That means the effective env model is:
 
 - `config/stack/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
-- `stash/vaults/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
-- `stash/vaults/user.env` - AKM vault backing file for user-managed secrets; never a Compose env-file
+- `knowledge/vaults/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
+- `knowledge/vaults/user.env` - AKM vault backing file for user-managed secrets; never a Compose env-file
 
 ---
 
 ## Core Services
 
 > Memory is not a separate service. Persistent knowledge and recall
-> live in the akm stash bind-mounted from the host: `stash/` is mounted at `/stash`
+> live in the akm stash bind-mounted from the host: `knowledge/` is mounted at `/stash`
 > in the assistant container. See
 > [`core-principles.md`](core-principles.md) for the rationale.
 
@@ -82,7 +82,7 @@ Mounts:
 | `$OP_HOME/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Host-managed OpenCode auth copy |
 | `$OP_HOME/config/akm` | `/etc/akm` | rw | AKM config |
 | `$OP_HOME/data/assistant` | `/home/opencode` | rw | Assistant persistent home |
-| `$OP_HOME/stash` | `/stash` | rw | AKM stash |
+| `$OP_HOME/knowledge` | `/stash` | rw | AKM stash |
 | `$OP_HOME/data/akm/cache` | `/opt/akm/cache` | rw | AKM cache and task logs |
 | `$OP_HOME/data/akm/data` | `/opt/akm/data` | rw | AKM databases and durable data |
 | `$OP_HOME/workspace` | `/work` | rw | Shared workspace |
@@ -129,7 +129,7 @@ Mounts:
 |---|---|---|---|
 | `$OP_HOME/data/guardian` | `/opt/openpalm/guardian` | rw | Runtime nonce / rate-limit state |
 | `$OP_HOME/data/logs` | `/opt/openpalm/logs` | rw | Guardian audit log directory |
-| `$OP_HOME/stash/vaults/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
+| `$OP_HOME/knowledge/vaults/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
 
 Ports and networks:
 
@@ -154,7 +154,7 @@ Notes:
 
 - Guardian is internal-only from the host perspective.
 - It is the only bridge between addon ingress networks and `assistant_net`.
-- Guardian receives only explicitly granted secret files from `stash/vaults/secrets/`; it must not use service-level `env_file` or raw secret env values.
+- Guardian receives only explicitly granted secret files from `knowledge/vaults/secrets/`; it must not use service-level `env_file` or raw secret env values.
 
 ### Scheduler co-process
 
@@ -166,7 +166,7 @@ Scheduling control plane (crond started by `core/assistant/entrypoint.sh`):
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
-| `$OP_HOME/stash/tasks` | `/stash/tasks` | rw | AKM task markdown files |
+| `$OP_HOME/knowledge/tasks` | `/knowledge/tasks` | rw | AKM task markdown files |
 | `$OP_HOME/data/akm/cache` | `/opt/akm/cache` | rw | AKM task logs and cache |
 | `$OP_HOME/data/akm/data` | `/opt/akm/data` | rw | AKM task history and durable data |
 
@@ -190,7 +190,7 @@ Key env (host process, not container):
 |---|---|---|
 | `PORT` | `OP_HOST_UI_PORT` or `3880` | Admin HTTP listen port |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
-| `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/stash/vaults/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
+| `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/knowledge/vaults/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
 
 ---
 
@@ -247,5 +247,5 @@ passed to Docker Compose and is not mounted directly into containers.
 
 Provider/model selections and other non-secret preferences live in `stack.env`
 or `config/akm/config.json`. System-managed service secrets live as files under
-`stash/vaults/secrets/` and are granted only to the service that needs them.
+`knowledge/vaults/secrets/` and are granted only to the service that needs them.
 Secret-like container environment variables must use `*_FILE` paths.

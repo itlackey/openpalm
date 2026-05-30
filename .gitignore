@@ -26,7 +26,7 @@ packages/channel-voice/test-results/.last-run.json
 # .openpalm/ template — track everything except runtime-written files
 .openpalm/config/stack/stack.env
 .openpalm/config/stack/guardian.env
-.openpalm/stash/vaults/user.env
+.openpalm/knowledge/vaults/user.env
 packages/assistant-tools/dist/
 .dev-tmp/
 .dev-tmp*

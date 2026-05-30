@@ -3,7 +3,7 @@
  *
  * Covers:
  * 1. SCHEDULE_PRESETS display labels
- * 2. loadAutomations — reads markdown tasks from stash/tasks/
+ * 2. loadAutomations — reads markdown tasks from knowledge/tasks/
  * 3. readAutomationLogs — reads from data/akm/cache/tasks/logs/
  *
  * executeAutomation is verified at the route level via the run vitest.
@@ -57,7 +57,7 @@ describe("SCHEDULE_PRESETS", () => {
 // ── loadAutomations ──────────────────────────────────────────────────────
 
 describe("loadAutomations", () => {
-  test("returns empty array when stash/tasks does not exist", () => {
+  test("returns empty array when knowledge/tasks does not exist", () => {
     const result = loadAutomations(stashDir);
     expect(result).toEqual([]);
   });

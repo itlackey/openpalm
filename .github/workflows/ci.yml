@@ -104,7 +104,7 @@ jobs:
           OP_HOME: ${{ github.workspace }}/.op-home
         run: |
           set -euo pipefail
-          mkdir -p "${OP_HOME}/config/stack" "${OP_HOME}/stash/vaults" "${OP_HOME}/data"
+          mkdir -p "${OP_HOME}/config/stack" "${OP_HOME}/knowledge/vaults" "${OP_HOME}/data"
           docker compose -f .openpalm/config/stack/core.compose.yml -f compose.dev.yml config -q
 
       - name: Assert deleted scripts are absent

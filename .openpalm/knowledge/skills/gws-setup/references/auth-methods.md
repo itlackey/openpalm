@@ -53,7 +53,7 @@ After `gws auth setup`, the config directory contains:
   .encryption_key       # AES-256-GCM key for credential encryption
 ```
 
-All three files must be copied to `stash/vaults/.gws/` for the container.
+All three files must be copied to `knowledge/vaults/.gws/` for the container.
 
 ### Scope Filtering
 
@@ -68,7 +68,7 @@ gws auth login -s drive,gmail,sheets
 Copy the entire config directory to the vault:
 
 ```bash
-cp -r ~/.config/gws/. ~/.openpalm/stash/vaults/.gws/
+cp -r ~/.config/gws/. ~/.openpalm/knowledge/vaults/.gws/
 ```
 
 Or use the setup script which does this automatically:
@@ -121,8 +121,8 @@ The user must download a `client_secret.json` from Google Cloud Console. This fi
    cp ~/Downloads/client_secret_*.json ~/.config/gws/client_secret.json
 
    # For OpenPalm vault (direct):
-   mkdir -p ~/.openpalm/stash/vaults/.gws
-   cp ~/Downloads/client_secret_*.json ~/.openpalm/stash/vaults/.gws/client_secret.json
+   mkdir -p ~/.openpalm/knowledge/vaults/.gws
+   cp ~/Downloads/client_secret_*.json ~/.openpalm/knowledge/vaults/.gws/client_secret.json
    ```
 
 8. Run the login (this generates credentials.json):
@@ -215,8 +215,8 @@ This is the recommended approach for OpenPalm containers when the Interactive Se
 3. Place the exported file in the vault:
 
    ```bash
-   cp credentials.json ~/.openpalm/stash/vaults/.gws/credentials.json
-   chmod 600 ~/.openpalm/stash/vaults/.gws/credentials.json
+   cp credentials.json ~/.openpalm/knowledge/vaults/.gws/credentials.json
+   chmod 600 ~/.openpalm/knowledge/vaults/.gws/credentials.json
    ```
 
    Or use the export script:
@@ -236,7 +236,7 @@ If you copy the full `.gws/` directory instead (including `.encryption_key`), th
 ### Security Considerations
 
 - The exported `credentials.json` contains full OAuth tokens and client secrets in plaintext. Treat it like a password.
-- In OpenPalm, `stash/vaults/` is the correct location — it's mounted read-write to the assistant at `/etc/vault/`.
+- In OpenPalm, `knowledge/vaults/` is the correct location — it's mounted read-write to the assistant at `/etc/vault/`.
 - Set file permissions: `chmod 600 credentials.json`
 - Rotate credentials regularly — tokens can expire or be revoked.
 
@@ -288,7 +288,7 @@ For server-to-server operations without user context. Best for background jobs, 
 4. Place the key in the vault:
 
    ```bash
-   cp ~/Downloads/your-project-*.json ~/.openpalm/stash/vaults/gcloud-credentials.json
+   cp ~/Downloads/your-project-*.json ~/.openpalm/knowledge/vaults/gcloud-credentials.json
    ```
 
    The compose file maps this to `GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json`.
@@ -297,7 +297,7 @@ For server-to-server operations without user context. Best for background jobs, 
 
 | File | Source | Vault location |
 |------|--------|---------------|
-| Service account key JSON | **User downloads** from Cloud Console > Service Accounts > Keys | `stash/vaults/gcloud-credentials.json` |
+| Service account key JSON | **User downloads** from Cloud Console > Service Accounts > Keys | `knowledge/vaults/gcloud-credentials.json` |
 
 No other files are needed. No `client_secret.json`, no `credentials.json`, no `.encryption_key`.
 
@@ -329,7 +329,7 @@ The simplest method for quick testing when you already have an access token from
 
 ### For OpenPalm
 
-Add to `stash/vaults/user.env`:
+Add to `knowledge/vaults/user.env`:
 
 ```bash
 GOOGLE_WORKSPACE_CLI_TOKEN=ya29.a0ARrdaM...

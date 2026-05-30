@@ -9,13 +9,13 @@ OpenPalm remains compose-first and manual-first; the admin addon is a convenienc
 - Authenticated `/admin/*` API used by the UI and assistant tools
 - Thin control-plane consumer built on `@openpalm/lib`
 - Reads the shipped addon catalog from `registry/addons/` and enabled runtime overlays from `stack/addons/`
-- Exposes addon schema details and points operators to `stash/vaults/user.env` for values
+- Exposes addon schema details and points operators to `knowledge/vaults/user.env` for values
 
 ## Notes on internals
 
 - Some module names still use historical terms like `staging`
 - The current runtime model is direct write + Docker Compose over `~/.openpalm/`
-- `registry/` is the shipped catalog source; `stack/addons/` are active runtime addon overlays; `stash/tasks/` holds active AKM task files
+- `registry/` is the shipped catalog source; `stack/addons/` are active runtime addon overlays; `knowledge/tasks/` holds active AKM task files
 - Compose overlays under `stack/addons/` are deployment truth; admin does not replace that model
 
 ## Structure
@@ -49,10 +49,10 @@ allowlist (`helpers.ts:checkHostHeader` accepts only the configured
 `ADMIN_PORT`, default `8100`); using Vite's default 5173 would 400 on
 every request.
 
-**Login**: the password lives in `.dev/stash/vaults/secrets/op_ui_login_password`:
+**Login**: the password lives in `.dev/knowledge/vaults/secrets/op_ui_login_password`:
 
 ```bash
-tr -d '\n' < .dev/stash/vaults/secrets/op_ui_login_password
+tr -d '\n' < .dev/knowledge/vaults/secrets/op_ui_login_password
 ```
 
 **Assistant URL**: by default `.dev/config/stack/stack.env` sets
@@ -72,7 +72,7 @@ project name.
 ### Why isolated?
 
 `OP_HOME=$(pwd)/.dev` keeps **every** filesystem write the dev server
-might make (`config/`, `state/`, `stash/`, `workspace/`) inside the gitignored
+might make (`config/`, `state/`, `knowledge/`, `workspace/`) inside the gitignored
 `.dev/` tree. `~/.openpalm/` is your production install and the
 [heightened-caution paths in CLAUDE.md](../../CLAUDE.md) forbid touching
 it during dev work.
@@ -114,7 +114,7 @@ cookie by POSTing the operator password to `/admin/auth/login`. The legacy
 Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
 
 In a normal install the source of truth for the password is
-`~/.openpalm/stash/vaults/secrets/op_ui_login_password`. Local dev with
+`~/.openpalm/knowledge/vaults/secrets/op_ui_login_password`. Local dev with
 `bun run ui:dev:isolated` reads `OP_UI_LOGIN_PASSWORD` from the process
 environment seeded by the dev setup helpers.
 
@@ -123,7 +123,7 @@ environment seeded by the dev setup helpers.
 | Variable | Purpose |
 |---|---|
 | `OP_HOME` | OpenPalm root. Prod: `~/.openpalm`. Dev: `$(pwd)/.dev` via `ui:dev:isolated`. |
-| `OP_UI_LOGIN_PASSWORD` | Operator-facing admin password. Stored in `${OP_HOME}/stash/vaults/secrets/op_ui_login_password` and promoted into the admin process environment. |
+| `OP_UI_LOGIN_PASSWORD` | Operator-facing admin password. Stored in `${OP_HOME}/knowledge/vaults/secrets/op_ui_login_password` and promoted into the admin process environment. |
 | `OP_OPENCODE_URL` / `OP_ASSISTANT_PORT` | Where the proxy forwards `/proxy/assistant/*`. Default `http://localhost:3800`. |
 | `OP_OPENCODE_PASSWORD` | Basic-auth password for OpenCode endpoints. Empty in dev (matches the `OPENCODE_AUTH=false` default). |
 | `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network. |

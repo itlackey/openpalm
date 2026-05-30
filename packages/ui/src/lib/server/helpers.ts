@@ -73,7 +73,7 @@ export function getRequestId(event: RequestEvent): string {
  *
  * Phase 4 of the auth/proxy refactor collapsed
  * `ControlPlaneState.adminToken` (and the assistant token alongside it).
- * Runtime persistence lives in `stash/vaults/secrets/op_ui_login_password`.
+ * Runtime persistence lives in `knowledge/vaults/secrets/op_ui_login_password`.
  * `process.env.OP_UI_LOGIN_PASSWORD` is still accepted for tests and explicit
  * host-process overrides.
  *

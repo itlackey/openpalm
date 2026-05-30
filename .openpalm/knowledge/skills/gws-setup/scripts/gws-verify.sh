@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VAULT_GWS="${OP_HOME}/stash/vaults/.gws"
+VAULT_GWS="${OP_HOME}/knowledge/vaults/.gws"
 PASS=0
 FAIL=0
 

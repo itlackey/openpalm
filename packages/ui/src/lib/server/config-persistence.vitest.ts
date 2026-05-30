@@ -262,7 +262,7 @@ describe("writeRuntimeFiles", () => {
 // ── Channel Secret Files ─────────────────────────────────────────────────
 
 describe("channel secret files", () => {
-  test("reads from stash/vaults/secrets", () => {
+  test("reads from knowledge/vaults/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
@@ -281,7 +281,7 @@ describe("channel secret files", () => {
     expect(readSecret(state.stackDir, "channel_chat_secret")).toBeNull();
   });
 
-  test("writes secrets to stash/vaults/secrets", () => {
+  test("writes secrets to knowledge/vaults/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 

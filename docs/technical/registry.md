@@ -11,4 +11,4 @@ Activation is recorded in `config/stack/stack.yml` as addon names. OpenPalm reso
 
 User custom services and overlays belong in `config/stack/custom.compose.yml`.
 
-Automation tasks are AKM-owned stash files under `stash/tasks/`. OpenPalm does not track task enablement in a registry; AKM reads each task file's own `enabled` state.
+Automation tasks are AKM-owned stash files under `knowledge/tasks/`. OpenPalm does not track task enablement in a registry; AKM reads each task file's own `enabled` state.

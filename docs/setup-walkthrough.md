@@ -97,7 +97,7 @@ Install action:
 Important env behavior:
 
 - Provider API keys and runtime capability values are written to `~/.openpalm/config/stack/stack.env`.
-- `~/.openpalm/stash/vaults/user.env` remains an optional user-extension file.
+- `~/.openpalm/knowledge/vaults/user.env` remains an optional user-extension file.
 
 ---
 

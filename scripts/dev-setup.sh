@@ -8,9 +8,9 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env          Seed .dev/stash/vaults/user.env for akm vault:user, generate
+  --seed-env          Seed .dev/knowledge/vaults/user.env for akm vault:user, generate
                       .dev/config/stack/stack.env with auto-detected values, and
-                      write system secrets under .dev/stash/vaults/secrets/.
+                      write system secrets under .dev/knowledge/vaults/secrets/.
   --force             Overwrite seeded files even if they already exist.
   --enable-addon <n>  Add <n> to config/stack/stack.yml. Repeat to enable multiple dev addons.
   --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
@@ -109,7 +109,7 @@ fi
 
 DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
-STASH_DIR="$DEV_ROOT/stash"
+STASH_DIR="$DEV_ROOT/knowledge"
 DATA_DIR="$DEV_ROOT/data"
 LOGS_DIR="$DEV_ROOT/data/logs"
 
@@ -118,7 +118,7 @@ LOGS_DIR="$DEV_ROOT/data/logs"
 # CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
 # whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. Generated
-# files (stack.env, stash/vaults/secrets/, user.env, auth.json) are excluded
+# files (stack.env, knowledge/vaults/secrets/, user.env, auth.json) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
 # --force does a destructive resync (drop stale files that no longer
@@ -129,9 +129,9 @@ rsync_flags=(-a)
 
 rsync "${rsync_flags[@]}" \
 	--exclude=config/stack/stack.env \
-	--exclude=stash/vaults/secrets \
+	--exclude=knowledge/vaults/secrets \
 	--exclude=config/auth.json \
-	--exclude=stash/vaults/user.env \
+	--exclude=knowledge/vaults/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
 
 # ── Runtime-only mount targets ───────────────────────────────────
@@ -175,7 +175,7 @@ if [[ $seed_env -eq 1 ]]; then
 	env_dest="$STASH_DIR/vaults/user.env"
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
 		# Seed user.env with dev-friendly defaults (Ollama backend, dev tokens).
-		# The schema template (stash/vaults/user.env.schema) documents all supported
+		# The schema template (knowledge/vaults/user.env.schema) documents all supported
 		# variables but contains no values; we write concrete dev values here.
 		cat >"$env_dest" <<USEREOF
 # OpenPalm user.env — dev environment

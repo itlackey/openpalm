@@ -62,11 +62,11 @@ export function ensureOpenCodeSystemConfig(): void {
  * Returns the list of stash-relative paths that were actually written
  * (empty on re-run when every seed already exists on disk).
  *
- * `seeds` is a map of stash-relative path → file content. Keys MUST be
- * forward-slash relative paths that stay inside `data/stash/`; any key
- * that escapes the stash directory after canonicalization throws,
+ * `seeds` is a map of knowledge-relative path → file content. Keys MUST be
+ * forward-slash relative paths that stay inside `knowledge/`; any key
+ * that escapes the knowledge directory after canonicalization throws,
  * preventing a malicious caller from writing arbitrary files. Source of
- * truth for the seeded files lives at `.openpalm/stash/` in the
+ * truth for the seeded files lives at `.openpalm/knowledge/` in the
  * repo; the CLI embeds them at build time and passes the embedded
  * record directly.
  */

@@ -5,7 +5,7 @@
  *   config/    — user-editable config + system config files (auth.json, akm/)
  *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
  *   data/      — persistent service data, logs, backups, rollback
- *   stash/     — akm knowledge (skills, vaults, agents)
+ *   knowledge/ — akm knowledge (skills, vaults, agents)
  *   workspace/ — shared assistant work area
  *   config/stack/ — compose runtime assets + stack config (stack.env, stack.yml)
  */
@@ -33,7 +33,7 @@ export function resolveConfigDir(): string {
 }
 
 export function resolveStashDir(): string {
-  return `${resolveOpenPalmHome()}/stash`;
+  return `${resolveOpenPalmHome()}/knowledge`;
 }
 
 export function resolveWorkspaceDir(): string {
@@ -101,11 +101,11 @@ export function ensureHomeDirs(): void {
     `${home}/data/logs`,           // service logs and audit files
     `${home}/data/backups`,        // lifecycle backup snapshots
     `${home}/data/rollback`,       // deploy rollback snapshots
-    // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
-    `${home}/stash`,
-    `${home}/stash/vaults`,
-    `${home}/stash/vaults/secrets`,
-    `${home}/stash/tasks`,
+    // knowledge/ — akm knowledge (skills, vaults, agents); knowledge/tasks/ for scheduled automations
+    `${home}/knowledge`,
+    `${home}/knowledge/vaults`,
+    `${home}/knowledge/vaults/secrets`,
+    `${home}/knowledge/tasks`,
 
     // workspace/ — shared assistant work area
     `${home}/workspace`,

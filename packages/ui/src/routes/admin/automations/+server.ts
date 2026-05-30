@@ -1,5 +1,5 @@
 /**
- * GET /admin/automations — List automation configs from stash/tasks/.
+ * GET /admin/automations — List automation configs from knowledge/tasks/.
  *
  * Read-only endpoint. Automations are AKM task files at
  * ${stashDir}/tasks/*.yml. The OS cron daemon (in the assistant container)

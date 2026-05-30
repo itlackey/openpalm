@@ -16,7 +16,7 @@ function makeState(homeDir: string): ControlPlaneState {
   return {
     homeDir,
     configDir: join(homeDir, "config"),
-    stashDir: join(homeDir, "stash"),
+    stashDir: join(homeDir, "knowledge"),
     workspaceDir: join(homeDir, "workspace"),
     dataDir: join(homeDir, "data"),
     stackDir: join(homeDir, "config/stack"),

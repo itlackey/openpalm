@@ -4,7 +4,7 @@
  * Verifies that:
  * 1. Stack compose overlays live in config/stack/ (not config/components/)
  * 2. Compose file list uses config/stack/ paths
- * 3. User vault data lives in stash/vaults/user.env; stack secrets live in stash/vaults/secrets/
+ * 3. User vault data lives in knowledge/vaults/user.env; stack secrets live in knowledge/vaults/secrets/
  * 4. Runtime validation checks fixed compose files for channels
  * 5. Configuration persistence is idempotent
  */
@@ -43,7 +43,7 @@ function makeState(tempDir?: string): ControlPlaneState {
   return {
     homeDir: base,
     configDir: join(base, "config"),
-    stashDir: join(base, "stash"),
+    stashDir: join(base, "knowledge"),
     workspaceDir: join(base, "workspace"),
     dataDir: join(base, "data"),
     stackDir: join(base, "config", "stack"),
@@ -106,8 +106,8 @@ describe("Stack overlay discovery — stack/ layout", () => {
   });
 });
 
-describe("User extensions in stash/vaults/user.env (akm vault:user store)", () => {
-  test("user.env is read from stash/vaults/", () => {
+describe("User extensions in knowledge/vaults/user.env (akm vault:user store)", () => {
+  test("user.env is read from knowledge/vaults/", () => {
     const state = makeState(baseDir);
     const secretsContent = "CUSTOM_SECRET=test-token\n";
     seedUserEnv(state.stashDir, secretsContent);

@@ -19,7 +19,7 @@ The assistant is deliberately isolated:
   - `${OP_HOME}/config/akm` → `/etc/akm` (AKM config)
   - `${OP_HOME}/data/assistant` → `/home/opencode` (the assistant's home; survives recreates)
   - `${OP_HOME}/workspace` → `/work` (shared work area)
-  - `${OP_HOME}/stash` → `/stash` (knowledge stash)
+  - `${OP_HOME}/knowledge` → `/stash` (knowledge stash)
   - `${OP_HOME}/data/akm/cache` → `/opt/akm/cache` (AKM cache and task logs)
   - `${OP_HOME}/data/akm/data` → `/opt/akm/data` (AKM databases and durable data)
   - Named volume `assistant-persistent` → `/opt/persistent` (escape hatch for prefix-style global installs)

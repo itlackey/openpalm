@@ -1,7 +1,7 @@
 # Password & Secret Management
 
-OpenPalm keeps user secrets under `~/.openpalm/stash/vaults/` and system-managed
-service secrets under `~/.openpalm/stash/vaults/secrets/`. `stack.env` is
+OpenPalm keeps user secrets under `~/.openpalm/knowledge/vaults/` and system-managed
+service secrets under `~/.openpalm/knowledge/vaults/secrets/`. `stack.env` is
 non-secret runtime configuration only.
 
 ---
@@ -13,18 +13,18 @@ non-secret runtime configuration only.
   config/stack/
     stack.env
     secrets/
-  stash/vaults/
+  knowledge/vaults/
     user.env
 ```
 
-- `stash/vaults/user.env` is the AKM vault backing file for user-managed secrets.
+- `knowledge/vaults/user.env` is the AKM vault backing file for user-managed secrets.
 - `config/stack/stack.env` is system-managed non-secret runtime env.
-- `stash/vaults/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
+- `knowledge/vaults/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
 - Compose is run with `--env-file ../config/stack/stack.env` for non-secret substitution only.
 
 ---
 
-## `stash/vaults/user.env`
+## `knowledge/vaults/user.env`
 
 This file is for the AKM user vault. It starts empty and is never overwritten by normal lifecycle operations.
 
@@ -72,7 +72,7 @@ Behavior:
 | Container | Secret access | Notes |
 |---|---|---|
 | `admin` addon | full `~/.openpalm/` bind mount | Only service with broad visibility |
-| `assistant` | `stash/vaults/` only | Directory mount plus env injection |
+| `assistant` | `knowledge/vaults/` only | Directory mount plus env injection |
 | `guardian` | no vault mount | Reads needed values from Compose env |
 
 The scheduler is not a separate container — it runs as a co-process inside the
@@ -116,7 +116,7 @@ source of truth.
 
 - Edit `~/.openpalm/config/stack/stack.env` when changing API keys, provider
   settings, ports, paths, or stack-level tokens.
-- Edit `~/.openpalm/stash/vaults/user.env` for optional user-managed extension
+- Edit `~/.openpalm/knowledge/vaults/user.env` for optional user-managed extension
   settings and custom preferences.
-- Back up the whole `~/.openpalm/stash/vaults/` and `~/.openpalm/config/stack/` trees.
+- Back up the whole `~/.openpalm/knowledge/vaults/` and `~/.openpalm/config/stack/` trees.
 - Never commit real env values from either file.

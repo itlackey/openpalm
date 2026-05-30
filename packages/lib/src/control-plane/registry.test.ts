@@ -238,7 +238,7 @@ describe("materialized registry catalog", () => {
     materializeRegistryCatalog(sourceRoot);
 
     const components = discoverRegistryComponents();
-    const stashDir = join(process.env.OP_HOME!, 'stash');
+    const stashDir = join(process.env.OP_HOME!, 'knowledge');
     const automations = discoverRegistryAutomations(stashDir);
 
     expect(Object.keys(components)).toEqual(['chat']);
@@ -462,7 +462,7 @@ describe("materialized registry catalog", () => {
     expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
   });
 
-  it("installs and uninstalls automations through stash/tasks", () => {
+  it("installs and uninstalls automations through knowledge/tasks", () => {
     const sourceRoot = join(tmpDir, 'repo');
     const addonDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'addons', 'chat');
     const automationsDir = join(sourceRoot, '.openpalm', 'state', 'registry', 'automations');
@@ -477,7 +477,7 @@ describe("materialized registry catalog", () => {
 
     materializeRegistryCatalog(sourceRoot);
 
-    const stashDir = join(process.env.OP_HOME!, 'stash');
+    const stashDir = join(process.env.OP_HOME!, 'knowledge');
     expect(installAutomationFromRegistry('cleanup', stashDir)).toEqual({ ok: true });
     expect(readFileSync(join(stashDir, 'tasks', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
 

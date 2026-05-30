@@ -26,8 +26,8 @@ docs/
 # Secrets — never send to Docker build context
 # Stack/channel secrets (OP_HOME/config/stack/)
 .openpalm/config/stack/*.env
-# User secrets (OP_HOME/stash/vaults/)
-.openpalm/stash/vaults/user.env
+# User secrets (OP_HOME/knowledge/vaults/)
+.openpalm/knowledge/vaults/user.env
 # Auth tokens
 .openpalm/vault/**/auth.json
 .openpalm/vault/**/managed.env

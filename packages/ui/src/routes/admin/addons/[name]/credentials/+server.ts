@@ -2,7 +2,7 @@
  * GET  /admin/addons/:name/credentials — Return the addon's .env.schema as
  *   structured fields plus secret presence metadata.
  * POST /admin/addons/:name/credentials — Write supplied fields into
- *   stash/vaults/secrets/<ENV_KEY>.
+ *   knowledge/vaults/secrets/<ENV_KEY>.
  *   Body shape: { values: { KEY: VALUE | "" } }. Empty strings clear the key.
  *
  * Addon credentials (Discord/Slack bot tokens, channel HMAC secrets, etc.)

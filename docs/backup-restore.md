@@ -16,10 +16,10 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 | Path | Contains | Back up? |
 |---|---|---|
 | `~/.openpalm/config/stack/` | `stack.env`, `secrets/`, live compose files and helper scripts | Yes |
-| `~/.openpalm/stash/vaults/` | `user.env` (optional user-managed secrets) | Yes |
+| `~/.openpalm/knowledge/vaults/` | `user.env` (optional user-managed secrets) | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
 | `~/.openpalm/data/` | durable service data | Yes |
-| `~/.openpalm/stash/` | AKM stash (memory, skills, vaults) | Yes |
+| `~/.openpalm/knowledge/` | AKM stash (memory, skills, vaults) | Yes |
 | `~/.openpalm/workspace/` | shared workspace | Yes |
 | `~/.openpalm/data/logs/` | logs and audit files | Optional |
 | `~/.openpalm/data/backups/` | lifecycle backup snapshots | Optional |
@@ -109,16 +109,16 @@ the current model.
 
 | File or directory | Purpose |
 |---|---|
-| `~/.openpalm/stash/vaults/user.env` | AKM vault backing file for user-managed secrets |
+| `~/.openpalm/knowledge/vaults/user.env` | AKM vault backing file for user-managed secrets |
 | `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
-| `~/.openpalm/stash/vaults/secrets/` | System-managed service secret files |
+| `~/.openpalm/knowledge/vaults/secrets/` | System-managed service secret files |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |
 | `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels and guardian |
 | `~/.openpalm/config/stack/custom.compose.yml` | Custom services and overlays |
 | `~/.openpalm/config/stack/stack.yml` | Stack schema marker and enabled first-party addons |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
-| `~/.openpalm/stash/tasks/` | Active AKM automation task files (markdown) |
-| `~/.openpalm/stash/` | Shared akm stash (assistant + admin memory and knowledge) |
+| `~/.openpalm/knowledge/tasks/` | Active AKM automation task files (markdown) |
+| `~/.openpalm/knowledge/` | Shared akm stash (assistant + admin memory and knowledge) |
 | `~/.openpalm/workspace/` | Shared workspace |
 | `~/.openpalm/data/logs/` | Logs and audit files |

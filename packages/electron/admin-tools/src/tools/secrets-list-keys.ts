@@ -29,7 +29,7 @@ function opHome(): string {
 
 export default tool({
   description:
-    "List stack.env keys and stash/vaults/secrets file names. " +
+    "List stack.env keys and knowledge/vaults/secrets file names. " +
     "Never returns values. Use the admin UI to " +
     "view or change a value.",
   args: {

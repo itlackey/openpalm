@@ -34,7 +34,7 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
   return {
     homeDir: tempDir,
     configDir: join(tempDir, "config"),
-    stashDir: join(tempDir, "stash"),
+    stashDir: join(tempDir, "knowledge"),
     workspaceDir: join(tempDir, "workspace"),
     dataDir: join(tempDir, "data"),
     stackDir: join(tempDir, "config", "stack"),

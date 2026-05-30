@@ -51,7 +51,7 @@ describe("validatePathArg", () => {
   });
 
   it("accepts a normal relative path", () => {
-    expect(validatePathArg("stash/tasks/my-task.yml").ok).toBe(true);
+    expect(validatePathArg("knowledge/tasks/my-task.yml").ok).toBe(true);
   });
 });
 

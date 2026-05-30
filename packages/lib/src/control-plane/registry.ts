@@ -215,7 +215,7 @@ export function discoverRegistryComponents(): Record<string, RegistryComponentEn
 export function discoverRegistryAutomations(stashDir: string): RegistryAutomationEntry[] {
   const localOpenpalmDir = resolveLocalOpenpalmDir();
   const automationsDir = localOpenpalmDir
-    ? join(localOpenpalmDir, 'stash', 'tasks')
+    ? join(localOpenpalmDir, 'knowledge', 'tasks')
     : join(stashDir, 'tasks');
   if (!existsSync(automationsDir)) return [];
 
@@ -255,7 +255,7 @@ export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
   const localOpenpalmDir = resolveLocalOpenpalmDir();
   const candidates = [
-    localOpenpalmDir ? join(localOpenpalmDir, 'stash', 'tasks', `${name}.yml`) : '',
+    localOpenpalmDir ? join(localOpenpalmDir, 'knowledge', 'tasks', `${name}.yml`) : '',
     join(resolveStashDir(), 'tasks', `${name}.yml`),
     join(resolveRegistryAutomationsDir(), `${name}.yml`),
   ].filter(Boolean);

@@ -11,7 +11,7 @@ This document describes the Admin API routes currently implemented in
   The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
   removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
   `OP_UI_LOGIN_PASSWORD` is supplied to the admin process from
-  `stash/vaults/secrets/op_ui_login_password`.
+  `knowledge/vaults/secrets/op_ui_login_password`.
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
 
@@ -390,11 +390,11 @@ Error responses:
 
 ## Automations
 
-Automation task files live under `~/.openpalm/stash/tasks/` and are owned by AKM.
+Automation task files live under `~/.openpalm/knowledge/tasks/` and are owned by AKM.
 
 ### `GET /admin/automations/catalog`
 
-Lists available automation tasks from `~/.openpalm/stash/tasks/`. Channel addons
+Lists available automation tasks from `~/.openpalm/knowledge/tasks/`. Channel addons
 are managed via `/admin/addons` and Compose profiles.
 
 Response:
@@ -425,7 +425,7 @@ Body:
 - `name` (required) -- Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Copies the `.md` into `~/.openpalm/stash/tasks/`.
+Copies the `.md` into `~/.openpalm/knowledge/tasks/`.
 The assistant container picks up the new file within 60 s via its background `akm tasks sync` loop.
 
 Response:
@@ -467,7 +467,7 @@ Body:
 - `name` (required) -- Automation name.
 - `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
 
-Removes the `.md` from `~/.openpalm/stash/tasks/`.
+Removes the `.md` from `~/.openpalm/knowledge/tasks/`.
 The assistant container drops the cron entry within 60 s via its background `akm tasks sync` loop.
 
 Response:
@@ -480,7 +480,7 @@ Response:
 
 ### `GET /admin/automations`
 
-Lists all automation configs from `~/.openpalm/stash/tasks/`.
+Lists all automation configs from `~/.openpalm/knowledge/tasks/`.
 
 Response:
 
@@ -525,7 +525,7 @@ Response (202 Accepted):
 Error responses:
 
 - `400 invalid_input` -- Name does not match the allowed pattern.
-- `404 not_found` -- Automation is not installed in `stash/tasks/`.
+- `404 not_found` -- Automation is not installed in `knowledge/tasks/`.
 - `500 internal_error` -- `akm tasks run` exited non-zero.
 
 ### `GET /admin/automations/:name/log`
@@ -552,7 +552,7 @@ Response:
 ### `GET /admin/config/validate`
 
 Run the in-house key-presence and secret-audit checks against non-secret
-`config/stack/stack.env`, resolved Compose config, and `stash/vaults/secrets/`.
+`config/stack/stack.env`, resolved Compose config, and `knowledge/vaults/secrets/`.
 The validator confirms secret-like values use file grants and that required
 secret files are present — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit
@@ -571,7 +571,7 @@ When validation finds issues:
 ```json
 {
   "ok": false,
-  "errors": ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in stash/vaults/secrets/op_ui_login_password"],
+  "errors": ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in knowledge/vaults/secrets/op_ui_login_password"],
   "warnings": ["WARN: OPENAI_BASE_URL is not a valid URL"]
 }
 ```

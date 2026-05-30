@@ -161,7 +161,7 @@ describe('cli main', () => {
       expect(existsSync(join(base, 'config', 'stack', 'services.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'channels.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
-      expect(existsSync(join(base, 'stash', 'tasks', 'akm-improve.yml'))).toBe(true);
+      expect(existsSync(join(base, 'knowledge', 'tasks', 'akm-improve.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'guardian.env'))).toBe(false);
     } finally {
       rmSync(base, { recursive: true, force: true });
@@ -399,7 +399,7 @@ describe('validate command', () => {
   it('is a recognized command and exits 0 when file-based required secrets exist', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
-    const secretDir = join(tempHome, 'stash', 'vaults', 'secrets');
+    const secretDir = join(tempHome, 'knowledge', 'vaults', 'secrets');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(secretDir, { recursive: true, mode: 0o700 });
     writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
@@ -452,7 +452,7 @@ describe('audit-secrets command', () => {
   it('is a recognized command and exits 0 for file-based secrets', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
-    const secretDir = join(tempHome, 'stash', 'vaults', 'secrets');
+    const secretDir = join(tempHome, 'knowledge', 'vaults', 'secrets');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(secretDir, { recursive: true, mode: 0o700 });
     writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');

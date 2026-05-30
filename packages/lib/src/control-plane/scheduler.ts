@@ -89,7 +89,7 @@ export async function executeAutomation(
   });
 }
 
-// ── Sync crontab with stash/tasks/*.yml ──────────────────────────────────
+// ── Sync crontab with knowledge/tasks/*.yml ──────────────────────────────────
 
 export async function syncAutomations(akmEnv: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {

@@ -33,7 +33,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without UI.
 - **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
-- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/stash/`.
+- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
 - **Scheduler** (`packages/scheduler/`) — Lightweight Bun co-process started inside the assistant container by `core/assistant/entrypoint.sh`. No network port. Runs cron jobs (http, shell, assistant, api actions) from `config/automations/`.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
 - **Channel adapters** (`packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
@@ -229,7 +229,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit UI/API config actions, assistant calls through authenticated admin APIs on user request.
-- **Secret boundary.** `config/stack/stack.env` is non-secret runtime configuration only. Secret values live as files under `stash/vaults/secrets/` and are granted per service through Compose `secrets:`. `stash/vaults/user.env` is AKM vault backing state, not a Compose env file.
+- **Secret boundary.** `config/stack/stack.env` is non-secret runtime configuration only. Secret values live as files under `knowledge/vaults/secrets/` and are granted per service through Compose `secrets:`. `knowledge/vaults/user.env` is AKM vault backing state, not a Compose env file.
 - **Host CLI or UI is the orchestrator.** CLI manages Docker Compose directly on the host. UI provides a web UI as a host process (no container, no docker-socket-proxy).
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI and UI both import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
@@ -248,9 +248,9 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
 | `config/` | User | Non-secret config: `stack.yml` capabilities, assistant extensions |
-| `stash/vaults/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
+| `knowledge/vaults/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | `config/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
-| `stash/` | User/Services | AKM knowledge (skills, vaults, agents); `stash/tasks/` holds scheduled automation task files |
+| `knowledge/` | User/Services | AKM knowledge (skills, vaults, agents); `knowledge/tasks/` holds scheduled automation task files |
 | `data/` | Services/System | Persistent data: assistant, guardian, akm, logs, backups, rollback |
 | `data/akm/cache/` | Services/System | AKM cache and task logs |
 | `data/akm/data/` | Services/System | AKM databases and durable data |

@@ -50,7 +50,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   for (const key of REQUIRED_SECRET_KEYS) {
     const value = runtimeEnv[key];
     if (!value || value.trim().length === 0) {
-      errors.push(`ERROR: required secret ${key} is missing or empty in stash/vaults/secrets/${key.toLowerCase()}`);
+      errors.push(`ERROR: required secret ${key} is missing or empty in knowledge/vaults/secrets/${key.toLowerCase()}`);
     }
   }
 
@@ -61,7 +61,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     const inRuntime = Object.prototype.hasOwnProperty.call(runtimeEnv, mapping.envKey);
     if (!inRuntime) {
       warnings.push(
-        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in stash/vaults/secrets/${mapping.envKey.toLowerCase()}`,
+        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in knowledge/vaults/secrets/${mapping.envKey.toLowerCase()}`,
       );
     }
   }

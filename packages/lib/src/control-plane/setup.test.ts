@@ -43,7 +43,7 @@ function seedRequiredAssets(homeDir: string): void {
   writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
   writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "data"), { recursive: true });
-  // Automations live in stash/tasks as AKM-owned task files.
+  // Automations live in knowledge/tasks as AKM-owned task files.
   mkdirSync(join(homeDir, "data", "registry", "automations"), { recursive: true });
   writeFileSync(join(homeDir, "data", "registry", "automations", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
   writeFileSync(join(homeDir, "data", "registry", "automations", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
@@ -338,7 +338,7 @@ describe("performSetup", () => {
       join(configDir, "akm"),
       stackDir,
       join(stackDir, "addons"),
-      join(homeDir, "stash"),
+      join(homeDir, "knowledge"),
       join(homeDir, "workspace"),
       dataDir,
       join(dataDir, "assistant"),
@@ -386,7 +386,7 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
-  it("writes the UI login password to stash/vaults/secrets", async () => {
+  it("writes the UI login password to knowledge/vaults/secrets", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 

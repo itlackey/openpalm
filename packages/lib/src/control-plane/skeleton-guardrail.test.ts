@@ -15,7 +15,7 @@ const SKELETON_DIR = join(REPO_ROOT, ".openpalm");
 // Allowed top-level dirs in .openpalm/ — mirrors the OP_HOME runtime layout
 const ALLOWED_SOURCE_DIRS = new Set([
   "config",     // seed files for config/ (assistant, guardian, stack/, akm/)
-  "stash",      // stash source assets: skills/ and vaults/
+  "knowledge",      // knowledge source assets: skills/ and vaults/
   "data",       // empty service dirs (.gitkeep)
   "workspace",  // empty workspace dir (.gitkeep)
 ]);
@@ -40,7 +40,7 @@ describe("skeleton: .openpalm/ top-level directories", () => {
     expect(existsSync(join(SKELETON_DIR, "registry"))).toBe(false);
   });
 
-  test("stash-seeds/ no longer exists (moved to stash/)", () => {
+  test("stash-seeds/ no longer exists (moved to knowledge/)", () => {
     expect(existsSync(join(SKELETON_DIR, "stash-seeds"))).toBe(false);
   });
 });
@@ -77,19 +77,19 @@ describe("skeleton: no runtime registry", () => {
   });
 });
 
-// ── stash/ subdirectory ───────────────────────────────────────────────
+// ── knowledge/ subdirectory ───────────────────────────────────────────────
 
-describe("skeleton: .openpalm/stash/ structure", () => {
-  test("stash/skills/ exists with config-diagnostics skill", () => {
-    expect(existsSync(join(SKELETON_DIR, "stash", "skills", "config-diagnostics", "SKILL.md"))).toBe(true);
+describe("skeleton: .openpalm/knowledge/ structure", () => {
+  test("knowledge/skills/ exists with config-diagnostics skill", () => {
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "skills", "config-diagnostics", "SKILL.md"))).toBe(true);
   });
 
-  test("stash/vaults/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "stash", "vaults"))).toBe(true);
+  test("knowledge/vaults/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "vaults"))).toBe(true);
   });
 
-  test("stash/tasks/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "stash", "tasks"))).toBe(true);
+  test("knowledge/tasks/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "tasks"))).toBe(true);
   });
 });
 

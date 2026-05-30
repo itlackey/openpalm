@@ -1,7 +1,7 @@
 /**
  * AKM task parser.
  *
- * Task files are YAML documents in stash/tasks/. Supported target types:
+ * Task files are YAML documents in knowledge/tasks/. Supported target types:
  *   command  — `command: [...]` YAML array (argv)
  *   prompt   — `prompt: <text>` inline prompt text
  *   workflow — `workflow: workflow:<ref>` + optional `params` map

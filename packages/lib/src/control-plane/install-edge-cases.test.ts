@@ -60,11 +60,11 @@ function seedRequiredAssets(homeDir: string): void {
   writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
   writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
   mkdirSync(join(homeDir, "data"), { recursive: true });
-  // Automations live in stash/tasks as AKM-owned task files.
-  mkdirSync(join(homeDir, "stash", "tasks"), { recursive: true });
-  writeFileSync(join(homeDir, "stash", "tasks", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
-  writeFileSync(join(homeDir, "stash", "tasks", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
-  writeFileSync(join(homeDir, "stash", "tasks", "validate-config.yml"), "schedule: \"0 3 * * *\"\ndescription: validate config\ncommand: [\"echo\",\"clean\"]\n");
+  // Automations live in knowledge/tasks as AKM-owned task files.
+  mkdirSync(join(homeDir, "knowledge", "tasks"), { recursive: true });
+  writeFileSync(join(homeDir, "knowledge", "tasks", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "knowledge", "tasks", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "knowledge", "tasks", "validate-config.yml"), "schedule: \"0 3 * * *\"\ndescription: validate config\ncommand: [\"echo\",\"clean\"]\n");
 }
 
 // ── Shared test fixture ──────────────────────────────────────────────────
@@ -106,7 +106,7 @@ function createFullDirTree(): void {
     configDir,
     join(configDir, "assistant"),
     join(configDir, "akm"),
-    join(homeDir, "stash"),
+    join(homeDir, "knowledge"),
     join(homeDir, "workspace"),
     stackDir,
     dataDir,
@@ -165,7 +165,7 @@ describe("Fresh Install", () => {
     const state: ControlPlaneState = {
       homeDir,
       configDir,
-      stashDir: join(homeDir, "stash"),
+      stashDir: join(homeDir, "knowledge"),
       workspaceDir: join(homeDir, "workspace"),
       dataDir,
       stackDir,
@@ -247,7 +247,7 @@ describe("Existing Install", () => {
     const state: ControlPlaneState = {
       homeDir,
       configDir,
-      stashDir: join(homeDir, "stash"),
+      stashDir: join(homeDir, "knowledge"),
       workspaceDir: join(homeDir, "workspace"),
       dataDir,
       stackDir,
@@ -346,7 +346,7 @@ describe("Broken/Corrupt State", () => {
     const state: ControlPlaneState = {
       homeDir,
       configDir,
-      stashDir: join(homeDir, "stash"),
+      stashDir: join(homeDir, "knowledge"),
       workspaceDir: join(homeDir, "workspace"),
       dataDir,
       stackDir,
@@ -432,13 +432,13 @@ describe("Broken/Corrupt State", () => {
     expect(spec).toBeNull();
   });
 
-  // Scenario 14: stash/tasks dir missing (performSetup should recreate it via ensureHomeDirs)
+  // Scenario 14: knowledge/tasks dir missing (performSetup should recreate it via ensureHomeDirs)
   it("performSetup creates missing subdirectories", async () => {
     // Seed the minimal env files first
     seedMinimalEnvFiles();
 
-    // Remove stash/tasks dir (performSetup should recreate it via ensureHomeDirs)
-    rmSync(join(homeDir, "stash", "tasks"), { recursive: true, force: true });
+    // Remove knowledge/tasks dir (performSetup should recreate it via ensureHomeDirs)
+    rmSync(join(homeDir, "knowledge", "tasks"), { recursive: true, force: true });
 
     const result = await performSetup(
       makeValidSpec()
@@ -449,8 +449,8 @@ describe("Broken/Corrupt State", () => {
     expect(existsSync(join(homeDir, "config", "stack", "core.compose.yml"))).toBe(
       true
     );
-    // stash/tasks dir should be recreated by ensureHomeDirs
-    expect(existsSync(join(homeDir, "stash", "tasks"))).toBe(true);
+    // knowledge/tasks dir should be recreated by ensureHomeDirs
+    expect(existsSync(join(homeDir, "knowledge", "tasks"))).toBe(true);
   });
 
   // Scenario 15: openpalm.yaml with old version

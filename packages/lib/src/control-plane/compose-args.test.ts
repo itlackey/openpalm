@@ -19,7 +19,7 @@ function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneStat
   return {
     homeDir: tempDir,
     configDir,
-    stashDir: join(tempDir, "stash"),
+    stashDir: join(tempDir, "knowledge"),
     workspaceDir: join(tempDir, "workspace"),
     dataDir: join(tempDir, "data"),
     stackDir: join(configDir, "stack"),

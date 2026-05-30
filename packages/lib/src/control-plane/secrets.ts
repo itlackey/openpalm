@@ -118,7 +118,7 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   if (!existsSync(systemEnvPath)) {
       const header = [
         "# OpenPalm — Stack Configuration",
-        "# Non-secret stack configuration only. File-based secrets live in stash/vaults/secrets/.",
+        "# Non-secret stack configuration only. File-based secrets live in knowledge/vaults/secrets/.",
         "",
         "# ── Authentication ──────────────────────────────────────────────────",
         "OP_SETUP_COMPLETE=false",
