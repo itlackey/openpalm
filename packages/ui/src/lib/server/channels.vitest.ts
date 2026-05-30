@@ -18,19 +18,10 @@ import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-/**
- * Seed channel addon files in stack/addons/<name>/compose.yml.
- * homeDir is the openpalm home (parent of config/). configDir = join(homeDir, "config").
- */
-function seedChannelAddons(
-  homeDir: string,
-  channels: { name: string; yml: string }[]
-): void {
-  for (const ch of channels) {
-    const addonDir = join(homeDir, "config", "stack", "addons", ch.name);
-    mkdirSync(addonDir, { recursive: true });
-    writeFileSync(join(addonDir, "compose.yml"), ch.yml);
-  }
+function writeStackCompose(homeDir: string, filename: string, yml: string): void {
+  const stackDir = join(homeDir, "config", "stack");
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, filename), yml);
 }
 
 // ── Channel Name Validation & Discovery ─────────────────────────────────
@@ -45,15 +36,13 @@ describe("discoverChannels", () => {
     mkdirSync(configDir, { recursive: true });
   });
 
-  test("returns empty array when stack/addons dir does not exist", () => {
+  test("returns empty array when no fixed channel compose exists", () => {
     const result = discoverChannels(configDir);
     expect(result).toEqual([]);
   });
 
-  test("discovers channel addons (those with CHANNEL_NAME)", () => {
-    seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
-    ]);
+  test("discovers channel services (those with CHANNEL_NAME)", () => {
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -62,11 +51,7 @@ describe("discoverChannels", () => {
   });
 
   test("discovers multiple channels", () => {
-    seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" },
-      { name: "discord", yml: "services:\n  discord:\n    environment:\n      CHANNEL_NAME: Discord\n" },
-      { name: "api", yml: "services:\n  api:\n    environment:\n      CHANNEL_NAME: API\n" }
-    ]);
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n  discord:\n    environment:\n      CHANNEL_NAME: Discord\n  api:\n    environment:\n      CHANNEL_NAME: API\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(3);
@@ -75,10 +60,7 @@ describe("discoverChannels", () => {
   });
 
   test("excludes non-channel addons (no CHANNEL_NAME)", () => {
-    seedChannelAddons(homeDir, [
-      { name: "admin", yml: "services:\n  admin:\n    image: admin:latest\n" },
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
-    ]);
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  admin:\n    image: admin:latest\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -86,31 +68,16 @@ describe("discoverChannels", () => {
   });
 
   test("filters out invalid channel names", () => {
-    const addonsDir = join(homeDir, "config", "stack", "addons");
-    // Invalid: uppercase
-    const upperDir = join(addonsDir, "UPPER");
-    mkdirSync(upperDir, { recursive: true });
-    writeFileSync(join(upperDir, "compose.yml"), "services:\n  x:\n    environment:\n      CHANNEL_NAME: X\n");
-    // Invalid: starts with hyphen
-    const leadingHyphenDir = join(addonsDir, "-leading-hyphen");
-    mkdirSync(leadingHyphenDir, { recursive: true });
-    writeFileSync(join(leadingHyphenDir, "compose.yml"), "services:\n  x:\n    environment:\n      CHANNEL_NAME: X\n");
-    // Valid
-    seedChannelAddons(homeDir, [
-      { name: "valid-name", yml: "services:\n  valid-name:\n    environment:\n      CHANNEL_NAME: Valid\n" }
-    ]);
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  UPPER:\n    environment:\n      CHANNEL_NAME: X\n  -leading-hyphen:\n    environment:\n      CHANNEL_NAME: X\n  valid-name:\n    environment:\n      CHANNEL_NAME: Valid\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("valid-name");
   });
 
-  test("ignores addon dirs without compose.yml", () => {
-    const addonsDir = join(homeDir, "config", "stack", "addons");
-    mkdirSync(join(addonsDir, "no-compose"), { recursive: true });
-    seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
-    ]);
+  test("ignores fixed compose files without channels", () => {
+    writeStackCompose(homeDir, "services.compose.yml", "services:\n  ollama:\n    image: ollama/ollama\n");
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -140,13 +107,11 @@ describe("isAllowedService", () => {
     expect(isAllowedService("GUARDIAN")).toBe(false);
   });
 
-  test("allows service defined in addon compose.yml", () => {
+  test("allows service defined in fixed compose file", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    seedChannelAddons(homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    image: chat:latest\n" }
-    ]);
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    image: chat:latest\n");
 
     // Service name found in compose content
     expect(isAllowedService("chat", configDir)).toBe(true);
@@ -166,13 +131,11 @@ describe("isAllowedService", () => {
     expect(isAllowedService("nginx")).toBe(false);
   });
 
-  test("allows ollama when stack/addons/ollama/compose.yml exists", () => {
+  test("allows ollama when services.compose.yml defines it", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    const ollamaDir = join(homeDir, "config", "stack", "addons", "ollama");
-    mkdirSync(ollamaDir, { recursive: true });
-    writeFileSync(join(ollamaDir, "compose.yml"), "services:\n  ollama:\n    image: ollama/ollama\n");
+    writeStackCompose(homeDir, "services.compose.yml", "services:\n  ollama:\n    image: ollama/ollama\n");
 
     expect(isAllowedService("ollama", configDir)).toBe(true);
   });
@@ -194,9 +157,7 @@ describe("isValidChannel", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    seedChannelAddons(homeDir, [
-      { name: "my-channel", yml: "services: {}" }
-    ]);
+    writeStackCompose(homeDir, "custom.compose.yml", "services:\n  my-channel:\n    environment:\n      CHANNEL_NAME: Custom\n");
 
     expect(isValidChannel("my-channel", configDir)).toBe(true);
   });

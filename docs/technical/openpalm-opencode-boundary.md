@@ -13,7 +13,7 @@ relevant tabs **must not bleed into each other**:
 ## What the AKM tab is for
 
 `config/akm/config.json` is AKM's native configuration file, read directly by the
-`akm` CLI inside the assistant container at `AKM_CONFIG_DIR`. It controls:
+`akm` CLI inside the assistant container at `/etc/akm/config.json`. It controls:
 
 - `llm` — the endpoint, model, and provider AKM uses for internal LLM operations
   (memory inference, feedback distillation, index operations)

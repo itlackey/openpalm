@@ -26,9 +26,8 @@ It captures why the system is shaped the way it is and what must remain true as 
 
 - `config/` is user-owned, non-secret configuration and remains manually editable. `config/stack/` is the system-assembled live Compose runtime definition.
 - `stash/vaults/` is the user-managed secrets boundary (`user.env`). System secrets live as file-based grants under `stash/vaults/secrets/`; `stack.env` is non-secret.
-- `state/` is durable service-managed data (assistant, guardian, registry, logs, backups).
+- `state/` is durable service-managed data (assistant, guardian, AKM cache/data, logs, backups, rollback).
 - `stash/` is the AKM knowledge base (skills, commands, memories, agents).
-- `cache/` is regenerable data (akm cache, rollback snapshots).
 - `workspace/` is the shared assistant work area.
 - Lifecycle operations must be non-destructive for user-owned config and user-managed stash content unless the user explicitly requests mutation.
 
@@ -53,7 +52,7 @@ Channels are a specialized addon class that use the channel image and SDK patter
 ## Assistant intent
 
 - The assistant is an OpenCode runtime for user-facing interaction and workflows.
-- It can read and write only within its defined mounted boundaries (state/assistant, stash/, workspace/, config/, and config/akm/).
+- It can read and write only within its defined mounted boundaries (data/assistant, data/akm/cache, data/akm/data, stash/, workspace/, config/assistant, and config/akm/).
 - User extensions are mounted from `config/assistant/`.
 - Core OpenCode assets are baked into the image under `/etc/opencode` and provide the default baseline behavior.
 

@@ -32,8 +32,8 @@ function makeLogEvent(
   } as unknown as Parameters<typeof GET>[0];
 }
 
-function seedTaskLogs(cacheDir: string, id: string, entries: Array<{ ts: string; content: string }>): void {
-  const logDir = join(cacheDir, 'akm', 'tasks', 'logs', id);
+function seedTaskLogs(dataDir: string, id: string, entries: Array<{ ts: string; content: string }>): void {
+  const logDir = join(dataDir, 'akm', 'cache', 'tasks', 'logs', id);
   mkdirSync(logDir, { recursive: true });
   for (const { ts, content } of entries) {
     writeFileSync(join(logDir, `${ts}.log`), content + '\n');
@@ -102,7 +102,7 @@ describe('GET /admin/automations/:name/log', () => {
 
   test('returns log lines from akm task log dir newest-first', async () => {
     const state = getState();
-    seedTaskLogs(state.cacheDir, 'health-check', [
+    seedTaskLogs(state.dataDir, 'health-check', [
       { ts: '2026-05-15T03-00-00-000Z', content: 'run-old' },
       { ts: '2026-05-16T03-00-00-000Z', content: 'run-new' },
     ]);
@@ -117,7 +117,7 @@ describe('GET /admin/automations/:name/log', () => {
   test('applies the requested limit', async () => {
     const state = getState();
     const content = Array.from({ length: 10 }, (_, i) => `entry-${i}`).join('\n');
-    seedTaskLogs(state.cacheDir, 'health-check', [
+    seedTaskLogs(state.dataDir, 'health-check', [
       { ts: '2026-05-16T03-00-00-000Z', content },
     ]);
 
@@ -129,7 +129,7 @@ describe('GET /admin/automations/:name/log', () => {
 
   test('strips .yml suffix from name', async () => {
     const state = getState();
-    seedTaskLogs(state.cacheDir, 'health-check', [
+    seedTaskLogs(state.dataDir, 'health-check', [
       { ts: '2026-05-16T03-00-00-000Z', content: 'found-entry' },
     ]);
 

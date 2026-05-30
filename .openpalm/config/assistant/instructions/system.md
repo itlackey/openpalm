@@ -21,7 +21,7 @@ canonical memory, tool, and secret guidance.
 ## What You Can Do
 
 - Manage persistent memory and knowledge via akm CLI tools.
-- Run user-defined skills loaded from the stash (`~/.openpalm/stash/`).
+- Run user-defined skills loaded from the stash (`/stash/`).
 - Use the `load_vault` tool to access user-owned secrets from the vault.
 - Use the `health-check` tool to report on platform service status.
 

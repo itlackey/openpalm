@@ -97,22 +97,21 @@ describe("ensureOpenCodeSystemConfig", () => {
     process.env.OP_HOME = origEnv.OP_HOME;
   });
 
-  test("creates state/assistant/ directory", () => {
+  test("creates data/assistant/ directory", () => {
     ensureOpenCodeSystemConfig();
-    const assistantDir = join(process.env.OP_HOME!, "state", "assistant");
+    const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
     expect(existsSync(assistantDir)).toBe(true);
   });
 
   test("is idempotent", () => {
     ensureOpenCodeSystemConfig();
     ensureOpenCodeSystemConfig();
-    const assistantDir = join(process.env.OP_HOME!, "state", "assistant");
+    const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
     expect(existsSync(assistantDir)).toBe(true);
   });
 
   test("does not overwrite existing files", () => {
-    const dataDir = join(process.env.OP_HOME!, "data");
-    const assistantDir = join(dataDir, "assistant");
+    const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
     mkdirSync(assistantDir, { recursive: true });
     writeFileSync(join(assistantDir, "opencode.jsonc"), "user-config");
     writeFileSync(join(assistantDir, "AGENTS.md"), "user-agents");
@@ -146,6 +145,15 @@ describe("refreshCoreAssets", () => {
       if (url.includes("core.compose.yml")) {
         return new Response("services:\n  admin:\n    image: test\n", { status: 200 });
       }
+      if (url.includes("services.compose.yml")) {
+        return new Response("services: {}\n", { status: 200 });
+      }
+      if (url.includes("channels.compose.yml")) {
+        return new Response("services: {}\n", { status: 200 });
+      }
+      if (url.includes("custom.compose.yml")) {
+        return new Response("services: {}\n", { status: 200 });
+      }
       if (url.includes("opencode.jsonc")) {
         return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
       }
@@ -164,8 +172,12 @@ describe("refreshCoreAssets", () => {
     mockFetchAll();
 
     const result = await refreshCoreAssets();
-    // core.compose.yml is always managed (overwritten on change)
+    // Fixed stack compose files are managed (overwritten on change)
     expect(result.updated).toContain("config/stack/core.compose.yml");
+    expect(result.updated).toContain("config/stack/services.compose.yml");
+    expect(result.updated).toContain("config/stack/channels.compose.yml");
+    // custom.compose.yml is seeded-only.
+    expect(result.updated).toContain("config/stack/custom.compose.yml");
     // opencode.jsonc is seeded-only: written when missing, never overwritten
     expect(result.updated).toContain("config/assistant/opencode.jsonc");
     // Persona files (openpalm.md, system.md) are seeded via seedOpenPalmDir,
@@ -180,6 +192,9 @@ describe("refreshCoreAssets", () => {
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(homeDir, "config/stack/core.compose.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/stack/services.compose.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/stack/channels.compose.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/stack/custom.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "config/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(false);
     expect(existsSync(join(homeDir, "config/stack/stack.env.schema"))).toBe(false);
@@ -189,6 +204,9 @@ describe("refreshCoreAssets", () => {
     const homeDir = process.env.OP_HOME!;
     mkdirSync(join(homeDir, "config/stack"), { recursive: true });
     writeFileSync(join(homeDir, "config/stack/core.compose.yml"), "old-compose-content");
+    writeFileSync(join(homeDir, "config/stack/services.compose.yml"), "old-services-content");
+    writeFileSync(join(homeDir, "config/stack/channels.compose.yml"), "old-channels-content");
+    writeFileSync(join(homeDir, "config/stack/custom.compose.yml"), "user-custom-compose");
     mkdirSync(join(homeDir, "config/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "user-customized-opencode");
     mockFetchAll();
@@ -196,6 +214,8 @@ describe("refreshCoreAssets", () => {
     const result = await refreshCoreAssets();
     // core.compose.yml is managed — backed up and overwritten
     expect(result.updated).toContain("config/stack/core.compose.yml");
+    expect(result.updated).toContain("config/stack/services.compose.yml");
+    expect(result.updated).toContain("config/stack/channels.compose.yml");
     expect(result.backupDir).not.toBeNull();
     const backupCompose = readFileSync(join(result.backupDir!, "config/stack/core.compose.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
@@ -204,6 +224,8 @@ describe("refreshCoreAssets", () => {
     // opencode.jsonc is seeded-only — existing user customizations must be preserved
     expect(result.updated).not.toContain("config/assistant/opencode.jsonc");
     expect(readFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "utf-8")).toBe("user-customized-opencode");
+    expect(result.updated).not.toContain("config/stack/custom.compose.yml");
+    expect(readFileSync(join(homeDir, "config/stack/custom.compose.yml"), "utf-8")).toBe("user-custom-compose");
   });
 
   test("skips assets with identical content", async () => {
@@ -211,6 +233,9 @@ describe("refreshCoreAssets", () => {
     const content = "same-content";
     mkdirSync(join(homeDir, "config/stack"), { recursive: true });
     writeFileSync(join(homeDir, "config/stack/core.compose.yml"), content);
+    writeFileSync(join(homeDir, "config/stack/services.compose.yml"), content);
+    writeFileSync(join(homeDir, "config/stack/channels.compose.yml"), content);
+    writeFileSync(join(homeDir, "config/stack/custom.compose.yml"), content);
     mkdirSync(join(homeDir, "config/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), content);
     writeFileSync(join(homeDir, "config/assistant/openpalm.md"), content);

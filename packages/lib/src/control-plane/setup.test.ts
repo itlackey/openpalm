@@ -39,15 +39,15 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
 function seedRequiredAssets(homeDir: string): void {
   mkdirSync(join(homeDir, "config", "stack"), { recursive: true });
   writeFileSync(join(homeDir, "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "state", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
-  mkdirSync(join(homeDir, "state"), { recursive: true });
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "data"), { recursive: true });
   // Automations live in stash/tasks as AKM-owned task files.
-  mkdirSync(join(homeDir, "state", "registry", "automations"), { recursive: true });
-  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
-  writeFileSync(join(homeDir, "state", "registry", "automations", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
-  writeFileSync(join(homeDir, "state", "registry", "automations", "validate-config.yml"), "schedule: \"0 3 * * *\"\ndescription: validate config\ncommand: [\"echo\",\"clean\"]\n");
+  mkdirSync(join(homeDir, "data", "registry", "automations"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "registry", "automations", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "data", "registry", "automations", "cleanup-data.yml"), "schedule: \"0 5 * * 0\"\ndescription: cleanup data\ncommand: [\"echo\",\"clean\"]\n");
+  writeFileSync(join(homeDir, "data", "registry", "automations", "validate-config.yml"), "schedule: \"0 3 * * *\"\ndescription: validate config\ncommand: [\"echo\",\"clean\"]\n");
 }
 
 // ── Tests: validateSetupSpec ────────────────────────────────────────────
@@ -318,7 +318,7 @@ describe("buildSystemSecretsFromSetup", () => {
 describe("performSetup", () => {
   let homeDir: string;
   let configDir: string;
-  let stateDir: string;
+  let dataDir: string;
   let stackDir: string;
 
   const savedEnv: Record<string, string | undefined> = {};
@@ -326,31 +326,29 @@ describe("performSetup", () => {
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
     configDir = join(homeDir, "config");
-    stateDir = join(homeDir, "state");
+    dataDir = join(homeDir, "data");
     stackDir = join(configDir, "stack");
 
     // Create required directory structure
     for (const dir of [
       homeDir,
       configDir,
-      join(homeDir, "state", "registry", "automations"),
+      join(homeDir, "data", "registry", "automations"),
       join(configDir, "assistant"),
       join(configDir, "akm"),
       stackDir,
       join(stackDir, "addons"),
       join(homeDir, "stash"),
       join(homeDir, "workspace"),
-      join(homeDir, "cache"),
-      join(homeDir, "cache", "akm"),
-      join(homeDir, "cache", "logs"),
-      join(homeDir, "cache", "backups"),
-      stateDir,
-      join(stateDir, "assistant"),
-      join(stateDir, "admin"),
-      join(stateDir, "guardian"),
-      join(stateDir, "akm"),
-      join(stateDir, "akm", "data"),
-      join(stateDir, "akm", "state"),
+      dataDir,
+      join(dataDir, "assistant"),
+      join(dataDir, "admin"),
+      join(dataDir, "guardian"),
+      join(dataDir, "akm", "cache"),
+      join(dataDir, "akm", "data"),
+      join(dataDir, "logs"),
+      join(dataDir, "backups"),
+      join(dataDir, "rollback"),
     ]) {
       mkdirSync(dir, { recursive: true });
     }

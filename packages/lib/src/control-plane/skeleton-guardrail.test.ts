@@ -16,8 +16,7 @@ const SKELETON_DIR = join(REPO_ROOT, ".openpalm");
 const ALLOWED_SOURCE_DIRS = new Set([
   "config",     // seed files for config/ (assistant, guardian, stack/, akm/)
   "stash",      // stash source assets: skills/ and vaults/
-  "state",      // empty service dirs (.gitkeep)
-  "cache",      // empty cache dirs (.gitkeep — regenerable at runtime)
+  "data",       // empty service dirs (.gitkeep)
   "workspace",  // empty workspace dir (.gitkeep)
 ]);
 
@@ -66,15 +65,15 @@ describe("skeleton: .openpalm/config/ structure", () => {
   });
 
   test("config/assistant/ has seed files", () => {
-    expect(existsSync(join(SKELETON_DIR, "config", "assistant", "opencode.json"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "assistant", "opencode.jsonc"))).toBe(true);
   });
 });
 
 // ── no runtime registry ───────────────────────────────────────────────
 
 describe("skeleton: no runtime registry", () => {
-  test("state/registry/ does not exist", () => {
-    expect(existsSync(join(SKELETON_DIR, "state", "registry"))).toBe(false);
+  test("data/registry/ does not exist", () => {
+    expect(existsSync(join(SKELETON_DIR, "data", "registry"))).toBe(false);
   });
 });
 
@@ -94,43 +93,44 @@ describe("skeleton: .openpalm/stash/ structure", () => {
   });
 });
 
-// ── state/ service dirs ───────────────────────────────────────────────
+// ── data/ service dirs ────────────────────────────────────────────────
 
-describe("skeleton: .openpalm/state/ service directories", () => {
+describe("skeleton: .openpalm/data/ service directories", () => {
   const serviceDirs = ["assistant", "admin", "guardian"];
 
   for (const dir of serviceDirs) {
-    test(`state/${dir}/ exists`, () => {
-      expect(existsSync(join(SKELETON_DIR, "state", dir))).toBe(true);
+    test(`data/${dir}/ exists`, () => {
+      expect(existsSync(join(SKELETON_DIR, "data", dir))).toBe(true);
     });
   }
 
-  test("state/akm/data/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "state", "akm", "data"))).toBe(true);
+  test("data/akm/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "data", "akm"))).toBe(true);
   });
 
-  test("state/akm/state/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "state", "akm", "state"))).toBe(true);
+  test("data/akm/cache and data/akm/data exist", () => {
+    expect(existsSync(join(SKELETON_DIR, "data", "akm", "cache"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "data", "akm", "data"))).toBe(true);
   });
 
-  test("cache/logs/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "cache", "logs"))).toBe(true);
+  test("data/logs/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "data", "logs"))).toBe(true);
   });
 });
 
-// ── cache/ and workspace/ ─────────────────────────────────────────────
+// ── data/rollback and workspace/ ──────────────────────────────────────
 
-describe("skeleton: .openpalm/cache/ and workspace/", () => {
-  test("cache/akm/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "cache", "akm"))).toBe(true);
+describe("skeleton: .openpalm/data/rollback and workspace/", () => {
+  test("cache/ does not exist in the skeleton", () => {
+    expect(existsSync(join(SKELETON_DIR, "cache"))).toBe(false);
   });
 
-  test("cache/backups/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "cache", "backups"))).toBe(true);
+  test("data/backups/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "data", "backups"))).toBe(true);
   });
 
-  test("cache/rollback/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "cache", "rollback"))).toBe(true);
+  test("data/rollback/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "data", "rollback"))).toBe(true);
   });
 
   test("workspace/ exists", () => {

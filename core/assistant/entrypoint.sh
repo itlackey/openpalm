@@ -25,7 +25,7 @@ maybe_adjust_uid_gid() {
 
 ensure_home_layout() {
   # Create directories that may not exist on first run inside bind-mounted
-  # /home/opencode (which shadows whatever was baked into the Dockerfile).
+  # /home/opencode (which shadows image-baked defaults).
   mkdir -p \
     /home/opencode \
     /home/opencode/.cache \
@@ -34,13 +34,16 @@ ensure_home_layout() {
     /home/opencode/.local/bin \
     /home/opencode/.local/state/opencode \
     /home/opencode/.local/share/opencode \
-    /work
+    /work \
+    /opt/akm/cache \
+    /opt/akm/data \
+    /stash
 
   if [ "$IS_ROOT" = "1" ]; then
     # Recursively fix ownership. Previous container runs may have created
     # directories as root when OP_UID/OP_GID differed. A targeted chown
     # misses nested dirs created by third-party tools between invocations.
-    chown -R "$TARGET_UID:$TARGET_GID" /home/opencode 2>/dev/null || true
+    chown -R "$TARGET_UID:$TARGET_GID" /home/opencode /work /opt/akm /stash 2>/dev/null || true
 
     mkdir -p /var/run/sshd
   fi
@@ -90,7 +93,7 @@ maybe_source_akm_user_vault() {
 
 seed_default_agents_md() {
   local src="/usr/local/share/openpalm/AGENTS.md"
-  local dest="${OPENCODE_CONFIG_DIR:-/etc/openpalm/assistant}/AGENTS.md"
+  local dest="${OPENCODE_CONFIG_DIR:-/etc/opencode}/AGENTS.md"
   [ -f "$src" ] && [ ! -f "$dest" ] && cp "$src" "$dest" 2>/dev/null || true
 }
 
@@ -103,7 +106,7 @@ start_cron_and_sync_tasks() {
   echo "PATH=/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:/usr/bin:/bin" >> "$crontab_file"
 
   # Forward selected env vars into cron jobs
-  for var in HOME AKM_STASH_DIR AKM_CONFIG_DIR AKM_DATA_DIR AKM_STATE_DIR AKM_CACHE_DIR \
+  for var in HOME AKM_STASH_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR \
              OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
     if [ -n "${!var:-}" ]; then
       echo "export $var=\"${!var}\"" >> "$crontab_file"
@@ -116,7 +119,7 @@ start_cron_and_sync_tasks() {
   fi
 
   # Sync automation tasks from the akm stash into cron, then start cron
-  local tasks_dir="${AKM_STASH_DIR:-/akm}/tasks"
+  local tasks_dir="${AKM_STASH_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
     akm tasks sync 2>/dev/null || true
   fi

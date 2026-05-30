@@ -151,7 +151,7 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
-  const stateDir = `${homeDir}/state`;
+  const dataDir = `${homeDir}/data`;
   const workDir = defaultWorkDir();
 
   // Use config/stack/stack.env (always present after a successful install) as the
@@ -163,13 +163,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   if (alreadyInstalled && options.force) {
     // Use the helper's own backup-path convention so the prompt is honest about
-    // where the existing install will land. Match backupOpenPalmHome():
-    // `${homeDir}.backup.${YYYYMMDD-HHMMSS}`.
-    const now = new Date();
-    const stamp =
-      `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}` +
-      `-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-    const plannedBackup = `${homeDir}.backup.${stamp}`;
+    // Match backupOpenPalmHome()'s convention so the prompt is honest.
+    const plannedBackup = `${homeDir}/data/backups/<timestamp>`;
 
     // Skip the prompt when --yes was passed OR when there's no TTY (CI/scripts).
     // Without the TTY exemption we would silently hang a non-interactive
@@ -191,7 +186,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   // ── Bootstrap files ────────────────────────────────────────────────────
-  await prepareInstallFiles(homeDir, configDir, stateDir, workDir, options.version);
+  await prepareInstallFiles(homeDir, configDir, dataDir, workDir, options.version);
 
   // ── Configure ──────────────────────────────────────────────────────────
   // File-based install: read config, run performSetup, optionally deploy
@@ -217,21 +212,21 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 }
 
 async function prepareInstallFiles(
-  homeDir: string, configDir: string, stateDir: string, workDir: string, version: string,
+  homeDir: string, configDir: string, dataDir: string, workDir: string, version: string,
 ): Promise<void> {
   console.log('Preparing directories...');
   await ensureDirectoryTree(homeDir, configDir, '', '', workDir);
 
-  try { await Bun.write(join(stateDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
+  try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
 
   // Seed OP_HOME from .openpalm/ (local source if available, else GitHub tarball)
-  await seedOpenPalmDir(version, homeDir, configDir, stateDir);
-  // Install UI build to state/ui/ (local build if available, else GitHub release asset)
-  await seedUiBuild(version, stateDir);
+  await seedOpenPalmDir(version, homeDir, configDir, dataDir);
+  // Install UI build to data/ui/ (local build if available, else GitHub release asset)
+  await seedUiBuild(version, dataDir);
 
   console.log('Configuring secrets...');
-  await ensureSecrets(stateDir);
+  await ensureSecrets(dataDir);
   await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
   writeRunScript(createState());
 

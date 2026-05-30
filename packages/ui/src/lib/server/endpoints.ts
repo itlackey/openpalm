@@ -11,7 +11,7 @@
  *   - activeId === null or "default" → use the env-derived default
  *   - activeId === "<id>" → use the matching user entry (falls back to default if not found)
  *
- * Legacy path: ${stateDir}/admin/endpoints.json. Old installs are
+ * Legacy path: ${dataDir}/admin/endpoints.json. Old installs are
  * migrated lazily on first read by maybeMigrateLegacyEndpointsFile().
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSync } from 'node:fs';
@@ -40,7 +40,7 @@ export type ActiveEndpoint = EndpointEntry & {
   isDefault: boolean;
   /**
    * True for the Electron-spawned ephemeral local OpenCode (Phase 3).
-   * Synthesized at request time from state/local-opencode.runtime.json;
+   * Synthesized at request time from data/local-opencode.runtime.json;
    * not persisted to endpoints.json; cannot be edited or deleted.
    */
   isLocal?: boolean;
@@ -63,11 +63,11 @@ function endpointsPath(): string {
  * See docs/technical/auth-and-proxy-refactor-plan.md § Phase 5 / D4.
  */
 function legacyEndpointsPath(): string {
-  return `${getState().stateDir}/admin/endpoints.json`;
+  return `${getState().dataDir}/admin/endpoints.json`;
 }
 
 /**
- * One-shot lazy migration from the legacy state/ path to the new config/ path.
+ * One-shot lazy migration from the legacy data/ path to the new config/ path.
  *
  * Phase 5 of docs/technical/auth-and-proxy-refactor-plan.md (D6 step 3):
  *   - If the new path already exists → no-op (already migrated).
@@ -92,12 +92,12 @@ function maybeMigrateLegacyEndpointsFile(): void {
     try { chmodSync(newPath, 0o600); } catch { /* best effort */ }
     unlinkSync(oldPath);
   } catch (e) {
-    console.warn('[endpoints] Failed to migrate legacy endpoints.json from state/ to config/. Leaving the old file in place; reads will fall back to it for this session.', e);
+    console.warn('[endpoints] Failed to migrate legacy endpoints.json from data/ to config/. Leaving the old file in place; reads will fall back to it for this session.', e);
   }
 }
 
 function localRuntimePath(): string {
-  return `${getState().stateDir}/local-opencode.runtime.json`;
+  return `${getState().dataDir}/local-opencode.runtime.json`;
 }
 
 type LocalRuntime = {

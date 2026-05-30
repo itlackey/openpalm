@@ -4,8 +4,7 @@
  * Single ~/.openpalm/ root:
  *   config/    — user-editable config + system config files (auth.json, akm/)
  *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, fixed compose files)
- *   cache/     — regenerable/semi-persistent data (akm, guardian, rollback, logs, backups)
- *   state/     — persistent service data (assistant, admin, guardian)
+ *   data/      — persistent service data, logs, backups, rollback
  *   stash/     — akm knowledge (skills, vaults, agents)
  *   workspace/ — shared assistant work area
  *   config/stack/ — compose runtime assets + stack config (stack.env, stack.yml)
@@ -41,12 +40,8 @@ export function resolveWorkspaceDir(): string {
   return `${resolveOpenPalmHome()}/workspace`;
 }
 
-export function resolveCacheDir(): string {
-  return `${resolveOpenPalmHome()}/cache`;
-}
-
-export function resolveStateDir(): string {
-  return `${resolveOpenPalmHome()}/state`;
+export function resolveDataDir(): string {
+  return `${resolveOpenPalmHome()}/data`;
 }
 
 export function resolveStackDir(): string {
@@ -54,15 +49,15 @@ export function resolveStackDir(): string {
 }
 
 export function resolveLogsDir(): string {
-  return `${resolveCacheDir()}/logs`;
+  return `${resolveDataDir()}/logs`;
 }
 
 export function resolveBackupsDir(): string {
-  return `${resolveCacheDir()}/backups`;
+  return `${resolveDataDir()}/backups`;
 }
 
 export function resolveRegistryDir(): string {
-  return `${resolveStateDir()}/registry`;
+  return `${resolveDataDir()}/registry`;
 }
 
 export function resolveRegistryAddonsDir(): string {
@@ -74,7 +69,7 @@ export function resolveRegistryAutomationsDir(): string {
 }
 
 export function resolveRollbackDir(): string {
-  return `${resolveCacheDir()}/rollback`;
+  return `${resolveDataDir()}/rollback`;
 }
 
 // ── Directory Setup ──────────────────────────────────────────────────
@@ -90,23 +85,22 @@ export function ensureHomeDirs(): void {
     `${home}/config`,
     `${home}/config/assistant`,
     `${home}/config/guardian`,
-    `${home}/config/akm`,           // AKM_CONFIG_DIR — akm setup config.json lives here
+    `${home}/config/akm`,           // akm XDG config directory
 
-    // cache/ — regenerable/semi-persistent data
-    `${home}/cache`,
-    `${home}/cache/akm`,            // akm cache and regenerable artifacts
-    `${home}/cache/rollback`,       // rollback snapshots
-    `${home}/cache/logs`,           // service logs and audit files
-    `${home}/cache/backups`,        // lifecycle backup snapshots
-
-    // state/ — persistent service data
-    `${home}/state`,
-    `${home}/state/assistant`,      // assistant HOME bind mount
-    `${home}/state/admin`,          // admin home bind mount
-    `${home}/state/guardian`,       // guardian runtime data
-    `${home}/state/akm`,            // akm operational data (backed up)
-    `${home}/state/akm/data`,
-    `${home}/state/akm/state`,
+    // data/ — persistent service data
+    `${home}/data`,
+    `${home}/data/assistant`,      // assistant HOME bind mount
+    `${home}/data/assistant/.cache`,
+    `${home}/data/assistant/.local/bin`,
+    `${home}/data/assistant/.local/share/opencode`,
+    `${home}/data/assistant/.local/state/opencode`,
+    `${home}/data/admin`,          // admin home bind mount
+    `${home}/data/guardian`,       // guardian runtime data
+    `${home}/data/akm/cache`,      // akm cache
+    `${home}/data/akm/data`,       // akm durable data
+    `${home}/data/logs`,           // service logs and audit files
+    `${home}/data/backups`,        // lifecycle backup snapshots
+    `${home}/data/rollback`,       // deploy rollback snapshots
     // stash/ — akm knowledge (skills, vaults, agents); stash/tasks/ for scheduled automations
     `${home}/stash`,
     `${home}/stash/vaults`,

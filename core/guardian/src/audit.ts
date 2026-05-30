@@ -12,7 +12,7 @@ import { createLogger } from "@openpalm/channels-sdk/logger";
 
 const logger = createLogger("guardian:audit");
 
-const AUDIT_PATH = Bun.env.GUARDIAN_AUDIT_PATH ?? "/app/audit/guardian-audit.log";
+const AUDIT_PATH = Bun.env.GUARDIAN_AUDIT_PATH ?? "/opt/openpalm/logs/guardian-audit.log";
 const FLUSH_INTERVAL_MS = 5_000;
 
 // Ensure audit directory exists

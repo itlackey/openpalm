@@ -68,13 +68,13 @@ calls the Admin API using its assistant-scoped token. The Admin allowlists which
 actions and service names are legal -- the assistant can't do anything
 unauthorized.
 
-The assistant uses baked-in core config inside the image at `/etc/opencode`,
-mounts user extensions from `~/.openpalm/config/assistant/` into
-`/home/opencode/.config/opencode`, mounts `~/.openpalm/config/auth.json`
-for OpenCode auth state, and mounts the full AKM stash from `~/.openpalm/stash/`
-at `/akm` for persistent memory and skills. Provider API keys are stored in OpenCode's
-auth.json via the Connections tab. Its durable home is `~/.openpalm/state/assistant/`,
-and its shared workspace is `~/.openpalm/workspace/` mounted at `/work`.
+The assistant uses OpenCode config from `/etc/opencode`, mounts
+`~/.openpalm/config/auth.json` for host-managed OpenCode auth state, mounts AKM
+config at `/etc/akm`, mounts the full AKM stash from `~/.openpalm/stash/` at
+`/stash`, and stores AKM cache/data under `/opt/akm/cache` and `/opt/akm/data`.
+Provider API keys are stored in OpenCode's auth.json via the Connections tab.
+Its durable home is `~/.openpalm/data/assistant/`, and its shared workspace is
+`~/.openpalm/workspace/` mounted at `/work`.
 
 ### Addon edge services (e.g. `chat`, host port 3820)
 Translate external protocols into signed Guardian messages. The `chat` addon is
@@ -88,7 +88,7 @@ The runtime image for registry-backed adapters is the unified
 
 ### Supporting services
 - **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM markdown task files in `~/.openpalm/stash/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
-- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/stash/`, mounted at `/akm` in the assistant. Skills, commands, memories, and knowledge files all live here. There is no separate memory service.
+- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/stash/`, mounted at `/stash` in the assistant. Skills, commands, memories, and knowledge files all live here. There is no separate memory service.
 
 ---
 

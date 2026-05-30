@@ -134,11 +134,11 @@ services:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
-      HOME: /app/data
+      HOME: /opt/openpalm/guardian
       PORT: "8080"
       OP_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
-      GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
+      GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
       GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
       CHANNEL_CHAT_SECRET_FILE: /run/secrets/channel_chat_secret
       CHANNEL_API_SECRET_FILE: /run/secrets/channel_api_secret
@@ -150,8 +150,8 @@ services:
     # host UI checks its health via `docker container inspect` instead of HTTP.
     # To debug, use `docker exec openpalm-guardian-1 curl localhost:8080/health`.
     volumes:
-      - ${OP_HOME}/state/guardian:/app/data
-      - ${OP_HOME}/cache/logs:/app/audit
+      - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
+      - ${OP_HOME}/data/logs:/opt/openpalm/logs
     secrets:
       - channel_chat_secret
       - channel_api_secret

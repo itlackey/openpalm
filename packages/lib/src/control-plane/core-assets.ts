@@ -13,7 +13,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveStateDir, resolveOpenPalmHome, resolveBackupsDir, resolveStashDir } from "./home.js";
+import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir, resolveStashDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
@@ -46,7 +46,7 @@ export function readBundledStackAsset(name: string): string {
 // ── OpenCode System Config ──────────────────────────────────────────
 
 export function ensureOpenCodeSystemConfig(): void {
-  const dir = `${resolveStateDir()}/assistant`;
+  const dir = `${resolveDataDir()}/assistant`;
   mkdirSync(dir, { recursive: true });
 }
 

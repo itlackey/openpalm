@@ -54,7 +54,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   const homeDir   = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
-  const stateDir  = `${homeDir}/state`;
+  const dataDir  = `${homeDir}/data`;
 
   if (!existsSync(join(UI_BUILD_DIR, 'index.js'))) {
     console.error(`UI build not found at ${UI_BUILD_DIR}`);
@@ -76,7 +76,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   let openCodeBaseUrl: string | undefined;
   try {
     console.log('Starting OpenCode subprocess...');
-    openCodeSub = await startOpenCodeSubprocess({ homeDir, configDir, stateDir });
+    openCodeSub = await startOpenCodeSubprocess({ homeDir, configDir, dataDir });
     const ready = await openCodeSub.waitForReady();
     if (ready) {
       openCodeBaseUrl = openCodeSub.baseUrl;

@@ -18,7 +18,7 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
-import { resolveCacheDir, resolveStateDir } from './home.js';
+import { resolveBackupsDir, resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('lib:ui-assets');
@@ -111,7 +111,7 @@ export async function seedOpenPalmDir(
   repoRef: string,
   homeDir: string,
   _configDir: string,
-  _stateDir: string,
+  _dataDir: string,
 ): Promise<void> {
   const local = resolveLocalOpenpalmDir();
   if (local) {
@@ -181,24 +181,24 @@ export function resolveLocalUiBuild(): string | null {
  * Resolve the best available UI build directory at runtime.
  *
  * Priority:
- *   1. OP_HOME/state/ui/ — user-installed or auto-updated build
+ *   1. OP_HOME/data/ui/ — user-installed or auto-updated build
  *   2. Bundled / local build (Electron extraResources, OPENPALM_REPO_ROOT, source checkout)
  */
 export function resolveUiBuildDir(): string {
-  const stateBuild = join(resolveStateDir(), 'ui');
-  if (existsSync(join(stateBuild, 'index.js'))) return stateBuild;
-  return resolveLocalUiBuild() ?? stateBuild;
+  const dataBuild = join(resolveDataDir(), 'ui');
+  if (existsSync(join(dataBuild, 'index.js'))) return dataBuild;
+  return resolveLocalUiBuild() ?? dataBuild;
 }
 
 /**
- * Install the UI build to OP_HOME/state/ui/.
+ * Install the UI build to OP_HOME/data/ui/.
  *
  * Copies from local packages/ui/build/ when running from source,
  * otherwise downloads ui-build.tar.gz from the GitHub release.
  * Called during install and update; always replaces existing content.
  *
- * state/ui/ is automatically included in backups because
- * backupOpenPalmHome() copies all of OP_HOME/state/.
+ * data/ui/ is automatically included in backups because
+ * backupOpenPalmHome() copies all of OP_HOME/data/.
  */
 /** SHA-256 hex digest of arbitrary bytes. */
 function sha256Hex(data: Uint8Array): string {
@@ -220,8 +220,8 @@ function parseChecksumsFile(content: string): Map<string, string> {
   return map;
 }
 
-export async function seedUiBuild(repoRef: string, stateDir: string, options?: { forceRemote?: boolean }): Promise<void> {
-  const uiDir = join(stateDir, 'ui');
+export async function seedUiBuild(repoRef: string, dataDir: string, options?: { forceRemote?: boolean }): Promise<void> {
+  const uiDir = join(dataDir, 'ui');
   mkdirSync(uiDir, { recursive: true });
 
   const local = options?.forceRemote ? null : resolveLocalUiBuild();
@@ -236,7 +236,7 @@ export async function seedUiBuild(repoRef: string, stateDir: string, options?: {
   const checksumUrl  = `${base}/checksums-sha256.txt`;
   logger.debug('downloading UI build', { url: tarballUrl });
 
-  const tmpTar = join(stateDir, '.ui-build.tar.gz.tmp');
+  const tmpTar = join(dataDir, '.ui-build.tar.gz.tmp');
   try {
     // Download tarball and checksums file in parallel (checksums best-effort)
     const [tarRes, csRes] = await Promise.all([
@@ -328,15 +328,15 @@ export interface UiBuildUpdateResult {
  * Check GitHub for a newer UI build and apply it if one exists.
  *
  * When an update is available:
- *   1. Move state/ui/ → cache/backups/ui-{timestamp}/ (preserves the old build)
- *   2. Download ui-build.tar.gz from the latest release and extract to state/ui/
+ *   1. Move data/ui/ → data/backups/ui-{timestamp}/ (preserves the old build)
+ *   2. Download ui-build.tar.gz from the latest release and extract to data/ui/
  *
  * Non-fatal: any network or extraction error returns { updated: false, error }.
  * The caller should proceed with the existing build on failure.
  */
 export async function checkAndUpdateUiBuild(
   currentVersion: string,
-  stateDir: string,
+  dataDir: string,
 ): Promise<UiBuildUpdateResult> {
   try {
     const res = await fetch(
@@ -367,15 +367,15 @@ export async function checkAndUpdateUiBuild(
     }
 
     // Back up the existing UI build before replacing it
-    const uiDir = join(stateDir, 'ui');
+    const uiDir = join(dataDir, 'ui');
     if (existsSync(join(uiDir, 'index.js'))) {
-      const backupDir = join(resolveCacheDir(), 'backups', `ui-${Date.now()}`);
-      mkdirSync(join(resolveCacheDir(), 'backups'), { recursive: true });
+      const backupDir = join(resolveBackupsDir(), `ui-${Date.now()}`);
+      mkdirSync(resolveBackupsDir(), { recursive: true });
       renameSync(uiDir, backupDir);
       logger.debug('backed up UI build before update', { backup: backupDir });
     }
 
-    await seedUiBuild(latestTag, stateDir);
+    await seedUiBuild(latestTag, dataDir);
     logger.debug('UI build updated', { from: currentVersion, to: latestVersion });
 
     return { updated: true, latestVersion };

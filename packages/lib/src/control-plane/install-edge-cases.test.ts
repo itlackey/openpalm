@@ -56,10 +56,10 @@ function makeValidSpec(overrides?: Partial<SetupSpec>): SetupSpec {
 function seedRequiredAssets(homeDir: string): void {
   mkdirSync(join(homeDir, "config", "stack"), { recursive: true });
   writeFileSync(join(homeDir, "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: assistant:latest\n");
-  mkdirSync(join(homeDir, "state", "assistant"), { recursive: true });
-  writeFileSync(join(homeDir, "state", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
-  writeFileSync(join(homeDir, "state", "assistant", "AGENTS.md"), "# Agents\n");
-  mkdirSync(join(homeDir, "state"), { recursive: true });
+  mkdirSync(join(homeDir, "data", "assistant"), { recursive: true });
+  writeFileSync(join(homeDir, "data", "assistant", "opencode.jsonc"), '{"$schema":"https://opencode.ai/config.json"}\n');
+  writeFileSync(join(homeDir, "data", "assistant", "AGENTS.md"), "# Agents\n");
+  mkdirSync(join(homeDir, "data"), { recursive: true });
   // Automations live in stash/tasks as AKM-owned task files.
   mkdirSync(join(homeDir, "stash", "tasks"), { recursive: true });
   writeFileSync(join(homeDir, "stash", "tasks", "cleanup-logs.yml"), "schedule: \"0 4 * * 0\"\ndescription: cleanup logs\ncommand: [\"echo\",\"clean\"]\n");
@@ -71,9 +71,8 @@ function seedRequiredAssets(homeDir: string): void {
 
 let homeDir: string;
 let configDir: string;
-let stateDir: string;
+let dataDir: string;
 let stackDir: string;
-let cacheDir: string;
 
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -99,9 +98,8 @@ function restoreEnv(): void {
 function createFullDirTree(): void {
   homeDir = mkdtempSync(join(tmpdir(), "openpalm-edge-"));
   configDir = join(homeDir, "config");
-  stateDir = join(homeDir, "state");
+  dataDir = join(homeDir, "data");
   stackDir = join(configDir, "stack");
-  cacheDir = join(homeDir, "cache");
 
   for (const dir of [
     homeDir,
@@ -111,21 +109,15 @@ function createFullDirTree(): void {
     join(homeDir, "stash"),
     join(homeDir, "workspace"),
     stackDir,
-    stateDir,
-    join(stateDir, "assistant"),
-    join(stateDir, "admin"),
-    join(stateDir, "guardian"),
-    join(stateDir, "akm"),
-    join(stateDir, "akm", "data"),
-    join(stateDir, "akm", "state"),
-    join(stateDir, "registry"),
-    join(stateDir, "registry", "addons"),
-    cacheDir,
-    join(cacheDir, "akm"),
-    join(cacheDir, "guardian"),
-    join(cacheDir, "rollback"),
-    join(cacheDir, "logs"),
-    join(cacheDir, "backups"),
+    dataDir,
+    join(dataDir, "assistant"),
+    join(dataDir, "admin"),
+    join(dataDir, "guardian"),
+    join(dataDir, "akm", "cache"),
+    join(dataDir, "akm", "data"),
+    join(dataDir, "logs"),
+    join(dataDir, "backups"),
+    join(dataDir, "rollback"),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
@@ -169,14 +161,13 @@ describe("Fresh Install", () => {
 
   // Scenario 1: ensureSecrets does NOT seed user.env (see akm-vault) but
   // does create stack.env with required keys when files do not exist.
-  it("ensureSecrets creates state/stack.env with required keys on fresh install", () => {
+  it("ensureSecrets creates stack.env with required keys on fresh install", () => {
     const state: ControlPlaneState = {
       homeDir,
       configDir,
       stashDir: join(homeDir, "stash"),
       workspaceDir: join(homeDir, "workspace"),
-      cacheDir,
-      stateDir,
+      dataDir,
       stackDir,
       services: {},
       artifacts: { compose: "" },
@@ -194,7 +185,7 @@ describe("Fresh Install", () => {
 
   // Scenario 2: isSetupComplete returns false before setup
   it("isSetupComplete returns false when stack.env has OP_SETUP_COMPLETE=false", () => {
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
       "OP_SETUP_COMPLETE=false\n"
@@ -250,7 +241,7 @@ describe("Existing Install", () => {
 
   // Scenario 5: ensureSecrets creates file-based secrets without stack.env tokens
   it("ensureSecrets creates file-based system secrets", () => {
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(stackDir, "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
@@ -258,8 +249,7 @@ describe("Existing Install", () => {
       configDir,
       stashDir: join(homeDir, "stash"),
       workspaceDir: join(homeDir, "workspace"),
-      cacheDir,
-      stateDir,
+      dataDir,
       stackDir,
       services: {},
       artifacts: { compose: "" },
@@ -350,7 +340,7 @@ describe("Broken/Corrupt State", () => {
 
   // Scenario 9: ensureSecrets is idempotent on repeated calls
   it("ensureSecrets is idempotent — second call does not overwrite existing stack.env", () => {
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(stackDir, "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
@@ -358,8 +348,7 @@ describe("Broken/Corrupt State", () => {
       configDir,
       stashDir: join(homeDir, "stash"),
       workspaceDir: join(homeDir, "workspace"),
-      cacheDir,
-      stateDir,
+      dataDir,
       stackDir,
       services: {},
       artifacts: { compose: "" },
@@ -388,10 +377,10 @@ describe("Broken/Corrupt State", () => {
       "  # indented comment",
     ].join("\n");
 
-    mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, "test.env"), malformedContent);
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, "test.env"), malformedContent);
 
-    const parsed = parseEnvFile(join(stateDir, "test.env"));
+    const parsed = parseEnvFile(join(dataDir, "test.env"));
     expect(parsed.VALID_KEY).toBe("valid_value");
     expect(parsed.EXPORTED_KEY).toBe("exported_value");
     expect(parsed.ANOTHER_VALID).toBe("value");
@@ -400,7 +389,7 @@ describe("Broken/Corrupt State", () => {
   // Scenario 11: stack.env missing OP_SETUP_COMPLETE
   it("isSetupComplete falls back to token check when OP_SETUP_COMPLETE missing", () => {
     // stack.env without OP_SETUP_COMPLETE
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
       "OP_IMAGE_TAG=latest\n"
@@ -410,7 +399,7 @@ describe("Broken/Corrupt State", () => {
   });
 
   it("isSetupComplete returns false when OP_UI_LOGIN_PASSWORD is set but OP_SETUP_COMPLETE is missing", () => {
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
       "OP_IMAGE_TAG=latest\nexport OP_UI_LOGIN_PASSWORD=my-real-password\n"
@@ -493,7 +482,7 @@ describe("Environment Edge Cases", () => {
 
   // Scenario 16: isSetupComplete requires explicit OP_SETUP_COMPLETE=true
   it("isSetupComplete returns false when only OP_UI_LOGIN_PASSWORD is set", () => {
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(
       join(stackDir, "stack.env"),
       "SOME_OTHER_KEY=value\nexport OP_UI_LOGIN_PASSWORD=real-password-here\n"

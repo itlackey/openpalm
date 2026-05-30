@@ -452,7 +452,7 @@ function writeCdiOverlayIfNeeded(homeDir: string): string | null {
  * directive bakes the host UID into the container — but on a rootless
  * daemon the bind-mount UID inside the container is subuid-remapped, so
  * the resulting container UID has no write permission against
- * `${OP_HOME}/state/voice/models`. Removing the `user:` directive lets
+ * `${OP_HOME}/data/voice/models`. Removing the `user:` directive lets
  * Docker pick whatever UID the rootless mapping translates to inside the
  * user namespace, which DOES have write access to the bind-mount.
  *

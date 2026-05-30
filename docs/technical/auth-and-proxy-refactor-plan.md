@@ -91,7 +91,7 @@ broker's one real bug (response buffering).
 - **The ephemeral local OpenCode (Electron-spawned) is in.** Per-launch random
   password, set in spawn env, never written to disk, never logged. Tool calls
   are logged by OpenCode itself (session log under
-  `~/.openpalm/state/admin-opencode/log/`) — no OpenPalm-side audit wrapping.
+  `~/.openpalm/data/admin-opencode/log/`) — no OpenPalm-side audit wrapping.
   Killed on Electron quit + reaped via `process.on('exit')` and a pidfile
   sweep at next launch. **Routed through the same broker** as remote OpenCode
   — broker reads the per-launch password from an Electron-written runtime
@@ -278,7 +278,7 @@ random 32-byte password set via `OPENCODE_SERVER_PASSWORD` in spawn env.
 | Auth | Per-launch random 32-byte password, set in spawn env. Never written to disk. Never logged. Sent via `process.env` to `createOpencodeServer()`. |
 | Port | Bind 127.0.0.1 only. Port 0 (kernel-assigned), parse stdout for actual port. |
 | Plugins | Admin tools staged to `${HOME}/.local/state/openpalm/admin-opencode/` at Electron startup. `opencode.json` written with `plugin: ["@openpalm/admin-tools-plugin"]`. Same pattern as `packages/cli/src/lib/opencode-subprocess.ts:45-77`. |
-| Logging | OpenCode writes its own session log + per-tool invocation record at `${OP_HOME}/state/admin-opencode/log/`. That IS the audit trail. No OpenPalm-side `appendAudit` wrapping. |
+| Logging | OpenCode writes its own session log + per-tool invocation record at `${OP_HOME}/data/admin-opencode/log/`. That IS the audit trail. No OpenPalm-side `appendAudit` wrapping. |
 | Lifecycle (clean) | `app.on('will-quit')` sends SIGTERM, 5s grace, SIGKILL. PID written to `state/local-opencode.pid` at spawn. |
 | Lifecycle (crash) | At Electron startup, read `state/local-opencode.pid`; if PID exists and is the wrong cmdline (or doesn't exist), unlink and continue. If it IS our process, kill it (we crashed last time without cleanup). |
 | Connection-list entry | Synthesized at runtime by the UI server. Electron writes `state/local-opencode.runtime.json` (0600) with `{url, username, password, pid}` at spawn; the UI server reads it when building the endpoint list and the broker reads it per request when the active endpoint is the local one. File is unlinked at Electron quit. NOT persisted to `config/endpoints.json`. Marked `isLocal: true, isDefault: false`. Cannot be deleted or edited by the user. |
@@ -340,9 +340,9 @@ automations expect (`OP_ASSISTANT_PASSWORD`, fully scoped). Document the change.
 
 | Activity | Where it's logged |
 |---|---|
-| Chat conversations + tool invocations on the assistant container | `${OP_HOME}/state/assistant/opencode/log/` (OpenCode native) |
-| Admin operations (compose, secrets, etc.) via local-OpenCode tools | `${OP_HOME}/state/admin-opencode/log/` (OpenCode native) |
-| Channel ingress (HMAC verify, replay detection, rate limit) | `${OP_HOME}/cache/logs/guardian-audit.log` (preserved — guardian's own audit) |
+| Chat conversations + tool invocations on the assistant container | `${OP_HOME}/data/assistant/.local/state/opencode/` (OpenCode native) |
+| Admin operations (compose, secrets, etc.) via local-OpenCode tools | `${OP_HOME}/data/admin-opencode/log/` (OpenCode native) |
+| Channel ingress (HMAC verify, replay detection, rate limit) | `${OP_HOME}/data/logs/guardian-audit.log` (preserved — guardian's own audit) |
 | UI login events (`op_session` issuance, logout) | Application stderr via `createLogger('admin.auth')` → captured by the host process logger (Electron's stderr pipe, journald in container mode). Not a separate jsonl. |
 | Endpoint CRUD, setup writes | Same — operator-initiated UI actions logged at `info` via `createLogger`. |
 
@@ -359,7 +359,7 @@ automations expect (`OP_ASSISTANT_PASSWORD`, fully scoped). Document the change.
 **What goes away in this decision:**
 
 - `packages/lib/src/control-plane/audit.ts` (the whole `appendAudit` module)
-- `cache/logs/admin-audit.jsonl` file format
+- `state/logs/admin-audit.jsonl` file format
 - `/admin/audit` API route + `AuditTab.svelte` UI
 - ~25 `appendAudit(state, actor, action, …)` call sites across admin routes
 - The audit-related unit tests
@@ -380,7 +380,7 @@ migration:
 2. If `OP_ASSISTANT_TOKEN` is set → remove it from `stack.env` (it's now unused).
 3. If `state/admin/endpoints.json` exists → copy to `config/endpoints.json`,
    unlink original.
-4. Log a one-line summary to `cache/logs/migration-0.11.0.log`.
+4. Log a one-line summary to `state/logs/migration-0.11.0.log`.
 
 Old installs: no UI access without re-login (the cookie semantics changed). User
 re-runs through wizard or hits `/login`. We accept this UX hit.
@@ -460,7 +460,7 @@ phase until the previous one is green on main.**
   guardian env block in `.openpalm/config/stack/core.compose.yml:120-127`. Today
   guardian reads these in `core/guardian/src/forward.ts:25-30` but the compose
   block doesn't set them. (Report 2 finding.)
-- Add migration log path constant `cache/logs/migration-0.11.0.log`.
+- Add migration log path constant `state/logs/migration-0.11.0.log`.
 - Add `config/endpoints.json` to the file-permissions test suite (mode 0600).
 - Add a CSP middleware in `packages/ui/src/hooks.server.ts` setting
   `script-src 'self'; object-src 'none'; frame-ancestors 'none'`. Verify the
@@ -532,7 +532,7 @@ phase until the previous one is green on main.**
 ### Phase 5 — Move endpoints.json from state/ to config/
 
 - `packages/ui/src/lib/server/endpoints.ts:38-40`: change `endpointsPath()` to
-  use `getState().configDir` instead of `getState().stateDir`.
+  use `getState().configDir` instead of runtime data paths.
 - Add one-shot migration on first read (D6 step 3).
 - Update `core-principles.md` filesystem table to show `config/endpoints.json`.
 
@@ -546,8 +546,8 @@ phase until the previous one is green on main.**
   remote OpenCode (if reachable) and writes locally. Useful after suspected
   compromise.
 - Delete the `/admin/audit` route + `AuditTab.svelte` + all `appendAudit` call
-  sites + the `cache/logs/admin-audit.jsonl` writer. Operators consult OpenCode
-  session logs at `${OP_HOME}/state/{assistant,admin-opencode}/log/` for chat +
+  sites + the `state/logs/admin-audit.jsonl` writer. Operators consult OpenCode
+  session logs under `${OP_HOME}/data/{assistant,admin-opencode}/` for chat +
   tool history.
 
 ---
@@ -614,8 +614,8 @@ OpenCode logs)**.
 - [ ] `state/local-opencode.runtime.json` and pidfile at `state/local-opencode.pid` mode 0600. Cleared on Electron quit. Stale-PID sweep on next startup.
 - [ ] Endpoint URLs: HTTPS enforced for non-loopback. `http://` rejected for non-`127.0.0.1`/`localhost`/`::1` with a clear error.
 - [ ] `config/endpoints.json` mode 0600. Verified by repo install test.
-- [ ] Local-ephemeral OpenCode writes its session/tool log to `${OP_HOME}/state/admin-opencode/log/` and that path is readable for post-incident review. Log retention policy documented in `docs/technical/`.
-- [ ] OpenPalm `appendAudit` / `cache/logs/admin-audit.jsonl` machinery removed in full; `grep -rn 'appendAudit\|admin-audit.jsonl' packages/ui/src packages/lib/src` returns zero hits.
+- [ ] Local-ephemeral OpenCode writes its session/tool log to `${OP_HOME}/data/admin-opencode/log/` and that path is readable for post-incident review. Log retention policy documented in `docs/technical/`.
+- [ ] OpenPalm `appendAudit` / `state/logs/admin-audit.jsonl` machinery removed in full; `grep -rn 'appendAudit\|admin-audit.jsonl' packages/ui/src packages/lib/src` returns zero hits.
 - [ ] Channels-sdk and guardian paths unchanged. Verified by running existing security tests (`bun run guardian:test`). (Note: guardian keeps its own `guardian-audit.log` — that's separate from the OpenPalm admin audit and is preserved.)
 - [ ] Migration script handles: existing token-based install, fresh install, partial state (token set but no endpoint file).
 - [ ] No `Bearer <token>` or `x-admin-token` flows survive in admin routes (audit by `grep -rn 'Authorization.*Bearer\|x-admin-token' packages/ui/src` excluding vitest/test fixtures).
@@ -669,8 +669,8 @@ OpenCode logs)**.
    `stack.env`. Document it.
 
 8. **OpenCode session logs are the audit trail** — no OpenPalm-side
-   `appendAudit`, no `cache/logs/admin-audit.jsonl`. OpenCode writes
-   per-session and per-tool logs under `${OP_HOME}/state/{assistant,admin-opencode}/log/`;
+   `appendAudit`, no `state/logs/admin-audit.jsonl`. OpenCode writes
+   per-session and per-tool logs under `${OP_HOME}/data/{assistant,admin-opencode}/`;
    that's where forensics happens. The few SvelteKit endpoints that survive
    (login, endpoint CRUD, setup writes) are user-initiated UI actions where
    the operator IS the actor — application-level stderr logging via the

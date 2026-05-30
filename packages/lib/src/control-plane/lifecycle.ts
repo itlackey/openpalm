@@ -8,8 +8,7 @@ import {
   resolveConfigDir,
   resolveStashDir,
   resolveWorkspaceDir,
-  resolveCacheDir,
-  resolveStateDir,
+  resolveDataDir,
   resolveStackDir,
 } from "./home.js";
 import { ensureSecrets, readStackSecretEnv } from "./secrets.js";
@@ -36,8 +35,7 @@ export function createState(): ControlPlaneState {
   const configDir = resolveConfigDir();
   const stashDir = resolveStashDir();
   const workspaceDir = resolveWorkspaceDir();
-  const cacheDir = resolveCacheDir();
-  const stateDir = resolveStateDir();
+  const dataDir = resolveDataDir();
   const stackDir = resolveStackDir();
 
   const services: Record<string, "running" | "stopped"> = {};
@@ -50,8 +48,7 @@ export function createState(): ControlPlaneState {
     configDir,
     stashDir,
     workspaceDir,
-    cacheDir,
-    stateDir,
+    dataDir,
     stackDir,
     services,
     artifacts: { compose: "" },
@@ -74,7 +71,7 @@ async function reconcileCore(
   }
 
   for (const addonName of listEnabledAddonIds(state.homeDir)) {
-    mkdirSync(`${state.stateDir}/${addonName}`, { recursive: true });
+    mkdirSync(`${state.dataDir}/${addonName}`, { recursive: true });
   }
 
   const active: string[] = [];
@@ -125,7 +122,7 @@ async function reconcileCore(
 }
 
 export async function applyInstall(state: ControlPlaneState): Promise<void> {
-  const lock = acquireInstallLock(state.stateDir);
+  const lock = acquireInstallLock(state.dataDir);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     await reconcileCore(state, { activateServices: true });
@@ -139,7 +136,7 @@ export async function applyInstall(state: ControlPlaneState): Promise<void> {
 }
 
 export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
-  const lock = acquireInstallLock(state.stateDir);
+  const lock = acquireInstallLock(state.dataDir);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     return { restarted: await reconcileCore(state, {}) };
@@ -149,7 +146,7 @@ export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted
 }
 
 export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
-  const lock = acquireInstallLock(state.stateDir);
+  const lock = acquireInstallLock(state.dataDir);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     return { stopped: await reconcileCore(state, { deactivateServices: true }) };
@@ -221,7 +218,7 @@ export async function applyUpgrade(
   updated: string[];
   restarted: string[];
 }> {
-  const lock = acquireInstallLock(state.stateDir);
+  const lock = acquireInstallLock(state.dataDir);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     const { backupDir, updated } = await refreshCoreAssets();

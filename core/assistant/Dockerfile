@@ -101,9 +101,9 @@ RUN set -e; \
 # Prepend opencode user's local bin so per-user installs win.
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /akm /opt/persistent/bin \
-    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /akm /opt/persistent /opt/persistent/bin \
-    && chown opencode:opencode /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /akm /opt/persistent /opt/persistent/bin \
+RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
+    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin \
+    && chown opencode:opencode /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config

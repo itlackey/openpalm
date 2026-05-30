@@ -28,12 +28,12 @@ const STOP_TIMEOUT_MS = 5_000;
  * Start an OpenCode subprocess for the wizard to talk to.
  *
  * Creates a temporary HOME directory structure with symlinks to the real
- * state/config paths so OpenCode reads/writes auth.json at the right location.
+  * data/config paths so OpenCode reads/writes auth.json at the right location.
  */
 export async function startOpenCodeSubprocess(opts: {
   homeDir: string;
   configDir: string;
-  stateDir: string;
+  dataDir: string;
   port?: number;
 }): Promise<OpenCodeSubprocess> {
   const opencodeBin = Bun.which("opencode");

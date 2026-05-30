@@ -8,7 +8,7 @@ OpenPalm ships with two persistence patterns enabled out of the box (home-based 
 
 ## Pattern 1 — Assistant Home (enabled by default)
 
-The assistant container bind-mounts `${OP_HOME}/state/assistant` at `/home/opencode`, and `/home/opencode/.local/bin` is first on `PATH`. Anything installed under `$HOME` or `$HOME/.local` survives recreates and image upgrades.
+The assistant container bind-mounts `${OP_HOME}/data/assistant` at `/home/opencode`, and `/home/opencode/.local/bin` is first on `PATH`. Anything installed under `$HOME` or `$HOME/.local` survives recreates and image upgrades.
 
 | Installer | How to use it | Notes |
 |---|---|---|
@@ -87,7 +87,7 @@ docker build -t openpalm/assistant:dev -f core/assistant/Dockerfile .
 docker compose up -d --force-recreate assistant
 ```
 
-**3. Maintain the manifest.** The manifest lives in the existing `/home/opencode/` bind mount, so it persists across recreates. The assistant adds a package like this:
+**3. Maintain the manifest.** The manifest lives in the existing `/home/opencode` bind mount, so it persists across recreates. The assistant adds a package like this:
 
 ```bash
 # inside the assistant container

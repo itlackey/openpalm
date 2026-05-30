@@ -39,7 +39,7 @@ function cpTree(src: string, dest: string): void {
 /** Seed the OP_HOME directory from the local repo (no network). */
 function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   const configDir = join(homeDir, 'config');
-  const stateDir = join(homeDir, 'state');
+  const dataDir = join(homeDir, 'data');
   const stackDir = join(configDir, 'stack');
 
   // config/stack/ — seed fixed compose files
@@ -77,19 +77,18 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     join(configDir, 'assistant'),
     join(configDir, 'akm'),
     stackDir,
-    stateDir,
-    join(stateDir, 'assistant'),
-    join(stateDir, 'admin'),
-    join(stateDir, 'guardian'),
-    join(stateDir, 'akm'),
-    join(stateDir, 'akm', 'data'),
-    join(stateDir, 'akm', 'state'),
+    dataDir,
+    join(dataDir, 'assistant'),
+    join(dataDir, 'admin'),
+    join(dataDir, 'guardian'),
+    join(dataDir, 'akm'),
+    join(dataDir, 'akm/cache'),
+    join(dataDir, 'akm/data'),
+    join(dataDir, 'logs'),
+    join(dataDir, 'backups'),
+    join(dataDir, 'rollback'),
     join(homeDir, 'stash'),
     join(homeDir, 'workspace'),
-    join(homeDir, 'cache'),
-    join(homeDir, 'cache', 'akm'),
-    join(homeDir, 'cache', 'logs'),
-    join(homeDir, 'cache', 'backups'),
   ]) {
     mkdirSync(dir, { recursive: true });
   }
@@ -189,7 +188,7 @@ describe('install flow — tier 1 (file validation)', () => {
     // ── Validate vault files are regular files (not directories) ─────
     // Note: vault/user/user.env is no longer
     // seeded — user-managed env secrets live in akm vault:user
-    // (data/stash/vaults/user.env) and the assistant entrypoint sources
+    // (stash/vaults/user.env) and the assistant entrypoint sources
     // it directly. The compose env_file mount for vault/user/user.env
     // has been removed too.
     for (const relPath of [
@@ -244,8 +243,8 @@ describe('install flow — tier 1 (file validation)', () => {
     const rootFiles = new TextDecoder().decode(rootOwned.stdout).trim();
     expect(rootFiles).toBe('');
 
-    // ── Validate state and stash directories ────────────────────────────────────
-    for (const dir of ['state/admin', 'state/assistant', 'state/guardian', 'stash', 'workspace']) {
+    // ── Validate data and stash directories ─────────────────────────────────────
+    for (const dir of ['data/admin', 'data/assistant', 'data/guardian', 'stash', 'workspace']) {
       expect(existsSync(join(homeDir, dir))).toBe(true);
     }
 
@@ -319,7 +318,7 @@ describe('install flow — tier 1 (file validation)', () => {
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
     const { seedOpenPalmDir } = await import('./lib/io.ts');
-    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'state'));
+    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
 
     // The shipped config-diagnostics skill must land on disk with valid frontmatter.
     const skillPath = join(homeDir, 'stash/skills/config-diagnostics/SKILL.md');
@@ -338,7 +337,7 @@ describe('install flow — tier 1 (file validation)', () => {
     const { seedOpenPalmDir } = await import('./lib/io.ts');
 
     // First install seeds the asset.
-    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'state'));
+    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
     const skillPath = join(homeDir, 'stash/skills/config-diagnostics/SKILL.md');
     expect(existsSync(skillPath)).toBe(true);
 
@@ -347,7 +346,7 @@ describe('install flow — tier 1 (file validation)', () => {
     writeFileSync(skillPath, userEdit);
 
     // Re-install must not overwrite the user's edit (skipExisting).
-    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'state'));
+    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
     expect(readFileSync(skillPath, 'utf-8')).toBe(userEdit);
   }, 30_000);
 
@@ -366,7 +365,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(noAddonSpec).not.toBeNull();
 
     // Core compose only, no addon files in the compose list.
-    // Only state/stack.env is needed for `compose config`.
+    // Only config/stack/stack.env is needed for `compose config`.
     const stackEnv = join(homeDir, 'config/stack/stack.env');
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',

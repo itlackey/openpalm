@@ -10,7 +10,7 @@ services:
     environment:
       OLLAMA_MODELS: /data/models
     volumes:
-      - ${OP_HOME}/state/ollama:/data
+      - ${OP_HOME}/data/ollama:/data
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags || exit 1"]
@@ -37,7 +37,7 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - ${OP_HOME}/state/ollama:/data
+      - ${OP_HOME}/data/ollama:/data
     networks:
       assistant_net:
         aliases: [ollama]
@@ -64,7 +64,7 @@ services:
       OLLAMA_MODELS: /data/models
       HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
     volumes:
-      - ${OP_HOME}/state/ollama:/data
+      - ${OP_HOME}/data/ollama:/data
     networks:
       assistant_net:
         aliases: [ollama]
@@ -101,7 +101,7 @@ services:
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
-      - ${OP_HOME}/state/voice/models:/models
+      - ${OP_HOME}/data/voice/models:/models
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
@@ -134,7 +134,7 @@ services:
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
-      - ${OP_HOME}/state/voice/models:/models
+      - ${OP_HOME}/data/voice/models:/models
     networks:
       assistant_net:
         aliases: [voice]
@@ -167,7 +167,7 @@ services:
     ports:
       - "${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
-      - ${OP_HOME}/state/voice/models:/models
+      - ${OP_HOME}/data/voice/models:/models
     networks:
       assistant_net:
         aliases: [voice]

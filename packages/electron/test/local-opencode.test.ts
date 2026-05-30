@@ -30,14 +30,14 @@ import {
   writeRuntimeFile,
 } from '../src/local-opencode.js';
 
-let stateDir: string;
+let dataDir: string;
 
 beforeEach(() => {
-  stateDir = mkdtempSync(join(tmpdir(), 'openpalm-local-opencode-test-'));
+  dataDir = mkdtempSync(join(tmpdir(), 'openpalm-local-opencode-test-'));
 });
 
 afterEach(() => {
-  rmSync(stateDir, { recursive: true, force: true });
+  rmSync(dataDir, { recursive: true, force: true });
   vi.restoreAllMocks();
   // Reset the SDK loader back to the real one.
   _setSdkLoader(async () => await import('@opencode-ai/sdk').catch(() => ({
@@ -48,16 +48,16 @@ afterEach(() => {
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
 describe('path helpers', () => {
-  it('runtime path lives directly under stateDir', () => {
+  it('runtime path lives directly under dataDir', () => {
     expect(runtimePath('/x')).toBe('/x/local-opencode.runtime.json');
   });
-  it('pidfile lives directly under stateDir', () => {
+  it('pidfile lives directly under dataDir', () => {
     expect(pidfilePath('/x')).toBe('/x/local-opencode.pid');
   });
-  it('unavailable sentinel lives directly under stateDir', () => {
+  it('unavailable sentinel lives directly under dataDir', () => {
     expect(unavailableSentinelPath('/x')).toBe('/x/local-opencode.unavailable');
   });
-  it('admin OpenCode HOME is a child of stateDir', () => {
+  it('admin OpenCode HOME is a child of dataDir', () => {
     expect(adminOpencodeHome('/x')).toBe('/x/admin-opencode-home');
   });
 });
@@ -106,8 +106,8 @@ describe('isPidAlive', () => {
 describe('stageAdminHome', () => {
   it('writes opencode.json with the supplied plugin path', () => {
     const pluginPath = '/opt/resources/admin-tools-plugin/index.js';
-    const { home, configDir } = stageAdminHome(stateDir, pluginPath);
-    expect(home).toBe(adminOpencodeHome(stateDir));
+    const { home, configDir } = stageAdminHome(dataDir, pluginPath);
+    expect(home).toBe(adminOpencodeHome(dataDir));
     const configPath = join(configDir, 'opencode.json');
     expect(existsSync(configPath)).toBe(true);
     const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
@@ -115,10 +115,10 @@ describe('stageAdminHome', () => {
   });
 
   it('is idempotent — does not overwrite an existing opencode.json', () => {
-    const { configDir } = stageAdminHome(stateDir, '/some/path/index.js');
+    const { configDir } = stageAdminHome(dataDir, '/some/path/index.js');
     const configPath = join(configDir, 'opencode.json');
     writeFileSync(configPath, JSON.stringify({ plugin: ['user-customised'] }));
-    stageAdminHome(stateDir, '/other/path/index.js');
+    stageAdminHome(dataDir, '/other/path/index.js');
     const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(cfg.plugin).toEqual(['user-customised']);
   });
@@ -126,8 +126,8 @@ describe('stageAdminHome', () => {
 
 describe('writeRuntimeFile + writePidFile', () => {
   it('writes runtime.json with 0600 permissions', () => {
-    writeRuntimeFile(stateDir, buildRuntimeJson('http://x', 'pw', 1));
-    const path = runtimePath(stateDir);
+    writeRuntimeFile(dataDir, buildRuntimeJson('http://x', 'pw', 1));
+    const path = runtimePath(dataDir);
     const mode = statSync(path).mode & 0o777;
     expect(mode).toBe(0o600);
     const parsed = JSON.parse(readFileSync(path, 'utf-8'));
@@ -135,38 +135,38 @@ describe('writeRuntimeFile + writePidFile', () => {
   });
 
   it('writes pidfile with 0600 permissions and round-trips', () => {
-    writePidFile(stateDir, 12345);
-    const mode = statSync(pidfilePath(stateDir)).mode & 0o777;
+    writePidFile(dataDir, 12345);
+    const mode = statSync(pidfilePath(dataDir)).mode & 0o777;
     expect(mode).toBe(0o600);
-    expect(readPidFile(stateDir)).toBe(12345);
+    expect(readPidFile(dataDir)).toBe(12345);
   });
 
   it('readPidFile returns null when pidfile is absent', () => {
-    expect(readPidFile(stateDir)).toBeNull();
+    expect(readPidFile(dataDir)).toBeNull();
   });
 
   it('readPidFile returns null when pidfile contains garbage', () => {
-    mkdirSync(stateDir, { recursive: true });
-    writeFileSync(pidfilePath(stateDir), 'not-a-pid');
-    expect(readPidFile(stateDir)).toBeNull();
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(pidfilePath(dataDir), 'not-a-pid');
+    expect(readPidFile(dataDir)).toBeNull();
   });
 });
 
 describe('sweepStalePid', () => {
   it('unlinks pidfile + runtime.json when nothing is there', () => {
-    const r = sweepStalePid(stateDir);
+    const r = sweepStalePid(dataDir);
     expect(r.swept).toBe(false);
     expect(r.pid).toBeNull();
   });
 
   it('returns swept=false when the pid is dead and unlinks the file', () => {
-    writePidFile(stateDir, 2_147_483_640); // almost certainly dead
-    writeRuntimeFile(stateDir, buildRuntimeJson('http://x', 'pw', 2_147_483_640));
-    const r = sweepStalePid(stateDir);
+    writePidFile(dataDir, 2_147_483_640); // almost certainly dead
+    writeRuntimeFile(dataDir, buildRuntimeJson('http://x', 'pw', 2_147_483_640));
+    const r = sweepStalePid(dataDir);
     expect(r.swept).toBe(false);
     expect(r.pid).toBe(2_147_483_640);
-    expect(existsSync(pidfilePath(stateDir))).toBe(false);
-    expect(existsSync(runtimePath(stateDir))).toBe(false);
+    expect(existsSync(pidfilePath(dataDir))).toBe(false);
+    expect(existsSync(runtimePath(dataDir))).toBe(false);
   });
 });
 
@@ -182,23 +182,23 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
       }),
     }));
 
-    const handle = await startLocalOpenCode({ stateDir, pluginPath: '/test/admin-tools-plugin/index.js' });
+    const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();
     expect(handle!.url).toBe('http://127.0.0.1:54321');
     expect(handle!.username).toBe('openpalm');
     expect(handle!.password).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
     // Runtime + pidfile written.
-    expect(existsSync(runtimePath(stateDir))).toBe(true);
-    expect(existsSync(pidfilePath(stateDir))).toBe(true);
-    expect(existsSync(unavailableSentinelPath(stateDir))).toBe(false);
+    expect(existsSync(runtimePath(dataDir))).toBe(true);
+    expect(existsSync(pidfilePath(dataDir))).toBe(true);
+    expect(existsSync(unavailableSentinelPath(dataDir))).toBe(false);
 
     // Files are 0600.
-    expect(statSync(runtimePath(stateDir)).mode & 0o777).toBe(0o600);
-    expect(statSync(pidfilePath(stateDir)).mode & 0o777).toBe(0o600);
+    expect(statSync(runtimePath(dataDir)).mode & 0o777).toBe(0o600);
+    expect(statSync(pidfilePath(dataDir)).mode & 0o777).toBe(0o600);
 
     // Runtime.json carries the URL + password we generated.
-    const rt = JSON.parse(readFileSync(runtimePath(stateDir), 'utf-8'));
+    const rt = JSON.parse(readFileSync(runtimePath(dataDir), 'utf-8'));
     expect(rt.url).toBe('http://127.0.0.1:54321');
     expect(rt.password).toBe(handle!.password);
 
@@ -209,8 +209,8 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
 
     await handle!.stop();
     expect(close).toHaveBeenCalledTimes(1);
-    expect(existsSync(runtimePath(stateDir))).toBe(false);
-    expect(existsSync(pidfilePath(stateDir))).toBe(false);
+    expect(existsSync(runtimePath(dataDir))).toBe(false);
+    expect(existsSync(pidfilePath(dataDir))).toBe(false);
   }, 10_000);
 
   it('writes the unavailable sentinel and returns null when the SDK throws', async () => {
@@ -220,14 +220,14 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
       },
     }));
 
-    const handle = await startLocalOpenCode({ stateDir, pluginPath: '/test/admin-tools-plugin/index.js' });
+    const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).toBeNull();
-    expect(existsSync(unavailableSentinelPath(stateDir))).toBe(true);
-    const sentinel = JSON.parse(readFileSync(unavailableSentinelPath(stateDir), 'utf-8'));
+    expect(existsSync(unavailableSentinelPath(dataDir))).toBe(true);
+    const sentinel = JSON.parse(readFileSync(unavailableSentinelPath(dataDir), 'utf-8'));
     expect(sentinel.reason).toMatch(/opencode binary|spawn/i);
     // No runtime.json / pidfile on failure.
-    expect(existsSync(runtimePath(stateDir))).toBe(false);
-    expect(existsSync(pidfilePath(stateDir))).toBe(false);
+    expect(existsSync(runtimePath(dataDir))).toBe(false);
+    expect(existsSync(pidfilePath(dataDir))).toBe(false);
 
     // Env is restored even after failure.
     expect(process.env.OPENCODE_SERVER_PASSWORD).toBeUndefined();
@@ -235,9 +235,9 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
 
   it('sweeps stale state from a previous run before spawning', async () => {
     // Pre-populate stale state from a crashed prior launch.
-    writePidFile(stateDir, 2_147_483_640);
-    writeRuntimeFile(stateDir, buildRuntimeJson('http://stale', 'stale-pw', 1));
-    writeFileSync(unavailableSentinelPath(stateDir), '{"reason":"old"}', { mode: 0o600 });
+    writePidFile(dataDir, 2_147_483_640);
+    writeRuntimeFile(dataDir, buildRuntimeJson('http://stale', 'stale-pw', 1));
+    writeFileSync(unavailableSentinelPath(dataDir), '{"reason":"old"}', { mode: 0o600 });
 
     _setSdkLoader(async () => ({
       createOpencodeServer: async () => ({
@@ -246,12 +246,12 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
       }),
     }));
 
-    const handle = await startLocalOpenCode({ stateDir, pluginPath: '/test/admin-tools-plugin/index.js' });
+    const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();
-    const rt = JSON.parse(readFileSync(runtimePath(stateDir), 'utf-8'));
+    const rt = JSON.parse(readFileSync(runtimePath(dataDir), 'utf-8'));
     expect(rt.url).toBe('http://127.0.0.1:9999');
     expect(rt.password).not.toBe('stale-pw');
-    expect(existsSync(unavailableSentinelPath(stateDir))).toBe(false);
+    expect(existsSync(unavailableSentinelPath(dataDir))).toBe(false);
 
     await handle!.stop();
   }, 10_000);

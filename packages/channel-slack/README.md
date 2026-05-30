@@ -16,7 +16,7 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 
 ## Deployment model
 
-- Shipped addon source: `.openpalm/state/registry/addons/slack/compose.yml`
+- Shipped addon source: `.openpalm/config/stack/channels.compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/slack/compose.yml`
 - Non-secret values: `~/.openpalm/config/stack/stack.env`
 - Secret values: files under `~/.openpalm/stash/vaults/secrets/`

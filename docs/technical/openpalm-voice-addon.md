@@ -68,7 +68,7 @@ one), and each piece is replaceable.
 
 ## 2. Existing voice addon state
 
-`/home/founder3/code/github/itlackey/openpalm/.openpalm/state/registry/addons/voice/`
+`/home/founder3/code/github/itlackey/openpalm/.openpalm/config/stack/channels.compose.yml`
 already exists and is functional, but for a **different purpose** than this
 proposal:
 
@@ -97,7 +97,7 @@ orthogonal addons.
 ### Directory layout
 
 ```
-.openpalm/state/registry/addons/voice/
+.openpalm/config/stack/channels.compose.yml
 ├── compose.yml
 ├── .env.schema
 └── README.md
@@ -129,7 +129,7 @@ services:
     volumes:
       # Optional model cache for non-bundled voice packs (Kokoro core
       # voices are baked into the image; this is for user-added voices).
-      - ${OP_HOME}/state/voice/tts-cache:/app/cache
+      - ${OP_HOME}/data/voice/tts-cache:/app/cache
     networks: [assistant_net]
     deploy:
       resources:
@@ -160,7 +160,7 @@ services:
       WHISPER__COMPUTE_TYPE: int8
       ENABLE_UI: "false"
     volumes:
-      - ${OP_HOME}/state/voice/stt-cache:/root/.cache/huggingface
+      - ${OP_HOME}/data/voice/stt-cache:/root/.cache/huggingface
     networks: [assistant_net]
     deploy:
       resources:
@@ -406,7 +406,7 @@ The base addon is CPU-only. A future enhancement would:
 The cleanest shape is a per-addon `variants.yml`:
 
 ```yaml
-# .openpalm/state/registry/addons/voice/variants.yml
+# .openpalm/config/stack/channels.compose.yml
 default: cpu
 variants:
   cpu:

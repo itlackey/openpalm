@@ -251,10 +251,10 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 | `stash/vaults/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | `config/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
 | `stash/` | User/Services | AKM knowledge (skills, vaults, agents); `stash/tasks/` holds scheduled automation task files |
-| `state/` | Services | Persistent data: assistant, guardian, registry, logs |
-| `logs/` | Services | Audit and debug logs |
-| `backups/` | System | Durable upgrade backup snapshots |
-| `~/.cache/openpalm/` | System | Ephemeral: rollback snapshots |
+| `data/` | Services/System | Persistent data: assistant, guardian, akm, logs, backups, rollback |
+| `data/akm/cache/` | Services/System | AKM cache and task logs |
+| `data/akm/data/` | Services/System | AKM databases and durable data |
+| `~/.cache/openpalm/` | System | Ephemeral cache |
 
 Dev mode uses `.dev/` with the same subdirectory structure.
 
@@ -298,7 +298,7 @@ Before submitting any change:
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
 | `.openpalm/config/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
-| `.openpalm/state/registry/` | Repo catalog for available addons and automations |
+| `.openpalm/config/stack/` | Fixed stack compose files and enabled-addon state |
 | `packages/assistant-tools/AGENTS.md` | Contributor pointer for the assistant-tools package |
 | `packages/assistant-tools/src/index.ts` | Assistant tools plugin (`load_vault`, `health-check`) |
 | `.opencode/opencode.json` | OpenCode project configuration |

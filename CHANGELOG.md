@@ -10,7 +10,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **Assistant compose mounts simplified** — logs and lifecycle backups moved
-  under `cache/`, AKM cache remains separate from backed-up `state/akm` runtime
+  under `data/`, AKM cache/data share the backed-up `data/akm` runtime
   data, and `/opt/persistent` is documented as an escape hatch for global-prefix
   installs while `$HOME/.local/bin` remains the preferred install target.
 
@@ -214,7 +214,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   starts the Docker stack if it's down, then runs the UI server in the
   foreground. There is no separate `admin`/`ui` subcommand.
 - **akm stash as the shared knowledge layer** — akm-cli 0.8.0 is installed in
-  the assistant container. The stash at `OP_HOME/stash/` is mounted at `/akm`
+  the assistant container. The stash at `OP_HOME/stash/` is mounted at `/stash`
   and shared with the host-side UI process.
 - **Scheduler co-process inside the assistant container** — the standalone
   `scheduler` compose service has been removed. The scheduler now runs as a
@@ -236,9 +236,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`MANAGED_ASSETS` points at the v0.11 paths** — `core-assets.ts` now
   refreshes `config/assistant/opencode.jsonc`, `openpalm.md`, and `system.md`
   from `.openpalm/config/assistant/`.
-- **`seedOpenPalmDir` always refreshes `state/registry/`** — system-managed
-  registry overlays now update on every install/upgrade, fixing the case
-  where stale addon overlays persisted through reinstalls.
+- **`seedOpenPalmDir` always refreshes system-managed stack assets** — fixed
+  compose files now update on every install/upgrade, fixing the case where
+  stale overlays persisted through reinstalls.
 - **`performSetup` enables addons end-to-end** — `addons: { discord: true }`
   in the wizard payload now calls `setAddonEnabled`, which copies the
   compose overlay AND generates the channel HMAC secret file under
@@ -256,8 +256,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `config/stack/` — compose runtime: `core.compose.yml`, non-secret
     `stack.env`, file-based `secrets/`, `addons/`
   - `stash/` — akm knowledge; `stash/vaults/user.env` replaces `vault/user/`
-  - `state/` — service-persistent data (replaces `data/`)
-  - `cache/` — regenerable data (akm cache, rollback snapshots)
+  - `state/` — service-persistent data, logs, AKM cache/data, backups, rollback
   - `workspace/` — shared `/work` mount
 - **Provider/model configuration moved to `config/akm/config.json`** —
   `OP_CAP_*` env vars and `stack.yml` capabilities removed. No more env-schema files.

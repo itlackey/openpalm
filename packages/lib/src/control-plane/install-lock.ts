@@ -3,7 +3,7 @@
  *
  * Both `performSetup` (config writes) and `startDeploy` (Docker work) need an
  * exclusive lock against concurrent installs. The lock file lives at
- * `<stateDir>/.install.lock` and contains `<pid>\n<timestamp>\n`.
+ * `<dataDir>/.install.lock` and contains `<pid>\n<timestamp>\n`.
  *
  * Self-healing rules:
  *  - On EEXIST, parse the holder PID. If the process is gone (`process.kill(pid, 0)`
@@ -89,23 +89,23 @@ function tryCreate(path: string): boolean {
 }
 
 /**
- * Try to acquire the install lock under `stateDir`. Returns a handle on
+ * Try to acquire the install lock under `dataDir`. Returns a handle on
  * success or null if the lock is held by a live, recent install (or on any
  * unexpected filesystem error — caller should surface "install_in_progress").
  *
  * Callers MUST call `releaseInstallLock()` in a finally block when done.
  */
-export function acquireInstallLock(stateDir: string): InstallLockHandle | null {
+export function acquireInstallLock(dataDir: string): InstallLockHandle | null {
   try {
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
   } catch (err) {
-    logger.warn("failed to ensure state dir for install lock", {
-      stateDir,
+    logger.warn("failed to ensure data dir for install lock", {
+      dataDir,
       error: err instanceof Error ? err.message : String(err),
     });
     return null;
   }
-  const path = join(stateDir, ".install.lock");
+  const path = join(dataDir, ".install.lock");
 
   try {
     if (tryCreate(path)) return { path };

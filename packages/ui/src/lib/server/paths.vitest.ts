@@ -32,25 +32,30 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "config", "guardian"))).toBe(true);
     expect(existsSync(join(home, "config", "akm"))).toBe(true);
 
-    // cache/ — regenerable/control-plane data
-    expect(existsSync(join(home, "cache", "akm"))).toBe(true);
-    expect(existsSync(join(home, "cache", "rollback"))).toBe(true);
-    expect(existsSync(join(home, "cache", "logs"))).toBe(true);
-    expect(existsSync(join(home, "cache", "backups"))).toBe(true);
+    // cache/ — no longer part of the normal OP_HOME skeleton
+    expect(existsSync(join(home, "cache"))).toBe(false);
+    expect(existsSync(join(home, "cache", "akm"))).toBe(false);
+    expect(existsSync(join(home, "cache", "rollback"))).toBe(false);
+    expect(existsSync(join(home, "cache", "logs"))).toBe(false);
+    expect(existsSync(join(home, "cache", "backups"))).toBe(false);
     // guardian AKM cache removed — guardian has no akm CLI invocations
     expect(existsSync(join(home, "cache", "guardian"))).toBe(false);
 
-    // state/ — persistent service data
-    expect(existsSync(join(home, "state", "assistant"))).toBe(true);
-    expect(existsSync(join(home, "state", "admin"))).toBe(true);
-    expect(existsSync(join(home, "state", "guardian"))).toBe(true);
-    expect(existsSync(join(home, "state", "akm", "data"))).toBe(true);
-    expect(existsSync(join(home, "state", "akm", "state"))).toBe(true);
+    // data/ — persistent service data
+    expect(existsSync(join(home, "data", "assistant"))).toBe(true);
+    expect(existsSync(join(home, "data", "admin"))).toBe(true);
+    expect(existsSync(join(home, "data", "guardian"))).toBe(true);
+    expect(existsSync(join(home, "data", "akm"))).toBe(true);
+    expect(existsSync(join(home, "data", "akm", "cache"))).toBe(true);
+    expect(existsSync(join(home, "data", "akm", "data"))).toBe(true);
+    expect(existsSync(join(home, "data", "akm", "state"))).toBe(false);
     // guardian AKM subdirs removed — guardian has no akm CLI invocations
-    expect(existsSync(join(home, "state", "guardian", "stash"))).toBe(false);
-    expect(existsSync(join(home, "state", "guardian", "akm"))).toBe(false);
-    expect(existsSync(join(home, "state", "logs"))).toBe(false);
-    expect(existsSync(join(home, "state", "registry"))).toBe(false);
+    expect(existsSync(join(home, "data", "guardian", "stash"))).toBe(false);
+    expect(existsSync(join(home, "data", "guardian", "akm"))).toBe(false);
+    expect(existsSync(join(home, "data", "logs"))).toBe(true);
+    expect(existsSync(join(home, "data", "backups"))).toBe(true);
+    expect(existsSync(join(home, "data", "rollback"))).toBe(true);
+    expect(existsSync(join(home, "data", "registry"))).toBe(false);
 
     // stash/, workspace/, config/stack/
     expect(existsSync(join(home, "stash", "tasks"))).toBe(true);
@@ -61,7 +66,7 @@ describe("ensureHomeDirs", () => {
 
     // removed top-levels must NOT exist
     expect(existsSync(join(home, "vault"))).toBe(false);
-    expect(existsSync(join(home, "data"))).toBe(false);
+    expect(existsSync(join(home, "state"))).toBe(false);
     expect(existsSync(join(home, "logs"))).toBe(false);
     expect(existsSync(join(home, "registry"))).toBe(false);
     expect(existsSync(join(home, "services"))).toBe(false);
@@ -71,7 +76,6 @@ describe("ensureHomeDirs", () => {
     ensureHomeDirs();
     ensureHomeDirs();
     expect(existsSync(join(process.env.OP_HOME!, "config"))).toBe(true);
-    expect(existsSync(join(process.env.OP_HOME!, "cache"))).toBe(true);
-    expect(existsSync(join(process.env.OP_HOME!, "state"))).toBe(true);
+    expect(existsSync(join(process.env.OP_HOME!, "data"))).toBe(true);
   });
 });

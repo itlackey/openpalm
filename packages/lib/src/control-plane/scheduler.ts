@@ -112,11 +112,11 @@ export async function syncAutomations(akmEnv: NodeJS.ProcessEnv): Promise<void> 
 
 export function readAutomationLogs(
   id: string,
-  cacheDir: string,
+  dataDir: string,
   limit: number = 50,
 ): string[] {
   const taskId = id.replace(/\.(?:ya?ml|md)$/, "");
-  const logDir = join(cacheDir, "akm", "tasks", "logs", taskId);
+  const logDir = join(dataDir, "akm", "cache", "tasks", "logs", taskId);
   if (!existsSync(logDir)) return [];
 
   const logFiles = readdirSync(logDir, { withFileTypes: true })

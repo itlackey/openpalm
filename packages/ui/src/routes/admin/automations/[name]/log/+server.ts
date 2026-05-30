@@ -2,7 +2,7 @@
  * GET /admin/automations/:name/log — Recent execution logs for an automation.
  *
  * Reads per-run log files from the AKM task log directory:
- *   ${cacheDir}/akm/tasks/logs/<id>/<timestamp>.log
+ *   ${dataDir}/akm/cache/tasks/logs/<id>/<timestamp>.log
  *
  * Optional `limit` query parameter caps the number of returned log lines
  * (default 50, max 500).
@@ -44,7 +44,7 @@ export const GET: RequestHandler = async (event) => {
     limit = Math.min(parsed, MAX_LIMIT);
   }
 
-  const lines = readAutomationLogs(taskId, state.cacheDir, limit);
+  const lines = readAutomationLogs(taskId, state.dataDir, limit);
 
   return jsonResponse(200, { name: taskId, lines }, requestId);
 };

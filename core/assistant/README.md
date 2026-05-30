@@ -14,12 +14,14 @@ The assistant is deliberately isolated:
 - No Docker socket mount
 - No network path to the host admin process — only the assistant API on its internal compose network is reachable from inside the container
 - Host filesystem access is limited to the bind mounts declared in `.openpalm/config/stack/core.compose.yml`:
-  - `${OP_HOME}/config` → `/etc/openpalm` (assistant + akm + auth.json)
-  - `${OP_HOME}/state/assistant` → `/home/opencode` (the assistant's home; survives recreates)
+  - `${OP_HOME}/config/assistant` → `/etc/opencode` (OpenCode config)
+  - `${OP_HOME}/config/auth.json` → `/home/opencode/.local/share/opencode/auth.json` (host-managed OpenCode auth copy)
+  - `${OP_HOME}/config/akm` → `/etc/akm` (AKM config)
+  - `${OP_HOME}/data/assistant` → `/home/opencode` (the assistant's home; survives recreates)
   - `${OP_HOME}/workspace` → `/work` (shared work area)
-  - `${OP_HOME}/stash` → `/akm` (knowledge stash)
-  - `${OP_HOME}/state/akm` → `/akm-op` (akm runtime state; backed up)
-  - `${OP_HOME}/cache/akm` → `/akm-cache` (akm cache)
+  - `${OP_HOME}/stash` → `/stash` (knowledge stash)
+  - `${OP_HOME}/data/akm/cache` → `/opt/akm/cache` (AKM cache and task logs)
+  - `${OP_HOME}/data/akm/data` → `/opt/akm/data` (AKM databases and durable data)
   - Named volume `assistant-persistent` → `/opt/persistent` (escape hatch for prefix-style global installs)
 
 ## Plugin Architecture
@@ -37,15 +39,15 @@ Plugins are installed by Bun at container startup and cached under `/home/openco
 
 ### What lives where
 
-Assistant config is **seeded from the repo and bind-mounted at runtime**. There is no "DATA_HOME" or "/etc/opencode" path — `OPENCODE_CONFIG_DIR=/etc/openpalm/assistant` is the single source of truth inside the container.
+Assistant config is **seeded from the repo and bind-mounted at runtime**. `OPENCODE_CONFIG_DIR=/etc/opencode` is the single source of truth inside the container.
 
 | Repo location | OP_HOME location | Container mount | Purpose |
 |---|---|---|---|
-| `.openpalm/config/assistant/opencode.jsonc` | `config/assistant/opencode.jsonc` | `/etc/openpalm/assistant/opencode.jsonc` | Project config — plugins, server settings, permissions |
-| `.openpalm/config/assistant/openpalm.md` | `config/assistant/openpalm.md` | `/etc/openpalm/assistant/openpalm.md` | Operational guidelines (loaded via `instructions:`) |
-| `.openpalm/config/assistant/system.md` | `config/assistant/system.md` | `/etc/openpalm/assistant/system.md` | System prompt (memory, tools, secrets, built-in skills) |
+| `.openpalm/config/assistant/opencode.jsonc` | `config/assistant/opencode.jsonc` | `/etc/opencode/opencode.jsonc` | Project config — plugins, server settings, permissions |
+| `.openpalm/config/assistant/openpalm.md` | `config/assistant/openpalm.md` | `/etc/opencode/openpalm.md` | Operational guidelines (loaded via `instructions:`) |
+| `.openpalm/config/assistant/system.md` | `config/assistant/system.md` | `/etc/opencode/system.md` | System prompt (memory, tools, secrets, built-in skills) |
 | `packages/assistant-tools/` | — | npm-installed at startup | Plugin source (tools, skills, AGENTS.md contributor pointer) |
-| `${OP_HOME}/state/assistant/` | (the assistant's `$HOME`) | `/home/opencode` | Persistent home — bun cache, pipx tools, user state |
+| `${OP_HOME}/data/assistant/` | (the assistant's `$HOME`) | `/home/opencode` | Persistent home — bun cache, pipx tools, user state |
 | `assistant-persistent` (named volume) | — | `/opt/persistent` | Escape hatch for prefix-style global installs |
 
 ### Updating tools
@@ -63,6 +65,6 @@ Authoritative source: `.openpalm/config/assistant/openpalm.md` and `.openpalm/co
 | Variable | Purpose |
 |---|---|
 | `OP_ASSISTANT_TOKEN` | Assistant token (used by guardian for message authentication) |
-| `OPENCODE_CONFIG_DIR` | Set to `/etc/openpalm/assistant` — where OpenCode reads project + user config |
+| `OPENCODE_CONFIG_DIR` | Set to `/etc/opencode` — where OpenCode reads project + user config |
 | `OPENCODE_AUTH` | `false` by default (LAN-internal); set to `true` and supply `OP_OPENCODE_PASSWORD` if exposing to LAN |
 | `BUN_INSTALL` | `/home/opencode/.bun` — bun global installs persist via the home bind mount |

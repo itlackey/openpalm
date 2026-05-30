@@ -26,19 +26,17 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     vaults/            User-managed secrets (akm vault:user)
     tasks/             Scheduled automation task files (*.yml)
 
-  cache/
-    akm/               AKM operational data and cache
-    guardian/          Guardian cache (regenerable)
-    logs/              Service logs
-    backups/           Snapshot backups (created by CLI/admin during upgrades)
-    rollback/          Rollback snapshots (regenerable)
-
   state/
     assistant/         Assistant home and local runtime state
     admin/             Admin runtime home
     guardian/          Guardian nonce and rate-limit state
+    akm/cache/         AKM cache and task logs
+    akm/data/          AKM databases and durable data
+    logs/              Service logs and audit output
+    backups/           Snapshot backups (created by CLI/admin during upgrades)
+    rollback/          Rollback snapshots
 
-  workspace/           Shared `/work` mount (durable, shared by services)
+  workspace/           Shared `/work` mount
 ```
 
 ## Repo source asset structure (.openpalm/)
@@ -100,7 +98,6 @@ services and overlays belong in `custom.compose.yml`.
 | `stash/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
 | `stash/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
 | `state/` | Services | Containers and processes at runtime |
-| `cache/` | System | Regenerable artifacts (AKM cache, rollback snapshots) |
 | `workspace/` | Services | Durable shared data (not a secret store) |
 
 ## Runtime notes

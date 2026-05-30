@@ -218,7 +218,7 @@ describe("materialized registry catalog", () => {
 
     const root = materializeRegistryCatalog(sourceRoot);
 
-    expect(root).toBe(join(process.env.OP_HOME!, 'state', 'registry'));
+    expect(root).toBe(join(process.env.OP_HOME!, 'data', 'registry'));
     expect(existsSync(join(root, 'addons', 'chat', 'compose.yml'))).toBe(true);
     expect(existsSync(join(root, 'addons', 'chat', '.env.schema'))).toBe(true);
     expect(readFileSync(join(root, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
@@ -362,15 +362,16 @@ describe("materialized registry catalog", () => {
 
   it("backs up OP_HOME without recursively copying backups", () => {
     mkdirSync(join(process.env.OP_HOME!, 'config'), { recursive: true });
-    mkdirSync(join(process.env.OP_HOME!, 'cache', 'backups', 'old-backup'), { recursive: true });
+    mkdirSync(join(process.env.OP_HOME!, 'data', 'backups', 'old-backup'), { recursive: true });
     writeFileSync(join(process.env.OP_HOME!, 'config', 'stack.yml'), 'llm: test\n');
-    writeFileSync(join(process.env.OP_HOME!, 'cache', 'backups', 'old-backup', 'marker.txt'), 'old\n');
+    writeFileSync(join(process.env.OP_HOME!, 'data', 'backups', 'old-backup', 'marker.txt'), 'old\n');
 
     const backupDir = backupOpenPalmHome(process.env.OP_HOME!);
 
     expect(backupDir).not.toBeNull();
     expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
     expect(existsSync(join(backupDir!, 'cache'))).toBe(false);
+    expect(existsSync(join(backupDir!, 'data', 'backups'))).toBe(false);
   });
 
   it("writes backups under the provided homeDir even when OP_HOME points elsewhere", () => {
@@ -378,7 +379,7 @@ describe("materialized registry catalog", () => {
     const otherHome = join(tmpDir, 'other-home');
 
     mkdirSync(join(actualHome, 'config'), { recursive: true });
-    mkdirSync(join(otherHome, 'cache', 'backups'), { recursive: true });
+    mkdirSync(join(otherHome, 'data', 'backups'), { recursive: true });
     writeFileSync(join(actualHome, 'config', 'stack.yml'), 'llm: local\n');
 
     process.env.OP_HOME = otherHome;
@@ -386,9 +387,9 @@ describe("materialized registry catalog", () => {
     const backupDir = backupOpenPalmHome(actualHome);
 
     expect(backupDir).not.toBeNull();
-    expect(backupDir!.startsWith(join(actualHome, 'cache', 'backups'))).toBe(true);
+    expect(backupDir!.startsWith(join(actualHome, 'data', 'backups'))).toBe(true);
     expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
-    expect(existsSync(join(otherHome, 'cache', 'backups', 'config', 'stack.yml'))).toBe(false);
+    expect(existsSync(join(otherHome, 'data', 'backups', 'config', 'stack.yml'))).toBe(false);
   });
 
   it("parses compose profiles + openpalm.profile.* labels per addon", () => {

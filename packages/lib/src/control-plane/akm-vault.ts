@@ -17,8 +17,7 @@
  *
  * Layout:
  *   stash/         — AKM_STASH_DIR: asset content (skills, vaults, knowledge, agents)
- *   state/akm/     — AKM_DATA_DIR / AKM_STATE_DIR: operational metadata to back up
- *   cache/akm/     — AKM_CACHE_DIR: regenerable artifacts
+ *   data/akm/      — akm operational cache and data
  */
 import { existsSync, readFileSync } from "node:fs";
 import { execFile as execFileCb, spawn } from "node:child_process";
@@ -38,20 +37,17 @@ export const AKM_USER_VAULT_REF = "vault:user";
  * `.openpalm/config/stack/core.compose.yml`) so host-side and container-side
  * runs resolve to the same vault file.
  *
- * AKM_CONFIG_DIR lives in config/ (alongside stack.env, auth.json) so
- * operators can inspect and version-control akm setup alongside other config.
- * AKM_CACHE_DIR lives in cache/ since registry index and downloaded artifacts
- * are regenerable and should not be indexed alongside stash assets.
+ * Host-side runs use the same explicit directories as the assistant container:
+ * config in config/akm, cache in data/akm/cache, and durable data in
+ * data/akm/data.
  */
 export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
-  const akmOperational = `${state.stateDir}/akm`;
   return {
     ...process.env,
     AKM_STASH_DIR: state.stashDir,
     AKM_CONFIG_DIR: `${state.configDir}/akm`,
-    AKM_DATA_DIR: `${akmOperational}/data`,
-    AKM_STATE_DIR: `${akmOperational}/state`,
-    AKM_CACHE_DIR: `${state.cacheDir}/akm`,
+    AKM_CACHE_DIR: `${state.dataDir}/akm/cache`,
+    AKM_DATA_DIR: `${state.dataDir}/akm/data`,
   };
 }
 

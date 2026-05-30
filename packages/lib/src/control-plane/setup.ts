@@ -194,9 +194,9 @@ export async function performSetup(
   const state = opts?.state ?? createState();
 
   // Acquire install lock to prevent two concurrent setup runs from racing on
-  // the same config directory. The lock lives in stateDir so it is co-located
+  // the same config directory. The lock lives in dataDir so it is co-located
   // with runtime state and the same path startDeploy uses.
-  const lockHandle: InstallLockHandle | null = acquireInstallLock(state.stateDir);
+  const lockHandle: InstallLockHandle | null = acquireInstallLock(state.dataDir);
   if (lockHandle === null) {
     return {
       ok: false,

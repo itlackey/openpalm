@@ -26,12 +26,11 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 │   └── stack/       live compose assembly (core.compose.yml, stack.env, secrets/, addons/)
 ├── stash/           AKM knowledge base (vaults/, tasks/, skills/)
 │   └── vaults/      user-managed secrets (user.env = vault:user)
-├── state/           durable service data (assistant/, guardian/, akm/)
-├── cache/           regenerable/control-plane data (akm/, logs/, backups/, rollback/, guardian/)
+├── state/           durable service data, logs, backups, rollback, akm/cache, akm/data
 └── workspace/       shared work area
 ```
 
-Lifecycle backups live under `~/.openpalm/cache/backups/`.
+Lifecycle backups live under `~/.openpalm/data/backups/`; rollback snapshots live under `~/.openpalm/data/rollback/`.
 
 ### Compose env sources
 
@@ -83,18 +82,17 @@ Key env:
 - `OPENCODE_PORT=4096`
 - `OPENCODE_AUTH=false` (safe because host bind defaults to 127.0.0.1; see § Security invariants #4 in core-principles.md)
 - `OPENCODE_ENABLE_SSH`
-- `AKM_STASH_DIR=/akm` (and matching `AKM_DATA_DIR`, `AKM_STATE_DIR`, `AKM_CONFIG_DIR`, `AKM_CACHE_DIR`)
+- `AKM_STASH_DIR=/stash`, `AKM_CONFIG_DIR=/etc/akm`, `AKM_CACHE_DIR=/opt/akm/cache`, and `AKM_DATA_DIR=/opt/akm/data`
 - `OP_UID`, `OP_GID`
 
 Mounts:
 
-- image-baked `/etc/opencode`
-- `$OP_HOME/config -> /etc/openpalm`
+- `$OP_HOME/config/assistant -> /etc/opencode`
+- `$OP_HOME/config/akm -> /etc/akm`
 - `$OP_HOME/config/auth.json -> /home/opencode/.local/share/opencode/auth.json`
-- `$OP_HOME/state/assistant -> /home/opencode/`
-- `$OP_HOME/stash -> /akm` (shared akm stash)
-- `$OP_HOME/state/akm -> /akm-op` (akm operational data; backed up)
-- `$OP_HOME/cache/akm -> /akm-cache` (akm cache)
+- `$OP_HOME/data/assistant -> /home/opencode`
+- `$OP_HOME/stash -> /stash` (shared akm stash)
+- `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data`
 - `$OP_HOME/workspace -> /work`
 - `assistant-persistent -> /opt/persistent` (global-prefix escape hatch)
 
@@ -142,13 +140,13 @@ Key env:
 - `PORT=8080`
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OPENCODE_TIMEOUT_MS=0`
-- `GUARDIAN_AUDIT_PATH=/app/audit/guardian-audit.log`
+- `GUARDIAN_AUDIT_PATH=/opt/openpalm/logs/guardian-audit.log`
 - `CHANNEL_<n>_SECRET_FILE`
 
 Mounts:
 
-- `$OP_HOME/state/guardian -> /app/data`
-- `$OP_HOME/cache/logs -> /app/audit`
+- `$OP_HOME/data/guardian -> /opt/openpalm/guardian`
+- `$OP_HOME/data/logs -> /opt/openpalm/logs`
 - Compose secret mounts under `/run/secrets/<name>` for guardian/channel HMAC verification
 
 Ports and network:
@@ -202,20 +200,18 @@ Control plane:
 
 - Definitions: `${OP_HOME}/stash/tasks/*.yml` (AKM YAML task files; `akm tasks sync` registers with OS cron)
 - Manual triggers: `POST /admin/automations/<name>/run` spawns `akm tasks run <name>` directly
-- Per-run logs: `${OP_HOME}/cache/akm/tasks/logs/<name>/` (written by akm)
+- Per-run logs: `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` (written by akm)
 - Sync output is emitted to container stdout/stderr.
 
 Env sources (inherits the assistant container's environment):
 
-- `OP_HOME=/openpalm`
 - `OPENCODE_API_URL=http://localhost:4096` (co-resident OpenCode; auth disabled on this interface)
 
 Mounts (provided by the assistant service):
 
-- `$OP_HOME/config -> /etc/openpalm:ro`
-- `$OP_HOME/stash/tasks -> /akm/tasks` (rw, AKM YAML task files)
-- `$OP_HOME/state/akm -> /akm-op` (rw, akm state.db and execution history)
-- `$OP_HOME/cache/akm -> /akm-cache` (rw, akm cache and per-run task logs)
+- `$OP_HOME/config/assistant -> /etc/opencode` and `$OP_HOME/config/akm -> /etc/akm`
+- `$OP_HOME/stash/tasks -> /stash/tasks` (rw, AKM YAML task files)
+- `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data` (rw, akm cache, task logs, databases, and durable data)
 
 Design note — scheduler scope: The scheduler runs as part of the
 assistant container, so it shares the assistant's identity and trust

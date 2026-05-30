@@ -155,7 +155,7 @@ Response:
 {
   "ok": true,
   "imageTag": "0.9.0",
-  "backupDir": "/home/user/.openpalm/cache/backups/2025-01-01T00-00-00",
+  "backupDir": "/home/user/.openpalm/data/backups/2025-01-01T00-00-00",
   "assetsUpdated": ["core.compose.yml"],
   "restarted": ["guardian"],
   "adminRecreateScheduled": true
@@ -511,7 +511,7 @@ Response:
 ### `POST /admin/automations/:name/run`
 
 Manually trigger an automation. The admin spawns `akm tasks run <name>` directly;
-execution logs are written to `${OP_HOME}/cache/akm/tasks/logs/<name>/` and history
+execution logs are written to `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` and history
 to akm's `state.db`.
 
 - `:name` -- Automation name. Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
@@ -530,7 +530,7 @@ Error responses:
 
 ### `GET /admin/automations/:name/log`
 
-Returns recent execution log lines from `${OP_HOME}/cache/akm/tasks/logs/<name>/` (newest first).
+Returns recent execution log lines from `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` (newest first).
 
 - `:name` -- Same name validation as `/run`.
 - `?limit=<n>` -- Cap entries returned (default 50, max 500).

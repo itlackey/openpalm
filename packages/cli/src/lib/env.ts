@@ -4,12 +4,12 @@ import { reconcileStackEnvImageTag, resolveRequestedImageTag, resolveOperatorIds
 import { defaultDockerSock } from './paths.ts';
 
 /**
- * Ensures the state/ directory exists.
+ * Ensures the data/ directory exists.
  * User-managed env secrets live in the akm `vault:user` store and are sourced
  * by the assistant entrypoint directly.
  */
-export async function ensureSecrets(stateDir: string): Promise<void> {
-  mkdirSync(stateDir, { recursive: true });
+export async function ensureSecrets(dataDir: string): Promise<void> {
+  mkdirSync(dataDir, { recursive: true });
 }
 
 /**
@@ -108,4 +108,3 @@ function backfillOperatorIds(
     writeFileSync(path, next);
   }
 }
-

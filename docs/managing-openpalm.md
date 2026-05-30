@@ -56,10 +56,10 @@ Keep this split in mind:
 │
 ├── state/                            ← DURABLE SERVICE DATA
 │   ├── assistant/
-│   └── guardian/
-│
-├── cache/
-│   ├── akm/                          # akm state.db, cache, per-run task logs
+│   ├── guardian/
+│   ├── akm/
+│   │   ├── cache/                     # AKM cache and per-run task logs
+│   │   └── data/                      # AKM databases and durable data
 │   ├── logs/                         # Audit and debug logs
 │   ├── backups/                      # Lifecycle backup snapshots
 │   └── rollback/                     # Config rollback snapshots
@@ -176,7 +176,7 @@ command: ["sh","-c","openpalm update"]
 ---
 ```
 
-OpenPalm ships several ready-to-use automations in `~/.openpalm/state/registry/automations/` — install them
+OpenPalm ships several ready-to-use automations in `~/.openpalm/stash/tasks/` — install them
 from the Registry tab in the admin console:
 
 | File | What it does |
@@ -241,7 +241,7 @@ docker exec openpalm-assistant akm tasks sync
 
 ### Overriding system automations
 
-Shipped examples live in `~/.openpalm/state/registry/automations/`. Install them from the
+Shipped examples live in `~/.openpalm/stash/tasks/`. Install them from the
 Registry tab in the admin console — they are written to `~/.openpalm/stash/tasks/`.
 
 ---
@@ -249,9 +249,8 @@ Registry tab in the admin console — they are written to `~/.openpalm/stash/tas
 ## OpenCode / Assistant Extensions
 
 The assistant runs OpenCode. Core extensions are baked into the container
-(`/etc/opencode`). User extensions mount from
-`~/.openpalm/config/assistant/` into `/home/opencode/.config/opencode` — no
-rebuild needed.
+image, and user extensions mount from `~/.openpalm/config/assistant/` into
+`/etc/opencode` — no rebuild needed.
 
 **To add a tool/plugin/skill:**
 
@@ -339,11 +338,11 @@ All ports are `127.0.0.1`-bound by default.
 **View audit / activity logs:**
 ```bash
 # Channel ingress (HMAC, replay, rate limit) — guardian's structured audit
-tail -f ~/.openpalm/cache/logs/guardian-audit.log
+tail -f ~/.openpalm/data/logs/guardian-audit.log
 
 # Chat + tool activity (the audit trail since v0.11.0)
-ls ~/.openpalm/state/assistant/opencode/log/        # in-container OpenCode
-ls ~/.openpalm/state/admin-opencode/log/             # Electron-spawned OpenCode
+ls ~/.openpalm/data/assistant/.local/state/opencode/ # in-container OpenCode
+ls ~/.openpalm/data/admin-opencode/log/              # Electron-spawned OpenCode
 
 # Admin operations (config writes, login events): application stderr
 docker compose logs admin | grep -E 'admin\.(auth|config|secrets|endpoints)'

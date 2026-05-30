@@ -31,10 +31,10 @@ beforeEach(() => {
     delete process.env[k];
   }
   const state = makeTestState();
-  trackDir(state.stateDir);
+  trackDir(state.dataDir);
   trackDir(state.configDir);
-  // Ensure the state and config dirs exist so writes succeed.
-  mkdirSync(state.stateDir, { recursive: true });
+  // Ensure the data and config dirs exist so writes succeed.
+  mkdirSync(state.dataDir, { recursive: true });
   mkdirSync(state.configDir, { recursive: true });
   _replaceState(state);
 });
@@ -217,8 +217,8 @@ describe('active endpoint', () => {
 // ── local-electron (Electron-spawned ephemeral OpenCode) ─────────────────────
 
 function writeLocalRuntime(payload: { url: string; password?: string; pid?: number }): string {
-  const path = `${getState().stateDir}/local-opencode.runtime.json`;
-  mkdirSync(getState().stateDir, { recursive: true });
+  const path = `${getState().dataDir}/local-opencode.runtime.json`;
+  mkdirSync(getState().dataDir, { recursive: true });
   writeFileSync(path, JSON.stringify({
     url: payload.url,
     username: 'openpalm',
@@ -230,7 +230,7 @@ function writeLocalRuntime(payload: { url: string; password?: string; pid?: numb
 }
 
 function removeLocalRuntime(): void {
-  const path = `${getState().stateDir}/local-opencode.runtime.json`;
+  const path = `${getState().dataDir}/local-opencode.runtime.json`;
   if (existsSync(path)) unlinkSync(path);
 }
 
@@ -298,16 +298,16 @@ describe('local-electron endpoint synthesis', () => {
   });
 
   it('ignores a corrupt runtime.json', () => {
-    const path = `${getState().stateDir}/local-opencode.runtime.json`;
-    mkdirSync(getState().stateDir, { recursive: true });
+    const path = `${getState().dataDir}/local-opencode.runtime.json`;
+    mkdirSync(getState().dataDir, { recursive: true });
     writeFileSync(path, 'not json{', { mode: 0o600 });
     const list = listEndpoints();
     expect(list.some((e) => e.id === 'local-electron')).toBe(false);
   });
 
   it('ignores a runtime.json without a url', () => {
-    const path = `${getState().stateDir}/local-opencode.runtime.json`;
-    mkdirSync(getState().stateDir, { recursive: true });
+    const path = `${getState().dataDir}/local-opencode.runtime.json`;
+    mkdirSync(getState().dataDir, { recursive: true });
     writeFileSync(path, JSON.stringify({ password: 'x' }), { mode: 0o600 });
     const list = listEndpoints();
     expect(list.some((e) => e.id === 'local-electron')).toBe(false);
@@ -360,7 +360,7 @@ describe('legacy endpoints.json migration (Phase 5)', () => {
   it('moves state/admin/endpoints.json to config/endpoints.json on first read', () => {
     // Seed the legacy file before any read.
     const state = getState();
-    const legacyDir = `${state.stateDir}/admin`;
+    const legacyDir = `${state.dataDir}/admin`;
     const legacyPath = `${legacyDir}/endpoints.json`;
     const newPath = `${state.configDir}/endpoints.json`;
 

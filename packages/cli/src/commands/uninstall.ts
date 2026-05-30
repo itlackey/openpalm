@@ -2,7 +2,7 @@ import { defineCommand } from 'citty';
 import { rmSync } from 'node:fs';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
-import { resolveConfigDir, resolveStateDir, resolveStashDir, resolveWorkspaceDir } from '@openpalm/lib';
+import { resolveConfigDir, resolveDataDir, resolveStashDir, resolveWorkspaceDir } from '@openpalm/lib';
 
 export default defineCommand({
   meta: {
@@ -17,7 +17,7 @@ export default defineCommand({
     },
     purge: {
       type: 'boolean',
-      description: 'Remove all OpenPalm XDG directories (config, data, state)',
+      description: 'Remove all OpenPalm directories (config, data, stash, workspace)',
       default: false,
     },
   },
@@ -28,7 +28,7 @@ export default defineCommand({
       await runComposeWithPreflight(state, downArgs);
 
       if (args.purge) {
-        const dirs = [resolveConfigDir(), resolveStateDir(), resolveStashDir(), resolveWorkspaceDir()];
+        const dirs = [resolveConfigDir(), resolveDataDir(), resolveStashDir(), resolveWorkspaceDir()];
         for (const dir of dirs) {
           console.log(`Removing ${dir}`);
           rmSync(dir, { recursive: true, force: true });

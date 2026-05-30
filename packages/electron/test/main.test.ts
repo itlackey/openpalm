@@ -81,9 +81,9 @@ vi.mock('electron', () => ({
 // ── Mock @openpalm/lib ───────────────────────────────────────────────────────
 vi.mock('@openpalm/lib', () => ({
   resolveOpenPalmHome: vi.fn(() => '/home/user/.openpalm'),
-  resolveStateDir: vi.fn(() => '/home/user/.openpalm/state'),
+  resolveDataDir: vi.fn(() => '/home/user/.openpalm/data'),
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
-  resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/state/ui'),
+  resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
   seedUiBuild: vi.fn(() => Promise.resolve()),
   ensureHomeDirs: vi.fn(),
   checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),

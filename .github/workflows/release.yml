@@ -584,7 +584,7 @@ jobs:
             To update only the admin UI without a full `openpalm update`:
             ```bash
             curl -fsSL https://github.com/itlackey/openpalm/releases/download/v${{ needs.prepare-tag.outputs.version }}/ui-build.tar.gz \
-              | tar xz --strip-components=0 -C ~/.openpalm/state/ui/
+              | tar xz --strip-components=0 -C ~/.openpalm/data/ui/
             ```
 
             ## What's Changed

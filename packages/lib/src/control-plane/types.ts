@@ -29,8 +29,7 @@ export type ControlPlaneState = {
   configDir: string;
   stashDir: string;      // homeDir/stash
   workspaceDir: string;  // homeDir/workspace
-  cacheDir: string;      // homeDir/cache (regenerable/semi-persistent data)
-  stateDir: string;      // homeDir/state (service data + system state)
+  dataDir: string;       // homeDir/data (service data + operational files)
   stackDir: string;      // configDir/stack (compose runtime + stack config)
   services: Record<string, "running" | "stopped">;
   artifacts: {
@@ -48,4 +47,3 @@ export const CORE_SERVICES: CoreServiceName[] = [
   "assistant",
   "guardian",
 ];
-

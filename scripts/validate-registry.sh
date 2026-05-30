@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# validate-registry.sh — CI validation for .openpalm/state/registry/addons/ directories.
+# validate-registry.sh — CI validation for .openpalm/data/registry/addons/ directories.
 #
-# Scans .openpalm/state/registry/addons/ and validates each addon:
+# Scans .openpalm/data/registry/addons/ and validates each addon:
 #   1. Has compose.yml + .env.schema
 #   2. compose.yml has required openpalm.name and openpalm.description labels
 #   3. compose.yml uses a static service name (not ${INSTANCE_ID})
@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ADDONS_DIR="$REPO_ROOT/.openpalm/state/registry/addons"
+ADDONS_DIR="$REPO_ROOT/.openpalm/data/registry/addons"
 
 errors=0
 checked=0

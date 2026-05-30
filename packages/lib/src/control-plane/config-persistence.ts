@@ -3,7 +3,7 @@
  *
  * Writes and derives live runtime files (compose, env, schemas).
  * Files are validated in-place before writing; rollback is handled by
- * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
+ * the rollback module (snapshot to OP_HOME/data/rollback/).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
@@ -301,7 +301,7 @@ export function writeRuntimeFiles(
   writeSystemEnv(state);
 
   // Ensure state directory exists
-  mkdirSync(state.stateDir, { recursive: true });
+  mkdirSync(state.dataDir, { recursive: true });
 
   state.artifactMeta = buildRuntimeFileMeta(state.artifacts);
 }

@@ -11,7 +11,7 @@ if (!(globalThis as Record<string, unknown>).Bun) {
 
 import {
   resolveOpenPalmHome,
-  resolveStateDir,
+  resolveDataDir,
   resolveConfigDir,
   resolveUiBuildDir,
   seedUiBuild,
@@ -153,7 +153,7 @@ export async function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): 
 
 async function startUIServer(): Promise<void> {
   const homeDir = resolveOpenPalmHome();
-  const stateDir = resolveStateDir();
+  const dataDir = resolveDataDir();
 
   // resolveConfigDir is imported but used implicitly via lib internals; calling
   // it here keeps the import live and makes the dependency explicit.
@@ -168,7 +168,7 @@ async function startUIServer(): Promise<void> {
   if (existsSync(skeletonDir)) {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
     try {
-      await seedOpenPalmDir(`v${app.getVersion()}`, homeDir, resolveConfigDir(), stateDir);
+      await seedOpenPalmDir(`v${app.getVersion()}`, homeDir, resolveConfigDir(), dataDir);
     } catch (err) {
       console.warn('Skeleton seed failed (non-fatal):', err instanceof Error ? err.message : String(err));
     }
@@ -187,7 +187,7 @@ async function startUIServer(): Promise<void> {
 
   // Check for a newer UI build on GitHub before starting.
   // Non-fatal: if the check or download fails, we continue with what's on disk.
-  const updateResult = await checkAndUpdateUiBuild(version, stateDir);
+  const updateResult = await checkAndUpdateUiBuild(version, dataDir);
   if (updateResult.updated) {
     console.log(`UI updated to v${updateResult.latestVersion}`);
   } else if (updateResult.error) {
@@ -199,7 +199,7 @@ async function startUIServer(): Promise<void> {
   if (!existsSync(join(uiBuildDir, 'index.js'))) {
     console.log('UI build not found — seeding from release...');
     try {
-      await seedUiBuild(`v${version}`, stateDir);
+      await seedUiBuild(`v${version}`, dataDir);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error('Failed to seed UI build:', err instanceof Error ? err.message : String(err));
@@ -208,7 +208,7 @@ async function startUIServer(): Promise<void> {
     }
   }
 
-  const uiPidFile = join(stateDir, '.ui-server.pid');
+  const uiPidFile = join(dataDir, '.ui-server.pid');
   await killStaleUIServer(uiPidFile);
 
   uiProcess = spawn('node', [join(uiBuildDir, 'index.js')], {
@@ -270,7 +270,7 @@ function stopUIServer(): void {
   if (uiProcess) {
     uiProcess.kill('SIGTERM');
     uiProcess = null;
-    try { rmSync(join(resolveStateDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
+    try { rmSync(join(resolveDataDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
   }
 }
 
@@ -437,8 +437,8 @@ app.whenReady().then(async () => {
   // is missing or spawn fails, the UI shows a sentinel and remote endpoints
   // continue to work.
   try {
-    const stateDir = `${resolveOpenPalmHome()}/state`;
-    localOpencode = await startLocalOpenCode({ stateDir, pluginPath: resolveAdminToolsPluginPath() });
+    const dataDir = `${resolveOpenPalmHome()}/data`;
+    localOpencode = await startLocalOpenCode({ dataDir, pluginPath: resolveAdminToolsPluginPath() });
     if (localOpencode) {
       console.log(`Local OpenCode listening on ${localOpencode.url}`);
     }

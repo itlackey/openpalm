@@ -157,7 +157,7 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
-      expect(existsSync(join(base, 'state', 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'data', 'admin'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'services.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'channels.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
@@ -195,7 +195,7 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      expect(existsSync(join(base, 'state', 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'data', 'admin'))).toBe(true);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -251,7 +251,7 @@ describe('cli main', () => {
     // The canonical "already installed" marker is config/stack/stack.env.
     // Seed it so the backup path triggers AND we can prove the backup
     // carries forward existing content.
-    mkdirSync(join(base, 'state'), { recursive: true });
+    mkdirSync(join(base, 'data'), { recursive: true });
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
     writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_OWNER_NAME=existing-owner\n');
     writeFileSync(stackConfig, 'llm: old\n');
@@ -278,7 +278,7 @@ describe('cli main', () => {
     try {
       await main(['install', '--force', '--no-start', '--file', specFile]);
 
-      const backupsDir = join(base, 'cache', 'backups');
+      const backupsDir = join(base, 'data', 'backups');
       const backups = readdirSync(backupsDir).filter((name) => name !== '.gitkeep');
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
@@ -294,7 +294,7 @@ describe('cli main', () => {
     const logs: string[] = [];
 
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
-    mkdirSync(join(base, 'state'), { recursive: true });
+    mkdirSync(join(base, 'data'), { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
     writeFileSync(join(base, 'config', 'stack', 'channels.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
 
@@ -622,15 +622,15 @@ describe('UI host server (no subcommand)', () => {
 });
 
 describe('secrets.env generation', () => {
-  it('creates the state/ directory on fresh install', async () => {
+  it('creates the data/ directory on fresh install', async () => {
     const { existsSync: fsExistsSync } = await import('node:fs');
     const { ensureSecrets } = await import('./lib/env.ts');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
-    const stateDir = join(tempDir, 'state');
+    const dataDir = join(tempDir, 'data');
 
     try {
-      await ensureSecrets(stateDir);
-      expect(fsExistsSync(stateDir)).toBe(true);
+      await ensureSecrets(dataDir);
+      expect(fsExistsSync(dataDir)).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

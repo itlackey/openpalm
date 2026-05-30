@@ -23,8 +23,7 @@ export async function ensureDirectoryTree(
   workDir: string,
 ): Promise<void> {
   const configDir = `${homeDir}/config`;
-  const stateDir = `${homeDir}/state`;
-  const cacheDir = `${homeDir}/cache`;
+  const dataDir = `${homeDir}/data`;
 
   for (const dir of [
     homeDir,
@@ -35,34 +34,20 @@ export async function ensureDirectoryTree(
     join(configDir, 'assistant', 'skills'),
     join(configDir, 'akm'),
     join(configDir, 'stack'),
-    join(configDir, 'stack', 'addons'),
     join(homeDir, 'stash'),
     join(homeDir, 'stash', 'vaults'),
     join(homeDir, 'stash', 'tasks'),
     join(homeDir, 'workspace'),
-    cacheDir,
-    join(cacheDir, 'akm'),
-    join(cacheDir, 'akm', 'data'),
-    join(cacheDir, 'akm', 'state'),
-    join(cacheDir, 'akm', 'cache'),
-    join(cacheDir, 'guardian'),
-    join(cacheDir, 'rollback'),
-    join(cacheDir, 'logs'),
-    join(cacheDir, 'backups'),
-    stateDir,
-    join(stateDir, 'assistant'),
-    join(stateDir, 'admin'),
-    join(stateDir, 'guardian'),
-    join(stateDir, 'guardian', 'stash'),
-    join(stateDir, 'guardian', 'akm'),
-    join(stateDir, 'guardian', 'akm', 'data'),
-    join(stateDir, 'guardian', 'akm', 'state'),
-    join(stateDir, 'scheduler'),
-    join(stateDir, 'scheduler', 'triggers'),
-    join(stateDir, 'registry'),
-    join(stateDir, 'registry', 'addons'),
-    join(stateDir, 'registry', 'automations'),
-    join(stateDir, 'ui'),
+    dataDir,
+    join(dataDir, 'assistant'),
+    join(dataDir, 'admin'),
+    join(dataDir, 'guardian'),
+    join(dataDir, 'akm', 'cache'),
+    join(dataDir, 'akm', 'data'),
+    join(dataDir, 'logs'),
+    join(dataDir, 'backups'),
+    join(dataDir, 'rollback'),
+    join(dataDir, 'ui'),
     workDir,
   ]) {
     await mkdir(dir, { recursive: true });

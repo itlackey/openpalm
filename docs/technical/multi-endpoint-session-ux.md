@@ -75,7 +75,7 @@ class ChatService {
 
 Why a `Map` keyed by endpoint id, not nested in the endpoint entry itself: endpoints come from a server-side store, sessions are client-side ephemeral. Keeping them separate matches the existing layering.
 
-**Persistence question.** We do *not* persist `activeSessionId` per endpoint to localStorage. OpenCode already has the data, the round trip is one request, and persistence creates a stale-state class of bugs (session deleted out-of-band, wrong session resumed in a new tab). The Electron "OpenPalm Admin" case is the same — the random per-launch password lives in `runtime.json`, but sessions on disk under `${OP_HOME}/state/admin-opencode/` are auth-agnostic and survive relaunch. They're just data that OpenCode itself indexes.
+**Persistence question.** We do *not* persist `activeSessionId` per endpoint to localStorage. OpenCode already has the data, the round trip is one request, and persistence creates a stale-state class of bugs (session deleted out-of-band, wrong session resumed in a new tab). The Electron "OpenPalm Admin" case is the same — the random per-launch password lives in `runtime.json`, but sessions on disk under `${OP_HOME}/data/admin-opencode/` are auth-agnostic and survive relaunch. They're just data that OpenCode itself indexes.
 
 ---
 

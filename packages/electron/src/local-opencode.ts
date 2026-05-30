@@ -4,7 +4,7 @@
  *
  * Lifecycle:
  *   - Generate a per-launch random 32-byte password (base64url).
- *   - Stage a controlled $HOME at ${stateDir}/admin-opencode-home/ with an
+ *   - Stage a controlled $HOME at ${dataDir}/admin-opencode-home/ with an
  *     opencode.json that loads @openpalm/admin-tools-plugin.
  *   - Spawn opencode via @opencode-ai/sdk createOpencodeServer, bound to
  *     127.0.0.1 on port 0 (kernel-assigned).
@@ -16,7 +16,7 @@
  *
  * Failure mode: if the `opencode` binary is missing or createOpencodeServer
  * throws for any reason, we log a clear warning, write a sentinel
- * `state/local-opencode.unavailable`, and continue. Electron must not crash.
+ * `data/local-opencode.unavailable`, and continue. Electron must not crash.
  *
  * Routing: the broker (packages/ui/src/lib/server/endpoints.ts) reads
  * local-opencode.runtime.json each request to pick up the per-launch URL +
@@ -55,20 +55,20 @@ const STOP_GRACE_MS = 5_000;
 
 // ── Path helpers (exported for tests) ───────────────────────────────────────
 
-export function runtimePath(stateDir: string): string {
-  return join(stateDir, "local-opencode.runtime.json");
+export function runtimePath(dataDir: string): string {
+  return join(dataDir, "local-opencode.runtime.json");
 }
 
-export function pidfilePath(stateDir: string): string {
-  return join(stateDir, "local-opencode.pid");
+export function pidfilePath(dataDir: string): string {
+  return join(dataDir, "local-opencode.pid");
 }
 
-export function unavailableSentinelPath(stateDir: string): string {
-  return join(stateDir, "local-opencode.unavailable");
+export function unavailableSentinelPath(dataDir: string): string {
+  return join(dataDir, "local-opencode.unavailable");
 }
 
-export function adminOpencodeHome(stateDir: string): string {
-  return join(stateDir, "admin-opencode-home");
+export function adminOpencodeHome(dataDir: string): string {
+  return join(dataDir, "admin-opencode-home");
 }
 
 // ── Pure helpers (exported for tests) ───────────────────────────────────────
@@ -116,8 +116,8 @@ export function isPidAlive(pid: number): boolean {
  *   or a bare npm package name as a fallback. Callers should resolve this from
  *   process.resourcesPath (packaged) or the workspace dist dir (dev).
  */
-export function stageAdminHome(stateDir: string, pluginPath: string): { home: string; configDir: string } {
-  const home = adminOpencodeHome(stateDir);
+export function stageAdminHome(dataDir: string, pluginPath: string): { home: string; configDir: string } {
+  const home = adminOpencodeHome(dataDir);
   const configDir = join(home, ".config", "opencode");
   const shareDir = join(home, ".local", "share", "opencode");
   const ocStateDir = join(home, ".local", "state", "opencode");
@@ -138,22 +138,22 @@ export function stageAdminHome(stateDir: string, pluginPath: string): { home: st
   return { home, configDir };
 }
 
-export function writeRuntimeFile(stateDir: string, data: LocalOpencodeRuntime): void {
-  const path = runtimePath(stateDir);
-  mkdirSync(stateDir, { recursive: true });
+export function writeRuntimeFile(dataDir: string, data: LocalOpencodeRuntime): void {
+  const path = runtimePath(dataDir);
+  mkdirSync(dataDir, { recursive: true });
   writeFileSync(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 0o600 });
   try { chmodSync(path, 0o600); } catch { /* best effort */ }
 }
 
-export function writePidFile(stateDir: string, pid: number): void {
-  const path = pidfilePath(stateDir);
-  mkdirSync(stateDir, { recursive: true });
+export function writePidFile(dataDir: string, pid: number): void {
+  const path = pidfilePath(dataDir);
+  mkdirSync(dataDir, { recursive: true });
   writeFileSync(path, `${pid}\n`, { encoding: "utf-8", mode: 0o600 });
   try { chmodSync(path, 0o600); } catch { /* best effort */ }
 }
 
-export function readPidFile(stateDir: string): number | null {
-  const path = pidfilePath(stateDir);
+export function readPidFile(dataDir: string): number | null {
+  const path = pidfilePath(dataDir);
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf-8").trim();
@@ -178,8 +178,8 @@ export function unlinkSafely(path: string): void {
  * is the same opencode process). Always unlinks the pidfile + runtime.json
  * before a fresh spawn so stale data never bleeds across launches.
  */
-export function sweepStalePid(stateDir: string): { swept: boolean; pid: number | null } {
-  const pid = readPidFile(stateDir);
+export function sweepStalePid(dataDir: string): { swept: boolean; pid: number | null } {
+  const pid = readPidFile(dataDir);
   let swept = false;
   if (pid !== null && isPidAlive(pid)) {
     try {
@@ -189,9 +189,9 @@ export function sweepStalePid(stateDir: string): { swept: boolean; pid: number |
       /* best effort */
     }
   }
-  unlinkSafely(pidfilePath(stateDir));
-  unlinkSafely(runtimePath(stateDir));
-  unlinkSafely(unavailableSentinelPath(stateDir));
+  unlinkSafely(pidfilePath(dataDir));
+  unlinkSafely(runtimePath(dataDir));
+  unlinkSafely(unavailableSentinelPath(dataDir));
   return { swept, pid };
 }
 
@@ -219,7 +219,7 @@ export function _setSdkLoader(loader: typeof _sdkLoader): void {
 }
 
 export type StartOptions = {
-  stateDir: string;
+  dataDir: string;
   /** Absolute path to the bundled admin-tools-plugin, or a package name fallback. */
   pluginPath: string;
   /** Optional override for opencode hostname (defaults 127.0.0.1). */
@@ -234,15 +234,15 @@ export type StartOptions = {
  * and a sentinel file is written so the UI can show a clear message.
  */
 export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpencodeHandle | null> {
-  const { stateDir, pluginPath } = opts;
-  mkdirSync(stateDir, { recursive: true });
+  const { dataDir, pluginPath } = opts;
+  mkdirSync(dataDir, { recursive: true });
 
   // Always sweep stale state before spawning. If we crashed last time the
   // pidfile + runtime.json may be lingering.
-  sweepStalePid(stateDir);
+  sweepStalePid(dataDir);
 
   const password = generatePassword();
-  const { home } = stageAdminHome(stateDir, pluginPath);
+  const { home } = stageAdminHome(dataDir, pluginPath);
 
   const env: NodeJS.ProcessEnv = {
     ...(opts.envOverride ?? process.env),
@@ -289,7 +289,7 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
     console.warn(`[local-opencode] ${reason}. Local admin OpenCode unavailable; remote endpoints still work.`);
     try {
       writeFileSync(
-        unavailableSentinelPath(stateDir),
+        unavailableSentinelPath(dataDir),
         JSON.stringify({ reason, at: new Date().toISOString() }, null, 2),
         { encoding: "utf-8", mode: 0o600 },
       );
@@ -313,9 +313,9 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
   // child is reaped by the SDK on close().
   const pid = process.pid;
   const runtime = buildRuntimeJson(server.url, password, pid);
-  writeRuntimeFile(stateDir, runtime);
-  writePidFile(stateDir, pid);
-  unlinkSafely(unavailableSentinelPath(stateDir));
+  writeRuntimeFile(dataDir, runtime);
+  writePidFile(dataDir, pid);
+  unlinkSafely(unavailableSentinelPath(dataDir));
 
   let stopped = false;
   return {
@@ -330,8 +330,8 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
       // sends SIGTERM internally; we give it STOP_GRACE_MS to settle.
       try { server.close(); } catch { /* best effort */ }
       await new Promise<void>((resolve) => setTimeout(resolve, STOP_GRACE_MS));
-      unlinkSafely(runtimePath(stateDir));
-      unlinkSafely(pidfilePath(stateDir));
+      unlinkSafely(runtimePath(dataDir));
+      unlinkSafely(pidfilePath(dataDir));
     },
   };
 }

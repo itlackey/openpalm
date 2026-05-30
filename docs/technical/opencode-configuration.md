@@ -28,26 +28,28 @@ Primary runtime sources:
 
 | Host path | Container path | Purpose |
 |---|---|---|
-| baked into image | `/etc/opencode` | Core OpenCode config and built-in extensions |
-| `~/.openpalm/config/assistant/` | `/home/opencode/.config/opencode` | User tools, plugins, skills, commands |
-| `~/.openpalm/config/` | `/etc/openpalm` | OpenPalm config tree |
-| `~/.openpalm/config/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | OpenCode auth state |
-| `~/.openpalm/stash/` | `/akm` | AKM stash (memory, skills, vaults; read via akm) |
-| `~/.openpalm/state/assistant/` | `/home/opencode` | Assistant home |
+| `~/.openpalm/config/assistant/` | `/etc/opencode` | OpenCode config, tools, plugins, skills, commands |
+| `~/.openpalm/config/akm/` | `/etc/akm` | AKM config |
+| `~/.openpalm/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
+| `~/.openpalm/stash/` | `/stash` | AKM stash (memory, skills, vaults; read via akm) |
+| `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
+| `~/.openpalm/data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |
+| `~/.openpalm/data/akm/data/` | `/opt/akm/data` | AKM databases and durable data |
 | `~/.openpalm/workspace/` | `/work` | Shared workspace |
-| `~/.openpalm/state/assistant/.local/state/opencode/` | `/home/opencode/.local/state/opencode` | Logs and OpenCode state |
 
 ### Key environment variables
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Core OpenCode config root |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | OpenPalm-managed OpenCode config root |
 | `OPENCODE_PORT` | `4096` | Assistant OpenCode HTTP port |
 | `OPENCODE_AUTH` | `false` | Disabled by default because host exposure is loopback-only |
 | `OPENCODE_ENABLE_SSH` | from `stack.env` | Optional SSH server toggle |
 | `HOME` | `/home/opencode` | Runtime home |
-| `AKM_STASH_DIR` | `/akm` | Shared akm stash bind-mounted from `${OP_HOME}/stash` (memory + skills) |
-| `AKM_CACHE_DIR` | `/akm-op/cache` | akm cache under `${OP_HOME}/cache/akm` |
+| `AKM_STASH_DIR` | `/stash` | Shared akm stash bind-mounted from `${OP_HOME}/stash` (memory + skills) |
+| `AKM_CONFIG_DIR` | `/etc/akm` | AKM config directory |
+| `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache directory |
+| `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data directory |
 
 ### Operational notes
 
@@ -64,9 +66,8 @@ Primary runtime sources:
 
 There are three practical layers to remember:
 
-1. `/etc/opencode` - image-baked core config
-2. `/home/opencode/.config/opencode` - user extensions mounted from `config/assistant/`
-3. Project-local OpenCode config inside `/work` - optional per-project overrides managed by normal OpenCode behavior
+1. `/etc/opencode` - OpenPalm-managed runtime config mounted from `config/assistant/`
+2. Project-local OpenCode config inside `/work` - optional per-project overrides managed by normal OpenCode behavior
 
 OpenPalm's filesystem and mount contract decides what is available to each layer;
 Compose remains the source of truth for that contract.
@@ -76,7 +77,7 @@ Compose remains the source of truth for that contract.
 ## Security Boundary
 
 - The assistant has no Docker socket.
-- The assistant mounts `stash/` at `/akm` for the shared AKM stash (memory, skills, vaults). User secrets are accessed via the akm CLI, not a separate `/etc/vault/` mount.
+- The assistant mounts `stash/` at `/stash` for the shared AKM stash (memory, skills, vaults). User secrets are accessed via the akm CLI, not a separate `/etc/vault/` mount.
 - Stack-level secrets live as files under `stash/vaults/secrets/` and are granted only to services that need them. `stack.env` is non-secret Compose/runtime configuration.
 - Admin is a host process. It accesses the Docker socket directly on the host — no container is involved in admin operations.
 

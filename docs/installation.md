@@ -41,12 +41,12 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/config/stack/` | Live compose files and system-managed env |
-| `~/.openpalm/state/registry/` | Available addon and automation catalog |
+| `~/.openpalm/stash/tasks/` | Available automation task files |
 | `~/.openpalm/config/stack/stack.env` | System-managed stack values and tokens |
 | `~/.openpalm/stash/vaults/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config and assistant extensions |
-| `~/.openpalm/state/` | Durable service data |
-| `~/.openpalm/cache/logs/` | Logs and audit output |
+| `~/.openpalm/data/` | Durable service data |
+| `~/.openpalm/data/logs/` | Logs and audit output |
 
 `~/.openpalm/config/stack/stack.yml` stores the stack schema marker and enabled
 first-party addon names. Docker Compose deployment still comes from the fixed

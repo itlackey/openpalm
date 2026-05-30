@@ -270,7 +270,7 @@ export function patchSecretsEnvFile(
     else stackPatches[key] = value;
   }
   if (Object.keys(secretPatches).length > 0) {
-    writeStackSecretEnv({ stackDir, homeDir: '', configDir: '', stashDir: '', workspaceDir: '', cacheDir: '', stateDir: '', services: {}, artifacts: { compose: '' }, artifactMeta: [] }, secretPatches);
+    writeStackSecretEnv({ stackDir, homeDir: '', configDir: '', stashDir: '', workspaceDir: '', dataDir: '', services: {}, artifacts: { compose: '' }, artifactMeta: [] }, secretPatches);
   }
   if (Object.keys(stackPatches).length === 0) return;
   assertNoSecretLikeStackEnvKeys(stackPatches);

@@ -14,7 +14,7 @@ overwrite existing user files.
 
 | Directory | Purpose |
 |-----------|---------|
-| `assistant/` | OpenCode project/user config. Mounted into the assistant container at `/etc/openpalm/assistant`. |
+| `assistant/` | OpenCode project/user config. Mounted into the assistant container at `/etc/opencode`. |
 | `stack/` | Compose runtime files: non-secret `stack.env`, fixed compose files, and user custom compose. |
 | `akm/` | AKM config directory shared with the assistant container. |
 | `guardian/` | Guardian-specific configuration. |

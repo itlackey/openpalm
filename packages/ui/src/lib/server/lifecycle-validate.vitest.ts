@@ -15,9 +15,9 @@ import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
-function seedStack(stateDir: string, env: string): void {
-  mkdirSync(stateDir, { recursive: true });
-  writeFileSync(join(stateDir, "stack.env"), env);
+function seedStack(stackDir: string, env: string): void {
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, "stack.env"), env);
 }
 
 function seedLoginSecret(stackDir: string, value: string): void {

@@ -25,9 +25,8 @@ function makeState(homeDir: string): ControlPlaneState {
     configDir: join(homeDir, "config"),
     stashDir: join(homeDir, "stash"),
     workspaceDir: join(homeDir, "workspace"),
-    cacheDir: join(homeDir, "cache"),
-    stateDir: join(homeDir, "state"),
-    stackDir: join(homeDir, "stack"),
+    dataDir: join(homeDir, "data"),
+    stackDir: join(homeDir, "config", "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -54,7 +53,8 @@ describe("writeAkmVaultKey", () => {
     homeDir = mkdtempSync(join(tmpdir(), "openpalm-akm-write-"));
     state = makeState(homeDir);
     mkdirSync(state.stashDir, { recursive: true });
-    mkdirSync(`${state.stateDir}/akm`, { recursive: true });
+    mkdirSync(`${state.dataDir}/akm/cache`, { recursive: true });
+    mkdirSync(`${state.dataDir}/akm/data`, { recursive: true });
   });
 
   afterEach(() => {

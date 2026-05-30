@@ -25,24 +25,25 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | `~/.openpalm/config/stack/` | Live compose assembly; non-secret runtime env (`stack.env`), `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, `custom.compose.yml`, `stack.yml` |
 | `~/.openpalm/stash/` | AKM knowledge base (user-managed: `vaults/`, `tasks/`) |
 | `~/.openpalm/stash/vaults/` | User-managed secrets (`user.env`, AKM vault backing store) |
-| `~/.openpalm/state/` | Durable service data |
-| `~/.openpalm/cache/logs/` | Audit and debug logs |
-| `~/.openpalm/cache/` | Regenerable/control-plane data (akm, logs, backups, rollback snapshots) |
+| `~/.openpalm/data/` | Durable service data, logs, lifecycle backups, and rollback snapshots |
+| `~/.openpalm/data/logs/` | Audit and debug logs |
 | `~/.cache/openpalm/` | Ephemeral system cache |
 
 Current durable data subdirectories used by the shipped stack:
 
-- `state/assistant`
-- `state/guardian`
-- `cache/akm`
-- `state/akm`
-- `cache/logs`
-- `cache/backups`
-- `stash/` (shared akm stash mounted at `/akm` for assistant)
+- `data/assistant`
+- `data/guardian`
+- `data/akm`
+- `data/akm/cache`
+- `data/akm/data`
+- `data/logs`
+- `data/backups`
+- `data/rollback`
+- `stash/` (shared akm stash mounted at `/stash` for assistant)
 - `workspace/` (shared work area)
 
 Persistent memory and knowledge live in `stash/` (the shared akm stash
-mounted at `/akm` for the assistant). There is no separate memory service.
+mounted at `/stash` for the assistant). There is no separate memory service.
 
 ---
 
@@ -65,7 +66,7 @@ That means the effective env model is:
 ## Core Services
 
 > Memory is not a separate service. Persistent knowledge and recall
-> live in the akm stash bind-mounted from the host: `stash/` is mounted at `/akm`
+> live in the akm stash bind-mounted from the host: `stash/` is mounted at `/stash`
 > in the assistant container. See
 > [`core-principles.md`](core-principles.md) for the rationale.
 
@@ -77,13 +78,13 @@ Mounts:
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
-| baked into image | `/etc/opencode` | image content | Core OpenCode config and built-in extensions |
-| `$OP_HOME/config` | `/etc/openpalm` | rw | OpenPalm config tree available inside container |
-| `$OP_HOME/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | OpenCode auth state |
-| `$OP_HOME/state/assistant` | `/home/opencode` | rw | Assistant persistent data |
-| `$OP_HOME/stash` | `/akm` | rw | AKM stash |
-| `$OP_HOME/state/akm` | `/akm-op` | rw | akm operational data (state.db, execution history) |
-| `$OP_HOME/cache/akm` | `/akm-cache` | rw | akm cache and regenerable artifacts |
+| `$OP_HOME/config/assistant` | `/etc/opencode` | rw | OpenCode config and assistant extensions |
+| `$OP_HOME/config/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Host-managed OpenCode auth copy |
+| `$OP_HOME/config/akm` | `/etc/akm` | rw | AKM config |
+| `$OP_HOME/data/assistant` | `/home/opencode` | rw | Assistant persistent home |
+| `$OP_HOME/stash` | `/stash` | rw | AKM stash |
+| `$OP_HOME/data/akm/cache` | `/opt/akm/cache` | rw | AKM cache and task logs |
+| `$OP_HOME/data/akm/data` | `/opt/akm/data` | rw | AKM databases and durable data |
 | `$OP_HOME/workspace` | `/work` | rw | Shared workspace |
 | `assistant-persistent` | `/opt/persistent` | rw | Escape hatch for prefix-style global installs |
 
@@ -101,12 +102,15 @@ Key env:
 
 | Variable | Value / source | Purpose |
 |---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/openpalm/assistant` | OpenPalm-managed OpenCode config root |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | OpenPalm-managed OpenCode config root |
 | `OPENCODE_PORT` | `4096` | OpenCode web server listen port |
 | `OPENCODE_AUTH` | `false` | Auth disabled because host binding is loopback-only by default |
 | `OPENCODE_ENABLE_SSH` | `stack.env` | Optional SSH enablement |
 | `HOME` | `/home/opencode` | Runtime home |
-| `AKM_STASH_DIR` | `/akm` | AKM stash location hint |
+| `AKM_STASH_DIR` | `/stash` | AKM stash location hint |
+| `AKM_CONFIG_DIR` | `/etc/akm` | AKM config directory |
+| `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache directory |
+| `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data directory |
 | `OP_UID` / `OP_GID` | `stack.env` | Entrypoint privilege drop target |
 
 Notes:
@@ -123,8 +127,8 @@ Mounts:
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
-| `$OP_HOME/state/guardian` | `/app/data` | rw | Runtime nonce / rate-limit state |
-| `$OP_HOME/cache/logs` | `/app/audit` | rw | Guardian audit log directory |
+| `$OP_HOME/data/guardian` | `/opt/openpalm/guardian` | rw | Runtime nonce / rate-limit state |
+| `$OP_HOME/data/logs` | `/opt/openpalm/logs` | rw | Guardian audit log directory |
 | `$OP_HOME/stash/vaults/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
 
 Ports and networks:
@@ -139,11 +143,11 @@ Key env:
 
 | Variable | Value / source | Purpose |
 |---|---|---|
-| `HOME` | `/app/data` | Writable runtime home |
+| `HOME` | `/opt/openpalm/guardian` | Writable runtime home |
 | `PORT` | `8080` | HTTP listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant forward target |
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
-| `GUARDIAN_AUDIT_PATH` | `/app/audit/guardian-audit.log` | Audit log path |
+| `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
 | `CHANNEL_<NAME>_SECRET_FILE` | `/run/secrets/channel_<name>_hmac` | Channel HMAC verification secret file |
 
 Notes:
@@ -162,9 +166,9 @@ Scheduling control plane (crond started by `core/assistant/entrypoint.sh`):
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
-| `$OP_HOME/stash/tasks` | `/akm/tasks` | rw | AKM task markdown files |
-| `$OP_HOME/state/akm` | `/akm-op` | rw | akm state.db and execution history |
-| `$OP_HOME/cache/akm` | `/akm-cache` | rw | akm cache and per-run task logs |
+| `$OP_HOME/stash/tasks` | `/stash/tasks` | rw | AKM task markdown files |
+| `$OP_HOME/data/akm/cache` | `/opt/akm/cache` | rw | AKM task logs and cache |
+| `$OP_HOME/data/akm/data` | `/opt/akm/data` | rw | AKM task history and durable data |
 
 Notes:
 

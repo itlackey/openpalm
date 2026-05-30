@@ -72,7 +72,7 @@ project name.
 ### Why isolated?
 
 `OP_HOME=$(pwd)/.dev` keeps **every** filesystem write the dev server
-might make (`config/`, `state/`, `stash/`, `cache/`) inside the gitignored
+might make (`config/`, `state/`, `stash/`, `workspace/`) inside the gitignored
 `.dev/` tree. `~/.openpalm/` is your production install and the
 [heightened-caution paths in CLAUDE.md](../../CLAUDE.md) forbid touching
 it during dev work.
@@ -85,7 +85,7 @@ it during dev work.
   fallback in `voice-state.svelte.ts` exercises the same `/api/transcribe`
   path the Electron app uses — useful for verifying STT end-to-end.
 - **Switching to the prod build**: `bun run ui:build` produces
-  `packages/ui/build/` which can be swapped into `~/.openpalm/state/ui/`
+  `packages/ui/build/` which can be swapped into `~/.openpalm/data/ui/`
   for live testing in the Electron app.
 
 ### Other variants

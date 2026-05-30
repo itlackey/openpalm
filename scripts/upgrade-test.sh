@@ -93,8 +93,7 @@ export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
 STACK_DIR="${OP_HOME}/config/stack"
 SECRETS_DIR="${STASH_DIR}/vaults/secrets"
 STASH_DIR="${OP_HOME}/stash"
-STATE_DIR="${OP_HOME}/state"
-CACHE_DIR="${OP_HOME}/cache"
+DATA_DIR="${OP_HOME}/data"
 
 PROJECT_NAME="openpalm-upgrade-test"
 OP_UI_LOGIN_PASSWORD="upgrade-test-password"
@@ -197,12 +196,11 @@ mkdir -p \
   "${OP_HOME}/config/akm" \
   "${STASH_DIR}/vaults" \
   "${STASH_DIR}/tasks" \
-  "${STATE_DIR}/assistant" \
-  "${STATE_DIR}/guardian" \
-  "${STATE_DIR}/registry/addons" \
-  "${STATE_DIR}/registry/automations" \
-  "${STATE_DIR}/logs" \
-  "${CACHE_DIR}/akm" \
+  "${DATA_DIR}/assistant" \
+  "${DATA_DIR}/guardian" \
+  "${DATA_DIR}/registry/addons" \
+  "${DATA_DIR}/registry/automations" \
+  "${DATA_DIR}/logs" \
   "${OP_HOME}/workspace"
 
 # ── 1c: Seed config files ───────────────────────────────────────────
@@ -360,9 +358,9 @@ mkdir -p \
   "${SECRETS_DIR}" \
   "${OP_HOME}/config/assistant" "${OP_HOME}/config/akm" \
   "${STASH_DIR}/vaults" "${STASH_DIR}/tasks" \
-  "${STATE_DIR}/assistant" "${STATE_DIR}/guardian" \
-  "${STATE_DIR}/registry/addons" "${STATE_DIR}/registry/automations" \
-  "${STATE_DIR}/logs" "${CACHE_DIR}/akm" "${OP_HOME}/workspace"
+  "${DATA_DIR}/assistant" "${DATA_DIR}/guardian" \
+  "${DATA_DIR}/registry/addons" "${DATA_DIR}/registry/automations" \
+  "${DATA_DIR}/logs" "${OP_HOME}/workspace"
 
 # Step 2: Refresh compose (simulate download from GitHub)
 cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"

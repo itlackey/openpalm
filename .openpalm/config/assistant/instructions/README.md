@@ -25,7 +25,7 @@ and built-in skill list are defined in:
 
 Both files are seeded from this repo into `~/.openpalm/config/assistant/`
 during install and bind-mounted into the container at
-`/etc/openpalm/assistant/` (resolved via `OPENCODE_CONFIG_DIR`).
+`/etc/opencode/` (resolved via `OPENCODE_CONFIG_DIR`).
 
 When changing assistant behavior or guidance, edit those two files in
 `.openpalm/config/assistant/`. Changes take effect on the next assistant

@@ -22,7 +22,6 @@ export const GET: RequestHandler = () => {
         stash: akmStashPath,
         data: `${home}/.local/share/akm`,
         state: `${home}/.local/state/akm`,
-        cache: `${home}/.cache/akm`,
         config: `${home}/.config/akm`,
       },
     });

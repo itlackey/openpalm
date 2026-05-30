@@ -31,7 +31,7 @@ This file is for the AKM user vault. It starts empty and is never overwritten by
 Behavior:
 
 - safe to edit directly on the host
-- available to the assistant through the `/akm` stash mount and `akm vault:user`
+- available to the assistant through the `/stash` mount and `akm vault:user`
 - never passed as container environment via Compose
 - not overwritten by normal lifecycle operations
 

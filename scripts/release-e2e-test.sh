@@ -248,7 +248,7 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
   fi
 
   # Verify directory structure was created
-  for dir in "$CONFIG_HOME" "$OP_HOME/state" "$STASH_HOME"; do
+  for dir in "$CONFIG_HOME" "$OP_HOME/data" "$STASH_HOME"; do
     if [ -d "$dir" ]; then
       pass "Directory created: $dir"
     else

@@ -4,7 +4,7 @@ import {
   errorResponse,
   requireAdmin,
 } from "$lib/server/helpers.js";
-import { seedUiBuild, resolveStateDir, createLogger } from "@openpalm/lib";
+import { seedUiBuild, resolveDataDir, createLogger } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("ui-version");
@@ -21,11 +21,11 @@ export const POST: RequestHandler = async (event) => {
   if (!tag) return errorResponse(400, "tag_required", "tag is required", {}, requestId);
   if (!/^[a-zA-Z0-9._\-]+$/.test(tag)) return errorResponse(400, "invalid_tag", "Tag must be alphanumeric with . _ or - only", {}, requestId);
 
-  const stateDir = resolveStateDir();
+  const dataDir = resolveDataDir();
   const repoRef = tag.startsWith("v") ? tag : `v${tag}`;
 
   try {
-    await seedUiBuild(repoRef, stateDir, { forceRemote: true });
+    await seedUiBuild(repoRef, dataDir, { forceRemote: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     logger.error("ui-version download failed", { requestId, error: msg });

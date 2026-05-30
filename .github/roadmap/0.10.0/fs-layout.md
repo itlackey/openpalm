@@ -19,7 +19,7 @@
         - memory - mounts to memory container data directory
         - ... - each container can have its own subdirectory(ies) for specific data storage needs
         - stash - mounts to assistant ~/.akm
-        - workspace - mounts to assistant,admin /work directory
+        - workspace - mounts to assistant/admin workspace directory
     - logs
         - various log files for assistant, admin, scheduler and memory containers
     - backups - used for the rollback and long term backups

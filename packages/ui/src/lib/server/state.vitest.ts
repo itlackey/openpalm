@@ -20,9 +20,8 @@ describe("getState", () => {
     expect(process.env.OP_UI_LOGIN_PASSWORD).toBe("test-password-12345");
     expect(state.homeDir).toBeDefined();
     expect(state.configDir).toBeDefined();
-    expect(state.stateDir).toBeDefined();
+    expect(state.dataDir).toBeDefined();
     expect(state.stashDir).toBeDefined();
-    expect(state.cacheDir).toBeDefined();
     expect(state.stackDir).toBeDefined();
     expect(state.services).toBeDefined();
     expect(state.artifacts).toBeDefined();

@@ -2,7 +2,7 @@
  * Snapshot-based rollback for the OpenPalm control plane.
  *
  * Before writing validated changes to live paths, the current state
- * is snapshotted to ~/.cache/openpalm/rollback/. On deploy failure
+ * is snapshotted to OP_HOME/data/rollback/. On deploy failure
  * (or manual `openpalm rollback`), the snapshot is restored.
  */
 import { mkdirSync, copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";

@@ -228,13 +228,13 @@ will always print `device=cpu`.
 ## 7. Model loading + persistence
 
 - **Whisper cache**: `/models/whisper/` inside container. Bind-mounted from
-  `${OP_HOME}/state/voice/models/whisper/` on the host. faster-whisper's
+  `${OP_HOME}/data/voice/models/whisper/` on the host. faster-whisper's
   `download_root` parameter points here directly — no `HF_HOME` indirection.
 - **Kokoro cache**: `/models/kokoro/` inside container ←
-  `${OP_HOME}/state/voice/models/kokoro/` on host. Container code checks
+  `${OP_HOME}/data/voice/models/kokoro/` on host. Container code checks
   for the two files at startup, downloads via `urllib` if missing
   (idempotent — `mtime` not checked, presence only).
-- **`/models` parent** is `${OP_HOME}/state/voice/models/`. The enable
+- **`/models` parent** is `${OP_HOME}/data/voice/models/`. The enable
   endpoint pre-creates this as `OP_UID:OP_GID` so the container (running
   unprivileged) can write into it.
 
@@ -285,7 +285,7 @@ install to keep the layer small.
 
 ## 9. Compose addon overlay
 
-`.openpalm/state/registry/addons/voice/compose.yml`:
+`.openpalm/config/stack/channels.compose.yml`:
 
 ```yaml
 # Addon: voice — bundled Kokoro TTS + Whisper STT in one container.
@@ -304,7 +304,7 @@ services:
       VOICE_WHISPER_MODEL: "${OP_VOICE_WHISPER_MODEL:-base.en}"
       VOICE_DEFAULT_VOICE: "${OP_VOICE_DEFAULT_VOICE:-af_bella}"
     volumes:
-      - ${OP_HOME}/state/voice/models:/models
+      - ${OP_HOME}/data/voice/models:/models
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8880/health || exit 1"]
@@ -326,7 +326,7 @@ assistant talk on the internal net.
 
 ### GPU passthrough (optional second overlay file)
 
-`.openpalm/state/registry/addons/voice/gpu.compose.yml referenced inline; not a separate addoncompose.yml`:
+`.openpalm/config/stack/channels.compose.yml referenced inline; not a separate addoncompose.yml`:
 
 ```yaml
 # Addon overlay: voice-gpu (file in addons/voice/) — layered on top of voice.

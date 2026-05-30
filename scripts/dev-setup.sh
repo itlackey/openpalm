@@ -110,9 +110,8 @@ fi
 DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
 STASH_DIR="$DEV_ROOT/stash"
-STATE_DIR="$DEV_ROOT/state"
-CACHE_DIR="$DEV_ROOT/cache"
-LOGS_DIR="$DEV_ROOT/cache/logs"
+DATA_DIR="$DEV_ROOT/data"
+LOGS_DIR="$DEV_ROOT/data/logs"
 
 # ── Template sync ────────────────────────────────────────────────
 # `.openpalm/` in the repo IS the canonical OP_HOME template (per
@@ -137,17 +136,18 @@ rsync "${rsync_flags[@]}" \
 
 # ── Runtime-only mount targets ───────────────────────────────────
 # Dirs the compose stack expects to bind-mount but `.openpalm/` doesn't
-# ship (they're per-container state, not config). All must exist before
+# ship (they're per-container data, not config). All must exist before
 # `docker compose up` or bind-mount creation runs as root.
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" \
 	"$STASH_DIR/vaults" "$STASH_DIR/vaults/secrets" \
-	"$STATE_DIR" "$STATE_DIR/admin" "$STATE_DIR/assistant" "$STATE_DIR/assistant/.config/opencode" "$STATE_DIR/guardian" \
-	"$STATE_DIR/akm" "$STATE_DIR/akm/data" "$STATE_DIR/akm/state" \
-	"$DEV_ROOT/cache/akm" \
-	"$DEV_ROOT/cache/logs" "$DEV_ROOT/cache/backups" \
-	"$STATE_DIR/voice" "$STATE_DIR/voice/models" "$STATE_DIR/ollama" \
+	"$DATA_DIR" "$DATA_DIR/admin" "$DATA_DIR/assistant" "$DATA_DIR/assistant/.cache" \
+	"$DATA_DIR/assistant/.local/bin" "$DATA_DIR/assistant/.local/share/opencode" \
+	"$DATA_DIR/assistant/.local/state/opencode" "$DATA_DIR/guardian" \
+	"$DATA_DIR/akm/cache" "$DATA_DIR/akm/data" \
+	"$DATA_DIR/logs" "$DATA_DIR/backups" "$DATA_DIR/rollback" \
+	"$DATA_DIR/voice" "$DATA_DIR/voice/models" "$DATA_DIR/ollama" \
 	"$DEV_ROOT/workspace"
 
 # Enable requested addons in the dev runtime. stack.yml is templated from
@@ -279,7 +279,7 @@ if docker info >/dev/null 2>&1; then
 fi
 
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$STATE_DIR" "$CACHE_DIR" 2>/dev/null || true
+	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$DATA_DIR" 2>/dev/null || true
 else
 	echo "Note: running as root; ownership left as-is." >&2
 fi

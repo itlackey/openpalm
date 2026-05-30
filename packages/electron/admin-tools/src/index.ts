@@ -7,7 +7,7 @@
  *
  * Design notes:
  * - No appendAudit wrapping (D6a). OpenCode logs every tool invocation
- *   (args + result) natively at ${OP_HOME}/state/admin-opencode/log/.
+ *   (args + result) natively at ${OP_HOME}/data/admin-opencode/log/.
  *   Adding a parallel audit on top would double the storage and create
  *   two timelines to reconcile during incident response.
  * - Tools NEVER return secret values. They list keys, run docker commands,

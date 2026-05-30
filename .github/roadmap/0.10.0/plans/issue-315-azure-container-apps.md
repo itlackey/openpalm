@@ -51,7 +51,7 @@ The following are intentionally out of scope for #315 and should not be smuggled
   - resource group;
   - ACA environment;
   - storage account;
-  - Azure Files shares for config/data/work;
+  - Azure Files shares for config/data/workspace;
   - Azure Container Registry dependency inputs or documented assumption that images are public/pre-pushed;
   - Key Vault;
   - user-assigned managed identity.

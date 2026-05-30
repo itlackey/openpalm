@@ -31,9 +31,9 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
     && rm -f bun.lock bun.lockb \
     && bun install --production
 
-RUN mkdir -p /app/data /app/audit /app/secrets
+RUN mkdir -p /opt/openpalm/guardian /app/audit /app/secrets
 
-ENV HOME=/app/data
+ENV HOME=/opt/openpalm/guardian
 ENV PORT=8080
 EXPOSE 8080
 

@@ -5,7 +5,7 @@
 # v0.11.0 architecture:
 #   - UI is a HOST PROCESS (`openpalm`), not a container
 #   - Compose stack: assistant + guardian containers only
-#   - Directory layout: config/stack/, stash/vaults/, state/, cache/
+#   - Directory layout: config/stack/, data/, stash/vaults/, workspace/
 #
 # Cleans state, rebuilds all images from source, starts the stack and
 # admin process, then verifies:

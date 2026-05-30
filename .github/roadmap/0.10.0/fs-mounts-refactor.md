@@ -131,10 +131,10 @@ $HOME/.openpalm/                             Root of all OpenPalm state
 │   ├── assistant/                           Mounts to assistant at $HOME/.opencode
 │   ├── admin/                               Mounts to admin at $HOME/.node (or similar)
 │   ├── memory/                              Mounts to memory at /data
-│   ├── guardian/                            Mounts to guardian at /app/data
+│   ├── guardian/                            Mounts to guardian at /opt/openpalm/guardian
 │   ├── caddy/                               Caddy TLS certs, runtime config, Caddyfile
 │   ├── stash/                               Mounts to assistant at ~/.akm
-│   └── workspace/                           Mounts to assistant, admin at /work
+│   └── workspace/                           Mounts to assistant at /work
 │
 └── logs/                                    Audit and debug logs
     ├── guardian-audit.log
@@ -419,12 +419,12 @@ All host paths are relative to `~/.openpalm/` unless noted.
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
 | `config/` | `/etc/openpalm` | ro | Non-secret stack config, extensions |
-| `config/assistant/` | `/home/opencode/.config/opencode` | rw | User OpenCode extensions |
+| `config/assistant/` | `/etc/opencode` | rw | User OpenCode extensions |
 | `vault/user.env` | `/etc/openpalm/user.env` | ro | Hot-reload LLM keys and provider config |
 | `data/assistant/` | `/home/opencode/.opencode` | rw | OpenCode data + system config |
 | `data/stash/` | `/home/opencode/.akm` | rw | AKM shared stash |
 | `data/workspace/` | `/work` | rw | Working directory |
-| `logs/opencode/` | `/home/opencode/.local/state/opencode` | rw | OpenCode state/logs |
+| `state/assistant/` | `/home/opencode` | rw | OpenCode home/state/logs |
 | `~/.cache/openpalm/registry/` | `/cache/registry` | rw | Cached registry index |
 
 **Admin:**
@@ -441,8 +441,8 @@ All host paths are relative to `~/.openpalm/` unless noted.
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `data/guardian/` | `/app/data` | rw | Guardian runtime data |
-| `logs/` | `/app/audit` | rw | Audit log output |
+| `data/guardian/` | `/opt/openpalm/guardian` | rw | Guardian runtime data |
+| `state/logs/` | `/opt/openpalm/logs` | rw | Audit log output |
 
 **Memory:**
 

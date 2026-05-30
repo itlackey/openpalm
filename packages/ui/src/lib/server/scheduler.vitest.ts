@@ -4,7 +4,7 @@
  * Covers:
  * 1. SCHEDULE_PRESETS display labels
  * 2. loadAutomations — reads markdown tasks from stash/tasks/
- * 3. readAutomationLogs — reads from cache/akm/tasks/logs/
+ * 3. readAutomationLogs — reads from data/akm/cache/tasks/logs/
  *
  * executeAutomation is verified at the route level via the run vitest.
  */
@@ -32,16 +32,16 @@ function writeTask(stashDir: string, id: string, content: string): void {
 }
 
 let stashDir: string;
-let cacheDir: string;
+let dataDir: string;
 
 beforeEach(() => {
   stashDir = makeTempDir();
-  cacheDir = makeTempDir();
+  dataDir = makeTempDir();
 });
 
 afterEach(() => {
   rmSync(stashDir, { recursive: true, force: true });
-  rmSync(cacheDir, { recursive: true, force: true });
+  rmSync(dataDir, { recursive: true, force: true });
 });
 
 // ── SCHEDULE_PRESETS ─────────────────────────────────────────────────────
@@ -140,37 +140,37 @@ command: ["akm","improve"]
 
 describe("readAutomationLogs", () => {
   test("returns empty array when no log dir exists", () => {
-    const lines = readAutomationLogs("health-check", cacheDir, 50);
+    const lines = readAutomationLogs("health-check", dataDir, 50);
     expect(lines).toEqual([]);
   });
 
   test("reads lines from log files newest-first", () => {
-    const logDir = join(cacheDir, "akm", "tasks", "logs", "health-check");
+    const logDir = join(dataDir, "akm", "cache", "tasks", "logs", "health-check");
     mkdirSync(logDir, { recursive: true });
     writeFileSync(join(logDir, "2026-05-15T03-00-00-000Z.log"), "line-old\n");
     writeFileSync(join(logDir, "2026-05-16T03-00-00-000Z.log"), "line-new\n");
 
-    const lines = readAutomationLogs("health-check", cacheDir, 50);
+    const lines = readAutomationLogs("health-check", dataDir, 50);
     expect(lines[0]).toBe("line-new");
     expect(lines[1]).toBe("line-old");
   });
 
   test("respects the limit parameter", () => {
-    const logDir = join(cacheDir, "akm", "tasks", "logs", "cleanup");
+    const logDir = join(dataDir, "akm", "cache", "tasks", "logs", "cleanup");
     mkdirSync(logDir, { recursive: true });
     const content = Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n");
     writeFileSync(join(logDir, "2026-05-16T00-00-00-000Z.log"), content);
 
-    const lines = readAutomationLogs("cleanup", cacheDir, 5);
+    const lines = readAutomationLogs("cleanup", dataDir, 5);
     expect(lines).toHaveLength(5);
   });
 
   test("strips .md suffix from id", () => {
-    const logDir = join(cacheDir, "akm", "tasks", "logs", "health-check");
+    const logDir = join(dataDir, "akm", "cache", "tasks", "logs", "health-check");
     mkdirSync(logDir, { recursive: true });
     writeFileSync(join(logDir, "2026-05-16T00-00-00-000Z.log"), "entry\n");
 
-    const lines = readAutomationLogs("health-check.md", cacheDir, 50);
+    const lines = readAutomationLogs("health-check.md", dataDir, 50);
     expect(lines).toContain("entry");
   });
 });

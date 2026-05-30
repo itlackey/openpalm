@@ -21,19 +21,14 @@ import {
   readSecret,
   writeSecret,
   secretPath,
+  writeStackSpec,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
-/** Seed enabled addon overlay files in stack/addons/<name>/compose.yml. */
-function seedChannelAddons(
-  homeDir: string,
-  channels: { name: string; yml: string }[]
-): void {
-  for (const ch of channels) {
-      const addonDir = join(homeDir, "config", "stack", "addons", ch.name);
-      mkdirSync(addonDir, { recursive: true });
-      writeFileSync(join(addonDir, "compose.yml"), ch.yml);
-    }
+function writeStackCompose(homeDir: string, filename: string, yml: string): void {
+  const stackDir = join(homeDir, "config", "stack");
+  mkdirSync(stackDir, { recursive: true });
+  writeFileSync(join(stackDir, filename), yml);
 }
 
 registerCleanup();
@@ -117,19 +112,18 @@ describe("discoverStackOverlays", () => {
     expect(result[0]).toMatch(/core\.compose\.yml$/);
   });
 
-  test("discovers addon compose.yml files", () => {
+  test("discovers fixed compose overlay files", () => {
     writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
-    const addonsDir = join(stackDir, "addons");
-    mkdirSync(join(addonsDir, "admin"), { recursive: true });
-    mkdirSync(join(addonsDir, "ollama"), { recursive: true });
-    writeFileSync(join(addonsDir, "admin", "compose.yml"), "services: {}");
-    writeFileSync(join(addonsDir, "ollama", "compose.yml"), "services: {}");
+    writeFileSync(join(stackDir, "services.compose.yml"), "services: {}");
+    writeFileSync(join(stackDir, "channels.compose.yml"), "services: {}");
+    writeFileSync(join(stackDir, "custom.compose.yml"), "services: {}");
 
     const result = discoverStackOverlays(stackDir);
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(4);
     expect(result[0]).toMatch(/core\.compose\.yml$/);
-    expect(result.some((f) => f.includes("admin"))).toBe(true);
-    expect(result.some((f) => f.includes("ollama"))).toBe(true);
+    expect(result.some((f) => f.endsWith("services.compose.yml"))).toBe(true);
+    expect(result.some((f) => f.endsWith("channels.compose.yml"))).toBe(true);
+    expect(result.some((f) => f.endsWith("custom.compose.yml"))).toBe(true);
   });
 
   test("ignores addon dirs without compose.yml", () => {
@@ -220,9 +214,8 @@ describe("writeRuntimeFiles", () => {
   });
 
   test("generates file-based channel secrets for discovered channels", () => {
-    seedChannelAddons(state.homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
-    ]);
+    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+    writeStackSpec(state.stackDir, { version: 2, addons: ["chat"] });
 
     writeRuntimeFiles(state);
 
@@ -256,9 +249,8 @@ describe("writeRuntimeFiles", () => {
   test("preserves existing file-based channel secrets (does not regenerate)", () => {
     writeSecret(state.stackDir, "channel_chat_secret", "pre-existing-secret-value");
 
-    seedChannelAddons(state.homeDir, [
-      { name: "chat", yml: "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n" }
-    ]);
+    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+    writeStackSpec(state.stackDir, { version: 2, addons: ["chat"] });
 
     writeRuntimeFiles(state);
 

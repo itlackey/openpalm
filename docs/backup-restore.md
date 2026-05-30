@@ -18,11 +18,11 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 | `~/.openpalm/config/stack/` | `stack.env`, `secrets/`, live compose files and helper scripts | Yes |
 | `~/.openpalm/stash/vaults/` | `user.env` (optional user-managed secrets) | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
-| `~/.openpalm/state/` | durable service data | Yes |
+| `~/.openpalm/data/` | durable service data | Yes |
 | `~/.openpalm/stash/` | AKM stash (memory, skills, vaults) | Yes |
 | `~/.openpalm/workspace/` | shared workspace | Yes |
-| `~/.openpalm/cache/logs/` | logs and audit files | Optional |
-| `~/.openpalm/cache/backups/` | lifecycle backup snapshots | Optional |
+| `~/.openpalm/data/logs/` | logs and audit files | Optional |
+| `~/.openpalm/data/backups/` | lifecycle backup snapshots | Optional |
 
 ---
 
@@ -121,4 +121,4 @@ the current model.
 | `~/.openpalm/stash/tasks/` | Active AKM automation task files (markdown) |
 | `~/.openpalm/stash/` | Shared akm stash (assistant + admin memory and knowledge) |
 | `~/.openpalm/workspace/` | Shared workspace |
-| `~/.openpalm/cache/logs/` | Logs and audit files |
+| `~/.openpalm/data/logs/` | Logs and audit files |
