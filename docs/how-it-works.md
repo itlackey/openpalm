@@ -49,14 +49,16 @@ Responsibilities:
 - Writes the audit log
 
 ### Guardian (Bun server, port 8080)
-The security checkpoint for all inbound channel traffic.
+The security checkpoint for all inbound channel traffic. The image also ships the
+OpenCode binary so it can run optional content validation (below).
 
 For every inbound message it:
-1. Verifies HMAC signature using the channel secret file granted through `CHANNEL_<NAME>_SECRET_FILE`
-2. Rejects replayed messages (5-minute replay cache)
-3. Enforces rate limits (120 req/min per user)
-4. Validates payload shape (channel, userId, message, timestamp)
-5. Forwards validated messages to the assistant
+1. Validates payload shape and size (channel, userId, text, nonce, timestamp; ≤100 KB)
+2. Verifies the HMAC signature using the channel secret file granted through `CHANNEL_<NAME>_SECRET_FILE`
+3. Rejects replayed messages (5-minute replay cache)
+4. Enforces rate limits (120 req/min per user)
+5. **Optional content validation** (`GUARDIAN_CONTENT_VALIDATION`, off by default): a heuristic pre-screen escalates suspicious messages to a local OpenCode moderator that returns allow/flag/block. Fail-closed — an unclassifiable suspicious message is blocked (`403 content_blocked`).
+6. Forwards validated messages to the assistant
 
 A message that fails any check never reaches the assistant.
 
@@ -105,11 +107,12 @@ chat :3820 (host) -> :8181 (container)
         |
         v
 Guardian validates:
+  + Payload shape + size valid
   + HMAC signature correct
   + Timestamp within 5 min skew
   + Not a replayed nonce
   + Rate limit not exceeded
-  + Payload shape valid
+  + Content validation (optional, fail-closed): heuristic screen -> local moderator
         |
         v
 Guardian forwards to assistant:4096

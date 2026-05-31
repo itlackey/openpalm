@@ -164,7 +164,7 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** — Guardian and channel Dockerfiles must install `packages/channels-sdk` deps with `bun install --production` after copying sdk source (no symlink-based node_modules). UI is a host binary — no Docker build.
+3. **Docker builds** — Guardian and channel Dockerfiles must install `packages/channels-sdk` deps with `bun install --production` after copying sdk source (no symlink-based node_modules). UI is a host binary — no Docker build. The assistant **and guardian** images ship the OpenCode binary; keep `OPENCODE_VERSION` in lockstep between `core/assistant/Dockerfile` and `core/guardian/Dockerfile`.
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 

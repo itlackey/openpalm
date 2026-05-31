@@ -58,6 +58,19 @@ Primary runtime sources:
 - Memory + skills are served via the bind-mounted akm stash; there is no separate memory service.
 - The entrypoint normalizes permissions, optionally enables SSH, then drops privileges to `OP_UID:OP_GID`.
 
+## Guardian Runtime Wiring
+
+The guardian image also ships OpenCode (same `OPENCODE_VERSION` as the assistant) for its opt-in **content-validation** moderator.
+
+| Host path | Container path | Purpose |
+|---|---|---|
+| `~/.openpalm/config/guardian/` | `/etc/opencode` | Moderator OpenCode config (`opencode.jsonc`, `instructions/moderation.md`) |
+| `~/.openpalm/config/stack/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` (ro) | Shared provider credentials (same file the assistant uses) |
+
+- Started on loopback `127.0.0.1:4097` by the guardian entrypoint only when `GUARDIAN_CONTENT_VALIDATION` is enabled.
+- Pins a small model in `config/guardian/opencode.jsonc`; reuses the assistant's provider via the shared `auth.json`.
+- Tools are denied (`bash`/`edit`/`webfetch`) — it is a classifier, not an agent.
+
 ---
 
 ---

@@ -11,7 +11,7 @@
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose and OpenCode. It manages a stack of containers orchestrated by the host CLI or an optional admin web UI.
 
-Two core containers: **guardian** (HMAC ingress) and **assistant** (OpenCode runtime — also hosts the scheduler co-process and uses the akm CLI for memory/skills/lessons via a shared akm stash). Channels (chat, API, Discord, Slack, voice) and services (Ollama, etc.) are added as addon compose overlays.
+Two core containers: **guardian** (HMAC ingress + optional content validation) and **assistant** (OpenCode runtime — also hosts the scheduler co-process and uses the akm CLI for memory/skills/lessons via a shared akm stash). Channels (chat, API, Discord, Slack, voice) and services (Ollama, etc.) are added as addon compose overlays.
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces
@@ -32,7 +32,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, channels, connections, scheduler logic. Both CLI and UI import from this package.
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without UI.
 - **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
-- **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
+- **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic. Also ships OpenCode (config from `config/guardian`) for opt-in, fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
 - **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
 - **Scheduler** (`packages/scheduler/`) — Lightweight Bun co-process started inside the assistant container by `core/assistant/entrypoint.sh`. No network port. Runs cron jobs (http, shell, assistant, api actions) from `config/automations/`.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
@@ -247,9 +247,9 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
-| `config/` | User | Non-secret config: `stack.yml` capabilities, assistant extensions |
+| `config/` | User | Non-secret config: `stack.yml` capabilities, assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`) |
 | `knowledge/vaults/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
-| `config/stack/` | Admin | System-managed secrets: `stack.env` (admin token, HMAC, paths) |
+| `config/stack/` | Admin | System-managed: `stack.env` (paths, ports), `auth.json` (shared OpenCode provider creds), `secrets/` file secrets, compose files |
 | `knowledge/` | User/Services | AKM knowledge (skills, vaults, agents); `knowledge/tasks/` holds scheduled automation task files |
 | `data/` | Services/System | Persistent data: assistant, guardian, akm, logs, backups, rollback |
 | `data/akm/cache/` | Services/System | AKM cache and task logs |

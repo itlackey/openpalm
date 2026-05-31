@@ -10,6 +10,11 @@ relevant tabs **must not bleed into each other**:
 | **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/config/stack/auth.json` | `PATCH /admin/providers/[id]`, `POST /admin/opencode/model`, `POST/DELETE /admin/opencode/providers/[id]/auth`, `POST /admin/providers/import-host` |
 | **Voice** | TTS/STT channel configuration | `OP_HOME/config/stack/stack.env` (`TTS_*`, `STT_*` vars) | `PUT /admin/voice` |
 
+> `config/stack/auth.json` is the single OpenCode credential store. It is mounted
+> into the assistant (read-write) and the guardian (read-only), so credentials
+> set via the Connections tab are also what the guardian's content-validation
+> moderator uses — there is no separate guardian credential store.
+
 ## What the AKM tab is for
 
 `config/akm/config.json` is AKM's native configuration file, read directly by the

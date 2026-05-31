@@ -1,9 +1,9 @@
 /**
- * OpenPalm Guardian — Minimal message guardian for the MVP.
+ * OpenPalm Guardian — security checkpoint for all inbound channel traffic.
  *
  * Receives signed channel messages at POST /channel/inbound, validates
- * HMAC signature, checks for replay and rate limits, then forwards the
- * validated message to the assistant runtime for processing.
+ * structure, verifies HMAC signature, checks replay and rate limits,
+ * optionally screens content, then forwards to the assistant runtime.
  *
  * Security pipeline:
  *   1. Parse JSON body

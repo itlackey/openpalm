@@ -149,8 +149,14 @@ Key env:
 | `PORT` | `8080` | HTTP listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant forward target |
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Moderator OpenCode config dir (from `config/guardian`) |
 | `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
 | `CHANNEL_<NAME>_SECRET_FILE` | `/run/secrets/channel_<name>_hmac` | Channel HMAC verification secret file |
+| `GUARDIAN_CONTENT_VALIDATION` | `0` | Enable opt-in, fail-closed content validation of inbound messages |
+| `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local OpenCode moderator endpoint |
+| `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
+| `GUARDIAN_MODERATION_THRESHOLD` | `3` | Heuristic risk score at/above which a message escalates to the model |
+| `GUARDIAN_MODERATION_TIMEOUT_MS` | `4000` | Per-classification timeout; on expiry the message fails closed |
 
 Notes:
 

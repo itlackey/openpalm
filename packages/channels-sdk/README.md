@@ -58,6 +58,24 @@ export { signPayload, verifySignature } from "./crypto.ts";
 export { createLogger, type LogLevel } from "./logger.ts";
 ```
 
+## Guardian error codes
+
+The guardian returns these `error` strings in its JSON error responses. Channel adapters should handle them:
+
+| Code | HTTP | Cause |
+|---|---|---|
+| `invalid_json` | 400 | Request body is not parseable JSON |
+| `invalid_payload` | 400 | Missing/wrong-type fields or out-of-bounds lengths |
+| `payload_too_large` | 413 | Body exceeds 100 KB |
+| `invalid_signature` | 403 | HMAC mismatch, unknown channel, or missing signature |
+| `replay_detected` | 409 | Nonce was already seen within the 5-minute window |
+| `rate_limited` | 429 | Per-user (120 req/min) or per-channel (200 req/min) limit exceeded |
+| `content_blocked` | 403 | Message blocked by the guardian's content-validation stage (opt-in, fail-closed; only returned when `GUARDIAN_CONTENT_VALIDATION` is enabled) |
+| `assistant_unavailable` | 502 | Guardian could not reach or get a response from the assistant |
+| `not_found` | 404 | Unrecognised guardian endpoint |
+
+All error responses include `{ error: "<code>", requestId: "<uuid>" }`.
+
 ## Testing
 
 ```typescript

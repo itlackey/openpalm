@@ -23,7 +23,7 @@ The harness job is unglamorous: download Docker images, place the right content 
 **The stack** is what the harness runs. At its core:
 
 - An **OpenCode assistant** in Docker — your AI, talking to whatever model you point it at, with persistent memory and skills via AKM
-- A **Guardian** — the only way in from the outside, enforcing HMAC signatures, replay detection, and rate limiting on every message
+- A **Guardian** — the only way in from the outside, enforcing HMAC signatures, replay detection, and rate limiting on every message, with optional fail-closed content validation (heuristic screen + local OpenCode moderator) when enabled
 - Optional **channel containers** — Discord, Slack, API, voice chat, or anything you build — each one just a compose overlay
 
 Official clients are the Electron desktop app and the OpenCode web interface (served directly by the assistant container). Everything else reaches the assistant through a channel → guardian pipeline.

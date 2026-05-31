@@ -142,6 +142,8 @@ Key env:
 - `OPENCODE_TIMEOUT_MS=0`
 - `GUARDIAN_AUDIT_PATH=/opt/openpalm/logs/guardian-audit.log`
 - `CHANNEL_<n>_SECRET_FILE`
+- `OPENCODE_CONFIG_DIR=/etc/opencode` (moderator config from `config/guardian`)
+- `GUARDIAN_CONTENT_VALIDATION` (off by default), `GUARDIAN_MODERATION_URL`, `GUARDIAN_MODERATION_PORT`, `GUARDIAN_MODERATION_THRESHOLD`, `GUARDIAN_MODERATION_TIMEOUT_MS` — opt-in content validation (see § Content validation)
 
 Mounts:
 
@@ -180,6 +182,27 @@ Payload limits:
 - `text`: 10,000 chars max
 
 Field length validation is enforced in `packages/channels-sdk/src/channel.ts` (shared between guardian and channel adapters).
+
+Content validation (opt-in, off by default):
+
+- The limits above are *structural* — they confirm a message is well-formed and signed, not that it is safe. When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian adds a semantic stage before forwarding (`core/guardian/src/moderation.ts`).
+- A deterministic heuristic pre-screen (`@openpalm/channels-sdk/content-screen`) scores prompt-injection / jailbreak / exfiltration / obfuscation signals. Clean traffic (score 0) forwards without touching a model.
+- Messages over `GUARDIAN_MODERATION_THRESHOLD` escalate to the guardian's local OpenCode moderator (loopback `:4097`, started by the guardian entrypoint, small model pinned in `config/guardian/opencode.jsonc`, shared `auth.json` provider creds), which returns an allow/flag/block JSON verdict.
+- **Fail-closed:** an escalated message the moderator cannot classify (down, timeout, unparseable) is blocked (`403 content_blocked`). The taxonomy + output contract live in `config/guardian/instructions/moderation.md`.
+
+HTTP error responses (`{ error: "<code>", requestId: "<uuid>" }`):
+
+| Code | HTTP | Cause |
+|---|---|---|
+| `invalid_json` | 400 | Body is not parseable JSON |
+| `invalid_payload` | 400 | Missing/wrong-type field or out-of-bounds length |
+| `payload_too_large` | 413 | Body exceeds 100 KB |
+| `invalid_signature` | 403 | HMAC mismatch, unknown channel, or missing signature |
+| `replay_detected` | 409 | Nonce already seen in the 5-minute window |
+| `rate_limited` | 429 | Per-user (120 req/min) or per-channel (200 req/min) exceeded |
+| `content_blocked` | 403 | Blocked by content-validation stage (opt-in, fail-closed) |
+| `assistant_unavailable` | 502 | Could not reach or get a response from the assistant |
+| `not_found` | 404 | Unrecognised endpoint |
 
 Notes:
 
