@@ -20,6 +20,7 @@ admin/.svelte-kit
 admin/build
 docs/
 *.md
+!AGENTS.md
 !core/**/*.md
 !packages/**/*.md
 !.openpalm/**/*.md

@@ -131,7 +131,7 @@ ENV PATH="/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:
 # OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.
 # AGENTS.md is baked here as a default; the entrypoint seeds it into
 # OPENCODE_CONFIG_DIR only if the operator has not placed their own copy there.
-COPY core/assistant/AGENTS.md /usr/local/share/openpalm/AGENTS.md
+COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 22
 
