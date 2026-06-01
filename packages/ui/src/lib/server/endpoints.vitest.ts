@@ -357,7 +357,7 @@ describe('persistence', () => {
 });
 
 describe('legacy endpoints.json migration (Phase 5)', () => {
-  it('moves state/admin/endpoints.json to config/endpoints.json on first read', () => {
+  it('moves data/admin/endpoints.json to config/endpoints.json on first read', () => {
     // Seed the legacy file before any read.
     const state = getState();
     const legacyDir = `${state.dataDir}/admin`;

@@ -9,7 +9,7 @@
  *
  *   GET  /admin/automations                — list automations (loadAutomations)
  *   POST /admin/automations/:name/run      — runs akm tasks run <name> directly
- *   GET  /admin/automations/:name/log      — reads from state/akm/cache/tasks/logs/<name>/
+ *   GET  /admin/automations/:name/log      — reads from data/akm/cache/tasks/logs/<name>/
  *
  * These tests hit the host admin process (default test port 9100) and
  * require a running stack and admin process.

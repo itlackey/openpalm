@@ -249,7 +249,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     vi.restoreAllMocks();
   });
 
-  test("updates OP_IMAGE_TAG in state/stack.env", async () => {
+  test("updates OP_IMAGE_TAG in config/stack/stack.env", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     mkdirSync(state.stackDir, { recursive: true });
