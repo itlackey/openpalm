@@ -55,7 +55,6 @@ export const backupsDir            = (s: ControlPlaneState): string => `${s.data
 export const assistantServiceDir   = (s: ControlPlaneState): string => `${s.dataDir}/assistant`;
 export const adminServiceDir       = (s: ControlPlaneState): string => `${s.dataDir}/admin`;
 export const guardianServiceDir    = (s: ControlPlaneState): string => `${s.dataDir}/guardian`;
-export const guardianStashDir      = (s: ControlPlaneState): string => `${s.dataDir}/guardian/stash`;
 export const guardianAkmDir        = (s: ControlPlaneState): string => `${s.dataDir}/guardian/akm`;
 /** akm durable data — NOT config, which lives in config/akm/ */
 export const akmDataDir            = (s: ControlPlaneState): string => `${s.dataDir}/akm/data`;
