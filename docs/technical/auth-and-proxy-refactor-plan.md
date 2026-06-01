@@ -95,10 +95,10 @@ broker's one real bug (response buffering).
   Killed on Electron quit + reaped via `process.on('exit')` and a pidfile
   sweep at next launch. **Routed through the same broker** as remote OpenCode
   — broker reads the per-launch password from an Electron-written runtime
-  file (`state/local-opencode.runtime.json`, 0600, deleted at quit).
-- **Connection list lives in `config/`, not `state/`.** User's instinct here
+  file (`data/local-opencode.runtime.json`, 0600, deleted at quit).
+- **Connection list lives in `config/`, not `data/`.** User's instinct here
   is right. It is user-owned configuration; it must be portable; it survives
-  `state/` wipes. Existing `state/admin/endpoints.json` migrates one-way.
+  `data/` wipes. Existing `data/admin/endpoints.json` migrates one-way.
 - **Net delta: ~ -900 LOC (impl) / -1300 LOC (with tests).** Remove the dead
   admin proxy, AuthGate, `ControlPlaneState.adminToken` + `assistantToken`,
   the `OP_ADMIN_OPENCODE_INTERNAL_URL` path, the `x-admin-token` fallback in
@@ -279,11 +279,11 @@ random 32-byte password set via `OPENCODE_SERVER_PASSWORD` in spawn env.
 | Port | Bind 127.0.0.1 only. Port 0 (kernel-assigned), parse stdout for actual port. |
 | Plugins | Admin tools staged to `${HOME}/.local/state/openpalm/admin-opencode/` at Electron startup. `opencode.json` written with `plugin: ["@openpalm/admin-tools-plugin"]`. Same pattern as `packages/cli/src/lib/opencode-subprocess.ts:45-77`. |
 | Logging | OpenCode writes its own session log + per-tool invocation record at `${OP_HOME}/data/admin-opencode/log/`. That IS the audit trail. No OpenPalm-side `appendAudit` wrapping. |
-| Lifecycle (clean) | `app.on('will-quit')` sends SIGTERM, 5s grace, SIGKILL. PID written to `state/local-opencode.pid` at spawn. |
-| Lifecycle (crash) | At Electron startup, read `state/local-opencode.pid`; if PID exists and is the wrong cmdline (or doesn't exist), unlink and continue. If it IS our process, kill it (we crashed last time without cleanup). |
-| Connection-list entry | Synthesized at runtime by the UI server. Electron writes `state/local-opencode.runtime.json` (0600) with `{url, username, password, pid}` at spawn; the UI server reads it when building the endpoint list and the broker reads it per request when the active endpoint is the local one. File is unlinked at Electron quit. NOT persisted to `config/endpoints.json`. Marked `isLocal: true, isDefault: false`. Cannot be deleted or edited by the user. |
+| Lifecycle (clean) | `app.on('will-quit')` sends SIGTERM, 5s grace, SIGKILL. PID written to `data/local-opencode.pid` at spawn. |
+| Lifecycle (crash) | At Electron startup, read `data/local-opencode.pid`; if PID exists and is the wrong cmdline (or doesn't exist), unlink and continue. If it IS our process, kill it (we crashed last time without cleanup). |
+| Connection-list entry | Synthesized at runtime by the UI server. Electron writes `data/local-opencode.runtime.json` (0600) with `{url, username, password, pid}` at spawn; the UI server reads it when building the endpoint list and the broker reads it per request when the active endpoint is the local one. File is unlinked at Electron quit. NOT persisted to `config/endpoints.json`. Marked `isLocal: true, isDefault: false`. Cannot be deleted or edited by the user. |
 | Broker integration | The same broker (`/proxy/assistant/[...path]`) routes to the local OpenCode when its endpoint is active. No separate route; no second proxy. Browser sees one same-origin URL. |
-| Not present in non-Electron | When the UI is served by `openpalm ui serve` (CLI, no Electron), `state/local-opencode.runtime.json` is absent and the local-OpenCode entry is omitted from the connection list. |
+| Not present in non-Electron | When the UI is served by `openpalm ui serve` (CLI, no Electron), `data/local-opencode.runtime.json` is absent and the local-OpenCode entry is omitted from the connection list. |
 
 **Why per-launch random password and not "no auth on loopback":** Loopback is
 not a security boundary on a multi-user host (rare for desktop, but cheap to
@@ -291,16 +291,16 @@ defend). Loopback is also not a security boundary against local malware running
 as the user — but a per-launch password rotates blast radius to one process
 lifetime, which is the best we can do without OS-level sandboxing.
 
-### D4. Connection list location: `config/endpoints.json`, not `state/`.
+### D4. Connection list location: `config/endpoints.json`, not `data/`.
 
-**Decision:** Move from `state/admin/endpoints.json` to `config/endpoints.json`.
+**Decision:** Move from `data/admin/endpoints.json` to `config/endpoints.json`.
 
 **Why config beats state:**
 
 - It's user-owned configuration (URL, label, password). The user might want to
   edit it by hand. `config/` is the documented user-edit location per
   [`core-principles.md`](./core-principles.md#file-system).
-- It must survive `state/` wipe operations (which we have — and they're
+- It must survive `data/` wipe operations (which we have — and they're
   documented as "regenerable data goes here").
 - Per-user secrets (the passwords) are already in `config/auth.json`. Endpoint
   passwords belong next to provider credentials, not in service state.
@@ -308,9 +308,9 @@ lifetime, which is the best we can do without OS-level sandboxing.
 **File policy:**
 
 - Path: `${OP_HOME}/config/endpoints.json`
-- Mode: 0600 (same as current `state/admin/endpoints.json`)
+- Mode: 0600 (same as current `data/admin/endpoints.json`)
 - Shape: unchanged — `{ activeId: string | null, endpoints: EndpointEntry[] }`
-- Migration: at UI server startup, if `state/admin/endpoints.json` exists and
+- Migration: at UI server startup, if `data/admin/endpoints.json` exists and
   `config/endpoints.json` does not, copy it across, then unlink the old.
   One-shot. No two-way sync.
 
@@ -359,7 +359,7 @@ automations expect (`OP_ASSISTANT_PASSWORD`, fully scoped). Document the change.
 **What goes away in this decision:**
 
 - `packages/lib/src/control-plane/audit.ts` (the whole `appendAudit` module)
-- `state/logs/admin-audit.jsonl` file format
+- `data/logs/admin-audit.jsonl` file format
 - `/admin/audit` API route + `AuditTab.svelte` UI
 - ~25 `appendAudit(state, actor, action, …)` call sites across admin routes
 - The audit-related unit tests
@@ -378,9 +378,9 @@ migration:
    (32 bytes random), write to `stack.env`, set `OPENCODE_AUTH=true`, recreate
    assistant container.
 2. If `OP_ASSISTANT_TOKEN` is set → remove it from `stack.env` (it's now unused).
-3. If `state/admin/endpoints.json` exists → copy to `config/endpoints.json`,
+3. If `data/admin/endpoints.json` exists → copy to `config/endpoints.json`,
    unlink original.
-4. Log a one-line summary to `state/logs/migration-0.11.0.log`.
+4. Log a one-line summary to `data/logs/migration-0.11.0.log`.
 
 Old installs: no UI access without re-login (the cookie semantics changed). User
 re-runs through wizard or hits `/login`. We accept this UX hit.
@@ -422,7 +422,7 @@ SvelteKit UI server (port 3880, adapter-node)
     │ requireAdmin() — cookie only, no x-admin-token fallback
     │ (no appendAudit — OpenCode session logs are the audit trail)
     ├── reads config/endpoints.json (0600) for active endpoint URL + password
-    ├── reads state/local-opencode.runtime.json (0600) when local endpoint active
+    ├── reads data/local-opencode.runtime.json (0600) when local endpoint active
     ├── direct docker socket (compose, secrets, install, etc.)
     │
     │ /proxy/assistant/* broker:
@@ -444,7 +444,7 @@ Key shifts vs. before:
 - Broker fixed to stream responses (no `arrayBuffer` buffering); SSE works end
   to end.
 - Local OpenCode is one of several entries in the connection list (synthesized
-  from `state/local-opencode.runtime.json` at request time — the password is
+  from `data/local-opencode.runtime.json` at request time — the password is
   generated at spawn, not persisted to config).
 
 ---
@@ -460,7 +460,7 @@ phase until the previous one is green on main.**
   guardian env block in `.openpalm/config/stack/core.compose.yml:120-127`. Today
   guardian reads these in `core/guardian/src/forward.ts:25-30` but the compose
   block doesn't set them. (Report 2 finding.)
-- Add migration log path constant `state/logs/migration-0.11.0.log`.
+- Add migration log path constant `data/logs/migration-0.11.0.log`.
 - Add `config/endpoints.json` to the file-permissions test suite (mode 0600).
 - Add a CSP middleware in `packages/ui/src/hooks.server.ts` setting
   `script-src 'self'; object-src 'none'; frame-ancestors 'none'`. Verify the
@@ -502,14 +502,14 @@ phase until the previous one is green on main.**
 
 - New: `apps/electron/src/local-opencode.ts` (~180 LOC). Spawn, lifecycle, pidfile
   sweep. Imports `createOpencodeServer` from `@opencode-ai/sdk`. Random password,
-  port 0, env injection. Writes `state/local-opencode.runtime.json` (0600) with
+  port 0, env injection. Writes `data/local-opencode.runtime.json` (0600) with
   `{url, username, password, pid}` at spawn; unlinks at quit.
 - New: `packages/admin-tools-plugin/` package (or reuse `packages/assistant-tools/`
   with a `mode: admin` flag). Tools: `compose.up`, `compose.down`, `compose.ps`,
   `secrets.set`, `secrets.get`, `endpoints.list`, etc. No audit wrapping —
   OpenCode logs the tool invocation itself.
 - Broker integration: `packages/ui/src/lib/server/endpoints.ts` synthesizes the
-  local entry by reading `state/local-opencode.runtime.json` when present. The
+  local entry by reading `data/local-opencode.runtime.json` when present. The
   existing broker route picks up `endpoint.password` per request unchanged —
   no proxy code changes.
 - Tests: Electron integration test for spawn → tool call → quit cleanup.
@@ -529,7 +529,7 @@ phase until the previous one is green on main.**
   `packages/ui/src/lib/server/helpers.vitest.ts` to assert rejection instead
   of acceptance.
 
-### Phase 5 — Move endpoints.json from state/ to config/
+### Phase 5 — Move endpoints.json from data/ to config/
 
 - `packages/ui/src/lib/server/endpoints.ts:38-40`: change `endpointsPath()` to
   use `getState().configDir` instead of runtime data paths.
@@ -546,7 +546,7 @@ phase until the previous one is green on main.**
   remote OpenCode (if reachable) and writes locally. Useful after suspected
   compromise.
 - Delete the `/admin/audit` route + `AuditTab.svelte` + all `appendAudit` call
-  sites + the `state/logs/admin-audit.jsonl` writer. Operators consult OpenCode
+  sites + the `data/logs/admin-audit.jsonl` writer. Operators consult OpenCode
   session logs under `${OP_HOME}/data/{assistant,admin-opencode}/` for chat +
   tool history.
 
@@ -582,10 +582,10 @@ LOC are approximate (from Report 2 plus my read-through).
 | `packages/ui/src/routes/proxy/assistant/[...path]/+server.ts` (streaming fix + SSE timeout lift) | ~5 changed | Replace `arrayBuffer()` with `upstream.body`. Lift timeout for `text/event-stream`. |
 | `packages/ui/src/hooks.server.ts` (CSP block) | ~20 | `default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'`. |
 | `apps/electron/src/local-opencode.ts` | ~180 | Spawn / lifecycle / pidfile sweep / runtime.json writer. |
-| `packages/ui/src/lib/server/endpoints.ts` (local-OpenCode synthesis) | ~40 | Read `state/local-opencode.runtime.json`, prepend synthetic entry to endpoint list. |
+| `packages/ui/src/lib/server/endpoints.ts` (local-OpenCode synthesis) | ~40 | Read `data/local-opencode.runtime.json`, prepend synthetic entry to endpoint list. |
 | `packages/admin-tools-plugin/src/index.ts` | ~180 | Admin tool implementations. No audit wrapping (OpenCode logs natively). |
 | `packages/admin-tools-plugin/src/opencode-plugin.ts` | ~60 | OpenCode plugin manifest. |
-| Migration script `packages/lib/src/control-plane/migrate-0.11.0.ts` | ~80 | One-shot token→password + state/→config/ migration. |
+| Migration script `packages/lib/src/control-plane/migrate-0.11.0.ts` | ~80 | One-shot token→password + data/→config/ migration. |
 | Endpoint URL validator (HTTPS enforce for non-loopback) | ~30 | In existing `endpoints.ts`. |
 | Tests | ~300 | streaming broker test, local-opencode lifecycle, migration, cookie-only `requireAdmin`. |
 | **Total** | **~895** | |
@@ -610,12 +610,12 @@ OpenCode logs)**.
 - [ ] `/proxy/assistant/*` streams responses (no `arrayBuffer` buffering). Verified by an SSE integration test that asserts incremental chunks arrive before stream end.
 - [ ] OpenCode local-ephemeral spawned with `OPENCODE_AUTH=true` AND random password from `crypto.randomBytes(32).toString('base64url')`.
 - [ ] OpenCode local-ephemeral binds to 127.0.0.1 only; never 0.0.0.0; verified by `ss -tlnp` smoke test.
-- [ ] Local-ephemeral password lives only in `state/local-opencode.runtime.json` (0600, mode-tested) for the duration of the Electron session; never logged at any level; redaction filter in `@openpalm/lib` logger covers `OPENCODE_SERVER_PASSWORD` and `password` keys.
-- [ ] `state/local-opencode.runtime.json` and pidfile at `state/local-opencode.pid` mode 0600. Cleared on Electron quit. Stale-PID sweep on next startup.
+- [ ] Local-ephemeral password lives only in `data/local-opencode.runtime.json` (0600, mode-tested) for the duration of the Electron session; never logged at any level; redaction filter in `@openpalm/lib` logger covers `OPENCODE_SERVER_PASSWORD` and `password` keys.
+- [ ] `data/local-opencode.runtime.json` and pidfile at `data/local-opencode.pid` mode 0600. Cleared on Electron quit. Stale-PID sweep on next startup.
 - [ ] Endpoint URLs: HTTPS enforced for non-loopback. `http://` rejected for non-`127.0.0.1`/`localhost`/`::1` with a clear error.
 - [ ] `config/endpoints.json` mode 0600. Verified by repo install test.
 - [ ] Local-ephemeral OpenCode writes its session/tool log to `${OP_HOME}/data/admin-opencode/log/` and that path is readable for post-incident review. Log retention policy documented in `docs/technical/`.
-- [ ] OpenPalm `appendAudit` / `state/logs/admin-audit.jsonl` machinery removed in full; `grep -rn 'appendAudit\|admin-audit.jsonl' packages/ui/src packages/lib/src` returns zero hits.
+- [ ] OpenPalm `appendAudit` / `data/logs/admin-audit.jsonl` machinery removed in full; `grep -rn 'appendAudit\|admin-audit.jsonl' packages/ui/src packages/lib/src` returns zero hits.
 - [ ] Channels-sdk and guardian paths unchanged. Verified by running existing security tests (`bun run guardian:test`). (Note: guardian keeps its own `guardian-audit.log` — that's separate from the OpenPalm admin audit and is preserved.)
 - [ ] Migration script handles: existing token-based install, fresh install, partial state (token set but no endpoint file).
 - [ ] No `Bearer <token>` or `x-admin-token` flows survive in admin routes (audit by `grep -rn 'Authorization.*Bearer\|x-admin-token' packages/ui/src` excluding vitest/test fixtures).
@@ -669,7 +669,7 @@ OpenCode logs)**.
    `stack.env`. Document it.
 
 8. **OpenCode session logs are the audit trail** — no OpenPalm-side
-   `appendAudit`, no `state/logs/admin-audit.jsonl`. OpenCode writes
+   `appendAudit`, no `data/logs/admin-audit.jsonl`. OpenCode writes
    per-session and per-tool logs under `${OP_HOME}/data/{assistant,admin-opencode}/`;
    that's where forensics happens. The few SvelteKit endpoints that survive
    (login, endpoint CRUD, setup writes) are user-initiated UI actions where

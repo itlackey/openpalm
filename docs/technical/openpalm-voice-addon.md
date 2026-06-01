@@ -57,7 +57,7 @@ LocalAI is attractive (one container, one health check). Costs:
 - 3.8 GB image — slow first pull on a typical home connection.
 - ~1.2 GB resident even when idle.
 - Config is YAML + per-model model-config files; less inspectable than the
-  dedicated wrappers; adds a YAML to seed in `state/voice/`.
+  dedicated wrappers; adds a YAML to seed in `data/voice/`.
 - We lose the ability to upgrade TTS independently of STT.
 
 **Decision: two containers.** `voice-tts` (Kokoro-FastAPI) and `voice-stt`
@@ -186,7 +186,7 @@ Notes:
   itself responds to `/health` immediately. We err on the side of slow.
 - No `depends_on: guardian` because these aren't channels — they don't talk
   to the guardian, they're called by the browser.
-- `state/voice/` host directory must be pre-created on enable (see §4) so
+- `data/voice/` host directory must be pre-created on enable (see §4) so
   Docker doesn't auto-create it as root.
 
 ### `.env.schema`
@@ -226,7 +226,7 @@ End-to-end on click of **"Enable OpenPalm Voice"** in the Voice tab:
 [Server runs in order]
   1. setAddonEnabled(homeDir, stackDir, "openpalm-voice", true)
      — records voice in config/stack/enabled-addons.json
-     — mkdirs state/voice/{tts-cache,stt-cache} as OP_UID:OP_GID
+     — mkdirs data/voice/{tts-cache,stt-cache} as OP_UID:OP_GID
   2. writeVoiceVars({
        tts: { enabled: true, engine: "openpalm-voice", provider: "kokoro",
               baseURL: "http://localhost:8880/v1", model: "kokoro",
@@ -297,7 +297,7 @@ the enable endpoint all use one constant.
 | Image pull fails | enable endpoint returns 500 with stderr tail; UI shows "Could not pull image: <reason>" + Retry button |
 | Port 8880/8881 in use | preflight detects via `lsof`/`ss` (extend existing port-collision helper); UI shows "Port 8880 in use; change in advanced settings" |
 | Healthcheck never green within 90 s | UI shows "Container started but isn't responding" + a "Show logs" button hitting an existing logs endpoint |
-| `state/voice/` not writable | enable endpoint returns 500 before compose up; UI shows fs error |
+| `data/voice/` not writable | enable endpoint returns 500 before compose up; UI shows fs error |
 
 ---
 
@@ -356,7 +356,7 @@ container when the UI polls.
 
 - **Model**: faster-whisper base.en (CTranslate2 int8). 74M parameters,
   English-only. ~145 MB on disk.
-- **Weights live**: downloaded to `state/voice/stt-cache/` on first
+- **Weights live**: downloaded to `data/voice/stt-cache/` on first
   request. Persists across container recreates because of the bind
   mount.
 - **First-run cost**: ~5–10 s download on a typical home connection.
@@ -483,7 +483,7 @@ Phases are sequential. Sizes: S = ≤50 LOC, M = 50–150 LOC, L = 150–400 LOC
 
 | Phase | Size | LOC | Description | Depends on |
 |---|---|---|---|---|
-| A. Addon manifest | S | ~120 | New `state/registry/addons/voice/{compose.yml,.env.schema,README.md}`. Pin image digests. Add to registry tests. | — |
+| A. Addon manifest | S | ~120 | New `data/registry/addons/voice/{compose.yml,.env.schema,README.md}`. Pin image digests. Add to registry tests. | — |
 | B. Lib: voice presets | S | ~50 | New `packages/lib/src/control-plane/voice-presets.ts` with `OPENPALM_VOICE_PRESET` constant (engine name, default URLs, default models, default voice). Export from lib barrel. Used by the enable endpoint AND the wizard. | — |
 | C. Server endpoints | M | ~250 | New `routes/admin/voice/openpalm-voice/+server.ts` (POST enable/disable wraps addon toggle + writeVoiceVars + composeUp). New `routes/admin/voice/probe/+server.ts`. Host-aware URL resolution. | A, B |
 | D. UI: VoiceTab integration | M | ~200 | Add `openpalm-voice` to `TTS_OPTIONS` / `STT_OPTIONS`. New `OpenPalmVoiceCard.svelte` rendering the 4 states from §8. Polling hook. | C |
@@ -500,7 +500,7 @@ Notes for the implementer:
 - Reuse `performAddonToggle` and `setAddonEnabled` — don't create a parallel
   enable flow for this one addon. The only "extra" the new enable endpoint
   does is (a) write voice vars, (b) call `composeUp` (the generic toggle
-  doesn't, by design), and (c) pre-create `state/voice/` directories.
+  doesn't, by design), and (c) pre-create `data/voice/` directories.
 
 ---
 
@@ -542,7 +542,7 @@ These need maintainer decisions before phase A starts.
 
 ## Compliance checklist (per `core-principles.md`)
 
-- [x] **File-drop modularity.** Pure addon under `state/registry/addons/`. No code changes to `core/`.
+- [x] **File-drop modularity.** Pure addon under `data/registry/addons/`. No code changes to `core/`.
 - [x] **No template rendering.** Compose substitution only; whole-file copy of overlay; no string interpolation of YAML.
 - [x] **Guardian-only ingress.** N/A — this addon does not enter through the channel/guardian path. TTS/STT are tools called by the browser, not channels.
 - [x] **Assistant isolation.** Assistant has no special access to these containers. They live on `assistant_net` so the assistant CAN call them too (future "speak this back" tool), but ingress is unchanged.

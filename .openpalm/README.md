@@ -27,7 +27,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     vaults/            User-managed secrets (akm vault:user)
     tasks/             Scheduled automation task files (*.yml)
 
-  state/
+  data/
     assistant/         Assistant home and local runtime state
     admin/             Admin runtime home
     guardian/          Guardian nonce and rate-limit state
@@ -109,7 +109,7 @@ services and overlays belong in `custom.compose.yml`.
 | `config/stack/` | System/User | CLI/admin manage fixed runtime assets and `stack.env`; users edit `custom.compose.yml` |
 | `knowledge/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
 | `knowledge/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
-| `state/` | Services | Containers and processes at runtime |
+| `data/` | Services | Containers and processes at runtime |
 | `workspace/` | Services | Durable shared data (not a secret store) |
 
 ## Runtime notes

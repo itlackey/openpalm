@@ -53,7 +53,7 @@ On first install, the CLI spawns `openpalm` which serves the setup wizard via th
 | `OP_HOME` | `~/.openpalm` | Root of all OpenPalm state |
 | `OP_WORK_DIR` | `~/openpalm` | Assistant working directory |
 | `OP_HOST_UI_PORT` | `3880` | Port for the host admin server (`openpalm`) |
-| `OP_UI_TOKEN` | (from `state/admin/token`) | Admin API auth token |
+| `OP_UI_TOKEN` | (from `data/admin/token`) | Admin API auth token |
 
 ## How It Works
 

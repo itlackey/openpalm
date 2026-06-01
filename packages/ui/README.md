@@ -72,7 +72,7 @@ project name.
 ### Why isolated?
 
 `OP_HOME=$(pwd)/.dev` keeps **every** filesystem write the dev server
-might make (`config/`, `state/`, `knowledge/`, `workspace/`) inside the gitignored
+might make (`config/`, `data/`, `knowledge/`, `workspace/`) inside the gitignored
 `.dev/` tree. `~/.openpalm/` is your production install and the
 [heightened-caution paths in CLAUDE.md](../../CLAUDE.md) forbid touching
 it during dev work.

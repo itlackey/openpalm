@@ -26,7 +26,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 
 - `config/` is user-owned, non-secret configuration and remains manually editable. `config/stack/` is the system-assembled live Compose runtime definition.
 - `knowledge/vaults/` is the user-managed secrets boundary (`user.env`). System secrets live as file-based grants under `knowledge/vaults/secrets/`; `stack.env` is non-secret.
-- `state/` is durable service-managed data (assistant, guardian, AKM cache/data, logs, backups, rollback).
+- `data/` is durable service-managed data (assistant, guardian, AKM cache/data, logs, backups, rollback).
 - `knowledge/` is the AKM knowledge base (skills, commands, memories, agents).
 - `workspace/` is the shared assistant work area.
 - Lifecycle operations must be non-destructive for user-owned config and user-managed knowledge content unless the user explicitly requests mutation.
