@@ -20,9 +20,9 @@
   // Pin a SMALL, fast model from your provider for moderation — it runs on
   // suspicious messages and should be cheap. Use the same provider as the
   // assistant (credentials are shared via auth.json); just pick a smaller
-  // model, e.g. "anthropic/claude-haiku-4-5", "openai/gpt-4o-mini", or a small
+  // model, e.g. "github-copilot/gpt-5-mini", or a small
   // local model. Override per-deployment by editing this line.
-  "model": "anthropic/claude-haiku-4-5",
+  "model": "opencode/big-pickle",
 
   // Loopback server. The guardian's moderation client calls 127.0.0.1:4097.
   "server": {
