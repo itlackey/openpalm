@@ -170,7 +170,10 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
 
 ## npm Package Releases
 
-OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`packages/ui`, `core/guardian`, `packages/cli`) share a coordinated version managed by `scripts/release.sh`.
+OpenPalm has two release tracks (see [docs/operations/release-management.md](../docs/operations/release-management.md) for the full guide):
+
+- **Platform release (single coordinated version)** — the packages listed in [`.github/release-package-groups.json`](release-package-groups.json) `platformManifests` (`packages/lib`, `packages/ui`, `packages/cli` → npm `openpalm`, `core/guardian`, `packages/channels-sdk`, `packages/electron` + `admin-tools`, and the root) share one version, bumped together by `scripts/bump-platform.sh` and published as a unit by `.github/workflows/release.yml` when a `v*` tag is pushed (npm + Docker images + CLI binaries + Electron installers + GitHub release).
+- **Channel adapters (independent)** — `packages/channel-{api,discord,slack}` are versioned and published to npm independently via their own `publish-channel-*.yml` workflows (push to `main` touching their paths, or `workflow_dispatch`). These change most often and roll to users at runtime via the `@next`/`@latest` dist-tag, with no platform release required.
 
 ## Key docs for contributors
 

@@ -14,7 +14,7 @@ This repo uses **one lock file**: the root `bun.lock`. All other lock files (`pa
 
 1. **`bun install` at repo root** is the only install command that modifies the lock file.
 2. **`--frozen-lockfile`** is used in CI to catch forgotten installs after dependency changes.
-3. **`.npmrc`** at repo root contains `package-lock=false` to prevent npm from generating `package-lock.json` when `npm install` runs inside `packages/admin/`.
+3. **`.npmrc`** at repo root contains `package-lock=false` to prevent npm from generating `package-lock.json` when `npm install` runs inside `packages/ui/`.
 4. **`package-lock.json`** is in `.gitignore` as a safety net.
 
 ### Adding or updating a dependency
@@ -40,13 +40,15 @@ All `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `pe
 
 ### Keeping ranges in sync
 
-Platform packages (root, `packages/lib`, `packages/admin`, `core/guardian`, `packages/cli`, `packages/channels-sdk`) share a coordinated version bumped by `scripts/bump-platform.sh` and published from the release workflow. Independent npm packages (`packages/channel-*`, `packages/assistant-tools`) are versioned via per-package publish workflows. Cross-references between groups use real semver ranges and are updated manually when a dependency's API changes.
+Platform packages (root, `packages/lib`, `packages/ui`, `core/guardian`, `packages/cli`, `packages/channels-sdk`, `packages/electron`, `packages/electron/admin-tools`) share a coordinated version bumped by `scripts/bump-platform.sh` (the authoritative list lives in `.github/release-package-groups.json` → `platformManifests`) and published from the release workflow. Independent npm packages (`packages/channel-api`, `packages/channel-discord`, `packages/channel-slack`) are versioned via per-package publish workflows. Cross-references between groups use real semver ranges and are updated manually when a dependency's API changes — except the CLI's internal `@openpalm/lib` floor range, which `bump-platform.sh` keeps in lockstep automatically.
+
+See [`docs/operations/release-management.md`](../operations/release-management.md) for the full release process.
 
 ### Why Docker builds don't use lock files
 
 Docker builds install dependencies without `--frozen-lockfile`:
 
 - **Guardian** and **channel** Dockerfiles use `bun install --production` after copying only the source files they need. They don't mount the root lock file because they only install a small subset of workspace dependencies.
-- **Admin** is a host binary (no Docker build). Its SvelteKit UI is built on the host via `npm run build` and embedded in the CLI binary as a tarball.
+- **UI** is a host process (no Docker build). The SvelteKit app is built on the host via `bun run ui:build`; the `openpalm ui serve` command serves it.
 
 This is intentional. The lock file guards the development workflow (ensuring reproducible local installs and CI checks). Docker builds produce immutable images and are tested by CI's `docker compose config` validation.
