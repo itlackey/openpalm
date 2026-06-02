@@ -46,7 +46,7 @@ bun run check            # ui:check + sdk:test
 
 `dev:stack` pulls pre-built images from the configured container registries — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yml` — use it when developing services or testing Dockerfile changes.
 
-`dev-setup.sh --seed-env` seeds `.dev/knowledge/vaults/user.env` and `.dev/config/stack/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+`dev-setup.sh --seed-env` seeds `.dev/knowledge/env/user.env` and `.dev/config/stack/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
 ## 1. Clone and bootstrap
 
@@ -60,9 +60,9 @@ bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
 
 - Creates the `.dev/config`, `.dev/knowledge`, `.dev/state`, and `.dev/logs` directories
-- Seeds `.dev/knowledge/vaults/user.env` and `.dev/config/stack/stack.env` with dev-safe defaults
+- Seeds `.dev/knowledge/env/user.env` and `.dev/config/stack/stack.env` with dev-safe defaults
 
-After setup, edit `.dev/knowledge/vaults/user.env` to add your LLM provider keys.
+After setup, edit `.dev/knowledge/env/user.env` to add your LLM provider keys.
 
 ## 2. Run the UI (no Docker needed)
 
@@ -81,7 +81,7 @@ Two options depending on what you're working on:
 | `bun run dev:stack` | Pulls pre-built images from the configured container registries. Fast start for testing admin workflows. |
 | `bun run dev:build` | Builds all images from local source via [`compose.dev.yml`](../compose.dev.yml). Use when developing services or testing Dockerfile changes. |
 
-Both scripts read env files from `.dev/config/stack/` and `.dev/knowledge/vaults/`.
+Both scripts read env files from `.dev/config/stack/` and `.dev/knowledge/env/`.
 
 ## 4. Run tests and checks
 

@@ -250,28 +250,27 @@ export async function saveAddonCredentials(
   return (await res.json()) as { ok: boolean; updated: string[] };
 }
 
-// ── User Vault (akm vault:user) ────────────────────────────────────
+// ── User env (akm env:user) ────────────────────────────────────────
 
-export type UserVaultListResponse = {
+export type UserEnvListResponse = {
   provider: 'akm';
-  vaultRef: string;
-  available: boolean;
+  envRef: string;
   keys: string[];
 };
 
-export async function fetchUserVault(): Promise<UserVaultListResponse> {
-  const res = await requireOk(await request('GET', '/admin/secrets/user-vault'));
-  return (await res.json()) as UserVaultListResponse;
+export async function fetchUserEnv(): Promise<UserEnvListResponse> {
+  const res = await requireOk(await request('GET', '/admin/secrets/user-env'));
+  return (await res.json()) as UserEnvListResponse;
 }
 
-export async function writeUserVaultKey(key: string, value: string): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('POST', '/admin/secrets/user-vault', { key, value }));
+export async function writeUserEnvKey(key: string, value: string): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('POST', '/admin/secrets/user-env', { key, value }));
   return (await res.json()) as { ok: boolean };
 }
 
-export async function deleteUserVaultKey(key: string): Promise<{ ok: boolean }> {
+export async function deleteUserEnvKey(key: string): Promise<{ ok: boolean }> {
   const res = await requireOk(
-    await request('DELETE', `/admin/secrets/user-vault?key=${encodeURIComponent(key)}`)
+    await request('DELETE', `/admin/secrets/user-env?key=${encodeURIComponent(key)}`)
   );
   return (await res.json()) as { ok: boolean };
 }

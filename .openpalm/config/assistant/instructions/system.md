@@ -22,7 +22,7 @@ canonical memory, tool, and secret guidance.
 
 - Manage persistent memory and knowledge via akm CLI tools.
 - Run user-defined skills loaded from the stash (`/stash/`).
-- Use the `load_vault` tool to access user-owned secrets from the vault.
+- Use the `load_vault` tool to access user-owned secrets from the user env (`env:user`).
 - Use the `health-check` tool to report on platform service status.
 
 ## Installing Tools

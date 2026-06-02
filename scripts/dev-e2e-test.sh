@@ -5,7 +5,7 @@
 # v0.11.0 architecture:
 #   - UI is a HOST PROCESS (`openpalm`), not a container
 #   - Compose stack: assistant + guardian containers only
-#   - Directory layout: config/stack/, data/, knowledge/vaults/, workspace/
+#   - Directory layout: config/stack/, data/, knowledge/env/, knowledge/secrets/, workspace/
 #
 # Cleans state, rebuilds all images from source, starts the stack and
 # admin process, then verifies:
@@ -138,10 +138,10 @@ openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/channel_slack_secret"
 chmod 700 "${OP_E2E_HOME}/knowledge/secrets"
 chmod 600 "${OP_E2E_HOME}/knowledge/secrets/"*
 
-# Empty user.env (akm vault:user is the source of truth at runtime)
-mkdir -p "${OP_E2E_HOME}/knowledge/vaults"
-touch "${OP_E2E_HOME}/knowledge/vaults/user.env"
-chmod 600 "${OP_E2E_HOME}/knowledge/vaults/user.env"
+# Empty user.env (akm env:user is the source of truth at runtime)
+mkdir -p "${OP_E2E_HOME}/knowledge/env"
+touch "${OP_E2E_HOME}/knowledge/env/user.env"
+chmod 600 "${OP_E2E_HOME}/knowledge/env/user.env"
 
 pass "Isolated OP_HOME seeded from .openpalm/"
 

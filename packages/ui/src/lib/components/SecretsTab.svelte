@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchUserVault, writeUserVaultKey, deleteUserVaultKey } from '$lib/api.js';
+  import { fetchUserEnv, writeUserEnvKey, deleteUserEnvKey } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
 
   interface Props {
@@ -10,8 +10,7 @@
   let { tokenStored }: Props = $props();
 
   let keys = $state<string[]>([]);
-  let vaultRef = $state('');
-  let available = $state(false);
+  let envRef = $state('');
   let loading = $state(false);
   let error = $state('');
   let actionLoading = $state<string | null>(null); // key being acted on, or 'write' for new
@@ -27,12 +26,11 @@
     loading = true;
     error = '';
     try {
-      const result = await fetchUserVault();
+      const result = await fetchUserEnv();
       keys = result.keys;
-      vaultRef = result.vaultRef;
-      available = result.available;
+      envRef = result.envRef;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load vault keys.';
+      error = e instanceof Error ? e.message : 'Failed to load user env keys.';
     } finally {
       loading = false;
     }
@@ -49,14 +47,14 @@
     }
     actionLoading = 'write';
     try {
-      await writeUserVaultKey(k, writeValue);
-      notifications.push('success', `Saved "${k}" to akm vault. Recreate the assistant container to pick up the new value.`);
+      await writeUserEnvKey(k, writeValue);
+      notifications.push('success', `Saved "${k}" to the user env. Recreate the assistant container to pick up the new value.`);
       writeKey = '';
       writeValue = '';
       showWriteForm = false;
       await loadKeys();
     } catch (e) {
-      notifications.push('error', e instanceof Error ? e.message : 'Failed to write to vault.');
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to write to user env.');
     } finally {
       actionLoading = null;
     }
@@ -74,7 +72,7 @@
     deleteConfirmKey = null;
     actionLoading = key;
     try {
-      await deleteUserVaultKey(key);
+      await deleteUserEnvKey(key);
       notifications.push('success', `Removed "${key}".`);
       await loadKeys();
     } catch (e) {
@@ -92,14 +90,14 @@
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <div>
-      <h2>User Vault</h2>
+      <h2>User Environment</h2>
       <p class="panel-subtitle">
-        User-managed env secrets stored in akm (<code>{vaultRef || 'vault:user'}</code>). Sourced by the assistant
-        container at startup — recreate it after changes.
+        User-managed env secrets stored in the akm user env (<code>{envRef || 'env:user'}</code>). Sourced by the
+        assistant container at startup — recreate it after changes.
       </p>
     </div>
     <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={() => { showWriteForm = !showWriteForm; }} disabled={!available}>
+      <button class="btn btn-secondary btn-sm" onclick={() => { showWriteForm = !showWriteForm; }}>
         {showWriteForm ? 'Cancel' : 'Add / Update Key'}
       </button>
       <button class="btn btn-secondary btn-sm" onclick={() => void loadKeys()} disabled={loading || !tokenStored}>
@@ -108,12 +106,6 @@
       </button>
     </div>
   </div>
-
-  {#if !available && !loading && !error}
-    <div class="error-banner">
-      <span>akm vault is unavailable. Install akm and run <code>akm vault init user</code> to enable user-vault management.</span>
-    </div>
-  {/if}
 
   {#if showWriteForm}
     <div class="form-section">
@@ -170,12 +162,12 @@
           </div>
         {/each}
       </div>
-    {:else if !loading && available}
+    {:else if !loading}
       <div class="empty-state">
         <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
-        <p>No keys in the user vault yet.</p>
+        <p>No keys in the user env yet.</p>
       </div>
     {/if}
   </div>
@@ -203,7 +195,6 @@
   .key-col--actions { flex: 0 0 auto; }
 
   .error-banner { padding: var(--space-3) var(--space-5); background: var(--color-danger-bg); border-bottom: 1px solid var(--color-danger-border, rgba(255,107,107,0.25)); color: var(--color-danger); font-size: var(--text-sm); }
-  .error-banner code { font-family: var(--font-mono); background: rgba(0,0,0,0.1); padding: 1px 6px; border-radius: var(--radius-sm); }
 
   @media (max-width: 768px) { .key-table-header { display: none; } .key-row { flex-wrap: wrap; gap: var(--space-2); } .form-row { flex-direction: column; } .form-field { min-width: unset; } }
 </style>

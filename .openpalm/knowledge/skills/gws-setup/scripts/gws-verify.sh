@@ -2,7 +2,7 @@
 # gws-verify.sh — Verify Google Workspace CLI authentication
 #
 # Checks that gws credentials are present and working. Tests against
-# the vault/user/.gws/ config directory used by the assistant container.
+# the knowledge/secrets/.gws/ config directory used by the assistant container.
 #
 # Usage:
 #   ./scripts/gws-verify.sh [--op-home ~/.openpalm] [--container]
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VAULT_GWS="${OP_HOME}/knowledge/vaults/.gws"
+GWS_DIR="${OP_HOME}/knowledge/secrets/.gws"
 PASS=0
 FAIL=0
 
@@ -60,16 +60,16 @@ else
 fi
 
 # Check 3: Config directory exists
-if [[ -d "$VAULT_GWS" ]]; then
-  check "Config directory (${VAULT_GWS})" "ok"
+if [[ -d "$GWS_DIR" ]]; then
+  check "Config directory (${GWS_DIR})" "ok"
 else
-  check "Config directory (${VAULT_GWS})" "directory not found"
+  check "Config directory (${GWS_DIR})" "directory not found"
 fi
 
 # Check 4: Credentials file or encrypted store
-if [[ -f "${VAULT_GWS}/credentials.json" ]]; then
+if [[ -f "${GWS_DIR}/credentials.json" ]]; then
   check "Credentials file" "ok"
-elif ls "${VAULT_GWS}/"*.enc 2>/dev/null | head -1 &>/dev/null; then
+elif ls "${GWS_DIR}/"*.enc 2>/dev/null | head -1 &>/dev/null; then
   check "Encrypted credentials" "ok"
 elif [[ -n "${GOOGLE_WORKSPACE_CLI_TOKEN:-}" ]]; then
   check "Token env var" "ok"
@@ -80,13 +80,13 @@ elif [[ -n "${GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE:-}" ]]; then
     check "Credentials file (env)" "file not found: ${GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE}"
   fi
 else
-  check "Credentials" "no credentials found in ${VAULT_GWS}/"
+  check "Credentials" "no credentials found in ${GWS_DIR}/"
 fi
 
 # Check 5: Live API test
 echo ""
 echo "  Testing API access..."
-export GOOGLE_WORKSPACE_CLI_CONFIG_DIR="${VAULT_GWS}"
+export GOOGLE_WORKSPACE_CLI_CONFIG_DIR="${GWS_DIR}"
 if gws drive files list --params '{"pageSize": 1}' &>/dev/null; then
   check "Drive API access" "ok"
 else

@@ -21,7 +21,7 @@ function seedStack(stackDir: string, env: string): void {
 }
 
 function seedLoginSecret(stackDir: string, value: string): void {
-  const secretDir = join(stackDir, '..', '..', 'knowledge', 'vaults', 'secrets');
+  const secretDir = join(stackDir, '..', '..', 'knowledge', 'secrets');
   mkdirSync(secretDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(secretDir, 'op_ui_login_password'), value, { mode: 0o600 });
 }

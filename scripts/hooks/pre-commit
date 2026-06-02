@@ -24,7 +24,7 @@ fi
 
 if echo "$STAGED" | grep -qE "$PATTERN" 2>/dev/null; then
   echo "pre-commit: potential API key detected in staged changes." >&2
-  echo "  Run 'openpalm scan' to inspect the configured vault env files." >&2
+  echo "  Run 'openpalm scan' to inspect the configured env files." >&2
   echo "  To bypass this hook (not recommended): git commit --no-verify" >&2
   echo "" >&2
   git diff --staged --unified=0 | grep -E "$PATTERN" >&2 || true

@@ -2,7 +2,7 @@
 # gws-setup.sh — Interactive Google Workspace CLI setup for OpenPalm
 #
 # Authenticates the gws CLI on the host, then copies credentials into
-# vault/user/.gws/ so the assistant container can use them.
+# knowledge/secrets/.gws/ so the assistant container can use them.
 #
 # Usage:
 #   ./scripts/gws-setup.sh [--op-home ~/.openpalm] [--scopes drive,gmail,sheets]
@@ -10,7 +10,7 @@
 # Auth methods (prompted interactively):
 #   1) Interactive setup  — gws auth setup (creates GCP project + OAuth + tokens)
 #   2) Manual OAuth       — user provides client_secret.json, gws auth login generates tokens
-#   3) Export from host   — copies existing ~/.config/gws/ to vault (all files)
+#   3) Export from host   — copies existing ~/.config/gws/ to the secrets directory (all files)
 #   4) Service account    — user provides a service account key JSON
 #   5) Manual token       — user pastes a pre-obtained access token (~1hr expiry)
 set -euo pipefail
@@ -36,8 +36,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VAULT_GWS="${OP_HOME}/knowledge/vaults/.gws"
-VAULT_USER="${OP_HOME}/knowledge/vaults"
+GWS_DIR="${OP_HOME}/knowledge/secrets/.gws"
+SECRETS_DIR="${OP_HOME}/knowledge/secrets"
 
 # Check gws is installed
 if ! command -v gws &>/dev/null; then
@@ -51,11 +51,11 @@ fi
 echo "=== Google Workspace CLI Setup for OpenPalm ==="
 echo ""
 echo "OP_HOME: ${OP_HOME}"
-echo "GWS config will be saved to: ${VAULT_GWS}/"
+echo "GWS config will be saved to: ${GWS_DIR}/"
 echo ""
 
 # Ensure target directories exist
-mkdir -p "${VAULT_GWS}"
+mkdir -p "${GWS_DIR}"
 
 echo "Choose an authentication method:"
 echo ""
@@ -66,7 +66,7 @@ echo "  2) Manual OAuth       — you already downloaded client_secret.json from
 echo "                          (gws auth login will generate credentials.json)"
 echo ""
 echo "  3) Export from host   — you already ran 'gws auth login' on this machine"
-echo "                          (copies ~/.config/gws/ contents to vault)"
+echo "                          (copies ~/.config/gws/ contents to the secrets directory)"
 echo ""
 echo "  4) Service account    — you have a service account key JSON from Cloud Console"
 echo "                          (no browser or login needed)"
@@ -89,12 +89,12 @@ case "$choice" in
       gws auth setup
     fi
     echo ""
-    echo "Copying all credentials to vault..."
+    echo "Copying all credentials to the secrets directory..."
     echo "  client_secret.json  — OAuth app identity"
     echo "  credentials.json    — encrypted user tokens"
     echo "  .encryption_key     — decryption key for credentials"
-    cp -r "${HOME}/.config/gws/." "${VAULT_GWS}/"
-    echo "Done. All files copied to ${VAULT_GWS}/"
+    cp -r "${HOME}/.config/gws/." "${GWS_DIR}/"
+    echo "Done. All files copied to ${GWS_DIR}/"
     ;;
 
   2)
@@ -144,12 +144,12 @@ case "$choice" in
       gws auth login
     fi
     echo ""
-    echo "Copying all credentials to vault..."
+    echo "Copying all credentials to the secrets directory..."
     echo "  client_secret.json  — OAuth app identity (you provided this)"
     echo "  credentials.json    — encrypted user tokens (gws generated this)"
     echo "  .encryption_key     — decryption key for credentials"
-    cp -r "${HOME}/.config/gws/." "${VAULT_GWS}/"
-    echo "Done. All files copied to ${VAULT_GWS}/"
+    cp -r "${HOME}/.config/gws/." "${GWS_DIR}/"
+    echo "Done. All files copied to ${GWS_DIR}/"
     ;;
 
   3)
@@ -160,11 +160,11 @@ case "$choice" in
       exit 1
     fi
     echo ""
-    echo "Copying ${GWS_CONFIG}/ to ${VAULT_GWS}/..."
-    cp -r "${GWS_CONFIG}/." "${VAULT_GWS}/"
+    echo "Copying ${GWS_CONFIG}/ to ${GWS_DIR}/..."
+    cp -r "${GWS_CONFIG}/." "${GWS_DIR}/"
     echo ""
     echo "Files copied:"
-    ls -la "${VAULT_GWS}/"
+    ls -la "${GWS_DIR}/"
     ;;
 
   4)
@@ -186,11 +186,11 @@ case "$choice" in
       exit 1
     fi
     # Service account keys go to gcloud-credentials.json (used by GOOGLE_APPLICATION_CREDENTIALS)
-    cp "$sa_path" "${VAULT_USER}/gcloud-credentials.json"
-    chmod 600 "${VAULT_USER}/gcloud-credentials.json"
+    cp "$sa_path" "${SECRETS_DIR}/gcloud-credentials.json"
+    chmod 600 "${SECRETS_DIR}/gcloud-credentials.json"
     echo ""
-    echo "Service account key saved to: ${VAULT_USER}/gcloud-credentials.json"
-    echo "The container reads this via GOOGLE_APPLICATION_CREDENTIALS=/etc/vault/gcloud-credentials.json"
+    echo "Service account key saved to: ${SECRETS_DIR}/gcloud-credentials.json"
+    echo "The container reads this via GOOGLE_APPLICATION_CREDENTIALS=/stash/secrets/gcloud-credentials.json"
     ;;
 
   5)
@@ -203,7 +203,7 @@ case "$choice" in
       echo "ERROR: Empty token"
       exit 1
     fi
-    USER_ENV="${OP_HOME}/knowledge/vaults/user.env"
+    USER_ENV="${OP_HOME}/knowledge/env/user.env"
     # Append or update GOOGLE_WORKSPACE_CLI_TOKEN in user.env
     if grep -q '^GOOGLE_WORKSPACE_CLI_TOKEN=' "$USER_ENV" 2>/dev/null; then
       sed -i "s|^GOOGLE_WORKSPACE_CLI_TOKEN=.*|GOOGLE_WORKSPACE_CLI_TOKEN=${token}|" "$USER_ENV"
@@ -223,9 +223,9 @@ esac
 echo ""
 echo "=== Verifying setup ==="
 
-# Test with the vault credentials (only set CONFIG_DIR — setting CREDENTIALS_FILE
+# Test with the stored credentials (only set CONFIG_DIR — setting CREDENTIALS_FILE
 # to a missing file causes gws to fail instead of falling through to config dir)
-export GOOGLE_WORKSPACE_CLI_CONFIG_DIR="${VAULT_GWS}"
+export GOOGLE_WORKSPACE_CLI_CONFIG_DIR="${GWS_DIR}"
 unset GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE 2>/dev/null || true
 if gws drive files list --params '{"pageSize": 1}' &>/dev/null; then
   echo "SUCCESS: gws authentication is working."
@@ -237,7 +237,7 @@ else
   echo "  - You used a service account without domain-wide delegation"
   echo ""
   echo "Try manually:"
-  echo "  GOOGLE_WORKSPACE_CLI_CONFIG_DIR=${VAULT_GWS} gws drive files list --params '{\"pageSize\": 1}'"
+  echo "  GOOGLE_WORKSPACE_CLI_CONFIG_DIR=${GWS_DIR} gws drive files list --params '{\"pageSize\": 1}'"
 fi
 
 echo ""

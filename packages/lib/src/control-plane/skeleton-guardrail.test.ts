@@ -15,7 +15,7 @@ const SKELETON_DIR = join(REPO_ROOT, ".openpalm");
 // Allowed top-level dirs in .openpalm/ — mirrors the OP_HOME runtime layout
 const ALLOWED_SOURCE_DIRS = new Set([
   "config",     // seed files for config/ (assistant, guardian, stack/, akm/)
-  "knowledge",      // knowledge source assets: skills/ and vaults/
+  "knowledge",      // knowledge source assets: skills/, env/, secrets/, tasks/
   "data",       // empty service dirs (.gitkeep)
   "workspace",  // empty workspace dir (.gitkeep)
 ]);
@@ -101,8 +101,12 @@ describe("skeleton: .openpalm/knowledge/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "knowledge", "skills", "config-diagnostics", "SKILL.md"))).toBe(true);
   });
 
-  test("knowledge/vaults/ exists", () => {
-    expect(existsSync(join(SKELETON_DIR, "knowledge", "vaults"))).toBe(true);
+  test("knowledge/env/ exists with user.env seed", () => {
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "env", "user.env"))).toBe(true);
+  });
+
+  test("knowledge/secrets/ exists", () => {
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "secrets"))).toBe(true);
   });
 
   test("knowledge/tasks/ exists", () => {

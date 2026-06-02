@@ -23,10 +23,11 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ```text
 ~/.openpalm/
 ├── config/          user-editable config (assistant/, akm/, guardian/)
-│   └── stack/       live compose assembly (core.compose.yml, stack.env, secrets/, addons/)
-├── knowledge/           AKM knowledge base (vaults/, tasks/, skills/)
-│   └── vaults/      user-managed secrets (user.env = vault:user)
-├── state/           durable service data, logs, backups, rollback, akm/cache, akm/data
+│   └── stack/       live compose assembly (core.compose.yml, stack.env, addons/)
+├── knowledge/           AKM knowledge base (env/, secrets/, tasks/, skills/)
+│   ├── env/         user-managed config (user.env = env:user)
+│   └── secrets/     system-managed service secrets (akm secret — Compose grants)
+├── data/            durable service data, logs, backups, rollback, akm/cache, akm/data
 └── workspace/       shared work area
 ```
 
@@ -38,13 +39,13 @@ The standard startup path uses:
 
 - `config/stack/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
 - `knowledge/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
-- `knowledge/vaults/user.env` — AKM vault backing file for user-managed secrets; not a Compose env file
+- `knowledge/env/user.env` — AKM env backing file for user-managed secrets; not a Compose env file
 
 ### Security boundaries
 
 - The host CLI and host admin process access the Docker socket directly on the host. No container mounts the Docker socket.
 - The host admin process reads and writes `$OP_HOME` directly as a host process. No container mounts the full `$OP_HOME`.
-- `assistant` has no `/etc/vault/` mount — user secrets are read via `akm vault:user` from the `knowledge/` bind mount.
+- `assistant` has no `/etc/vault/` mount — user secrets are read via `akm env:user` from the `knowledge/` bind mount.
 - `guardian` is the only path from channel ingress networks to the assistant.
 
 ---

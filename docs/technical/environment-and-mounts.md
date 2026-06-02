@@ -23,8 +23,9 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
 | `~/.openpalm/config/stack/` | Live compose assembly; non-secret runtime env (`stack.env`), `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, `custom.compose.yml`, `stack.yml` |
-| `~/.openpalm/knowledge/` | AKM knowledge base (user-managed: `vaults/`, `tasks/`) |
-| `~/.openpalm/knowledge/vaults/` | User-managed secrets (`user.env`, AKM vault backing store) |
+| `~/.openpalm/knowledge/` | AKM knowledge base (user-managed: `env/`, `secrets/`, `tasks/`) |
+| `~/.openpalm/knowledge/env/` | User-managed env config (`user.env`, AKM env backing store) |
+| `~/.openpalm/knowledge/secrets/` | System-managed file secrets (akm secret — Compose grants) |
 | `~/.openpalm/data/` | Durable service data, logs, lifecycle backups, and rollback snapshots |
 | `~/.openpalm/data/logs/` | Audit and debug logs |
 | `~/.cache/openpalm/` | Ephemeral system cache |
@@ -59,7 +60,7 @@ That means the effective env model is:
 
 - `config/stack/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
 - `knowledge/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
-- `knowledge/vaults/user.env` - AKM vault backing file for user-managed secrets; never a Compose env-file
+- `knowledge/env/user.env` - AKM env backing file for user-managed secrets; never a Compose env-file
 
 ---
 
@@ -116,7 +117,7 @@ Key env:
 Notes:
 
 - The assistant has no Docker socket mount.
-- The assistant reads user secrets via `akm vault:user` — there is no `/etc/vault/` container mount.
+- The assistant reads user secrets via `akm env:user` — there is no `/etc/vault/` container mount.
 - The entrypoint starts as root only long enough to normalize permissions and optional SSH setup, then drops privileges.
 
 ### Guardian
@@ -250,7 +251,7 @@ These variables are consumed by Compose and service env blocks.
 
 ## User Secrets From `user.env`
 
-This file is the AKM vault backing file for user-managed secrets. It is not
+This file is the AKM env backing file for user-managed secrets. It is not
 passed to Docker Compose and is not mounted directly into containers.
 
 Provider/model selections and other non-secret preferences live in `stack.env`

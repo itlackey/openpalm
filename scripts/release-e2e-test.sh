@@ -263,11 +263,11 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fail "Asset missing or empty: $CONFIG_HOME/stack/core.compose.yml"
   fi
 
-  # Verify knowledge/vaults/user.env was seeded
-  if [ -f "$STASH_HOME/vaults/user.env" ]; then
-    pass "knowledge/vaults/user.env created"
+  # Verify knowledge/env/user.env was seeded
+  if [ -f "$STASH_HOME/env/user.env" ]; then
+    pass "knowledge/env/user.env created"
   else
-    fail "knowledge/vaults/user.env not created"
+    fail "knowledge/env/user.env not created"
   fi
 else
   step "Skipping install (--skip-install)"
@@ -600,7 +600,7 @@ check_container_env() {
   fi
 }
 
-# Provider credentials live in OpenCode auth.json and AKM/user vault, not in
+# Provider credentials live in OpenCode auth.json and AKM/user env, not in
 # assistant process env from stack.env. The UI login password is host-side only.
 for forbidden in OP_UI_LOGIN_PASSWORD OPENAI_API_KEY GROQ_API_KEY; do
   actual=$(docker exec "openpalm-assistant-1" printenv "$forbidden" 2>/dev/null || true)

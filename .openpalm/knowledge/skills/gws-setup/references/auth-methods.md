@@ -53,7 +53,7 @@ After `gws auth setup`, the config directory contains:
   .encryption_key       # AES-256-GCM key for credential encryption
 ```
 
-All three files must be copied to `knowledge/vaults/.gws/` for the container.
+All three files must be copied to `knowledge/secrets/.gws/` for the container.
 
 ### Scope Filtering
 
@@ -65,10 +65,10 @@ gws auth login -s drive,gmail,sheets
 
 ### OpenPalm Integration
 
-Copy the entire config directory to the vault:
+Copy the entire config directory to the secrets directory:
 
 ```bash
-cp -r ~/.config/gws/. ~/.openpalm/knowledge/vaults/.gws/
+cp -r ~/.config/gws/. ~/.openpalm/knowledge/secrets/.gws/
 ```
 
 Or use the setup script which does this automatically:
@@ -120,9 +120,9 @@ The user must download a `client_secret.json` from Google Cloud Console. This fi
    mkdir -p ~/.config/gws
    cp ~/Downloads/client_secret_*.json ~/.config/gws/client_secret.json
 
-   # For OpenPalm vault (direct):
-   mkdir -p ~/.openpalm/knowledge/vaults/.gws
-   cp ~/Downloads/client_secret_*.json ~/.openpalm/knowledge/vaults/.gws/client_secret.json
+   # For OpenPalm secrets (direct):
+   mkdir -p ~/.openpalm/knowledge/secrets/.gws
+   cp ~/Downloads/client_secret_*.json ~/.openpalm/knowledge/secrets/.gws/client_secret.json
    ```
 
 8. Run the login (this generates credentials.json):
@@ -212,11 +212,11 @@ This is the recommended approach for OpenPalm containers when the Interactive Se
 
    The `--unmasked` flag is required — it exports the full credential data (refresh token, access token, client ID, client secret). Without it, sensitive fields are masked and the file is unusable.
 
-3. Place the exported file in the vault:
+3. Place the exported file in the secrets directory:
 
    ```bash
-   cp credentials.json ~/.openpalm/knowledge/vaults/.gws/credentials.json
-   chmod 600 ~/.openpalm/knowledge/vaults/.gws/credentials.json
+   cp credentials.json ~/.openpalm/knowledge/secrets/.gws/credentials.json
+   chmod 600 ~/.openpalm/knowledge/secrets/.gws/credentials.json
    ```
 
    Or use the export script:
@@ -225,7 +225,7 @@ This is the recommended approach for OpenPalm containers when the Interactive Se
    scripts/gws-export.sh
    ```
 
-4. The container's `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` env var points to `/etc/vault/.gws/credentials.json`, so gws will find it automatically.
+4. The container's `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` env var points to `/stash/secrets/.gws/credentials.json`, so gws will find it automatically.
 
 ### Why export instead of copying the config dir?
 
@@ -236,7 +236,7 @@ If you copy the full `.gws/` directory instead (including `.encryption_key`), th
 ### Security Considerations
 
 - The exported `credentials.json` contains full OAuth tokens and client secrets in plaintext. Treat it like a password.
-- In OpenPalm, `knowledge/vaults/` is the correct location — it's mounted read-write to the assistant at `/etc/vault/`.
+- In OpenPalm, `knowledge/secrets/` is the correct location — it's mounted read-write to the assistant at `/stash/secrets/`.
 - Set file permissions: `chmod 600 credentials.json`
 - Rotate credentials regularly — tokens can expire or be revoked.
 
@@ -285,19 +285,19 @@ For server-to-server operations without user context. Best for background jobs, 
    - Add the service account's client ID
    - Add the required OAuth scopes
 
-4. Place the key in the vault:
+4. Place the key in the secrets directory:
 
    ```bash
-   cp ~/Downloads/your-project-*.json ~/.openpalm/knowledge/vaults/gcloud-credentials.json
+   cp ~/Downloads/your-project-*.json ~/.openpalm/knowledge/secrets/gcloud-credentials.json
    ```
 
-   The compose file maps this to `GOOGLE_APPLICATION_CREDENTIALS: /etc/vault/gcloud-credentials.json`.
+   The compose file maps this to `GOOGLE_APPLICATION_CREDENTIALS: /stash/secrets/gcloud-credentials.json`.
 
 ### What the user provides
 
 | File | Source | Vault location |
 |------|--------|---------------|
-| Service account key JSON | **User downloads** from Cloud Console > Service Accounts > Keys | `knowledge/vaults/gcloud-credentials.json` |
+| Service account key JSON | **User downloads** from Cloud Console > Service Accounts > Keys | `knowledge/secrets/gcloud-credentials.json` |
 
 No other files are needed. No `client_secret.json`, no `credentials.json`, no `.encryption_key`.
 
@@ -329,7 +329,7 @@ The simplest method for quick testing when you already have an access token from
 
 ### For OpenPalm
 
-Add to `knowledge/vaults/user.env`:
+Add to `knowledge/env/user.env`:
 
 ```bash
 GOOGLE_WORKSPACE_CLI_TOKEN=ya29.a0ARrdaM...
@@ -362,8 +362,8 @@ export GOOGLE_WORKSPACE_CLI_TOKEN=$(gcloud auth print-access-token)
 gws checks credentials in this order. The first match wins:
 
 1. **`GOOGLE_WORKSPACE_CLI_TOKEN`** — Raw access token (highest priority, set via user.env)
-2. **`GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`** — Path to a credentials JSON (compose hardcodes to `/etc/vault/.gws/credentials.json`)
-3. **Encrypted credentials** — In `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` (compose hardcodes to `/etc/vault/.gws/`)
+2. **`GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`** — Path to a credentials JSON (compose hardcodes to `/stash/secrets/.gws/credentials.json`)
+3. **Encrypted credentials** — In `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` (compose hardcodes to `/stash/secrets/.gws/`)
 4. **Plaintext `credentials.json`** — In default config dir (lowest priority)
 
-**Quirk:** If `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` is set but the file doesn't exist, gws fails immediately — it does NOT fall through to check the config dir. This is why the OpenPalm compose file only sets `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` (pointing to `/etc/vault/.gws/`) and omits `CREDENTIALS_FILE`. All auth methods work through the config dir: encrypted creds from `gws auth login`, plaintext exports placed as `credentials.json` in the dir, or service account keys.
+**Quirk:** If `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` is set but the file doesn't exist, gws fails immediately — it does NOT fall through to check the config dir. This is why the OpenPalm compose file only sets `GOOGLE_WORKSPACE_CLI_CONFIG_DIR` (pointing to `/stash/secrets/.gws/`) and omits `CREDENTIALS_FILE`. All auth methods work through the config dir: encrypted creds from `gws auth login`, plaintext exports placed as `credentials.json` in the dir, or service account keys.

@@ -24,7 +24,8 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     akm/               AKM config directory
 
   knowledge/
-    vaults/            User-managed secrets (akm vault:user)
+    env/               User-managed env config (akm env:user — user.env)
+    secrets/           Stack-managed file secrets (akm secret — Compose grants)
     tasks/             Scheduled automation task files (*.yml)
 
   data/
@@ -64,7 +65,7 @@ This repo directory contains source assets embedded by the CLI during build. The
       stack.yml          Template stack spec (copied at install)
     assistant/           Seed files for config/assistant/ (OpenCode config)
     guardian/            Guardian OpenCode global config (opencode.jsonc → /etc/opencode)
-  knowledge/             Built-in AKM stash assets (skills, tasks, vault path)
+  knowledge/             Built-in AKM stash assets (skills, tasks, env, secrets)
   openpalm.sh            Power-user docker compose helper (bash)
   openpalm.ps1           Power-user docker compose helper (PowerShell)
 ```
@@ -107,7 +108,8 @@ services and overlays belong in `custom.compose.yml`.
 |---|---|---|
 | `config/` | User | User edits, explicit admin actions, assistant via authenticated admin API |
 | `config/stack/` | System/User | CLI/admin manage fixed runtime assets and `stack.env`; users edit `custom.compose.yml` |
-| `knowledge/vaults/` | User | User edits via akm vault CLI or admin UI secret updates |
+| `knowledge/env/` | User | User edits `user.env` directly or via admin UI user-env updates |
+| `knowledge/secrets/` | System | Stack-managed file secrets (Compose grants); written by CLI/admin |
 | `knowledge/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
 | `data/` | Services | Containers and processes at runtime |
 | `workspace/` | Services | Durable shared data (not a secret store) |

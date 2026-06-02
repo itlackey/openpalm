@@ -16,10 +16,10 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 | Path | Contains | Back up? |
 |---|---|---|
 | `~/.openpalm/config/stack/` | `stack.env`, `secrets/`, live compose files and helper scripts | Yes |
-| `~/.openpalm/knowledge/vaults/` | `user.env` (optional user-managed secrets) | Yes |
+| `~/.openpalm/knowledge/env/` | `user.env` (optional user-managed secrets) | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
 | `~/.openpalm/data/` | durable service data | Yes |
-| `~/.openpalm/knowledge/` | AKM stash (memory, skills, vaults) | Yes |
+| `~/.openpalm/knowledge/` | AKM stash (memory, skills, env, secrets) | Yes |
 | `~/.openpalm/workspace/` | shared workspace | Yes |
 | `~/.openpalm/data/logs/` | logs and audit files | Optional |
 | `~/.openpalm/data/backups/` | lifecycle backup snapshots | Optional |
@@ -109,7 +109,7 @@ the current model.
 
 | File or directory | Purpose |
 |---|---|
-| `~/.openpalm/knowledge/vaults/user.env` | AKM vault backing file for user-managed secrets |
+| `~/.openpalm/knowledge/env/user.env` | AKM env backing file for user-managed secrets |
 | `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed service secret files |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |

@@ -185,12 +185,10 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'config/stack/custom.compose.yml'))).toBe(true);
     expect(readFileSync(join(homeDir, 'config/stack/stack.yml'), 'utf-8')).toContain('- chat');
 
-    // ── Validate vault files are regular files (not directories) ─────
-    // Note: vault/user/user.env is no longer
-    // seeded — user-managed env secrets live in akm vault:user
-    // (knowledge/vaults/user.env) and the assistant entrypoint sources
-    // it directly. The compose env_file mount for vault/user/user.env
-    // has been removed too.
+    // ── Validate env/secret files are regular files (not directories) ─
+    // Note: user-managed env config lives in the akm env:user file
+    // (knowledge/env/user.env) and the assistant entrypoint sources it
+    // directly. It is never passed to Compose as an env_file.
     for (const relPath of [
       'config/stack/stack.env',
       'config/stack/auth.json',

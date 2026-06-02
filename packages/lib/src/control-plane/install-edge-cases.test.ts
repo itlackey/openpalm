@@ -2,7 +2,7 @@
  * Edge-case tests for the OpenPalm install and setup flow.
  *
  * Each test creates its own temp directory tree mimicking the single
- * ~/.openpalm/ root layout (config, vault, data, logs), then runs the
+ * ~/.openpalm/ root layout (config, knowledge, data, logs), then runs the
  * actual library functions against it. No mocks of code under test.
  */
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
@@ -159,7 +159,7 @@ describe("Fresh Install", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  // Scenario 1: ensureSecrets does NOT seed user.env (see akm-vault) but
+  // Scenario 1: ensureSecrets does NOT seed user.env (see akm-user-env) but
   // does create stack.env with required keys when files do not exist.
   it("ensureSecrets creates stack.env with required keys on fresh install", () => {
     const state: ControlPlaneState = {

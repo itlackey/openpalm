@@ -6,7 +6,7 @@
 #   2. compose.yml has required openpalm.name and openpalm.description labels
 #   3. compose.yml uses a static service name (not ${INSTANCE_ID})
 #   4. .env.schema is parseable (non-empty, valid variable definitions)
-#   5. No vault mount violations
+#   5. No secret/env mount violations
 #   6. Joins at least one stack network
 #
 # Exit code: 0 on success, 1 on any validation failure.
@@ -52,9 +52,13 @@ for addon_dir in "$ADDONS_DIR"/*/; do
 		overlay_only=1
 	fi
 
-	# Vault mount violations apply to every addon (security).
-	if grep -qE '^\s*-\s+.*vault(/?)"\s*:' "$compose_file" || grep -qE '^\s*-\s+.*vault(/?)\s*:/' "$compose_file"; then
-		echo "  FAIL: compose.yml mounts vault directory (security violation)"
+	# Secret/env mount violations apply to every addon (security): addons must
+	# never bind-mount the user's secret stores (knowledge/secrets, knowledge/env)
+	# or the legacy vault directory. Match a volume list-item whose source path
+	# contains one of those dirs followed by the `:` mount separator (quoted or
+	# not, with or without a trailing slash).
+	if grep -qE '^\s*-\s+.*(knowledge/secrets|knowledge/env|/vault)[^:]*:' "$compose_file"; then
+		echo "  FAIL: compose.yml mounts a secret/env directory (security violation)"
 		errors=$((errors + 1))
 	fi
 

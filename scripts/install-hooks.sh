@@ -28,6 +28,6 @@ install_hook pre-commit
 echo ""
 echo "The pre-commit hook pattern-matches staged additions for common API key"
 echo "formats (OpenAI sk-, Groq gsk_, Google AIza, raw hex64). It is a best-"
-echo "effort guard — for full vault inspection, run 'openpalm scan'."
+echo "effort guard — for full env inspection, run 'openpalm scan'."
 echo ""
 echo "Done. Git hooks installed."

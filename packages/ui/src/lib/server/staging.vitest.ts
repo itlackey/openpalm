@@ -4,7 +4,7 @@
  * Verifies that:
  * 1. Stack compose overlays live in config/stack/ (not config/components/)
  * 2. Compose file list uses config/stack/ paths
- * 3. User vault data lives in knowledge/vaults/user.env; stack secrets live in knowledge/secrets/
+ * 3. User env config lives in knowledge/env/user.env; stack secrets live in knowledge/secrets/
  * 4. Runtime validation checks fixed compose files for channels
  * 5. Configuration persistence is idempotent
  */
@@ -60,8 +60,8 @@ function writeStackCompose(homeDir: string, filename: string, yml: string): void
 }
 
 function seedUserEnv(stashDir: string, content: string): void {
-  mkdirSync(join(stashDir, "vaults"), { recursive: true });
-  writeFileSync(join(stashDir, "vaults", "user.env"), content);
+  mkdirSync(join(stashDir, "env"), { recursive: true });
+  writeFileSync(join(stashDir, "env", "user.env"), content);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -106,13 +106,13 @@ describe("Stack overlay discovery — stack/ layout", () => {
   });
 });
 
-describe("User extensions in knowledge/vaults/user.env (akm vault:user store)", () => {
-  test("user.env is read from knowledge/vaults/", () => {
+describe("User extensions in knowledge/env/user.env (akm env:user)", () => {
+  test("user.env is read from knowledge/env/", () => {
     const state = makeState(baseDir);
     const secretsContent = "CUSTOM_SECRET=test-token\n";
     seedUserEnv(state.stashDir, secretsContent);
 
-    const userEnvPath = join(state.stashDir, "vaults", "user.env");
+    const userEnvPath = join(state.stashDir, "env", "user.env");
     expect(existsSync(userEnvPath)).toBe(true);
     expect(readFileSync(userEnvPath, "utf-8")).toBe(secretsContent);
   });

@@ -73,7 +73,7 @@ For full control without any harness:
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/config/stack/stack.env"
-$EDITOR "$HOME/.openpalm/knowledge/vaults/user.env"
+$EDITOR "$HOME/.openpalm/knowledge/env/user.env"
 ```
 
 Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md).
@@ -137,7 +137,7 @@ The copied bundle gives you a predictable host layout:
 |---|---|
 | `~/.openpalm/config/stack/` | Compose files |
 | `~/.openpalm/config/stack/stack.env` | Stack-level env values |
-| `~/.openpalm/knowledge/vaults/user.env` | Optional user extensions |
+| `~/.openpalm/knowledge/env/user.env` | Optional user extensions |
 | `~/.openpalm/config/` | User-managed config |
 | `~/.openpalm/data/` | Persistent container data |
 | `~/.openpalm/data/logs/` | Logs |

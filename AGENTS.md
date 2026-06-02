@@ -229,7 +229,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit UI/API config actions, assistant calls through authenticated admin APIs on user request.
-- **Secret boundary.** `config/stack/stack.env` is non-secret runtime configuration only. Secret values live as files under `knowledge/secrets/` and are granted per service through Compose `secrets:`. `knowledge/vaults/user.env` is AKM vault backing state, not a Compose env file.
+- **Secret boundary.** `config/stack/stack.env` is non-secret runtime configuration only. Secret values live as files under `knowledge/secrets/` and are granted per service through Compose `secrets:`. `knowledge/env/user.env` is AKM env backing state, not a Compose env file.
 - **Host CLI or UI is the orchestrator.** CLI manages Docker Compose directly on the host. UI provides a web UI as a host process (no container, no docker-socket-proxy).
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI and UI both import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
@@ -248,9 +248,9 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
 | `config/` | User | Non-secret config: `stack.yml` capabilities, assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`) |
-| `knowledge/vaults/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
+| `knowledge/env/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | `config/stack/` | Admin | System-managed: `stack.env` (paths, ports), `auth.json` (shared OpenCode provider creds), `secrets/` file secrets, compose files |
-| `knowledge/` | User/Services | AKM knowledge (skills, vaults, agents); `knowledge/tasks/` holds scheduled automation task files |
+| `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/tasks/` holds scheduled automation task files |
 | `data/` | Services/System | Persistent data: assistant, guardian, akm, logs, backups, rollback |
 | `data/akm/cache/` | Services/System | AKM cache and task logs |
 | `data/akm/data/` | Services/System | AKM databases and durable data |

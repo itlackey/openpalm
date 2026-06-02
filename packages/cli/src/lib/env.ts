@@ -5,7 +5,7 @@ import { defaultDockerSock } from './paths.ts';
 
 /**
  * Ensures the data/ directory exists.
- * User-managed env secrets live in the akm `vault:user` store and are sourced
+ * User-managed env config lives in the akm `env:user` file and is sourced
  * by the assistant entrypoint directly.
  */
 export async function ensureSecrets(dataDir: string): Promise<void> {

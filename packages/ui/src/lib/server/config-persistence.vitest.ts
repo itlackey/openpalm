@@ -149,7 +149,7 @@ describe("buildEnvFiles", () => {
 
   test("returns stack.env when it exists", () => {
     // Note: user.env is no longer a compose
-    // env_file. User-managed env secrets live in the akm `vault:user` store
+    // env_file. User-managed env config lives in the akm `env:user` file
     // and are sourced by the assistant entrypoint at container startup.
     const state = makeTestState();
     trackDir(state.homeDir);

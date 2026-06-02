@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Load test environment variables from .dev vault for Playwright E2E tests.
+# Load test environment variables from .dev env for Playwright E2E tests.
 # Source this file; do not execute it directly.
 #
 # Usage (from package.json or shell):

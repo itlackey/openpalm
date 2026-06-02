@@ -25,7 +25,7 @@
 #          | bash -s -- --force --version <target>
 #
 #   5. Verify:
-#      - knowledge/vaults/user.env is NOT overwritten (custom user vault keys preserved)
+#      - knowledge/env/user.env is NOT overwritten (custom user env keys preserved)
 #      - config/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
 #      - knowledge/secrets/ files are NOT overwritten (operator password preserved)
 #      - All services come back healthy
@@ -194,7 +194,7 @@ mkdir -p \
   "${SECRETS_DIR}" \
   "${OP_HOME}/config/assistant" \
   "${OP_HOME}/config/akm" \
-  "${STASH_DIR}/vaults" \
+  "${STASH_DIR}/env" \
   "${STASH_DIR}/tasks" \
   "${DATA_DIR}/assistant" \
   "${DATA_DIR}/guardian" \
@@ -213,14 +213,14 @@ if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/d
   esac
 fi
 
-# Seed knowledge/vaults/user.env — user-managed secrets (akm vault:user)
-cat >"${STASH_DIR}/vaults/user.env" <<EOF
+# Seed knowledge/env/user.env — user-managed config (akm env:user)
+cat >"${STASH_DIR}/env/user.env" <<EOF
 # Upgrade test user-managed env
 OPENAI_BASE_URL=
 # Custom user key that must survive upgrade
 MY_CUSTOM_KEY=my-custom-value-12345
 EOF
-chmod 600 "${STASH_DIR}/vaults/user.env"
+chmod 600 "${STASH_DIR}/env/user.env"
 
 # Seed config/stack/stack.env (system-managed, non-secret)
 cat >"${STACK_DIR}/stack.env" <<EOF
@@ -315,8 +315,8 @@ pass "Custom user file written to stack/"
 
 header "Phase 3: Record pre-upgrade state"
 
-# Checksum knowledge/vaults/user.env
-SECRETS_CHECKSUM_BEFORE=$(sha256sum "${STASH_DIR}/vaults/user.env" | awk '{print $1}')
+# Checksum knowledge/env/user.env
+SECRETS_CHECKSUM_BEFORE=$(sha256sum "${STASH_DIR}/env/user.env" | awk '{print $1}')
 echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 
 # Checksum config/stack/stack.env
@@ -344,10 +344,10 @@ pass "Pre-upgrade state recorded (admin is a host process; no HTTP check at this
 header "Phase 4: Simulate upgrade"
 
 # The upgrade simulation mirrors what setup.sh does on re-run:
-#   1. Detects existing install (knowledge/vaults/user.env exists)
+#   1. Detects existing install (knowledge/env/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
 #   3. Refreshes compose to config/stack/
-#   4. Does NOT overwrite knowledge/vaults/user.env, config/stack/stack.env, or knowledge/secrets/
+#   4. Does NOT overwrite knowledge/env/user.env, config/stack/stack.env, or knowledge/secrets/
 #   5. Restarts services with compose up
 
 echo "  Simulating setup.sh re-run..."
@@ -357,7 +357,7 @@ mkdir -p \
   "${STACK_DIR}" "${STACK_DIR}/addons" \
   "${SECRETS_DIR}" \
   "${OP_HOME}/config/assistant" "${OP_HOME}/config/akm" \
-  "${STASH_DIR}/vaults" "${STASH_DIR}/tasks" \
+  "${STASH_DIR}/env" "${STASH_DIR}/tasks" \
   "${DATA_DIR}/assistant" "${DATA_DIR}/guardian" \
   "${DATA_DIR}/registry/addons" "${DATA_DIR}/registry/automations" \
   "${DATA_DIR}/logs" "${OP_HOME}/workspace"
@@ -365,12 +365,12 @@ mkdir -p \
 # Step 2: Refresh compose (simulate download from GitHub)
 cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
-# Step 3: knowledge/vaults/user.env — must NOT be overwritten on upgrade
-if [[ -f "${STASH_DIR}/vaults/user.env" ]]; then
-  echo "  knowledge/vaults/user.env exists -- NOT overwriting (same as setup.sh)"
+# Step 3: knowledge/env/user.env — must NOT be overwritten on upgrade
+if [[ -f "${STASH_DIR}/env/user.env" ]]; then
+  echo "  knowledge/env/user.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: knowledge/vaults/user.env was deleted during upgrade simulation!"
-  fail "knowledge/vaults/user.env should still exist"
+  echo "  BUG: knowledge/env/user.env was deleted during upgrade simulation!"
+  fail "knowledge/env/user.env should still exist"
 fi
 
 # Step 4: config/stack/stack.env — must NOT be overwritten on upgrade
@@ -409,15 +409,15 @@ fi
 
 header "Phase 5: Verification"
 
-# ── 5a: knowledge/vaults/user.env unchanged ──────────────────────────────
+# ── 5a: knowledge/env/user.env unchanged ──────────────────────────────
 echo ""
-echo "=== 5a: knowledge/vaults/user.env preservation ==="
+echo "=== 5a: knowledge/env/user.env preservation ==="
 
-SECRETS_CHECKSUM_AFTER=$(sha256sum "${STASH_DIR}/vaults/user.env" | awk '{print $1}')
+SECRETS_CHECKSUM_AFTER=$(sha256sum "${STASH_DIR}/env/user.env" | awk '{print $1}')
 if [[ "$SECRETS_CHECKSUM_BEFORE" == "$SECRETS_CHECKSUM_AFTER" ]]; then
-  pass "knowledge/vaults/user.env checksum unchanged"
+  pass "knowledge/env/user.env checksum unchanged"
 else
-  fail "knowledge/vaults/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
+  fail "knowledge/env/user.env was modified during upgrade (before: ${SECRETS_CHECKSUM_BEFORE}, after: ${SECRETS_CHECKSUM_AFTER})"
 fi
 
 OP_UI_LOGIN_PASSWORD_VALUE=$(tr -d '\n' <"${SECRETS_DIR}/op_ui_login_password")
@@ -427,9 +427,9 @@ else
   fail "OP_UI_LOGIN_PASSWORD changed (expected '${OP_UI_LOGIN_PASSWORD}', got '${OP_UI_LOGIN_PASSWORD_VALUE}')"
 fi
 
-CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${STASH_DIR}/vaults/user.env" | head -1 | cut -d= -f2-)
+CUSTOM_KEY_VALUE=$(grep "^MY_CUSTOM_KEY=" "${STASH_DIR}/env/user.env" | head -1 | cut -d= -f2-)
 if [[ "$CUSTOM_KEY_VALUE" == "my-custom-value-12345" ]]; then
-  pass "Custom user key preserved in knowledge/vaults/user.env"
+  pass "Custom user key preserved in knowledge/env/user.env"
 else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi

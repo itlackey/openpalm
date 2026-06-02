@@ -2,7 +2,7 @@
 # gws-export.sh — Export gws credentials for headless/CI environments
 #
 # Exports authenticated gws credentials from the host and saves them
-# to vault/user/.gws/ for use in Docker containers or CI pipelines.
+# to knowledge/secrets/.gws/ for use in Docker containers or CI pipelines.
 #
 # Usage:
 #   ./scripts/gws-export.sh [--op-home ~/.openpalm]
@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: $0 [--op-home PATH]"
       echo ""
-      echo "Exports gws CLI credentials to knowledge/vaults/.gws/ for Docker/CI use."
+      echo "Exports gws CLI credentials to knowledge/secrets/.gws/ for Docker/CI use."
       echo "Run 'gws auth login' on the host first."
       exit 0
       ;;
@@ -27,32 +27,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VAULT_GWS="${OP_HOME}/knowledge/vaults/.gws"
+GWS_DIR="${OP_HOME}/knowledge/secrets/.gws"
 
 if ! command -v gws &>/dev/null; then
   echo "ERROR: gws CLI not found."
   exit 1
 fi
 
-mkdir -p "${VAULT_GWS}"
+mkdir -p "${GWS_DIR}"
 
 echo "Exporting gws credentials..."
-gws auth export --unmasked > "${VAULT_GWS}/credentials.json"
-chmod 600 "${VAULT_GWS}/credentials.json"
+gws auth export --unmasked > "${GWS_DIR}/credentials.json"
+chmod 600 "${GWS_DIR}/credentials.json"
 
-echo "Credentials exported to: ${VAULT_GWS}/credentials.json"
+echo "Credentials exported to: ${GWS_DIR}/credentials.json"
 echo ""
 
 # Also copy the full config dir for encryption key and other state
 GWS_CONFIG="${GOOGLE_WORKSPACE_CLI_CONFIG_DIR:-${HOME}/.config/gws}"
 if [[ -d "$GWS_CONFIG" ]]; then
   echo "Copying full gws config from ${GWS_CONFIG}/..."
-  cp -r "${GWS_CONFIG}/." "${VAULT_GWS}/"
-  echo "Config directory synced to ${VAULT_GWS}/"
+  cp -r "${GWS_CONFIG}/." "${GWS_DIR}/"
+  echo "Config directory synced to ${GWS_DIR}/"
 fi
 
 echo ""
-echo "Verify: GOOGLE_WORKSPACE_CLI_CONFIG_DIR=${VAULT_GWS} gws drive files list --params '{\"pageSize\": 1}'"
+echo "Verify: GOOGLE_WORKSPACE_CLI_CONFIG_DIR=${GWS_DIR} gws drive files list --params '{\"pageSize\": 1}'"
 echo ""
 echo "Recreate the assistant container to pick up changes:"
 echo "  docker compose ... up -d --force-recreate --no-deps assistant"

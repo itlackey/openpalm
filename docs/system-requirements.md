@@ -79,7 +79,7 @@ OpenPalm uses one host home directory: `~/.openpalm/`.
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/config/stack/` | Live compose files and enabled addon overlays |
-| `~/.openpalm/knowledge/vaults/` | User-managed secret env files |
+| `~/.openpalm/knowledge/env/` | User-managed secret env files |
 | `~/.openpalm/config/` | User-editable config |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/data/logs/` | Logs and audit files |

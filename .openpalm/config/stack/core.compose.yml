@@ -9,16 +9,16 @@
 # Channel and bot secrets are mounted per service via Compose secrets in
 # addon overlays and exposed to containers as *_FILE variables.
 #
-# User-managed env secrets live in the akm `vault:user` store at
-# knowledge/vaults/user.env (akm-cli >= 0.8.0 layout). The assistant
-# entrypoint sources that file at startup via `akm vault path vault:user`.
+# User-managed env config lives in the akm `env:user` file at
+# knowledge/env/user.env (akm-cli >= 0.8.0 layout). The assistant
+# entrypoint sources that file at startup (akm `env path env:user`).
 #
 # Directory model:
 #   ~/.openpalm/config/       — user-editable + system config (akm/)
 #   ~/.openpalm/config/stack/ — compose runtime + stack config (core/services/channels/custom
 #                               compose files, stack.env, auth.json)
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
-#   ~/.openpalm/knowledge/    — akm knowledge (skills, vaults, agents) — vault:user lives here
+#   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents) — env:user lives here
 #   ~/.openpalm/workspace/    — shared work area
 
 services:

@@ -362,7 +362,7 @@ service secrets.
 tar czf openpalm-backup-$(date +%Y%m%d).tar.gz ~/.openpalm
 ```
 
-This archives the complete stack: compose files, file-based secrets, AKM vault
+This archives the complete stack: compose files, file-based secrets, AKM user env
 data, config, and all persistent service data.
 
 ### Restore

@@ -321,16 +321,17 @@ export {
   importHostOpenCode,
 } from "./control-plane/host-opencode.js";
 
-// ── AKM Vault ────────────────────────────────────────────────────────────
+// ── AKM user env (env:user) ──────────────────────────────────────────────
 export {
-  AKM_USER_VAULT_REF,
+  AKM_USER_ENV_REF,
   buildAkmEnv,
-  ensureAkmUserVault,
-  writeAkmVaultKey,
-  deleteAkmVaultKey,
-  readAkmUserVaultFile,
-  readUserVaultSync,
-} from "./control-plane/akm-vault.js";
+  ensureAkmUserEnv,
+  writeUserEnvKey,
+  deleteUserEnvKey,
+  readUserEnvFile,
+  readUserEnvSync,
+  userEnvPathSync,
+} from "./control-plane/akm-user-env.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
 export type { UiBuildUpdateResult } from "./control-plane/ui-assets.js";

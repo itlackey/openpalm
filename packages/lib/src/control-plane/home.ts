@@ -101,9 +101,9 @@ export function ensureHomeDirs(): void {
     `${home}/data/logs`,           // service logs and audit files
     `${home}/data/backups`,        // lifecycle backup snapshots
     `${home}/data/rollback`,       // deploy rollback snapshots
-    // knowledge/ — akm knowledge (skills, vaults, agents); knowledge/tasks/ for scheduled automations
+    // knowledge/ — akm knowledge (skills, env, secrets, agents); knowledge/tasks/ for scheduled automations
     `${home}/knowledge`,
-    `${home}/knowledge/vaults`,
+    `${home}/knowledge/env`,
     `${home}/knowledge/secrets`,
     `${home}/knowledge/tasks`,
 

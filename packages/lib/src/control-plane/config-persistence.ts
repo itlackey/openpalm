@@ -35,7 +35,7 @@ const DEFAULT_IMAGE_TAG = "latest";
  *
  * Note: `vault/user/user.env` is no longer a
  * compose env_file. User-managed env secrets live in the akm
- * `vault:user` store and are sourced by the assistant entrypoint at
+ * `env:user` file and are sourced by the assistant entrypoint at
  * container startup. The legacy file is migrated into akm and deleted
  * on upgrade; subsequent `docker compose` invocations must not reference
  * it (compose interpolates `${VAR}` against the merged --env-file

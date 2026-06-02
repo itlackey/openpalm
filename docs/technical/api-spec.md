@@ -915,7 +915,7 @@ Error responses:
 
 - `400 bad_request` -- Invalid mode, missing `apiKey`, invalid API key format,
   unsupported provider, or invalid `methodIndex`.
-- `500 internal_error` -- Failed to write API key to vault.
+- `500 internal_error` -- Failed to write API key to the user env.
 
 ### `GET /admin/opencode/providers/:id/models`
 

@@ -8,7 +8,7 @@
  *   config/        — user-editable config + system config files (akm/)
  *   config/stack/  — compose runtime + stack config (stack.env, stack.yml, auth.json, fixed compose files)
  *   data/          — persistent service data, logs, backups, rollback
- *   knowledge/     — akm knowledge (skills, vaults, agents)
+ *   knowledge/     — akm knowledge (skills, env, secrets, agents)
  *   workspace/     — shared work area
  */
 import type { ControlPlaneState } from "./types.js";
@@ -67,8 +67,8 @@ export const passStoreDir          = (s: ControlPlaneState): string => `${s.data
 
 // ── Knowledge directory ─────────────────────────────────────────────────────
 
-/** akm vault:user file — lives in the knowledge dir */
-export const akmUserVaultPath      = (s: ControlPlaneState): string => `${s.stashDir}/vaults/user.env`;
+/** akm env:user file — lives in the knowledge dir */
+export const akmUserEnvPath        = (s: ControlPlaneState): string => `${s.stashDir}/env/user.env`;
 
 // ── Stack directory ─────────────────────────────────────────────────────────
 

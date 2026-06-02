@@ -232,7 +232,7 @@ async function prepareInstallFiles(
 
   for (const [path, content] of [
     [join(configDir, 'stack', 'auth.json'), '{}\n'],
-    [join(homeDir, 'knowledge', 'vaults', 'user.env'), '# OpenPalm user vault — add LLM API keys and other secrets here\n'],
+    [join(homeDir, 'knowledge', 'env', 'user.env'), '# OpenPalm user env (env:user) — add LLM API keys and other secrets here\n'],
   ] as const) {
     if (!(await Bun.file(path).exists())) await Bun.write(path, content);
   }

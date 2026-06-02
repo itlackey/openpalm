@@ -49,12 +49,12 @@ Keep this split in mind:
 │       └── config.json               # AKM config (LLM, embedding settings)
 │
 ├── knowledge/
-│   ├── vaults/
-│   │   ├── user.env                  # AKM vault backing file for user-managed secrets
-│   │   └── secrets/                  # System-managed service secrets (0700 dir, 0600 files)
+│   ├── env/
+│   │   └── user.env                  # AKM env backing file (env:user) for user-managed config
+│   ├── secrets/                      # System-managed service secrets (0700 dir, 0600 files)
 │   └── tasks/                        # AKM automation task files
 │
-├── state/                            ← DURABLE SERVICE DATA
+├── data/                             ← DURABLE SERVICE DATA
 │   ├── assistant/
 │   ├── guardian/
 │   ├── akm/
@@ -73,7 +73,7 @@ Keep this split in mind:
 
 Secrets are split by ownership and grant boundary:
 
-- **`~/.openpalm/knowledge/vaults/user.env`** -- AKM vault backing file for user-managed secrets; never passed to Docker Compose.
+- **`~/.openpalm/knowledge/env/user.env`** -- AKM env backing file for user-managed secrets; never passed to Docker Compose.
 - **`~/.openpalm/knowledge/secrets/`** -- System-managed service secret files granted through Compose `secrets:` and exposed as `*_FILE` variables.
 - **`~/.openpalm/config/stack/stack.env`** -- System-managed non-secret runtime env: ports, paths, image tags, hardware profile selections, and other infrastructure values.
 
@@ -275,7 +275,7 @@ write to the same config files.
 
 The running stack is whatever compose file set you launch. To change it:
 
-1. Edit files under `~/.openpalm/config/`, `~/.openpalm/knowledge/vaults/`, or `~/.openpalm/config/stack/`
+1. Edit files under `~/.openpalm/config/`, `~/.openpalm/knowledge/env/`, or `~/.openpalm/config/stack/`
 2. Rerun compose: `op up -d` (or the full `docker compose` command)
 
 The generated `run.sh` records the active first-party addon state and custom overlays used by the control plane.
