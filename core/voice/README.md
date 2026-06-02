@@ -12,7 +12,7 @@ Two image tags are published from this single `Dockerfile` via a build-arg:
 
 | Tag | Build arg | Wheels installed |
 |---|---|---|
-| `openpalm/voice:vX.Y.Z-cpu`   | `VARIANT=cpu` (default) | `torch==2.5.1+cpu`,  `onnxruntime==1.20.1` |
+| `openpalm/voice:vX.Y.Z-cpu`   | `VARIANT=cpu` (default) | `torch==2.5.1` (cpu index),  `onnxruntime==1.20.1` |
 | `openpalm/voice:vX.Y.Z-cu121` | `VARIANT=cu121`         | `torch==2.5.1+cu121`, `onnxruntime-gpu==1.20.1` |
 
 The runtime is `python:3.11-slim-bookworm`. Multi-stage build keeps the

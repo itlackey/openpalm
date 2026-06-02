@@ -91,8 +91,11 @@ RUN set -eux; \
             "torch==2.5.1+cu121" ; \
         pip install "onnxruntime-gpu==1.20.1" ; \
     else \
+        # NB: the cpu index publishes 2.5.x as plain "2.5.1" (no +cpu local
+        # tag); the +cpu suffix only exists from 2.6.0 onward. --index-url
+        # already pins this to the CPU build, so do NOT add "+cpu" here.
         pip install --index-url https://download.pytorch.org/whl/cpu \
-            "torch==2.5.1+cpu" ; \
+            "torch==2.5.1" ; \
         pip install "onnxruntime==1.20.1" ; \
     fi ; \
     pip install -r /build/requirements.txt
