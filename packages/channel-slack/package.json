@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/channel-slack",
   "description": "Slack bot channel adapter for OpenPalm",
-  "version": "0.11.0-beta.5",
+  "version": "0.11.0-beta.13",
   "type": "module",
   "license": "MPL-2.0",
   "repository": {
