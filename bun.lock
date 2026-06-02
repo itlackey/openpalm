@@ -15,7 +15,7 @@
     },
     "packages/channel-api": {
       "name": "@openpalm/channel-api",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "devDependencies": {
         "@openpalm/channels-sdk": "workspace:*",
       },
