@@ -72,6 +72,12 @@ export const POST: RequestHandler = (event) =>
     if (value.length === 0) {
       return errorResponse(400, 'bad_request', 'value must be non-empty; use DELETE to remove a key', {}, requestId);
     }
+    // env values are single-line; a newline or control char would break the
+    // line-oriented .env format that both the entrypoint `source` and dotenv
+    // read back.
+    if (/[\x00-\x08\x0a-\x1f\x7f]/.test(value)) {
+      return errorResponse(400, 'invalid_value', 'value must not contain newlines or control characters', {}, requestId);
+    }
 
     try {
       writeUserEnvKey(state, key, value);

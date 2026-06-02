@@ -19,6 +19,7 @@ import {
   createLogger,
   resolveRequestedImageTag,
   writeRunScript,
+  ensureAkmUserEnv,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -230,12 +231,14 @@ async function prepareInstallFiles(
   await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
   writeRunScript(createState());
 
-  for (const [path, content] of [
-    [join(configDir, 'stack', 'auth.json'), '{}\n'],
-    [join(homeDir, 'knowledge', 'env', 'user.env'), '# OpenPalm user env (env:user) — add LLM API keys and other secrets here\n'],
-  ] as const) {
-    if (!(await Bun.file(path).exists())) await Bun.write(path, content);
+  if (!(await Bun.file(join(configDir, 'stack', 'auth.json')).exists())) {
+    await Bun.write(join(configDir, 'stack', 'auth.json'), '{}\n');
   }
+  // Ensure the akm env:user file. ensureAkmUserEnv creates an empty 0600 file
+  // on a fresh install AND migrates a legacy knowledge/vaults/user.env into
+  // knowledge/env/user.env on upgrade — seeding an empty file here directly
+  // would shadow that migration and strand the user's existing keys.
+  ensureAkmUserEnv(createState());
 
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 }

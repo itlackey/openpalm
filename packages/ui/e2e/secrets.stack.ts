@@ -4,7 +4,7 @@
  * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
  * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
- * Tests the /admin/secrets/user-vault API end-to-end:
+ * Tests the /admin/secrets/user-env API end-to-end:
  *  - POST: write a test key
  *  - GET: verify key appears in the list (value is never returned)
  *  - DELETE: remove the key
@@ -22,7 +22,7 @@ const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
 const TEST_KEY = 'E2E_SECRETS_TEST_KEY';
-const VAULT_URL = `${ADMIN_URL}/admin/secrets/user-vault`;
+const VAULT_URL = `${ADMIN_URL}/admin/secrets/user-env`;
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
   return {
@@ -43,13 +43,13 @@ test.describe('Secrets CRUD', () => {
     await request.delete(`${VAULT_URL}?key=${TEST_KEY}`, { headers: headers() }).catch(() => {});
   });
 
-  test('GET /admin/secrets/user-vault returns vault metadata', async ({ request }) => {
+  test('GET /admin/secrets/user-env returns env metadata', async ({ request }) => {
     const res = await request.get(VAULT_URL, { headers: headers() });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.provider).toBe('akm');
+    expect(body.envRef).toBe('env:user');
     expect(Array.isArray(body.keys)).toBe(true);
-    expect(typeof body.available).toBe('boolean');
   });
 
   test('POST writes a key and returns ok:true', async ({ request }) => {
@@ -74,7 +74,7 @@ test.describe('Secrets CRUD', () => {
     const res = await request.get(VAULT_URL, { headers: headers() });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
-    // The response shape must only have: provider, vaultRef, available, keys
+    // The response shape must only have: provider, envRef, keys
     expect(body).not.toHaveProperty('values');
     // keys is an array of strings (names), not objects with values
     for (const k of body.keys) {

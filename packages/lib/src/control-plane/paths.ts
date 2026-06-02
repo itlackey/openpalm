@@ -66,9 +66,9 @@ export const secretsIndexPath      = (s: ControlPlaneState): string => `${s.data
 export const passStoreDir          = (s: ControlPlaneState): string => `${s.dataDir}/secrets/pass-store`;
 
 // ── Knowledge directory ─────────────────────────────────────────────────────
-
-/** akm env:user file — lives in the knowledge dir */
-export const akmUserEnvPath        = (s: ControlPlaneState): string => `${s.stashDir}/env/user.env`;
+// The akm env:user file path (`knowledge/env/user.env`) is owned by
+// `akm-user-env.ts` (`userEnvPathSync`), which also handles its read/write and
+// legacy migration — kept there rather than duplicated as a bare path here.
 
 // ── Stack directory ─────────────────────────────────────────────────────────
 

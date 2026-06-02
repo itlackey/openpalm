@@ -111,6 +111,14 @@ describe('admin user-env route', () => {
     expect(res.status).toBe(400);
   });
 
+  test('POST rejects a value containing a newline (would corrupt the .env)', async () => {
+    const res = await POST(makeEvent('POST', '/admin/secrets/user-env', {
+      key: 'MULTILINE',
+      value: 'line1\nline2',
+    }));
+    expect(res.status).toBe(400);
+  });
+
   test('DELETE removes a key from the user env entirely', async () => {
     await POST(makeEvent('POST', '/admin/secrets/user-env', { key: 'KEEP_ME', value: 'ok' }));
     await POST(makeEvent('POST', '/admin/secrets/user-env', { key: 'DROP_ME', value: 'bye' }));

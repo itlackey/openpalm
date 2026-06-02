@@ -85,9 +85,11 @@ maybe_source_akm_user_env() {
 
   if [ -z "$env_path" ]; then return 0; fi
 
+  # `|| true` so a malformed line in the user-edited env file cannot abort the
+  # entrypoint under `set -euo pipefail` and trap the assistant in a restart loop.
   set -a
   # shellcheck disable=SC1090
-  . "$env_path"
+  . "$env_path" || echo "warning: failed to source $env_path (malformed line?); continuing" >&2
   set +a
 }
 

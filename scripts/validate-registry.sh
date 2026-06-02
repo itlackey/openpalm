@@ -54,10 +54,11 @@ for addon_dir in "$ADDONS_DIR"/*/; do
 
 	# Secret/env mount violations apply to every addon (security): addons must
 	# never bind-mount the user's secret stores (knowledge/secrets, knowledge/env)
-	# or the legacy vault directory. Match a volume list-item whose source path
-	# contains one of those dirs followed by the `:` mount separator (quoted or
-	# not, with or without a trailing slash).
-	if grep -qE '^\s*-\s+.*(knowledge/secrets|knowledge/env|/vault)[^:]*:' "$compose_file"; then
+	# or the legacy vault directory. Catch both the short-form volume syntax
+	# (`- <src>:<dst>`) and the long-form (`source: <src>`).
+	secret_path='knowledge/(secrets|env|vaults)|/vault'
+	if grep -qE "^\s*-\s+.*(${secret_path})[^:]*:" "$compose_file" \
+		|| grep -qE "^\s*source:\s*.*(${secret_path})" "$compose_file"; then
 		echo "  FAIL: compose.yml mounts a secret/env directory (security violation)"
 		errors=$((errors + 1))
 	fi
