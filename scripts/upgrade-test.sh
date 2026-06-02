@@ -18,7 +18,7 @@
 #
 #   3. Seed some user state:
 #      - Install a channel
-#      - Note the operator password in knowledge/vaults/secrets/op_ui_login_password
+#      - Note the operator password in knowledge/secrets/op_ui_login_password
 #
 #   4. Upgrade to the target version:
 #        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
@@ -27,7 +27,7 @@
 #   5. Verify:
 #      - knowledge/vaults/user.env is NOT overwritten (custom user vault keys preserved)
 #      - config/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
-#      - knowledge/vaults/secrets/ files are NOT overwritten (operator password preserved)
+#      - knowledge/secrets/ files are NOT overwritten (operator password preserved)
 #      - All services come back healthy
 #      - No errors in container logs
 #
@@ -92,7 +92,7 @@ TEST_ROOT="${ROOT_DIR}/.upgrade-test"
 export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
 STACK_DIR="${OP_HOME}/config/stack"
 STASH_DIR="${OP_HOME}/knowledge"
-SECRETS_DIR="${STASH_DIR}/vaults/secrets"
+SECRETS_DIR="${STASH_DIR}/secrets"
 DATA_DIR="${OP_HOME}/data"
 
 PROJECT_NAME="openpalm-upgrade-test"
@@ -136,7 +136,7 @@ trap cleanup EXIT
 
 # ── Helper: compose command ──────────────────────────────────────────
 # Compose uses config/stack/stack.env for non-secret values only. Service secrets
-# live as files under knowledge/vaults/secrets and are granted by compose overlays.
+# live as files under knowledge/secrets and are granted by compose overlays.
 # No admin container. Admin is a host process (openpalm).
 
 compose_cmd() {
@@ -347,7 +347,7 @@ header "Phase 4: Simulate upgrade"
 #   1. Detects existing install (knowledge/vaults/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
 #   3. Refreshes compose to config/stack/
-#   4. Does NOT overwrite knowledge/vaults/user.env, config/stack/stack.env, or knowledge/vaults/secrets/
+#   4. Does NOT overwrite knowledge/vaults/user.env, config/stack/stack.env, or knowledge/secrets/
 #   5. Restarts services with compose up
 
 echo "  Simulating setup.sh re-run..."
@@ -422,7 +422,7 @@ fi
 
 OP_UI_LOGIN_PASSWORD_VALUE=$(tr -d '\n' <"${SECRETS_DIR}/op_ui_login_password")
 if [[ "$OP_UI_LOGIN_PASSWORD_VALUE" == "$OP_UI_LOGIN_PASSWORD" ]]; then
-  pass "OP_UI_LOGIN_PASSWORD preserved in knowledge/vaults/secrets/op_ui_login_password"
+  pass "OP_UI_LOGIN_PASSWORD preserved in knowledge/secrets/op_ui_login_password"
 else
   fail "OP_UI_LOGIN_PASSWORD changed (expected '${OP_UI_LOGIN_PASSWORD}', got '${OP_UI_LOGIN_PASSWORD_VALUE}')"
 fi
@@ -496,7 +496,7 @@ echo "=== 5f: UI login password preservation ==="
 # Admin is a host process — no HTTP auth check here. Verify the password secret file.
 PASSWORD_AFTER=$(tr -d '\n' <"${SECRETS_DIR}/op_ui_login_password")
 if [[ "$PASSWORD_AFTER" == "$OP_UI_LOGIN_PASSWORD" ]]; then
-  pass "OP_UI_LOGIN_PASSWORD preserved in knowledge/vaults/secrets/op_ui_login_password after upgrade"
+  pass "OP_UI_LOGIN_PASSWORD preserved in knowledge/secrets/op_ui_login_password after upgrade"
 else
   fail "OP_UI_LOGIN_PASSWORD changed after upgrade (expected '${OP_UI_LOGIN_PASSWORD}', got '${PASSWORD_AFTER}')"
 fi

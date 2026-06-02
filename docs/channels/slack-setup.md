@@ -42,14 +42,14 @@ OpenPalm is compose-first: add the Slack overlay to your compose file set, store
 
 ## 2. Add Slack token secrets
 
-Store Slack tokens under `knowledge/vaults/secrets/`:
+Store Slack tokens under `knowledge/secrets/`:
 
 ```bash
-mkdir -p ~/.openpalm/knowledge/vaults/secrets
-printf '%s\n' 'xoxb-your-bot-token' > ~/.openpalm/knowledge/vaults/secrets/slack_bot_token
-printf '%s\n' 'xapp-your-app-token' > ~/.openpalm/knowledge/vaults/secrets/slack_app_token
-chmod 700 ~/.openpalm/knowledge/vaults/secrets
-chmod 600 ~/.openpalm/knowledge/vaults/secrets/slack_bot_token ~/.openpalm/knowledge/vaults/secrets/slack_app_token
+mkdir -p ~/.openpalm/knowledge/secrets
+printf '%s\n' 'xoxb-your-bot-token' > ~/.openpalm/knowledge/secrets/slack_bot_token
+printf '%s\n' 'xapp-your-app-token' > ~/.openpalm/knowledge/secrets/slack_app_token
+chmod 700 ~/.openpalm/knowledge/secrets
+chmod 600 ~/.openpalm/knowledge/secrets/slack_bot_token ~/.openpalm/knowledge/secrets/slack_app_token
 ```
 
 Optional access controls:
@@ -60,7 +60,7 @@ SLACK_ALLOWED_USERS=U01ABCDEF23
 SLACK_BLOCKED_USERS=U09ZZZZZZ99
 ```
 
-`CHANNEL_SLACK_SECRET_FILE` is system-managed and points to the channel HMAC secret granted from `~/.openpalm/knowledge/vaults/secrets/`.
+`CHANNEL_SLACK_SECRET_FILE` is system-managed and points to the channel HMAC secret granted from `~/.openpalm/knowledge/secrets/`.
 
 ## 3. Start the addon
 
@@ -108,7 +108,7 @@ Conversation notes:
 
 ## Troubleshooting
 
-- No replies: verify `slack_bot_token` and `slack_app_token` in `~/.openpalm/knowledge/vaults/secrets/`, Socket Mode, and subscribed events
+- No replies: verify `slack_bot_token` and `slack_app_token` in `~/.openpalm/knowledge/secrets/`, Socket Mode, and subscribed events
 - DMs fail: verify `im:history` and `message.im`
 - Channel thread follow-ups fail: verify `channels:history` + `message.channels` (public) and `groups:history` + `message.groups` (private)
 - Slash commands missing: add `commands`, create the commands in Slack, then reinstall the app
@@ -126,4 +126,4 @@ Conversation notes:
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
-| `CHANNEL_SLACK_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `knowledge/vaults/secrets/` |
+| `CHANNEL_SLACK_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `knowledge/secrets/` |

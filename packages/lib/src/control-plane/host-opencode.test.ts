@@ -103,6 +103,48 @@ describe("detectHostOpenCode", () => {
       expect(status.providerCount).toBe(0);
     });
   });
+
+  it("returns modelPreferences when model and small_model are set", () => {
+    const configDir = join(xdgRoot, "config", "opencode");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
+      provider: { groq: {} },
+      model: "groq/llama-3.3-70b-versatile",
+      small_model: "groq/llama-3.1-8b-instant",
+    }));
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      const status = detectHostOpenCode();
+      expect(status.modelPreferences).toBeDefined();
+      expect(status.modelPreferences?.model).toBe("groq/llama-3.3-70b-versatile");
+      expect(status.modelPreferences?.small_model).toBe("groq/llama-3.1-8b-instant");
+    });
+  });
+
+  it("omits modelPreferences when no model fields are set", () => {
+    const configDir = join(xdgRoot, "config", "opencode");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
+      provider: { groq: {} },
+    }));
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      const status = detectHostOpenCode();
+      expect(status.modelPreferences).toBeUndefined();
+    });
+  });
+
+  it("returns partial modelPreferences when only model is set", () => {
+    const configDir = join(xdgRoot, "config", "opencode");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
+      provider: { anthropic: {} },
+      model: "anthropic/claude-sonnet-4-5",
+    }));
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      const status = detectHostOpenCode();
+      expect(status.modelPreferences?.model).toBe("anthropic/claude-sonnet-4-5");
+      expect(status.modelPreferences?.small_model).toBeUndefined();
+    });
+  });
 });
 
 // ── importHostOpenCode ────────────────────────────────────────────────────────

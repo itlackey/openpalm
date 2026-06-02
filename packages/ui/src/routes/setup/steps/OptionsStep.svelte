@@ -1,48 +1,56 @@
 <script lang="ts">
   import { CHANNELS } from '$lib/wizard/constants.js';
   import type { ChannelState } from '$lib/wizard/types.js';
-  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
+  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
 
   interface Props {
     channelSelection: Record<string, boolean | ChannelState>;
-    hasOllama: boolean;
-    ollamaEnabled: boolean;
-    ollamaProfiles?: VoiceAddonProfile[];
-    selectedOllamaProfile?: string;
     imageTag: string;
     hostAkmEnabled: boolean;
     hostAkmAvailable: boolean;
+    enableVoice: boolean;
+    voiceProfiles: VoiceAddonProfile[];
+    selectedVoiceProfile: string;
+    ollamaEnabled: boolean;
+    ollamaProfiles: VoiceAddonProfile[];
+    selectedOllamaProfile: string;
     errorMessage: string;
     onback: () => void;
     onnext: () => void;
     onchanneltoggle: (id: string) => void;
     oncredentialchange: (chId: string, credKey: string, value: string) => void;
-    onollamaenabledchange: (v: boolean) => void;
-    onollamaprofilechange?: (id: string) => void;
     onimagtagchange: (v: string) => void;
     onhostakmchange: (v: boolean) => void;
+    onenablevoicechange: (v: boolean) => void;
+    onvoiceprofilechange: (id: string) => void;
+    onollamachange: (v: boolean) => void;
+    onollamaprofilechange: (id: string) => void;
   }
 
   let {
     channelSelection,
-    hasOllama,
-    ollamaEnabled,
-    ollamaProfiles = [],
-    selectedOllamaProfile = '',
     imageTag,
     hostAkmEnabled,
     hostAkmAvailable,
+    enableVoice,
+    voiceProfiles,
+    selectedVoiceProfile,
+    ollamaEnabled,
+    ollamaProfiles,
+    selectedOllamaProfile,
     errorMessage,
     onback,
     onnext,
     onchanneltoggle,
     oncredentialchange,
-    onollamaenabledchange,
-    onollamaprofilechange,
     onimagtagchange,
     onhostakmchange,
+    onenablevoicechange,
+    onvoiceprofilechange,
+    onollamachange,
+    onollamaprofilechange,
   }: Props = $props();
 
   function isChannelEnabled(chId: string, locked?: boolean): boolean {
@@ -107,6 +115,57 @@
   </div>
 </div>
 
+<!-- Add-ons -->
+<div class="options-section">
+  <h3 class="options-section-title">Add-ons</h3>
+  <p class="options-section-desc">Optional features to extend your assistant.</p>
+  <div class="toggle-grid" id="addons-grid">
+
+    <!-- Voice -->
+    <div class="toggle-card {enableVoice ? 'on' : ''} {enableVoice && voiceProfiles.length > 0 ? 'wide' : ''}">
+      <div class="toggle-card-header" role="button" tabindex="0"
+        onclick={() => onenablevoicechange(!enableVoice)}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onenablevoicechange(!enableVoice); }}>
+        <div class="toggle-card-icon">🎙️</div>
+        <div class="toggle-card-info">
+          <div class="toggle-card-name">Voice</div>
+          <div class="toggle-card-desc">Bundled text-to-speech and speech-to-text. Requires a one-time local model download.</div>
+        </div>
+        <div class="toggle-card-switch">
+          <div class="toggle-track {enableVoice ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+        </div>
+      </div>
+      {#if enableVoice && voiceProfiles.length > 0}
+        <div class="pcard-auth">
+          <VoiceProfileSelector profiles={voiceProfiles} selectedProfile={selectedVoiceProfile} onchange={onvoiceprofilechange} showDescription={false} />
+        </div>
+      {/if}
+    </div>
+
+    <!-- Ollama -->
+    <div class="toggle-card {ollamaEnabled ? 'on' : ''} {ollamaEnabled && ollamaProfiles.length > 0 ? 'wide' : ''}">
+      <div class="toggle-card-header" role="button" tabindex="0"
+        onclick={() => onollamachange(!ollamaEnabled)}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onollamachange(!ollamaEnabled); }}>
+        <div class="toggle-card-icon">🦙</div>
+        <div class="toggle-card-info">
+          <div class="toggle-card-name">Ollama</div>
+          <div class="toggle-card-desc">Run local AI models inside the stack. Downloads and serves models via Docker.</div>
+        </div>
+        <div class="toggle-card-switch">
+          <div class="toggle-track {ollamaEnabled ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+        </div>
+      </div>
+      {#if ollamaEnabled && ollamaProfiles.length > 0}
+        <div class="pcard-auth">
+          <VoiceProfileSelector profiles={ollamaProfiles} selectedProfile={selectedOllamaProfile} onchange={onollamaprofilechange} showDescription={false} />
+        </div>
+      {/if}
+    </div>
+
+  </div>
+</div>
+
 <!-- Advanced settings disclosure -->
 <details id="options-advanced-details">
   <summary class="options-advanced-summary" id="options-advanced-toggle">Advanced settings</summary>
@@ -123,42 +182,26 @@
     </div>
   </div>
 
-  <!-- Ollama addon (only shown when Ollama is a verified provider) -->
-  {#if hasOllama}
-    <div class="addon-row" id="ollama-addon">
-      <div class="addon-toggle-row">
-        <label class="addon-toggle-label">
-          <input type="checkbox" id="ollama-enabled" checked={ollamaEnabled}
-            onchange={(e) => onollamaenabledchange((e.currentTarget as HTMLInputElement).checked)}>
-          <span class="addon-label-text">Run Ollama inside the stack</span>
-        </label>
-        <span class="addon-help">Adds an Ollama container to the compose stack so you do not need a separate install.</span>
-      </div>
-      {#if ollamaEnabled && ollamaProfiles.length > 0 && onollamaprofilechange}
-        <div class="ollama-profile-row">
-          <div class="field-hint">Choose the hardware profile Ollama should use inside the stack.</div>
-          <VoiceProfileSelector
-            profiles={ollamaProfiles}
-            selectedProfile={selectedOllamaProfile}
-            onchange={onollamaprofilechange}
-          />
-        </div>
-      {/if}
-    </div>
-  {/if}
-
-  <!-- Host AKM section (only shown when ~/akm exists on the host) -->
+  <!-- Shared AKM (only shown when ~/akm exists on the host) -->
   {#if hostAkmAvailable}
     <div class="options-section">
       <h3 class="options-section-title">Shared AKM Environment</h3>
-      <p class="options-section-desc">Mount your host akm stash, index, and cache into the assistant container so the assistant and your local akm share the same knowledge base.</p>
-      <div class="addon-toggle-row">
-        <label class="addon-toggle-label">
-          <input type="checkbox" id="host-akm-enabled" checked={hostAkmEnabled}
-            onchange={(e) => onhostakmchange((e.currentTarget as HTMLInputElement).checked)}>
-          <span class="addon-label-text">Share host AKM environment</span>
-        </label>
-        <span class="addon-help">Lets the assistant read and write to your personal knowledge files on this computer.</span>
+      <p class="options-section-desc">Mount your host akm stash, index, and cache into the assistant container.</p>
+      <div class="toggle-grid">
+        <div class="toggle-card {hostAkmEnabled ? 'on' : ''}">
+          <div class="toggle-card-header" role="button" tabindex="0"
+            onclick={() => onhostakmchange(!hostAkmEnabled)}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onhostakmchange(!hostAkmEnabled); }}>
+            <div class="toggle-card-icon">🧠</div>
+            <div class="toggle-card-info">
+              <div class="toggle-card-name">Shared AKM</div>
+              <div class="toggle-card-desc">Lets the assistant read and write to your personal knowledge files on this computer.</div>
+            </div>
+            <div class="toggle-card-switch">
+              <div class="toggle-track {hostAkmEnabled ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   {/if}

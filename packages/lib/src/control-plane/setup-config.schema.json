@@ -35,7 +35,7 @@
       "properties": {
         "uiLoginPassword": {
           "type": "string",
-          "description": "Operator login password for the OpenPalm UI. Persisted as knowledge/vaults/secrets/op_ui_login_password; the UI's op_session cookie value is compared against it on every authenticated request.",
+          "description": "Operator login password for the OpenPalm UI. Persisted as knowledge/secrets/op_ui_login_password; the UI's op_session cookie value is compared against it on every authenticated request.",
           "minLength": 8
         }
       }

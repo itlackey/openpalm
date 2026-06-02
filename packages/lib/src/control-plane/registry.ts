@@ -432,8 +432,7 @@ function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
   const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || 'openpalm';
   const explicit = process.env.OP_VOICE_IMAGE_TAG?.trim();
   if (explicit) return `${namespace}/voice:${explicit}`;
-  const baseTag = process.env.OP_IMAGE_TAG?.trim() || 'latest';
-  return `${namespace}/voice:${baseTag}-${variant}`;
+  return `${namespace}/voice:latest-${variant}`;
 }
 
 /**
@@ -701,8 +700,6 @@ function enableAddon(homeDir: string, stackDir: string, name: string): MutationR
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setStackSpecAddon(stackDir, name, true);
     if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '1' });
-    // Pre-create the addon services directory so Docker doesn't create it as root
-    mkdirSync(join(homeDir, 'services', name), { recursive: true });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

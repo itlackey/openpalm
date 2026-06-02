@@ -2,7 +2,7 @@
  * Tests for validateProposedState().
  *
  * Post-#391 the validator no longer shells out to varlock. It reads the live
- * `config/stack/stack.env` and `knowledge/vaults/secrets/` files directly and emits
+ * `config/stack/stack.env` and `knowledge/secrets/` files directly and emits
  * presence-based errors/warnings. These tests stub the on-disk files and
  * assert the resulting shape.
  */

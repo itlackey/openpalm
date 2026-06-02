@@ -386,7 +386,7 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
-  it("writes the UI login password to knowledge/vaults/secrets", async () => {
+  it("writes the UI login password to knowledge/secrets", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 

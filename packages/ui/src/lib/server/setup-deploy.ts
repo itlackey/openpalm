@@ -85,6 +85,24 @@ export function resetDeployState(): void {
   };
 }
 
+// ── Image tag resolution ─────────────────────────────────────────────────
+
+/**
+ * Resolve the effective OP_IMAGE_TAG for a deploy.
+ * Reads exclusively from stack.env files — by the time startDeploy() runs,
+ * applyInstall() has already written the wizard's chosen tag to stack.env.
+ * Process env is intentionally ignored so shell variables can never silently
+ * override what the user configured in the wizard.
+ */
+function resolveImageTag(composeOpts: ReturnType<typeof buildComposeOptions>): string {
+  for (const envFile of composeOpts.envFiles ?? []) {
+    if (!existsSync(envFile)) continue;
+    const parsed = parseEnvFile(envFile);
+    if (parsed.OP_IMAGE_TAG) return parsed.OP_IMAGE_TAG;
+  }
+  return '';
+}
+
 // ── Docker stderr → friendly error messages ──────────────────────────────
 
 /**
@@ -367,52 +385,67 @@ export function startDeploy(state: ControlPlaneState): void {
         });
       }
 
-      // Phase 2: pull images. Surface this phase explicitly so the UI can
-      // explain the expected wait time (multi-GB images on first install).
-      // Retry transient pull failures (network blips, registry hiccups) up to
-      // three times with 0/5s/15s back-off. Permanent failures (manifest
-      // unknown, unauthorized) bail immediately.
-      //
-      // Profiles are included so all services (core + addons) are pulled
-      // in a single pass. The dev-mode fallback handles local images that
-      // don't exist in any registry.
+      // Phase 2: pull images.
+      // Dev-tagged images (tag starts with "dev", e.g. "dev", "dev-cu121") are
+      // local-only builds and are never published to Docker Hub. Skip the registry
+      // pull entirely for those and verify the images are present on the local
+      // daemon instead. For all other tags (semver, latest, etc.) pull normally
+      // with retries before starting.
       _state.phase = "pulling-images";
-      const pullDelaysMs = [0, 5_000, 15_000];
+      const imageTag = resolveImageTag(composeOpts);
+      const isDevTag = imageTag.startsWith('dev');
+
       let pullResult: Awaited<ReturnType<typeof composePull>> | null = null;
-      for (let attempt = 0; attempt < pullDelaysMs.length; attempt++) {
-        if (pullDelaysMs[attempt] > 0) {
-          logger.info("retrying image pull", { attempt: attempt + 1, delayMs: pullDelaysMs[attempt] });
-          await new Promise<void>((r) => setTimeout(r, pullDelaysMs[attempt]));
+      if (!isDevTag) {
+        const pullDelaysMs = [0, 5_000, 15_000];
+        for (let attempt = 0; attempt < pullDelaysMs.length; attempt++) {
+          if (pullDelaysMs[attempt] > 0) {
+            logger.info("retrying image pull", { attempt: attempt + 1, delayMs: pullDelaysMs[attempt] });
+            await new Promise<void>((r) => setTimeout(r, pullDelaysMs[attempt]));
+          }
+          pullResult = await composePull(composeOpts);
+          if (pullResult.ok) break;
+          const stderr = pullResult.stderr ?? "";
+          // Permanent errors — no point retrying.
+          if (/manifest unknown|manifest for .* not found|unauthorized|authentication required|access denied/i.test(stderr)) {
+            logger.error("image pull failed with permanent error", { stderr: stderr.slice(0, 500) });
+            break;
+          }
+          logger.warn("image pull failed (transient?)", {
+            attempt: attempt + 1,
+            stderr: stderr.slice(0, 500),
+          });
         }
-        pullResult = await composePull(composeOpts);
-        if (pullResult.ok) break;
-        const stderr = pullResult.stderr ?? "";
-        // Permanent errors — no point retrying.
-        if (/manifest unknown|manifest for .* not found|unauthorized|authentication required|access denied/i.test(stderr)) {
-          logger.error("image pull failed with permanent error", { stderr: stderr.slice(0, 500) });
-          break;
-        }
-        logger.warn("image pull failed (transient?)", {
-          attempt: attempt + 1,
-          stderr: stderr.slice(0, 500),
-        });
       }
-      if (!pullResult || !pullResult.ok) {
-        // Dev-mode fallback: locally-built images (typically tagged
-        // `:dev`) aren't in any registry, so `docker compose pull`
-        // legitimately fails with "manifest unknown". Check if every
-        // service's image is already present on the daemon — if so the
-        // pull is a no-op and we can proceed with composeUp. Production
-        // installs pull real published tags and never hit this branch.
+
+      if (isDevTag || !pullResult || !pullResult.ok) {
+        // Dev tags: verify all images are on the local daemon (operator must run
+        //   bun run dev:build first). Non-dev pull failures: same fallback check
+        //   before surfacing an error.
         const allPresent = await allServiceImagesPresent(composeOpts, services);
         if (allPresent) {
-          logger.info("image pull failed but all images present locally — continuing", {
-            services,
-            stderrSlice: (pullResult?.stderr ?? "").slice(0, 200),
-          });
+          if (isDevTag) {
+            logger.info("dev image tag — skipping registry pull, all images present locally", {
+              imageTag, services,
+            });
+          } else {
+            logger.info("image pull failed but all images present locally — continuing", {
+              services, stderrSlice: (pullResult?.stderr ?? "").slice(0, 200),
+            });
+          }
         } else {
-          const raw = pullResult?.stderr?.trim() || "Image pull failed";
-          const msg = mapDockerError(raw);
+          let msg: string;
+          if (isDevTag) {
+            // Identify which images are missing so the user knows exactly what to build.
+            const missing = await missingServiceImages(composeOpts, services);
+            const missingList = missing.length > 0 ? missing.join(', ') : 'one or more images';
+            msg =
+              `Dev images not found locally (tag: ${imageTag}): ${missingList}. ` +
+              `Run \`bun run dev:build\` from the project root to build them, ` +
+              `then retry setup.`;
+          } else {
+            msg = mapDockerError(pullResult?.stderr?.trim() || "Image pull failed");
+          }
           _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "error", label: "Image pull failed" }));
           _state.deployError = msg;
           return;
@@ -492,6 +525,42 @@ export function startDeploy(state: ControlPlaneState): void {
 
 const VOICE_ADDON = "voice";
 const VOICE_HEALTH_TIMEOUT_MS = 10 * 60_000; // 10 min for first-launch model load
+
+/**
+ * Return the image names for services whose images are NOT present on the
+ * local Docker daemon. Used to build actionable error messages.
+ */
+async function missingServiceImages(
+  composeOpts: ReturnType<typeof buildComposeOptions>,
+  services: string[],
+): Promise<string[]> {
+  if (services.length === 0) return [];
+  const { execFile } = await import("node:child_process");
+  const args = [
+    "compose",
+    ...composeOpts.files.flatMap((f) => ["-f", f]),
+    ...(composeOpts.envFiles ?? []).filter((f) => existsSync(f)).flatMap((f) => ["--env-file", f]),
+    ...composeOpts.profiles.flatMap((p) => ["--profile", p]),
+    "config", "--format", "json",
+  ];
+  const config: { services?: Record<string, { image?: string }> } = await new Promise((resolve) => {
+    execFile("docker", args, { timeout: 30_000 }, (err, stdout) => {
+      if (err) return resolve({});
+      try { resolve(JSON.parse(stdout.toString())); } catch { resolve({}); }
+    });
+  });
+  const serviceConfig = config.services ?? {};
+  const missing: string[] = [];
+  for (const svc of services) {
+    const image = serviceConfig[svc]?.image;
+    if (!image) { missing.push(`${svc} (image unknown)`); continue; }
+    const present = await new Promise<boolean>((resolve) => {
+      execFile("docker", ["image", "inspect", image], { timeout: 5_000 }, (err) => resolve(!err));
+    });
+    if (!present) missing.push(image);
+  }
+  return missing;
+}
 
 /**
  * Resolve each service's image via `docker compose config` and verify
@@ -590,8 +659,9 @@ async function bringUpVoiceIfEnabled(
     })),
   ];
 
-  // The voice image was already pulled in phase 2 (composePull with profiles).
-  // Just start the container.
+  // For dev-tagged images, the voice image was verified locally in phase 2.
+  // For published tags, the voice image was already pulled in phase 2 (composePull
+  // with profiles includes voice). Either way, just start the container.
   const upResult = await composeUp({
     ...composeOpts,
     services: profileServices,

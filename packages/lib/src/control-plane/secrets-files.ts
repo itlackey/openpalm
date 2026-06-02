@@ -18,7 +18,7 @@ function resolveHomeDirFromStackDir(stackDir: string): string {
 }
 
 export function resolveSecretsDir(stackDir: string): string {
-  const dir = join(resolveHomeDirFromStackDir(stackDir), 'knowledge', 'vaults', 'secrets');
+  const dir = join(resolveHomeDirFromStackDir(stackDir), 'knowledge', 'secrets');
   mkdirSync(dir, { recursive: true, mode: SECRETS_DIR_MODE });
   chmodSync(dir, SECRETS_DIR_MODE);
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

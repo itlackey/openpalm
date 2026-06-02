@@ -438,46 +438,30 @@
     return true;
   }
 
+  function enableRecommendedOllama(): void {
+    ollamaEnabled = true;
+    const st = providerState['ollama'];
+    if (st) {
+      st.selected = true;
+      st.verified = true;
+      st.ollamaMode = 'instack';
+      st.baseUrl = 'http://ollama:11434';
+      if (st.models.length === 0) st.models = ['nomic-embed-text', 'qwen3:4b'];
+    }
+    // Always pick the best available profile based on current GPU detection state.
+    const preferred = addonProfileId('ollama', gpuDetected ? 'cuda' : 'cpu');
+    const match = ollamaProfiles.find((p) => p.id === preferred && p.available !== false)
+      ?? ollamaProfiles.find((p) => p.available !== false);
+    selectedOllamaProfile = match?.id ?? preferred;
+  }
+
   async function handleUseDefaults(): Promise<void> {
-    const voiceEngine = enableVoice ? 'openpalm-voice' : '';
-
-    // Ensure a voice profile is selected when voice is enabled.
-    // loadVoiceProfiles() is async and may not have resolved yet.
-    if (enableVoice && !selectedVoiceProfile) {
-      const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
-      const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
-        ?? voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cpu') && p.available !== false)
-        ?? voiceProfiles.find((p) => p.available !== false);
-      selectedVoiceProfile = match?.id ?? addonProfileId('voice', 'cpu');
-    }
-
-    // If Ollama was enabled on the Welcome step, configure it as a provider
-    if (includeOllama) {
-      ollamaEnabled = true;
-      const st = providerState['ollama'];
-      if (st) {
-        st.selected = true;
-        st.verified = true;
-        // In-stack Ollama is reachable via Docker network DNS
-        st.baseUrl = 'http://ollama:11434';
-        // Pre-populate with a small embedding model for memory
-        if (st.models.length === 0) {
-          st.models = ['nomic-embed-text', 'qwen3:4b'];
-        }
-      }
-      // Auto-select Ollama hardware profile based on GPU detection
-      if (!selectedOllamaProfile) {
-        selectedOllamaProfile = addonProfileId('ollama', gpuDetected ? 'cuda' : 'cpu');
-      }
-    }
-
     if (verifiedProviders.length >= 1) {
       // Fast path: providers already verified by background detection.
-      autoSelectModels();
+      enableRecommendedOllama();
       applyImportedModelPreferences();
-      voiceTts = { engine: voiceEngine };
-      voiceStt = { engine: voiceEngine };
-      goToStep(6);
+      autoSelectModels();
+      goToStep(5);
       return;
     }
 
@@ -499,11 +483,34 @@
     }
 
     // Pick models from whatever was imported; allow empty install as fallback.
+    enableRecommendedOllama();
+    applyImportedModelPreferences();
     autoSelectModels();
-    voiceTts = { engine: voiceEngine };
-    voiceStt = { engine: voiceEngine };
     allowEmptyInstall = true;
-    goToStep(6);
+    goToStep(5);
+  }
+
+  function handleEnableVoiceChange(v: boolean): void {
+    enableVoice = v;
+    if (v && !selectedVoiceProfile) {
+      const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
+      const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
+        ?? voiceProfiles.find((p) => p.available !== false);
+      if (match) selectedVoiceProfile = match.id;
+    }
+  }
+
+  function handleOptionsOllamaChange(v: boolean): void {
+    if (v) {
+      enableRecommendedOllama();
+    } else {
+      ollamaEnabled = false;
+      const st = providerState['ollama'];
+      if (st && st.ollamaMode !== 'running') {
+        st.selected = false;
+        st.verified = false;
+      }
+    }
   }
 
   function validateStep2(): boolean {
@@ -558,8 +565,8 @@
     showDeploy = false;
     // Auto-select model defaults when entering Models step (index 3)
     if (n === 3) {
-      autoSelectModels();
       applyImportedModelPreferences();
+      autoSelectModels();
     }
     // Sync ollamaEnabled from ollamaMode when entering Options step (index 5)
     if (n === 5 && hasOllamaVerified) {
@@ -668,12 +675,12 @@
   }
 
   function applyImportedModelPreferences(): void {
-    if (!modelSelection.llm?.model && importedLlmModel) {
+    if (importedLlmModel) {
       const llmSelection = resolvePreferredModelSelection('llm', importedLlmModel);
       if (llmSelection) modelSelection.llm = llmSelection;
     }
 
-    if (!modelSelection.small?.model && importedSmallModel) {
+    if (importedSmallModel) {
       const smallSelection = resolvePreferredModelSelection('small', importedSmallModel);
       if (smallSelection) modelSelection.small = smallSelection;
     }
@@ -1174,11 +1181,15 @@
       // Use setup-namespace endpoint — no admin auth needed during setup
       const res = await fetch('/api/setup/host-status');
       if (res.ok) {
-        const data = (await res.json()) as { providerCount: number; imageTag?: string; hostAkmAvailable?: boolean; warning?: string };
-        hostProviderCount = data.providerCount ?? 0;
+        const data = (await res.json()) as { providerCount: number; credentialCount?: number; modelPreferences?: { model?: string; small_model?: string }; imageTag?: string; hostAkmAvailable?: boolean; warning?: string };
+        hostProviderCount = Math.max(data.providerCount ?? 0, data.credentialCount ?? 0);
         if (data.imageTag && !imageTag) imageTag = data.imageTag;
         if (typeof data.hostAkmAvailable === 'boolean') hostAkmAvailable = data.hostAkmAvailable;
         hostStatusWarning = data.warning ?? null;
+        // Eagerly store host model preferences so applyImportedModelPreferences()
+        // works even on the fast path (providers already verified, no import needed).
+        if (data.modelPreferences?.model) importedLlmModel = data.modelPreferences.model;
+        if (data.modelPreferences?.small_model) importedSmallModel = data.modelPreferences.small_model;
         // Auto-import if already on Providers step (index 2), or always on rerun
         // so models/settings have verified providers to attach to.
         if (hostProviderCount > 0 && !hostImportTriggered && (currentStep === 2 || isRerun)) {
@@ -1202,6 +1213,10 @@
           // Reload providers — loadOpenCodeProviders now marks connected providers
           // verified using OpenCode's env-detection ∪ auth.json (same as admin panel).
           if (opencodeAvailable) await loadOpenCodeProviders();
+          // Apply imported model preferences now that providers are verified.
+          // Called here explicitly to handle cases where the reactive chain inside
+          // loadOpenCodeProviders didn't find the models yet.
+          applyImportedModelPreferences();
 
           // Verify local providers to fetch live models (non-blocking)
           for (const id of Object.keys(providerState)) {
@@ -1401,14 +1416,9 @@
           <WelcomeStep
             errorMessage={step0Error}
             {detectionReady}
-            hasVerifiedProviders={verifiedProviders.length >= 1}
             {autoModeImporting}
-            {enableVoice}
-            {includeOllama}
             onnext={() => { if (validateStep0()) goToStep(2); }}
             onusedefaults={() => { if (validateStep0()) void handleUseDefaults(); }}
-            onenablevoicechange={(v) => { enableVoice = v; }}
-            onollamachange={(v) => { includeOllama = v; }}
           />
         </section>
       {:else if currentStep === 2}
@@ -1491,22 +1501,26 @@
         <section class="step-content" id="step-5" data-testid="step-options">
           <OptionsStep
             {channelSelection}
-            hasOllama={hasOllamaVerified}
-            {ollamaEnabled}
-            ollamaProfiles={ollamaProfiles}
-            selectedOllamaProfile={selectedOllamaProfile}
             {imageTag}
             {hostAkmEnabled}
             {hostAkmAvailable}
+            {enableVoice}
+            {voiceProfiles}
+            {selectedVoiceProfile}
+            {ollamaEnabled}
+            {ollamaProfiles}
+            {selectedOllamaProfile}
             errorMessage={step4Error}
             onback={() => goToStep(4)}
             onnext={() => { if (validateStep4()) goToStep(6); }}
             onchanneltoggle={handleChannelToggle}
             oncredentialchange={handleCredentialChange}
-            onollamaenabledchange={(v) => ollamaEnabled = v}
-            onollamaprofilechange={(id) => selectedOllamaProfile = id}
             onimagtagchange={(v) => imageTag = v}
             onhostakmchange={(v) => hostAkmEnabled = v}
+            onenablevoicechange={handleEnableVoiceChange}
+            onvoiceprofilechange={(id) => { selectedVoiceProfile = id; }}
+            onollamachange={handleOptionsOllamaChange}
+            onollamaprofilechange={(id) => { selectedOllamaProfile = id; }}
           />
         </section>
       {:else if currentStep === 6}

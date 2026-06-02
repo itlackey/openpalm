@@ -17,7 +17,7 @@ describe('file-based control-plane secrets', () => {
 
     writeSecret(stackDir, 'channel_chat_secret', 'value');
 
-    expect(resolveSecretsDir(stackDir)).toBe(join(stackDir, 'knowledge', 'vaults', 'secrets'));
+    expect(resolveSecretsDir(stackDir)).toBe(join(stackDir, 'knowledge', 'secrets'));
     expect(statSync(resolveSecretsDir(stackDir)).mode & 0o777).toBe(0o700);
     expect(statSync(secretPath(stackDir, 'channel_chat_secret')).mode & 0o777).toBe(0o600);
     expect(readSecret(stackDir, 'channel_chat_secret')).toBe('value');

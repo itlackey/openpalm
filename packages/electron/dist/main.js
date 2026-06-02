@@ -12678,7 +12678,7 @@ function ensureHomeDirs() {
     `${home}/data/rollback`,
     `${home}/knowledge`,
     `${home}/knowledge/vaults`,
-    `${home}/knowledge/vaults/secrets`,
+    `${home}/knowledge/secrets`,
     `${home}/knowledge/tasks`,
     `${home}/workspace`,
     `${home}/config/stack`
@@ -12976,9 +12976,6 @@ function resolveAssetVersion() {
   }
 }
 var VERSION = resolveAssetVersion();
-// ../lib/src/control-plane/config-persistence.ts
-var DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
-
 // ../lib/src/control-plane/docker.ts
 var logger4 = createLogger("lib:docker");
 var PULL_TIMEOUT_MS = 60 * 60000;
@@ -13375,7 +13372,7 @@ function buildUIServerEnv(homeDir, port, update) {
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: "1",
     OP_ELECTRON_VERSION: app.getVersion?.() ?? "",
-    OP_IMAGE_TAG: process.env.OP_IMAGE_TAG || app.getVersion?.() || "latest",
+    OP_IMAGE_TAG: "latest",
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
   const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");

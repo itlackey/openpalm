@@ -25,11 +25,11 @@ ENV PATH="/usr/local/.opencode/bin:$PATH"
 # is bind-mounted from OP_HOME/config/guardian (see channels.compose.yml).
 ENV OPENCODE_CONFIG_DIR=/etc/opencode
 
-# Install akm-cli for shared stash, vault, and skill management.
+# Install akm-cli for shared stash, env, secret, and skill management.
 # Pinned via build arg so the install step is reproducible. Install globally
 # into /usr/local so the unprivileged bun user (set with USER below) can
 # execute it without writing to its own $HOME.
-ARG AKM_CLI_VERSION=0.8.0-rc2
+ARG AKM_CLI_VERSION=0.8.0-rc.9
 RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
     && chmod -R a+rX /usr/local/install/global \
     && chmod 755 /usr/local/bin/akm \

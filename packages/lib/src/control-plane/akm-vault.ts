@@ -6,7 +6,7 @@
  * canonical home for user-managed environment secrets. The assistant
  * entrypoint sources this file directly at startup.
  *
- * `stack.env` and `knowledge/vaults/secrets/` are operator-managed and NOT
+ * `stack.env` and `knowledge/secrets/` are operator-managed and NOT
  * mirrored into akm; service secrets are granted as Compose secret files.
  *
  * SECURITY: every write into the akm vault is performed by spawning

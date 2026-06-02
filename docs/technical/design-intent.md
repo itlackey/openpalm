@@ -17,7 +17,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 - OpenPalm is a file-assembly control plane over Docker Compose, not a template-rendering engine.
 - Runtime behavior is composed from:
   - compose files (`config/stack/` core + addon overlays),
-  - non-secret environment file (`config/stack/stack.env`) and file-based service secrets (`knowledge/vaults/secrets/`),
+  - non-secret environment file (`config/stack/stack.env`) and file-based service secrets (`knowledge/secrets/`),
   - service configuration files (`config/assistant/`, `config/akm/`).
 - `stack.yml` is a version marker only (`{ version: 2 }`), not a replacement for Compose or env files.
 - All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and the scheduler co-process are thin consumers.
@@ -25,7 +25,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 ## Filesystem and ownership model
 
 - `config/` is user-owned, non-secret configuration and remains manually editable. `config/stack/` is the system-assembled live Compose runtime definition.
-- `knowledge/vaults/` is the user-managed secrets boundary (`user.env`). System secrets live as file-based grants under `knowledge/vaults/secrets/`; `stack.env` is non-secret.
+- `knowledge/vaults/` is the user-managed secrets boundary (`user.env`). System secrets live as file-based grants under `knowledge/secrets/`; `stack.env` is non-secret.
 - `data/` is durable service-managed data (assistant, guardian, AKM cache/data, logs, backups, rollback).
 - `knowledge/` is the AKM knowledge base (skills, commands, memories, agents).
 - `workspace/` is the shared assistant work area.

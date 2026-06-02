@@ -16,7 +16,8 @@ export const GET: RequestHandler = () => {
       detected: status.providerCount > 0 || status.credentialCount > 0,
       providerCount: status.providerCount,
       credentialCount: status.credentialCount,
-      imageTag: process.env.OP_IMAGE_TAG ?? 'dev',
+      modelPreferences: status.modelPreferences,
+      imageTag: 'latest',
       hostAkmAvailable,
       hostAkmPaths: {
         stash: akmStashPath,
@@ -36,7 +37,7 @@ export const GET: RequestHandler = () => {
       detected: false,
       providerCount: 0,
       credentialCount: 0,
-      imageTag: process.env.OP_IMAGE_TAG ?? 'dev',
+      imageTag: 'latest',
       hostAkmAvailable: false,
       warning: `Could not detect host OpenCode state: ${message}`,
     });

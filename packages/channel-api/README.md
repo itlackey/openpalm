@@ -21,7 +21,7 @@ Streaming is not supported.
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/api/compose.yml`
 - Default host URL: `http://localhost:3821`
 - Container port: `8182`
-- System-managed HMAC secret: file under `~/.openpalm/knowledge/vaults/secrets/`, mounted into both the API channel and guardian
+- System-managed HMAC secret: file under `~/.openpalm/knowledge/secrets/`, mounted into both the API channel and guardian
 
 Manual start example:
 

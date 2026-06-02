@@ -537,9 +537,9 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     pass "stack.env contains non-secret runtime configuration only"
   fi
 
-  password_secret="$STASH_HOME/vaults/secrets/op_ui_login_password"
+  password_secret="$STASH_HOME/secrets/op_ui_login_password"
   if [ -f "$password_secret" ] && [ "$(tr -d '\n' < "$password_secret")" = "$OP_UI_LOGIN_PASSWORD" ]; then
-    pass "UI login password is stored in knowledge/vaults/secrets/op_ui_login_password"
+    pass "UI login password is stored in knowledge/secrets/op_ui_login_password"
   else
     fail "UI login password secret file missing or incorrect"
   fi

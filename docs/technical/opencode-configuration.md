@@ -16,7 +16,7 @@ Primary runtime sources:
 - The optional admin-side OpenCode runtime is started by `openpalm` as a host subprocess on a random loopback port.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
 - `~/.openpalm/config/stack/stack.env` provides non-secret runtime and resolved capability env values.
-- `~/.openpalm/knowledge/vaults/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
+- `~/.openpalm/knowledge/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
 - `~/.openpalm/knowledge/vaults/user.env` is the AKM user vault backing file, not a Compose env file.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
 
@@ -91,7 +91,7 @@ Compose remains the source of truth for that contract.
 
 - The assistant has no Docker socket.
 - The assistant mounts `knowledge/` at `/stash` for the shared AKM stash (memory, skills, vaults). User secrets are accessed via the akm CLI, not a separate `/etc/vault/` mount.
-- Stack-level secrets live as files under `knowledge/vaults/secrets/` and are granted only to services that need them. `stack.env` is non-secret Compose/runtime configuration.
+- Stack-level secrets live as files under `knowledge/secrets/` and are granted only to services that need them. `stack.env` is non-secret Compose/runtime configuration.
 - Admin is a host process. It accesses the Docker socket directly on the host — no container is involved in admin operations.
 
 ---

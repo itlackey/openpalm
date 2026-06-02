@@ -190,16 +190,16 @@ services:
 
 secrets:
   channel_chat_secret:
-    file: ${OP_HOME}/knowledge/vaults/secrets/channel_chat_secret
+    file: ${OP_HOME}/knowledge/secrets/channel_chat_secret
   channel_api_secret:
-    file: ${OP_HOME}/knowledge/vaults/secrets/channel_api_secret
+    file: ${OP_HOME}/knowledge/secrets/channel_api_secret
   channel_discord_secret:
-    file: ${OP_HOME}/knowledge/vaults/secrets/channel_discord_secret
+    file: ${OP_HOME}/knowledge/secrets/channel_discord_secret
   discord_bot_token:
-    file: ${OP_HOME}/knowledge/vaults/secrets/discord_bot_token
+    file: ${OP_HOME}/knowledge/secrets/discord_bot_token
   channel_slack_secret:
-    file: ${OP_HOME}/knowledge/vaults/secrets/channel_slack_secret
+    file: ${OP_HOME}/knowledge/secrets/channel_slack_secret
   slack_bot_token:
-    file: ${OP_HOME}/knowledge/vaults/secrets/slack_bot_token
+    file: ${OP_HOME}/knowledge/secrets/slack_bot_token
   slack_app_token:
-    file: ${OP_HOME}/knowledge/vaults/secrets/slack_app_token
+    file: ${OP_HOME}/knowledge/secrets/slack_app_token

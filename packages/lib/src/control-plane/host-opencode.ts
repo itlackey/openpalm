@@ -32,6 +32,8 @@ export type HostOpenCodeStatus = {
   providerCount: number;
   /** Number of credential entries in auth.json (0 when not found) */
   credentialCount: number;
+  /** Model preferences from the host's opencode.json, if present */
+  modelPreferences?: { model?: string; small_model?: string };
 };
 
 export type HostImportResult = {
@@ -127,9 +129,16 @@ export function detectHostOpenCode(): HostOpenCodeStatus {
   }
 
   let providerCount = 0;
+  let modelPreferences: { model?: string; small_model?: string } | undefined;
   if (configExists) {
     const parsed = readJsonFileSafe(configPath);
     providerCount = parsed ? countProviders(parsed) : 0;
+    if (parsed) {
+      const prefs: { model?: string; small_model?: string } = {};
+      if (typeof parsed.model === 'string' && parsed.model) prefs.model = parsed.model;
+      if (typeof parsed.small_model === 'string' && parsed.small_model) prefs.small_model = parsed.small_model;
+      if (prefs.model || prefs.small_model) modelPreferences = prefs;
+    }
   }
 
   let credentialCount = 0;
@@ -142,6 +151,7 @@ export function detectHostOpenCode(): HostOpenCodeStatus {
     authPath: authExists ? authPath : undefined,
     providerCount,
     credentialCount,
+    ...(modelPreferences ? { modelPreferences } : {}),
   };
 }
 

@@ -11,7 +11,7 @@ This document describes the Admin API routes currently implemented in
   The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
   removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
   `OP_UI_LOGIN_PASSWORD` is supplied to the admin process from
-  `knowledge/vaults/secrets/op_ui_login_password`.
+  `knowledge/secrets/op_ui_login_password`.
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
 - Optional correlation: `x-request-id: <uuid>`
 
@@ -552,7 +552,7 @@ Response:
 ### `GET /admin/config/validate`
 
 Run the in-house key-presence and secret-audit checks against non-secret
-`config/stack/stack.env`, resolved Compose config, and `knowledge/vaults/secrets/`.
+`config/stack/stack.env`, resolved Compose config, and `knowledge/secrets/`.
 The validator confirms secret-like values use file grants and that required
 secret files are present — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit
@@ -571,7 +571,7 @@ When validation finds issues:
 ```json
 {
   "ok": false,
-  "errors": ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in knowledge/vaults/secrets/op_ui_login_password"],
+  "errors": ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in knowledge/secrets/op_ui_login_password"],
   "warnings": ["WARN: OPENAI_BASE_URL is not a valid URL"]
 }
 ```

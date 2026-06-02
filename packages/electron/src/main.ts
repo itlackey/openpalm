@@ -99,7 +99,7 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
-    OP_IMAGE_TAG: process.env.OP_IMAGE_TAG || app.getVersion?.() || 'latest',
+    OP_IMAGE_TAG: 'latest',
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
   };
   // Pass the bundled skeleton path so the UI server can refresh the registry

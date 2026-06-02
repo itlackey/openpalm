@@ -58,7 +58,7 @@ Docker Compose is invoked with the non-secret stack env file (see [Manual Compos
 That means the effective env model is:
 
 - `config/stack/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
-- `knowledge/vaults/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
+- `knowledge/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
 - `knowledge/vaults/user.env` - AKM vault backing file for user-managed secrets; never a Compose env-file
 
 ---
@@ -131,7 +131,7 @@ Mounts:
 | `$OP_HOME/config/guardian` | `/etc/opencode` | rw | Guardian OpenCode global config (`OPENCODE_CONFIG_DIR`) |
 | `$OP_HOME/config/stack/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` | ro | Shared OpenCode provider credentials (same file the assistant mounts) |
 | `$OP_HOME/data/logs` | `/opt/openpalm/logs` | rw | Guardian audit log directory |
-| `$OP_HOME/knowledge/vaults/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
+| `$OP_HOME/knowledge/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
 
 Ports and networks:
 
@@ -162,7 +162,7 @@ Notes:
 
 - Guardian is internal-only from the host perspective.
 - It is the only bridge between addon ingress networks and `assistant_net`.
-- Guardian receives only explicitly granted secret files from `knowledge/vaults/secrets/`; it must not use service-level `env_file` or raw secret env values.
+- Guardian receives only explicitly granted secret files from `knowledge/secrets/`; it must not use service-level `env_file` or raw secret env values.
 
 ### Scheduler co-process
 
@@ -198,7 +198,7 @@ Key env (host process, not container):
 |---|---|---|
 | `PORT` | `OP_HOST_UI_PORT` or `3880` | Admin HTTP listen port |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
-| `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/knowledge/vaults/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
+| `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/knowledge/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
 
 ---
 
@@ -255,5 +255,5 @@ passed to Docker Compose and is not mounted directly into containers.
 
 Provider/model selections and other non-secret preferences live in `stack.env`
 or `config/akm/config.json`. System-managed service secrets live as files under
-`knowledge/vaults/secrets/` and are granted only to the service that needs them.
+`knowledge/secrets/` and are granted only to the service that needs them.
 Secret-like container environment variables must use `*_FILE` paths.

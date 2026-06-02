@@ -37,7 +37,7 @@ Lifecycle backups live under `~/.openpalm/data/backups/`; rollback snapshots liv
 The standard startup path uses:
 
 - `config/stack/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
-- `knowledge/vaults/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
+- `knowledge/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
 - `knowledge/vaults/user.env` — AKM vault backing file for user-managed secrets; not a Compose env file
 
 ### Security boundaries
@@ -133,7 +133,7 @@ Role:
 Env sources:
 
 - direct compose `environment:` block (non-secret config via ${VAR} substitution)
-- channel HMAC secret files granted through Compose `secrets:` from `knowledge/vaults/secrets/`
+- channel HMAC secret files granted through Compose `secrets:` from `knowledge/secrets/`
 
 Key env:
 
@@ -265,7 +265,7 @@ Key env:
 
 - `PORT` — listen port (default: `3880`)
 - `OP_HOME` — resolved from the host environment
-- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/knowledge/vaults/secrets/op_ui_login_password`; used to verify the admin login form
+- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/knowledge/secrets/op_ui_login_password`; used to verify the admin login form
 
 Bind address:
 
@@ -279,12 +279,12 @@ UI-first principle: the admin UI is the primary operator interface. CLI commands
 
 Shipped channel-style addons follow the same basic pattern:
 
-- receive their channel HMAC secret via a Compose secret file grant from `knowledge/vaults/secrets/` and a matching `*_FILE` environment variable
+- receive their channel HMAC secret via a Compose secret file grant from `knowledge/secrets/` and a matching `*_FILE` environment variable
 - join `channel_lan` by default (or `channel_public` for internet-facing channels once that network's access semantics are finalized)
 - depend on `guardian`
 - send signed traffic to guardian, not directly to assistant
 
-Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated as a `0600` file under `knowledge/vaults/secrets/`. Compose grants that file only to the matching channel service and the guardian. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests.
+Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated as a `0600` file under `knowledge/secrets/`. Compose grants that file only to the matching channel service and the guardian. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests.
 
 Default host binds for shipped HTTP-ish edges:
 

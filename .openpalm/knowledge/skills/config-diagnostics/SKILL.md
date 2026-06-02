@@ -27,12 +27,12 @@ and guide them — without ever exposing actual secret values.
 2. **Interpret validation errors** using the variable name and documented
    filesystem contract:
    - Non-secret stack configuration belongs in `config/stack/stack.env`
-   - Stack/runtime secrets belong in `knowledge/vaults/secrets/<lowercase_name>`
+   - Stack/runtime secrets belong in `knowledge/secrets/<lowercase_name>`
    - User AKM vault state belongs in `knowledge/vaults/user.env`
 
 3. **Guide the user to fix issues** via:
    - The admin UI for secret variables when available
-   - Direct creation of `~/.openpalm/knowledge/vaults/secrets/<name>` with mode 0600 for stack/runtime secrets
+   - Direct creation of `~/.openpalm/knowledge/secrets/<name>` with mode 0600 for stack/runtime secrets
    - Direct editing of `~/.openpalm/knowledge/vaults/user.env` for AKM user vault values
    - The admin UI or direct edits to `config/stack/stack.env` for non-secret stack configuration
 
@@ -55,7 +55,7 @@ and guide them — without ever exposing actual secret values.
 2. Reads non-secret provider configuration and secret presence metadata
 3. Responds: "Validation shows OPENAI_API_KEY is not set. This variable holds
    your OpenAI API key — set it in Settings > Secrets in the admin UI, or write
-   the value to `~/.openpalm/knowledge/vaults/secrets/openai_api_key` with mode 0600."
+   the value to `~/.openpalm/knowledge/secrets/openai_api_key` with mode 0600."
 
 **User:** "Can you show me my vault files?"
 

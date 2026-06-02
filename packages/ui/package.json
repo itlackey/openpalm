@@ -9,6 +9,7 @@
     "dev": "PORT=5173 vite dev",
     "dev:local": "PORT=5173 OP_OPENCODE_URL=${OP_OPENCODE_URL:-http://localhost:3800} vite dev",
     "build": "svelte-kit sync && vite build",
+    "clean:build": "rm -rf .svelte-kit build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:e2e": "playwright test --grep-invert @mocked",

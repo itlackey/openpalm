@@ -37,7 +37,7 @@ Create a stack env with test-isolated ports:
 
 ```bash
 mkdir -p .dev-test/config/stack
-mkdir -m 700 -p .dev-test/knowledge/vaults/secrets
+mkdir -m 700 -p .dev-test/knowledge/secrets
 cat > .dev-test/config/stack/stack.env <<'EOF'
 OP_HOME=.dev-test
 OP_UID=$(id -u)
@@ -50,8 +50,8 @@ OP_ADMIN_PORT=9100
 OP_SETUP_COMPLETE=true
 EOF
 chmod 600 .dev-test/config/stack/stack.env
-printf '%s\n' 'dev-admin-token' > .dev-test/knowledge/vaults/secrets/op_ui_login_password
-chmod 600 .dev-test/knowledge/vaults/secrets/op_ui_login_password
+printf '%s\n' 'dev-admin-token' > .dev-test/knowledge/secrets/op_ui_login_password
+chmod 600 .dev-test/knowledge/secrets/op_ui_login_password
 ```
 
 Or use the dev-setup script (which seeds `.dev/` with dev ports) and manually adjust ports, or start the compose stack with explicit port env vars.

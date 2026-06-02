@@ -111,7 +111,7 @@ the current model.
 |---|---|
 | `~/.openpalm/knowledge/vaults/user.env` | AKM vault backing file for user-managed secrets |
 | `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
-| `~/.openpalm/knowledge/vaults/secrets/` | System-managed service secret files |
+| `~/.openpalm/knowledge/secrets/` | System-managed service secret files |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |
 | `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels and guardian |

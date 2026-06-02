@@ -77,4 +77,4 @@ overlays.
 Compose receives **only one env file** from this directory:
 - `stack.env` — Non-secret runtime configuration only
 
-Secrets live in `knowledge/vaults/secrets/` and are granted to services through Compose `secrets:` entries. Do not add other `--env-file` arguments to the compose command.
+Secrets live in `knowledge/secrets/` and are granted to services through Compose `secrets:` entries. Do not add other `--env-file` arguments to the compose command.

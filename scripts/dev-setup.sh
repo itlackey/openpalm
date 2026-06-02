@@ -10,7 +10,7 @@ Creates local .dev directories and seeds dev config files.
 Options:
   --seed-env          Seed .dev/knowledge/vaults/user.env for akm vault:user, generate
                       .dev/config/stack/stack.env with auto-detected values, and
-                      write system secrets under .dev/knowledge/vaults/secrets/.
+                      write system secrets under .dev/knowledge/secrets/.
   --force             Overwrite seeded files even if they already exist.
   --enable-addon <n>  Add <n> to config/stack/stack.yml. Repeat to enable multiple dev addons.
   --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
@@ -118,7 +118,7 @@ LOGS_DIR="$DEV_ROOT/data/logs"
 # CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
 # whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. Generated
-# files (stack.env, config/stack/auth.json, knowledge/vaults/secrets/, user.env) are excluded
+# files (stack.env, config/stack/auth.json, knowledge/secrets/, user.env) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
 # --force does a destructive resync (drop stale files that no longer
@@ -129,7 +129,7 @@ rsync_flags=(-a)
 
 rsync "${rsync_flags[@]}" \
 	--exclude=config/stack/stack.env \
-	--exclude=knowledge/vaults/secrets \
+	--exclude=knowledge/secrets \
 	--exclude=config/stack/auth.json \
 	--exclude=knowledge/vaults/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
@@ -141,7 +141,7 @@ rsync "${rsync_flags[@]}" \
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" \
-	"$STASH_DIR/vaults" "$STASH_DIR/vaults/secrets" \
+	"$STASH_DIR/vaults" "$STASH_DIR/secrets" \
 	"$DATA_DIR" "$DATA_DIR/admin" "$DATA_DIR/assistant" "$DATA_DIR/assistant/.cache" \
 	"$DATA_DIR/assistant/.local/bin" "$DATA_DIR/assistant/.local/share/opencode" \
 	"$DATA_DIR/assistant/.local/state/opencode" "$DATA_DIR/guardian" \
@@ -237,7 +237,7 @@ OP_SETUP_COMPLETE=true
 EOF
 	fi
 
-	secrets_dir="$STASH_DIR/vaults/secrets"
+	secrets_dir="$STASH_DIR/secrets"
 	mkdir -p "$secrets_dir"
 	chmod 700 "$secrets_dir"
 	if [[ ! -f "$secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
@@ -259,7 +259,7 @@ if ! grep -q '^OP_PROJECT_NAME=' "$CONFIG_DIR/stack/stack.env"; then
 	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$CONFIG_DIR/stack/stack.env"
 fi
 
-secrets_dir="$STASH_DIR/vaults/secrets"
+secrets_dir="$STASH_DIR/secrets"
 mkdir -p "$secrets_dir"
 chmod 700 "$secrets_dir"
 for secret_name in channel_chat_secret channel_api_secret channel_discord_secret channel_slack_secret; do

@@ -22,7 +22,7 @@ import {
 export { sha256, randomHex } from "./crypto.js";
 import { sha256, randomHex } from "./crypto.js";
 
-const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
+const DEFAULT_IMAGE_TAG = "latest";
 
 // ── Env File Management ──────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ const DEFAULT_IMAGE_TAG = process.env.OP_IMAGE_TAG ?? "latest";
  * Return the env files used for docker compose --env-file args.
  * These are the live vault env files.
  *
- * Order: stack.env. Secret values live in knowledge/vaults/secrets/<ENV_KEY>
+ * Order: stack.env. Secret values live in knowledge/secrets/<ENV_KEY>
  * and are loaded explicitly by the services/control plane that need them.
  *
  * Note: `vault/user/user.env` is no longer a
@@ -50,7 +50,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
 /**
  * Write system-managed values to config/stack/stack.env.
  *
- * Secret-like keys are NOT written here — they belong in knowledge/vaults/secrets/.
+ * Secret-like keys are NOT written here — they belong in knowledge/secrets/.
  * Use ensureChannelSecret() for channel secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
@@ -297,7 +297,7 @@ export function writeRuntimeFiles(
     }
   }
 
-  // Write stack.env (no secrets — those live in knowledge/vaults/secrets/)
+  // Write stack.env (no secrets — those live in knowledge/secrets/)
   writeSystemEnv(state);
 
   // Ensure state directory exists

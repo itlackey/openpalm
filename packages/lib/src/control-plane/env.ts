@@ -26,7 +26,7 @@ export function expandEnvVars(input: string, vars: Record<string, string>): stri
   return input.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_, name, def) => vars[name] ?? def ?? '');
 }
 
-function quoteEnvValue(value: string): string {
+export function quoteEnvValue(value: string): string {
   if (value.length === 0) return '';
   const needsQuoting = /[#"'\\\n\r$]/.test(value) || value !== value.trim();
   if (!needsQuoting) return value;

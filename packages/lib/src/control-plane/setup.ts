@@ -131,7 +131,7 @@ export function buildAuthJsonFromSetup(
  * `process.env.OP_UI_LOGIN_PASSWORD` via the existing `safeTokenCompare`.
  *
   * `OP_OPENCODE_PASSWORD` may be supplied explicitly as a file-based secret in
-  * `knowledge/vaults/secrets/op_opencode_password` when OpenCode auth is enabled.
+  * `knowledge/secrets/op_opencode_password` when OpenCode auth is enabled.
  *
  * `existingSystemEnv` is unused now but the parameter is kept so callers
  * compile unchanged. It can be removed in a follow-up cleanup.
