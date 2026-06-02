@@ -246,16 +246,68 @@ When promoting a `0.X.Y-beta.N` line to a stable `0.X.Y`:
 
 ---
 
+## 0.11.0 stable — outstanding cleanup & work
+
+Concrete items deferred during the `0.11.0-beta` line that must be handled when
+cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
+
+**Required for a correct stable cut**
+
+- [ ] **Move `akm-cli` off the `next` prerelease tag.** `core/assistant/Dockerfile`
+      and `core/guardian/Dockerfile` pin `ARG AKM_CLI_VERSION=next` to track akm
+      prereleases during beta. Pin both to a released `akm-cli` version for stable
+      (keep them in lockstep — CI enforces it).
+- [ ] **Republish the three channel adapters as a stable (non-prerelease) version**
+      so they land on npm `@latest`. Today `@latest` for `channel-*` is still the
+      old `0.10.x` line; `@next` holds `0.11.x`. Until stable adapters exist,
+      `CHANNEL_PACKAGE@latest` resolves to the broken `0.10.x` (env-secret) adapter.
+- [ ] **Then flip `CHANNEL_PACKAGE` `@next` → `@latest`** in
+      `.openpalm/config/stack/channels.compose.yml` (4 occurrences).
+- [ ] **Verify the first stable publishes the moving Docker tags** — `latest`,
+      and especially `openpalm/voice:latest-cpu` / `latest-cu121`, which have
+      **never existed** (gated off for prereleases). Confirm `push-voice-images`
+      creates them.
+- [ ] **Confirm fresh-install defaults resolve.** `DEFAULT_IMAGE_TAG = "latest"`
+      (`config-persistence.ts`) only works once stable `latest` images exist — a
+      pure-beta fresh install via CLI/wizard would fail to pull. Validate a clean
+      install on a non-dev machine.
+- [ ] **Finalize `CHANGELOG.md`.** The last entry is `beta.11`; fold the
+      `beta.12`→`beta.15` work into a single `[0.11.0]` section: env/secret
+      migration (vault→env+secret), channel-adapter runtime architecture
+      (optional-peer + `@next`), ollama healthcheck fix, `OP_IMAGE_TAG`
+      stack.env-driven fix, and the release-pipeline hardening.
+
+**Cleanup / maintenance (not stable blockers)**
+
+- [ ] `npm deprecate '@openpalm/assistant-tools@0.10.0' '...'` — orphaned package;
+      `packages/assistant-tools` was removed (folded into
+      `@openpalm/admin-tools-plugin`) and its publish workflow deleted.
+- [ ] **Bump deprecated GitHub Actions** in `release.yml` (15× `actions/checkout@v4`
+      / `actions/setup-node@v4` on Node 20). GitHub forces Node 24 on 2026-06-16
+      and removes Node 20 on 2026-09-16 — move to `@v5`.
+- [ ] **Voice `rocm6`** is still unimplemented (the Dockerfile hard-errors and the
+      profile is gated). Either implement the ROCm image or keep it gated and
+      documented as unsupported.
+- [ ] **Decide the desktop-app image-tag policy.** Electron now reads `OP_IMAGE_TAG`
+      from `stack.env` (the forced `latest` was removed). For stable, confirm fresh
+      desktop installs resolve `latest` images, or pin installs to the app's own
+      version tag.
+- [ ] **Validate the 0.10.x → 0.11.0 upgrade path.** The env/secret migration is
+      manual ([`docs/operations/secrets-env-migration.md`](secrets-env-migration.md));
+      verify it's complete for existing `0.10.x` operators.
+
+---
+
 ## Related files
 
 | File | Role |
 |---|---|
 | `.github/release-package-groups.json` | Authoritative `platformManifests` + `independentNpmPackages` lists |
 | `scripts/bump-platform.sh` | Bumps every platform manifest; syncs the CLI's `@openpalm/lib` floor range |
-| `scripts/release.sh` | One-shot release from `main` (bump + stamp + test gate + commit + tag) |
+| `scripts/release.sh` | One-shot release from the **current branch** (bump + stamp + test gate + commit + push branch + tag) |
 | `scripts/setup.sh` / `scripts/setup.ps1` | Install scripts; `SCRIPT_VERSION` must match the release tag |
 | `.github/workflows/release.yml` | Platform release pipeline (Track A) |
-| `.github/workflows/publish-npm-package.yml` | Reusable npm publish (Track B + assistant-tools) |
+| `.github/workflows/publish-npm-package.yml` | Reusable npm publish used by the channel-adapter workflows (Track B) |
 | `.github/workflows/publish-channel-{api,discord,slack}.yml` | Per-adapter publish triggers (Track B) |
 | `core/channel/README.md` | Channel runtime architecture (image bundles framework, adapters at runtime) |
 | `docs/channels/community-channels.md` | Channel adapter authoring guide |
