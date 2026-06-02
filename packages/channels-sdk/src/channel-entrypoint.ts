@@ -27,7 +27,13 @@ if (!channelPackage) {
   process.exit(1);
 }
 
-const importTarget = channelPackage;
+// CHANNEL_PACKAGE may carry an install spec with a version pin
+// (e.g. "@openpalm/channel-discord@0.11.0-beta.13" — start.sh installs it with
+// `bun add --exact`). The module specifier for import() is the bare package
+// NAME without the version. Strip a trailing "@<version>" while preserving the
+// leading "@scope" of scoped packages.
+const versionAt = channelPackage.lastIndexOf("@");
+const importTarget = versionAt > 0 ? channelPackage.slice(0, versionAt) : channelPackage;
 
 // Dynamic import
 let mod: Record<string, unknown>;
