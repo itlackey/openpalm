@@ -7,7 +7,7 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.11.0-beta.12",
+      "version": "0.11.0-beta.13",
       "dependencies": {
         "@openpalm/channels-sdk": "workspace:*",
         "dotenv": "^17.4.2",
@@ -15,7 +15,7 @@
     },
     "packages/channel-api": {
       "name": "@openpalm/channel-api",
-      "version": "0.11.0-beta.5",
+      "version": "0.11.0-beta.13",
       "devDependencies": {
         "@openpalm/channels-sdk": "workspace:*",
       },
@@ -51,23 +51,23 @@
     },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
-      "version": "0.11.0-beta.12",
+      "version": "0.11.0-beta.13",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.11.0-beta.12",
+      "version": "0.11.0-beta.13",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
       "dependencies": {
-        "@openpalm/lib": "workspace:*",
+        "@openpalm/lib": ">=0.11.0-beta.12 <1.0.0",
         "citty": "^0.2.1",
         "yaml": "^2.8.0",
       },
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.11.0-beta.12",
+      "version": "0.11.0-beta.13",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^25.9.1",
@@ -79,14 +79,14 @@
     },
     "packages/electron/admin-tools": {
       "name": "@openpalm/admin-tools-plugin",
-      "version": "0.11.0-beta.12",
+      "version": "0.11.0-beta.13",
       "dependencies": {
         "@opencode-ai/plugin": "^1.15.9",
       },
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.11.0-beta.12",
+      "version": "0.11.0-beta.13",
       "dependencies": {
         "dotenv": "^17.4.2",
         "tar": "^7.5.15",
@@ -99,7 +99,7 @@
     },
     "packages/ui": {
       "name": "@openpalm/ui",
-      "version": "0.11.0-beta.12",
+      "version": "0.11.0-beta.13",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
         "croner": "^10.0.1",
