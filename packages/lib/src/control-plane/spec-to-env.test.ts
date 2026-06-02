@@ -62,54 +62,59 @@ describe("deriveSystemEnvFromSpec", () => {
 });
 
 describe("writeVoiceVars", () => {
+  // writeVoiceVars takes a stackDir (<home>/config/stack) and writes the env
+  // to <home>/knowledge/env/stack.env. Build that layout per test.
+  let stackDir = "";
+  let stackEnv = "";
+  beforeEach(() => {
+    stackDir = join(tempDir, "config", "stack");
+    stackEnv = join(tempDir, "knowledge", "env", "stack.env");
+    mkdirSync(stackDir, { recursive: true });
+    mkdirSync(join(tempDir, "knowledge", "env"), { recursive: true });
+  });
+
   test("writes TTS vars to stack.env", () => {
-    mkdirSync(tempDir, { recursive: true });
-    writeFileSync(join(tempDir, "stack.env"), "# stack env\n");
+    writeFileSync(stackEnv, "# stack env\n");
 
     writeVoiceVars({
       tts: { baseURL: "https://tts.example.com/v1", model: "tts-1", voice: "alloy" },
-    }, tempDir);
+    }, stackDir);
 
-    const content = readFileSync(join(tempDir, "stack.env"), "utf-8");
+    const content = readFileSync(stackEnv, "utf-8");
     expect(content).toContain("OP_TTS_BASE_URL=https://tts.example.com/v1");
     expect(content).toContain("OP_TTS_MODEL=tts-1");
     expect(content).toContain("OP_TTS_VOICE=alloy");
   });
 
   test("writes STT vars to stack.env", () => {
-    mkdirSync(tempDir, { recursive: true });
-    writeFileSync(join(tempDir, "stack.env"), "# stack env\n");
+    writeFileSync(stackEnv, "# stack env\n");
 
     writeVoiceVars({
       stt: { baseURL: "https://stt.example.com/v1", model: "whisper-1", language: "en" },
-    }, tempDir);
+    }, stackDir);
 
-    const content = readFileSync(join(tempDir, "stack.env"), "utf-8");
+    const content = readFileSync(stackEnv, "utf-8");
     expect(content).toContain("OP_STT_BASE_URL=https://stt.example.com/v1");
     expect(content).toContain("OP_STT_MODEL=whisper-1");
     expect(content).toContain("OP_STT_LANGUAGE=en");
   });
 
   test("creates stack.env if it does not exist", () => {
-    mkdirSync(tempDir, { recursive: true });
-
     writeVoiceVars({
       tts: { baseURL: "https://tts.example.com/v1", model: "tts-1" },
-    }, tempDir);
+    }, stackDir);
 
-    const content = readFileSync(join(tempDir, "stack.env"), "utf-8");
+    const content = readFileSync(stackEnv, "utf-8");
     expect(content).toContain("OP_TTS_BASE_URL=https://tts.example.com/v1");
   });
 
   test("is a no-op when no vars are provided", () => {
-    mkdirSync(tempDir, { recursive: true });
-    const stackEnvPath = join(tempDir, "stack.env");
-    writeFileSync(stackEnvPath, "EXISTING=value\n");
+    writeFileSync(stackEnv, "EXISTING=value\n");
 
-    writeVoiceVars({}, tempDir);
+    writeVoiceVars({}, stackDir);
 
     // File should be unchanged
-    const content = readFileSync(stackEnvPath, "utf-8");
+    const content = readFileSync(stackEnv, "utf-8");
     expect(content).toBe("EXISTING=value\n");
   });
 });

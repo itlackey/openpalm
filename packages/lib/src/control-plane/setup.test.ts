@@ -339,6 +339,8 @@ describe("performSetup", () => {
       stackDir,
       join(stackDir, "addons"),
       join(homeDir, "knowledge"),
+      join(homeDir, "knowledge", "env"),
+      join(homeDir, "knowledge", "secrets"),
       join(homeDir, "workspace"),
       dataDir,
       join(dataDir, "assistant"),
@@ -355,7 +357,7 @@ describe("performSetup", () => {
 
     // Create stub stack.env so isSetupComplete doesn't crash
     writeFileSync(
-      join(stackDir, "stack.env"),
+      join(homeDir, "knowledge", "env", "stack.env"),
       [
         "OP_SETUP_COMPLETE=false",
         "OPENAI_BASE_URL=",
@@ -471,11 +473,11 @@ describe("performSetup", () => {
     expect(spec).not.toBeNull();
     expect(spec!.version).toBe(2);
 
-    const stackEnv = readFileSync(join(stackDir, 'stack.env'), 'utf-8');
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
     expect(stackEnv).not.toContain('OPENAI_API_KEY=');
     expect(readSecret(stackDir, 'openai_api_key')).toBeNull();
 
-    const authJson = JSON.parse(readFileSync(join(configDir, 'stack', 'auth.json'), 'utf-8')) as Record<string, { key: string }>;
+    const authJson = JSON.parse(readFileSync(join(homeDir, "knowledge", "secrets", "auth.json"), 'utf-8')) as Record<string, { key: string }>;
     expect(authJson.openai.key).toBe('sk-secondary');
   });
 
@@ -494,7 +496,7 @@ describe("performSetup", () => {
 
     expect(readSecret(stackDir, 'discord_bot_token')).toBe("discord-bot-token-xyz\n");
     expect(readSecret(stackDir, 'discord_application_id')).toBeNull();
-    const stackEnv = readFileSync(join(stackDir, 'stack.env'), 'utf-8');
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
     expect(stackEnv).toContain('DISCORD_APPLICATION_ID=discord-app-id-123');
     expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');
   });

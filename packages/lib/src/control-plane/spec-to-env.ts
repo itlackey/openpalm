@@ -6,10 +6,12 @@
  */
 
 import { SPEC_DEFAULTS } from "./stack-spec.js";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { mergeEnvContent } from "./env.js";
 import { resolveOperatorIds } from "./operator-ids.js";
 import { assertNoSecretLikeStackEnvKeys } from './secrets.js';
+import { stackEnvPathFromStackDir } from './paths.js';
 
 /**
  * Derive the system.env key-value pairs from the StackSpec.
@@ -76,7 +78,7 @@ export type VoiceVarsConfig = {
  * engine without filling in URL/model still persists.
  */
 export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void {
-  const stackEnvPath = `${stackDir}/stack.env`;
+  const stackEnvPath = stackEnvPathFromStackDir(stackDir);
   const base = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   const vars: Record<string, string> = {};
 
@@ -108,5 +110,6 @@ export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void 
     sectionHeader: "# ── Voice Channel (TTS/STT) ──────────────────────────────────────────",
   });
   if (!content.endsWith("\n")) content += "\n";
+  mkdirSync(dirname(stackEnvPath), { recursive: true, mode: 0o700 });
   writeFileSync(stackEnvPath, content, { mode: 0o600 });
 }

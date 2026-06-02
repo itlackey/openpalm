@@ -12,7 +12,8 @@ import {
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSecret, updateSecretsEnv, type ControlPlaneState } from '@openpalm/lib';
+import { readSecret, updateSecretsEnv, stackEnvPathFromStackDir as stackEnvFor, type ControlPlaneState } from '@openpalm/lib';
+import { dirname } from "node:path";
 
 // ── Test helpers ────────────────────────────────────────────────────────
 
@@ -37,12 +38,13 @@ function makeState(homeDir: string): ControlPlaneState {
 }
 
 function seedStackEnv(stackDir: string, content: string): void {
-  mkdirSync(stackDir, { recursive: true });
-  writeFileSync(join(stackDir, "stack.env"), content);
+  const path = stackEnvFor(stackDir);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
 }
 
 function readStackEnv(stackDir: string): string {
-  return readFileSync(join(stackDir, "stack.env"), "utf-8");
+  return readFileSync(stackEnvFor(stackDir), "utf-8");
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

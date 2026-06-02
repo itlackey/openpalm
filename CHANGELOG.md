@@ -7,21 +7,30 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
+### Changed (BREAKING — manual migration required)
 
-- **Migrated from the akm `vault` asset type to `env` + `secret`** — akm 0.8.0
-  removed the `vault` type (per-entry `vault set`/`unset` now hard-error). The
-  user-managed env moves from `vault:user` at `knowledge/vaults/user.env` to the
-  akm **`env`** type `env:user` at `knowledge/env/user.env`; stack file secrets
-  remain akm **`secret`** assets under `knowledge/secrets/`. OpenPalm now owns
-  the user env file directly — admin writes/deletes are atomic `.env` edits
-  (mode 0600) instead of `akm vault` subprocess calls. Existing installs are
-  migrated non-destructively: `knowledge/vaults/user.env` is copied to
-  `knowledge/env/user.env` on first access and the original is never removed.
-  The admin route `/admin/secrets/user-vault` is now `/admin/secrets/user-env`
-  (`envRef: env:user`). akm-cli now tracks the `next` prerelease dist-tag (the
-  `env` asset type ships in the next akm prerelease). gws-setup credentials move
+The secrets/env filesystem layout was reorganized to align with the akm
+`env` + `secret` asset model and to consolidate all env files and secrets out
+of `config/stack/`. **There is no automated migration** — existing installs
+must move their files by hand. See
+[`docs/operations/secrets-env-migration.md`](docs/operations/secrets-env-migration.md).
+
+- **akm `vault` → `env` + `secret`** — akm 0.8.0 removed the `vault` type
+  (per-entry `vault set`/`unset` hard-error). The user-managed env moves from
+  `vault:user` at `knowledge/vaults/user.env` to the akm **`env`** type
+  `env:user` at `knowledge/env/user.env`. OpenPalm now owns the file directly —
+  admin writes/deletes are atomic `.env` edits (mode 0600), no `akm vault`
+  subprocess. The admin route `/admin/secrets/user-vault` is now
+  `/admin/secrets/user-env` (`envRef: env:user`). gws-setup credentials move
   from `knowledge/vaults/.gws` to `knowledge/secrets/.gws`.
+- **`config/stack/stack.env` → `knowledge/env/stack.env`** — the Compose
+  `--env-file` (non-secret system config) joins the env files under
+  `knowledge/env/` as `env:stack`.
+- **`config/stack/auth.json` → `knowledge/secrets/auth.json`** — OpenCode
+  provider credentials move out of `config/stack/`; `config/stack/` now holds
+  only non-secret compose assembly (compose files + `stack.yml`).
+- akm-cli tracks the `next` prerelease dist-tag (the `env` command ships in the
+  next akm prerelease).
 
 ## [0.11.0-beta.11] - 2026-05-29
 

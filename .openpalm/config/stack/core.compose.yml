@@ -5,20 +5,23 @@
 # Compose profiles. User customizations live in custom.compose.yml.
 #
 # Docker Compose reads variable values via --env-file for stack config:
-#   config/stack/stack.env    — system config (ports, image tag)
+#   knowledge/env/stack.env   — system config (ports, image tag), akm `env:stack`
 # Channel and bot secrets are mounted per service via Compose secrets in
 # addon overlays and exposed to containers as *_FILE variables.
 #
 # User-managed env config lives in the akm `env:user` file at
 # knowledge/env/user.env (akm-cli >= 0.8.0 layout). The assistant
 # entrypoint sources that file at startup (akm `env path env:user`).
+# OpenCode provider credentials live in knowledge/secrets/auth.json
+# (bind-mounted into the assistant + guardian).
 #
 # Directory model:
 #   ~/.openpalm/config/       — user-editable + system config (akm/)
-#   ~/.openpalm/config/stack/ — compose runtime + stack config (core/services/channels/custom
-#                               compose files, stack.env, auth.json)
+#   ~/.openpalm/config/stack/ — compose assembly only (core/services/channels/custom
+#                               compose files, stack.yml) — no secrets, no env
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
-#   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents) — env:user lives here
+#   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents);
+#                               env:user, env:stack, and auth.json live here
 #   ~/.openpalm/workspace/    — shared work area
 
 services:
@@ -67,7 +70,7 @@ services:
       - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
       - ${OP_HOME}/config/assistant:/etc/opencode
-      - ${OP_HOME}/config/stack/auth.json:/home/opencode/.local/share/opencode/auth.json
+      - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/data/assistant:/home/opencode
       - ${OP_AKM_STASH:-${OP_HOME}/knowledge}:/stash
       - ${OP_AKM_CONFIG:-${OP_HOME}/config/akm}:/etc/akm

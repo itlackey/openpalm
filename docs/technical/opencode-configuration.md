@@ -15,7 +15,7 @@ Primary runtime sources:
 - The running assistant is defined by `.openpalm/config/stack/core.compose.yml`.
 - The optional admin-side OpenCode runtime is started by `openpalm` as a host subprocess on a random loopback port.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
-- `~/.openpalm/config/stack/stack.env` provides non-secret runtime and resolved capability env values.
+- `~/.openpalm/knowledge/env/stack.env` provides non-secret runtime and resolved capability env values.
 - `~/.openpalm/knowledge/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
 - `~/.openpalm/knowledge/env/user.env` is the AKM user env backing file, not a Compose env file.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
@@ -30,7 +30,7 @@ Primary runtime sources:
 |---|---|---|
 | `~/.openpalm/config/assistant/` | `/etc/opencode` | OpenCode config, tools, plugins, skills, commands |
 | `~/.openpalm/config/akm/` | `/etc/akm` | AKM config |
-| `~/.openpalm/config/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
+| `~/.openpalm/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
 | `~/.openpalm/knowledge/` | `/stash` | AKM stash (memory, skills, env, secrets; read via akm) |
 | `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
 | `~/.openpalm/data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |
@@ -65,7 +65,7 @@ The guardian image also ships OpenCode (same `OPENCODE_VERSION` as the assistant
 | Host path | Container path | Purpose |
 |---|---|---|
 | `~/.openpalm/config/guardian/` | `/etc/opencode` | Moderator OpenCode config (`opencode.jsonc`, `instructions/moderation.md`) |
-| `~/.openpalm/config/stack/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` (ro) | Shared provider credentials (same file the assistant uses) |
+| `~/.openpalm/knowledge/secrets/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` (ro) | Shared provider credentials (same file the assistant uses) |
 
 - Started on loopback `127.0.0.1:4097` by the guardian entrypoint only when `GUARDIAN_CONTENT_VALIDATION` is enabled.
 - Pins a small model in `config/guardian/opencode.jsonc`; reuses the assistant's provider via the shared `auth.json`.
@@ -99,6 +99,6 @@ Compose remains the source of truth for that contract.
 ## Day-To-Day Changes
 
 - Add tools, plugins, commands, or skills under `~/.openpalm/config/assistant/`.
-- Update provider keys through OpenCode auth state or file-based secret management; keep model-related non-secret env in `~/.openpalm/config/stack/stack.env`.
+- Update provider keys through OpenCode auth state or file-based secret management; keep model-related non-secret env in `~/.openpalm/knowledge/env/stack.env`.
 - Change service wiring by editing the compose file set in `~/.openpalm/config/stack/`.
 - Verify the exact runtime by reading `~/.openpalm/config/stack/core.compose.yml` and any addon overlays used for startup.

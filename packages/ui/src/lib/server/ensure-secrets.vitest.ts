@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureSecrets, readSecret, type ControlPlaneState } from "@openpalm/lib";
+import { ensureSecrets, readSecret, stackEnvPathFromStackDir as stackEnvFor, type ControlPlaneState } from "@openpalm/lib";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString("hex")}`);
@@ -28,12 +28,13 @@ describe("ensureSecrets", () => {
 
     const state = {
       configDir: join(rootDir, "config"),
+      stashDir: join(rootDir, "knowledge"),
       stackDir,
     } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    const stackEnv = readFileSync(join(stackDir, "stack.env"), "utf-8");
+    const stackEnv = readFileSync(stackEnvFor(stackDir), "utf-8");
     expect(stackEnv).toContain("OP_SETUP_COMPLETE=false");
     expect(stackEnv).not.toContain("OPENAI_API_KEY=");
     expect(stackEnv).not.toContain("OP_UI_LOGIN_PASSWORD=");
@@ -44,12 +45,13 @@ describe("ensureSecrets", () => {
     const stackDir = join(rootDir, "config", "stack");
     const state = {
       configDir: join(rootDir, "config"),
+      stashDir: join(rootDir, "knowledge"),
       stackDir,
     } as ControlPlaneState;
 
     ensureSecrets(state);
 
     expect(statSync(stackDir).mode & 0o777).toBe(0o700);
-    expect(statSync(join(stackDir, "stack.env")).mode & 0o777).toBe(0o600);
+    expect(statSync(stackEnvFor(stackDir)).mode & 0o777).toBe(0o600);
   });
 });

@@ -66,9 +66,9 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   }
 
   // Seed file-based volume mount targets (CLI bootstrapInstall does this)
-  mkdirSync(stackDir, { recursive: true });
-  if (!existsSync(join(stackDir, 'auth.json'))) {
-    writeFileSync(join(stackDir, 'auth.json'), '{}\n');
+  mkdirSync(join(homeDir, 'knowledge', 'secrets'), { recursive: true });
+  if (!existsSync(join(homeDir, 'knowledge', 'secrets', 'auth.json'))) {
+    writeFileSync(join(homeDir, 'knowledge', 'secrets', 'auth.json'), '{}\n');
   }
 
   // Create required directories
@@ -88,6 +88,8 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
     join(dataDir, 'backups'),
     join(dataDir, 'rollback'),
     join(homeDir, 'knowledge'),
+    join(homeDir, 'knowledge', 'env'),
+    join(homeDir, 'knowledge', 'secrets'),
     join(homeDir, 'workspace'),
   ]) {
     mkdirSync(dir, { recursive: true });
@@ -190,8 +192,8 @@ describe('install flow — tier 1 (file validation)', () => {
     // (knowledge/env/user.env) and the assistant entrypoint sources it
     // directly. It is never passed to Compose as an env_file.
     for (const relPath of [
-      'config/stack/stack.env',
-      'config/stack/auth.json',
+      'knowledge/env/stack.env',
+      'knowledge/secrets/auth.json',
     ]) {
       const fullPath = join(homeDir, relPath);
       expect(existsSync(fullPath)).toBe(true);
@@ -201,7 +203,7 @@ describe('install flow — tier 1 (file validation)', () => {
 
     // ── Validate all volume mount targets exist as user-owned ────────
     const stackEnvVars = {
-      ...parseEnvFile(join(homeDir, 'config/stack/stack.env')),
+      ...parseEnvFile(join(homeDir, 'knowledge/env/stack.env')),
       ...process.env as Record<string, string>,
     };
     // OP_HOME must resolve to absolute path
@@ -280,7 +282,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(result.ok).toBe(true);
 
     // Ensure all volume mount targets exist so compose doesn't complain
-    const stackEnv = join(homeDir, 'config/stack/stack.env');
+    const stackEnv = join(homeDir, 'knowledge/env/stack.env');
     const composeFiles = [
       join(homeDir, 'config/stack/core.compose.yml'),
       join(homeDir, 'config/stack/services.compose.yml'),
@@ -363,8 +365,8 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(noAddonSpec).not.toBeNull();
 
     // Core compose only, no addon files in the compose list.
-    // Only config/stack/stack.env is needed for `compose config`.
-    const stackEnv = join(homeDir, 'config/stack/stack.env');
+    // Only knowledge/env/stack.env is needed for `compose config`.
+    const stackEnv = join(homeDir, 'knowledge/env/stack.env');
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',
       '-f', join(homeDir, 'config/stack/core.compose.yml'),

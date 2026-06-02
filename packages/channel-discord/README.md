@@ -15,7 +15,7 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 
 - Shipped addon source: `.openpalm/config/stack/channels.compose.yml`
 - Enabled runtime overlay: `~/.openpalm/config/stack/addons/discord/compose.yml`
-- Non-secret values: `~/.openpalm/config/stack/stack.env`
+- Non-secret values: `~/.openpalm/knowledge/env/stack.env`
 - Secret values: files under `~/.openpalm/knowledge/secrets/`
 
 Manual start example:

@@ -13,7 +13,7 @@ export async function ensureSecrets(dataDir: string): Promise<void> {
 }
 
 /**
- * Creates or updates the config/stack/stack.env bootstrap file.
+ * Creates or updates the knowledge/env/stack.env bootstrap file.
  *
  * When `imageTagOverride` is provided (e.g. derived from --version during
  * install), it takes precedence over both the OP_IMAGE_TAG env var
@@ -27,11 +27,11 @@ export async function ensureStackEnv(
   repoRef: string,
   imageTagOverride?: string,
 ): Promise<void> {
-  const stackDir = join(configDir, 'stack');
-  const systemEnvPath = join(stackDir, 'stack.env');
+  const envDir = join(homeDir, 'knowledge', 'env');
+  const systemEnvPath = join(envDir, 'stack.env');
   const explicitImageTag = imageTagOverride ?? process.env.OP_IMAGE_TAG;
   const hasExplicitImageTag = explicitImageTag !== undefined && explicitImageTag !== '';
-  mkdirSync(stackDir, { recursive: true });
+  mkdirSync(envDir, { recursive: true, mode: 0o700 });
   // Operator UID/GID — auto-detect from OP_HOME owner (or process UID).
   // Returns null on Windows; in that case we omit OP_UID/OP_GID and let
   // compose fall back to its `${OP_UID:-1000}` default (containers run

@@ -4,7 +4,8 @@ import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir } from "./home.js";
-import { authJsonPath as resolveAuthJsonPath } from "./paths.js";
+import { authJsonPath as resolveAuthJsonPath, stackEnvPathFromStackDir } from "./paths.js";
+import { dirname } from "node:path";
 import { listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
@@ -102,7 +103,8 @@ function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomm
 }
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
-  const systemEnvPath = `${state.stackDir}/stack.env`;
+  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  enforceVaultDirMode(dirname(systemEnvPath));
   const updates: Record<string, string> = {};
 
   // Bootstrap only explicit host-provided overrides. Setup is allowed to be
@@ -139,7 +141,7 @@ export function ensureSecrets(state: ControlPlaneState): void {
 
 function ensureAuthJson(state: ControlPlaneState): void {
   const authJsonPath = resolveAuthJsonPath(state);
-  mkdirSync(state.stackDir, { recursive: true, mode: VAULT_DIR_MODE });
+  mkdirSync(dirname(authJsonPath), { recursive: true, mode: VAULT_DIR_MODE });
 
   if (existsSync(authJsonPath)) {
     try {
@@ -177,7 +179,7 @@ export function updateSecretsEnv(
 
 /**
  * Merge-write provider API keys into OpenCode's auth.json at
- * `${stackDir}/auth.json` (config/stack/auth.json). Each entry uses
+ * `${stackDir}/auth.json` (knowledge/secrets/auth.json). Each entry uses
  * OpenCode's schema for api-key auth: `{ <providerId>: { type: "api", key } }`.
  *
  * This file is bind-mounted into both the assistant and guardian containers
@@ -194,7 +196,7 @@ export function writeAuthJsonProviderKeys(
   if (Object.keys(providerKeys).length === 0) return;
 
   const authJsonPath = resolveAuthJsonPath(state);
-  mkdirSync(state.stackDir, { recursive: true, mode: VAULT_DIR_MODE });
+  mkdirSync(dirname(authJsonPath), { recursive: true, mode: VAULT_DIR_MODE });
 
   let current: Record<string, unknown> = {};
   if (existsSync(authJsonPath)) {
@@ -232,9 +234,9 @@ export function writeAuthJsonProviderKeys(
   writeVaultFile(authJsonPath, JSON.stringify(current, null, 2) + "\n");
 }
 
-/** Read and parse config/stack/stack.env. Returns {} if the file does not exist. */
+/** Read and parse knowledge/env/stack.env. Returns {} if the file does not exist. */
 export function readStackEnv(stackDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${stackDir}/stack.env`);
+  const parsed = parseEnvFile(stackEnvPathFromStackDir(stackDir));
   const nonSecret: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (!isSecretLikeStackEnvKey(key)) nonSecret[key] = value;
@@ -250,7 +252,7 @@ export function updateSystemSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const systemEnvPath = `${state.stackDir}/stack.env`;
+  const systemEnvPath = `${state.stashDir}/env/stack.env`;
   enforceVaultDirMode(state.stackDir);
   if (!existsSync(systemEnvPath)) {
     ensureSystemSecrets(state);
@@ -276,9 +278,8 @@ export function patchSecretsEnvFile(
   if (Object.keys(stackPatches).length === 0) return;
   assertNoSecretLikeStackEnvKeys(stackPatches);
 
-  const stackEnvPath = `${stackDir}/stack.env`;
-  enforceVaultDirMode(stackDir);
-  mkdirSync(stackDir, { recursive: true, mode: VAULT_DIR_MODE });
+  const stackEnvPath = stackEnvPathFromStackDir(stackDir);
+  enforceVaultDirMode(dirname(stackEnvPath));
 
   let existingContent = "";
   try {

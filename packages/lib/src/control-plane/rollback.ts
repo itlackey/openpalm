@@ -14,11 +14,11 @@ import { resolveRollbackDir } from "./home.js";
  *  Only config/ system files are included — user-editable config files
  *  are never overwritten by lifecycle operations. */
 const SNAPSHOT_FILES = [
-  "config/stack/stack.env",
+  "knowledge/env/stack.env",
   "config/stack/services.compose.yml",
   "config/stack/channels.compose.yml",
   "config/stack/custom.compose.yml",
-  "config/stack/auth.json",
+  "knowledge/secrets/auth.json",
 ];
 
 /**

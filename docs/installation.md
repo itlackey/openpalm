@@ -26,7 +26,7 @@ details.
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
 
-$EDITOR "$HOME/.openpalm/config/stack/stack.env"
+$EDITOR "$HOME/.openpalm/knowledge/env/stack.env"
 $EDITOR "$HOME/.openpalm/knowledge/env/user.env"
 ```
 
@@ -42,7 +42,7 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 |---|---|
 | `~/.openpalm/config/stack/` | Live compose files and system-managed env |
 | `~/.openpalm/knowledge/tasks/` | Available automation task files |
-| `~/.openpalm/config/stack/stack.env` | System-managed stack values and tokens |
+| `~/.openpalm/knowledge/env/stack.env` | System-managed stack values and tokens |
 | `~/.openpalm/knowledge/env/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config and assistant extensions |
 | `~/.openpalm/data/` | Durable service data |
@@ -56,7 +56,7 @@ compose files and profiles derived by OpenPalm tooling.
 
 ## Important env files
 
-### `~/.openpalm/config/stack/stack.env`
+### `~/.openpalm/knowledge/env/stack.env`
 
 This file holds system-managed values, provider API keys, and owner identity:
 

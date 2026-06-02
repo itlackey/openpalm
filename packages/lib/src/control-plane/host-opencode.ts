@@ -18,6 +18,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, copyFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import { authJsonPath, assistantConfigDir } from "./paths.js";
 
@@ -223,8 +224,7 @@ export function importHostOpenCode(
   // ── auth.json ──────────────────────────────────────────────────────────
   if (status.authPath) {
     const destPath = authJsonPath(state);
-    const destDir = state.stackDir;
-    mkdirSync(destDir, { recursive: true });
+    mkdirSync(dirname(destPath), { recursive: true, mode: 0o700 });
 
     if (existsSync(destPath) && !overwriteConflicts) {
       // Merge: copy only keys that do not already exist in OP_HOME auth.json

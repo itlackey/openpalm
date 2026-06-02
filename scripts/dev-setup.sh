@@ -9,7 +9,7 @@ Creates local .dev directories and seeds dev config files.
 
 Options:
   --seed-env          Seed .dev/knowledge/env/user.env for akm env:user, generate
-                      .dev/config/stack/stack.env with auto-detected values, and
+                      .dev/knowledge/env/stack.env with auto-detected values, and
                       write system secrets under .dev/knowledge/secrets/.
   --force             Overwrite seeded files even if they already exist.
   --enable-addon <n>  Add <n> to config/stack/stack.yml. Repeat to enable multiple dev addons.
@@ -118,7 +118,7 @@ LOGS_DIR="$DEV_ROOT/data/logs"
 # CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
 # whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. Generated
-# files (stack.env, config/stack/auth.json, knowledge/secrets/, env/user.env) are excluded
+# files (env/stack.env, knowledge/secrets/auth.json, knowledge/secrets/, env/user.env) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
 # --force does a destructive resync (drop stale files that no longer
@@ -128,9 +128,9 @@ rsync_flags=(-a)
 [[ $force -eq 1 ]] && rsync_flags+=(--delete)
 
 rsync "${rsync_flags[@]}" \
-	--exclude=config/stack/stack.env \
+	--exclude=knowledge/env/stack.env \
 	--exclude=knowledge/secrets \
-	--exclude=config/stack/auth.json \
+	--exclude=knowledge/secrets/auth.json \
 	--exclude=knowledge/env/user.env \
 	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
 
@@ -164,8 +164,8 @@ if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 fi
 
 # Seed auth.json (empty — prevents Docker creating it as directory)
-mkdir -p "$CONFIG_DIR/stack"
-AUTH_JSON="$CONFIG_DIR/stack/auth.json"
+mkdir -p "$STASH_DIR/secrets"
+AUTH_JSON="$STASH_DIR/secrets/auth.json"
 if [[ ! -f "$AUTH_JSON" || $force -eq 1 ]]; then
 	echo '{}' >"$AUTH_JSON"
 	chmod 600 "$AUTH_JSON"
@@ -183,14 +183,14 @@ if [[ $seed_env -eq 1 ]]; then
 # Seeded by dev-setup.sh; safe to edit.
 #
 # Provider credentials are NOT seeded here — they live in OpenCode's
-# auth.json (mounted from config/stack/auth.json). Import them from the host
+# auth.json (mounted from knowledge/secrets/auth.json). Import them from the host
 # via the Providers panel, or set OPENAI_API_KEY / OPENAI_BASE_URL
 # below if you want to override a provider globally (e.g. point the
 # openai provider at a local Ollama for offline dev).
 USEREOF
 	fi
 
-	system_env="$CONFIG_DIR/stack/stack.env"
+	system_env="$STASH_DIR/env/stack.env"
 	if [[ ! -f "$system_env" || $force -eq 1 ]]; then
 		# Detect Docker socket from active context (supports OrbStack, Colima, etc.)
 		docker_sock="/var/run/docker.sock"
@@ -251,12 +251,12 @@ EOF
 fi
 
 # Ensure non-secret stack env, user env, and file-secret directory exist.
-touch "$STASH_DIR/env/user.env" "$CONFIG_DIR/stack/stack.env"
-if ! grep -q '^OP_HOME=' "$CONFIG_DIR/stack/stack.env"; then
-	printf '\nOP_HOME=%s\n' "$DEV_ROOT" >>"$CONFIG_DIR/stack/stack.env"
+touch "$STASH_DIR/env/user.env" "$STASH_DIR/env/stack.env"
+if ! grep -q '^OP_HOME=' "$STASH_DIR/env/stack.env"; then
+	printf '\nOP_HOME=%s\n' "$DEV_ROOT" >>"$STASH_DIR/env/stack.env"
 fi
-if ! grep -q '^OP_PROJECT_NAME=' "$CONFIG_DIR/stack/stack.env"; then
-	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$CONFIG_DIR/stack/stack.env"
+if ! grep -q '^OP_PROJECT_NAME=' "$STASH_DIR/env/stack.env"; then
+	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$STASH_DIR/env/stack.env"
 fi
 
 secrets_dir="$STASH_DIR/secrets"

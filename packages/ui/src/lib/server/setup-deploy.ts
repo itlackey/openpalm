@@ -31,7 +31,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 const logger = createLogger("admin:setup-deploy");
 
 function projectNameForState(state: ControlPlaneState): string {
-  return resolveComposeProjectName(parseEnvFile(`${state.stackDir}/stack.env`));
+  return resolveComposeProjectName(parseEnvFile(`${state.stashDir}/env/stack.env`));
 }
 
 function projectNameForComposeOptions(composeOpts: Parameters<typeof composePs>[0]): string {
@@ -137,7 +137,7 @@ function mapDockerError(raw: string): string {
  * resumable, so the flag is intentionally not written by performSetup.
  */
 function markSetupComplete(state: ControlPlaneState): void {
-  const path = `${state.stackDir}/stack.env`;
+  const path = `${state.stashDir}/env/stack.env`;
   const existing = existsSync(path) ? readFileSync(path, "utf-8") : "";
   // Inline mergeEnvContent semantics: if OP_SETUP_COMPLETE exists, replace it;
   // otherwise append. Keep this dumb — one key, no edge cases worth a helper.
@@ -504,7 +504,7 @@ export function startDeploy(state: ControlPlaneState): void {
         });
         _state.deployError =
           "Deployment succeeded but failed to mark setup complete. " +
-          "Try Retry; if it persists, check disk space and permissions on config/stack/stack.env.";
+          "Try Retry; if it persists, check disk space and permissions on knowledge/env/stack.env.";
         return;
       }
 

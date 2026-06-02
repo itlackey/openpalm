@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildEnvFiles } from './config-persistence.js';
@@ -38,11 +38,14 @@ describe('file-based control-plane secrets', () => {
 
   it('does not include file-based secrets in compose env files', () => {
     const stackDir = tempStackDir();
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_HOME=/tmp/openpalm\n');
+    const stashDir = join(stackDir, 'knowledge');
+    const stackEnv = join(stashDir, 'env', 'stack.env');
+    mkdirSync(join(stashDir, 'env'), { recursive: true });
+    writeFileSync(stackEnv, 'OP_HOME=/tmp/openpalm\n');
     writeSecret(stackDir, 'channel_chat_secret', 'value');
-    const state = { stackDir } as ControlPlaneState;
+    const state = { stackDir, stashDir } as ControlPlaneState;
 
-    expect(buildEnvFiles(state)).toEqual([join(stackDir, 'stack.env')]);
+    expect(buildEnvFiles(state)).toEqual([stackEnv]);
   });
 
   it('routes secret patches to lower-case secret files instead of stack.env', () => {

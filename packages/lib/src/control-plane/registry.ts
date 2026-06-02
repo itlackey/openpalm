@@ -272,7 +272,7 @@ export function getRegistryAddonConfig(_homeDir: string, name: string): Registry
 
   return {
     schemaPath: '',
-    userEnvPath: 'config/stack/stack.env',
+    userEnvPath: 'knowledge/env/stack.env',
     envSchema: '',
   };
 }

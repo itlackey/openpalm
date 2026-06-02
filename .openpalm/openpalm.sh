@@ -39,14 +39,16 @@ for name in services channels custom; do
   [ -f "$STACK_DIR/$name.compose.yml" ] && files+=(-f "$STACK_DIR/$name.compose.yml")
 done
 
-# stack.env feeds both compose variable substitution (--env-file) and the
-# process environment (so COMPOSE_PROFILES and friends activate addons).
+# stack.env (knowledge/env/stack.env) feeds both compose variable substitution
+# (--env-file) and the process environment (so COMPOSE_PROFILES and friends
+# activate addons).
+STACK_ENV="$OP_HOME/knowledge/env/stack.env"
 env_args=()
-if [ -f "$STACK_DIR/stack.env" ]; then
-  env_args=(--env-file "$STACK_DIR/stack.env")
+if [ -f "$STACK_ENV" ]; then
+  env_args=(--env-file "$STACK_ENV")
   set -a
   # shellcheck disable=SC1091
-  . "$STACK_DIR/stack.env"
+  . "$STACK_ENV"
   set +a
 fi
 

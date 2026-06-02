@@ -53,12 +53,12 @@ mounted at `/stash` for the assistant). There is no separate memory service.
 Docker Compose is invoked with the non-secret stack env file (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)):
 
 ```bash
---env-file "$OP_HOME/config/stack/stack.env"
+--env-file "$OP_HOME/knowledge/env/stack.env"
 ```
 
 That means the effective env model is:
 
-- `config/stack/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
+- `knowledge/env/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
 - `knowledge/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
 - `knowledge/env/user.env` - AKM env backing file for user-managed secrets; never a Compose env-file
 
@@ -80,7 +80,7 @@ Mounts:
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/config/assistant` | `/etc/opencode` | rw | OpenCode config and assistant extensions |
-| `$OP_HOME/config/stack/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Host-managed OpenCode auth copy |
+| `$OP_HOME/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Host-managed OpenCode auth copy |
 | `$OP_HOME/config/akm` | `/etc/akm` | rw | AKM config |
 | `$OP_HOME/data/assistant` | `/home/opencode` | rw | Assistant persistent home |
 | `$OP_HOME/knowledge` | `/stash` | rw | AKM stash |
@@ -130,7 +130,7 @@ Mounts:
 |---|---|---|---|
 | `$OP_HOME/data/guardian` | `/opt/openpalm/guardian` | rw | Runtime nonce / rate-limit state |
 | `$OP_HOME/config/guardian` | `/etc/opencode` | rw | Guardian OpenCode global config (`OPENCODE_CONFIG_DIR`) |
-| `$OP_HOME/config/stack/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` | ro | Shared OpenCode provider credentials (same file the assistant mounts) |
+| `$OP_HOME/knowledge/secrets/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` | ro | Shared OpenCode provider credentials (same file the assistant mounts) |
 | `$OP_HOME/data/logs` | `/opt/openpalm/logs` | rw | Guardian audit log directory |
 | `$OP_HOME/knowledge/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
 

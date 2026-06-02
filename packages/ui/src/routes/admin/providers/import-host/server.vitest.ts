@@ -79,8 +79,8 @@ beforeEach(() => {
 });
 
 function writeImportedAuth(auth: Record<string, unknown>): string {
-	const path = join(rootDir, 'config', 'stack', 'auth.json');
-	mkdirSync(join(rootDir, 'config', 'stack'), { recursive: true });
+	const path = join(rootDir, 'knowledge', 'secrets', 'auth.json');
+	mkdirSync(join(rootDir, 'knowledge', 'secrets'), { recursive: true });
 	writeFileSync(path, JSON.stringify(auth));
 	return path;
 }

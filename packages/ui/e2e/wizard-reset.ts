@@ -31,11 +31,11 @@ export function resolveOpHome(): string {
 }
 
 function stackEnvPath(homeDir: string): string {
-	return resolve(homeDir, 'config/stack/stack.env');
+	return resolve(homeDir, 'knowledge/env/stack.env');
 }
 
 function backupPath(homeDir: string): string {
-	return resolve(homeDir, 'config/stack/stack.env.wizard-test-backup');
+	return resolve(homeDir, 'knowledge/env/stack.env.wizard-test-backup');
 }
 
 function assertSafeHome(homeDir: string): void {

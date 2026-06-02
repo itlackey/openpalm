@@ -352,7 +352,7 @@ Response:
   "enabled": true,
   "config": {
     "schemaPath": "",
-    "userEnvPath": "config/stack/stack.env",
+    "userEnvPath": "knowledge/env/stack.env",
     "envSchema": ""
   }
 }
@@ -552,7 +552,7 @@ Response:
 ### `GET /admin/config/validate`
 
 Run the in-house key-presence and secret-audit checks against non-secret
-`config/stack/stack.env`, resolved Compose config, and `knowledge/secrets/`.
+`knowledge/env/stack.env`, resolved Compose config, and `knowledge/secrets/`.
 The validator confirms secret-like values use file grants and that required
 secret files are present — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit

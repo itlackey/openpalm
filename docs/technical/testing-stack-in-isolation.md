@@ -12,7 +12,7 @@ Dev-setup and tests use **offset ports** so they never conflict with a productio
 | Assistant (OpenCode) | `3800` → container `4096` | `4800` → container `4096` |
 | Guardian | network-only | network-only |
 
-`dev-setup.sh --seed-env` seeds `.dev/config/stack/stack.env` with the dev/test ports. `global-setup.ts` reads that file before tests run and auto-constructs `ADMIN_URL` and `ASSISTANT_URL`, so tests automatically target the correct stack with no extra env vars needed.
+`dev-setup.sh --seed-env` seeds `.dev/knowledge/env/stack.env` with the dev/test ports. `global-setup.ts` reads that file before tests run and auto-constructs `ADMIN_URL` and `ASSISTANT_URL`, so tests automatically target the correct stack with no extra env vars needed.
 
 Tests read port configuration in this priority order:
 1. Explicit env vars (`ADMIN_URL`, `ASSISTANT_URL`)
@@ -38,7 +38,7 @@ Create a stack env with test-isolated ports:
 ```bash
 mkdir -p .dev-test/config/stack
 mkdir -m 700 -p .dev-test/knowledge/secrets
-cat > .dev-test/config/stack/stack.env <<'EOF'
+cat > .dev-test/knowledge/env/stack.env <<'EOF'
 OP_HOME=.dev-test
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -49,7 +49,7 @@ OP_ASSISTANT_PORT=4800
 OP_ADMIN_PORT=9100
 OP_SETUP_COMPLETE=true
 EOF
-chmod 600 .dev-test/config/stack/stack.env
+chmod 600 .dev-test/knowledge/env/stack.env
 printf '%s\n' 'dev-admin-token' > .dev-test/knowledge/secrets/op_ui_login_password
 chmod 600 .dev-test/knowledge/secrets/op_ui_login_password
 ```
@@ -65,7 +65,7 @@ OP_ASSISTANT_PORT=4800 \
 docker compose --project-directory . \
   -f .dev/config/stack/core.compose.yml \
   -f compose.dev.yml \
-  --env-file .dev/config/stack/stack.env \
+  --env-file .dev/knowledge/env/stack.env \
   --project-name openpalm-test \
   up -d
 ```
@@ -98,7 +98,7 @@ Or, using `STACK_ENV_PATH` to auto-build URLs from a stack.env:
 ```bash
 RUN_DOCKER_STACK_TESTS=1 \
 OP_UI_LOGIN_PASSWORD=dev-admin-token \
-STACK_ENV_PATH=.dev-test/config/stack/stack.env \
+STACK_ENV_PATH=.dev-test/knowledge/env/stack.env \
 bun run ui:test:e2e
 ```
 

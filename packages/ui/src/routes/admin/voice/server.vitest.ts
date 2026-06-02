@@ -169,7 +169,7 @@ describe('PUT /admin/voice', () => {
 		expect(res.status).toBe(200);
 
 		const state = getState();
-		const envPath = join(state.stackDir, 'stack.env');
+		const envPath = join(state.stashDir, 'env', 'stack.env');
 		expect(existsSync(envPath)).toBe(true);
 		const env = readFileSync(envPath, 'utf-8');
 		expect(env).toContain('OP_TTS_ENGINE=remote');

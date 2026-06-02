@@ -235,7 +235,7 @@ describe('cli main', () => {
 
       // stack.env should be present with the pinned image tag derived from
       // the CLI package version (the fallback path).
-      const stackEnv = readFileSync(join(base, 'config', 'stack', 'stack.env'), 'utf-8');
+      const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
       expect(stackEnv).toMatch(new RegExp(`OP_IMAGE_TAG=(${expectedRef}|${cliPkg.version})`));
     } finally {
       rmSync(base, { recursive: true, force: true });
@@ -248,12 +248,13 @@ describe('cli main', () => {
     const stackConfig = join(base, 'config', 'stack.yml');
     const specFile = writeMinimalSetupSpec(base);
 
-    // The canonical "already installed" marker is config/stack/stack.env.
+    // The canonical "already installed" marker is knowledge/env/stack.env.
     // Seed it so the backup path triggers AND we can prove the backup
     // carries forward existing content.
     mkdirSync(join(base, 'data'), { recursive: true });
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
-    writeFileSync(join(base, 'config', 'stack', 'stack.env'), 'OP_OWNER_NAME=existing-owner\n');
+    mkdirSync(join(base, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'OP_OWNER_NAME=existing-owner\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -282,7 +283,7 @@ describe('cli main', () => {
       const backups = readdirSync(backupsDir).filter((name) => name !== '.gitkeep');
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
-      expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack', 'stack.env'), 'utf8')).toContain('OP_OWNER_NAME=existing-owner');
+      expect(readFileSync(join(backupsDir, backups[0], 'knowledge', 'env', 'stack.env'), 'utf8')).toContain('OP_OWNER_NAME=existing-owner');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

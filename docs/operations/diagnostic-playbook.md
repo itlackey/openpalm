@@ -123,7 +123,7 @@ actually targeting. In confusing cases, check the admin process environment or l
 ```bash
 # Look for the openpalm process and its config
 ps aux | grep "openpalm"
-cat ~/.openpalm/config/stack/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
+cat ~/.openpalm/knowledge/env/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
 ```
 
 Read these files if the behavior does not match the docs:

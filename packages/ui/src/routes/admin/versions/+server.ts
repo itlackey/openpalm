@@ -12,7 +12,7 @@ export const GET: RequestHandler = (event) => {
 
   const state = getState();
   if (!state.stackDir) return errorResponse(503, "not_initialized", "Stack directory not configured", {}, requestId);
-  const stackEnvPath = `${state.stackDir}/stack.env`;
+  const stackEnvPath = `${state.stashDir}/env/stack.env`;
   const envVars = existsSync(stackEnvPath) ? parseEnvFile(stackEnvPath) : {};
   const imageTag = envVars.OP_IMAGE_TAG ?? "latest";
 

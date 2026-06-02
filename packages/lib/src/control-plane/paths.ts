@@ -11,15 +11,17 @@
  *   knowledge/     — akm knowledge (skills, env, secrets, agents)
  *   workspace/     — shared work area
  */
+import { dirname, basename } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 
 // ── Config directory — user + system config ─────────────────────────────────
 
 /**
- * OpenCode auth token store. Lives under config/stack/ so it is shared by
- * every OpenCode-based container (assistant + guardian) via a single mount.
+ * OpenCode auth token store. Provider credentials are sensitive, so they live
+ * under knowledge/secrets/ (out of config/stack/) and are bind-mounted into
+ * every OpenCode-based container (assistant + guardian).
  */
-export const authJsonPath          = (s: ControlPlaneState): string => `${s.stackDir}/auth.json`;
+export const authJsonPath          = (s: ControlPlaneState): string => `${s.stashDir}/secrets/auth.json`;
 /** akm config directory mounted at /etc/akm */
 export const akmConfigDir          = (s: ControlPlaneState): string => `${s.configDir}/akm`;
 /** akm setup config file (written by admin on capability save) */
@@ -31,8 +33,27 @@ export const guardianConfigDir     = (s: ControlPlaneState): string => `${s.conf
 
 // ── Config/stack directory — compose runtime + stack config ─────────────────
 
-/** System env: non-secret runtime configuration */
-export const stackEnvPath          = (s: ControlPlaneState): string => `${s.stackDir}/stack.env`;
+/**
+ * System env: non-secret runtime configuration (the Compose `--env-file`).
+ * Lives under knowledge/env/ alongside the user env file (akm `env:stack`).
+ */
+export const stackEnvPath          = (s: ControlPlaneState): string => `${s.stashDir}/env/stack.env`;
+/**
+ * Resolve the OP_HOME root from a stackDir. Normally `<home>/config/stack`;
+ * falls back to the stackDir itself for callers/tests that pass a home-shaped
+ * dir. Mirrors `resolveHomeDirFromStackDir` in secrets-files.ts so the env and
+ * secret dirs resolve consistently from the same input.
+ */
+const homeFromStackDir = (stackDir: string): string =>
+  basename(stackDir) === "stack" && basename(dirname(stackDir)) === "config"
+    ? dirname(dirname(stackDir))
+    : stackDir;
+
+/**
+ * Same as `stackEnvPath` but resolved from a `stackDir` for the few callers
+ * that only have the stack dir, not full state.
+ */
+export const stackEnvPathFromStackDir = (stackDir: string): string => `${homeFromStackDir(stackDir)}/knowledge/env/stack.env`;
 
 // ── Operational state directories ───────────────────────────────────────────
 

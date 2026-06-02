@@ -28,35 +28,27 @@ const DEFAULT_IMAGE_TAG = "latest";
 
 /**
  * Return the env files used for docker compose --env-file args.
- * These are the live vault env files.
  *
- * Order: stack.env. Secret values live in knowledge/secrets/<ENV_KEY>
- * and are loaded explicitly by the services/control plane that need them.
- *
- * Note: `vault/user/user.env` is no longer a
- * compose env_file. User-managed env secrets live in the akm
- * `env:user` file and are sourced by the assistant entrypoint at
- * container startup. The legacy file is migrated into akm and deleted
- * on upgrade; subsequent `docker compose` invocations must not reference
- * it (compose interpolates `${VAR}` against the merged --env-file
- * contents, and a stale user.env would shadow the akm-sourced values).
+ * Only `knowledge/env/stack.env` (non-secret system config). Secret values
+ * live in `knowledge/secrets/<ENV_KEY>` and are granted to services as Compose
+ * file secrets. The user env (`knowledge/env/user.env`) is NOT a compose
+ * env_file — it is sourced by the assistant entrypoint at container startup.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [
-    `${state.stackDir}/stack.env`,
+    `${state.stashDir}/env/stack.env`,
   ].filter(existsSync);
 }
 
 /**
- * Write system-managed values to config/stack/stack.env.
+ * Write system-managed values to knowledge/env/stack.env.
  *
  * Secret-like keys are NOT written here — they belong in knowledge/secrets/.
  * Use ensureChannelSecret() for channel secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
-  mkdirSync(state.stackDir, { recursive: true });
-
-  const systemEnvPath = `${state.stackDir}/stack.env`;
+  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  mkdirSync(`${state.stashDir}/env`, { recursive: true, mode: 0o700 });
 
   let base = "";
   if (existsSync(systemEnvPath)) {
@@ -221,7 +213,7 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
 
   const envVars: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    ...parseEnvFile(`${state.stackDir}/stack.env`),
+    ...parseEnvFile(`${state.stashDir}/env/stack.env`),
   };
   const homeRoot = resolvePath(state.homeDir);
 

@@ -96,7 +96,7 @@ Install action:
 
 Important env behavior:
 
-- Provider API keys and runtime capability values are written to `~/.openpalm/config/stack/stack.env`.
+- Provider API keys and runtime capability values are written to `~/.openpalm/knowledge/env/stack.env`.
 - `~/.openpalm/knowledge/env/user.env` remains an optional user-extension file.
 
 ---

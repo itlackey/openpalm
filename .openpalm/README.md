@@ -82,12 +82,12 @@ Manual setup:
 
 ```bash
 cp -r .openpalm/ ~/.openpalm/
-$EDITOR ~/.openpalm/config/stack/stack.env
+$EDITOR ~/.openpalm/knowledge/env/stack.env
 mkdir -m 700 -p ~/.openpalm/knowledge/secrets
 # Create required secret files here, mode 0600, before enabling addons.
 docker compose \
   --project-name openpalm \
-  --env-file ~/.openpalm/config/stack/stack.env \
+  --env-file ~/.openpalm/knowledge/env/stack.env \
   -f ~/.openpalm/config/stack/core.compose.yml \
   -f ~/.openpalm/config/stack/services.compose.yml \
   -f ~/.openpalm/config/stack/channels.compose.yml \
@@ -116,7 +116,7 @@ services and overlays belong in `custom.compose.yml`.
 
 ## Runtime notes
 
-- Docker Compose global env file: `config/stack/stack.env` (system-managed, non-secret).
+- Docker Compose global env file: `knowledge/env/stack.env` (system-managed, non-secret).
 - Service secrets live under `knowledge/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
 - The assistant workspace is `workspace/`, mounted at `/work`.
 - The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm` — no container is needed.

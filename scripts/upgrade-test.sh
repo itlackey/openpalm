@@ -26,7 +26,7 @@
 #
 #   5. Verify:
 #      - knowledge/env/user.env is NOT overwritten (custom user env keys preserved)
-#      - config/stack/stack.env is NOT overwritten (paths, UID/GID preserved)
+#      - knowledge/env/stack.env is NOT overwritten (paths, UID/GID preserved)
 #      - knowledge/secrets/ files are NOT overwritten (operator password preserved)
 #      - All services come back healthy
 #      - No errors in container logs
@@ -93,6 +93,7 @@ export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
 STACK_DIR="${OP_HOME}/config/stack"
 STASH_DIR="${OP_HOME}/knowledge"
 SECRETS_DIR="${STASH_DIR}/secrets"
+STACK_ENV="${STASH_DIR}/env/stack.env"
 DATA_DIR="${OP_HOME}/data"
 
 PROJECT_NAME="openpalm-upgrade-test"
@@ -135,7 +136,7 @@ cleanup() {
 trap cleanup EXIT
 
 # ── Helper: compose command ──────────────────────────────────────────
-# Compose uses config/stack/stack.env for non-secret values only. Service secrets
+# Compose uses knowledge/env/stack.env for non-secret values only. Service secrets
 # live as files under knowledge/secrets and are granted by compose overlays.
 # No admin container. Admin is a host process (openpalm).
 
@@ -143,7 +144,7 @@ compose_cmd() {
   docker compose \
     --project-name "$PROJECT_NAME" \
     -f "${STACK_DIR}/core.compose.yml" \
-    --env-file "${STACK_DIR}/stack.env" \
+    --env-file "${STACK_ENV}" \
     "$@"
 }
 
@@ -189,7 +190,7 @@ rm -rf "${TEST_ROOT}" 2>/dev/null || true
 # ── 1b: Create directory structure ───────────────────────────────────
 
 mkdir -p \
-  "${STACK_DIR}" \
+  "${STACK_DIR}" "${STASH_DIR}/env" \
   "${STACK_DIR}/addons" \
   "${SECRETS_DIR}" \
   "${OP_HOME}/config/assistant" \
@@ -222,8 +223,8 @@ MY_CUSTOM_KEY=my-custom-value-12345
 EOF
 chmod 600 "${STASH_DIR}/env/user.env"
 
-# Seed config/stack/stack.env (system-managed, non-secret)
-cat >"${STACK_DIR}/stack.env" <<EOF
+# Seed knowledge/env/stack.env (system-managed, non-secret)
+cat >"${STACK_ENV}" <<EOF
 OP_HOME=${OP_HOME}
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -231,7 +232,7 @@ OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
 EOF
-chmod 600 "${STACK_DIR}/stack.env"
+chmod 600 "${STACK_ENV}"
 
 # Seed file-based system secrets
 printf '%s\n' "${OP_UI_LOGIN_PASSWORD}" >"${SECRETS_DIR}/op_ui_login_password"
@@ -261,7 +262,7 @@ if [[ $SKIP_BUILD -eq 0 && -z "$FROM_VERSION" ]]; then
   docker compose --project-directory "$ROOT_DIR" \
     -f "${STACK_DIR}/core.compose.yml" \
     -f compose.dev.yml \
-    --env-file "${STACK_DIR}/stack.env" \
+    --env-file "${STACK_ENV}" \
     --project-name "$PROJECT_NAME" build 2>&1 | tail -5
   pass "Images built from source"
 fi
@@ -269,7 +270,7 @@ fi
 # If --from-version is specified, pull that version's images
 if [[ -n "$FROM_VERSION" ]]; then
   header "Pulling images for from-version: ${FROM_VERSION}"
-  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" "${STACK_DIR}/stack.env"
+  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${FROM_VERSION}/" "${STACK_ENV}"
   compose_cmd pull 2>&1 | tail -5
   pass "Images pulled for ${FROM_VERSION}"
 fi
@@ -319,8 +320,8 @@ header "Phase 3: Record pre-upgrade state"
 SECRETS_CHECKSUM_BEFORE=$(sha256sum "${STASH_DIR}/env/user.env" | awk '{print $1}')
 echo "  user.env checksum:    ${SECRETS_CHECKSUM_BEFORE}"
 
-# Checksum config/stack/stack.env
-STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${STACK_DIR}/stack.env" | awk '{print $1}')
+# Checksum knowledge/env/stack.env
+STACK_ENV_CHECKSUM_BEFORE=$(sha256sum "${STACK_ENV}" | awk '{print $1}')
 echo "  stack.env checksum:   ${STACK_ENV_CHECKSUM_BEFORE}"
 
 # Checksum operator password secret
@@ -347,7 +348,7 @@ header "Phase 4: Simulate upgrade"
 #   1. Detects existing install (knowledge/env/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
 #   3. Refreshes compose to config/stack/
-#   4. Does NOT overwrite knowledge/env/user.env, config/stack/stack.env, or knowledge/secrets/
+#   4. Does NOT overwrite knowledge/env/user.env, knowledge/env/stack.env, or knowledge/secrets/
 #   5. Restarts services with compose up
 
 echo "  Simulating setup.sh re-run..."
@@ -373,18 +374,18 @@ else
   fail "knowledge/env/user.env should still exist"
 fi
 
-# Step 4: config/stack/stack.env — must NOT be overwritten on upgrade
-if [[ -f "${STACK_DIR}/stack.env" ]]; then
-  echo "  config/stack/stack.env exists -- NOT overwriting (same as setup.sh)"
+# Step 4: knowledge/env/stack.env — must NOT be overwritten on upgrade
+if [[ -f "${STACK_ENV}" ]]; then
+  echo "  knowledge/env/stack.env exists -- NOT overwriting (same as setup.sh)"
 else
-  echo "  BUG: config/stack/stack.env was deleted during upgrade simulation!"
-  fail "config/stack/stack.env should still exist"
+  echo "  BUG: knowledge/env/stack.env was deleted during upgrade simulation!"
+  fail "knowledge/env/stack.env should still exist"
 fi
 
 # Step 5: If --to-version specified, update image tag
 if [[ -n "$TO_VERSION" ]]; then
   echo "  Updating image tag to ${TO_VERSION}..."
-  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" "${STACK_DIR}/stack.env"
+  sed -i "s/^OP_IMAGE_TAG=.*/OP_IMAGE_TAG=${TO_VERSION}/" "${STACK_ENV}"
   compose_cmd pull 2>&1 | tail -5
 fi
 
@@ -434,18 +435,18 @@ else
   fail "Custom user key lost (expected 'my-custom-value-12345', got '${CUSTOM_KEY_VALUE}')"
 fi
 
-# ── 5b: config/stack/stack.env unchanged ─────────────────────────────
+# ── 5b: knowledge/env/stack.env unchanged ─────────────────────────────
 echo ""
-echo "=== 5b: config/stack/stack.env preservation ==="
+echo "=== 5b: knowledge/env/stack.env preservation ==="
 
-STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${STACK_DIR}/stack.env" | awk '{print $1}')
+STACK_ENV_CHECKSUM_AFTER=$(sha256sum "${STACK_ENV}" | awk '{print $1}')
 if [[ "$STACK_ENV_CHECKSUM_BEFORE" == "$STACK_ENV_CHECKSUM_AFTER" ]]; then
-  pass "config/stack/stack.env checksum unchanged"
+  pass "knowledge/env/stack.env checksum unchanged"
 else
   if [[ -n "$TO_VERSION" ]]; then
-    pass "config/stack/stack.env changed (expected: image tag updated to ${TO_VERSION})"
+    pass "knowledge/env/stack.env changed (expected: image tag updated to ${TO_VERSION})"
   else
-    fail "config/stack/stack.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
+    fail "knowledge/env/stack.env was modified during upgrade (before: ${STACK_ENV_CHECKSUM_BEFORE}, after: ${STACK_ENV_CHECKSUM_AFTER})"
   fi
 fi
 

@@ -129,7 +129,7 @@ export const POST: RequestHandler = async (event) => {
 		// Live push the merged imported auth.json (best-effort — if OpenCode isn't
 		// up, the file copy is enough). Do not push the host auth.json directly:
 		// conflict-preserving imports may intentionally leave existing credentials
-		// untouched in OP_HOME/config/stack/auth.json.
+		// untouched in OP_HOME/knowledge/secrets/auth.json.
 		const hostStatus = detectHostOpenCode();
 		let livePush: { pushed: number; failed: string[] } = { pushed: 0, failed: [] };
 		const importedAuthPath = authJsonPath(state);

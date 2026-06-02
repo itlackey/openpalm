@@ -155,9 +155,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const dataDir = `${homeDir}/data`;
   const workDir = defaultWorkDir();
 
-  // Use config/stack/stack.env (always present after a successful install) as the
+  // Use knowledge/env/stack.env (always present after a successful install) as the
   // canonical "already installed" indicator.
-  const alreadyInstalled = await Bun.file(join(configDir, 'stack', 'stack.env')).exists();
+  const alreadyInstalled = await Bun.file(join(homeDir, 'knowledge', 'env', 'stack.env')).exists();
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
@@ -234,10 +234,8 @@ async function prepareInstallFiles(
   if (!(await Bun.file(join(configDir, 'stack', 'auth.json')).exists())) {
     await Bun.write(join(configDir, 'stack', 'auth.json'), '{}\n');
   }
-  // Ensure the akm env:user file. ensureAkmUserEnv creates an empty 0600 file
-  // on a fresh install AND migrates a legacy knowledge/vaults/user.env into
-  // knowledge/env/user.env on upgrade — seeding an empty file here directly
-  // would shadow that migration and strand the user's existing keys.
+  // Ensure the akm env:user file exists (empty 0600) so the assistant can
+  // source it. Owned and edited directly by OpenPalm — see akm-user-env.ts.
   ensureAkmUserEnv(createState());
 
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }

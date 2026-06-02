@@ -4,7 +4,7 @@ This package ships the OpenCode plugin loaded into the OpenPalm assistant
 container. It registers one direct tool:
 
 - `load_vault` — loads user secrets (prefers the shared akm `env:user`
-  file at `knowledge/env/user.env`, falls back to `/etc/env/user.env`).
+  file at `knowledge/env/user.env`).
 
 Everything else the assistant uses (memory, skills, lessons, agents,
 workflows, env, secrets) comes from the `akm-opencode` plugin via the `akm_*`

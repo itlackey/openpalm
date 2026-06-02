@@ -42,12 +42,12 @@ dev_compose() {
 	docker compose --project-directory . \
 		-f .dev/config/stack/core.compose.yml \
 		-f compose.dev.yml \
-		--env-file .dev/config/stack/stack.env \
+		--env-file .dev/knowledge/env/stack.env \
 		--project-name "${COMPOSE_PROJECT_NAME:-openpalm}" "$@"
 }
 
 ensure_dev_setup() {
-	if [[ ! -f .dev/config/stack/stack.env ]]; then
+	if [[ ! -f .dev/knowledge/env/stack.env ]]; then
 		echo "Seeding dev environment..."
 		./scripts/dev-setup.sh --seed-env
 	fi

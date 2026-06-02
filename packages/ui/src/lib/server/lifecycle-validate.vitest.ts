@@ -2,22 +2,23 @@
  * Tests for validateProposedState().
  *
  * Post-#391 the validator no longer shells out to varlock. It reads the live
- * `config/stack/stack.env` and `knowledge/secrets/` files directly and emits
+ * `knowledge/env/stack.env` and `knowledge/secrets/` files directly and emits
  * presence-based errors/warnings. These tests stub the on-disk files and
  * assert the resulting shape.
  */
 import { describe, test, expect } from "vitest";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 import { validateProposedState } from "@openpalm/lib";
-import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
+import { makeTestState, trackDir, registerCleanup, stackEnvFor } from "./test-helpers.js";
 
 registerCleanup();
 
 function seedStack(stackDir: string, env: string): void {
-  mkdirSync(stackDir, { recursive: true });
-  writeFileSync(join(stackDir, "stack.env"), env);
+  const path = stackEnvFor(stackDir);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, env);
 }
 
 function seedLoginSecret(stackDir: string, value: string): void {

@@ -37,10 +37,10 @@ function seedCoreCompose(): void {
 }
 
 function seedEnvFiles(files: { stack?: boolean } = {}): void {
-  const stackDir = join(tempDir, "config", "stack");
   if (files.stack) {
-    mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, "stack.env"), "KEY=val");
+    const envDir = join(tempDir, "knowledge", "env");
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, "stack.env"), "KEY=val");
   }
 }
 
@@ -94,10 +94,9 @@ describe("buildComposeOptions", () => {
   });
 
   it("returns env files in correct order", () => {
-    // Note: vault/user/user.env is no longer a
-    // compose env_file. The runtime env file list is stack.env only.
-    // Even when a legacy user.env is present on disk, it is intentionally
-    // excluded from the compose args.
+    // The runtime --env-file list is knowledge/env/stack.env only. The user env
+    // (knowledge/env/user.env) is sourced by the assistant entrypoint, not a
+    // compose env_file.
     seedEnvFiles({ stack: true });
     const state = makeState();
     const opts = buildComposeOptions(state);
@@ -127,7 +126,7 @@ describe("buildComposeCliArgs", () => {
   it("uses OP_PROJECT_NAME from stack.env", () => {
     seedCoreCompose();
     seedEnvFiles({ stack: true });
-    writeFileSync(join(tempDir, "config", "stack", "stack.env"), "OP_PROJECT_NAME=openpalm-test\n");
+    writeFileSync(join(tempDir, "knowledge", "env", "stack.env"), "OP_PROJECT_NAME=openpalm-test\n");
     const state = makeState();
     const args = buildComposeCliArgs(state);
     expect(args[0]).toBe("--project-name");
@@ -136,7 +135,8 @@ describe("buildComposeCliArgs", () => {
 
   it("uses canonical voice and ollama profile ids", () => {
     seedCoreCompose();
-    writeFileSync(join(tempDir, "config", "stack", "stack.env"), "OP_VOICE_PROFILE=addon.voice.cuda\nOP_OLLAMA_PROFILE=addon.ollama.cpu\n");
+    seedEnvFiles({ stack: true });
+    writeFileSync(join(tempDir, "knowledge", "env", "stack.env"), "OP_VOICE_PROFILE=addon.voice.cuda\nOP_OLLAMA_PROFILE=addon.ollama.cpu\n");
     const state = makeState();
     const args = buildComposeCliArgs(state);
     expect(args).toContain("addon.voice.cuda");
@@ -145,7 +145,8 @@ describe("buildComposeCliArgs", () => {
 
   it("ignores non-canonical addon profile ids", () => {
     seedCoreCompose();
-    writeFileSync(join(tempDir, "config", "stack", "stack.env"), "OP_VOICE_PROFILE=not-canonical\nOP_OLLAMA_PROFILE=also-not-canonical\n");
+    seedEnvFiles({ stack: true });
+    writeFileSync(join(tempDir, "knowledge", "env", "stack.env"), "OP_VOICE_PROFILE=not-canonical\nOP_OLLAMA_PROFILE=also-not-canonical\n");
     const state = makeState();
     const args = buildComposeCliArgs(state);
     expect(args).not.toContain("not-canonical");
@@ -164,8 +165,7 @@ describe("buildComposeCliArgs", () => {
   });
 
   it("includes --env-file flags for env files that exist", () => {
-    // Note: vault/user/user.env is no longer
-    // listed in the compose env_file set. Only stack.env is passed via --env-file.
+    // Only knowledge/env/stack.env is passed via --env-file.
     seedCoreCompose();
     seedEnvFiles({ stack: true });
     const state = makeState();
@@ -212,7 +212,7 @@ describe("writeRunScript", () => {
     const script = readFileSync(join(tempDir, "run.sh"), "utf-8");
     expect(script).toContain("set -a");
     expect(script).toContain('OP_HOME="${OP_HOME:-$SCRIPT_DIR}"');
-    expect(script).toContain('source "${OP_HOME}/config/stack/stack.env"');
+    expect(script).toContain('source "${OP_HOME}/knowledge/env/stack.env"');
     expect(script).toContain('profile_args=()');
     expect(script).toContain('docker compose --project-name "${OP_PROJECT_NAME:-${COMPOSE_PROJECT_NAME:-openpalm}}"');
     expect(script).not.toContain('--profile ${OP_VOICE_PROFILE}');

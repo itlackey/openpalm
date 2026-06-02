@@ -202,10 +202,10 @@ describe("importHostOpenCode", () => {
     expect(destConfig.mcp).toBeUndefined();
 
     // Verify auth.json was written
-    expect(existsSync(join(opHome, "config", "stack", "auth.json"))).toBe(true);
+    expect(existsSync(join(opHome, "knowledge", "secrets", "auth.json"))).toBe(true);
 
     // Verify auth.json permissions are 0o600
-    const authStat = statSync(join(opHome, "config", "stack", "auth.json"));
+    const authStat = statSync(join(opHome, "knowledge", "secrets", "auth.json"));
     // On Linux, mode & 0o777 extracts permission bits
     expect(authStat.mode & 0o777).toBe(0o600);
   });
@@ -301,10 +301,9 @@ describe("importHostOpenCode", () => {
   });
 
   it("partial-merge auth: does not overwrite existing credential, adds new one", () => {
-    // Pre-seed OP_HOME/config/stack/auth.json with one existing credential
-    const opStackDir = join(opHome, "config", "stack");
-    mkdirSync(opStackDir, { recursive: true });
-    writeFileSync(join(opStackDir, "auth.json"), JSON.stringify({
+    // Pre-seed OP_HOME/knowledge/secrets/auth.json with one existing credential
+    mkdirSync(join(opHome, "knowledge", "secrets"), { recursive: true });
+    writeFileSync(join(opHome, "knowledge", "secrets", "auth.json"), JSON.stringify({
       azure: { type: "api", key: "existing" },
     }));
 
@@ -325,7 +324,7 @@ describe("importHostOpenCode", () => {
     });
 
     // Verify azure key was NOT overwritten
-    const written = JSON.parse(readFileSync(join(opStackDir, "auth.json"), "utf-8")) as Record<string, { key: string }>;
+    const written = JSON.parse(readFileSync(join(opHome, "knowledge", "secrets", "auth.json"), "utf-8")) as Record<string, { key: string }>;
     expect(written.azure.key).toBe("existing");
     // Verify groq was added
     expect(written.groq.key).toBe("gsk-host");

@@ -31,7 +31,7 @@ export type ComposeOptions = {
  */
 export function resolveActiveProfiles(state: ControlPlaneState): string[] {
   const profiles: string[] = [];
-  const stackEnvPath = `${state.stackDir}/stack.env`;
+  const stackEnvPath = `${state.stashDir}/env/stack.env`;
   let env: Record<string, string> = {};
   if (existsSync(stackEnvPath)) {
     env = parseEnvFile(stackEnvPath);
@@ -131,7 +131,7 @@ function collectEnvOverrides(envFiles: string[]): Record<string, string> {
  */
 export function writeRunScript(state: ControlPlaneState): void {
   const { files, envFiles, profiles } = buildComposeOptions(state);
-  const stackEnvRef = toOpHomeRelative(`${state.stackDir}/stack.env`, state.homeDir);
+  const stackEnvRef = toOpHomeRelative(`${state.stashDir}/env/stack.env`, state.homeDir);
 
   const lines: string[] = [
     "#!/usr/bin/env bash",

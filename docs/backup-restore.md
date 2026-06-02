@@ -110,7 +110,7 @@ the current model.
 | File or directory | Purpose |
 |---|---|
 | `~/.openpalm/knowledge/env/user.env` | AKM env backing file for user-managed secrets |
-| `~/.openpalm/config/stack/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
+| `~/.openpalm/knowledge/env/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed service secret files |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |

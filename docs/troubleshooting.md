@@ -51,7 +51,7 @@ lsof -i :3880
 ```
 
 Then either stop that process or change the matching `OP_*_PORT` value in
-`~/.openpalm/config/stack/stack.env`, then recreate the stack with the same
+`~/.openpalm/knowledge/env/stack.env`, then recreate the stack with the same
 compose file set.
 
 ---
@@ -114,7 +114,7 @@ Useful checks:
 
 ```bash
 ls ~/.openpalm/knowledge/secrets
-grep -E 'BASE_URL' ~/.openpalm/config/stack/stack.env
+grep -E 'BASE_URL' ~/.openpalm/knowledge/env/stack.env
 ```
 
 ```bash
@@ -154,7 +154,7 @@ Then recreate any services that depend on that value.
 - recreate the affected channel and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the
-live non-secret values come straight from `config/stack/stack.env`; service secrets come from `knowledge/secrets/`.
+live non-secret values come straight from `knowledge/env/stack.env`; service secrets come from `knowledge/secrets/`.
 
 ---
 
@@ -164,10 +164,10 @@ live non-secret values come straight from `config/stack/stack.env`; service secr
 the wrong user.
 
 **Fix:** verify ownership and the UID/GID values in
-`~/.openpalm/config/stack/stack.env`:
+`~/.openpalm/knowledge/env/stack.env`:
 
 ```bash
-grep -E 'OP_UID|OP_GID' ~/.openpalm/config/stack/stack.env
+grep -E 'OP_UID|OP_GID' ~/.openpalm/knowledge/env/stack.env
 id -u
 id -g
 sudo chown -R $(id -u):$(id -g) ~/.openpalm
@@ -184,7 +184,7 @@ restart-loop.
 
 **Fix:**
 
-- compare your current `~/.openpalm/config/stack/stack.env` with the newer schema
+- compare your current `~/.openpalm/knowledge/env/stack.env` with the newer schema
 - make sure any newly required variables are present
 - rerun `docker compose pull` and then `docker compose up -d` with the same file set
 

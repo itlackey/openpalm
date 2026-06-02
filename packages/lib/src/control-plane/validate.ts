@@ -21,7 +21,7 @@ const REQUIRED_SECRET_KEYS = ["OP_UI_LOGIN_PASSWORD"] as const;
  * Validate the live configuration files.
  *
  * Checks:
- * 1. config/stack/stack.env exists and carries every required key with a
+ * 1. knowledge/env/stack.env exists and carries every required key with a
  *    non-empty value.
  * 2. Every secret env key in getCoreSecretMappings() is present (key only
  *    — blank values are warned about, never erred on, because operators
@@ -38,7 +38,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const stackEnvPath = `${state.stackDir}/stack.env`;
+  const stackEnvPath = `${state.stashDir}/env/stack.env`;
 
   if (!existsSync(stackEnvPath)) {
     errors.push(`ERROR: stack env file missing at ${stackEnvPath}`);

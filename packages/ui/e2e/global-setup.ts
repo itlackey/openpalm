@@ -5,9 +5,9 @@ import { parse as dotenvParse } from "dotenv";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-// STACK_ENV_PATH allows pointing at a test-isolated stack (e.g. .dev-test/config/stack/stack.env)
+// STACK_ENV_PATH allows pointing at a test-isolated stack (e.g. .dev-test/knowledge/env/stack.env)
 // so Playwright tests don't accidentally target a developer's running dev stack.
-const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/config/stack/stack.env");
+const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/knowledge/env/stack.env");
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
 const UI_LOGIN_PASSWORD_SECRET = resolve(OP_HOME_DIR, "knowledge/secrets/op_ui_login_password");
 const BACKUP = `${STACK_ENV}.e2e-backup`;

@@ -54,12 +54,12 @@ export async function startOpenCodeSubprocess(opts: {
   mkdirSync(ocStateDir, { recursive: true });
 
   // Symlink auth.json → the canonical OpenCode credential file at
-  // ${OP_HOME}/config/stack/auth.json. This is the same file the assistant
+  // ${OP_HOME}/knowledge/secrets/auth.json. This is the same file the assistant
   // and guardian containers bind-mount (see .openpalm/config/stack/core.compose.yml
   // and channels.compose.yml), so credentials written by this wizard subprocess
   // are immediately visible to every OpenCode instance on next start.
   // SEC-5: Windows does not support unprivileged symlinks; use copyFileSync instead.
-  const authJsonSrc = join(opts.configDir, "stack", "auth.json");
+  const authJsonSrc = join(dirname(opts.configDir), "knowledge", "secrets", "auth.json");
   const authJsonDst = join(ocShareDir, "auth.json");
   if (!existsSync(authJsonDst)) {
     if (process.platform === "win32") {

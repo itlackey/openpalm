@@ -6,12 +6,11 @@
  * edits — no akm subprocess — so these tests run everywhere (no akm-on-PATH gate).
  */
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ensureAkmUserEnv,
-  readUserEnvFile,
   readUserEnvSync,
   writeUserEnvKey,
   deleteUserEnvKey,
@@ -104,32 +103,6 @@ describe("akm user-env helpers", () => {
 
   it("readUserEnvSync returns {} when no file exists yet", () => {
     expect(readUserEnvSync(state)).toEqual({});
-  });
-
-  it("ensureAkmUserEnv migrates a legacy vaults/user.env non-destructively", () => {
-    // Seed the legacy location.
-    const legacyDir = join(state.stashDir, "vaults");
-    mkdirSync(legacyDir, { recursive: true });
-    const legacyPath = join(legacyDir, "user.env");
-    writeFileSync(legacyPath, "FOO=bar\nBAZ=qux\n");
-
-    const path = ensureAkmUserEnv(state);
-    expect(readUserEnvFile(path)).toEqual({ FOO: "bar", BAZ: "qux" });
-    // Original is left intact (copy, never move).
-    expect(existsSync(legacyPath)).toBe(true);
-    expect(readFileSync(legacyPath, "utf-8")).toBe("FOO=bar\nBAZ=qux\n");
-  });
-
-  it("ensureAkmUserEnv prefers an existing env/user.env over the legacy file", () => {
-    writeUserEnvKey(state, "NEW", "1");
-    const legacyDir = join(state.stashDir, "vaults");
-    mkdirSync(legacyDir, { recursive: true });
-    writeFileSync(join(legacyDir, "user.env"), "OLD=should-not-win\n");
-
-    ensureAkmUserEnv(state);
-    const parsed = readUserEnvSync(state);
-    expect(parsed.NEW).toBe("1");
-    expect(parsed.OLD).toBeUndefined();
   });
 });
 

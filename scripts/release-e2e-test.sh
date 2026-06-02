@@ -507,7 +507,7 @@ fi
 if [ "$SKIP_INSTALL" -eq 0 ]; then
   step "Verify stack.env"
 
-  stack_env="$CONFIG_HOME/stack/stack.env"
+  stack_env="$STASH_HOME/env/stack.env"
 
   check_stack_env_val() {
     local key="$1" expected="$2"

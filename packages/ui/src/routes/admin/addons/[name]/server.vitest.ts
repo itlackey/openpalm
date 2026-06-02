@@ -82,7 +82,7 @@ describe('/admin/addons/:name route', () => {
     expect(body.name).toBe('chat');
     expect(body.enabled).toBe(true);
     expect(body.config.schemaPath).toBe('');
-    expect(body.config.userEnvPath).toBe('config/stack/stack.env');
+    expect(body.config.userEnvPath).toBe('knowledge/env/stack.env');
     expect(body.config.envSchema).toBe('');
   });
 

@@ -49,10 +49,11 @@ foreach ($name in 'services', 'channels', 'custom') {
   if (Test-Path $overlay) { $files += @('-f', $overlay) }
 }
 
-# stack.env feeds both compose variable substitution (--env-file) and the
-# process environment (so COMPOSE_PROFILES and friends activate addons).
+# stack.env (knowledge/env/stack.env) feeds both compose variable substitution
+# (--env-file) and the process environment (so COMPOSE_PROFILES and friends
+# activate addons).
 $envArgs = @()
-$stackEnv = Join-Path $StackDir 'stack.env'
+$stackEnv = Join-Path $OpHome 'knowledge/env/stack.env'
 if (Test-Path $stackEnv) {
   $envArgs = @('--env-file', $stackEnv)
   foreach ($line in Get-Content $stackEnv) {

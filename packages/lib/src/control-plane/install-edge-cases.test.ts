@@ -107,6 +107,8 @@ function createFullDirTree(): void {
     join(configDir, "assistant"),
     join(configDir, "akm"),
     join(homeDir, "knowledge"),
+    join(homeDir, "knowledge", "env"),
+    join(homeDir, "knowledge", "secrets"),
     join(homeDir, "workspace"),
     stackDir,
     dataDir,
@@ -131,7 +133,7 @@ function seedMinimalEnvFiles(): void {
   mkdirSync(stackDir, { recursive: true });
 
   writeFileSync(
-    join(stackDir, "stack.env"),
+    join(homeDir, "knowledge", "env", "stack.env"),
     [
       "# OpenPalm — Stack Configuration",
       "OPENAI_BASE_URL=",
@@ -177,7 +179,7 @@ describe("Fresh Install", () => {
     ensureSecrets(state);
 
     // stack.env only carries non-secret setup/config keys.
-    const stackContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
+    const stackContent = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackContent).not.toContain("OPENAI_API_KEY=");
     expect(stackContent).toContain("OP_SETUP_COMPLETE=false");
     expect(readSecret(stackDir, 'op_ui_login_password')).toBeNull();
@@ -187,7 +189,7 @@ describe("Fresh Install", () => {
   it("isSetupComplete returns false when stack.env has OP_SETUP_COMPLETE=false", () => {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(
-      join(stackDir, "stack.env"),
+      join(homeDir, "knowledge", "env", "stack.env"),
       "OP_SETUP_COMPLETE=false\n"
     );
 
@@ -216,7 +218,7 @@ describe("Fresh Install", () => {
 
     await performSetup(makeValidSpec());
 
-    const stackEnv = readFileSync(join(stackDir, "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
     // Either entirely absent, or still the seeded "false" — never "true".
     expect(parsed.OP_SETUP_COMPLETE === undefined || parsed.OP_SETUP_COMPLETE === "false").toBe(true);
@@ -242,7 +244,7 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets creates file-based secrets without stack.env tokens
   it("ensureSecrets creates file-based system secrets", () => {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(stackDir, "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
       homeDir,
@@ -258,7 +260,7 @@ describe("Existing Install", () => {
 
     ensureSecrets(state);
 
-    const afterContent = readFileSync(join(stackDir, "stack.env"), "utf-8");
+    const afterContent = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     expect(afterContent).not.toContain("OP_UI_LOGIN_PASSWORD=");
     expect(readSecret(stackDir, 'op_ui_login_password')).toBeNull();
   });
@@ -284,7 +286,7 @@ describe("Existing Install", () => {
     await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(
-      join(stackDir, "stack.env"),
+      join(homeDir, "knowledge", "env", "stack.env"),
       "utf-8"
     );
     const parsed = parseEnvContent(stackEnv);
@@ -318,7 +320,7 @@ describe("Existing Install", () => {
     expect(specAfterSecond).not.toBeNull();
     expect(specAfterSecond!.version).toBe(2);
 
-    const auth = JSON.parse(readFileSync(join(configDir, "stack", "auth.json"), "utf-8"));
+    const auth = JSON.parse(readFileSync(join(homeDir, "knowledge", "secrets", "auth.json"), "utf-8"));
     expect(auth.groq.key).toBe("gsk-test-key-456");
   });
 });
@@ -341,7 +343,7 @@ describe("Broken/Corrupt State", () => {
   // Scenario 9: ensureSecrets is idempotent on repeated calls
   it("ensureSecrets is idempotent — second call does not overwrite existing stack.env", () => {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(stackDir, "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
       homeDir,
@@ -358,7 +360,7 @@ describe("Broken/Corrupt State", () => {
     ensureSecrets(state);
 
     // Existing non-secret stack config must be preserved.
-    const content = readFileSync(join(stackDir, "stack.env"), "utf-8");
+    const content = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     expect(content).toContain("OP_SETUP_COMPLETE=false");
     expect(content).not.toContain("OP_UI_LOGIN_PASSWORD=");
   });
@@ -391,7 +393,7 @@ describe("Broken/Corrupt State", () => {
     // stack.env without OP_SETUP_COMPLETE
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(
-      join(stackDir, "stack.env"),
+      join(homeDir, "knowledge", "env", "stack.env"),
       "OP_IMAGE_TAG=latest\n"
     );
 
@@ -401,7 +403,7 @@ describe("Broken/Corrupt State", () => {
   it("isSetupComplete returns false when OP_UI_LOGIN_PASSWORD is set but OP_SETUP_COMPLETE is missing", () => {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(
-      join(stackDir, "stack.env"),
+      join(homeDir, "knowledge", "env", "stack.env"),
       "OP_IMAGE_TAG=latest\nexport OP_UI_LOGIN_PASSWORD=my-real-password\n"
     );
 
@@ -484,7 +486,7 @@ describe("Environment Edge Cases", () => {
   it("isSetupComplete returns false when only OP_UI_LOGIN_PASSWORD is set", () => {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(
-      join(stackDir, "stack.env"),
+      join(homeDir, "knowledge", "env", "stack.env"),
       "SOME_OTHER_KEY=value\nexport OP_UI_LOGIN_PASSWORD=real-password-here\n"
     );
 

@@ -17,7 +17,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 - OpenPalm is a file-assembly control plane over Docker Compose, not a template-rendering engine.
 - Runtime behavior is composed from:
   - compose files (`config/stack/` core + addon overlays),
-  - non-secret environment file (`config/stack/stack.env`) and file-based service secrets (`knowledge/secrets/`),
+  - non-secret environment file (`knowledge/env/stack.env`) and file-based service secrets (`knowledge/secrets/`),
   - service configuration files (`config/assistant/`, `config/akm/`).
 - `stack.yml` is a version marker only (`{ version: 2 }`), not a replacement for Compose or env files.
 - All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and the scheduler co-process are thin consumers.

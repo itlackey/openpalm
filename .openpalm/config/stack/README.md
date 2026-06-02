@@ -9,7 +9,7 @@ This directory contains the runtime stack composition and configuration. OpenPal
 cd ~/.openpalm/config/stack
 docker compose \
   --project-name openpalm \
-  --env-file stack.env \
+  --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
   -f channels.compose.yml \
@@ -19,7 +19,7 @@ docker compose \
 # Enable built-in optional services with profiles
 docker compose \
   --project-name openpalm \
-  --env-file stack.env \
+  --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
   -f channels.compose.yml \
@@ -66,15 +66,18 @@ overlays.
 | File | Purpose | Owner |
 |------|---------|-------|
 | `stack.yml` | Capabilities only (metadata) | User, explicit admin actions |
-| `stack.env` | Non-secret runtime configuration | CLI/admin (automated) |
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
 | `services.compose.yml` | Optional first-party services | System (managed via CLI/admin) |
 | `channels.compose.yml` | Optional first-party channels | System (managed via CLI/admin) |
 | `custom.compose.yml` | User custom services and overlays | User |
 
+This directory holds compose assembly only — **no secrets and no env files**.
+
 ## Env files
 
-Compose receives **only one env file** from this directory:
-- `stack.env` — Non-secret runtime configuration only
+Compose receives **only one env file**, from outside this directory:
+- `../../knowledge/env/stack.env` (akm `env:stack`) — Non-secret runtime configuration only
 
-Secrets live in `knowledge/secrets/` and are granted to services through Compose `secrets:` entries. Do not add other `--env-file` arguments to the compose command.
+Secrets live in `knowledge/secrets/` (including OpenCode `auth.json`) and are
+granted to services through Compose `secrets:` entries or direct bind mounts. Do
+not add other `--env-file` arguments to the compose command.

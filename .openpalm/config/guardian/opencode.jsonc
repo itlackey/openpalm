@@ -9,7 +9,7 @@
   //
   // Operator-managed and never overwritten by lifecycle operations. Provider
   // credentials are NOT here — they live in the shared auth.json mounted from
-  // config/stack/auth.json, so the guardian reuses the same provider as the
+  // knowledge/secrets/auth.json, so the guardian reuses the same provider as the
   // assistant.
   "$schema": "https://opencode.ai/config.json",
 

@@ -109,7 +109,7 @@ Approximate storage use:
 ### Default inbound ports
 
 OpenPalm is localhost/LAN-first by default. Most services bind to `127.0.0.1`
-unless you intentionally change bind addresses in `config/stack/stack.env`.
+unless you intentionally change bind addresses in `knowledge/env/stack.env`.
 
 | Host port | Service | Variable |
 |---|---|---|

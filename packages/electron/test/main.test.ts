@@ -1,3 +1,5 @@
+// Run via vitest (Node), NOT bun test — bun executes the real electron module
+// and cannot honor vi.mock() hoisting. Use: bun run --cwd packages/electron test
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── Mock node:fs before any imports ─────────────────────────────────────────
@@ -159,12 +161,12 @@ describe('resolveAssistantUrl', () => {
     expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:1234');
   });
 
-  it('reads stack.env from ${homeDir}/config/stack/stack.env', () => {
+  it('reads stack.env from ${homeDir}/knowledge/env/stack.env', () => {
     vi.mocked(lib.parseEnvFile).mockReturnValue({});
     delete process.env.OP_OPENCODE_URL;
     delete process.env.OP_ASSISTANT_URL;
     resolveAssistantUrl('/some/home');
-    expect(lib.parseEnvFile).toHaveBeenCalledWith('/some/home/config/stack/stack.env');
+    expect(lib.parseEnvFile).toHaveBeenCalledWith('/some/home/knowledge/env/stack.env');
   });
 });
 

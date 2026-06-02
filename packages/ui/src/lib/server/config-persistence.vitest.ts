@@ -23,7 +23,7 @@ import {
   secretPath,
   writeStackSpec,
 } from "@openpalm/lib";
-import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
+import { makeTempDir, makeTestState, trackDir, registerCleanup , stackEnvFor} from "./test-helpers.js";
 
 function writeStackCompose(homeDir: string, filename: string, yml: string): void {
   const stackDir = join(homeDir, "config", "stack");
@@ -154,8 +154,8 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
+    mkdirSync(join(state.stashDir, "env"), { recursive: true });
+    writeFileSync(stackEnvFor(state.stackDir), "KEY=val");
     // user.env may still exist on disk during migration but must NOT be
     // surfaced as a compose env_file (compose would shadow akm-sourced values).
 
@@ -170,8 +170,8 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(join(state.stackDir, "stack.env"), "KEY=val");
+    mkdirSync(join(state.stashDir, "env"), { recursive: true });
+    writeFileSync(stackEnvFor(state.stackDir), "KEY=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
@@ -223,14 +223,14 @@ describe("writeRuntimeFiles", () => {
     expect(readSecret(state.stackDir, "channel_chat_secret")).toBeTruthy();
 
     // Channel secrets must NOT be in stack.env
-    const stackContent = readFileSync(join(state.stackDir, "stack.env"), "utf-8");
+    const stackContent = readFileSync(stackEnvFor(state.stackDir), "utf-8");
     expect(stackContent).not.toContain("CHANNEL_CHAT_SECRET=");
   });
 
   test("writes stack.env with runtime configuration", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = join(state.stackDir, "stack.env");
+    const systemEnvPath = stackEnvFor(state.stackDir);
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
@@ -240,7 +240,7 @@ describe("writeRuntimeFiles", () => {
   test("stack.env does NOT leak user-managed secrets", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = join(state.stackDir, "stack.env");
+    const systemEnvPath = stackEnvFor(state.stackDir);
     const content = readFileSync(systemEnvPath, "utf-8");
     const lines = content.split("\n");
     expect(lines.some((l) => /^OP_UI_LOGIN_PASSWORD=/.test(l))).toBe(false);

@@ -71,7 +71,7 @@ actions and service names are legal -- the assistant can't do anything
 unauthorized.
 
 The assistant uses OpenCode config from `/etc/opencode`, mounts
-`~/.openpalm/config/stack/auth.json` for host-managed OpenCode auth state, mounts AKM
+`~/.openpalm/knowledge/secrets/auth.json` for host-managed OpenCode auth state, mounts AKM
 config at `/etc/akm`, mounts the full AKM stash from `~/.openpalm/knowledge/` at
 `/stash`, and stores AKM cache/data under `/opt/akm/cache` and `/opt/akm/data`.
 Provider API keys are stored in OpenCode's auth.json via the Connections tab.
@@ -181,14 +181,14 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/config/stack/channels.compose.yml -> first-party optional channels and guardian
 ~/.openpalm/config/stack/custom.compose.yml   -> custom services and overlays
 ~/.openpalm/config/stack/stack.yml            -> first-party addon activation state
-~/.openpalm/config/stack/stack.env            -> non-secret values passed via --env-file
+~/.openpalm/knowledge/env/stack.env            -> non-secret values passed via --env-file
 ~/.openpalm/knowledge/secrets/             -> system-managed Compose secret files
 ~/.openpalm/knowledge/env/user.env             -> user-managed secrets (akm env:user)
 ```
 
 Docker reads compose files, the non-secret env file, and secret files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`config/stack/stack.env`; Compose `secrets:` grants files from `knowledge/secrets/`.
+`knowledge/env/stack.env`; Compose `secrets:` grants files from `knowledge/secrets/`.
 
 ---
 

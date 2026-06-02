@@ -75,12 +75,12 @@ export function getRecentStderr(maxLines = 40): string {
  * `/proxy/assistant/*` to the assistant container. Without OP_OPENCODE_URL set,
  * that proxy falls back to `http://localhost:4096` (the in-container port),
  * which doesn't exist on the host. Read the host port bound by docker compose
- * from `${OP_HOME}/config/stack/stack.env` so the UI hits the right address.
+ * from `${OP_HOME}/knowledge/env/stack.env` so the UI hits the right address.
  */
 export function resolveAssistantUrl(homeDir: string): string {
   const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
   if (userOverride) return userOverride;
-  const stackEnv = parseEnvFile(join(homeDir, 'config', 'stack', 'stack.env'));
+  const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || '127.0.0.1';
   const port = stackEnv.OP_ASSISTANT_PORT || '3800';
   return `http://${bind}:${port}`;

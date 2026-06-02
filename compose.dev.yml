@@ -7,7 +7,7 @@
 #   docker compose --project-directory . \
 #     -f .openpalm/config/stack/core.compose.yml \
 #     -f compose.dev.yml \
-#     --env-file .dev/config/stack/stack.env \
+#     --env-file .dev/knowledge/env/stack.env \
 #     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the core compose file lives

@@ -31,7 +31,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services, profile-gated |
 | `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels, profile-gated |
 | `~/.openpalm/config/stack/custom.compose.yml` | User custom services and overlays |
-| `~/.openpalm/config/stack/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
+| `~/.openpalm/knowledge/env/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
 | `~/.openpalm/config/stack/stack.yml` | Stack schema marker and enabled first-party addon names |
 
@@ -63,16 +63,16 @@ op() {
   local OP_HOME="${OP_HOME:-$HOME/.openpalm}"
   local PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
-  if [ -f "$OP_HOME/config/stack/stack.env" ]; then
+  if [ -f "$OP_HOME/knowledge/env/stack.env" ]; then
     set -a
     # shellcheck disable=SC1090
-    source "$OP_HOME/config/stack/stack.env"
+    source "$OP_HOME/knowledge/env/stack.env"
     set +a
   fi
 
   docker compose \
     --project-name "$PROJECT_NAME" \
-    --env-file "$OP_HOME/config/stack/stack.env" \
+    --env-file "$OP_HOME/knowledge/env/stack.env" \
     -f "$OP_HOME/config/stack/core.compose.yml" \
     -f "$OP_HOME/config/stack/services.compose.yml" \
     -f "$OP_HOME/config/stack/channels.compose.yml" \
@@ -97,7 +97,7 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/config/stack/stack.env" \
+  --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
   -f "$OP_HOME/config/stack/channels.compose.yml" \
@@ -119,7 +119,7 @@ misconfiguration early — before containers are affected.
 # Validate compose merge and variable substitution (exits non-zero on error)
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/config/stack/stack.env" \
+  --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
   -f "$OP_HOME/config/stack/channels.compose.yml" \
@@ -130,7 +130,7 @@ docker compose \
 # List resolved service names
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/config/stack/stack.env" \
+  --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
   -f "$OP_HOME/config/stack/channels.compose.yml" \
@@ -145,7 +145,7 @@ docker compose \
 ```bash
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/config/stack/stack.env" \
+  --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
   -f "$OP_HOME/config/stack/channels.compose.yml" \

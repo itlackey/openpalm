@@ -33,6 +33,7 @@ let originalHome: string | undefined;
 beforeEach(() => {
   rootDir = join(tmpdir(), `openpalm-setup-import-host-${randomBytes(4).toString('hex')}`);
   mkdirSync(join(rootDir, 'config', 'stack'), { recursive: true });
+  mkdirSync(join(rootDir, 'knowledge', 'secrets'), { recursive: true });
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = rootDir;
   resetState('admin-token');
@@ -46,7 +47,7 @@ afterEach(() => {
 
 describe('POST /api/setup/import-host', () => {
   test('pushes merged imported auth.json and restarts only assistant', async () => {
-    writeFileSync(join(rootDir, 'config', 'stack', 'auth.json'), JSON.stringify({
+    writeFileSync(join(rootDir, 'knowledge', 'secrets', 'auth.json'), JSON.stringify({
       groq: { type: 'api', key: 'gsk-imported' },
     }));
 

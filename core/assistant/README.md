@@ -15,7 +15,7 @@ The assistant is deliberately isolated:
 - No network path to the host admin process — only the assistant API on its internal compose network is reachable from inside the container
 - Host filesystem access is limited to the bind mounts declared in `.openpalm/config/stack/core.compose.yml`:
   - `${OP_HOME}/config/assistant` → `/etc/opencode` (OpenCode config)
-  - `${OP_HOME}/config/stack/auth.json` → `/home/opencode/.local/share/opencode/auth.json` (host-managed OpenCode auth copy)
+  - `${OP_HOME}/knowledge/secrets/auth.json` → `/home/opencode/.local/share/opencode/auth.json` (host-managed OpenCode auth copy)
   - `${OP_HOME}/config/akm` → `/etc/akm` (AKM config)
   - `${OP_HOME}/data/assistant` → `/home/opencode` (the assistant's home; survives recreates)
   - `${OP_HOME}/workspace` → `/work` (shared work area)

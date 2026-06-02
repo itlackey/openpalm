@@ -7,10 +7,10 @@ relevant tabs **must not bleed into each other**:
 | Tab | Owns | Files written | Endpoints |
 |---|---|---|---|
 | **AKM** | AKM's internal LLM/embedding config | `OP_HOME/config/akm/config.json` (`llm`, `embedding` top-level fields) | `PATCH /admin/akm` |
-| **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/config/stack/auth.json` | `PATCH /admin/providers/[id]`, `POST /admin/opencode/model`, `POST/DELETE /admin/opencode/providers/[id]/auth`, `POST /admin/providers/import-host` |
-| **Voice** | TTS/STT channel configuration | `OP_HOME/config/stack/stack.env` (`TTS_*`, `STT_*` vars) | `PUT /admin/voice` |
+| **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/knowledge/secrets/auth.json` | `PATCH /admin/providers/[id]`, `POST /admin/opencode/model`, `POST/DELETE /admin/opencode/providers/[id]/auth`, `POST /admin/providers/import-host` |
+| **Voice** | TTS/STT channel configuration | `OP_HOME/knowledge/env/stack.env` (`TTS_*`, `STT_*` vars) | `PUT /admin/voice` |
 
-> `config/stack/auth.json` is the single OpenCode credential store. It is mounted
+> `knowledge/secrets/auth.json` is the single OpenCode credential store. It is mounted
 > into the assistant (read-write) and the guardian (read-only), so credentials
 > set via the Connections tab are also what the guardian's content-validation
 > moderator uses — there is no separate guardian credential store.

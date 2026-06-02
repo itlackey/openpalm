@@ -55,7 +55,7 @@ every request.
 tr -d '\n' < .dev/knowledge/secrets/op_ui_login_password
 ```
 
-**Assistant URL**: by default `.dev/config/stack/stack.env` sets
+**Assistant URL**: by default `.dev/knowledge/env/stack.env` sets
 `OP_ASSISTANT_PORT=3800` — so the proxy reaches **your existing prod
 assistant container** (no second stack required for UI iteration).
 If you want full isolation, spin up the dev compose stack alongside:

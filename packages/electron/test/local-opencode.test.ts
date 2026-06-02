@@ -1,3 +1,6 @@
+// Run via vitest (Node), NOT bun test — bun cannot honor vi.mock() hoisting for
+// electron imports. Use: bun run --cwd packages/electron test
+
 /**
  * Tests for the ephemeral local OpenCode spawn module.
  *

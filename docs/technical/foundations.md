@@ -23,10 +23,10 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ```text
 ~/.openpalm/
 ├── config/          user-editable config (assistant/, akm/, guardian/)
-│   └── stack/       live compose assembly (core.compose.yml, stack.env, addons/)
+│   └── stack/       live compose assembly (core.compose.yml, stack.yml, addons/) — no secrets, no env
 ├── knowledge/           AKM knowledge base (env/, secrets/, tasks/, skills/)
-│   ├── env/         user-managed config (user.env = env:user)
-│   └── secrets/     system-managed service secrets (akm secret — Compose grants)
+│   ├── env/         user.env (env:user) + stack.env (env:stack, Compose --env-file)
+│   └── secrets/     system-managed service secrets + auth.json (akm secret — Compose grants)
 ├── data/            durable service data, logs, backups, rollback, akm/cache, akm/data
 └── workspace/       shared work area
 ```
@@ -37,7 +37,7 @@ Lifecycle backups live under `~/.openpalm/data/backups/`; rollback snapshots liv
 
 The standard startup path uses:
 
-- `config/stack/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
+- `knowledge/env/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
 - `knowledge/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
 - `knowledge/env/user.env` — AKM env backing file for user-managed secrets; not a Compose env file
 
@@ -90,7 +90,7 @@ Mounts:
 
 - `$OP_HOME/config/assistant -> /etc/opencode`
 - `$OP_HOME/config/akm -> /etc/akm`
-- `$OP_HOME/config/stack/auth.json -> /home/opencode/.local/share/opencode/auth.json`
+- `$OP_HOME/knowledge/secrets/auth.json -> /home/opencode/.local/share/opencode/auth.json`
 - `$OP_HOME/data/assistant -> /home/opencode`
 - `$OP_HOME/knowledge -> /stash` (shared akm stash)
 - `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data`
@@ -150,7 +150,7 @@ Mounts:
 
 - `$OP_HOME/data/guardian -> /opt/openpalm/guardian`
 - `$OP_HOME/config/guardian -> /etc/opencode` (guardian OpenCode global config, `OPENCODE_CONFIG_DIR`)
-- `$OP_HOME/config/stack/auth.json -> /opt/openpalm/guardian/.local/share/opencode/auth.json` (ro; shared OpenCode provider credentials, same file the assistant mounts)
+- `$OP_HOME/knowledge/secrets/auth.json -> /opt/openpalm/guardian/.local/share/opencode/auth.json` (ro; shared OpenCode provider credentials, same file the assistant mounts)
 - `$OP_HOME/data/logs -> /opt/openpalm/logs`
 - Compose secret mounts under `/run/secrets/<name>` for guardian/channel HMAC verification
 

@@ -244,8 +244,8 @@ export async function performSetup(
 
       // Write image tag and AKM mount paths to stack.env — atomic to avoid
       // partial writes if the process is interrupted mid-write.
-      const systemEnvForAkm = existsSync(`${state.stackDir}/stack.env`)
-        ? readFileSync(`${state.stackDir}/stack.env`, "utf-8")
+      const systemEnvForAkm = existsSync(`${state.stashDir}/env/stack.env`)
+        ? readFileSync(`${state.stashDir}/env/stack.env`, "utf-8")
         : "";
       const akmUpdates: Record<string, string> = {};
       if (imageTag) akmUpdates.OP_IMAGE_TAG = imageTag;
@@ -257,7 +257,7 @@ export async function performSetup(
         }
       }
       if (Object.keys(akmUpdates).length > 0) {
-        writeFileAtomic(`${state.stackDir}/stack.env`, mergeEnvContent(systemEnvForAkm, akmUpdates), 0o600);
+        writeFileAtomic(`${state.stashDir}/env/stack.env`, mergeEnvContent(systemEnvForAkm, akmUpdates), 0o600);
       }
 
       // Write akm config with LLM and embedding settings from setup — atomic.

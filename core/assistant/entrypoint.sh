@@ -76,14 +76,8 @@ maybe_source_akm_user_env() {
   # the keys appear in the crontab preamble. Only possible as root (0600 file).
   if [ "$IS_ROOT" = "0" ]; then return 0; fi
 
-  local env_path=""
-  if [ -n "${AKM_STASH_DIR:-}" ] && [ -f "${AKM_STASH_DIR}/env/user.env" ]; then
-    env_path="${AKM_STASH_DIR}/env/user.env"
-  elif [ -f "/etc/env/user.env" ]; then
-    env_path="/etc/env/user.env"
-  fi
-
-  if [ -z "$env_path" ]; then return 0; fi
+  local env_path="${AKM_STASH_DIR:-}/env/user.env"
+  if [ -z "${AKM_STASH_DIR:-}" ] || [ ! -f "$env_path" ]; then return 0; fi
 
   # `|| true` so a malformed line in the user-edited env file cannot abort the
   # entrypoint under `set -euo pipefail` and trap the assistant in a restart loop.

@@ -262,7 +262,7 @@ describe("materialized registry catalog", () => {
 
     expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
       schemaPath: '',
-      userEnvPath: 'config/stack/stack.env',
+      userEnvPath: 'knowledge/env/stack.env',
       envSchema: '',
     });
   });
@@ -445,19 +445,23 @@ describe("materialized registry catalog", () => {
     materializeRegistryCatalog(sourceRoot);
 
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
     mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, 'stack.env'), '');
+    mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(stackEnv, '');
 
     expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
     setAddonProfileSelection(stackDir, 'voice', 'addon.voice.cuda');
     expect(getAddonProfileSelection(stackDir, 'voice')).toBe('addon.voice.cuda');
-    expect(readFileSync(join(stackDir, 'stack.env'), 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
+    expect(readFileSync(stackEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
   });
 
   it("ignores non-canonical addon profile values when reading stack.env", () => {
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
     mkdirSync(stackDir, { recursive: true });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_VOICE_PROFILE=not-canonical\n');
+    mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(stackEnv, 'OP_VOICE_PROFILE=not-canonical\n');
 
     expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
   });

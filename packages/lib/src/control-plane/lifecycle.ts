@@ -176,7 +176,7 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   namespace: string;
   tag: string;
 }> {
-  const systemEnvPath = `${state.stackDir}/stack.env`;
+  const systemEnvPath = `${state.stashDir}/env/stack.env`;
   const parsed = parseEnvFile(systemEnvPath);
   const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 
@@ -251,7 +251,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
   // mutation just the same.
 
   // 1. Snapshot stack.env for rollback on failure
-  const stackEnvPath = `${state.stackDir}/stack.env`;
+  const stackEnvPath = `${state.stashDir}/env/stack.env`;
   let originalStackEnv: string | null = null;
   try {
     originalStackEnv = readFileSync(stackEnvPath, "utf-8");
@@ -304,7 +304,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
  * Used by the admin "set version" action — skips the auto-detect step in performUpgrade.
  */
 export async function applyTagChange(state: ControlPlaneState, tag: string): Promise<UpgradeResult> {
-  const stackEnvPath = `${state.stackDir}/stack.env`;
+  const stackEnvPath = `${state.stashDir}/env/stack.env`;
   const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: tag }, { uncomment: true }));
   const upgradeResult = await applyUpgrade(state);

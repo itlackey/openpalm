@@ -22,7 +22,7 @@ import {
   randomHex,
   CORE_SERVICES,
 } from "@openpalm/lib";
-import { makeTempDir, makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
+import { makeTempDir, makeTestState, trackDir, registerCleanup , stackEnvFor} from "./test-helpers.js";
 
 registerCleanup();
 
@@ -249,12 +249,12 @@ describe("updateStackEnvToLatestImageTag", () => {
     vi.restoreAllMocks();
   });
 
-  test("updates OP_IMAGE_TAG in config/stack/stack.env", async () => {
+  test("updates OP_IMAGE_TAG in knowledge/env/stack.env", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(state.stackDir, { recursive: true });
+    mkdirSync(join(state.stashDir, "env"), { recursive: true });
     writeFileSync(
-      join(state.stackDir, "stack.env"),
+      stackEnvFor(state.stackDir),
       "OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.1.0\n"
     );
 
@@ -268,7 +268,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     );
 
     const result = await updateStackEnvToLatestImageTag(state);
-    const updated = readFileSync(join(state.stackDir, "stack.env"), "utf-8");
+    const updated = readFileSync(stackEnvFor(state.stackDir), "utf-8");
 
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
@@ -278,8 +278,8 @@ describe("updateStackEnvToLatestImageTag", () => {
   test("throws when docker tag lookup fails", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(join(state.stackDir, "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
+    mkdirSync(join(state.stashDir, "env"), { recursive: true });
+    writeFileSync(stackEnvFor(state.stackDir), "OP_IMAGE_NAMESPACE=openpalm\n");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad gateway", { status: 502 }));
 

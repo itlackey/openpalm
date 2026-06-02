@@ -72,7 +72,7 @@ For full control without any harness:
 ```bash
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/.openpalm "$HOME/.openpalm"
-$EDITOR "$HOME/.openpalm/config/stack/stack.env"
+$EDITOR "$HOME/.openpalm/knowledge/env/stack.env"
 $EDITOR "$HOME/.openpalm/knowledge/env/user.env"
 ```
 
@@ -125,7 +125,7 @@ For all common compose operations (start, stop, status, pull, logs, restart), se
 
 **Change model keys**
 
-Edit `~/.openpalm/config/stack/stack.env`, then recreate services that need the new values.
+Edit `~/.openpalm/knowledge/env/stack.env`, then recreate services that need the new values.
 
 ---
 
@@ -136,7 +136,7 @@ The copied bundle gives you a predictable host layout:
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/config/stack/` | Compose files |
-| `~/.openpalm/config/stack/stack.env` | Stack-level env values |
+| `~/.openpalm/knowledge/env/stack.env` | Stack-level env values |
 | `~/.openpalm/knowledge/env/user.env` | Optional user extensions |
 | `~/.openpalm/config/` | User-managed config |
 | `~/.openpalm/data/` | Persistent container data |

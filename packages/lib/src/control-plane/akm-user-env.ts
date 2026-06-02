@@ -22,13 +22,10 @@
  *   knowledge/     — AKM_STASH_DIR: asset content (skills, env, secrets, agents)
  *   data/akm/      — akm operational cache and data
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseEnvFile, upsertEnvValue, removeEnvKey } from "./env.js";
-import { createLogger } from "../logger.js";
 import type { ControlPlaneState } from "./types.js";
-
-const logger = createLogger("akm-user-env");
 
 /**
  * Quote a value so the written line is interpreted IDENTICALLY by a POSIX shell
@@ -94,31 +91,12 @@ export function userEnvPathSync(state: ControlPlaneState): string {
  * Pure filesystem — no akm subprocess. Returns immediately when the file is
  * already provisioned (the steady state — read paths pay no extra syscalls).
  * Otherwise creates `knowledge/env/` (0700) and an empty `user.env` (0600).
- *
- * Non-destructive legacy migration: if `env/user.env` is absent but the legacy
- * `vaults/user.env` (akm < 0.8.0) is present, its contents are COPIED across
- * (mode 0600). The original is never modified or removed — removal of the
- * legacy `vaults/` tree is left to the user.
  */
 export function ensureAkmUserEnv(state: ControlPlaneState): string {
   const envPath = userEnvPathSync(state);
   if (existsSync(envPath)) return envPath;
 
   mkdirSync(dirname(envPath), { recursive: true, mode: ENV_DIR_MODE });
-
-  const legacyPath = `${state.stashDir}/vaults/user.env`;
-  if (existsSync(legacyPath)) {
-    try {
-      copyFileSync(legacyPath, envPath);
-      chmodSync(envPath, ENV_FILE_MODE);
-      logger.info("migrated legacy vault:user to env:user", { from: legacyPath, to: envPath });
-      return envPath;
-    } catch (err) {
-      logger.warn("failed to migrate legacy vault:user file", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
   writeFileSync(envPath, "", { mode: ENV_FILE_MODE });
   chmodSync(envPath, ENV_FILE_MODE);
   return envPath;
