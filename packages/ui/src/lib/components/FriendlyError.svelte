@@ -97,7 +97,11 @@
     background: #fafafa;
     border: 1px solid #e5e5e5;
     border-radius: 4px;
-    overflow-x: auto;
+    /* Bound the height so a long pull/container list scrolls inside the box
+       instead of growing the alert past the viewport (clipped + unreadable
+       on small screens / when many images are listed). */
+    max-height: min(40vh, 320px);
+    overflow: auto;
     white-space: pre-wrap;
     word-break: break-word;
     color: #404040;

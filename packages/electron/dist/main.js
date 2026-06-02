@@ -11343,7 +11343,6 @@ function buildUIServerEnv(homeDir, port, update) {
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: "1",
     OP_ELECTRON_VERSION: app.getVersion?.() ?? "",
-    OP_IMAGE_TAG: "latest",
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
   const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");

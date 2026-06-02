@@ -432,7 +432,8 @@ function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
   const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || 'openpalm';
   const explicit = process.env.OP_VOICE_IMAGE_TAG?.trim();
   if (explicit) return `${namespace}/voice:${explicit}`;
-  return `${namespace}/voice:latest-${variant}`;
+  const baseTag = process.env.OP_IMAGE_TAG?.trim() || 'latest';
+  return `${namespace}/voice:${baseTag}-${variant}`;
 }
 
 /**

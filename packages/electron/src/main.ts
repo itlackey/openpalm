@@ -99,7 +99,14 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
-    OP_IMAGE_TAG: 'latest',
+    // Do NOT set OP_IMAGE_TAG here. Docker precedence is shell-env >
+    // --env-file, so any value injected into the UI server's process.env
+    // overrides the authoritative OP_IMAGE_TAG written to stack.env (e.g.
+    // "dev" for local images, or a pinned "vX.Y.Z"). Forcing "latest" here
+    // made every `docker compose config/pull` resolve `…:latest`/`voice:latest-*`
+    // — and `latest`/`latest-*` are never published for prereleases, so the
+    // deploy failed with "manifest unknown". The deploy reads the tag from
+    // stack.env via --env-file; leave it untouched.
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
   };
   // Pass the bundled skeleton path so the UI server can refresh the registry
