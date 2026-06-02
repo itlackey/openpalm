@@ -45,12 +45,22 @@ for manifest in ${MANIFESTS}; do
     continue
   fi
 
-  # Only update the version field — leave dependency references untouched
-  # so npm packages keep their own independent versions.
+  # Update the version field. Independent dependency references (channel
+  # adapters etc.) are left untouched, BUT internal @openpalm/lib *range* deps
+  # (e.g. the published CLI's "@openpalm/lib": ">=X <1.0.0") are kept in
+  # lockstep with lib's version so the floor never goes stale — a consistency
+  # the test suite enforces. workspace:* and non-range refs are left as-is.
   node -e "
     const fs = require('fs');
     const pkg = JSON.parse(fs.readFileSync('${file}', 'utf-8'));
     pkg.version = '${VERSION}';
+    const major = parseInt('${VERSION}'.split('.')[0], 10);
+    for (const field of ['dependencies', 'peerDependencies']) {
+      const dep = pkg[field] && pkg[field]['@openpalm/lib'];
+      if (typeof dep === 'string' && dep.startsWith('>=')) {
+        pkg[field]['@openpalm/lib'] = '>=${VERSION} <' + (major + 1) + '.0.0';
+      }
+    }
     fs.writeFileSync('${file}', JSON.stringify(pkg, null, 2) + '\n');
   "
 
