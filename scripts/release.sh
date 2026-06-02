@@ -61,6 +61,15 @@ fi
 echo "Bumping platform packages to ${VERSION}..."
 ./scripts/bump-platform.sh "${VERSION}"
 
+# --- Stamp install-script versions ---
+# The Release workflow's tag-push path VERIFIES (does not bump) that the setup
+# scripts carry SCRIPT_VERSION == release version, and bump-platform.sh only
+# touches package.json manifests. Stamp them here so the tag created below
+# passes that guard. Keep these patterns in lockstep with release.yml.
+echo "Stamping setup scripts to ${VERSION}..."
+sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
+sed -i "s/^\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
+
 # --- Update lockfile ---
 echo "Updating lockfile..."
 bun install

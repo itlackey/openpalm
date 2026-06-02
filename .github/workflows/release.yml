@@ -207,7 +207,10 @@ jobs:
     needs:
       - prepare-tag
     strategy:
-      fail-fast: true
+      # Independent artifacts: one runner's transient failure (registry
+      # timeout, flaky index) must not cancel its siblings — re-run only the
+      # failed leg. Matches the voice job below.
+      fail-fast: false
       matrix:
         include:
           - dockerfile: core/guardian/Dockerfile
@@ -365,7 +368,10 @@ jobs:
     timeout-minutes: 20
     needs: prepare-tag
     strategy:
-      fail-fast: true
+      # Independent artifacts: one runner's transient failure (registry
+      # timeout, flaky index) must not cancel its siblings — re-run only the
+      # failed leg. Matches the voice job below.
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -415,7 +421,10 @@ jobs:
     timeout-minutes: 30
     needs: prepare-tag
     strategy:
-      fail-fast: true
+      # Independent artifacts: one runner's transient failure (registry
+      # timeout, flaky index) must not cancel its siblings — re-run only the
+      # failed leg. Matches the voice job below.
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -533,6 +542,25 @@ jobs:
         run: |
           cd dist
           sha256sum * > checksums-sha256.txt
+
+      # softprops/action-gh-release cannot reliably UPDATE an existing release:
+      # on a re-cut (tag moved / job re-run) it aborts finalizing with
+      # "already_exists / tag_name" and leaves the release with zero assets.
+      # Delete any existing release for this tag first — keeping the git tag
+      # (no --cleanup-tag) — so the create below always runs against a clean
+      # slate. Idempotent: a no-op on first publish.
+      - name: Delete existing release for clean republish
+        if: needs.prepare-tag.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare-tag.outputs.tag }}
+        run: |
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Existing release ${TAG} found — deleting (tag preserved) for clean republish…"
+            gh release delete "${TAG}" --yes
+          else
+            echo "No existing release ${TAG} — first publish."
+          fi
 
       - name: Create GitHub release
         if: needs.prepare-tag.outputs.dry_run != 'true'
