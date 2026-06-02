@@ -44,7 +44,7 @@
     },
     "packages/channel-slack": {
       "name": "@openpalm/channel-slack",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "dependencies": {
         "@slack/bolt": "^4.1.0",
       },
