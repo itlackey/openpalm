@@ -7,7 +7,7 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "dependencies": {
         "@openpalm/channels-sdk": "workspace:*",
         "dotenv": "^17.4.2",
@@ -22,6 +22,9 @@
       "peerDependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
       },
+      "optionalPeers": [
+        "@openpalm/channels-sdk",
+      ],
     },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
@@ -35,6 +38,9 @@
       "peerDependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
       },
+      "optionalPeers": [
+        "@openpalm/channels-sdk",
+      ],
     },
     "packages/channel-slack": {
       "name": "@openpalm/channel-slack",
@@ -48,14 +54,17 @@
       "peerDependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
       },
+      "optionalPeers": [
+        "@openpalm/channels-sdk",
+      ],
     },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
@@ -67,7 +76,7 @@
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^25.9.1",
@@ -79,14 +88,14 @@
     },
     "packages/electron/admin-tools": {
       "name": "@openpalm/admin-tools-plugin",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "dependencies": {
         "@opencode-ai/plugin": "^1.15.9",
       },
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "dependencies": {
         "dotenv": "^17.4.2",
         "tar": "^7.5.15",
@@ -99,7 +108,7 @@
     },
     "packages/ui": {
       "name": "@openpalm/ui",
-      "version": "0.11.0-beta.13",
+      "version": "0.11.0-beta.14",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
         "croner": "^10.0.1",

@@ -25,5 +25,10 @@
   },
   "devDependencies": {
     "@openpalm/channels-sdk": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@openpalm/channels-sdk": {
+      "optional": true
+    }
   }
 }
