@@ -24,6 +24,16 @@ export default class MyChannel extends BaseChannel {
 ```
 
 2. Publish it as an npm package, or mount a local file and use `CHANNEL_FILE`.
+   The package **must declare `@openpalm/channels-sdk` as an _optional_ peer** —
+   the `channel` image already bundles the framework, and this stops the runtime
+   `bun add` from installing its own (stale) copy over it:
+
+   ```jsonc
+   {
+     "peerDependencies":     { "@openpalm/channels-sdk": ">=0.8.0 <1.0.0" },
+     "peerDependenciesMeta": { "@openpalm/channels-sdk": { "optional": true } }
+   }
+   ```
 3. Write a custom runtime service in `~/.openpalm/config/stack/custom.compose.yml`, or add a first-party channel service to `channels.compose.yml`.
 4. For first-party channel services, add the addon name to `~/.openpalm/config/stack/stack.yml` through the CLI or admin UI.
 5. Rerun the OpenPalm compose command.
@@ -38,7 +48,7 @@ services:
     environment:
       PORT: '8187'
       GUARDIAN_URL: http://guardian:8080
-      CHANNEL_PACKAGE: '@your-scope/openpalm-channel-my-channel'
+      CHANNEL_PACKAGE: '@your-scope/openpalm-channel-my-channel@latest'
       CHANNEL_MY_CHANNEL_SECRET_FILE: /run/secrets/channel_my_channel_hmac
     secrets:
       - channel_my_channel_hmac
@@ -48,6 +58,12 @@ secrets:
   channel_my_channel_hmac:
     file: ${OP_HOME}/knowledge/secrets/channel_my_channel_hmac
 ```
+
+> **`CHANNEL_PACKAGE` should carry a dist-tag or version**, not be left bare. The
+> container runs `bun add` on start, so a tag like `@latest` (or `@next` for
+> prereleases) auto-rolls adapter updates to users on restart — no compose edit,
+> no image rebuild. The first-party adapters (`channel-discord`/`slack`/`api`)
+> track `@next` during the beta line.
 
 ## What the SDK gives you
 
