@@ -4,20 +4,22 @@
 /**
  * Tests for the ephemeral local OpenCode spawn module.
  *
- * The opencode binary is NEVER invoked: we replace the SDK loader with a
- * stub that resolves a fake server handle. Tests cover:
+ * The opencode binary is NEVER invoked: we replace the spawner with a fake
+ * child (EventEmitter) that emits a listening URL on stdout. Tests cover:
  *   - Pure helpers (path resolution, password generation shape, runtime JSON)
  *   - Pidfile read/write + sweep semantics
  *   - Lifecycle: spawn writes runtime + pidfile (0600), stop unlinks both
- *   - Failure mode: SDK throws → sentinel written, no crash
+ *   - Failure mode: spawn throws → sentinel written, no crash
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, existsSync, readFileSync, statSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { EventEmitter } from 'node:events';
 
 import {
-  _setSdkLoader,
+  _setSpawn,
+  _resetSpawn,
   adminOpencodeHome,
   buildRuntimeJson,
   generatePassword,
@@ -35,6 +37,34 @@ import {
 
 let dataDir: string;
 
+/**
+ * Build a fake ChildProcess. Defaults to a near-certainly-dead pid so stop()
+ * skips real signalling. Emits the listening line (or an early exit) on the
+ * next tick, after startLocalOpenCode has attached its stdout/exit listeners.
+ */
+function makeFakeChild(opts: { pid?: number; listenUrl?: string; exitCode?: number }): EventEmitter & {
+  pid: number;
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+  kill: ReturnType<typeof vi.fn>;
+} {
+  const child = new EventEmitter() as EventEmitter & {
+    pid: number;
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: ReturnType<typeof vi.fn>;
+  };
+  child.pid = opts.pid ?? 2_147_483_640;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  setTimeout(() => {
+    if (opts.exitCode !== undefined) child.emit('exit', opts.exitCode);
+    else child.stdout.emit('data', Buffer.from(`opencode server listening on ${opts.listenUrl}\n`));
+  }, 0);
+  return child;
+}
+
 beforeEach(() => {
   dataDir = mkdtempSync(join(tmpdir(), 'openpalm-local-opencode-test-'));
 });
@@ -42,10 +72,7 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(dataDir, { recursive: true, force: true });
   vi.restoreAllMocks();
-  // Reset the SDK loader back to the real one.
-  _setSdkLoader(async () => await import('@opencode-ai/sdk').catch(() => ({
-    createOpencodeServer: async () => { throw new Error('opencode not available'); },
-  } as unknown as { createOpencodeServer: () => Promise<never> })));
+  _resetSpawn();
 });
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
@@ -177,13 +204,7 @@ describe('sweepStalePid', () => {
 
 describe('startLocalOpenCode (SDK stubbed)', () => {
   it('spawns, writes runtime.json + pidfile, and stop() cleans them up', async () => {
-    const close = vi.fn();
-    _setSdkLoader(async () => ({
-      createOpencodeServer: async () => ({
-        url: 'http://127.0.0.1:54321',
-        close,
-      }),
-    }));
+    _setSpawn(() => makeFakeChild({ listenUrl: 'http://127.0.0.1:54321' }) as never);
 
     const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();
@@ -211,17 +232,12 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     expect(process.env.OPENCODE_SERVER_USERNAME).toBeUndefined();
 
     await handle!.stop();
-    expect(close).toHaveBeenCalledTimes(1);
     expect(existsSync(runtimePath(dataDir))).toBe(false);
     expect(existsSync(pidfilePath(dataDir))).toBe(false);
   }, 10_000);
 
-  it('writes the unavailable sentinel and returns null when the SDK throws', async () => {
-    _setSdkLoader(async () => ({
-      createOpencodeServer: async () => {
-        throw new Error('spawn opencode ENOENT: no such file or directory');
-      },
-    }));
+  it('writes the unavailable sentinel and returns null when spawn throws', async () => {
+    _setSpawn(() => { throw new Error('spawn opencode ENOENT: no such file or directory'); });
 
     const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).toBeNull();
@@ -242,12 +258,7 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     writeRuntimeFile(dataDir, buildRuntimeJson('http://stale', 'stale-pw', 1));
     writeFileSync(unavailableSentinelPath(dataDir), '{"reason":"old"}', { mode: 0o600 });
 
-    _setSdkLoader(async () => ({
-      createOpencodeServer: async () => ({
-        url: 'http://127.0.0.1:9999',
-        close: () => {},
-      }),
-    }));
+    _setSpawn(() => makeFakeChild({ listenUrl: 'http://127.0.0.1:9999' }) as never);
 
     const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();

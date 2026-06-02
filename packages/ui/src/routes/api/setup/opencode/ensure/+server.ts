@@ -16,6 +16,24 @@ import type { RequestHandler } from './$types';
 let _url: string | null = null;
 let _proc: ReturnType<typeof spawn> | null = null;
 
+// Ensure the wizard's opencode child never outlives this server. Under Electron
+// the parent group-kills the whole UI-server process group, but `openpalm ui
+// serve` (host CLI) has no such parent — without this, the child keeps the event
+// loop alive on shutdown and orphans. Additive listeners (process.on, not once)
+// so adapter-node's own SIGTERM/SIGINT graceful-shutdown handlers still run.
+function killWizardOpencode(): void {
+  const proc = _proc;
+  if (proc && proc.exitCode === null && proc.pid) {
+    try { proc.kill('SIGTERM'); } catch { /* best effort */ }
+  }
+}
+if (!(globalThis as Record<string, unknown>).__opWizardOpencodeReaper) {
+  (globalThis as Record<string, unknown>).__opWizardOpencodeReaper = true;
+  process.on('SIGTERM', killWizardOpencode);
+  process.on('SIGINT', killWizardOpencode);
+  process.on('exit', killWizardOpencode);
+}
+
 async function checkReachable(url: string): Promise<boolean> {
   try {
     const res = await fetch(`${url}/provider`, { signal: AbortSignal.timeout(2000) });

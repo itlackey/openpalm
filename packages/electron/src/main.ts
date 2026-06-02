@@ -21,7 +21,7 @@ import {
   parseEnvFile,
 } from '@openpalm/lib';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
-import { startLocalOpenCode, type LocalOpencodeHandle } from './local-opencode.js';
+import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -130,9 +130,11 @@ async function killStaleUIServer(pidFile: string): Promise<void> {
   if (!pid) return;
   try { process.kill(pid, 0); } catch { return; } // already dead
   console.log(`Killing stale UI server (PID ${pid})…`);
-  try { process.kill(pid, 'SIGTERM'); } catch { return; }
+  // Group-kill: the stale node server may have left an `opencode serve` child
+  // (the setup wizard). killProcessTree reaps the whole subtree.
+  killProcessTree(pid, 'SIGTERM');
   await new Promise(r => setTimeout(r, 2000));
-  try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  killProcessTree(pid, 'SIGKILL');
 }
 
 export async function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promise<boolean> {
@@ -214,6 +216,10 @@ async function startUIServer(): Promise<void> {
   uiProcess = spawn('node', [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+    // Own process group so shutdown can group-kill the UI server AND any
+    // children it spawns (e.g. the wizard's `opencode serve` subprocess),
+    // which a bare kill of the node pid would orphan.
+    detached: process.platform !== 'win32',
     // stdout inherits so terminal users see it; stderr is piped for diagnostics
     stdio: ['ignore', 'inherit', 'pipe'],
   });
@@ -267,11 +273,18 @@ async function startUIServer(): Promise<void> {
 }
 
 function stopUIServer(): void {
-  if (uiProcess) {
-    uiProcess.kill('SIGTERM');
-    uiProcess = null;
-    try { rmSync(join(resolveDataDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
+  if (!uiProcess) return;
+  const pid = uiProcess.pid;
+  uiProcess = null;
+  // Group-kill so the UI server's children (e.g. the wizard's `opencode serve`)
+  // die with it instead of orphaning. SIGKILL the group immediately after as a
+  // backstop — the process is exiting, so there is no graceful-drain window to
+  // wait for, and a lingering timer would not survive app.quit() anyway.
+  if (pid) {
+    killProcessTree(pid, 'SIGTERM');
+    killProcessTree(pid, 'SIGKILL');
   }
+  try { rmSync(join(resolveDataDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
 }
 
 // ── Window management ────────────────────────────────────────────────────────
@@ -468,25 +481,33 @@ ipcMain.handle('restart-app', () => {
   app.quit();
 });
 
-app.on('before-quit', () => {
-  (app as unknown as Record<string, unknown>).isQuitting = true;
-  stopUIServer();
-});
+let cleanupStarted = false;
 
-app.on('will-quit', async (event) => {
-  if (!localOpencode) return;
-  // Defer the actual quit until the local OpenCode child has been signalled
-  // and the runtime/pidfile cleaned up. 5s grace inside the handle's stop().
+// Single guarded shutdown. The first quit defers (preventDefault) just long
+// enough to signal and reap both children — the UI server (group-killed in
+// stopUIServer) and the admin OpenCode (handle.stop(), which now resolves as
+// soon as the child is dead rather than after a fixed delay) — then re-quits.
+// The re-entrant call hits the `cleanupStarted` guard and passes straight
+// through. Doing all teardown in one handler (instead of splitting it across
+// before-quit/will-quit with a silent multi-second wait) is what removes the
+// "have to quit twice" behaviour.
+app.on('before-quit', async (event) => {
+  (app as unknown as Record<string, unknown>).isQuitting = true;
+  if (cleanupStarted) return;
+  cleanupStarted = true;
   event.preventDefault();
-  const handle = localOpencode;
-  localOpencode = null;
-  try {
-    await handle.stop();
-  } catch (err) {
-    console.warn(
-      'Local OpenCode stop raised:',
-      err instanceof Error ? err.message : String(err),
-    );
+  stopUIServer();
+  if (localOpencode) {
+    const handle = localOpencode;
+    localOpencode = null;
+    try {
+      await handle.stop();
+    } catch (err) {
+      console.warn(
+        'Local OpenCode stop raised:',
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
   app.quit();
 });
