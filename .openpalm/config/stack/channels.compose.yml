@@ -15,7 +15,7 @@ services:
       PORT: "8181"
       CHANNEL_NAME: "Chat"
       CHANNEL_ID: "chat"
-      CHANNEL_PACKAGE: "@openpalm/channel-api@0.11.0-beta.13"
+      CHANNEL_PACKAGE: "@openpalm/channel-api@next"
       CHANNEL_SECRET_FILE: /run/secrets/channel_chat_secret
     secrets: [channel_chat_secret]
     networks: [channel_lan]
@@ -44,7 +44,7 @@ services:
     environment:
       PORT: "8182"
       CHANNEL_NAME: "API"
-      CHANNEL_PACKAGE: "@openpalm/channel-api@0.11.0-beta.13"
+      CHANNEL_PACKAGE: "@openpalm/channel-api@next"
       CHANNEL_SECRET_FILE: /run/secrets/channel_api_secret
     secrets: [channel_api_secret]
     networks: [channel_lan]
@@ -70,7 +70,7 @@ services:
     environment:
       PORT: "8184"
       CHANNEL_NAME: "Discord Bot"
-      CHANNEL_PACKAGE: "@openpalm/channel-discord@0.11.0-beta.13"
+      CHANNEL_PACKAGE: "@openpalm/channel-discord@next"
       CHANNEL_SECRET_FILE: /run/secrets/channel_discord_secret
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
       DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
@@ -105,7 +105,7 @@ services:
     environment:
       PORT: "8185"
       CHANNEL_NAME: "Slack Bot"
-      CHANNEL_PACKAGE: "@openpalm/channel-slack@0.11.0-beta.13"
+      CHANNEL_PACKAGE: "@openpalm/channel-slack@next"
       CHANNEL_SECRET_FILE: /run/secrets/channel_slack_secret
       SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
       SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
