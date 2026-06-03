@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Bump platform versions, commit, push, and tag a release.
+# Bump platform versions, commit, push the CURRENT branch, and tag a release.
 # Platform packages (defined in .github/release-package-groups.json plus Docker
-# images) share a single coordinated version. Independent npm packages (channel
-# adapters, assistant-tools, admin-tools) are versioned via publish workflows.
+# images) share a single coordinated version. Channel adapters
+# (packages/channel-*) are versioned independently via their own publish
+# workflows and are NOT touched here.
 #
 # The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
+# See docs/operations/release-management.md for the full process.
 #
 # Usage: ./scripts/release.sh 0.7.2
 #        ./scripts/release.sh 0.8.0-rc1
@@ -33,23 +35,13 @@ if git rev-parse "${TAG}" >/dev/null 2>&1; then
 fi
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "${CURRENT_BRANCH}" != "main" ]]; then
-  echo ""
-  echo "WARNING: You are on branch '${CURRENT_BRANCH}', not 'main'." >&2
-  echo "This script will push directly to 'main'. If branch protection" >&2
-  echo "is enabled, the push may fail unless you have bypass permissions." >&2
-  echo ""
-  read -r -p "Continue anyway? [y/N] " confirm
-  if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
-    echo "Aborted." >&2
-    exit 1
-  fi
-else
-  echo ""
-  echo "WARNING: This will push directly to 'main'." >&2
-  echo "Ensure branch protection rules allow direct pushes for your account," >&2
-  echo "or use a release branch and PR workflow instead." >&2
-  echo ""
+echo ""
+echo "This will commit the release prep and push directly to '${CURRENT_BRANCH}'," >&2
+echo "then create and push tag '${TAG}' (which triggers the Release workflow)." >&2
+echo "Ensure branch protection allows direct pushes for your account." >&2
+echo ""
+# Skip the prompt in non-interactive shells (CI) or when RELEASE_YES=1.
+if [[ -t 0 && "${RELEASE_YES:-}" != "1" ]]; then
   read -r -p "Continue? [y/N] " confirm
   if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
     echo "Aborted." >&2
@@ -85,8 +77,8 @@ git add -A
 git commit -m "chore: release ${VERSION}"
 
 # --- Push ---
-echo "Pushing to main..."
-git push origin main
+echo "Pushing to ${CURRENT_BRANCH}..."
+git push origin "${CURRENT_BRANCH}"
 
 # --- Tag and push (triggers Release workflow) ---
 echo "Tagging ${TAG} and pushing..."
@@ -96,5 +88,5 @@ git push origin "${TAG}"
 echo ""
 echo "Release ${VERSION} initiated."
 echo "  Docker + CLI:   triggered by tag ${TAG}"
-echo "  npm packages:   platform packages via release workflow; independent npm packages (channel adapters, assistant-tools, admin-tools) via publish workflows"
+echo "  npm packages:   platform packages (lib, channels-sdk, openpalm CLI) via the release workflow; channel adapters publish independently via publish-channel-*.yml"
 echo "  Monitor:        gh run list --limit 10"

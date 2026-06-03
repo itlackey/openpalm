@@ -2,7 +2,7 @@
 # Bump the "version" field in platform package.json files only.
 # Platform package manifests are sourced from
 # .github/release-package-groups.json -> platformManifests.
-# Independent npm packages (channel-*, assistant-tools, admin-tools) are
+# Channel adapters (packages/channel-*) are independently versioned and
 # published by their own workflows.
 #
 # Usage: ./scripts/bump-platform.sh 0.8.0
