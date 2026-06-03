@@ -34,12 +34,11 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic. Also ships OpenCode (config from `config/guardian`) for opt-in, fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
 - **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
-- **Scheduler** (`packages/scheduler/`) — Lightweight Bun co-process started inside the assistant container by `core/assistant/entrypoint.sh`. No network port. Runs cron jobs (http, shell, assistant, api actions) from `config/automations/`.
+- **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM markdown task files in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
 - **Channel adapters** (`packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
 - **Channels SDK** (`packages/channels-sdk/`) — Shared SDK for channel adapters: signing, assistant client, base classes.
-- **Assistant-tools** (`packages/assistant-tools/`) — `load_vault` and `health-check` tools for the assistant. No UI dependency. Memory/knowledge access comes from the `akm-opencode` plugin.
-- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains the core compose file only. Runtime enabled addons live under `~/.openpalm/config/stack/addons/`.
+- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains core, services, channels, and custom compose files. Enabled first-party addons are tracked in `~/.openpalm/config/stack/stack.yml` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
 
 ---
 
@@ -235,7 +234,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
 - **Assistant isolation.** Assistant has no Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
-- **Add a channel** by installing from the registry or dropping an addon compose file into `stack/addons/<name>/` — no code changes.
+- **Add a channel** by enabling its name in `~/.openpalm/config/stack/stack.yml` (for first-party channels) or adding a service block to `custom.compose.yml` (for custom channels) — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
 - **Docker dependency resolution pattern.** Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. UI is a host binary — no Docker build needed.
 
@@ -247,7 +246,7 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
-| `config/` | User | Non-secret config: `stack.yml` capabilities, assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`) |
+| `config/` | User | Non-secret config: `stack.yml` addon state (version marker + enabled addon names), assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`) |
 | `knowledge/env/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
 | `config/stack/` | Admin | System-managed: `stack.env` (paths, ports), `auth.json` (shared OpenCode provider creds), `secrets/` file secrets, compose files |
 | `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/tasks/` holds scheduled automation task files |
@@ -294,11 +293,8 @@ Before submitting any change:
 | `packages/ui/src/lib/api.ts` | API call functions |
 | `packages/cli/src/lib/cli-state.ts` | CLI state helpers (ensureValidState) |
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |
-| `packages/scheduler/src/main.ts` | Scheduler co-process entry point |
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
 | `.openpalm/config/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
 | `.openpalm/config/stack/` | Fixed stack compose files and enabled-addon state |
-| `packages/assistant-tools/AGENTS.md` | Contributor pointer for the assistant-tools package |
-| `packages/assistant-tools/src/index.ts` | Assistant tools plugin (`load_vault`, `health-check`) |
 | `.opencode/opencode.json` | OpenCode project configuration |

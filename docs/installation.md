@@ -58,23 +58,26 @@ compose files and profiles derived by OpenPalm tooling.
 
 ### `~/.openpalm/knowledge/env/stack.env`
 
-This file holds system-managed values, provider API keys, and owner identity:
+This file holds **non-secret** system-managed runtime values only — host paths,
+ports, image tags, and similar Compose substitution variables. It is **not** for
+secrets.
 
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-- `ANTHROPIC_API_KEY`
+Examples of what belongs here:
 
-LLM and embedding configuration lives in `config/akm/config.json` and is managed
-via the AKM tab in the admin UI — not in `stack.env`.
-
-It also includes system-managed values such as:
-
-- `OP_UI_LOGIN_PASSWORD`
 - `OP_HOME`, `OP_UID`, `OP_GID`
-- `OP_ASSISTANT_PORT`, `OP_ADMIN_PORT`, `OP_CHAT_PORT`
+- `OP_ASSISTANT_PORT`, `OP_HOST_UI_PORT`, `OP_CHAT_PORT`
+- `OPENAI_BASE_URL` (base URL only, not the key)
 
-Review it before first start, especially if you need different host ports or
-paths.
+**Secrets go elsewhere:**
+
+- Provider API keys (OpenAI, Anthropic, etc.) → `~/.openpalm/knowledge/secrets/auth.json`
+  (managed via the Connections tab in the admin UI)
+- UI login password → `~/.openpalm/knowledge/secrets/op_ui_login_password`
+
+LLM and embedding model configuration lives in `config/akm/config.json` and is
+managed via the AKM tab in the admin UI — not in `stack.env`.
+
+Review `stack.env` before first start if you need different host ports or paths.
 
 ### `~/.openpalm/knowledge/env/user.env`
 
@@ -85,20 +88,23 @@ preferences and addon-specific values.
 
 ## Addons
 
-First-party addons are defined in `services.compose.yml` and `channels.compose.yml`. They become active when their names are recorded in `~/.openpalm/config/stack/stack.yml`; OpenPalm converts those names to Compose profiles. Custom services and overlays live in `custom.compose.yml`.
+First-party addons are defined in `services.compose.yml` and `channels.compose.yml`
+under `~/.openpalm/config/stack/`. They become active when their names are recorded
+in `~/.openpalm/config/stack/stack.yml`; OpenPalm converts those names to Compose
+`--profile` arguments at launch time. Custom services and overlays go in
+`custom.compose.yml`.
 
-| Addon | Compose file |
-|---|---|
+| Addon | Compose file | Profile |
+|---|---|---|
+| `chat` | `channels.compose.yml` | `addon.chat` |
+| `api` | `channels.compose.yml` | `addon.api` |
+| `discord` | `channels.compose.yml` | `addon.discord` |
+| `slack` | `channels.compose.yml` | `addon.slack` |
+| `voice` | `services.compose.yml` | `addon.voice` |
+| `ollama` | `services.compose.yml` | `addon.ollama` |
 
-| `chat` | `channels.compose.yml` |
-| `api` | `channels.compose.yml` |
-| `discord` | `channels.compose.yml` |
-| `slack` | `addons/slack/compose.yml` |
-| `voice` | `addons/voice/compose.yml` |
-| `ollama` | `addons/ollama/compose.yml` |
-
-If a compose file is not included with `-f`, it is not part of the running
-stack.
+Custom or third-party services go in `~/.openpalm/config/stack/custom.compose.yml`;
+they are always included when present and do not require a profile entry.
 
 ---
 

@@ -26,9 +26,7 @@ export const STACK_SPEC_FILENAME = "stack.yml";
 export const SPEC_DEFAULTS = {
   ports: {
     assistant: 3800,
-    admin: 3880,
-    adminOpencode: 3881,
-    guardian: 3899,
+    hostUi: 3880,
     assistantSsh: 2222,
   },
   image: {

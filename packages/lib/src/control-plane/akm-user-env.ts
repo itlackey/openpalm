@@ -56,7 +56,7 @@ const ENV_FILE_MODE = 0o600;
 
 /**
  * Build the env that points akm at the shared OpenPalm stash. We mirror the
- * layout that the assistant/admin containers use (see
+ * layout that the assistant container uses (see
  * `.openpalm/config/stack/core.compose.yml`) so host-side and container-side
  * runs resolve to the same files.
  *

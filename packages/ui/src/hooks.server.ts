@@ -12,7 +12,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { checkHostHeader, checkOriginHeader, ADMIN_PORT } from "$lib/server/helpers.js";
+import { checkHostHeader, checkOriginHeader, UI_PORT } from "$lib/server/helpers.js";
 import {
   createLogger,
   ensureSecrets,
@@ -93,9 +93,9 @@ function isLocalhostAddress(ip: string): boolean {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const hostError = checkHostHeader(event.request, ADMIN_PORT);
+  const hostError = checkHostHeader(event.request, UI_PORT);
   if (hostError) return hostError;
-  const originError = checkOriginHeader(event.request, ADMIN_PORT);
+  const originError = checkOriginHeader(event.request, UI_PORT);
   if (originError) return originError;
 
   const path = event.url.pathname;

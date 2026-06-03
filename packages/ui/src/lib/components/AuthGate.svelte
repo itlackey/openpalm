@@ -34,12 +34,12 @@
       </span>
       <div>
         <h1>OpenPalm Console</h1>
-        <p>Enter your admin token to unlock the control plane.</p>
+        <p>Enter your admin password to unlock the control plane.</p>
       </div>
     </div>
 
     <form class="auth-form" onsubmit={handleSubmit}>
-      <label for="admin-token">Admin Token</label>
+      <label for="admin-token">Admin Password</label>
       <input type="text" name="username" autocomplete="username" value="admin" class="sr-only" tabindex="-1" aria-hidden="true" />
       <div class="token-input-wrapper">
         <input
@@ -48,7 +48,7 @@
           type={showToken ? 'text' : 'password'}
           bind:value={tokenInput}
           bind:this={tokenInputEl}
-          placeholder="Enter admin token"
+          placeholder="Enter admin password"
           autocomplete="current-password"
         />
         <button

@@ -49,12 +49,13 @@ DISCORD_REGISTER_COMMANDS=true
 Manual-first path:
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../knowledge/env/stack.env \
   -f core.compose.yml \
-  -f addons/discord/compose.yml \
+  -f channels.compose.yml \
+  --profile addon.discord \
   up -d
 ```
 

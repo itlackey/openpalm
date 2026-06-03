@@ -19,7 +19,6 @@ import {
   updateSecretsEnv,
   patchSecretsEnvFile,
   ensureOpenCodeConfig,
-  readStackEnv,
   writeAuthJsonProviderKeys,
 } from "./secrets.js";
 import { createState } from "./lifecycle.js";
@@ -132,13 +131,9 @@ export function buildAuthJsonFromSetup(
  *
   * `OP_OPENCODE_PASSWORD` may be supplied explicitly as a file-based secret in
   * `knowledge/secrets/op_opencode_password` when OpenCode auth is enabled.
- *
- * `existingSystemEnv` is unused now but the parameter is kept so callers
- * compile unchanged. It can be removed in a follow-up cleanup.
  */
 export function buildSystemSecretsFromSetup(
   uiLoginPassword: string,
-  _existingSystemEnv: Record<string, string> = {}
 ): Record<string, string> {
   return {
     OP_UI_LOGIN_PASSWORD: uiLoginPassword,
@@ -215,7 +210,6 @@ export async function performSetup(
     try {
       ensureHomeDirs();
       ensureSecrets(state);
-      const existingSystemEnv = readStackEnv(state.stackDir);
       const channelSecretUpdates = channelCredentials ? buildChannelCredentialEnvVars(channelCredentials) : {};
       // Pick up channel credential env vars not already provided in the spec
       for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
@@ -225,7 +219,7 @@ export async function performSetup(
       }
       updateSecretsEnv(state, updates);
       updateSecretsEnv(state, channelSecretUpdates);
-      patchSecretsEnvFile(state.stackDir, buildSystemSecretsFromSetup(security.uiLoginPassword, existingSystemEnv));
+      patchSecretsEnvFile(state.stackDir, buildSystemSecretsFromSetup(security.uiLoginPassword));
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);

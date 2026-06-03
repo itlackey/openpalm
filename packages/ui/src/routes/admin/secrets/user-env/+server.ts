@@ -54,9 +54,8 @@ export const GET: RequestHandler = async (event) => {
 /**
  * POST — write a key into the user env file. The value is shell-quoted and
  * written directly to `knowledge/env/user.env` (mode 0600); it never appears on
- * a process argv. The assistant entrypoint sources the env file at container
- * start, so a key written here is visible to OpenCode after the next assistant
- * recreate.
+ * a process argv. The assistant sources the env file at startup, so a key
+ * written here is visible to OpenCode after the next assistant restart.
  */
 export const POST: RequestHandler = (event) =>
   withAdminBody(event, async ({ requestId, body }) => {

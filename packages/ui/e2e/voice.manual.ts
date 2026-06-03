@@ -125,7 +125,7 @@ test.describe('Voice addon — auth gate', () => {
 
   test('POST /admin/auth/login with wrong password → 401', async ({ request }) => {
     const res = await request.post(`${ADMIN_URL}/admin/auth/login`, {
-      data: { token: 'definitely-not-the-password' },
+      data: { password: 'definitely-not-the-password' },
       headers: { 'content-type': 'application/json' },
     });
     expect(res.status()).toBe(401);
@@ -133,7 +133,7 @@ test.describe('Voice addon — auth gate', () => {
 
   test('POST /admin/auth/login with correct password → 200 + Set-Cookie op_session', async ({ request }) => {
     const res = await request.post(`${ADMIN_URL}/admin/auth/login`, {
-      data: { token: OP_UI_LOGIN_PASSWORD },
+      data: { password: OP_UI_LOGIN_PASSWORD },
       headers: { 'content-type': 'application/json' },
     });
     expect(res.status()).toBe(200);

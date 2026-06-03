@@ -237,8 +237,7 @@ These variables are consumed by Compose and service env blocks.
 | `OP_HOME` | Host OpenPalm root used in bind mounts |
 | `OP_UID`, `OP_GID` | Runtime UID/GID for bind-mounted file ownership |
 | `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
-| `OP_ADMIN_BIND_ADDRESS`, `OP_ADMIN_PORT` | Admin host bind |
-| `OP_ADMIN_OPENCODE_BIND_ADDRESS`, `OP_ADMIN_OPENCODE_PORT` | Admin OpenCode host bind |
+| `OP_HOST_UI_PORT` | Admin UI host port (default `3880`); the admin UI runs as a host process, not a container |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
 | `OP_ASSISTANT_SSH_BIND_ADDRESS`, `OP_ASSISTANT_SSH_PORT` | Assistant SSH host bind |
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |

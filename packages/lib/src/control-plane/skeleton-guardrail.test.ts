@@ -117,7 +117,7 @@ describe("skeleton: .openpalm/knowledge/ structure", () => {
 // ── data/ service dirs ────────────────────────────────────────────────
 
 describe("skeleton: .openpalm/data/ service directories", () => {
-  const serviceDirs = ["assistant", "admin", "guardian"];
+  const serviceDirs = ["assistant", "guardian"];
 
   for (const dir of serviceDirs) {
     test(`data/${dir}/ exists`, () => {

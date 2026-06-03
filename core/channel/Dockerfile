@@ -2,7 +2,6 @@
 #
 # Runs any channel published as an npm package that extends BaseChannel.
 # Set CHANNEL_PACKAGE to the npm package name at runtime.
-# Falls back to CHANNEL_FILE for legacy file-based channels.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM oven/bun:1.3-slim

@@ -17,9 +17,6 @@ const REPO_NAME = 'openpalm';
  */
 export async function ensureDirectoryTree(
   homeDir: string,
-  _configDir: string,
-  _vaultDir: string,
-  _dataDir: string,
   workDir: string,
 ): Promise<void> {
   const configDir = `${homeDir}/config`;
@@ -29,9 +26,6 @@ export async function ensureDirectoryTree(
     homeDir,
     configDir,
     join(configDir, 'assistant'),
-    join(configDir, 'assistant', 'tools'),
-    join(configDir, 'assistant', 'plugins'),
-    join(configDir, 'assistant', 'skills'),
     join(configDir, 'akm'),
     join(configDir, 'stack'),
     join(homeDir, 'knowledge'),
@@ -41,7 +35,6 @@ export async function ensureDirectoryTree(
     join(homeDir, 'workspace'),
     dataDir,
     join(dataDir, 'assistant'),
-    join(dataDir, 'admin'),
     join(dataDir, 'guardian'),
     join(dataDir, 'akm', 'cache'),
     join(dataDir, 'akm', 'data'),

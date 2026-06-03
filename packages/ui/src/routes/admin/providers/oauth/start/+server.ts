@@ -9,10 +9,9 @@ import type { ProviderActionResult } from '$lib/types/providers.js';
  * sign-in for a provider. Returns the authorization URL and any extra
  * inputs the operator needs to confirm in the UI.
  *
- * Forwards directly to the assistant container's OpenCode at
- * OP_OPENCODE_URL. (A fresh OpenCode subprocess used to be spawned here
- * for isolation, but it 500s on /provider/{id}/oauth/authorize — its
- * internal OAuth methods map never initializes.)
+ * Forwards directly to the running assistant's OpenCode at
+ * OP_OPENCODE_URL, which holds the OAuth methods map needed to issue
+ * the authorize request.
  */
 export const POST: RequestHandler = (event) => withAdminBody(event, async ({ requestId, body }) => {
 	try {

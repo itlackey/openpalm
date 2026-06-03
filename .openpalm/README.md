@@ -18,7 +18,6 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
       custom.compose.yml User custom services/overlays
       stack.yml        Stack schema marker and enabled first-party addons
       stack.env        System-managed non-secret env vars (written by CLI/admin)
-      auth.json        OpenCode provider credentials (shared by assistant + guardian)
     assistant/         OpenCode user tools, plugins, skills, commands
     guardian/          Guardian OpenCode global config (mounted at /etc/opencode)
     akm/               AKM config directory
@@ -26,6 +25,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
   knowledge/
     env/               User-managed env config (akm env:user — user.env)
     secrets/           Stack-managed file secrets (akm secret — Compose grants)
+      auth.json        OpenCode provider credentials (shared by assistant + guardian)
     tasks/             Scheduled automation task files (*.yml)
 
   data/

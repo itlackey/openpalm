@@ -36,7 +36,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 - Host CLI or admin orchestrates Compose operations; Docker socket exposure is tightly constrained.
 - Guardian is the only ingress path from channel networks to the assistant. It enforces HMAC verification, replay protection, and rate limiting, and can run optional fail-closed content validation (a local OpenCode moderator) on inbound messages.
 - Assistant is isolated: no Docker socket, bounded mounts, and stack-management access mediated through authenticated admin APIs when admin is present.
-- Host-only by default: interfaces are local unless the user explicitly opts into broader exposure. The LAN-first threat model is a deliberate architectural choice — admin token storage (localStorage) and admin filesystem access (full `OP_HOME` mount) are scoped for a localhost/LAN deployment where the network perimeter itself is the primary trust boundary.
+- Host-only by default: interfaces are local unless the user explicitly opts into broader exposure. The LAN-first threat model is a deliberate architectural choice — the admin UI uses `httpOnly SameSite=Strict` session cookies (`op_session`) and the admin process runs on the host with direct filesystem access, scoped for a localhost/LAN deployment where the network perimeter itself is the primary trust boundary.
 - Secret handling follows least privilege by container and by scope.
 
 ## Extensibility intent

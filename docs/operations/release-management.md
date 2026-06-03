@@ -295,6 +295,13 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 - [ ] **Validate the 0.10.x → 0.11.0 upgrade path.** The env/secret migration is
       manual ([`docs/operations/secrets-env-migration.md`](secrets-env-migration.md));
       verify it's complete for existing `0.10.x` operators.
+- [ ] **`OP_ADMIN_PORT` → `OP_HOST_UI_PORT` is a hard cut (no fallback).** The
+      legacy name is no longer emitted or read. Operators who customized the admin
+      port must re-run setup (`openpalm install` / wizard; `bun run dev:setup` for
+      dev) or hand-rename the key in `knowledge/env/stack.env`, else the UI binds
+      to the default `3880`. `OP_ADMIN_OPENCODE_PORT` was removed outright. Confirm
+      the CHANGELOG [Unreleased] breaking note covers this and call it out in the
+      release announcement.
 
 ---
 

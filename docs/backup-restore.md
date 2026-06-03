@@ -17,7 +17,7 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 |---|---|---|
 | `~/.openpalm/config/stack/` | `stack.env`, `secrets/`, live compose files and helper scripts | Yes |
 | `~/.openpalm/knowledge/env/` | `user.env` (optional user-managed secrets) | Yes |
-| `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` capabilities | Yes |
+| `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` addon state | Yes |
 | `~/.openpalm/data/` | durable service data | Yes |
 | `~/.openpalm/knowledge/` | AKM stash (memory, skills, env, secrets) | Yes |
 | `~/.openpalm/workspace/` | shared workspace | Yes |
@@ -38,8 +38,9 @@ cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   -f core.compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file stack.env \
+  -f channels.compose.yml \
+  --profile addon.chat \
+  --env-file ../knowledge/env/stack.env \
   down
 ```
 
@@ -83,12 +84,13 @@ This is especially important when moving between machines or users.
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file stack.env \
+  -f channels.compose.yml \
+  --profile addon.chat \
+  --env-file ../knowledge/env/stack.env \
   up -d
 ```
 
-Use the same addon file set you used before the backup.
+Use the same addon profiles you used before the backup.
 
 ---
 

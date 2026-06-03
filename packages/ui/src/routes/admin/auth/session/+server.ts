@@ -5,7 +5,8 @@
  * against `process.env.OP_UI_LOGIN_PASSWORD`.
  *
  * The cookie value is a random UUID session token — NOT the plaintext password.
- * Kept alongside `/admin/auth/login` as an alias so existing clients keep working.
+ * Kept alongside `/admin/auth/login` as an alias; both verify the same
+ * `password` body field and issue the `op_session` cookie.
  */
 import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
 import { createSession } from "$lib/server/session-store.js";
@@ -21,9 +22,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "Invalid JSON body", {}, requestId);
   }
 
-  const password =
-    typeof body.password === "string" ? body.password :
-    typeof body.token === "string" ? body.token : "";
+  const password = typeof body.password === "string" ? body.password : "";
   if (!password) return errorResponse(400, "bad_request", "password is required", {}, requestId);
 
   const configured = getUiLoginPassword();

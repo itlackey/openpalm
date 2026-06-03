@@ -100,7 +100,6 @@ jobs:
 
       - name: Validate Docker Compose manifests
         env:
-          ADMIN_TOKEN: ci-placeholder
           OP_HOME: ${{ github.workspace }}/.op-home
         run: |
           set -euo pipefail

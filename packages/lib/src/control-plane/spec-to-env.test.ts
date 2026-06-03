@@ -23,6 +23,13 @@ describe("deriveSystemEnvFromSpec", () => {
   test("produces default port values", () => {
     const result = deriveSystemEnvFromSpec("/home/op");
     expect(result.OP_ASSISTANT_PORT).toBe("3800");
+    expect(result.OP_HOST_UI_PORT).toBe("3880");
+  });
+
+  test("does not emit the retired OP_ADMIN_PORT/OP_ADMIN_OPENCODE_PORT vars", () => {
+    const result = deriveSystemEnvFromSpec("/home/op");
+    expect(result.OP_ADMIN_PORT).toBeUndefined();
+    expect(result.OP_ADMIN_OPENCODE_PORT).toBeUndefined();
   });
 
   test("does not emit OP_GUARDIAN_PORT (guardian is network-only, no host mapping)", () => {

@@ -41,7 +41,7 @@ export default async function globalSetup() {
 	const content = readFileSync(STACK_ENV, "utf8");
 
 	// Load stack.env vars into process.env (backfill only) so integration
-	// tests can use OP_ADMIN_PORT, OP_ASSISTANT_PORT, etc.
+	// tests can use OP_HOST_UI_PORT, OP_ASSISTANT_PORT, etc.
 	const stackVars = dotenvParse(content);
 	for (const [key, value] of Object.entries(stackVars)) {
 		if (!process.env[key] && value) {
@@ -52,7 +52,7 @@ export default async function globalSetup() {
 	// Build URL env vars from stack.env port vars so test files can use
 	// process.env.ADMIN_URL without repeating port logic.
 	if (!process.env.ADMIN_URL) {
-		const adminPort = stackVars.OP_ADMIN_PORT ?? stackVars.OP_HOST_UI_PORT;
+		const adminPort = stackVars.OP_HOST_UI_PORT;
 		if (adminPort) process.env.ADMIN_URL = `http://127.0.0.1:${adminPort}`;
 	}
 	if (!process.env.ASSISTANT_URL && stackVars.OP_ASSISTANT_PORT) {

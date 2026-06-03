@@ -184,10 +184,14 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
     throw new Error(`Invalid image namespace in system.env: ${namespace}`);
   }
 
+  // `assistant` is the version-of-record image: all platform images
+  // (assistant, guardian, channel, voice) are published in lockstep under the
+  // same OP_IMAGE_TAG, so its newest tag is the canonical platform version.
+
   let response: Response;
   try {
     response = await fetch(
-      `https://registry.hub.docker.com/v2/repositories/${namespace}/admin/tags?page_size=25&ordering=last_updated`,
+      `https://registry.hub.docker.com/v2/repositories/${namespace}/assistant/tags?page_size=25&ordering=last_updated`,
       { headers: { Accept: "application/json" } }
     );
   } catch (e) {

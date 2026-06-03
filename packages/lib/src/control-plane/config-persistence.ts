@@ -14,6 +14,7 @@ import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./registry.js";
 import { resolveOperatorIds, hasUsableOperatorId } from "./operator-ids.js";
+import { SPEC_DEFAULTS } from "./stack-spec.js";
 
 import {
   readCoreCompose,
@@ -130,9 +131,8 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
     "# Guardian is network-only (no host port) — channels reach it via",
     "# http://guardian:8080 over the channel_lan Docker network.",
-    `OP_ASSISTANT_PORT=3800`,
-    `OP_ADMIN_PORT=3880`,
-    `OP_ADMIN_OPENCODE_PORT=3881`,
+    `OP_ASSISTANT_PORT=${SPEC_DEFAULTS.ports.assistant}`,
+    `OP_HOST_UI_PORT=${SPEC_DEFAULTS.ports.hostUi}`,
     ""
   ].join("\n");
 }

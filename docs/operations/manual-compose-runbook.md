@@ -265,7 +265,7 @@ a common source of confusion.
 ### Stage 1: Compose variable substitution (`--env-file`)
 
 `--env-file` flags supply values that Compose interpolates into the compose YAML
-before creating containers. For example, `${OP_ADMIN_PORT:-3880}` in
+before creating containers. For example, `${OP_HOST_UI_PORT:-3880}` in
 `core.compose.yml` is resolved at this stage.
 
 Precedence for substitution (highest to lowest):

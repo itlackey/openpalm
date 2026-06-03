@@ -42,8 +42,7 @@ export function deriveSystemEnvFromSpec(homeDir: string): Record<string, string>
   // network-only (no host port mapping) so OP_GUARDIAN_PORT is no longer
   // emitted; channels reach it via Docker DNS at http://guardian:8080.
   result["OP_ASSISTANT_PORT"] = String(ports.assistant);
-  result["OP_ADMIN_PORT"] = String(ports.admin);
-  result["OP_ADMIN_OPENCODE_PORT"] = String(ports.adminOpencode);
+  result["OP_HOST_UI_PORT"] = String(ports.hostUi);
   result["OP_ASSISTANT_SSH_PORT"] = String(ports.assistantSsh);
 
   return result;

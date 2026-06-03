@@ -4,20 +4,14 @@ node_modules
 .plans
 .opencode
 .state
-# core/ layout (post-refactor)
+# core/ layout
 core/guardian/node_modules
-# channels
+# channel adapter packages
 channels/chat/node_modules
 channels/api/node_modules
 channels/discord/node_modules
 channels/telegram/node_modules
 channels/voice/node_modules
-# legacy paths (pre-refactor)
-api/node_modules
-admin/node_modules
-guardian/node_modules
-admin/.svelte-kit
-admin/build
 docs/
 *.md
 !AGENTS.md
@@ -29,6 +23,5 @@ docs/
 .openpalm/config/stack/*.env
 # User env config (OP_HOME/knowledge/env/)
 .openpalm/knowledge/env/user.env
-# Auth tokens
-.openpalm/vault/**/auth.json
-.openpalm/vault/**/managed.env
+# Secrets — never bake into images (auth.json, per-service secret files)
+.openpalm/knowledge/secrets/**

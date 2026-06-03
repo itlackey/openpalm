@@ -96,7 +96,7 @@ Install action:
 
 Important env behavior:
 
-- Provider API keys and runtime capability values are written to `~/.openpalm/knowledge/env/stack.env`.
+- Provider API keys are written to `~/.openpalm/knowledge/secrets/auth.json` (managed via the Connections tab). `~/.openpalm/knowledge/env/stack.env` receives non-secret runtime values only (ports, paths, image tags).
 - `~/.openpalm/knowledge/env/user.env` remains an optional user-extension file.
 
 ---

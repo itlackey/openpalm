@@ -58,7 +58,7 @@
       const loginRes = await fetch('/admin/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ password: token }),
         credentials: 'include'
       });
       if (!loginRes.ok) {

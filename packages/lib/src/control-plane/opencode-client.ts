@@ -2,7 +2,7 @@
  * Shared OpenCode REST API client.
  *
  * Factory function that returns typed accessors for an OpenCode server
- * at a configurable base URL. Used by both the admin (container) and
+ * at a configurable base URL. Used by both the admin UI (host process) and
  * CLI (host subprocess) to talk to OpenCode.
  */
 

@@ -10,7 +10,7 @@ Repo layout convention:
 
 | Document | Description |
 |---|---|
-| [CONTRIBUTING.md](CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
+| [CONTRIBUTING.md](../.github/CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
 | [system-requirements.md](system-requirements.md) | CPU, RAM, disk, network — minimum and recommended specs |
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
 | [setup-walkthrough.md](setup-walkthrough.md) | Visual walkthrough of every setup wizard screen |
@@ -36,7 +36,6 @@ Repo layout convention:
 |---|---|
 | [core-principles.md](technical/core-principles.md) | **Authoritative.** Core goals, security invariants, filesystem + volume-mount contracts |
 | [foundations.md](technical/foundations.md) | Stripped-down runtime contract for env, filesystem, mounts, and networks |
-| [undocumented-details.md](technical/undocumented-details.md) | Source-backed inventory of important runtime details not yet covered in the primary docs |
 
 ## Implementation rules
 
@@ -44,7 +43,7 @@ Repo layout convention:
 |---|---|
 | [code-quality-principles.md](technical/code-quality-principles.md) | All code |
 | [bunjs-rules.md](technical/bunjs-rules.md) | Guardian, channels, channels-sdk |
-| [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/admin/`) |
+| [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
 
 ## Release notes
 
@@ -60,5 +59,4 @@ Repo layout convention:
 | [backup-restore.md](backup-restore.md) | Backup, restore, and migration procedures |
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
-| [community-channels.md](community-channels.md) | BaseChannel SDK for custom adapters |
-| [prd.md](technical/prd.md) | MVP product requirements |
+| [community-channels.md](channels/community-channels.md) | BaseChannel SDK for custom adapters |

@@ -67,12 +67,13 @@ SLACK_BLOCKED_USERS=U09ZZZZZZ99
 Manual-first path:
 
 ```bash
-cd "$HOME/.openpalm/stack"
+cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   --env-file ../knowledge/env/stack.env \
   -f core.compose.yml \
-  -f addons/slack/compose.yml \
+  -f channels.compose.yml \
+  --profile addon.slack \
   up -d
 ```
 

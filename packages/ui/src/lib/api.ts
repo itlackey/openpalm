@@ -336,7 +336,7 @@ export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown; pr
   const res = await request('PUT', '/admin/voice', config);
   // 401 still throws so the auth gate can re-arm.
   if (res.status === 401) {
-    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+    throw Object.assign(new Error('Invalid password.'), { status: 401 });
   }
   // 200 (saved + voice ready), 202 (saved, voice still pulling/starting
   // in background — caller polls /admin/voice for activeJob), and 502
@@ -448,10 +448,8 @@ export async function setActiveEndpoint(id: string): Promise<{ activeId: string;
 /**
  * Create a new OpenCode session via the SvelteKit broker.
  *
- * Phase 4 of docs/technical/auth-and-proxy-refactor-plan.md deleted the
- * assistant/admin backend toggle — only `/proxy/assistant/*` is reachable
- * from the browser. The active OpenCode instance is selected server-side
- * via the connection switcher.
+ * Only `/proxy/assistant/*` is reachable from the browser. The active
+ * OpenCode instance is selected server-side via the connection switcher.
  */
 export async function createSession(): Promise<{ id: string }> {
   const res = await requireOk(
@@ -487,9 +485,8 @@ export async function listSessions(): Promise<SessionSummary[]> {
 /**
  * Fetch the messages for a session and map them to UI `ChatMessage`s.
  *
- * Skips non-text parts (tool calls, files, reasoning, etc.) — they'll
- * surface in a future Phase C. Empty-text messages are dropped so the UI
- * doesn't render placeholder bubbles.
+ * Skips non-text parts (tool calls, files, reasoning, etc.). Empty-text
+ * messages are dropped so the UI doesn't render placeholder bubbles.
  */
 export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
   const res = await requireOk(

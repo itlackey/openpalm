@@ -23,7 +23,6 @@ import {
   performSetup,
   buildSecretsFromSetup,
   buildAuthJsonFromSetup,
-  buildSystemSecretsFromSetup,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
@@ -113,7 +112,6 @@ function createFullDirTree(): void {
     stackDir,
     dataDir,
     join(dataDir, "assistant"),
-    join(dataDir, "admin"),
     join(dataDir, "guardian"),
     join(dataDir, "akm", "cache"),
     join(dataDir, "akm", "data"),

@@ -157,7 +157,7 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
-      expect(existsSync(join(base, 'data', 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'data', 'assistant'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'services.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'channels.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
@@ -168,7 +168,7 @@ describe('cli main', () => {
     }
   });
 
-  it('creates the admin data directory during bootstrap install', async () => {
+  it('creates service data directories during bootstrap install (health check unreachable)', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
     const workDir = join(base, 'work');
 
@@ -195,7 +195,7 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      expect(existsSync(join(base, 'data', 'admin'))).toBe(true);
+      expect(existsSync(join(base, 'data', 'assistant'))).toBe(true);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

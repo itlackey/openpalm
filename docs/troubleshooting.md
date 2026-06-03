@@ -63,7 +63,7 @@ compose file set.
 **Common causes:**
 
 - the `openpalm` host process is not running
-- `OP_ADMIN_PORT` was changed in `stack.env`
+- `OP_HOST_UI_PORT` was changed in `stack.env`
 
 **Fix:**
 
@@ -84,19 +84,21 @@ running.
 
 **Cause:** Docker Compose only deploys the files you pass with `-f`.
 
-**Fix:** rerun the exact file set you want. Example:
+**Fix:** rerun the stack with the correct profile set. Example:
 
 ```bash
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file stack.env \
+  -f channels.compose.yml \
+  --profile addon.chat \
+  --env-file ../knowledge/env/stack.env \
   up -d
 ```
 
-`~/.openpalm/config/stack.yml` does nothing by itself unless a helper script is
-reading it.
+The enabled addon names in `~/.openpalm/config/stack/stack.yml` are used by OpenPalm
+tooling to build the `--profile` arguments. Manual invocations must pass them
+explicitly.
 
 ---
 
@@ -201,8 +203,9 @@ the compose files under `~/.openpalm/config/stack/`, non-secret `stack.env`, and
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f addons/chat/compose.yml \
-  --env-file stack.env \
+  -f channels.compose.yml \
+  --profile addon.chat \
+  --env-file ../knowledge/env/stack.env \
   down -v
 
 rm -rf "$HOME/.openpalm"

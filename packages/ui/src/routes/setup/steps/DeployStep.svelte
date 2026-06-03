@@ -21,7 +21,7 @@
     deployStatus?: ServiceStatus[];
     deployError?: string | null;
     phase?: DeployPhase;
-    ports?: { admin?: number; assistant?: number; guardian?: number };
+    ports?: { admin?: number; assistant?: number };
   }
 
   interface Props {
@@ -41,12 +41,10 @@
 
   const adminPort = $derived(deployData.ports?.admin ?? windowPort);
   const assistantPort = $derived(deployData.ports?.assistant ?? 3800);
-  const guardianPort = $derived(deployData.ports?.guardian ?? 8180);
 
   const serviceLinks = $derived<Record<string, { port: number; label: string; path: string }>>({
     assistant: { port: assistantPort, label: 'Assistant (OpenCode)', path: '' },
     admin: { port: adminPort, label: 'Admin Dashboard', path: '' },
-    guardian: { port: guardianPort, label: 'Guardian', path: '/health' },
   });
 
   const services = $derived(deployData.deployStatus ?? []);

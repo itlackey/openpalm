@@ -1,8 +1,9 @@
 # Auth & Proxy Refactor Plan
 
-> Status: PROPOSED (v3). Synthesizes three expert reports (OpenCode capabilities, code
-> inventory, security threat model), an opinionated user proposal, a critic
-> pass that overturned D1, and user decisions on auditing/CSP/multi-tab.
+> Status: **HISTORICAL DESIGN DOCUMENT** — Phase 2 (cookie auth, `op_session`,
+> removal of `x-admin-token` / `OP_ASSISTANT_TOKEN` fallback) has **landed** in
+> v0.11.0. This document records the rationale and phased plan; the
+> implementation details are now in the shipped code.
 > Authoritative rules in [`core-principles.md`](./core-principles.md) take
 > precedence over anything here.
 

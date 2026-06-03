@@ -216,7 +216,7 @@ async function prepareInstallFiles(
   homeDir: string, configDir: string, dataDir: string, workDir: string, version: string,
 ): Promise<void> {
   console.log('Preparing directories...');
-  await ensureDirectoryTree(homeDir, configDir, '', '', workDir);
+  await ensureDirectoryTree(homeDir, workDir);
 
   try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }

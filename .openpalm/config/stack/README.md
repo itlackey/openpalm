@@ -52,7 +52,7 @@ overlays.
 | `discord` | none | Discord bot adapter |
 | `ollama` | `11434` | Local LLM inference server |
 | `slack` | none | Slack bot adapter |
-| `voice` | `3810 -> 8186` | Voice channel |
+| `voice` | `${OP_VOICE_PORT_HOST:-8880}:8880` | AI voice (TTS + STT) |
 
 ## Networks
 
@@ -65,7 +65,7 @@ overlays.
 
 | File | Purpose | Owner |
 |------|---------|-------|
-| `stack.yml` | Capabilities only (metadata) | User, explicit admin actions |
+| `stack.yml` | Stack schema version marker + enabled addon names | User, explicit admin actions |
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
 | `services.compose.yml` | Optional first-party services | System (managed via CLI/admin) |
 | `channels.compose.yml` | Optional first-party channels | System (managed via CLI/admin) |

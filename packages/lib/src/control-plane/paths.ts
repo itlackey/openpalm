@@ -24,7 +24,7 @@ import type { ControlPlaneState } from "./types.js";
 export const authJsonPath          = (s: ControlPlaneState): string => `${s.stashDir}/secrets/auth.json`;
 /** akm config directory mounted at /etc/akm */
 export const akmConfigDir          = (s: ControlPlaneState): string => `${s.configDir}/akm`;
-/** akm setup config file (written by admin on capability save) */
+/** akm setup config file (written by the admin UI AKM action and CLI install) */
 export const akmConfigPath         = (s: ControlPlaneState): string => `${s.configDir}/akm/config.json`;
 export const tasksDir              = (s: ControlPlaneState): string => `${s.stashDir}/tasks`;
 export const assistantConfigDir    = (s: ControlPlaneState): string => `${s.configDir}/assistant`;
@@ -67,14 +67,11 @@ export const logsDir               = (s: ControlPlaneState): string => `${s.data
  * chat + tool activity.
  */
 export const guardianAuditPath     = (s: ControlPlaneState): string => `${s.dataDir}/logs/guardian-audit.log`;
-/** One-shot 0.11.0 migration log (OP_UI_TOKEN → OPENCODE_SERVER_PASSWORD, endpoints.json move) */
-export const migration0110LogPath  = (s: ControlPlaneState): string => `${s.dataDir}/logs/migration-0.11.0.log`;
 export const backupsDir            = (s: ControlPlaneState): string => `${s.dataDir}/backups`;
 
 // ── State directory — persistent service data ───────────────────────────────
 
 export const assistantServiceDir   = (s: ControlPlaneState): string => `${s.dataDir}/assistant`;
-export const adminServiceDir       = (s: ControlPlaneState): string => `${s.dataDir}/admin`;
 export const guardianServiceDir    = (s: ControlPlaneState): string => `${s.dataDir}/guardian`;
 export const guardianAkmDir        = (s: ControlPlaneState): string => `${s.dataDir}/guardian/akm`;
 /** akm durable data — NOT config, which lives in config/akm/ */

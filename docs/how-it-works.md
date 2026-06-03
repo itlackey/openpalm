@@ -130,13 +130,12 @@ a service):
 
 ```
 User requests stack operation via admin chat UI → host admin process calls docker compose restart
-  Header: x-admin-token: <assistant-scoped token>
+  Cookie: op_session=<session from /admin/auth/login>
   Body:   { "service": "chat" }
         |
         v
-Admin validates token + allowlists service name
+Admin validates session + allowlists service name
 Runs: docker compose restart chat
-Writes audit entry
 Returns result
 ```
 
@@ -148,15 +147,17 @@ Returns result
 openpalm install   ->   writes files into ~/.openpalm/
                               |
                               v
-                    Install seeds the registry catalog and base stack files
+                    Install seeds the base compose files and stack.yml
                                |
                                v
-                    You / CLI enable addons into stack/addons/:
-                        core.compose.yml
-                        + zero or more addon overlays
+                    You / CLI enable addons in stack.yml:
+                        core.compose.yml (always)
+                        + channels.compose.yml / services.compose.yml
+                        + --profile addon.<name> per enabled addon
+                        + custom.compose.yml for custom services
                               |
                               v
-                    docker compose -f <compose files> up -d
+                    docker compose -f <files> --profile <addons> up -d
 ```
 
 Automatic lifecycle operations (install/update/startup/apply/setup reruns/upgrades)
@@ -222,9 +223,14 @@ Anything not on the list is rejected with `400 invalid_service` or
 
 ## Adding a Channel (the whole process)
 
-1. Add or reuse a service definition in `channels.compose.yml` or `custom.compose.yml`.
-2. Enable first-party channels by adding their addon name to `~/.openpalm/config/stack/stack.yml` through the CLI or admin UI.
-3. Rerun the OpenPalm compose command so the addon name becomes a `--profile` argument.
+**First-party channel (chat, api, discord, slack):**
+1. Add the addon name to `~/.openpalm/config/stack/stack.yml` through the CLI or admin UI.
+2. OpenPalm resolves the name to a `--profile addon.<name>` argument against `channels.compose.yml`.
+3. Rerun the OpenPalm compose command (or use the admin UI restart action).
 4. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first.
+
+**Custom channel:**
+1. Add a service definition to `~/.openpalm/config/stack/custom.compose.yml`.
+2. Rerun the compose command — `custom.compose.yml` is always included.
 
 No code changes. No image rebuild. The channel is live.

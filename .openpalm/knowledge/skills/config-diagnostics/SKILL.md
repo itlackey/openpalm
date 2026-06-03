@@ -17,10 +17,11 @@ and guide them — without ever exposing actual secret values.
 
 ## Procedure
 
-1. **Call `GET /admin/config/validate`** to get the current validation result:
+1. **Call `GET /admin/config/validate`** to get the current validation result
+   (authenticated via the `op_session` cookie — the legacy `x-admin-token`
+   header was removed):
    ```
    GET /admin/config/validate
-   x-admin-token: <admin-token>
    ```
    Response: `{ ok: boolean, errors: string[], warnings: string[] }`
 

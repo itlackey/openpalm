@@ -77,11 +77,11 @@ async function checkPortAvailable(port: number, timeoutMs = 1000): Promise<boole
 // channels reach it via Docker DNS (http://guardian:8080) and the host
 // admin-tools health-check uses `docker container inspect` instead of HTTP.
 //
-// Env-name resolution honors BOTH the historic OP_ADMIN_PORT / OP_ASSISTANT_PORT
-// (used by dev-setup.sh and existing dev installs) and the newer OP_HOST_*
-// names. OP_HOST_* wins when present; falls back to the legacy name; falls back
-// to the stock default. Avoids a false "port in use" on dev stacks whose
-// stack.env predates the rename.
+// Env-name resolution prefers the canonical OP_HOST_* names. The UI port reads
+// only OP_HOST_UI_PORT (the legacy OP_ADMIN_PORT has been removed — existing
+// installs must re-run setup to migrate). The assistant port still honors the
+// historic OP_ASSISTANT_PORT for existing dev installs. Falls back to the
+// stock default when unset.
 function pickPort(...envNames: string[]): number | null {
   for (const name of envNames) {
     const raw = process.env[name];
@@ -94,7 +94,7 @@ function pickPort(...envNames: string[]): number | null {
 
 function resolvePortsToCheck(): { port: number; service: string; blocking: boolean }[] {
   return [
-    { port: pickPort("OP_HOST_UI_PORT", "OP_ADMIN_PORT")            ?? 3880, service: "admin",     blocking: true },
+    { port: pickPort("OP_HOST_UI_PORT")                             ?? 3880, service: "admin",     blocking: true },
     { port: pickPort("OP_HOST_ASSISTANT_PORT", "OP_ASSISTANT_PORT") ?? 3800, service: "assistant", blocking: true },
   ];
 }

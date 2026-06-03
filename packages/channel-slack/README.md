@@ -1,7 +1,7 @@
 # @openpalm/channel-slack
 
 Slack Socket Mode adapter for OpenPalm.
-It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, so no public inbound URL is required.
+It normally runs via the `addon.slack` Compose profile and connects outbound to Slack, so no public inbound URL is required.
 
 ## Features
 
@@ -16,8 +16,7 @@ It normally runs via `addons/slack/compose.yml` and connects outbound to Slack, 
 
 ## Deployment model
 
-- Shipped addon source: `.openpalm/config/stack/channels.compose.yml`
-- Enabled runtime overlay: `~/.openpalm/config/stack/addons/slack/compose.yml`
+- Shipped service definition: `.openpalm/config/stack/channels.compose.yml`, profile `addon.slack`
 - Non-secret values: `~/.openpalm/knowledge/env/stack.env`
 - Secret values: files under `~/.openpalm/knowledge/secrets/`
 
@@ -29,11 +28,14 @@ docker compose \
   --project-name openpalm \
   --env-file stack.env \
   -f core.compose.yml \
-  -f addons/slack/compose.yml \
+  -f services.compose.yml \
+  -f channels.compose.yml \
+  -f custom.compose.yml \
+  --profile addon.slack \
   up -d
 ```
 
-The shipped addon overlay uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
+The service definition uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 
 The Slack channel container uses `CHANNEL_SECRET_FILE` to sign guardian messages. The guardian uses `CHANNEL_SLACK_SECRET_FILE` to verify Slack channel messages.
 

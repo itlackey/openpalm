@@ -125,7 +125,6 @@ OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
 # Note: OP_VOICE_PORT is unused; voice compose binds via OP_VOICE_PORT_HOST.
 OP_VOICE_PORT_HOST=${OP_E2E_VOICE_PORT:-8187}
 OP_HOST_UI_PORT=${OP_E2E_UI_PORT}
-OP_ADMIN_PORT=${OP_E2E_UI_PORT}
 OP_SETUP_COMPLETE=true
 EOF
 chmod 600 "${OP_E2E_HOME}/knowledge/env/stack.env"
@@ -230,7 +229,12 @@ fi
 # ── Step 7: Verify UI endpoints ───────────────────────────────────
 echo ""
 echo "=== Step 7: Verify UI endpoints ==="
-UI_TOKEN=$(tr -d '\n' < "${OP_E2E_HOME}/knowledge/secrets/op_ui_login_password")
+UI_PASSWORD=$(tr -d '\n' < "${OP_E2E_HOME}/knowledge/secrets/op_ui_login_password")
+
+# Cookie jar for authenticated requests (reused across all authenticated calls).
+# Auth: POST /admin/auth/login with JSON password → server sets op_session cookie.
+COOKIE_JAR="$(mktemp)"
+trap 'rm -f "$COOKIE_JAR"' EXIT
 
 # /health
 status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/health")
@@ -244,16 +248,26 @@ status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/")
 status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/setup")
 [[ "$status" == "200" ]] && pass "/setup wizard → 200" || fail "/setup returned $status"
 
-# /admin/containers/list with correct token
-status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/containers/list")
+# Authenticate once: POST /admin/auth/login → capture op_session cookie
+login_resp=$(curl -sf -c "$COOKIE_JAR" -X POST "${UI_URL}/admin/auth/login" \
+	-H "content-type: application/json" \
+	-d "{\"password\":\"$UI_PASSWORD\"}" 2>/dev/null || echo "")
+if echo "$login_resp" | grep -q '"ok":true'; then
+	pass "POST /admin/auth/login → ok:true"
+else
+	fail "POST /admin/auth/login failed (got: $(echo "$login_resp" | head -c 200))"
+fi
+
+# /admin/containers/list with session cookie (authenticated)
+status=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIE_JAR" "${UI_URL}/admin/containers/list")
 [[ "$status" == "200" ]] && pass "/admin/containers/list (auth) → 200" || fail "/admin/containers/list (auth) returned $status"
 
-# /admin/containers/list without token (must 401)
+# /admin/containers/list without cookie (must 401)
 status=$(curl -s -o /dev/null -w "%{http_code}" "${UI_URL}/admin/containers/list")
 [[ "$status" == "401" ]] && pass "/admin/containers/list (no auth) → 401" || fail "/admin/containers/list (no auth) returned $status"
 
 # /admin/health verifies admin is responding and assistant is reachable
-health=$(curl -sf -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/health" 2>/dev/null || echo "")
+health=$(curl -sf -b "$COOKIE_JAR" "${UI_URL}/admin/health" 2>/dev/null || echo "")
 if echo "$health" | grep -q '"ok":true'; then
 	pass "/admin/health responds with ok:true"
 else
@@ -264,7 +278,7 @@ fi
 echo ""
 echo "=== Step 8: Verify container API surface ==="
 # Containers report status through /admin/containers/list
-list=$(curl -sf -H "x-admin-token: $UI_TOKEN" "${UI_URL}/admin/containers/list" 2>/dev/null || echo "")
+list=$(curl -sf -b "$COOKIE_JAR" "${UI_URL}/admin/containers/list" 2>/dev/null || echo "")
 if echo "$list" | grep -q '"assistant"' && echo "$list" | grep -q '"guardian"'; then
 	pass "Admin reports both assistant and guardian containers"
 else

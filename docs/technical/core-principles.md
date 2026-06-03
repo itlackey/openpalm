@@ -281,7 +281,7 @@ Addon overlays may extend core services by injecting environment variables or vo
 
 When the CLI or admin performs an apply operation, a snapshot is saved to `$OP_HOME/data/rollback/` before any writes. The snapshot includes:
 
-- `config/stack/` — the full live compose assembly, non-secret runtime env, file-based system secrets, and addon overlays (`core.compose.yml`, `stack.env`, `secrets/`, `addons/`)
+- `config/stack/` — the full live compose assembly, non-secret runtime env, file-based system secrets, and compose files (`core.compose.yml`, `channels.compose.yml`, `services.compose.yml`, `custom.compose.yml`, `stack.env`, `secrets/`)
 
 The snapshot does **not** include `config/` user files outside `config/stack/` (non-destructive for user edits), `knowledge/env/user.env` (never overwritten by lifecycle operations), or `data/` (service-owned runtime data).
 
@@ -291,7 +291,7 @@ On health check failure after deploy, the snapshot is automatically restored and
 
 ## Operational behavior
 
-- **Add an addon:** drop `compose.yml` into `stack/addons/<n>/`, then rerun `docker compose up -d` with that addon included. ([Docker Documentation][3])
+- **Add an addon:** enable its name in `~/.openpalm/config/stack/stack.yml` (for first-party addons) or add a service block to `custom.compose.yml` (for custom services), then rerun the compose command with the appropriate `--profile addon.<name>` arguments. ([Docker Documentation][3])
 - **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode's directory structure. ([OpenCode][1])
 - **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
 - **Apply changes:** the CLI or admin validates proposed changes (compose config and secret-audit rules) before writing anything. If validation passes, a snapshot of current live files is saved to `$OP_HOME/data/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution for non-secret values. Compose is normally invoked with non-secret `knowledge/env/stack.env`; service secrets live under `knowledge/secrets/` and are granted via Compose `secrets:`. `knowledge/env/user.env` is not a Compose env-file. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` user files and `knowledge/env/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `config/stack/`.

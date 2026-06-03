@@ -117,7 +117,7 @@ unless you intentionally change bind addresses in `knowledge/env/stack.env`.
 | `3810` | Voice addon | `OP_VOICE_PORT` |
 | `3820` | Chat addon | `OP_CHAT_PORT` |
 | `3821` | API addon | `OP_API_PORT` |
-| `3880` | Admin UI/API addon | `OP_ADMIN_PORT` |
+| `3880` | Admin UI (host process) | `OP_HOST_UI_PORT` |
 | `2222` | Assistant SSH (optional) | `OP_ASSISTANT_SSH_PORT` |
 
 `guardian` stays internal to Docker networks by default.

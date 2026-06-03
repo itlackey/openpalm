@@ -5,7 +5,7 @@
  *   config/    — user-editable config + system config files (akm/)
  *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, auth.json, fixed compose files)
  *   data/      — persistent service data, logs, backups, rollback
- *   knowledge/ — akm knowledge (skills, vaults, agents)
+ *   knowledge/ — akm knowledge (env, secrets, tasks)
  *   workspace/ — shared assistant work area
  *   config/stack/ — compose runtime assets + stack config (stack.env, stack.yml)
  */
@@ -94,7 +94,6 @@ export function ensureHomeDirs(): void {
     `${home}/data/assistant/.local/bin`,
     `${home}/data/assistant/.local/share/opencode`,
     `${home}/data/assistant/.local/state/opencode`,
-    `${home}/data/admin`,          // admin home bind mount
     `${home}/data/guardian`,       // guardian runtime data
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data

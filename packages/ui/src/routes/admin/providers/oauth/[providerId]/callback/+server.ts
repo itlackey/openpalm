@@ -1,11 +1,9 @@
 /**
  * POST /admin/providers/oauth/:providerId/callback
  *
- * Forwards an OAuth callback (auto-mode completion) to the assistant
- * container's OpenCode. The previous implementation spawned a separate
- * OpenCode subprocess, but a fresh OpenCode instance's OAuth methods map
- * fails to initialize (TypeError on .methods lookup), so we route the
- * call directly to the running assistant.
+ * Forwards an OAuth callback (auto-mode completion) to the running
+ * assistant's OpenCode, which holds the OAuth methods map needed to
+ * complete the exchange.
  */
 import type { RequestHandler } from './$types';
 import { requireAdmin, getRequestId, errorResponse } from '$lib/server/helpers.js';

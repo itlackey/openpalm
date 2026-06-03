@@ -2,7 +2,7 @@
 
 This document defines Bun-specific implementation rules for OpenPalm's **Bun
 services only**: `core/guardian/`, `channels/*`, `packages/channels-sdk/`, and any
-Bun-based utilities. It does **not** apply to the admin service (`packages/admin/`),
+Bun-based utilities. It does **not** apply to the admin UI (`packages/ui/`),
 which is a SvelteKit/Node.js app and follows Node.js and SvelteKit conventions
 (see `docs/technical/sveltekit-rules.md`).
 

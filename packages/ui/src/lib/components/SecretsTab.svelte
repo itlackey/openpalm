@@ -48,7 +48,7 @@
     actionLoading = 'write';
     try {
       await writeUserEnvKey(k, writeValue);
-      notifications.push('success', `Saved "${k}" to the user env. Recreate the assistant container to pick up the new value.`);
+      notifications.push('success', `Saved "${k}" to the user env. Restart the assistant to pick up the new value.`);
       writeKey = '';
       writeValue = '';
       showWriteForm = false;
@@ -93,7 +93,7 @@
       <h2>User Environment</h2>
       <p class="panel-subtitle">
         User-managed env secrets stored in the akm user env (<code>{envRef || 'env:user'}</code>). Sourced by the
-        assistant container at startup — recreate it after changes.
+        assistant at startup — restart it after changes.
       </p>
     </div>
     <div class="panel-header-actions">

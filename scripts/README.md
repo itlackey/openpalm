@@ -51,6 +51,3 @@ Notes:
 - `validate-registry.sh` - registry validation
 - `install-hooks.sh` - git hook setup
 
-## ISO helper
-
-See `scripts/iso/README.md` for the kiosk ISO builder.

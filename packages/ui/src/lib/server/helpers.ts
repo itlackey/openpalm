@@ -190,7 +190,7 @@ export async function withAdminBody(
   handler: (ctx: { requestId: string; body: Record<string, unknown> }) => Promise<Response>
 ): Promise<Response> {
   const requestId = getRequestId(event);
-  const originError = checkOriginHeader(event.request, ADMIN_PORT);
+  const originError = checkOriginHeader(event.request, UI_PORT);
   if (originError) return originError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
@@ -218,7 +218,7 @@ export function checkHostHeader(request: Request, port: number): Response | null
     JSON.stringify({
       error: "invalid_host",
       host: normalized,
-      message: "Request rejected: Host header does not match allowed hosts. To allow remote access, set OP_ADMIN_BIND_ADDRESS=0.0.0.0 and restart.",
+      message: "Request rejected: Host header does not match allowed hosts. The admin UI binds to loopback (127.0.0.1) only; reach it via localhost or front it with a reverse proxy/tunnel for remote access.",
     }),
     { status: 400, headers: { "content-type": "application/json" } }
   );
@@ -254,5 +254,5 @@ export function checkOriginHeader(request: Request, port: number): Response | nu
   );
 }
 
-// ADMIN_PORT is exported so hooks.server.ts and other modules can import it.
-export const ADMIN_PORT = Number(process.env.PORT ?? 8100);
+// UI_PORT is exported so hooks.server.ts and other modules can import it.
+export const UI_PORT = Number(process.env.PORT ?? 3880);

@@ -2,8 +2,8 @@
  * GET /admin/automations — List automation configs from knowledge/tasks/.
  *
  * Read-only endpoint. Automations are AKM task files at
- * ${stashDir}/tasks/*.yml. The OS cron daemon (in the assistant container)
- * handles scheduling; `akm tasks run <id>` handles execution.
+ * ${stashDir}/tasks/*.yml. The scheduler runs as a co-process inside the
+ * assistant; `akm tasks run <id>` handles execution.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";

@@ -444,6 +444,12 @@ jobs:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
       - name: Setup Node.js
+        # Node 22 (not 24) is intentional: electron-builder spawns worker
+        # processes using process.execPath. When run under Bun, execPath points
+        # to the Bun ELF binary, which Node.js cannot parse as JavaScript.
+        # The build step below explicitly invokes Node via require.resolve to
+        # work around this, and electron-builder itself is validated against
+        # Node 22 LTS. Bump only when electron-builder confirms Node 24 support.
         uses: actions/setup-node@v4
         with:
           node-version: '22'

@@ -8,7 +8,7 @@ Dev-setup and tests use **offset ports** so they never conflict with a productio
 
 | Service | Production defaults | Dev/test ports (`dev-setup.sh`) |
 |---|---|---|
-| Admin UI (host process) | `8100` | `9100` |
+| Admin UI (host process) | `3880` | `9100` |
 | Assistant (OpenCode) | `3800` → container `4096` | `4800` → container `4096` |
 | Guardian | network-only | network-only |
 
@@ -16,7 +16,7 @@ Dev-setup and tests use **offset ports** so they never conflict with a productio
 
 Tests read port configuration in this priority order:
 1. Explicit env vars (`ADMIN_URL`, `ASSISTANT_URL`)
-2. `STACK_ENV_PATH` — path to a `stack.env`; `global-setup.ts` builds `ADMIN_URL`/`ASSISTANT_URL` from `OP_ADMIN_PORT`/`OP_ASSISTANT_PORT` found there
+2. `STACK_ENV_PATH` — path to a `stack.env`; `global-setup.ts` builds `ADMIN_URL`/`ASSISTANT_URL` from `OP_HOST_UI_PORT`/`OP_ASSISTANT_PORT` found there
 3. Hardcoded test defaults: 9100 / 4800 (match dev-setup.sh)
 
 ## Architecture
@@ -27,7 +27,7 @@ Tests read port configuration in this priority order:
 | Assistant (OpenCode) | Docker container — host port `OP_ASSISTANT_PORT` → container port 4096 |
 | Guardian | Docker container — network-only, reached by channels on `channel_lan` |
 
-> The admin UI is **not** a container. It is a SvelteKit app run as a host process. `OP_ADMIN_PORT` in `stack.env` (default `8100`) is its listen port.
+> The admin UI is **not** a container. It is a SvelteKit app run as a host process. `OP_HOST_UI_PORT` in `stack.env` (default `3880`; dev `9100`) is its listen port.
 
 ## Starting a Test Stack
 
@@ -46,7 +46,7 @@ OP_DOCKER_SOCK=/var/run/docker.sock
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
 OP_ASSISTANT_PORT=4800
-OP_ADMIN_PORT=9100
+OP_HOST_UI_PORT=9100
 OP_SETUP_COMPLETE=true
 EOF
 chmod 600 .dev-test/knowledge/env/stack.env
@@ -102,7 +102,7 @@ STACK_ENV_PATH=.dev-test/knowledge/env/stack.env \
 bun run ui:test:e2e
 ```
 
-`global-setup.ts` constructs `ADMIN_URL` from `OP_ADMIN_PORT` and `ASSISTANT_URL` from `OP_ASSISTANT_PORT` in the referenced stack.env if those URL vars are not already set.
+`global-setup.ts` constructs `ADMIN_URL` from `OP_HOST_UI_PORT` and `ASSISTANT_URL` from `OP_ASSISTANT_PORT` in the referenced stack.env if those URL vars are not already set.
 
 All three required env vars for the first form:
 - `RUN_DOCKER_STACK_TESTS=1` — gates are skipped by default; this unlocks them
@@ -135,14 +135,14 @@ curl -b /tmp/openpalm-test-cookie http://localhost:9100/admin/health
 curl -b /tmp/openpalm-test-cookie http://localhost:9100/admin/providers | jq '.available'
 ```
 
-## Running against a production stack (ports 8100/3800/8180)
+## Running against a production stack (ports 3880/3800)
 
 If you need to test against a production instance running on the default ports, pass `ADMIN_URL` explicitly to override:
 
 ```bash
 RUN_DOCKER_STACK_TESTS=1 \
 OP_UI_LOGIN_PASSWORD=your-password \
-ADMIN_URL=http://127.0.0.1:8100 \
+ADMIN_URL=http://127.0.0.1:3880 \
 ASSISTANT_URL=http://localhost:3800 \
 bun run ui:test:e2e
 ```

@@ -39,11 +39,11 @@
       const res = await fetch('/admin/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ password: token }),
         credentials: 'include',
       });
       if (!res.ok) {
-        authError = 'Invalid admin token.';
+        authError = 'Invalid password.';
         return false;
       }
       authLocked = false;

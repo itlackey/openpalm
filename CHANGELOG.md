@@ -31,6 +31,13 @@ must move their files by hand. See
   only non-secret compose assembly (compose files + `stack.yml`).
 - akm-cli tracks the `next` prerelease dist-tag (the `env` command ships in the
   next akm prerelease).
+- **`OP_ADMIN_PORT` → `OP_HOST_UI_PORT`** — the host admin/UI port env var was
+  renamed and the legacy name is no longer emitted or read anywhere. **There is
+  no automated migration.** Existing installs that customized the admin port must
+  re-run setup (`openpalm install` / the setup wizard; `bun run dev:setup` for
+  dev) or manually rename `OP_ADMIN_PORT`→`OP_HOST_UI_PORT` in
+  `knowledge/env/stack.env`. Until then the UI binds to the default `3880`.
+  `OP_ADMIN_OPENCODE_PORT` was removed outright (it was emitted but never read).
 
 ## [0.11.0-beta.11] - 2026-05-29
 

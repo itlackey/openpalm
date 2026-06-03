@@ -50,7 +50,7 @@ Important keys include:
 | `OP_UID` / `OP_GID` | Host user/group mapping |
 | `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
 | `OP_ASSISTANT_PORT` | Assistant host port, default `3800` |
-| `OP_ADMIN_PORT` | Admin host port, default `3880` |
+| `OP_HOST_UI_PORT` | Admin UI host port, default `3880` |
 | `OP_CHAT_PORT` | Chat addon host port, default `3820` |
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT` | Voice addon host port, default `3810` |
@@ -69,9 +69,9 @@ Behavior:
 
 ## Container access rules
 
-| Container | Secret access | Notes |
+| Component | Secret access | Notes |
 |---|---|---|
-| `admin` addon | full `~/.openpalm/` bind mount | Only service with broad visibility |
+| Admin UI (host process) | direct host filesystem access | Runs on the host as `openpalm ui serve`; no container or bind mount needed |
 | `assistant` | `knowledge/` (`/stash`) only | Stash mount plus `akm env:user` injection |
 | `guardian` | no secret-dir mount | Reads needed values from Compose secrets |
 

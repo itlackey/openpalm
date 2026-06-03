@@ -30,6 +30,7 @@ ENV OPENCODE_CONFIG_DIR=/etc/opencode
 # (the `env` asset type lands in the next akm prerelease). Install globally
 # into /usr/local so the unprivileged bun user (set with USER below) can
 # execute it without writing to its own $HOME.
+# TODO(0.11.0 stable): pin off `next` once env asset type is in a stable akm-cli release.
 ARG AKM_CLI_VERSION=next
 RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
     && chmod -R a+rX /usr/local/install/global \

@@ -153,8 +153,8 @@
 
   function applyInvalidTokenState(): void {
     authLocked = true;
-    authError = 'Invalid admin token.';
-    adminStatus = 'Invalid admin token.';
+    authError = 'Invalid password.';
+    adminStatus = 'Invalid password.';
   }
 
 
@@ -166,7 +166,7 @@
       const loginRes = await fetch('/admin/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ password: token }),
         credentials: 'include'
       });
       if (!loginRes.ok) {
@@ -218,7 +218,7 @@
       containerData = null;
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
-        containerError = 'Invalid admin token.';
+        containerError = 'Invalid password.';
         applyInvalidTokenState();
       } else {
         containerError = `Failed to load containers: ${err.message ?? e}`;
@@ -239,7 +239,7 @@
       automationsData = null;
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
-        automationsError = 'Invalid admin token.';
+        automationsError = 'Invalid password.';
         applyInvalidTokenState();
       } else {
         automationsError = `Failed to load automations: ${err.message ?? e}`;

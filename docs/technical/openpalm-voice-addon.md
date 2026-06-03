@@ -1,8 +1,13 @@
 # OpenPalm Voice Addon — Design
 
-> Status: **DESIGN** (not yet implemented). Authoritative architectural rules in
-> [`core-principles.md`](./core-principles.md) and [`registry.md`](./registry.md)
-> take precedence over anything here.
+> **DESIGN PROPOSAL — not the shipped implementation.**
+> This document describes a proposed architecture that was not fully implemented
+> as written. In particular, `data/registry/`, `enabled-addons.json`, and the
+> `setAddonEnabled` flow referencing those paths do not exist in the current
+> codebase. The shipped voice addon uses Compose profiles (`--profile addon.voice`)
+> and `stack.yml` addon state instead of a registry catalog.
+> Authoritative rules in [`core-principles.md`](./core-principles.md) take
+> precedence over anything here.
 
 OpenPalm Voice is a bundled local-container addon that gives users one-click
 TTS + STT without any external setup. The user clicks **"Enable OpenPalm Voice"**

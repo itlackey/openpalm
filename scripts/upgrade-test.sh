@@ -7,12 +7,12 @@
 #
 # ── Manual test procedure (cross-version) ──────────────────────────────
 #
-#   1. Install v0.8.x:
-#        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.8.0/scripts/setup.sh \
-#          | bash -s -- --version v0.8.0
+#   1. Install v0.11.0 (or the most recent stable):
+#        curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.11.0/scripts/setup.sh \
+#          | bash -s -- --version v0.11.0
 #
-#   2. Complete the setup wizard in the browser at http://localhost:8100/setup
-#      - Set an admin token
+#   2. Complete the setup wizard in the browser at http://localhost:3880/setup
+#      - Set an admin password
 #      - Configure an LLM provider
 #      - The wizard will pull remaining images and start all services
 #

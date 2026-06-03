@@ -25,11 +25,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "Invalid JSON body", {}, requestId);
   }
 
-  // Accept either `password` (preferred) or `token` (legacy field name) so
-  // existing clients keep working while we migrate the surface to "password".
-  const password =
-    typeof body.password === "string" ? body.password :
-    typeof body.token === "string" ? body.token : "";
+  const password = typeof body.password === "string" ? body.password : "";
   if (!password) return errorResponse(400, "bad_request", "password is required", {}, requestId);
 
   const configured = getUiLoginPassword();

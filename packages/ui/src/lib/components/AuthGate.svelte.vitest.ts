@@ -26,7 +26,7 @@ describe('AuthGate — renders', () => {
 
   test('renders the admin token input', async () => {
     render(AuthGate, { props: defaultProps() });
-    await expect.element(page.getByLabelText('Admin Token')).toBeVisible();
+    await expect.element(page.getByLabelText('Admin Password')).toBeVisible();
   });
 
   test('renders the Unlock Console submit button', async () => {
@@ -43,7 +43,7 @@ describe('AuthGate — submit button disabled state', () => {
 
   test('submit button is enabled when input has text', async () => {
     render(AuthGate, { props: defaultProps() });
-    await userEvent.type(page.getByLabelText('Admin Token'), 'my-token');
+    await userEvent.type(page.getByLabelText('Admin Password'), 'my-token');
     await expect.element(page.getByRole('button', { name: /unlock console/i })).toBeEnabled();
   });
 
@@ -69,21 +69,21 @@ describe('AuthGate — error display', () => {
 describe('AuthGate — token visibility toggle', () => {
   test('input starts as password type (token hidden)', async () => {
     render(AuthGate, { props: defaultProps() });
-    const input = page.getByLabelText('Admin Token');
+    const input = page.getByLabelText('Admin Password');
     await expect.element(input).toHaveAttribute('type', 'password');
   });
 
   test('clicking Show token changes input to text type', async () => {
     render(AuthGate, { props: defaultProps() });
     await page.getByRole('button', { name: 'Show token' }).click();
-    await expect.element(page.getByLabelText('Admin Token')).toHaveAttribute('type', 'text');
+    await expect.element(page.getByLabelText('Admin Password')).toHaveAttribute('type', 'text');
   });
 
   test('clicking Hide token after show reverts to password type', async () => {
     render(AuthGate, { props: defaultProps() });
     await page.getByRole('button', { name: 'Show token' }).click();
     await page.getByRole('button', { name: 'Hide token' }).click();
-    await expect.element(page.getByLabelText('Admin Token')).toHaveAttribute('type', 'password');
+    await expect.element(page.getByLabelText('Admin Password')).toHaveAttribute('type', 'password');
   });
 });
 
@@ -91,7 +91,7 @@ describe('AuthGate — form submission', () => {
   test('calls onSuccess with the trimmed token value', async () => {
     const onSuccess = vi.fn().mockResolvedValue(true);
     render(AuthGate, { props: { onSuccess, loading: false, error: '' } });
-    await userEvent.type(page.getByLabelText('Admin Token'), '  my-secret-token  ');
+    await userEvent.type(page.getByLabelText('Admin Password'), '  my-secret-token  ');
     await page.getByRole('button', { name: /unlock console/i }).click();
     expect(onSuccess).toHaveBeenCalledWith('my-secret-token');
   });

@@ -84,9 +84,8 @@ export type OpenCodeAuthMethod = {
 
 // ── Chat Types ──────────────────────────────────────────────────────────
 
-// Phase 4 of the auth/proxy refactor deleted the assistant/admin chat
-// backend toggle. Messages route through `/proxy/assistant/...` only;
-// the active OpenCode instance is chosen via the connection switcher.
+// Messages route through `/proxy/assistant/...` only; the active OpenCode
+// instance is chosen via the connection switcher.
 
 export type ChatMessage = {
   id: string;

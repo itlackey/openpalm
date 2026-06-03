@@ -1,7 +1,7 @@
 # @openpalm/channel-discord
 
 Discord bot adapter for OpenPalm.
-It runs behind guardian and is normally deployed by including `addons/discord/compose.yml` in your compose file set.
+It runs behind guardian and is normally enabled via the `addon.discord` Compose profile.
 
 ## Features
 
@@ -13,8 +13,7 @@ It runs behind guardian and is normally deployed by including `addons/discord/co
 
 ## Deployment model
 
-- Shipped addon source: `.openpalm/config/stack/channels.compose.yml`
-- Enabled runtime overlay: `~/.openpalm/config/stack/addons/discord/compose.yml`
+- Shipped service definition: `.openpalm/config/stack/channels.compose.yml`, profile `addon.discord`
 - Non-secret values: `~/.openpalm/knowledge/env/stack.env`
 - Secret values: files under `~/.openpalm/knowledge/secrets/`
 
@@ -26,13 +25,16 @@ docker compose \
   --project-name openpalm \
   --env-file stack.env \
   -f core.compose.yml \
-  -f addons/discord/compose.yml \
+  -f services.compose.yml \
+  -f channels.compose.yml \
+  -f custom.compose.yml \
+  --profile addon.discord \
   up -d
 ```
 
 See `docs/channels/discord-setup.md` for the full walkthrough.
 
-The shipped addon overlay uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
+The service definition uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 
 ## Environment variables
 

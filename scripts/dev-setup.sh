@@ -142,7 +142,7 @@ mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" \
 	"$STASH_DIR/env" "$STASH_DIR/secrets" \
-	"$DATA_DIR" "$DATA_DIR/admin" "$DATA_DIR/assistant" "$DATA_DIR/assistant/.cache" \
+	"$DATA_DIR" "$DATA_DIR/assistant" "$DATA_DIR/assistant/.cache" \
 	"$DATA_DIR/assistant/.local/bin" "$DATA_DIR/assistant/.local/share/opencode" \
 	"$DATA_DIR/assistant/.local/state/opencode" "$DATA_DIR/guardian" \
 	"$DATA_DIR/akm/cache" "$DATA_DIR/akm/data" \
@@ -228,7 +228,7 @@ OP_PROJECT_NAME=openpalm-dev
 # global-setup.ts auto-builds the correct ADMIN_URL/ASSISTANT_URL from stack.env.
 # Guardian has no host port mapping (network-only service).
 OP_ASSISTANT_PORT=4800
-OP_ADMIN_PORT=9100
+OP_HOST_UI_PORT=9100
 
 # Skip the first-boot setup wizard — the dev password above is already
 # the operator-facing secret. Production installs leave this false until
@@ -257,6 +257,13 @@ if ! grep -q '^OP_HOME=' "$STASH_DIR/env/stack.env"; then
 fi
 if ! grep -q '^OP_PROJECT_NAME=' "$STASH_DIR/env/stack.env"; then
 	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$STASH_DIR/env/stack.env"
+fi
+# Migrate legacy OP_ADMIN_PORT → OP_HOST_UI_PORT (idempotent).
+# If only the old name exists, add the canonical name so consumers see it.
+if grep -q '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" \
+	&& ! grep -q '^OP_HOST_UI_PORT=' "$STASH_DIR/env/stack.env"; then
+	_old_port="$(grep '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" | head -1 | cut -d= -f2-)"
+	printf 'OP_HOST_UI_PORT=%s\n' "$_old_port" >>"$STASH_DIR/env/stack.env"
 fi
 
 secrets_dir="$STASH_DIR/secrets"

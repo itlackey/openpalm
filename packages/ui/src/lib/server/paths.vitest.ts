@@ -43,7 +43,8 @@ describe("ensureHomeDirs", () => {
 
     // data/ — persistent service data
     expect(existsSync(join(home, "data", "assistant"))).toBe(true);
-    expect(existsSync(join(home, "data", "admin"))).toBe(true);
+    // data/admin removed — admin UI is a host process, nothing mounts it
+    expect(existsSync(join(home, "data", "admin"))).toBe(false);
     expect(existsSync(join(home, "data", "guardian"))).toBe(true);
     expect(existsSync(join(home, "data", "akm"))).toBe(true);
     expect(existsSync(join(home, "data", "akm", "cache"))).toBe(true);

@@ -38,7 +38,7 @@ Download the latest installer for your platform from the [releases page](https:/
 Open the app. The setup wizard will:
 
 1. **System Check** — verify Docker and Compose are available; offer install links if not.
-2. **Welcome** — pick an admin token, name, email.
+2. **Welcome** — a secure admin password is auto-generated and displayed for you to copy.
 3. **Providers** — choose your AI provider (OpenAI, Anthropic, Ollama, LM Studio, etc.).
 4. **Models** — pick chat, embedding, and (optional) small model.
 5. **Voice** — TTS/STT settings.

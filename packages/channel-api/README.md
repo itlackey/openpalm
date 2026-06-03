@@ -17,8 +17,7 @@ Streaming is not supported.
 
 ## Deployment model
 
-- Shipped addon source: `.openpalm/config/stack/channels.compose.yml`
-- Enabled runtime overlay: `~/.openpalm/config/stack/addons/api/compose.yml`
+- Shipped service definition: `.openpalm/config/stack/channels.compose.yml`, profile `addon.api`
 - Default host URL: `http://localhost:3821`
 - Container port: `8182`
 - System-managed HMAC secret: file under `~/.openpalm/knowledge/secrets/`, mounted into both the API channel and guardian
@@ -31,12 +30,14 @@ docker compose \
   --project-name openpalm \
   --env-file stack.env \
   -f core.compose.yml \
-  -f addons/api/compose.yml \
+  -f services.compose.yml \
+  -f channels.compose.yml \
+  -f custom.compose.yml \
+  --profile addon.api \
   up -d
 ```
 
-If you use the optional admin addon, manage the addon through the admin UI or
-current install API instead of editing the compose file list by hand.
+Use `openpalm addon enable api` (CLI) or the admin UI to enable the channel; manual profile flags are only needed for ad-hoc compose invocations.
 
 ## Environment variables
 

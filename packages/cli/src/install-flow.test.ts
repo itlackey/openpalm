@@ -244,7 +244,7 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(rootFiles).toBe('');
 
     // ── Validate data and stash directories ─────────────────────────────────────
-    for (const dir of ['data/admin', 'data/assistant', 'data/guardian', 'knowledge', 'workspace']) {
+    for (const dir of ['data/assistant', 'data/guardian', 'knowledge', 'workspace']) {
       expect(existsSync(join(homeDir, dir))).toBe(true);
     }
 

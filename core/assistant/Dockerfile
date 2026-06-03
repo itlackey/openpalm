@@ -15,6 +15,7 @@ ARG OPENCODE_VERSION=1.3.3
 ARG BUN_VERSION=bun-v1.3.10
 # Track the `next` prerelease dist-tag while akm + OpenPalm ship together
 # (the `env` asset type lands in the next akm prerelease).
+# TODO(0.11.0 stable): pin off `next` once env asset type is in a stable akm-cli release.
 ARG AKM_CLI_VERSION=next
 
 # Re-export for runtime introspection.
@@ -73,7 +74,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 
     && mv /root/.local/bin/uvx /usr/local/bin/
 
 # apprise — isolated venv via uv (avoids pip --break-system-packages).
-# Used by the `notify` skill in packages/assistant-tools.
+# Used by the `notify` akm skill (apprise-backed).
 RUN uv venv /opt/assistant-tools \
     && uv pip install --python /opt/assistant-tools/bin/python apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
