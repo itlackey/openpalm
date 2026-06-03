@@ -254,7 +254,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install Playwright browsers (for Vitest browser mode)
-        run: npx playwright install --with-deps chromium
+        # Run through the package where `playwright` is a devDependency so the
+        # binary resolves (npx at the repo root can't find the workspace bin → exit 127).
+        run: bun run --cwd packages/ui test:browsers
 
       - name: Run UI unit tests
         run: bun run ui:test:unit

@@ -222,8 +222,15 @@ async function prepareInstallFiles(
 
   // Seed OP_HOME from .openpalm/ (local source if available, else GitHub tarball)
   await seedOpenPalmDir(version, homeDir, configDir, dataDir);
-  // Install UI build to data/ui/ (local build if available, else GitHub release asset)
-  await seedUiBuild(version, dataDir);
+  // Install UI build to data/ui/ (local build if available, else GitHub release
+  // asset). NON-FATAL: a download hiccup must not abort the install — the stack
+  // still comes up and the UI is (re)seeded on `openpalm ui serve` / `update` or
+  // Electron launch. (Also keeps unit tests off the network when no local build.)
+  try {
+    await seedUiBuild(version, dataDir);
+  } catch (err) {
+    logger.warn('UI build not seeded; it will be installed on first `ui serve`/update', { error: String(err) });
+  }
 
   console.log('Configuring secrets...');
   await ensureSecrets(dataDir);

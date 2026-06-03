@@ -16,6 +16,7 @@
     "test:e2e:mocked": "playwright test --grep @mocked",
     "test": "npm run test:unit -- --run && npm run test:e2e",
     "test:unit": "vitest",
+    "test:browsers": "playwright install --with-deps chromium",
     "lint": "eslint .",
     "format": "prettier --write .",
     "start": "node build/index.js"
