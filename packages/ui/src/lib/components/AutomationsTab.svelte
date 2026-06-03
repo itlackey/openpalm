@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { AutomationsResponse } from '$lib/types.js';
+  import { fetchTaskFile, saveTaskFile, deleteTaskFile } from '$lib/api.js';
+  import { notifications } from '$lib/notifications.svelte.js';
 
   interface Props {
     data: AutomationsResponse | null;
@@ -14,6 +16,67 @@
   let hasAutomations = $derived(
     data !== null && Array.isArray(data.automations) && data.automations.length > 0
   );
+
+  // ── Task-file editor (edits the raw .yml/.md in /stash/tasks) ─────────────
+  let editingFile = $state<string | null>(null);
+  let editorContent = $state('');
+  let busy = $state(false);
+
+  async function openEditor(fileName: string): Promise<void> {
+    if (busy) return;
+    busy = true;
+    try {
+      editingFile = fileName;
+      editorContent = (await fetchTaskFile(fileName)).content;
+    } catch (e) {
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to read task file.');
+      editingFile = null;
+    } finally {
+      busy = false;
+    }
+  }
+
+  function startNewTask(): void {
+    const name = (prompt('New task file name (.yml):', 'my-task.yml') ?? '').trim();
+    if (!name) return;
+    editingFile = name;
+    editorContent = "schedule: '0 9 * * *'\nenabled: false\ndescription: \ncommand:\n  - sh\n  - -c\n  - echo hello\n";
+  }
+
+  function closeEditor(): void {
+    editingFile = null;
+    editorContent = '';
+  }
+
+  async function saveEditor(): Promise<void> {
+    if (!editingFile || busy) return;
+    busy = true;
+    try {
+      await saveTaskFile(editingFile, editorContent);
+      notifications.push('success', `Saved ${editingFile}. Refreshing…`);
+      closeEditor();
+      onRefresh();
+    } catch (e) {
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to save task file.');
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function removeTask(fileName: string): Promise<void> {
+    if (busy || !confirm(`Delete task file "${fileName}"?`)) return;
+    busy = true;
+    try {
+      await deleteTaskFile(fileName);
+      notifications.push('success', `Deleted ${fileName}.`);
+      if (editingFile === fileName) closeEditor();
+      onRefresh();
+    } catch (e) {
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to delete task file.');
+    } finally {
+      busy = false;
+    }
+  }
 
   /** Reverse map: cron expression -> friendly label */
   const CRON_TO_LABEL: Record<string, string> = {
@@ -41,13 +104,32 @@
       <h2>Automations</h2>
       <p class="panel-subtitle">Scheduled tasks read from <code>~/.openpalm/knowledge/tasks/</code>. Add or edit task files there to manage automations — changes take effect on refresh.</p>
     </div>
-    <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
-      {#if loading}
-        <span class="spinner"></span>
-      {/if}
-      Refresh
-    </button>
+    <div class="panel-header-actions">
+      <button class="btn btn-secondary btn-sm" onclick={startNewTask} disabled={busy || !tokenStored}>New task</button>
+      <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+        {#if loading}
+          <span class="spinner"></span>
+        {/if}
+        Refresh
+      </button>
+    </div>
   </div>
+
+  {#if editingFile}
+    <div class="task-editor">
+      <div class="task-editor-head">
+        <span class="task-editor-name">{editingFile}</span>
+        <span class="task-editor-hint">Raw akm task file (YAML) — set <code>enabled</code>, <code>schedule</code>, <code>command</code>, etc.</span>
+      </div>
+      <textarea class="task-editor-area" spellcheck="false" rows="14" bind:value={editorContent} disabled={busy}></textarea>
+      <div class="task-editor-actions">
+        <button class="btn btn-secondary btn-sm" onclick={closeEditor} disabled={busy}>Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick={() => void saveEditor()} disabled={busy}>
+          {#if busy}<span class="spinner"></span>{/if} Save
+        </button>
+      </div>
+    </div>
+  {/if}
 
   <div class="panel-body">
     {#if hasAutomations && data}
@@ -79,6 +161,10 @@
             </div>
             <div class="automation-footer">
               <span class="automation-file">{automation.fileName}</span>
+              <div class="automation-actions">
+                <button class="btn btn-ghost btn-sm" onclick={() => void openEditor(automation.fileName)} disabled={busy || !tokenStored}>Edit</button>
+                <button class="btn btn-ghost btn-sm" onclick={() => void removeTask(automation.fileName)} disabled={busy || !tokenStored} aria-label="Delete {automation.fileName}">Delete</button>
+              </div>
             </div>
           </div>
         {/each}
@@ -183,11 +269,29 @@
   .automation-footer {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-2) var(--space-4);
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-tertiary);
   }
+
+  .automation-actions { display: flex; gap: var(--space-1); }
+
+  .task-editor {
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background: var(--color-bg-secondary); padding: var(--space-4);
+    margin-bottom: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2);
+  }
+  .task-editor-head { display: flex; flex-direction: column; gap: 2px; }
+  .task-editor-name { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: var(--font-semibold); }
+  .task-editor-hint { font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .task-editor-area {
+    width: 100%; font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.5;
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    background: var(--color-bg); color: var(--color-text); padding: var(--space-3); resize: vertical;
+  }
+  .task-editor-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
   .automation-file {
     font-size: var(--text-xs);

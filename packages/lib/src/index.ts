@@ -132,6 +132,15 @@ export {
   removeSecretFile,
 } from './control-plane/secrets-files.js';
 export type { SecretFileInfo } from './control-plane/secrets-files.js';
+export {
+  assertSafeTaskFilename,
+  resolveTasksDir,
+  listTaskFiles,
+  readTaskFile,
+  writeTaskFile,
+  removeTaskFile,
+} from './control-plane/task-files.js';
+export type { TaskFileInfo } from './control-plane/task-files.js';
 export type {
   SecretAuditIssue,
   SecretAuditOptions,

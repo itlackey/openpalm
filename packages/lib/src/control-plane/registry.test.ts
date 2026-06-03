@@ -260,11 +260,19 @@ describe("materialized registry catalog", () => {
 
     materializeRegistryCatalog(sourceRoot);
 
-    expect(getRegistryAddonConfig(process.env.OP_HOME!, 'chat')).toEqual({
-      schemaPath: '',
-      userEnvPath: 'knowledge/env/stack.env',
-      envSchema: '',
-    });
+    const cfg = getRegistryAddonConfig(process.env.OP_HOME!, 'chat');
+    expect(cfg.userEnvPath).toBe('knowledge/env/stack.env');
+    expect(cfg.envSchema).toBe('CHANNEL_CHAT_SECRET=\n');
+    expect(cfg.schemaPath.endsWith('/data/registry/addons/chat/.env.schema')).toBe(true);
+  });
+
+  it("falls back to the built-in addon schema when no registry is materialized", () => {
+    // No materialized registry → built-in schema for first-party addons.
+    const discord = getRegistryAddonConfig(process.env.OP_HOME!, 'discord');
+    expect(discord.envSchema).toContain('DISCORD_BOT_TOKEN');
+    expect(discord.schemaPath).toBe('');
+    // ssh is compose/profile-only — no configurable env.
+    expect(getRegistryAddonConfig(process.env.OP_HOME!, 'ssh').envSchema).toBe('');
   });
 
   it("verifies the materialized registry and returns counts", () => {

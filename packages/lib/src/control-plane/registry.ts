@@ -31,6 +31,145 @@ const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
 const BUILTIN_ADDONS = ['api', 'chat', 'discord', 'ollama', 'slack', 'ssh', 'voice'] as const;
 
+// Credential/config field definitions for the first-party addons, parsed by the
+// admin Secrets/Addons UI (`# @sensitive` → password+masked, `KEY=DEFAULT`).
+// The file-based registry was removed from the skeleton, so these live in-code.
+// `ssh` is compose/profile-only (no configurable env) and is intentionally absent.
+const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
+  api: `# API Gateway channel configuration
+# ---
+
+# HMAC secret for the API channel. Auto-generated during setup if left blank;
+# stored as knowledge/secrets/channel_api_secret.
+# @required @sensitive
+CHANNEL_API_SECRET=
+`,
+  chat: `# Web Chat channel configuration
+# ---
+
+# HMAC secret for the chat channel. Auto-generated during setup if left blank;
+# stored as knowledge/secrets/channel_chat_secret.
+# @required @sensitive
+CHANNEL_CHAT_SECRET=
+`,
+  discord: `# Discord bot configuration
+# ---
+
+# HMAC secret for the Discord channel. Auto-generated during setup if left blank.
+# @required @sensitive
+CHANNEL_DISCORD_SECRET=
+
+# ---
+# Discord credentials
+# ---
+
+# Application ID from the Discord Developer Portal.
+# https://discord.com/developers/applications
+# @required
+DISCORD_APPLICATION_ID=
+
+# Bot token from the Discord Developer Portal (Bot → Token).
+# @required @sensitive
+DISCORD_BOT_TOKEN=
+
+# ---
+# Access control
+# ---
+
+# Comma-separated allowed guild (server) IDs. Empty = all joined guilds.
+DISCORD_ALLOWED_GUILDS=
+
+# Comma-separated allowed role IDs.
+DISCORD_ALLOWED_ROLES=
+
+# Comma-separated allowed user IDs.
+DISCORD_ALLOWED_USERS=
+
+# Comma-separated blocked user IDs (denied even if otherwise allowed).
+DISCORD_BLOCKED_USERS=
+
+# ---
+# Behavior
+# ---
+
+# Register slash commands on startup.
+DISCORD_REGISTER_COMMANDS=true
+
+# JSON array of custom slash command definitions.
+DISCORD_CUSTOM_COMMANDS=
+
+# Hours before a conversation thread expires.
+DISCORD_THREAD_TTL_HOURS=24
+
+# Milliseconds to wait before forwarding a message (0 = immediate).
+DISCORD_FORWARD_TIMEOUT_MS=0
+`,
+  slack: `# Slack bot configuration
+# ---
+
+# HMAC secret for the Slack channel. Auto-generated during setup if left blank.
+# @required @sensitive
+CHANNEL_SLACK_SECRET=
+
+# ---
+# Slack credentials
+# ---
+
+# Bot User OAuth Token (OAuth & Permissions → Bot User OAuth Token).
+# @required @sensitive
+SLACK_BOT_TOKEN=
+
+# App-Level Token with connections:write (Basic Information → App-Level Tokens).
+# @required @sensitive
+SLACK_APP_TOKEN=
+
+# ---
+# Access control
+# ---
+
+# Comma-separated allowed channel IDs. Empty = all channels the bot is in.
+SLACK_ALLOWED_CHANNELS=
+
+# Comma-separated allowed user IDs.
+SLACK_ALLOWED_USERS=
+
+# Comma-separated blocked user IDs.
+SLACK_BLOCKED_USERS=
+
+# ---
+# Behavior
+# ---
+
+# Hours before a conversation thread expires.
+SLACK_THREAD_TTL_HOURS=24
+
+# Milliseconds to allow for guardian forwarding before timing out (default 30m).
+SLACK_FORWARD_TIMEOUT_MS=1800000
+`,
+  ollama: `# Ollama component configuration
+# ---
+
+# Bind address for the Ollama HTTP API (default: localhost only).
+# @required
+OP_OLLAMA_BIND_ADDRESS=127.0.0.1
+`,
+  voice: `# OpenPalm Voice (Kokoro TTS + Whisper STT) configuration
+# ---
+# Local inference server — no upstream API or key. Values are optional; the
+# compose overlay supplies safe defaults.
+
+# faster-whisper model id. Default base.en is baked into the image.
+# @required
+OP_VOICE_WHISPER_MODEL=base.en
+
+# Default Kokoro voice id (54 bundled voices, e.g. af_heart, am_michael).
+OP_VOICE_KOKORO_VOICE=bf_isabella
+
+# Python logging level: debug, info, warning, error.
+OP_VOICE_LOG_LEVEL=info
+`,
+};
+
 let warnedMissingRegistryAddonsDir = false;
 
 export function validateBranch(branch: string): string {
@@ -269,10 +408,20 @@ export function getRegistryAddonConfig(_homeDir: string, name: string): Registry
     throw new Error(`Invalid addon name: ${name}`);
   }
 
+  // Resolve the addon's `.env.schema` (credential/config field definitions):
+  //   1. A materialized registry copy at OP_HOME/data/registry/addons (custom
+  //      addons installed from a registry win).
+  //   2. The built-in schema embedded below (the first-party addons). The
+  //      file-based registry was removed from the skeleton, so the built-in
+  //      addon credential schemas live in-code rather than as bundled files.
+  const materialized = join(resolveRegistryAddonsDir(), name, '.env.schema');
+  if (existsSync(materialized)) {
+    return { schemaPath: materialized, userEnvPath: 'knowledge/env/stack.env', envSchema: readFileSync(materialized, 'utf-8') };
+  }
   return {
     schemaPath: '',
     userEnvPath: 'knowledge/env/stack.env',
-    envSchema: '',
+    envSchema: BUILTIN_ADDON_ENV_SCHEMAS[name] ?? '',
   };
 }
 

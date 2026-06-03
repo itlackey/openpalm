@@ -298,6 +298,22 @@ export async function deleteSecretFile(name: string): Promise<{ ok: boolean }> {
   return (await res.json()) as { ok: boolean };
 }
 
+// ── Automation task files (/stash/tasks editor) ─────────────────────────────
+export async function fetchTaskFile(name: string): Promise<{ name: string; content: string }> {
+  const res = await requireOk(await request('GET', `/admin/automations/${encodeURIComponent(name)}/file`));
+  return (await res.json()) as { name: string; content: string };
+}
+
+export async function saveTaskFile(name: string, content: string): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('PUT', `/admin/automations/${encodeURIComponent(name)}/file`, { content }));
+  return (await res.json()) as { ok: boolean };
+}
+
+export async function deleteTaskFile(name: string): Promise<{ ok: boolean }> {
+  const res = await requireOk(await request('DELETE', `/admin/automations/${encodeURIComponent(name)}/file`));
+  return (await res.json()) as { ok: boolean };
+}
+
 // ── Voice Config ────────────────────────────────────────────────────────
 
 export type VoiceAddonProfile = {

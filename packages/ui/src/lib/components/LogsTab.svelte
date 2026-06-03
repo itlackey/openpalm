@@ -77,7 +77,7 @@
   <div class="controls">
     <div class="control-group">
       <label for="log-service" class="control-label">Service</label>
-      <select id="log-service" class="control-input" bind:value={selectedService}>
+      <select id="log-service" class="control-input" bind:value={selectedService} onchange={() => void loadLogs()}>
         <option value="">All services</option>
         {#each services as svc}
           <option value={svc}>{svc}</option>
@@ -87,7 +87,7 @@
 
     <div class="control-group">
       <label for="log-tail" class="control-label">Lines</label>
-      <select id="log-tail" class="control-input" bind:value={tailLines}>
+      <select id="log-tail" class="control-input" bind:value={tailLines} onchange={() => void loadLogs()}>
         <option value={50}>50</option>
         <option value={100}>100</option>
         <option value={250}>250</option>
