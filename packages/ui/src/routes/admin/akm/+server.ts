@@ -259,6 +259,36 @@ export const PATCH: RequestHandler = async (event) => {
       return errorResponse(400, 'bad_request', 'output.detail must be brief, normal, or full', {}, requestId);
   }
 
+  // ── Advanced: top-level improve / search / feedback / index ────────────────
+  const improveTopBody = body.improve as Rec | undefined;
+  if (improveTopBody !== undefined) {
+    if (!isRec(improveTopBody)) return errorResponse(400, 'bad_request', 'improve must be an object', {}, requestId);
+    if ('utilityDecay' in improveTopBody) {
+      if (!isRec(improveTopBody.utilityDecay)) return errorResponse(400, 'bad_request', 'improve.utilityDecay must be an object', {}, requestId);
+      const d = improveTopBody.utilityDecay as Rec;
+      if ('halfLifeDays' in d && (typeof d.halfLifeDays !== 'number' || d.halfLifeDays < 0.1)) return errorResponse(400, 'bad_request', 'improve.utilityDecay.halfLifeDays must be a number ≥ 0.1', {}, requestId);
+      if ('feedbackStabilityBoost' in d && (typeof d.feedbackStabilityBoost !== 'number' || d.feedbackStabilityBoost < 1)) return errorResponse(400, 'bad_request', 'improve.utilityDecay.feedbackStabilityBoost must be a number ≥ 1', {}, requestId);
+    }
+    if ('eventRetentionDays' in improveTopBody && (typeof improveTopBody.eventRetentionDays !== 'number' || improveTopBody.eventRetentionDays < 0))
+      return errorResponse(400, 'bad_request', 'improve.eventRetentionDays must be a non-negative number', {}, requestId);
+  }
+  const searchBody = body.search as Rec | undefined;
+  if (searchBody !== undefined) {
+    if (!isRec(searchBody)) return errorResponse(400, 'bad_request', 'search must be an object', {}, requestId);
+    if ('minScore' in searchBody && (typeof searchBody.minScore !== 'number' || searchBody.minScore < 0)) return errorResponse(400, 'bad_request', 'search.minScore must be a non-negative number', {}, requestId);
+    if ('curateRerank' in searchBody) { const r = validateEnabledGate(searchBody.curateRerank, 'search.curateRerank'); if (r) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+  }
+  const feedbackBody = body.feedback as Rec | undefined;
+  if (feedbackBody !== undefined) {
+    if (!isRec(feedbackBody)) return errorResponse(400, 'bad_request', 'feedback must be an object', {}, requestId);
+    if ('requireReason' in feedbackBody) { const r = expectBool(feedbackBody.requireReason, 'feedback.requireReason'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+    if ('allowedFailureModes' in feedbackBody && (!Array.isArray(feedbackBody.allowedFailureModes) || !feedbackBody.allowedFailureModes.every((m) => typeof m === 'string' && m.length > 0)))
+      return errorResponse(400, 'bad_request', 'feedback.allowedFailureModes must be an array of non-empty strings', {}, requestId);
+  }
+  const indexBody = body.index;
+  if (indexBody !== undefined && !isRec(indexBody))
+    return errorResponse(400, 'bad_request', 'index must be an object keyed by pass name', {}, requestId);
+
   // ── Merge and write ───────────────────────────────────────────────────────
   try {
     const existing = readAkmConfig(state.configDir);
@@ -369,6 +399,14 @@ export const PATCH: RequestHandler = async (event) => {
         ...('detail' in outputBody ? { detail: outputBody.detail } : {}),
       };
     }
+
+    // advanced top-level sections — the UI sends the complete intended object for
+    // each (only configured fields), so replace wholesale; an empty/omitted body
+    // for a section is left untouched (preserved via the `existing` spread).
+    if (improveTopBody !== undefined) updated.improve = improveTopBody;
+    if (searchBody !== undefined) updated.search = searchBody;
+    if (feedbackBody !== undefined) updated.feedback = feedbackBody;
+    if (indexBody !== undefined) updated.index = indexBody;
 
     mkdirSync(`${state.configDir}/akm`, { recursive: true });
     // I-5: atomic write through the shared lib writer (tmp+rename) so a

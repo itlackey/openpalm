@@ -173,6 +173,16 @@
 	let outputFormat = $state<'json' | 'yaml' | 'text'>('json');
 	let outputDetail = $state<'brief' | 'normal' | 'full'>('brief');
 
+	// ── Advanced: top-level improve / search / feedback / index ────────────────────
+	let imHalfLife = $state('');            // improve.utilityDecay.halfLifeDays
+	let imFeedbackBoost = $state('');       // improve.utilityDecay.feedbackStabilityBoost
+	let imEventRetention = $state('');      // improve.eventRetentionDays
+	let searchMinScore = $state('');        // search.minScore
+	let searchCurateRerank = $state<Tri>(''); // search.curateRerank.enabled
+	let fbRequireReason = $state<Tri>('');   // feedback.requireReason
+	let fbFailureModes = $state('');        // feedback.allowedFailureModes (comma-separated)
+	let indexJson = $state('');             // index (raw JSON — complex per-pass schema)
+
 	// ── Drawer ────────────────────────────────────────────────────────────────────
 	type DrawerType = 'llm' | 'agent' | 'improve' | null;
 	let drawerType = $state<DrawerType>(null);
@@ -474,6 +484,21 @@
 			const output = config.output as Record<string, unknown> | undefined;
 			outputFormat = (output?.format as 'json' | 'yaml' | 'text') ?? 'json';
 			outputDetail = (output?.detail as 'brief' | 'normal' | 'full') ?? 'brief';
+
+			const num = (v: unknown): string => (typeof v === 'number' ? String(v) : '');
+			const triE = (o: unknown): Tri => (o && typeof o === 'object' && 'enabled' in (o as Record<string, unknown>) ? ((o as Record<string, unknown>).enabled ? 'on' : 'off') : '');
+			const improveTop = config.improve as Record<string, unknown> | undefined;
+			const decay = improveTop?.utilityDecay as Record<string, unknown> | undefined;
+			imHalfLife = num(decay?.halfLifeDays);
+			imFeedbackBoost = num(decay?.feedbackStabilityBoost);
+			imEventRetention = num(improveTop?.eventRetentionDays);
+			const search = config.search as Record<string, unknown> | undefined;
+			searchMinScore = num(search?.minScore);
+			searchCurateRerank = triE(search?.curateRerank);
+			const feedback = config.feedback as Record<string, unknown> | undefined;
+			fbRequireReason = typeof feedback?.requireReason === 'boolean' ? (feedback.requireReason ? 'on' : 'off') : '';
+			fbFailureModes = Array.isArray(feedback?.allowedFailureModes) ? (feedback!.allowedFailureModes as string[]).join(', ') : '';
+			indexJson = config.index && typeof config.index === 'object' ? JSON.stringify(config.index, null, 2) : '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load AKM config.';
 		} finally {
@@ -533,12 +558,43 @@
 			if (defaultAgentProfile) defaultsPayload.agent = defaultAgentProfile;
 			if (defaultImproveProfile) defaultsPayload.improve = defaultImproveProfile;
 
+			// Advanced: top-level improve / search / feedback / index (emit only configured fields)
+			const improveTopPayload: Record<string, unknown> = {};
+			const decayPayload: Record<string, unknown> = {};
+			const hl = optNum(imHalfLife); if (hl !== undefined) decayPayload.halfLifeDays = hl;
+			const fb = optNum(imFeedbackBoost); if (fb !== undefined) decayPayload.feedbackStabilityBoost = fb;
+			if (Object.keys(decayPayload).length) improveTopPayload.utilityDecay = decayPayload;
+			const er = optNum(imEventRetention); if (er !== undefined) improveTopPayload.eventRetentionDays = er;
+
+			const searchPayload: Record<string, unknown> = {};
+			const ms = optNum(searchMinScore); if (ms !== undefined) searchPayload.minScore = ms;
+			if (searchCurateRerank) searchPayload.curateRerank = { enabled: searchCurateRerank === 'on' };
+
+			const feedbackPayload: Record<string, unknown> = {};
+			if (fbRequireReason) feedbackPayload.requireReason = fbRequireReason === 'on';
+			const modes = fbFailureModes.split(',').map((s) => s.trim()).filter(Boolean);
+			if (modes.length) feedbackPayload.allowedFailureModes = modes;
+
+			let indexPayload: unknown;
+			if (indexJson.trim()) {
+				let parsed: unknown;
+				try { parsed = JSON.parse(indexJson); }
+				catch { throw new Error('Index config must be valid JSON'); }
+				if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+					throw new Error('Index config must be a JSON object keyed by pass name');
+				indexPayload = parsed;
+			}
+
 			await saveAkmConfig({
 				profiles: { llm: profilesLlm, agent: profilesAgent, improve: profilesImprove },
 				defaults: defaultsPayload,
 				embedding: embPayload,
 				semanticSearchMode,
 				output: { format: outputFormat, detail: outputDetail },
+				...(Object.keys(improveTopPayload).length ? { improve: improveTopPayload } : {}),
+				...(Object.keys(searchPayload).length ? { search: searchPayload } : {}),
+				...(Object.keys(feedbackPayload).length ? { feedback: feedbackPayload } : {}),
+				...(indexPayload !== undefined ? { index: indexPayload } : {}),
 			});
 			notifications.push('success', 'AKM config saved.');
 		} catch (e) {
@@ -759,6 +815,50 @@
 			</div>
 		</section>
 
+			<!-- ── Advanced (top-level improve / search / feedback / index) ─────── -->
+			<section class="config-section">
+				<h3 class="section-title">Advanced</h3>
+				<p class="section-note">Global tuning beyond per-profile settings. Leave blank to use akm defaults.</p>
+				<div class="controls controls--grid">
+					<div class="control-group">
+						<label class="control-label" for="adv-halflife">Utility decay half-life (days)</label>
+						<input id="adv-halflife" class="control-input control-input--narrow" type="number" min="0.1" step="0.1" placeholder="default" bind:value={imHalfLife} disabled={loading || saving} />
+					</div>
+					<div class="control-group">
+						<label class="control-label" for="adv-fbboost">Feedback stability boost (≥1)</label>
+						<input id="adv-fbboost" class="control-input control-input--narrow" type="number" min="1" step="0.1" placeholder="default" bind:value={imFeedbackBoost} disabled={loading || saving} />
+					</div>
+					<div class="control-group">
+						<label class="control-label" for="adv-eventret">Event retention (days)</label>
+						<input id="adv-eventret" class="control-input control-input--narrow" type="number" min="0" placeholder="default" bind:value={imEventRetention} disabled={loading || saving} />
+					</div>
+					<div class="control-group">
+						<label class="control-label" for="adv-minscore">Search min score</label>
+						<input id="adv-minscore" class="control-input control-input--narrow" type="number" min="0" step="0.01" placeholder="default" bind:value={searchMinScore} disabled={loading || saving} />
+					</div>
+					<div class="control-group">
+						<label class="control-label" for="adv-rerank">Curate rerank</label>
+						<select id="adv-rerank" class="control-input" bind:value={searchCurateRerank} disabled={loading || saving}>
+							<option value="">Default</option><option value="on">Enabled</option><option value="off">Disabled</option>
+						</select>
+					</div>
+					<div class="control-group">
+						<label class="control-label" for="adv-reqreason">Feedback requires reason</label>
+						<select id="adv-reqreason" class="control-input" bind:value={fbRequireReason} disabled={loading || saving}>
+							<option value="">Default</option><option value="on">Required</option><option value="off">Optional</option>
+						</select>
+					</div>
+					<div class="control-group control-group--wide">
+						<label class="control-label" for="adv-failmodes">Allowed feedback failure modes (comma-separated)</label>
+						<input id="adv-failmodes" class="control-input" type="text" spellcheck="false" placeholder="e.g. outdated, incorrect, irrelevant" bind:value={fbFailureModes} disabled={loading || saving} />
+					</div>
+					<div class="control-group control-group--wide">
+						<label class="control-label" for="adv-index">Index config (JSON, per-pass)</label>
+						<textarea id="adv-index" class="control-input" rows="4" spellcheck="false" placeholder={'{ "enrichment": { "llm": false } }'} bind:value={indexJson} disabled={loading || saving}></textarea>
+						<span class="section-note">Advanced per-pass indexing options (enrichment, graphExtraction, metadataEnhance, stalenessDetection). Must be a JSON object.</span>
+					</div>
+				</div>
+			</section>
 
 			<!-- ── Host AKM Sharing ──────────────────────────────────────────── -->
 			{#if hostSharing}
