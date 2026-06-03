@@ -23,7 +23,6 @@ import {
   resolveComposeProjectName,
   resolveStackDir,
   setAddonProfileSelection,
-  writeRunScript,
 } from "@openpalm/lib";
 import type { ControlPlaneState } from "@openpalm/lib";
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
@@ -361,7 +360,6 @@ export function startDeploy(state: ControlPlaneState): void {
         }
       }
 
-      writeRunScript(state);
       const services = await buildManagedServices(state);
       _state.deployStatus = services.map(s => ({ service: s, status: "pending", label: "Waiting..." }));
 

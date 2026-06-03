@@ -276,7 +276,6 @@ export {
   buildComposeOptions,
   buildComposeCliArgs,
   resolveActiveProfiles,
-  writeRunScript,
 } from "./control-plane/compose-args.js";
 
 export {

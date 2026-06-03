@@ -389,6 +389,31 @@ export async function saveAkmConfig(settings: Record<string, unknown>): Promise<
   return (await res.json()) as { ok: boolean };
 }
 
+// ── Host AKM sharing ────────────────────────────────────────────────
+export type HostAkmSharing = {
+  sharing: { enabled: boolean; hostStashPath: string | null; overlayPresent: boolean };
+  hostStashPath?: string;
+  hostConfigPath?: string;
+  profilesImported?: string[];
+};
+
+export async function fetchHostAkmSharing(): Promise<HostAkmSharing> {
+  const res = await requireOk(await request('GET', '/admin/akm/host-sharing'));
+  return (await res.json()) as HostAkmSharing;
+}
+
+export async function enableHostAkmSharing(
+  opts: { writable?: boolean; importProfiles?: boolean } = {}
+): Promise<HostAkmSharing> {
+  const res = await requireOk(await request('PUT', '/admin/akm/host-sharing', opts));
+  return (await res.json()) as HostAkmSharing;
+}
+
+export async function disableHostAkmSharing(): Promise<HostAkmSharing> {
+  const res = await requireOk(await request('DELETE', '/admin/akm/host-sharing'));
+  return (await res.json()) as HostAkmSharing;
+}
+
 // ── Docker Pull ─────────────────────────────────────────────────────
 
 export async function pullImages(): Promise<void> {

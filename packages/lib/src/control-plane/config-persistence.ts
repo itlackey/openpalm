@@ -145,24 +145,53 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
  * First-party services are profile-gated inside services.compose.yml and
  * channels.compose.yml.
  *
- * `host-akm.compose.yml` is OPTIONAL: unlike the fixed overlays it is only
- * present when the operator enabled host AKM sharing (it adds a volume mount,
- * which Compose profiles cannot gate). Its presence alone enables the
- * /host-stash mount. It is appended after core so the volume add lands on the
- * already-defined assistant service.
+ * `host-akm.compose.yml` is OPTIONAL (adds a volume mount, which Compose
+ * profiles cannot gate). It is included ONLY when host AKM sharing is enabled —
+ * i.e. when `OP_HOST_AKM_STASH` is set in stack.env — NOT merely when the file
+ * exists. The bundled overlay is part of the asset skeleton and may be
+ * materialized into config/stack/ even when sharing is off; the overlay
+ * references `${OP_HOST_AKM_STASH}`, so including it without that var set makes
+ * `docker compose` fail ("invalid spec: :/host-stash"). Gating on the env var
+ * keeps a seeded-but-disabled overlay inert. It is appended after core so the
+ * volume add lands on the already-defined assistant service.
  */
-export function discoverStackOverlays(stackDir: string, _homeDir?: string): string[] {
+export function discoverStackOverlays(stackDir: string, homeDir?: string): string[] {
   const files: string[] = [];
 
   const coreYml = `${stackDir}/core.compose.yml`;
   if (existsSync(coreYml)) files.push(coreYml);
 
-  for (const name of ['services.compose.yml', 'channels.compose.yml', 'custom.compose.yml', 'host-akm.compose.yml']) {
+  for (const name of ['services.compose.yml', 'channels.compose.yml', 'custom.compose.yml']) {
     const composePath = `${stackDir}/${name}`;
     if (existsSync(composePath)) files.push(composePath);
   }
 
+  const hostAkmOverlay = `${stackDir}/host-akm.compose.yml`;
+  if (existsSync(hostAkmOverlay) && isHostAkmSharingEnabled(stackDir, homeDir)) {
+    files.push(hostAkmOverlay);
+  }
+
   return files;
+}
+
+/**
+ * True when host AKM sharing is enabled — i.e. OP_HOST_AKM_STASH is set
+ * (non-empty) in the process env or in stack.env. Used to gate the
+ * host-akm.compose.yml overlay so a seeded-but-disabled overlay never reaches
+ * `docker compose` with an unset `${OP_HOST_AKM_STASH}`.
+ */
+function isHostAkmSharingEnabled(stackDir: string, homeDir?: string): boolean {
+  if (process.env.OP_HOST_AKM_STASH?.trim()) return true;
+  // stack.env lives at <OP_HOME>/knowledge/env/stack.env; stackDir is
+  // <OP_HOME>/config/stack, so OP_HOME is two levels up when homeDir is absent.
+  const root = homeDir ?? resolvePath(stackDir, '..', '..');
+  const envPath = `${root}/knowledge/env/stack.env`;
+  if (!existsSync(envPath)) return false;
+  try {
+    return !!parseEnvFile(envPath).OP_HOST_AKM_STASH?.trim();
+  } catch {
+    return false;
+  }
 }
 
 // ── Top-Level Operations ─────────────────────────────────────────────

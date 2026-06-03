@@ -2,13 +2,12 @@
  * Tests for canonical compose argument builder.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   buildComposeOptions,
   buildComposeCliArgs,
-  writeRunScript,
 } from "./compose-args.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -196,26 +195,5 @@ describe("buildComposeCliArgs", () => {
     }, []);
     expect(fFlags).toHaveLength(2);
     expect(fFlags[1]).toContain("channels.compose.yml");
-  });
-});
-
-// ── writeRunScript ───────────────────────────────────────────────────────
-
-describe("writeRunScript", () => {
-  it("sources stack.env and writes resolved profile args", () => {
-    seedCoreCompose();
-    seedEnvFiles({ stack: true });
-    const state = makeState();
-
-    writeRunScript(state);
-
-    const script = readFileSync(join(tempDir, "run.sh"), "utf-8");
-    expect(script).toContain("set -a");
-    expect(script).toContain('OP_HOME="${OP_HOME:-$SCRIPT_DIR}"');
-    expect(script).toContain('source "${OP_HOME}/knowledge/env/stack.env"');
-    expect(script).toContain('profile_args=()');
-    expect(script).toContain('docker compose --project-name "${OP_PROJECT_NAME:-${COMPOSE_PROJECT_NAME:-openpalm}}"');
-    expect(script).not.toContain('--profile ${OP_VOICE_PROFILE}');
-    expect(script).not.toContain('--profile ${OP_OLLAMA_PROFILE}');
   });
 });

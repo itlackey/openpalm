@@ -22,7 +22,7 @@ import { refreshCoreAssets } from "./core-assets.js";
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
-import { buildComposeOptions, writeRunScript } from "./compose-args.js";
+import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
 
@@ -291,9 +291,6 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
   }
 
-  // 5. Write run.sh with the final compose command
-  writeRunScript(state);
-
   return {
     imageTag,
     namespace,
@@ -312,7 +309,6 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
   const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: tag }, { uncomment: true }));
   const upgradeResult = await applyUpgrade(state);
-  writeRunScript(state);
   return {
     imageTag: tag,
     namespace: "openpalm",

@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchAkmConfig, saveAkmConfig } from '$lib/api.js';
+	import {
+		fetchAkmConfig,
+		saveAkmConfig,
+		fetchHostAkmSharing,
+		enableHostAkmSharing,
+		disableHostAkmSharing,
+		type HostAkmSharing,
+	} from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 
 	interface Props { tokenStored: boolean; }
@@ -10,6 +17,58 @@
 	let loading = $state(false);
 	let saving = $state(false);
 	let error = $state('');
+
+	// ── Host AKM sharing ───────────────────────────────────────────────────────
+	let hostSharing = $state<HostAkmSharing | null>(null);
+	let hostBusy = $state(false);
+	let hostImportProfiles = $state(true);
+
+	async function loadHostSharing(): Promise<void> {
+		try {
+			hostSharing = await fetchHostAkmSharing();
+		} catch {
+			hostSharing = null; // endpoint unavailable (e.g. not yet deployed) — hide the panel
+		}
+	}
+
+	async function toggleHostSharing(): Promise<void> {
+		if (hostBusy) return;
+		hostBusy = true;
+		try {
+			if (hostSharing?.sharing.enabled) {
+				hostSharing = await disableHostAkmSharing();
+				notifications.push('success', 'Host AKM sharing disabled. Restart the stack to apply.');
+			} else {
+				const res = await enableHostAkmSharing({ writable: true, importProfiles: hostImportProfiles });
+				hostSharing = res;
+				const imported = res.profilesImported?.length
+					? ` Imported: ${res.profilesImported.join(', ')}.`
+					: '';
+				notifications.push('success', `Host AKM sharing enabled.${imported} Restart the stack to mount /host-stash.`);
+				if (hostImportProfiles) await load(); // reflect any imported profiles
+			}
+		} catch (e) {
+			notifications.push('error', e instanceof Error ? e.message : 'Failed to update host AKM sharing.');
+		} finally {
+			hostBusy = false;
+		}
+	}
+
+	async function reimportHostProfiles(): Promise<void> {
+		if (hostBusy) return;
+		hostBusy = true;
+		try {
+			const res = await enableHostAkmSharing({ writable: true, importProfiles: true });
+			hostSharing = res;
+			const imported = res.profilesImported?.length ? res.profilesImported.join(', ') : 'none';
+			notifications.push('success', `Re-imported host profiles: ${imported}.`);
+			await load();
+		} catch (e) {
+			notifications.push('error', e instanceof Error ? e.message : 'Failed to re-import host profiles.');
+		} finally {
+			hostBusy = false;
+		}
+	}
 
 	// ── Profile types ────────────────────────────────────────────────────────────
 	interface LlmProfile {
@@ -409,7 +468,7 @@
 		}
 	}
 
-	onMount(() => { if (tokenStored) void load(); });
+	onMount(() => { if (tokenStored) { void load(); void loadHostSharing(); } });
 </script>
 
 <!-- Datalist referenced by drawer improve profile inputs -->
@@ -622,6 +681,60 @@
 				</div>
 			</div>
 		</section>
+
+
+			<!-- ── Host AKM Sharing ──────────────────────────────────────────── -->
+			{#if hostSharing}
+				<section class="config-section">
+					<h3 class="section-title">Host AKM Sharing</h3>
+					<p class="section-note">
+						Share knowledge with your personal AKM stash on this machine (<code>~/akm</code>).
+						The assistant reads it and can contribute back; each side keeps its own primary
+						stash, database, and cache — only the knowledge files are shared. Enabling adds a
+						source entry to your <code>~/.config/akm/config.json</code> and mounts
+						<code>~/akm</code> into the assistant. Your files' ownership and primary stash are
+						never changed. Changes take effect after the next stack restart.
+					</p>
+					<div class="controls controls--grid">
+						<div class="control-group control-group--wide">
+							<span class="control-label">Status</span>
+							<div class="host-akm-status">
+								<span class="badge {hostSharing.sharing.enabled ? 'badge--on' : 'badge--off'}">
+									{hostSharing.sharing.enabled ? 'Enabled' : 'Disabled'}
+								</span>
+								{#if hostSharing.hostStashPath}
+									<code class="host-akm-path">{hostSharing.hostStashPath}</code>
+								{/if}
+							</div>
+						</div>
+						{#if !hostSharing.sharing.enabled}
+							<div class="control-group control-group--wide">
+								<label class="control-label control-label--checkbox">
+									<input type="checkbox" bind:checked={hostImportProfiles} disabled={hostBusy} />
+									Also import host LLM/agent profiles (read-only snapshot)
+								</label>
+							</div>
+						{/if}
+						<div class="control-group control-group--wide host-akm-actions">
+							<button
+								class="btn {hostSharing.sharing.enabled ? 'btn-secondary' : 'btn-primary'} btn-sm"
+								onclick={() => void toggleHostSharing()}
+								disabled={hostBusy || !tokenStored}>
+								{#if hostBusy}<span class="spinner"></span>{/if}
+								{hostSharing.sharing.enabled ? 'Disable host sharing' : 'Enable host sharing'}
+							</button>
+							{#if hostSharing.sharing.enabled}
+								<button
+									class="btn btn-secondary btn-sm"
+									onclick={() => void reimportHostProfiles()}
+									disabled={hostBusy || !tokenStored}>
+									Re-import host profiles
+								</button>
+							{/if}
+						</div>
+					</div>
+				</section>
+			{/if}
 
 	</div>
 
@@ -842,6 +955,22 @@
 		background: var(--color-primary-subtle, rgba(99, 102, 241, 0.1));
 		color: var(--color-primary, #6366f1);
 		border-color: var(--color-primary-border, rgba(99, 102, 241, 0.3));
+	}
+	.badge--on {
+		background: var(--color-success-subtle, rgba(34, 197, 94, 0.12));
+		color: var(--color-success, #16a34a);
+		border-color: var(--color-success-border, rgba(34, 197, 94, 0.3));
+	}
+	/* .badge--off intentionally uses the neutral base .badge styling. */
+
+	/* Host AKM sharing */
+	.host-akm-status { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+	.host-akm-path { font-size: var(--text-xs); color: var(--color-text-secondary); word-break: break-all; }
+	.host-akm-actions { flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+	.control-label--checkbox {
+		display: flex; align-items: center; gap: var(--space-2);
+		text-transform: none; letter-spacing: 0; font-weight: var(--font-normal, 400);
+		font-size: var(--text-sm); color: var(--color-text-primary);
 	}
 
 	/* Controls */

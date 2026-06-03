@@ -18,7 +18,6 @@ import {
   createState,
   createLogger,
   resolveRequestedImageTag,
-  writeRunScript,
   ensureAkmUserEnv,
   type SetupSpec,
 } from '@openpalm/lib';
@@ -229,7 +228,6 @@ async function prepareInstallFiles(
   console.log('Configuring secrets...');
   await ensureSecrets(dataDir);
   await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
-  writeRunScript(createState());
 
   if (!(await Bun.file(join(configDir, 'stack', 'auth.json')).exists())) {
     await Bun.write(join(configDir, 'stack', 'auth.json'), '{}\n');

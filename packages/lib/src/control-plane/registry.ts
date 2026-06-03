@@ -14,7 +14,6 @@ import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { ensureChannelSecret } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
-import { writeRunScript } from './compose-args.js';
 import { readBundledStackAsset } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
 import { listStackSpecAddons, setStackSpecAddon } from './stack-spec.js';
@@ -693,7 +692,6 @@ export function setAddonProfileSelection(stackDir: string, name: string, profile
   const trimmed = canonicalAddonProfileSelection(name, profile);
   if (!trimmed) throw new Error(`Invalid canonical profile id for addon ${name}: ${profile}`);
   patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
-  if (state) writeRunScript(state);
 }
 
 function enableAddon(homeDir: string, stackDir: string, name: string): MutationResult {
@@ -750,7 +748,6 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
     }
   }
 
-  if (state) writeRunScript(state);
 
   return {
     ok: true,
