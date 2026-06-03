@@ -125,7 +125,13 @@ export {
   ensureSecret,
   removeSecret,
   listSecretNames,
+  assertSafeSecretFilename,
+  listSecretFiles,
+  readSecretFile,
+  writeSecretFile,
+  removeSecretFile,
 } from './control-plane/secrets-files.js';
+export type { SecretFileInfo } from './control-plane/secrets-files.js';
 export type {
   SecretAuditIssue,
   SecretAuditOptions,

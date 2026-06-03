@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildEnvFiles } from './config-persistence.js';
 import { assertNoSecretLikeStackEnvKeys, patchSecretsEnvFile } from './secrets.js';
-import { listSecretNames, readSecret, resolveSecretsDir, secretPath, writeSecret } from './secrets-files.js';
+import { listSecretNames, readSecret, resolveSecretsDir, secretPath, writeSecret, listSecretFiles, readSecretFile, writeSecretFile, removeSecretFile, assertSafeSecretFilename } from './secrets-files.js';
 import type { ControlPlaneState } from './types.js';
 
 function tempStackDir(): string {
@@ -56,5 +56,44 @@ describe('file-based control-plane secrets', () => {
 
     expect(readSecret(stackDir, 'op_ui_login_password')).toBe('pw\n');
     expect(listSecretNames(stackDir)).toContain('op_ui_login_password');
+  });
+});
+
+describe('secrets-dir file browser API (admin Secrets tab)', () => {
+  it('lists ALL files incl. dotted names like auth.json, with sizes', () => {
+    const stackDir = tempStackDir();
+    writeSecret(stackDir, 'channel_api_secret', 'abc');           // regex-valid secret
+    writeFileSync(join(resolveSecretsDir(stackDir), 'auth.json'), '{"k":1}'); // dotted file
+    const files = listSecretFiles(stackDir);
+    const names = files.map((f) => f.name);
+    expect(names).toContain('auth.json');           // included (strict listSecretNames would exclude it)
+    expect(names).toContain('channel_api_secret');
+    expect(files.find((f) => f.name === 'auth.json')!.size).toBe('{"k":1}'.length);
+    // strict API still excludes the dotted file
+    expect(listSecretNames(stackDir)).not.toContain('auth.json');
+  });
+
+  it('reads, writes (0600), and removes a dotted file by basename', () => {
+    const stackDir = tempStackDir();
+    writeSecretFile(stackDir, 'auth.json', '{"token":"x"}');
+    expect(statSync(join(resolveSecretsDir(stackDir), 'auth.json')).mode & 0o777).toBe(0o600);
+    expect(readSecretFile(stackDir, 'auth.json')).toBe('{"token":"x"}');
+    removeSecretFile(stackDir, 'auth.json');
+    expect(readSecretFile(stackDir, 'auth.json')).toBeNull();
+  });
+
+  it('rejects path traversal and unsafe names', () => {
+    expect(() => assertSafeSecretFilename('../escape')).toThrow();
+    expect(() => assertSafeSecretFilename('a/b')).toThrow();
+    expect(() => assertSafeSecretFilename('..')).toThrow();
+    expect(() => assertSafeSecretFilename('')).toThrow();
+    // valid names
+    expect(() => assertSafeSecretFilename('auth.json')).not.toThrow();
+    expect(() => assertSafeSecretFilename('op_ui_login_password')).not.toThrow();
+    expect(() => assertSafeSecretFilename('discord_bot_token')).not.toThrow();
+  });
+
+  it('readSecretFile returns null for a missing file', () => {
+    expect(readSecretFile(tempStackDir(), 'nope.txt')).toBeNull();
   });
 });

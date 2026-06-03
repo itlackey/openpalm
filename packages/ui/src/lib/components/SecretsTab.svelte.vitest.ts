@@ -1,7 +1,9 @@
 /**
  * SecretsTab component tests.
  *
- * Tests user env key list, write form validation, success/error feedback.
+ * The Secrets tab is a file browser/editor for the assistant secrets dir
+ * (/stash/secrets). Tests list rendering, opening a file into the editor,
+ * the add-file form, and save.
  */
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -9,81 +11,73 @@ import { page } from 'vitest/browser';
 import { userEvent } from 'vitest/browser';
 
 vi.mock('$lib/api.js', () => ({
-  fetchUserEnv: vi.fn(),
-  writeUserEnvKey: vi.fn(),
-  deleteUserEnvKey: vi.fn(),
+  fetchSecretFiles: vi.fn(),
+  fetchSecretFile: vi.fn(),
+  saveSecretFile: vi.fn(),
+  deleteSecretFile: vi.fn(),
 }));
 
 import SecretsTab from './SecretsTab.svelte';
-import { fetchUserEnv, writeUserEnvKey } from '$lib/api.js';
-
-const emptyEnv = { provider: 'akm' as const, keys: [], envRef: 'env:user' };
-const envWithKeys = { provider: 'akm' as const, keys: ['GROQ_API_KEY', 'OPENAI_API_KEY'], envRef: 'env:user' };
+import { fetchSecretFiles, fetchSecretFile, saveSecretFile } from '$lib/api.js';
 
 beforeEach(() => {
-  vi.mocked(fetchUserEnv).mockResolvedValue(emptyEnv);
-  vi.mocked(writeUserEnvKey).mockResolvedValue({ ok: true });
+  vi.mocked(fetchSecretFiles).mockResolvedValue({
+    files: [
+      { name: 'auth.json', size: 3812 },
+      { name: 'op_ui_login_password', size: 33 },
+    ],
+  });
+  vi.mocked(fetchSecretFile).mockResolvedValue({ name: 'auth.json', value: '{"k":1}' });
+  vi.mocked(saveSecretFile).mockResolvedValue({ ok: true });
 });
 
-describe('SecretsTab — env available, no keys', () => {
-  test('renders User Environment heading', async () => {
+describe('SecretsTab — file list', () => {
+  test('renders the Secrets heading', async () => {
     render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByRole('heading', { name: /user environment/i })).toBeVisible();
+    await expect.element(page.getByRole('heading', { name: /^secrets$/i })).toBeVisible();
   });
 
-  test('shows empty state when env has no keys', async () => {
+  test('lists files from the secrets dir (incl. auth.json)', async () => {
     render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByText(/no keys in the user env/i)).toBeVisible();
+    await expect.element(page.getByText('auth.json')).toBeVisible();
+    await expect.element(page.getByText('op_ui_login_password')).toBeVisible();
   });
-});
 
-describe('SecretsTab — key list', () => {
-  test('renders each key in the env', async () => {
-    vi.mocked(fetchUserEnv).mockResolvedValue(envWithKeys);
+  test('editor is empty until a file is selected', async () => {
     render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByText('GROQ_API_KEY')).toBeVisible();
-    await expect.element(page.getByText('OPENAI_API_KEY')).toBeVisible();
+    await expect.element(page.getByText(/select a file to view or edit/i)).toBeVisible();
   });
 });
 
-describe('SecretsTab — write form', () => {
-  test('write form is hidden by default', async () => {
+describe('SecretsTab — open + edit', () => {
+  test('clicking a file loads its contents into the editor', async () => {
     render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByLabelText('Key')).not.toBeInTheDocument();
+    await page.getByRole('button', { name: /edit auth\.json/i }).click();
+    // Editor opens (Close + Save appear) and the file was fetched.
+    await expect.element(page.getByRole('button', { name: /^close$/i })).toBeVisible();
+    await vi.waitFor(() => expect(fetchSecretFile).toHaveBeenCalledWith('auth.json'));
   });
 
-  test('clicking "Add / Update Key" reveals the write form', async () => {
+  test('Save persists the edited file', async () => {
     render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByRole('button', { name: /add \/ update key/i })).toBeVisible();
-    await page.getByRole('button', { name: /add \/ update key/i }).click();
-    await expect.element(page.getByLabelText('Key')).toBeVisible();
-    await expect.element(page.getByLabelText('Value')).toBeVisible();
+    await page.getByRole('button', { name: /edit auth\.json/i }).click();
+    await expect.element(page.getByRole('button', { name: /^save$/i })).toBeVisible();
+    await page.getByRole('button', { name: /^save$/i }).click();
+    await vi.waitFor(() => expect(saveSecretFile).toHaveBeenCalledWith('auth.json', expect.any(String)));
+  });
+});
+
+describe('SecretsTab — add file', () => {
+  test('Add is disabled until a name is entered', async () => {
+    render(SecretsTab, { props: { tokenStored: true } });
+    await expect.element(page.getByRole('button', { name: /^add$/i })).toBeDisabled();
   });
 
-  test('Save button is disabled when key and value are empty', async () => {
+  test('entering a name enables Add and creating calls saveSecretFile', async () => {
     render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByRole('button', { name: /add \/ update key/i })).toBeVisible();
-    await page.getByRole('button', { name: /add \/ update key/i }).click();
-    await expect.element(page.getByRole('button', { name: /save/i })).toBeDisabled();
-  });
-
-  test('Save button becomes enabled when both key and value are filled', async () => {
-    render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByRole('button', { name: /add \/ update key/i })).toBeVisible();
-    await page.getByRole('button', { name: /add \/ update key/i }).click();
-    await userEvent.type(page.getByLabelText('Key'), 'MY_KEY');
-    await userEvent.type(page.getByLabelText('Value'), 'secret');
-    await expect.element(page.getByRole('button', { name: /save/i })).toBeEnabled();
-  });
-
-  test('invalid key format (dashes) shows client-side error without API call', async () => {
-    render(SecretsTab, { props: { tokenStored: true } });
-    await expect.element(page.getByRole('button', { name: /add \/ update key/i })).toBeVisible();
-    await page.getByRole('button', { name: /add \/ update key/i }).click();
-    await userEvent.type(page.getByLabelText('Key'), 'bad-key');
-    await userEvent.type(page.getByLabelText('Value'), 'value');
-    await page.getByRole('button', { name: /save/i }).click();
-    await expect.element(page.getByText(/key must match/i)).toBeVisible();
-    expect(writeUserEnvKey).not.toHaveBeenCalled();
+    await userEvent.type(page.getByPlaceholder('new-file-name'), 'my_secret');
+    await expect.element(page.getByRole('button', { name: /^add$/i })).toBeEnabled();
+    await page.getByRole('button', { name: /^add$/i }).click();
+    await vi.waitFor(() => expect(saveSecretFile).toHaveBeenCalledWith('my_secret', ''));
   });
 });

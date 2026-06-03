@@ -1,200 +1,209 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchUserEnv, writeUserEnvKey, deleteUserEnvKey } from '$lib/api.js';
+  import { fetchSecretFiles, fetchSecretFile, saveSecretFile, deleteSecretFile, type SecretFileInfo } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
 
-  interface Props {
-    tokenStored: boolean;
-  }
-
+  interface Props { tokenStored: boolean; }
   let { tokenStored }: Props = $props();
 
-  let keys = $state<string[]>([]);
-  let envRef = $state('');
   let loading = $state(false);
+  let busy = $state(false);
   let error = $state('');
-  let actionLoading = $state<string | null>(null); // key being acted on, or 'write' for new
-  let deleteConfirmKey = $state<string | null>(null);
+  let files = $state<SecretFileInfo[]>([]);
 
-  let showWriteForm = $state(false);
-  let writeKey = $state('');
-  let writeValue = $state('');
+  // Editor state for the currently-open file.
+  let selected = $state<string | null>(null);
+  let editorValue = $state('');
+  let reveal = $state(false);
 
-  const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  // New-file form.
+  let newName = $state('');
 
-  async function loadKeys(): Promise<void> {
+  function fmtSize(n: number): string {
+    if (n < 1024) return `${n} B`;
+    return `${(n / 1024).toFixed(1)} KB`;
+  }
+
+  async function loadFiles(): Promise<void> {
     loading = true;
     error = '';
     try {
-      const result = await fetchUserEnv();
-      keys = result.keys;
-      envRef = result.envRef;
+      files = (await fetchSecretFiles()).files;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load user env keys.';
+      error = e instanceof Error ? e.message : 'Failed to list secret files.';
     } finally {
       loading = false;
     }
   }
 
-  async function handleWrite(): Promise<void> {
-    const k = writeKey.trim();
+  async function open(name: string): Promise<void> {
+    if (busy) return;
+    busy = true;
     error = '';
-    if (!k || !writeValue) return;
-    if (!KEY_RE.test(k)) {
-      error = 'Key must match [A-Za-z_][A-Za-z0-9_]* (env var format).';
-      notifications.push('error', 'Key must match [A-Za-z_][A-Za-z0-9_]* (env var format).');
-      return;
-    }
-    actionLoading = 'write';
     try {
-      await writeUserEnvKey(k, writeValue);
-      notifications.push('success', `Saved "${k}" to the user env. Restart the assistant to pick up the new value.`);
-      writeKey = '';
-      writeValue = '';
-      showWriteForm = false;
-      await loadKeys();
+      const res = await fetchSecretFile(name);
+      selected = res.name;
+      editorValue = res.value;
+      reveal = false;
     } catch (e) {
-      notifications.push('error', e instanceof Error ? e.message : 'Failed to write to user env.');
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to read file.');
     } finally {
-      actionLoading = null;
+      busy = false;
     }
   }
 
-  function requestDelete(key: string): void {
-    deleteConfirmKey = key;
+  function closeEditor(): void {
+    selected = null;
+    editorValue = '';
+    reveal = false;
   }
 
-  function cancelDelete(): void {
-    deleteConfirmKey = null;
-  }
-
-  async function confirmDelete(key: string): Promise<void> {
-    deleteConfirmKey = null;
-    actionLoading = key;
+  async function save(): Promise<void> {
+    if (!selected || busy) return;
+    busy = true;
     try {
-      await deleteUserEnvKey(key);
-      notifications.push('success', `Removed "${key}".`);
-      await loadKeys();
+      await saveSecretFile(selected, editorValue);
+      notifications.push('success', `Saved ${selected}.`);
+      await loadFiles();
     } catch (e) {
-      notifications.push('error', e instanceof Error ? e.message : 'Failed to remove key.');
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to save file.');
     } finally {
-      actionLoading = null;
+      busy = false;
     }
   }
 
-  onMount(() => {
-    if (tokenStored) void loadKeys();
-  });
+  async function remove(name: string): Promise<void> {
+    if (busy) return;
+    if (!confirm(`Delete secret file "${name}"? This cannot be undone.`)) return;
+    busy = true;
+    try {
+      await deleteSecretFile(name);
+      notifications.push('success', `Deleted ${name}.`);
+      if (selected === name) closeEditor();
+      await loadFiles();
+    } catch (e) {
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to delete file.');
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function createNew(): Promise<void> {
+    const name = newName.trim();
+    if (!name || busy) return;
+    busy = true;
+    try {
+      await saveSecretFile(name, '');
+      notifications.push('success', `Created ${name}.`);
+      newName = '';
+      await loadFiles();
+      await open(name);
+    } catch (e) {
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to create file.');
+    } finally {
+      busy = false;
+    }
+  }
+
+  onMount(() => { if (tokenStored) void loadFiles(); });
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
-    <div>
-      <h2>User Environment</h2>
-      <p class="panel-subtitle">
-        User-managed env secrets stored in the akm user env (<code>{envRef || 'env:user'}</code>). Sourced by the
-        assistant at startup — restart it after changes.
-      </p>
-    </div>
+    <h2>Secrets</h2>
     <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={() => { showWriteForm = !showWriteForm; }}>
-        {showWriteForm ? 'Cancel' : 'Add / Update Key'}
-      </button>
-      <button class="btn btn-secondary btn-sm" onclick={() => void loadKeys()} disabled={loading || !tokenStored}>
+      <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={loading || busy || !tokenStored}>
         {#if loading}<span class="spinner"></span>{/if}
         Refresh
       </button>
     </div>
   </div>
 
-  {#if showWriteForm}
-    <div class="form-section">
-      <h3>Write Key</h3>
-      <div class="form-row">
-        <div class="form-field">
-          <label for="vault-key" class="form-label">Key</label>
-          <input id="vault-key" class="form-input" type="text" bind:value={writeKey} placeholder="OPENAI_API_KEY" autocomplete="off" />
-        </div>
-        <div class="form-field">
-          <label for="vault-value" class="form-label">Value</label>
-          <input id="vault-value" class="form-input" type="password" bind:value={writeValue} placeholder="Secret value" autocomplete="off" />
-        </div>
-        <div class="form-field form-field--actions">
-          <button class="btn btn-primary btn-sm" onclick={() => void handleWrite()} disabled={actionLoading === 'write' || !writeKey.trim() || !writeValue}>
-            {#if actionLoading === 'write'}<span class="spinner"></span>{/if} Save
+  <p class="section-note">
+    Files in the assistant's secrets directory (<code>/stash/secrets</code> →
+    <code>knowledge/secrets</code>). These are mounted into the assistant and granted to
+    services via Docker secrets. Files are stored 0600. Editing here changes the live
+    file — restart affected services to pick up changes.
+  </p>
+
+  {#if error}<div class="error-banner"><span>{error}</span></div>{/if}
+
+  <div class="secrets-layout">
+    <!-- File list -->
+    <div class="secrets-list">
+      {#if files.length === 0 && !loading}
+        <p class="empty-note">No secret files found.</p>
+      {/if}
+      {#each files as f (f.name)}
+        <div class="secret-row {selected === f.name ? 'active' : ''}">
+          <button class="secret-name" onclick={() => void open(f.name)} disabled={busy} aria-label="Edit {f.name}">
+            <span class="mono">{f.name}</span>
+            <span class="secret-size">{fmtSize(f.size)}</span>
           </button>
+          <button class="btn btn-ghost btn-sm" onclick={() => void remove(f.name)} disabled={busy} aria-label="Delete {f.name}">✕</button>
         </div>
+      {/each}
+
+      <div class="new-secret">
+        <input class="control-input" type="text" spellcheck="false" placeholder="new-file-name" bind:value={newName} disabled={busy} />
+        <button class="btn btn-secondary btn-sm" onclick={() => void createNew()} disabled={busy || !newName.trim()}>Add</button>
       </div>
     </div>
-  {/if}
 
-  <div class="panel-body panel-body--flush">
-    {#if error}
-      <div class="error-banner"><span>{error}</span></div>
-    {/if}
-
-    {#if keys.length > 0}
-      <div class="key-table">
-        <div class="key-table-header">
-          <span class="key-col key-col--name">Key</span>
-          <span class="key-col key-col--actions">Actions</span>
+    <!-- Editor -->
+    <div class="secrets-editor">
+      {#if selected}
+        <div class="editor-head">
+          <span class="mono">{selected}</span>
+          <label class="reveal-toggle"><input type="checkbox" bind:checked={reveal} /> Reveal</label>
         </div>
-        {#each keys as key (key)}
-          <div class="key-row">
-            <span class="key-col key-col--name">
-              <code>{key}</code>
-            </span>
-            <span class="key-col key-col--actions">
-              {#if deleteConfirmKey === key}
-                <span class="confirm-bar" role="alert">
-                  <span class="confirm-text">Delete <strong>{key}</strong>?</span>
-                  <button class="btn btn-sm btn-danger" onclick={() => void confirmDelete(key)} disabled={actionLoading === key}>
-                    {#if actionLoading === key}<span class="spinner"></span>{/if} Confirm
-                  </button>
-                  <button class="btn btn-sm btn-secondary" onclick={cancelDelete}>Cancel</button>
-                </span>
-              {:else}
-                <button class="btn btn-sm btn-danger" onclick={() => requestDelete(key)} disabled={actionLoading === key}>
-                  {#if actionLoading === key}<span class="spinner"></span>{/if} Delete
-                </button>
-              {/if}
-            </span>
-          </div>
-        {/each}
-      </div>
-    {:else if !loading}
-      <div class="empty-state">
-        <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-        <p>No keys in the user env yet.</p>
-      </div>
-    {/if}
+        <textarea
+          class="control-input editor-area {reveal ? '' : 'masked'}"
+          spellcheck="false"
+          rows="16"
+          bind:value={editorValue}
+          disabled={busy}></textarea>
+        <div class="editor-actions">
+          <button class="btn btn-secondary btn-sm" onclick={closeEditor} disabled={busy}>Close</button>
+          <button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={busy}>
+            {#if busy}<span class="spinner"></span>{/if}
+            Save
+          </button>
+        </div>
+      {:else}
+        <p class="empty-note">Select a file to view or edit its contents.</p>
+      {/if}
+    </div>
   </div>
 </div>
 
 <style>
-  .form-section { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); background: var(--color-bg-secondary); }
-  .form-section h3 { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin-bottom: var(--space-3); }
-  .form-row { display: flex; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; }
-  .form-field { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-width: 160px; }
-  .form-field--actions { flex: 0 0 auto; display: flex; flex-direction: row; gap: var(--space-2); align-items: center; min-width: unset; }
-  .form-label { font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-secondary); }
-  .form-input { width: 100%; height: 32px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 var(--space-3); background: var(--color-bg); color: var(--color-text); font-size: var(--text-sm); font-family: inherit; }
-  .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
+  .section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0 0 var(--space-4); }
+  .error-banner { background: var(--color-danger-subtle, rgba(239,68,68,0.1)); color: var(--color-danger, #ef4444); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin-bottom: var(--space-4); }
+  .empty-note { font-size: var(--text-sm); color: var(--color-text-secondary); }
+  .mono { font-family: var(--font-mono); font-size: var(--text-sm); }
 
-  .key-table { display: flex; flex-direction: column; width: 100%; }
-  .key-table-header { display: flex; align-items: center; padding: var(--space-2) var(--space-5); background: var(--color-bg-tertiary); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
-  .key-row { display: flex; align-items: center; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-bg-tertiary); gap: var(--space-3); }
-  .confirm-bar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-  .key-row:last-child { border-bottom: none; }
-  .key-row:hover { background: var(--color-surface-hover); }
-  .key-col { display: flex; align-items: center; }
-  .key-col--name { flex: 1; min-width: 0; }
-  .key-col--name code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); }
-  .key-col--actions { flex: 0 0 auto; }
+  .secrets-layout { display: grid; grid-template-columns: minmax(16rem, 22rem) 1fr; gap: var(--space-4); align-items: start; }
+  @media (max-width: 720px) { .secrets-layout { grid-template-columns: 1fr; } }
 
-  .error-banner { padding: var(--space-3) var(--space-5); background: var(--color-danger-bg); border-bottom: 1px solid var(--color-danger-border, rgba(255,107,107,0.25)); color: var(--color-danger); font-size: var(--text-sm); }
+  .secrets-list { display: flex; flex-direction: column; gap: var(--space-1); }
+  .secret-row { display: flex; align-items: center; gap: var(--space-1); }
+  .secret-row.active .secret-name { border-color: var(--color-primary, #6366f1); }
+  .secret-name {
+    flex: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+    text-align: left; padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    background: var(--color-bg-secondary); color: var(--color-text); cursor: pointer;
+  }
+  .secret-name:hover { background: var(--color-bg-tertiary, var(--color-bg-secondary)); }
+  .secret-size { font-size: var(--text-xs); color: var(--color-text-secondary); flex-shrink: 0; }
+  .new-secret { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
 
-  @media (max-width: 768px) { .key-table-header { display: none; } .key-row { flex-wrap: wrap; gap: var(--space-2); } .form-row { flex-direction: column; } .form-field { min-width: unset; } }
+  .secrets-editor { min-width: 0; }
+  .editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }
+  .reveal-toggle { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .editor-area { width: 100%; font-family: var(--font-mono); font-size: var(--text-sm); resize: vertical; }
+  .editor-area.masked { -webkit-text-security: disc; }
+  .editor-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 </style>

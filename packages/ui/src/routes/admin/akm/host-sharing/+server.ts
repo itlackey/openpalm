@@ -52,7 +52,7 @@ export const PUT: RequestHandler = async (event) => {
     return jsonResponse(200, { sharing: getHostAkmSharingStatus(state), profilesImported }, requestId);
   } catch (err) {
     // Host AKM not available (no ~/.config/akm/config.json) → 409.
-    return errorResponse(409, (err as Error).message, requestId);
+    return errorResponse(409, 'conflict', (err as Error).message, {}, requestId);
   }
 };
 
