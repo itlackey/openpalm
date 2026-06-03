@@ -86,6 +86,9 @@
 		contextLength: string;
 		judgeModel: string;
 		supportsJsonSchema: boolean;
+		enableThinking: boolean;
+		structuredOutput: boolean;   // capabilities.structuredOutput
+		extraParams: string;         // JSON text; '' = unset
 	}
 
 	interface AgentProfile {
@@ -193,7 +196,7 @@
 	}
 
 	function newLlmProfile(): LlmProfile {
-		return { id: crypto.randomUUID(), name: '', endpoint: '', model: '', provider: '', apiKey: '', showApiKey: false, temperature: '', maxTokens: '', timeoutMs: '', concurrency: '', contextLength: '', judgeModel: '', supportsJsonSchema: false };
+		return { id: crypto.randomUUID(), name: '', endpoint: '', model: '', provider: '', apiKey: '', showApiKey: false, temperature: '', maxTokens: '', timeoutMs: '', concurrency: '', contextLength: '', judgeModel: '', supportsJsonSchema: false, enableThinking: false, structuredOutput: false, extraParams: '' };
 	}
 	function newAgentProfile(): AgentProfile {
 		return { id: crypto.randomUUID(), name: '', platform: 'opencode', bin: '', args: '', workspace: '', model: '' };
@@ -302,6 +305,9 @@
 			contextLength: raw.contextLength != null ? String(raw.contextLength) : '',
 			judgeModel: (raw.judgeModel as string) ?? '',
 			supportsJsonSchema: (raw.supportsJsonSchema as boolean) ?? false,
+			enableThinking: (raw.enableThinking as boolean) ?? false,
+			structuredOutput: ((raw.capabilities as Record<string, unknown> | undefined)?.structuredOutput as boolean) ?? false,
+			extraParams: raw.extraParams && typeof raw.extraParams === 'object' ? JSON.stringify(raw.extraParams, null, 2) : '',
 		};
 	}
 
@@ -316,6 +322,18 @@
 		const cl = optInt(p.contextLength); if (cl !== undefined) out.contextLength = cl;
 		if (p.judgeModel) out.judgeModel = p.judgeModel;
 		if (p.supportsJsonSchema) out.supportsJsonSchema = true;
+		if (p.enableThinking) out.enableThinking = true;
+		if (p.structuredOutput) out.capabilities = { structuredOutput: true };
+		if (p.extraParams.trim()) {
+			// Parse the JSON object; throw a friendly error so save() surfaces it
+			// rather than sending malformed data the schema would reject.
+			let parsed: unknown;
+			try { parsed = JSON.parse(p.extraParams); }
+			catch { throw new Error(`LLM profile "${p.name}": extraParams must be valid JSON`); }
+			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+				throw new Error(`LLM profile "${p.name}": extraParams must be a JSON object`);
+			out.extraParams = parsed;
+		}
 		return out;
 	}
 
@@ -877,6 +895,21 @@
 						<span class="toggle-label">Supports JSON schema</span>
 						<span class="toggle-hint">Use response_format: json_schema for structured output</span>
 					</label>
+					<label class="toggle-row">
+					<input type="checkbox" bind:checked={drawerLlm.structuredOutput} />
+					<span class="toggle-label">Structured output capability</span>
+					<span class="toggle-hint">capabilities.structuredOutput — model reliably returns valid structured JSON</span>
+					</label>
+					<label class="toggle-row">
+					<input type="checkbox" bind:checked={drawerLlm.enableThinking} />
+					<span class="toggle-label">Enable thinking</span>
+					<span class="toggle-hint">Allow extended/thinking tokens for reasoning models</span>
+					</label>
+					<div class="control-group control-group--wide" style="margin-top: var(--space-4)">
+					<label class="control-label" for="d-llm-extra">Extra params (JSON)</label>
+					<textarea id="d-llm-extra" class="control-input" rows="3" spellcheck="false" placeholder={'{ "top_p": 0.9 }'} bind:value={drawerLlm.extraParams}></textarea>
+					<span class="feat-hint">Merged into the provider request body. Must be a JSON object.</span>
+					</div>
 
 				{:else if drawerType === 'agent' && drawerAgent}
 					<div class="controls controls--grid">

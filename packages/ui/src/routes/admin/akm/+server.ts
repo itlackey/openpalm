@@ -61,6 +61,12 @@ function validateLlmProfile(raw: Rec, prefix: string): Error | null {
   if ('concurrency' in raw) { const r = expectPosInt(raw.concurrency, `${prefix}.concurrency`); if (r instanceof Error) return r; }
   if ('contextLength' in raw) { const r = expectPosInt(raw.contextLength, `${prefix}.contextLength`); if (r instanceof Error) return r; }
   if ('supportsJsonSchema' in raw) { const r = expectBool(raw.supportsJsonSchema, `${prefix}.supportsJsonSchema`); if (r instanceof Error) return r; }
+  if ('enableThinking' in raw) { const r = expectBool(raw.enableThinking, `${prefix}.enableThinking`); if (r instanceof Error) return r; }
+  if ('capabilities' in raw) {
+    if (!isRec(raw.capabilities)) return new Error(`${prefix}.capabilities must be an object`);
+    if ('structuredOutput' in raw.capabilities) { const r = expectBool((raw.capabilities as Rec).structuredOutput, `${prefix}.capabilities.structuredOutput`); if (r instanceof Error) return r; }
+  }
+  if ('extraParams' in raw && !isRec(raw.extraParams)) return new Error(`${prefix}.extraParams must be an object`);
   return null;
 }
 
@@ -72,6 +78,9 @@ function pickLlmProfile(raw: Rec): Rec {
   const numFields = ['temperature','maxTokens','timeoutMs','concurrency','contextLength'] as const;
   for (const f of numFields) if (f in raw && raw[f] !== undefined) out[f] = raw[f];
   if ('supportsJsonSchema' in raw) out.supportsJsonSchema = raw.supportsJsonSchema;
+  if ('enableThinking' in raw) out.enableThinking = raw.enableThinking;
+  if (isRec(raw.capabilities) && Object.keys(raw.capabilities as Rec).length) out.capabilities = raw.capabilities;
+  if (isRec(raw.extraParams) && Object.keys(raw.extraParams as Rec).length) out.extraParams = raw.extraParams;
   return out;
 }
 
