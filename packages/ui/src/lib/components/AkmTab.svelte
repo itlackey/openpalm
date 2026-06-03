@@ -145,7 +145,6 @@
 
 	// ── Behavior ─────────────────────────────────────────────────────────────────
 	let semanticSearchMode = $state<'auto' | 'off'>('auto');
-	let stashDir = $state('');
 	let outputFormat = $state<'json' | 'yaml' | 'text'>('json');
 	let outputDetail = $state<'brief' | 'normal' | 'full'>('brief');
 
@@ -385,7 +384,6 @@
 			embOllamaNumCtx = ollamaOpts?.num_ctx != null ? String(ollamaOpts.num_ctx) : '';
 
 			semanticSearchMode = (config.semanticSearchMode as 'auto' | 'off') ?? 'auto';
-			stashDir = (config.stashDir as string) ?? '';
 			const output = config.output as Record<string, unknown> | undefined;
 			outputFormat = (output?.format as 'json' | 'yaml' | 'text') ?? 'json';
 			outputDetail = (output?.detail as 'brief' | 'normal' | 'full') ?? 'brief';
@@ -456,7 +454,6 @@
 				defaults: defaultsPayload,
 				embedding: embPayload,
 				semanticSearchMode,
-				stashDir: stashDir.trim(),
 				output: { format: outputFormat, detail: outputDetail },
 			});
 			notifications.push('success', 'AKM config saved.');
@@ -674,10 +671,6 @@
 						<option value="normal">Normal</option>
 						<option value="full">Full</option>
 					</select>
-				</div>
-				<div class="control-group control-group--wide">
-					<label class="control-label" for="stashDir">Stash directory</label>
-					<input id="stashDir" class="control-input" type="text" spellcheck="false" placeholder="~/.akm (default)" bind:value={stashDir} disabled={loading || saving} />
 				</div>
 			</div>
 		</section>

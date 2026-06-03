@@ -104,22 +104,30 @@ describe("importHostProfiles (read-only snapshot of host profiles)", () => {
     return original;
   }
 
-  it("copies profiles.llm/agent + defaults; never the legacy top-level llm", () => {
+  it("copies llm/agent/improve profiles + defaults + embedding; never the legacy top-level llm", () => {
     seedHostConfig({
       profiles: {
         llm: { default: { endpoint: "http://h/v1/chat/completions", model: "qwen", provider: "ollama" } },
         agent: { default: { platform: "opencode" } },
+        improve: { thorough: { limit: 50 } },
       },
-      defaults: { llm: "default", agent: "default" },
+      defaults: { llm: "default", agent: "default", improve: "thorough" },
+      embedding: { provider: "ollama", model: "nomic-embed-text", dimension: 768 },
     });
-    writeFileSync(opConfigPath, JSON.stringify({ embedding: { model: "e", dimension: 768 } }));
+    writeFileSync(opConfigPath, "{}");
     const { imported } = importHostProfiles(state, hostConfigPath);
     expect(imported).toContain("profiles.llm");
     expect(imported).toContain("profiles.agent");
+    expect(imported).toContain("profiles.improve");
     expect(imported).toContain("defaults.llm");
+    expect(imported).toContain("defaults.improve");
+    expect(imported).toContain("embedding");
     const cfg = readJson(opConfigPath);
-    expect(((cfg.profiles as Record<string, Record<string, Record<string, unknown>>>).llm.default).model).toBe("qwen");
-    expect((cfg.defaults as Record<string, unknown>).llm).toBe("default");
+    const profiles = cfg.profiles as Record<string, Record<string, Record<string, unknown>>>;
+    expect(profiles.llm.default.model).toBe("qwen");
+    expect(profiles.improve.thorough.limit).toBe(50);
+    expect((cfg.defaults as Record<string, unknown>).improve).toBe("thorough");
+    expect((cfg.embedding as Record<string, unknown>).model).toBe("nomic-embed-text");
     expect((cfg.embedding as Record<string, unknown>).dimension).toBe(768);
     expect(cfg.llm).toBeUndefined();
   });

@@ -410,6 +410,8 @@ describe("performSetup", () => {
     expect(config.embedding.model).toBe("text-embedding-3-small");
     expect(config.embedding.provider).toBe("openai");
     expect(config.embedding.dimension).toBe(1536);
+    // The assistant primary stash is pinned to the bind mount, not operator-set.
+    expect(config.stashDir).toBe("/stash");
   });
 
   it("does not write the legacy migration-triggering akm config shape (I-3)", async () => {

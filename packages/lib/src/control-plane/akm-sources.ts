@@ -162,13 +162,14 @@ export function removeHostAkmSource(state: ControlPlaneState): void {
 }
 
 /**
- * Read-only snapshot import of host LLM/agent profiles into the OpenPalm config.
- * Reads the personal config READ-ONLY; never writes back to the host. Copies
- * `profiles.llm`, `profiles.agent` and `defaults.llm`/`defaults.agent` only.
- * Returns which profile namespaces were imported.
+ * Read-only snapshot import of the host's reusable akm config into the OpenPalm
+ * config. Reads the personal config READ-ONLY; never writes back to the host.
+ * Copies the LLM/agent/improve PROFILES (+ their `defaults.*`) and the top-level
+ * `embedding` connection. Returns which sections were imported.
  *
- * Writes the canonical akm 0.8.0 shape (profiles.* + defaults.*) — never the
- * legacy top-level `llm` (see I-3).
+ * Writes the canonical akm 0.8.0 shape (profiles.* + defaults.* + embedding) —
+ * never the legacy top-level `llm` (see I-3). NEVER touches `sources`, `stashDir`,
+ * `registries`, or `installed`.
  */
 export function importHostProfiles(
   state: ControlPlaneState,
@@ -184,7 +185,8 @@ export function importHostProfiles(
   const opDefaults = (op.defaults as Record<string, unknown> | undefined) ?? {};
 
   const imported: string[] = [];
-  for (const ns of ["llm", "agent"] as const) {
+  // All three profile namespaces akm supports (config-schema.ts ProfilesSchema).
+  for (const ns of ["llm", "agent", "improve"] as const) {
     if (hostProfiles[ns] && typeof hostProfiles[ns] === "object") {
       opProfiles[ns] = { ...(opProfiles[ns] as object | undefined), ...(hostProfiles[ns] as object) };
       imported.push(`profiles.${ns}`);
@@ -194,9 +196,18 @@ export function importHostProfiles(
       imported.push(`defaults.${ns}`);
     }
   }
+
+  // Top-level embedding connection (valid 0.8.0 key — EmbeddingConnectionConfigSchema).
+  let embedding: unknown;
+  if (host.embedding && typeof host.embedding === "object") {
+    embedding = { ...(op.embedding as object | undefined), ...(host.embedding as object) };
+    imported.push("embedding");
+  }
+
   if (imported.length === 0) return { imported };
 
   const updated: AkmConfigObject = { ...op, profiles: opProfiles, defaults: opDefaults };
+  if (embedding !== undefined) updated.embedding = embedding;
   delete (updated as Record<string, unknown>).llm; // never persist the legacy key
   writeFileAtomic(opPath, JSON.stringify(updated, null, 2), 0o600);
   return { imported };

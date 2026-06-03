@@ -194,7 +194,9 @@ export const PATCH: RequestHandler = async (event) => {
   // ── scalar behavior fields ────────────────────────────────────────────────
   if ('semanticSearchMode' in body && (typeof body.semanticSearchMode !== 'string' || !SEMANTIC_SEARCH_MODES.has(body.semanticSearchMode as string)))
     return errorResponse(400, 'bad_request', 'semanticSearchMode must be "auto" or "off"', {}, requestId);
-  if ('stashDir' in body) { const r = expectStr(body.stashDir, 'stashDir'); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+  // NOTE: stashDir is NOT operator-editable — the assistant's primary stash is
+  // always /stash (the bind mount). Any body.stashDir is ignored and the value is
+  // pinned below.
 
   // ── output ────────────────────────────────────────────────────────────────
   const outputBody = body.output as Rec | undefined;
@@ -303,7 +305,8 @@ export const PATCH: RequestHandler = async (event) => {
 
     // scalars
     if ('semanticSearchMode' in body) updated.semanticSearchMode = body.semanticSearchMode;
-    if ('stashDir' in body) { if (body.stashDir) updated.stashDir = body.stashDir; else delete updated.stashDir; }
+    // stashDir is pinned to the bind mount — never operator-editable.
+    updated.stashDir = '/stash';
 
     // output
     if (outputBody !== undefined) {

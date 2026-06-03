@@ -283,6 +283,11 @@ export async function performSetup(
             dimension: embedding.dims,
           };
         }
+        // The assistant's primary stash is ALWAYS /stash (the bind mount). Pin it
+        // in config so it is explicit and operator-edits can't repoint it; the UI
+        // does not expose stashDir. (The host task-runner still uses its own
+        // AKM_STASH_DIR env, which takes precedence over config.stashDir.)
+        updated.stashDir = "/stash";
         writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
       }
 
