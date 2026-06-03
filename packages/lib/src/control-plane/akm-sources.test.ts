@@ -104,7 +104,7 @@ describe("importHostProfiles (read-only snapshot of host profiles)", () => {
     return original;
   }
 
-  it("copies llm/agent/improve profiles + defaults + embedding; never the legacy top-level llm", () => {
+  it("copies llm/agent/improve profiles + defaults + embedding into an empty config", () => {
     seedHostConfig({
       profiles: {
         llm: { default: { endpoint: "http://h/v1/chat/completions", model: "qwen", provider: "ollama" } },
@@ -130,6 +130,60 @@ describe("importHostProfiles (read-only snapshot of host profiles)", () => {
     expect((cfg.embedding as Record<string, unknown>).model).toBe("nomic-embed-text");
     expect((cfg.embedding as Record<string, unknown>).dimension).toBe(768);
     expect(cfg.llm).toBeUndefined();
+  });
+
+  it("is ADDITIVE — never overwrites existing profiles, defaults, or embedding fields", () => {
+    seedHostConfig({
+      profiles: {
+        llm: {
+          default: { endpoint: "http://host/v1/chat/completions", model: "host-model" }, // conflicts with existing
+          "host-only": { endpoint: "http://host/v1/chat/completions", model: "extra" },  // new → added
+        },
+      },
+      defaults: { llm: "host-only" }, // existing already has defaults.llm → must NOT change
+      embedding: { provider: "ollama", model: "host-emb", dimension: 768, batchSize: 32 }, // model conflicts; batchSize new
+    });
+    writeFileSync(opConfigPath, JSON.stringify({
+      profiles: { llm: { default: { endpoint: "http://op/v1/chat/completions", model: "op-model" } } },
+      defaults: { llm: "default" },
+      embedding: { provider: "openai", model: "op-emb", dimension: 1536 },
+    }));
+
+    const { imported } = importHostProfiles(state, hostConfigPath);
+    const cfg = readJson(opConfigPath);
+    const profiles = cfg.profiles as Record<string, Record<string, Record<string, unknown>>>;
+    // Existing 'default' profile is preserved untouched.
+    expect(profiles.llm.default.model).toBe("op-model");
+    // Host-only profile is added.
+    expect(profiles.llm["host-only"].model).toBe("extra");
+    expect(imported).toContain("profiles.llm");
+    // Existing default selection is NOT overwritten.
+    expect((cfg.defaults as Record<string, unknown>).llm).toBe("default");
+    expect(imported).not.toContain("defaults.llm");
+    // Embedding: existing fields win; only the new field (batchSize) is added.
+    const emb = cfg.embedding as Record<string, unknown>;
+    expect(emb.model).toBe("op-emb");
+    expect(emb.provider).toBe("openai");
+    expect(emb.dimension).toBe(1536);
+    expect(emb.batchSize).toBe(32);
+    expect(imported).toContain("embedding");
+  });
+
+  it("does not report a namespace as imported when it adds nothing new", () => {
+    seedHostConfig({
+      profiles: { llm: { default: { endpoint: "x", model: "host" } } },
+      defaults: { llm: "default" },
+    });
+    writeFileSync(opConfigPath, JSON.stringify({
+      profiles: { llm: { default: { endpoint: "y", model: "op" } } },
+      defaults: { llm: "default" },
+    }));
+    const { imported } = importHostProfiles(state, hostConfigPath);
+    expect(imported).not.toContain("profiles.llm"); // 'default' already present, nothing added
+    expect(imported).not.toContain("defaults.llm");
+    // existing values untouched
+    const cfg = readJson(opConfigPath);
+    expect((cfg.profiles as Record<string, Record<string, Record<string, unknown>>>).llm.default.model).toBe("op");
   });
 
   it("reads the host config READ-ONLY (host file unchanged byte-for-byte)", () => {

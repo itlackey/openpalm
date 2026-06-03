@@ -164,8 +164,12 @@ export function removeHostAkmSource(state: ControlPlaneState): void {
 /**
  * Read-only snapshot import of the host's reusable akm config into the OpenPalm
  * config. Reads the personal config READ-ONLY; never writes back to the host.
- * Copies the LLM/agent/improve PROFILES (+ their `defaults.*`) and the top-level
- * `embedding` connection. Returns which sections were imported.
+ *
+ * ADDITIVE MERGE: existing OpenPalm values ALWAYS win — the host only fills gaps.
+ * A profile name, default selection, or embedding field that OpenPalm already has
+ * is never overwritten; host-only profiles/fields are added. Covers the
+ * LLM/agent/improve PROFILES (+ their `defaults.*`) and the top-level `embedding`
+ * connection. Returns which sections actually gained values.
  *
  * Writes the canonical akm 0.8.0 shape (profiles.* + defaults.* + embedding) —
  * never the legacy top-level `llm` (see I-3). NEVER touches `sources`, `stashDir`,
@@ -185,23 +189,39 @@ export function importHostProfiles(
   const opDefaults = (op.defaults as Record<string, unknown> | undefined) ?? {};
 
   const imported: string[] = [];
+
+  // ADDITIVE MERGE — existing OpenPalm values always win; the host fills only
+  // gaps. Never overwrite a profile, default selection, or embedding field the
+  // operator/wizard already set. `imported` lists what was actually added.
+  const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
   // All three profile namespaces akm supports (config-schema.ts ProfilesSchema).
   for (const ns of ["llm", "agent", "improve"] as const) {
-    if (hostProfiles[ns] && typeof hostProfiles[ns] === "object") {
-      opProfiles[ns] = { ...(opProfiles[ns] as object | undefined), ...(hostProfiles[ns] as object) };
-      imported.push(`profiles.${ns}`);
+    if (isObj(hostProfiles[ns])) {
+      const existing = isObj(opProfiles[ns]) ? (opProfiles[ns] as Record<string, unknown>) : {};
+      // host first, existing last → existing wins; only host-only profile names are added.
+      const merged: Record<string, unknown> = { ...(hostProfiles[ns] as Record<string, unknown>), ...existing };
+      const added = Object.keys(merged).length - Object.keys(existing).length;
+      opProfiles[ns] = merged;
+      if (added > 0) imported.push(`profiles.${ns}`);
     }
-    if (typeof hostDefaults[ns] === "string") {
+    // Only adopt a host default selection when OpenPalm has none.
+    if (typeof hostDefaults[ns] === "string" && typeof opDefaults[ns] !== "string") {
       opDefaults[ns] = hostDefaults[ns];
       imported.push(`defaults.${ns}`);
     }
   }
 
-  // Top-level embedding connection (valid 0.8.0 key — EmbeddingConnectionConfigSchema).
-  let embedding: unknown;
-  if (host.embedding && typeof host.embedding === "object") {
-    embedding = { ...(op.embedding as object | undefined), ...(host.embedding as object) };
-    imported.push("embedding");
+  // Top-level embedding connection (EmbeddingConnectionConfigSchema). Per-field
+  // additive: existing OpenPalm fields win; host fills only missing fields.
+  let embedding: Record<string, unknown> | undefined;
+  if (isObj(host.embedding)) {
+    const existing = isObj(op.embedding) ? (op.embedding as Record<string, unknown>) : {};
+    const merged: Record<string, unknown> = { ...(host.embedding as Record<string, unknown>), ...existing };
+    if (Object.keys(merged).length > Object.keys(existing).length) {
+      embedding = merged;
+      imported.push("embedding");
+    }
   }
 
   if (imported.length === 0) return { imported };
