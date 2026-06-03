@@ -21,8 +21,13 @@ errors=0
 checked=0
 
 if [ ! -d "$ADDONS_DIR" ]; then
-	echo "ERROR: Addons directory not found at $ADDONS_DIR"
-	exit 1
+	# The file-based addon registry was removed from the skeleton (the
+	# skeleton-guardrail test asserts .openpalm/data/registry/ is absent; built-in
+	# addon credential schemas now live in-code in packages/lib registry.ts). With
+	# no bundled registry there is nothing to validate — skip cleanly. A
+	# materialized/custom registry, when present, is still validated below.
+	echo "No file-based addon registry at $ADDONS_DIR — nothing to validate."
+	exit 0
 fi
 
 for addon_dir in "$ADDONS_DIR"/*/; do
