@@ -97,6 +97,7 @@ export function ensureHomeDirs(): void {
     `${home}/data/guardian`,       // guardian runtime data
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
+    `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
     `${home}/data/logs`,           // service logs and audit files
     `${home}/data/backups`,        // lifecycle backup snapshots
     `${home}/data/rollback`,       // deploy rollback snapshots

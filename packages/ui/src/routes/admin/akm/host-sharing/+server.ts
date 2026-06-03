@@ -1,19 +1,17 @@
 /**
  * Host AKM sharing control surface.
  *
- *   GET    /admin/akm/host-sharing  — report current sharing status
- *   PUT    /admin/akm/host-sharing  — enable sharing (overlay + both source entries
- *                                     + optional read-only profile import)
- *   DELETE /admin/akm/host-sharing  — disable sharing (removes overlay + source
- *                                     entries; NEVER deletes any stash content)
+ *   GET    /admin/akm/host-sharing  — report { available, enabled, hostStashPath }
+ *   PUT    /admin/akm/host-sharing  — enable: add the writable host-akm secondary
+ *                                     source (optionally import host profiles)
+ *   DELETE /admin/akm/host-sharing  — disable: remove the host-akm secondary source
  *
- * All orchestration lives in @openpalm/lib (enable/disableHostAkmSharing) so the
- * wizard and this endpoint share one implementation. The personal-config writes
- * are fail-closed in lib (a missing/corrupt ~/.config/akm/config.json throws and
- * is surfaced here as a 409, never silently overwriting the user's file).
+ * /host-stash is always mounted (core.compose.yml), so enabling/disabling is just a
+ * config-source edit — no compose change. enable throws (409) if host AKM is not
+ * available on the host. Disable never deletes any stash content. All orchestration
+ * lives in @openpalm/lib so the wizard and this endpoint share one implementation.
  */
 import type { RequestHandler } from './$types';
-import { homedir } from 'node:os';
 import {
   enableHostAkmSharing,
   disableHostAkmSharing,
@@ -29,22 +27,12 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 
-/** Resolve the operator's personal akm paths from HOME (UI runs as the host user). */
-function hostPaths(): { hostStashPath: string; hostConfigPath: string } {
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-  return {
-    hostStashPath: `${home}/akm`,
-    hostConfigPath: `${home}/.config/akm/config.json`,
-  };
-}
-
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const state = getState();
-  return jsonResponse(200, { sharing: getHostAkmSharingStatus(state), ...hostPaths() }, requestId);
+  return jsonResponse(200, { sharing: getHostAkmSharingStatus(getState()) }, requestId);
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -59,21 +47,11 @@ export const PUT: RequestHandler = async (event) => {
   const importProfiles = opts.importProfiles === true;
 
   const state = getState();
-  const { hostStashPath, hostConfigPath } = hostPaths();
   try {
-    const { profilesImported } = enableHostAkmSharing(state, {
-      hostStashPath,
-      hostConfigPath,
-      writable,
-      importProfiles,
-    });
-    return jsonResponse(
-      200,
-      { sharing: getHostAkmSharingStatus(state), profilesImported, hostStashPath },
-      requestId,
-    );
+    const { profilesImported } = enableHostAkmSharing(state, { writable, importProfiles });
+    return jsonResponse(200, { sharing: getHostAkmSharingStatus(state), profilesImported }, requestId);
   } catch (err) {
-    // Fail-closed personal-config write (missing/corrupt ~/.config/akm) → 409.
+    // Host AKM not available (no ~/.config/akm/config.json) → 409.
     return errorResponse(409, (err as Error).message, requestId);
   }
 };
@@ -84,7 +62,6 @@ export const DELETE: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const { hostConfigPath } = hostPaths();
-  disableHostAkmSharing(state, hostConfigPath);
+  disableHostAkmSharing(state);
   return jsonResponse(200, { sharing: getHostAkmSharingStatus(state) }, requestId);
 };

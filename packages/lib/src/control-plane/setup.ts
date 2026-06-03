@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
 import { writeFileAtomic } from "./fs-atomic.js";
-import { enableHostAkmSharing } from "./host-akm-sharing.js";
+import { enableHostAkmSharing, ensureHostStashEnv, isHostAkmAvailable } from "./host-akm-sharing.js";
 import {
   PROVIDER_KEY_MAP,
 } from "../provider-constants.js";
@@ -286,32 +286,22 @@ export async function performSetup(
         writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
       }
 
-      // Host AKM sharing: register the user's personal ~/akm as a read-write
-      // SECONDARY source on both sides + mount it at /host-stash via the overlay.
-      // Lenient here (wizard): if the personal akm config is missing/corrupt the
-      // orchestrator throws fail-closed — we log and continue rather than abort
-      // the whole install. The admin endpoint surfaces the error explicitly.
-      if (hostAkm) {
-        const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-        if (!home) {
-          logger.warn("hostAkm requested but HOME is unset; skipping host akm sharing");
-        } else {
-          const hostStashPath = `${home}/akm`;
-          const hostConfigPath = `${home}/.config/akm/config.json`;
-          try {
-            const { profilesImported } = enableHostAkmSharing(state, {
-              hostStashPath,
-              hostConfigPath,
-              writable: true,
-              importProfiles: !llm, // import host profiles only if the wizard set none
-            });
-            logger.info("host akm sharing enabled during setup", { hostStashPath, profilesImported });
-          } catch (err) {
-            logger.warn("host akm sharing could not be fully enabled", {
-              error: (err as Error).message,
-              hint: "ensure the personal akm config exists (run `akm init`) then enable from the AKM admin tab",
-            });
-          }
+      // Host AKM sharing. /host-stash is ALWAYS mounted (core.compose.yml, with
+      // an empty-dir fallback). ensureHostStashEnv points OP_HOST_AKM_STASH at
+      // the user's ~/akm when host AKM is available, else unsets it (→ empty dir).
+      // "Sharing" is just a writable secondary source entry; auto-enabled when the
+      // host has AKM and the wizard didn't opt out.
+      ensureHostStashEnv(state);
+      if (hostAkm !== false && isHostAkmAvailable()) {
+        try {
+          const { profilesImported } = enableHostAkmSharing(state, {
+            writable: true,
+            importProfiles: !llm, // import host profiles only if the wizard set none
+          });
+          logger.info("host akm sharing auto-enabled during setup", { profilesImported });
+        } catch (err) {
+          // Non-fatal — the mount is present regardless; user can enable from the admin tab.
+          logger.warn("host akm sharing could not be enabled", { error: (err as Error).message });
         }
       }
 

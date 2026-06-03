@@ -469,7 +469,7 @@ describe("performSetup", () => {
     expect(config.embedding.dimension).toBe(768);
   });
 
-  it("enables host akm sharing when hostAkm is set (overlay + both source entries)", async () => {
+  it("auto-enables host akm sharing when host AKM is available (no overlay, no personal-side write)", async () => {
     // HOME must point at a temp dir so we NEVER touch the real ~/.config/akm.
     const fakeHome = mkdtempSync(join(tmpdir(), "openpalm-fakehome-"));
     const savedHome = process.env.HOME;
@@ -477,23 +477,23 @@ describe("performSetup", () => {
     try {
       mkdirSync(join(fakeHome, "akm"), { recursive: true });
       mkdirSync(join(fakeHome, ".config", "akm"), { recursive: true });
-      writeFileSync(join(fakeHome, ".config", "akm", "config.json"), JSON.stringify({ stashDir: join(fakeHome, "akm") }));
+      const hostCfgRaw = JSON.stringify({ stashDir: join(fakeHome, "akm") });
+      writeFileSync(join(fakeHome, ".config", "akm", "config.json"), hostCfgRaw);
 
       const result = await performSetup(makeValidSpec({ hostAkm: true }));
       expect(result.ok).toBe(true);
 
-      // Overlay materialized + OP_HOST_AKM_STASH written.
-      expect(existsSync(join(stackDir, "host-akm.compose.yml"))).toBe(true);
+      // NO conditional overlay file is produced any more.
+      expect(existsSync(join(stackDir, "host-akm.compose.yml"))).toBe(false);
+      // OP_HOST_AKM_STASH points at the host stash (mount is always in core.compose.yml).
       expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).toContain(
         `OP_HOST_AKM_STASH=${join(fakeHome, "akm")}`,
       );
-      // Container-side source entry.
+      // Assistant-side source entry present.
       const opCfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
       expect((opCfg.sources as Array<Record<string, unknown>>).some((s) => s.name === "host-akm")).toBe(true);
-      // Personal-side source entry (primary stashDir untouched).
-      const hostCfg = JSON.parse(readFileSync(join(fakeHome, ".config", "akm", "config.json"), "utf-8"));
-      expect(hostCfg.stashDir).toBe(join(fakeHome, "akm"));
-      expect((hostCfg.sources as Array<Record<string, unknown>>).some((s) => s.name === "openpalm")).toBe(true);
+      // D1: the personal config is NEVER written (byte-for-byte unchanged, no `openpalm` source).
+      expect(readFileSync(join(fakeHome, ".config", "akm", "config.json"), "utf-8")).toBe(hostCfgRaw);
     } finally {
       if (savedHome !== undefined) process.env.HOME = savedHome;
       else delete process.env.HOME;
@@ -501,16 +501,18 @@ describe("performSetup", () => {
     }
   });
 
-  it("does not fail setup when hostAkm is set but the personal config is missing (lenient)", async () => {
+  it("does not enable (and does not fail) when host AKM is not available; mount falls back to empty dir", async () => {
     const fakeHome = mkdtempSync(join(tmpdir(), "openpalm-fakehome-"));
     const savedHome = process.env.HOME;
     process.env.HOME = fakeHome;
     try {
-      // No ~/.config/akm/config.json seeded — orchestrator throws fail-closed,
-      // wizard logs+continues, setup still succeeds.
+      // No ~/.config/akm/config.json → not available.
       const result = await performSetup(makeValidSpec({ hostAkm: true }));
       expect(result.ok).toBe(true);
-      expect(existsSync(join(fakeHome, ".config", "akm", "config.json"))).toBe(false);
+      // No source entry added, and OP_HOST_AKM_STASH left unset (→ compose empty-dir fallback).
+      const opCfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
+      expect((opCfg.sources ?? []).some((s: { name?: string }) => s.name === "host-akm")).toBe(false);
+      expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).not.toContain("OP_HOST_AKM_STASH=");
     } finally {
       if (savedHome !== undefined) process.env.HOME = savedHome;
       else delete process.env.HOME;

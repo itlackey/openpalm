@@ -163,20 +163,21 @@ export {
 // ── AKM host/assistant source wiring ──────────────────────────────────────
 export {
   HOST_SOURCE_NAME,
-  OPENPALM_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
-  addOpenpalmStashToHostConfig,
-  removeHostAkmSources,
+  removeHostAkmSource,
   importHostProfiles,
 } from "./control-plane/akm-sources.js";
 export type {
-  EnableHostAkmOptions,
   HostAkmSharingStatus,
 } from "./control-plane/host-akm-sharing.js";
 export {
   enableHostAkmSharing,
   disableHostAkmSharing,
   getHostAkmSharingStatus,
+  ensureHostStashEnv,
+  isHostAkmAvailable,
+  hostAkmStashPath,
+  hostAkmConfigPath,
 } from "./control-plane/host-akm-sharing.js";
 
 // ── Atomic file write (shared by all control-plane writers) ───────────────

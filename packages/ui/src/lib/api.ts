@@ -391,9 +391,7 @@ export async function saveAkmConfig(settings: Record<string, unknown>): Promise<
 
 // ── Host AKM sharing ────────────────────────────────────────────────
 export type HostAkmSharing = {
-  sharing: { enabled: boolean; hostStashPath: string | null; overlayPresent: boolean };
-  hostStashPath?: string;
-  hostConfigPath?: string;
+  sharing: { available: boolean; enabled: boolean; hostStashPath: string | null };
   profilesImported?: string[];
 };
 

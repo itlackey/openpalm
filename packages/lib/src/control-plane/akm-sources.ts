@@ -38,8 +38,6 @@ import type { ControlPlaneState } from "./types.js";
 
 /** Source entry name added to the OpenPalm/container config (points at /host-stash). */
 export const HOST_SOURCE_NAME = "host-akm";
-/** Source entry name added to the personal config (points at OP_HOME/knowledge). */
-export const OPENPALM_SOURCE_NAME = "openpalm";
 
 /** A filesystem source entry as akm persists it in config.sources[]. */
 type FilesystemSourceEntry = {
@@ -153,51 +151,14 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
 }
 
 /**
- * Personal side: add OP_HOME/knowledge to the user's ~/.config/akm/config.json
- * as a secondary source. FAILS CLOSED — if the personal config is missing or
- * corrupt this throws and writes nothing (never overwrites the user's file).
+ * Remove the `host-akm` secondary source from the assistant config (disable
+ * sharing). Parse-tolerant; never touches the user's personal config (D1 —
+ * host sharing is assistant-reads-host only). Idempotent.
  */
-export function addOpenpalmStashToHostConfig(
-  hostConfigPath: string,
-  knowledgePath: string,
-  writable = true,
-): void {
-  const entry: FilesystemSourceEntry = {
-    type: "filesystem",
-    path: knowledgePath,
-    name: OPENPALM_SOURCE_NAME,
-    writable,
-    enabled: true,
-  };
-  assertNoPrimaryEscalation(entry);
-  const config = readConfigFailClosed(hostConfigPath);
-  const updated = upsertSource(config, entry);
-  writeFileAtomic(hostConfigPath, JSON.stringify(updated, null, 2), 0o600);
-}
-
-/**
- * Remove BOTH source entries (config-only; the orchestrator also handles the overlay + env). Each side is independent:
- *  - OpenPalm config: parse-tolerant, always rewritten without the host-akm entry.
- *  - Personal config: only touched if it exists & parses; a missing/corrupt
- *    personal config is left untouched (best-effort removal, never destructive).
- */
-export function removeHostAkmSources(state: ControlPlaneState, hostConfigPath: string): void {
+export function removeHostAkmSource(state: ControlPlaneState): void {
   const opPath = openpalmConfigPath(state);
   const opConfig = readConfigTolerant(opPath);
   writeFileAtomic(opPath, JSON.stringify(removeSource(opConfig, HOST_SOURCE_NAME), null, 2), 0o600);
-
-  // Personal side: never create or overwrite a corrupt file just to remove an
-  // entry. If it doesn't exist or doesn't parse, there is nothing safe to do.
-  if (!existsSync(hostConfigPath)) return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(hostConfigPath, "utf-8"));
-  } catch {
-    return; // corrupt — leave the user's file alone
-  }
-  if (!parsed || typeof parsed !== "object") return;
-  const updated = removeSource(parsed as AkmConfigObject, OPENPALM_SOURCE_NAME);
-  writeFileAtomic(hostConfigPath, JSON.stringify(updated, null, 2), 0o600);
 }
 
 /**

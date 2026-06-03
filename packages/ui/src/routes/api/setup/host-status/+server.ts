@@ -1,7 +1,6 @@
 import { homedir } from 'node:os';
-import { existsSync } from 'node:fs';
 import { json } from '@sveltejs/kit';
-import { detectHostOpenCode, createLogger } from '@openpalm/lib';
+import { detectHostOpenCode, createLogger, isHostAkmAvailable, hostAkmStashPath } from '@openpalm/lib';
 import type { RequestHandler } from './$types';
 
 const logger = createLogger('admin:host-status');
@@ -10,8 +9,10 @@ export const GET: RequestHandler = () => {
   try {
     const status = detectHostOpenCode();
     const home = homedir();
-    const akmStashPath = `${home}/akm`;
-    const hostAkmAvailable = existsSync(akmStashPath);
+    const akmStashPath = hostAkmStashPath();
+    // "Available" = the host has an initialized AKM (personal config present),
+    // the reliable signal — not merely that a ~/akm directory exists.
+    const hostAkmAvailable = isHostAkmAvailable();
     return json({
       detected: status.providerCount > 0 || status.credentialCount > 0,
       providerCount: status.providerCount,

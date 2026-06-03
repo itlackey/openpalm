@@ -44,7 +44,7 @@
 				const imported = res.profilesImported?.length
 					? ` Imported: ${res.profilesImported.join(', ')}.`
 					: '';
-				notifications.push('success', `Host AKM sharing enabled.${imported} Restart the stack to mount /host-stash.`);
+				notifications.push('success', `Host AKM sharing enabled.${imported} Takes effect on the assistant's next AKM run / stack restart.`);
 				if (hostImportProfiles) await load(); // reflect any imported profiles
 			}
 		} catch (e) {
@@ -688,51 +688,58 @@
 				<section class="config-section">
 					<h3 class="section-title">Host AKM Sharing</h3>
 					<p class="section-note">
-						Share knowledge with your personal AKM stash on this machine (<code>~/akm</code>).
-						The assistant reads it and can contribute back; each side keeps its own primary
-						stash, database, and cache — only the knowledge files are shared. Enabling adds a
-						source entry to your <code>~/.config/akm/config.json</code> and mounts
-						<code>~/akm</code> into the assistant. Your files' ownership and primary stash are
-						never changed. Changes take effect after the next stack restart.
+						Let the assistant read (and, on explicit request, contribute back to) your
+						personal AKM stash on this machine (<code>~/akm</code>). Each side keeps its own
+						primary stash, database, and cache — only the knowledge files are shared, as a
+						writable secondary source. Your files' ownership and primary stash are never
+						changed. Changes take effect after the next stack restart.
 					</p>
-					<div class="controls controls--grid">
-						<div class="control-group control-group--wide">
-							<span class="control-label">Status</span>
-							<div class="host-akm-status">
-								<span class="badge {hostSharing.sharing.enabled ? 'badge--on' : 'badge--off'}">
-									{hostSharing.sharing.enabled ? 'Enabled' : 'Disabled'}
-								</span>
-								{#if hostSharing.hostStashPath}
-									<code class="host-akm-path">{hostSharing.hostStashPath}</code>
+					{#if !hostSharing.sharing.available}
+						<p class="section-note">
+							<span class="badge badge--off">Not detected</span>
+							No personal AKM was found on this host (<code>~/.config/akm/config.json</code>).
+							Run <code>akm init</code> on this machine to enable sharing.
+						</p>
+					{:else}
+						<div class="controls controls--grid">
+							<div class="control-group control-group--wide">
+								<span class="control-label">Status</span>
+								<div class="host-akm-status">
+									<span class="badge {hostSharing.sharing.enabled ? 'badge--on' : 'badge--off'}">
+										{hostSharing.sharing.enabled ? 'Enabled' : 'Disabled'}
+									</span>
+									{#if hostSharing.sharing.hostStashPath}
+										<code class="host-akm-path">{hostSharing.sharing.hostStashPath}</code>
+									{/if}
+								</div>
+							</div>
+							{#if !hostSharing.sharing.enabled}
+								<div class="control-group control-group--wide">
+									<label class="control-label control-label--checkbox">
+										<input type="checkbox" bind:checked={hostImportProfiles} disabled={hostBusy} />
+										Also import host LLM/agent profiles (read-only snapshot)
+									</label>
+								</div>
+							{/if}
+							<div class="control-group control-group--wide host-akm-actions">
+								<button
+									class="btn {hostSharing.sharing.enabled ? 'btn-secondary' : 'btn-primary'} btn-sm"
+									onclick={() => void toggleHostSharing()}
+									disabled={hostBusy || !tokenStored}>
+									{#if hostBusy}<span class="spinner"></span>{/if}
+									{hostSharing.sharing.enabled ? 'Disable host sharing' : 'Enable host sharing'}
+								</button>
+								{#if hostSharing.sharing.enabled}
+									<button
+										class="btn btn-secondary btn-sm"
+										onclick={() => void reimportHostProfiles()}
+										disabled={hostBusy || !tokenStored}>
+										Re-import host profiles
+									</button>
 								{/if}
 							</div>
 						</div>
-						{#if !hostSharing.sharing.enabled}
-							<div class="control-group control-group--wide">
-								<label class="control-label control-label--checkbox">
-									<input type="checkbox" bind:checked={hostImportProfiles} disabled={hostBusy} />
-									Also import host LLM/agent profiles (read-only snapshot)
-								</label>
-							</div>
-						{/if}
-						<div class="control-group control-group--wide host-akm-actions">
-							<button
-								class="btn {hostSharing.sharing.enabled ? 'btn-secondary' : 'btn-primary'} btn-sm"
-								onclick={() => void toggleHostSharing()}
-								disabled={hostBusy || !tokenStored}>
-								{#if hostBusy}<span class="spinner"></span>{/if}
-								{hostSharing.sharing.enabled ? 'Disable host sharing' : 'Enable host sharing'}
-							</button>
-							{#if hostSharing.sharing.enabled}
-								<button
-									class="btn btn-secondary btn-sm"
-									onclick={() => void reimportHostProfiles()}
-									disabled={hostBusy || !tokenStored}>
-									Re-import host profiles
-								</button>
-							{/if}
-						</div>
-					</div>
+					{/if}
 				</section>
 			{/if}
 

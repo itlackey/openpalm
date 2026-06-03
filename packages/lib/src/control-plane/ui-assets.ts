@@ -12,7 +12,7 @@
  */
 import {
   existsSync, mkdirSync, readdirSync, copyFileSync,
-  writeFileSync, rmSync, realpathSync, renameSync,
+  writeFileSync, readFileSync, rmSync, realpathSync, renameSync,
 } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -107,16 +107,44 @@ export function resolveLocalOpenpalmDir(): string | null {
  * Falls back to downloading the repo tarball from GitHub when no local
  * skeleton is found (production binary, packaged Electron app).
  */
+/** Version stamp recording which skeleton version OP_HOME was last seeded from. */
+export const SKELETON_VERSION_STAMP = '.skeleton-version';
+
+/**
+ * Seed the bundled `.openpalm/` skeleton into OP_HOME — ONCE PER VERSION.
+ *
+ * Electron calls this on every launch; without a guard it re-copied the entire
+ * skeleton tree each time (wasteful, and it re-materialized files a user/process
+ * had deliberately removed). We stamp OP_HOME/.skeleton-version with `repoRef`
+ * after a successful seed and skip the copy when it already matches — so a given
+ * version seeds once and an upgrade re-seeds (skipExisting still preserves any
+ * user edits). To force a re-seed, delete the stamp.
+ */
 export async function seedOpenPalmDir(
   repoRef: string,
   homeDir: string,
   _configDir: string,
   _dataDir: string,
 ): Promise<void> {
+  const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
+  if (existsSync(stampPath)) {
+    try {
+      if (readFileSync(stampPath, 'utf-8').trim() === repoRef.trim()) {
+        logger.debug('skeleton already seeded for this version — skipping', { repoRef });
+        return;
+      }
+    } catch { /* unreadable stamp → re-seed */ }
+  }
+
+  const stamp = (): void => {
+    try { writeFileSync(stampPath, `${repoRef}\n`); } catch { /* best-effort */ }
+  };
+
   const local = resolveLocalOpenpalmDir();
   if (local) {
-    logger.debug('seeding .openpalm from local source', { src: local });
+    logger.debug('seeding .openpalm from local source', { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
+    stamp();
     return;
   }
 
@@ -137,6 +165,7 @@ export async function seedOpenPalmDir(
     const srcOpenpalm = join(tmpDir, '.openpalm');
     if (!existsSync(srcOpenpalm)) throw new Error('.openpalm/ not found in tarball');
     copyTree(srcOpenpalm, homeDir, { skipExisting: true });
+    stamp();
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -184,10 +213,54 @@ export function resolveLocalUiBuild(): string | null {
  *   1. OP_HOME/data/ui/ — user-installed or auto-updated build
  *   2. Bundled / local build (Electron extraResources, OPENPALM_REPO_ROOT, source checkout)
  */
+/** Filename of the build-time version stamp written into the UI build root. */
+export const UI_VERSION_STAMP = '.openpalm-ui-version';
+
+/** Read the stamped UI version from a build dir, or null if absent/unreadable. */
+export function readUiBuildVersion(dir: string): string | null {
+  try {
+    const v = readFileSync(join(dir, UI_VERSION_STAMP), 'utf-8').trim();
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve which UI build to run.
+ *
+ * Two channels exist: the bundled build (shipped inside the AppImage / source
+ * tree) and `data/ui` (operator-updatable, seeded from GitHub releases). To fix
+ * the stale-`data/ui` shadowing bug AND stay forward-compatible with updating the
+ * UI without shipping a new app (D5), selection is VERSION-AWARE:
+ *
+ *   - If only one channel has a build → use it.
+ *   - If both exist → use `data/ui` ONLY when it is strictly NEWER than the
+ *     bundled build (per the version stamp); otherwise prefer the bundled build.
+ *     An unstamped/older `data/ui` never shadows a newer bundled build.
+ *
+ * This means a fresh app runs its bundled UI, and a future "update UI only" flow
+ * (seed a newer-stamped build into data/ui) is picked up automatically — no app
+ * reinstall required.
+ */
 export function resolveUiBuildDir(): string {
   const dataBuild = join(resolveDataDir(), 'ui');
-  if (existsSync(join(dataBuild, 'index.js'))) return dataBuild;
-  return resolveLocalUiBuild() ?? dataBuild;
+  const hasData = existsSync(join(dataBuild, 'index.js'));
+  // resolveLocalUiBuild()'s env/resourcesPath candidates only check the dir
+  // exists, not that it holds a runnable build — require index.js before trusting it.
+  const bundledRaw = resolveLocalUiBuild();
+  const bundled = bundledRaw && existsSync(join(bundledRaw, 'index.js')) ? bundledRaw : null;
+
+  if (hasData && bundled) {
+    const dataVer = readUiBuildVersion(dataBuild);
+    const bundledVer = readUiBuildVersion(bundled);
+    // data/ui wins only when we can prove it's strictly newer.
+    if (dataVer && bundledVer && compareVersionTags(dataVer, bundledVer) > 0) return dataBuild;
+    return bundled;
+  }
+  if (hasData) return dataBuild;
+  if (bundled) return bundled;
+  return dataBuild; // nothing present yet → caller triggers seedUiBuild
 }
 
 /**
