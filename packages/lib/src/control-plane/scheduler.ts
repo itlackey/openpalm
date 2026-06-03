@@ -10,6 +10,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
 import { loadMarkdownTasks, taskToAutomationConfig } from "./markdown-task.js";
+import { assertAkmEnvComplete } from "./akm-user-env.js";
 
 const logger = createLogger("scheduler");
 
@@ -69,6 +70,7 @@ export async function executeAutomation(
   id: string,
   akmEnv: NodeJS.ProcessEnv,
 ): Promise<AutomationRunResult> {
+  assertAkmEnvComplete(akmEnv); // I-6: never let akm fall back to the global config
   // Strip file suffix if caller passes the full filename.
   const taskId = id.replace(/\.(?:ya?ml|md)$/, "");
   return new Promise((resolve) => {
@@ -92,6 +94,7 @@ export async function executeAutomation(
 // ── Sync crontab with knowledge/tasks/*.yml ──────────────────────────────────
 
 export async function syncAutomations(akmEnv: NodeJS.ProcessEnv): Promise<void> {
+  assertAkmEnvComplete(akmEnv); // I-6: never let akm fall back to the global config
   return new Promise((resolve, reject) => {
     execFile(
       "akm",

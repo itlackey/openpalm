@@ -185,8 +185,8 @@
   <!-- Shared AKM (only shown when ~/akm exists on the host) -->
   {#if hostAkmAvailable}
     <div class="options-section">
-      <h3 class="options-section-title">Shared AKM Environment</h3>
-      <p class="options-section-desc">Mount your host akm stash, index, and cache into the assistant container.</p>
+      <h3 class="options-section-title">Share knowledge with my host AKM</h3>
+      <p class="options-section-desc">Adds a source entry to your personal <code>~/.config/akm/config.json</code> and mounts <code>~/akm</code> into the assistant as a secondary source. Your files' ownership is not changed and your primary stash is unchanged — your <code>~/akm</code> data and cache stay yours.</p>
       <div class="toggle-grid">
         <div class="toggle-card {hostAkmEnabled ? 'on' : ''}">
           <div class="toggle-card-header" role="button" tabindex="0"
@@ -194,8 +194,8 @@
             onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onhostakmchange(!hostAkmEnabled); }}>
             <div class="toggle-card-icon">🧠</div>
             <div class="toggle-card-info">
-              <div class="toggle-card-name">Shared AKM</div>
-              <div class="toggle-card-desc">Lets the assistant read and write to your personal knowledge files on this computer.</div>
+              <div class="toggle-card-name">Share knowledge with my host AKM (read + contribute)</div>
+              <div class="toggle-card-desc">The assistant reads your personal knowledge and can contribute back. Each side keeps its own primary stash, database, and cache — only the knowledge files are shared.</div>
             </div>
             <div class="toggle-card-switch">
               <div class="toggle-track {hostAkmEnabled ? 'on' : ''}"><div class="toggle-thumb"></div></div>

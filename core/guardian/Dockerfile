@@ -25,17 +25,14 @@ ENV PATH="/usr/local/.opencode/bin:$PATH"
 # is bind-mounted from OP_HOME/config/guardian (see channels.compose.yml).
 ENV OPENCODE_CONFIG_DIR=/etc/opencode
 
-# Install akm-cli for shared stash, env, secret, and skill management.
-# Tracking the `next` prerelease dist-tag while akm + OpenPalm ship together
-# (the `env` asset type lands in the next akm prerelease). Install globally
-# into /usr/local so the unprivileged bun user (set with USER below) can
-# execute it without writing to its own $HOME.
-# TODO(0.11.0 stable): pin off `next` once env asset type is in a stable akm-cli release.
-ARG AKM_CLI_VERSION=next
-RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
-    && chmod -R a+rX /usr/local/install/global \
-    && chmod 755 /usr/local/bin/akm \
-    && akm --version
+# NOTE: akm-cli is intentionally NOT installed here. The guardian's OpenCode is
+# a pure content moderator (opencode.jsonc denies bash/edit/webfetch and uses no
+# akm-opencode plugin) and channels.compose.yml mounts NO stash/config/cache/data
+# or AKM_* env into the guardian — so an installed akm would only ever operate on
+# an ephemeral default stash under $HOME, never the managed one. Removed to avoid
+# an unmanaged third akm instance and unjustified image weight (proposal I-7). If
+# the guardian ever needs akm, wire it as a read-ONLY reader (own data/cache,
+# never a third writer) — do not reintroduce a bare global install.
 
 WORKDIR /app
 # Bun workspace symlinks are not available inside Docker builds, so we copy the

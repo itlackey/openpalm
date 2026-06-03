@@ -177,8 +177,11 @@ describe('install flow — tier 1 (file validation)', () => {
     const akmConfigPath = join(homeDir, 'config/akm/config.json');
     expect(existsSync(akmConfigPath)).toBe(true);
     const akmConfig = JSON.parse(readFileSync(akmConfigPath, 'utf-8'));
-    expect(akmConfig.llm?.provider).toBe('ollama');
-    expect(akmConfig.llm?.model).toBe('qwen2.5-coder:3b');
+    // Canonical akm 0.8.0 shape (I-3): profiles.llm.default + defaults.llm.
+    expect(akmConfig.llm).toBeUndefined();
+    expect(akmConfig.profiles.llm.default.provider).toBe('ollama');
+    expect(akmConfig.profiles.llm.default.model).toBe('qwen2.5-coder:3b');
+    expect(akmConfig.defaults.llm).toBe('default');
 
     // ── Validate compose files exist ─────────────────────────────────
     expect(existsSync(join(homeDir, 'config/stack/core.compose.yml'))).toBe(true);

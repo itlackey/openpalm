@@ -16,6 +16,9 @@ import {
   deleteUserEnvKey,
   userEnvPathSync,
   AKM_USER_ENV_REF,
+  buildAkmEnv,
+  assertAkmEnvComplete,
+  AKM_ENV_KEYS,
 } from "./akm-user-env.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -109,5 +112,31 @@ describe("akm user-env helpers", () => {
 describe("AKM_USER_ENV_REF", () => {
   it("exports the canonical akm ref string", () => {
     expect(AKM_USER_ENV_REF).toBe("env:user");
+  });
+});
+
+describe("assertAkmEnvComplete (I-6 guard)", () => {
+  it("passes for the env produced by buildAkmEnv", () => {
+    const env = buildAkmEnv({ stashDir: "/k", configDir: "/c", dataDir: "/d" } as ControlPlaneState);
+    expect(() => assertAkmEnvComplete(env)).not.toThrow();
+  });
+
+  it("throws when any of the four AKM_* dirs is missing", () => {
+    for (const omit of AKM_ENV_KEYS) {
+      const env: NodeJS.ProcessEnv = {
+        AKM_STASH_DIR: "/s",
+        AKM_CONFIG_DIR: "/c",
+        AKM_CACHE_DIR: "/ca",
+        AKM_DATA_DIR: "/d",
+      };
+      delete env[omit];
+      expect(() => assertAkmEnvComplete(env)).toThrow(omit);
+    }
+  });
+
+  it("throws when a key is present but blank", () => {
+    expect(() =>
+      assertAkmEnvComplete({ AKM_STASH_DIR: "/s", AKM_CONFIG_DIR: "  ", AKM_CACHE_DIR: "/ca", AKM_DATA_DIR: "/d" }),
+    ).toThrow("AKM_CONFIG_DIR");
   });
 });

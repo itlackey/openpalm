@@ -402,11 +402,31 @@ describe("performSetup", () => {
     const akmConfigPath = join(homeDir, "config", "akm", "config.json");
     expect(existsSync(akmConfigPath)).toBe(true);
     const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
-    expect(config.llm.model).toBe("gpt-4o");
-    expect(config.llm.provider).toBe("openai");
+    // Canonical akm 0.8.0 shape: profiles.llm.default + defaults.llm — NOT top-level `llm`.
+    expect(config.llm).toBeUndefined();
+    expect(config.profiles.llm.default.model).toBe("gpt-4o");
+    expect(config.profiles.llm.default.provider).toBe("openai");
+    expect(config.defaults.llm).toBe("default");
     expect(config.embedding.model).toBe("text-embedding-3-small");
     expect(config.embedding.provider).toBe("openai");
     expect(config.embedding.dimension).toBe(1536);
+  });
+
+  it("does not write the legacy migration-triggering akm config shape (I-3)", async () => {
+    // akm's config-migration.ts triggers the legacy 0.7->0.8 shim (which rewrites
+    // the file on load) when `isObj(raw.llm) && hasOwn(raw.llm, "endpoint")`. We must
+    // write the canonical shape so that condition can NEVER be satisfied — otherwise
+    // the assistant's akm config silently rewrites on first load today and becomes a
+    // fatal load error when akm removes the shim.
+    const result = await performSetup(makeValidSpec());
+    expect(result.ok).toBe(true);
+    const config = JSON.parse(
+      readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    // The exact migration trigger: a top-level `llm` object carrying `endpoint`.
+    const legacyLlm = config.llm as Record<string, unknown> | undefined;
+    expect(legacyLlm === undefined || !Object.hasOwn(legacyLlm, "endpoint")).toBe(true);
+    expect(config.llm).toBeUndefined();
   });
 
   it("writes stack.yml v2 version marker", async () => {
@@ -441,9 +461,61 @@ describe("performSetup", () => {
 
     const akmConfigPath = join(homeDir, "config", "akm", "config.json");
     const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
-    expect(config.llm.provider).toBe("ollama");
-    expect(config.llm.model).toBe("llama3.2");
+    expect(config.llm).toBeUndefined();
+    expect(config.profiles.llm.default.provider).toBe("ollama");
+    expect(config.profiles.llm.default.model).toBe("llama3.2");
+    expect(config.profiles.llm.default.endpoint).toBe("http://localhost:11434/v1/chat/completions");
+    expect(config.defaults.llm).toBe("default");
     expect(config.embedding.dimension).toBe(768);
+  });
+
+  it("enables host akm sharing when hostAkm is set (overlay + both source entries)", async () => {
+    // HOME must point at a temp dir so we NEVER touch the real ~/.config/akm.
+    const fakeHome = mkdtempSync(join(tmpdir(), "openpalm-fakehome-"));
+    const savedHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+    try {
+      mkdirSync(join(fakeHome, "akm"), { recursive: true });
+      mkdirSync(join(fakeHome, ".config", "akm"), { recursive: true });
+      writeFileSync(join(fakeHome, ".config", "akm", "config.json"), JSON.stringify({ stashDir: join(fakeHome, "akm") }));
+
+      const result = await performSetup(makeValidSpec({ hostAkm: true }));
+      expect(result.ok).toBe(true);
+
+      // Overlay materialized + OP_HOST_AKM_STASH written.
+      expect(existsSync(join(stackDir, "host-akm.compose.yml"))).toBe(true);
+      expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).toContain(
+        `OP_HOST_AKM_STASH=${join(fakeHome, "akm")}`,
+      );
+      // Container-side source entry.
+      const opCfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
+      expect((opCfg.sources as Array<Record<string, unknown>>).some((s) => s.name === "host-akm")).toBe(true);
+      // Personal-side source entry (primary stashDir untouched).
+      const hostCfg = JSON.parse(readFileSync(join(fakeHome, ".config", "akm", "config.json"), "utf-8"));
+      expect(hostCfg.stashDir).toBe(join(fakeHome, "akm"));
+      expect((hostCfg.sources as Array<Record<string, unknown>>).some((s) => s.name === "openpalm")).toBe(true);
+    } finally {
+      if (savedHome !== undefined) process.env.HOME = savedHome;
+      else delete process.env.HOME;
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it("does not fail setup when hostAkm is set but the personal config is missing (lenient)", async () => {
+    const fakeHome = mkdtempSync(join(tmpdir(), "openpalm-fakehome-"));
+    const savedHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+    try {
+      // No ~/.config/akm/config.json seeded — orchestrator throws fail-closed,
+      // wizard logs+continues, setup still succeeds.
+      const result = await performSetup(makeValidSpec({ hostAkm: true }));
+      expect(result.ok).toBe(true);
+      expect(existsSync(join(fakeHome, ".config", "akm", "config.json"))).toBe(false);
+    } finally {
+      if (savedHome !== undefined) process.env.HOME = savedHome;
+      else delete process.env.HOME;
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
   });
 
   it("writes stack.yml as version marker only", async () => {

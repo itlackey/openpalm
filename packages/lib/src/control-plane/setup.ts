@@ -5,9 +5,11 @@
  * This module does NOT include Docker operations (compose up, image pull, etc.)
  * — those happen separately in the caller after setup completes.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
+import { writeFileAtomic } from "./fs-atomic.js";
+import { enableHostAkmSharing } from "./host-akm-sharing.js";
 import {
   PROVIDER_KEY_MAP,
 } from "../provider-constants.js";
@@ -30,20 +32,6 @@ import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
-
-// ── Atomic write helper ──────────────────────────────────────────────────
-
-/**
- * Write `content` to `path` atomically: write to `path.tmp` first, then
- * rename over the target. On POSIX this rename is atomic — a reader always
- * sees either the old file or the new file, never a partially-written one.
- * If the tmp write fails the original file is untouched.
- */
-function writeFileAtomic(path: string, content: string | Uint8Array, mode?: number): void {
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
-  renameSync(tmp, path);
-}
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -243,13 +231,10 @@ export async function performSetup(
         : "";
       const akmUpdates: Record<string, string> = {};
       if (imageTag) akmUpdates.OP_IMAGE_TAG = imageTag;
-      if (hostAkm) {
-        const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-        if (home) {
-          akmUpdates.OP_AKM_STASH = `${home}/akm`;
-          akmUpdates.OP_AKM_CONFIG = `${home}/.config/akm`;
-        }
-      }
+      // NOTE: host-akm sharing no longer repoints the container's primary stash
+      // (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is
+      // wired as a read-write SECONDARY source — see configureHostAkmSharing()
+      // below (Phase 4) and the host-akm.compose.yml overlay.
       if (Object.keys(akmUpdates).length > 0) {
         writeFileAtomic(`${state.stashDir}/env/stack.env`, mergeEnvContent(systemEnvForAkm, akmUpdates), 0o600);
       }
@@ -266,12 +251,27 @@ export async function performSetup(
         const updated = { ...existing };
         if (llm) {
           const base = llm.baseUrl ? llm.baseUrl.replace(/\/+$/, "") : "";
-          updated.llm = {
-            ...((existing.llm as Record<string, unknown>) ?? {}),
+          // Write the CANONICAL akm 0.8.0 shape: profiles.llm.default + defaults.llm.
+          // The runtime resolver reads profiles.llm[defaults.llm] (akm config.ts).
+          // Do NOT write a top-level `llm` — akm's top-level schema is .strict()
+          // with no `llm` key (config-schema.ts AkmConfigShape). A top-level `llm`
+          // only loads today via akm's legacy 0.7→0.8 migration shim
+          // (config-migration.ts), which rewrites the file on load and is marked
+          // for removal — writing the native shape removes that dependency.
+          const profiles = (updated.profiles as Record<string, unknown>) ?? {};
+          const llmProfiles = (profiles.llm as Record<string, unknown>) ?? {};
+          llmProfiles.default = {
+            ...((llmProfiles.default as Record<string, unknown>) ?? {}),
             endpoint: base ? `${base}/chat/completions` : "",
             model: llm.model,
             provider: llm.provider,
           };
+          profiles.llm = llmProfiles;
+          updated.profiles = profiles;
+          const defaults = (updated.defaults as Record<string, unknown>) ?? {};
+          if (typeof defaults.llm !== "string") defaults.llm = "default";
+          updated.defaults = defaults;
+          delete (updated as Record<string, unknown>).llm; // never persist the legacy key
         }
         if (embedding) {
           const base = embedding.baseUrl ? embedding.baseUrl.replace(/\/+$/, "") : "";
@@ -284,6 +284,35 @@ export async function performSetup(
           };
         }
         writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
+      }
+
+      // Host AKM sharing: register the user's personal ~/akm as a read-write
+      // SECONDARY source on both sides + mount it at /host-stash via the overlay.
+      // Lenient here (wizard): if the personal akm config is missing/corrupt the
+      // orchestrator throws fail-closed — we log and continue rather than abort
+      // the whole install. The admin endpoint surfaces the error explicitly.
+      if (hostAkm) {
+        const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+        if (!home) {
+          logger.warn("hostAkm requested but HOME is unset; skipping host akm sharing");
+        } else {
+          const hostStashPath = `${home}/akm`;
+          const hostConfigPath = `${home}/.config/akm/config.json`;
+          try {
+            const { profilesImported } = enableHostAkmSharing(state, {
+              hostStashPath,
+              hostConfigPath,
+              writable: true,
+              importProfiles: !llm, // import host profiles only if the wizard set none
+            });
+            logger.info("host akm sharing enabled during setup", { hostStashPath, profilesImported });
+          } catch (err) {
+            logger.warn("host akm sharing could not be fully enabled", {
+              error: (err as Error).message,
+              hint: "ensure the personal akm config exists (run `akm init`) then enable from the AKM admin tab",
+            });
+          }
+        }
       }
 
       // Write TTS/STT vars to stack.env for the voice channel

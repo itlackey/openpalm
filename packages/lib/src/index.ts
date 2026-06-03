@@ -160,13 +160,34 @@ export {
   fetchProviderModels,
 } from "./control-plane/provider-models.js";
 
+// ── AKM host/assistant source wiring ──────────────────────────────────────
+export {
+  HOST_SOURCE_NAME,
+  OPENPALM_SOURCE_NAME,
+  addHostStashToOpenpalmConfig,
+  addOpenpalmStashToHostConfig,
+  removeHostAkmSources,
+  importHostProfiles,
+} from "./control-plane/akm-sources.js";
+export type {
+  EnableHostAkmOptions,
+  HostAkmSharingStatus,
+} from "./control-plane/host-akm-sharing.js";
+export {
+  enableHostAkmSharing,
+  disableHostAkmSharing,
+  getHostAkmSharingStatus,
+} from "./control-plane/host-akm-sharing.js";
+
+// ── Atomic file write (shared by all control-plane writers) ───────────────
+export { writeFileAtomic } from "./control-plane/fs-atomic.js";
+
 // ── Core Assets ─────────────────────────────────────────────────────────
 export {
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets,
-  seedStashAssets,
   seedAssistantPersonaFiles,
 } from "./control-plane/core-assets.js";
 
@@ -324,7 +345,9 @@ export {
 // ── AKM user env (env:user) ──────────────────────────────────────────────
 export {
   AKM_USER_ENV_REF,
+  AKM_ENV_KEYS,
   buildAkmEnv,
+  assertAkmEnvComplete,
   ensureAkmUserEnv,
   writeUserEnvKey,
   deleteUserEnvKey,

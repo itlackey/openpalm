@@ -74,6 +74,29 @@ export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
   };
 }
 
+/** The four XDG-base akm env vars that MUST be set together (akm 0.8.0). */
+export const AKM_ENV_KEYS = ["AKM_STASH_DIR", "AKM_CONFIG_DIR", "AKM_CACHE_DIR", "AKM_DATA_DIR"] as const;
+
+/**
+ * Guard (I-6): every OpenPalm-internal `akm` spawn MUST set all four AKM_* dirs
+ * explicitly. Partially overriding them lets akm fall back to the operator's
+ * GLOBAL ~/.config/akm / ~/.local/share/akm for the unset families — the
+ * documented forensic hazard (akm setup writing the global config regardless of
+ * AKM_STASH_DIR). We check the keys are present as OWN properties of the env
+ * object passed to akm, not merely inherited from process.env (process.env may
+ * carry the operator's global AKM_STASH_DIR, which is exactly what must NOT be
+ * relied upon). `buildAkmEnv` satisfies this by construction.
+ */
+export function assertAkmEnvComplete(env: NodeJS.ProcessEnv): void {
+  const missing = AKM_ENV_KEYS.filter((k) => !env[k] || !String(env[k]).trim());
+  if (missing.length > 0) {
+    throw new Error(
+      `Refusing to spawn akm without all four AKM_* dirs set: missing ${missing.join(", ")}. ` +
+        `Use buildAkmEnv(state) — a partial set lets akm write the operator's global config.`,
+    );
+  }
+}
+
 /**
  * Canonical akm `env:user` file path for a control-plane state.
  *

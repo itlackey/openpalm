@@ -144,6 +144,12 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
  * Returns the fixed compose stack: core, services, channels, and custom.
  * First-party services are profile-gated inside services.compose.yml and
  * channels.compose.yml.
+ *
+ * `host-akm.compose.yml` is OPTIONAL: unlike the fixed overlays it is only
+ * present when the operator enabled host AKM sharing (it adds a volume mount,
+ * which Compose profiles cannot gate). Its presence alone enables the
+ * /host-stash mount. It is appended after core so the volume add lands on the
+ * already-defined assistant service.
  */
 export function discoverStackOverlays(stackDir: string, _homeDir?: string): string[] {
   const files: string[] = [];
@@ -151,7 +157,7 @@ export function discoverStackOverlays(stackDir: string, _homeDir?: string): stri
   const coreYml = `${stackDir}/core.compose.yml`;
   if (existsSync(coreYml)) files.push(coreYml);
 
-  for (const name of ['services.compose.yml', 'channels.compose.yml', 'custom.compose.yml']) {
+  for (const name of ['services.compose.yml', 'channels.compose.yml', 'custom.compose.yml', 'host-akm.compose.yml']) {
     const composePath = `${stackDir}/${name}`;
     if (existsSync(composePath)) files.push(composePath);
   }

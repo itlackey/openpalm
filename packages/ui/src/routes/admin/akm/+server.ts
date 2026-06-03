@@ -3,7 +3,8 @@
  * PATCH /admin/akm — Update config fields aligned with AKM 0.8.0 schema
  */
 import type { RequestHandler } from './$types';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileAtomic } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
@@ -315,7 +316,9 @@ export const PATCH: RequestHandler = async (event) => {
     }
 
     mkdirSync(`${state.configDir}/akm`, { recursive: true });
-    writeFileSync(akmConfigPath(state.configDir), JSON.stringify(updated, null, 2), { mode: 0o600 });
+    // I-5: atomic write through the shared lib writer (tmp+rename) so a
+    // concurrent reader/akm process never observes a half-written config.
+    writeFileAtomic(akmConfigPath(state.configDir), JSON.stringify(updated, null, 2), 0o600);
 
     return jsonResponse(200, { ok: true, config: updated }, requestId);
   } catch (e) {

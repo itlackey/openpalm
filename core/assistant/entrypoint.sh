@@ -40,10 +40,14 @@ ensure_home_layout() {
     /stash
 
   if [ "$IS_ROOT" = "1" ]; then
-    # Recursively fix ownership. Previous container runs may have created
-    # directories as root when OP_UID/OP_GID differed. A targeted chown
-    # misses nested dirs created by third-party tools between invocations.
-    chown -R "$TARGET_UID:$TARGET_GID" /home/opencode /work /opt/akm /stash 2>/dev/null || true
+    # Chown ONLY container-private paths. NEVER chown bind-mounted host stashes
+    # (/stash = OP_HOME/knowledge, and /host-stash = the user's personal ~/akm
+    # when host-akm sharing is enabled) or /work (= OP_HOME/workspace). The host
+    # owns those files and the container runs as OP_UID:OP_GID (the host owner)
+    # via gosu, so it reads/writes them directly. Recursively chowning a bind
+    # mount rewrites host file ownership on every boot — a data-ownership hazard,
+    # especially for /host-stash. Container-private cache/data are safe to chown.
+    chown -R "$TARGET_UID:$TARGET_GID" /home/opencode /opt/akm/cache /opt/akm/data 2>/dev/null || true
 
     mkdir -p /var/run/sshd
   fi

@@ -11,9 +11,9 @@
  * historical `.env.schema` files (varlock format) were retired in #391.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir, resolveStashDir } from "./home.js";
+import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
@@ -51,45 +51,6 @@ export function ensureOpenCodeSystemConfig(): void {
 }
 
 // ── Shared akm stash (skills / commands / agents) ────────────────────
-
-/**
- * Seed the shared akm stash with built-in skills / commands / agents.
- *
- * Idempotent: **never overwrites** an existing file — user edits to a
- * seeded asset always win, which preserves the same "config doesn't
- * overwrite user edits" contract that governs the rest of OP_HOME.
- *
- * Returns the list of stash-relative paths that were actually written
- * (empty on re-run when every seed already exists on disk).
- *
- * `seeds` is a map of knowledge-relative path → file content. Keys MUST be
- * forward-slash relative paths that stay inside `knowledge/`; any key
- * that escapes the knowledge directory after canonicalization throws,
- * preventing a malicious caller from writing arbitrary files. Source of
- * truth for the seeded files lives at `.openpalm/knowledge/` in the
- * repo; the CLI embeds them at build time and passes the embedded
- * record directly.
- */
-export function seedStashAssets(seeds: Record<string, string>): string[] {
-  const stashDir = resolveStashDir();
-  const normalizedStash = resolve(stashDir);
-  const written: string[] = [];
-  for (const [relPath, content] of Object.entries(seeds)) {
-    const targetPath = join(stashDir, relPath);
-    const normalizedTarget = resolve(targetPath);
-    if (
-      normalizedTarget !== normalizedStash &&
-      !normalizedTarget.startsWith(normalizedStash + sep)
-    ) {
-      throw new Error(`Seed path escapes stash dir: ${relPath}`);
-    }
-    if (existsSync(targetPath)) continue;
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, content);
-    written.push(relPath);
-  }
-  return written;
-}
 
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 

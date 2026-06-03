@@ -72,8 +72,11 @@ services:
       - ${OP_HOME}/config/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME}/data/assistant:/home/opencode
-      - ${OP_AKM_STASH:-${OP_HOME}/knowledge}:/stash
-      - ${OP_AKM_CONFIG:-${OP_HOME}/config/akm}:/etc/akm
+      # Primary stash + config are ALWAYS OpenPalm-managed. The personal ~/akm
+      # is wired in (when enabled) as a read-write SECONDARY source via the
+      # host-akm.compose.yml overlay (/host-stash), never by repointing /stash.
+      - ${OP_HOME}/knowledge:/stash
+      - ${OP_HOME}/config/akm:/etc/akm
       - ${OP_HOME}/data/akm/cache:/opt/akm/cache
       - ${OP_HOME}/data/akm/data:/opt/akm/data
       - ${OP_HOME}/workspace:/work

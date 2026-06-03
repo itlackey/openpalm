@@ -1,0 +1,16 @@
+# Host AKM sharing overlay — present in OP_HOME/config/stack/ ONLY when the
+# operator has opted into host AKM sharing (written on enable, removed on
+# disable). It is NOT one of the always-materialized fixed overlays; its mere
+# presence is what enables the mount (discoverStackOverlays is existence-based).
+#
+# Mounts the user's personal akm stash (OP_HOST_AKM_STASH, e.g. ${HOME}/akm)
+# read-WRITE at /host-stash so the assistant can read host knowledge and, on an
+# explicit `--target host-akm`, contribute back. Ownership is NEVER modified by
+# the container: entrypoint.sh chowns only container-private paths, and the
+# container runs as OP_UID:OP_GID (the host owner) via gosu, so writes preserve
+# host ownership. The primary stash (/stash) and config (/etc/akm) stay
+# OpenPalm-managed — this overlay only ADDS a secondary source mount.
+services:
+  assistant:
+    volumes:
+      - ${OP_HOST_AKM_STASH}:/host-stash
