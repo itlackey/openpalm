@@ -71,10 +71,44 @@ export type VoiceVarsConfig = {
   };
 };
 
+// Authoritative defaults for the bundled openpalm/voice addon.
+const OPENPALM_VOICE_TTS_MODEL = "kokoro";
+const OPENPALM_VOICE_STT_MODEL = "whisper-1";
+const OPENPALM_VOICE_DEFAULT_VOICE = "bf_isabella";
+
+function openpalmVoiceBaseURL(): string {
+  const raw = (process.env["OP_VOICE_PORT_HOST"] ?? "").trim();
+  const n = raw ? Number(raw) : NaN;
+  const port = Number.isFinite(n) && n > 0 ? n : 8880;
+  return `http://127.0.0.1:${port}`;
+}
+
+/**
+ * For `engine === 'openpalm-voice'`, fill in baseURL/model/voice with the
+ * addon's preset defaults when not already provided by the caller.
+ * Mutates the section in place.
+ */
+function applyOpenPalmVoicePreset(
+  section: NonNullable<VoiceVarsConfig["tts"]> | NonNullable<VoiceVarsConfig["stt"]>,
+  kind: "tts" | "stt"
+): void {
+  if (section.engine !== "openpalm-voice") return;
+  if (!section.baseURL?.trim()) section.baseURL = openpalmVoiceBaseURL();
+  if (!section.model?.trim()) {
+    section.model = kind === "tts" ? OPENPALM_VOICE_TTS_MODEL : OPENPALM_VOICE_STT_MODEL;
+  }
+  if (kind === "tts" && !(section as NonNullable<VoiceVarsConfig["tts"]>).voice?.trim()) {
+    (section as NonNullable<VoiceVarsConfig["tts"]>).voice = OPENPALM_VOICE_DEFAULT_VOICE;
+  }
+}
+
 /**
  * Write TTS/STT env vars to stack.env for the voice channel container.
  * `engine` always writes (even if it's the only field) so picking an
  * engine without filling in URL/model still persists.
+ * For `engine === 'openpalm-voice'`, missing baseURL/model/voice are
+ * auto-filled from the addon's preset so setup wizard callers don't need
+ * to know the defaults.
  */
 export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void {
   const stackEnvPath = stackEnvPathFromStackDir(stackDir);
@@ -86,7 +120,12 @@ export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void 
   // operator shells. The UI server only reads OP_-prefixed vars from
   // process.env, so a leaked host TTS_VOICE can't silently override the
   // saved selection.
-  const { tts, stt } = config;
+  const tts = config.tts ? { ...config.tts } : undefined;
+  const stt = config.stt ? { ...config.stt } : undefined;
+
+  if (tts) applyOpenPalmVoicePreset(tts, "tts");
+  if (stt) applyOpenPalmVoicePreset(stt, "stt");
+
   if (tts?.enabled !== false) {
     if (tts?.engine) vars["OP_TTS_ENGINE"] = tts.engine;
     if (tts?.provider) vars["OP_TTS_PROVIDER"] = tts.provider;

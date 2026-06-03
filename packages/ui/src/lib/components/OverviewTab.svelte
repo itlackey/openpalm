@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
   import type { ReleaseEntry } from '$lib/api.js';
+  import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   interface Props {
     adminHealth: HealthPayload | null;
@@ -63,6 +65,14 @@
     onSelectedImageTagChange,
     onSelectedUiTagChange,
   }: Props = $props();
+
+  // Load endpoints if not already loaded so we get the real assistant URL.
+  onMount(() => { void endpointsService.load(); });
+
+  // Use the active endpoint URL (honours OP_OPENCODE_URL / custom port).
+  // Falls back to the correct default host port (3800, not 4096 which is the
+  // container-internal port and is never accessible from the host).
+  let openCodeUrl = $derived(endpointsService.active?.url ?? 'http://localhost:3800');
 
   // Releases that have a ui-build asset — for the UI build dropdown
   let uiBuildReleases = $derived(releases.filter((r) => r.hasUiBuild));
@@ -205,7 +215,7 @@
           </span>
         </a>
 
-        <a class="action-item" href="http://localhost:4096/" target="_blank" rel="noopener noreferrer">
+        <a class="action-item" href={openCodeUrl} target="_blank" rel="noopener noreferrer">
           <span class="action-icon action-icon--blue">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -214,7 +224,7 @@
           </span>
           <div class="action-content">
             <span class="action-title">Open OpenCode UI</span>
-            <span class="action-desc">Open the assistant web interface (localhost:4096 — host machine only)</span>
+            <span class="action-desc">Open the assistant web interface ({openCodeUrl} — host machine only)</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

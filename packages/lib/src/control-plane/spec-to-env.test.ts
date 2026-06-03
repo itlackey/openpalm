@@ -124,4 +124,31 @@ describe("writeVoiceVars", () => {
     const content = readFileSync(stackEnv, "utf-8");
     expect(content).toBe("EXISTING=value\n");
   });
+
+  test("auto-fills baseURL/model/voice for openpalm-voice engine (setup wizard path)", () => {
+    // Reproduces the bug: setup wizard sends engine only, no baseURL.
+    // writeVoiceVars must fill in OP_TTS_BASE_URL / OP_STT_BASE_URL.
+    writeVoiceVars({
+      tts: { engine: "openpalm-voice" },
+      stt: { engine: "openpalm-voice" },
+    }, stackDir);
+
+    const content = readFileSync(stackEnv, "utf-8");
+    expect(content).toContain("OP_TTS_ENGINE=openpalm-voice");
+    expect(content).toMatch(/OP_TTS_BASE_URL=http:\/\/127\.0\.0\.1:\d+/);
+    expect(content).toContain("OP_TTS_MODEL=kokoro");
+    expect(content).toContain("OP_TTS_VOICE=bf_isabella");
+    expect(content).toContain("OP_STT_ENGINE=openpalm-voice");
+    expect(content).toMatch(/OP_STT_BASE_URL=http:\/\/127\.0\.0\.1:\d+/);
+    expect(content).toContain("OP_STT_MODEL=whisper-1");
+  });
+
+  test("does not overwrite explicit baseURL when engine is openpalm-voice", () => {
+    writeVoiceVars({
+      tts: { engine: "openpalm-voice", baseURL: "http://192.168.1.50:8880" },
+    }, stackDir);
+
+    const content = readFileSync(stackEnv, "utf-8");
+    expect(content).toContain("OP_TTS_BASE_URL=http://192.168.1.50:8880");
+  });
 });

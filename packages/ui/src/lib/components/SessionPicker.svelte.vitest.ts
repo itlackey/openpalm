@@ -35,7 +35,7 @@ vi.mock('$lib/chat/chat-state.svelte.js', () => ({
 
 vi.mock('$lib/endpoints-state.svelte.js', () => ({
   endpointsService: {
-    active: { id: 'default', label: 'Local assistant', url: 'http://127.0.0.1:4096', isDefault: true },
+    active: { id: 'default', label: 'Local assistant', url: 'http://127.0.0.1:3800', isDefault: true },
     activeId: 'default',
   },
 }));

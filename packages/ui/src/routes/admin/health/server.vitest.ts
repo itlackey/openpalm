@@ -18,7 +18,7 @@ import { resetState } from '$lib/server/test-helpers.js';
 const mockEndpoint = {
   id: 'default',
   label: 'Local assistant',
-  url: 'http://127.0.0.1:4096',
+  url: 'http://127.0.0.1:3800',
   isDefault: true,
   username: '',
   password: '',
