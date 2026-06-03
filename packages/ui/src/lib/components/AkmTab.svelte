@@ -99,7 +99,33 @@
 	}
 
 	type FMode = '' | 'llm' | 'agent' | 'sdk';
-	interface FEntry { enabled: boolean; mode: FMode; profile: string; timeoutMs: string; }
+	type Tri = '' | 'on' | 'off'; // unset / enabled / disabled (for {enabled?} sub-objects)
+	interface Judgment { mode: FMode; profile: string; timeoutMs: string; }
+	interface FEntry {
+		enabled: boolean; mode: FMode; profile: string; timeoutMs: string;
+		// advanced (akm ImproveProcessConfigSchema) — all optional
+		allowedTypes: string;          // comma-separated
+		qualityGate: Tri;              // reflect/distill
+		contradictionDetection: Tri;   // consolidate
+		defaultSince: string; maxTotalChars: string; maxChunkSize: string; // extract
+		applyMode: '' | 'queue' | 'promote'; policy: string; maxAcceptsPerRun: string; maxDiffLines: string; rejectEmpty: boolean; // triage
+		judgment: Judgment;            // triage
+		rest: Record<string, unknown>; // forward-compat: preserve any field we don't model
+	}
+	// Process keys per akm ImproveProfileProcessesSchema (0.8.0). Each maps to which
+	// advanced fields are meaningful, so the drawer only shows relevant controls.
+	const PROCESS_KEYS = ['reflect','distill','consolidate','validation','memoryInference','graphExtraction','extract','triage'] as const;
+	type ProcKey = typeof PROCESS_KEYS[number];
+	const PROCESS_HINTS: Record<ProcKey, string> = {
+		reflect: 'Propose stash updates via self-reflection',
+		distill: 'Quality-judge and distill feedback',
+		consolidate: 'Deduplicate and merge overlapping memories',
+		validation: 'Third-model confidence and staleness scoring',
+		memoryInference: 'Derive structured memories from pending files',
+		graphExtraction: 'Extract entities and relations for graph search',
+		extract: 'Read session logs and queue insight proposals',
+		triage: 'Auto-review and accept/promote queued proposals',
+	};
 
 	interface ImproveProfile {
 		id: string;
@@ -107,15 +133,11 @@
 		description: string;
 		limit: number;
 		autoAccept: number;
-		processes: {
-			reflect: FEntry;
-			distill: FEntry;
-			consolidate: FEntry;
-			validation: FEntry;
-			memoryInference: FEntry;
-			graphExtraction: FEntry;
-			extract: FEntry;
-		};
+		processes: Record<ProcKey, FEntry>;
+		// profile-level git sync (akm ImproveProfileConfigSchema.sync)
+		syncEnabled: Tri;
+		syncPush: Tri;
+		syncMessage: string;
 	}
 
 	// ── LLM Profiles ─────────────────────────────────────────────────────────────
@@ -176,38 +198,93 @@
 	function newAgentProfile(): AgentProfile {
 		return { id: crypto.randomUUID(), name: '', platform: 'opencode', bin: '', args: '', workspace: '', model: '' };
 	}
-	function newImproveProfile(): ImproveProfile {
+	const DEFAULT_ENABLED: Record<ProcKey, boolean> = {
+		reflect: true, distill: true, consolidate: false, validation: false,
+		memoryInference: true, graphExtraction: true, extract: true, triage: false,
+	};
+
+	function emptyFEntry(enabled: boolean): FEntry {
 		return {
-			id: crypto.randomUUID(), name: '', description: '', limit: 25, autoAccept: 0,
-			processes: {
-				reflect: { enabled: true, mode: '', profile: '', timeoutMs: '' },
-				distill: { enabled: true, mode: '', profile: '', timeoutMs: '' },
-				consolidate: { enabled: false, mode: '', profile: '', timeoutMs: '' },
-				validation: { enabled: false, mode: '', profile: '', timeoutMs: '' },
-				memoryInference: { enabled: true, mode: '', profile: '', timeoutMs: '' },
-				graphExtraction: { enabled: true, mode: '', profile: '', timeoutMs: '' },
-				extract: { enabled: true, mode: '', profile: '', timeoutMs: '' },
-			},
+			enabled, mode: '', profile: '', timeoutMs: '',
+			allowedTypes: '', qualityGate: '', contradictionDetection: '',
+			defaultSince: '', maxTotalChars: '', maxChunkSize: '',
+			applyMode: '', policy: '', maxAcceptsPerRun: '', maxDiffLines: '', rejectEmpty: false,
+			judgment: { mode: '', profile: '', timeoutMs: '' },
+			rest: {},
 		};
 	}
 
-	function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
-		if (typeof raw === 'boolean') return { enabled: raw, mode: '', profile: '', timeoutMs: '' };
-		if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { enabled: defaultEnabled, mode: '', profile: '', timeoutMs: '' };
-		const r = raw as Record<string, unknown>;
+	function newImproveProfile(): ImproveProfile {
+		const processes = {} as Record<ProcKey, FEntry>;
+		for (const k of PROCESS_KEYS) processes[k] = emptyFEntry(DEFAULT_ENABLED[k]);
 		return {
-			enabled: typeof r.enabled === 'boolean' ? r.enabled : defaultEnabled,
-			mode: (r.mode as FMode) ?? '',
-			profile: (r.profile as string) ?? '',
-			timeoutMs: r.timeoutMs != null ? String(r.timeoutMs) : '',
+			id: crypto.randomUUID(), name: '', description: '', limit: 25, autoAccept: 0,
+			processes, syncEnabled: '', syncPush: '', syncMessage: '',
 		};
+	}
+
+	const triFromEnabled = (o: unknown): Tri =>
+		typeof o === 'object' && o !== null && 'enabled' in (o as Record<string, unknown>)
+			? ((o as Record<string, unknown>).enabled ? 'on' : 'off') : '';
+
+	// Known per-process keys we model explicitly; everything else round-trips via `rest`.
+	const KNOWN_PROC_KEYS = new Set([
+		'enabled','mode','profile','timeoutMs','allowedTypes','qualityGate','contradictionDetection',
+		'defaultSince','maxTotalChars','maxChunkSize','applyMode','policy','maxAcceptsPerRun',
+		'maxDiffLines','rejectEmpty','judgment',
+	]);
+
+	function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
+		const e = emptyFEntry(defaultEnabled);
+		if (typeof raw === 'boolean') { e.enabled = raw; return e; }
+		if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return e;
+		const r = raw as Record<string, unknown>;
+		if (typeof r.enabled === 'boolean') e.enabled = r.enabled;
+		e.mode = (r.mode as FMode) ?? '';
+		e.profile = (r.profile as string) ?? '';
+		e.timeoutMs = r.timeoutMs != null ? String(r.timeoutMs) : '';
+		e.allowedTypes = Array.isArray(r.allowedTypes) ? (r.allowedTypes as string[]).join(', ') : '';
+		e.qualityGate = triFromEnabled(r.qualityGate);
+		e.contradictionDetection = triFromEnabled(r.contradictionDetection);
+		e.defaultSince = (r.defaultSince as string) ?? '';
+		e.maxTotalChars = r.maxTotalChars != null ? String(r.maxTotalChars) : '';
+		e.maxChunkSize = r.maxChunkSize != null ? String(r.maxChunkSize) : '';
+		e.applyMode = (r.applyMode as '' | 'queue' | 'promote') ?? '';
+		e.policy = (r.policy as string) ?? '';
+		e.maxAcceptsPerRun = r.maxAcceptsPerRun != null ? String(r.maxAcceptsPerRun) : '';
+		e.maxDiffLines = r.maxDiffLines != null ? String(r.maxDiffLines) : '';
+		e.rejectEmpty = r.rejectEmpty === true;
+		if (typeof r.judgment === 'object' && r.judgment !== null) {
+			const j = r.judgment as Record<string, unknown>;
+			e.judgment = { mode: (j.mode as FMode) ?? '', profile: (j.profile as string) ?? '', timeoutMs: j.timeoutMs != null ? String(j.timeoutMs) : '' };
+		}
+		// preserve any field akm supports that this UI doesn't model
+		for (const [k, v] of Object.entries(r)) if (!KNOWN_PROC_KEYS.has(k)) e.rest[k] = v;
+		return e;
 	}
 
 	function buildProcessConfig(e: FEntry): Record<string, unknown> {
-		const out: Record<string, unknown> = { enabled: e.enabled };
+		const out: Record<string, unknown> = { ...e.rest, enabled: e.enabled };
 		if (e.mode) out.mode = e.mode;
 		if (e.profile) out.profile = e.profile;
 		if (e.timeoutMs !== '') out.timeoutMs = parseInt(e.timeoutMs, 10);
+		const types = e.allowedTypes.split(',').map((s) => s.trim()).filter(Boolean);
+		if (types.length) out.allowedTypes = types;
+		if (e.qualityGate) out.qualityGate = { enabled: e.qualityGate === 'on' };
+		if (e.contradictionDetection) out.contradictionDetection = { enabled: e.contradictionDetection === 'on' };
+		if (e.defaultSince) out.defaultSince = e.defaultSince;
+		const mtc = optInt(e.maxTotalChars); if (mtc !== undefined) out.maxTotalChars = mtc;
+		const mcs = optInt(e.maxChunkSize); if (mcs !== undefined) out.maxChunkSize = mcs;
+		if (e.applyMode) out.applyMode = e.applyMode;
+		if (e.policy) out.policy = e.policy;
+		const mapr = optInt(e.maxAcceptsPerRun); if (mapr !== undefined) out.maxAcceptsPerRun = mapr;
+		const mdl = optInt(e.maxDiffLines); if (mdl !== undefined) out.maxDiffLines = mdl;
+		if (e.rejectEmpty) out.rejectEmpty = true;
+		const j: Record<string, unknown> = {};
+		if (e.judgment.mode) j.mode = e.judgment.mode;
+		if (e.judgment.profile) j.profile = e.judgment.profile;
+		if (e.judgment.timeoutMs !== '') j.timeoutMs = parseInt(e.judgment.timeoutMs, 10);
+		if (Object.keys(j).length) out.judgment = j;
 		return out;
 	}
 
@@ -243,21 +320,19 @@
 	}
 
 	function improveProfileFromRaw(name: string, raw: Record<string, unknown>): ImproveProfile {
-		const procs = raw.processes as Record<string, unknown> | undefined;
+		const procs = (raw.processes as Record<string, unknown> | undefined) ?? {};
+		const processes = {} as Record<ProcKey, FEntry>;
+		for (const k of PROCESS_KEYS) processes[k] = readFEntry(procs[k], DEFAULT_ENABLED[k]);
+		const sync = raw.sync as Record<string, unknown> | undefined;
 		return {
 			id: crypto.randomUUID(), name,
 			description: (raw.description as string) ?? '',
 			limit: typeof raw.limit === 'number' ? raw.limit : 25,
 			autoAccept: typeof raw.autoAccept === 'number' ? raw.autoAccept : 0,
-			processes: {
-				reflect: readFEntry(procs?.reflect, true),
-				distill: readFEntry(procs?.distill, true),
-				consolidate: readFEntry(procs?.consolidate, false),
-				validation: readFEntry(procs?.validation, false),
-				memoryInference: readFEntry(procs?.memoryInference, true),
-				graphExtraction: readFEntry(procs?.graphExtraction, true),
-				extract: readFEntry(procs?.extract, true),
-			},
+			processes,
+			syncEnabled: triFromEnabled(sync ? { enabled: sync.enabled } : undefined),
+			syncPush: triFromEnabled(sync ? { enabled: sync.push } : undefined),
+			syncMessage: (sync?.message as string) ?? '',
 		};
 	}
 
@@ -271,18 +346,12 @@
 		drawerType = 'agent';
 	}
 	function openImproveDrawer(ip: ImproveProfile) {
-		drawerImprove = {
-			...ip,
-			processes: {
-				reflect: { ...ip.processes.reflect },
-				distill: { ...ip.processes.distill },
-				consolidate: { ...ip.processes.consolidate },
-				validation: { ...ip.processes.validation },
-				memoryInference: { ...ip.processes.memoryInference },
-				graphExtraction: { ...ip.processes.graphExtraction },
-				extract: { ...ip.processes.extract },
-			},
-		};
+		const processes = {} as Record<ProcKey, FEntry>;
+		for (const k of PROCESS_KEYS) {
+			const src = ip.processes[k];
+			processes[k] = { ...src, judgment: { ...src.judgment }, rest: { ...src.rest } };
+		}
+		drawerImprove = { ...ip, processes };
 		drawerType = 'improve';
 	}
 
@@ -418,20 +487,17 @@
 			const profilesImprove: Record<string, unknown> = {};
 			for (const ip of improveProfiles) {
 				if (!ip.name.trim()) continue;
-				const entry: Record<string, unknown> = {
-					limit: ip.limit,
-					processes: {
-						reflect: buildProcessConfig(ip.processes.reflect),
-						distill: buildProcessConfig(ip.processes.distill),
-						consolidate: buildProcessConfig(ip.processes.consolidate),
-						validation: buildProcessConfig(ip.processes.validation),
-						memoryInference: buildProcessConfig(ip.processes.memoryInference),
-						graphExtraction: buildProcessConfig(ip.processes.graphExtraction),
-						extract: buildProcessConfig(ip.processes.extract),
-					},
-				};
+				const processes: Record<string, unknown> = {};
+				for (const k of PROCESS_KEYS) processes[k] = buildProcessConfig(ip.processes[k]);
+				const entry: Record<string, unknown> = { limit: ip.limit, processes };
 				if (ip.description) entry.description = ip.description;
 				if (ip.autoAccept > 0) entry.autoAccept = ip.autoAccept;
+				// profile-level git sync (akm sync block) — emit only configured fields
+				const sync: Record<string, unknown> = {};
+				if (ip.syncEnabled) sync.enabled = ip.syncEnabled === 'on';
+				if (ip.syncPush) sync.push = ip.syncPush === 'on';
+				if (ip.syncMessage.trim()) sync.message = ip.syncMessage.trim();
+				if (Object.keys(sync).length) entry.sync = sync;
 				profilesImprove[ip.name.trim()] = entry;
 			}
 
@@ -867,32 +933,112 @@
 						</div>
 					</div>
 
-					<div class="feature-table">
-						<div class="feature-table-head">
-							<span></span><span>Process</span><span>Mode</span><span>Profile</span><span>Timeout (ms)</span>
-						</div>
-						{#each [
-							[drawerImprove.processes.reflect,        'reflect',        'Propose stash updates via self-reflection']        as [FEntry, string, string],
-							[drawerImprove.processes.distill,        'distill',        'Quality-judge and distill feedback']               as [FEntry, string, string],
-							[drawerImprove.processes.consolidate,    'consolidate',    'Deduplicate and merge overlapping memories']        as [FEntry, string, string],
-							[drawerImprove.processes.validation,     'validation',     'Third-model confidence and staleness scoring']      as [FEntry, string, string],
-							[drawerImprove.processes.memoryInference,'memoryInference','Derive structured memories from pending files']      as [FEntry, string, string],
-							[drawerImprove.processes.graphExtraction,'graphExtraction','Extract entities and relations for graph search']   as [FEntry, string, string],
-							[drawerImprove.processes.extract,        'extract',        'Read session logs and queue insight proposals']     as [FEntry, string, string],
-						] as [proc, key, hint] (key)}
-							<div class="feature-row">
-								<input type="checkbox" bind:checked={proc.enabled} />
-								<div><span class="feat-name">{key}</span><span class="feat-hint">{hint}</span></div>
-								<select class="control-input" bind:value={proc.mode}>
-									<option value="">Default</option>
-									<option value="llm">LLM (direct call)</option>
-									<option value="agent">Agent (subprocess)</option>
-									<option value="sdk">SDK (programmatic)</option>
-								</select>
-								<input class="control-input" type="text" spellcheck="false" list="llm-profiles-list" placeholder="— default profile —" bind:value={proc.profile} />
-								<input class="control-input control-input--narrow" type="number" min="1" placeholder="unlimited" bind:value={proc.timeoutMs} />
+					<div class="proc-list">
+						{#each PROCESS_KEYS as key (key)}
+							{@const proc = drawerImprove.processes[key]}
+							<div class="proc-card">
+								<div class="proc-head">
+									<input type="checkbox" bind:checked={proc.enabled} aria-label="{key} enabled" />
+									<div class="proc-name"><span class="feat-name">{key}</span><span class="feat-hint">{PROCESS_HINTS[key]}</span></div>
+									<select class="control-input" bind:value={proc.mode} aria-label="{key} mode">
+										<option value="">Default mode</option>
+										<option value="llm">LLM (direct call)</option>
+										<option value="agent">Agent (subprocess)</option>
+										<option value="sdk">SDK (programmatic)</option>
+									</select>
+									<input class="control-input" type="text" spellcheck="false" list="llm-profiles-list" placeholder="— default profile —" bind:value={proc.profile} aria-label="{key} profile" />
+									<input class="control-input control-input--narrow" type="number" min="1" placeholder="timeout ms" bind:value={proc.timeoutMs} aria-label="{key} timeout" />
+								</div>
+								<details class="proc-adv">
+									<summary>Advanced</summary>
+									<div class="proc-adv-grid">
+										<label class="adv-field"><span>Allowed types (comma-separated)</span>
+											<input class="control-input" type="text" spellcheck="false" placeholder="skill, knowledge, …" bind:value={proc.allowedTypes} />
+										</label>
+										{#if key === 'reflect' || key === 'distill'}
+											<label class="adv-field"><span>Quality gate</span>
+												<select class="control-input" bind:value={proc.qualityGate}>
+													<option value="">Default</option><option value="on">Enabled</option><option value="off">Disabled</option>
+												</select>
+											</label>
+										{/if}
+										{#if key === 'consolidate'}
+											<label class="adv-field"><span>Contradiction detection</span>
+												<select class="control-input" bind:value={proc.contradictionDetection}>
+													<option value="">Default</option><option value="on">Enabled</option><option value="off">Disabled</option>
+												</select>
+											</label>
+										{/if}
+										{#if key === 'extract'}
+											<label class="adv-field"><span>Default since</span>
+												<input class="control-input" type="text" spellcheck="false" placeholder="e.g. 7d, 2026-01-01" bind:value={proc.defaultSince} />
+											</label>
+											<label class="adv-field"><span>Max total chars</span>
+												<input class="control-input control-input--narrow" type="number" min="1" bind:value={proc.maxTotalChars} />
+											</label>
+											<label class="adv-field"><span>Max chunk size (1–50)</span>
+												<input class="control-input control-input--narrow" type="number" min="1" max="50" bind:value={proc.maxChunkSize} />
+											</label>
+										{/if}
+										{#if key === 'triage'}
+											<label class="adv-field"><span>Apply mode</span>
+												<select class="control-input" bind:value={proc.applyMode}>
+													<option value="">Default</option><option value="queue">Queue</option><option value="promote">Promote</option>
+												</select>
+											</label>
+											<label class="adv-field"><span>Policy</span>
+												<input class="control-input" type="text" spellcheck="false" placeholder="policy name/ref" bind:value={proc.policy} />
+											</label>
+											<label class="adv-field"><span>Max accepts per run</span>
+												<input class="control-input control-input--narrow" type="number" min="1" bind:value={proc.maxAcceptsPerRun} />
+											</label>
+											<label class="adv-field"><span>Max diff lines</span>
+												<input class="control-input control-input--narrow" type="number" min="1" bind:value={proc.maxDiffLines} />
+											</label>
+											<label class="adv-field adv-field--check">
+												<input type="checkbox" bind:checked={proc.rejectEmpty} /> <span>Reject empty diffs</span>
+											</label>
+											<div class="adv-field adv-field--wide">
+												<span class="adv-sublabel">Judgment (overrides for the accept/reject decision)</span>
+												<div class="proc-adv-grid">
+													<label class="adv-field"><span>Mode</span>
+														<select class="control-input" bind:value={proc.judgment.mode}>
+															<option value="">Default</option><option value="llm">LLM</option><option value="agent">Agent</option><option value="sdk">SDK</option>
+														</select>
+													</label>
+													<label class="adv-field"><span>Profile</span>
+														<input class="control-input" type="text" spellcheck="false" list="llm-profiles-list" bind:value={proc.judgment.profile} />
+													</label>
+													<label class="adv-field"><span>Timeout (ms)</span>
+														<input class="control-input control-input--narrow" type="number" min="1" bind:value={proc.judgment.timeoutMs} />
+													</label>
+												</div>
+											</div>
+										{/if}
+									</div>
+								</details>
 							</div>
 						{/each}
+					</div>
+
+					<!-- Profile-level git sync (akm ImproveProfileConfigSchema.sync) -->
+					<div class="controls controls--grid">
+						<div class="control-group">
+							<label class="control-label" for="d-imp-sync">Git sync after run</label>
+							<select id="d-imp-sync" class="control-input" bind:value={drawerImprove.syncEnabled}>
+								<option value="">Default</option><option value="on">Enabled</option><option value="off">Disabled</option>
+							</select>
+						</div>
+						<div class="control-group">
+							<label class="control-label" for="d-imp-syncpush">Push to remote</label>
+							<select id="d-imp-syncpush" class="control-input" bind:value={drawerImprove.syncPush}>
+								<option value="">Default</option><option value="on">Enabled</option><option value="off">Disabled</option>
+							</select>
+						</div>
+						<div class="control-group control-group--wide">
+							<label class="control-label" for="d-imp-syncmsg">Commit message</label>
+							<input id="d-imp-syncmsg" class="control-input" type="text" spellcheck="false" placeholder="Optional commit message" bind:value={drawerImprove.syncMessage} />
+						</div>
 					</div>
 				{/if}
 
@@ -1005,23 +1151,24 @@
 	.toggle-label { font-weight: var(--font-medium); color: var(--color-text); }
 	.toggle-hint { color: var(--color-text-secondary); font-size: var(--text-xs); }
 
-	/* Feature table (inside improve drawer) */
-	.feature-table { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-5); }
-	.feature-table-head {
-		display: grid; grid-template-columns: 1.5rem 1fr 9rem 11rem 7rem;
-		gap: var(--space-2); padding: 0 var(--space-2) var(--space-1);
-		font-size: var(--text-xs); font-weight: var(--font-semibold);
-		color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em;
-	}
-	.feature-row {
-		display: grid; grid-template-columns: 1.5rem 1fr 9rem 11rem 7rem;
-		align-items: center; gap: var(--space-2); padding: var(--space-2);
-		border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-		background: var(--color-bg-secondary);
-	}
-	.feature-row input[type="checkbox"] { width: 1rem; height: 1rem; }
+	/* Improve drawer process labels */
 	.feat-name { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); font-family: var(--font-mono); display: block; }
 	.feat-hint { font-size: var(--text-xs); color: var(--color-text-secondary); }
+
+	/* Improve process cards (common row + collapsible advanced fields) */
+	.proc-list { display: flex; flex-direction: column; gap: var(--space-2); }
+	.proc-card { border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-secondary); padding: var(--space-2); }
+	.proc-head { display: grid; grid-template-columns: 1.5rem 1fr 9rem 11rem 7rem; align-items: center; gap: var(--space-2); }
+	.proc-head input[type="checkbox"] { width: 1rem; height: 1rem; }
+	.proc-name { min-width: 0; }
+	.proc-adv { margin-top: var(--space-2); }
+	.proc-adv > summary { cursor: pointer; font-size: var(--text-xs); color: var(--color-text-secondary); user-select: none; }
+	.proc-adv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
+	.adv-field { display: flex; flex-direction: column; gap: 2px; }
+	.adv-field > span { font-size: var(--text-xs); color: var(--color-text-secondary); }
+	.adv-field--check { flex-direction: row; align-items: center; gap: var(--space-2); }
+	.adv-field--wide { grid-column: 1 / -1; }
+	.adv-sublabel { display: block; font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-secondary); margin-bottom: 2px; }
 
 	/* Slide-in drawer */
 	.drawer-scrim {

@@ -75,12 +75,19 @@ function pickLlmProfile(raw: Rec): Rec {
   return out;
 }
 
-const ALLOWED_IMPROVE_PROCESSES = new Set(['reflect','distill','consolidate','memoryInference','graphExtraction','validation','extract']);
+const ALLOWED_IMPROVE_PROCESSES = new Set(['reflect','distill','consolidate','memoryInference','graphExtraction','validation','extract','triage']);
+const APPLY_MODES = new Set(['queue','promote']);
 const FEAT_MODES = new Set(['llm','agent','sdk']);
 const AGENT_PLATFORMS = new Set(['opencode','claude','opencode-sdk']);
 const SEMANTIC_SEARCH_MODES = new Set(['auto','off']);
 const OUTPUT_FORMATS = new Set(['json','yaml','text']);
 const OUTPUT_DETAILS = new Set(['brief','normal','full']);
+
+function validateEnabledGate(v: unknown, path: string): Error | null {
+  if (!isRec(v)) return new Error(`${path} must be an object`);
+  if ('enabled' in v) { const r = expectBool(v.enabled, `${path}.enabled`); if (r instanceof Error) return r; }
+  return null;
+}
 
 function validateImproveProcess(proc: Rec, path: string): Error | null {
   if ('enabled' in proc) { const r = expectBool(proc.enabled, `${path}.enabled`); if (r instanceof Error) return r; }
@@ -88,6 +95,34 @@ function validateImproveProcess(proc: Rec, path: string): Error | null {
     return new Error(`${path}.mode must be llm, agent, or sdk`);
   if ('profile' in proc) { const r = expectStr(proc.profile, `${path}.profile`); if (r instanceof Error) return r; }
   if ('timeoutMs' in proc && proc.timeoutMs !== null) { const r = expectPosInt(proc.timeoutMs, `${path}.timeoutMs`); if (r instanceof Error) return r; }
+  // advanced (akm ImproveProcessConfigSchema)
+  if ('allowedTypes' in proc) {
+    if (!Array.isArray(proc.allowedTypes) || !proc.allowedTypes.every((t) => typeof t === 'string' && t.length > 0))
+      return new Error(`${path}.allowedTypes must be an array of non-empty strings`);
+  }
+  if ('qualityGate' in proc) { const r = validateEnabledGate(proc.qualityGate, `${path}.qualityGate`); if (r) return r; }
+  if ('contradictionDetection' in proc) { const r = validateEnabledGate(proc.contradictionDetection, `${path}.contradictionDetection`); if (r) return r; }
+  // extract
+  if ('defaultSince' in proc) { const r = expectStr(proc.defaultSince, `${path}.defaultSince`); if (r instanceof Error) return r; }
+  if ('maxTotalChars' in proc) { const r = expectPosInt(proc.maxTotalChars, `${path}.maxTotalChars`); if (r instanceof Error) return r; }
+  if ('maxChunkSize' in proc) {
+    if (typeof proc.maxChunkSize !== 'number' || !Number.isInteger(proc.maxChunkSize) || proc.maxChunkSize < 1 || proc.maxChunkSize > 50)
+      return new Error(`${path}.maxChunkSize must be an integer 1–50`);
+  }
+  // triage
+  if ('applyMode' in proc && (typeof proc.applyMode !== 'string' || !APPLY_MODES.has(proc.applyMode as string)))
+    return new Error(`${path}.applyMode must be queue or promote`);
+  if ('policy' in proc) { const r = expectStr(proc.policy, `${path}.policy`); if (r instanceof Error) return r; }
+  if ('maxAcceptsPerRun' in proc) { const r = expectPosInt(proc.maxAcceptsPerRun, `${path}.maxAcceptsPerRun`); if (r instanceof Error) return r; }
+  if ('maxDiffLines' in proc) { const r = expectPosInt(proc.maxDiffLines, `${path}.maxDiffLines`); if (r instanceof Error) return r; }
+  if ('rejectEmpty' in proc) { const r = expectBool(proc.rejectEmpty, `${path}.rejectEmpty`); if (r instanceof Error) return r; }
+  if ('judgment' in proc) {
+    if (!isRec(proc.judgment)) return new Error(`${path}.judgment must be an object`);
+    const j = proc.judgment as Rec;
+    if ('mode' in j && (typeof j.mode !== 'string' || !FEAT_MODES.has(j.mode as string))) return new Error(`${path}.judgment.mode must be llm, agent, or sdk`);
+    if ('profile' in j) { const r = expectStr(j.profile, `${path}.judgment.profile`); if (r instanceof Error) return r; }
+    if ('timeoutMs' in j && j.timeoutMs !== null) { const r = expectPosInt(j.timeoutMs, `${path}.judgment.timeoutMs`); if (r instanceof Error) return r; }
+  }
   return null;
 }
 
@@ -159,6 +194,13 @@ export const PATCH: RequestHandler = async (event) => {
           const err = validateImproveProcess(proc as Rec, `profiles.improve.${name}.processes.${procName}`);
           if (err) return errorResponse(400, 'bad_request', err.message, {}, requestId);
         }
+      }
+      if ('sync' in entry) {
+        if (!isRec(entry.sync)) return errorResponse(400, 'bad_request', `profiles.improve.${name}.sync must be an object`, {}, requestId);
+        const sync = entry.sync as Rec;
+        if ('enabled' in sync) { const r = expectBool(sync.enabled, `profiles.improve.${name}.sync.enabled`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+        if ('push' in sync) { const r = expectBool(sync.push, `profiles.improve.${name}.sync.push`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
+        if ('message' in sync) { const r = expectStr(sync.message, `profiles.improve.${name}.sync.message`); if (r instanceof Error) return errorResponse(400, 'bad_request', r.message, {}, requestId); }
       }
     }
   }
@@ -252,19 +294,20 @@ export const PATCH: RequestHandler = async (event) => {
           if ('limit' in raw) profileEntry.limit = raw.limit;
           if ('autoAccept' in raw) profileEntry.autoAccept = raw.autoAccept;
           if ('processes' in raw && isRec(raw.processes)) {
+            // The UI sends the COMPLETE intended process config (it round-trips any
+            // fields it doesn't model via a passthrough), so replace each process
+            // wholesale rather than field-merge — avoids stale fields lingering.
             const existingProcs = (existingProfile.processes as Rec) ?? {};
             const newProcs: Rec = { ...existingProcs };
             for (const [procName, proc] of Object.entries(raw.processes as Rec)) {
-              const p = proc as Rec;
-              const existingProc = (existingProcs[procName] as Rec) ?? {};
-              const mergedProc: Rec = { ...existingProc };
-              if ('enabled' in p) mergedProc.enabled = p.enabled;
-              if ('mode' in p) { if (p.mode) mergedProc.mode = p.mode; else delete mergedProc.mode; }
-              if ('profile' in p) { if (p.profile) mergedProc.profile = p.profile; else delete mergedProc.profile; }
-              if ('timeoutMs' in p) { if (p.timeoutMs !== null && p.timeoutMs !== undefined) mergedProc.timeoutMs = p.timeoutMs; else delete mergedProc.timeoutMs; }
-              newProcs[procName] = mergedProc;
+              newProcs[procName] = proc;
             }
             profileEntry.processes = newProcs;
+          }
+          // sync block (akm ImproveProfileConfigSchema.sync)
+          if ('sync' in raw) {
+            if (isRec(raw.sync)) profileEntry.sync = raw.sync;
+            else delete profileEntry.sync;
           }
           builtImprove[name] = profileEntry;
         }

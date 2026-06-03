@@ -20,7 +20,9 @@
     "external_directory": {
       "/tmp": "allow",
       "/work": "allow",
-      "/stash": "allow"
+      "/stash": "allow",
+      "/host-stash": "allow",
+      "/etc/akm": "allow"
     }
   }
 }
