@@ -13,10 +13,9 @@ FROM node:22-trixie-slim
 
 ARG OPENCODE_VERSION=1.3.3
 ARG BUN_VERSION=bun-v1.3.10
-# Track the `next` prerelease dist-tag while akm + OpenPalm ship together
-# (the `env` asset type lands in the next akm prerelease).
-# TODO(0.11.0 stable): pin off `next` once env asset type is in a stable akm-cli release.
-ARG AKM_CLI_VERSION=next
+# Pinned to the stable akm-cli release (0.8.0 — env/secret asset types, profiles
+# config, multi-source). Bump deliberately; CI validates this pin is extractable.
+ARG AKM_CLI_VERSION=0.8.0
 
 # Re-export for runtime introspection.
 ENV OPENCODE_VERSION=${OPENCODE_VERSION} \

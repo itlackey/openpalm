@@ -106,7 +106,7 @@ Kept alive only by a backward-compat shim. Coordinated rename + removal once the
 - [ ] `scripts/README.md:56` — dangling `scripts/iso/README.md` reference (dir doesn't exist) → remove
 - [ ] `scripts/upgrade-test.sh:4–18` — header comment references v0.8.x + port 8100 → update
 - [ ] `scripts/validate-registry.sh:59` — `vaults`/`/vault` in secret-path guard (legacy backend) → narrow to `knowledge/(secrets|env)` once confirmed
-- [ ] `core/{assistant,guardian}/Dockerfile` `AKM_CLI_VERSION=next` → non-reproducible builds; overlaps the 0.11.0 stable cutover TODO (pin akm-cli off `next`)
+- [x] `core/assistant/Dockerfile` `AKM_CLI_VERSION` pinned to stable `0.8.0` (was `next`); guardian no longer installs akm-cli. DONE.
 - [ ] `.github/workflows/release.yml:449` — Electron job pins Node 22 vs Node 24 elsewhere; verify intentional (electron-builder compat) + add comment
 
 ---

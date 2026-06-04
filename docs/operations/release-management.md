@@ -253,10 +253,15 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 
 **Required for a correct stable cut**
 
-- [ ] **Move `akm-cli` off the `next` prerelease tag.** `core/assistant/Dockerfile`
-      and `core/guardian/Dockerfile` pin `ARG AKM_CLI_VERSION=next` to track akm
-      prereleases during beta. Pin both to a released `akm-cli` version for stable
-      (keep them in lockstep — CI enforces it).
+- [x] **Move `akm-cli` off the `next` prerelease tag.** Done — `core/assistant/Dockerfile`
+      pins `ARG AKM_CLI_VERSION=0.8.0` (stable). The guardian no longer installs
+      akm-cli (its OpenCode is a pure moderator), so there is no second pin to keep
+      in lockstep; CI validates the assistant pin and only compares the guardian if
+      it ever reintroduces one. NOTE: the `akm-opencode` OpenCode plugin
+      (`.openpalm/config/assistant/opencode.jsonc`) is still `@latest` (0.7.6) — no
+      stable 0.8.0 plugin is published yet (0.8.0 line is on `@next`); 0.7.6 works
+      against the 0.8.0 CLI (the plugin shells to stable CLI commands). Revisit when
+      a stable `akm-opencode` 0.8.0 ships.
 - [ ] **Republish the three channel adapters as a stable (non-prerelease) version**
       so they land on npm `@latest`. Today `@latest` for `channel-*` is still the
       old `0.10.x` line; `@next` holds `0.11.x`. Until stable adapters exist,

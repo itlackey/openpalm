@@ -11,7 +11,7 @@
  *     (the user's personal ~/akm, bind-mounted by the host-akm.compose.yml overlay).
  *   - The personal config gains an `openpalm` source → OP_HOME/knowledge.
  *
- * VERIFIED against akm 0.8.0-rc.13:
+ * VERIFIED against akm 0.8.0 (rc.13 → stable; schema unchanged):
  *  - `SourceConfigEntrySchema` (config-schema.ts:259) accepts
  *    { type, path?, url?, name?, enabled?, writable?, primary?, options?, wikiName? }.
  *  - The indexer's `resolveSourceEntries` (search-source.ts:56) ALWAYS injects the
