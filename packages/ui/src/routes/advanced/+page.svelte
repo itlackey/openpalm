@@ -14,7 +14,7 @@
   // host-mapped port; 4096 is container-internal). Same source the Overview
   // "Open OpenCode UI" action used — we just embed it instead of new-tabbing.
   // Host-machine-only, exactly like that link.
-  let openCodeUrl = $derived(endpointsService.active?.url ?? 'http://localhost:3800');
+  let openCodeUrl = $derived(endpointsService.active?.url ?? 'http://127.0.0.1:3800');
 
   onMount(() => {
     // Probe auth via the session cookie (same as /chat). 401/503 → show the

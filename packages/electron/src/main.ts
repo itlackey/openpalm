@@ -92,8 +92,23 @@ export function resolveAssistantUrl(homeDir: string): string {
  * Exported as a pure function so tests can verify it without spawning anything.
  */
 export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
+  // Operator-managed stack config (knowledge/env/stack.env) holds settings the
+  // host UI server's own routes read from process.env — notably the Voice
+  // engine vars (OP_TTS_*/OP_STT_*/OP_VOICE_*) written by /admin/voice. Without
+  // merging them here, /api/speak + /api/transcribe see empty OP_*_BASE_URL and
+  // 503 ("Configure a TTS/STT engine"). Merge stack.env BUT skip OP_IMAGE_TAG:
+  // the docker-compose deploy path reads it via --env-file and shell-env takes
+  // precedence over --env-file, so injecting it here would override the
+  // authoritative tag (see the OP_IMAGE_TAG note below).
+  const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
+  const stackForUi: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(stackEnv)) {
+    if (k === 'OP_IMAGE_TAG' || k === 'OP_HOME') continue;
+    stackForUi[k] = v;
+  }
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    ...stackForUi,
     OP_HOME: homeDir,
     HOST: '127.0.0.1',
     PORT: String(port),

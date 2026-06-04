@@ -192,7 +192,7 @@ function defaultEndpoint(): ActiveEndpoint {
   const url =
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
-    `http://localhost:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
+    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
   const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
   const password = process.env.OPENCODE_SERVER_PASSWORD || undefined;
   return { id: DEFAULT_ID, label: 'Local Assistant', url, username, password, isDefault: true };

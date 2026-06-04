@@ -23,6 +23,7 @@ import {
   adminOpencodeHome,
   buildRuntimeJson,
   generatePassword,
+  normalizeLoopbackUrl,
   isPidAlive,
   pidfilePath,
   readPidFile,
@@ -89,6 +90,21 @@ describe('path helpers', () => {
   });
   it('admin OpenCode HOME is a child of dataDir', () => {
     expect(adminOpencodeHome('/x')).toBe('/x/admin-opencode-home');
+  });
+});
+
+describe('normalizeLoopbackUrl', () => {
+  it('rewrites a 0.0.0.0 bind address to loopback (browser cannot load 0.0.0.0)', () => {
+    expect(normalizeLoopbackUrl('http://0.0.0.0:44145')).toBe('http://127.0.0.1:44145');
+    expect(normalizeLoopbackUrl('http://0.0.0.0:44145/')).toBe('http://127.0.0.1:44145/');
+  });
+  it('rewrites the IPv6 any address [::] to loopback', () => {
+    expect(normalizeLoopbackUrl('http://[::]:8080')).toBe('http://127.0.0.1:8080');
+  });
+  it('leaves already-loopback and other hosts untouched', () => {
+    expect(normalizeLoopbackUrl('http://127.0.0.1:54321')).toBe('http://127.0.0.1:54321');
+    expect(normalizeLoopbackUrl('http://localhost:3800')).toBe('http://localhost:3800');
+    expect(normalizeLoopbackUrl('https://example.com:9/x')).toBe('https://example.com:9/x');
   });
 });
 

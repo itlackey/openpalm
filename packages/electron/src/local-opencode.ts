@@ -98,6 +98,18 @@ export function buildRuntimeJson(
 }
 
 /**
+ * OpenCode prints its listening URL using the bind address, which can be
+ * `0.0.0.0` (IPv4 any) or `[::]` / `::` (IPv6 any) even though we pass
+ * `--hostname=127.0.0.1`. A browser cannot connect to — or frame — a wildcard
+ * address, so rewrite the host to loopback for the CLIENT-facing URL (the UI
+ * embeds it in an iframe and the broker proxies to it). The server is reachable
+ * on 127.0.0.1 regardless of the printed bind address.
+ */
+export function normalizeLoopbackUrl(raw: string): string {
+  return raw.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
+}
+
+/**
  * Probe whether the given pid is alive. Returns false if the process is
  * gone or if signalling errors (e.g. EPERM — not our process anymore).
  */
@@ -319,7 +331,7 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
         for (const line of out.split("\n")) {
           if (line.includes("server listening")) {
             const m = line.match(/on\s+(https?:\/\/[^\s]+)/);
-            if (m) { clearTimeout(timer); resolve(m[1]); return; }
+            if (m) { clearTimeout(timer); resolve(normalizeLoopbackUrl(m[1])); return; }
           }
         }
       });

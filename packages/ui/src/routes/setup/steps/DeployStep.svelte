@@ -202,7 +202,7 @@
           {@const linkInfo = serviceLinks[name]}
           <li>
             {#if linkInfo}
-              {@const url = 'http://localhost:' + linkInfo.port + linkInfo.path}
+              {@const url = 'http://127.0.0.1:' + linkInfo.port + linkInfo.path}
               <span class="deploy-svc-name">{linkInfo.label}</span>
               <a href={url} target="_blank" rel="noopener" class="deploy-svc-link">{url}</a>
               <span class="deploy-svc-status">✓ Running</span>
@@ -214,9 +214,13 @@
         {/each}
       </ul>
       <div class="done-links">
-        <a href="http://localhost:{adminPort}/chat" class="btn btn-primary">Open Chat</a>
-        <a href="http://localhost:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
-        <a href="http://localhost:{adminPort}" class="btn btn-secondary">Admin Dashboard</a>
+        <!-- Same-origin admin nav uses RELATIVE paths so the user stays on the
+             exact host they loaded the UI from (127.0.0.1 in the desktop app).
+             Navigating to a different host alias (localhost vs 127.0.0.1) would
+             drop the session cookie, which is scoped per-host. -->
+        <a href="/chat" class="btn btn-primary">Open Chat</a>
+        <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
+        <a href="/" class="btn btn-secondary">Admin Dashboard</a>
       </div>
     {/if}
   </div>
