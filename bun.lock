@@ -28,7 +28,7 @@
     },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.11.0-beta.25",
+      "version": "0.11.0-beta.26",
       "dependencies": {
         "discord.js": "^14.16.3",
       },
