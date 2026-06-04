@@ -228,6 +228,11 @@
     gap: var(--space-3);
     padding: var(--space-4) var(--space-6);
     scroll-behavior: smooth;
+    align-items: center;
+  }
+
+  .messages-area > :global(*) {
+    width: min(80ch, 90svw);
   }
 
   .empty-state {

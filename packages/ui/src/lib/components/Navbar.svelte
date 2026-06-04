@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { version } from '$app/environment';
+  import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { version as uiVersion } from '../../../package.json';
   import VoiceControl from './VoiceControl.svelte';
   import EndpointSwitcher from './EndpointSwitcher.svelte';
   import SessionPicker from './SessionPicker.svelte';
@@ -20,6 +21,29 @@
   function isActive(href: string): boolean {
     return pathname === href || pathname.startsWith(href + '/');
   }
+
+  let mobileMenuOpen = $state(false);
+
+  function closeMobileMenu(): void {
+    mobileMenuOpen = false;
+  }
+
+  function toggleMobileMenu(): void {
+    mobileMenuOpen = !mobileMenuOpen;
+  }
+
+  onMount(() => {
+    function handleKey(ev: KeyboardEvent): void {
+      if (ev.key === 'Escape' && mobileMenuOpen) {
+        mobileMenuOpen = false;
+      }
+    }
+
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+    };
+  });
 </script>
 
 <nav class="navbar" aria-label="Main navigation">
@@ -30,7 +54,7 @@
       </span>
       <div>
       <span class="brand-text">OpenPalm</span>
-      <span class="version-badge">v{version}</span>
+      <span class="version-badge">ui v{uiVersion}</span>
       </div>
     </div>
 
@@ -69,13 +93,95 @@
     </div>
 
     <div class="navbar-actions">
-      <ThemeToggle />
-      <EndpointSwitcher />
-      <SessionPicker />
-      <VoiceControl />
+      <div class="desktop-actions">
+        <ThemeToggle />
+        <EndpointSwitcher />
+        <SessionPicker />
+        <VoiceControl />
+      </div>
+
+      <button
+        type="button"
+        class="mobile-menu-btn"
+        onclick={toggleMobileMenu}
+        aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={mobileMenuOpen}
+        aria-controls="mobile-navbar-drawer"
+      >
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          {#if mobileMenuOpen}
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          {:else}
+            <path d="M3 6h18"></path>
+            <path d="M3 12h18"></path>
+            <path d="M3 18h18"></path>
+          {/if}
+        </svg>
+        <span class="mobile-menu-label">Menu</span>
+      </button>
     </div>
   </div>
 </nav>
+
+{#if mobileMenuOpen}
+  <div class="sheet-overlay mobile-sheet-overlay" onclick={closeMobileMenu} role="presentation"></div>
+  <div
+    id="mobile-navbar-drawer"
+    class="sheet mobile-sheet"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="mobile-navbar-title"
+  >
+    <header class="sheet-header">
+      <h2 class="sheet-title" id="mobile-navbar-title">OpenPalm Menu</h2>
+      <button type="button" class="sheet-close" onclick={closeMobileMenu} aria-label="Close menu">×</button>
+    </header>
+
+    <div class="sheet-body mobile-sheet-body">
+      <section class="mobile-sheet-section">
+        <div class="mobile-section-label">Navigate</div>
+        <div class="mobile-nav-list">
+          {#each NAV_ITEMS.filter((item) => item.href !== '/chat') as item (item.href)}
+            <a
+              href={item.href}
+              class="mobile-nav-link"
+              class:active={isActive(item.href)}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              onclick={closeMobileMenu}
+            >
+              {item.label}
+            </a>
+          {/each}
+        </div>
+      </section>
+
+      <section class="mobile-sheet-section">
+        <div class="mobile-section-label">Conversation</div>
+        <div class="mobile-control-row">
+          <SessionPicker />
+        </div>
+        <div class="mobile-control-row">
+          <EndpointSwitcher />
+        </div>
+      </section>
+
+      <section class="mobile-sheet-section">
+        <div class="mobile-section-label">Controls</div>
+        <div class="mobile-utility-row">
+          <div class="mobile-utility-labels">
+            <span class="mobile-utility-title">Theme</span>
+            <span class="mobile-utility-copy">Switch between light and dark mode.</span>
+          </div>
+          <ThemeToggle />
+        </div>
+        <div class="mobile-control-row mobile-control-row--voice">
+          <VoiceControl />
+        </div>
+      </section>
+    </div>
+  </div>
+{/if}
 
 <style>
   .navbar {
@@ -156,6 +262,139 @@
     gap: var(--space-1);
   }
 
+  .desktop-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .mobile-menu-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    height: 32px;
+    padding: 0 var(--space-3);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .mobile-menu-btn:hover {
+    color: var(--color-text);
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-hover);
+  }
+
+  .mobile-menu-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .mobile-sheet-overlay {
+    z-index: 299;
+  }
+
+  .mobile-sheet {
+    z-index: 300;
+    width: min(420px, 100vw);
+  }
+
+  .mobile-sheet-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+
+  .mobile-sheet-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .mobile-section-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+  }
+
+  .mobile-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .mobile-nav-link {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    background: var(--color-surface);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+  }
+
+  .mobile-nav-link.active {
+    color: var(--color-primary);
+    border-color: var(--color-border);
+    background: var(--color-bg-tertiary);
+  }
+
+  .mobile-control-row {
+    width: 100%;
+  }
+
+  .mobile-control-row :global(.trigger) {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  .mobile-control-row--voice :global(.voice-control) {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .mobile-utility-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+  }
+
+  .mobile-utility-labels {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .mobile-utility-title {
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+  }
+
+  .mobile-utility-copy {
+    color: var(--color-text-secondary);
+    font-size: var(--text-xs);
+  }
+
   /* Pill nav button — icon + label, active state highlighted. */
   .nav-btn {
     display: inline-flex;
@@ -198,7 +437,6 @@
   }
 
   @media (max-width: 600px) {
-    /* Collapse nav buttons to icon-only to keep the toolbar on one line. */
     .navbar-inner {
       gap: var(--space-2);
     }
@@ -207,11 +445,25 @@
       gap: var(--space-1);
     }
 
-    .nav-label {
+    .desktop-actions {
       display: none;
     }
-    .nav-btn {
-      padding: 0 var(--space-2);
+
+    .mobile-menu-btn {
+      display: inline-flex;
+    }
+
+    .nav-label {
+      display: inline;
+    }
+
+    .navbar-nav {
+      margin-left: auto;
+      margin-right: var(--space-1);
+    }
+
+    .navbar-nav :global(a:not([href='/chat'])) {
+      display: none;
     }
   }
 
@@ -221,22 +473,26 @@
     }
 
     .brand-text {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      display: none;
     }
   }
 
   /* Narrow Electron sidecar widths — drop the brand text so the action
-     icons keep their space. The logo + version badge already collapsed
-     above; this hides the wordmark too. */
+   icons keep their space. The logo + version badge already collapsed
+   above; this hides the wordmark too. */
   @media (max-width: 360px) {
-    .brand-text {
+    .navbar-actions {
+      gap: 4px;
+    }
+
+    .mobile-menu-label {
       display: none;
     }
 
-    .navbar-actions {
-      gap: 4px;
+    .mobile-menu-btn {
+      width: 32px;
+      padding: 0;
+      gap: 0;
     }
 
     .navbar-inner {

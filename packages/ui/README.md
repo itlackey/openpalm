@@ -1,33 +1,45 @@
-# packages/ui
+# @openpalm/ui
 
-Optional SvelteKit UI and API for OpenPalm.
-OpenPalm remains compose-first and manual-first; the admin addon is a convenience layer for inspecting state and performing stack actions through Docker Socket Proxy.
+`@openpalm/ui` is the published OpenPalm web UI package.
 
-## Responsibilities
+It provides the browser UI and authenticated admin API used to manage an OpenPalm installation: chat access, stack status, connections, addons, automations, and operator workflows.
 
-- Web UI for stack status, addons, connections, and automations
-- Authenticated `/admin/*` API used by the UI and assistant tools
-- Thin control-plane consumer built on `@openpalm/lib`
-- Reads the shipped addon catalog from `registry/addons/` and enabled runtime overlays from `stack/addons/`
-- Exposes addon schema details and points operators to `knowledge/env/user.env` for values
+This package is part of the OpenPalm monorepo, but it is versioned and published as its own npm package.
 
-## Notes on internals
+## What It Is
 
-- Some module names still use historical terms like `staging`
-- The current runtime model is direct write + Docker Compose over `~/.openpalm/`
-- `registry/` is the shipped catalog source; `stack/addons/` are active runtime addon overlays; `knowledge/tasks/` holds active AKM task files
-- Compose overlays under `stack/addons/` are deployment truth; admin does not replace that model
+- A SvelteKit app for the OpenPalm operator experience
+- The authenticated `/admin/*` API used by the UI and related tools
+- A thin control-plane consumer built on `@openpalm/lib`
+- The web UI that can be bundled into Electron or run as a host-served Node app
 
-## Structure
+## What It Is Not
+
+- It is not a standalone replacement for the rest of OpenPalm
+- It is not the source of truth for stack orchestration logic
+- It does not replace the compose-first, file-based operating model
+
+OpenPalm remains manual-first and compose-first. This package adds a user-facing management surface on top of that model.
+
+## Features
+
+- Operator chat UI and embedded Advanced OpenCode view
+- Admin pages for status, versions, providers, endpoints, logs, addons, and automations
+- Authenticated admin API routes for the browser UI
+- Shared theme/token system used by the OpenPalm web experience
+
+## Package Layout
 
 ```text
 src/
-├── lib/server/        # server-side wrappers around @openpalm/lib + admin helpers
-├── lib/components/    # Svelte UI components
-└── routes/admin/      # admin API endpoints
+├── app.css                 # global tokens and shared UI styles
+├── lib/components/         # Svelte UI components
+├── lib/server/             # server-side wrappers around @openpalm/lib + admin helpers
+├── routes/admin/           # admin API endpoints and admin-facing pages
+└── routes/                 # user-facing app routes
 ```
 
-## Development
+## Running It In This Repo
 
 The recommended local-dev loop uses Vite HMR pointed at an isolated
 `.dev/` `OP_HOME` so your real install at `~/.openpalm/` is never touched.
@@ -105,6 +117,25 @@ bun run ui:check     # svelte-check + tsc
 bun run ui:test:unit # vitest
 bun run ui:build     # production SvelteKit build
 ```
+
+## Building And Publishing
+
+This package is published from the monorepo as `@openpalm/ui`.
+
+The production build is the SvelteKit `adapter-node` output in `build/`:
+
+```bash
+bun run ui:build
+```
+
+The build step also stamps the UI version into `.openpalm-ui-version` so OpenPalm can tell which UI build is newer when multiple UI channels exist.
+
+## Runtime Notes
+
+- The current runtime model is direct write + Docker Compose over `~/.openpalm/`
+- Some module names still use historical terms like `staging`
+- `registry/` is the shipped catalog source; `stack/addons/` are active runtime addon overlays; `knowledge/tasks/` holds active AKM task files
+- Compose overlays under `stack/addons/` are deployment truth; the admin UI does not replace that model
 
 ## API auth
 
