@@ -117,22 +117,23 @@ export interface StreamTurnArgs {
 export async function streamTurn(args: StreamTurnArgs): Promise<void> {
   const { client, userId, requestingUserId, thread, sessionKey, text, triggerMessage, setPendingQuestion } = args;
 
-  // Guardian dedupes create per (channel, sessionKey), so calling it every turn
-  // returns the SAME session → one thread, one session, full multi-turn context.
-  const sessionId = (await client.createSession(userId, sessionKey)).id;
-  const messageId = generateMessageId();
-
-  // Subscribe BEFORE prompting (§4.2) so no frame is missed.
+  // Native Discord "typing…" indicator while the turn works — signals activity
+  // during the pre-text phase (reasoning + tool steps) WITHOUT posting any
+  // placeholder/Stop clutter. Cleared in finally (and auto-expires on Discord).
+  const stopTyping = startTyping(thread);
   const ac = new AbortController();
-  const eventsIter = client.events(userId, ac.signal);
-  await client.promptAsync(userId, sessionId, messageId, text);
-
-  const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never shown (chain-of-thought)
-  const reactedEmojis = new Set<string>(); // tool emojis already reacted on the trigger message
   let active: ActiveMessage | null = null; // the currently-streaming assistant message
 
-  const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
   try {
+    // Guardian dedupes create per (channel, sessionKey) → one thread, one session.
+    const sessionId = (await client.createSession(userId, sessionKey)).id;
+    const messageId = generateMessageId();
+    const eventsIter = client.events(userId, ac.signal); // subscribe BEFORE prompting (§4.2)
+    await client.promptAsync(userId, sessionId, messageId, text);
+
+    const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never shown
+    const reactedEmojis = new Set<string>(); // tool emojis already reacted on the trigger message
+    const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
     for await (const ev of eventsIter) {
       if (Date.now() > deadline) {
         log.warn("turn_render_timeout", { sessionId });
@@ -198,10 +199,22 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
       }
     }
   } finally {
+    stopTyping();
     setPendingQuestion?.(null); // clear any unanswered pending question for this thread
     ac.abort();
     await active?.finalize().catch(() => {});
   }
+}
+
+/**
+ * Show Discord's native "typing…" indicator for the thread until the returned
+ * stop() is called. Re-fired every 8s (the indicator lasts ~10s). Best-effort.
+ */
+function startTyping(thread: ThreadChannel): () => void {
+  const tick = () => void thread.sendTyping().catch(() => {});
+  tick();
+  const interval = setInterval(tick, 8000);
+  return () => clearInterval(interval);
 }
 
 /** Tool kind → a compact reaction emoji (one per distinct kind per turn). */
