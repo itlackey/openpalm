@@ -1,0 +1,98 @@
+name: Publish openpalm/voice images
+# The voice (TTS/STT) Docker images are heavy (PyTorch / onnxruntime wheels) and
+# rarely change, so they are built OUT OF BAND — not on every platform release.
+# This mirrors the channel-adapter / @openpalm/ui model: the voice images are
+# versioned and published on their own cadence.
+#
+# Tags pushed:
+#   - openpalm/voice:latest-{cpu,cu121}     (moving — always; the stack default)
+#   - openpalm/voice:v<version>-{cpu,cu121} (immutable pin — only when `version`
+#                                            is supplied via workflow_dispatch)
+#
+# The runtime stack resolves the voice image as
+#   ${OP_VOICE_IMAGE_TAG:-latest-<variant>}
+# (see packages/lib/src/control-plane/registry.ts voiceImageRef + the addon
+# compose), so a fresh build is picked up automatically; operators pin a specific
+# build by setting OP_VOICE_IMAGE_TAG.
+#
+# NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
+# (main). Dispatching with --ref <branch> runs that branch's copy.
+on:
+  push:
+    branches: [main]
+    paths: ['core/voice/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional immutable version pin (e.g. 1.0.0). Empty = publish moving latest-* tags only.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-voice-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  push-voice-images:
+    name: Build and push voice images
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      # Don't let a cu121 failure cancel the cpu build (or vice versa) —
+      # operators on Apple Silicon need at least the cpu+arm64 image.
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cpu
+            platforms: linux/amd64,linux/arm64
+            tag_suffix: cpu
+          # cu121 is amd64-only: PyTorch CUDA wheels and onnxruntime-gpu do not
+          # publish linux/arm64 builds, so an arm64 image would fail at pip time.
+          - variant: cu121
+            platforms: linux/amd64
+            tag_suffix: cu121
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: openpalm/voice
+          tags: |
+            type=raw,value=latest-${{ matrix.tag_suffix }}
+            type=raw,value=v${{ inputs.version }}-${{ matrix.tag_suffix }},enable=${{ inputs.version != '' }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: core/voice
+          file: core/voice/Dockerfile
+          platforms: ${{ matrix.platforms }}
+          push: true
+          build-args: |
+            VARIANT=${{ matrix.variant }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache scopes are per-variant so cpu and cu121 don't clobber each
+          # other's wheel layers (different torch/onnxruntime builds).
+          cache-from: type=gha,scope=openpalm/voice-${{ matrix.variant }}
+          cache-to: type=gha,scope=openpalm/voice-${{ matrix.variant }},mode=max
