@@ -113,6 +113,14 @@ export interface StreamTurnArgs {
    * per session) so it doesn't repeat every turn.
    */
   sessionPreamble?: string;
+  /**
+   * Open the /event subscription for this turn. Defaults to a fresh
+   * `client.events(userId)` stream, but the adapter passes a SHARED per-principal
+   * subscription (OcEventHub) so concurrent threads don't each open a redundant
+   * stream and trip the guardian's per-principal concurrent-stream cap. Returns
+   * an async iterable with a `close()` the render loop calls on turn-end.
+   */
+  subscribeEvents?: () => AsyncIterable<unknown> & { close?: () => void };
   /** The user's triggering Discord message — tool use is shown as emoji reactions on it. */
   triggerMessage: Message;
   /**
@@ -133,7 +141,7 @@ export interface StreamTurnArgs {
  * or on timeout/abort.
  */
 export async function streamTurn(args: StreamTurnArgs): Promise<void> {
-  const { client, userId, requestingUserId, thread, sessionKey, text, sessionPreamble, triggerMessage, setPendingQuestion } = args;
+  const { client, userId, requestingUserId, thread, sessionKey, text, sessionPreamble, subscribeEvents, triggerMessage, setPendingQuestion } = args;
   // Prepend the one-time channel preamble (question-tool nudge) to the user's
   // text. The caller passes it only on a session's first turn, so it never
   // repeats. The user's actual message stays last so it reads naturally.
@@ -145,11 +153,14 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
   const stopTyping = startTyping(thread);
   const ac = new AbortController();
   let active: ActiveMessage | null = null; // the currently-streaming assistant message
+  // Shared per-principal /event subscription (OcEventHub) when provided, else a
+  // dedicated stream. close()d in finally so the hub can refcount/idle-close.
+  const subscription = subscribeEvents ? subscribeEvents() : null;
 
   try {
     // Guardian dedupes create per (channel, sessionKey) → one thread, one session.
     const sessionId = (await client.createSession(userId, sessionKey)).id;
-    const eventsIter = client.events(userId, ac.signal); // subscribe BEFORE prompting (§4.2)
+    const eventsIter = subscription ?? client.events(userId, ac.signal); // subscribe BEFORE prompting (§4.2)
     // Fire the turn but DON'T await — /message resolves only at turn-end, and the
     // render loop drives off /event. If it errors, abort so the loop ends.
     void client.prompt(userId, sessionId, promptText).catch((err) => {
@@ -227,6 +238,7 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
   } finally {
     stopTyping();
     setPendingQuestion?.(null); // clear any unanswered pending question for this thread
+    subscription?.close?.(); // decref the shared /event stream (hub idle-closes)
     ac.abort();
     await active?.finalize().catch(() => {});
   }

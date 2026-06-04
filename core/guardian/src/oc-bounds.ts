@@ -35,23 +35,29 @@ import { type Principal, principalKey } from "./ownership";
 // ── Named constants (with rationale) ───────────────────────────────────────
 
 /**
- * Max /event opens per principal per window. ≤10/min (design §3.6 F4). Generous
- * for a healthy client (it holds ONE stream open) but tight enough that a
- * reconnect loop cannot churn the nonce store.
+ * Max /event opens per principal per window. Loose by default: a healthy channel
+ * holds ONE shared subscription (OcEventHub), but reconnects (gateway flaps,
+ * idle-close/reopen between turns, multiple channel processes) legitimately
+ * reopen, and we do NOT want stream opens 429'd in normal use. The nonce store
+ * keeps its own hard cap, so this is the only thing this bounds. Set to 0 to
+ * disable the reconnect cap entirely.
  */
-export const OC_EVENT_RECONNECT_LIMIT = Number(Bun.env.GUARDIAN_OC_EVENT_RECONNECT_LIMIT ?? 10);
+export const OC_EVENT_RECONNECT_LIMIT = Number(Bun.env.GUARDIAN_OC_EVENT_RECONNECT_LIMIT ?? 600);
 export const OC_EVENT_RECONNECT_WINDOW_MS = Number(
   Bun.env.GUARDIAN_OC_EVENT_RECONNECT_WINDOW_MS ?? 60_000,
 );
 
 /**
- * Max concurrently-open /event streams per principal. 1 by design (§3.6) — a
- * channel holds exactly one filtered subscription; a second open means a leaked
- * or duplicated stream, so reject it and force the channel to close the first.
- * Configurable to a small N for future multi-stream channels.
+ * Max concurrently-open /event streams per principal. The /event stream is
+ * principal-scoped (it already carries every owned session), so a well-behaved
+ * channel needs only ONE — but a principal can legitimately be served by several
+ * concurrent streams (multiple channel processes, a brief open/close overlap
+ * between turns, a user active across channels). We keep this LOOSE so streaming
+ * is never rejected in normal use; it exists only to bound a true runaway leak.
+ * Set to 0 to disable the concurrent-stream cap entirely.
  */
 export const OC_EVENT_MAX_CONCURRENT_STREAMS = Number(
-  Bun.env.GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS ?? 1,
+  Bun.env.GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS ?? 64,
 );
 
 /**
@@ -82,6 +88,7 @@ const reconnectBuckets = new Map<string, { count: number; start: number }>();
  * budget for the principal. Fixed-window, mirroring rate-limit.ts.
  */
 export function allowEventReconnect(principal: Principal): boolean {
+  if (OC_EVENT_RECONNECT_LIMIT <= 0) return true; // cap disabled
   const key = principalKey(principal);
   const now = Date.now();
   const b = reconnectBuckets.get(key);
@@ -118,7 +125,7 @@ const streamCounts = new Map<string, number>();
 export function reserveEventStream(principal: Principal): boolean {
   const key = principalKey(principal);
   const current = streamCounts.get(key) ?? 0;
-  if (current >= OC_EVENT_MAX_CONCURRENT_STREAMS) return false;
+  if (OC_EVENT_MAX_CONCURRENT_STREAMS > 0 && current >= OC_EVENT_MAX_CONCURRENT_STREAMS) return false;
   streamCounts.set(key, current + 1);
   if (streamCounts.size > PRINCIPAL_STREAMS_MAX) pruneZeroStreams();
   return true;

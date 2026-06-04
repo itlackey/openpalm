@@ -514,8 +514,8 @@ describe("Guardian security contract", () => {
     expect(typeof data.oc_proxy.event_reconnect_buckets).toBe("number");
     expect(typeof data.oc_proxy.event_stream_principals).toBe("number");
     expect(typeof data.oc_proxy.inflight_turns).toBe("number");
-    expect(data.oc_proxy.bounds.event_max_concurrent_streams).toBe(1);
-    expect(data.oc_proxy.bounds.event_reconnect_limit).toBe(10);
+    expect(data.oc_proxy.bounds.event_max_concurrent_streams).toBe(64);
+    expect(data.oc_proxy.bounds.event_reconnect_limit).toBe(600);
     expect(data.oc_proxy.bounds.max_inflight_turns).toBe(4);
     expect(data.oc_proxy.bounds.turn_wall_clock_ms).toBe(10 * 60_000);
 

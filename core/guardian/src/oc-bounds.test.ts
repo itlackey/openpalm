@@ -56,8 +56,9 @@ describe("concurrent /event stream cap (§3.6)", () => {
   });
 
   it("releasing a slot frees the principal to reconnect", () => {
-    expect(reserveEventStream(A)).toBe(true);
-    expect(reserveEventStream(A)).toBe(false); // at cap (1)
+    // Fill to the cap, confirm the next is rejected, then release one and retry.
+    for (let i = 0; i < OC_EVENT_MAX_CONCURRENT_STREAMS; i++) expect(reserveEventStream(A)).toBe(true);
+    expect(reserveEventStream(A)).toBe(false); // at cap
     releaseEventStream(A);
     expect(reserveEventStream(A)).toBe(true); // slot freed
   });

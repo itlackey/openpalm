@@ -172,6 +172,9 @@ beforeAll(async () => {
       CHANNEL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: auditPath,
+      // Force a cap of 1 so the concurrent-stream mechanism test is deterministic.
+      // The SHIPPED default is loose (64) — channels share one stream via the hub.
+      GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS: "1",
     },
     stdout: "pipe",
     stderr: "pipe",
