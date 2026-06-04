@@ -323,3 +323,54 @@ Three expert reviews (security, OpenPalm-architecture, OpenCode-API) were applie
 - **Drift guard** made fail-closed for the proxy path (sec LOW).
 - **Code placement:** kept guardian-local + `channels-sdk`, **not** `@openpalm/lib` — reasoned divergence from the architecture reviewer, consistent with the guardian's minimal-dependency Docker pattern (§2.2).
 - **`/oc/*` base path** chosen and a telemetry-triggered sunset stance added (arch review §7).
+
+---
+
+## Appendix A — Reproducing the permission verification (1.15.13)
+
+The §1.2 proof was produced this way; re-run it to re-validate after any OpenCode bump. Needs Ollama on the host with a tool-capable model (e.g. `devstral:latest`); no Docker required.
+
+```bash
+# 1. Isolated install of the target version
+export OCHOME=/tmp/oc-verify; rm -rf "$OCHOME"; mkdir -p "$OCHOME/work"
+HOME=$OCHOME curl -fsSL https://opencode.ai/install | HOME=$OCHOME bash -s -- \
+  --no-modify-path --version 1.15.13
+BIN=$OCHOME/.opencode/bin/opencode
+
+# 2. Minimal config: Ollama tool model + bash gated to "ask"
+cat > "$OCHOME/work/opencode.json" <<'JSON'
+{ "$schema": "https://opencode.ai/config.json",
+  "provider": { "ollama": { "npm": "@ai-sdk/openai-compatible", "name": "Ollama",
+    "options": { "baseURL": "http://127.0.0.1:11434/v1" },
+    "models": { "devstral": { "id": "devstral:latest", "capabilities": { "tool": true } } } } },
+  "model": "ollama/devstral",
+  "permission": { "bash": "ask" } }
+JSON
+
+# 3. Serve (background), capture the global event stream
+( cd "$OCHOME/work" && HOME=$OCHOME "$BIN" serve --pure --port 5599 \
+  --hostname 127.0.0.1 >"$OCHOME/server.log" 2>&1 & )
+sleep 4
+curl -sN --max-time 180 http://127.0.0.1:5599/event >"$OCHOME/events.log" 2>&1 &
+
+# 4. Create session, force a bash tool call (async — returns 204)
+SID=$(curl -s -X POST http://127.0.0.1:5599/session -H 'content-type: application/json' \
+  -d '{"title":"perm-test"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+curl -s -X POST "http://127.0.0.1:5599/session/$SID/prompt_async" -H 'content-type: application/json' \
+  -d "{\"messageID\":\"msg_$(openssl rand -hex 12)\",\"parts\":[{\"type\":\"text\",
+       \"text\":\"Use the bash tool to run exactly: echo hello-from-tool . Call the bash tool now. Do not explain.\"}]}"
+
+# 5. Wait for the model, then: expect permission.asked + a pending request
+grep -q permission.asked "$OCHOME/events.log"   # fires once the model calls bash
+curl -s http://127.0.0.1:5599/permission         # → [{ id:"per_…", permission:"bash", always:["echo *"], … }]
+
+# 6. Approve via the CURRENT endpoint; tool resumes to completed
+PID=$(curl -s http://127.0.0.1:5599/permission | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+curl -s -X POST "http://127.0.0.1:5599/permission/$PID/reply" -H 'content-type: application/json' \
+  -d '{"reply":"once"}'                           # → true ; output becomes "hello-from-tool\n"
+
+# 7. Teardown
+pkill -f "/tmp/oc-verify/.opencode/bin/opencode"; rm -rf "$OCHOME"
+```
+
+Expected: `prompt_async`→`204`; tool part `state.status="running"` until reply; `permission.asked` carries the full `PermissionRequest`; reply→`200 true`; tool→`completed`, `GET /permission`→`[]`. Global `server.heartbeat` frames (no `sessionID`) appear throughout — confirming the §3.2 filter must drop them.
