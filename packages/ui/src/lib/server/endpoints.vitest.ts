@@ -103,11 +103,11 @@ describe('validateEndpointUrl (Phase 6: discriminated reasons)', () => {
 });
 
 describe('default endpoint synthesis', () => {
-  it('falls back to localhost:3800 when no env is set', () => {
+  it('falls back to 127.0.0.1:3800 when no env is set', () => {
     const active = getActiveEndpoint();
     expect(active.isDefault).toBe(true);
     expect(active.id).toBe('default');
-    expect(active.url).toBe('http://localhost:3800');
+    expect(active.url).toBe('http://127.0.0.1:3800');
     expect(active.password).toBeUndefined();
   });
 
@@ -118,7 +118,7 @@ describe('default endpoint synthesis', () => {
 
   it('uses OP_ASSISTANT_PORT to build the default URL', () => {
     process.env.OP_ASSISTANT_PORT = '4800';
-    expect(getActiveEndpoint().url).toBe('http://localhost:4800');
+    expect(getActiveEndpoint().url).toBe('http://127.0.0.1:4800');
   });
 
   it('picks up OPENCODE_SERVER_PASSWORD for default', () => {
