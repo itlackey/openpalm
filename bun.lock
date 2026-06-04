@@ -7,7 +7,7 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.11.0-beta.14",
+      "version": "0.11.0-rc.1",
       "dependencies": {
         "@openpalm/channels-sdk": "workspace:*",
         "dotenv": "^17.4.2",
@@ -60,11 +60,11 @@
     },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
-      "version": "0.11.0-beta.14",
+      "version": "0.11.0-rc.1",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.11.0-beta.14",
+      "version": "0.11.0-rc.1",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
@@ -76,7 +76,7 @@
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.11.0-beta.14",
+      "version": "0.11.0-rc.1",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^25.9.1",
@@ -88,14 +88,14 @@
     },
     "packages/electron/admin-tools": {
       "name": "@openpalm/admin-tools-plugin",
-      "version": "0.11.0-beta.14",
+      "version": "0.11.0-rc.1",
       "dependencies": {
-        "@opencode-ai/plugin": "^1.15.9",
+        "@opencode-ai/plugin": "^1.15.13",
       },
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.11.0-beta.14",
+      "version": "0.11.0-rc.1",
       "dependencies": {
         "dotenv": "^17.4.2",
         "tar": "^7.5.15",
@@ -108,7 +108,7 @@
     },
     "packages/ui": {
       "name": "@openpalm/ui",
-      "version": "0.11.0-beta.14",
+      "version": "0.11.0-rc.1",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
         "croner": "^10.0.1",
@@ -254,9 +254,9 @@
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.4", "", { "dependencies": { "@tybys/wasm-util": "^0.10.1" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow=="],
 
-    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.15.10", "", { "dependencies": { "@opencode-ai/sdk": "1.15.10", "effect": "4.0.0-beta.66", "zod": "4.1.8" }, "peerDependencies": { "@opentui/core": ">=0.2.15", "@opentui/keymap": ">=0.2.15", "@opentui/solid": ">=0.2.15" }, "optionalPeers": ["@opentui/core", "@opentui/keymap", "@opentui/solid"] }, "sha512-V2p7CvpBtKWB+FID7Dl1y0Ci02zUT40A9b2RD9R9BOiuD8ZcKhHWov+irN0xVJA0Eg6OhEBfA0lPKRn1FNKPlw=="],
+    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.15.13", "", { "dependencies": { "@opencode-ai/sdk": "1.15.13", "effect": "4.0.0-beta.66", "zod": "4.1.8" }, "peerDependencies": { "@opentui/core": ">=0.2.16", "@opentui/keymap": ">=0.2.16", "@opentui/solid": ">=0.2.16" }, "optionalPeers": ["@opentui/core", "@opentui/keymap", "@opentui/solid"] }, "sha512-NFwZGhmxIPijtfz9swPJXDmhOpq4UWP8WjEE7GEMr7FwtJrK/hv6v36nFimed5+OKk+pQCrTJn/vhRW7Io72IA=="],
 
-    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.15.10", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-CUhpmMGGOqzvPnNNjjWmEIodAfP6Qnuki2ChIUKWYF7UImZ4zUcMZnzO5BtUxu/Ni1P8qzWxDioXs+7aIZQEhA=="],
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.15.13", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-4TwojIoQ8EG6/mVBuUVYZXiFcwNmiiytEnjnvyuvSJjGwFIlw2YIBFxtSVC3FbwwbwHT63teh1RHiQUUC4U5xw=="],
 
     "@openpalm/admin-tools-plugin": ["@openpalm/admin-tools-plugin@workspace:packages/electron/admin-tools"],
 

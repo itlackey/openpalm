@@ -238,6 +238,7 @@ The guardian couples to OpenCode at exactly **three** pinned points: the allowli
 
 - **Startup assertion is fail-closed for the proxy path (security review, low):** on boot the guardian fetches the assistant `/doc` and asserts the allowlisted paths and the two payload shapes exist. On drift or fetch failure it **disables the proxy route and returns `503`** there (with a clear log); the legacy buffered `/channel/inbound` path stays up. Not a warning-only path.
 - The `/event` filter **ignores unknown event types** and tolerates added fields — an OpenCode bump degrades gracefully rather than breaking channels.
+- **Bumping `OPENCODE_VERSION` (and the akm-opencode plugin) is a stack-wide operation** — assistant + guardian images in lockstep, host npm packages, and any already-cached plugin in running containers. The full verified procedure (source pins, smoke test, live-deploy cache-clear, rollback) is **Appendix B**.
 
 ---
 
@@ -374,3 +375,92 @@ pkill -f "/tmp/oc-verify/.opencode/bin/opencode"; rm -rf "$OCHOME"
 ```
 
 Expected: `prompt_async`→`204`; tool part `state.status="running"` until reply; `permission.asked` carries the full `PermissionRequest`; reply→`200 true`; tool→`completed`, `GET /permission`→`[]`. Global `server.heartbeat` frames (no `sessionID`) appear throughout — confirming the §3.2 filter must drop them.
+
+---
+
+## Appendix B — Upgrading OpenCode & the akm-opencode plugin across the whole stack
+
+The proxy contract **is** the OpenCode API pinned to `OPENCODE_VERSION` (§0, §5), and the permission feature depends on a plugin runtime that matches that version. So a version bump is not a one-line edit — it touches the images, the host npm packages, and any **already-cached** plugin in deployed containers. This is the verified procedure (derived end-to-end on the 1.3.3 → 1.15.13 bump, 2026-06-03).
+
+### B.1 The two coupled versions
+
+| What | Where it's pinned | Rule |
+|---|---|---|
+| **OpenCode binary** | `core/assistant/Dockerfile` `ARG OPENCODE_VERSION`; `core/guardian/Dockerfile` `ARG OPENCODE_VERSION` | **Must be identical in both** (CI enforces lockstep). The guardian ships OpenCode as a content moderator and, for the proxy, couples to this exact API surface (§5). |
+| **`@opencode-ai/plugin` / `@opencode-ai/sdk`** (host npm) | `packages/electron/admin-tools/package.json`; `.opencode/package.json` (gitignored, local tooling); root `bun.lock` | Caret is fine for a published lib, but **refresh the lockfile** after bumping so the resolved version actually moves. |
+| **`akm-opencode` plugin** | `.openpalm/config/assistant/opencode.jsonc` → `"plugin": ["akm-opencode@latest"]` (installed at runtime, not baked) | **Must be compatible with the OpenCode binary version.** `akm-opencode`'s declared `@opencode-ai/plugin: ^1.2.20` is too loose to trust — a given plugin release may require a newer runtime than it advertises. |
+
+> **Hard lesson:** `akm-opencode@0.8.0` loads on OpenCode **1.15.x** but fails on **1.3.3** with `fn4 is not a function. (… 'fn4' is an instance of Object) failed to load plugin` — the signature of a plugin built against a newer plugin API. **Treat the OpenCode binary and akm-opencode as a matched pair; bump and verify them together.** "Installs on disk" ≠ "loads" — always grep the assistant logs for `failed to load` after an upgrade, not just the on-disk version.
+
+### B.2 Source edits (find every pin)
+
+```bash
+# Authoritative latest of each package:
+npm view opencode-ai version; npm view @opencode-ai/plugin version; npm view @opencode-ai/sdk version
+# Find every reference in-tree (excludes node_modules/build):
+git grep -nE "OPENCODE_VERSION|@opencode-ai|akm-opencode" -- . ':!bun.lock'
+```
+
+1. Set the **same** `ARG OPENCODE_VERSION=<new>` in `core/assistant/Dockerfile` **and** `core/guardian/Dockerfile`.
+2. Bump `@opencode-ai/plugin` in `packages/electron/admin-tools/package.json` (and `.opencode/package.json` if used locally).
+3. `bun install` to refresh `bun.lock`, then **verify** `bun install --frozen-lockfile` is clean and the lockfile resolved both `@opencode-ai/plugin` and its transitive `@opencode-ai/sdk` to `<new>`. Rebuild any consumer that bundles the plugin (`bun run --cwd packages/electron/admin-tools build`).
+4. `akm-opencode` itself needs no source edit (it's `@latest`), **but** confirm the published `@latest` is intact before relying on it: `npm pack akm-opencode@latest` and check the tarball actually contains every file `index.ts` imports (a past `@latest` shipped `index.ts` importing `./shared/feedback-signals` with no `shared/` in the tarball — a broken publish that fails to load in *any* OpenCode version).
+
+### B.3 Validate the assistant image before shipping (no Docker socket needed in the test)
+
+A multi-minor OpenCode jump can break config-schema validation, the plugin loader, or the entrypoint. Smoke-test the **real** image with the **real** mounted config:
+
+```bash
+docker build -f core/assistant/Dockerfile -t openpalm/assistant:smoke-<new> .
+# Mount the actual assistant config (copy it OUTSIDE /tmp — see the trap below) and boot:
+SMOKE=~/.cache/op-smoke-cfg; rm -rf "$SMOKE"; mkdir -p "$SMOKE"
+cp -r .openpalm/config/assistant/. "$SMOKE"/; chmod -R a+rX "$SMOKE"
+docker run -d --name op-smoke -e OPENCODE_CONFIG_DIR=/etc/opencode -e OPENCODE_ENABLE_SSH=0 \
+  -v "$SMOKE":/etc/opencode -p 24096:4096 openpalm/assistant:smoke-<new>
+# Then assert, in order:
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:24096/doc        # 200 = serves
+curl -s -X POST http://localhost:24096/session -d '{}'                      # session creates
+docker logs op-smoke 2>&1 | grep -iE "ConfigInvalid|Unrecognized"          # empty = config valid
+curl -s http://localhost:24096/config | grep -o '"plugin":\[[^]]*\]'       # plugin present, not []
+docker logs op-smoke 2>&1 | grep -iE "akm-opencode|failed to load"         # loads, no failure
+```
+
+> **Trap — never use a `/tmp/...` path as the `-v` source.** This host's `dockerd` runs with systemd `PrivateTmp=true`, so a `/tmp/...` bind source resolves against the daemon's *private* `/tmp` (empty) and silently mounts a blank dir — the container then shows only entrypoint-seeded files and the test reads a phantom config. Use `~/.cache/...` or `/var/tmp/...`. (`docker inspect` shows the bind Source correctly even when this happens — confirm with `docker exec <c> ls /etc/opencode`.)
+
+A green smoke test proves the platform (build / boot / config-validation / plugin install+load mechanism). It does **not** exercise prompt execution (no provider configured) — the entrypoint's lmstudio/socat proxy + provider path still needs a model-backed check.
+
+### B.4 Roll the upgrade onto a **running** deployment (the cache does not self-heal)
+
+OpenCode resolves `akm-opencode@latest` to a concrete version **once**, pins it in a cache lock (`package.json` + `bun.lock`/`package-lock.json`) under `OP_HOME/data/assistant/.cache/opencode/`, and **reuses it on every boot — it never re-resolves `@latest`.** A container that cached the old (or a broken) plugin will keep using it after a plain restart. To actually upgrade a live assistant:
+
+1. **Deploy the new image.** The assistant must run the matching OpenCode binary (B.1) — otherwise the plugin won't load even once reinstalled. Recreate only the assistant service; preserve a rollback tag first:
+   ```bash
+   docker tag <running-image-id> openpalm/assistant:<tag>-pre<new>     # rollback insurance
+   docker tag openpalm/assistant:smoke-<new> openpalm/assistant:<new>-local
+   # NB: stack.env OP_IMAGE_TAG can drift from the tag actually running — override explicitly
+   # and dry-run `compose config` to confirm the resolved image before recreating:
+   OP_IMAGE_TAG=<new>-local docker compose -p openpalm \
+     --project-directory $OP_HOME/config/stack \
+     -f core.compose.yml -f services.compose.yml -f channels.compose.yml -f custom.compose.yml \
+     --env-file $OP_HOME/knowledge/env/stack.env \
+     up -d --force-recreate --no-deps assistant
+   ```
+2. **Clear the stale plugin cache** so OpenCode re-resolves `@latest`. It's gitignored, regenerable user data — **get per-path approval, then use the OS trash, never `rm`:**
+   ```bash
+   gio trash $OP_HOME/data/assistant/.cache/opencode    # re-downloads models.json + ripgrep on next boot
+   docker restart openpalm-assistant-1
+   ```
+   (If the image was already new at step 1, a fresh container with no prior cache installs the current `@latest` directly — the trash step is only needed when an old/broken plugin is already cached.)
+3. **Verify on the live container:**
+   ```bash
+   docker exec openpalm-assistant-1 bash -lc \
+     'find /home/opencode/.cache/opencode -path "*akm-opencode/package.json" | head -1 | xargs grep -m1 version'
+   docker logs --since 5m openpalm-assistant-1 2>&1 \
+     | grep -iE "installed akm|AKM CLI resolved|agent default|failed to load|fn4"
+   # success = "installed akm-opencode@<new>", "AKM agent default initialized", NO "failed to load"
+   ```
+   **Rollback:** `OP_IMAGE_TAG=<old> docker compose … up -d --force-recreate --no-deps assistant` (the `-pre<new>` tag still points at the prior image).
+
+### B.5 Relationship to the guardian proxy
+
+When the proxy lands, the guardian's startup drift guard (§5) fetches the assistant `/doc` and asserts the allowlisted paths and the two payload shapes still exist; on mismatch it fails the proxy route closed (`503`) and keeps the buffered path up. So the upgrade workflow gains one more gate: **after B.3/B.4, the guardian's own OpenCode (same `OPENCODE_VERSION`, B.1) and the assistant must agree** — a lockstep miss surfaces as the drift guard tripping, not as silent breakage. Re-run the §1.2 permission verification (Appendix A) against the new version whenever the permission/event surface is in scope, since Stage 4 depends on it.

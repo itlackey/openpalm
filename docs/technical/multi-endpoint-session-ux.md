@@ -16,7 +16,7 @@ The user wants per-endpoint history persistence (switching to X restores X's mos
 
 ## 2. Findings: OpenCode session API surface
 
-Source: `node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/types.gen.d.ts`. The HTTP surface is also what `/proxy/assistant/[...path]` already forwards.
+Source: `node_modules/.bun/@opencode-ai+sdk@1.15.13/node_modules/@opencode-ai/sdk/dist/gen/types.gen.d.ts`. The HTTP surface is also what `/proxy/assistant/[...path]` already forwards.
 
 - **List** — `GET /session` (`types.gen.d.ts:1796–1810`). Query: optional `directory`. Response: `Array<Session>`. The spec does **not** guarantee ordering; UI must sort by `time.updated` desc. No pagination — response is the full array. For long-lived installs that's potentially hundreds; render top 50 with a "show all" affordance.
 - **`Session` shape** (`types.gen.d.ts:465–492`): `{ id, projectID, directory, parentID?, summary?, share?, title, version, time: { created, updated, compacting? }, revert? }`. `title` is empty until OpenCode summarizes after enough turns (`POST /session/{id}/summarize`, `types.gen.d.ts:2175–2208`).

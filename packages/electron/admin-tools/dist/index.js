@@ -12328,7 +12328,7 @@ function date4(params) {
 
 // ../../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/external.js
 config(en_default());
-// ../../../node_modules/.bun/@opencode-ai+plugin@1.15.10/node_modules/@opencode-ai/plugin/dist/tool.js
+// ../../../node_modules/.bun/@opencode-ai+plugin@1.15.13/node_modules/@opencode-ai/plugin/dist/tool.js
 function tool(input) {
   return input;
 }

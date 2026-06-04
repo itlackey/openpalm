@@ -37,7 +37,7 @@ directly." We reversed that in v2. The load-bearing correction:
    `fetch(url, {headers, signal}).then(r => r.body.pipeThrough(TextDecoderStream))`
    — auth in headers, `Last-Event-ID`, exponential-backoff reconnects, abort
    signals. Verified at
-   `node_modules/.bun/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js`.
+   `node_modules/.bun/@opencode-ai+sdk@1.15.13/node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js`.
    SSE-with-headers is **not** an architectural decision driver in either
    direction.
 
