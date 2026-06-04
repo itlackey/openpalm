@@ -13,43 +13,20 @@
 # user inside the container.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ── model fetch ──
-# Pre-downloads the Kokoro model + voices bundle AND the default
-# faster-whisper STT model so first-run cold-start has zero network
-# dependencies. Model files are layered into the runtime image at
-# /opt/kokoro and /opt/whisper respectively. Operators who want to use
-# a different Whisper model size override OP_VOICE_WHISPER_MODEL and
-# accept a one-time download on first request to /v1/audio/transcriptions.
-# Pinned to $BUILDPLATFORM (the build host's native arch, amd64 on CI): the
-# model artifacts are platform-AGNOSTIC data files, so there is no reason to
-# re-run this stage under QEMU for the arm64 target. The amd64-built models are
-# COPY --from'd into both the amd64 and arm64 runtime images. This removes the
-# slow emulated arm64 download (and the HuggingFace 429s it provoked), and makes
-# the modelfetch layers IDENTICAL across the cpu/cu121 variant builds — which is
-# what lets a shared build cache dedupe them.
-FROM --platform=$BUILDPLATFORM python:3.11-slim-bookworm AS modelfetch
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# kokoro-onnx model URLs — pinned to the v1.0 release artifacts. Bumping
-# the model version is a Dockerfile-level decision; runtime never refetches.
-ARG KOKORO_MODEL_URL=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
-ARG KOKORO_VOICES_URL=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
-
-RUN mkdir -p /opt/kokoro \
-    && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/kokoro-v1.0.onnx "$KOKORO_MODEL_URL" \
-    && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/voices-v1.0.bin   "$KOKORO_VOICES_URL"
-
-# Pre-fetch the default faster-whisper model into the HF cache layout that
-# WhisperModel(download_root=...) expects. Pinned model name lives in
-# `WHISPER_MODEL`; bump together with stt.py's default if you change it.
-ARG WHISPER_MODEL=Systran/faster-whisper-base.en
-
-RUN pip install --no-cache-dir --disable-pip-version-check "huggingface-hub==0.27.0" \
-    && mkdir -p /opt/whisper \
-    && python -c "from huggingface_hub import snapshot_download; snapshot_download('${WHISPER_MODEL}', cache_dir='/opt/whisper')"
+# ── model bundle ──
+# The Kokoro TTS + faster-whisper STT artifacts come from the prebuilt
+# `openpalm/voice-models` image (core/voice/Dockerfile.models, published
+# out-of-band by publish-voice-models.yml) — NOT downloaded here. This means a
+# voice build never touches HuggingFace/GitHub for models (no 429s) and the
+# heavy ~0.6 GB download happens once per model bump instead of on every
+# cpu/cu121 build. The models are platform-agnostic data, so we pull the bundle
+# for the BUILD host arch (`--platform=$BUILDPLATFORM`, amd64 on CI) and
+# COPY --from it into both the amd64 and arm64 runtime images.
+#
+# Bumping models: publish a new openpalm/voice-models tag (see Dockerfile.models)
+# and update this default. Operators/CI can override via --build-arg.
+ARG VOICE_MODELS_IMAGE=openpalm/voice-models:v1
+FROM --platform=$BUILDPLATFORM ${VOICE_MODELS_IMAGE} AS modelfetch
 
 # ── builder ──
 FROM python:3.11-slim-bookworm AS builder

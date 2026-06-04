@@ -1,0 +1,43 @@
+# ── Voice model bundle: openpalm/voice-models ──────────────────────────────────
+# A tiny, build-time-only image that carries ONLY the pre-downloaded voice model
+# artifacts (Kokoro TTS + the default faster-whisper STT model). The voice image
+# build (core/voice/Dockerfile) does `FROM openpalm/voice-models:<tag> AS
+# modelfetch` and COPY --from's these files, so the heavy/flaky model downloads
+# happen ONCE here — not on every cpu/cu121 voice build (and never against
+# HuggingFace during a voice release, killing the 429s).
+#
+# Published OUT OF BAND by .github/workflows/publish-voice-models.yml. The
+# artifacts are platform-AGNOSTIC data, so this is built single-arch (amd64) and
+# the consuming build pulls it via `--platform=$BUILDPLATFORM`.
+#
+# Bumping models: change the ARGs below, publish a NEW tag (e.g. v2), and update
+# the VOICE_MODELS_IMAGE default in core/voice/Dockerfile to match.
+# ──────────────────────────────────────────────────────────────────────────────
+FROM python:3.11-slim-bookworm AS fetch
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# kokoro-onnx model URLs — pinned to the v1.0 release artifacts.
+ARG KOKORO_MODEL_URL=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+ARG KOKORO_VOICES_URL=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+
+RUN mkdir -p /opt/kokoro \
+    && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/kokoro-v1.0.onnx "$KOKORO_MODEL_URL" \
+    && curl -fsSL --retry 5 --retry-delay 2 -o /opt/kokoro/voices-v1.0.bin   "$KOKORO_VOICES_URL"
+
+# Pre-fetch the default faster-whisper model into the HF cache layout that
+# WhisperModel(download_root=...) expects. Keep WHISPER_MODEL in lockstep with
+# stt.py's default if you change it.
+ARG WHISPER_MODEL=Systran/faster-whisper-base.en
+
+RUN pip install --no-cache-dir --disable-pip-version-check "huggingface-hub==0.27.0" \
+    && mkdir -p /opt/whisper \
+    && python -c "from huggingface_hub import snapshot_download; snapshot_download('${WHISPER_MODEL}', cache_dir='/opt/whisper')"
+
+# Final image = just the data. `scratch` keeps the pull tiny (no python base):
+# the consuming build only ever COPY --from's /opt/kokoro and /opt/whisper.
+FROM scratch
+COPY --from=fetch /opt/kokoro  /opt/kokoro
+COPY --from=fetch /opt/whisper /opt/whisper
