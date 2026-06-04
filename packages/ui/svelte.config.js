@@ -36,6 +36,18 @@ const config = {
         // refuses to play. Allow self + blob: so MP3/WAV responses streamed
         // from /api/speak can be loaded into <audio>.
         "media-src": ["self", "blob:"],
+        // The /advanced page embeds the OpenCode web UI in an iframe. OpenCode
+        // is bound host-only (127.0.0.1:<assistant port>, default 3800), so the
+        // embed only ever loads over localhost from the operator's own machine —
+        // allow exactly that. frame-src governs ONLY iframe sources; it does not
+        // relax script-src/connect-src (the load-bearing XSS protections).
+        "frame-src": [
+          "self",
+          "http://localhost:*",
+          "http://127.0.0.1:*",
+          "https://localhost:*",
+          "https://127.0.0.1:*",
+        ],
         "connect-src": ["self"],
         "object-src": ["none"],
         "base-uri": ["none"],
