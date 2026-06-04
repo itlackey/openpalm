@@ -460,6 +460,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build UI (bundled into the app)
+        # electron-builder bundles packages/ui/build via extraResources
+        # (electron-builder.yml). Without this step that dir does not exist, so
+        # the AppImage ships with NO UI and falls back to whatever stale build
+        # is in ~/.openpalm/data/ui (a newer app then loads an OLDER UI). Build
+        # the version-stamped UI here so every installer is self-contained.
+        run: bun run ui:build
+
       - name: Bundle Electron app
         # bun build --bundle inlines @openpalm/lib and all other deps so
         # electron-builder finds no npm dependencies to install — avoiding
