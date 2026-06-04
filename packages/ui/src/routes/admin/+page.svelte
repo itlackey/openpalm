@@ -480,7 +480,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar navLink={{ href: '/chat', label: 'Chat' }} />
+  <Navbar />
 
   <main>
     <TabBar active={activeTab} onSelect={handleTabSelect} />

@@ -157,7 +157,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar navLink={{ href: '/admin', label: 'Admin' }} />
+  <Navbar />
 
   <div class="chat-layout">
     <!-- Message history -->

@@ -174,7 +174,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar navLink={{ href: '/chat', label: '← Back to Chat' }} />
+  <Navbar />
 
   <main class="page">
     <header class="page-header">

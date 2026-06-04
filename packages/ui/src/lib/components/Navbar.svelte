@@ -1,18 +1,24 @@
 <script lang="ts">
   import { version } from '$app/environment';
+  import { page } from '$app/state';
   import VoiceControl from './VoiceControl.svelte';
   import EndpointSwitcher from './EndpointSwitcher.svelte';
   import SessionPicker from './SessionPicker.svelte';
 
-  interface Props {
-    navLink?: { href: string; label: string };
+  // The three primary destinations, always reachable from the top toolbar:
+  // regular Chat, the embedded OpenCode "Advanced" chat, and Admin.
+  const NAV_ITEMS = [
+    { href: '/chat', label: 'Chat', icon: 'chat' },
+    { href: '/advanced', label: 'Advanced', icon: 'advanced' },
+    { href: '/admin', label: 'Admin', icon: 'admin' },
+  ] as const;
+
+  const pathname = $derived(page.url?.pathname ?? '');
+  // A destination is active for its exact path or any sub-route (e.g.
+  // /admin/endpoints highlights Admin).
+  function isActive(href: string): boolean {
+    return pathname === href || pathname.startsWith(href + '/');
   }
-
-  let { navLink }: Props = $props();
-
-  // Match navLink.href to an icon. Anything else falls back to the
-  // back-arrow so adding a new contextual destination doesn't crash.
-  const navIcon = $derived(navLink?.href === '/chat' ? 'chat' : navLink?.href === '/admin' ? 'admin' : 'back');
 </script>
 
 <nav class="navbar" aria-label="Main navigation">
@@ -26,20 +32,27 @@
       <span class="version-badge">v{version}</span>
       </div>
     </div>
-    <div class="navbar-actions">
-      {#if navLink}
+
+    <div class="navbar-nav" aria-label="Primary navigation">
+      {#each NAV_ITEMS as item (item.href)}
         <a
-          href={navLink.href}
-          class="icon-btn"
-          aria-label={navLink.label}
-          title={navLink.label}
+          href={item.href}
+          class="nav-btn"
+          class:active={isActive(item.href)}
+          aria-current={isActive(item.href) ? 'page' : undefined}
+          title={item.label}
         >
-          {#if navIcon === 'chat'}
+          {#if item.icon === 'chat'}
             <!-- message-square (Lucide) -->
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-          {:else if navIcon === 'admin'}
+          {:else if item.icon === 'advanced'}
+            <!-- terminal-square (embedded OpenCode) -->
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="m7 9 3 3-3 3"/><line x1="13" y1="15" x2="17" y2="15"/>
+            </svg>
+          {:else}
             <!-- sliders (Lucide) -->
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
@@ -48,14 +61,13 @@
               <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
               <line x1="17" y1="16" x2="23" y2="16"/>
             </svg>
-          {:else}
-            <!-- arrow-left (Lucide) -->
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-            </svg>
           {/if}
+          <span class="nav-label">{item.label}</span>
         </a>
-      {/if}
+      {/each}
+    </div>
+
+    <div class="navbar-actions">
       <EndpointSwitcher />
       <SessionPicker />
       <VoiceControl />
@@ -74,13 +86,21 @@
   }
 
   .navbar-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
+    /* Full viewport width — the toolbar spans edge to edge. */
+    width: 100%;
     padding: 0 var(--space-6);
     height: var(--nav-height);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  /* Brand pinned left; the primary nav sits next to it; actions pushed right. */
+  .navbar-brand {
+    margin-right: var(--space-2);
+  }
+  .navbar-actions {
+    margin-left: auto;
   }
 
   .navbar-brand {
@@ -127,39 +147,61 @@
     letter-spacing: 0.02em;
   }
 
-  /* Icon button — matches .voice-btn shape so nav icons read as a family. */
-  .icon-btn {
-    position: relative;
+  /* Primary nav group (Chat / Advanced / Admin). */
+  .navbar-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  /* Pill nav button — icon + label, active state highlighted. */
+  .nav-btn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 32px;
+    gap: var(--space-2);
     height: 32px;
-    padding: 0;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
+    padding: 0 var(--space-3);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
     color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
     cursor: pointer;
     transition: all var(--transition-fast);
     text-decoration: none;
-    flex-shrink: 0;
+    white-space: nowrap;
   }
 
-  .icon-btn:hover {
+  .nav-btn:hover {
     color: var(--color-text);
-    border-color: var(--color-border-hover);
     background: var(--color-surface-hover);
   }
 
-  .icon-btn:focus-visible {
+  .nav-btn:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: -2px;
+  }
+
+  .nav-btn.active {
+    color: var(--color-primary);
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border);
   }
 
   @media (max-width: 768px) {
     .navbar-inner {
       padding: 0 var(--space-4);
+    }
+  }
+
+  @media (max-width: 600px) {
+    /* Collapse nav buttons to icon-only to keep the toolbar on one line. */
+    .nav-label {
+      display: none;
+    }
+    .nav-btn {
+      padding: 0 var(--space-2);
     }
   }
 

@@ -75,7 +75,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar navLink={{ href: '/chat', label: 'Chat' }} />
+  <Navbar />
 
   <div class="advanced-layout">
     <iframe
