@@ -11,7 +11,7 @@
  * permission.asked and reply). Exits non-zero on failure.
  */
 import { OcClient, generateMessageId } from "/app/packages/channels-sdk/src/oc-client.ts";
-import { asRaw, extractTextDelta, extractToolUpdate, extractPermissionAsk, isTurnEnd, isSessionError } from "/app/packages/channels-sdk/src/oc-events.ts";
+import { asRaw, partSnapshotType, extractTextDelta, extractToolUpdate, extractPermissionAsk, isTurnEnd, isSessionError } from "/app/packages/channels-sdk/src/oc-events.ts";
 
 const channel = Bun.env.OC_CHANNEL ?? "discord";
 const secret = Bun.env.OC_SECRET ?? "";
@@ -48,6 +48,7 @@ await client.promptAsync(userId, session.id, messageId, prompt);
 // 4) Render: accumulate text deltas, tool updates, handle permission, to turn-end.
 let text = "";
 let tool = "";
+const reasoningParts = new Set<string>();
 let permissionReplied = false;
 let turnEnded = false;
 const deadline = Date.now() + 120_000;
@@ -55,7 +56,9 @@ while (Date.now() < deadline) {
   // drain what we have
   while (events.length) {
     const e = asRaw(events.shift());
-    const d = extractTextDelta(e, session.id);
+    const snap = partSnapshotType(e);
+    if (snap && snap.type === "reasoning") reasoningParts.add(snap.partID);
+    const d = extractTextDelta(e, session.id, reasoningParts);
     if (d) { text += d; continue; }
     const t = extractToolUpdate(e, session.id);
     if (t && t.callID) { tool = `${t.tool}:${t.status}`; continue; }
