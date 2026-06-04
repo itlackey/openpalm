@@ -194,7 +194,8 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
       try {
         const delta = extractTextDelta(e, sessionId, reasoningParts);
         if (delta) {
-          await renderer.appendText(delta);
+          const mid = typeof e.properties?.messageID === "string" ? e.properties.messageID : "";
+          await renderer.appendText(delta, mid);
           continue;
         }
 
@@ -237,13 +238,23 @@ class TurnRenderer {
   private current: Message;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly stopRow: ActionRowBuilder<ButtonBuilder>;
+  private currentMessageId: string | null = null;
 
   constructor(first: Message, stopRow: ActionRowBuilder<ButtonBuilder>) {
     this.current = first;
     this.stopRow = stopRow;
   }
 
-  async appendText(delta: string): Promise<void> {
+  async appendText(delta: string, messageId: string): Promise<void> {
+    // An agentic turn can emit MULTIPLE assistant messages (one per step). A
+    // conversational channel should show the CURRENT message, not concatenate
+    // them all into one ever-growing blob (the model looping then read as one
+    // giant repeated message). When the assistant messageID changes, supersede
+    // the prior step's text with the new one.
+    if (this.currentMessageId && messageId && messageId !== this.currentMessageId) {
+      this.buffer = "";
+    }
+    if (messageId) this.currentMessageId = messageId;
     this.buffer += delta;
     const now = Date.now();
     if (now - this.lastEdit >= EDIT_THROTTLE_MS) {
