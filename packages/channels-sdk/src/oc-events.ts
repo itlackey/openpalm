@@ -163,3 +163,51 @@ export function extractPermissionAsk(e: RawEvent, sessionId: string): Permission
 export function isSessionError(e: RawEvent, sessionId: string): boolean {
   return e.type === "session.error" && propStr(e.properties, "sessionID") === sessionId;
 }
+
+/** One option offered for a question (OpenCode QuestionOption). */
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+/** One question in a `question.asked` request (OpenCode QuestionInfo). */
+export interface QuestionInfo {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+}
+
+/**
+ * A `question.asked` request for our session. The OpenCode `question` tool is the
+ * interactive-question parallel of permissions: it pauses the turn (tool stuck
+ * `running`) until answered via `POST /question/{requestID}/reply` (§ question
+ * tool). `properties` IS the QuestionRequest, whose `id` (`que_…`) is the
+ * requestID and `questions[]` carries each prompt + its options.
+ */
+export interface QuestionAsk {
+  requestID: string;
+  questions: QuestionInfo[];
+}
+
+export function extractQuestionAsk(e: RawEvent, sessionId: string): QuestionAsk | null {
+  if (e.type !== "question.asked") return null;
+  if (propStr(e.properties, "sessionID") !== sessionId) return null;
+  const id = propStr(e.properties, "id");
+  if (!id) return null;
+  const rawQuestions = Array.isArray(e.properties?.questions) ? (e.properties!.questions as unknown[]) : [];
+  const questions: QuestionInfo[] = [];
+  for (const q of rawQuestions) {
+    const qo = q as { question?: unknown; header?: unknown; options?: unknown };
+    const question = typeof qo.question === "string" ? qo.question : "";
+    const header = typeof qo.header === "string" ? qo.header : "";
+    const options: QuestionOption[] = Array.isArray(qo.options)
+      ? (qo.options as unknown[])
+          .map((o) => o as { label?: unknown; description?: unknown })
+          .filter((o) => typeof o.label === "string")
+          .map((o) => ({ label: o.label as string, description: typeof o.description === "string" ? o.description : "" }))
+      : [];
+    questions.push({ question, header, options });
+  }
+  if (questions.length === 0) return null;
+  return { requestID: id, questions };
+}

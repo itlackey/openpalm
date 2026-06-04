@@ -59,6 +59,12 @@ export const OC_DOC_FIXTURE = {
     "/permission/{requestID}/reply": {
       post: { responses: { "200": { description: "ok" } } },
     },
+    "/question/{requestID}/reply": {
+      post: { responses: { "200": { description: "ok" } } },
+    },
+    "/question/{requestID}/reject": {
+      post: { responses: { "200": { description: "ok" } } },
+    },
   },
   components: {
     schemas: {

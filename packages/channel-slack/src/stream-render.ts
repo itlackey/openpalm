@@ -42,6 +42,7 @@ import {
   isTurnEnd,
   extractToolUpdate,
   extractPermissionAsk,
+  extractQuestionAsk,
   isSessionError,
   type ToolUpdate,
   type PermissionAsk,
@@ -343,6 +344,17 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
       const ask = extractPermissionAsk(e, sessionId);
       if (ask) {
         await renderPermissionPrompt(slack, registry, channel, threadTs, userId, requestingUserId, ask);
+        continue;
+      }
+
+      const question = extractQuestionAsk(e, sessionId);
+      if (question) {
+        // Interactive question UI for Slack is not implemented yet (Block Kit
+        // select TODO); reject so the turn doesn't hang awaiting an answer.
+        log.info("question_rejected_unsupported", { requestID: question.requestID });
+        await client.rejectQuestion(userId, question.requestID).catch((err) =>
+          log.warn("question_reject_failed", { error: String(err), requestID: question.requestID }),
+        );
         continue;
       }
 

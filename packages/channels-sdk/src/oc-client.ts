@@ -147,6 +147,25 @@ export class OcClient {
     return true;
   }
 
+  /**
+   * POST /question/{requestID}/reply — answer the interactive `question` tool
+   * (the parallel of replyPermission). `answers` is one entry per question, each
+   * an array of chosen labels / free-text strings. Fresh-signed; the guardian
+   * ownership-checks the requestID (recorded when it relayed question.asked).
+   */
+  async replyQuestion(userId: string, requestID: string, answers: string[][]): Promise<boolean> {
+    const resp = await this.call("POST", `/question/${requestID}/reply`, userId, { answers });
+    if (!resp.ok) throw new Error(`replyQuestion failed: ${resp.status}`);
+    return true;
+  }
+
+  /** POST /question/{requestID}/reject — decline an interactive question (e.g.
+   * a non-interactive channel with no human to answer). */
+  async rejectQuestion(userId: string, requestID: string): Promise<void> {
+    const resp = await this.call("POST", `/question/${requestID}/reject`, userId, {});
+    if (!resp.ok) throw new Error(`rejectQuestion failed: ${resp.status}`);
+  }
+
   /** POST /session/{id}/abort — stop an in-flight turn (the "Stop" button). */
   async abort(userId: string, sessionId: string): Promise<void> {
     const resp = await this.call("POST", `/session/${sessionId}/abort`, userId, {});

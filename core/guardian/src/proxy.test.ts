@@ -152,6 +152,9 @@ beforeAll(async () => {
       if (url.pathname.startsWith("/permission/") && url.pathname.endsWith("/reply") && req.method === "POST") {
         return new Response("true", { headers: { "content-type": "application/json" } });
       }
+      if (url.pathname.startsWith("/question/") && (url.pathname.endsWith("/reply") || url.pathname.endsWith("/reject")) && req.method === "POST") {
+        return new Response("true", { headers: { "content-type": "application/json" } });
+      }
       if (url.pathname.startsWith("/session/") && req.method === "DELETE") {
         const id = url.pathname.split("/")[2];
         sessions.delete(id);
@@ -326,7 +329,7 @@ describe("/oc proxy — session-ownership authz (§3.4)", () => {
   it("create-body is REWRITTEN: client title discarded, guardian title used", async () => {
     await createSessionFor("owner-rewrite", "thread-xyz");
     const title = (lastCreateBody as { title?: string }).title;
-    expect(title).toBe(`${TEST_CHANNEL}:thread-xyz`);
+    expect(title).toBe(`${TEST_CHANNEL}/thread-xyz`); // unified to the buffered `/` form
     expect(title).not.toBe("CLIENT-CHOSEN");
   });
 
@@ -441,6 +444,45 @@ describe("/oc proxy — permission reply fail-closed (§3.4)", () => {
     eventStop = true;
     eventFrames = [];
     void idB; // (B's session id is only needed to make B a real owning principal)
+  });
+
+  it("question-reply ownership: A can answer a relayed que_ id; B cannot (§ question tool)", async () => {
+    const idA = await createSessionFor("q-alice");
+    const requestID = "que_alice_req";
+    const askedFrame = JSON.stringify({
+      type: "question.asked",
+      properties: { id: requestID, sessionID: idA, questions: [{ question: "Pick", header: "h", options: [{ label: "x", description: "" }] }] },
+    });
+    eventStop = false;
+    eventFrames = [askedFrame];
+    const acA = new AbortController();
+    const respA = await ocCall("GET", "/event", { userId: "q-alice", signal: acA.signal });
+    const seenA = await readStreamFor(respA, 700);
+    expect(seenA).toContain(requestID);
+    acA.abort();
+    await respA.body?.cancel().catch(() => {});
+
+    // B cannot answer A's question; A can.
+    const replyB = await ocCall("POST", `/question/${requestID}/reply`, { userId: "q-bob", body: JSON.stringify({ answers: [["x"]] }) });
+    expect(replyB.status).toBe(403);
+    expect((await replyB.json()).error).toBe("forbidden_question");
+    const replyA = await ocCall("POST", `/question/${requestID}/reply`, { userId: "q-alice", body: JSON.stringify({ answers: [["x"]] }) });
+    expect(replyA.status).toBe(200);
+
+    eventStop = true;
+    eventFrames = [];
+  });
+});
+
+describe("/oc proxy — session reuse is idempotent per (channel, sessionKey) (root-cause fix)", () => {
+  it("two POST /session for the same sessionKey return the SAME id (one upstream create)", async () => {
+    const before = sessionSeq;
+    const id1 = await createSessionFor("reuse-u", "thread-reuse-1");
+    const created = sessionSeq - before; // upstream creates that happened
+    const id2 = await createSessionFor("reuse-u", "thread-reuse-1");
+    expect(id1).toBe(id2);                 // same session reused
+    expect(created).toBe(1);               // first call created
+    expect(sessionSeq - before).toBe(1);   // second call did NOT create another
   });
 });
 

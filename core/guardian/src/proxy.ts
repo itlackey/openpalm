@@ -311,6 +311,17 @@ async function routeAllowed(
     return await forwardTransparent(req, rid, rawPath, search, body);
   }
 
+  // Interactive `question` tool reply/reject — the parallel of permission reply.
+  // Same ownership model: the /event relay recorded the que_ requestID→principal
+  // when it forwarded question.asked, so only the principal shown the question
+  // may answer/decline it (ownsPermission covers both per_ and que_ ids).
+  if (template === "/question/{requestID}/reply" || template === "/question/{requestID}/reject") {
+    if (!requestID || !ownsPermission(requestID, principal)) {
+      return deny(rid, 403, "forbidden_question", { channel: principal.channel, userId: principal.userId, requestID });
+    }
+    return await forwardTransparent(req, rid, rawPath, search, body);
+  }
+
   // All other allowlisted routes are session-scoped: assert ownership of {id}.
   if (sessionId !== undefined) {
     if (!ownsSession(sessionId, principal)) {
@@ -364,6 +375,7 @@ async function routeAllowed(
       if (resp.ok) {
         forgetSession(sessionId);
         endTurnsForSession(sessionId); // release any lingering turn for a deleted session
+        evictOcSession(sessionId); // drop the reuse cache so /clear forces a fresh session
       }
       return resp;
     }
@@ -478,10 +490,46 @@ function extractPromptText(body: string): string {
   return texts.join("\n");
 }
 
+// ── Durable session reuse (idempotent POST /session per (channel, sessionKey)) ─
+//
+// ROOT-CAUSE FIX: the /oc path used to create a BRAND-NEW OpenCode session on
+// every POST /session, so a single channel thread accumulated multiple sessions
+// (the channel's in-memory map was a fragile band-aid lost on restart). This
+// guardian-local cache makes create idempotent per (channel, sessionKey) —
+// mirroring the buffered path's forward.ts sessionCache. A per-key lock prevents
+// concurrent first turns from each creating a session. Survives channel restarts
+// (the durable component is the guardian); a guardian restart re-creates once
+// then reuses. Evicted on DELETE /session. Title unified to the buffered `/`
+// form so the two paths are consistent.
+const SESSION_REUSE_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
+const SESSION_REUSE_MAX = 10_000;
+const ocSessionByKey = new Map<string, { sessionId: string; lastUsed: number }>();
+const ocSessionCreateLocks = new Map<string, Promise<string>>();
+
+const ocSessionPruneTimer = setInterval(() => {
+  const cutoff = Date.now() - SESSION_REUSE_TTL_MS;
+  for (const [k, v] of ocSessionByKey) if (v.lastUsed < cutoff) ocSessionByKey.delete(k);
+  if (ocSessionByKey.size > SESSION_REUSE_MAX) {
+    const sorted = [...ocSessionByKey.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    for (const [k] of sorted.slice(0, sorted.length - SESSION_REUSE_MAX)) ocSessionByKey.delete(k);
+  }
+}, 60_000);
+ocSessionPruneTimer.unref();
+
+/** Forget the reused session for a deleted sessionId (called on DELETE /session). */
+function evictOcSession(sessionId: string): void {
+  for (const [k, v] of ocSessionByKey) if (v.sessionId === sessionId) ocSessionByKey.delete(k);
+}
+
+/** Active reused-session count (for /stats). */
+export function ocReusedSessionCount(): number {
+  return ocSessionByKey.size;
+}
+
 /**
- * POST /session: discard the client body, construct `{ title }` from the
- * principal-derived sessionKey, forward, then record sessionId→principal
- * synchronously from the create response before returning.
+ * POST /session: discard the client body, derive the title from the
+ * principal-derived sessionKey, and GET-OR-CREATE a session for that key
+ * (idempotent — see ocSessionByKey above), then record sessionId→principal.
  */
 async function forwardSessionCreate(
   req: Request,
@@ -490,31 +538,51 @@ async function forwardSessionCreate(
   rawPath: string,
   search: string,
 ): Promise<Response> {
-  // Derive the session title exactly as the buffered path does. The channel can
+  // sessionKey rides as a header so multi-thread channels keep their grouping;
+  // absent → falls back to userId inside resolveSessionTarget. The channel can
   // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
-  // metadata.sessionKey may ride as a header so multi-thread channels keep their
-  // grouping; absent → falls back to userId inside resolveSessionTarget.
   const sessionKeyHeader = req.headers.get("x-channel-session-key") ?? undefined;
   const metadata = sessionKeyHeader ? { sessionKey: sessionKeyHeader } : undefined;
   const target = resolveSessionTarget(principal.userId, principal.channel, metadata);
-  const rewritten = JSON.stringify({ title: `${principal.channel}:${target.sessionKey}` });
+  const cacheKey = `${principal.channel}:${target.sessionKey}`;
+  const title = `${principal.channel}/${target.sessionKey}`;
 
-  const upstream = await fetchUpstream(req, rawPath, search, rewritten);
-  // Read the create response to record ownership; this is a small JSON body so
-  // buffering it is fine (it is NOT a stream).
-  const text = await upstream.text();
-  if (upstream.ok) {
-    try {
-      const parsed = JSON.parse(text) as { id?: unknown };
-      if (typeof parsed.id === "string" && parsed.id) {
-        recordSessionOwner(parsed.id, principal);
-        audit({ requestId: rid, action: "oc_session_create", status: "ok", channel: principal.channel, userId: principal.userId, sessionId: parsed.id });
+  let inflight = ocSessionCreateLocks.get(cacheKey);
+  if (!inflight) {
+    inflight = (async (): Promise<string> => {
+      const cached = ocSessionByKey.get(cacheKey);
+      if (cached && Date.now() - cached.lastUsed < SESSION_REUSE_TTL_MS) {
+        cached.lastUsed = Date.now();
+        return cached.sessionId;
       }
-    } catch {
-      logger.warn("oc_session_create_unparsable", { requestId: rid, channel: principal.channel, userId: principal.userId });
-    }
+      const rewritten = JSON.stringify({ title });
+      const upstream = await fetchUpstream(req, rawPath, search, rewritten);
+      const text = await upstream.text();
+      if (!upstream.ok) throw new Error(`upstream_${upstream.status}:${text.slice(0, 200)}`);
+      const parsed = JSON.parse(text) as { id?: unknown };
+      const id = typeof parsed.id === "string" ? parsed.id : "";
+      if (!id) throw new Error("upstream_no_id");
+      ocSessionByKey.set(cacheKey, { sessionId: id, lastUsed: Date.now() });
+      return id;
+    })();
+    ocSessionCreateLocks.set(cacheKey, inflight);
+    void inflight.catch(() => {}).finally(() => {
+      if (ocSessionCreateLocks.get(cacheKey) === inflight) ocSessionCreateLocks.delete(cacheKey);
+    });
   }
-  return new Response(text, { status: upstream.status, headers: buildResponseHeaders(upstream, rid) });
+
+  let sessionId: string;
+  try {
+    sessionId = await inflight;
+  } catch (err) {
+    logger.warn("oc_session_create_failed", { requestId: rid, channel: principal.channel, userId: principal.userId, error: String(err) });
+    return deny(rid, 502, "oc_session_create_failed", { channel: principal.channel, userId: principal.userId });
+  }
+
+  recordSessionOwner(sessionId, principal);
+  audit({ requestId: rid, action: "oc_session_create", status: "ok", channel: principal.channel, userId: principal.userId, sessionId });
+  // Synthesize the create response the channel reads (it only needs id/title).
+  return Response.json({ id: sessionId, title });
 }
 
 /**

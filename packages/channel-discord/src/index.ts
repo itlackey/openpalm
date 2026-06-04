@@ -15,7 +15,7 @@ import {
 import { OcClient } from "@openpalm/channels-sdk";
 import { buildCommandRegistry, parseCustomCommands, resolvePromptTemplate } from "./commands.ts";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
-import { streamTurn } from "./stream-render.ts";
+import { streamTurn, type PendingQuestion } from "./stream-render.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -60,12 +60,13 @@ export default class DiscordChannel extends BaseChannel {
   private ocClientInstance: OcClient | null = null;
 
   /**
-   * One OpenCode session per Discord thread, so multi-turn conversations keep
-   * context (without this, every turn created a fresh session and the assistant
-   * "forgot" prior messages). Evicted on stream error so a stale/expired session
-   * (guardian ownership TTL, assistant restart) self-heals by recreating.
+   * Pending interactive `question` per thread, so the user can answer by typing a
+   * normal message in the thread (not only by clicking a button). Set by the
+   * streaming renderer when a question is asked, cleared when answered/turn-ends.
+   * (Session→thread mapping is now the GUARDIAN's job — it dedupes create per
+   * sessionKey — so no client-side session cache is needed.)
    */
-  private threadSessions = new Map<string, string>();
+  private pendingQuestions = new Map<string, PendingQuestion>();
 
   private get ocClient(): OcClient {
     if (!this.ocClientInstance) {
@@ -265,21 +266,21 @@ export default class DiscordChannel extends BaseChannel {
     if (this.streamingEnabled) {
       const sessionKey = String(metadata.sessionKey ?? `discord:thread:${thread.id}`);
       try {
-        const usedSessionId = await streamTurn({
+        await streamTurn({
           client: this.ocClient,
           userId: `discord:${userInfo.userId}`,
           requestingUserId: userInfo.userId,
           thread,
           sessionKey,
           text,
-          sessionId: this.threadSessions.get(thread.id), // reuse for multi-turn context
+          setPendingQuestion: (pending) => {
+            if (pending) this.pendingQuestions.set(thread.id, pending);
+            else this.pendingQuestions.delete(thread.id);
+          },
         });
-        this.threadSessions.set(thread.id, usedSessionId);
         log.info("stream_completed", { userId: userInfo.userId, threadId: thread.id, sessionKey });
       } catch (error) {
-        // Evict the cached session so the next turn recreates (heals a stale or
-        // ownership-expired session).
-        this.threadSessions.delete(thread.id);
+        this.pendingQuestions.delete(thread.id);
         const errMsg = error instanceof Error ? error.message : String(error);
         log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey });
         await thread.send(`Error: ${errMsg}`).catch(() => {});
@@ -341,6 +342,24 @@ export default class DiscordChannel extends BaseChannel {
     if (!text.trim()) {
       await message.reply("Please provide a message.");
       return;
+    }
+
+    // If an interactive `question` is pending for this thread, route a free-text
+    // reply to it (answer-by-typing) instead of starting a NEW turn — only the
+    // requester may answer (the in-flight turn then resumes and streams).
+    if (message.channel.isThread()) {
+      const pending = this.pendingQuestions.get(message.channel.id);
+      if (pending) {
+        if (message.author.id !== pending.requestingUserId) return;
+        this.pendingQuestions.delete(message.channel.id);
+        try {
+          await this.ocClient.replyQuestion(`discord:${userInfo.userId}`, pending.requestID, [[text]]);
+        } catch (err) {
+          log.warn("question_text_reply_failed", { error: String(err), threadId: message.channel.id });
+          await message.reply("Could not record that answer (it may have expired).").catch(() => {});
+        }
+        return;
+      }
     }
 
     try {

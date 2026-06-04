@@ -46,10 +46,17 @@ import {
   isTurnEnd,
   extractToolUpdate,
   extractPermissionAsk,
+  extractQuestionAsk,
   isSessionError,
   type ToolUpdate,
   type PermissionAsk,
+  type QuestionAsk,
 } from "@openpalm/channels-sdk";
+
+/** Adapter-owned hook so a pending question can also be answered by the user
+ * typing a normal message in the thread (the adapter routes that next message to
+ * replyQuestion). Set with the pending question when asked, null when resolved. */
+export type PendingQuestion = { requestID: string; requestingUserId: string };
 
 const log = createLogger("channel-discord:stream");
 
@@ -97,27 +104,28 @@ export interface StreamTurnArgs {
   /** The user's prompt text. */
   text: string;
   /**
-   * Reuse this OpenCode session if set (multi-turn context within a thread).
-   * When omitted, a new session is created. The used sessionId is RETURNED so
-   * the caller can cache it per thread and pass it back on the next turn.
+   * Called when an interactive `question` is pending (so the adapter can also
+   * accept a free-text answer typed in the thread) and with null when it
+   * resolves / the turn ends.
    */
-  sessionId?: string;
+  setPendingQuestion?: (pending: PendingQuestion | null) => void;
 }
 
 /**
- * Run ONE streamed turn end-to-end. Opens (or REUSES) a session, subscribes to
- * the filtered /event stream FIRST, then prompt_asyncs with a generated
- * messageID, and renders deltas/tools/permissions until turn-end. Resolves when
- * the turn reaches idle (so the conversation queue's run() promise settles per
- * sessionKey — design note on conversationQueue), or on timeout/abort.
- *
- * Returns the sessionId used, so the adapter can keep one OpenCode session per
- * Discord thread across turns (otherwise the assistant loses prior context).
+ * Run ONE streamed turn end-to-end. Creates the session (the GUARDIAN dedupes
+ * per (channel, sessionKey), so multi-turn context is preserved and one thread
+ * maps to one OpenCode session), subscribes to the filtered /event stream FIRST,
+ * then prompt_asyncs with a generated messageID, and renders
+ * deltas/tools/permissions/questions until turn-end. Resolves when the turn
+ * reaches idle (so the conversation queue's run() promise settles per sessionKey)
+ * or on timeout/abort.
  */
-export async function streamTurn(args: StreamTurnArgs): Promise<string> {
-  const { client, userId, requestingUserId, thread, sessionKey, text } = args;
+export async function streamTurn(args: StreamTurnArgs): Promise<void> {
+  const { client, userId, requestingUserId, thread, sessionKey, text, setPendingQuestion } = args;
 
-  const sessionId = args.sessionId ?? (await client.createSession(userId, sessionKey)).id;
+  // Guardian dedupes create per (channel, sessionKey), so calling it every turn
+  // returns the SAME session → one thread, one session, full multi-turn context.
+  const sessionId = (await client.createSession(userId, sessionKey)).id;
   const messageId = generateMessageId();
 
   // Subscribe BEFORE prompting (§4.2) so no frame is missed.
@@ -188,16 +196,22 @@ export async function streamTurn(args: StreamTurnArgs): Promise<string> {
           await renderPermissionPrompt(thread, client, userId, requestingUserId, ask);
           continue;
         }
+
+        const question = extractQuestionAsk(e, sessionId);
+        if (question) {
+          await renderQuestionPrompt(thread, client, userId, requestingUserId, question, setPendingQuestion);
+          continue;
+        }
       } catch (err) {
         log.warn("frame_render_failed", { error: String(err), type: e.type, sessionId });
       }
     }
   } finally {
+    setPendingQuestion?.(null); // clear any unanswered pending question for this thread
     ac.abort();
     stopCollector.stop();
     await renderer.finalize(thread).catch(() => {});
   }
-  return sessionId;
 }
 
 // ── Incremental text renderer (throttled edits + 2000-char roll) ───────────
@@ -342,6 +356,79 @@ async function renderPermissionPrompt(
   collector.on("end", (collected) => {
     if (collected.size === 0) {
       void prompt.edit({ content: `Permission **${ask.permission}** timed out.`, components: [] }).catch(() => {});
+    }
+  });
+}
+
+// ── Interactive question (the `question` tool) ─────────────────────────────
+//
+// Renders the FIRST question's options as buttons (chunked into rows of 5), and
+// registers a pending question so the user can ALSO answer by typing a normal
+// message in the thread (the adapter routes that to replyQuestion). Answering by
+// either path replies once and clears the pending state.
+async function renderQuestionPrompt(
+  thread: ThreadChannel,
+  client: OcClient,
+  userId: string,
+  requestingUserId: string,
+  ask: QuestionAsk,
+  setPendingQuestion?: (pending: PendingQuestion | null) => void,
+): Promise<void> {
+  const q = ask.questions[0]; // v1: answer the first question (the common case)
+  if (!q) return;
+
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  const options = q.options.slice(0, 25); // Discord cap: 25 buttons (5 rows × 5)
+  for (let i = 0; i < options.length; i += 5) {
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    for (const [j, opt] of options.slice(i, i + 5).entries()) {
+      const idx = i + j;
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`oc_q:${ask.requestID}:${idx}`)
+          .setLabel((opt.label || `Option ${idx + 1}`).slice(0, 80))
+          .setStyle(ButtonStyle.Primary),
+      );
+    }
+    rows.push(row);
+  }
+
+  const header = q.header ? `**${q.header}**\n` : "";
+  const optionLines = options.map((o) => `• **${o.label}**${o.description ? ` — ${o.description}` : ""}`).join("\n");
+  const content = `${header}${q.question}${optionLines ? `\n${optionLines}` : ""}\n_Click an option below, or reply in this thread with your own answer._`;
+
+  const prompt = await thread.send({ content: content.slice(0, 2000), components: rows });
+  // Register so a free-text thread reply can resolve it (adapter messageCreate).
+  setPendingQuestion?.({ requestID: ask.requestID, requestingUserId });
+
+  if (rows.length === 0) return; // no options → free-text only (resolved via thread reply)
+
+  const collector = prompt.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: BUTTON_COLLECTOR_MS,
+    max: 1,
+  });
+
+  collector.on("collect", async (i: ButtonInteraction) => {
+    if (i.user.id !== requestingUserId) {
+      await i.reply({ content: "Only the requester can answer this question.", ephemeral: true });
+      return;
+    }
+    const idx = Number(i.customId.split(":")[2]);
+    const chosen = options[idx]?.label ?? "";
+    try {
+      await client.replyQuestion(userId, ask.requestID, [[chosen]]);
+      setPendingQuestion?.(null);
+      await i.update({ content: `${header}${q.question}\n✅ **${chosen}**`, components: [] });
+    } catch (err) {
+      log.warn("question_reply_failed", { error: String(err), requestID: ask.requestID });
+      await i.update({ content: "Could not record that answer (it may have expired).", components: [] });
+    }
+  });
+
+  collector.on("end", (collected) => {
+    if (collected.size === 0) {
+      void prompt.edit({ components: [] }).catch(() => {}); // leave the text, drop dead buttons
     }
   });
 }

@@ -176,15 +176,19 @@ export function routeFrame(frameJson: string): void {
   const sessionId = frameSessionId(frameJson);
   if (sessionId === undefined) return; // HARD DROP — no sessionID
 
-  const isPermissionAsked = frameType(frameJson) === "permission.asked";
-  const permRequestId = isPermissionAsked ? framePermissionRequestId(frameJson) : undefined;
+  // permission.asked AND question.asked both carry their reply id at
+  // properties.id (per_… / que_…) and are answered by requestID; record
+  // requestID→principal for either so the reply gate can authorize it (§3.4).
+  const ft = frameType(frameJson);
+  const interactiveRequestId =
+    ft === "permission.asked" || ft === "question.asked" ? framePermissionRequestId(frameJson) : undefined;
 
   const sseBytes = encoder.encode(`data: ${frameJson}\n\n`);
 
   for (const sub of subscribers) {
     if (sub.closed) continue;
     if (!ownsSession(sessionId, sub.principal)) continue;
-    if (permRequestId) recordPermissionOwner(permRequestId, sub.principal);
+    if (interactiveRequestId) recordPermissionOwner(interactiveRequestId, sub.principal);
     writeTo(sub, sseBytes);
   }
 

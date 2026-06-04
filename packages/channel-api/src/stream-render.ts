@@ -272,6 +272,17 @@ export function streamTurn(args: StreamTurnArgs, signal?: AbortSignal): Response
             continue;
           }
 
+          const question = extractQuestionAsk(e, sessionId);
+          if (question) {
+            // Non-interactive channel: no human to answer → reject so the turn
+            // doesn't hang. The assistant then proceeds / reports it couldn't ask.
+            log.info("question_rejected", { requestID: question.requestID });
+            await client.rejectQuestion(userId, question.requestID).catch((err) =>
+              log.warn("question_reject_failed", { error: String(err), requestID: question.requestID }),
+            );
+            continue;
+          }
+
           if (isTurnEnd(e, sessionId)) break;
 
           if (isSessionError(e, sessionId)) {

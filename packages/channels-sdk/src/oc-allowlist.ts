@@ -52,6 +52,8 @@ export const OC_ALLOWLIST: readonly AllowlistRoute[] = Object.freeze([
   { method: "POST", template: "/session/{id}/prompt_async" },     // prompt screened → §3.5
   { method: "GET", template: "/event" },                          // filtered → §3.2
   { method: "POST", template: "/permission/{requestID}/reply" },  // own requestID only → §3.4
+  { method: "POST", template: "/question/{requestID}/reply" },    // interactive question answer; own requestID only → §3.4
+  { method: "POST", template: "/question/{requestID}/reject" },   // decline a question; own requestID only → §3.4
   { method: "POST", template: "/session/{id}/abort" },            // own only
 ]);
 

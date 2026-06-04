@@ -13,6 +13,7 @@ import {
   isTurnEnd,
   extractToolUpdate,
   extractPermissionAsk,
+  extractQuestionAsk,
   isSessionError,
 } from "./oc-events.ts";
 
@@ -144,6 +145,31 @@ describe("extractPermissionAsk — surfaces requestID for our session (§4.1)", 
 
   test("a permission.asked missing an id yields null", () => {
     expect(extractPermissionAsk(ev("permission.asked", { sessionID: SID, permission: "bash" }), SID)).toBeNull();
+  });
+});
+
+describe("extractQuestionAsk — surfaces the question tool (§ question tool)", () => {
+  test("question.asked yields requestID + questions + options", () => {
+    const q = extractQuestionAsk(
+      ev("question.asked", {
+        sessionID: SID,
+        id: "que_1",
+        questions: [{ question: "Where is the root?", header: "Project root", options: [{ label: "/work", description: "here" }, { label: "Other", description: "custom" }] }],
+      }),
+      SID,
+    );
+    expect(q).not.toBeNull();
+    expect(q!.requestID).toBe("que_1");
+    expect(q!.questions[0].options.map((o) => o.label)).toEqual(["/work", "Other"]);
+  });
+
+  test("question.asked for a foreign session is ignored", () => {
+    expect(extractQuestionAsk(ev("question.asked", { sessionID: "other", id: "que_2", questions: [{ question: "x", header: "y", options: [] }] }), SID)).toBeNull();
+  });
+
+  test("question.asked missing id or questions yields null", () => {
+    expect(extractQuestionAsk(ev("question.asked", { sessionID: SID, questions: [{ question: "x", header: "y", options: [] }] }), SID)).toBeNull();
+    expect(extractQuestionAsk(ev("question.asked", { sessionID: SID, id: "que_3", questions: [] }), SID)).toBeNull();
   });
 });
 

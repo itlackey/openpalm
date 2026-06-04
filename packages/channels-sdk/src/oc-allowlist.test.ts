@@ -47,6 +47,16 @@ describe("matchAllowlist — allowed routes", () => {
     expect(matchAllowlist("GET", "/event").allowed).toBe(true);
   });
 
+  test("POST /question/{requestID}/reply captures requestID", () => {
+    const m = matchAllowlist("POST", "/question/que_abc-1/reply");
+    expect(m.allowed).toBe(true);
+    expect(m.params?.requestID).toBe("que_abc-1");
+  });
+
+  test("POST /question/{requestID}/reject", () => {
+    expect(matchAllowlist("POST", "/question/que_abc-1/reject").allowed).toBe(true);
+  });
+
   test("POST /permission/{requestID}/reply captures requestID", () => {
     const m = matchAllowlist("POST", "/permission/per_xyz/reply");
     expect(m.allowed).toBe(true);

@@ -73,12 +73,18 @@ export {
 // ── Shared pure OpenCode event interpreters (rich-UX renderers) ───────────
 export {
   asRaw,
+  statusName,
+  TURN_IDLE_STATUSES,
   extractTextDelta,
   isTurnEnd,
   extractToolUpdate,
   extractPermissionAsk,
+  extractQuestionAsk,
   isSessionError,
   type RawEvent,
   type ToolUpdate,
   type PermissionAsk,
+  type QuestionAsk,
+  type QuestionInfo,
+  type QuestionOption,
 } from "./oc-events.ts";
