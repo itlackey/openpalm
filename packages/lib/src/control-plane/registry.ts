@@ -574,14 +574,18 @@ function execFileNoThrow(
 /**
  * Compute the openpalm/voice image ref for a given GPU variant, matching
  * the substitution chain in the addon compose file:
- *   ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}-<variant>}
+ *   ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-latest-<variant>}
+ *
+ * Voice images are published OUT OF BAND (publish-voice.yml), decoupled from the
+ * platform OP_IMAGE_TAG — they are heavy and rarely change. So the default is
+ * the moving `latest-<variant>` voice tag; operators pin a specific build by
+ * setting OP_VOICE_IMAGE_TAG (e.g. `v1.0.0-cpu`).
  */
 function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
   const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || 'openpalm';
   const explicit = process.env.OP_VOICE_IMAGE_TAG?.trim();
   if (explicit) return `${namespace}/voice:${explicit}`;
-  const baseTag = process.env.OP_IMAGE_TAG?.trim() || 'latest';
-  return `${namespace}/voice:${baseTag}-${variant}`;
+  return `${namespace}/voice:latest-${variant}`;
 }
 
 /**
