@@ -351,13 +351,11 @@ export default class DiscordChannel extends BaseChannel {
       const pending = this.pendingQuestions.get(message.channel.id);
       if (pending) {
         if (message.author.id !== pending.requestingUserId) return;
-        this.pendingQuestions.delete(message.channel.id);
-        try {
-          await this.ocClient.replyQuestion(`discord:${userInfo.userId}`, pending.requestID, [[text]]);
-        } catch (err) {
-          log.warn("question_text_reply_failed", { error: String(err), threadId: message.channel.id });
-          await message.reply("Could not record that answer (it may have expired).").catch(() => {});
-        }
+        // Route through the question's idempotent resolver (shared with the
+        // buttons) — it replies, updates the prompt message, and clears pending.
+        await pending.resolve(text).catch((err) =>
+          log.warn("question_text_reply_failed", { error: String(err), threadId: (message.channel as ThreadChannel).id }),
+        );
         return;
       }
     }

@@ -55,9 +55,15 @@ import {
 } from "@openpalm/channels-sdk";
 
 /** Adapter-owned hook so a pending question can also be answered by the user
- * typing a normal message in the thread (the adapter routes that next message to
- * replyQuestion). Set with the pending question when asked, null when resolved. */
-export type PendingQuestion = { requestID: string; requestingUserId: string };
+ * typing a normal message in the thread. `resolve(answer)` is the SINGLE
+ * idempotent answer path shared by the buttons and the free-text reply — calling
+ * it twice (e.g. a stale button click after a typed answer) is a safe no-op, so
+ * the second answer never 404s. Set when asked, null when resolved/turn-ends. */
+export type PendingQuestion = {
+  requestID: string;
+  requestingUserId: string;
+  resolve: (answer: string) => Promise<void>;
+};
 
 const log = createLogger("channel-discord:stream");
 
@@ -194,7 +200,9 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
 
         const tool = extractToolUpdate(e, sessionId);
         if (tool && tool.callID) {
-          await renderToolEmbed(thread, toolEmbeds, tool);
+          // The `question` tool renders specially (interactive prompt below) —
+          // don't ALSO show the generic "🔧 question / completed" embed.
+          if (tool.tool !== "question") await renderToolEmbed(thread, toolEmbeds, tool);
           continue;
         }
 
@@ -405,38 +413,47 @@ async function renderQuestionPrompt(
   const content = `${header}${q.question}${optionLines ? `\n${optionLines}` : ""}\n_Click an option below, or reply in this thread with your own answer._`;
 
   const prompt = await thread.send({ content: content.slice(0, 2000), components: rows });
-  // Register so a free-text thread reply can resolve it (adapter messageCreate).
-  setPendingQuestion?.({ requestID: ask.requestID, requestingUserId });
+  let collector: ReturnType<Message["createMessageComponentCollector"]> | undefined;
+
+  // The SINGLE idempotent answer path. Both the buttons and the free-text reply
+  // call this; the first answer wins, any later one is a safe no-op (no 404).
+  let resolved = false;
+  const resolveOnce = async (answer: string, interaction?: ButtonInteraction): Promise<void> => {
+    if (resolved) {
+      if (interaction) await interaction.reply({ content: "That question was already answered.", ephemeral: true }).catch(() => {});
+      return;
+    }
+    resolved = true;
+    setPendingQuestion?.(null);
+    try { collector?.stop(); } catch { /* not started */ }
+    let outcome: string;
+    try {
+      await client.replyQuestion(userId, ask.requestID, [[answer]]);
+      outcome = `${header}${q.question}\n✅ ${answer}`.slice(0, 2000);
+    } catch (err) {
+      log.warn("question_reply_failed", { error: String(err), requestID: ask.requestID });
+      outcome = `${header}${q.question}\n_(could not record that answer)_`.slice(0, 2000);
+    }
+    if (interaction) await interaction.update({ content: outcome, components: [] }).catch(() => {});
+    else await prompt.edit({ content: outcome, components: [] }).catch(() => {});
+  };
+
+  // Free-text reply path (adapter routes a typed thread message here).
+  setPendingQuestion?.({ requestID: ask.requestID, requestingUserId, resolve: (a) => resolveOnce(a) });
 
   if (rows.length === 0) return; // no options → free-text only (resolved via thread reply)
 
-  const collector = prompt.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: BUTTON_COLLECTOR_MS,
-    max: 1,
-  });
-
+  collector = prompt.createMessageComponentCollector({ componentType: ComponentType.Button, time: BUTTON_COLLECTOR_MS });
   collector.on("collect", async (i: ButtonInteraction) => {
     if (i.user.id !== requestingUserId) {
-      await i.reply({ content: "Only the requester can answer this question.", ephemeral: true });
+      await i.reply({ content: "Only the requester can answer this question.", ephemeral: true }).catch(() => {});
       return;
     }
     const idx = Number(i.customId.split(":")[2]);
-    const chosen = options[idx]?.label ?? "";
-    try {
-      await client.replyQuestion(userId, ask.requestID, [[chosen]]);
-      setPendingQuestion?.(null);
-      await i.update({ content: `${header}${q.question}\n✅ **${chosen}**`, components: [] });
-    } catch (err) {
-      log.warn("question_reply_failed", { error: String(err), requestID: ask.requestID });
-      await i.update({ content: "Could not record that answer (it may have expired).", components: [] });
-    }
+    await resolveOnce(options[idx]?.label ?? "", i);
   });
-
   collector.on("end", (collected) => {
-    if (collected.size === 0) {
-      void prompt.edit({ components: [] }).catch(() => {}); // leave the text, drop dead buttons
-    }
+    if (collected.size === 0 && !resolved) void prompt.edit({ components: [] }).catch(() => {}); // drop dead buttons
   });
 }
 
