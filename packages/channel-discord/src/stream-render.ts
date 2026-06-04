@@ -64,6 +64,18 @@ export type PendingQuestion = {
 
 const log = createLogger("channel-discord:stream");
 
+/**
+ * Channel-level guidance prepended ONCE to the first prompt of a Discord session.
+ * Discord renders the `question` tool as interactive buttons (and free-text thread
+ * replies), so we nudge the model to USE that tool when it wants the user to pick
+ * between options instead of listing the choices as plain text. This lives in the
+ * Discord package, so non-interactive channels (e.g. the API channel) never inject
+ * it. Set DISCORD_SESSION_PREAMBLE="" to disable, or to your own text to override.
+ */
+export const DISCORD_SESSION_PREAMBLE =
+  Bun.env.DISCORD_SESSION_PREAMBLE ??
+  "[channel:discord] You are talking to the user over Discord. When you want the user to choose between options, or you are asking a question that has a few clear answers, ALWAYS call the `question` tool to present the choices — do not list the options as plain text. Discord renders that tool as clickable buttons (the user can also reply with their own answer).";
+
 // ── Named tunables (design §4.1, §3.6 edit-throttle) ───────────────────────
 
 /** Discord hard message length. */
@@ -94,6 +106,13 @@ export interface StreamTurnArgs {
   sessionKey: string;
   /** The user's prompt text. */
   text: string;
+  /**
+   * Optional one-time preamble prepended to THIS turn's prompt (e.g. the
+   * Discord `question`-tool nudge on a session's first turn). Empty/undefined =
+   * no preamble. The caller is responsible for sending it only when wanted (once
+   * per session) so it doesn't repeat every turn.
+   */
+  sessionPreamble?: string;
   /** The user's triggering Discord message — tool use is shown as emoji reactions on it. */
   triggerMessage: Message;
   /**
@@ -114,7 +133,11 @@ export interface StreamTurnArgs {
  * or on timeout/abort.
  */
 export async function streamTurn(args: StreamTurnArgs): Promise<void> {
-  const { client, userId, requestingUserId, thread, sessionKey, text, triggerMessage, setPendingQuestion } = args;
+  const { client, userId, requestingUserId, thread, sessionKey, text, sessionPreamble, triggerMessage, setPendingQuestion } = args;
+  // Prepend the one-time channel preamble (question-tool nudge) to the user's
+  // text. The caller passes it only on a session's first turn, so it never
+  // repeats. The user's actual message stays last so it reads naturally.
+  const promptText = sessionPreamble?.trim() ? `${sessionPreamble.trim()}\n\n${text}` : text;
 
   // Native Discord "typing…" indicator while the turn works — signals activity
   // during the pre-text phase (reasoning + tool steps) WITHOUT posting any
@@ -129,7 +152,7 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
     const eventsIter = client.events(userId, ac.signal); // subscribe BEFORE prompting (§4.2)
     // Fire the turn but DON'T await — /message resolves only at turn-end, and the
     // render loop drives off /event. If it errors, abort so the loop ends.
-    void client.prompt(userId, sessionId, text).catch((err) => {
+    void client.prompt(userId, sessionId, promptText).catch((err) => {
       log.warn("prompt_failed", { error: String(err), sessionId });
       ac.abort();
     });

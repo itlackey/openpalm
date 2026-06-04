@@ -117,3 +117,11 @@ describe("extractPermissionAsk — surfaces requestID for our session (§4.1)", 
     expect(extractPermissionAsk(ev("permission.asked", { sessionID: SID, permission: "bash" }), SID)).toBeNull();
   });
 });
+
+describe("DISCORD_SESSION_PREAMBLE — channel-level question-tool nudge", () => {
+  test("is a non-empty default that mentions the question tool (so the API channel never gets it — it lives here)", async () => {
+    const { DISCORD_SESSION_PREAMBLE } = await import("./stream-render.ts");
+    expect(DISCORD_SESSION_PREAMBLE.length).toBeGreaterThan(0);
+    expect(DISCORD_SESSION_PREAMBLE).toContain("question");
+  });
+});

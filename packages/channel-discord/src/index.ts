@@ -15,7 +15,7 @@ import {
 import { OcClient } from "@openpalm/channels-sdk";
 import { buildCommandRegistry, parseCustomCommands, resolvePromptTemplate } from "./commands.ts";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
-import { streamTurn, type PendingQuestion } from "./stream-render.ts";
+import { streamTurn, DISCORD_SESSION_PREAMBLE, type PendingQuestion } from "./stream-render.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -67,6 +67,14 @@ export default class DiscordChannel extends BaseChannel {
    * sessionKey — so no client-side session cache is needed.)
    */
   private pendingQuestions = new Map<string, PendingQuestion>();
+
+  /**
+   * Session keys that have already received the one-time channel preamble (the
+   * `question`-tool nudge prepended to the first prompt of a session). In-memory
+   * only: a restart re-primes each live session once, which is harmless. Cleared
+   * for a session on /clear so a fresh OpenCode session gets primed again.
+   */
+  private primedSessions = new Set<string>();
 
   private get ocClient(): OcClient {
     if (!this.ocClientInstance) {
@@ -210,6 +218,7 @@ export default class DiscordChannel extends BaseChannel {
   /** Stop tracking a thread (used by /clear). */
   private forgetThread(threadId: string): void {
     this.activeThreads.delete(threadId);
+    this.primedSessions.delete(`discord:thread:${threadId}`);
   }
 
   // ── Message Handling ────────────────────────────────────────────────────
@@ -266,6 +275,9 @@ export default class DiscordChannel extends BaseChannel {
     // turn-end (session idle), keeping per-sessionKey serialization intact.
     if (this.streamingEnabled) {
       const sessionKey = String(metadata.sessionKey ?? `discord:thread:${thread.id}`);
+      // Prime the model with the question-tool nudge ONCE per session (first turn).
+      const sessionPreamble = this.primedSessions.has(sessionKey) ? undefined : DISCORD_SESSION_PREAMBLE;
+      this.primedSessions.add(sessionKey);
       try {
         await streamTurn({
           client: this.ocClient,
@@ -274,6 +286,7 @@ export default class DiscordChannel extends BaseChannel {
           thread,
           sessionKey,
           text,
+          sessionPreamble,
           triggerMessage,
           setPendingQuestion: (pending) => {
             if (pending) this.pendingQuestions.set(thread.id, pending);
@@ -625,6 +638,8 @@ export default class DiscordChannel extends BaseChannel {
       }
 
       const droppedQueued = this.conversationQueue.clear(sessionKey);
+      // A cleared session becomes a fresh OpenCode session → re-prime next turn.
+      this.primedSessions.delete(sessionKey);
 
       // Stop tracking this thread so the bot won't auto-respond anymore
       if (interaction.channel?.isThread()) {
