@@ -14,9 +14,9 @@ An earlier draft proposed a normalized "Guardian Event Protocol" that translated
 
 **Therefore:** the guardian forwards native OpenCode calls and responses transparently, *except* for a small, explicit set of fail-closed security gates. Channels speak native OpenCode (via `@opencode-ai/sdk`) through the guardian. The contract is the OpenCode API, pinned to `OPENCODE_VERSION`.
 
-Validated against the **live running assistant** (`openpalm/assistant:v0.11.0-rc.1`, OpenCode `1.3.3` — the version pinned in `core/assistant/Dockerfile`), read from its OpenAPI spec on `:4096`.
+Validated against **OpenCode `1.15.13`** — the version now pinned in `core/assistant/Dockerfile` and `core/guardian/Dockerfile` (bumped from `1.3.3`). The endpoint/event surface below was read from `1.15.13`'s OpenAPI spec, and the permission flow (§1.2) was **empirically driven end-to-end** against a live `1.15.13` server.
 
-> **Prerequisite — permission prompts must actually fire (§1.2).** OpenCode merged "tools" and "permissions"; whether a tool pauses with `permission.asked` depends on the assistant's permission configuration. The current `.openpalm/config/assistant/opencode.jsonc` sets only file-read denials and `external_directory` allows — it does **not** configure interactive tool gating, so by default tools may auto-proceed and emit **no** `permission.asked`. The permission-prompt feature is inert until the assistant is configured to ask. This is a hard dependency, not an afterthought — see §1.2.
+> **Prerequisite — permission prompts must actually fire (§1.2). VERIFIED on 1.15.13.** Whether a tool pauses with `permission.asked` depends on the assistant's permission configuration. The current `.openpalm/config/assistant/opencode.jsonc` sets only file-read denials and `external_directory` allows — it does **not** gate tool execution, so as shipped no `permission.asked` fires. Adding `"permission": { "bash": "ask" }` (etc.) makes the gate work: this was driven end-to-end against a live 1.15.13 server (tool blocked → `permission.asked` → reply → resume). The remaining work is configuration, not an upstream unknown — see §1.2.
 
 ---
 
@@ -47,19 +47,40 @@ Every SSE frame is a JSON object `{ "type": "<name>", "properties": { … } }`. 
 | `message.part.updated` | `sessionID, part, time` | yes |
 | `permission.asked` | `PermissionRequest` (incl. `id`, `sessionID`, `permission`, `patterns`, `metadata`, `always`, `tool:{messageID,callID}`) | yes |
 | `permission.replied` | `sessionID, requestID, reply` | yes |
-| `session.idle` | `sessionID` | yes — **turn-end signal** |
+| `session.idle` | `sessionID` | yes — turn-end signal (but see note) |
+| `session.status` | `sessionID, status` | yes — **the live turn busy/idle signal observed on 1.15.13** |
 | `session.error` | `sessionID, error` | yes |
-| `server.connected`, `installation.*`, `server.instance.disposed`, … | no `sessionID` | **no** |
+| `server.connected`, `server.heartbeat`, `installation.*`, `server.instance.disposed`, … | no `sessionID` | **no** |
 
-The last row is load-bearing for filtering: **global events carry no `sessionID` and must never be forwarded to a channel** (§3.2).
+The last row is load-bearing for filtering: **global events carry no `sessionID` and must never be forwarded to a channel** (§3.2). Confirmed live on 1.15.13: `server.heartbeat` and `server.connected` arrive with `properties: {}` (no `sessionID`).
+
+> **Turn-end signal nuance (verified on 1.15.13).** `session.idle` exists in the event union, but the live run emitted `session.status` transitions (not a standalone `session.idle`) around turn boundaries. The renderer should treat **turn-end as `session.status` reaching an idle state, with `session.idle` as a fallback** — and Stage 4 should pin the exact end-of-turn condition empirically (§4.2).
+
+**Richer streaming family (new in 1.15.13).** Beyond `message.part.delta`, 1.15.13 adds a fine-grained `session.next.*` event family — `session.next.text.delta`, `session.next.tool.called`, `session.next.tool.input.delta`, `session.next.tool.progress`, `session.next.reasoning.delta`, `session.next.step.started/ended`, etc. These give the channel renderers a cleaner, lower-latency stream than diffing `message.part.updated` snapshots; prefer them where available (they did not exist on 1.3.3). All carry `sessionID` and filter identically (§3.2).
 
 `ToolPart.state` is one of `ToolStatePending|Running|Completed|Error`, each with `status` plus `input`/`title`/`output`/`error` — enough to render a live tool-call card.
 
-### 1.2 Making permissions fire (hard prerequisite)
+### 1.2 Making permissions fire — VERIFIED on 1.15.13
 
-The `prompt_async`/`message` bodies still accept a `tools` map, but it is deprecated: *"tools and permissions have been merged, you can set permissions on the session itself now."* Consequence: whether a tool emits `permission.asked` is governed by the **session/assistant permission config**, not a per-turn flag. The shipped `opencode.jsonc` does not configure interactive gating, so **today no `permission.asked` events fire for tool execution.**
+`prompt_async`/`message` still accept a deprecated `tools` map (*"tools and permissions have been merged, you can set permissions on the session itself now"*). Whether a tool emits `permission.asked` is governed by the **`permission` config**, not a per-turn flag. The config schema (1.15.13) is:
 
-Before the permission-prompt UX can work, a deliberate step is required (exact mechanism to be confirmed against OpenCode 1.3.3 during Stage 4): configure the assistant (globally or per channel-owned session) so that tools requiring approval pause with `permission.asked`. **Stage 4 must begin by empirically confirming that a configured tool actually emits `permission.asked` on this version** before any Discord UI is built. If it does not, the feature is blocked upstream and must be reported as such rather than worked around.
+```jsonc
+"permission": "ask" | "allow" | "deny"        // global default, OR an object:
+"permission": {
+  "bash": "ask",            // also: read, edit, glob, grep, list, task, external_directory
+  "edit": "ask",            // each value is an action, or an object of pattern → action
+  "bash": { "echo *": "allow", "*": "ask" }   // pattern form
+}
+```
+
+**Empirical proof (live 1.15.13 server, `permission: { "bash": "ask" }`):**
+1. A turn instructing the model to run a bash command produced a `tool` part stuck in `state.status = "running"` — execution genuinely paused.
+2. A `permission.asked` event fired carrying the full `PermissionRequest`: `{ id: "per_…", sessionID, permission: "bash", patterns: ["echo hello-from-tool"], always: ["echo *"], tool: { messageID, callID } }`. `GET /permission` listed the same pending request.
+3. `POST /permission/{id}/reply` with `{ "reply": "once" }` returned `200 true`; the tool advanced to `state.status = "completed"` with `output: "hello-from-tool\n"`, and `GET /permission` returned `[]`.
+
+So the headline feature is **not** blocked upstream — it needs only a `permission` config that gates the relevant tools (`bash`, `edit`, `task`, …) to `"ask"`. Two consequences for OpenPalm:
+- The shipped `.openpalm/config/assistant/opencode.jsonc` must add a `permission` policy for tools we want a human to approve (a separate, deliberate change — out of scope for this doc, tracked for Stage 4).
+- The `always` array in the request (e.g. `["echo *"]`) is exactly what an **"Always"** button maps to (`reply: "always"`).
 
 ---
 
@@ -192,7 +213,7 @@ Each adapter holds a persistent filtered `/event` subscription via the guardian,
 Because `prompt_async` returns `204` with no `messageID`, and `/event` is global, the turn must be correlated deterministically:
 1. The channel's filtered `/event` subscription is **already open** (it is persistent per principal) — so no event can arrive before a subscriber exists.
 2. The channel **generates a `messageID`** (`^msg…`) and passes it in the `prompt_async` body.
-3. The channel filters incoming frames to its session **and** that `messageID` (via `properties.messageID` / `part.messageID`), rendering deltas until `session.idle` for the session marks turn end.
+3. The channel filters incoming frames to its session **and** that `messageID` (via `properties.messageID` / `part.messageID`), rendering deltas until the session's turn-end signal (`session.status` reaching idle, fallback `session.idle` — §1.1). Prefer the `session.next.*` deltas where present (1.15.13+) over diffing `message.part.updated` snapshots.
 
 This removes the subscribe-after-prompt race entirely and gives a stable correlation key without relying on a response body.
 
@@ -257,7 +278,7 @@ Mapped to `docs/technical/core-principles.md`:
 2. **Stage 1 — Guardian proxy core.** `/oc/*` route: per-call HMAC verify, allowlist (default-deny, hardened matching), session-ownership map + create-body rewrite, transparent passthrough streaming `upstream.body`. Deny-tests.
 3. **Stage 2 — `/event` filtering.** Single upstream subscription, per-principal filtered fan-out by owned `sessionID`, no-`sessionID` drop rule, restart→synthetic-`session.error`. Two-principal cross-leak test.
 4. **Stage 3 — Moderation extraction.** Screen `message`/`prompt_async` bodies; fail-closed; reuse existing screen+moderator.
-5. **Stage 4 — Permissions, gated on the §1.2 prerequisite.** First **empirically confirm** a configured tool emits `permission.asked` on OpenCode 1.3.3; then Discord `prompt_async` + correlation (§4.2) + throttled edits + tool embeds + ActionRow → `/permission/{requestID}/reply` (`{reply}`) + stop→`abort`. If permissions can't be made to fire upstream, stop and report.
+5. **Stage 4 — Permissions.** The upstream prerequisite is **verified** (§1.2); the remaining OpenPalm step is to add a `permission` policy to the assistant config so the desired tools gate to `"ask"`. Then Discord `prompt_async` + correlation (§4.2) + throttled edits + tool embeds + ActionRow → `POST /permission/{requestID}/reply` (`{reply}`; `"always"` from the `always` array) + stop→`abort`.
 6. **Stage 5 — Slack renderer** (same proxy + native events, Block Kit).
 7. **Stage 6 — API channel** streaming (`stream:true`) + non-interactive permission policy.
 8. **Stage 7 — Fail-closed drift guard** (startup `/doc` assertion).
@@ -272,7 +293,9 @@ Each stage ships independently; the buffered path is the safe default throughout
 - Single shared upstream `/event` + fan-out vs. per-principal upstream subscriptions (§3.2) — leaning shared; confirm against assistant concurrent-SSE behavior.
 - Discord/Slack edit-throttle that stays under platform rate limits while feeling live (start ~1.25 s).
 - Whether to surface `reasoning` parts on channels at all (likely off by default — avoid leaking chain-of-thought).
-- The exact OpenCode mechanism to make tools pause with `permission.asked` on 1.3.3 (§1.2) — the single biggest unknown; resolve at the top of Stage 4.
+- ~~The exact OpenCode mechanism to make tools pause with `permission.asked`~~ — **resolved** (§1.2): `permission: { bash: "ask", … }`, verified end-to-end on 1.15.13.
+- Exact end-of-turn condition to render against (`session.status` idle vs `session.idle`) — pin empirically in Stage 4 (§1.1, §4.2).
+- Whether to adopt the `session.next.*` delta family (1.15.13+) as the primary render stream vs `message.part.*` (§1.1).
 
 ---
 
@@ -295,7 +318,8 @@ Three expert reviews (security, OpenPalm-architecture, OpenCode-API) were applie
 - **Permission endpoint corrected** to `POST /permission/{requestID}/reply` (`{reply}`); deprecated session-scoped variant dropped; added `requestID`→principal ownership (API review HIGH + authz follow-through).
 - **Streaming correlation** (§4.2): `prompt_async` returns 204; persistent pre-subscription + client `messageID` (API review HIGH).
 - **`/event` is per-instance** with optional scope params; `/global/event` is distinct and denied (API review MED).
-- **Permission prerequisite** (§1.2): tools won't emit `permission.asked` under the current config; Stage 4 gated on confirming it upstream (API review MED).
+- **Permission prerequisite** (§1.2): originally flagged as the biggest unknown; now **verified end-to-end on 1.15.13** — `permission: { bash: "ask" }` pauses the tool, `permission.asked` fires, `POST /permission/{id}/reply {reply:"once"}` resumes it. Remaining OpenPalm work is config only.
+- **OpenCode bumped 1.3.3 → 1.15.13** (latest) in both Dockerfiles; surface re-validated against 1.15.13. New since 1.3.3: the `session.next.*` fine-grained streaming family (§1.1), `session.status` as the live turn signal, `server.heartbeat` as another global no-`sessionID` event.
 - **Drift guard** made fail-closed for the proxy path (sec LOW).
 - **Code placement:** kept guardian-local + `channels-sdk`, **not** `@openpalm/lib` — reasoned divergence from the architecture reviewer, consistent with the guardian's minimal-dependency Docker pattern (§2.2).
 - **`/oc/*` base path** chosen and a telemetry-triggered sunset stance added (arch review §7).

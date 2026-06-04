@@ -11,7 +11,7 @@
 
 FROM node:22-trixie-slim
 
-ARG OPENCODE_VERSION=1.3.3
+ARG OPENCODE_VERSION=1.15.13
 ARG BUN_VERSION=bun-v1.3.10
 # Pinned to the stable akm-cli release (0.8.0 — env/secret asset types, profiles
 # config, multi-source). Bump deliberately; CI validates this pin is extractable.

@@ -15,7 +15,7 @@ RUN apt-get update \
 # OpenCode binary. Mirrors the assistant image: install with HOME=/usr/local so
 # the binary lands at /usr/local/.opencode/bin and is reachable from any user.
 # Keep OPENCODE_VERSION in lockstep with core/assistant/Dockerfile.
-ARG OPENCODE_VERSION=1.3.3
+ARG OPENCODE_VERSION=1.15.13
 ENV OPENCODE_VERSION=${OPENCODE_VERSION}
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install \
         | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
