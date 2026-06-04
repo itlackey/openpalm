@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": ["./instructions/core.md", "./persona.md"],
+  "instructions": ["./instructions/core.md", "./instructions/conversation.md", "./persona.md"],
   "plugin": [
     "akm-opencode@latest"
   ],

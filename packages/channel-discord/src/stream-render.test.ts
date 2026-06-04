@@ -11,7 +11,7 @@
 import { describe, test, expect } from "bun:test";
 import { _internal } from "./stream-render.ts";
 
-const { extractTextDelta, isTurnEnd, extractToolUpdate, extractPermissionAsk, toolColor, asRaw } = _internal;
+const { extractTextDelta, isTurnEnd, extractToolUpdate, extractPermissionAsk, toolEmoji, asRaw } = _internal;
 
 const SID = "ses_target";
 const MID = "^msgcorrelation";
@@ -88,11 +88,12 @@ describe("extractToolUpdate — colored by state.status (§4.1)", () => {
     expect(extractToolUpdate(ev("message.part.updated", { sessionID: "other", part: { type: "tool", callID: "c", tool: "bash", state: { status: "running" } } }), SID)).toBeNull();
   });
 
-  test("toolColor maps status → color", () => {
-    expect(toolColor("completed")).toBe(0x57f287);
-    expect(toolColor("error")).toBe(0xed4245);
-    expect(toolColor("pending")).toBe(0xfee75c);
-    expect(toolColor("running")).toBe(0x5865f2);
+  test("toolEmoji maps tool kind → a reaction emoji", () => {
+    expect(toolEmoji("akm_curate")).toBe("🔎");
+    expect(toolEmoji("akm_remember")).toBe("🧠");
+    expect(toolEmoji("bash")).toBe("🐚");
+    expect(toolEmoji("edit")).toBe("✏️");
+    expect(toolEmoji("something_unknown")).toBe("🔧");
   });
 });
 

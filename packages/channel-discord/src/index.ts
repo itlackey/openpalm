@@ -258,6 +258,7 @@ export default class DiscordChannel extends BaseChannel {
     userInfo: UserInfo,
     text: string,
     metadata: Record<string, unknown>,
+    triggerMessage: Message,
   ): Promise<void> {
     // Rich-UX streaming path (opt-in, Stage 4). Renders deltas + tool embeds +
     // interactive permission prompts live via the guardian /oc/* proxy. The
@@ -273,6 +274,7 @@ export default class DiscordChannel extends BaseChannel {
           thread,
           sessionKey,
           text,
+          triggerMessage,
           setPendingQuestion: (pending) => {
             if (pending) this.pendingQuestions.set(thread.id, pending);
             else this.pendingQuestions.delete(thread.id);
@@ -396,7 +398,7 @@ export default class DiscordChannel extends BaseChannel {
             username: userInfo.username,
             channelId: message.channelId,
             sessionKey,
-          });
+          }, message);
         },
       });
     } catch (error) {

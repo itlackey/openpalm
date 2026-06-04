@@ -6,7 +6,7 @@ For information about managing the system view @system.md
 
 ## Memory & Tools
 
-- Use `akm_curate` to surface high-signal context for the current task before you act
+- Use `akm_curate` to surface high-signal context when a task needs stored context (skip it for casual conversation — see conversation.md)
 - Use `akm_search` to find skills, commands, lessons, agents, and stored memories related to your task
 - Use `akm_show` to read the full content of any asset returned by curate or search
 - Record memories with `akm_remember` whenever new information is discovered

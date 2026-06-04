@@ -30,7 +30,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
   ComponentType,
   type ButtonInteraction,
   type Message,
@@ -49,7 +48,6 @@ import {
   extractPermissionAsk,
   extractQuestionAsk,
   isSessionError,
-  type ToolUpdate,
   type PermissionAsk,
   type QuestionAsk,
 } from "@openpalm/channels-sdk";
@@ -83,19 +81,6 @@ const BUTTON_COLLECTOR_MS = Number(Bun.env.DISCORD_BUTTON_COLLECTOR_MS) || 5 * 6
 // extractPermissionAsk/asRaw) are shared via @openpalm/channels-sdk — every
 // rich-UX renderer reads the same native OpenCode frames identically (§4.2).
 
-function toolColor(status: string): number {
-  switch (status) {
-    case "completed":
-      return 0x57f287; // green
-    case "error":
-      return 0xed4245; // red
-    case "pending":
-      return 0xfee75c; // yellow
-    default:
-      return 0x5865f2; // blurple (running)
-  }
-}
-
 // ── Public entry: render one streamed turn into a Discord thread ───────────
 
 export interface StreamTurnArgs {
@@ -110,6 +95,8 @@ export interface StreamTurnArgs {
   sessionKey: string;
   /** The user's prompt text. */
   text: string;
+  /** The user's triggering Discord message — tool use is shown as emoji reactions on it. */
+  triggerMessage: Message;
   /**
    * Called when an interactive `question` is pending (so the adapter can also
    * accept a free-text answer typed in the thread) and with null when it
@@ -128,7 +115,7 @@ export interface StreamTurnArgs {
  * or on timeout/abort.
  */
 export async function streamTurn(args: StreamTurnArgs): Promise<void> {
-  const { client, userId, requestingUserId, thread, sessionKey, text, setPendingQuestion } = args;
+  const { client, userId, requestingUserId, thread, sessionKey, text, triggerMessage, setPendingQuestion } = args;
 
   // Guardian dedupes create per (channel, sessionKey), so calling it every turn
   // returns the SAME session → one thread, one session, full multi-turn context.
@@ -138,32 +125,11 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
   // Subscribe BEFORE prompting (§4.2) so no frame is missed.
   const ac = new AbortController();
   const eventsIter = client.events(userId, ac.signal);
-
-  const placeholder = await thread.send("…");
-  const stopRow = buildStopRow();
-  await placeholder.edit({ content: "…", components: [stopRow] });
-
-  // Wire the Stop button → abort.
-  const stopCollector = placeholder.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: BUTTON_COLLECTOR_MS,
-  });
-  stopCollector.on("collect", (i: ButtonInteraction) => {
-    if (i.customId !== "oc_stop") return;
-    if (i.user.id !== requestingUserId) {
-      void i.reply({ content: "Only the requester can stop this turn.", ephemeral: true });
-      return;
-    }
-    void client.abort(userId, sessionId).catch((err) => log.warn("abort_failed", { error: String(err) }));
-    void i.reply({ content: "Stopping…", ephemeral: true });
-  });
-
-  // Kick off the prompt now that we're subscribed.
   await client.promptAsync(userId, sessionId, messageId, text);
 
-  const renderer = new TurnRenderer(placeholder, stopRow);
-  const toolEmbeds = new Map<string, Message>(); // callID → embed message
-  const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never rendered (chain-of-thought)
+  const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never shown (chain-of-thought)
+  const reactedEmojis = new Set<string>(); // tool emojis already reacted on the trigger message
+  let active: ActiveMessage | null = null; // the currently-streaming assistant message
 
   const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
   try {
@@ -174,36 +140,45 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
       }
       const e = asRaw(ev);
 
-      // Learn part types from snapshots so reasoning (chain-of-thought) is
-      // filtered out of the rendered text (a delta can't be told apart otherwise).
+      // Learn part types from snapshots so reasoning is filtered (a delta alone
+      // can't be told apart — both stream field:"text").
       const snap = partSnapshotType(e);
       if (snap && snap.type === "reasoning") reasoningParts.add(snap.partID);
 
-      // Turn-end / reset are checked first and break the loop.
       if (isTurnEnd(e, sessionId)) break;
       if (isSessionError(e, sessionId)) {
-        // Upstream reset (guardian synthetic session.error) → surface + stop.
-        await thread.send("The assistant connection reset. Please try again.").catch(() => {});
+        await thread.send("⚠️ The assistant connection reset. Please try again.").catch(() => {});
         break;
       }
 
-      // Per-frame rendering is RESILIENT: a single malformed frame (or a
-      // discord.js builder validation error) must NOT abort the whole turn —
-      // log it and keep streaming. (A bad tool-embed used to throw shapeshift's
-      // "Received one or more errors" and kill the turn.)
+      // Per-frame rendering is RESILIENT: one malformed frame must not abort the turn.
       try {
         const delta = extractTextDelta(e, sessionId, reasoningParts);
         if (delta) {
+          // Each assistant message in the agent's sequence becomes its OWN Discord
+          // message (sent when its first useful text arrives) — NOT one edited
+          // placeholder, so the conversation reads naturally.
           const mid = typeof e.properties?.messageID === "string" ? e.properties.messageID : "";
-          await renderer.appendText(delta, mid);
+          if (!active || (mid && active.messageId !== mid)) {
+            await active?.finalize();
+            active = new ActiveMessage(thread, mid);
+          }
+          await active.append(delta);
           continue;
         }
 
         const tool = extractToolUpdate(e, sessionId);
         if (tool && tool.callID) {
-          // The `question` tool renders specially (interactive prompt below) —
-          // don't ALSO show the generic "🔧 question / completed" embed.
-          if (tool.tool !== "question") await renderToolEmbed(thread, toolEmbeds, tool);
+          // Tool use shows as a lightweight EMOJI REACTION on the user's message
+          // (one per distinct tool kind) — no noisy embeds. The `question` tool
+          // renders its own interactive prompt below.
+          if (tool.tool !== "question") {
+            const emoji = toolEmoji(tool.tool);
+            if (!reactedEmojis.has(emoji)) {
+              reactedEmojis.add(emoji);
+              await triggerMessage.react(emoji).catch(() => {});
+            }
+          }
           continue;
         }
 
@@ -225,43 +200,53 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
   } finally {
     setPendingQuestion?.(null); // clear any unanswered pending question for this thread
     ac.abort();
-    stopCollector.stop();
-    await renderer.finalize(thread).catch(() => {});
+    await active?.finalize().catch(() => {});
   }
 }
 
-// ── Incremental text renderer (throttled edits + 2000-char roll) ───────────
+/** Tool kind → a compact reaction emoji (one per distinct kind per turn). */
+function toolEmoji(tool: string): string {
+  if (tool.startsWith("akm_")) {
+    if (tool.includes("search") || tool.includes("curate")) return "🔎";
+    if (tool.includes("memory") || tool.includes("remember")) return "🧠";
+    return "📚";
+  }
+  switch (tool) {
+    case "bash": return "🐚";
+    case "read": case "glob": case "grep": case "list": return "📄";
+    case "write": case "edit": case "patch": return "✏️";
+    case "webfetch": case "websearch": return "🌐";
+    case "task": return "🤖";
+    default: return "🔧";
+  }
+}
 
-class TurnRenderer {
+// ── One streamed assistant message (sent, then throttle-edited) ─────────────
+//
+// Each assistant message in the agent's sequence is its OWN Discord message: the
+// first useful text SENDS a message, later deltas EDIT it (throttled). A message
+// with no text never sends (no empty "…" placeholders). Over 2000 chars splits
+// into follow-up messages on finalize.
+class ActiveMessage {
+  readonly messageId: string;
+  private readonly thread: ThreadChannel;
+  private msg: Message | null = null;
   private buffer = "";
   private lastEdit = 0;
-  private current: Message;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly stopRow: ActionRowBuilder<ButtonBuilder>;
-  private currentMessageId: string | null = null;
 
-  constructor(first: Message, stopRow: ActionRowBuilder<ButtonBuilder>) {
-    this.current = first;
-    this.stopRow = stopRow;
+  constructor(thread: ThreadChannel, messageId: string) {
+    this.thread = thread;
+    this.messageId = messageId;
   }
 
-  async appendText(delta: string, messageId: string): Promise<void> {
-    // An agentic turn can emit MULTIPLE assistant messages (one per step). A
-    // conversational channel should show the CURRENT message, not concatenate
-    // them all into one ever-growing blob (the model looping then read as one
-    // giant repeated message). When the assistant messageID changes, supersede
-    // the prior step's text with the new one.
-    if (this.currentMessageId && messageId && messageId !== this.currentMessageId) {
-      this.buffer = "";
-    }
-    if (messageId) this.currentMessageId = messageId;
+  async append(delta: string): Promise<void> {
     this.buffer += delta;
     const now = Date.now();
     if (now - this.lastEdit >= EDIT_THROTTLE_MS) {
       this.lastEdit = now;
       await this.flush();
     } else if (!this.pendingTimer) {
-      // Schedule a trailing flush so the final partial chunk isn't dropped.
       this.pendingTimer = setTimeout(() => {
         this.pendingTimer = null;
         this.lastEdit = Date.now();
@@ -270,66 +255,31 @@ class TurnRenderer {
     }
   }
 
-  /** Edit the current message with the head chunk; never exceed the Discord limit. */
   private async flush(): Promise<void> {
-    const chunks = splitMessage(this.buffer, MAX_MESSAGE_LENGTH);
-    const head = chunks[0] ?? "…";
+    const head = splitMessage(this.buffer, MAX_MESSAGE_LENGTH)[0] ?? "";
+    if (!head) return; // nothing renderable yet
     try {
-      await this.current.edit({ content: head || "…", components: [this.stopRow] });
+      if (!this.msg) this.msg = await this.thread.send(head);
+      else await this.msg.edit(head);
     } catch (err) {
       log.warn("edit_failed", { error: String(err) });
     }
   }
 
-  /** On turn-end: write any remaining chunks as follow-up messages, drop the Stop button. */
-  async finalize(thread: ThreadChannel): Promise<void> {
+  async finalize(): Promise<void> {
     if (this.pendingTimer) {
       clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
     }
-    const chunks = splitMessage(this.buffer || "No response received.", MAX_MESSAGE_LENGTH);
+    if (!this.buffer.trim()) return; // produced no text → no message
+    const chunks = splitMessage(this.buffer, MAX_MESSAGE_LENGTH);
     try {
-      await this.current.edit({ content: chunks[0] ?? "No response received.", components: [] });
+      if (!this.msg) this.msg = await this.thread.send(chunks[0] ?? "");
+      else await this.msg.edit(chunks[0] ?? "");
     } catch {
       // ignore
     }
-    for (let i = 1; i < chunks.length; i++) {
-      await thread.send(chunks[i]);
-    }
-  }
-}
-
-// ── Tool embeds ────────────────────────────────────────────────────────────
-
-async function renderToolEmbed(
-  thread: ThreadChannel,
-  embeds: Map<string, Message>,
-  tool: ToolUpdate,
-): Promise<void> {
-  try {
-    // Discord/shapeshift reject EMPTY strings (title/description/footer must be
-    // 1+ chars) and over-long ones. `??` does NOT catch "" so use `||`, and clamp
-    // lengths. Building INSIDE the try so a validation error can't escape and
-    // abort the turn.
-    const status = tool.status || "running";
-    const title = (tool.tool || "tool").slice(0, 256);
-    const description = (tool.title || `status: ${status}`).slice(0, 4096);
-    const footer = (status + (tool.error ? ` — ${tool.error}` : "")).slice(0, 2048);
-    const embed = new EmbedBuilder()
-      .setColor(toolColor(status))
-      .setTitle(`🔧 ${title}`)
-      .setDescription(description)
-      .setFooter({ text: footer });
-
-    const existing = embeds.get(tool.callID);
-    if (existing) {
-      await existing.edit({ embeds: [embed] });
-    } else {
-      const msg = await thread.send({ embeds: [embed] });
-      embeds.set(tool.callID, msg);
-    }
-  } catch (err) {
-    log.warn("tool_embed_failed", { error: String(err) });
+    for (let i = 1; i < chunks.length; i++) await this.thread.send(chunks[i]).catch(() => {});
   }
 }
 
@@ -468,14 +418,6 @@ async function renderQuestionPrompt(
   });
 }
 
-// ── Stop button row ─────────────────────────────────────────────────────────
-
-function buildStopRow(): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("oc_stop").setLabel("Stop").setStyle(ButtonStyle.Secondary),
-  );
-}
-
 // ── Exported pure helpers for unit tests ───────────────────────────────────
 
 export const _internal = {
@@ -483,6 +425,6 @@ export const _internal = {
   isTurnEnd,
   extractToolUpdate,
   extractPermissionAsk,
-  toolColor,
+  toolEmoji,
   asRaw,
 };
