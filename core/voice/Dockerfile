@@ -20,7 +20,14 @@
 # /opt/kokoro and /opt/whisper respectively. Operators who want to use
 # a different Whisper model size override OP_VOICE_WHISPER_MODEL and
 # accept a one-time download on first request to /v1/audio/transcriptions.
-FROM python:3.11-slim-bookworm AS modelfetch
+# Pinned to $BUILDPLATFORM (the build host's native arch, amd64 on CI): the
+# model artifacts are platform-AGNOSTIC data files, so there is no reason to
+# re-run this stage under QEMU for the arm64 target. The amd64-built models are
+# COPY --from'd into both the amd64 and arm64 runtime images. This removes the
+# slow emulated arm64 download (and the HuggingFace 429s it provoked), and makes
+# the modelfetch layers IDENTICAL across the cpu/cu121 variant builds — which is
+# what lets a shared build cache dedupe them.
+FROM --platform=$BUILDPLATFORM python:3.11-slim-bookworm AS modelfetch
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
