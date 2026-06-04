@@ -75,6 +75,7 @@ export {
   asRaw,
   statusName,
   TURN_IDLE_STATUSES,
+  partSnapshotType,
   extractTextDelta,
   isTurnEnd,
   extractToolUpdate,

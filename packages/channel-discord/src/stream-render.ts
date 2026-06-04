@@ -42,6 +42,7 @@ import {
   splitMessage,
   createLogger,
   asRaw,
+  partSnapshotType,
   extractTextDelta,
   isTurnEnd,
   extractToolUpdate,
@@ -156,6 +157,7 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
 
   const renderer = new TurnRenderer(placeholder, stopRow);
   const toolEmbeds = new Map<string, Message>(); // callID → embed message
+  const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never rendered (chain-of-thought)
 
   const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
   try {
@@ -165,6 +167,11 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
         break;
       }
       const e = asRaw(ev);
+
+      // Learn part types from snapshots so reasoning (chain-of-thought) is
+      // filtered out of the rendered text (a delta can't be told apart otherwise).
+      const snap = partSnapshotType(e);
+      if (snap && snap.type === "reasoning") reasoningParts.add(snap.partID);
 
       // Turn-end / reset are checked first and break the loop.
       if (isTurnEnd(e, sessionId)) break;
@@ -179,7 +186,7 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
       // log it and keep streaming. (A bad tool-embed used to throw shapeshift's
       // "Received one or more errors" and kill the turn.)
       try {
-        const delta = extractTextDelta(e, sessionId);
+        const delta = extractTextDelta(e, sessionId, reasoningParts);
         if (delta) {
           await renderer.appendText(delta);
           continue;

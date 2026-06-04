@@ -38,6 +38,7 @@ import {
   splitMessage,
   createLogger,
   asRaw,
+  partSnapshotType,
   extractTextDelta,
   isTurnEnd,
   extractToolUpdate,
@@ -319,6 +320,7 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
 
   const renderer = new TurnRenderer(slack, channel, threadTs, answerTs, sessionId);
   const toolTs = new Map<string, string>(); // callID → message ts
+  const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never rendered
 
   const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
   try {
@@ -328,8 +330,10 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
         break;
       }
       const e = asRaw(ev);
+      const snap = partSnapshotType(e);
+      if (snap && snap.type === "reasoning") reasoningParts.add(snap.partID);
 
-      const delta = extractTextDelta(e, sessionId);
+      const delta = extractTextDelta(e, sessionId, reasoningParts);
       if (delta) {
         await renderer.appendText(delta);
         continue;

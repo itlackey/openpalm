@@ -36,32 +36,55 @@ function propStr(props: Record<string, unknown> | undefined, key: string): strin
 }
 
 /**
+ * If this frame is a part SNAPSHOT (`message.part.updated`), return its
+ * `{ partID, type }` so the renderer can learn a part's type. Used to identify
+ * REASONING parts (whose token deltas must NOT be shown to the user). A
+ * `message.part.delta` only carries `{partID, field:"text", delta}` with NO type
+ * — and reasoning AND answer parts both stream `field:"text"` — so the type can
+ * only come from the snapshot. Track reasoning partIDs and pass them to
+ * extractTextDelta to filter the chain-of-thought out of the channel output.
+ */
+export function partSnapshotType(e: RawEvent): { partID: string; type: string } | null {
+  if (e.type !== "message.part.updated") return null;
+  const part = e.properties?.part as { id?: unknown; type?: unknown } | undefined;
+  if (part && typeof part.id === "string" && typeof part.type === "string") {
+    return { partID: part.id, type: part.type };
+  }
+  return null;
+}
+
+/**
  * Extract a text delta from any supported delta event family, correlated to our
- * session. Returns null if the frame is for a different session, is not a text
- * delta, or carries no delta. Prefers the fine-grained 1.15.13
- * `session.next.text.delta`, falling back to `message.part.delta` on a text
- * field (§1.1).
+ * session — EXCLUDING reasoning (chain-of-thought). Returns null if the frame is
+ * for a different session, is not a text delta, carries no delta, or belongs to a
+ * known reasoning part. Prefers the fine-grained 1.15.13 `session.next.text.delta`
+ * (reasoning uses the distinct `session.next.reasoning.delta`, never matched
+ * here), falling back to `message.part.delta` on a text field (§1.1).
+ *
+ * `reasoningPartIds` is the set of partIDs the renderer has seen typed as
+ * "reasoning" (via partSnapshotType). A `message.part.delta` for one of those is
+ * dropped — without this, the model's reasoning leaks into the channel output as
+ * if it were the answer (both stream `field:"text"`).
  *
  * Correlation is **by sessionID only — NOT by the client-supplied messageID.**
  * Live capture (2026-06-04) proved the assistant's reply deltas carry a
- * SERVER-generated messageID (`msg_…`), not the id the client passed to
- * `prompt_async` (that id appears only on the echoed user message). So filtering
- * deltas by the client messageID would drop the entire assistant stream. Turns
- * are already serialized per session (the channel's ConversationQueue) and the
- * guardian ownership-filters `/event` by session, so the session is the correct
- * and sufficient correlation key for a turn's deltas (§4.2, corrected).
+ * SERVER-generated messageID, not the id the client passed to `prompt_async`, so
+ * messageID filtering would drop the whole stream; turns are serialized per
+ * session and the guardian ownership-filters `/event` by session (§4.2).
  */
-export function extractTextDelta(e: RawEvent, sessionId: string): string | null {
+export function extractTextDelta(e: RawEvent, sessionId: string, reasoningPartIds?: ReadonlySet<string>): string | null {
   const props = e.properties ?? {};
   if (propStr(props, "sessionID") !== sessionId) return null;
 
-  // Preferred: fine-grained 1.15.13 stream.
+  // Preferred: fine-grained 1.15.13 stream (reasoning uses session.next.reasoning.delta — excluded).
   if (e.type === "session.next.text.delta") {
     return propStr(props, "delta") ?? propStr(props, "text") ?? null;
   }
-  // Fallback: message.part.delta on a text field.
+  // Fallback: message.part.delta on a text field — but NOT for a reasoning part.
   if (e.type === "message.part.delta") {
     if (propStr(props, "field") && propStr(props, "field") !== "text") return null;
+    const partID = propStr(props, "partID");
+    if (partID && reasoningPartIds?.has(partID)) return null; // drop chain-of-thought
     return propStr(props, "delta") ?? null;
   }
   return null;

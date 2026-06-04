@@ -14,6 +14,7 @@ import {
   extractToolUpdate,
   extractPermissionAsk,
   extractQuestionAsk,
+  partSnapshotType,
   isSessionError,
 } from "./oc-events.ts";
 
@@ -51,6 +52,15 @@ describe("extractTextDelta — sessionID-only correlation (§4.2, corrected)", (
     // The assistant's reply deltas carry a server-generated msg_… id, never the
     // client's; filtering by messageID would blank the stream. Session is the key.
     expect(extractTextDelta(ev("message.part.delta", { sessionID: SID, messageID: "msg_server_generated", delta: "x" }), SID)).toBe("x");
+  });
+
+  test("a reasoning-part delta is NOT rendered (chain-of-thought filtered); a text-part delta is", () => {
+    const snap = partSnapshotType(ev("message.part.updated", { sessionID: SID, part: { id: "prt_reason", type: "reasoning" } }));
+    expect(snap).toEqual({ partID: "prt_reason", type: "reasoning" });
+    const reasoning = new Set<string>([snap!.partID]);
+    // Both reasoning and answer deltas carry field:"text" — only the partID tells them apart.
+    expect(extractTextDelta(ev("message.part.delta", { sessionID: SID, partID: "prt_reason", field: "text", delta: "thinking…" }), SID, reasoning)).toBeNull();
+    expect(extractTextDelta(ev("message.part.delta", { sessionID: SID, partID: "prt_answer", field: "text", delta: "Hi" }), SID, reasoning)).toBe("Hi");
   });
 
   test("non-text field delta is ignored", () => {

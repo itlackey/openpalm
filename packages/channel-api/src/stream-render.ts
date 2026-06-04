@@ -34,6 +34,7 @@ import {
   generateMessageId,
   createLogger,
   asRaw,
+  partSnapshotType,
   extractTextDelta,
   isTurnEnd,
   extractPermissionAsk,
@@ -248,14 +249,17 @@ export function streamTurn(args: StreamTurnArgs, signal?: AbortSignal): Response
         send(framer.open());
 
         const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
+        const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never streamed out
         for await (const ev of eventsIter) {
           if (Date.now() > deadline) {
             log.warn("turn_render_timeout", { sessionId });
             break;
           }
           const e = asRaw(ev);
+          const snap = partSnapshotType(e);
+          if (snap && snap.type === "reasoning") reasoningParts.add(snap.partID);
 
-          const delta = extractTextDelta(e, sessionId);
+          const delta = extractTextDelta(e, sessionId, reasoningParts);
           if (delta) {
             send(framer.delta(delta));
             continue;
