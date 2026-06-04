@@ -23,11 +23,13 @@ ENV OPENCODE_VERSION=${OPENCODE_VERSION} \
     AKM_CLI_VERSION=${AKM_CLI_VERSION}
 
 # Combined OS packages: base tools (tini, gosu) + assistant-specific
-# (openssh-server, sudo, cron, python3, jq, gh).
+# (openssh-server, sudo, cron, python3, jq, gh) + DB clients (sqlite3,
+# postgresql-client) so agents can query SQLite and Postgres directly.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini curl git ca-certificates bash gosu unzip \
         openssh-server sudo cron python3 jq \
+        sqlite3 postgresql-client \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \

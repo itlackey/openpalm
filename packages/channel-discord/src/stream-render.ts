@@ -74,7 +74,7 @@ const log = createLogger("channel-discord:stream");
  */
 export const DISCORD_SESSION_PREAMBLE =
   Bun.env.DISCORD_SESSION_PREAMBLE ??
-  "[channel:discord] You are talking to the user over Discord. When you want the user to choose between options, or you are asking a question that has a few clear answers, ALWAYS call the `question` tool to present the choices — do not list the options as plain text. Discord renders that tool as clickable buttons (the user can also reply with their own answer).";
+  "[channel:discord] CRITICAL OUTPUT RULE for this Discord conversation: whenever you ask the user anything that has a discrete set of answers — a yes/no, a confirmation, or a choice between options — you MUST call the `question` tool to ask it. NEVER write the question and its options as plain text in your reply. Listing choices as text (e.g. \"1. … 2. … or let me know\") is WRONG here; the user cannot click text. The `question` tool renders real clickable buttons in Discord (and the user may also type a free-text answer). If you find yourself about to write options as a numbered or bulleted list for the user to pick from, STOP and call the `question` tool instead. Only use plain text for open-ended questions that have no enumerable options.";
 
 // ── Named tunables (design §4.1, §3.6 edit-throttle) ───────────────────────
 
