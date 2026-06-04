@@ -10,7 +10,7 @@
  * Env: OC_CHANNEL, OC_SECRET, OC_USER, OC_PROMPT, OC_EXPECT_TOOL ("1" to wait for
  * permission.asked and reply). Exits non-zero on failure.
  */
-import { OcClient, generateMessageId } from "/app/packages/channels-sdk/src/oc-client.ts";
+import { OcClient } from "/app/packages/channels-sdk/src/oc-client.ts";
 import { asRaw, partSnapshotType, extractTextDelta, extractToolUpdate, extractPermissionAsk, isTurnEnd, isSessionError } from "/app/packages/channels-sdk/src/oc-events.ts";
 
 const channel = Bun.env.OC_CHANNEL ?? "discord";
@@ -40,10 +40,9 @@ const session = await client.createSession(userId, sessionKey);
 log("session created:", session.id, "title=", session.title);
 if (!session.id) { console.error("no session id"); process.exit(1); }
 
-// 3) prompt_async (204) with a client messageID.
-const messageId = generateMessageId();
-log("prompt_async messageID:", messageId, "expectTool:", expectTool);
-await client.promptAsync(userId, session.id, messageId, prompt);
+// 3) send the turn (no client messageID — OpenCode no-ops follow-ups otherwise).
+log("prompt expectTool:", expectTool);
+await client.prompt(userId, session.id, prompt);
 
 // 4) Render: accumulate text deltas, tool updates, handle permission, to turn-end.
 let text = "";

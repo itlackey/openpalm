@@ -115,8 +115,8 @@ function stubGuardian(opts: StubOpts): void {
     if (method === "POST" && path === "/session") {
       return new Response(JSON.stringify({ id: opts.sessionId }), { status: 200 });
     }
-    if (method === "POST" && path.endsWith("/prompt_async")) {
-      return new Response(null, { status: 204 });
+    if (method === "POST" && path.endsWith("/message")) {
+      return new Response(JSON.stringify({ info: {}, parts: [] }), { status: 200 });
     }
     if (method === "GET" && path === "/event") {
       return new Response(sseBody(opts.events), {
@@ -181,9 +181,9 @@ describe("streamTurn — OpenAI deltas map to chat.completion.chunk SSE (§4.4)"
     expect(out).toContain('"finish_reason":"stop"');
     expect(out.trimEnd().endsWith("data: [DONE]")).toBe(true);
 
-    // The guardian was driven through create → prompt_async → event.
+    // The guardian was driven through create → message → event.
     expect(calls.some((c) => c.method === "POST" && c.path === "/session")).toBe(true);
-    expect(calls.some((c) => c.path.endsWith("/prompt_async"))).toBe(true);
+    expect(calls.some((c) => c.path.endsWith("/message"))).toBe(true);
     expect(calls.some((c) => c.path === "/event")).toBe(true);
   });
 });

@@ -37,7 +37,6 @@ import {
 } from "discord.js";
 import {
   OcClient,
-  generateMessageId,
   splitMessage,
   createLogger,
   asRaw,
@@ -127,9 +126,13 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
   try {
     // Guardian dedupes create per (channel, sessionKey) → one thread, one session.
     const sessionId = (await client.createSession(userId, sessionKey)).id;
-    const messageId = generateMessageId();
     const eventsIter = client.events(userId, ac.signal); // subscribe BEFORE prompting (§4.2)
-    await client.promptAsync(userId, sessionId, messageId, text);
+    // Fire the turn but DON'T await — /message resolves only at turn-end, and the
+    // render loop drives off /event. If it errors, abort so the loop ends.
+    void client.prompt(userId, sessionId, text).catch((err) => {
+      log.warn("prompt_failed", { error: String(err), sessionId });
+      ac.abort();
+    });
 
     const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never shown
     const reactedEmojis = new Set<string>(); // tool emojis already reacted on the trigger message

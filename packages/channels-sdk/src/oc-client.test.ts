@@ -82,21 +82,22 @@ describe("OcClient — signed calls (§3.1)", () => {
     expect(verifyCapturedSignature(req)).toBe(true);
   });
 
-  test("promptAsync carries messageID + text parts and verifies; 204 is OK", async () => {
-    const { client, calls } = clientWithCapture(() => new Response(null, { status: 204 }));
-    const msgId = generateMessageId();
-    await client.promptAsync("discord:bob", "ses_2", msgId, "hello there");
+  test("prompt posts to /session/{id}/message with text parts and NO client messageID", async () => {
+    const { client, calls } = clientWithCapture(() => new Response(JSON.stringify({ info: {}, parts: [] }), { headers: { "content-type": "application/json" } }));
+    await client.prompt("discord:bob", "ses_2", "hello there");
     const req = calls[0];
-    expect(req.url).toBe(`${BASE}/session/ses_2/prompt_async`);
+    // /message (blocking) — NOT prompt_async, which no-ops on follow-up turns.
+    expect(req.url).toBe(`${BASE}/session/ses_2/message`);
     const body = JSON.parse(req.body);
-    expect(body.messageID).toBe(msgId);
+    // No client messageID — a client id makes OpenCode no-op follow-up turns.
+    expect(body.messageID).toBeUndefined();
     expect(body.parts[0].text).toBe("hello there");
     expect(verifyCapturedSignature(req)).toBe(true);
   });
 
   test("replyPermission uses a FRESH nonce (not reused) and verifies", async () => {
     const { client, calls } = clientWithCapture(() => new Response("true", { headers: { "content-type": "application/json" } }));
-    await client.promptAsync("discord:carol", "ses_3", generateMessageId(), "do a thing");
+    await client.prompt("discord:carol", "ses_3", "do a thing");
     await client.replyPermission("discord:carol", "per_9", "once");
     const promptReq = calls[0];
     const replyReq = calls[1];

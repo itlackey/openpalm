@@ -118,19 +118,28 @@ export class OcClient {
   }
 
   /**
-   * POST /session/{id}/prompt_async — non-blocking turn. Returns 204 (no body).
-   * The caller supplies a msg_… `messageID` (the assistant reply gets its own
-   * server id, so frames correlate by sessionID — §4.2). Renders via the
-   * persistent /event subscription, not this response.
+   * Send a user turn and render via the persistent /event subscription (not this
+   * response). Two hard-won OpenCode 1.15.13 facts are baked in:
+   *
+   *  1. Uses the BLOCKING /session/{id}/message endpoint, NOT prompt_async —
+   *     prompt_async only fires the FIRST turn of a session; follow-ups no-op.
+   *  2. Does NOT send a client-supplied `messageID`. A client messageID makes
+   *     OpenCode silently no-op every FOLLOW-UP turn on the same session (the
+   *     user message is added but the model never generates). Letting OpenCode
+   *     mint the id fixes multi-turn. Correlation is by sessionID anyway (§4.2),
+   *     so the client id was never needed.
+   *
+   * The HTTP response resolves at TURN-END, so the streaming renderer fires this
+   * WITHOUT awaiting and drives off /event.
    */
-  async promptAsync(userId: string, sessionId: string, messageID: string, text: string): Promise<void> {
+  async prompt(userId: string, sessionId: string, text: string): Promise<void> {
     const resp = await this.call(
       "POST",
-      `/session/${sessionId}/prompt_async`,
+      `/session/${sessionId}/message`,
       userId,
-      { messageID, parts: [{ type: "text", text }] },
+      { parts: [{ type: "text", text }] },
     );
-    if (!resp.ok && resp.status !== 204) throw new Error(`promptAsync failed: ${resp.status}`);
+    if (!resp.ok) throw new Error(`prompt failed: ${resp.status}`);
   }
 
   /** POST /permission/{requestID}/reply — fresh-signed; ownership-checked by the guardian. */

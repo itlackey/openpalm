@@ -31,13 +31,13 @@
 
 import {
   OcClient,
-  generateMessageId,
   createLogger,
   asRaw,
   partSnapshotType,
   extractTextDelta,
   isTurnEnd,
   extractPermissionAsk,
+  extractQuestionAsk,
   isSessionError,
 } from "@openpalm/channels-sdk";
 import { decidePermission, type PermissionPolicy } from "./permissions.ts";
@@ -239,12 +239,16 @@ export function streamTurn(args: StreamTurnArgs, signal?: AbortSignal): Response
       try {
         const session = await client.createSession(userId, sessionKey);
         const sessionId = session.id;
-        const messageId = generateMessageId();
 
         // Subscribe BEFORE prompting (§4.2) so no frame is missed.
         const eventsIter = client.events(userId, ac.signal);
 
-        await client.promptAsync(userId, sessionId, messageId, text);
+        // Fire the turn but DON'T await — /message resolves only at turn-end and
+        // the loop drives off /event (prompt_async no-ops on follow-up turns).
+        void client.prompt(userId, sessionId, text).catch((err) => {
+          log.warn("prompt_failed", { error: String(err), sessionId });
+          ac.abort();
+        });
 
         send(framer.open());
 

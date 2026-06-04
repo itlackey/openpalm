@@ -34,7 +34,6 @@
 
 import {
   OcClient,
-  generateMessageId,
   splitMessage,
   createLogger,
   asRaw,
@@ -297,7 +296,6 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
 
   const session = await client.createSession(userId, sessionKey);
   const sessionId = session.id;
-  const messageId = generateMessageId();
 
   // Subscribe BEFORE prompting (§4.2) so no frame is missed.
   const ac = new AbortController();
@@ -315,8 +313,12 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
     registry.registerStop(sessionId, { userId, requestingUserId, sessionId });
   }
 
-  // Kick off the prompt now that we're subscribed.
-  await client.promptAsync(userId, sessionId, messageId, text);
+  // Fire the turn but DON'T await — /message resolves only at turn-end and the
+  // render loop drives off /event (prompt_async no-ops on follow-up turns).
+  void client.prompt(userId, sessionId, text).catch((err) => {
+    log.warn("prompt_failed", { error: String(err), sessionId });
+    ac.abort();
+  });
 
   const renderer = new TurnRenderer(slack, channel, threadTs, answerTs, sessionId);
   const toolTs = new Map<string, string>(); // callID → message ts
