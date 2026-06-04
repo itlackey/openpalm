@@ -71,6 +71,10 @@ services:
       PORT: "8184"
       CHANNEL_NAME: "Discord Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-discord@next"
+      # Rich-UX streaming (live tokens + tool reactions + interactive prompts via
+      # the guardian /oc proxy) is ON by default. Set DISCORD_STREAMING=false to
+      # fall back to the buffered single-response path.
+      DISCORD_STREAMING: "${DISCORD_STREAMING:-true}"
       CHANNEL_SECRET_FILE: /run/secrets/channel_discord_secret
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
       DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
@@ -106,6 +110,9 @@ services:
       PORT: "8185"
       CHANNEL_NAME: "Slack Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-slack@next"
+      # Rich-UX streaming is ON by default. Set SLACK_STREAMING=false to fall
+      # back to the buffered single-response path.
+      SLACK_STREAMING: "${SLACK_STREAMING:-true}"
       CHANNEL_SECRET_FILE: /run/secrets/channel_slack_secret
       SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
       SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
