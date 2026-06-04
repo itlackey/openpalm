@@ -152,7 +152,9 @@ start_opencode() {
       2>/dev/null || true
   fi
 
-  local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs)
+  # --print-logs sends OpenCode's logs to stderr (docker logs) instead of a file;
+  # --log-level sets verbosity (override via OPENCODE_LOG_LEVEL).
+  local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
   if [ "$IS_ROOT" = "1" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2

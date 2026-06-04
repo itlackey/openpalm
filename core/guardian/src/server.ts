@@ -112,6 +112,14 @@ function json(status: number, data: unknown): Response {
 
 Bun.serve({
   port: PORT,
+  // Disable Bun's default 10s per-connection idle timeout: the /oc/event SSE
+  // stream is HELD OPEN and may be silent for long stretches (the model thinks
+  // before the first token; the guardian drops upstream server.heartbeat frames
+  // because they carry no sessionID — §3.2). Without this the socket idles out
+  // mid-turn ("connection closed unexpectedly") and streaming dies. Held-open
+  // streams are bounded instead by the §3.6 concurrent-stream + reconnect caps
+  // and the client abort. (max 255; 0 disables.)
+  idleTimeout: 0,
   async fetch(req) {
     const url = new URL(req.url);
     const rid = req.headers.get("x-request-id") ?? crypto.randomUUID();

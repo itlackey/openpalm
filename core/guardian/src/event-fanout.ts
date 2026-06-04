@@ -76,6 +76,18 @@ const subscribers = new Set<Subscriber>();
 
 const encoder = new TextEncoder();
 
+// Keepalive: the guardian drops upstream server.heartbeat frames (no sessionID,
+// §3.2), so a turn whose model is quiet would send NO bytes to the channel for a
+// long time. Emit an SSE comment (`: ping`) to every subscriber periodically so
+// the held-open connection stays alive across intermediaries and half-open
+// sockets are detected. Comments are ignored by SSE parsers (no event dispatched).
+const KEEPALIVE_MS = Number(Bun.env.GUARDIAN_OC_EVENT_KEEPALIVE_MS ?? 20_000);
+const keepaliveBytes = encoder.encode(`: ping\n\n`);
+const keepaliveTimer = setInterval(() => {
+  for (const sub of subscribers) writeTo(sub, keepaliveBytes);
+}, KEEPALIVE_MS);
+keepaliveTimer.unref();
+
 // ── Single upstream subscription ───────────────────────────────────────────
 
 let upstreamActive = false;

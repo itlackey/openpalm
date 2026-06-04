@@ -25,10 +25,14 @@ if [[ "$enabled" == "1" ]]; then
   # config from /etc/opencode (bind-mounted config/guardian). Backgrounded so
   # the guardian server starts regardless; if the moderator is down, escalated
   # messages fail closed.
+  # --print-logs so the moderator's OpenCode logs go to this container's stderr
+  # (docker logs) for observability, prefixed so they're distinguishable from the
+  # guardian server's own structured logs. (Default is a log FILE, invisible to
+  # `docker logs`.)
   OPENCODE_AUTH=false \
   OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-/etc/opencode}" \
     opencode serve --hostname 127.0.0.1 --port "${port}" \
-    >"${log_dir}/moderator.log" 2>&1 &
+    --print-logs --log-level INFO 2>&1 | sed -u 's/^/[moderator] /' >&2 &
 fi
 
 exec bun run src/server.ts
