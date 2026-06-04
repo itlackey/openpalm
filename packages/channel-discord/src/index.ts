@@ -59,6 +59,14 @@ export default class DiscordChannel extends BaseChannel {
   /** Lazily-built native OpenCode client through the guardian /oc/* proxy. */
   private ocClientInstance: OcClient | null = null;
 
+  /**
+   * One OpenCode session per Discord thread, so multi-turn conversations keep
+   * context (without this, every turn created a fresh session and the assistant
+   * "forgot" prior messages). Evicted on stream error so a stale/expired session
+   * (guardian ownership TTL, assistant restart) self-heals by recreating.
+   */
+  private threadSessions = new Map<string, string>();
+
   private get ocClient(): OcClient {
     if (!this.ocClientInstance) {
       this.ocClientInstance = new OcClient({
@@ -255,20 +263,26 @@ export default class DiscordChannel extends BaseChannel {
     // conversationQueue's run() promise settles when streamTurn resolves at
     // turn-end (session idle), keeping per-sessionKey serialization intact.
     if (this.streamingEnabled) {
+      const sessionKey = String(metadata.sessionKey ?? `discord:thread:${thread.id}`);
       try {
-        await streamTurn({
+        const usedSessionId = await streamTurn({
           client: this.ocClient,
           userId: `discord:${userInfo.userId}`,
           requestingUserId: userInfo.userId,
           thread,
-          sessionKey: String(metadata.sessionKey ?? `discord:thread:${thread.id}`),
+          sessionKey,
           text,
+          sessionId: this.threadSessions.get(thread.id), // reuse for multi-turn context
         });
-        log.info("stream_completed", { userId: userInfo.userId, threadId: thread.id, sessionKey: metadata.sessionKey });
+        this.threadSessions.set(thread.id, usedSessionId);
+        log.info("stream_completed", { userId: userInfo.userId, threadId: thread.id, sessionKey });
       } catch (error) {
+        // Evict the cached session so the next turn recreates (heals a stale or
+        // ownership-expired session).
+        this.threadSessions.delete(thread.id);
         const errMsg = error instanceof Error ? error.message : String(error);
-        log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey: metadata.sessionKey });
-        await thread.send(`Error: ${errMsg}`);
+        log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey });
+        await thread.send(`Error: ${errMsg}`).catch(() => {});
       }
       return;
     }

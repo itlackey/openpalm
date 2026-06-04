@@ -75,6 +75,17 @@ describe("buildToolBlocks — context block names the tool + status", () => {
     expect(blocks[0].elements[0].text).toContain("bash");
     expect(blocks[0].elements[0].text).toContain("echo hi");
   });
+
+  test("EMPTY status/tool/title still produce non-empty text (Block Kit rejects empty)", () => {
+    // Regression: a tool frame with empty status/title must not yield empty text.
+    // The Discord equivalent (empty footer/description) threw shapeshift's
+    // "Received one or more errors" and aborted the whole turn.
+    const blocks = buildToolBlocks({ callID: "c1", tool: "", status: "", title: "" }) as any[];
+    const text = blocks[0].elements[0].text as string;
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).toContain("tool"); // name fallback
+    expect(text).toContain("running"); // status fallback
+  });
 });
 
 describe("SlackPermissionRegistry — interaction identity + reply relay (§4.3)", () => {

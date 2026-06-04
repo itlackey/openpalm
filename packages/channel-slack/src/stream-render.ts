@@ -250,12 +250,15 @@ export function buildAnswerBlocks(text: string, sessionId: string): unknown[] {
 
 /** A tool-call status as a context block (no interactivity). */
 export function buildToolBlocks(tool: ToolUpdate): unknown[] {
-  const detail = tool.title ?? `status: ${tool.status}`;
+  // `||` (not `??`) so EMPTY strings fall back too — Block Kit rejects empty text.
+  const status = tool.status || "running";
+  const name = tool.tool || "tool";
+  const detail = tool.title || `status: ${status}`;
   const err = tool.error ? ` — ${tool.error}` : "";
   return [
     {
       type: "context",
-      elements: [{ type: "mrkdwn", text: `:wrench: *${tool.tool}* — ${detail} (${tool.status}${err})` }],
+      elements: [{ type: "mrkdwn", text: `:wrench: *${name}* — ${detail} (${status}${err})` }],
     },
   ];
 }

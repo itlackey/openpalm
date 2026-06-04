@@ -96,20 +96,28 @@ export interface StreamTurnArgs {
   sessionKey: string;
   /** The user's prompt text. */
   text: string;
+  /**
+   * Reuse this OpenCode session if set (multi-turn context within a thread).
+   * When omitted, a new session is created. The used sessionId is RETURNED so
+   * the caller can cache it per thread and pass it back on the next turn.
+   */
+  sessionId?: string;
 }
 
 /**
- * Run ONE streamed turn end-to-end. Opens (or reuses) a session, subscribes to
+ * Run ONE streamed turn end-to-end. Opens (or REUSES) a session, subscribes to
  * the filtered /event stream FIRST, then prompt_asyncs with a generated
  * messageID, and renders deltas/tools/permissions until turn-end. Resolves when
  * the turn reaches idle (so the conversation queue's run() promise settles per
  * sessionKey — design note on conversationQueue), or on timeout/abort.
+ *
+ * Returns the sessionId used, so the adapter can keep one OpenCode session per
+ * Discord thread across turns (otherwise the assistant loses prior context).
  */
-export async function streamTurn(args: StreamTurnArgs): Promise<void> {
+export async function streamTurn(args: StreamTurnArgs): Promise<string> {
   const { client, userId, requestingUserId, thread, sessionKey, text } = args;
 
-  const session = await client.createSession(userId, sessionKey);
-  const sessionId = session.id;
+  const sessionId = args.sessionId ?? (await client.createSession(userId, sessionKey)).id;
   const messageId = generateMessageId();
 
   // Subscribe BEFORE prompting (§4.2) so no frame is missed.
@@ -150,30 +158,38 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
       }
       const e = asRaw(ev);
 
-      const delta = extractTextDelta(e, sessionId);
-      if (delta) {
-        await renderer.appendText(delta);
-        continue;
-      }
-
-      const tool = extractToolUpdate(e, sessionId);
-      if (tool && tool.callID) {
-        await renderToolEmbed(thread, toolEmbeds, tool);
-        continue;
-      }
-
-      const ask = extractPermissionAsk(e, sessionId);
-      if (ask) {
-        await renderPermissionPrompt(thread, client, userId, requestingUserId, ask);
-        continue;
-      }
-
+      // Turn-end / reset are checked first and break the loop.
       if (isTurnEnd(e, sessionId)) break;
-
-      // Upstream reset (guardian synthetic session.error) → surface + stop.
       if (isSessionError(e, sessionId)) {
-        await thread.send("The assistant connection reset. Please try again.");
+        // Upstream reset (guardian synthetic session.error) → surface + stop.
+        await thread.send("The assistant connection reset. Please try again.").catch(() => {});
         break;
+      }
+
+      // Per-frame rendering is RESILIENT: a single malformed frame (or a
+      // discord.js builder validation error) must NOT abort the whole turn —
+      // log it and keep streaming. (A bad tool-embed used to throw shapeshift's
+      // "Received one or more errors" and kill the turn.)
+      try {
+        const delta = extractTextDelta(e, sessionId);
+        if (delta) {
+          await renderer.appendText(delta);
+          continue;
+        }
+
+        const tool = extractToolUpdate(e, sessionId);
+        if (tool && tool.callID) {
+          await renderToolEmbed(thread, toolEmbeds, tool);
+          continue;
+        }
+
+        const ask = extractPermissionAsk(e, sessionId);
+        if (ask) {
+          await renderPermissionPrompt(thread, client, userId, requestingUserId, ask);
+          continue;
+        }
+      } catch (err) {
+        log.warn("frame_render_failed", { error: String(err), type: e.type, sessionId });
       }
     }
   } finally {
@@ -181,6 +197,7 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
     stopCollector.stop();
     await renderer.finalize(thread).catch(() => {});
   }
+  return sessionId;
 }
 
 // ── Incremental text renderer (throttled edits + 2000-char roll) ───────────
@@ -249,14 +266,22 @@ async function renderToolEmbed(
   embeds: Map<string, Message>,
   tool: ToolUpdate,
 ): Promise<void> {
-  const embed = new EmbedBuilder()
-    .setColor(toolColor(tool.status))
-    .setTitle(`🔧 ${tool.tool}`)
-    .setDescription(tool.title ?? `status: ${tool.status}`)
-    .setFooter({ text: tool.status + (tool.error ? ` — ${tool.error}` : "") });
-
-  const existing = embeds.get(tool.callID);
   try {
+    // Discord/shapeshift reject EMPTY strings (title/description/footer must be
+    // 1+ chars) and over-long ones. `??` does NOT catch "" so use `||`, and clamp
+    // lengths. Building INSIDE the try so a validation error can't escape and
+    // abort the turn.
+    const status = tool.status || "running";
+    const title = (tool.tool || "tool").slice(0, 256);
+    const description = (tool.title || `status: ${status}`).slice(0, 4096);
+    const footer = (status + (tool.error ? ` — ${tool.error}` : "")).slice(0, 2048);
+    const embed = new EmbedBuilder()
+      .setColor(toolColor(status))
+      .setTitle(`🔧 ${title}`)
+      .setDescription(description)
+      .setFooter({ text: footer });
+
+    const existing = embeds.get(tool.callID);
     if (existing) {
       await existing.edit({ embeds: [embed] });
     } else {
