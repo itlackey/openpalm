@@ -18,6 +18,7 @@ import {
   seedOpenPalmDir,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
+  uiUpdateChannel,
   parseEnvFile,
 } from '@openpalm/lib';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
@@ -206,9 +207,11 @@ async function startUIServer(): Promise<void> {
   let uiBuildDir = resolveUiBuildDir();
 
   if (!existsSync(join(uiBuildDir, 'index.js'))) {
-    console.log('UI build not found — seeding from release...');
+    console.log('UI build not found — seeding @openpalm/ui from npm...');
     try {
-      await seedUiBuild(`v${version}`, dataDir);
+      // @openpalm/ui is independently versioned — seed the channel (latest/next)
+      // for this app's release stream, not the app version.
+      await seedUiBuild(uiUpdateChannel(version), dataDir);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error('Failed to seed UI build:', err instanceof Error ? err.message : String(err));

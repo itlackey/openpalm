@@ -5,7 +5,7 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
-import { ensureDirectoryTree, seedOpenPalmDir, seedUiBuild } from '../lib/io.ts';
+import { ensureDirectoryTree, seedOpenPalmDir, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
 import { openBrowser } from '../lib/browser.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 import {
@@ -222,12 +222,15 @@ async function prepareInstallFiles(
 
   // Seed OP_HOME from .openpalm/ (local source if available, else GitHub tarball)
   await seedOpenPalmDir(version, homeDir, configDir, dataDir);
-  // Install UI build to data/ui/ (local build if available, else GitHub release
-  // asset). NON-FATAL: a download hiccup must not abort the install — the stack
-  // still comes up and the UI is (re)seeded on `openpalm ui serve` / `update` or
+  // Install UI build to data/ui/ (local build if available, else the
+  // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
+  // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather
+  // than the platform `version`, which is not a valid UI version.
+  // NON-FATAL: a download hiccup must not abort the install — the stack still
+  // comes up and the UI is (re)seeded on `openpalm ui serve` / `update` or
   // Electron launch. (Also keeps unit tests off the network when no local build.)
   try {
-    await seedUiBuild(version, dataDir);
+    await seedUiBuild(uiUpdateChannel(version), dataDir);
   } catch (err) {
     logger.warn('UI build not seeded; it will be installed on first `ui serve`/update', { error: String(err) });
   }

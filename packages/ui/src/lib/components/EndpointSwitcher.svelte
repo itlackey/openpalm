@@ -111,7 +111,7 @@
     gap: var(--space-2);
     padding: 0 var(--space-3);
     height: 32px;
-    background: var(--color-surface, rgba(255, 255, 255, 0.7));
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 8px);
     font-size: var(--text-sm);
@@ -121,7 +121,7 @@
     overflow: hidden;
   }
   .trigger:hover:not(:disabled) {
-    background: var(--color-surface-hover, rgba(255, 255, 255, 0.9));
+    background: var(--color-surface-hover);
   }
   .trigger:disabled {
     opacity: 0.6;
@@ -184,10 +184,10 @@
     /* Fit in a 300px-wide Electron sidecar with margin to spare. */
     min-width: min(280px, calc(100vw - 24px));
     max-width: min(360px, calc(100vw - 24px));
-    background: var(--color-bg, #fff);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 8px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-lg);
     padding: var(--space-2);
   }
 
@@ -208,7 +208,7 @@
   .menu-header {
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-xs);
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -229,20 +229,20 @@
   }
   .menu-item:hover:not(:disabled),
   .menu-item:focus-visible {
-    background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+    background: var(--color-bg-tertiary);
   }
   .menu-item:disabled {
     opacity: 0.6;
     cursor: progress;
   }
   .menu-item.active {
-    background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+    background: var(--color-bg-tertiary);
   }
 
   .check {
     flex-shrink: 0;
     width: 14px;
-    color: var(--color-accent, #2563eb);
+    color: var(--color-primary);
   }
 
   .menu-item-text {
@@ -256,7 +256,7 @@
   }
   .menu-item-url {
     font-size: var(--text-xs);
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -269,7 +269,7 @@
   }
 
   .menu-item.link {
-    color: var(--color-accent, #2563eb);
+    color: var(--color-primary);
     text-decoration: none;
   }
 </style>

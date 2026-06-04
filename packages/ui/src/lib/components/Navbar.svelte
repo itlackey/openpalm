@@ -4,6 +4,7 @@
   import VoiceControl from './VoiceControl.svelte';
   import EndpointSwitcher from './EndpointSwitcher.svelte';
   import SessionPicker from './SessionPicker.svelte';
+  import ThemeToggle from './ThemeToggle.svelte';
 
   // The three primary destinations, always reachable from the top toolbar:
   // regular Chat, the embedded OpenCode "Advanced" chat, and Admin.
@@ -68,6 +69,7 @@
     </div>
 
     <div class="navbar-actions">
+      <ThemeToggle />
       <EndpointSwitcher />
       <SessionPicker />
       <VoiceControl />
@@ -80,7 +82,7 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    background: rgba(255, 255, 255, 0.85);
+    background: var(--color-navbar-bg);
     border-bottom: 1px solid var(--color-border);
     backdrop-filter: blur(12px);
   }
@@ -197,6 +199,14 @@
 
   @media (max-width: 600px) {
     /* Collapse nav buttons to icon-only to keep the toolbar on one line. */
+    .navbar-inner {
+      gap: var(--space-2);
+    }
+
+    .navbar-actions {
+      gap: var(--space-1);
+    }
+
     .nav-label {
       display: none;
     }
@@ -224,6 +234,11 @@
     .brand-text {
       display: none;
     }
+
+    .navbar-actions {
+      gap: 4px;
+    }
+
     .navbar-inner {
       padding: 0 var(--space-3);
     }

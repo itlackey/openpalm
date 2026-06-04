@@ -10771,19 +10771,68 @@ function resolveUiBuildDir() {
     return bundled;
   return dataBuild;
 }
-function sha256Hex(data) {
-  return createHash("sha256").update(data).digest("hex");
+var NPM_REGISTRY = "https://registry.npmjs.org";
+var UI_PACKAGE = "@openpalm/ui";
+function toNpmVersion(repoRef) {
+  return repoRef.replace(/^v/, "");
 }
-function parseChecksumsFile(content) {
-  const map = new Map;
-  for (const line of content.trim().split(`
-`)) {
-    const parts = line.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      map.set(parts[parts.length - 1], parts[0]);
-    }
+function uiUpdateChannel(appVersion) {
+  return appVersion.includes("-") ? "next" : "latest";
+}
+async function fetchNpmUiManifest(versionOrTag) {
+  const url = `${NPM_REGISTRY}/${UI_PACKAGE}/${versionOrTag}`;
+  const res = await fetchWithRetry(url);
+  if (!res.ok)
+    throw new Error(`npm registry returned HTTP ${res.status} for ${UI_PACKAGE}@${versionOrTag}`);
+  const m2 = await res.json();
+  if (!m2.version || !m2.dist?.tarball) {
+    throw new Error(`npm manifest for ${UI_PACKAGE}@${versionOrTag} is missing version/dist.tarball`);
   }
-  return map;
+  return { version: m2.version, tarball: m2.dist.tarball, integrity: m2.dist.integrity ?? null };
+}
+function verifyNpmIntegrity(data, integrity) {
+  const entries = integrity.trim().split(/\s+/);
+  const entry = entries.find((e) => e.startsWith("sha512-")) ?? entries.find((e) => e.startsWith("sha256-"));
+  if (!entry)
+    throw new Error(`unrecognized integrity format: ${integrity}`);
+  const dash = entry.indexOf("-");
+  const algo = entry.slice(0, dash);
+  const expected = entry.slice(dash + 1);
+  const actual = createHash(algo).update(data).digest("base64");
+  if (actual !== expected)
+    throw new Error(`UI bundle integrity mismatch (${algo})`);
+}
+async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
+  const res = await fetchWithRetry(manifest.tarball);
+  if (!res.ok)
+    throw new Error(`Failed to download UI bundle (HTTP ${res.status})`);
+  const data = new Uint8Array(await res.arrayBuffer());
+  if (!manifest.integrity) {
+    throw new Error(`npm manifest for ${UI_PACKAGE}@${manifest.version} has no integrity hash — refusing to install unverified`);
+  }
+  verifyNpmIntegrity(data, manifest.integrity);
+  logger.debug("UI bundle integrity verified", { version: manifest.version });
+  const tmpTar = join(dataDir, ".ui-build.tgz.tmp");
+  const staging = join(dataDir, ".ui-build.staging");
+  try {
+    rmSync(staging, { recursive: true, force: true });
+    mkdirSync2(staging, { recursive: true });
+    writeFileSync(tmpTar, data);
+    await fo({
+      file: tmpTar,
+      cwd: staging,
+      strip: 2,
+      filter: (p2) => p2.startsWith("package/build/")
+    });
+    if (!existsSync(join(staging, "index.js"))) {
+      throw new Error("downloaded UI bundle is missing build/index.js");
+    }
+    rmSync(uiDir, { recursive: true, force: true });
+    renameSync(staging, uiDir);
+  } finally {
+    rmSync(tmpTar, { force: true });
+    rmSync(staging, { recursive: true, force: true });
+  }
 }
 async function seedUiBuild(repoRef, dataDir, options) {
   const uiDir = join(dataDir, "ui");
@@ -10792,41 +10841,15 @@ async function seedUiBuild(repoRef, dataDir, options) {
   if (local) {
     logger.debug("seeding UI build from local source", { src: local });
     copyTree(local, uiDir);
+    if (!readUiBuildVersion(uiDir)) {
+      logger.warn("seeded UI build has no version stamp — auto-update comparison will be unreliable", { src: local });
+    }
     return;
   }
-  const base = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}`;
-  const tarballUrl = `${base}/ui-build.tar.gz`;
-  const checksumUrl = `${base}/checksums-sha256.txt`;
-  logger.debug("downloading UI build", { url: tarballUrl });
-  const tmpTar = join(dataDir, ".ui-build.tar.gz.tmp");
-  try {
-    const [tarRes, csRes] = await Promise.all([
-      fetchWithRetry(tarballUrl),
-      fetchWithRetry(checksumUrl).catch(() => null)
-    ]);
-    if (!tarRes.ok)
-      throw new Error(`Failed to download UI build (HTTP ${tarRes.status})`);
-    const tarData = new Uint8Array(await tarRes.arrayBuffer());
-    if (csRes?.ok) {
-      const checksums = parseChecksumsFile(await csRes.text());
-      const expected = checksums.get("ui-build.tar.gz");
-      if (expected) {
-        const actual = sha256Hex(tarData);
-        if (actual !== expected) {
-          throw new Error(`UI build checksum mismatch (expected ${expected}, got ${actual})`);
-        }
-        logger.debug("UI build checksum verified", { sha256: actual });
-      }
-    }
-    writeFileSync(tmpTar, tarData);
-    rmSync(uiDir, { recursive: true, force: true });
-    mkdirSync2(uiDir, { recursive: true });
-    await fo({ file: tmpTar, cwd: uiDir, strip: 1 });
-  } finally {
-    rmSync(tmpTar, { force: true });
-  }
+  const manifest = await fetchNpmUiManifest(toNpmVersion(repoRef));
+  logger.debug("downloading UI build from npm", { version: manifest.version });
+  await downloadNpmUiBundle(manifest, uiDir, dataDir);
 }
-var GITHUB_API = "https://api.github.com";
 function compareVersionTags(a, b2) {
   const parse = (v2) => {
     const clean = v2.replace(/^v/, "");
@@ -10876,24 +10899,18 @@ function compareVersionTags(a, b2) {
     return comparePre(aPre, bPre);
   return 0;
 }
-async function checkAndUpdateUiBuild(currentVersion, dataDir) {
+async function checkAndUpdateUiBuild(appVersion, dataDir) {
   try {
-    const res = await fetch(`${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`, {
-      headers: { "User-Agent": `OpenPalm/${currentVersion}` },
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!res.ok) {
-      return { updated: false, latestVersion: null, error: `GitHub API returned ${res.status}` };
-    }
-    const release = await res.json();
-    const latestTag = release.tag_name;
-    const latestVersion = latestTag.replace(/^v/, "");
-    if (compareVersionTags(latestTag, currentVersion) <= 0) {
-      logger.debug("UI build is up to date", { current: currentVersion, latest: latestVersion });
+    const channel = uiUpdateChannel(appVersion);
+    const manifest = await fetchNpmUiManifest(channel);
+    const latestVersion = manifest.version;
+    const currentUiVersion = readUiBuildVersion(resolveUiBuildDir());
+    if (currentUiVersion && compareVersionTags(latestVersion, currentUiVersion) <= 0) {
+      logger.debug("UI build is up to date", { currentUi: currentUiVersion, latest: latestVersion, channel });
       return { updated: false, latestVersion };
     }
-    if (!release.assets.some((a) => a.name === "ui-build.tar.gz")) {
-      return { updated: false, latestVersion, error: "Latest release has no ui-build.tar.gz" };
+    if (!currentUiVersion) {
+      logger.debug("UI build is unstamped — refreshing from npm to re-establish a known version", { latest: latestVersion, channel });
     }
     const uiDir = join(dataDir, "ui");
     if (existsSync(join(uiDir, "index.js"))) {
@@ -10902,8 +10919,8 @@ async function checkAndUpdateUiBuild(currentVersion, dataDir) {
       renameSync(uiDir, backupDir);
       logger.debug("backed up UI build before update", { backup: backupDir });
     }
-    await seedUiBuild(latestTag, dataDir);
-    logger.debug("UI build updated", { from: currentVersion, to: latestVersion });
+    await downloadNpmUiBundle(manifest, uiDir, dataDir);
+    logger.debug("UI build updated", { from: currentUiVersion ?? "(unstamped)", to: latestVersion });
     return { updated: true, latestVersion };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -11462,9 +11479,9 @@ async function startUIServer() {
   }
   let uiBuildDir = resolveUiBuildDir();
   if (!existsSync5(join4(uiBuildDir, "index.js"))) {
-    console.log("UI build not found — seeding from release...");
+    console.log("UI build not found — seeding @openpalm/ui from npm...");
     try {
-      await seedUiBuild(`v${version}`, dataDir);
+      await seedUiBuild(uiUpdateChannel(version), dataDir);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error("Failed to seed UI build:", err instanceof Error ? err.message : String(err));

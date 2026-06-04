@@ -8,21 +8,32 @@
   --color-primary: #ff9d00;
   --color-primary-hover: #e68a00;
   --color-primary-subtle: rgba(255, 157, 0, 0.08);
+  --color-primary-border: rgba(255, 157, 0, 0.28);
+  --color-accent: var(--color-primary);
 
   /* ── Semantic Colors ──────────────────────────────────────────────── */
   --color-success: #40c057;
   --color-success-bg: rgba(64, 192, 87, 0.1);
   --color-success-border: rgba(64, 192, 87, 0.25);
+  --color-success-subtle: var(--color-success-bg);
   --color-danger: #fa5252;
   --color-danger-bg: rgba(250, 82, 82, 0.1);
+  --color-danger-subtle: var(--color-danger-bg);
+  --color-danger-border: rgba(250, 82, 82, 0.25);
+  --color-danger-fg: #c92a2a;
+  --color-danger-bg-hover: rgba(250, 82, 82, 0.16);
   --color-warning: #fd7e14;
   --color-warning-bg: rgba(253, 126, 20, 0.1);
+  --color-warning-border: rgba(253, 126, 20, 0.25);
   --color-info: #339af0;
   --color-info-bg: rgba(51, 154, 240, 0.08);
   --color-pending: #868e96;
   --color-pending-bg: rgba(134, 142, 150, 0.1);
   --color-caution: #e67700;
   --color-caution-bg: rgba(230, 119, 0, 0.08);
+  --color-error: var(--color-danger);
+  --color-error-bg: var(--color-danger-bg);
+  --color-error-border: var(--color-danger-border);
 
   /* ── Surface Colors ───────────────────────────────────────────────── */
   --color-bg: #ffffff;
@@ -31,6 +42,7 @@
   --color-surface: #fffffffa;
   --color-surface-hover: #f9fafb;
   --color-surface-alt: #f6f8fa;
+  --color-navbar-bg: rgba(255, 255, 255, 0.85);
 
   /* ── Border Colors ────────────────────────────────────────────────── */
   --color-border: #e5e7eb;
@@ -41,6 +53,8 @@
   --color-text: #111827;
   --color-text-secondary: #6b7280;
   --color-text-tertiary: #9ca3af;
+  --color-text-muted: var(--color-text-secondary);
+  --color-text-primary: var(--color-text);
   --color-text-inverse: #ffffff;
 
   /* ── Typography ───────────────────────────────────────────────────── */
@@ -53,6 +67,7 @@
   --text-sm: 0.8125rem;
   --text-base: 0.875rem;
   --text-lg: 1rem;
+  --text-xl: 1.125rem;
   --text-2xl: 1.375rem;
   --text-3xl: 1.75rem;
 
@@ -111,6 +126,66 @@
   --color-bg-selected: var(--color-primary-subtle);
 }
 
+:root[data-theme='dark'] {
+  --color-primary: #ff9d00;
+  --color-primary-hover: #ffb84d;
+  --color-primary-subtle: rgba(255, 157, 0, 0.16);
+  --color-primary-border: rgba(255, 157, 0, 0.34);
+
+  --color-success: #5ad57f;
+  --color-success-bg: rgba(90, 213, 127, 0.14);
+  --color-success-border: rgba(90, 213, 127, 0.3);
+  --color-success-subtle: var(--color-success-bg);
+  --color-danger: #ff7b7b;
+  --color-danger-bg: rgba(255, 123, 123, 0.14);
+  --color-danger-subtle: var(--color-danger-bg);
+  --color-danger-border: rgba(255, 123, 123, 0.3);
+  --color-danger-fg: #ffd2d2;
+  --color-danger-bg-hover: rgba(255, 123, 123, 0.22);
+  --color-warning: #ff9f43;
+  --color-warning-bg: rgba(255, 159, 67, 0.16);
+  --color-warning-border: rgba(255, 159, 67, 0.3);
+  --color-info: #66b8ff;
+  --color-info-bg: rgba(102, 184, 255, 0.14);
+  --color-pending: #94a3b8;
+  --color-pending-bg: rgba(148, 163, 184, 0.14);
+  --color-caution: #ff9f43;
+  --color-caution-bg: rgba(255, 159, 67, 0.14);
+  --color-error: var(--color-danger);
+  --color-error-bg: var(--color-danger-bg);
+  --color-error-border: var(--color-danger-border);
+
+  --color-bg: #101418;
+  --color-bg-secondary: #161c22;
+  --color-bg-tertiary: #1d2630;
+  --color-surface: rgba(20, 26, 32, 0.98);
+  --color-surface-hover: #1b232c;
+  --color-surface-alt: #19212a;
+  --color-navbar-bg: rgba(20, 26, 32, 0.88);
+
+  --color-border: #2a3441;
+  --color-border-hover: #3b4756;
+  --color-border-focus: var(--color-primary);
+
+  --color-text: #f3f4f6;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary: #94a3b8;
+  --color-text-muted: var(--color-text-secondary);
+  --color-text-primary: var(--color-text);
+  --color-text-inverse: #0f1419;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.34), 0 4px 8px rgba(0, 0, 0, 0.24);
+
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+  --shadow-sheet: -6px 0 28px rgba(0, 0, 0, 0.34), -1px 0 4px rgba(0, 0, 0, 0.24);
+
+  --toggle-bg-off: var(--color-border-hover);
+  --toggle-bg-on: var(--color-primary);
+  --color-border-selected: var(--color-primary);
+  --color-bg-selected: var(--color-primary-subtle);
+}
+
 /* ── Reset & Base ──────────────────────────────────────────────────── */
 
 *,
@@ -126,6 +201,11 @@ html {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-size: 16px;
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 body {

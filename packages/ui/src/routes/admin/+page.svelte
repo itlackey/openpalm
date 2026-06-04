@@ -23,9 +23,11 @@
     pullImages,
     fetchVersions,
     fetchReleases,
+    fetchUiVersions,
     setStackVersion,
     downloadUiVersion,
     type ReleaseEntry,
+    type UiVersionEntry,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
 
@@ -70,6 +72,10 @@
   let selectedUiTag = $state('');
   let releases = $state<ReleaseEntry[]>([]);
   let releasesLoading = $state(false);
+  // @openpalm/ui npm versions — the UI is independently versioned, so its
+  // installable builds come from npm, not GitHub platform releases.
+  let uiVersions = $state<UiVersionEntry[]>([]);
+  let uiVersionsLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -261,15 +267,23 @@
 
   async function loadReleases(): Promise<void> {
     releasesLoading = true;
+    uiVersionsLoading = true;
     try {
-      const data = await fetchReleases();
-      releases = data.releases;
-      const latestUiBuild = data.releases.find((r) => r.hasUiBuild);
-      if (latestUiBuild) selectedUiTag = latestUiBuild.tag;
+      const [releaseData, uiData] = await Promise.all([fetchReleases(), fetchUiVersions()]);
+      releases = releaseData.releases;
+      uiVersions = uiData.versions;
+      // Default the UI-build selection to the version on this app's channel
+      // (next/latest dist-tag), falling back to the newest published version.
+      if (!selectedUiTag) {
+        const channelPick = uiData.versions.find((v) => v.distTag === 'next' || v.distTag === 'latest')
+          ?? uiData.versions[0];
+        if (channelPick) selectedUiTag = channelPick.version;
+      }
     } catch {
       // Non-fatal
     }
     releasesLoading = false;
+    uiVersionsLoading = false;
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -506,6 +520,8 @@
         {selectedUiTag}
         {releases}
         {releasesLoading}
+        {uiVersions}
+        {uiVersionsLoading}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onUpgradeStack={handleUpgradeStack}

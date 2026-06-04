@@ -105,4 +105,4 @@ export async function copyTree(
 }
 
 // Re-export from lib so existing imports in CLI commands keep working.
-export { seedOpenPalmDir, seedUiBuild } from '@openpalm/lib';
+export { seedOpenPalmDir, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';

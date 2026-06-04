@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
-  import type { ReleaseEntry } from '$lib/api.js';
+  import type { ReleaseEntry, UiVersionEntry } from '$lib/api.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   interface Props {
@@ -24,6 +24,8 @@
     selectedUiTag: string;
     releases: ReleaseEntry[];
     releasesLoading: boolean;
+    uiVersions: UiVersionEntry[];
+    uiVersionsLoading: boolean;
     onCheckHealth: () => void;
     onApplyChanges: () => void;
     onUpgradeStack: () => void;
@@ -55,6 +57,8 @@
     selectedUiTag,
     releases,
     releasesLoading,
+    uiVersions,
+    uiVersionsLoading,
     onCheckHealth,
     onApplyChanges,
     onUpgradeStack,
@@ -69,8 +73,13 @@
   // Load endpoints if not already loaded so we get the real assistant URL.
   onMount(() => { void endpointsService.load(); });
 
-  // Releases that have a ui-build asset — for the UI build dropdown
-  let uiBuildReleases = $derived(releases.filter((r) => r.hasUiBuild));
+  // Label for a UI-build option: version + prerelease/dist-tag annotations.
+  function uiVersionLabel(v: UiVersionEntry): string {
+    const tags: string[] = [];
+    if (v.distTag) tags.push(v.distTag);
+    else if (v.prerelease) tags.push('pre-release');
+    return tags.length ? `${v.version} (${tags.join(', ')})` : v.version;
+  }
 
   // Derived: automation count
   let automationCount = $derived(automationsData?.automations.length ?? 0);
@@ -386,17 +395,17 @@
       {#if inElectron}
         <div class="version-section">
           <div class="version-input-row">
-            {#if releasesLoading}
+            {#if uiVersionsLoading}
               <div class="version-select-skeleton"></div>
-            {:else if uiBuildReleases.length > 0}
+            {:else if uiVersions.length > 0}
               <select
                 class="version-select"
                 value={selectedUiTag}
                 onchange={(e) => onSelectedUiTagChange((e.currentTarget as HTMLSelectElement).value)}
                 disabled={uiDownloadLoading}
               >
-                {#each uiBuildReleases as r (r.tag)}
-                  <option value={r.tag}>{r.tag}{r.prerelease ? ' (pre-release)' : ''}</option>
+                {#each uiVersions as v (v.version)}
+                  <option value={v.version}>{uiVersionLabel(v)}</option>
                 {/each}
               </select>
             {:else}

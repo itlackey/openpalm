@@ -1,0 +1,25 @@
+name: Publish @openpalm/ui
+on:
+  push:
+    branches: [main]
+    paths: ['packages/ui/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.2.0, minor, prerelease). Leave empty for auto patch bump.'
+        required: false
+        type: string
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/ui
+      package-name: '@openpalm/ui'
+      # The published artifact is the adapter-node bundle (files:["build"]);
+      # run `bun run build` to produce + version-stamp build/ before packing.
+      needs-build: true
+      version: ${{ inputs.version || '' }}

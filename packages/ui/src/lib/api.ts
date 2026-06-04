@@ -161,7 +161,6 @@ export interface ReleaseEntry {
   tag: string;
   prerelease: boolean;
   publishedAt: string;
-  hasUiBuild: boolean;
 }
 
 export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; error?: string }> {
@@ -171,6 +170,28 @@ export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; error
     return (await res.json()) as { releases: ReleaseEntry[]; error?: string };
   } catch {
     return { releases: [] };
+  }
+}
+
+export interface UiVersionEntry {
+  version: string;
+  prerelease: boolean;
+  publishedAt: string | null;
+  distTag: string | null;
+}
+
+/**
+ * List installable @openpalm/ui npm versions for the admin "UI build" picker.
+ * The UI is independently versioned and distributed via npm, so these — not
+ * GitHub platform release tags — are the valid inputs to downloadUiVersion().
+ */
+export async function fetchUiVersions(): Promise<{ versions: UiVersionEntry[]; error?: string }> {
+  try {
+    const res = await request('GET', '/admin/versions/ui');
+    if (!res.ok) return { versions: [] };
+    return (await res.json()) as { versions: UiVersionEntry[]; error?: string };
+  } catch {
+    return { versions: [] };
   }
 }
 

@@ -332,35 +332,9 @@ jobs:
           cache-from: type=gha,scope=openpalm/voice-${{ matrix.variant }}
           cache-to: type=gha,scope=openpalm/voice-${{ matrix.variant }},mode=max
 
-  build-ui-artifact:
-    name: Build UI artifact
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: prepare-tag
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare-tag.outputs.tag }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build UI
-        run: bun run ui:build
-
-      - name: Package UI build
-        run: tar -czf ui-build.tar.gz -C packages/ui/build .
-
-      - name: Upload UI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-build
-          path: ui-build.tar.gz
+  # NOTE: the UI is distributed via npm (@openpalm/ui, published independently by
+  # publish-ui.yml) and bundled into the Electron app (build-electron-artifacts).
+  # There is no GitHub `ui-build.tar.gz` release asset — nothing consumes it.
 
   build-cli-artifacts:
     name: Build CLI artifacts
@@ -513,7 +487,6 @@ jobs:
       - prepare-tag
       - push-images
       - build-cli-artifacts
-      - build-ui-artifact
       - build-electron-artifacts
 
     steps:
@@ -538,12 +511,6 @@ jobs:
           pattern: openpalm-cli-*
           path: dist
           merge-multiple: true
-
-      - name: Download UI artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ui-build
-          path: dist
 
       - name: Download Electron artifacts
         uses: actions/download-artifact@v4
@@ -623,16 +590,14 @@ jobs:
 
             ## Out-of-band UI update
 
-            To update only the admin UI without a full `openpalm update`:
-            ```bash
-            curl -fsSL https://github.com/itlackey/openpalm/releases/download/v${{ needs.prepare-tag.outputs.version }}/ui-build.tar.gz \
-              | tar xz --strip-components=0 -C ~/.openpalm/data/ui/
-            ```
+            The admin UI is published independently to npm as
+            [`@openpalm/ui`](https://www.npmjs.com/package/@openpalm/ui) and is
+            updated in-app from the **Admin → UI build** picker (or automatically
+            on launch). It is not shipped as a GitHub release asset.
 
             ## What's Changed
           files: |
             dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz
-            dist/ui-build.tar.gz
             dist/checksums-sha256.txt
             dist/openpalm-cli-linux-x64
             dist/openpalm-cli-linux-arm64
@@ -851,3 +816,9 @@ jobs:
               exit $EXIT_CODE
             fi
           }
+
+  # NOTE: @openpalm/ui is INDEPENDENTLY versioned and published by its own
+  # workflow (.github/workflows/publish-ui.yml), like the channel adapters — it
+  # is intentionally NOT published here. release.yml still BUILDS the UI only for
+  # the Electron bundle (build-electron-artifacts); there is no standalone UI
+  # release asset (the in-app updater pulls @openpalm/ui from npm).

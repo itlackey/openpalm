@@ -380,4 +380,5 @@ export {
   resolveUiBuildDir,
   seedUiBuild,
   checkAndUpdateUiBuild,
+  uiUpdateChannel,
 } from "./control-plane/ui-assets.js";

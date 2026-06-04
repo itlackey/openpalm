@@ -6,7 +6,6 @@ export interface ReleaseEntry {
   tag: string;
   prerelease: boolean;
   publishedAt: string;
-  hasUiBuild: boolean;
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -31,14 +30,12 @@ export const GET: RequestHandler = async (event) => {
       tag_name: string;
       prerelease: boolean;
       published_at: string;
-      assets: Array<{ name: string }>;
     }>;
 
     const releases: ReleaseEntry[] = raw.map((r) => ({
       tag: r.tag_name.replace(/^v/, ""),
       prerelease: r.prerelease,
       publishedAt: r.published_at,
-      hasUiBuild: r.assets.some((a) => a.name === "ui-build.tar.gz"),
     }));
 
     return json({ releases });

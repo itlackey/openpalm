@@ -2,9 +2,14 @@
   "name": "@openpalm/ui",
   "description": "SvelteKit web UI and API for OpenPalm stack management",
   "version": "0.11.0-rc.2",
-  "private": true,
   "license": "MPL-2.0",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "build"
+  ],
   "scripts": {
     "dev": "PORT=5173 vite dev",
     "dev:local": "PORT=5173 OP_OPENCODE_URL=${OP_OPENCODE_URL:-http://localhost:3800} vite dev",
@@ -21,15 +26,13 @@
     "format": "prettier --write .",
     "start": "node build/index.js"
   },
-  "dependencies": {
-    "@openpalm/lib": "workspace:*",
-    "croner": "^10.0.1",
-    "markdown-it": "^14.1.1",
-    "yaml": "^2.8.0"
-  },
   "devDependencies": {
     "@eslint/compat": "^2.0.2",
     "@eslint/js": "^10.0.1",
+    "@openpalm/lib": "workspace:*",
+    "croner": "^10.0.1",
+    "markdown-it": "^14.1.1",
+    "yaml": "^2.8.0",
     "@playwright/test": "^1.58.1",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.53.3",
