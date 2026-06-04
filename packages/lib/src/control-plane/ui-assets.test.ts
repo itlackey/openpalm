@@ -1,9 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, spyOn, mock } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
-import { resolveUiBuildDir, readUiBuildVersion, UI_VERSION_STAMP, seedOpenPalmDir, SKELETON_VERSION_STAMP } from "./ui-assets.js";
+import { createHash } from "node:crypto";
+import {
+  resolveUiBuildDir, readUiBuildVersion, UI_VERSION_STAMP,
+  seedOpenPalmDir, SKELETON_VERSION_STAMP,
+  uiUpdateChannel, checkAndUpdateUiBuild,
+} from "./ui-assets.js";
 
 let root = "";
 let opHome = "";
@@ -126,5 +131,203 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     await seedOpenPalmDir("v2", opHome, join(opHome, "config"), join(opHome, "data"));
     expect(existsSync(seededFile())).toBe(true);
     expect(readFileSync(stamp(), "utf-8").trim()).toBe("v2");
+  });
+});
+
+// ── uiUpdateChannel ───────────────────────────────────────────────────────────
+
+describe("uiUpdateChannel", () => {
+  it("returns 'latest' for a stable version", () => {
+    expect(uiUpdateChannel("0.11.0")).toBe("latest");
+    expect(uiUpdateChannel("1.0.0")).toBe("latest");
+  });
+
+  it("returns 'next' for a prerelease version (contains '-')", () => {
+    expect(uiUpdateChannel("0.11.0-rc.2")).toBe("next");
+    expect(uiUpdateChannel("0.11.0-beta.5")).toBe("next");
+    expect(uiUpdateChannel("1.0.0-alpha.1")).toBe("next");
+  });
+});
+
+// ── npm integrity verification (via checkAndUpdateUiBuild) ────────────────────
+//
+// We mock globalThis.fetch to avoid real network calls.  The integrity paths
+// are exercised through checkAndUpdateUiBuild → downloadNpmUiBundle (for the
+// missing-integrity and mismatch cases) and through checkAndUpdateUiBuild
+// returning {updated:false} early (for the up-to-date case).
+
+/** Build a correct sha512 SRI string for the given bytes. */
+function makeSri(data: Uint8Array): string {
+  const digest = createHash("sha512").update(data).digest("base64");
+  return `sha512-${digest}`;
+}
+
+describe("npm integrity verification (fail-closed)", () => {
+  let savedFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+    // Set forceRemote context: no local build available for these tests.
+    // (data/ui has no index.js, bundledUi dir exists but is empty → no local build)
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+  });
+
+  it("throws when the manifest has no integrity hash (fail-closed)", async () => {
+    // manifest fetch returns a version with no integrity
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org")) {
+        return new Response(
+          JSON.stringify({
+            version: "0.11.0",
+            dist: { tarball: "https://registry.npmjs.org/tarball.tgz" },
+            // integrity intentionally omitted
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      // tarball fetch — should NOT be reached because we throw before it
+      return new Response("not-reached", { status: 200 });
+    };
+
+    const result = await checkAndUpdateUiBuild("0.11.0-beta.1", join(dataUi, ".."));
+    // Missing integrity → non-fatal error path
+    expect(result.updated).toBe(false);
+    expect(result.error).toMatch(/no integrity hash/i);
+  });
+
+  it("throws when the tarball bytes do not match the stated integrity hash", async () => {
+    const fakeData = new Uint8Array([1, 2, 3, 4]);
+    const wrongSri = `sha512-${Buffer.from("wrong").toString("base64")}`;
+
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org") && !url.includes("tarball")) {
+        return new Response(
+          JSON.stringify({
+            version: "0.99.0",  // newer than anything on disk
+            dist: { tarball: "https://registry.npmjs.org/tarball.tgz", integrity: wrongSri },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      // tarball response — bytes deliberately do NOT match wrongSri
+      return new Response(fakeData, { status: 200 });
+    };
+
+    const result = await checkAndUpdateUiBuild("0.11.0", join(dataUi, ".."));
+    expect(result.updated).toBe(false);
+    expect(result.error).toMatch(/integrity mismatch/i);
+  });
+});
+
+// ── checkAndUpdateUiBuild ─────────────────────────────────────────────────────
+
+describe("checkAndUpdateUiBuild", () => {
+  let savedFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+  });
+
+  /** Make a minimal npm manifest response for a given version. */
+  function manifestResponse(version: string, integrity?: string) {
+    return new Response(
+      JSON.stringify({
+        version,
+        dist: {
+          tarball: "https://registry.npmjs.org/tarball.tgz",
+          ...(integrity !== undefined ? { integrity } : {}),
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  it("returns {updated:false} when the npm channel version is not newer than on-disk stamp", async () => {
+    // Seed data/ui with a stamped build
+    makeBuild(dataUi, "0.11.0");
+
+    globalThis.fetch = async () => manifestResponse("0.11.0"); // same version
+    const result = await checkAndUpdateUiBuild("0.11.0", join(opHome, "data"));
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("0.11.0");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns {updated:false} when the npm channel version is older than on-disk stamp", async () => {
+    makeBuild(dataUi, "0.12.0");
+
+    globalThis.fetch = async () => manifestResponse("0.11.0"); // older
+    const result = await checkAndUpdateUiBuild("0.12.0", join(opHome, "data"));
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("0.11.0");
+  });
+
+  it("returns {updated:false, error} when the manifest fetch rejects (non-fatal)", async () => {
+    globalThis.fetch = async () => { throw new Error("network failure"); };
+
+    const result = await checkAndUpdateUiBuild("0.11.0", join(opHome, "data"));
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBeNull();
+    expect(result.error).toMatch(/network failure/i);
+  });
+
+  it("returns {updated:false, error} when the registry returns a non-OK status", async () => {
+    globalThis.fetch = async () => new Response("not found", { status: 404 });
+
+    const result = await checkAndUpdateUiBuild("0.11.0", join(opHome, "data"));
+    expect(result.updated).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it("attempts an update when the on-disk build is unstamped (legacy data/ui)", async () => {
+    // Unstamped data/ui — cannot compare, so it should try to refresh from npm.
+    // We give it a manifest with missing integrity so it fails non-fatally
+    // (avoids needing a real tarball), but we confirm it DID attempt the download.
+    makeBuild(dataUi, null); // unstamped
+
+    let manifestFetched = false;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org")) {
+        manifestFetched = true;
+        // Return a manifest without integrity so downloadNpmUiBundle throws
+        return manifestResponse("0.11.1");
+      }
+      return new Response("", { status: 200 });
+    };
+
+    const result = await checkAndUpdateUiBuild("0.11.0", join(opHome, "data"));
+    expect(manifestFetched).toBe(true);
+    // non-fatal: missing integrity → error path
+    expect(result.updated).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it("attempts an update when npm has a newer version than the on-disk stamp", async () => {
+    makeBuild(dataUi, "0.11.0");
+
+    let manifestFetched = false;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org")) {
+        manifestFetched = true;
+        return manifestResponse("0.12.0"); // newer — no integrity → non-fatal error
+      }
+      return new Response("", { status: 200 });
+    };
+
+    const result = await checkAndUpdateUiBuild("0.11.0", join(opHome, "data"));
+    expect(manifestFetched).toBe(true);
+    expect(result.updated).toBe(false);
+    expect(result.error).toMatch(/no integrity hash/i);
   });
 });

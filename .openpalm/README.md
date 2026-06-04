@@ -31,6 +31,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
   data/
     assistant/         Assistant home and local runtime state
     admin/             Admin runtime home
+    ui/                Operator UI build (@openpalm/ui), seeded/updated from npm
     guardian/          Guardian nonce and rate-limit state
     akm/cache/         AKM cache and task logs
     akm/data/          AKM databases and durable data

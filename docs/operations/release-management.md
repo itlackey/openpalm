@@ -1,8 +1,8 @@
 # Release Management
 
 This guide is the authoritative reference for cutting OpenPalm releases. It
-covers the two independent publish tracks, exactly which packages and images
-belong to each, and the step-by-step procedures for both.
+covers the three independent publish tracks, exactly which packages and images
+belong to each, and the step-by-step procedures for all three.
 
 > **Ground truth.** The proven release flow described here was established and
 > verified on the `release/0.11.0` line. Where this guide and a script's inline
@@ -10,9 +10,9 @@ belong to each, and the step-by-step procedures for both.
 
 ---
 
-## The two tracks
+## The three tracks
 
-OpenPalm ships on two completely separate cadences:
+OpenPalm ships on three completely separate cadences:
 
 ### Track A — Platform release (single coordinated version)
 
@@ -23,6 +23,8 @@ package on its own; you cut a whole platform release.
 The authoritative manifest list lives in
 [`.github/release-package-groups.json`](../../.github/release-package-groups.json)
 under `platformManifests`. `scripts/bump-platform.sh` reads that list.
+`packages/ui` is **not** in `platformManifests` — it is independently versioned
+(Track C).
 
 ### Track B — Channel adapters (independently versioned)
 
@@ -31,6 +33,25 @@ schedule**, decoupled from the platform. A typo fix in the Discord adapter does
 **not** require a platform release — you bump and publish just that one package,
 and it reaches users on the next container restart (see
 [Publishing a channel adapter](#publishing-a-channel-adapter-track-b)).
+
+### Track C — UI (`@openpalm/ui`, independently versioned)
+
+The SvelteKit operator UI is versioned and published **on its own schedule**,
+decoupled from the platform. It ships as an adapter-node bundle to npm
+(`@openpalm/ui`, `files: ["build"]`, zero runtime deps) and is fetched at
+runtime from the registry by `packages/lib/src/control-plane/ui-assets.ts`
+(integrity-verified). It is **not** a GitHub release asset. Publishing is handled
+by `.github/workflows/publish-ui.yml`, which calls the same reusable
+`publish-npm-package.yml` as the channel adapters (with `needs-build: true` to
+run `bun run build` before packing). The Electron app also bundles the UI — the
+`build-electron-artifacts` job in `release.yml` runs `bun run ui:build`
+separately to produce a self-contained installer.
+
+> **`workflow_dispatch` requires `main`.** GitHub only allows dispatching a
+> workflow that exists on the repository's **default branch** (`main`).
+> `publish-ui.yml` must be present on `main` to be dispatchable from the Actions
+> UI or via `gh workflow run`. The push trigger (`paths: packages/ui/**`) also
+> fires only on pushes to `main`.
 
 ---
 
@@ -41,24 +62,28 @@ and it reaches users on the next container restart (see
 | `openpalm` (CLI) | Host orchestrator. **npm name is `openpalm`**, not `@openpalm/cli`. | `release.yml` → `publish-cli-npm` | `v*` tag | npm | A (platform) |
 | `@openpalm/lib` | Shared control-plane library | `release.yml` → `publish-lib-npm` | `v*` tag | npm | A (platform) |
 | `@openpalm/channels-sdk` | Channel **framework** (`BaseChannel`, guardian client, `channel-entrypoint.ts`) | `release.yml` → `publish-channels-sdk-npm` | `v*` tag | npm | A (platform) |
-| `packages/ui` | SvelteKit operator UI + API | `release.yml` → `build-ui-artifact` | `v*` tag | GitHub asset (`ui-build.tar.gz`) — **not** on npm | A (platform) |
+| `@openpalm/ui` (`packages/ui`) | SvelteKit operator UI + API (adapter-node bundle, `files:["build"]`) | `publish-ui.yml` → `publish-npm-package.yml` | push to `main` touching `packages/ui/**`, or `workflow_dispatch` | npm only (`next` for prereleases, `latest` for stable) | **C (independent)** |
 | `packages/electron` + `admin-tools` | Desktop app + bundled admin-tools plugin | `release.yml` → `build-electron-artifacts` | `v*` tag | GitHub assets (.dmg/.AppImage/.exe + update metadata) — **not** on npm | A (platform) |
 | `openpalm/assistant` | OpenCode assistant image | `release.yml` → `push-images` | `v*` tag | Docker Hub | A (platform) |
 | `openpalm/guardian` | Guardian image | `release.yml` → `push-images` | `v*` tag | Docker Hub | A (platform) |
 | `openpalm/channel` | Unified channel runtime image (bundles channels-sdk) | `release.yml` → `push-images` | `v*` tag | Docker Hub | A (platform) |
 | `openpalm/voice` (`-cpu`, `-cu121`) | Voice addon images | `release.yml` → `push-voice-images` | `v*` tag | Docker Hub | A (platform, additive — never blocks the release) |
-| CLI binaries (6 platforms) | Standalone `bun build --compile` binaries | `release.yml` → `build-cli-artifacts` | `v*` tag | GitHub assets | A (platform) |
+| CLI binaries (5 platforms) | Standalone `bun build --compile` binaries | `release.yml` → `build-cli-artifacts` | `v*` tag | GitHub assets | A (platform) |
 | GitHub release | Release page + all assets + checksums | `release.yml` → `release` | `v*` tag | GitHub release | A (platform) |
 | `@openpalm/channel-api` | API channel adapter | `publish-channel-api.yml` → `publish-npm-package.yml` | push to `main` touching `packages/channel-api/**`, or `workflow_dispatch` | npm only | **B (independent)** |
 | `@openpalm/channel-discord` | Discord channel adapter | `publish-channel-discord.yml` → `publish-npm-package.yml` | push to `main` touching `packages/channel-discord/**`, or `workflow_dispatch` | npm only | **B (independent)** |
 | `@openpalm/channel-slack` | Slack channel adapter | `publish-channel-slack.yml` → `publish-npm-package.yml` | push to `main` touching `packages/channel-slack/**`, or `workflow_dispatch` | npm only | **B (independent)** |
 
-> **Platform packages that do NOT publish to npm.** Of the eight `platformManifests`
+> **Platform packages that do NOT publish to npm.** Of the seven `platformManifests`
 > entries, only three publish to npm: `@openpalm/lib`, `openpalm` (CLI), and
-> `@openpalm/channels-sdk`. The root manifest, `packages/ui`, `packages/electron`,
+> `@openpalm/channels-sdk`. The root manifest, `core/guardian`, `packages/electron`,
 > and `packages/electron/admin-tools` are version-stamped for coordination but ship
 > as Docker images / GitHub assets only. `bump-platform.sh` stamps the version on
-> all eight so the lockfile and cross-references stay consistent.
+> all seven so the lockfile and cross-references stay consistent.
+>
+> **`packages/ui` is NOT in `platformManifests`.** It is in `independentNpmPackages`
+> and published by `publish-ui.yml` (Track C) — `release.sh` / `bump-platform.sh`
+> do not touch it.
 
 ---
 
@@ -74,7 +99,8 @@ and it reaches users on the next container restart (see
   `enable=${{ ... prerelease != 'true' }}`, so during a beta line **only the
   immutable `vX.Y.Z` Docker tags exist** — never a moving `latest`.
 - The reusable `publish-npm-package.yml` applies the same rule for channel
-  adapters (`-` in the version → `--tag next`).
+  adapters **and** `@openpalm/ui` (`-` in the version → `--tag next`). Both Track B
+  and Track C feed through the same reusable workflow.
 
 ---
 
@@ -226,12 +252,60 @@ trailing `@<version>` / `@<tag>` from `CHANNEL_PACKAGE`
 
 ---
 
+## Publishing the UI (Track C)
+
+`@openpalm/ui` publishes to **npm only** (no Docker image, no GitHub release
+asset). The published artifact is the adapter-node SvelteKit bundle
+(`files: ["build"]`, self-contained, zero runtime deps). At runtime,
+`packages/lib/src/control-plane/ui-assets.ts` fetches the tarball from the npm
+registry and verifies its integrity before installing it.
+
+### How to publish the UI
+
+Two triggers feed `publish-npm-package.yml` (via `publish-ui.yml`):
+
+1. **Automatic** — push to `main` that touches `packages/ui/**`. The workflow
+   auto-bumps the patch (or prerelease segment) if the current version is already
+   on npm, runs `bun run build` to produce the bundle, publishes, then commits
+   the bump back.
+2. **Manual** — run the **Publish @openpalm/ui** workflow
+   (`gh workflow run publish-ui.yml`) with an optional `version` input: an
+   explicit version (`1.2.0`) or a bump keyword
+   (`major` / `minor` / `patch` / `prerelease`).
+
+> **Dispatch only works from `main`.** `workflow_dispatch` is only available when
+> the workflow file exists on the repository's default branch (`main`). If you
+> need to publish a UI build from a release branch, cherry-pick or merge the UI
+> changes to `main` first, or trigger via a `packages/ui/**` push to `main`.
+
+### OIDC trusted publishing
+
+`publish-ui.yml` (and every caller of `publish-npm-package.yml`) requests
+`id-token: write` so that `npm publish --provenance` works without a stored
+`NPM_TOKEN`. Provenance attestations appear on the npm package page.
+
+### Why the UI is NOT in the platform release
+
+The UI can be updated independently of Docker images and CLI binaries — an
+operator's running stack picks up a new UI version without an image restart. This
+mirrors the channel adapter model. The `release.yml` workflow still builds the UI
+inside `build-electron-artifacts` to bundle a version-stamped copy into the
+Electron installer; that is the only UI build that happens during a platform
+release, and it is intentionally separate from the npm publish path.
+
+---
+
 ## Beta → stable cutover checklist
 
 When promoting a `0.X.Y-beta.N` line to a stable `0.X.Y`:
 
 - [ ] Cut the stable platform release (`0.X.Y`, no `-` suffix). This publishes npm
       under `latest` and creates the Docker `latest` / `latest-*` tags.
+- [ ] **Publish a stable `@openpalm/ui` version (Track C)** so `@latest` on npm
+      resolves to the current UI. Either merge the UI changes to `main` (auto-trigger
+      via `packages/ui/**` push) or dispatch `publish-ui.yml` with an explicit
+      version. Without this step, any fresh install that fetches `@openpalm/ui@latest`
+      would pull the previous stable line's UI.
 - [ ] Publish stable versions of the three channel adapters (Track B) so a
       `@latest` adapter actually exists.
 - [ ] **Flip `CHANNEL_PACKAGE` from `@next` to `@latest`** (or a pinned stable
@@ -262,6 +336,12 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
       stable 0.8.0 plugin is published yet (0.8.0 line is on `@next`); 0.7.6 works
       against the 0.8.0 CLI (the plugin shells to stable CLI commands). Revisit when
       a stable `akm-opencode` 0.8.0 ships.
+- [ ] **Publish a stable `@openpalm/ui` version** (Track C, via `publish-ui.yml`).
+      During the `0.11.x` beta line, `@openpalm/ui` has only been published with
+      prerelease versions (→ `next` dist-tag). A fresh install on the stable release
+      must be able to resolve `@openpalm/ui@latest`. Merge the current `packages/ui`
+      state to `main` (or dispatch `publish-ui.yml` with an explicit stable version)
+      to create the first `latest` UI tag.
 - [ ] **Republish the three channel adapters as a stable (non-prerelease) version**
       so they land on npm `@latest`. Today `@latest` for `channel-*` is still the
       old `0.10.x` line; `@next` holds `0.11.x`. Until stable adapters exist,
@@ -319,7 +399,8 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 | `scripts/release.sh` | One-shot release from the **current branch** (bump + stamp + test gate + commit + push branch + tag) |
 | `scripts/setup.sh` / `scripts/setup.ps1` | Install scripts; `SCRIPT_VERSION` must match the release tag |
 | `.github/workflows/release.yml` | Platform release pipeline (Track A) |
-| `.github/workflows/publish-npm-package.yml` | Reusable npm publish used by the channel-adapter workflows (Track B) |
+| `.github/workflows/publish-ui.yml` | UI publish trigger (Track C); calls `publish-npm-package.yml` with `needs-build: true` |
+| `.github/workflows/publish-npm-package.yml` | Reusable npm publish used by the UI (Track C) and channel-adapter (Track B) workflows |
 | `.github/workflows/publish-channel-{api,discord,slack}.yml` | Per-adapter publish triggers (Track B) |
 | `core/channel/README.md` | Channel runtime architecture (image bundles framework, adapters at runtime) |
 | `docs/channels/community-channels.md` | Channel adapter authoring guide |

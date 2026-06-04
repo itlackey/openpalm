@@ -4,11 +4,12 @@
  * These functions are consumed by both the CLI and the Electron shell — they
  * must use only Node.js-compatible APIs (no Bun.spawn, Bun.write, etc.).
  *
- * Source resolution order (same for UI build and .openpalm/):
+ * Source resolution order (UI build and .openpalm/ skeleton):
  *   1. OPENPALM_REPO_ROOT env var — explicit dev override
  *   2. Relative to import.meta.url — works for `bun run` / source installs
  *   3. Relative to process.execPath — works for compiled Bun binary in repo
- *   4. null → GitHub release download
+ *   4. null → remote download (the UI build from the @openpalm/ui npm registry
+ *      tarball; the .openpalm skeleton from the GitHub repo tarball)
  */
 import {
   existsSync, mkdirSync, readdirSync, copyFileSync,
@@ -175,7 +176,7 @@ export async function seedOpenPalmDir(
 
 /**
  * Locate the compiled SvelteKit UI build on disk.
- * Returns null when not found — triggers GitHub download in seedUiBuild.
+ * Returns null when not found — triggers the npm registry download in seedUiBuild.
  */
 export function resolveLocalUiBuild(): string | null {
   return resolveLocalCandidate(
@@ -230,7 +231,8 @@ export function readUiBuildVersion(dir: string): string | null {
  * Resolve which UI build to run.
  *
  * Two channels exist: the bundled build (shipped inside the AppImage / source
- * tree) and `data/ui` (operator-updatable, seeded from GitHub releases). To fix
+ * tree) and `data/ui` (operator-updatable, seeded from the @openpalm/ui npm
+ * registry tarball). To fix
  * the stale-`data/ui` shadowing bug AND stay forward-compatible with updating the
  * UI without shipping a new app (D5), selection is VERSION-AWARE:
  *

@@ -631,6 +631,122 @@ Query parameters:
 }
 ```
 
+## UI Distribution
+
+The UI (`@openpalm/ui`) is independently versioned and distributed via npm, not
+as a GitHub release asset. These endpoints let the operator browser and CLI
+discover available UI versions and install a specific one.
+
+### `GET /admin/versions/ui`
+
+Lists published `@openpalm/ui` npm versions for the admin UI build picker.
+Returns newest-first (by npm publish time); a 404 from the registry (package not
+yet published) returns an empty list rather than an error.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{
+  "versions": [
+    {
+      "version": "0.11.0-rc.2",
+      "prerelease": true,
+      "publishedAt": "2026-06-01T12:00:00.000Z",
+      "distTag": "next"
+    },
+    {
+      "version": "0.10.2",
+      "prerelease": false,
+      "publishedAt": "2026-05-15T09:00:00.000Z",
+      "distTag": "latest"
+    }
+  ],
+  "distTags": { "latest": "0.10.2", "next": "0.11.0-rc.2" }
+}
+```
+
+On registry error (non-404):
+
+```json
+{ "versions": [], "distTags": {}, "error": "npm registry 503" }
+```
+
+Fields:
+
+- `version` — npm version string (e.g. `"0.11.0-rc.2"`).
+- `prerelease` — `true` when the version string contains a `-` prerelease segment.
+- `publishedAt` — ISO 8601 publish time from the registry, or `null` if absent.
+- `distTag` — The dist-tag pointing at this version (`"latest"` or `"next"`), or
+  `null` if no dist-tag points here.
+- `distTags` — Full dist-tag map from the packument.
+
+Up to 20 versions are returned.
+
+### `GET /admin/versions/releases`
+
+Lists GitHub platform release tags (newest first). Used to display the platform
+release history in the admin UI. UI build information is **not** included — UI
+builds are sourced from npm, not GitHub release assets.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{
+  "releases": [
+    { "tag": "0.11.0", "prerelease": false, "publishedAt": "2026-06-01T12:00:00.000Z" },
+    { "tag": "0.11.0-rc.2", "prerelease": true, "publishedAt": "2026-05-28T10:00:00.000Z" }
+  ]
+}
+```
+
+On error:
+
+```json
+{ "releases": [], "error": "GitHub API 403" }
+```
+
+Note: The `hasUiBuild` field that previously appeared on each release entry has
+been removed; UI builds are now sourced independently from the `@openpalm/ui`
+npm package via `GET /admin/versions/ui`.
+
+### `POST /admin/ui-version`
+
+Seeds a specific `@openpalm/ui` npm version (or dist-tag) into `data/ui/`. The
+build is downloaded from the npm registry, integrity-verified (sha512, fail-
+closed), and extracted atomically — a failed download never leaves `data/ui/`
+empty.
+
+Auth: `requireAdmin`
+
+Body:
+
+```json
+{ "tag": "0.11.0-rc.2" }
+```
+
+- `tag` (required) — An `@openpalm/ui` npm version (e.g. `"0.11.0-rc.2"`) or
+  dist-tag (e.g. `"latest"`, `"next"`). **This is no longer a GitHub platform
+  release tag**; use `GET /admin/versions/ui` to list installable versions.
+  Must match `^[a-zA-Z0-9._\-]+$`.
+
+Response:
+
+```json
+{ "ok": true, "tag": "0.11.0-rc.2" }
+```
+
+Error responses:
+
+- `400 tag_required` — `tag` field missing or empty.
+- `400 invalid_tag` — `tag` contains characters outside `[a-zA-Z0-9._-]`.
+- `400 invalid_json` — Request body is not valid JSON.
+- `502 download_failed` — npm download or integrity verification failed
+  (message from the underlying error is included).
+
 ## Local Provider Detection
 
 ### `GET /admin/providers/local`
