@@ -40,6 +40,19 @@ import {
 } from "./forward";
 import { audit } from "./audit";
 import { moderateMessage } from "./moderation";
+import { handleProxy, OC_PREFIX } from "./proxy";
+import { runDriftCheck, isProxyEnabled } from "./drift";
+import { sessionOwnerCount, permissionOwnerCount } from "./ownership";
+import { eventSubscriberCount } from "./event-fanout";
+import {
+  reconnectBucketCount,
+  activeStreamPrincipalCount,
+  inflightTurnCount,
+  OC_EVENT_RECONNECT_LIMIT,
+  OC_EVENT_MAX_CONCURRENT_STREAMS,
+  OC_MAX_INFLIGHT_TURNS,
+  OC_TURN_WALL_CLOCK_MS,
+} from "./oc-bounds";
 
 const logger = createLogger("guardian");
 
@@ -63,6 +76,16 @@ try {
   });
   process.exit(1);
 }
+
+// Fail-closed drift guard (§5, Stage 7): the /oc/* proxy starts DISABLED and is
+// enabled only once the assistant /doc passes the contract assertions. Run it at
+// boot (fire-and-forget so the guardian still serves /health + the buffered
+// /channel/inbound path even if the assistant is not up yet). If the assistant
+// is unreachable at boot or its /doc has drifted, the proxy route returns 503
+// while the buffered path stays up. Best-effort; never crashes boot.
+void runDriftCheck().catch((err) => {
+  logger.error("drift_check_error", { error: String(err) });
+});
 
 // ── Uptime & request counters ───────────────────────────────────────────
 
@@ -134,6 +157,21 @@ Bun.serve({
           active: sessionCacheSize(),
           max_size: 10_000,
           ttl_ms: SESSION_TTL_MS,
+        },
+        oc_proxy: {
+          enabled: isProxyEnabled(),
+          session_owners: sessionOwnerCount(),
+          permission_owners: permissionOwnerCount(),
+          event_subscribers: eventSubscriberCount(),
+          event_reconnect_buckets: reconnectBucketCount(),
+          event_stream_principals: activeStreamPrincipalCount(),
+          inflight_turns: inflightTurnCount(),
+          bounds: {
+            event_reconnect_limit: OC_EVENT_RECONNECT_LIMIT,
+            event_max_concurrent_streams: OC_EVENT_MAX_CONCURRENT_STREAMS,
+            max_inflight_turns: OC_MAX_INFLIGHT_TURNS,
+            turn_wall_clock_ms: OC_TURN_WALL_CLOCK_MS,
+          },
         },
         requests: {
           total: requestCounters.total,
@@ -279,6 +317,32 @@ Bun.serve({
         logger.error("forward failed", { error: String(err), channel: payload.channel, userId: payload.userId, requestId: rid });
         return json(502, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
       }
+    }
+
+    // Native OpenCode reverse proxy (/oc/*) — additive, transparent streaming
+    // passthrough with fail-closed gates. The legacy /channel/inbound path above
+    // is untouched. server.ts owns secret loading/caching; the proxy receives a
+    // resolver so it stays unit-testable.
+    if (url.pathname === OC_PREFIX || url.pathname.startsWith(OC_PREFIX + "/")) {
+      // Fail-closed drift guard (§5, Stage 7): if the boot-time /doc assertion
+      // did not pass (assistant unreachable at boot OR OpenCode API drifted),
+      // the proxy route is DISABLED and returns 503. The legacy buffered
+      // /channel/inbound path above is unaffected and stays up.
+      if (!isProxyEnabled()) {
+        countRequest("oc:503");
+        logger.warn("oc_proxy_disabled", { requestId: rid, path: url.pathname });
+        return json(503, { error: "oc_proxy_disabled", requestId: rid });
+      }
+      let channelSecrets: Record<string, string>;
+      try {
+        channelSecrets = loadChannelSecrets({ allowEmpty: !REQUIRE_CHANNEL_SECRETS });
+      } catch (err) {
+        logger.error("oc_secret_load_failed", { requestId: rid, reason: secretLoadFailureReason(err) });
+        return json(500, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
+      }
+      const resp = await handleProxy(req, rid, (key) => channelSecrets[key] ?? "");
+      countRequest(`oc:${resp.status}`);
+      return resp;
     }
 
     logger.debug("not_found", { requestId: rid, method: req.method, path: url.pathname });

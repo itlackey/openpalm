@@ -1,6 +1,39 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, afterEach } from "bun:test";
 import { signPayload } from "@openpalm/channels-sdk";
 import ApiChannel from "./index.ts";
+
+// ── Streaming stub (OcClient uses the global fetch, not the injected one) ────
+// The streaming path drives the guardian /oc proxy via OcClient → global fetch.
+// Stub it to emulate create-session → prompt_async (204) → a one-frame /event
+// stream that ends the turn, so `stream:true` returns a real SSE response.
+
+const REAL_FETCH = globalThis.fetch;
+afterEach(() => {
+  (globalThis as { fetch: typeof fetch }).fetch = REAL_FETCH;
+});
+
+function stubStreamingGuardian(): void {
+  const enc = new TextEncoder();
+  const stub = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input).replace("http://guardian:8080/oc", "");
+    const method = init?.method ?? "GET";
+    if (method === "POST" && path === "/session") {
+      return new Response(JSON.stringify({ id: "ses_stub" }), { status: 200 });
+    }
+    if (path.endsWith("/prompt_async")) return new Response(null, { status: 204 });
+    if (path === "/event") {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(enc.encode(`data: ${JSON.stringify({ type: "session.status", properties: { sessionID: "ses_stub", status: "idle" } })}\n\n`));
+          c.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+    return new Response("not found", { status: 404 });
+  }) as typeof fetch;
+  (globalThis as { fetch: typeof fetch }).fetch = stub;
+}
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 
@@ -169,13 +202,18 @@ describe("api channel chat completions", () => {
     expect(resp.status).toBe(400);
   });
 
-  it("returns 400 for streaming requests", async () => {
+  it("honors stream:true with an SSE chat.completion.chunk response", async () => {
+    stubStreamingGuardian();
     const handler = createHandler();
     const resp = await handler(new Request("http://api/v1/chat/completions", {
       method: "POST",
       body: JSON.stringify({ model: "gpt-4", stream: true, messages: [{ role: "user", content: "hi" }] }),
     }));
-    expect(resp.status).toBe(400);
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("content-type")).toBe("text/event-stream");
+    const text = await resp.text();
+    expect(text).toContain('"object":"chat.completion.chunk"');
+    expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
   });
 
   it("defaults model to openpalm when not provided", async () => {
@@ -219,13 +257,18 @@ describe("api channel legacy completions", () => {
     expect(resp.status).toBe(400);
   });
 
-  it("returns 400 for streaming requests", async () => {
+  it("honors stream:true with an SSE text_completion response", async () => {
+    stubStreamingGuardian();
     const handler = createHandler();
     const resp = await handler(new Request("http://api/v1/completions", {
       method: "POST",
       body: JSON.stringify({ model: "gpt-3.5", stream: true, prompt: "hi" }),
     }));
-    expect(resp.status).toBe(400);
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("content-type")).toBe("text/event-stream");
+    const text = await resp.text();
+    expect(text).toContain('"object":"text_completion"');
+    expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
   });
 
   it("forwards correct payload to guardian", async () => {
@@ -321,7 +364,8 @@ describe("api channel Anthropic messages", () => {
     expect(body.type).toBe("error");
   });
 
-  it("returns 400 for streaming requests", async () => {
+  it("honors stream:true with an Anthropic SSE response", async () => {
+    stubStreamingGuardian();
     const handler = createHandler();
     const resp = await handler(new Request("http://api/v1/messages", {
       method: "POST",
@@ -332,7 +376,11 @@ describe("api channel Anthropic messages", () => {
         messages: [{ role: "user", content: "hi" }],
       }),
     }));
-    expect(resp.status).toBe(400);
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("content-type")).toBe("text/event-stream");
+    const text = await resp.text();
+    expect(text).toContain("event: message_start");
+    expect(text).toContain("event: message_stop");
   });
 
   it("returns model in response", async () => {

@@ -1,6 +1,15 @@
-import { BaseChannel, ConversationQueue, createLogger, readRequiredSecretFile, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
+import { BaseChannel, ConversationQueue, OcClient, createLogger, readRequiredSecretFile, splitMessage, type HandleResult } from "@openpalm/channels-sdk";
 import { App, type GenericMessageEvent, type KnownEventFromType } from "@slack/bolt";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
+import {
+  SlackPermissionRegistry,
+  streamTurn,
+  ACTION_PERM_ONCE,
+  ACTION_PERM_ALWAYS,
+  ACTION_PERM_DENY,
+  ACTION_STOP,
+  type StreamSlackClient,
+} from "./stream-render.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-slack");
@@ -43,6 +52,37 @@ export default class SlackChannel extends BaseChannel {
 
   /** Forward timeout in ms. Default: 30 minutes. */
   private forwardTimeoutMs = parseForwardTimeoutMs(Bun.env.SLACK_FORWARD_TIMEOUT_MS);
+
+  /**
+   * Opt-in rich-UX streaming (design Stage 5). When false (default), the
+   * buffered /channel/inbound path is used — byte-for-byte the legacy behavior
+   * (§7). When true, thread turns render live via the guardian /oc/* proxy with
+   * Block Kit tool status + interactive permission prompts.
+   */
+  private streamingEnabled = Bun.env.SLACK_STREAMING === "true";
+
+  /** Lazily-built native OpenCode client through the guardian /oc/* proxy. */
+  private ocClientInstance: OcClient | null = null;
+  /** Lazily-built permission/stop interaction registry (wired to app.action). */
+  private permissionRegistryInstance: SlackPermissionRegistry | null = null;
+
+  private get ocClient(): OcClient {
+    if (!this.ocClientInstance) {
+      this.ocClientInstance = new OcClient({
+        channel: this.name,
+        secret: this.secret,
+        baseUrl: `${this.guardianUrl}/oc`,
+      });
+    }
+    return this.ocClientInstance;
+  }
+
+  private get permissionRegistry(): SlackPermissionRegistry {
+    if (!this.permissionRegistryInstance) {
+      this.permissionRegistryInstance = new SlackPermissionRegistry(this.ocClient);
+    }
+    return this.permissionRegistryInstance;
+  }
 
   get botToken(): string {
     return readRequiredSecretFile("SLACK_BOT_TOKEN_FILE");
@@ -127,6 +167,22 @@ export default class SlackChannel extends BaseChannel {
     this.app.event("app_home_opened", async ({ event, client }) => {
       await this.onAppHomeOpened(event as AppHomeOpenedEvent, client as SlackClient);
     });
+
+    // Rich-UX (Stage 5) Block Kit interactions: permission decisions + Stop.
+    // ONE central handler per action_id routes the click to the registry, which
+    // authorizes (interaction identity) and relays the signed /oc reply (§4.3).
+    if (this.streamingEnabled) {
+      for (const actionId of [ACTION_PERM_ONCE, ACTION_PERM_ALWAYS, ACTION_PERM_DENY]) {
+        this.app.action(actionId, async ({ body, ack, client }) => {
+          await ack();
+          await this.onPermissionAction(actionId, body as BlockActionBody, client as SlackClient);
+        });
+      }
+      this.app.action(ACTION_STOP, async ({ body, ack, client }) => {
+        await ack();
+        await this.onStopAction(body as BlockActionBody, client as SlackClient);
+      });
+    }
 
     this.app.error(async (error) => {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -749,6 +805,32 @@ export default class SlackChannel extends BaseChannel {
     text: string,
     sessionKey: string,
   ): Promise<void> {
+    // Rich-UX streaming path (opt-in, Stage 5). Renders deltas + Block Kit tool
+    // status + interactive permission prompts live via the guardian /oc/* proxy.
+    // The conversationQueue's run() promise settles when streamTurn resolves at
+    // turn-end (session idle), keeping per-sessionKey serialization intact.
+    if (this.streamingEnabled) {
+      try {
+        await streamTurn({
+          client: this.ocClient,
+          registry: this.permissionRegistry,
+          slack: client as unknown as StreamSlackClient,
+          userId: `slack:${userInfo.userId}`,
+          requestingUserId: userInfo.userId,
+          channel,
+          threadTs,
+          sessionKey,
+          text,
+        });
+        log.info("stream_completed", { userId: userInfo.userId, channelId: channel, threadTs, sessionKey });
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey });
+        await client.chat.postMessage({ channel, text: `Error: ${errMsg}`, thread_ts: threadTs }).catch(() => {});
+      }
+      return;
+    }
+
     // Post a visible "thinking" message in the thread
     let thinkingTs: string | undefined;
     try {
@@ -815,6 +897,44 @@ export default class SlackChannel extends BaseChannel {
         }
       }
       await client.chat.postMessage({ channel, text: `Error: ${errMsg}`, thread_ts: threadTs });
+    }
+  }
+
+  // ── Rich-UX interactions (Block Kit buttons → guardian /oc reply) ─────────
+
+  private actionFirstValue(body: BlockActionBody): string | undefined {
+    const action = body.actions?.[0];
+    return typeof action?.value === "string" ? action.value : undefined;
+  }
+
+  private async onPermissionAction(
+    actionId: string,
+    body: BlockActionBody,
+    client: SlackClient,
+  ): Promise<void> {
+    const requestID = this.actionFirstValue(body);
+    if (!requestID) return;
+    const clicker = body.user?.id ?? "";
+    const outcome = await this.permissionRegistry.handlePermissionClick(requestID, actionId, clicker);
+    if (!outcome) {
+      // Unknown/expired request OR a non-requester clicked — refuse quietly.
+      log.warn("permission_action_unauthorized_or_unknown", { requestID, actionId, clicker });
+      return;
+    }
+    try {
+      await client.chat.update({ channel: outcome.channel, ts: outcome.ts, text: outcome.text });
+    } catch (error) {
+      log.warn("permission_action_update_failed", { error: error instanceof Error ? error.message : String(error), requestID });
+    }
+  }
+
+  private async onStopAction(body: BlockActionBody, _client: SlackClient): Promise<void> {
+    const sessionId = this.actionFirstValue(body);
+    if (!sessionId) return;
+    const clicker = body.user?.id ?? "";
+    const handled = await this.permissionRegistry.handleStopClick(sessionId, clicker);
+    if (!handled) {
+      log.warn("stop_action_unauthorized_or_unknown", { sessionId, clicker });
     }
   }
 
@@ -917,6 +1037,11 @@ type ModalView = {
 type ViewSubmissionBody = {
   user: { id: string; username?: string; name?: string };
   team?: { id?: string };
+};
+
+type BlockActionBody = {
+  user?: { id?: string };
+  actions?: Array<{ action_id?: string; value?: string }>;
 };
 
 type SlackViewDefinition = {

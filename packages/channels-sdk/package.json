@@ -27,6 +27,12 @@
     "./logger": "./src/logger.ts",
     "./utils": "./src/utils.ts",
     "./assistant-client": "./src/assistant-client.ts",
-    "./content-screen": "./src/content-screen.ts"
+    "./content-screen": "./src/content-screen.ts",
+    "./oc-allowlist": "./src/oc-allowlist.ts",
+    "./oc-client": "./src/oc-client.ts",
+    "./oc-events": "./src/oc-events.ts"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "1.15.13"
   }
 }

@@ -12,7 +12,14 @@
  *   GET  /health                — Health check
  */
 
-import { BaseChannel, constantTimeEqual, asRecord, extractChatText, readOptionalSecretFile } from "@openpalm/channels-sdk";
+import { BaseChannel, OcClient, constantTimeEqual, asRecord, extractChatText, readOptionalSecretFile } from "@openpalm/channels-sdk";
+import { loadPermissionPolicy, type PermissionPolicy } from "./permissions.ts";
+import {
+  streamTurn,
+  openAiChatFramer,
+  openAiLegacyFramer,
+  anthropicFramer,
+} from "./stream-render.ts";
 
 // ── Error helpers ────────────────────────────────────────────────────────
 
@@ -55,6 +62,23 @@ export default class ApiChannel extends BaseChannel {
   /** API key for Bearer / x-api-key auth. Empty = no auth required. */
   get apiKey(): string {
     return readOptionalSecretFile("OPENAI_COMPAT_API_KEY_FILE");
+  }
+
+  /** Non-interactive permission policy (§4.5): default reject, opt-in auto:once. */
+  private permissionPolicy: PermissionPolicy = loadPermissionPolicy();
+
+  /** Lazily-built native OpenCode client through the guardian /oc/* proxy. */
+  private ocClientInstance: OcClient | null = null;
+
+  private get ocClient(): OcClient {
+    if (!this.ocClientInstance) {
+      this.ocClientInstance = new OcClient({
+        channel: this.name,
+        secret: this.secret,
+        baseUrl: `${this.guardianUrl}/oc`,
+      });
+    }
+    return this.ocClientInstance;
   }
 
   // ── Auth ─────────────────────────────────────────────────────────────
@@ -129,16 +153,28 @@ export default class ApiChannel extends BaseChannel {
     let body: Record<string, unknown>;
     try { body = await req.json(); } catch { return this.json(400, openAIError("Invalid JSON")); }
 
-    if (body.stream === true) {
-      return this.json(400, openAIError("Streaming is not supported"));
-    }
-
     const text = extractChatText(body.messages);
     if (!text) return this.json(400, openAIError("messages with user content is required"));
 
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
     const rawUser = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
     const userId = `${this.name}:${rawUser}`;
+
+    // Streaming path (§4.4): map native OpenCode deltas → chat.completion.chunk SSE.
+    if (body.stream === true) {
+      this.log("info", "request_streamed", { requestId, userId, path: "/v1/chat/completions" });
+      return streamTurn(
+        {
+          client: this.ocClient,
+          policy: this.permissionPolicy,
+          userId,
+          sessionKey: userId,
+          text,
+          framer: openAiChatFramer(`chatcmpl-${crypto.randomUUID()}`, model),
+        },
+        req.signal,
+      );
+    }
 
     let answer: string;
     try {
@@ -174,10 +210,6 @@ export default class ApiChannel extends BaseChannel {
     let body: Record<string, unknown>;
     try { body = await req.json(); } catch { return this.json(400, openAIError("Invalid JSON")); }
 
-    if (body.stream === true) {
-      return this.json(400, openAIError("Streaming is not supported"));
-    }
-
     const prompt = body.prompt;
     let text: string | null = null;
     if (typeof prompt === "string" && prompt.trim()) {
@@ -194,6 +226,22 @@ export default class ApiChannel extends BaseChannel {
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
     const rawUser = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
     const userId = `${this.name}:${rawUser}`;
+
+    // Streaming path (§4.4): map native OpenCode deltas → text_completion SSE.
+    if (body.stream === true) {
+      this.log("info", "request_streamed", { requestId, userId, path: "/v1/completions" });
+      return streamTurn(
+        {
+          client: this.ocClient,
+          policy: this.permissionPolicy,
+          userId,
+          sessionKey: userId,
+          text,
+          framer: openAiLegacyFramer(`cmpl-${crypto.randomUUID()}`, model),
+        },
+        req.signal,
+      );
+    }
 
     let answer: string;
     try {
@@ -229,10 +277,6 @@ export default class ApiChannel extends BaseChannel {
     let body: Record<string, unknown>;
     try { body = await req.json(); } catch { return this.json(400, anthropicError("Invalid JSON")); }
 
-    if (body.stream === true) {
-      return this.json(400, anthropicError("Streaming is not supported"));
-    }
-
     const text = extractChatText(body.messages);
     if (!text) return this.json(400, anthropicError("messages with user content is required"));
 
@@ -243,6 +287,22 @@ export default class ApiChannel extends BaseChannel {
       ? meta.user_id
       : "api-user";
     const userId = `${this.name}:${rawUser}`;
+
+    // Streaming path (§4.4): map native OpenCode deltas → content_block_delta SSE.
+    if (body.stream === true) {
+      this.log("info", "request_streamed", { requestId, userId, path: "/v1/messages" });
+      return streamTurn(
+        {
+          client: this.ocClient,
+          policy: this.permissionPolicy,
+          userId,
+          sessionKey: userId,
+          text,
+          framer: anthropicFramer(`msg_${crypto.randomUUID()}`, model),
+        },
+        req.signal,
+      );
+    }
 
     let answer: string;
     try {

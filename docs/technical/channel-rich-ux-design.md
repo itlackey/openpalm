@@ -48,13 +48,13 @@ Every SSE frame is a JSON object `{ "type": "<name>", "properties": { … } }`. 
 | `permission.asked` | `PermissionRequest` (incl. `id`, `sessionID`, `permission`, `patterns`, `metadata`, `always`, `tool:{messageID,callID}`) | yes |
 | `permission.replied` | `sessionID, requestID, reply` | yes |
 | `session.idle` | `sessionID` | yes — turn-end signal (but see note) |
-| `session.status` | `sessionID, status` | yes — **the live turn busy/idle signal observed on 1.15.13** |
+| `session.status` | `sessionID, status` where **`status` is an OBJECT `{ type: "busy" \| "idle" }`** (not a bare string — verified live 2026-06-04) | yes — **the live turn busy/idle signal observed on 1.15.13** |
 | `session.error` | `sessionID, error` | yes |
 | `server.connected`, `server.heartbeat`, `installation.*`, `server.instance.disposed`, … | no `sessionID` | **no** |
 
 The last row is load-bearing for filtering: **global events carry no `sessionID` and must never be forwarded to a channel** (§3.2). Confirmed live on 1.15.13: `server.heartbeat` and `server.connected` arrive with `properties: {}` (no `sessionID`).
 
-> **Turn-end signal nuance (verified on 1.15.13).** `session.idle` exists in the event union, but the live run emitted `session.status` transitions (not a standalone `session.idle`) around turn boundaries. The renderer should treat **turn-end as `session.status` reaching an idle state, with `session.idle` as a fallback** — and Stage 4 should pin the exact end-of-turn condition empirically (§4.2).
+> **Turn-end signal nuance — PINNED against a live 1.15.13 server (2026-06-04).** Both signals fire at turn boundaries: a `session.status` frame whose **`status` is the object `{ type: "idle" }`** *and* a standalone `session.idle`. (Earlier runs saw `session.status` without a `session.idle`; the verified run saw both — so the renderer must accept either.) **Critical shape correction:** `session.status.status` is an **object `{ type: "busy" | "idle" }`, not a bare string** — code that does `typeof status === "string"` will never detect turn-end. Turn-end = `session.idle` **or** `session.status` with `status.type === "idle"`. This is implemented in `channels-sdk/oc-events.ts` (`statusName()` + `TURN_IDLE_STATUSES`, tolerating both object and string shapes) and reused by the guardian fan-out's turn-accounting.
 
 **Richer streaming family (new in 1.15.13).** Beyond `message.part.delta`, 1.15.13 adds a fine-grained `session.next.*` event family — `session.next.text.delta`, `session.next.tool.called`, `session.next.tool.input.delta`, `session.next.tool.progress`, `session.next.reasoning.delta`, `session.next.step.started/ended`, etc. These give the channel renderers a cleaner, lower-latency stream than diffing `message.part.updated` snapshots; prefer them where available (they did not exist on 1.3.3). All carry `sessionID` and filter identically (§3.2).
 
@@ -212,10 +212,12 @@ Each adapter holds a persistent filtered `/event` subscription via the guardian,
 ### 4.2 Streaming correlation (API review, HIGH — avoids dropped first tokens)
 Because `prompt_async` returns `204` with no `messageID`, and `/event` is global, the turn must be correlated deterministically:
 1. The channel's filtered `/event` subscription is **already open** (it is persistent per principal) — so no event can arrive before a subscriber exists.
-2. The channel **generates a `messageID`** (`^msg…`) and passes it in the `prompt_async` body.
-3. The channel filters incoming frames to its session **and** that `messageID` (via `properties.messageID` / `part.messageID`), rendering deltas until the session's turn-end signal (`session.status` reaching idle, fallback `session.idle` — §1.1). Prefer the `session.next.*` deltas where present (1.15.13+) over diffing `message.part.updated` snapshots.
+2. The channel **generates a `msg_…` `messageID`** and passes it in the `prompt_async` body (OpenCode accepts a client id for the *user* message; `generateMessageId()` uses the `msg_` convention).
+3. The channel filters incoming frames **by `sessionID` only** — *not* by that `messageID` — rendering deltas until the session's turn-end signal (`session.idle`, or `session.status` whose `status.type === "idle"` — §1.1). Prefer the `session.next.*` deltas where present (1.15.13+) over diffing `message.part.updated` snapshots.
 
-This removes the subscribe-after-prompt race entirely and gives a stable correlation key without relying on a response body.
+> **Correction — pinned by live capture (2026-06-04).** The original plan filtered frames by the client-supplied `messageID`. **That is wrong:** OpenCode assigns the *assistant's reply* its **own server-generated `msg_…` id** (the client id appears only on the echoed *user* message), so filtering deltas by the client id drops the entire assistant stream. Correlation is therefore **by `sessionID`**, which is sound because (a) the channel's `ConversationQueue` serialises turns per `sessionKey` so only one turn streams per session at a time, and (b) the guardian already ownership-filters `/event` by `sessionID`. The client `messageID` is still sent (harmless, and correlates the user message) but is **not** a render filter. Implemented in `oc-events.ts` `extractTextDelta(e, sessionId)`.
+
+This removes the subscribe-after-prompt race entirely and renders against a stable, server-trustworthy correlation key (the session) without relying on a response body.
 
 ### 4.3 Slack (`chat.update` streaming, interactive)
 Same flow via Block Kit buttons; 4000-char splitting; thread continuation. Same correlation (§4.2) and permission path.
@@ -295,7 +297,7 @@ Each stage ships independently; the buffered path is the safe default throughout
 - Discord/Slack edit-throttle that stays under platform rate limits while feeling live (start ~1.25 s).
 - Whether to surface `reasoning` parts on channels at all (likely off by default — avoid leaking chain-of-thought).
 - ~~The exact OpenCode mechanism to make tools pause with `permission.asked`~~ — **resolved** (§1.2): `permission: { bash: "ask", … }`, verified end-to-end on 1.15.13.
-- Exact end-of-turn condition to render against (`session.status` idle vs `session.idle`) — pin empirically in Stage 4 (§1.1, §4.2).
+- ~~Exact end-of-turn condition to render against (`session.status` idle vs `session.idle`)~~ — **resolved 2026-06-04** (live `opencode/big-pickle` on 1.15.13): turn-end = `session.idle` **or** `session.status` with `status.type === "idle"` (`status` is an object `{type}`, not a string). Implemented in `oc-events.ts`; both signals observed firing.
 - Whether to adopt the `session.next.*` delta family (1.15.13+) as the primary render stream vs `message.part.*` (§1.1).
 
 ---

@@ -12,6 +12,14 @@
   },
 
   "permission": {
+    // Tool gates: pause execution with `permission.asked` so a human (or a
+    // non-interactive channel policy) approves before the tool runs. Verified
+    // end-to-end on OpenCode 1.15.13 (design §1.2). The guardian relays the
+    // permission.asked frame over /event and authorizes the reply by requestID.
+    "bash": "ask",
+    "edit": "ask",
+    "task": "ask",
+
     "read": {
       "/home/opencode/.local/share/opencode/auth.json": "deny",
       "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"

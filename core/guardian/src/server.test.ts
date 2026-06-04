@@ -507,6 +507,18 @@ describe("Guardian security contract", () => {
     expect(data.sessions.max_size).toBe(10_000);
     expect(data.sessions.ttl_ms).toBe(15 * 60_000);
 
+    // OC proxy bounds (§3.6) — surfaced for operability; asserted in lockstep.
+    expect(typeof data.oc_proxy.session_owners).toBe("number");
+    expect(typeof data.oc_proxy.permission_owners).toBe("number");
+    expect(typeof data.oc_proxy.event_subscribers).toBe("number");
+    expect(typeof data.oc_proxy.event_reconnect_buckets).toBe("number");
+    expect(typeof data.oc_proxy.event_stream_principals).toBe("number");
+    expect(typeof data.oc_proxy.inflight_turns).toBe("number");
+    expect(data.oc_proxy.bounds.event_max_concurrent_streams).toBe(1);
+    expect(data.oc_proxy.bounds.event_reconnect_limit).toBe(10);
+    expect(data.oc_proxy.bounds.max_inflight_turns).toBe(4);
+    expect(data.oc_proxy.bounds.turn_wall_clock_ms).toBe(10 * 60_000);
+
     // Request counters (previous tests will have generated some)
     expect(typeof data.requests.total).toBe("number");
     expect(data.requests.total).toBeGreaterThan(0);

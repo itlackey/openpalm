@@ -12,8 +12,10 @@ import {
   type Message,
   type ThreadChannel,
 } from "discord.js";
+import { OcClient } from "@openpalm/channels-sdk";
 import { buildCommandRegistry, parseCustomCommands, resolvePromptTemplate } from "./commands.ts";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
+import { streamTurn } from "./stream-render.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -45,6 +47,28 @@ export default class DiscordChannel extends BaseChannel {
    * When set, applied to guardian forwarding requests.
    */
   private forwardTimeoutMs = Number(Bun.env.DISCORD_FORWARD_TIMEOUT_MS) || 0;
+
+  /**
+   * Opt-in rich-UX streaming (design Stage 4). When false (default), the
+   * buffered /channel/inbound path is used — byte-for-byte the legacy behavior
+   * (§7). When true, thread turns render live via the guardian /oc/* proxy with
+   * tool embeds + interactive permission prompts.
+   */
+  private streamingEnabled = Bun.env.DISCORD_STREAMING === "true";
+
+  /** Lazily-built native OpenCode client through the guardian /oc/* proxy. */
+  private ocClientInstance: OcClient | null = null;
+
+  private get ocClient(): OcClient {
+    if (!this.ocClientInstance) {
+      this.ocClientInstance = new OcClient({
+        channel: this.name,
+        secret: this.secret,
+        baseUrl: `${this.guardianUrl}/oc`,
+      });
+    }
+    return this.ocClientInstance;
+  }
 
   get botToken(): string {
     return readRequiredSecretFile("DISCORD_BOT_TOKEN_FILE");
@@ -226,6 +250,29 @@ export default class DiscordChannel extends BaseChannel {
     text: string,
     metadata: Record<string, unknown>,
   ): Promise<void> {
+    // Rich-UX streaming path (opt-in, Stage 4). Renders deltas + tool embeds +
+    // interactive permission prompts live via the guardian /oc/* proxy. The
+    // conversationQueue's run() promise settles when streamTurn resolves at
+    // turn-end (session idle), keeping per-sessionKey serialization intact.
+    if (this.streamingEnabled) {
+      try {
+        await streamTurn({
+          client: this.ocClient,
+          userId: `discord:${userInfo.userId}`,
+          requestingUserId: userInfo.userId,
+          thread,
+          sessionKey: String(metadata.sessionKey ?? `discord:thread:${thread.id}`),
+          text,
+        });
+        log.info("stream_completed", { userId: userInfo.userId, threadId: thread.id, sessionKey: metadata.sessionKey });
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey: metadata.sessionKey });
+        await thread.send(`Error: ${errMsg}`);
+      }
+      return;
+    }
+
     const stopTyping = await this.sendTypingLoop(thread);
 
     try {

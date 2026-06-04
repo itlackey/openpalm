@@ -23,7 +23,14 @@ export {
 export { ConversationQueue } from "./conversation-queue.ts";
 
 // ── Crypto ───────────────────────────────────────────────────────────────
-export { constantTimeEqual, signPayload, verifySignature } from "./crypto.ts";
+export {
+  constantTimeEqual,
+  signPayload,
+  verifySignature,
+  signRequest,
+  verifyRequest,
+  type RequestSignatureFields,
+} from "./crypto.ts";
 
 // ── Logger ───────────────────────────────────────────────────────────────
 export { createLogger, type LogLevel } from "./logger.ts";
@@ -46,3 +53,32 @@ export {
   type ContentScreenResult,
   type ContentSignal,
 } from "./content-screen.ts";
+
+// ── OpenCode proxy allowlist (pure default-deny path matcher) ─────────────
+export {
+  OC_ALLOWLIST,
+  matchAllowlist,
+  type AllowlistRoute,
+  type AllowlistMatch,
+} from "./oc-allowlist.ts";
+
+// ── Guardian-signed native OpenCode client (rich-UX /oc proxy) ────────────
+export {
+  OcClient,
+  generateMessageId,
+  type OcClientOptions,
+  type OcSession,
+} from "./oc-client.ts";
+
+// ── Shared pure OpenCode event interpreters (rich-UX renderers) ───────────
+export {
+  asRaw,
+  extractTextDelta,
+  isTurnEnd,
+  extractToolUpdate,
+  extractPermissionAsk,
+  isSessionError,
+  type RawEvent,
+  type ToolUpdate,
+  type PermissionAsk,
+} from "./oc-events.ts";
