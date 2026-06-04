@@ -1,0 +1,78 @@
+name: Publish openpalm/voice-models
+# Builds the prebuilt voice MODEL BUNDLE (Kokoro TTS + faster-whisper STT) and
+# pushes it to Docker Hub. The voice image build (core/voice/Dockerfile) pulls
+# this instead of downloading models, so the heavy/flaky download happens ONCE
+# here per model bump — not on every cpu/cu121 voice build.
+#
+# Single-arch (amd64): the artifacts are platform-agnostic data and the voice
+# build pulls this via `--platform=$BUILDPLATFORM`, then COPY --from's the files
+# into both the amd64 and arm64 runtime images.
+#
+# Run this BEFORE publish-voice.yml whenever the model pin changes:
+#   1. bump the ARGs / tag here (and the VOICE_MODELS_IMAGE default in
+#      core/voice/Dockerfile),
+#   2. dispatch this workflow with the new `tag`,
+#   3. then run publish-voice.yml.
+#
+# NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
+# (main). Dispatching with --ref <branch> runs that branch's copy.
+on:
+  push:
+    branches: [main]
+    paths: ['core/voice/Dockerfile.models']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to publish (e.g. v1). Also tagged `latest`.'
+        required: false
+        default: 'v1'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-voice-models
+  cancel-in-progress: false
+
+jobs:
+  build-models:
+    name: Build and push openpalm/voice-models
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: openpalm/voice-models
+          tags: |
+            type=raw,value=${{ inputs.tag || 'v1' }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: core/voice
+          file: core/voice/Dockerfile.models
+          # Platform-agnostic data — amd64 only; the voice build pulls it via
+          # --platform=$BUILDPLATFORM and COPY --from's into every target arch.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=openpalm/voice-models
+          cache-to: type=gha,scope=openpalm/voice-models,mode=max
