@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { fly, fade } from 'svelte/transition';
   import { page } from '$app/state';
   import { version as uiVersion } from '../../../package.json';
   import VoiceControl from './VoiceControl.svelte';
@@ -27,31 +26,8 @@
   let hamburgerBtn: HTMLButtonElement | undefined = $state();
   // Track the close button for focus-on-open.
   let closeBtn: HTMLButtonElement | undefined = $state();
-  // The sheet element itself for focus-trap sentinel logic.
-  let sheetEl: HTMLDivElement | undefined = $state();
-
-  // Detect reduced-motion preference for transition parameters.
-  // Safe to evaluate immediately on the client; SSR returns false (no animation).
-  function prefersReducedMotion(): boolean {
-    return typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false;
-  }
-
-  // Returns fly params appropriate for the current viewport:
-  // - ≤640px → slide up from below (bottom sheet): y must exceed max-height
-  //             (min(480px, 80dvh)), so 600 is safely off-screen. opacity:0
-  //             so no visible stub at the transition start frame.
-  // - >640px  → slide in from the right (drawer): x must exceed width
-  //             (min(420px, 100vw)), so 500 is safely off-screen. opacity:0.
-  // Reduced-motion: short fade only — no distance, no visible stub.
-  function sheetFlyParams() {
-    const reduced = prefersReducedMotion();
-    const isBottomSheet = typeof window !== 'undefined' && window.innerWidth <= 640;
-    if (reduced) return { duration: 80, x: 0, y: 0, opacity: 0 };
-    if (isBottomSheet) return { duration: 250, x: 0, y: 600, opacity: 0 };
-    return { duration: 250, x: 500, y: 0, opacity: 0 };
-  }
+  // The drawer element itself for focus-trap sentinel logic.
+  let drawerEl: HTMLDivElement | undefined = $state();
 
   function closeMobileMenu(): void {
     mobileMenuOpen = false;
@@ -61,35 +37,31 @@
     mobileMenuOpen = !mobileMenuOpen;
   }
 
-  // Close sheet and return focus to trigger.
+  // Close drawer and return focus to trigger.
   function closeAndReturn(): void {
     mobileMenuOpen = false;
     hamburgerBtn?.focus();
   }
 
-  // Close sheet on nav link click (also returns focus via navigation).
+  // Close drawer on nav link click (also returns focus via navigation).
   function navLinkClick(): void {
     mobileMenuOpen = false;
   }
 
-  // Focus trap: redirect Tab / Shift+Tab that would escape the sheet.
+  // Focus trap: redirect Tab / Shift+Tab that would escape the drawer.
   // Escape handling strategy (popover-API-aware):
   //   - When a popover child (EndpointSwitcher, SessionPicker menu) is open,
   //     the browser fires its own Escape handler to close the popover before
   //     this keydown event fires (popovers are top-layer; their Escape is
   //     processed at the UA level). By the time this handler runs the popover
   //     is already hidden, but we still check for any remaining open popovers
-  //     inside the sheet. If one is open, we let the UA handle it and do NOT
-  //     also close the sheet — producing the two-step "1st Escape = close
-  //     dropdown, 2nd Escape = close sheet" UX.
-  //   - stopPropagation() prevents any document-level Escape listeners from
-  //     also firing (there are none currently, but this is defensive).
-  function handleSheetKeyDown(ev: KeyboardEvent): void {
-    if (!sheetEl) return;
+  //     inside the drawer. If one is open, we let the UA handle it and do NOT
+  //     also close the drawer — producing the two-step "1st Escape = close
+  //     dropdown, 2nd Escape = close drawer" UX.
+  function handleDrawerKeyDown(ev: KeyboardEvent): void {
+    if (!drawerEl) return;
     if (ev.key === 'Escape') {
-      // If any popover inside the sheet is still open, the browser will close
-      // it via its own native handler. Don't also close the sheet this press.
-      const openPopover = sheetEl.querySelector(':popover-open');
+      const openPopover = drawerEl.querySelector(':popover-open');
       if (openPopover) return;
       ev.preventDefault();
       ev.stopPropagation();
@@ -99,7 +71,7 @@
     if (ev.key !== 'Tab') return;
 
     const focusable = Array.from(
-      sheetEl.querySelectorAll<HTMLElement>(
+      drawerEl.querySelectorAll<HTMLElement>(
         'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
       )
     ).filter((el) => !el.hasAttribute('disabled'));
@@ -122,10 +94,10 @@
     }
   }
 
-  // Move focus into sheet when it opens.
+  // Move focus into drawer when it opens (mobile only — the element is always
+  // in the DOM, so we gate on mobileMenuOpen state).
   $effect(() => {
     if (mobileMenuOpen && closeBtn) {
-      // Defer one frame so the DOM is painted before we attempt focus.
       const id = requestAnimationFrame(() => {
         closeBtn?.focus();
       });
@@ -180,120 +152,116 @@
       {/each}
     </nav>
 
-    <!-- Actions: all controls inline on desktop (>768px); all move into the
-         sheet at ≤768px for a consistent single collapse boundary. -->
-    <div class="navbar-actions">
-      <!-- Desktop only: inline action controls. -->
-      <div class="desktop-actions">
-        <ThemeToggle />
-        <EndpointSwitcher />
-        <SessionPicker />
-        <VoiceControl />
-      </div>
-
-      <!-- Hamburger: appears at ≤768px. -->
-      <button
-        type="button"
-        class="mobile-menu-btn"
-        bind:this={hamburgerBtn}
-        onclick={toggleMobileMenu}
-        aria-label={mobileMenuOpen ? 'Close menu' : 'Open settings menu'}
-        aria-expanded={mobileMenuOpen}
-        aria-controls="mobile-navbar-drawer"
-        aria-haspopup="dialog"
-      >
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          {#if mobileMenuOpen}
+    <!-- Actions: single container, always in the DOM.
+         On desktop (>768px): inline flex row in the navbar.
+         On mobile (≤768px): off-canvas drawer, slides in when .open.
+         The drawer header (title + close btn) is always present but hidden
+         via CSS at desktop widths. -->
+    <div
+      id="navbar-drawer"
+      class="navbar-actions"
+      class:open={mobileMenuOpen}
+      role={mobileMenuOpen ? 'dialog' : undefined}
+      aria-modal={mobileMenuOpen ? 'true' : undefined}
+      aria-labelledby={mobileMenuOpen ? 'navbar-drawer-title' : undefined}
+      bind:this={drawerEl}
+      onkeydown={mobileMenuOpen ? handleDrawerKeyDown : undefined}
+    >
+      <!-- Drawer header: only meaningful (and focused) at mobile widths. -->
+      <div class="drawer-header">
+        <h2 class="drawer-title" id="navbar-drawer-title">Settings</h2>
+        <button
+          type="button"
+          class="drawer-close"
+          bind:this={closeBtn}
+          onclick={closeAndReturn}
+          aria-label="Close settings menu"
+          tabindex={mobileMenuOpen ? 0 : -1}
+        >
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M18 6 6 18"></path>
             <path d="m6 6 12 12"></path>
-          {:else}
-            <path d="M3 6h18"></path>
-            <path d="M3 12h18"></path>
-            <path d="M3 18h18"></path>
-          {/if}
-        </svg>
-      </button>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Drawer body: sections on mobile, plain row on desktop. -->
+      <div class="drawer-body">
+        <!-- Endpoint selector -->
+        <div class="drawer-section">
+          <div class="section-label">Endpoint</div>
+          <div class="control-row">
+            <EndpointSwitcher />
+          </div>
+        </div>
+
+        <!-- Session picker -->
+        <div class="drawer-section">
+          <div class="section-label">Session</div>
+          <div class="control-row control-row--picker">
+            <SessionPicker />
+          </div>
+        </div>
+
+        <!-- Voice controls -->
+        <div class="drawer-section">
+          <div class="section-label">Voice</div>
+          <div class="control-row control-row--voice">
+            <VoiceControl />
+          </div>
+        </div>
+
+        <!-- Theme toggle -->
+        <div class="drawer-section">
+          <div class="utility-row">
+            <div class="utility-labels">
+              <span class="utility-title">Theme</span>
+              <span class="utility-copy">Switch between light and dark mode.</span>
+            </div>
+            <ThemeToggle />
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-</header>
 
-{#if mobileMenuOpen}
-  <!-- Overlay: tap to close. Fades in via transition:fade. -->
-  <div
-    class="sheet-overlay mobile-sheet-overlay"
-    onclick={closeAndReturn}
-    aria-hidden="true"
-    transition:fade={{ duration: prefersReducedMotion() ? 80 : 200 }}
-  ></div>
-
-  <!-- Controls sheet: bottom sheet on ≤640px, right drawer on ≥641px.
-       transition:fly params are computed at mount time to pick the correct
-       axis (x for right-drawer, y for bottom-sheet). -->
-  <div
-    id="mobile-navbar-drawer"
-    class="mobile-sheet"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="mobile-navbar-title"
-    tabindex="-1"
-    bind:this={sheetEl}
-    onkeydown={handleSheetKeyDown}
-    transition:fly={sheetFlyParams()}
-  >
-    <header class="sheet-header">
-      <h2 class="sheet-title" id="mobile-navbar-title">Settings</h2>
-      <button
-        type="button"
-        class="sheet-close"
-        bind:this={closeBtn}
-        onclick={closeAndReturn}
-        aria-label="Close settings menu"
-      >
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <!-- Hamburger: appears at ≤768px. -->
+    <button
+      type="button"
+      class="mobile-menu-btn"
+      bind:this={hamburgerBtn}
+      onclick={toggleMobileMenu}
+      aria-label={mobileMenuOpen ? 'Close menu' : 'Open settings menu'}
+      aria-expanded={mobileMenuOpen}
+      aria-controls="navbar-drawer"
+      aria-haspopup="dialog"
+    >
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        {#if mobileMenuOpen}
           <path d="M18 6 6 18"></path>
           <path d="m6 6 12 12"></path>
-        </svg>
-      </button>
-    </header>
+        {:else}
+          <path d="M3 6h18"></path>
+          <path d="M3 12h18"></path>
+          <path d="M3 18h18"></path>
+        {/if}
+      </svg>
+    </button>
 
-    <div class="sheet-body mobile-sheet-body">
-      <!-- Endpoint selector: full-width in sheet. -->
-      <section class="mobile-sheet-section">
-        <div class="mobile-section-label">Endpoint</div>
-        <div class="mobile-control-row">
-          <EndpointSwitcher />
-        </div>
-      </section>
-
-      <!-- Session picker: full-width in sheet. -->
-      <section class="mobile-sheet-section">
-        <div class="mobile-section-label">Session</div>
-        <div class="mobile-control-row mobile-control-row--picker">
-          <SessionPicker />
-        </div>
-      </section>
-
-      <!-- Voice controls. -->
-      <section class="mobile-sheet-section">
-        <div class="mobile-section-label">Voice</div>
-        <div class="mobile-control-row mobile-control-row--voice">
-          <VoiceControl />
-        </div>
-      </section>
-
-      <!-- Theme toggle. -->
-      <section class="mobile-sheet-section">
-        <div class="mobile-utility-row">
-          <div class="mobile-utility-labels">
-            <span class="mobile-utility-title">Theme</span>
-            <span class="mobile-utility-copy">Switch between light and dark mode.</span>
-          </div>
-          <ThemeToggle />
-        </div>
-      </section>
-    </div>
+    <!-- Overlay: lives INSIDE .navbar-inner so it shares the drawer's stacking
+         context. With z-index 299 (overlay) < 300 (drawer) the drawer sits
+         above the backdrop and its controls stay clickable; both sit above the
+         page content (the navbar establishes the z:50 context). Rendering it
+         outside the navbar would put it in the root context, painting OVER the
+         navbar-confined drawer and swallowing its clicks. Tap to close. -->
+    {#if mobileMenuOpen}
+      <div
+        class="drawer-overlay"
+        onclick={closeAndReturn}
+        aria-hidden="true"
+      ></div>
+    {/if}
   </div>
-{/if}
+</header>
 
 <style>
   /* ── Navbar shell ──────────────────────────────────────────────────── */
@@ -303,7 +271,21 @@
     z-index: 50;
     background: var(--color-navbar-bg);
     border-bottom: 1px solid var(--color-border);
+    /*
+     * The blur lives on ::before, NOT on .navbar. backdrop-filter on .navbar
+     * itself would make it a containing block for the position:fixed mobile
+     * drawer (.navbar-actions) — the drawer would then anchor to the 56px-tall
+     * navbar instead of the viewport. Moving the filter to a pseudo-element
+     * keeps the blur while leaving the drawer viewport-fixed.
+     */
+  }
+  .navbar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
     backdrop-filter: blur(12px);
+    pointer-events: none;
   }
 
   /*
@@ -326,7 +308,6 @@
     align-items: center;
     gap: var(--space-2);
     flex-shrink: 0;
-    /* Reserve the exact logo width so the grid doesn't collapse. */
     min-width: 34px;
   }
 
@@ -352,7 +333,6 @@
     white-space: nowrap;
   }
 
-  /* rem-only font size: 0.625rem ≈ 10px, smaller than --text-xs (0.75rem). */
   .version-badge {
     font-size: 0.625rem;
     font-weight: var(--font-medium);
@@ -370,24 +350,16 @@
     display: flex;
     align-items: stretch;
     gap: 0;
-    /* Let the nav expand to fill available space in the flex row. */
     flex: 1;
-    /* On desktop, left-align the tabs (brand is already left). */
     justify-content: flex-start;
-    /* Clip height to match the navbar exactly. */
     height: var(--nav-height);
   }
 
-  /*
-   * Tab-style nav link: pill look on desktop, underline-active on mobile.
-   * The class always uses .nav-tab; responsive CSS changes its appearance.
-   */
   .nav-tab {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
     padding: 0 var(--space-3);
-    /* Pill sits vertically centered, not full navbar height. */
     height: 32px;
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
@@ -395,10 +367,8 @@
     text-decoration: none;
     white-space: nowrap;
     cursor: pointer;
-    /* Desktop: pill background via border/bg; no border-bottom indicator. */
     border: 1px solid transparent;
     border-radius: var(--radius-md);
-    /* Use margin to create visual spacing without affecting grid/flex sizing. */
     margin: auto var(--space-1);
     background: transparent;
     transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
@@ -420,24 +390,47 @@
     border-color: var(--color-border);
   }
 
-  /* The SVG icon inside a tab. */
   .nav-icon {
     flex-shrink: 0;
   }
 
-  /* ── Action row ────────────────────────────────────────────────────── */
+  /* ── Actions / Drawer ──────────────────────────────────────────────── */
+  /*
+   * Desktop (>768px): plain inline flex row pushed to the right.
+   * The drawer-header is hidden; the drawer-body is a flat flex row.
+   */
   .navbar-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
     flex-shrink: 0;
     margin-left: auto;
   }
 
-  .desktop-actions {
+  .drawer-header {
+    /* Hidden on desktop — only shown inside the mobile drawer. */
+    display: none;
+  }
+
+  .drawer-body {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  /* On desktop the section structure is invisible — each .drawer-section is
+     just a flex item containing the control. Labels + utility chrome are
+     hidden via CSS. */
+  .drawer-section {
+    display: contents;
+  }
+
+  .section-label,
+  .utility-labels {
+    display: none;
+  }
+
+  .utility-row {
+    display: contents;
   }
 
   /* ── Hamburger ─────────────────────────────────────────────────────── */
@@ -470,186 +463,16 @@
     outline-offset: 2px;
   }
 
-  /* ── Mobile sheet overlay ──────────────────────────────────────────── */
-  /* transition:fade is applied via the Svelte directive; no CSS transition needed. */
-  .sheet-overlay.mobile-sheet-overlay {
-    z-index: 299;
-  }
-
-  /* ── Mobile sheet ──────────────────────────────────────────────────── */
-  /*
-   * EndpointSwitcher/SessionPicker render their dropdowns with the native
-   * Popover API (top layer) + CSS anchor positioning, so they escape any
-   * clipping ancestor with zero JS and don't depend on overflow here. The
-   * sheet body scrolls vertically.
-   */
-  .mobile-sheet {
+  /* ── Drawer overlay ────────────────────────────────────────────────── */
+  .drawer-overlay {
     position: fixed;
-    /* Right-side drawer by default (≥641px). */
-    inset-block: 0;
-    inset-inline-end: 0;
-    width: min(420px, 100vw);
-    background: var(--color-surface);
-    border-inline-start: 1px solid var(--color-border);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
-    display: flex;
-    flex-direction: column;
-    /* overflow:visible here lets dropdown menus escape the sheet boundaries. */
-    overflow: visible;
-    z-index: 300;
-  }
-
-  .sheet-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-  }
-
-  .sheet-title {
-    flex: 1;
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-  }
-
-  .sheet-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* 44×44 touch target. */
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0;
-    background: none;
-    border: none;
-    color: var(--color-text-secondary);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-  }
-
-  .sheet-close:hover {
-    background: var(--color-bg-secondary);
-    color: var(--color-text);
-  }
-
-  .sheet-close:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
-
-  /* ── Sheet body ────────────────────────────────────────────────────── */
-  /* Scoped scroll: only the body scrolls, keeping overflow:visible on the
-     outer .mobile-sheet so dropdown menus can escape it. */
-  .mobile-sheet-body {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: visible;
-    padding: var(--space-4) var(--space-5);
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-
-  .mobile-sheet-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-4) 0;
-    border-top: 1px solid var(--color-border);
-    /* Allow children (dropdowns) to overflow the section. */
-    overflow: visible;
-  }
-
-  .mobile-sheet-section:first-child {
-    border-top: none;
-    padding-top: 0;
-  }
-
-  .mobile-section-label {
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-secondary);
-  }
-
-  /* Full-width trigger inside the sheet. */
-  .mobile-control-row {
-    width: 100%;
-    /* Allow dropdown menus to overflow out of the row. */
-    overflow: visible;
-  }
-
-  /*
-   * Override trigger sizing so EndpointSwitcher / SessionPicker
-   * render as full-width 44px buttons inside the sheet.
-   */
-  .mobile-control-row :global(.trigger) {
-    width: 100%;
-    max-width: none;
-    height: 44px;
-    justify-content: flex-start;
-    padding: 0 var(--space-3);
-  }
-
-  /* Show the label/dot/caret inside the sheet even at narrow widths. */
-  .mobile-control-row :global(.trigger .label),
-  .mobile-control-row :global(.trigger .dot),
-  .mobile-control-row :global(.trigger .caret),
-  .mobile-control-row :global(.trigger .trigger-icon) {
-    display: inline-flex;
-  }
-
-  /*
-   * Dropdown menus from EndpointSwitcher/SessionPicker are now position:fixed
-   * with z-index:400 — they escape the sheet's overflow context entirely.
-   * No overflow or z-index overrides needed here.
-   */
-
-  .mobile-control-row--voice :global(.voice-control) {
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
-  .mobile-utility-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-tertiary);
-  }
-
-  .mobile-utility-labels {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    min-width: 0;
-  }
-
-  .mobile-utility-title {
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-  }
-
-  .mobile-utility-copy {
-    color: var(--color-text-secondary);
-    font-size: var(--text-xs);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 299;
   }
 
   /* ── Responsive breakpoints ────────────────────────────────────────── */
 
-  /*
-   * Single consistent collapse boundary at ≤768px: ALL controls
-   * (Endpoint/Session/Voice/Theme) move into the sheet.
-   * This eliminates the asymmetric 641–767px range where only Voice was hidden.
-   */
   @media (max-width: 768px) {
     .navbar-inner {
       padding: 0 var(--space-4);
@@ -659,24 +482,187 @@
       display: none;
     }
 
-    /* All desktop action controls move to the sheet. */
-    .desktop-actions {
-      display: none;
-    }
-
     /* Hamburger appears. */
     .mobile-menu-btn {
       display: inline-flex;
+    }
+
+    /*
+     * Mobile drawer: ONE geometry for all mobile widths — a bottom sheet that
+     * slides up from the bottom. Always in the DOM; translateY moves it
+     * off-screen and `.open` slides it in via a CSS transition. Using physical
+     * top/bottom (not the inset-block shorthand) keeps the anchor unambiguous.
+     */
+    .navbar-actions {
+      margin-left: 0;
+      position: fixed;
+      inset-inline: 0;      /* left:0; right:0 */
+      top: auto;
+      bottom: 0;
+      width: 100%;
+      height: auto;
+      max-height: min(480px, 80dvh);
+      background: var(--color-surface);
+      border-top: 1px solid var(--color-border);
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
+      display: flex;
+      flex-direction: column;
+      overflow: visible;
+      z-index: 300;
+      /* Slide off-screen below by default. */
+      transform: translateY(100%);
+      transition: transform 250ms ease;
+    }
+
+    .navbar-actions.open {
+      transform: translateY(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .navbar-actions {
+        transition: none;
+      }
+    }
+
+    /* Drawer header visible on mobile. */
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-4) var(--space-5);
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+
+    .drawer-title {
+      flex: 1;
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text);
+    }
+
+    .drawer-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+      padding: 0;
+      background: none;
+      border: none;
+      color: var(--color-text-secondary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+
+    .drawer-close:hover {
+      background: var(--color-bg-secondary);
+      color: var(--color-text);
+    }
+
+    .drawer-close:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    /* Drawer body scrolls vertically; overflow:visible on the outer container
+       lets popover menus escape clipping. */
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: visible;
+      padding: var(--space-4) var(--space-5);
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* Each section is a labelled block. */
+    .drawer-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      padding: var(--space-4) 0;
+      border-top: 1px solid var(--color-border);
+      overflow: visible;
+    }
+
+    .drawer-section:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .section-label {
+      display: block;
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-text-secondary);
+    }
+
+    /* Full-width trigger inside the drawer. */
+    .control-row {
+      width: 100%;
+      overflow: visible;
+    }
+
+    .control-row :global(.trigger) {
+      width: 100%;
+      max-width: none;
+      height: 44px;
+      justify-content: flex-start;
+      padding: 0 var(--space-3);
+    }
+
+    /* Show label/dot/caret inside the drawer. */
+    .control-row :global(.trigger .label),
+    .control-row :global(.trigger .dot),
+    .control-row :global(.trigger .caret),
+    .control-row :global(.trigger .trigger-icon) {
+      display: inline-flex;
+    }
+
+    .control-row--voice :global(.voice-control) {
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+
+    /* Theme utility row. */
+    .utility-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-tertiary);
+    }
+
+    .utility-labels {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      min-width: 0;
+    }
+
+    .utility-title {
+      color: var(--color-text);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+    }
+
+    .utility-copy {
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
     }
   }
 
   /* Mobile (≤640px): grid layout + tab-style nav + bottom sheet. */
   @media (max-width: 640px) {
     .navbar-inner {
-      /*
-       * Three-zone grid: [logo] [nav tabs] [hamburger].
-       * This eliminates the flex margin-left:auto fighting.
-       */
       display: grid;
       grid-template-columns: auto 1fr auto;
       align-items: center;
@@ -684,33 +670,24 @@
       padding: 0 var(--space-4);
     }
 
-    /* Brand: icon only, centered in its column. */
     .brand-text {
       display: none;
     }
 
-    /* Nav tabs: center within the 1fr middle column. */
     .navbar-nav {
       justify-content: center;
-      flex: unset; /* flex:1 is irrelevant inside grid child */
+      flex: unset;
       height: var(--nav-height);
     }
 
-    /*
-     * Tab-style at mobile: underline active indicator, no pill background.
-     * This costs less horizontal space than pill buttons.
-     */
     .nav-tab {
-      /* Remove pill styling. */
       background: transparent;
       border: none;
       border-radius: 0;
       margin: 0;
-      /* Full navbar height so border-bottom is flush with the bottom edge. */
       height: var(--nav-height);
       padding: 0 var(--space-2);
-      padding-bottom: 2px; /* account for 2px active border */
-      /* Underline active indicator. */
+      padding-bottom: 2px;
       border-bottom: 2px solid transparent;
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
@@ -728,24 +705,12 @@
       color: var(--color-primary);
     }
 
-    /* Actions column: just the hamburger. */
-    .navbar-actions {
-      margin-left: 0; /* grid handles alignment */
+    /* Hamburger is the last grid column; no margin-left needed. */
+    .mobile-menu-btn {
+      margin-left: 0;
     }
-
-    /* Bottom sheet at ≤640px: slide up from the bottom. */
-    .mobile-sheet {
-      inset-inline: 0;
-      inset-block-end: 0;
-      inset-block-start: auto;
-      inset-inline-end: unset;
-      width: 100%;
-      max-height: min(480px, 80dvh);
-      border-inline-start: none;
-      border-top: 1px solid var(--color-border);
-      border-radius: 16px 16px 0 0;
-      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
-    }
+    /* Drawer geometry is the single bottom-sheet defined in the ≤768px block;
+       no separate override needed here. */
   }
 
   /* Narrow phones (≤400px): abbreviate labels to icon+short-label. */
@@ -760,10 +725,7 @@
     }
   }
 
-  /*
-   * Icon-only breakpoint at ≤340px: comfortable margin above the ~320px
-   * point where labels start to overflow the tab row.
-   */
+  /* Icon-only breakpoint at ≤340px. */
   @media (max-width: 340px) {
     .nav-label {
       display: none;

@@ -1,17 +1,8 @@
-<script module lang="ts">
-  // TRUE module scope: shared across all instances, so each instance gets a
-  // genuinely unique id even when two are mounted at once (desktop + mobile sheet).
-  // (A counter in the instance <script> would reset to 0 per mount and collide.)
-  let instanceCounter = 0;
-</script>
-
 <script lang="ts">
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
-  const uid = ++instanceCounter;
-  const menuId = `session-menu-${uid}`;
-  const anchorName = `--session-anchor-${uid}`;
+  const menuId = 'session-menu';
 
   let showAll = $state(false);
   // Track popover open state for aria-expanded. Updated via the popover toggle event.
@@ -109,8 +100,7 @@
   <button
     type="button"
     class="trigger"
-    id="session-trigger-{uid}"
-    style="anchor-name: {anchorName}"
+    id="session-trigger"
     popovertarget={menuId}
     onclick={handleTriggerClick}
     aria-haspopup="menu"
@@ -148,7 +138,7 @@
   <!--
     popover="auto": browser provides Escape + light-dismiss (outside-click) for free.
     Position is entirely CSS-driven via anchor positioning — no JS coordinates.
-    The element is always in the DOM (hidden via UA popover styles); {#if open} removed.
+    The element is always in the DOM (hidden via UA popover styles).
   -->
   <div
     id={menuId}
@@ -249,6 +239,8 @@
     cursor: pointer;
     max-width: 240px;
     overflow: hidden;
+    /* Static anchor name — no v-bind, no JS, works across the popover top-layer. */
+    anchor-name: --session-anchor;
   }
   .trigger:hover {
     background: var(--color-surface-hover);
@@ -262,8 +254,7 @@
 
   /**
    * Live-updates indicator. Green when the SSE stream is connected,
-   * neutral gray otherwise. Matches the EndpointSwitcher `.dot` pattern
-   * (8px circle, success color) for visual consistency.
+   * neutral gray otherwise.
    */
   .dot {
     width: 6px;
@@ -293,8 +284,8 @@
    * Popover menu: positioned via CSS Anchor Positioning — no JS coordinates.
    *
    * `position: fixed` places the element in the top layer (escapes all overflow
-   * clipping — including the mobile sheet — natively, without JS).
-   * `position-anchor` binds to the trigger's --session-anchor-N anchor name.
+   * clipping natively, without JS).
+   * `position-anchor` binds to the trigger's static --session-anchor anchor name.
    * `position-area: bottom span-inline-start` aligns the menu's inline-start
    * edge to the trigger's inline-start edge, opening below.
    * `position-try-fallbacks: flip-block` flips above when no room below.
@@ -302,9 +293,6 @@
    * Browsers that don't support anchor positioning (pre-Chrome 125 / pre-Safari 26 /
    * pre-Firefox 147) see only `position: fixed` and the menu appears at the top-left
    * of the viewport — still functional, still no clipping.
-   *
-   * z-index is unnecessary for top-layer elements but kept for pre-popover fallback
-   * browsers where the element may NOT enter the top layer.
    */
   .menu {
     /* Reset UA popover margin/padding. */
@@ -312,9 +300,9 @@
     padding: var(--space-2);
 
     position: fixed;
-    /* Anchor positioning — progressive enhancement. */
-    position-anchor: v-bind(anchorName);
-    position-area: bottom span-inline-start;
+    /* Static anchor name — resolves correctly across the popover top-layer. */
+    position-anchor: --session-anchor;
+    position-area: block-end span-inline-start;
     margin-top: 6px;
     position-try-fallbacks: flip-block;
     /* Constrain width: at least 300px, at most 380px, capped by viewport. */
