@@ -39,6 +39,43 @@ must move their files by hand. See
   `knowledge/env/stack.env`. Until then the UI binds to the default `3880`.
   `OP_ADMIN_OPENCODE_PORT` was removed outright (it was emitted but never read).
 
+### Added
+
+- **Rich channel UX (live streaming)** — the guardian runs a transparent OpenCode
+  reverse proxy (`/oc`), so Discord/Slack/API channels stream assistant responses
+  in real time with typing indicators and tool-activity reactions, plus opt-in
+  fail-closed content moderation (heuristic screen → local OpenCode moderator).
+- **Advanced chat view** — an embedded OpenCode web UI under a full-width
+  navbar (Chat / Advanced / Admin).
+- **Voice addon** — local speech (Kokoro TTS + faster-whisper STT) as an opt-in
+  addon with CPU/CUDA compose profiles, a prebuilt model bundle, and out-of-band
+  image publishing decoupled from the platform release.
+- **Independent UI distribution** — the operator UI ships as `@openpalm/ui` on
+  npm and is fetched + integrity-verified at runtime, versioned independently of
+  the platform.
+- **Host ↔ assistant knowledge sharing** — the host akm stash can be shared
+  (symmetric, writable) with the assistant.
+
+### Changed
+
+- **OpenCode runtime bumped to 1.15.13** (assistant + admin tools).
+- **Channel adapters are runtime npm installs** (`CHANNEL_PACKAGE`), with
+  `@openpalm/channels-sdk` as an optional peer — adapter updates ship
+  independently of the platform release.
+- **Runtime env vars are `OP_`-prefixed** (e.g. `OP_TTS_*`, `OP_STT_*`,
+  `OP_VOICE_*`) to avoid host-environment collisions.
+- **CI moved off the deprecated Node 20 actions runtime** to Node 24
+  (`actions/checkout`, `actions/setup-node`, `actions/upload-artifact`,
+  `actions/download-artifact`, `softprops/action-gh-release`).
+
+### Fixed
+
+- **Stack upgrade no longer fails resolving the asset version** — the target
+  release tag is passed explicitly into the core-asset download. It previously
+  degraded to `"main"` when `@openpalm/lib` was bundled into the UI/electron
+  (the `import.meta.url` package.json read does not resolve in a bundle), 404ing
+  the compose files on both the release and raw URLs.
+
 ## [0.11.0-beta.11] - 2026-05-29
 
 ### Changed

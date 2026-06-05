@@ -367,9 +367,12 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 - [ ] `npm deprecate '@openpalm/assistant-tools@0.10.0' '...'` — orphaned package;
       `packages/assistant-tools` was removed (folded into
       `@openpalm/admin-tools-plugin`) and its publish workflow deleted.
-- [ ] **Bump deprecated GitHub Actions** in `release.yml` (15× `actions/checkout@v4`
-      / `actions/setup-node@v4` on Node 20). GitHub forces Node 24 on 2026-06-16
-      and removes Node 20 on 2026-09-16 — move to `@v5`.
+- [x] **Bump deprecated GitHub Actions off the Node 20 runtime.** Done
+      (2026-06-05): repo-wide bump to Node 24 majors — `actions/checkout` v4→v6,
+      `actions/setup-node` v4→v6, `actions/upload-artifact` v4→v7,
+      `actions/download-artifact` v4→v8, `softprops/action-gh-release` v2→v3; the
+      now-redundant `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` flag was removed from
+      `ci.yml`. Verified `using: node24` + input compatibility; CI green.
 - [ ] **Voice `rocm6`** is still unimplemented (the Dockerfile hard-errors and the
       profile is gated). Either implement the ROCm image or keep it gated and
       documented as unsupported.
