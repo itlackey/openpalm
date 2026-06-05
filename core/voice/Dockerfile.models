@@ -32,12 +32,16 @@ RUN mkdir -p /opt/kokoro \
 # stt.py's default if you change it.
 ARG WHISPER_MODEL=Systran/faster-whisper-base.en
 
-# HuggingFace rate-limits (429) downloads from CI IP ranges, so retry with
-# backoff — this is now the ONLY place the model is fetched, so it must be
-# resilient. A final check fails the build if the model is still missing after
-# all retries (rather than silently shipping an empty bundle).
-RUN pip install --no-cache-dir --disable-pip-version-check "huggingface-hub==0.27.0" \
+# HuggingFace anonymously rate-limits (429) the model API by IP, which the CI
+# runners share — so prefer an AUTHENTICATED request (much higher limit) via an
+# optional `hf_token` build secret, and still retry with backoff as a fallback.
+# The token is mounted (never baked into a layer). If the secret is absent the
+# build falls back to anonymous + retry. A final check fails the build if the
+# model is still missing (no silent empty bundle).
+RUN --mount=type=secret,id=hf_token \
+    pip install --no-cache-dir --disable-pip-version-check "huggingface-hub==0.27.0" \
     && mkdir -p /opt/whisper \
+    && export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" \
     && for i in 1 2 3 4 5 6 7 8; do \
          python -c "from huggingface_hub import snapshot_download; snapshot_download('${WHISPER_MODEL}', cache_dir='/opt/whisper')" && break; \
          echo "whisper download attempt $i failed; retrying in $((i*8))s..." >&2; \

@@ -74,5 +74,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Optional: an authenticated HuggingFace token sidesteps the anonymous
+          # per-IP 429 rate limit on the model API. Add a read-only HF_TOKEN repo
+          # secret to enable it; without it the build falls back to anonymous +
+          # retry (which can 429 under load).
+          secrets: |
+            hf_token=${{ secrets.HF_TOKEN }}
           cache-from: type=gha,scope=openpalm/voice-models
           cache-to: type=gha,scope=openpalm/voice-models,mode=max
