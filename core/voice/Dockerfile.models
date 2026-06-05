@@ -32,9 +32,18 @@ RUN mkdir -p /opt/kokoro \
 # stt.py's default if you change it.
 ARG WHISPER_MODEL=Systran/faster-whisper-base.en
 
+# HuggingFace rate-limits (429) downloads from CI IP ranges, so retry with
+# backoff — this is now the ONLY place the model is fetched, so it must be
+# resilient. A final check fails the build if the model is still missing after
+# all retries (rather than silently shipping an empty bundle).
 RUN pip install --no-cache-dir --disable-pip-version-check "huggingface-hub==0.27.0" \
     && mkdir -p /opt/whisper \
-    && python -c "from huggingface_hub import snapshot_download; snapshot_download('${WHISPER_MODEL}', cache_dir='/opt/whisper')"
+    && for i in 1 2 3 4 5 6 7 8; do \
+         python -c "from huggingface_hub import snapshot_download; snapshot_download('${WHISPER_MODEL}', cache_dir='/opt/whisper')" && break; \
+         echo "whisper download attempt $i failed; retrying in $((i*8))s..." >&2; \
+         sleep $((i*8)); \
+       done \
+    && python -c "import glob,sys; sys.exit(0 if glob.glob('/opt/whisper/models--*') else 'whisper model missing after retries')"
 
 # Final image = just the data. `scratch` keeps the pull tiny (no python base):
 # the consuming build only ever COPY --from's /opt/kokoro and /opt/whisper.
