@@ -5,7 +5,12 @@
 
   let open = $state(false);
   let showAll = $state(false);
-  let menuEl: HTMLDivElement | undefined = $state();
+  // The root container — used only for outside-click detection.
+  let containerEl: HTMLDivElement | undefined = $state();
+  // The trigger button — used to compute fixed-position menu coordinates.
+  let triggerEl: HTMLButtonElement | undefined = $state();
+  // Computed position for the fixed-position menu.
+  let menuStyle = $state('');
 
   const SESSION_LIST_CAP = 50;
 
@@ -40,20 +45,36 @@
   );
   const overflowCount = $derived(Math.max(0, sessions.length - SESSION_LIST_CAP));
 
+  /** Compute and cache the fixed-position style string from the trigger rect. */
+  function computeMenuStyle(): void {
+    if (!triggerEl) return;
+    const rect = triggerEl.getBoundingClientRect();
+    const menuWidth = Math.min(380, Math.max(300, window.innerWidth - 24));
+    const rightFromViewport = window.innerWidth - rect.right;
+    const clampedRight = Math.max(12, rightFromViewport);
+    menuStyle = `top:${rect.bottom + 6}px;right:${clampedRight}px;width:${menuWidth}px;`;
+  }
+
   onMount(() => {
     function onDocClick(ev: MouseEvent) {
       if (!open) return;
       const target = ev.target as Node | null;
-      if (menuEl && target && !menuEl.contains(target)) open = false;
+      if (containerEl && target && !containerEl.contains(target)) open = false;
     }
-    function onKey(ev: KeyboardEvent) {
-      if (ev.key === 'Escape' && open) open = false;
+    function onResize() {
+      if (open) computeMenuStyle();
     }
+    // NOTE: No document-level Escape handler here. Escape is handled by the
+    // sheet's handleSheetKeyDown (with stopPropagation) when inside the mobile
+    // sheet, and by the picker's own onKeyDown on the trigger/menu when on
+    // desktop. This prevents the double-close race (BLOCKER C).
     document.addEventListener('mousedown', onDocClick);
-    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('scroll', onResize, { passive: true, capture: true });
     return () => {
       document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, { capture: true });
     };
   });
 
@@ -81,6 +102,7 @@
 
   async function toggle(): Promise<void> {
     if (!open) {
+      computeMenuStyle();
       // Lazy-load the session list on first open if not cached.
       if (active && !endpointState?.sessionsLoaded && !loading) {
         void chat.loadSessions();
@@ -110,11 +132,13 @@
   }
 </script>
 
-<div class="picker" bind:this={menuEl}>
+<div class="picker" bind:this={containerEl}>
   <button
     type="button"
     class="trigger"
+    bind:this={triggerEl}
     onclick={toggle}
+    onkeydown={(ev) => { if (ev.key === 'Escape' && open) { ev.stopPropagation(); open = false; } }}
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label="Sessions"
@@ -147,7 +171,7 @@
   </button>
 
   {#if open}
-    <div class="menu" role="menu">
+    <div class="menu" role="menu" tabindex="-1" style={menuStyle} onkeydown={(ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); open = false; triggerEl?.focus(); } }}>
       <div class="menu-header">
         Sessions on {active?.label ?? 'this endpoint'}
       </div>
@@ -276,46 +300,28 @@
     opacity: 0.6;
   }
 
-  /* Narrow widths: collapse to icon-only, matching EndpointSwitcher. */
-  @media (max-width: 600px) {
-    .trigger {
-      width: 32px;
-      padding: 0;
-      justify-content: center;
-      gap: 0;
-      max-width: 32px;
-    }
-    .label,
-    .caret,
-    .dot {
-      display: none;
-    }
-  }
+  /*
+   * At ≤640px the trigger is only rendered inside the mobile sheet
+   * (full-width, overridden by Navbar.svelte's .mobile-control-row :global).
+   * No icon-only collapse needed at any header breakpoint.
+   */
 
+  /*
+   * position:fixed so the menu escapes ANY clipping scroll ancestor —
+   * including the mobile sheet body (overflow-y:auto makes overflow-x:auto
+   * too per CSS Overflow L3, clipping absolute children geometrically).
+   * Coordinates are JS-computed via computeMenuStyle() at open time and on
+   * resize/scroll, anchored to the trigger button's getBoundingClientRect().
+   * The inline style attribute carries top/right/width; z-index is here.
+   */
   .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    z-index: 100;
-    min-width: min(300px, calc(100vw - 24px));
-    max-width: min(380px, calc(100vw - 24px));
+    position: fixed;
+    z-index: 400;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 8px);
     box-shadow: var(--shadow-lg);
     padding: var(--space-2);
-  }
-
-  /* On narrow widths, the picker trigger sits mid-navbar (between the
-     endpoint switcher and the navlink), so anchoring `right: 0` to the
-     trigger pushes the menu off-screen. Pin to the viewport's top-right
-     just below the navbar instead — same trick as EndpointSwitcher. */
-  @media (max-width: 600px) {
-    .menu {
-      position: fixed;
-      top: calc(var(--nav-height) + 6px);
-      right: var(--space-3);
-    }
   }
 
   .menu-header {

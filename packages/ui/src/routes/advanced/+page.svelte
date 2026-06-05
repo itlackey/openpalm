@@ -88,9 +88,10 @@
 {/if}
 
 <style>
-  /* Fill the viewport below the sticky navbar with the embedded OpenCode UI. */
+  /* Fill the viewport below the sticky navbar with the embedded OpenCode UI.
+     dvh accounts for Android Chrome's dynamic toolbar shrinkage. */
   .advanced-layout {
-    height: calc(100vh - var(--nav-height));
+    height: calc(100dvh - var(--nav-height));
     width: 100%;
     background: var(--color-bg);
   }

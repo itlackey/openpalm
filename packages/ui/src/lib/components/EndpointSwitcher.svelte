@@ -4,11 +4,27 @@
 
   let open = $state(false);
   let switching = $state(false);
-  let menuEl: HTMLDivElement | undefined = $state();
+  // The root container (used only for outside-click detection).
+  let containerEl: HTMLDivElement | undefined = $state();
+  // The trigger button — used to compute fixed-position menu coordinates.
+  let triggerEl: HTMLButtonElement | undefined = $state();
+  // Computed position for the fixed-position menu.
+  let menuStyle = $state('');
 
   const active = $derived(endpointsService.active);
   const endpoints = $derived(endpointsService.endpoints);
   const hasChoices = $derived(endpoints.length > 1);
+
+  /** Compute and cache the fixed-position style string from the trigger rect. */
+  function computeMenuStyle(): void {
+    if (!triggerEl) return;
+    const rect = triggerEl.getBoundingClientRect();
+    const menuWidth = Math.min(360, Math.max(280, window.innerWidth - 24));
+    // Prefer right-aligning to the trigger's right edge; clamp to viewport.
+    const rightFromViewport = window.innerWidth - rect.right;
+    const clampedRight = Math.max(12, rightFromViewport);
+    menuStyle = `top:${rect.bottom + 6}px;right:${clampedRight}px;width:${menuWidth}px;`;
+  }
 
   onMount(() => {
     void endpointsService.load();
@@ -16,10 +32,19 @@
     function onDocClick(ev: MouseEvent) {
       if (!open) return;
       const target = ev.target as Node | null;
-      if (menuEl && target && !menuEl.contains(target)) open = false;
+      if (containerEl && target && !containerEl.contains(target)) open = false;
+    }
+    function onResize() {
+      if (open) computeMenuStyle();
     }
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    window.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('scroll', onResize, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, { capture: true });
+    };
   });
 
   async function activate(id: string): Promise<void> {
@@ -45,15 +70,18 @@
       window.location.href = '/admin/endpoints';
       return;
     }
+    if (!open) computeMenuStyle();
     open = !open;
   }
 </script>
 
-<div class="switcher" bind:this={menuEl}>
+<div class="switcher" bind:this={containerEl}>
   <button
     type="button"
     class="trigger"
+    bind:this={triggerEl}
     onclick={toggle}
+    onkeydown={(ev) => { if (ev.key === 'Escape' && open) { ev.stopPropagation(); open = false; } }}
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={active ? `Assistant endpoint: ${active.label}` : 'Assistant endpoints'}
@@ -73,7 +101,7 @@
   </button>
 
   {#if open}
-    <div class="menu" role="menu">
+    <div class="menu" role="menu" tabindex="-1" style={menuStyle} onkeydown={(ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); open = false; triggerEl?.focus(); } }}>
       <div class="menu-header">Assistant endpoint</div>
       {#each endpoints as ep (ep.id)}
         <button
@@ -155,54 +183,28 @@
     opacity: 0.6;
   }
 
-  /* Narrow widths (Electron sidecar mode, small mobile): collapse the
-     trigger to a single icon button. The dropdown menu still opens with
-     full labels + URLs — only the closed trigger shrinks. */
-  @media (max-width: 600px) {
-    .trigger {
-      width: 32px;
-      padding: 0;
-      justify-content: center;
-      gap: 0;
-      max-width: 32px;
-    }
-    .trigger-icon {
-      display: inline-block;
-    }
-    .dot,
-    .label,
-    .caret {
-      display: none;
-    }
-  }
+  /*
+   * At ≤640px the trigger is only rendered inside the mobile sheet
+   * (full-width, overridden by Navbar.svelte's .mobile-control-row :global).
+   * No icon-only collapse needed at any header breakpoint.
+   */
 
+  /*
+   * position:fixed so the menu escapes ANY clipping scroll ancestor —
+   * including the mobile sheet body (overflow-y:auto makes overflow-x:auto
+   * too per CSS Overflow L3, clipping absolute children geometrically).
+   * Coordinates are JS-computed via computeMenuStyle() at open time and on
+   * resize/scroll, anchored to the trigger button's getBoundingClientRect().
+   * The inline style attribute carries top/right/width; z-index is here.
+   */
   .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    z-index: 100;
-    /* Fit in a 300px-wide Electron sidecar with margin to spare. */
-    min-width: min(280px, calc(100vw - 24px));
-    max-width: min(360px, calc(100vw - 24px));
+    position: fixed;
+    z-index: 400;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 8px);
     box-shadow: var(--shadow-lg);
     padding: var(--space-2);
-  }
-
-  /* On narrow widths, anchor the menu to the viewport's top-right corner
-     (just below the navbar) rather than the trigger button. Because the
-     trigger is one of several icon buttons in navbar-actions, its right
-     edge is NOT the viewport's right edge — `right: 0` on the trigger
-     parent pushes the menu off-screen to the left when the trigger sits
-     mid-navbar. Fixed positioning fixes that. */
-  @media (max-width: 600px) {
-    .menu {
-      position: fixed;
-      top: calc(var(--nav-height) + 6px);
-      right: var(--space-3);
-    }
   }
 
   .menu-header {
