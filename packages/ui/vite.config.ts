@@ -8,7 +8,6 @@ import { playwright } from "@vitest/browser-playwright";
 import devtoolsJson from "vite-plugin-devtools-json";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { resolve } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
 
 const rootDir = resolve(__dirname, "../..");
 
@@ -32,20 +31,9 @@ export default defineConfig(({ mode }) => {
     }
     process.env[key] ??= value;
   }
-
-  // Dev-server secret bridge: the production host process (`openpalm ui serve`,
-  // see packages/cli/src/lib/ui-server.ts) injects OP_UI_LOGIN_PASSWORD into the
-  // UI's env by reading the `op_ui_login_password` file secret. The raw `vite
-  // dev` server has no such bridge, so without this the seeded dev password
-  // (knowledge/secrets/) never reaches the login route and `bun run ui:dev`
-  // login always fails. Mirror the file→env fallback here (dev only).
-  if (mode !== "production" && !process.env.VITEST && !process.env.OP_UI_LOGIN_PASSWORD && process.env.OP_HOME) {
-    const secret = resolve(process.env.OP_HOME, "knowledge/secrets/op_ui_login_password");
-    if (existsSync(secret)) {
-      const value = readFileSync(secret, "utf-8").trimEnd();
-      if (value) process.env.OP_UI_LOGIN_PASSWORD = value;
-    }
-  }
+  // Note: the dev-server login-password bridge lives in src/hooks.server.ts
+  // (server runtime, where @openpalm/lib is safely importable), not here — the
+  // config eval has no Bun shim and shouldn't read secrets.
 
   return {
     plugins: [sveltekit(), devtoolsJson()],

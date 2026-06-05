@@ -13,23 +13,25 @@
  *   const page = await ctx.newPage();
  *   await login(page, 'http://localhost:5173', readDevLoginPassword());
  */
-import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Page } from 'playwright';
+// Pure secrets module (node:fs/path only — no Bun.env), so it's safe to import
+// here. This is the single source of truth for where the secret lives.
+import { readSecret } from '@openpalm/lib/control-plane/secrets-files';
 
-/** Read the dev login password from the OP_HOME file secret. */
+/** Read the dev login password from the OP_HOME file secret (via lib). */
 export function readDevLoginPassword(opHome?: string): string {
   // Repo root is four levels up from packages/ui/e2e/helpers.
   const repoRoot = resolve(import.meta.dirname, '../../../..');
   // OP_HOME is often relative (the dev env sets `.dev`); resolve it against the
   // repo root, not the cwd, so this works regardless of where it's run from.
-  const raw = opHome ?? process.env.OP_HOME ?? '.dev';
-  const home = resolve(repoRoot, raw);
-  const path = resolve(home, 'knowledge/secrets/op_ui_login_password');
-  if (!existsSync(path)) {
-    throw new Error(`login secret not found at ${path} — run scripts/dev-setup.sh --seed-env`);
+  const home = resolve(repoRoot, opHome ?? process.env.OP_HOME ?? '.dev');
+  // readSecret derives knowledge/secrets/ from the stack dir (OP_HOME/config/stack).
+  const value = readSecret(resolve(home, 'config/stack'), 'op_ui_login_password');
+  if (!value) {
+    throw new Error(`op_ui_login_password not found under ${home} — run scripts/dev-setup.sh --seed-env`);
   }
-  return readFileSync(path, 'utf-8').trimEnd();
+  return value.trimEnd();
 }
 
 /**

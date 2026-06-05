@@ -24,6 +24,7 @@ import {
   isSetupComplete,
   resolveStackDir,
   readStackRuntimeEnv,
+  readSecret,
 } from "@openpalm/lib";
 
 const logger = createLogger("admin");
@@ -38,6 +39,16 @@ function runStartupApply(): void {
     ensureHomeDirs();
     const state = getState();
     ensureSecrets(state);
+    // Fallback for the UI login password: production `openpalm ui serve`
+    // (packages/cli/src/lib/ui-server.ts) injects OP_UI_LOGIN_PASSWORD before
+    // spawning the UI by reading the `op_ui_login_password` file secret. The
+    // raw `vite dev` server has no such launcher, so when the env var is unset
+    // read it from the same file secret here (the single source of truth —
+    // lib's readSecret). No-op in production since the env var is already set.
+    if (!process.env.OP_UI_LOGIN_PASSWORD) {
+      const pw = readSecret(state.stackDir, "op_ui_login_password");
+      if (pw) process.env.OP_UI_LOGIN_PASSWORD = pw.trimEnd();
+    }
     // Promote stack.env values into process.env so lazy reads (OpenCode URL,
     // assistant port) in server modules pick up the correct values.
     const stackVars = readStackRuntimeEnv(state.stackDir);

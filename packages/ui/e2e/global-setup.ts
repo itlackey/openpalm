@@ -2,6 +2,9 @@ import { readFileSync, writeFileSync, existsSync, openSync, ftruncateSync, write
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as dotenvParse } from "dotenv";
+// Pure secrets module (node:fs/path only — no Bun.env): single source of truth
+// for the secret path/read, safe under the Playwright (node) runner.
+import { readSecret } from "@openpalm/lib/control-plane/secrets-files";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
@@ -9,7 +12,6 @@ const REPO_ROOT = resolve(HERE, "../../..");
 // so Playwright tests don't accidentally target a developer's running dev stack.
 const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/knowledge/env/stack.env");
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
-const UI_LOGIN_PASSWORD_SECRET = resolve(OP_HOME_DIR, "knowledge/secrets/op_ui_login_password");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 
 /**
@@ -30,11 +32,11 @@ function writeInPlace(path: string, data: string): void {
 }
 
 export default async function globalSetup() {
-	// Backfill the admin login from the file-based stack secret. The AKM user
-	// vault is not a Compose/admin login source.
-	if (!process.env.OP_UI_LOGIN_PASSWORD && existsSync(UI_LOGIN_PASSWORD_SECRET)) {
-		const password = readFileSync(UI_LOGIN_PASSWORD_SECRET, "utf8").trimEnd();
-		if (password) process.env.OP_UI_LOGIN_PASSWORD = password;
+	// Backfill the admin login from the file-based stack secret (via lib's
+	// readSecret — the single source of truth for the secret path).
+	if (!process.env.OP_UI_LOGIN_PASSWORD) {
+		const password = readSecret(resolve(OP_HOME_DIR, "config/stack"), "op_ui_login_password");
+		if (password) process.env.OP_UI_LOGIN_PASSWORD = password.trimEnd();
 	}
 
 	if (!existsSync(STACK_ENV)) return;
