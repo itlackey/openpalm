@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -49,7 +49,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # actions/checkout@v4 extraheader auth is not reliably picked up by
+          # actions/checkout@v6 extraheader auth is not reliably picked up by
           # subsequent git pull/push in shell steps (manifests as "could not
           # read Username for https://github.com"). Embed the token in the
           # remote URL directly — this is the workaround GitHub itself
@@ -222,7 +222,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
@@ -302,7 +302,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
@@ -320,7 +320,7 @@ jobs:
         run: codesign --force --sign - packages/cli/dist/${{ matrix.artifact }}
 
       - name: Upload CLI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: packages/cli/dist/${{ matrix.artifact }}
@@ -349,7 +349,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
@@ -360,7 +360,7 @@ jobs:
         # The build step below explicitly invokes Node via require.resolve to
         # work around this, and electron-builder itself is validated against
         # Node 22 LTS. Bump only when electron-builder confirms Node 24 support.
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -403,7 +403,7 @@ jobs:
           node "$CLI" ${{ matrix.electron_flag }} --publish never
 
       - name: Upload Electron artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electron-${{ matrix.platform }}
           # Include installers, auto-update metadata (.yml), and delta files
@@ -427,7 +427,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
@@ -442,14 +442,14 @@ jobs:
             README.md
 
       - name: Download CLI artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: openpalm-cli-*
           path: dist
           merge-multiple: true
 
       - name: Download Electron artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: electron-*
           path: dist
@@ -481,7 +481,7 @@ jobs:
 
       - name: Create GitHub release
         if: needs.prepare-tag.outputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare-tag.outputs.tag }}
           name: OpenPalm ${{ needs.prepare-tag.outputs.tag }}
@@ -557,12 +557,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -618,12 +618,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -704,12 +704,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
