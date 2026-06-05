@@ -171,7 +171,7 @@ describe("refreshCoreAssets", () => {
     const homeDir = process.env.OP_HOME!;
     mockFetchAll();
 
-    const result = await refreshCoreAssets();
+    const result = await refreshCoreAssets("v0.11.0-rc.6");
     // Fixed stack compose files are managed (overwritten on change)
     expect(result.updated).toContain("config/stack/core.compose.yml");
     expect(result.updated).toContain("config/stack/services.compose.yml");
@@ -211,7 +211,7 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "user-customized-opencode");
     mockFetchAll();
 
-    const result = await refreshCoreAssets();
+    const result = await refreshCoreAssets("v0.11.0-rc.6");
     // core.compose.yml is managed — backed up and overwritten
     expect(result.updated).toContain("config/stack/core.compose.yml");
     expect(result.updated).toContain("config/stack/services.compose.yml");
@@ -244,7 +244,7 @@ describe("refreshCoreAssets", () => {
       return new Response(content, { status: 200 });
     });
 
-    const result = await refreshCoreAssets();
+    const result = await refreshCoreAssets("v0.11.0-rc.6");
     expect(result.updated).toHaveLength(0);
     expect(result.backupDir).toBeNull();
   });
@@ -254,6 +254,6 @@ describe("refreshCoreAssets", () => {
       return new Response("Not found", { status: 404 });
     });
 
-    await expect(refreshCoreAssets()).rejects.toThrow("Failed to download");
+    await expect(refreshCoreAssets("v0.11.0-rc.6")).rejects.toThrow("Failed to download");
   });
 });

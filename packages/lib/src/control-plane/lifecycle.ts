@@ -216,7 +216,9 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
 }
 
 export async function applyUpgrade(
-  state: ControlPlaneState
+  state: ControlPlaneState,
+  /** Release tag whose stack assets to fetch (e.g. "v0.11.0-rc.6"). Caller-supplied. */
+  version: string
 ): Promise<{
   backupDir: string | null;
   updated: string[];
@@ -225,7 +227,7 @@ export async function applyUpgrade(
   const lock = acquireInstallLock(state.dataDir);
   if (!lock) throw new Error("Another install is already in progress");
   try {
-    const { backupDir, updated } = await refreshCoreAssets();
+    const { backupDir, updated } = await refreshCoreAssets(version);
     const restarted = await reconcileCore(state, {});
     return { backupDir, updated, restarted };
   } finally {
@@ -269,7 +271,9 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     const tagResult = await updateStackEnvToLatestImageTag(state);
     imageTag = tagResult.tag;
     namespace = tagResult.namespace;
-    upgradeResult = await applyUpgrade(state);
+    // The resolved platform tag IS the version whose stack assets we fetch —
+    // keeps compose files and images in lockstep.
+    upgradeResult = await applyUpgrade(state, imageTag);
   } catch (e) {
     // Restore stack.env on failure
     if (originalStackEnv !== null) {
@@ -308,7 +312,7 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
   const stackEnvPath = `${state.stashDir}/env/stack.env`;
   const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
   writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: tag }, { uncomment: true }));
-  const upgradeResult = await applyUpgrade(state);
+  const upgradeResult = await applyUpgrade(state, tag);
   return {
     imageTag: tag,
     namespace: "openpalm",

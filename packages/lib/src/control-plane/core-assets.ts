@@ -56,18 +56,25 @@ export function ensureOpenCodeSystemConfig(): void {
 
 const REPO = "itlackey/openpalm";
 
-function resolveAssetVersion(): string {
-  if (process.env.OP_ASSET_VERSION) return process.env.OP_ASSET_VERSION;
-  try {
-    const pkgJson = JSON.parse(
-      readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8")
+// The version to download assets for is ALWAYS passed in by the caller (the
+// upgrade flow resolves the canonical platform tag — the newest published
+// `openpalm/assistant` Docker tag, e.g. "v0.11.0-rc.6" — and threads it here).
+// This module intentionally does NOT resolve the version itself: no env var, no
+// `import.meta.url` package.json read (which breaks when the lib is bundled into
+// the UI/electron), and never a silent "main" fallback (main's asset layout can
+// differ from a released install). Bundler-agnostic by construction.
+
+function normalizeAssetRef(version: string): string {
+  const v = version.trim();
+  if (!v) {
+    throw new Error(
+      "Cannot download OpenPalm stack assets: no version provided. " +
+      "The caller must pass the target release tag (e.g. \"v0.11.0-rc.6\")."
     );
-    return `v${pkgJson.version}`;
-  } catch {
-    return "main";
   }
+  // GitHub release/raw refs are `vX.Y.Z`; accept a bare semver and add the `v`.
+  return /^\d/.test(v) ? `v${v}` : v;
 }
-const VERSION = resolveAssetVersion();
 
 // Persona files (openpalm.md, system.md), stash seeds, and user-editable config
 // files are intentionally NOT in this list. They are seeded once (never
@@ -85,9 +92,9 @@ const SEEDED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/stack/custom.compose.yml", githubFilename: ".openpalm/config/stack/custom.compose.yml" },
 ];
 
-async function downloadAsset(filename: string): Promise<string> {
-  const releaseUrl = `https://github.com/${REPO}/releases/download/${VERSION}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/${filename}`;
+async function downloadAsset(filename: string, version: string): Promise<string> {
+  const releaseUrl = `https://github.com/${REPO}/releases/download/${version}/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${version}/${filename}`;
 
   for (const url of [releaseUrl, rawUrl]) {
     try {
@@ -97,19 +104,20 @@ async function downloadAsset(filename: string): Promise<string> {
       // try next URL
     }
   }
-  throw new Error(`Failed to download ${filename} from GitHub (tried release and raw URLs for version "${VERSION}")`);
+  throw new Error(`Failed to download ${filename} from GitHub (tried release and raw URLs for version "${version}")`);
 }
 
-export async function refreshCoreAssets(): Promise<{
+export async function refreshCoreAssets(version: string): Promise<{
   backupDir: string | null;
   updated: string[];
 }> {
+  const ref = normalizeAssetRef(version);
   const homeDir = resolveOpenPalmHome();
   const updated: string[] = [];
   let backupDir: string | null = null;
 
   for (const asset of MANAGED_ASSETS) {
-    const freshContent = await downloadAsset(asset.githubFilename);
+    const freshContent = await downloadAsset(asset.githubFilename, ref);
     const targetPath = join(homeDir, asset.relPath);
 
     if (existsSync(targetPath)) {
@@ -135,7 +143,7 @@ export async function refreshCoreAssets(): Promise<{
   for (const asset of SEEDED_ASSETS) {
     const targetPath = join(homeDir, asset.relPath);
     if (existsSync(targetPath)) continue;
-    const freshContent = await downloadAsset(asset.githubFilename);
+    const freshContent = await downloadAsset(asset.githubFilename, ref);
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, freshContent);
     updated.push(asset.relPath);
