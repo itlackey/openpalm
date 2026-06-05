@@ -66,8 +66,7 @@
   /** Called when the trigger is clicked: lazy-load sessions on first open. */
   function handleTriggerClick(): void {
     // Lazy-load the session list on first open if not cached.
-    // isOpen is still false here (popover hasn't toggled yet).
-    if (!isOpen && active && !endpointState?.sessionsLoaded && !loading) {
+    if (active && !endpointState?.sessionsLoaded && !loading) {
       void chat.loadSessions();
     }
     // popovertarget on the button handles the toggle declaratively.
@@ -286,7 +285,7 @@
    * `position: fixed` places the element in the top layer (escapes all overflow
    * clipping natively, without JS).
    * `position-anchor` binds to the trigger's static --session-anchor anchor name.
-   * `position-area: bottom span-inline-start` aligns the menu's inline-start
+   * `position-area: block-end span-inline-start` aligns the menu's inline-start
    * edge to the trigger's inline-start edge, opening below.
    * `position-try-fallbacks: flip-block` flips above when no room below.
    *

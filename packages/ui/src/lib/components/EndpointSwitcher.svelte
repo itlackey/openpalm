@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   const menuId = 'endpoint-menu';
@@ -11,7 +12,9 @@
   const endpoints = $derived(endpointsService.endpoints);
   const hasChoices = $derived(endpoints.length > 1);
 
-  $effect(() => {
+  // Fire-and-forget one-shot load — onMount, not $effect (it's not state sync and
+  // has no reactive deps that should re-trigger it).
+  onMount(() => {
     void endpointsService.load();
   });
 
@@ -179,7 +182,7 @@
    * `position: fixed` places the element in the top layer (escapes all overflow
    * clipping natively, without JS).
    * `position-anchor` binds to the trigger's static --endpoint-anchor anchor name.
-   * `position-area: bottom span-inline-start` aligns the menu's inline-start
+   * `position-area: block-end span-inline-start` aligns the menu's inline-start
    * edge to the trigger's inline-start edge, opening below.
    * `position-try-fallbacks: flip-block` flips above when no room below.
    *

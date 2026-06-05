@@ -198,7 +198,7 @@
         <!-- Session picker -->
         <div class="drawer-section">
           <div class="section-label">Session</div>
-          <div class="control-row control-row--picker">
+          <div class="control-row">
             <SessionPicker />
           </div>
         </div>

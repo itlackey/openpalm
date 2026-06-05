@@ -19,9 +19,12 @@ import type { Page } from 'playwright';
 
 /** Read the dev login password from the OP_HOME file secret. */
 export function readDevLoginPassword(opHome?: string): string {
-  const home = opHome
-    ?? process.env.OP_HOME
-    ?? resolve(import.meta.dirname, '../../../../.dev');
+  // Repo root is four levels up from packages/ui/e2e/helpers.
+  const repoRoot = resolve(import.meta.dirname, '../../../..');
+  // OP_HOME is often relative (the dev env sets `.dev`); resolve it against the
+  // repo root, not the cwd, so this works regardless of where it's run from.
+  const raw = opHome ?? process.env.OP_HOME ?? '.dev';
+  const home = resolve(repoRoot, raw);
   const path = resolve(home, 'knowledge/secrets/op_ui_login_password');
   if (!existsSync(path)) {
     throw new Error(`login secret not found at ${path} — run scripts/dev-setup.sh --seed-env`);
