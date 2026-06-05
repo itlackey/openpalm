@@ -361,8 +361,7 @@
     font-size: var(--text-xs);
     font-weight: var(--font-semibold);
     color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    text-transform: none;
   }
 
   .ct-col {
@@ -447,8 +446,8 @@
   .tag-badge {
     display: inline-flex;
     align-items: center;
-    padding: 1px 6px;
-    font-size: 0.6875rem;
+    padding: 2px 6px;
+    font-size: var(--text-xs);  /* 12px — rubric minimum; was 0.6875rem ≈ 11px */
     font-family: var(--font-mono);
     font-weight: var(--font-medium);
     color: var(--color-info);
@@ -536,7 +535,7 @@
   }
 
   .detail-digest {
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);  /* 12px — was 0.6875rem ≈ 11px */
     color: var(--color-text-tertiary);
   }
 

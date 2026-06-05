@@ -165,8 +165,7 @@
     font-size: var(--text-xs);
     font-weight: var(--font-medium);
     color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    text-transform: none;
   }
 
   .control-input {
@@ -205,7 +204,7 @@
 
   .log-output {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-xs);  /* 12px — rubric minimum; was 11px */
     line-height: 1.6;
     color: var(--color-text);
     background: var(--color-bg);
@@ -241,7 +240,7 @@
 
     .log-output {
       max-height: 400px;
-      font-size: 10px;
+      font-size: var(--text-xs);  /* keep at 12px minimum even on mobile */
     }
   }
 

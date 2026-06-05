@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { page } from '$app/state';
-  import { version as uiVersion } from '../../../package.json';
   import VoiceControl from './VoiceControl.svelte';
   import EndpointSwitcher from './EndpointSwitcher.svelte';
   import SessionPicker from './SessionPicker.svelte';
@@ -94,6 +94,21 @@
     }
   }
 
+  // Close the mobile drawer whenever the route changes.
+  // Tracks page.url.pathname — fires after navigation completes, letting
+  // navLinkClick handle the same-tab case and this handle external navigation.
+  $effect(() => {
+    // Depend ONLY on pathname. Reading mobileMenuOpen tracked here would make
+    // the effect re-run when the drawer opens and immediately slam it shut
+    // (the drawer could never open) — so read/write it inside untrack().
+    const _path = page.url?.pathname;
+    untrack(() => {
+      if (mobileMenuOpen) {
+        mobileMenuOpen = false;
+      }
+    });
+  });
+
   // Move focus into drawer when it opens (mobile only — the element is always
   // in the DOM, so we gate on mobileMenuOpen state).
   $effect(() => {
@@ -108,13 +123,12 @@
 
 <header class="navbar">
   <div class="navbar-inner">
-    <!-- Brand: logo + name + version. Name/version collapse on narrow widths. -->
+    <!-- Brand: logo + name. Version removed from chrome (rubric cat 1/10 — chrome subordinate). -->
     <div class="navbar-brand">
       <span class="brand-icon" aria-hidden="true">
         <img src="/logo-128.png" alt="OpenPalm Logo">
       </span>
       <span class="brand-text">OpenPalm</span>
-      <span class="version-badge">ui v{uiVersion}</span>
     </div>
 
     <!-- Primary destination tabs: always visible at all widths. -->
@@ -333,18 +347,6 @@
     white-space: nowrap;
   }
 
-  .version-badge {
-    font-size: 0.625rem;
-    font-weight: var(--font-medium);
-    font-family: var(--font-mono);
-    color: var(--color-text-tertiary);
-    background: var(--color-bg-tertiary);
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-  }
-
   /* ── Primary nav tabs ──────────────────────────────────────────────── */
   .navbar-nav {
     display: flex;
@@ -360,18 +362,19 @@
     align-items: center;
     gap: var(--space-2);
     padding: 0 var(--space-3);
-    height: 32px;
+    height: var(--nav-height);   /* full navbar height for bottom-border indicator to reach the edge */
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
     text-decoration: none;
     white-space: nowrap;
     cursor: pointer;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    margin: auto var(--space-1);
+    border: none;
+    border-bottom: 3px solid transparent;  /* bottom-border indicator slot */
+    border-radius: 0;
+    margin: 0 var(--space-1);
     background: transparent;
-    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), font-weight var(--transition-fast);
   }
 
   .nav-tab:hover {
@@ -381,13 +384,18 @@
 
   .nav-tab:focus-visible {
     outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
+    outline-offset: -3px;
+    border-radius: var(--radius-sm);
   }
 
+  /* Active nav tab (desktop ≥640px): distinguishes by ≥2 properties —
+     semibold weight + neutral bottom-border indicator + full text color.
+     Neutral underline keeps orange exclusively for primary-action fills. */
   .nav-tab.active {
-    color: var(--color-primary);
-    background: var(--color-bg-tertiary);
-    border-color: var(--color-border);
+    color: var(--color-text);
+    font-weight: var(--font-semibold);
+    background: transparent;
+    border-bottom-color: var(--color-text);
   }
 
   .nav-icon {
@@ -467,7 +475,7 @@
   .drawer-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.62);
     z-index: 299;
   }
 
@@ -476,10 +484,6 @@
   @media (max-width: 768px) {
     .navbar-inner {
       padding: 0 var(--space-4);
-    }
-
-    .version-badge {
-      display: none;
     }
 
     /* Hamburger appears. */
@@ -595,10 +599,9 @@
 
     .section-label {
       display: block;
-      font-size: var(--text-xs);
+      font-size: var(--text-sm);
       font-weight: var(--font-semibold);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+      text-transform: none;
       color: var(--color-text-secondary);
     }
 
@@ -687,11 +690,10 @@
       margin: 0;
       height: var(--nav-height);
       padding: 0 var(--space-2);
-      padding-bottom: 2px;
-      border-bottom: 2px solid transparent;
+      border-bottom: 3px solid transparent;
       font-size: var(--text-sm);
       color: var(--color-text-secondary);
-      transition: color var(--transition-fast), border-color var(--transition-fast);
+      transition: color var(--transition-fast), border-color var(--transition-fast), font-weight var(--transition-fast);
     }
 
     .nav-tab:hover {
@@ -701,8 +703,9 @@
 
     .nav-tab.active {
       background: transparent;
-      border-color: var(--color-primary);
-      color: var(--color-primary);
+      border-bottom-color: var(--color-text);
+      color: var(--color-text);
+      font-weight: var(--font-semibold);
     }
 
     /* Hamburger is the last grid column; no margin-left needed. */

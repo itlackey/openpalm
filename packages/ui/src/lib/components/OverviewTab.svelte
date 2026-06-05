@@ -352,7 +352,7 @@
             />
           {/if}
           <button
-            class="btn btn-sm"
+            class="btn btn-sm btn-primary"
             onclick={() => { if (selectedImageTag.trim()) onSetImageTag(selectedImageTag.trim()); }}
             disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
           >
@@ -375,7 +375,7 @@
         </div>
         <div class="version-input-row">
           <button
-            class="btn btn-sm btn-warning"
+            class="btn btn-sm btn-secondary"
             onclick={onUpgradeStack}
             disabled={anyDangerousLoading || !tokenStored}
           >
@@ -467,14 +467,6 @@
   .health-summary--ok .health-dot { background: var(--color-success); }
   .health-summary--warning .health-dot { background: var(--color-warning); }
   .health-summary--unknown .health-dot { background: var(--color-border); }
-
-  /* btn-warning for Upgrade Stack */
-  .btn-warning {
-    background: var(--color-warning-bg);
-    color: var(--color-text);
-    border: 1px solid var(--color-warning);
-  }
-  .btn-warning:hover:not(:disabled) { background: var(--color-warning); }
 
   /* Status Cards */
   .status-row {
@@ -713,7 +705,7 @@
   }
 
   .action-hint {
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);  /* 12px — was 0.6875rem ≈ 11px */
     color: var(--color-text-tertiary);
     font-style: italic;
     margin-top: 2px;

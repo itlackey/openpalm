@@ -142,7 +142,7 @@
                 <div class="automation-name">
                   {automation.name}
                   <span class="badge" class:badge-enabled={automation.enabled} class:badge-disabled={!automation.enabled}>
-                    {automation.enabled ? 'enabled' : 'disabled'}
+                    {automation.enabled ? 'Enabled' : 'Disabled'}
                   </span>
                   <span class="badge badge-type">{automation.action.type}</span>
                 </div>
@@ -264,6 +264,7 @@
   .badge-type {
     background: var(--color-bg-tertiary);
     color: var(--color-text-secondary);
+    /* Inherits white-space:nowrap and font-size:12px from global .badge */
   }
 
   .automation-footer {

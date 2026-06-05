@@ -17,6 +17,17 @@
 
   type AddonEntry = { name: string; enabled: boolean; available: boolean };
 
+  // Human-readable label for a raw addon identifier (the raw name stays as a
+  // tooltip). Known acronyms keep their casing; everything else is Title Cased.
+  const ADDON_ACRONYMS: Record<string, string> = { api: 'API', ssh: 'SSH', ui: 'UI' };
+  function formatAddonName(name: string): string {
+    return name
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map((w) => ADDON_ACRONYMS[w.toLowerCase()] ?? w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+
   let addons = $state<AddonEntry[]>([]);
   let loading = $state(false);
   let error = $state('');
@@ -158,10 +169,10 @@
         </div>
         {#each addons as addon (addon.name)}
           <div class="addon-row">
-            <span class="addon-col addon-col--name addon-name">{addon.name}</span>
+            <span class="addon-col addon-col--name addon-name" title={addon.name}>{formatAddonName(addon.name)}</span>
             <span class="addon-col addon-col--status">
               <span class="badge" class:badge-enabled={addon.enabled} class:badge-disabled={!addon.enabled}>
-                {addon.enabled ? 'enabled' : 'disabled'}
+                {addon.enabled ? 'Enabled' : 'Disabled'}
               </span>
             </span>
             <span class="addon-col addon-col--actions">
@@ -246,8 +257,7 @@
     font-size: var(--text-xs);
     font-weight: var(--font-semibold);
     color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    text-transform: none;
   }
 
   .addon-row {
@@ -291,6 +301,18 @@
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
     color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  /* Narrow widths: let the row wrap so the name gets its own full-width line
+     instead of being squeezed (and ellipsis-clipped) by the action buttons. */
+  @media (max-width: 480px) {
+    .addon-row { flex-wrap: wrap; }
+    .addon-col--name { flex: 1 0 100%; }
+    .addon-col--actions { justify-content: flex-start; }
   }
 
   /* ── States ───────────────────────────────────────────────────── */
@@ -368,13 +390,15 @@
   }
 
   .creds-tag {
-    font-size: 10px;
-    padding: 1px 6px;
+    font-size: var(--text-xs);  /* 12px — rubric minimum */
+    padding: 2px 8px;
     border-radius: var(--radius-full);
     background: var(--color-bg-tertiary);
     color: var(--color-text-tertiary);
+    white-space: nowrap;
+    /* All-caps acceptable here: ≤12 chars, ≥0.05em tracking (rubric cat 3) */
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
   }
 
   .creds-tag--set {
