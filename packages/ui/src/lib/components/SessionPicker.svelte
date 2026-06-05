@@ -1,16 +1,21 @@
+<script module lang="ts">
+  // TRUE module scope: shared across all instances, so each instance gets a
+  // genuinely unique id even when two are mounted at once (desktop + mobile sheet).
+  // (A counter in the instance <script> would reset to 0 per mount and collide.)
+  let instanceCounter = 0;
+</script>
+
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
-  let open = $state(false);
+  const uid = ++instanceCounter;
+  const menuId = `session-menu-${uid}`;
+  const anchorName = `--session-anchor-${uid}`;
+
   let showAll = $state(false);
-  // The root container — used only for outside-click detection.
-  let containerEl: HTMLDivElement | undefined = $state();
-  // The trigger button — used to compute fixed-position menu coordinates.
-  let triggerEl: HTMLButtonElement | undefined = $state();
-  // Computed position for the fixed-position menu.
-  let menuStyle = $state('');
+  // Track popover open state for aria-expanded. Updated via the popover toggle event.
+  let isOpen = $state(false);
 
   const SESSION_LIST_CAP = 50;
 
@@ -45,39 +50,6 @@
   );
   const overflowCount = $derived(Math.max(0, sessions.length - SESSION_LIST_CAP));
 
-  /** Compute and cache the fixed-position style string from the trigger rect. */
-  function computeMenuStyle(): void {
-    if (!triggerEl) return;
-    const rect = triggerEl.getBoundingClientRect();
-    const menuWidth = Math.min(380, Math.max(300, window.innerWidth - 24));
-    const rightFromViewport = window.innerWidth - rect.right;
-    const clampedRight = Math.max(12, rightFromViewport);
-    menuStyle = `top:${rect.bottom + 6}px;right:${clampedRight}px;width:${menuWidth}px;`;
-  }
-
-  onMount(() => {
-    function onDocClick(ev: MouseEvent) {
-      if (!open) return;
-      const target = ev.target as Node | null;
-      if (containerEl && target && !containerEl.contains(target)) open = false;
-    }
-    function onResize() {
-      if (open) computeMenuStyle();
-    }
-    // NOTE: No document-level Escape handler here. Escape is handled by the
-    // sheet's handleSheetKeyDown (with stopPropagation) when inside the mobile
-    // sheet, and by the picker's own onKeyDown on the trigger/menu when on
-    // desktop. This prevents the double-close race (BLOCKER C).
-    document.addEventListener('mousedown', onDocClick);
-    window.addEventListener('resize', onResize, { passive: true });
-    window.addEventListener('scroll', onResize, { passive: true, capture: true });
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('scroll', onResize, { capture: true });
-    };
-  });
-
   /**
    * Tiny relative-time helper. No date-fns dep — that would be ~30 KB for
    * 4 cases.
@@ -100,47 +72,50 @@
     return `${Math.floor(day / 365)}y ago`;
   }
 
-  async function toggle(): Promise<void> {
-    if (!open) {
-      computeMenuStyle();
-      // Lazy-load the session list on first open if not cached.
-      if (active && !endpointState?.sessionsLoaded && !loading) {
-        void chat.loadSessions();
-      }
+  /** Called when the trigger is clicked: lazy-load sessions on first open. */
+  function handleTriggerClick(): void {
+    // Lazy-load the session list on first open if not cached.
+    // isOpen is still false here (popover hasn't toggled yet).
+    if (!isOpen && active && !endpointState?.sessionsLoaded && !loading) {
+      void chat.loadSessions();
     }
-    open = !open;
+    // popovertarget on the button handles the toggle declaratively.
   }
 
   async function pick(id: string): Promise<void> {
     if (chat.sending) return;
-    if (id === activeSessionId) {
-      open = false;
-      return;
-    }
-    open = false;
+    // popovertargetaction="hide" on the button closes the popover declaratively.
     await chat.openSession(id);
   }
 
   async function startNew(): Promise<void> {
     if (chat.sending) return;
-    open = false;
+    // popovertargetaction="hide" on the button closes the popover declaratively.
     await chat.startNewSession();
   }
 
   async function retry(): Promise<void> {
     await chat.loadSessions();
   }
+
+  /** Sync isOpen from the popover toggle event (fired by the browser). */
+  function onPopoverToggle(ev: Event): void {
+    const e = ev as ToggleEvent;
+    isOpen = e.newState === 'open';
+  }
 </script>
 
-<div class="picker" bind:this={containerEl}>
+<div class="picker">
   <button
     type="button"
     class="trigger"
-    bind:this={triggerEl}
-    onclick={toggle}
-    onkeydown={(ev) => { if (ev.key === 'Escape' && open) { ev.stopPropagation(); open = false; } }}
+    id="session-trigger-{uid}"
+    style="anchor-name: {anchorName}"
+    popovertarget={menuId}
+    onclick={handleTriggerClick}
     aria-haspopup="menu"
-    aria-expanded={open}
+    aria-expanded={isOpen}
+    aria-controls={menuId}
     aria-label="Sessions"
     title={triggerLabel}
   >
@@ -170,75 +145,89 @@
     <span class="caret" aria-hidden="true">▾</span>
   </button>
 
-  {#if open}
-    <div class="menu" role="menu" tabindex="-1" style={menuStyle} onkeydown={(ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); open = false; triggerEl?.focus(); } }}>
-      <div class="menu-header">
-        Sessions on {active?.label ?? 'this endpoint'}
-      </div>
-
-      {#if chat.sending}
-        <div class="notice">Wait for the current reply to finish before switching.</div>
-      {/if}
-
-      <button
-        type="button"
-        class="menu-item new-btn"
-        role="menuitem"
-        onclick={startNew}
-        disabled={chat.sending}
-      >
-        <span class="check" aria-hidden="true">+</span>
-        <span class="menu-item-text">
-          <span class="menu-item-label">New session</span>
-        </span>
-      </button>
-
-      <div class="menu-divider"></div>
-
-      {#if loading}
-        <div class="empty">
-          <span class="spinner" aria-hidden="true"></span>
-          <span>Loading sessions…</span>
-        </div>
-      {:else if error}
-        <div class="error">
-          <span>{error}</span>
-          <button type="button" class="retry-btn" onclick={retry}>Retry</button>
-        </div>
-      {:else if sessions.length === 0}
-        <div class="empty">No sessions yet. Start the first one.</div>
-      {:else}
-        <div class="session-list" role="none">
-          {#each visibleSessions as s (s.id)}
-            <button
-              type="button"
-              class="menu-item session-item"
-              class:active={s.id === activeSessionId}
-              role="menuitemradio"
-              aria-checked={s.id === activeSessionId}
-              onclick={() => pick(s.id)}
-              disabled={chat.sending}
-            >
-              <span class="check" aria-hidden="true">
-                {s.id === activeSessionId ? '●' : '○'}
-              </span>
-              <span class="menu-item-text">
-                <span class="menu-item-label">
-                  {s.title || 'Untitled'}
-                </span>
-                <span class="menu-item-meta">{formatRelative(s.updatedAt)}</span>
-              </span>
-            </button>
-          {/each}
-        </div>
-        {#if !showAll && overflowCount > 0}
-          <button type="button" class="show-all" onclick={() => (showAll = true)}>
-            Show all ({overflowCount} more)
-          </button>
-        {/if}
-      {/if}
+  <!--
+    popover="auto": browser provides Escape + light-dismiss (outside-click) for free.
+    Position is entirely CSS-driven via anchor positioning — no JS coordinates.
+    The element is always in the DOM (hidden via UA popover styles); {#if open} removed.
+  -->
+  <div
+    id={menuId}
+    class="menu"
+    popover="auto"
+    role="menu"
+    tabindex="-1"
+    ontoggle={onPopoverToggle}
+  >
+    <div class="menu-header">
+      Sessions on {active?.label ?? 'this endpoint'}
     </div>
-  {/if}
+
+    {#if chat.sending}
+      <div class="notice">Wait for the current reply to finish before switching.</div>
+    {/if}
+
+    <button
+      type="button"
+      class="menu-item new-btn"
+      role="menuitem"
+      popovertarget={menuId}
+      popovertargetaction="hide"
+      onclick={startNew}
+      disabled={chat.sending}
+    >
+      <span class="check" aria-hidden="true">+</span>
+      <span class="menu-item-text">
+        <span class="menu-item-label">New session</span>
+      </span>
+    </button>
+
+    <div class="menu-divider"></div>
+
+    {#if loading}
+      <div class="empty">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Loading sessions…</span>
+      </div>
+    {:else if error}
+      <div class="error">
+        <span>{error}</span>
+        <button type="button" class="retry-btn" onclick={retry}>Retry</button>
+      </div>
+    {:else if sessions.length === 0}
+      <div class="empty">No sessions yet. Start the first one.</div>
+    {:else}
+      <div class="session-list" role="none">
+        {#each visibleSessions as s (s.id)}
+          <button
+            type="button"
+            class="menu-item session-item"
+            class:active={s.id === activeSessionId}
+            role="menuitemradio"
+            aria-checked={s.id === activeSessionId}
+            popovertarget={menuId}
+            popovertargetaction="hide"
+            onclick={() => pick(s.id)}
+            disabled={chat.sending}
+          >
+            <span class="check" aria-hidden="true">
+              {s.id === activeSessionId ? '●' : '○'}
+            </span>
+            <span class="menu-item-text">
+              <span class="menu-item-label">
+                {s.title || 'Untitled'}
+              </span>
+              <span class="menu-item-meta">{formatRelative(s.updatedAt)}</span>
+            </span>
+          </button>
+        {/each}
+      </div>
+      {#if !showAll && overflowCount > 0}
+        <button type="button" class="show-all" onclick={() => (showAll = true)}>
+          Show all ({overflowCount} more)
+        </button>
+      {/if}
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -301,27 +290,44 @@
   }
 
   /*
-   * At ≤640px the trigger is only rendered inside the mobile sheet
-   * (full-width, overridden by Navbar.svelte's .mobile-control-row :global).
-   * No icon-only collapse needed at any header breakpoint.
-   */
-
-  /*
-   * position:fixed so the menu escapes ANY clipping scroll ancestor —
-   * including the mobile sheet body (overflow-y:auto makes overflow-x:auto
-   * too per CSS Overflow L3, clipping absolute children geometrically).
-   * Coordinates are JS-computed via computeMenuStyle() at open time and on
-   * resize/scroll, anchored to the trigger button's getBoundingClientRect().
-   * The inline style attribute carries top/right/width; z-index is here.
+   * Popover menu: positioned via CSS Anchor Positioning — no JS coordinates.
+   *
+   * `position: fixed` places the element in the top layer (escapes all overflow
+   * clipping — including the mobile sheet — natively, without JS).
+   * `position-anchor` binds to the trigger's --session-anchor-N anchor name.
+   * `position-area: bottom span-inline-start` aligns the menu's inline-start
+   * edge to the trigger's inline-start edge, opening below.
+   * `position-try-fallbacks: flip-block` flips above when no room below.
+   *
+   * Browsers that don't support anchor positioning (pre-Chrome 125 / pre-Safari 26 /
+   * pre-Firefox 147) see only `position: fixed` and the menu appears at the top-left
+   * of the viewport — still functional, still no clipping.
+   *
+   * z-index is unnecessary for top-layer elements but kept for pre-popover fallback
+   * browsers where the element may NOT enter the top layer.
    */
   .menu {
+    /* Reset UA popover margin/padding. */
+    margin: 0;
+    padding: var(--space-2);
+
     position: fixed;
-    z-index: 400;
+    /* Anchor positioning — progressive enhancement. */
+    position-anchor: v-bind(anchorName);
+    position-area: bottom span-inline-start;
+    margin-top: 6px;
+    position-try-fallbacks: flip-block;
+    /* Constrain width: at least 300px, at most 380px, capped by viewport. */
+    min-width: 300px;
+    max-width: min(380px, calc(100vw - 24px));
+
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 8px);
     box-shadow: var(--shadow-lg);
-    padding: var(--space-2);
+
+    /* Popover elements are hidden by default by the UA. No JS open/close. */
+    z-index: 400;
   }
 
   .menu-header {

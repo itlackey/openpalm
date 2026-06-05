@@ -73,19 +73,24 @@
   }
 
   // Focus trap: redirect Tab / Shift+Tab that would escape the sheet.
-  // Escape handling strategy (BLOCKER C fix):
-  //   - stopPropagation() ensures the sheet handler wins — child dropdowns
-  //     (EndpointSwitcher, SessionPicker) handle Escape on their own elements
-  //     first (bubbling up), closing only themselves. The event then reaches
-  //     this handler; if a dropdown was open it already closed itself, so a
-  //     second Escape is needed to close the sheet. If no dropdown was open,
-  //     this first Escape closes the sheet. Either way, only one layer closes
-  //     per keypress.
+  // Escape handling strategy (popover-API-aware):
+  //   - When a popover child (EndpointSwitcher, SessionPicker menu) is open,
+  //     the browser fires its own Escape handler to close the popover before
+  //     this keydown event fires (popovers are top-layer; their Escape is
+  //     processed at the UA level). By the time this handler runs the popover
+  //     is already hidden, but we still check for any remaining open popovers
+  //     inside the sheet. If one is open, we let the UA handle it and do NOT
+  //     also close the sheet — producing the two-step "1st Escape = close
+  //     dropdown, 2nd Escape = close sheet" UX.
   //   - stopPropagation() prevents any document-level Escape listeners from
   //     also firing (there are none currently, but this is defensive).
   function handleSheetKeyDown(ev: KeyboardEvent): void {
     if (!sheetEl) return;
     if (ev.key === 'Escape') {
+      // If any popover inside the sheet is still open, the browser will close
+      // it via its own native handler. Don't also close the sheet this press.
+      const openPopover = sheetEl.querySelector(':popover-open');
+      if (openPopover) return;
       ev.preventDefault();
       ev.stopPropagation();
       closeAndReturn();
@@ -473,9 +478,10 @@
 
   /* ── Mobile sheet ──────────────────────────────────────────────────── */
   /*
-   * EndpointSwitcher/SessionPicker render their dropdowns as position:fixed
-   * (JS-anchored to the trigger), so they escape any clipping ancestor and
-   * don't depend on overflow on the sheet. The body scrolls vertically.
+   * EndpointSwitcher/SessionPicker render their dropdowns with the native
+   * Popover API (top layer) + CSS anchor positioning, so they escape any
+   * clipping ancestor with zero JS and don't depend on overflow here. The
+   * sheet body scrolls vertically.
    */
   .mobile-sheet {
     position: fixed;

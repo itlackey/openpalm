@@ -1,62 +1,46 @@
+<script module lang="ts">
+  // TRUE module scope: shared across all instances, so each instance gets a
+  // genuinely unique id even when two are mounted at once (desktop + mobile sheet).
+  // (A counter in the instance <script> would reset to 0 per mount and collide.)
+  let instanceCounter = 0;
+</script>
+
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
-  let open = $state(false);
+  const uid = ++instanceCounter;
+  const menuId = `endpoint-menu-${uid}`;
+  const anchorName = `--endpoint-anchor-${uid}`;
+
   let switching = $state(false);
-  // The root container (used only for outside-click detection).
-  let containerEl: HTMLDivElement | undefined = $state();
-  // The trigger button — used to compute fixed-position menu coordinates.
-  let triggerEl: HTMLButtonElement | undefined = $state();
-  // Computed position for the fixed-position menu.
-  let menuStyle = $state('');
+  // Track popover open state for aria-expanded. Updated via the popover toggle event.
+  let isOpen = $state(false);
 
   const active = $derived(endpointsService.active);
   const endpoints = $derived(endpointsService.endpoints);
   const hasChoices = $derived(endpoints.length > 1);
 
-  /** Compute and cache the fixed-position style string from the trigger rect. */
-  function computeMenuStyle(): void {
-    if (!triggerEl) return;
-    const rect = triggerEl.getBoundingClientRect();
-    const menuWidth = Math.min(360, Math.max(280, window.innerWidth - 24));
-    // Prefer right-aligning to the trigger's right edge; clamp to viewport.
-    const rightFromViewport = window.innerWidth - rect.right;
-    const clampedRight = Math.max(12, rightFromViewport);
-    menuStyle = `top:${rect.bottom + 6}px;right:${clampedRight}px;width:${menuWidth}px;`;
-  }
-
-  onMount(() => {
+  $effect(() => {
     void endpointsService.load();
-
-    function onDocClick(ev: MouseEvent) {
-      if (!open) return;
-      const target = ev.target as Node | null;
-      if (containerEl && target && !containerEl.contains(target)) open = false;
-    }
-    function onResize() {
-      if (open) computeMenuStyle();
-    }
-    document.addEventListener('mousedown', onDocClick);
-    window.addEventListener('resize', onResize, { passive: true });
-    window.addEventListener('scroll', onResize, { passive: true, capture: true });
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('scroll', onResize, { capture: true });
-    };
   });
+
+  /** Called when the trigger is clicked. If no choices and not open, navigate directly. */
+  function handleTriggerClick(ev: MouseEvent): void {
+    if (!hasChoices) {
+      // No alternatives yet — go straight to the management page.
+      // Prevent the popovertarget from toggling (we're navigating away).
+      ev.preventDefault();
+      window.location.href = '/admin/endpoints';
+    }
+    // When hasChoices is true, popovertarget="menuId" handles toggle declaratively.
+  }
 
   async function activate(id: string): Promise<void> {
     if (switching) return;
-    if (id === active?.id) {
-      open = false;
-      return;
-    }
+    if (id === active?.id) return;
     switching = true;
     try {
       await endpointsService.activate(id);
-      open = false;
     } catch {
       // error surfaced via endpointsService.error
     } finally {
@@ -64,26 +48,24 @@
     }
   }
 
-  function toggle(): void {
-    if (!hasChoices && !open) {
-      // No alternatives yet — go straight to the management page
-      window.location.href = '/admin/endpoints';
-      return;
-    }
-    if (!open) computeMenuStyle();
-    open = !open;
+  /** Sync isOpen from the popover toggle event (fired by the browser). */
+  function onPopoverToggle(ev: Event): void {
+    const e = ev as ToggleEvent;
+    isOpen = e.newState === 'open';
   }
 </script>
 
-<div class="switcher" bind:this={containerEl}>
+<div class="switcher">
   <button
     type="button"
     class="trigger"
-    bind:this={triggerEl}
-    onclick={toggle}
-    onkeydown={(ev) => { if (ev.key === 'Escape' && open) { ev.stopPropagation(); open = false; } }}
+    id="endpoint-trigger-{uid}"
+    style="anchor-name: {anchorName}"
+    popovertarget={hasChoices ? menuId : undefined}
+    onclick={handleTriggerClick}
     aria-haspopup="menu"
-    aria-expanded={open}
+    aria-expanded={isOpen}
+    aria-controls={menuId}
     aria-label={active ? `Assistant endpoint: ${active.label}` : 'Assistant endpoints'}
     title={active ? `Connected to: ${active.label} (${active.url})` : 'Assistant endpoints'}
     disabled={switching || endpointsService.loading}
@@ -100,32 +82,48 @@
     <span class="caret" aria-hidden="true">▾</span>
   </button>
 
-  {#if open}
-    <div class="menu" role="menu" tabindex="-1" style={menuStyle} onkeydown={(ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); open = false; triggerEl?.focus(); } }}>
-      <div class="menu-header">Assistant endpoint</div>
-      {#each endpoints as ep (ep.id)}
-        <button
-          type="button"
-          class="menu-item"
-          class:active={ep.id === active?.id}
-          role="menuitemradio"
-          aria-checked={ep.id === active?.id}
-          onclick={() => activate(ep.id)}
-          disabled={switching}
-        >
-          <span class="check" aria-hidden="true">{ep.id === active?.id ? '●' : '○'}</span>
-          <span class="menu-item-text">
-            <span class="menu-item-label">{ep.label}</span>
-            <span class="menu-item-url">{ep.url}</span>
-          </span>
-        </button>
-      {/each}
-      <div class="menu-divider"></div>
-      <a class="menu-item link" href="/admin/endpoints" onclick={() => (open = false)} role="menuitem">
-        Manage endpoints…
-      </a>
-    </div>
-  {/if}
+  <!--
+    popover="auto": browser provides Escape + light-dismiss (outside-click) for free.
+    Position is entirely CSS-driven via anchor positioning — no JS coordinates.
+    The element is always in the DOM (hidden via UA popover styles); {#if open} removed.
+  -->
+  <div
+    id={menuId}
+    class="menu"
+    popover="auto"
+    role="menu"
+    tabindex="-1"
+    ontoggle={onPopoverToggle}
+  >
+    <div class="menu-header">Assistant endpoint</div>
+    {#each endpoints as ep (ep.id)}
+      <button
+        type="button"
+        class="menu-item"
+        class:active={ep.id === active?.id}
+        role="menuitemradio"
+        aria-checked={ep.id === active?.id}
+        popovertarget={menuId}
+        popovertargetaction="hide"
+        onclick={() => activate(ep.id)}
+        disabled={switching}
+      >
+        <span class="check" aria-hidden="true">{ep.id === active?.id ? '●' : '○'}</span>
+        <span class="menu-item-text">
+          <span class="menu-item-label">{ep.label}</span>
+          <span class="menu-item-url">{ep.url}</span>
+        </span>
+      </button>
+    {/each}
+    <div class="menu-divider"></div>
+    <a
+      class="menu-item link"
+      href="/admin/endpoints"
+      role="menuitem"
+    >
+      Manage endpoints…
+    </a>
+  </div>
 </div>
 
 <style>
@@ -184,27 +182,44 @@
   }
 
   /*
-   * At ≤640px the trigger is only rendered inside the mobile sheet
-   * (full-width, overridden by Navbar.svelte's .mobile-control-row :global).
-   * No icon-only collapse needed at any header breakpoint.
-   */
-
-  /*
-   * position:fixed so the menu escapes ANY clipping scroll ancestor —
-   * including the mobile sheet body (overflow-y:auto makes overflow-x:auto
-   * too per CSS Overflow L3, clipping absolute children geometrically).
-   * Coordinates are JS-computed via computeMenuStyle() at open time and on
-   * resize/scroll, anchored to the trigger button's getBoundingClientRect().
-   * The inline style attribute carries top/right/width; z-index is here.
+   * Popover menu: positioned via CSS Anchor Positioning — no JS coordinates.
+   *
+   * `position: fixed` places the element in the top layer (escapes all overflow
+   * clipping — including the mobile sheet — natively, without JS).
+   * `position-anchor` binds to the trigger's --endpoint-anchor-N anchor name.
+   * `position-area: bottom span-inline-start` aligns the menu's inline-start
+   * edge to the trigger's inline-start edge, opening below.
+   * `position-try-fallbacks: flip-block` flips above when no room below.
+   *
+   * Browsers that don't support anchor positioning (pre-Chrome 125 / pre-Safari 26 /
+   * pre-Firefox 147) see only `position: fixed` and the menu appears at the top-left
+   * of the viewport — still functional, still no clipping.
+   *
+   * z-index is unnecessary for top-layer elements but kept for pre-popover fallback
+   * browsers where the element may NOT enter the top layer.
    */
   .menu {
+    /* Reset UA popover margin/padding. */
+    margin: 0;
+    padding: var(--space-2);
+
     position: fixed;
-    z-index: 400;
+    /* Anchor positioning — progressive enhancement. */
+    position-anchor: v-bind(anchorName);
+    position-area: bottom span-inline-start;
+    margin-top: 6px;
+    position-try-fallbacks: flip-block;
+    /* Constrain width: at least 280px, at most 360px, capped by viewport. */
+    min-width: 280px;
+    max-width: min(360px, calc(100vw - 24px));
+
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md, 8px);
     box-shadow: var(--shadow-lg);
-    padding: var(--space-2);
+
+    /* Popover elements are hidden by default by the UA. No JS open/close. */
+    z-index: 400;
   }
 
   .menu-header {
