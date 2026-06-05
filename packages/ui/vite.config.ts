@@ -90,7 +90,10 @@ export default defineConfig(({ mode }) => {
             name: "server",
             environment: "node",
             include: ["src/**/*.vitest.{js,ts}"],
-            exclude: ["src/**/*.svelte.vitest.{js,ts}"]
+            exclude: ["src/**/*.svelte.vitest.{js,ts}"],
+            // Force a throwaway OP_HOME for every server test run.
+            // See src/test-setup-isolation.ts for tripwire logic.
+            setupFiles: ["./src/test-setup-isolation.ts"]
           }
         }
       ]

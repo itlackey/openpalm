@@ -1,0 +1,9 @@
+# Bun workspace configuration.
+# The [test] preload below applies to every `bun test` invocation in this repo
+# (root-level and --cwd <package> alike, because Bun walks up to find bunfig.toml).
+
+[test]
+# Force a throwaway OP_HOME for every bun test run so tests can never
+# accidentally touch ~/.openpalm or the repo's .dev directory.
+# See scripts/test-isolate-op-home.ts for the tripwire logic.
+preload = ["./scripts/test-isolate-op-home.ts"]
