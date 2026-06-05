@@ -900,7 +900,7 @@
 							{/if}
 							<div class="control-group control-group--wide host-akm-actions">
 								<button
-									class="btn {hostSharing.sharing.enabled ? 'btn-secondary' : 'btn-primary'} btn-sm"
+									class="btn btn-secondary btn-sm"
 									onclick={() => void toggleHostSharing()}
 									disabled={hostBusy || !tokenStored}>
 									{#if hostBusy}<span class="spinner"></span>{/if}
@@ -1205,7 +1205,7 @@
 
 	.section-title {
 		font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text);
-		text-transform: uppercase; letter-spacing: 0.05em; margin: 0;
+		margin: 0;
 		padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);
 	}
 
@@ -1257,7 +1257,7 @@
 	.controls--grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: var(--space-4); }
 	.control-group { display: flex; flex-direction: column; gap: var(--space-1); }
 	.control-group--wide { grid-column: 1 / -1; }
-	.control-label { font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+	.control-label { font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-secondary); }
 	.control-input {
 		font-size: var(--text-sm); color: var(--color-text);
 		background: var(--color-input-bg, var(--color-bg)); border: 1px solid var(--color-border);
@@ -1292,6 +1292,10 @@
 	.proc-list { display: flex; flex-direction: column; gap: var(--space-2); }
 	.proc-card { border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-secondary); padding: var(--space-2); }
 	.proc-head { display: grid; grid-template-columns: 1.5rem 1fr 9rem 11rem 7rem; align-items: center; gap: var(--space-2); }
+	@media (max-width: 600px) {
+		.proc-head { grid-template-columns: 1.5rem 1fr; }
+		.proc-head > :nth-child(n+3) { grid-column: 1 / -1; }
+	}
 	.proc-head input[type="checkbox"] { width: 1rem; height: 1rem; }
 	.proc-name { min-width: 0; }
 	.proc-adv { margin-top: var(--space-2); }

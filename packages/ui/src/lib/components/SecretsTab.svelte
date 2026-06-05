@@ -18,6 +18,7 @@
 
   // New-file form.
   let newName = $state('');
+  let newNameInput: HTMLInputElement | undefined = $state();
 
   function fmtSize(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -145,7 +146,7 @@
       {/each}
 
       <div class="new-secret">
-        <input class="control-input" type="text" spellcheck="false" placeholder="new-file-name" bind:value={newName} disabled={busy} />
+        <input class="control-input" type="text" spellcheck="false" placeholder="new-file-name" bind:value={newName} bind:this={newNameInput} disabled={busy} />
         <button class="btn btn-secondary btn-sm" onclick={() => void createNew()} disabled={busy || !newName.trim()}>Add</button>
       </div>
     </div>
@@ -171,7 +172,14 @@
           </button>
         </div>
       {:else}
-        <p class="empty-note">Select a file to view or edit its contents.</p>
+        <div class="editor-empty">
+          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <p>Select a file to view or edit its contents.</p>
+          <button class="btn btn-secondary btn-sm" onclick={() => newNameInput?.focus()}>New secret</button>
+        </div>
       {/if}
     </div>
   </div>
@@ -186,6 +194,7 @@
 
   .secrets-layout { display: grid; grid-template-columns: minmax(16rem, 22rem) 1fr; gap: var(--space-4); align-items: start; }
   @media (max-width: 720px) { .secrets-layout { grid-template-columns: 1fr; } }
+  .new-secret { flex-wrap: wrap; }
 
   .secrets-list { display: flex; flex-direction: column; gap: var(--space-1); }
   .secret-row { display: flex; align-items: center; gap: var(--space-1); }
@@ -206,4 +215,13 @@
   .editor-area { width: 100%; font-family: var(--font-mono); font-size: var(--text-sm); resize: vertical; }
   .editor-area.masked { -webkit-text-security: disc; }
   .editor-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+  .editor-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: var(--space-3); padding: var(--space-8) var(--space-4);
+    color: var(--color-text-secondary); text-align: center;
+    border: 1px dashed var(--color-border); border-radius: var(--radius-md);
+    min-height: 12rem;
+  }
+  .editor-empty svg { opacity: 0.4; }
+  .editor-empty p { font-size: var(--text-sm); margin: 0; max-width: 24rem; }
 </style>

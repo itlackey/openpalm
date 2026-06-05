@@ -606,7 +606,7 @@
 	.panel-body { display: flex; flex-direction: column; gap: var(--space-6); }
 	.section-desc { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
 	.engine-section { display: flex; flex-direction: column; gap: var(--space-3); }
-	.engine-heading { font-size: var(--text-sm); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text); margin: 0; }
+	.engine-heading { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; }
 	.engine-subheading { font-size: var(--text-xs); color: var(--color-text-secondary); margin: 0; }
 
 	.tts-extras {

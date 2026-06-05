@@ -320,9 +320,8 @@
   .menu-header {
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-xs);
+    font-weight: var(--font-medium);
     color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
   .menu-item {
