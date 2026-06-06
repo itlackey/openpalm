@@ -906,6 +906,84 @@ body.chat-locked {
   color: var(--color-badge-neutral-fg);
 }
 
+/* ── Shared Utility: Tag badge (image tag / digest) ────────────────
+   Used by ContainerRow + ContainerDetail. Global so the row badge and the
+   detail badge can never drift between two scoped copies. */
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  font-size: var(--text-xs);   /* 12px — rubric minimum */
+  font-family: var(--font-mono);
+  font-weight: var(--font-medium);
+  color: var(--color-info);
+  background: var(--color-info-bg);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.tag-badge--lg {
+  padding: 2px 8px;
+}
+
+/* ── Shared Layout: Container table columns ────────────────────────
+   Used by the ContainersTab header row + ContainerRow data rows. Global so
+   the header and rows can never drift — they must keep identical flex ratios
+   (2/3/1/1/0 0 24px) and breakpoint behavior or columns misalign. */
+.ct-col {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ct-col--name {
+  flex: 2;
+  min-width: 0;
+}
+
+.ct-col--image {
+  flex: 3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ct-col--tag {
+  flex: 1;
+  min-width: 0;
+}
+
+.ct-col--status {
+  flex: 1;
+  min-width: 0;
+}
+
+.ct-col--actions {
+  flex: 0 0 24px;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+}
+
+@media (max-width: 768px) {
+  .ct-col--name {
+    flex: 1 1 auto;
+  }
+
+  .ct-col--image,
+  .ct-col--tag {
+    display: none;
+  }
+
+  .ct-col--status {
+    flex: 0 0 auto;
+  }
+
+  .ct-col--actions {
+    flex: 0 0 20px;
+  }
+}
+
 /* ── Prose measure cap ─────────────────────────────────────────────
    Descriptive/help paragraphs must not run the full panel width — past ~85ch
    reading comfort collapses (Bringhurst; rubric F2). Cap the common admin
