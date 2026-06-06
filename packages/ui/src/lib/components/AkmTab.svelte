@@ -183,6 +183,9 @@
 	let fbFailureModes = $state('');        // feedback.allowedFailureModes (comma-separated)
 	let indexJson = $state('');             // index (raw JSON — complex per-pass schema)
 
+	// ── Knowledge subtab ─────────────────────────────────────────────────────────
+	let knowledgeSection = $state<'profiles' | 'embedding' | 'behavior' | 'sharing'>('profiles');
+
 	// ── Drawer ────────────────────────────────────────────────────────────────────
 	type DrawerType = 'llm' | 'agent' | 'improve' | null;
 	let drawerType = $state<DrawerType>(null);
@@ -621,16 +624,55 @@
 				{#if loading}<span class="spinner"></span>{/if}
 				Refresh
 			</button>
-			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
-				{#if saving}<span class="spinner"></span>{/if}
-				Save
-			</button>
+			{#if knowledgeSection !== 'sharing'}
+				<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
+					{#if saving}<span class="spinner"></span>{/if}
+					Save
+				</button>
+			{/if}
 		</div>
 	</div>
 
 	{#if error}<div class="error-banner"><span>{error}</span></div>{/if}
 
 	<div class="panel-body">
+
+		<!-- ── Knowledge subtab strip ────────────────────────────────────── -->
+		<div class="k-tabs" role="tablist" aria-label="Knowledge sections">
+			<button
+				role="tab"
+				class="k-tab"
+				class:k-tab--active={knowledgeSection === 'profiles'}
+				aria-selected={knowledgeSection === 'profiles'}
+				onclick={() => { knowledgeSection = 'profiles'; }}
+			>Profiles</button>
+			<button
+				role="tab"
+				class="k-tab"
+				class:k-tab--active={knowledgeSection === 'embedding'}
+				aria-selected={knowledgeSection === 'embedding'}
+				onclick={() => { knowledgeSection = 'embedding'; }}
+			>Embedding</button>
+			<button
+				role="tab"
+				class="k-tab"
+				class:k-tab--active={knowledgeSection === 'behavior'}
+				aria-selected={knowledgeSection === 'behavior'}
+				onclick={() => { knowledgeSection = 'behavior'; }}
+			>Behavior</button>
+			{#if hostSharing !== null}
+				<button
+					role="tab"
+					class="k-tab"
+					class:k-tab--active={knowledgeSection === 'sharing'}
+					aria-selected={knowledgeSection === 'sharing'}
+					onclick={() => { knowledgeSection = 'sharing'; }}
+				>Host Sharing</button>
+			{/if}
+		</div>
+
+		<!-- ── Profiles group ─────────────────────────────────────────────── -->
+		{#if knowledgeSection === 'profiles'}
 
 		<!-- ── LLM Profiles ──────────────────────────────────────────────── -->
 		<section class="config-section">
@@ -732,6 +774,11 @@
 			</button>
 		</section>
 
+		{/if}<!-- end profiles group -->
+
+		<!-- ── Embedding group ───────────────────────────────────────────── -->
+		{#if knowledgeSection === 'embedding'}
+
 		<!-- ── Embedding Connection ──────────────────────────────────────── -->
 		<section class="config-section">
 			<h3 class="section-title">Embedding Connection</h3>
@@ -784,6 +831,11 @@
 				</div>
 			</div>
 		</section>
+
+		{/if}<!-- end embedding group -->
+
+		<!-- ── Behavior group ────────────────────────────────────────────── -->
+		{#if knowledgeSection === 'behavior'}
 
 		<!-- ── Behavior ──────────────────────────────────────────────────── -->
 		<section class="config-section">
@@ -860,6 +912,11 @@
 				</div>
 			</section>
 
+		{/if}<!-- end behavior group -->
+
+		<!-- ── Host Sharing group ────────────────────────────────────────── -->
+		{#if knowledgeSection === 'sharing' && hostSharing !== null}
+
 			<!-- ── Host AKM Sharing ──────────────────────────────────────────── -->
 			{#if hostSharing}
 				<section class="config-section">
@@ -919,6 +976,8 @@
 					{/if}
 				</section>
 			{/if}
+
+		{/if}<!-- end sharing group -->
 
 	</div>
 
@@ -1187,6 +1246,56 @@
 </div>
 
 <style>
+	/* ── Knowledge subtab strip ─────────────────────────────────────────────── */
+	.k-tabs {
+		display: flex;
+		/* Single row: grow to fill evenly when there's room (desktop), scroll
+		   horizontally when there isn't (320px) — never wrap into an asymmetric
+		   grid that orphans the last item. */
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		scrollbar-width: none;
+		gap: var(--space-1);
+		padding: var(--space-1);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		margin-bottom: var(--space-2);
+	}
+	.k-tabs::-webkit-scrollbar { display: none; }
+	.k-tab {
+		flex: 1 0 auto;
+		min-height: 2.75rem; /* 44px target */
+		padding: var(--space-2) var(--space-3);
+		font-size: var(--text-sm);
+		font-weight: var(--font-normal, 400);
+		color: var(--color-text-secondary);
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background 150ms, color 150ms;
+	}
+	.k-tab:hover {
+		background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+		color: var(--color-text);
+	}
+	.k-tab:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
+	}
+	.k-tab--active {
+		background: var(--color-bg);
+		border-color: var(--color-border);
+		color: var(--color-text);
+		font-weight: var(--font-semibold);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	}
+	@media (max-width: 400px) {
+		.k-tab { font-size: var(--text-xs); padding: var(--space-2); }
+	}
+
 	.panel-header {
 		display: flex; align-items: center; justify-content: space-between;
 		margin-bottom: var(--space-6);
