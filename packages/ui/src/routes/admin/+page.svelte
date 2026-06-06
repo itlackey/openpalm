@@ -535,6 +535,7 @@
     {:else if activeTab === 'addons'}
       <AddonsTab
         onAuthError={handleComponentsAuthError}
+        onNavigate={handleTabSelect}
       />
     {:else if activeTab === 'containers'}
       <ContainersTab

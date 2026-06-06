@@ -8,12 +8,14 @@
     type AddonCredentialField,
   } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import { type TabId } from '$lib/components/TabBar.svelte';
 
   interface Props {
     onAuthError: () => void;
+    onNavigate?: (tab: TabId) => void;
   }
 
-  let { onAuthError }: Props = $props();
+  let { onAuthError, onNavigate }: Props = $props();
 
   type AddonEntry = { name: string; enabled: boolean; available: boolean };
 
@@ -176,14 +178,24 @@
               </span>
             </span>
             <span class="addon-col addon-col--actions">
-              <button
-                class="btn btn-sm btn-ghost"
-                onclick={() => void toggleExpanded(addon.name)}
-                disabled={!addon.available}
-                aria-expanded={expanded === addon.name}
-              >
-                {expanded === addon.name ? 'Hide' : 'Credentials'}
-              </button>
+              {#if addon.name === 'voice' && addon.enabled}
+                <button
+                  class="btn btn-sm btn-secondary"
+                  aria-label="Configure Voice addon settings"
+                  onclick={() => onNavigate?.('voice')}
+                >
+                  Configure
+                </button>
+              {:else}
+                <button
+                  class="btn btn-sm btn-ghost"
+                  onclick={() => void toggleExpanded(addon.name)}
+                  disabled={!addon.available}
+                  aria-expanded={expanded === addon.name}
+                >
+                  {expanded === addon.name ? 'Hide' : 'Credentials'}
+                </button>
+              {/if}
               <button
                 class="btn btn-sm"
                 class:btn-danger={addon.enabled}
