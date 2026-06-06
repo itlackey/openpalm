@@ -90,11 +90,18 @@ docker version && docker compose version
 ### 4. Move (or re-create) secrets and env files
 
 > **Shortcut — the helper script does steps 4–6 for you.** From a checkout (or
-> `curl` it from the release tag), run:
+> `curl` it from the release tag):
 >
 > ```bash
+> # Linux / macOS
 > scripts/migrate-0.10-to-0.11.sh --dry-run   # preview, writes nothing
 > scripts/migrate-0.10-to-0.11.sh             # backs up first, then migrates
+> ```
+>
+> ```powershell
+> # Windows (PowerShell 7+)
+> ./scripts/migrate-0.10-to-0.11.ps1 -DryRun
+> ./scripts/migrate-0.10-to-0.11.ps1
 > ```
 >
 > It takes a full backup first, then **copies** (never deletes) your `vault/`
