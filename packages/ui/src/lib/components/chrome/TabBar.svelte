@@ -29,9 +29,11 @@
 	interface Props {
 		active: TabId;
 		onSelect: (tab: TabId) => void;
+		/** Running @openpalm/ui version, shown as a badge at the end of the bar. */
+		uiVersion?: string;
 	}
 
-	let { active, onSelect }: Props = $props();
+	let { active, onSelect, uiVersion }: Props = $props();
 
 	// Icon SVG inner-markup keyed by tab id. Exact SVGs from the original flat strip.
 	const ICONS: Record<TabId, string> = {
@@ -137,19 +139,24 @@
 
 <!-- Section strip (top level) -->
 <nav class="nav-shell" aria-label="Admin sections">
-	<div class="section-strip" role="tablist" aria-label="Sections">
-		{#each SECTIONS as section (section.id)}
-			<button
-				class="section-tab"
-				role="tab"
-				aria-selected={activeSection.id === section.id}
-				class:section-tab-active={activeSection.id === section.id}
-				onclick={() => handleSectionClick(section)}
-				onkeydown={handleSectionKeydown}
-			>
-				{section.label}
-			</button>
-		{/each}
+	<div class="section-bar">
+		<div class="section-strip" role="tablist" aria-label="Sections">
+			{#each SECTIONS as section (section.id)}
+				<button
+					class="section-tab"
+					role="tab"
+					aria-selected={activeSection.id === section.id}
+					class:section-tab-active={activeSection.id === section.id}
+					onclick={() => handleSectionClick(section)}
+					onkeydown={handleSectionKeydown}
+				>
+					{section.label}
+				</button>
+			{/each}
+		</div>
+		{#if uiVersion}
+			<span class="version-badge" title="OpenPalm UI version">UI v{uiVersion}</span>
+		{/if}
 	</div>
 
 	<!-- Subtab strip (secondary level). Hidden when the section has a single
@@ -200,18 +207,40 @@
 		   admin <main> supplies the gap before content via its top padding. */
 	}
 
+	/* ── Section bar: the scrollable section strip + a trailing version badge.
+	   The bottom border + background live here so they span the full width,
+	   including under the badge. ── */
+	.section-bar {
+		display: flex;
+		align-items: stretch;
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-bg);
+	}
+
 	/* ── Section strip (top level) ── */
 	.section-strip {
 		display: flex;
 		gap: 0;
+		flex: 1 1 auto;
+		min-width: 0;
 		/* Indent the full-width strip so the first tab aligns with the page
 		   content's left padding instead of jamming against the viewport edge. */
 		padding-inline: var(--space-6);
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-bg);
+	}
+
+	/* Trailing UI-version badge, right-aligned in the section bar. */
+	.version-badge {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		padding-inline: var(--space-3) var(--space-6);
+		font-size: var(--text-xs);
+		font-family: var(--font-mono);
+		color: var(--color-text-tertiary);
+		white-space: nowrap;
 	}
 
 	.section-strip::-webkit-scrollbar {
@@ -363,6 +392,16 @@
 		.section-strip,
 		.tabs {
 			padding-inline: var(--space-4);
+		}
+		.version-badge {
+			padding-inline: var(--space-2) var(--space-4);
+		}
+	}
+
+	/* Reclaim horizontal room for the tab strip on phones. */
+	@media (max-width: 480px) {
+		.version-badge {
+			display: none;
 		}
 	}
 

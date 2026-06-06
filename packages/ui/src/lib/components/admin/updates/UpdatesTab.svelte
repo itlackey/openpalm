@@ -23,6 +23,7 @@
     onSelectedUiTagChange: (tag: string) => void;
     onDownloadUiVersion: (tag: string) => void;
     onRestartApp: () => void;
+    onRefreshReleases: () => void;
   }
 
   let {
@@ -46,6 +47,7 @@
     onSelectedUiTagChange,
     onDownloadUiVersion,
     onRestartApp,
+    onRefreshReleases,
   }: Props = $props();
 
   function uiVersionLabel(v: UiVersionEntry): string {
@@ -62,6 +64,22 @@
       <h2>Updates</h2>
       <p class="panel-subtitle">Pull new stack images, upgrade to the latest release, and update the UI.</p>
     </div>
+    <button
+      class="btn btn-sm btn-secondary refresh-releases"
+      onclick={onRefreshReleases}
+      disabled={releasesLoading || uiVersionsLoading}
+      title="Re-fetch the release list from GitHub and npm"
+    >
+      {#if releasesLoading || uiVersionsLoading}
+        <Spinner /> Refreshing…
+      {:else}
+        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        Refresh releases
+      {/if}
+    </button>
   </div>
   <div class="panel-body">
 
@@ -196,6 +214,16 @@
     font-size: var(--text-sm);
     color: var(--color-text-secondary);
     margin: var(--space-1) 0 0;
+  }
+
+  .refresh-releases {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+  .refresh-releases svg {
+    flex-shrink: 0;
   }
 
   .version-section {

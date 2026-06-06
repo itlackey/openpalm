@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { version as uiVersion } from '$app/environment';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import AuthGate from '$lib/components/common/AuthGate.svelte';
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
@@ -498,7 +499,7 @@
 {:else}
   <Navbar />
 
-  <TabBar active={activeTab} onSelect={handleTabSelect} />
+  <TabBar active={activeTab} onSelect={handleTabSelect} {uiVersion} />
 
   <main>
     {#if activeTab === 'overview'}
@@ -539,6 +540,7 @@
         onSelectedUiTagChange={(t) => { selectedUiTag = t; }}
         onDownloadUiVersion={handleDownloadUiVersion}
         onRestartApp={handleRestartApp}
+        onRefreshReleases={loadReleases}
       />
     {:else if activeTab === 'addons'}
       <AddonsTab
