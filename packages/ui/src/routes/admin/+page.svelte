@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import Navbar from '$lib/components/Navbar.svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
-  import TabBar from '$lib/components/TabBar.svelte';
+  import TabBar, { type TabId } from '$lib/components/TabBar.svelte';
   import OverviewTab from '$lib/components/OverviewTab.svelte';
   import AddonsTab from '$lib/components/AddonsTab.svelte';
   import ContainersTab from '$lib/components/ContainersTab.svelte';
@@ -59,7 +59,7 @@
   let selectedContainerId: string | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'addons' | 'automations' | 'connections' | 'secrets' | 'voice' | 'akm' | 'containers' | 'logs' = $state('overview');
+  let activeTab: TabId = $state('overview');
   let pullLoading = $state(false);
 
   // ── Version management ──────────────────────────────────────────────────────
