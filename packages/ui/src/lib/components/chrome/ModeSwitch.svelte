@@ -1,78 +1,76 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
 
-  // Chat ↔ Advanced mode toggle. Page-contextual (chat surface only), so it
-  // lives in the chat content rather than the global navbar — that keeps the
-  // global assistant/session/voice controls in the navbar from being crowded
-  // off at narrow widths.
+  // Single "Advanced" toggle for the chat surface: off on /chat, on (pressed)
+  // on /advanced. Clicking flips between the two. Lives in the global navbar.
   const pathname = $derived(page.url?.pathname ?? '');
-  const onChat = $derived(pathname === '/chat' || pathname.startsWith('/chat/'));
   const onAdvanced = $derived(pathname === '/advanced' || pathname.startsWith('/advanced/'));
+
+  function toggle(): void {
+    void goto(onAdvanced ? '/chat' : '/advanced');
+  }
 </script>
 
-<nav class="mode-switch" aria-label="Chat mode">
-  <a href="/chat" class="mode-tab" class:active={onChat} aria-current={onChat ? 'page' : undefined} aria-label="Chat" title="Chat">
-    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-    <span>Chat</span>
-  </a>
-  <a href="/advanced" class="mode-tab" class:active={onAdvanced} aria-current={onAdvanced ? 'page' : undefined} aria-label="Advanced" title="Advanced">
-    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="m7 9 3 3-3 3" /><line x1="13" y1="15" x2="17" y2="15" />
-    </svg>
-    <span>Advanced</span>
-  </a>
-</nav>
+<button
+  type="button"
+  class="advanced-toggle"
+  class:active={onAdvanced}
+  aria-pressed={onAdvanced}
+  onclick={toggle}
+  title="Advanced mode (embedded OpenCode)"
+  aria-label="Advanced mode"
+>
+  <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="m7 9 3 3-3 3" /><line x1="13" y1="15" x2="17" y2="15" />
+  </svg>
+  <span>Advanced</span>
+</button>
 
 <style>
-  /* Subtle, low-chrome toggle — no bordered/filled container, so it reads as a
-     quiet switch rather than a prominent control. */
-  .mode-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    flex-shrink: 0;
-  }
-  .mode-tab {
+  .advanced-toggle {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
     height: 30px;
     padding: 0 var(--space-2);
+    border: 1px solid transparent;
     border-radius: var(--radius-sm);
+    background: none;
     color: var(--color-text-secondary);
+    font-family: var(--font-sans);
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
-    text-decoration: none;
     white-space: nowrap;
-    transition: color var(--transition-fast), background var(--transition-fast);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
   }
-  .mode-tab:hover {
+  .advanced-toggle:hover {
     color: var(--color-text);
     background: var(--color-surface-hover);
   }
-  .mode-tab:focus-visible {
+  .advanced-toggle:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 1px;
   }
-  /* Active = full text + a faint tint, no border/shadow. */
-  .mode-tab.active {
+  /* Pressed = advanced mode is active. */
+  .advanced-toggle.active {
     color: var(--color-text);
     font-weight: var(--font-semibold);
-    background: var(--color-surface-hover);
+    background: var(--color-surface);
+    border-color: var(--color-border);
   }
-  .mode-tab svg {
+  .advanced-toggle svg {
     flex-shrink: 0;
   }
 
-  /* On narrow screens drop the labels so the global controls on the right stay
-     visible; the icons keep their accessible names via aria-label/title. */
+  /* Icon-only on narrow screens; the accessible name stays via aria-label/title. */
   @media (max-width: 640px) {
-    .mode-tab span {
+    .advanced-toggle span {
       display: none;
     }
-    .mode-tab {
+    .advanced-toggle {
       padding: 0 var(--space-1);
     }
   }

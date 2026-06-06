@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
+  import { goto } from '$app/navigation';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import AuthGate from '$lib/components/common/AuthGate.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
-  import ChatToolbar from '$lib/components/chat/ChatToolbar.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';
@@ -142,6 +143,12 @@
         // the most recent session.
         await endpointsService.load();
         await chat.onEndpointChanged(endpointsService.activeId);
+        // Honour the global navbar's "new chat" handshake (?new=1) once the
+        // endpoint + sessions are loaded, then drop the param from the URL.
+        if (page.url.searchParams.get('new') === '1') {
+          await chat.startNewSession();
+          await goto('/chat', { replaceState: true });
+        }
       } catch {
         authLocked = true;
         authError = 'Unable to reach admin API.';
@@ -162,10 +169,6 @@
   <Navbar />
 
   <div class="chat-layout">
-    <!-- In-window toolbar: assistant + session switchers, available at every
-         width — regular chat as a stripped-down advanced chat. -->
-    <ChatToolbar />
-
     <!-- Message history -->
     <section class="messages-area" aria-label="Chat history" aria-live="polite">
       {#if sessionsLoading || entriesLoading}

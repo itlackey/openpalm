@@ -1,11 +1,13 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
   import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
   import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
   import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
+  import { chat } from '$lib/chat/chat-state.svelte.js';
 
   // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
   // usable everywhere:
@@ -26,6 +28,26 @@
     pathname === '/advanced' ||
     pathname.startsWith('/advanced/')
   );
+  const onChat = $derived(pathname === '/chat' || pathname.startsWith('/chat/'));
+
+  // New-chat is a global action next to the session picker. On the chat page it
+  // starts a fresh session in place; from anywhere else (e.g. admin) it routes
+  // to /chat and the chat page starts the new session once it has loaded
+  // (?new=1 handshake).
+  let startingNew = $state(false);
+  async function newChat(): Promise<void> {
+    if (startingNew) return;
+    startingNew = true;
+    try {
+      if (onChat) {
+        await chat.startNewSession();
+      } else {
+        await goto('/chat?new=1');
+      }
+    } finally {
+      startingNew = false;
+    }
+  }
 
   // The Settings gear administers the LOCAL stack, so it only appears when the
   // selected assistant is local (loopback). Hidden for a remote assistant —
@@ -93,6 +115,18 @@
       {/if}
       <EndpointSwitcher />
       <SessionPicker />
+      <button
+        type="button"
+        class="newchat-btn"
+        onclick={newChat}
+        disabled={startingNew}
+        aria-label="Start a new chat"
+        title="New chat"
+      >
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14" /><path d="M5 12h14" />
+        </svg>
+      </button>
       <ThemeToggle />
       <VoiceControl />
     </div>
@@ -173,8 +207,9 @@
     min-width: 0;
   }
 
-  /* Icon-only square button, matching the theme + voice controls. */
-  .gear-btn {
+  /* Icon-only square buttons, matching the theme + voice controls. */
+  .gear-btn,
+  .newchat-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -183,20 +218,29 @@
     padding: 0;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
+    background: none;
     color: var(--color-text-secondary);
     text-decoration: none;
     flex-shrink: 0;
+    cursor: pointer;
     transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
   }
-  .gear-btn:hover {
+  .gear-btn:hover,
+  .newchat-btn:hover:not(:disabled) {
     color: var(--color-text);
     background: var(--color-surface-hover);
   }
-  .gear-btn:focus-visible {
+  .gear-btn:focus-visible,
+  .newchat-btn:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
-  .gear-btn svg {
+  .newchat-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  .gear-btn svg,
+  .newchat-btn svg {
     flex-shrink: 0;
   }
 
