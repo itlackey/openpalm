@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import { buildHeaders } from '$lib/api.js';
 
 	let {
@@ -57,18 +58,7 @@
 	}
 </script>
 
-<div
-	class="sheet-overlay"
-	onclick={() => (result ? onimported?.() : oncancel?.())}
-	role="presentation"
-></div>
-<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="import-sheet-title">
-	<header class="sheet-header">
-		<h2 class="sheet-title" id="import-sheet-title">Import from host OpenCode</h2>
-		<button type="button" class="sheet-close" onclick={oncancel} aria-label="Close">×</button>
-	</header>
-
-	<div class="sheet-body">
+<Drawer open={true} title="Import from host OpenCode" onClose={() => (result ? onimported?.() : oncancel?.())}>
 		{#if result}
 			<div class="feedback feedback--success">
 				<span>Import complete.</span>
@@ -116,9 +106,7 @@
 				<div class="feedback feedback--error"><span>{error}</span></div>
 			{/if}
 		{/if}
-	</div>
-
-	<footer class="sheet-footer">
+	{#snippet footer()}
 		{#if result}
 			<button type="button" class="btn btn-primary" onclick={onimported}>Done</button>
 		{:else}
@@ -132,8 +120,8 @@
 				Import
 			</button>
 		{/if}
-	</footer>
-</div>
+	{/snippet}
+</Drawer>
 
 <style>
 	.result-list {

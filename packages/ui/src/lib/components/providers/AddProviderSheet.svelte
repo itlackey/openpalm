@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
 	import type { ProviderView } from '$lib/types/providers.js';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 
 	let {
 		providers,
@@ -32,26 +33,17 @@
 	});
 </script>
 
-<div class="sheet-overlay" onclick={onclose} role="presentation"></div>
-<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="add-provider-title">
-	<header class="sheet-header">
-		<h2 class="sheet-title" id="add-provider-title">Add provider</h2>
-		<button type="button" class="sheet-close" onclick={onclose} aria-label="Close">×</button>
-	</header>
-
-	<div class="sheet-search">
-		<!-- svelte-ignore a11y_autofocus -->
-		<input
-			type="search"
-			class="form-input"
-			placeholder="Search providers…"
-			bind:value={query}
-			autocomplete="off"
-			autofocus
-		/>
-	</div>
-
-	<div class="sheet-body sheet-body--list">
+<Drawer open={true} title="Add provider" onClose={onclose}>
+	<!-- svelte-ignore a11y_autofocus -->
+	<input
+		type="search"
+		class="form-input add-search"
+		placeholder="Search providers…"
+		bind:value={query}
+		autocomplete="off"
+		autofocus
+	/>
+	<div class="pick-list">
 		{#if filtered.length === 0 && query}
 			<div class="empty">No providers match "{query}".</div>
 		{:else}
@@ -70,17 +62,16 @@
 			</button>
 		{/if}
 	</div>
-</div>
+</Drawer>
 
 <style>
-	.sheet-search {
-		padding: var(--space-3) var(--space-5);
-		border-bottom: 1px solid var(--color-border);
-		flex-shrink: 0;
+	.add-search {
+		width: 100%;
+		margin-bottom: var(--space-3);
 	}
-
-	.sheet-body--list {
-		padding: 0;
+	/* Bleed the list to the drawer body edges (drawer body has space-5 padding). */
+	.pick-list {
+		margin: 0 calc(var(--space-5) * -1) calc(var(--space-5) * -1);
 	}
 
 	.provider-pick {

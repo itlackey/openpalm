@@ -285,96 +285,8 @@ body.chat-locked {
   outline-offset: 2px;
 }
 
-/* ── Sheet Overlay ─────────────────────────────────────────────── */
-.sheet-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: var(--overlay-bg);
-  transition: opacity var(--transition-normal);
-}
-
-.sheet {
-  position: fixed;
-  inset-block: 0;
-  inset-inline-end: 0;
-  width: var(--sheet-width);
-  max-width: 100vw;
-  background: var(--color-surface);
-  border-inline-start: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sheet);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  z-index: 201;
-  translate: 0;
-  transition: translate var(--transition-normal);
-}
-
-.sheet--wide { width: var(--sheet-width-wide); }
-
-.sheet-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.sheet-header-back {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.sheet-title {
-  flex: 1;
-  font-size: var(--text-base);
-  font-weight: var(--font-semibold);
-  color: var(--color-text);
-}
-
-.sheet-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.sheet-close:hover {
-  background: var(--color-bg-secondary);
-  color: var(--color-text);
-}
-
-.sheet-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-5);
-}
-
-.sheet-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--color-border);
-  flex-shrink: 0;
-  background: var(--color-surface);
-}
+/* (Provider sheets now use common/Drawer.svelte — the global .sheet-* chrome
+   was removed.) */
 
 /* ── Model Toggle ──────────────────────────────────────────────── */
 .model-toggle {
@@ -1030,21 +942,7 @@ body.chat-locked {
   color: var(--color-primary-hover);
 }
 
-/* ── Responsive: Bottom Sheet ──────────────────────────────────── */
 @media (max-width: 520px) {
-  .sheet {
-    inset-inline: 0;
-    inset-block-end: 0;
-    inset-block-start: auto;
-    width: 100%;
-    max-height: 90dvh;
-    border-inline-start: none;
-    border-top: 1px solid var(--color-border);
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  }
-
-  .sheet--wide { width: 100%; }
-
   .provider-grid {
     grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
   }

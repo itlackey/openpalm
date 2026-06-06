@@ -10,10 +10,12 @@
     onClose: () => void;
     children: Snippet;
     footer?: Snippet;
+    /** Optional content rendered at the start of the header (e.g. a back button). */
+    headerStart?: Snippet;
     /** Drawer width (CSS length). */
     width?: string;
   }
-  let { open, title, onClose, children, footer, width = '32rem' }: Props = $props();
+  let { open, title, onClose, children, footer, headerStart, width = '32rem' }: Props = $props();
 
   function onScrimKey(e: KeyboardEvent): void {
     if (e.key === 'Escape') onClose();
@@ -32,6 +34,7 @@
 
   <div class="drawer" style="--drawer-width: {width}" role="dialog" aria-modal="true" aria-label={title}>
     <header class="drawer-header">
+      {#if headerStart}{@render headerStart()}{/if}
       <h3 class="drawer-title">{title}</h3>
       <button class="drawer-close" onclick={onClose} aria-label="Close">
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -90,6 +93,8 @@
     flex-shrink: 0;
   }
   .drawer-title {
+    flex: 1;
+    min-width: 0;
     font-size: var(--text-base);
     font-weight: var(--font-semibold);
     color: var(--color-text);

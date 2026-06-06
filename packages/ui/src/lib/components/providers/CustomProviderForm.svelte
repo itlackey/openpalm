@@ -6,6 +6,7 @@
 <script lang="ts">
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import FormField from '$lib/components/common/FormField.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import { buildHeaders } from '$lib/api.js';
 	import type { ProviderActionResult } from '$lib/types/providers.js';
 
@@ -68,14 +69,7 @@
 	}
 </script>
 
-<div class="sheet-overlay" onclick={onclose} role="presentation"></div>
-<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="custom-sheet-title">
-	<header class="sheet-header">
-		<h2 class="sheet-title" id="custom-sheet-title">Add custom provider</h2>
-		<button type="button" class="sheet-close" onclick={onclose} aria-label="Close">×</button>
-	</header>
-
-	<div class="sheet-body">
+<Drawer open={true} title="Add custom provider" onClose={() => onclose?.()}>
 		<p class="field-hint">
 			Register an OpenAI-compatible provider by base URL. Models are auto-discovered on first connection.
 		</p>
@@ -138,15 +132,13 @@
 				/>
 			</div>
 		</div>
-	</div>
-
-	<footer class="sheet-footer">
+	{#snippet footer()}
 		<button type="button" class="btn btn-primary" disabled={submitting} onclick={() => void submit()}>
 			{#if submitting}<Spinner />{/if}
 			Continue
 		</button>
-	</footer>
-</div>
+	{/snippet}
+</Drawer>
 
 <style>
 	.form-stack {

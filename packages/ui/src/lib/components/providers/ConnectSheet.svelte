@@ -16,6 +16,7 @@
 	import { onDestroy } from 'svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import FormField from '$lib/components/common/FormField.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import { buildHeaders } from '$lib/api.js';
 	import type {
 		ProviderActionResult,
@@ -235,17 +236,12 @@
 	}
 </script>
 
-<div class="sheet-overlay" onclick={onclose} role="presentation"></div>
-<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="connect-sheet-title">
-	<header class="sheet-header">
+<Drawer open={true} {title} onClose={() => onclose?.()}>
+	{#snippet headerStart()}
 		{#if canGoBack}
-			<button type="button" class="sheet-header-back" onclick={goBack} aria-label="Back">←</button>
+			<button type="button" class="connect-back" onclick={goBack} aria-label="Back">←</button>
 		{/if}
-		<h2 class="sheet-title" id="connect-sheet-title">{title}</h2>
-		<button type="button" class="sheet-close" onclick={onclose} aria-label="Close">×</button>
-	</header>
-
-	<div class="sheet-body">
+	{/snippet}
 		{#if error}
 			<div class="feedback feedback--error"><span>{error}</span></div>
 		{/if}
@@ -316,10 +312,8 @@
 				Waiting for sign-in to complete…
 			</p>
 		{/if}
-	</div>
-
-	{#if step === 'api-form' || step === 'oauth-code'}
-		<footer class="sheet-footer">
+	{#snippet footer()}
+		{#if step === 'api-form' || step === 'oauth-code'}
 			<button
 				type="button"
 				class="btn btn-primary"
@@ -329,11 +323,30 @@
 				{#if submitting}<Spinner />{/if}
 				Continue
 			</button>
-		</footer>
-	{/if}
-</div>
+		{/if}
+	{/snippet}
+</Drawer>
 
 <style>
+	.connect-back {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		background: none;
+		border: none;
+		border-radius: var(--radius-sm);
+		color: var(--color-text-secondary);
+		font-size: var(--text-lg);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.connect-back:hover {
+		background: var(--color-surface-hover);
+		color: var(--color-text);
+	}
 	.auth-method-group {
 		display: flex;
 		flex-direction: column;
