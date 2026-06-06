@@ -33,7 +33,7 @@ describe('TabBar', () => {
     const subtabLabels = Array.from(
       subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Memory', 'Secrets']);
+    expect(subtabLabels).toEqual(['Memory', 'Host Sharing', 'Secrets']);
   });
 
   it('shows Capabilities subtabs when active is "addons"', async () => {

@@ -13,6 +13,7 @@
   import LogsTab from '$lib/components/LogsTab.svelte';
   import SecretsTab from '$lib/components/SecretsTab.svelte';
   import AkmTab from '$lib/components/AkmTab.svelte';
+  import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
   import VoiceTab from '$lib/components/VoiceTab.svelte';
 
   import {
@@ -581,6 +582,8 @@
       <VoiceTab tokenStored={true} />
     {:else if activeTab === 'akm'}
       <AkmTab tokenStored={true} />
+    {:else if activeTab === 'host-sharing'}
+      <HostSharingSection tokenStored={true} />
     {:else if activeTab === 'logs'}
       <LogsTab
         tokenStored={true}

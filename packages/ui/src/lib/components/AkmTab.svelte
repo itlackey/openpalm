@@ -3,10 +3,6 @@
 	import {
 		fetchAkmConfig,
 		saveAkmConfig,
-		fetchHostAkmSharing,
-		enableHostAkmSharing,
-		disableHostAkmSharing,
-		type HostAkmSharing,
 	} from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 
@@ -18,57 +14,8 @@
 	let saving = $state(false);
 	let error = $state('');
 
-	// ── Host AKM sharing ───────────────────────────────────────────────────────
-	let hostSharing = $state<HostAkmSharing | null>(null);
-	let hostBusy = $state(false);
-	let hostImportProfiles = $state(true);
-
-	async function loadHostSharing(): Promise<void> {
-		try {
-			hostSharing = await fetchHostAkmSharing();
-		} catch {
-			hostSharing = null; // endpoint unavailable (e.g. not yet deployed) — hide the panel
-		}
-	}
-
-	async function toggleHostSharing(): Promise<void> {
-		if (hostBusy) return;
-		hostBusy = true;
-		try {
-			if (hostSharing?.sharing.enabled) {
-				hostSharing = await disableHostAkmSharing();
-				notifications.push('success', 'Host AKM sharing disabled. Restart the stack to apply.');
-			} else {
-				const res = await enableHostAkmSharing({ writable: true, importProfiles: hostImportProfiles });
-				hostSharing = res;
-				const imported = res.profilesImported?.length
-					? ` Imported: ${res.profilesImported.join(', ')}.`
-					: '';
-				notifications.push('success', `Host AKM sharing enabled.${imported} Takes effect on the assistant's next AKM run / stack restart.`);
-				if (hostImportProfiles) await load(); // reflect any imported profiles
-			}
-		} catch (e) {
-			notifications.push('error', e instanceof Error ? e.message : 'Failed to update host AKM sharing.');
-		} finally {
-			hostBusy = false;
-		}
-	}
-
-	async function reimportHostProfiles(): Promise<void> {
-		if (hostBusy) return;
-		hostBusy = true;
-		try {
-			const res = await enableHostAkmSharing({ writable: true, importProfiles: true });
-			hostSharing = res;
-			const imported = res.profilesImported?.length ? res.profilesImported.join(', ') : 'none';
-			notifications.push('success', `Re-imported host profiles: ${imported}.`);
-			await load();
-		} catch (e) {
-			notifications.push('error', e instanceof Error ? e.message : 'Failed to re-import host profiles.');
-		} finally {
-			hostBusy = false;
-		}
-	}
+	// Host AKM sharing now lives in its own Knowledge sub-tab
+	// (akm/HostSharingSection.svelte) — moved out of this megaform.
 
 	// ── Profile types ────────────────────────────────────────────────────────────
 	interface LlmProfile {
@@ -184,7 +131,9 @@
 	let indexJson = $state('');             // index (raw JSON — complex per-pass schema)
 
 	// ── Knowledge subtab ─────────────────────────────────────────────────────────
-	let knowledgeSection = $state<'profiles' | 'embedding' | 'behavior' | 'sharing'>('profiles');
+	// Two sections: AI Services (model/agent/improve connections + embedding) and
+	// Behavior. Host Sharing moved to its own Knowledge sub-tab.
+	let knowledgeSection = $state<'ai-services' | 'behavior'>('ai-services');
 
 	// ── Drawer ────────────────────────────────────────────────────────────────────
 	type DrawerType = 'llm' | 'agent' | 'improve' | null;
@@ -608,7 +557,7 @@
 		}
 	}
 
-	onMount(() => { if (tokenStored) { void load(); void loadHostSharing(); } });
+	onMount(() => { if (tokenStored) { void load(); } });
 </script>
 
 <!-- Datalist referenced by drawer improve profile inputs -->
@@ -624,12 +573,10 @@
 				{#if loading}<span class="spinner"></span>{/if}
 				Refresh
 			</button>
-			{#if knowledgeSection !== 'sharing'}
-				<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
-					{#if saving}<span class="spinner"></span>{/if}
-					Save
-				</button>
-			{/if}
+			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
+				{#if saving}<span class="spinner"></span>{/if}
+				Save
+			</button>
 		</div>
 	</div>
 
@@ -642,17 +589,10 @@
 			<button
 				role="tab"
 				class="k-tab"
-				class:k-tab--active={knowledgeSection === 'profiles'}
-				aria-selected={knowledgeSection === 'profiles'}
-				onclick={() => { knowledgeSection = 'profiles'; }}
-			>Profiles</button>
-			<button
-				role="tab"
-				class="k-tab"
-				class:k-tab--active={knowledgeSection === 'embedding'}
-				aria-selected={knowledgeSection === 'embedding'}
-				onclick={() => { knowledgeSection = 'embedding'; }}
-			>Embedding</button>
+				class:k-tab--active={knowledgeSection === 'ai-services'}
+				aria-selected={knowledgeSection === 'ai-services'}
+				onclick={() => { knowledgeSection = 'ai-services'; }}
+			>AI Services</button>
 			<button
 				role="tab"
 				class="k-tab"
@@ -660,24 +600,16 @@
 				aria-selected={knowledgeSection === 'behavior'}
 				onclick={() => { knowledgeSection = 'behavior'; }}
 			>Behavior</button>
-			{#if hostSharing !== null}
-				<button
-					role="tab"
-					class="k-tab"
-					class:k-tab--active={knowledgeSection === 'sharing'}
-					aria-selected={knowledgeSection === 'sharing'}
-					onclick={() => { knowledgeSection = 'sharing'; }}
-				>Host Sharing</button>
-			{/if}
 		</div>
 
-		<!-- ── Profiles group ─────────────────────────────────────────────── -->
-		{#if knowledgeSection === 'profiles'}
+		<!-- ── AI Services group (model/agent/improve connections + embedding) ── -->
+		{#if knowledgeSection === 'ai-services'}
+		<p class="section-note section-note--lead">The AI services your assistant uses to build and search its memory — the language models that organize memories, the embedding provider for semantic search, and the maintenance pipeline.</p>
 
 		<!-- ── LLM Profiles ──────────────────────────────────────────────── -->
 		<section class="config-section">
-			<h3 class="section-title">LLM Profiles</h3>
-			<p class="section-note">Named connection configs your improve pipeline can reference. Add one per LLM service you want AKM to use.</p>
+			<h3 class="section-title">Language models <span class="section-title-aka">akm LLM profiles</span></h3>
+			<p class="section-note">The language models your assistant uses to organize and improve its memory. Add one per LLM service.</p>
 
 			{#if llmProfiles.length === 0}
 				<div class="profile-empty">
@@ -713,8 +645,8 @@
 
 		<!-- ── Agent Profiles ────────────────────────────────────────────── -->
 		<section class="config-section">
-			<h3 class="section-title">Agent Profiles</h3>
-			<p class="section-note">Named runner configs for pipeline steps that spawn a subprocess (opencode or claude CLI).</p>
+			<h3 class="section-title">Agent runners <span class="section-title-aka">akm agent profiles</span></h3>
+			<p class="section-note">Runner configs for maintenance steps that spawn a subprocess (opencode or claude CLI).</p>
 
 			{#if agentProfiles.length === 0}
 				<div class="profile-empty">
@@ -752,8 +684,8 @@
 
 		<!-- ── Improve Profiles ───────────────────────────────────────────── -->
 		<section class="config-section">
-			<h3 class="section-title">Improve Profiles</h3>
-			<p class="section-note">Named configurations for <code>akm improve</code>. Each profile defines which processes run and which LLM/agent they use.</p>
+			<h3 class="section-title">Memory maintenance <span class="section-title-aka">akm improve</span></h3>
+			<p class="section-note">Scheduled runs that distill, deduplicate, and improve stored memories. Each configuration picks which steps run and which language model they use — add a language model above first.</p>
 
 			{#if improveProfiles.length === 0}
 				<div class="profile-empty">
@@ -790,14 +722,9 @@
 			</button>
 		</section>
 
-		{/if}<!-- end profiles group -->
-
-		<!-- ── Embedding group ───────────────────────────────────────────── -->
-		{#if knowledgeSection === 'embedding'}
-
-		<!-- ── Embedding Connection ──────────────────────────────────────── -->
+		<!-- ── Embedding (semantic search) — part of AI Services ─────────────── -->
 		<section class="config-section">
-			<h3 class="section-title">Embedding Connection</h3>
+			<h3 class="section-title">Semantic search (embeddings)</h3>
 			<p class="section-note">Vector embedding provider for semantic search. Leave Endpoint and Model blank to use built-in local embeddings.</p>
 			<div class="controls controls--grid">
 				<div class="control-group control-group--wide">
@@ -848,7 +775,7 @@
 			</div>
 		</section>
 
-		{/if}<!-- end embedding group -->
+		{/if}<!-- end AI Services group -->
 
 		<!-- ── Behavior group ────────────────────────────────────────────── -->
 		{#if knowledgeSection === 'behavior'}
@@ -884,8 +811,9 @@
 		</section>
 
 			<!-- ── Advanced (top-level improve / search / feedback / index) ─────── -->
-			<section class="config-section">
-				<h3 class="section-title">Advanced</h3>
+			<details class="adv-details">
+				<summary class="adv-summary">Advanced tuning — affects memory scoring &amp; indexing (leave at defaults unless you know the impact)</summary>
+				<section class="config-section">
 				<p class="section-note">Global tuning beyond per-profile settings. Leave blank to use akm defaults.</p>
 				<div class="controls controls--grid">
 					<div class="control-group">
@@ -928,72 +856,9 @@
 				</div>
 			</section>
 
+		</details>
+
 		{/if}<!-- end behavior group -->
-
-		<!-- ── Host Sharing group ────────────────────────────────────────── -->
-		{#if knowledgeSection === 'sharing' && hostSharing !== null}
-
-			<!-- ── Host AKM Sharing ──────────────────────────────────────────── -->
-			{#if hostSharing}
-				<section class="config-section">
-					<h3 class="section-title">Host AKM Sharing</h3>
-					<p class="section-note">
-						Let the assistant read (and, on explicit request, contribute back to) your
-						personal AKM stash on this machine (<code>~/akm</code>). Each side keeps its own
-						primary stash, database, and cache — only the knowledge files are shared, as a
-						writable secondary source. Your files' ownership and primary stash are never
-						changed. Changes take effect after the next stack restart.
-					</p>
-					{#if !hostSharing.sharing.available}
-						<p class="section-note">
-							<span class="badge badge--off">Not detected</span>
-							No personal AKM was found on this host (<code>~/.config/akm/config.json</code>).
-							Run <code>akm init</code> on this machine to enable sharing.
-						</p>
-					{:else}
-						<div class="controls controls--grid">
-							<div class="control-group control-group--wide">
-								<span class="control-label">Status</span>
-								<div class="host-akm-status">
-									<span class="badge {hostSharing.sharing.enabled ? 'badge--on' : 'badge--off'}">
-										{hostSharing.sharing.enabled ? 'Enabled' : 'Disabled'}
-									</span>
-									{#if hostSharing.sharing.hostStashPath}
-										<code class="host-akm-path">{hostSharing.sharing.hostStashPath}</code>
-									{/if}
-								</div>
-							</div>
-							{#if !hostSharing.sharing.enabled}
-								<div class="control-group control-group--wide">
-									<label class="control-label control-label--checkbox">
-										<input type="checkbox" bind:checked={hostImportProfiles} disabled={hostBusy} />
-										Also import host LLM/agent profiles (read-only snapshot)
-									</label>
-								</div>
-							{/if}
-							<div class="control-group control-group--wide host-akm-actions">
-								<button
-									class="btn btn-secondary btn-sm"
-									onclick={() => void toggleHostSharing()}
-									disabled={hostBusy || !tokenStored}>
-									{#if hostBusy}<span class="spinner"></span>{/if}
-									{hostSharing.sharing.enabled ? 'Disable host sharing' : 'Enable host sharing'}
-								</button>
-								{#if hostSharing.sharing.enabled}
-									<button
-										class="btn btn-secondary btn-sm"
-										onclick={() => void reimportHostProfiles()}
-										disabled={hostBusy || !tokenStored}>
-										Re-import host profiles
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/if}
-				</section>
-			{/if}
-
-		{/if}<!-- end sharing group -->
 
 	</div>
 
@@ -1333,6 +1198,26 @@
 		margin: 0;
 		padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);
 	}
+	/* Keep the AKM/CLI term as a quiet secondary label next to the plain-language title. */
+	.section-title-aka {
+		font-size: var(--text-xs); font-weight: var(--font-normal);
+		color: var(--color-text-secondary); font-family: var(--font-mono);
+		margin-left: var(--space-2);
+	}
+	.section-note--lead {
+		font-size: var(--text-sm); color: var(--color-text-secondary);
+		max-width: 72ch; margin: 0 0 var(--space-4);
+	}
+	/* Advanced tuning collapsed by default. */
+	.adv-details { border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-top: var(--space-4); }
+	.adv-summary {
+		cursor: pointer; padding: var(--space-3) var(--space-4);
+		font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text);
+		list-style: revert;
+	}
+	.adv-summary:hover { color: var(--color-text); background: var(--color-surface-hover); }
+	.adv-details[open] .adv-summary { border-bottom: 1px solid var(--color-border); }
+	.adv-details .config-section { padding: var(--space-4); }
 
 	.section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
 	.empty-note { font-size: var(--text-sm); color: var(--color-text-secondary); font-style: italic; margin: 0; }
@@ -1362,22 +1247,7 @@
 		color: var(--color-primary, #6366f1);
 		border-color: var(--color-primary-border, rgba(99, 102, 241, 0.3));
 	}
-	.badge--on {
-		background: var(--color-success-subtle, rgba(34, 197, 94, 0.12));
-		color: var(--color-success, #16a34a);
-		border-color: var(--color-success-border, rgba(34, 197, 94, 0.3));
-	}
 	/* .badge--off intentionally uses the neutral base .badge styling. */
-
-	/* Host AKM sharing */
-	.host-akm-status { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-	.host-akm-path { font-size: var(--text-xs); color: var(--color-text-secondary); word-break: break-all; }
-	.host-akm-actions { flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-	.control-label--checkbox {
-		display: flex; align-items: center; gap: var(--space-2);
-		text-transform: none; letter-spacing: 0; font-weight: var(--font-normal, 400);
-		font-size: var(--text-sm); color: var(--color-text-primary);
-	}
 
 	/* Controls */
 	.controls { display: flex; flex-direction: column; gap: var(--space-4); }
