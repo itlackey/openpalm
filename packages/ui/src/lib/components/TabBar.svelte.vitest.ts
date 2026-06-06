@@ -33,7 +33,7 @@ describe('TabBar', () => {
     const subtabLabels = Array.from(
       subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Overview', 'Containers', 'Logs']);
+    expect(subtabLabels).toEqual(['Overview', 'Containers', 'Logs', 'Updates']);
   });
 
   it('shows Configure subtabs when active is "connections"', async () => {
