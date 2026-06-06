@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
-  import type { ReleaseEntry, UiVersionEntry } from '$lib/api.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   interface Props {
@@ -11,30 +10,12 @@
     tokenStored: boolean;
     healthLoading: boolean;
     applyLoading: boolean;
-    upgradeLoading: boolean;
     anyDangerousLoading: boolean;
     automationsData: AutomationsResponse | null;
     mergedServices: Map<string, string>;
-    currentImageTag: string;
-    tagChangeLoading: boolean;
-    uiDownloadLoading: boolean;
-    uiDownloadReady: boolean;
-    inElectron: boolean;
-    selectedImageTag: string;
-    selectedUiTag: string;
-    releases: ReleaseEntry[];
-    releasesLoading: boolean;
-    uiVersions: UiVersionEntry[];
-    uiVersionsLoading: boolean;
     onCheckHealth: () => void;
     onApplyChanges: () => void;
-    onUpgradeStack: () => void;
     onDismissResult: () => void;
-    onSetImageTag: (tag: string) => void;
-    onDownloadUiVersion: (tag: string) => void;
-    onRestartApp: () => void;
-    onSelectedImageTagChange: (tag: string) => void;
-    onSelectedUiTagChange: (tag: string) => void;
   }
 
   let {
@@ -44,42 +25,16 @@
     tokenStored,
     healthLoading,
     applyLoading,
-    upgradeLoading,
     anyDangerousLoading,
     automationsData,
     mergedServices,
-    currentImageTag,
-    tagChangeLoading,
-    uiDownloadLoading,
-    uiDownloadReady,
-    inElectron,
-    selectedImageTag,
-    selectedUiTag,
-    releases,
-    releasesLoading,
-    uiVersions,
-    uiVersionsLoading,
     onCheckHealth,
     onApplyChanges,
-    onUpgradeStack,
     onDismissResult,
-    onSetImageTag,
-    onDownloadUiVersion,
-    onRestartApp,
-    onSelectedImageTagChange,
-    onSelectedUiTagChange,
   }: Props = $props();
 
   // Load endpoints if not already loaded so we get the real assistant URL.
   onMount(() => { void endpointsService.load(); });
-
-  // Label for a UI-build option: version + prerelease/dist-tag annotations.
-  function uiVersionLabel(v: UiVersionEntry): string {
-    const tags: string[] = [];
-    if (v.distTag) tags.push(v.distTag);
-    else if (v.prerelease) tags.push('pre-release');
-    return tags.length ? `${v.version} (${tags.join(', ')})` : v.version;
-  }
 
   // Derived: automation count
   let automationCount = $derived(automationsData?.automations.length ?? 0);
@@ -128,7 +83,22 @@
 
 <!-- System health summary bar -->
 <div class="health-summary health-summary--{healthSummary.status}" role="status" aria-live="polite">
-  <span class="health-dot"></span>
+  <span class="health-icon" aria-hidden="true">
+    {#if healthSummary.status === 'warning'}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+        <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+    {:else if healthSummary.status === 'ok'}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+    {:else}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    {/if}
+  </span>
   <span class="health-msg">{healthSummary.message}</span>
 </div>
 
@@ -219,23 +189,6 @@
           </span>
         </a>
 
-        <a class="action-item" href="/advanced">
-          <span class="action-icon action-icon--blue">
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <path d="M9 9h6v6H9z" />
-            </svg>
-          </span>
-          <div class="action-content">
-            <span class="action-title">Advanced Chat (OpenCode)</span>
-            <span class="action-desc">Open the full OpenCode UI embedded in OpenPalm — host machine only</span>
-          </div>
-          <span class="action-arrow">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </a>
       </div>
     </div>
   </div>
@@ -313,136 +266,6 @@
     </div>
   </div>
 
-  <!-- Versions Panel -->
-  <div class="panel">
-    <div class="panel-header">
-      <h2>Version Management</h2>
-    </div>
-    <div class="panel-body">
-
-      <!-- Stack images -->
-      <div class="version-section">
-        <div class="version-row">
-          <span class="version-label">Stack images</span>
-          <code class="version-value version-value--active">{currentImageTag || '—'}</code>
-        </div>
-        <div class="version-input-row">
-          {#if releasesLoading}
-            <div class="version-select-skeleton"></div>
-          {:else if releases.length > 0}
-            <select
-              class="version-select"
-              value={selectedImageTag}
-              onchange={(e) => onSelectedImageTagChange((e.currentTarget as HTMLSelectElement).value)}
-              disabled={tagChangeLoading || anyDangerousLoading}
-            >
-              <option value="latest">latest</option>
-              {#each releases as r (r.tag)}
-                <option value={r.tag}>{r.tag}{r.prerelease ? ' (pre-release)' : ''}</option>
-              {/each}
-            </select>
-          {:else}
-            <input
-              class="version-input"
-              type="text"
-              placeholder="e.g. 0.11.0 or latest"
-              value={selectedImageTag}
-              oninput={(e) => onSelectedImageTagChange((e.currentTarget as HTMLInputElement).value)}
-              disabled={tagChangeLoading || anyDangerousLoading}
-            />
-          {/if}
-          <button
-            class="btn btn-sm btn-primary"
-            onclick={() => { if (selectedImageTag.trim()) onSetImageTag(selectedImageTag.trim()); }}
-            disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
-          >
-            {#if tagChangeLoading}
-              <span class="spinner spinner-sm"></span> Applying…
-            {:else}
-              Pull &amp; Restart
-            {/if}
-          </button>
-        </div>
-        <p class="version-hint">Pulls the selected images and restarts services.</p>
-      </div>
-
-      <div class="version-divider"></div>
-
-      <!-- Upgrade Stack -->
-      <div class="version-section">
-        <div class="version-row">
-          <span class="version-label">Upgrade Stack</span>
-        </div>
-        <div class="version-input-row">
-          <button
-            class="btn btn-sm btn-secondary"
-            onclick={onUpgradeStack}
-            disabled={anyDangerousLoading || !tokenStored}
-          >
-            {#if upgradeLoading}
-              <span class="spinner spinner-sm"></span> Upgrading…
-            {:else}
-              Upgrade to Latest
-            {/if}
-          </button>
-        </div>
-        <p class="version-hint">Downloads the latest assets, pulls images, and restarts services. Backs up current config first.</p>
-      </div>
-
-      <div class="version-divider"></div>
-
-      <!-- UI build (Electron only) -->
-      {#if inElectron}
-        <div class="version-section">
-          <div class="version-input-row">
-            {#if uiVersionsLoading}
-              <div class="version-select-skeleton"></div>
-            {:else if uiVersions.length > 0}
-              <select
-                class="version-select"
-                value={selectedUiTag}
-                onchange={(e) => onSelectedUiTagChange((e.currentTarget as HTMLSelectElement).value)}
-                disabled={uiDownloadLoading}
-              >
-                {#each uiVersions as v (v.version)}
-                  <option value={v.version}>{uiVersionLabel(v)}</option>
-                {/each}
-              </select>
-            {:else}
-              <input
-                class="version-input"
-                type="text"
-                placeholder="e.g. 0.11.0-beta.7"
-                value={selectedUiTag}
-                oninput={(e) => onSelectedUiTagChange((e.currentTarget as HTMLInputElement).value)}
-                disabled={uiDownloadLoading}
-              />
-            {/if}
-            <button
-              class="btn btn-sm"
-              onclick={() => { if (selectedUiTag.trim()) onDownloadUiVersion(selectedUiTag.trim()); }}
-              disabled={!selectedUiTag.trim() || uiDownloadLoading}
-            >
-              {#if uiDownloadLoading}
-                <span class="spinner spinner-sm"></span> Downloading…
-              {:else}
-                Download
-              {/if}
-            </button>
-          </div>
-          {#if uiDownloadReady}
-            <div class="version-restart-prompt">
-              UI updated.
-              <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart App</button>
-            </div>
-          {:else}
-            <p class="version-hint">Downloads and replaces the UI from GitHub. Takes effect on restart.</p>
-          {/if}
-        </div>
-      {/if}
-
-    </div>
-  </div>
 </div>
 
 <style>
@@ -461,12 +284,10 @@
   .health-summary--ok { background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border); }
   .health-summary--warning { background: var(--color-warning-bg); color: var(--color-text); border-color: var(--color-warning); }
   .health-summary--unknown { background: var(--color-bg-secondary); color: var(--color-text-secondary); border-color: var(--color-border); }
-  .health-dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  }
-  .health-summary--ok .health-dot { background: var(--color-success); }
-  .health-summary--warning .health-dot { background: var(--color-warning); }
-  .health-summary--unknown .health-dot { background: var(--color-border); }
+  .health-icon { display: inline-flex; flex-shrink: 0; }
+  .health-summary--ok .health-icon { color: var(--color-success); }
+  .health-summary--warning .health-icon { color: var(--color-warning); }
+  .health-summary--unknown .health-icon { color: var(--color-text-tertiary); }
 
   /* Status Cards */
   .status-row {
@@ -766,117 +587,6 @@
     .status-row {
       grid-template-columns: 1fr;
     }
-  }
-
-  .version-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .version-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-  }
-
-  .version-label {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-  }
-
-  .version-value {
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    background: var(--color-bg-secondary);
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-  }
-
-  .version-input-row {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .version-input {
-    flex: 1;
-    min-width: 0;
-    padding: var(--space-1-5) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-family: var(--font-mono);
-  }
-
-  .version-input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .version-hint {
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .version-divider {
-    height: 1px;
-    background: var(--color-border);
-    margin: var(--space-3) 0;
-  }
-
-  .version-restart-prompt {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--color-success);
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-success-bg);
-    border-radius: var(--radius-md);
-  }
-
-  .version-select {
-    flex: 1;
-    min-width: 0;
-    padding: var(--space-1-5) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-family: var(--font-mono);
-  }
-
-  .version-select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .version-select-skeleton {
-    flex: 1;
-    height: 34px;
-    border-radius: var(--radius-md);
-    background: linear-gradient(
-      90deg,
-      var(--color-bg-secondary) 25%,
-      var(--color-bg-tertiary) 50%,
-      var(--color-bg-secondary) 75%
-    );
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.4s ease-in-out infinite;
-  }
-
-  @keyframes skeleton-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
   }
 
 </style>

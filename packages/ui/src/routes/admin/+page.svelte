@@ -4,6 +4,7 @@
   import AuthGate from '$lib/components/AuthGate.svelte';
   import TabBar, { type TabId } from '$lib/components/TabBar.svelte';
   import OverviewTab from '$lib/components/OverviewTab.svelte';
+  import UpdatesTab from '$lib/components/UpdatesTab.svelte';
   import AddonsTab from '$lib/components/AddonsTab.svelte';
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
@@ -507,30 +508,35 @@
         tokenStored={true}
         {healthLoading}
         {applyLoading}
-        {upgradeLoading}
         {anyDangerousLoading}
         {automationsData}
         {mergedServices}
-        {currentImageTag}
-        {tagChangeLoading}
-        {uiDownloadLoading}
-        {uiDownloadReady}
-        {inElectron}
-        {selectedImageTag}
-        {selectedUiTag}
-        {releases}
-        {releasesLoading}
-        {uiVersions}
-        {uiVersionsLoading}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
-        onUpgradeStack={handleUpgradeStack}
         onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
+      />
+    {:else if activeTab === 'updates'}
+      <UpdatesTab
+        {currentImageTag}
+        {selectedImageTag}
+        {tagChangeLoading}
+        {anyDangerousLoading}
+        tokenStored={true}
+        {upgradeLoading}
+        {inElectron}
+        {uiVersions}
+        {uiVersionsLoading}
+        {selectedUiTag}
+        {uiDownloadLoading}
+        {uiDownloadReady}
+        {releases}
+        {releasesLoading}
         onSetImageTag={handleSetImageTag}
+        onSelectedImageTagChange={(t) => { selectedImageTag = t; }}
+        onUpgradeStack={handleUpgradeStack}
+        onSelectedUiTagChange={(t) => { selectedUiTag = t; }}
         onDownloadUiVersion={handleDownloadUiVersion}
         onRestartApp={handleRestartApp}
-        onSelectedImageTagChange={(t) => { selectedImageTag = t; }}
-        onSelectedUiTagChange={(t) => { selectedUiTag = t; }}
       />
     {:else if activeTab === 'addons'}
       <AddonsTab

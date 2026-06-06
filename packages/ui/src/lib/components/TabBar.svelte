@@ -8,7 +8,8 @@
 		| 'voice'
 		| 'akm'
 		| 'containers'
-		| 'logs';
+		| 'logs'
+		| 'updates';
 
 	type SectionId = 'system' | 'configure' | 'extend';
 
@@ -42,6 +43,7 @@
 		addons: `<path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />`,
 		automations: `<circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />`,
 		secrets: `<rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />`,
+		updates: `<polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />`,
 	};
 
 	const SECTIONS: Section[] = [
@@ -52,6 +54,7 @@
 				{ id: 'overview', label: 'Overview', icon: ICONS.overview },
 				{ id: 'containers', label: 'Containers', icon: ICONS.containers },
 				{ id: 'logs', label: 'Logs', icon: ICONS.logs },
+				{ id: 'updates', label: 'Updates', icon: ICONS.updates },
 			],
 		},
 		{
@@ -243,8 +246,10 @@
 		position: relative;
 	}
 
-	/* Fade affordance — positioned over the scroll container, not inside it
-	   (avoids the flex-shrink conflict). */
+	/* Fade affordances — positioned over the scroll container, not inside it
+	   (avoids the flex-shrink conflict). Symmetric left+right so a partially
+	   scrolled tab label is softened under a gradient instead of showing as a
+	   hard mid-word fragment at either edge. */
 	.subtab-row::after {
 		content: '';
 		position: absolute;
@@ -254,6 +259,18 @@
 		width: 48px;
 		background: linear-gradient(to right, transparent, var(--color-bg-secondary));
 		pointer-events: none;
+	}
+
+	.subtab-row::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		width: 40px;
+		background: linear-gradient(to left, transparent, var(--color-bg-secondary));
+		pointer-events: none;
+		z-index: 1;
 	}
 
 	/* ── Subtab strip (secondary level) ── */
