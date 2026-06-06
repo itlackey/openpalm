@@ -294,8 +294,8 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 32px;
-		height: 32px;
+		width: 40px;
+		height: 40px;
 		padding: 0;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);

@@ -201,4 +201,23 @@
       gap: var(--space-2);
     }
   }
+
+  /* Narrow phones: the controls are now 40px tall; tighten the icon-only
+     switcher/gear padding + gutters so the cluster still fits within 320px. */
+  @media (max-width: 400px) {
+    .navbar-inner {
+      padding: 0 var(--space-2);
+      gap: var(--space-1);
+    }
+    .navbar-actions {
+      gap: var(--space-1);
+    }
+    .navbar-actions :global(.trigger) {
+      padding-left: var(--space-2);
+      padding-right: var(--space-2);
+    }
+    .gear-btn {
+      width: 36px;
+    }
+  }
 </style>
