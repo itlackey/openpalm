@@ -58,6 +58,11 @@
     return 'idle';
   }
 
+  function fmtState(s: string | undefined | null): string {
+    if (!s) return s ?? '';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
   function rowFor(id: string): RowState {
     if (!rowState[id]) rowState[id] = { inFlight: null, confirm: null, feedback: null };
     return rowState[id];
@@ -158,7 +163,7 @@
             </span>
             <span class="ct-col ct-col--status">
               <span class="badge badge-{containerStatusColor(entry.state)}">
-                {entry.state}
+                {fmtState(entry.state)}
               </span>
             </span>
             <span class="ct-col ct-col--actions">
@@ -214,7 +219,7 @@
                   <div class="detail-item">
                     <span class="detail-label">State</span>
                     <span class="detail-value">
-                      <span class="badge badge-{containerStatusColor(container.State)}">{container.State}</span>
+                      <span class="badge badge-{containerStatusColor(container.State)}">{fmtState(container.State)}</span>
                     </span>
                   </div>
                   <div class="detail-item">

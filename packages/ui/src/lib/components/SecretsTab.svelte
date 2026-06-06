@@ -146,8 +146,11 @@
       {/each}
 
       <div class="new-secret">
-        <input class="control-input" type="text" spellcheck="false" placeholder="new-file-name" bind:value={newName} bind:this={newNameInput} disabled={busy} />
-        <button class="btn btn-secondary btn-sm" onclick={() => void createNew()} disabled={busy || !newName.trim()}>Add</button>
+        <label class="new-secret-label" for="new-secret-name">New secret file</label>
+        <div class="new-secret-row">
+          <input id="new-secret-name" class="control-input" type="text" spellcheck="false" placeholder="new-file-name" bind:value={newName} bind:this={newNameInput} disabled={busy} />
+          <button class="btn btn-secondary btn-sm" onclick={() => void createNew()} disabled={busy || !newName.trim()}>Add</button>
+        </div>
       </div>
     </div>
 
@@ -194,7 +197,6 @@
 
   .secrets-layout { display: grid; grid-template-columns: minmax(16rem, 22rem) 1fr; gap: var(--space-4); align-items: start; }
   @media (max-width: 720px) { .secrets-layout { grid-template-columns: 1fr; } }
-  .new-secret { flex-wrap: wrap; }
 
   .secrets-list { display: flex; flex-direction: column; gap: var(--space-1); }
   .secret-row { display: flex; align-items: center; gap: var(--space-1); }
@@ -207,7 +209,9 @@
   }
   .secret-name:hover { background: var(--color-bg-tertiary, var(--color-bg-secondary)); }
   .secret-size { font-size: var(--text-xs); color: var(--color-text-secondary); flex-shrink: 0; }
-  .new-secret { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+  .new-secret { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-3); }
+  .new-secret-label { font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--color-text-secondary); }
+  .new-secret-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 
   .secrets-editor { min-width: 0; }
   .editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }

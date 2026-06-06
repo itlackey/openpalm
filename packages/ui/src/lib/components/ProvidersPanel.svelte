@@ -202,6 +202,11 @@
 	<div class="panel-body panel-body--flush">
 		{#if !pageState.available && !loading}
 			<div class="empty-state">
+				<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+					<line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+					<line x1="1" y1="1" x2="23" y2="23"/>
+				</svg>
 				<p>The assistant (OpenCode server) is not reachable. Start the assistant container and refresh.</p>
 			</div>
 		{:else if loading && pageState.providers.length === 0}
@@ -211,6 +216,9 @@
 			</div>
 		{:else if connected.length === 0}
 			<div class="empty-state">
+				<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+				</svg>
 				<p>No providers connected yet.</p>
 				<p class="empty-hint">Click <strong>Add provider</strong> above to sign in to one.</p>
 			</div>

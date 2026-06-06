@@ -680,7 +680,12 @@
 			<p class="section-note">Named connection configs your improve pipeline can reference. Add one per LLM service you want AKM to use.</p>
 
 			{#if llmProfiles.length === 0}
-				<p class="empty-note">No LLM profiles configured — add one below.</p>
+				<div class="profile-empty">
+					<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+					</svg>
+					<p class="empty-note">No LLM profiles configured — add one below.</p>
+				</div>
 			{:else}
 				<div class="profile-list">
 					{#each llmProfiles as p (p.id)}
@@ -712,7 +717,13 @@
 			<p class="section-note">Named runner configs for pipeline steps that spawn a subprocess (opencode or claude CLI).</p>
 
 			{#if agentProfiles.length === 0}
-				<p class="empty-note">No agent profiles defined.</p>
+				<div class="profile-empty">
+					<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/>
+						<circle cx="12" cy="10" r="2"/><path d="M9 10H7m10 0h-2"/>
+					</svg>
+					<p class="empty-note">No agent profiles defined.</p>
+				</div>
 			{:else}
 				<div class="profile-list">
 					{#each agentProfiles as p (p.id)}
@@ -745,7 +756,12 @@
 			<p class="section-note">Named configurations for <code>akm improve</code>. Each profile defines which processes run and which LLM/agent they use.</p>
 
 			{#if improveProfiles.length === 0}
-				<p class="empty-note">No improve profiles defined — add one below.</p>
+				<div class="profile-empty">
+					<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M12 3c-1 2-2 3-3 4 1 3 3 5 3 8a6 6 0 0 1-6-6c0-3 2-5 3-6"/><path d="M17.5 3.5c.5 1.5.5 3-.5 4.5 1 1 2 2.5 2 4a4 4 0 0 1-4-4c0-2 1-3.5 2.5-4.5z"/>
+					</svg>
+					<p class="empty-note">No improve profiles defined — add one below.</p>
+				</div>
 			{:else}
 				<div class="profile-list">
 					{#each improveProfiles as ip (ip.id)}
@@ -1320,6 +1336,8 @@
 
 	.section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
 	.empty-note { font-size: var(--text-sm); color: var(--color-text-secondary); font-style: italic; margin: 0; }
+	.profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); color: var(--color-text-secondary); }
+	.profile-empty svg { opacity: 0.45; }
 
 	/* Profile list (compact rows) */
 	.profile-list { display: flex; flex-direction: column; gap: var(--space-1); }
