@@ -40,6 +40,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
+    min-height: var(--chat-toolbar-height);
     padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--color-border);
     background: var(--color-bg-secondary);

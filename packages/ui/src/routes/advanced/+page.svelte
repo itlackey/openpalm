@@ -108,6 +108,8 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    /* Match the regular chat toolbar height so switching modes doesn't jump. */
+    min-height: var(--chat-toolbar-height);
     padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--color-border);
     background: var(--color-bg-secondary);

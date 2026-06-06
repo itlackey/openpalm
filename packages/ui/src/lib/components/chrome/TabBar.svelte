@@ -196,13 +196,17 @@
 		z-index: 40;
 		background: var(--color-bg-secondary);
 		border-bottom: 1px solid var(--color-border);
-		margin-bottom: var(--space-6);
+		/* No bottom margin: the full-width bar sits flush under the navbar and the
+		   admin <main> supplies the gap before content via its top padding. */
 	}
 
 	/* ── Section strip (top level) ── */
 	.section-strip {
 		display: flex;
 		gap: 0;
+		/* Indent the full-width strip so the first tab aligns with the page
+		   content's left padding instead of jamming against the viewport edge. */
+		padding-inline: var(--space-6);
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
@@ -295,6 +299,8 @@
 	.tabs {
 		display: flex;
 		gap: var(--space-1);
+		/* Align the subtab strip with the section strip + page content. */
+		padding-inline: var(--space-6);
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
@@ -353,6 +359,10 @@
 		}
 		.section-tab {
 			padding: var(--space-1) var(--space-3);
+		}
+		.section-strip,
+		.tabs {
+			padding-inline: var(--space-4);
 		}
 	}
 

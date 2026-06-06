@@ -498,9 +498,9 @@
 {:else}
   <Navbar />
 
-  <main>
-    <TabBar active={activeTab} onSelect={handleTabSelect} />
+  <TabBar active={activeTab} onSelect={handleTabSelect} />
 
+  <main>
     {#if activeTab === 'overview'}
       <OverviewTab
         {adminHealth}
@@ -591,10 +591,11 @@
 {/if}
 
 <style>
+  /* Full-width admin: the content spans the viewport so the tab bar (rendered
+     above, outside this container) reads edge-to-edge and flush under the
+     navbar. Horizontal padding keeps panels off the screen edges. */
   main {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: var(--space-8) var(--space-6) var(--space-12);
+    padding: var(--space-6) var(--space-6) var(--space-12);
   }
 
   @media (max-width: 768px) {

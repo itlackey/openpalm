@@ -49,17 +49,27 @@
       <span class="brand-text">OpenPalm</span>
     </a>
 
-    <!-- Global controls, left→right: settings · assistant · session · theme ·
-         speaker · mic (speaker+mic come from VoiceControl). Settings shows only
-         for a local assistant. Present on every page, every width. -->
+    <!-- Global controls, left→right: settings/chat · assistant · session · theme ·
+         speaker · mic (speaker+mic come from VoiceControl). The leading button
+         toggles by context: in admin it returns to Chat; elsewhere it opens
+         Settings (local assistant only). Present on every page, every width. -->
     <div class="navbar-actions">
-      {#if isLocalAssistant}
+      {#if onAdmin}
+        <a
+          href="/chat"
+          class="gear-btn"
+          aria-label="Back to chat"
+          title="Chat"
+        >
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        </a>
+      {:else if isLocalAssistant}
         <a
           href="/admin"
           class="gear-btn"
-          class:active={onAdmin}
           aria-label="Settings & administration"
-          aria-current={onAdmin ? 'page' : undefined}
           title="Manage this machine"
         >
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -172,12 +182,6 @@
   .gear-btn:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
-  }
-  .gear-btn.active {
-    color: var(--color-text);
-    background: var(--color-surface);
-    border-color: var(--color-border);
-    font-weight: var(--font-semibold);
   }
   .gear-btn svg {
     flex-shrink: 0;
