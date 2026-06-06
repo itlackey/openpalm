@@ -10,7 +10,7 @@ import {
 	type FEntry,
 	type Tri,
 	type ProcKey,
-} from './akm/improve-process-helpers';
+} from './improve-process-helpers';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Round-trip fidelity guard for AkmTab.svelte.

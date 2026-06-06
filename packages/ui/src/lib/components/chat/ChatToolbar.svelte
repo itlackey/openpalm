@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ModeSwitch from './ModeSwitch.svelte';
+  import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
 
   // Chat content toolbar. The global controls (assistant, session, mic, speaker)

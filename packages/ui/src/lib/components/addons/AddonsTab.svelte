@@ -10,7 +10,7 @@
     type AddonCredentialField,
   } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
-  import { type TabId } from '$lib/components/TabBar.svelte';
+  import { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import SecretSelect from '$lib/components/common/SecretSelect.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
 

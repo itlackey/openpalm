@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
-  import type { TabId } from './TabBar.svelte';
+  import type { TabId } from '$lib/components/chrome/TabBar.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { fetchAkmHealth, type AkmHealth } from '$lib/api.js';
-  import StatusHero from './admin/overview/StatusHero.svelte';
-  import OperationOutput from './admin/overview/OperationOutput.svelte';
-  import MetricTile from './admin/overview/MetricTile.svelte';
-  import AkmHealthCard from './admin/overview/AkmHealthCard.svelte';
-  import ConfigureShortcuts from './admin/overview/ConfigureShortcuts.svelte';
+  import StatusHero from './StatusHero.svelte';
+  import OperationOutput from './OperationOutput.svelte';
+  import MetricTile from './MetricTile.svelte';
+  import AkmHealthCard from './AkmHealthCard.svelte';
+  import ConfigureShortcuts from './ConfigureShortcuts.svelte';
 
   interface Props {
     adminHealth: HealthPayload | null;

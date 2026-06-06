@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { TabId } from '../../TabBar.svelte';
+  import type { TabId } from '$lib/components/chrome/TabBar.svelte';
   import type { AkmHealth } from '$lib/api.js';
 
   interface Props {

@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Navbar from '$lib/components/Navbar.svelte';
-  import AuthGate from '$lib/components/AuthGate.svelte';
-  import ChatMessage from '$lib/components/ChatMessage.svelte';
-  import ChatInput from '$lib/components/ChatInput.svelte';
-  import ChatToolbar from '$lib/components/ChatToolbar.svelte';
+  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import AuthGate from '$lib/components/common/AuthGate.svelte';
+  import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+  import ChatInput from '$lib/components/chat/ChatInput.svelte';
+  import ChatToolbar from '$lib/components/chat/ChatToolbar.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';

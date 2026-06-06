@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import FriendlyError from '$lib/components/FriendlyError.svelte';
+  import FriendlyError from '$lib/components/common/FriendlyError.svelte';
   import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
 

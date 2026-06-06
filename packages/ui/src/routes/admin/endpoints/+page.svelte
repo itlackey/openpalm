@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Navbar from '$lib/components/Navbar.svelte';
-  import AuthGate from '$lib/components/AuthGate.svelte';
+  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import AuthGate from '$lib/components/common/AuthGate.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import {
     createEndpoint,

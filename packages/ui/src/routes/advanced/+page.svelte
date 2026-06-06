@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Navbar from '$lib/components/Navbar.svelte';
-  import AuthGate from '$lib/components/AuthGate.svelte';
-  import ModeSwitch from '$lib/components/ModeSwitch.svelte';
+  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import AuthGate from '$lib/components/common/AuthGate.svelte';
+  import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // ── Auth state (mirrors /chat + /admin) ───────────────────────────────

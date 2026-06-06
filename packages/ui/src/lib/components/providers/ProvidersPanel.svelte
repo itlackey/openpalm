@@ -11,10 +11,10 @@
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import { buildHeaders } from '$lib/api.js';
 	import type { ProviderPageState, ProviderView } from '$lib/types/providers.js';
-	import AddProviderSheet from './providers/AddProviderSheet.svelte';
-	import ConnectSheet from './providers/ConnectSheet.svelte';
-	import CustomProviderForm from './providers/CustomProviderForm.svelte';
-	import HostImportModal from './providers/HostImportModal.svelte';
+	import AddProviderSheet from './AddProviderSheet.svelte';
+	import ConnectSheet from './ConnectSheet.svelte';
+	import CustomProviderForm from './CustomProviderForm.svelte';
+	import HostImportModal from './HostImportModal.svelte';
 
 	let pageState = $state<ProviderPageState>({
 		available: false,

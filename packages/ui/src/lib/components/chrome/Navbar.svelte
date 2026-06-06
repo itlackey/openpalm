@@ -1,9 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import ThemeToggle from './ThemeToggle.svelte';
-  import EndpointSwitcher from './EndpointSwitcher.svelte';
-  import SessionPicker from './SessionPicker.svelte';
-  import VoiceControl from './VoiceControl.svelte';
+  import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
+  import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
+  import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
+  import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // GLOBAL top chrome, mounted on EVERY page. These controls must be present and

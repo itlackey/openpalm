@@ -1,20 +1,20 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import Navbar from '$lib/components/Navbar.svelte';
-  import AuthGate from '$lib/components/AuthGate.svelte';
-  import TabBar, { type TabId } from '$lib/components/TabBar.svelte';
-  import AdminScopeBar from '$lib/components/AdminScopeBar.svelte';
-  import OverviewTab from '$lib/components/OverviewTab.svelte';
-  import UpdatesTab from '$lib/components/UpdatesTab.svelte';
-  import AddonsTab from '$lib/components/AddonsTab.svelte';
-  import ContainersTab from '$lib/components/ContainersTab.svelte';
-  import AutomationsTab from '$lib/components/AutomationsTab.svelte';
-  import ProvidersPanel from '$lib/components/ProvidersPanel.svelte';
-  import LogsTab from '$lib/components/LogsTab.svelte';
-  import SecretsTab from '$lib/components/SecretsTab.svelte';
-  import AkmTab from '$lib/components/AkmTab.svelte';
+  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import AuthGate from '$lib/components/common/AuthGate.svelte';
+  import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
+  import AdminScopeBar from '$lib/components/chrome/AdminScopeBar.svelte';
+  import OverviewTab from '$lib/components/admin/overview/OverviewTab.svelte';
+  import UpdatesTab from '$lib/components/admin/updates/UpdatesTab.svelte';
+  import AddonsTab from '$lib/components/addons/AddonsTab.svelte';
+  import ContainersTab from '$lib/components/admin/containers/ContainersTab.svelte';
+  import AutomationsTab from '$lib/components/admin/automations/AutomationsTab.svelte';
+  import ProvidersPanel from '$lib/components/providers/ProvidersPanel.svelte';
+  import LogsTab from '$lib/components/admin/logs/LogsTab.svelte';
+  import SecretsTab from '$lib/components/admin/secrets/SecretsTab.svelte';
+  import AkmTab from '$lib/components/akm/AkmTab.svelte';
   import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
-  import VoiceTab from '$lib/components/VoiceTab.svelte';
+  import VoiceTab from '$lib/components/voice/VoiceTab.svelte';
 
   import {
     fetchHealth,
