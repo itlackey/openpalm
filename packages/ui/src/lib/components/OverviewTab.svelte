@@ -133,7 +133,9 @@
       {healthLoading ? 'Checking…' : 'Re-check'}
     </button>
     {#if health.status === 'warning'}
-      <button class="btn btn-primary" onclick={() => onNavigate('containers')}>View containers</button>
+      <!-- Neutral, not brand-orange: this is a navigation shortcut within a
+           status card, not a primary create/apply action (rubric D5). -->
+      <button class="btn btn-secondary" onclick={() => onNavigate('containers')}>View containers</button>
     {/if}
     <button class="btn btn-secondary" onclick={onApplyChanges} disabled={anyDangerousLoading || !tokenStored}>
       {applyLoading ? 'Applying…' : 'Apply config & restart'}

@@ -213,7 +213,7 @@
                 </button>
               {:else}
                 <button
-                  class="btn btn-sm btn-ghost"
+                  class="btn btn-sm btn-secondary"
                   onclick={() => void toggleExpanded(addon.name)}
                   disabled={!addon.available}
                   aria-expanded={expanded === addon.name}

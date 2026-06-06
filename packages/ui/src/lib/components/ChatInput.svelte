@@ -128,8 +128,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     flex-shrink: 0;
     background: var(--color-primary);
