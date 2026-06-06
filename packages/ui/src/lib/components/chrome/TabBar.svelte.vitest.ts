@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-svelte';
 import TabBar from './TabBar.svelte';
 
 describe('TabBar', () => {
-  it('renders the five entity sections', async () => {
+  it('renders the six entity sections in order', async () => {
     render(TabBar, { props: { active: 'overview', onSelect: vi.fn() } });
 
     const sectionTablist = document.querySelector('[aria-label="Sections"]');
@@ -11,7 +11,7 @@ describe('TabBar', () => {
     const sectionTabs = Array.from(
       sectionTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(sectionTabs).toEqual(['Health', 'Knowledge', 'Voice', 'Mind', 'Capabilities']);
+    expect(sectionTabs).toEqual(['Health', 'Mind', 'Voice', 'Routines', 'Capabilities', 'Knowledge']);
   });
 
   it('shows Health subtabs when active is "overview"', async () => {
@@ -22,10 +22,10 @@ describe('TabBar', () => {
     const subtabLabels = Array.from(
       subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Overview', 'Containers', 'Logs', 'Updates']);
+    expect(subtabLabels).toEqual(['Overview', 'Systems', 'Journal', 'Check-up']);
   });
 
-  it('shows Knowledge subtabs when active is "akm"', async () => {
+  it('shows Knowledge subtabs (Memory, Secrets, Sharing) when active is "akm"', async () => {
     render(TabBar, { props: { active: 'akm', onSelect: vi.fn() } });
 
     const subtabTablist = document.querySelector('[aria-label="Knowledge tabs"]');
@@ -33,23 +33,13 @@ describe('TabBar', () => {
     const subtabLabels = Array.from(
       subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Memory', 'Host Sharing', 'Secrets']);
+    expect(subtabLabels).toEqual(['Memory', 'Secrets', 'Sharing']);
   });
 
-  it('shows Capabilities subtabs when active is "addons"', async () => {
-    render(TabBar, { props: { active: 'addons', onSelect: vi.fn() } });
-
-    const subtabTablist = document.querySelector('[aria-label="Capabilities tabs"]');
-    expect(subtabTablist).not.toBeNull();
-    const subtabLabels = Array.from(
-      subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
-    ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Add-ons', 'Automations']);
-  });
-
-  it('hides the subtab row for a single-destination section (Mind)', async () => {
-    render(TabBar, { props: { active: 'connections', onSelect: vi.fn() } });
-    // Mind has one destination (AI Providers) → no secondary strip.
+  it('hides the subtab row for single-destination sections (Routines, Capabilities, Mind)', async () => {
+    render(TabBar, { props: { active: 'automations', onSelect: vi.fn() } });
+    expect(document.querySelector('[aria-label="Routines tabs"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Capabilities tabs"]')).toBeNull();
     expect(document.querySelector('[aria-label="Mind tabs"]')).toBeNull();
   });
 
@@ -63,14 +53,22 @@ describe('TabBar', () => {
     expect(selected?.textContent?.trim()).toBe('Knowledge');
   });
 
+  it('selects Routines for the automations tab', async () => {
+    render(TabBar, { props: { active: 'automations', onSelect: vi.fn() } });
+    const selected = Array.from(
+      document.querySelectorAll<HTMLElement>('[aria-label="Sections"] [role="tab"]')
+    ).find((t) => t.getAttribute('aria-selected') === 'true');
+    expect(selected?.textContent?.trim()).toBe('Routines');
+  });
+
   it('marks the active subtab as aria-selected', async () => {
-    render(TabBar, { props: { active: 'secrets', onSelect: vi.fn() } });
+    render(TabBar, { props: { active: 'host-sharing', onSelect: vi.fn() } });
 
     const subtabs = Array.from(
       document.querySelectorAll<HTMLElement>('[aria-label="Knowledge tabs"] [role="tab"]')
     );
     const selected = subtabs.find((t) => t.getAttribute('aria-selected') === 'true');
-    expect(selected?.textContent?.trim()).toBe('Secrets');
+    expect(selected?.textContent?.trim()).toBe('Sharing');
   });
 
   it('calls onSelect with the first subtab when a section tab is clicked', async () => {
@@ -89,23 +87,23 @@ describe('TabBar', () => {
     const onSelect = vi.fn();
     render(TabBar, { props: { active: 'overview', onSelect } });
 
-    const mind = Array.from(
+    const routines = Array.from(
       document.querySelectorAll<HTMLElement>('[aria-label="Sections"] [role="tab"]')
-    ).find((t) => t.textContent?.trim() === 'Mind');
-    expect(mind).not.toBeUndefined();
-    mind!.click();
-    expect(onSelect).toHaveBeenCalledWith('connections');
+    ).find((t) => t.textContent?.trim() === 'Routines');
+    expect(routines).not.toBeUndefined();
+    routines!.click();
+    expect(onSelect).toHaveBeenCalledWith('automations');
   });
 
   it('calls onSelect with the subtab id when a subtab is clicked', async () => {
     const onSelect = vi.fn();
-    render(TabBar, { props: { active: 'addons', onSelect } });
+    render(TabBar, { props: { active: 'akm', onSelect } });
 
-    const automations = Array.from(
-      document.querySelectorAll<HTMLElement>('[aria-label="Capabilities tabs"] [role="tab"]')
-    ).find((t) => t.textContent?.trim() === 'Automations');
-    expect(automations).not.toBeUndefined();
-    automations!.click();
-    expect(onSelect).toHaveBeenCalledWith('automations');
+    const sharing = Array.from(
+      document.querySelectorAll<HTMLElement>('[aria-label="Knowledge tabs"] [role="tab"]')
+    ).find((t) => t.textContent?.trim() === 'Sharing');
+    expect(sharing).not.toBeUndefined();
+    sharing!.click();
+    expect(onSelect).toHaveBeenCalledWith('host-sharing');
   });
 });

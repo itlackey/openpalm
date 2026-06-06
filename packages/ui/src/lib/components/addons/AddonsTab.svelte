@@ -13,6 +13,7 @@
   import { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import SecretSelect from '$lib/components/common/SecretSelect.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import Drawer from '$lib/components/common/Drawer.svelte';
 
   interface Props {
     onAuthError: () => void;
@@ -92,11 +93,11 @@
     }
   }
 
-  async function toggleExpanded(name: string): Promise<void> {
-    if (expanded === name) {
-      expanded = null;
-      return;
-    }
+  function closeCredentials(): void {
+    expanded = null;
+  }
+
+  async function openCredentials(name: string): Promise<void> {
     expanded = name;
     if (!credFields[name]) {
       credLoading = name;
@@ -218,11 +219,10 @@
               {:else}
                 <button
                   class="btn btn-sm btn-secondary"
-                  onclick={() => void toggleExpanded(addon.name)}
+                  onclick={() => void openCredentials(addon.name)}
                   disabled={!addon.available}
-                  aria-expanded={expanded === addon.name}
                 >
-                  {expanded === addon.name ? 'Hide' : 'Credentials'}
+                  Credentials
                 </button>
               {/if}
               <button
@@ -240,55 +240,61 @@
               </button>
             </span>
           </div>
-          {#if expanded === addon.name}
-            <div class="addon-creds">
-              {#if credLoading === addon.name}
-                <div class="creds-loading"><Spinner /> Loading credentials...</div>
-              {:else if (credFields[addon.name]?.length ?? 0) === 0}
-                <p class="creds-empty">This addon has no configurable env vars (compose overlay only).</p>
-              {:else}
-                <p class="creds-hint">Values are written to <code>knowledge/env/stack.env</code> and read by the addon container on next recreate.</p>
-                {#each credFields[addon.name] ?? [] as field (field.key)}
-                  <div class="creds-row">
-                    <label class="creds-label" for="cred-{addon.name}-{field.key}">
-                      <code>{field.key}</code>
-                      {#if field.sensitive}<span class="creds-tag">sensitive</span>{/if}
-                      {#if field.sensitive && field.set}<span class="creds-tag creds-tag--set">set</span>{/if}
-                    </label>
-                    {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
-                    {#if field.sensitive}
-                      <!-- Pick an existing secret or quick-add one; the value is
-                           written to the addon config without leaving this flow. -->
-                      <SecretSelect
-                        id="cred-{addon.name}-{field.key}"
-                        bind:value={credSecretRef[addon.name][field.key]}
-                        onChange={(secretName) => void onSecretChosen(addon.name, field.key, secretName)}
-                      />
-                      {#if field.set}<p class="creds-desc">A value is already set — choose a secret to replace it.</p>{/if}
-                    {:else}
-                      <input
-                        id="cred-{addon.name}-{field.key}"
-                        type="text"
-                        class="form-input"
-                        placeholder={field.default}
-                        bind:value={credValues[addon.name][field.key]}
-                        autocomplete="off"
-                      />
-                    {/if}
-                  </div>
-                {/each}
-                <div class="creds-actions">
-                  <button class="btn btn-primary btn-sm" disabled={credSaving === addon.name} onclick={() => void saveCredentials(addon.name)}>
-                    {#if credSaving === addon.name}<Spinner />{/if} Save
-                  </button>
-                </div>
-              {/if}
-            </div>
-          {/if}
         {/each}
       </div>
     {/if}
   </div>
+
+  <!-- Credentials editor opens in a drawer instead of expanding inline. -->
+  {#if expanded}
+    {@const aid = expanded}
+    <Drawer open={true} title="{formatAddonName(aid)} credentials" onClose={closeCredentials}>
+      {#if credLoading === aid}
+        <div class="creds-loading"><Spinner /> Loading credentials…</div>
+      {:else if (credFields[aid]?.length ?? 0) === 0}
+        <p class="creds-empty">This addon has no configurable env vars (compose overlay only).</p>
+      {:else}
+        <p class="creds-hint">Values are written to <code>knowledge/env/stack.env</code> and read by the addon container on next recreate.</p>
+        {#each credFields[aid] ?? [] as field (field.key)}
+          <div class="creds-row">
+            <label class="creds-label" for="cred-{aid}-{field.key}">
+              <code>{field.key}</code>
+              {#if field.sensitive}<span class="creds-tag">sensitive</span>{/if}
+              {#if field.sensitive && field.set}<span class="creds-tag creds-tag--set">set</span>{/if}
+            </label>
+            {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
+            {#if field.sensitive}
+              <SecretSelect
+                id="cred-{aid}-{field.key}"
+                bind:value={credSecretRef[aid][field.key]}
+                onChange={(secretName) => void onSecretChosen(aid, field.key, secretName)}
+              />
+              {#if field.set}<p class="creds-desc">A value is already set — choose a secret to replace it.</p>{/if}
+            {:else}
+              <input
+                id="cred-{aid}-{field.key}"
+                type="text"
+                class="form-input"
+                placeholder={field.default}
+                bind:value={credValues[aid][field.key]}
+                autocomplete="off"
+              />
+            {/if}
+          </div>
+        {/each}
+      {/if}
+      {#snippet footer()}
+        <button class="btn btn-secondary btn-sm" onclick={closeCredentials}>Cancel</button>
+        <button
+          class="btn btn-primary btn-sm"
+          disabled={!expanded || credSaving === expanded || (credFields[expanded]?.length ?? 0) === 0}
+          onclick={() => expanded && void saveCredentials(expanded)}
+        >
+          {#if credSaving === expanded}<Spinner />{/if} Save
+        </button>
+      {/snippet}
+    </Drawer>
+  {/if}
 </div>
 
 <style>
@@ -395,16 +401,7 @@
     }
   }
 
-  /* ── Inline credentials editor ───────────────────────────────── */
-
-  .addon-creds {
-    padding: var(--space-4) var(--space-5);
-    background: var(--color-bg-secondary);
-    border-bottom: 1px solid var(--color-border);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
+  /* ── Credentials editor (in a drawer) ───────────────────────────── */
 
   .creds-loading {
     display: flex;
@@ -477,10 +474,4 @@
     font-family: inherit;
   }
   .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
-
-  .creds-actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-
 </style>

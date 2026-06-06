@@ -26,24 +26,22 @@
 </nav>
 
 <style>
+  /* Subtle, low-chrome toggle — no bordered/filled container, so it reads as a
+     quiet switch rather than a prominent control. */
   .mode-switch {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    padding: 3px;
-    background: var(--color-bg-tertiary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
     flex-shrink: 0;
   }
   .mode-tab {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    height: 34px;
-    padding: 0 var(--space-3);
+    height: 30px;
+    padding: 0 var(--space-2);
     border-radius: var(--radius-sm);
-    color: var(--color-badge-neutral-fg);
+    color: var(--color-text-secondary);
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
     text-decoration: none;
@@ -52,16 +50,17 @@
   }
   .mode-tab:hover {
     color: var(--color-text);
+    background: var(--color-surface-hover);
   }
   .mode-tab:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 1px;
   }
+  /* Active = full text + a faint tint, no border/shadow. */
   .mode-tab.active {
-    background: var(--color-surface);
     color: var(--color-text);
     font-weight: var(--font-semibold);
-    box-shadow: var(--shadow-sm);
+    background: var(--color-surface-hover);
   }
   .mode-tab svg {
     flex-shrink: 0;

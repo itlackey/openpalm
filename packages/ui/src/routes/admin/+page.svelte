@@ -3,7 +3,6 @@
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import AuthGate from '$lib/components/common/AuthGate.svelte';
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
-  import AdminScopeBar from '$lib/components/chrome/AdminScopeBar.svelte';
   import OverviewTab from '$lib/components/admin/overview/OverviewTab.svelte';
   import UpdatesTab from '$lib/components/admin/updates/UpdatesTab.svelte';
   import AddonsTab from '$lib/components/addons/AddonsTab.svelte';
@@ -501,8 +500,6 @@
 
   <main>
     <TabBar active={activeTab} onSelect={handleTabSelect} />
-
-    <AdminScopeBar />
 
     {#if activeTab === 'overview'}
       <OverviewTab

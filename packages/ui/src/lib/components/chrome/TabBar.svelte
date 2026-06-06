@@ -12,7 +12,7 @@
 		| 'logs'
 		| 'updates';
 
-	type SectionId = 'health' | 'knowledge' | 'voice' | 'mind' | 'capabilities';
+	type SectionId = 'health' | 'mind' | 'voice' | 'routines' | 'capabilities' | 'knowledge';
 
 	interface SubTab {
 		id: TabId;
@@ -48,34 +48,18 @@
 		updates: `<polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />`,
 	};
 
-	// Five entity-framed sections (configuring the assistant + its host). Section
-	// names carry the metaphor (Health / Knowledge / Voice / Mind / Capabilities);
-	// sub-tab nouns stay conventional (Containers, Logs, Secrets…) so ops terms
-	// remain scannable and match the CLI/docs.
+	// Entity-framed sections (configuring the assistant + its host). Section names
+	// carry the metaphor; sub-tab nouns are mostly the entity vocabulary too.
 	const SECTIONS: Section[] = [
 		{
 			id: 'health',
 			label: 'Health',
 			tabs: [
 				{ id: 'overview', label: 'Overview', icon: ICONS.overview },
-				{ id: 'containers', label: 'Containers', icon: ICONS.containers },
-				{ id: 'logs', label: 'Logs', icon: ICONS.logs },
-				{ id: 'updates', label: 'Updates', icon: ICONS.updates },
+				{ id: 'containers', label: 'Systems', icon: ICONS.containers },
+				{ id: 'logs', label: 'Journal', icon: ICONS.logs },
+				{ id: 'updates', label: 'Check-up', icon: ICONS.updates },
 			],
-		},
-		{
-			id: 'knowledge',
-			label: 'Knowledge',
-			tabs: [
-				{ id: 'akm', label: 'Memory', icon: ICONS.akm },
-				{ id: 'host-sharing', label: 'Host Sharing', icon: ICONS['host-sharing'] },
-				{ id: 'secrets', label: 'Secrets', icon: ICONS.secrets },
-			],
-		},
-		{
-			id: 'voice',
-			label: 'Voice',
-			tabs: [{ id: 'voice', label: 'Voice', icon: ICONS.voice }],
 		},
 		{
 			id: 'mind',
@@ -83,11 +67,27 @@
 			tabs: [{ id: 'connections', label: 'AI Providers', icon: ICONS.connections }],
 		},
 		{
+			id: 'voice',
+			label: 'Voice',
+			tabs: [{ id: 'voice', label: 'Voice', icon: ICONS.voice }],
+		},
+		{
+			id: 'routines',
+			label: 'Routines',
+			tabs: [{ id: 'automations', label: 'Automations', icon: ICONS.automations }],
+		},
+		{
 			id: 'capabilities',
 			label: 'Capabilities',
+			tabs: [{ id: 'addons', label: 'Add-ons', icon: ICONS.addons }],
+		},
+		{
+			id: 'knowledge',
+			label: 'Knowledge',
 			tabs: [
-				{ id: 'addons', label: 'Add-ons', icon: ICONS.addons },
-				{ id: 'automations', label: 'Automations', icon: ICONS.automations },
+				{ id: 'akm', label: 'Memory', icon: ICONS.akm },
+				{ id: 'secrets', label: 'Secrets', icon: ICONS.secrets },
+				{ id: 'host-sharing', label: 'Sharing', icon: ICONS['host-sharing'] },
 			],
 		},
 	];

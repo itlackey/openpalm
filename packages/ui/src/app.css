@@ -37,7 +37,7 @@
 
   /* Badge foregrounds — darker than the status hues so 12px badge text clears
      WCAG 1.4.3 (≥4.5:1) on the faint tinted badge backgrounds over a light page. */
-  --color-badge-success-fg: #15803d;
+  --color-badge-success-fg: #0f6a31;
   --color-badge-danger-fg: #b91c1c;
   --color-badge-warning-fg: #b45309;
   --color-badge-neutral-fg: #4b5563;

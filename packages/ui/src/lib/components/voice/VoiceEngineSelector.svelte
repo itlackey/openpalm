@@ -171,8 +171,12 @@
 		background: var(--color-surface-hover);
 	}
 	.engine-card--selected {
+		/* Selection is shown by the orange border + a 2px ring; the fill stays a
+		   neutral surface so translucent status badges (e.g. "Recommended") keep
+		   their contrast instead of compositing over an orange tint. */
 		border-color: var(--color-primary);
-		background: var(--color-primary-subtle);
+		background: var(--color-surface-hover);
+		box-shadow: 0 0 0 1px var(--color-primary);
 	}
 	.engine-card--disabled {
 		opacity: 0.6;

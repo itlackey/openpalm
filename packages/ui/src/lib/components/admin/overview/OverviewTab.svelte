@@ -110,18 +110,22 @@
   });
 </script>
 
-<StatusHero
-  status={health.status}
-  title={health.title}
-  detail={health.detail}
-  {healthLoading}
-  {applyLoading}
-  {anyDangerousLoading}
-  {tokenStored}
-  {onCheckHealth}
-  {onApplyChanges}
-  {onNavigate}
-/>
+<!-- Only surface the status hero when something needs attention — the
+     "all systems operational" state is redundant noise, so it stays hidden. -->
+{#if health.status !== 'ok'}
+  <StatusHero
+    status={health.status}
+    title={health.title}
+    detail={health.detail}
+    {healthLoading}
+    {applyLoading}
+    {anyDangerousLoading}
+    {tokenStored}
+    {onCheckHealth}
+    {onApplyChanges}
+    {onNavigate}
+  />
+{/if}
 
 <OperationOutput {operationResult} {operationResultType} {onDismissResult} />
 
@@ -133,13 +137,6 @@
     value={containerCounts?.running}
     sub={containerCounts ? `/${containerCounts.total}` : null}
     loaded={!!containerCounts}
-  />
-  <MetricTile
-    label="Automations active"
-    onClick={() => onNavigate('automations')}
-    value={enabledAutomationCount}
-    sub={`/${automationCount}`}
-    loaded={!!automationsData}
   />
   <MetricTile label="View logs" onClick={() => onNavigate('logs')}>
     {#snippet icon()}
