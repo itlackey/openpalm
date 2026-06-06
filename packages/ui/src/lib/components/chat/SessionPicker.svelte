@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
@@ -174,7 +175,7 @@
 
     {#if loading}
       <div class="empty">
-        <span class="spinner" aria-hidden="true"></span>
+        <Spinner size={12} />
         <span>Loading sessions…</span>
       </div>
     {:else if error}
@@ -446,23 +447,4 @@
     background: var(--color-bg-tertiary);
   }
 
-  .spinner {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .spinner {
-      animation: none;
-    }
-  }
 </style>

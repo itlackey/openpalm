@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from '$lib/components/common/Spinner.svelte';
   interface Props {
     sending: boolean;
     onSend: (text: string) => void;
@@ -55,7 +56,7 @@
       aria-label="Send message"
     >
       {#if sending}
-        <span class="spinner" aria-hidden="true"></span>
+        <Spinner />
       {:else}
         <svg
           aria-hidden="true"
@@ -149,21 +150,4 @@
     cursor: not-allowed;
   }
 
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .spinner { animation: none; }
-  }
 </style>

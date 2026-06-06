@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from '$lib/components/common/Spinner.svelte';
   interface Props {
     onSuccess: (token: string) => Promise<boolean>;
     loading: boolean;
@@ -77,7 +78,7 @@
       {/if}
       <button class="btn btn-primary" type="submit" disabled={loading || !tokenInput.trim()}>
         {#if loading}
-          <span class="spinner"></span>
+          <Spinner />
         {/if}
         Unlock Console
       </button>

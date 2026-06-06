@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { AutomationsResponse } from '$lib/types.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
+  import EmptyState from '$lib/components/common/EmptyState.svelte';
   import { fetchTaskFile, saveTaskFile, deleteTaskFile } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
 
@@ -108,7 +110,7 @@
       <button class="btn btn-secondary btn-sm" onclick={startNewTask} disabled={busy || !tokenStored}>New task</button>
       <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
         {#if loading}
-          <span class="spinner"></span>
+          <Spinner />
         {/if}
         Refresh
       </button>
@@ -125,7 +127,7 @@
       <div class="task-editor-actions">
         <button class="btn btn-secondary btn-sm" onclick={closeEditor} disabled={busy}>Cancel</button>
         <button class="btn btn-primary btn-sm" onclick={() => void saveEditor()} disabled={busy}>
-          {#if busy}<span class="spinner"></span>{/if} Save
+          {#if busy}<Spinner />{/if} Save
         </button>
       </div>
     </div>
@@ -170,21 +172,23 @@
         {/each}
       </div>
     {:else}
-      <div class="empty-state">
-        <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12 6 12 12 16 14" />
-        </svg>
+      <EmptyState>
+        {#snippet icon()}
+          <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        {/snippet}
         {#if loading}
           <p>Loading automations...</p>
         {:else if error}
           <p class="text-danger">{error}</p>
-          <button class="btn btn-secondary btn-sm" onclick={onRefresh}>Try Again</button>
+          <button class="btn btn-secondary btn-sm empty-state-btn" onclick={onRefresh}>Try Again</button>
         {:else}
           <p>No automations configured.</p>
           <p class="empty-state-hint">Drop <code>.md</code> task files into <code>~/.openpalm/knowledge/tasks/</code>, or install via <code>akm</code>.</p>
         {/if}
-      </div>
+      </EmptyState>
     {/if}
   </div>
 </div>
@@ -306,11 +310,11 @@
     margin-top: calc(-1 * var(--space-2));
   }
 
-  .empty-state .btn {
+  .empty-state-btn {
     margin-top: var(--space-2);
   }
 
-  .empty-state code {
+  .empty-state-hint code {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     background: var(--color-bg-tertiary);

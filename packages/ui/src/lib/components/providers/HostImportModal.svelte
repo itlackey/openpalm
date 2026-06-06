@@ -3,6 +3,7 @@
   POST /admin/providers/import-host on confirm.
 -->
 <script lang="ts">
+	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { buildHeaders } from '$lib/api.js';
 
 	let {
@@ -127,7 +128,7 @@
 				disabled={importing}
 				onclick={() => void runImport()}
 			>
-				{#if importing}<span class="spinner"></span>{/if}
+				{#if importing}<Spinner />{/if}
 				Import
 			</button>
 		{/if}

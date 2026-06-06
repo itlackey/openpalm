@@ -7,6 +7,8 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import { buildHeaders } from '$lib/api.js';
 	import type { ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import AddProviderSheet from './providers/AddProviderSheet.svelte';
@@ -186,7 +188,7 @@
 				Add provider
 			</button>
 			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading}>
-				{#if loading}<span class="spinner"></span>{/if}
+				{#if loading}<Spinner />{/if}
 				Refresh
 			</button>
 		</div>
@@ -201,27 +203,31 @@
 
 	<div class="panel-body panel-body--flush">
 		{#if !pageState.available && !loading}
-			<div class="empty-state">
-				<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-					<line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
-					<line x1="1" y1="1" x2="23" y2="23"/>
-				</svg>
+			<EmptyState>
+				{#snippet icon()}
+					<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+						<line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+						<line x1="1" y1="1" x2="23" y2="23"/>
+					</svg>
+				{/snippet}
 				<p>The assistant (OpenCode server) is not reachable. Start the assistant container and refresh.</p>
-			</div>
+			</EmptyState>
 		{:else if loading && pageState.providers.length === 0}
 			<div class="loading-state">
-				<span class="spinner"></span>
+				<Spinner />
 				<span>Loading providers…</span>
 			</div>
 		{:else if connected.length === 0}
-			<div class="empty-state">
-				<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-				</svg>
+			<EmptyState>
+				{#snippet icon()}
+					<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+					</svg>
+				{/snippet}
 				<p>No providers connected yet.</p>
 				<p class="empty-hint">Click <strong>Add provider</strong> above to sign in to one.</p>
-			</div>
+			</EmptyState>
 		{:else}
 			<!-- OpenCode default + small model. Saved to opencode.json — used
 			     when the chat doesn't specify a model per-request. -->
@@ -280,7 +286,7 @@
 						disabled={disconnectingId === p.id}
 						onclick={() => void disconnect(p)}
 					>
-						{#if disconnectingId === p.id}<span class="spinner"></span>{/if}
+						{#if disconnectingId === p.id}<Spinner />{/if}
 						Disconnect
 					</button>
 				</div>

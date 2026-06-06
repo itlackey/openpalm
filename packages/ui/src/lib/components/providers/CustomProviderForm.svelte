@@ -4,6 +4,8 @@
   Models auto-discovered on first connection.
 -->
 <script lang="ts">
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import FormField from '$lib/components/common/FormField.svelte';
 	import { buildHeaders } from '$lib/api.js';
 	import type { ProviderActionResult } from '$lib/types/providers.js';
 
@@ -83,8 +85,7 @@
 		{/if}
 
 		<div class="form-stack">
-			<div class="form-field">
-				<label class="form-label" for="custom-id">Provider ID</label>
+			<FormField label="Provider ID" for="custom-id">
 				<input
 					id="custom-id"
 					type="text"
@@ -95,10 +96,9 @@
 					onkeydown={handleKey}
 					autocomplete="off"
 				/>
-			</div>
+			</FormField>
 
-			<div class="form-field">
-				<label class="form-label" for="custom-name">Display name</label>
+			<FormField label="Display name" for="custom-name">
 				<input
 					id="custom-name"
 					type="text"
@@ -109,10 +109,9 @@
 					onkeydown={handleKey}
 					autocomplete="off"
 				/>
-			</div>
+			</FormField>
 
-			<div class="form-field">
-				<label class="form-label" for="custom-url">Base URL</label>
+			<FormField label="Base URL" for="custom-url">
 				<input
 					id="custom-url"
 					type="url"
@@ -123,7 +122,7 @@
 					onkeydown={handleKey}
 					autocomplete="off"
 				/>
-			</div>
+			</FormField>
 
 			<div class="form-field">
 				<label class="form-label" for="custom-key">API key <span class="optional">(optional)</span></label>
@@ -143,7 +142,7 @@
 
 	<footer class="sheet-footer">
 		<button type="button" class="btn btn-primary" disabled={submitting} onclick={() => void submit()}>
-			{#if submitting}<span class="spinner"></span>{/if}
+			{#if submitting}<Spinner />{/if}
 			Continue
 		</button>
 	</footer>

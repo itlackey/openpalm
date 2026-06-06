@@ -14,6 +14,8 @@
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import FormField from '$lib/components/common/FormField.svelte';
 	import { buildHeaders } from '$lib/api.js';
 	import type {
 		ProviderActionResult,
@@ -267,8 +269,7 @@
 			<p class="field-hint">
 				Enter your {provider.name} API key to connect your account and use {provider.name} models in OpenCode.
 			</p>
-			<div class="form-field">
-				<label class="form-label" for="connect-apikey">{provider.name} API key</label>
+			<FormField label="{provider.name} API key" for="connect-apikey">
 				<input
 					id="connect-apikey"
 					type="password"
@@ -279,7 +280,7 @@
 					onkeydown={handleKey}
 					autocomplete="off"
 				/>
-			</div>
+			</FormField>
 
 		{:else if step === 'oauth-code'}
 			<p class="field-hint">
@@ -287,8 +288,7 @@
 				<a href={oauthUrl ?? '#'} target="_blank" rel="noopener" class="text-link">this link</a>
 				to collect your authorization code to connect your account and use {provider.name} models in OpenCode.
 			</p>
-			<div class="form-field">
-				<label class="form-label" for="connect-code">{selectedMethod?.label ?? 'OAuth'} authorization code</label>
+			<FormField label="{selectedMethod?.label ?? 'OAuth'} authorization code" for="connect-code">
 				<input
 					id="connect-code"
 					type="text"
@@ -299,7 +299,7 @@
 					onkeydown={handleKey}
 					autocomplete="off"
 				/>
-			</div>
+			</FormField>
 
 		{:else if step === 'oauth-auto'}
 			{#if oauthInstructions}
@@ -312,7 +312,7 @@
 				</p>
 			{/if}
 			<p class="field-hint">
-				<span class="spinner"></span>
+				<Spinner />
 				Waiting for sign-in to complete…
 			</p>
 		{/if}
@@ -326,7 +326,7 @@
 				disabled={submitting}
 				onclick={() => step === 'api-form' ? void submitApiKey() : void submitOauthCode()}
 			>
-				{#if submitting}<span class="spinner"></span>{/if}
+				{#if submitting}<Spinner />{/if}
 				Continue
 			</button>
 		</footer>

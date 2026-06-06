@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import EmptyState from '$lib/components/common/EmptyState.svelte';
   import {
     fetchAddons,
     toggleAddon,
@@ -182,12 +183,14 @@
         <button class="btn btn-secondary btn-sm" onclick={() => loadAddons()}>Retry</button>
       </div>
     {:else if addons.length === 0}
-      <div class="empty-state">
-        <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-        </svg>
+      <EmptyState>
+        {#snippet icon()}
+          <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
+          </svg>
+        {/snippet}
         <p>No addons found in registry/addons/.</p>
-      </div>
+      </EmptyState>
     {:else}
       <div class="addon-table">
         <div class="addon-table-header">

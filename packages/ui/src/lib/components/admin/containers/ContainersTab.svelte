@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import Panel from '$lib/components/common/Panel.svelte';
   import ContainerRow from '$lib/components/admin/containers/ContainerRow.svelte';
   import ContainerDetail from '$lib/components/admin/containers/ContainerDetail.svelte';
   import ContainersEmptyState from '$lib/components/admin/containers/ContainersEmptyState.svelte';
@@ -81,27 +82,24 @@
   }
 </script>
 
-<div class="panel" role="tabpanel">
-  <div class="panel-header">
-    <h2>Container Status</h2>
-    <div class="panel-header-actions">
-      {#if lastUpdated}
-        <span class="last-updated">Updated {lastUpdated}</span>
+<Panel title="Container Status" role="tabpanel">
+  {#snippet actions()}
+    {#if lastUpdated}
+      <span class="last-updated">Updated {lastUpdated}</span>
+    {/if}
+    <button class="btn btn-secondary btn-sm" onclick={onPullImages} disabled={pullLoading || !tokenStored}>
+      {#if pullLoading}
+        <Spinner />
       {/if}
-      <button class="btn btn-secondary btn-sm" onclick={onPullImages} disabled={pullLoading || !tokenStored}>
-        {#if pullLoading}
-          <Spinner />
-        {/if}
-        Pull Images
-      </button>
-      <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
-        {#if loading}
-          <Spinner />
-        {/if}
-        Refresh
-      </button>
-    </div>
-  </div>
+      Pull Images
+    </button>
+    <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+      {#if loading}
+        <Spinner />
+      {/if}
+      Refresh
+    </button>
+  {/snippet}
   <div class="panel-body panel-body--flush">
     {#if hasEntries}
       <div class="container-table">
@@ -133,7 +131,7 @@
       <ContainersEmptyState {loading} {error} {containerData} {tokenStored} {onRefresh} />
     {/if}
   </div>
-</div>
+</Panel>
 
 <style>
   .container-table {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ReleaseEntry, UiVersionEntry } from '$lib/api.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface Props {
     currentImageTag: string;
@@ -101,7 +102,7 @@
           disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
         >
           {#if tagChangeLoading}
-            <span class="spinner spinner-sm"></span> Applying…
+            <Spinner /> Applying…
           {:else}
             Pull &amp; Restart
           {/if}
@@ -124,7 +125,7 @@
           disabled={anyDangerousLoading || !tokenStored}
         >
           {#if upgradeLoading}
-            <span class="spinner spinner-sm"></span> Upgrading…
+            <Spinner /> Upgrading…
           {:else}
             Upgrade to Latest
           {/if}
@@ -170,7 +171,7 @@
             disabled={!selectedUiTag.trim() || uiDownloadLoading}
           >
             {#if uiDownloadLoading}
-              <span class="spinner spinner-sm"></span> Downloading…
+              <Spinner /> Downloading…
             {:else}
               Download
             {/if}

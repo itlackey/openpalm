@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import { fetchSecretFiles, fetchSecretFile, saveSecretFile, deleteSecretFile, type SecretFileInfo } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
 
@@ -114,7 +115,7 @@
     <h2>Secrets</h2>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={loading || busy || !tokenStored}>
-        {#if loading}<span class="spinner"></span>{/if}
+        {#if loading}<Spinner />{/if}
         Refresh
       </button>
     </div>
@@ -170,7 +171,7 @@
         <div class="editor-actions">
           <button class="btn btn-secondary btn-sm" onclick={closeEditor} disabled={busy}>Close</button>
           <button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={busy}>
-            {#if busy}<span class="spinner"></span>{/if}
+            {#if busy}<Spinner />{/if}
             Save
           </button>
         </div>

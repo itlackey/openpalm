@@ -5,6 +5,7 @@
   import ChatMessage from '$lib/components/ChatMessage.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import ChatToolbar from '$lib/components/ChatToolbar.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
@@ -169,7 +170,7 @@
     <section class="messages-area" aria-label="Chat history" aria-live="polite">
       {#if sessionsLoading || entriesLoading}
         <div class="session-loading" aria-live="polite">
-          <span class="spinner" aria-hidden="true"></span>
+          <Spinner />
           <span>Loading messages…</span>
         </div>
       {:else if chat.entries.length === 0}
@@ -258,25 +259,6 @@
     font-size: var(--text-sm);
     padding: var(--space-4);
     margin: auto;
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-    flex-shrink: 0;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .spinner { animation: none; }
   }
 
   .chat-error-banner {

@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
+  import EmptyState from '$lib/components/common/EmptyState.svelte';
+  import Panel from '$lib/components/common/Panel.svelte';
   import { fetchServiceLogs } from '$lib/api.js';
 
   interface Props {
@@ -58,21 +61,18 @@
   });
 </script>
 
-<div class="panel" role="tabpanel">
-  <div class="panel-header">
-    <h2>Service Logs</h2>
-    <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={() => void copyLogs()} disabled={!logs}>
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
-      <button class="btn btn-secondary btn-sm" onclick={() => void loadLogs()} disabled={loading || !tokenStored}>
-        {#if loading}
-          <span class="spinner"></span>
-        {/if}
-        Refresh
-      </button>
-    </div>
-  </div>
+<Panel title="Service Logs" role="tabpanel">
+  {#snippet actions()}
+    <button class="btn btn-secondary btn-sm" onclick={() => void copyLogs()} disabled={!logs}>
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+    <button class="btn btn-secondary btn-sm" onclick={() => void loadLogs()} disabled={loading || !tokenStored}>
+      {#if loading}
+        <Spinner />
+      {/if}
+      Refresh
+    </button>
+  {/snippet}
 
   <div class="controls">
     <div class="control-group">
@@ -105,7 +105,7 @@
 
     <button class="btn btn-primary btn-sm" onclick={() => void loadLogs()} disabled={loading || !tokenStored}>
       {#if loading}
-        <span class="spinner"></span>
+        <Spinner />
       {/if}
       Load Logs
     </button>
@@ -121,22 +121,24 @@
     {#if logs}
       <pre class="log-output" bind:this={logContainer}>{logs}</pre>
     {:else if !loading}
-      <div class="empty-state">
-        <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-        </svg>
+      <EmptyState>
+        {#snippet icon()}
+          <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+        {/snippet}
         {#if logsLoaded}
           <p>No log output — the container may not be running or has no recent output.</p>
         {:else}
           <p>Select a service and click "Load Logs" to view container output.</p>
         {/if}
-      </div>
+      </EmptyState>
     {/if}
   </div>
-</div>
+</Panel>
 
 <style>
   /* ── Controls ─────────────────────────────────────────────────── */
