@@ -201,7 +201,7 @@ command: ["sh","-c","..."]  # shell command (mutually exclusive with prompt:)
 
 | Type | Purpose | Key fields |
 |---|---|---|
-| `api` | Admin API call — auto-injects admin token and `x-requested-by: automation` | `method`, `path`, `body?`, `headers?` |
+| `api` | Admin API call — runs with an authenticated admin session and `x-requested-by: automation` | `method`, `path`, `body?`, `headers?` |
 | `http` | Any HTTP endpoint — no auto-auth | `method`, `url`, `body?`, `headers?` |
 | `shell` | Run a command via `execFile` (argument array, no shell interpolation) | `command` (string array) |
 
@@ -318,12 +318,12 @@ All ports are `127.0.0.1`-bound by default.
 
 **Change an LLM API key:**
 1. Update OpenCode auth state through the admin provider flow or write the provider secret file under `~/.openpalm/knowledge/secrets/`
-2. Restart the services that use it, such as `assistant`: `docker compose restart assistant`
+2. Recreate the services that use it (OpenCode caches model/auth at process start, so a plain `restart` does not reliably re-read): `docker compose ... up -d --force-recreate assistant`
 
 **Add a new LLM provider:**
 1. Add the API key through the admin provider flow or a file-based provider secret under `~/.openpalm/knowledge/secrets/`
 2. Edit `~/.openpalm/config/assistant/opencode.json` to configure the provider
-3. Restart assistant: `docker compose restart assistant`
+3. Recreate assistant (not just restart): `docker compose ... up -d --force-recreate assistant`
 
 **Rotate the admin login password (`OP_UI_LOGIN_PASSWORD`):**
 1. Update `~/.openpalm/knowledge/secrets/op_ui_login_password`
@@ -344,8 +344,11 @@ tail -f ~/.openpalm/data/logs/guardian-audit.log
 ls ~/.openpalm/data/assistant/.local/state/opencode/ # in-container OpenCode
 ls ~/.openpalm/data/admin-opencode/log/              # Electron-spawned OpenCode
 
-# Admin operations (config writes, login events): application stderr
-docker compose logs admin | grep -E 'admin\.(auth|config|secrets|endpoints)'
+# Admin operations (config writes, login events): the admin UI is a HOST
+# process (openpalm ui serve), not a compose service — read its stderr from the
+# terminal/service that runs `openpalm`, e.g.:
+#   journalctl --user -u openpalm   # if run under systemd
+# then filter for: admin.(auth|config|secrets|endpoints)
 ```
 
 **Check container status:**

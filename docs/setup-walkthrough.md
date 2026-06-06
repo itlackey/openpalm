@@ -114,7 +114,7 @@ Typical core services shown are compose-derived (for example):
 Notes:
 
 - There is no Caddy service in the current shipped core compose stack.
-- On success, the wizard shows **Setup Complete** and links to `http://localhost:4096` (assistant/OpenCode console in the current implementation).
+- On success, the wizard shows **Setup Complete** and links to the admin UI at `http://localhost:3880` (default `OP_HOST_UI_PORT`). The assistant's OpenCode is reachable on the host at `http://localhost:3800` (`4096` is the in-container port).
 - On failure, an error card appears with retry/back-to-review actions and technical details.
 
 ---
@@ -131,5 +131,5 @@ Notes:
 
 - [Setup Guide](setup-guide.md)
 - [Manual Compose Runbook](operations/manual-compose-runbook.md)
-- [Manual Compose Runbook](operations/manual-compose-runbook.md)
 - [Managing OpenPalm](managing-openpalm.md)
+- [Upgrade guide: 0.10.x → 0.11.0](operations/upgrade-0.10-to-0.11.md)

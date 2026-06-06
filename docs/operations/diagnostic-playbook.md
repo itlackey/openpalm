@@ -4,6 +4,24 @@ Practical troubleshooting guide for OpenPalm operators and contributors. This is
 based on the provider-display debugging path, but the workflow generalizes well
 to most "the UI looks wrong, but I do not know which layer is broken" issues.
 
+## Authenticating to the admin API
+
+The admin API uses a session **cookie** (`op_session`), not the login password
+directly. Log in once to a cookie jar, then pass it to every authenticated call:
+
+```bash
+# Obtain a session cookie (replace with your UI login password).
+curl -sS -c cookies.txt -X POST http://localhost:3880/admin/auth/login \
+  -H 'content-type: application/json' \
+  -d "{\"password\":\"$OP_UI_LOGIN_PASSWORD\"}"
+
+# Then reuse it on every admin call below:
+#   curl -sS -b cookies.txt http://localhost:3880/admin/...
+```
+
+> The host UI port defaults to `3880` (`OP_HOST_UI_PORT`). The examples below
+> assume you have `cookies.txt` from the step above.
+
 ## Common Troubleshooting Workflow
 
 1. Reproduce the issue once and write down the exact symptom.
@@ -63,7 +81,7 @@ UI still does not render it correctly.
 Useful check from the host:
 
 ```bash
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/providers | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/opencode/providers | jq
 ```
 
 If that payload is correct and the browser still renders incorrectly, stay in the
@@ -86,9 +104,9 @@ Useful commands:
 
 ```bash
 curl -sS http://localhost:3880/health | jq
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/status | jq
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/providers | jq
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" "http://localhost:3880/admin/logs?service=admin&tail=200"
+curl -sS -b cookies.txt http://localhost:3880/admin/opencode/status | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/opencode/providers | jq
+curl -sS -b cookies.txt "http://localhost:3880/admin/logs?service=admin&tail=200"
 ```
 
 Key lessons from the provider-display path:
@@ -114,11 +132,11 @@ Useful checks:
 ```bash
 curl -sS http://localhost:4096/provider | jq
 curl -sS http://localhost:4096/provider/auth | jq
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/opencode/status | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/opencode/status | jq
 ```
 
-If the admin addon is installed, also verify which OpenCode runtime the admin is
-actually targeting. In confusing cases, check the admin process environment or logs:
+Also verify which OpenCode runtime the admin UI is actually targeting. In
+confusing cases, check the admin (host) process environment or logs:
 
 ```bash
 # Look for the openpalm process and its config
@@ -144,10 +162,13 @@ Useful commands with the helper from `docs/operations/manual-compose-runbook.md`
 op config --quiet
 op config --services
 op ps
-op logs admin
 op logs assistant
 op logs guardian
 ```
+
+> The admin UI is a **host process** (`openpalm ui serve`), not a compose
+> service — there is no `admin` container to `op logs`. Read its output from the
+> terminal/service that runs `openpalm`.
 
 Useful admin endpoints:
 
@@ -160,15 +181,14 @@ Useful admin endpoints:
 Useful checks from the host:
 
 ```bash
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/containers/list | jq
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" "http://localhost:3880/admin/containers/events?since=1h" | jq
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/network/check | jq
-curl -sS -b "op_session=$OP_UI_LOGIN_PASSWORD" http://localhost:3880/admin/config/validate | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/containers/list | jq
+curl -sS -b cookies.txt "http://localhost:3880/admin/containers/events?since=1h" | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/network/check | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/config/validate | jq
 ```
 
 Especially check:
 
-- whether the `admin` addon overlay is actually enabled
 - whether `OP_OPENCODE_URL` points to the intended runtime
 - whether the admin UI can reach the assistant OpenCode at `:4096`
 - whether the stack has restarted onto a different env/config than the one you think is live

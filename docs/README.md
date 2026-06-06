@@ -21,6 +21,13 @@ Repo layout convention:
 | [discord-setup.md](channels/discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
 | [slack-setup.md](channels/slack-setup.md) | Slack bot setup — create app, install channel, configure Socket Mode |
 
+## Upgrade & migration
+
+| Document | Description |
+|---|---|
+| [upgrade-0.10-to-0.11.md](operations/upgrade-0.10-to-0.11.md) | **Start here to upgrade from 0.10.x** — ordered procedure, old→new file/env/port mapping, troubleshooting |
+| [secrets-env-migration.md](operations/secrets-env-migration.md) | Detailed secrets/env file-move reference (also covers 0.11.0 beta layouts) |
+
 ## Operations
 
 | Document | Description |

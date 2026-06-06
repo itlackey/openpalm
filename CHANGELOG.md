@@ -12,7 +12,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The secrets/env filesystem layout was reorganized to align with the akm
 `env` + `secret` asset model and to consolidate all env files and secrets out
 of `config/stack/`. **There is no automated migration** — existing installs
-must move their files by hand. See
+must move their files by hand. **Upgrading from 0.10.x? Start with the
+[0.10.x → 0.11.0 upgrade guide](docs/operations/upgrade-0.10-to-0.11.md)**
+(file/env/port mapping, ordered procedure); the detailed file-move reference is
 [`docs/operations/secrets-env-migration.md`](docs/operations/secrets-env-migration.md).
 
 - **akm `vault` → `env` + `secret`** — akm 0.8.0 removed the `vault` type
@@ -29,15 +31,29 @@ must move their files by hand. See
 - **`config/stack/auth.json` → `knowledge/secrets/auth.json`** — OpenCode
   provider credentials move out of `config/stack/`; `config/stack/` now holds
   only non-secret compose assembly (compose files + `stack.yml`).
-- akm-cli tracks the `next` prerelease dist-tag (the `env` command ships in the
-  next akm prerelease).
+- akm-cli is pinned to the stable **0.8.0** release (it provides the `env` +
+  `secret` asset types).
 - **`OP_ADMIN_PORT` → `OP_HOST_UI_PORT`** — the host admin/UI port env var was
   renamed and the legacy name is no longer emitted or read anywhere. **There is
   no automated migration.** Existing installs that customized the admin port must
   re-run setup (`openpalm install` / the setup wizard; `bun run dev:setup` for
   dev) or manually rename `OP_ADMIN_PORT`→`OP_HOST_UI_PORT` in
   `knowledge/env/stack.env`. Until then the UI binds to the default `3880`.
-  `OP_ADMIN_OPENCODE_PORT` was removed outright (it was emitted but never read).
+  `OP_ADMIN_OPENCODE_PORT` and `OP_GUARDIAN_PORT` were removed outright (emitted
+  but never read; the guardian is network-only, no host port mapping).
+- **`stack.yml` is `version: 2` only** — the `capabilities:` block was removed
+  (`OP_CAP_*` env vars are gone). LLM/embedding configuration now lives in
+  `config/akm/config.json`. Strip any leftover `capabilities:` block.
+- **Admin UI is now a host process** (`openpalm ui serve`, `@openpalm/ui` from
+  npm), not a container. The `admin` container/service, `docker-socket-proxy`,
+  and the Caddy reverse proxy are all gone — services bind localhost (LAN-first).
+  Anything referencing an `admin` compose service or addon no longer applies.
+- **`memory` (mem0/Python) and `scheduler` containers removed** — memory is
+  handled through the akm knowledge tools and scheduling runs inside the
+  assistant (`crond` + `akm tasks sync`).
+- **Custom addon drops moved to the compose-profile model** — addon overlays
+  under `config/stack/` activated via `--profile addon.<name>` (the old
+  `registry/addons/<name>/compose.yml` layout no longer applies).
 
 ### Added
 

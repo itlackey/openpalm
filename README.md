@@ -111,6 +111,7 @@ For the full walkthrough, see [How It Works](docs/how-it-works.md). For security
 | Guide | What's inside |
 |---|---|
 | [Setup Guide](docs/setup-guide.md) | Install, update, and troubleshoot |
+| [Upgrade 0.10.x → 0.11.0](docs/operations/upgrade-0.10-to-0.11.md) | Upgrade an existing install: file/env/port migration |
 | [How It Works](docs/how-it-works.md) | Architecture and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Config, addons, secrets, automations |
 | [Core Principles](docs/technical/core-principles.md) | Security invariants and design rules |

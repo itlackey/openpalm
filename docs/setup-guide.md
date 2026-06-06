@@ -142,7 +142,7 @@ The copied bundle gives you a predictable host layout:
 | `~/.openpalm/data/` | Persistent container data |
 | `~/.openpalm/data/logs/` | Logs |
 
-If you include the `admin` addon, the UI is available on its configured host port from `stack.env`.
+The admin UI runs as a host process (`openpalm ui serve`) on `OP_HOST_UI_PORT` (default `3880`).
 
 ---
 
@@ -178,6 +178,7 @@ Stop the stack, remove `~/.openpalm/` if you truly want a clean reset, then copy
 
 | Guide | What's inside |
 |---|---|
+| [operations/upgrade-0.10-to-0.11.md](operations/upgrade-0.10-to-0.11.md) | Upgrading an existing 0.10.x install |
 | [operations/manual-compose-runbook.md](operations/manual-compose-runbook.md) | Fully explicit compose workflow |
 | [managing-openpalm.md](managing-openpalm.md) | Day-to-day operations |
 | [how-it-works.md](how-it-works.md) | Architecture overview |

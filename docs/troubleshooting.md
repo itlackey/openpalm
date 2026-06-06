@@ -5,6 +5,10 @@ Common problems and their fixes for the current compose-first OpenPalm model.
 When in doubt, inspect the exact compose file set you started from
 `~/.openpalm/config/stack/` and rerun that same file set explicitly.
 
+> **Upgrading from 0.10.x?** Many post-upgrade issues (missing secrets, wrong UI
+> port, `stack.yml` errors) come from the changed file layout. See the
+> [0.10.x → 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md).
+
 ---
 
 ## 1. Docker not found or daemon unavailable

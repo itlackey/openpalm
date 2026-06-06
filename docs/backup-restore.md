@@ -15,8 +15,8 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 
 | Path | Contains | Back up? |
 |---|---|---|
-| `~/.openpalm/config/stack/` | `stack.env`, `secrets/`, live compose files and helper scripts | Yes |
-| `~/.openpalm/knowledge/env/` | `user.env` (optional user-managed secrets) | Yes |
+| `~/.openpalm/config/stack/` | live compose files + `stack.yml` (compose assembly only) | Yes |
+| `~/.openpalm/knowledge/env/` | `stack.env` (system, non-secret) + `user.env` (user-managed) | Yes |
 | `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` addon state | Yes |
 | `~/.openpalm/data/` | durable service data | Yes |
 | `~/.openpalm/knowledge/` | AKM stash (memory, skills, env, secrets) | Yes |
@@ -104,6 +104,10 @@ Use the same addon profiles you used before the backup.
 
 There is no separate staging/artifacts/config-components reconstruction step in
 the current model.
+
+> This is a same-version, host-to-host copy. To move from **0.10.x to 0.11.0**
+> (which relocates env files and secrets), follow the
+> [0.10.x → 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md) instead.
 
 ---
 

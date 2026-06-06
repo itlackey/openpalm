@@ -10,11 +10,11 @@ is non-secret runtime configuration only.
 
 ```text
 ~/.openpalm/
-  config/stack/
-    stack.env
   knowledge/env/
-    user.env
-  knowledge/secrets/
+    stack.env        # system-managed, non-secret (Compose --env-file)
+    user.env         # user-managed env
+  knowledge/secrets/ # system-managed secret files (auth.json, op_ui_login_password, …)
+  config/stack/      # compose assembly only (no secrets/env)
 ```
 
 - `knowledge/env/user.env` is the AKM env backing file for user-managed secrets.
@@ -114,8 +114,11 @@ source of truth.
 
 ## Practical guidance
 
-- Edit `~/.openpalm/knowledge/env/stack.env` when changing API keys, provider
-  settings, ports, paths, or stack-level tokens.
+- Edit `~/.openpalm/knowledge/env/stack.env` for **non-secret** settings only —
+  ports, host paths, image tags. Provider **API keys** go in
+  `~/.openpalm/knowledge/secrets/auth.json` (via the Connections tab), and the
+  UI login password in `~/.openpalm/knowledge/secrets/op_ui_login_password` —
+  never in `stack.env`.
 - Edit `~/.openpalm/knowledge/env/user.env` for optional user-managed extension
   settings and custom preferences.
 - Back up the whole `~/.openpalm/knowledge/env/`, `~/.openpalm/knowledge/secrets/`, and `~/.openpalm/config/stack/` trees.
