@@ -17,22 +17,73 @@
   }
   let { open, title, onClose, children, footer, headerStart, width = '32rem' }: Props = $props();
 
-  function onScrimKey(e: KeyboardEvent): void {
-    if (e.key === 'Escape') onClose();
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function focusables(root: Element): HTMLElement[] {
+    return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (el) => !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true'
+    );
+  }
+
+  // Focus management for the modal dialog (WCAG 2.4.3 / APG dialog pattern),
+  // expressed as an element attachment so its lifecycle IS the dialog's:
+  // on mount, remember what had focus and move focus inside; on unmount,
+  // restore it so keyboard/SR users are not dropped to <body>. Prefer the
+  // first control in the body so the user doesn't land on the Close button.
+  function manageFocus(node: HTMLElement): () => void {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const body = node.querySelector<HTMLElement>('.drawer-body');
+    const target = (body && focusables(body)[0]) ?? focusables(node)[0] ?? node;
+    target.focus();
+    return () => previouslyFocused?.focus?.();
+  }
+
+  function onPanelKey(e: KeyboardEvent & { currentTarget: HTMLElement }): void {
+    if (e.key === 'Escape') {
+      onClose();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    // Trap Tab focus within the dialog.
+    const panel = e.currentTarget;
+    const items = focusables(panel);
+    if (items.length === 0) {
+      e.preventDefault();
+      panel.focus();
+      return;
+    }
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === panel)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 </script>
 
 {#if open}
-  <div
-    class="drawer-scrim"
-    role="button"
-    tabindex="-1"
-    aria-label="Close"
-    onclick={onClose}
-    onkeydown={onScrimKey}
-  ></div>
+  <!-- Decorative click-to-close backdrop; keyboard close is via Escape (trapped
+       in the panel) and the header close button. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="drawer-scrim" onclick={onClose}></div>
 
-  <div class="drawer" style="--drawer-width: {width}" role="dialog" aria-modal="true" aria-label={title}>
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    class="drawer"
+    style="--drawer-width: {width}"
+    role="dialog"
+    aria-modal="true"
+    aria-label={title}
+    tabindex="-1"
+    onkeydown={onPanelKey}
+    {@attach manageFocus}
+  >
     <header class="drawer-header">
       {#if headerStart}{@render headerStart()}{/if}
       <h3 class="drawer-title">{title}</h3>

@@ -347,6 +347,10 @@
 		background: var(--color-surface-hover);
 		color: var(--color-text);
 	}
+	.connect-back:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
 	.auth-method-group {
 		display: flex;
 		flex-direction: column;
