@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Navbar from '$lib/components/Navbar.svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
+  import ModeSwitch from '$lib/components/ModeSwitch.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // ── Auth state (mirrors /chat + /admin) ───────────────────────────────
@@ -78,6 +79,11 @@
   <Navbar />
 
   <div class="advanced-layout">
+    <!-- Slim bar: switch back to regular Chat. The assistant switcher is global
+         in the navbar; session management lives inside OpenCode itself. -->
+    <div class="advanced-toolbar">
+      <ModeSwitch />
+    </div>
     <iframe
       class="opencode-frame"
       src={openCodeUrl}
@@ -94,12 +100,24 @@
     height: calc(100dvh - var(--nav-height));
     width: 100%;
     background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .advanced-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    flex-shrink: 0;
   }
 
   .opencode-frame {
     display: block;
     width: 100%;
-    height: 100%;
+    flex: 1;
     border: none;
   }
 </style>

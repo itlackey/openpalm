@@ -449,6 +449,28 @@ export async function saveAkmConfig(settings: Record<string, unknown>): Promise<
   return (await res.json()) as { ok: boolean };
 }
 
+// ── AKM Health (dashboard metrics) ──────────────────────────────────
+export type AkmHealth =
+  | { available: false; reason?: string }
+  | {
+      available: true;
+      status: 'ok' | 'warn' | 'fail' | 'unknown';
+      ok: boolean | null;
+      checks: { pass: number; warn: number; fail: number };
+      metrics: Record<string, number> | null;
+      index: {
+        entryCount?: number;
+        lastBuiltAt?: string;
+        hasEmbeddings?: boolean;
+        vecAvailable?: boolean;
+      } | null;
+    };
+
+export async function fetchAkmHealth(): Promise<AkmHealth> {
+  const res = await requireOk(await request('GET', '/admin/akm/health'));
+  return (await res.json()) as AkmHealth;
+}
+
 // ── Host AKM sharing ────────────────────────────────────────────────
 export type HostAkmSharing = {
   sharing: { available: boolean; enabled: boolean; hostStashPath: string | null };

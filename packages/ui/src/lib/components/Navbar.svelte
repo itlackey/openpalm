@@ -1,300 +1,91 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
   import { page } from '$app/state';
-  import VoiceControl from './VoiceControl.svelte';
+  import ThemeToggle from './ThemeToggle.svelte';
   import EndpointSwitcher from './EndpointSwitcher.svelte';
   import SessionPicker from './SessionPicker.svelte';
-  import ThemeToggle from './ThemeToggle.svelte';
+  import VoiceControl from './VoiceControl.svelte';
+  import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
-  // The three primary destinations, always reachable from the top toolbar:
-  // regular Chat, the embedded OpenCode "Advanced" chat, and Admin.
-  const NAV_ITEMS = [
-    { href: '/chat', label: 'Chat', icon: 'chat' },
-    { href: '/advanced', label: 'Advanced', icon: 'advanced' },
-    { href: '/admin', label: 'Admin', icon: 'admin' },
-  ] as const;
-
+  // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
+  // usable everywhere:
+  //   - assistant switcher (EndpointSwitcher)
+  //   - session picker (SessionPicker)
+  //   - mic + speaker (VoiceControl) — VoiceControl.initVoice() runs here so STT
+  //     and TTS work globally; this component LIVING IN THE NAVBAR is what makes
+  //     voice global. Do not move it into a page-scoped toolbar.
+  // The Chat↔Advanced mode switch is page-contextual and lives in the chat
+  // content (ChatToolbar / advanced bar), not here, so these four always fit.
   const pathname = $derived(page.url?.pathname ?? '');
-  // A destination is active for its exact path or any sub-route (e.g.
-  // /admin/endpoints highlights Admin).
-  function isActive(href: string): boolean {
-    return pathname === href || pathname.startsWith(href + '/');
-  }
+  const onAdmin = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
 
-  let mobileMenuOpen = $state(false);
-  // Track the hamburger button element so we can return focus to it on close.
-  let hamburgerBtn: HTMLButtonElement | undefined = $state();
-  // Track the close button for focus-on-open.
-  let closeBtn: HTMLButtonElement | undefined = $state();
-  // The drawer element itself for focus-trap sentinel logic.
-  let drawerEl: HTMLDivElement | undefined = $state();
-
-  function closeMobileMenu(): void {
-    mobileMenuOpen = false;
-  }
-
-  function toggleMobileMenu(): void {
-    mobileMenuOpen = !mobileMenuOpen;
-  }
-
-  // Close drawer and return focus to trigger.
-  function closeAndReturn(): void {
-    mobileMenuOpen = false;
-    hamburgerBtn?.focus();
-  }
-
-  // Close drawer on nav link click (also returns focus via navigation).
-  function navLinkClick(): void {
-    mobileMenuOpen = false;
-  }
-
-  // Focus trap: redirect Tab / Shift+Tab that would escape the drawer.
-  // Escape handling strategy (popover-API-aware):
-  //   - When a popover child (EndpointSwitcher, SessionPicker menu) is open,
-  //     the browser fires its own Escape handler to close the popover before
-  //     this keydown event fires (popovers are top-layer; their Escape is
-  //     processed at the UA level). By the time this handler runs the popover
-  //     is already hidden, but we still check for any remaining open popovers
-  //     inside the drawer. If one is open, we let the UA handle it and do NOT
-  //     also close the drawer — producing the two-step "1st Escape = close
-  //     dropdown, 2nd Escape = close drawer" UX.
-  function handleDrawerKeyDown(ev: KeyboardEvent): void {
-    if (!drawerEl) return;
-    if (ev.key === 'Escape') {
-      const openPopover = drawerEl.querySelector(':popover-open');
-      if (openPopover) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      closeAndReturn();
-      return;
-    }
-    if (ev.key !== 'Tab') return;
-
-    const focusable = Array.from(
-      drawerEl.querySelectorAll<HTMLElement>(
-        'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
-      )
-    ).filter((el) => !el.hasAttribute('disabled'));
-
-    if (focusable.length === 0) return;
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-
-    if (ev.shiftKey) {
-      if (document.activeElement === first) {
-        ev.preventDefault();
-        last.focus();
-      }
-    } else {
-      if (document.activeElement === last) {
-        ev.preventDefault();
-        first.focus();
-      }
-    }
-  }
-
-  // Close the mobile drawer whenever the route changes.
-  // Tracks page.url.pathname — fires after navigation completes, letting
-  // navLinkClick handle the same-tab case and this handle external navigation.
-  $effect(() => {
-    // Depend ONLY on pathname. Reading mobileMenuOpen tracked here would make
-    // the effect re-run when the drawer opens and immediately slam it shut
-    // (the drawer could never open) — so read/write it inside untrack().
-    const _path = page.url?.pathname;
-    untrack(() => {
-      if (mobileMenuOpen) {
-        mobileMenuOpen = false;
-      }
-    });
-  });
-
-  // Move focus into drawer when it opens (mobile only — the element is always
-  // in the DOM, so we gate on mobileMenuOpen state).
-  $effect(() => {
-    if (mobileMenuOpen && closeBtn) {
-      const id = requestAnimationFrame(() => {
-        closeBtn?.focus();
-      });
-      return () => cancelAnimationFrame(id);
+  // The Settings gear administers the LOCAL stack, so it only appears when the
+  // selected assistant is local (loopback). Hidden for a remote assistant —
+  // you don't administer a remote machine from here. Defaults to shown until an
+  // endpoint resolves.
+  const isLocalAssistant = $derived.by(() => {
+    const url = endpointsService.active?.url ?? '';
+    if (!url) return true;
+    try {
+      const host = new URL(url).hostname;
+      return (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '::1' ||
+        host === 'host.docker.internal'
+      );
+    } catch {
+      return true;
     }
   });
 </script>
 
 <header class="navbar">
   <div class="navbar-inner">
-    <!-- Brand: logo + name. Version removed from chrome (rubric cat 1/10 — chrome subordinate). -->
-    <div class="navbar-brand">
+    <!-- Brand -->
+    <a class="navbar-brand" href="/chat" aria-label="OpenPalm — go to chat">
       <span class="brand-icon" aria-hidden="true">
-        <img src="/logo-128.png" alt="OpenPalm Logo">
+        <img src="/logo-128.png" alt="" />
       </span>
       <span class="brand-text">OpenPalm</span>
-    </div>
+    </a>
 
-    <!-- Primary destination tabs: always visible at all widths. -->
-    <nav class="navbar-nav" aria-label="Primary navigation">
-      {#each NAV_ITEMS as item (item.href)}
+    <!-- Global controls, left→right: settings · assistant · session · theme ·
+         speaker · mic (speaker+mic come from VoiceControl). Settings shows only
+         for a local assistant. Present on every page, every width. -->
+    <div class="navbar-actions">
+      {#if isLocalAssistant}
         <a
-          href={item.href}
-          class="nav-tab"
-          class:active={isActive(item.href)}
-          aria-current={isActive(item.href) ? 'page' : undefined}
-          onclick={mobileMenuOpen ? navLinkClick : undefined}
+          href="/admin"
+          class="gear-btn"
+          class:active={onAdmin}
+          aria-label="Settings & administration"
+          aria-current={onAdmin ? 'page' : undefined}
+          title="Manage this machine"
         >
-          {#if item.icon === 'chat'}
-            <!-- message-square (Lucide) -->
-            <svg class="nav-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-          {:else if item.icon === 'advanced'}
-            <!-- terminal-square -->
-            <svg class="nav-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="m7 9 3 3-3 3"/><line x1="13" y1="15" x2="17" y2="15"/>
-            </svg>
-          {:else}
-            <!-- sliders -->
-            <svg class="nav-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-              <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-              <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-              <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
-              <line x1="17" y1="16" x2="23" y2="16"/>
-            </svg>
-          {/if}
-          <span class="nav-label">{item.label}</span>
-        </a>
-      {/each}
-    </nav>
-
-    <!-- Actions: single container, always in the DOM.
-         On desktop (>768px): inline flex row in the navbar.
-         On mobile (≤768px): off-canvas drawer, slides in when .open.
-         The drawer header (title + close btn) is always present but hidden
-         via CSS at desktop widths. -->
-    <div
-      id="navbar-drawer"
-      class="navbar-actions"
-      class:open={mobileMenuOpen}
-      role={mobileMenuOpen ? 'dialog' : undefined}
-      aria-modal={mobileMenuOpen ? 'true' : undefined}
-      aria-labelledby={mobileMenuOpen ? 'navbar-drawer-title' : undefined}
-      bind:this={drawerEl}
-      onkeydown={mobileMenuOpen ? handleDrawerKeyDown : undefined}
-    >
-      <!-- Drawer header: only meaningful (and focused) at mobile widths. -->
-      <div class="drawer-header">
-        <h2 class="drawer-title" id="navbar-drawer-title">Settings</h2>
-        <button
-          type="button"
-          class="drawer-close"
-          bind:this={closeBtn}
-          onclick={closeAndReturn}
-          aria-label="Close settings menu"
-          tabindex={mobileMenuOpen ? 0 : -1}
-        >
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M18 6 6 18"></path>
-            <path d="m6 6 12 12"></path>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
-        </button>
-      </div>
-
-      <!-- Drawer body: sections on mobile, plain row on desktop. -->
-      <div class="drawer-body">
-        <!-- Endpoint selector -->
-        <div class="drawer-section">
-          <div class="section-label">Endpoint</div>
-          <div class="control-row">
-            <EndpointSwitcher />
-          </div>
-        </div>
-
-        <!-- Session picker -->
-        <div class="drawer-section">
-          <div class="section-label">Session</div>
-          <div class="control-row">
-            <SessionPicker />
-          </div>
-        </div>
-
-        <!-- Voice controls -->
-        <div class="drawer-section">
-          <div class="section-label">Voice</div>
-          <div class="control-row control-row--voice">
-            <VoiceControl />
-          </div>
-        </div>
-
-        <!-- Theme toggle -->
-        <div class="drawer-section">
-          <div class="utility-row">
-            <div class="utility-labels">
-              <span class="utility-title">Theme</span>
-              <span class="utility-copy">Switch between light and dark mode.</span>
-            </div>
-            <ThemeToggle />
-          </div>
-        </div>
-      </div>
+        </a>
+      {/if}
+      <EndpointSwitcher />
+      <SessionPicker />
+      <ThemeToggle />
+      <VoiceControl />
     </div>
-
-    <!-- Hamburger: appears at ≤768px. -->
-    <button
-      type="button"
-      class="mobile-menu-btn"
-      bind:this={hamburgerBtn}
-      onclick={toggleMobileMenu}
-      aria-label={mobileMenuOpen ? 'Close menu' : 'Open settings menu'}
-      aria-expanded={mobileMenuOpen}
-      aria-controls="navbar-drawer"
-      aria-haspopup="dialog"
-    >
-      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        {#if mobileMenuOpen}
-          <path d="M18 6 6 18"></path>
-          <path d="m6 6 12 12"></path>
-        {:else}
-          <path d="M3 6h18"></path>
-          <path d="M3 12h18"></path>
-          <path d="M3 18h18"></path>
-        {/if}
-      </svg>
-    </button>
-
-    <!-- Overlay: lives INSIDE .navbar-inner so it shares the drawer's stacking
-         context. With z-index 299 (overlay) < 300 (drawer) the drawer sits
-         above the backdrop and its controls stay clickable; both sit above the
-         page content (the navbar establishes the z:50 context). Rendering it
-         outside the navbar would put it in the root context, painting OVER the
-         navbar-confined drawer and swallowing its clicks. Tap to close. -->
-    {#if mobileMenuOpen}
-      <div
-        class="drawer-overlay"
-        onclick={closeAndReturn}
-        aria-hidden="true"
-      ></div>
-    {/if}
   </div>
 </header>
 
 <style>
-  /* ── Navbar shell ──────────────────────────────────────────────────── */
   .navbar {
     position: sticky;
     top: 0;
     z-index: 50;
     background: var(--color-navbar-bg);
     border-bottom: 1px solid var(--color-border);
-    /*
-     * The blur lives on ::before, NOT on .navbar. backdrop-filter on .navbar
-     * itself would make it a containing block for the position:fixed mobile
-     * drawer (.navbar-actions) — the drawer would then anchor to the 56px-tall
-     * navbar instead of the viewport. Moving the filter to a pseudo-element
-     * keeps the blur while leaving the drawer viewport-fixed.
-     */
   }
   .navbar::before {
-    content: "";
+    content: '';
     position: absolute;
     inset: 0;
     z-index: -1;
@@ -302,29 +93,28 @@
     pointer-events: none;
   }
 
-  /*
-   * Three-zone grid at ≤640px (logo | nav-tabs | hamburger) — eliminates the
-   * flex-fight that caused the two margin-left:auto conflict.
-   * Desktop keeps flexbox because it works fine there.
-   */
   .navbar-inner {
     width: 100%;
-    padding: 0 var(--space-6);
+    padding: 0 var(--space-4);
     height: var(--nav-height);
     display: flex;
     align-items: center;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
-  /* ── Brand ─────────────────────────────────────────────────────────── */
+  /* ── Brand ── */
   .navbar-brand {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     flex-shrink: 0;
-    min-width: 34px;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
   }
-
+  .navbar-brand:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
   .brand-icon {
     display: flex;
     align-items: center;
@@ -333,12 +123,10 @@
     height: 34px;
     flex-shrink: 0;
   }
-
   .brand-icon img {
     max-width: 34px;
     display: block;
   }
-
   .brand-text {
     font-size: var(--text-lg);
     font-weight: var(--font-bold);
@@ -347,391 +135,70 @@
     white-space: nowrap;
   }
 
-  /* ── Primary nav tabs ──────────────────────────────────────────────── */
-  .navbar-nav {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    flex: 1;
-    justify-content: flex-start;
-    height: var(--nav-height);
-  }
-
-  .nav-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 0 var(--space-3);
-    height: var(--nav-height);   /* full navbar height for bottom-border indicator to reach the edge */
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    text-decoration: none;
-    white-space: nowrap;
-    cursor: pointer;
-    border: none;
-    border-bottom: 3px solid transparent;  /* bottom-border indicator slot */
-    border-radius: 0;
-    margin: 0 var(--space-1);
-    background: transparent;
-    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), font-weight var(--transition-fast);
-  }
-
-  .nav-tab:hover {
-    color: var(--color-text);
-    background: var(--color-surface-hover);
-  }
-
-  .nav-tab:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -3px;
-    border-radius: var(--radius-sm);
-  }
-
-  /* Active nav tab (desktop ≥640px): distinguishes by ≥2 properties —
-     semibold weight + neutral bottom-border indicator + full text color.
-     Neutral underline keeps orange exclusively for primary-action fills. */
-  .nav-tab.active {
-    color: var(--color-text);
-    font-weight: var(--font-semibold);
-    background: transparent;
-    border-bottom-color: var(--color-text);
-  }
-
-  .nav-icon {
-    flex-shrink: 0;
-  }
-
-  /* ── Actions / Drawer ──────────────────────────────────────────────── */
-  /*
-   * Desktop (>768px): plain inline flex row pushed to the right.
-   * The drawer-header is hidden; the drawer-body is a flat flex row.
-   */
+  /* ── Actions: the global control cluster, right-aligned. ── */
   .navbar-actions {
     display: flex;
     align-items: center;
-    flex-shrink: 0;
-    margin-left: auto;
-  }
-
-  .drawer-header {
-    /* Hidden on desktop — only shown inside the mobile drawer. */
-    display: none;
-  }
-
-  .drawer-body {
-    display: flex;
-    align-items: center;
     gap: var(--space-2);
+    margin-left: auto;
+    min-width: 0;
+  }
+  /* The assistant + session triggers may shrink (truncate label) but never
+     disappear — at narrow widths they go icon-only via the rule below. */
+  .navbar-actions :global(.switcher),
+  .navbar-actions :global(.trigger) {
+    min-width: 0;
   }
 
-  /* On desktop the section structure is invisible — each .drawer-section is
-     just a flex item containing the control. Labels + utility chrome are
-     hidden via CSS. */
-  .drawer-section {
-    display: contents;
-  }
-
-  .section-label,
-  .utility-labels {
-    display: none;
-  }
-
-  .utility-row {
-    display: contents;
-  }
-
-  /* ── Hamburger ─────────────────────────────────────────────────────── */
-  .mobile-menu-btn {
-    /* Hidden by default; visible at ≤768px. */
-    display: none;
+  /* Icon-only square button, matching the theme + voice controls. */
+  .gear-btn {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    /* Minimum 44×44 touch target per WCAG 2.5.5. */
-    min-width: 44px;
-    min-height: 44px;
+    width: 40px;
+    height: 40px;
     padding: 0;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
     color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    text-decoration: none;
     flex-shrink: 0;
+    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
   }
-
-  .mobile-menu-btn:hover {
+  .gear-btn:hover {
     color: var(--color-text);
     background: var(--color-surface-hover);
-    border-color: var(--color-border-hover);
   }
-
-  .mobile-menu-btn:focus-visible {
+  .gear-btn:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
-
-  /* ── Drawer overlay ────────────────────────────────────────────────── */
-  .drawer-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.62);
-    z-index: 299;
+  .gear-btn.active {
+    color: var(--color-text);
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    font-weight: var(--font-semibold);
+  }
+  .gear-btn svg {
+    flex-shrink: 0;
   }
 
-  /* ── Responsive breakpoints ────────────────────────────────────────── */
-
-  @media (max-width: 768px) {
-    .navbar-inner {
-      padding: 0 var(--space-4);
-    }
-
-    /* Hamburger appears. */
-    .mobile-menu-btn {
-      display: inline-flex;
-    }
-
-    /*
-     * Mobile drawer: ONE geometry for all mobile widths — a bottom sheet that
-     * slides up from the bottom. Always in the DOM; translateY moves it
-     * off-screen and `.open` slides it in via a CSS transition. Using physical
-     * top/bottom (not the inset-block shorthand) keeps the anchor unambiguous.
-     */
-    .navbar-actions {
-      margin-left: 0;
-      position: fixed;
-      inset-inline: 0;      /* left:0; right:0 */
-      top: auto;
-      bottom: 0;
-      width: 100%;
-      height: auto;
-      max-height: min(480px, 80dvh);
-      background: var(--color-surface);
-      border-top: 1px solid var(--color-border);
-      border-radius: 16px 16px 0 0;
-      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
-      display: flex;
-      flex-direction: column;
-      overflow: visible;
-      z-index: 300;
-      /* Slide off-screen below by default. */
-      transform: translateY(100%);
-      transition: transform 250ms ease;
-    }
-
-    .navbar-actions.open {
-      transform: translateY(0);
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .navbar-actions {
-        transition: none;
-      }
-    }
-
-    /* Drawer header visible on mobile. */
-    .drawer-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-4) var(--space-5);
-      border-bottom: 1px solid var(--color-border);
-      flex-shrink: 0;
-    }
-
-    .drawer-title {
-      flex: 1;
-      font-size: var(--text-base);
-      font-weight: var(--font-semibold);
-      color: var(--color-text);
-    }
-
-    .drawer-close {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 44px;
-      min-height: 44px;
-      padding: 0;
-      background: none;
-      border: none;
-      color: var(--color-text-secondary);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-    }
-
-    .drawer-close:hover {
-      background: var(--color-bg-secondary);
-      color: var(--color-text);
-    }
-
-    .drawer-close:focus-visible {
-      outline: 2px solid var(--color-primary);
-      outline-offset: 2px;
-    }
-
-    /* Drawer body scrolls vertically; overflow:visible on the outer container
-       lets popover menus escape clipping. */
-    .drawer-body {
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: visible;
-      padding: var(--space-4) var(--space-5);
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-    }
-
-    /* Each section is a labelled block. */
-    .drawer-section {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-      padding: var(--space-4) 0;
-      border-top: 1px solid var(--color-border);
-      overflow: visible;
-    }
-
-    .drawer-section:first-child {
-      border-top: none;
-      padding-top: 0;
-    }
-
-    .section-label {
-      display: block;
-      font-size: var(--text-sm);
-      font-weight: var(--font-semibold);
-      text-transform: none;
-      color: var(--color-text-secondary);
-    }
-
-    /* Full-width trigger inside the drawer. */
-    .control-row {
-      width: 100%;
-      overflow: visible;
-    }
-
-    .control-row :global(.trigger) {
-      width: 100%;
-      max-width: none;
-      height: 44px;
-      justify-content: flex-start;
-      padding: 0 var(--space-3);
-    }
-
-    /* Show label/dot/caret inside the drawer. */
-    .control-row :global(.trigger .label),
-    .control-row :global(.trigger .dot),
-    .control-row :global(.trigger .caret),
-    .control-row :global(.trigger .trigger-icon) {
-      display: inline-flex;
-    }
-
-    .control-row--voice :global(.voice-control) {
-      flex-wrap: wrap;
-      gap: var(--space-2);
-    }
-
-    /* Theme utility row. */
-    .utility-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-3);
-      padding: var(--space-3);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: var(--color-bg-tertiary);
-    }
-
-    .utility-labels {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
-      min-width: 0;
-    }
-
-    .utility-title {
-      color: var(--color-text);
-      font-size: var(--text-sm);
-      font-weight: var(--font-medium);
-    }
-
-    .utility-copy {
-      color: var(--color-text-secondary);
-      font-size: var(--text-xs);
+  /* ── Responsive: shed labels, keep every control visible. ── */
+  @media (max-width: 900px) {
+    /* Assistant + session collapse to icon + status dot + caret (their own
+       dropdowns stay) — visible at every width, just compact. */
+    .navbar-actions :global(.trigger .label) {
+      display: none;
     }
   }
 
-  /* Mobile (≤640px): grid layout + tab-style nav + bottom sheet. */
-  @media (max-width: 640px) {
-    .navbar-inner {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      align-items: center;
-      gap: var(--space-2);
-      padding: 0 var(--space-4);
-    }
-
+  @media (max-width: 480px) {
     .brand-text {
       display: none;
     }
-
-    .navbar-nav {
-      justify-content: center;
-      flex: unset;
-      height: var(--nav-height);
-    }
-
-    .nav-tab {
-      background: transparent;
-      border: none;
-      border-radius: 0;
-      margin: 0;
-      height: var(--nav-height);
-      padding: 0 var(--space-2);
-      border-bottom: 3px solid transparent;
-      font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      transition: color var(--transition-fast), border-color var(--transition-fast), font-weight var(--transition-fast);
-    }
-
-    .nav-tab:hover {
-      background: transparent;
-      color: var(--color-text);
-    }
-
-    .nav-tab.active {
-      background: transparent;
-      border-bottom-color: var(--color-text);
-      color: var(--color-text);
-      font-weight: var(--font-semibold);
-    }
-
-    /* Hamburger is the last grid column; no margin-left needed. */
-    .mobile-menu-btn {
-      margin-left: 0;
-    }
-    /* Drawer geometry is the single bottom-sheet defined in the ≤768px block;
-       no separate override needed here. */
-  }
-
-  /* Narrow phones (≤400px): abbreviate labels to icon+short-label. */
-  @media (max-width: 400px) {
-    .nav-tab {
-      padding: 0 var(--space-1);
-      font-size: var(--text-xs);
-    }
-
     .navbar-inner {
       padding: 0 var(--space-3);
-    }
-  }
-
-  /* Icon-only breakpoint at ≤340px. */
-  @media (max-width: 340px) {
-    .nav-label {
-      display: none;
+      gap: var(--space-2);
     }
   }
 </style>

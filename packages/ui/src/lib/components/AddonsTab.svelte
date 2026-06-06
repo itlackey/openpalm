@@ -5,10 +5,12 @@
     toggleAddon,
     fetchAddonCredentials,
     saveAddonCredentials,
+    fetchSecretFile,
     type AddonCredentialField,
   } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import { type TabId } from '$lib/components/TabBar.svelte';
+  import SecretSelect from '$lib/components/SecretSelect.svelte';
 
   interface Props {
     onAuthError: () => void;
@@ -39,8 +41,26 @@
   let expanded = $state<string | null>(null);
   let credFields = $state<Record<string, AddonCredentialField[]>>({});
   let credValues = $state<Record<string, Record<string, string>>>({});
+  // For sensitive fields: the NAME of the selected secret (the SecretSelect
+  // binds here). On selection we fetch the value into credValues behind the
+  // scenes — the raw value is never rendered.
+  let credSecretRef = $state<Record<string, Record<string, string>>>({});
   let credLoading = $state<string | null>(null);
   let credSaving = $state<string | null>(null);
+
+  async function onSecretChosen(addonName: string, key: string, secretName: string): Promise<void> {
+    if (!secretName) {
+      credValues[addonName][key] = '';
+      return;
+    }
+    try {
+      const { value } = await fetchSecretFile(secretName);
+      credValues[addonName][key] = value;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notifications.push('error', `Could not read secret: ${msg}`);
+    }
+  }
 
   async function loadAddons(): Promise<void> {
     loading = true;
@@ -82,8 +102,13 @@
         const fields = await fetchAddonCredentials(name);
         credFields[name] = fields;
         const seed: Record<string, string> = {};
-        for (const f of fields) seed[f.key] = f.sensitive ? '' : f.value;
+        const refSeed: Record<string, string> = {};
+        for (const f of fields) {
+          seed[f.key] = f.sensitive ? '' : f.value;
+          if (f.sensitive) refSeed[f.key] = '';
+        }
         credValues[name] = seed;
+        credSecretRef[name] = refSeed;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
@@ -227,14 +252,25 @@
                       {#if field.sensitive && field.set}<span class="creds-tag creds-tag--set">set</span>{/if}
                     </label>
                     {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
-                    <input
-                      id="cred-{addon.name}-{field.key}"
-                      type={field.sensitive ? 'password' : 'text'}
-                      class="form-input"
-                      placeholder={field.sensitive ? (field.set ? '••••••• (leave empty to keep current)' : field.default) : field.default}
-                      bind:value={credValues[addon.name][field.key]}
-                      autocomplete="off"
-                    />
+                    {#if field.sensitive}
+                      <!-- Pick an existing secret or quick-add one; the value is
+                           written to the addon config without leaving this flow. -->
+                      <SecretSelect
+                        id="cred-{addon.name}-{field.key}"
+                        bind:value={credSecretRef[addon.name][field.key]}
+                        onChange={(secretName) => void onSecretChosen(addon.name, field.key, secretName)}
+                      />
+                      {#if field.set}<p class="creds-desc">A value is already set — choose a secret to replace it.</p>{/if}
+                    {:else}
+                      <input
+                        id="cred-{addon.name}-{field.key}"
+                        type="text"
+                        class="form-input"
+                        placeholder={field.default}
+                        bind:value={credValues[addon.name][field.key]}
+                        autocomplete="off"
+                      />
+                    {/if}
                   </div>
                 {/each}
                 <div class="creds-actions">
@@ -268,7 +304,8 @@
     border-bottom: 1px solid var(--color-border);
     font-size: var(--text-xs);
     font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
+    /* Accessible neutral on the tinted header bg (secondary drops to ~4.0:1 there). */
+    color: var(--color-badge-neutral-fg);
     text-transform: none;
   }
 

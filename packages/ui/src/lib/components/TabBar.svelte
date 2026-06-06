@@ -11,7 +11,7 @@
 		| 'logs'
 		| 'updates';
 
-	type SectionId = 'system' | 'configure' | 'extend';
+	type SectionId = 'health' | 'knowledge' | 'voice' | 'mind' | 'capabilities';
 
 	interface SubTab {
 		id: TabId;
@@ -46,10 +46,14 @@
 		updates: `<polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />`,
 	};
 
+	// Five entity-framed sections (configuring the assistant + its host). Section
+	// names carry the metaphor (Health / Knowledge / Voice / Mind / Capabilities);
+	// sub-tab nouns stay conventional (Containers, Logs, Secrets…) so ops terms
+	// remain scannable and match the CLI/docs.
 	const SECTIONS: Section[] = [
 		{
-			id: 'system',
-			label: 'System',
+			id: 'health',
+			label: 'Health',
 			tabs: [
 				{ id: 'overview', label: 'Overview', icon: ICONS.overview },
 				{ id: 'containers', label: 'Containers', icon: ICONS.containers },
@@ -58,21 +62,29 @@
 			],
 		},
 		{
-			id: 'configure',
-			label: 'Configure',
+			id: 'knowledge',
+			label: 'Knowledge',
 			tabs: [
-				{ id: 'connections', label: 'AI Providers', icon: ICONS.connections },
-				{ id: 'akm', label: 'Knowledge', icon: ICONS.akm },
-				{ id: 'voice', label: 'Voice', icon: ICONS.voice },
+				{ id: 'akm', label: 'Memory', icon: ICONS.akm },
+				{ id: 'secrets', label: 'Secrets', icon: ICONS.secrets },
 			],
 		},
 		{
-			id: 'extend',
-			label: 'Extend',
+			id: 'voice',
+			label: 'Voice',
+			tabs: [{ id: 'voice', label: 'Voice', icon: ICONS.voice }],
+		},
+		{
+			id: 'mind',
+			label: 'Mind',
+			tabs: [{ id: 'connections', label: 'AI Providers', icon: ICONS.connections }],
+		},
+		{
+			id: 'capabilities',
+			label: 'Capabilities',
 			tabs: [
-				{ id: 'addons', label: 'Addons', icon: ICONS.addons },
+				{ id: 'addons', label: 'Add-ons', icon: ICONS.addons },
 				{ id: 'automations', label: 'Automations', icon: ICONS.automations },
-				{ id: 'secrets', label: 'Secrets', icon: ICONS.secrets },
 			],
 		},
 	];
@@ -137,7 +149,9 @@
 		{/each}
 	</div>
 
-	<!-- Subtab strip (secondary level — only active section's tabs) -->
+	<!-- Subtab strip (secondary level). Hidden when the section has a single
+	     destination — the section tab itself navigates there. -->
+	{#if activeSection.tabs.length > 1}
 	<div class="subtab-row">
 		<div class="tabs" role="tablist" aria-label="{activeSection.label} tabs">
 			{#each activeSection.tabs as tab (tab.id)}
@@ -168,6 +182,7 @@
 			{/each}
 		</div>
 	</div>
+	{/if}
 </nav>
 
 <style>
@@ -345,7 +360,8 @@
 		}
 		.section-tab {
 			padding: var(--space-1) var(--space-2);
-			font-size: 0.6rem;
+			/* Never below the 12px legibility floor (WCAG 1.4.4) — was 0.6rem/9.6px. */
+			font-size: var(--text-xs);
 		}
 	}
 </style>

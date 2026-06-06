@@ -1,0 +1,197 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { fetchSecretFiles, saveSecretFile } from '$lib/api.js';
+
+  // Reusable secret picker: choose an EXISTING secret by name, or quick-add a
+  // new one that is written through the shared /admin/secrets store and becomes
+  // immediately selectable. Never displays secret values. Uses a native <select>
+  // so keyboard/focus/target-size come for free (rubric F3/F5).
+  interface Props {
+    /** Selected secret NAME (bindable). */
+    value?: string;
+    /** Stable id for the <select>, for an external <label for>. */
+    id?: string;
+    /** Called whenever the selection changes (including after quick-add). */
+    onChange?: (name: string) => void;
+  }
+  let { value = $bindable(''), id = 'secret-select', onChange }: Props = $props();
+
+  let names = $state<string[]>([]);
+  let loading = $state(true);
+  let adding = $state(false);
+  let newName = $state('');
+  let newValue = $state('');
+  let saving = $state(false);
+  let error = $state('');
+  let nameInput = $state<HTMLInputElement | undefined>();
+
+  async function loadNames(): Promise<void> {
+    loading = true;
+    try {
+      const { files } = await fetchSecretFiles();
+      names = files.map((f) => f.name).sort((a, b) => a.localeCompare(b));
+    } catch {
+      names = [];
+    } finally {
+      loading = false;
+    }
+  }
+  onMount(loadNames);
+
+  function onSelectChange(e: Event): void {
+    value = (e.currentTarget as HTMLSelectElement).value;
+    onChange?.(value);
+  }
+
+  function openAdd(): void {
+    adding = true;
+    error = '';
+    newName = '';
+    newValue = '';
+    queueMicrotask(() => nameInput?.focus());
+  }
+  function cancelAdd(): void {
+    adding = false;
+    error = '';
+  }
+
+  async function saveAdd(): Promise<void> {
+    const name = newName.trim();
+    if (!name) { error = 'Name is required.'; return; }
+    if (!newValue) { error = 'Value is required.'; return; }
+    if (saving) return;
+    saving = true;
+    error = '';
+    try {
+      await saveSecretFile(name, newValue);
+      await loadNames();
+      value = name;
+      onChange?.(name);
+      adding = false;
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Could not save secret.';
+    } finally {
+      saving = false;
+    }
+  }
+
+  function onAddKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape') { e.preventDefault(); cancelAdd(); }
+  }
+</script>
+
+<div class="secret-select">
+  <div class="ss-row">
+    <select {id} class="form-input ss-select" {value} onchange={onSelectChange} disabled={loading || adding}>
+      <option value="">{loading ? 'Loading secrets…' : 'Select a secret…'}</option>
+      {#each names as name (name)}
+        <option value={name}>{name}</option>
+      {/each}
+    </select>
+    <button type="button" class="btn btn-secondary ss-add-btn" onclick={openAdd} disabled={adding}>
+      <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14" /><path d="M5 12h14" />
+      </svg>
+      <span class="ss-add-label">New</span>
+    </button>
+  </div>
+
+  {#if adding}
+    <div class="ss-add-form" role="group" aria-label="Add a new secret">
+      <label class="ss-field">
+        <span class="ss-field-label">Secret name</span>
+        <input
+          bind:this={nameInput}
+          bind:value={newName}
+          class="form-input"
+          placeholder="e.g. discord_bot_token"
+          autocomplete="off"
+          spellcheck="false"
+          onkeydown={onAddKeydown}
+        />
+      </label>
+      <label class="ss-field">
+        <span class="ss-field-label">Value</span>
+        <input
+          bind:value={newValue}
+          class="form-input"
+          type="password"
+          placeholder="Paste the secret value"
+          autocomplete="new-password"
+          onkeydown={onAddKeydown}
+        />
+      </label>
+      {#if error}<p class="ss-error" role="alert">{error}</p>{/if}
+      <div class="ss-actions">
+        <button type="button" class="btn btn-primary btn-sm" onclick={saveAdd} disabled={saving}>
+          {saving ? 'Saving…' : 'Save & select'}
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick={cancelAdd} disabled={saving}>Cancel</button>
+      </div>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .secret-select {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .ss-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .ss-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 38px;
+  }
+  .ss-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    height: 38px;
+  }
+  .ss-add-btn svg {
+    flex-shrink: 0;
+  }
+  .ss-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-secondary);
+  }
+  .ss-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ss-field-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+  }
+  .ss-error {
+    font-size: var(--text-xs);
+    color: var(--color-danger);
+  }
+  .ss-actions {
+    display: flex;
+    gap: var(--space-2);
+  }
+  @media (max-width: 480px) {
+    .ss-add-label {
+      display: none;
+    }
+    .ss-add-btn {
+      width: 38px;
+      justify-content: center;
+    }
+  }
+</style>

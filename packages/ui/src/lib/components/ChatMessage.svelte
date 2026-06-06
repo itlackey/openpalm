@@ -73,44 +73,49 @@
     border-radius: var(--radius-full);
   }
 
+  /* Standard chat layout inside the centered conversation column: user turns
+     align right, assistant turns align left, each in a bubble capped well under
+     the column width so neither hugs the screen edge. */
+  /* The row stays centered in the conversation column (sized by the parent
+     .messages-area rule). align-items — NOT align-self — moves the bubble to the
+     correct side WITHIN the centered row; align-self would shove the whole row
+     to a screen edge. */
   .message {
     display: flex;
     flex-direction: column;
-    max-width: 80%;
+    gap: var(--space-1);
+    width: 100%;
+    max-width: 100%;
   }
 
   .message-user {
-    align-self: flex-end;
     align-items: flex-end;
   }
 
   .message-assistant {
-    align-self: flex-start;
     align-items: flex-start;
   }
 
   .message-bubble {
+    max-width: 85%;
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-lg);
     line-height: var(--leading-normal);
   }
 
+  /* User bubble: charcoal, right-aligned with a tucked corner. Keeps brand
+     orange reserved for primary actions. */
   .message-user .message-bubble {
-    /* Charcoal-tinted user bubble — keeps orange for primary CTA buttons only.
-       Contrast: #f3f4f6 on #2c3748 ≈ 7.5:1 (WCAG AAA) light mode.
-       Dark mode overridden below to a lighter charcoal for surface differentiation. */
     background: #2c3748;
     color: #f3f4f6;
     border-bottom-right-radius: var(--radius-sm);
   }
-
   :global([data-theme='dark']) .message-user .message-bubble {
-    /* Dark mode: slightly lighter charcoal so bubble stays distinct from #101418 bg.
-       Contrast: #f3f4f6 on #3d4f66 ≈ 6.5:1 (WCAG AA). */
     background: #3d4f66;
     color: #f3f4f6;
   }
 
+  /* Assistant bubble: neutral surface, left-aligned with a tucked corner. */
   .message-assistant .message-bubble {
     background: var(--color-bg-tertiary);
     color: var(--color-text);
@@ -215,6 +220,6 @@
   .message-meta {
     margin-top: var(--space-1);
     font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
+    color: var(--color-text-secondary);
   }
 </style>

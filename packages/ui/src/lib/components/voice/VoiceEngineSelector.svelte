@@ -195,7 +195,7 @@
 
 	.engine-desc {
 		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
+		color: var(--color-text-secondary);
 	}
 
 	.engine-subtitle {

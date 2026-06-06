@@ -4,6 +4,7 @@
   import AuthGate from '$lib/components/AuthGate.svelte';
   import ChatMessage from '$lib/components/ChatMessage.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
+  import ChatToolbar from '$lib/components/ChatToolbar.svelte';
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
@@ -160,6 +161,10 @@
   <Navbar />
 
   <div class="chat-layout">
+    <!-- In-window toolbar: assistant + session switchers, available at every
+         width — regular chat as a stripped-down advanced chat. -->
+    <ChatToolbar />
+
     <!-- Message history -->
     <section class="messages-area" aria-label="Chat history" aria-live="polite">
       {#if sessionsLoading || entriesLoading}
@@ -225,14 +230,16 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-4) var(--space-6);
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-4);
     scroll-behavior: smooth;
+    /* Center a contained reading column so turns never fly to the screen edges. */
     align-items: center;
   }
 
   .messages-area > :global(*) {
-    width: min(80ch, 90svw);
+    width: 100%;
+    max-width: 48rem; /* ~768px centered conversation column */
   }
 
   .empty-state {

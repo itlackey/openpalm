@@ -1,0 +1,55 @@
+{
+  "baseUrl": "http://localhost:5173",
+  "outDir": "../../.reviews/ux-audit",
+  "widths": [320, 360, 375, 414, 480, 640, 768, 900, 1024, 1280, 1440],
+  "themes": [
+    { "id": "light", "init": null },
+    { "id": "dark", "init": { "localStorage": { "openpalm.theme": "dark" } } }
+  ],
+  "auth": {
+    "passwordSelector": "input[autocomplete=\"current-password\"]",
+    "submitSelector": "form.auth-form button[type=\"submit\"]",
+    "readySelector": "header.navbar",
+    "passwordEnv": "OP_UI_LOGIN_PASSWORD"
+  },
+  "states": [
+    {
+      "id": "chat",
+      "path": "/chat",
+      "waitFor": "header.navbar"
+    },
+    { "id": "admin-overview", "path": "/admin", "waitFor": "header.navbar" },
+    {
+      "id": "admin-providers",
+      "path": "/admin",
+      "waitFor": "header.navbar",
+      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Mind')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+    },
+    {
+      "id": "admin-knowledge",
+      "path": "/admin",
+      "waitFor": "header.navbar",
+      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Knowledge')?.click(); await new Promise(r => setTimeout(r, 300)); f('Memory')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+    },
+    {
+      "id": "admin-voice",
+      "path": "/admin",
+      "waitFor": "header.navbar",
+      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Voice')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+    },
+    {
+      "id": "admin-secrets",
+      "path": "/admin",
+      "waitFor": "header.navbar",
+      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Knowledge')?.click(); await new Promise(r => setTimeout(r, 300)); f('Secrets')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+    },
+    {
+      "id": "admin-addons",
+      "path": "/admin",
+      "waitFor": "header.navbar",
+      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Capabilities')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+    }
+  ],
+  "axeWidths": [375, 1280],
+  "screenshot": true
+}

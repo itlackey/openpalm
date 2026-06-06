@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
+  import type { TabId } from './TabBar.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
+  import { fetchAkmHealth, type AkmHealth } from '$lib/api.js';
 
   interface Props {
     adminHealth: HealthPayload | null;
@@ -16,6 +18,7 @@
     onCheckHealth: () => void;
     onApplyChanges: () => void;
     onDismissResult: () => void;
+    onNavigate: (tab: TabId) => void;
   }
 
   let {
@@ -31,82 +34,118 @@
     onCheckHealth,
     onApplyChanges,
     onDismissResult,
+    onNavigate,
   }: Props = $props();
 
-  // Load endpoints if not already loaded so we get the real assistant URL.
-  onMount(() => { void endpointsService.load(); });
+  // AKM (knowledge base) health — fetched here so the Overview is a real
+  // dashboard. Fails soft to an "unavailable" card.
+  let akm = $state<AkmHealth | null>(null);
+  onMount(() => {
+    void endpointsService.load();
+    void fetchAkmHealth()
+      .then((h) => { akm = h; })
+      .catch(() => { akm = { available: false }; });
+  });
 
-  // Derived: automation count
-  let automationCount = $derived(automationsData?.automations.length ?? 0);
-  let enabledAutomationCount = $derived(
-    automationsData?.automations.filter(a => a.enabled).length ?? 0
+  let akmBadge = $derived.by((): { label: string; cls: string } => {
+    if (!akm || !akm.available) return { label: 'Unavailable', cls: 'badge-neutral' };
+    // Prefer the reported status; if it's missing/unknown, derive from the
+    // check counts so the badge never reads "Unknown" while metrics are present.
+    let status = akm.status;
+    if (status !== 'ok' && status !== 'warn' && status !== 'fail') {
+      status = akm.checks.fail > 0 ? 'fail' : akm.checks.warn > 0 ? 'warn' : 'ok';
+    }
+    if (status === 'ok') return { label: 'Healthy', cls: 'badge-success' };
+    if (status === 'warn') return { label: 'Warnings', cls: 'badge-warning' };
+    return { label: 'Issues', cls: 'badge-danger' };
+  });
+  let akmCheckTotal = $derived(
+    akm && akm.available ? akm.checks.pass + akm.checks.warn + akm.checks.fail : 0
   );
 
-  // Derived: overall container health counts
+  let automationCount = $derived(automationsData?.automations.length ?? 0);
+  let enabledAutomationCount = $derived(
+    automationsData?.automations.filter((a) => a.enabled).length ?? 0
+  );
+
   let containerCounts = $derived.by(() => {
     if (mergedServices.size === 0) return null;
     const total = mergedServices.size;
-    const running = [...mergedServices.values()].filter(s => s === 'running').length;
+    const running = [...mergedServices.values()].filter((s) => s === 'running').length;
     return { total, running };
   });
 
-  // Derived: guardian status from merged Docker data (not optimistic state.services)
-  let guardianContainerStatus = $derived.by(() => {
-    const status = mergedServices.get('guardian');
-    if (status === 'running') return 'running' as const;
-    if (status === 'stopped' || status === 'exited' || status === 'created') return 'stopped' as const;
-    if (status) return 'stopped' as const; // any non-running state = stopped
-    return 'unknown' as const;
+  // Services that aren't running, by name — drives the actionable status line.
+  let downServices = $derived.by(() => {
+    const out: string[] = [];
+    for (const [name, status] of mergedServices) {
+      if (status !== 'running') out.push(name);
+    }
+    return out;
   });
 
-  // Derived: assistant connectivity from merged Docker data
-  let assistantStatus = $derived.by(() => {
-    const status = mergedServices.get('assistant');
-    if (status === 'running') return 'connected' as const;
-    if (status === 'stopped' || status === 'exited' || status === 'created') return 'disconnected' as const;
-    if (status) return 'disconnected' as const;
-    return 'unknown' as const;
-  });
-
-  // Derived: top-level system health summary
-  let healthSummary = $derived.by((): { status: 'ok' | 'warning' | 'unknown'; message: string } => {
-    if (!containerCounts) return { status: 'unknown', message: 'Checking services…' };
+  let health = $derived.by((): { status: 'ok' | 'warning' | 'unknown'; title: string; detail: string } => {
+    if (!containerCounts) {
+      return { status: 'unknown', title: 'Checking services…', detail: 'Fetching the latest status from Docker.' };
+    }
     if (containerCounts.running === containerCounts.total && containerCounts.total > 0) {
-      return { status: 'ok', message: `All ${containerCounts.total} services running` };
+      return {
+        status: 'ok',
+        title: 'All systems operational',
+        detail: `${containerCounts.total} of ${containerCounts.total} services are running normally.`,
+      };
     }
     const down = containerCounts.total - containerCounts.running;
-    return { status: 'warning', message: `${down} of ${containerCounts.total} services not running — check the Containers tab` };
+    const names = downServices.map((n) => n.charAt(0).toUpperCase() + n.slice(1)).join(', ');
+    return {
+      status: 'warning',
+      title: `${down} of ${containerCounts.total} services not running`,
+      detail: names ? `Not running: ${names}.` : 'One or more services need attention.',
+    };
   });
-
 </script>
 
-
-<!-- System health summary bar -->
-<div class="health-summary health-summary--{healthSummary.status}" role="status" aria-live="polite">
-  <span class="health-icon" aria-hidden="true">
-    {#if healthSummary.status === 'warning'}
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<!-- Status hero: the one thing an operator needs on landing — is it healthy,
+     and if not, what's wrong and how do I fix it. -->
+<section class="hero hero--{health.status}" role="status" aria-live="polite">
+  <span class="hero-icon" aria-hidden="true">
+    {#if health.status === 'warning'}
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
         <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
-    {:else if healthSummary.status === 'ok'}
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    {:else if health.status === 'ok'}
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
       </svg>
     {:else}
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
       </svg>
     {/if}
   </span>
-  <span class="health-msg">{healthSummary.message}</span>
-</div>
+  <div class="hero-text">
+    <h2 class="hero-title">{health.title}</h2>
+    <p class="hero-detail">{health.detail}</p>
+  </div>
+  <div class="hero-actions">
+    <button class="btn btn-secondary" onclick={onCheckHealth} disabled={healthLoading}>
+      {healthLoading ? 'Checking…' : 'Re-check'}
+    </button>
+    {#if health.status === 'warning'}
+      <button class="btn btn-primary" onclick={() => onNavigate('containers')}>View containers</button>
+    {/if}
+    <button class="btn btn-secondary" onclick={onApplyChanges} disabled={anyDangerousLoading || !tokenStored}>
+      {applyLoading ? 'Applying…' : 'Apply config & restart'}
+    </button>
+  </div>
+</section>
 
-<!-- Operation Output -->
+<!-- Operation output -->
 {#if operationResult}
   <section class="output-section output-section--{operationResultType}">
     <div class="output-header">
-      <h3>Operation Output</h3>
+      <h3>Operation output</h3>
       <button class="btn-ghost" aria-label="Dismiss" onclick={onDismissResult}>
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -117,300 +156,187 @@
   </section>
 {/if}
 
-<!-- Overview Panels -->
-<div class="panel-grid" role="tabpanel">
-  <!-- Quick Actions Panel -->
-  <div class="panel">
-    <div class="panel-header">
-      <h2>Quick Actions</h2>
-    </div>
-    <div class="panel-body">
-      <div class="action-list">
-        <button class="action-item" onclick={onCheckHealth} disabled={healthLoading}>
-          <span class="action-icon action-icon--blue">
-            {#if healthLoading}
-              <span class="spinner"></span>
-            {:else}
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-              </svg>
-            {/if}
-          </span>
-          <div class="action-content">
-            <span class="action-title">Health Check</span>
-            <span class="action-desc">Verify admin and guardian services are reachable</span>
-          </div>
-          <span class="action-arrow">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </button>
+<!-- Live metrics — each tile is a shortcut to where you act on it. -->
+<div class="tile-grid">
+  <button class="tile" onclick={() => onNavigate('containers')}>
+    <span class="tile-metric">
+      {#if containerCounts}{containerCounts.running}<span class="tile-metric-sub">/{containerCounts.total}</span>{:else}—{/if}
+    </span>
+    <span class="tile-label">Services running</span>
+  </button>
+  <button class="tile" onclick={() => onNavigate('automations')}>
+    <span class="tile-metric">
+      {#if automationsData}{enabledAutomationCount}<span class="tile-metric-sub">/{automationCount}</span>{:else}—{/if}
+    </span>
+    <span class="tile-label">Automations active</span>
+  </button>
+  <button class="tile" onclick={() => onNavigate('logs')}>
+    <span class="tile-metric tile-metric--icon" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+      </svg>
+    </span>
+    <span class="tile-label">View logs</span>
+  </button>
+  <button class="tile" onclick={() => onNavigate('updates')}>
+    <span class="tile-metric tile-metric--icon" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
+      </svg>
+    </span>
+    <span class="tile-label">Check for updates</span>
+  </button>
+</div>
 
-        <button class="action-item" onclick={onApplyChanges} disabled={anyDangerousLoading || !tokenStored}>
-          <span class="action-icon action-icon--blue">
-            {#if applyLoading}
-              <span class="spinner"></span>
-            {:else}
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="16 16 12 12 8 16" />
-                <line x1="12" y1="12" x2="12" y2="21" />
-                <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-              </svg>
-            {/if}
-          </span>
-          <div class="action-content">
-            <span class="action-title">Apply Config + Restart</span>
-            <span class="action-desc">Update configuration and restart running services</span>
-            <span class="action-hint">Restarts services with updated compose config.</span>
-          </div>
-          <span class="action-arrow">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </button>
-
-
-        <a class="action-item" href="/setup?rerun=1">
-          <span class="action-icon action-icon--purple">
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
-            </svg>
-          </span>
-          <div class="action-content">
-            <span class="action-title">Update Settings</span>
-            <span class="action-desc">Re-run setup wizard to change providers, channels, or options</span>
-          </div>
-          <span class="action-arrow">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </a>
-
-      </div>
-    </div>
+<!-- Knowledge base (AKM) health -->
+<h3 class="section-heading">Knowledge base (AKM)</h3>
+<button class="akm-card" onclick={() => onNavigate('akm')} aria-label="AKM health — open Knowledge settings">
+  <div class="akm-head">
+    <span class="akm-title">AKM runtime health</span>
+    <span class="badge {akmBadge.cls}">{akmBadge.label}</span>
   </div>
-
-  <!-- System Info Panel -->
-  <div class="panel">
-    <div class="panel-header">
-      <h2>System Information</h2>
-    </div>
-    <div class="panel-body">
-      <div class="info-grid">
-        <div class="info-item">
-          <span class="info-label">Admin API</span>
-          <span class="info-value">
-            {#if adminHealth}
-              <span class="badge" class:badge-success={adminHealth.status === 'ok'} class:badge-danger={adminHealth.status !== 'ok'}>
-                {adminHealth.status}
-              </span>
-            {:else}
-              <span class="badge badge-idle">Unknown</span>
-            {/if}
-          </span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Guardian</span>
-          <span class="info-value">
-            {#if guardianContainerStatus === 'running'}
-              <span class="badge badge-success">Running</span>
-            {:else if guardianContainerStatus === 'stopped'}
-              <span class="badge badge-danger">Stopped</span>
-            {:else}
-              <span class="badge badge-idle">Unknown</span>
-            {/if}
-          </span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Containers</span>
-          <span class="info-value">
-            {#if containerCounts}
-              {#if containerCounts.running === containerCounts.total}
-                <span class="badge badge-success">{containerCounts.running} / {containerCounts.total} running</span>
-              {:else if containerCounts.running > 0}
-                <span class="badge badge-warning">{containerCounts.running} / {containerCounts.total} running</span>
-              {:else}
-                <span class="badge badge-danger">0 / {containerCounts.total} running</span>
-              {/if}
-            {:else}
-              <span class="badge badge-idle">Unknown</span>
-            {/if}
-          </span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Assistant</span>
-          <span class="info-value">
-            {#if assistantStatus === 'connected'}
-              <span class="badge badge-success">Connected</span>
-            {:else if assistantStatus === 'disconnected'}
-              <span class="badge badge-danger">Disconnected</span>
-            {:else}
-              <span class="badge badge-idle">Unknown</span>
-            {/if}
-          </span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">Automations</span>
-          <span class="info-value">
-            {#if automationsData}
-              <span class="info-mono">{enabledAutomationCount} active / {automationCount} total</span>
-            {:else}
-              <span class="badge badge-idle">Loading</span>
-            {/if}
-          </span>
-        </div>
+  {#if akm && akm.available}
+    <div class="akm-metrics">
+      <div class="akm-metric">
+        <span class="akm-num">{akm.index?.entryCount?.toLocaleString() ?? '—'}</span>
+        <span class="akm-cap">Indexed assets</span>
       </div>
+      <div class="akm-metric">
+        <span class="akm-num">{akm.checks.pass}<span class="akm-num-sub">/{akmCheckTotal}</span></span>
+        <span class="akm-cap">Health checks passing</span>
+      </div>
+      <div class="akm-metric">
+        <span class="akm-num">{akm.index?.hasEmbeddings ? 'On' : 'Off'}</span>
+        <span class="akm-cap">Semantic search</span>
+      </div>
+      {#if akm.metrics && typeof akm.metrics.taskFailRate === 'number'}
+        <div class="akm-metric">
+          <span class="akm-num">{Math.round(akm.metrics.taskFailRate * 100)}%</span>
+          <span class="akm-cap">Task failure rate</span>
+        </div>
+      {/if}
     </div>
-  </div>
+  {:else}
+    <p class="akm-unavailable">
+      Metrics unavailable — the akm CLI isn't reachable from the admin host.
+    </p>
+  {/if}
+</button>
 
+<!-- Configure shortcuts: the common setup destinations, one click away. -->
+<h3 class="section-heading">Configure</h3>
+<div class="shortcut-grid">
+  <button class="shortcut" onclick={() => onNavigate('connections')}>
+    <span class="shortcut-name">AI Providers</span>
+    <span class="shortcut-desc">Models &amp; provider credentials</span>
+  </button>
+  <button class="shortcut" onclick={() => onNavigate('akm')}>
+    <span class="shortcut-name">Knowledge</span>
+    <span class="shortcut-desc">Assistant memory &amp; behavior</span>
+  </button>
+  <button class="shortcut" onclick={() => onNavigate('voice')}>
+    <span class="shortcut-name">Voice</span>
+    <span class="shortcut-desc">Speech-to-text &amp; text-to-speech</span>
+  </button>
+  <button class="shortcut" onclick={() => onNavigate('addons')}>
+    <span class="shortcut-name">Channels &amp; add-ons</span>
+    <span class="shortcut-desc">Discord, Slack, API &amp; more</span>
+  </button>
+  <button class="shortcut" onclick={() => onNavigate('secrets')}>
+    <span class="shortcut-name">Secrets</span>
+    <span class="shortcut-desc">Stack &amp; channel credentials</span>
+  </button>
+  <a class="shortcut" href="/setup?rerun=1">
+    <span class="shortcut-name">Re-run setup</span>
+    <span class="shortcut-desc">Walk through the setup wizard again</span>
+  </a>
 </div>
 
 <style>
-  /* Health Summary */
-  .health-summary {
+  /* ── Status hero ── */
+  .hero {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-5);
-    border-radius: var(--radius-md);
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    margin-bottom: var(--space-6);
-    border: 1px solid transparent;
-  }
-  .health-summary--ok { background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border); }
-  .health-summary--warning { background: var(--color-warning-bg); color: var(--color-text); border-color: var(--color-warning); }
-  .health-summary--unknown { background: var(--color-bg-secondary); color: var(--color-text-secondary); border-color: var(--color-border); }
-  .health-icon { display: inline-flex; flex-shrink: 0; }
-  .health-summary--ok .health-icon { color: var(--color-success); }
-  .health-summary--warning .health-icon { color: var(--color-warning); }
-  .health-summary--unknown .health-icon { color: var(--color-text-tertiary); }
-
-  /* Status Cards */
-  .status-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--space-4);
-    margin-bottom: var(--space-8);
-  }
-
-  .status-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    flex-wrap: wrap;
     padding: var(--space-5);
-    transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+    border-radius: var(--radius-lg);
+    border: 1px solid transparent;
+    margin-bottom: var(--space-6);
   }
-
-  .status-card:hover {
-    border-color: var(--color-border-hover);
-    box-shadow: var(--shadow-sm);
+  .hero--ok {
+    background: var(--color-success-bg);
+    border-color: var(--color-success-border);
   }
-
-  .status-card-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
+  .hero--warning {
+    background: var(--color-warning-bg);
+    border-color: var(--color-warning);
   }
-
-  .status-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
+  .hero--unknown {
+    background: var(--color-bg-secondary);
+    border-color: var(--color-border);
+  }
+  .hero-icon {
+    display: inline-flex;
     flex-shrink: 0;
   }
-
-  .status-icon--success {
-    background: var(--color-success-bg);
-    color: var(--color-success);
+  .hero--ok .hero-icon {
+    color: var(--color-badge-success-fg);
   }
-
-  .status-icon--danger {
-    background: var(--color-danger-bg);
-    color: var(--color-danger);
+  .hero--warning .hero-icon {
+    color: var(--color-badge-warning-fg);
   }
-
-  .status-icon--idle {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-tertiary);
+  .hero--unknown .hero-icon {
+    color: var(--color-text-secondary);
   }
-
-  .status-card-info {
-    display: flex;
-    flex-direction: column;
+  .hero-text {
+    flex: 1 1 240px;
+    min-width: 0;
   }
-
-  .status-card-name {
-    font-size: var(--text-sm);
+  .hero-title {
+    font-size: var(--text-lg);
     font-weight: var(--font-semibold);
     color: var(--color-text);
   }
-
-  .status-card-value {
-    font-size: var(--text-xs);
+  .hero-detail {
     margin-top: 2px;
+    font-size: var(--text-sm);
+    /* Accessible on the tinted hero backgrounds (secondary is only ~3.9:1 on the
+       amber warning tint). */
+    color: var(--color-badge-neutral-fg);
+    max-width: 68ch;
   }
-
-  .status-text--success {
-    color: var(--color-success);
+  .hero-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    max-width: 100%;
   }
-
-  .status-text--danger {
-    color: var(--color-danger);
-  }
-
-  .status-text--idle {
-    color: var(--color-text-tertiary);
-  }
-
-  .status-indicator {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
+  .hero-actions :global(.btn) {
     flex-shrink: 0;
   }
-
-  .status-indicator--success {
-    background: var(--color-success);
-    box-shadow: 0 0 0 3px var(--color-success-bg);
+  @media (max-width: 560px) {
+    /* Give the action group the full row and let the buttons share it so none
+       runs off-screen at phone widths. */
+    .hero-actions {
+      width: 100%;
+    }
+    .hero-actions :global(.btn) {
+      flex: 1 1 auto;
+    }
   }
 
-  .status-indicator--danger {
-    background: var(--color-danger);
-    box-shadow: 0 0 0 3px var(--color-danger-bg);
-  }
-
-  .status-indicator--idle {
-    background: var(--color-border);
-    box-shadow: 0 0 0 3px var(--color-bg-tertiary);
-  }
-
-  /* Output */
+  /* ── Output ── */
   .output-section {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    margin-bottom: var(--space-8);
+    margin-bottom: var(--space-6);
   }
-
-  .output-section--success {
-    border-color: var(--color-success-border);
-  }
-
-  .output-section--error {
-    border-color: var(--color-danger);
-  }
-
+  .output-section--success { border-color: var(--color-success-border); }
+  .output-section--error { border-color: var(--color-danger); }
   .output-header {
     display: flex;
     align-items: center;
@@ -419,13 +345,11 @@
     background: var(--color-bg-secondary);
     border-bottom: 1px solid var(--color-border);
   }
-
   .output-header h3 {
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--color-text);
   }
-
   .output-code {
     margin: 0;
     padding: var(--space-4) var(--space-5);
@@ -440,153 +364,159 @@
     word-break: break-word;
   }
 
-  /* Panels */
-  .panel-grid {
+  /* ── Metric tiles ── */
+  .tile-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: var(--space-6);
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
   }
-
-  /* Action List */
-  .action-list {
+  .tile {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-5);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-sans);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .tile:hover {
+    border-color: var(--color-border-hover);
+    box-shadow: var(--shadow-sm);
+  }
+  .tile:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .tile-metric {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text);
+    line-height: 1.1;
+  }
+  .tile-metric-sub {
+    font-size: var(--text-lg);
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+  }
+  .tile-metric--icon {
+    color: var(--color-text-secondary);
+  }
+  .tile-label {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
   }
 
-  .action-item {
+  /* ── Configure shortcuts ── */
+  .section-heading {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+  }
+  .shortcut-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-3);
+  }
+  .shortcut {
     display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    width: 100%;
-    padding: var(--space-3) var(--space-4);
-    background: none;
-    border: 1px solid transparent;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     cursor: pointer;
-    font-family: var(--font-sans);
     text-align: left;
     text-decoration: none;
-    color: inherit;
-    transition: all var(--transition-fast);
+    font-family: var(--font-sans);
+    transition: border-color var(--transition-fast), background var(--transition-fast);
   }
-
-  .action-item:hover:not(:disabled) {
+  .shortcut:hover {
+    border-color: var(--color-border-hover);
     background: var(--color-surface-hover);
-    border-color: var(--color-border);
   }
-
-  .action-item:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .shortcut:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
-
-  .action-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 38px;
-    height: 38px;
-    border-radius: var(--radius-md);
-    flex-shrink: 0;
-  }
-
-  .action-icon--blue {
-    background: var(--color-info-bg);
-    color: var(--color-info);
-  }
-
-  .action-icon--amber {
-    background: var(--color-primary-subtle);
-    color: var(--color-primary);
-  }
-
-  .action-icon--purple {
-    background: #ede9fe;
-    color: #7c3aed;
-  }
-
-  .action-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .action-title {
+  .shortcut-name {
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--color-text);
   }
-
-  .action-desc {
+  .shortcut-desc {
     font-size: var(--text-xs);
     color: var(--color-text-secondary);
-    margin-top: 1px;
   }
 
-  .action-hint {
-    font-size: var(--text-xs);  /* 12px — was 0.6875rem ≈ 11px */
-    color: var(--color-text-tertiary);
-    font-style: italic;
-    margin-top: 2px;
+  /* ── AKM health card ── */
+  .akm-card {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-family: var(--font-sans);
+    padding: var(--space-5);
+    margin-bottom: var(--space-8);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
-
-  .action-arrow {
-    color: var(--color-text-tertiary);
-    flex-shrink: 0;
+  .akm-card:hover {
+    border-color: var(--color-border-hover);
+    box-shadow: var(--shadow-sm);
   }
-
-  /* Info Grid */
-  .info-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
+  .akm-card:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
-
-  .info-item {
+  .akm-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-3) 0;
-    border-bottom: 1px solid var(--color-bg-tertiary);
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
   }
-
-  .info-item:last-child {
-    border-bottom: none;
-  }
-
-  .info-label {
+  .akm-title {
     font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+  .akm-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--space-4);
+  }
+  .akm-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .akm-num {
+    font-size: var(--text-xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text);
+    line-height: 1.1;
+  }
+  .akm-num-sub {
+    font-size: var(--text-base);
+    font-weight: var(--font-medium);
     color: var(--color-text-secondary);
   }
-
-  .info-value {
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-  }
-
-  .info-mono {
-    font-family: var(--font-mono);
+  .akm-cap {
     font-size: var(--text-xs);
     color: var(--color-text-secondary);
   }
-
-  .channel-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    justify-content: flex-end;
+  .akm-unavailable {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    max-width: 68ch;
   }
-
-  @media (max-width: 768px) {
-    .panel-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .status-row {
-      grid-template-columns: 1fr;
-    }
-  }
-
 </style>

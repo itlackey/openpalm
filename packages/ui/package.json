@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "dev": "PORT=5173 vite dev",
+    "ux:audit": "NODE_PATH=\"$PWD/node_modules\" bun \"${AKM_HOME:-$HOME/akm}/skills/web-ux/ux-dom-audit/scripts/audit.ts\" e2e/ux-audit.config.json",
     "dev:local": "PORT=5173 OP_OPENCODE_URL=${OP_OPENCODE_URL:-http://localhost:3800} vite dev",
     "build": "svelte-kit sync && vite build && node scripts/stamp-version.mjs",
     "clean:build": "rm -rf .svelte-kit build",
@@ -32,12 +33,10 @@
     "start": "node build/index.js"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@eslint/compat": "^2.0.2",
     "@eslint/js": "^10.0.1",
     "@openpalm/lib": "workspace:*",
-    "croner": "^10.0.1",
-    "markdown-it": "^14.1.1",
-    "yaml": "^2.8.0",
     "@playwright/test": "^1.58.1",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.53.3",
@@ -46,11 +45,13 @@
     "@types/node": "^25.9.1",
     "@vitest/browser-playwright": "^4.0.18",
     "@vitest/coverage-v8": "^4.0.18",
+    "croner": "^10.0.1",
     "dotenv": "^17.4.2",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.14.0",
     "globals": "^17.3.0",
+    "markdown-it": "^14.1.1",
     "playwright": "^1.58.1",
     "prettier": "^3.8.1",
     "prettier-plugin-svelte": "^4.0.1",
@@ -61,6 +62,7 @@
     "vite": "^8.0.14",
     "vite-plugin-devtools-json": "^1.0.0",
     "vitest": "^4.0.18",
-    "vitest-browser-svelte": "^2.0.2"
+    "vitest-browser-svelte": "^2.0.2",
+    "yaml": "^2.8.0"
   }
 }

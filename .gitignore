@@ -40,3 +40,5 @@ scripts/azure/vm-declarative/deploy.key
 .claude/
 packages/electron/dist/
 .dev_*/*
+# UX validation gate artifacts (skill:web-ux/ux-dom-audit)
+.reviews/

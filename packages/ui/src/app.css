@@ -35,6 +35,13 @@
   --color-error-bg: var(--color-danger-bg);
   --color-error-border: var(--color-danger-border);
 
+  /* Badge foregrounds — darker than the status hues so 12px badge text clears
+     WCAG 1.4.3 (≥4.5:1) on the faint tinted badge backgrounds over a light page. */
+  --color-badge-success-fg: #15803d;
+  --color-badge-danger-fg: #b91c1c;
+  --color-badge-warning-fg: #b45309;
+  --color-badge-neutral-fg: #4b5563;
+
   /* ── Surface Colors ───────────────────────────────────────────────── */
   --color-bg: #ffffff;
   --color-bg-secondary: #f9fafb;
@@ -161,6 +168,12 @@
   --color-pending-bg: rgba(148, 163, 184, 0.14);
   --color-caution: #fbbf24;
   --color-caution-bg: rgba(251, 191, 36, 0.14);
+  /* Dark badges: bright hues on dark tints already clear 4.5:1; neutral uses the
+     accessible secondary text color. */
+  --color-badge-success-fg: #6ee79a;
+  --color-badge-danger-fg: #ff9d9d;
+  --color-badge-warning-fg: #fcd34d;
+  --color-badge-neutral-fg: #cbd5e1;
   --color-error: var(--color-danger);
   --color-error-bg: var(--color-danger-bg);
   --color-error-border: var(--color-danger-border);
@@ -844,53 +857,68 @@ body.chat-locked {
 
 .badge-enabled {
   background: var(--color-success-bg);
-  color: var(--color-success);
+  color: var(--color-badge-success-fg);
 }
 
 .badge-disabled {
   background: var(--color-bg-tertiary);
-  color: var(--color-text-tertiary);
+  color: var(--color-badge-neutral-fg);
 }
 
 .badge-connected {
   background: var(--color-success-bg);
-  color: var(--color-success);
+  color: var(--color-badge-success-fg);
 }
 
 .badge-recommended {
   background: var(--color-success-bg);
-  color: var(--color-success);
+  color: var(--color-badge-success-fg);
 }
 
 .badge-success {
   background: var(--color-success-bg);
-  color: var(--color-success);
+  color: var(--color-badge-success-fg);
 }
 
 .badge-danger {
   background: var(--color-danger-bg);
-  color: var(--color-danger);
+  color: var(--color-badge-danger-fg);
 }
 
 .badge-warning,
 .badge-warn {
   background: var(--color-warning-bg);
-  color: var(--color-warning);
+  color: var(--color-badge-warning-fg);
 }
 
 .badge-neutral {
   background: var(--color-bg-tertiary);
-  color: var(--color-text-secondary);
+  color: var(--color-badge-neutral-fg);
 }
 
 .badge-error {
   background: var(--color-danger-bg);
-  color: var(--color-danger);
+  color: var(--color-badge-danger-fg);
 }
 
 .badge-idle {
   background: var(--color-bg-tertiary);
-  color: var(--color-text-tertiary);
+  color: var(--color-badge-neutral-fg);
+}
+
+/* ── Prose measure cap ─────────────────────────────────────────────
+   Descriptive/help paragraphs must not run the full panel width — past ~85ch
+   reading comfort collapses (Bringhurst; rubric F2). Cap the common admin
+   description classes at a readable measure. Global so it applies regardless of
+   each component's scoped styles. */
+.panel-subtitle,
+.section-note,
+.section-desc,
+.section-subtitle,
+.panel-description,
+.empty-note,
+.engine-desc {
+  max-width: 68ch;
 }
 
 /* ── Shared Utility: Dismiss Button ────────────────────────────── */

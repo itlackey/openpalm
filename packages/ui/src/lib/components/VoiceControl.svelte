@@ -82,8 +82,10 @@
 	}
 </script>
 
-{#if supported || ttsAvailable || voiceState.autoplayBlocked}
-	<div class="voice-control" role="toolbar" aria-label="Voice controls">
+<!-- Always rendered so the mic (and speaker, when available) are visible on every
+     page. When STT is unavailable the mic shows a disabled mic-off icon rather
+     than vanishing. -->
+<div class="voice-control" role="toolbar" aria-label="Voice controls">
 		{#if isRecording && voiceState.interimTranscript}
 			<span class="voice-interim" aria-hidden="true" title={voiceState.interimTranscript}>
 				{voiceState.interimTranscript.length > MAX_INTERIM_CHARS
@@ -152,59 +154,71 @@
 			</button>
 		{/if}
 
-		{#if supported}
-			<button
-				class="voice-btn"
-				class:voice-btn-active={isRecording}
-				class:voice-btn-processing={isProcessing || isTranscribing}
-				disabled={isProcessing}
-				onclick={handleMicClick}
-				aria-label={isRecording
+		<button
+			class="voice-btn"
+			class:voice-btn-active={isRecording}
+			class:voice-btn-processing={isProcessing || isTranscribing}
+			class:voice-btn-disabled={!supported}
+			disabled={!supported || isProcessing}
+			onclick={handleMicClick}
+			aria-label={!supported
+				? 'Voice input unavailable'
+				: isRecording
 					? 'Stop recording'
 					: isTranscribing
 						? 'Transcribing…'
 						: isProcessing
 							? 'Sending message…'
 							: 'Start recording'}
-				aria-pressed={isRecording}
-				title={isRecording
+			aria-pressed={isRecording}
+			title={!supported
+				? 'Voice input is unavailable — no speech-to-text engine is configured for this browser'
+				: isRecording
 					? 'Stop recording'
 					: isTranscribing
 						? 'Transcribing…'
 						: isProcessing
 							? 'Sending message…'
 							: 'Speak — message will be sent to the selected assistant'}
-			>
-				{#if isTranscribing || isProcessing}
-					<!-- Spinner while audio is being transcribed or the message is in flight -->
-					<span class="voice-spinner" aria-hidden="true"></span>
-				{:else if isRecording}
-					<!-- Stop-square: clicking again ends the recording -->
-					<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-						<rect x="6" y="6" width="12" height="12" rx="1.5" />
-					</svg>
-					<span class="voice-pulse" aria-hidden="true"></span>
-				{:else}
-					<!-- Idle mic -->
-					<svg
-						aria-hidden="true"
-						width="16"
-						height="16"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-						<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-						<line x1="12" y1="19" x2="12" y2="23" />
-						<line x1="8" y1="23" x2="16" y2="23" />
-					</svg>
-				{/if}
-			</button>
-		{/if}
+		>
+			{#if !supported}
+				<!-- mic-off: STT unavailable -->
+				<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<line x1="1" y1="1" x2="23" y2="23" />
+					<path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+					<path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+					<line x1="12" y1="19" x2="12" y2="23" />
+					<line x1="8" y1="23" x2="16" y2="23" />
+				</svg>
+			{:else if isTranscribing || isProcessing}
+				<!-- Spinner while audio is being transcribed or the message is in flight -->
+				<span class="voice-spinner" aria-hidden="true"></span>
+			{:else if isRecording}
+				<!-- Stop-square: clicking again ends the recording -->
+				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+					<rect x="6" y="6" width="12" height="12" rx="1.5" />
+				</svg>
+				<span class="voice-pulse" aria-hidden="true"></span>
+			{:else}
+				<!-- Idle mic -->
+				<svg
+					aria-hidden="true"
+					width="16"
+					height="16"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+					<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+					<line x1="12" y1="19" x2="12" y2="23" />
+					<line x1="8" y1="23" x2="16" y2="23" />
+				</svg>
+			{/if}
+		</button>
 
 		<!-- Errors surface via the global <Toast> in the root layout. Keeping
 		     them out of the navbar prevents a long message from causing the
@@ -226,7 +240,6 @@
 								: ''}
 		</span>
 	</div>
-{/if}
 
 <style>
 	.voice-control {
@@ -337,6 +350,20 @@
 	.voice-btn-processing {
 		color: var(--color-text-tertiary);
 		cursor: not-allowed;
+	}
+
+	/* Voice unavailable: visible but clearly inert (mic-off icon). */
+	.voice-btn-disabled,
+	.voice-btn:disabled {
+		color: var(--color-text-tertiary);
+		background: var(--color-bg);
+		cursor: not-allowed;
+		opacity: 0.7;
+	}
+	.voice-btn-disabled:hover {
+		color: var(--color-text-tertiary);
+		border-color: var(--color-border);
+		background: var(--color-bg);
 	}
 
 	.voice-pulse {

@@ -3,6 +3,7 @@
   import Navbar from '$lib/components/Navbar.svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
   import TabBar, { type TabId } from '$lib/components/TabBar.svelte';
+  import AdminScopeBar from '$lib/components/AdminScopeBar.svelte';
   import OverviewTab from '$lib/components/OverviewTab.svelte';
   import UpdatesTab from '$lib/components/UpdatesTab.svelte';
   import AddonsTab from '$lib/components/AddonsTab.svelte';
@@ -500,6 +501,8 @@
   <main>
     <TabBar active={activeTab} onSelect={handleTabSelect} />
 
+    <AdminScopeBar />
+
     {#if activeTab === 'overview'}
       <OverviewTab
         {adminHealth}
@@ -514,6 +517,7 @@
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
+        onNavigate={handleTabSelect}
       />
     {:else if activeTab === 'updates'}
       <UpdatesTab
