@@ -5,7 +5,8 @@
 		saveAkmConfig,
 	} from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
-	import PasswordInput from '$lib/components/PasswordInput.svelte';
+	import PasswordInput from '$lib/components/common/PasswordInput.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
 	import EmbeddingSection from '$lib/components/akm/EmbeddingSection.svelte';
 	import BehaviorSection from '$lib/components/akm/BehaviorSection.svelte';
 
@@ -572,11 +573,11 @@
 		<h2>Knowledge</h2>
 		<div class="panel-header-actions">
 			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || !tokenStored}>
-				{#if loading}<span class="spinner"></span>{/if}
+				{#if loading}<Spinner />{/if}
 				Refresh
 			</button>
 			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
-				{#if saving}<span class="spinner"></span>{/if}
+				{#if saving}<Spinner />{/if}
 				Save
 			</button>
 		</div>
@@ -1231,6 +1232,4 @@
 		border-radius: var(--radius-md); font-size: var(--text-sm);
 		color: var(--color-error, #dc2626); margin-bottom: var(--space-4);
 	}
-	.spinner { display: inline-block; width: 0.75rem; height: 0.75rem; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.6s linear infinite; }
-	@keyframes spin { to { transform: rotate(360deg); } }
 </style>

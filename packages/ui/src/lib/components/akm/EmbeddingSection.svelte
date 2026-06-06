@@ -1,5 +1,5 @@
 <script lang="ts">
-  import PasswordInput from '$lib/components/PasswordInput.svelte';
+  import PasswordInput from '$lib/components/common/PasswordInput.svelte';
 
   // Embedding / semantic-search connection. All fields are bound back to the
   // parent's state (which load()/save() own) — this component is presentation

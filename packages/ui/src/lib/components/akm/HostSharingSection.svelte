@@ -7,6 +7,7 @@
     type HostAkmSharing,
   } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   // Host AKM sharing — lets the assistant read (and optionally write back to) the
   // operator's personal stash on this host. Lifted out of the AKM megaform into
@@ -77,7 +78,7 @@
   </div>
   <div class="panel-body">
     {#if loading}
-      <div class="hs-loading"><span class="spinner"></span> Checking host stash…</div>
+      <div class="hs-loading"><Spinner /> Checking host stash…</div>
     {:else if hostSharing === null}
       <p class="section-note">Host AKM sharing isn't available on this deployment.</p>
     {:else}
@@ -119,7 +120,7 @@
             {/if}
             <div class="control-group control-group--wide host-akm-actions">
               <button class="btn btn-secondary btn-sm" onclick={() => void toggleHostSharing()} disabled={hostBusy || !tokenStored}>
-                {#if hostBusy}<span class="spinner"></span>{/if}
+                {#if hostBusy}<Spinner />{/if}
                 {hostSharing.sharing.enabled ? 'Disable host sharing' : 'Enable host sharing'}
               </button>
               {#if hostSharing.sharing.enabled}
@@ -149,6 +150,4 @@
   .host-akm-status { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
   .host-akm-path { font-size: var(--text-xs); color: var(--color-text-secondary); }
   .host-akm-actions { flex-direction: row; gap: var(--space-2); flex-wrap: wrap; }
-  .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
 </style>

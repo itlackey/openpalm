@@ -10,7 +10,8 @@
   } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import { type TabId } from '$lib/components/TabBar.svelte';
-  import SecretSelect from '$lib/components/SecretSelect.svelte';
+  import SecretSelect from '$lib/components/common/SecretSelect.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface Props {
     onAuthError: () => void;
@@ -164,7 +165,7 @@
     </div>
     <button class="btn btn-secondary btn-sm" onclick={() => loadAddons()} disabled={loading}>
       {#if loading}
-        <span class="spinner"></span>
+        <Spinner />
       {/if}
       Refresh
     </button>
@@ -172,7 +173,7 @@
   <div class="panel-body panel-body--flush">
     {#if loading && addons.length === 0}
       <div class="loading-state">
-        <span class="spinner"></span>
+        <Spinner />
         <span>Loading addons...</span>
       </div>
     {:else if error}
@@ -229,7 +230,7 @@
                 onclick={() => toggle(addon.name, !addon.enabled)}
               >
                 {#if actionLoading === addon.name}
-                  <span class="spinner"></span>
+                  <Spinner />
                 {:else}
                   {addon.enabled ? 'Disable' : 'Enable'}
                 {/if}
@@ -239,7 +240,7 @@
           {#if expanded === addon.name}
             <div class="addon-creds">
               {#if credLoading === addon.name}
-                <div class="creds-loading"><span class="spinner"></span> Loading credentials...</div>
+                <div class="creds-loading"><Spinner /> Loading credentials...</div>
               {:else if (credFields[addon.name]?.length ?? 0) === 0}
                 <p class="creds-empty">This addon has no configurable env vars (compose overlay only).</p>
               {:else}
@@ -275,7 +276,7 @@
                 {/each}
                 <div class="creds-actions">
                   <button class="btn btn-primary btn-sm" disabled={credSaving === addon.name} onclick={() => void saveCredentials(addon.name)}>
-                    {#if credSaving === addon.name}<span class="spinner"></span>{/if} Save
+                    {#if credSaving === addon.name}<Spinner />{/if} Save
                   </button>
                 </div>
               {/if}
