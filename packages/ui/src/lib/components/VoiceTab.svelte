@@ -19,8 +19,10 @@
 		setTtsAutoEnabled,
 		speakText,
 	} from '$lib/voice/voice-state.svelte.js';
-	import VoiceEngineSelector from '$lib/components/voice/VoiceEngineSelector.svelte';
-	import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import VoiceTtsSection from '$lib/components/voice/VoiceTtsSection.svelte';
+	import VoiceSttSection from '$lib/components/voice/VoiceSttSection.svelte';
+	import VoiceAddonProfileSection from '$lib/components/voice/VoiceAddonProfileSection.svelte';
 	import type {
 		SttOption,
 		TtsOption,
@@ -492,11 +494,11 @@
 		<h2>Voice</h2>
 		<div class="panel-header-actions">
 			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || !tokenStored}>
-				{#if loading}<span class="spinner"></span>{/if}
+				{#if loading}<Spinner size={12} />{/if}
 				Refresh
 			</button>
 			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
-				{#if saving}<span class="spinner"></span>{/if}
+				{#if saving}<Spinner size={12} />{/if}
 				Save
 			</button>
 		</div>
@@ -510,84 +512,39 @@
 			the in-app mic uses STT and the optional auto-speak toggle uses TTS.
 		</p>
 
-		<section class="engine-section">
-			<h3 class="engine-heading">Text-to-Speech</h3>
-			<p class="engine-subheading">How your assistant speaks</p>
+		<VoiceTtsSection
+			value={sectionToValue(tts)}
+			onchange={applyTtsChange}
+			engineOptions={ADMIN_TTS_OPTIONS}
+			engineConfigs={ADMIN_TTS_ENGINES}
+			reachable={availability.tts}
+			hiddenEngines={ttsHiddenEngines}
+			engineSelected={!!tts.engine}
+			ttsAutoEnabled={voiceState.ttsAutoEnabled}
+			onAutoEnabledChange={(checked) => setTtsAutoEnabled(checked)}
+			{testingVoice}
+			{testResult}
+			{testError}
+			onTest={() => void runVoiceTest()}
+			busy={saving || loading}
+		/>
 
-			<VoiceEngineSelector
-				kind="tts"
-				value={sectionToValue(tts)}
-				onchange={applyTtsChange}
-				engineOptions={ADMIN_TTS_OPTIONS}
-				engineConfigs={ADMIN_TTS_ENGINES}
-				reachable={availability.tts}
-				reachabilityEngineId="remote"
-				hiddenEngines={ttsHiddenEngines}
-			/>
-
-			{#if tts.engine}
-				<div class="tts-extras">
-					<div class="test-voice-row">
-						<button
-							type="button"
-							class="btn btn-secondary btn-sm"
-							onclick={() => void runVoiceTest()}
-							disabled={testingVoice || saving || loading}
-						>
-							{#if testingVoice}<span class="spinner"></span>{/if}
-							Test voice
-						</button>
-						{#if testResult === 'success'}
-							<span class="test-result test-result--ok" aria-live="polite">
-								<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-								Working
-							</span>
-						{:else if testResult === 'error'}
-							<span class="test-result test-result--err" aria-live="polite">
-								<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-								{testError || 'Failed'}
-							</span>
-						{/if}
-					</div>
-
-					<label class="auto-speak-toggle">
-						<input
-							type="checkbox"
-							checked={voiceState.ttsAutoEnabled}
-							onchange={(e) => setTtsAutoEnabled((e.currentTarget as HTMLInputElement).checked)}
-						/>
-						<span>Speak assistant replies aloud automatically</span>
-					</label>
-				</div>
-			{/if}
-		</section>
-
-		<section class="engine-section">
-			<h3 class="engine-heading">Speech-to-Text</h3>
-			<p class="engine-subheading">How your assistant listens</p>
-
-			<VoiceEngineSelector
-				kind="stt"
-				value={sectionToValue(stt)}
-				onchange={applySttChange}
-				engineOptions={ADMIN_STT_OPTIONS}
-				engineConfigs={ADMIN_STT_ENGINES}
-				reachable={availability.stt}
-				reachabilityEngineId="remote"
-				disabledEngines={sttDisabledEngines}
-				hiddenEngines={sttHiddenEngines}
-			/>
-		</section>
+		<VoiceSttSection
+			value={sectionToValue(stt)}
+			onchange={applySttChange}
+			engineOptions={ADMIN_STT_OPTIONS}
+			engineConfigs={ADMIN_STT_ENGINES}
+			reachable={availability.stt}
+			disabledEngines={sttDisabledEngines}
+			hiddenEngines={sttHiddenEngines}
+		/>
 
 		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
-			<section class="engine-section">
-				<h3 class="engine-heading">Hardware profile</h3>
-				<VoiceProfileSelector
-					profiles={addonProfiles}
-					{selectedProfile}
-					onchange={(id) => selectedProfile = id}
-				/>
-			</section>
+			<VoiceAddonProfileSection
+				profiles={addonProfiles}
+				{selectedProfile}
+				onchange={(id) => selectedProfile = id}
+			/>
 		{/if}
 	</div>
 </div>
@@ -605,33 +562,6 @@
 	.panel-header-actions { display: flex; gap: var(--space-2); }
 	.panel-body { display: flex; flex-direction: column; gap: var(--space-6); }
 	.section-desc { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
-	.engine-section { display: flex; flex-direction: column; gap: var(--space-3); }
-	.engine-heading { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; }
-	.engine-subheading { font-size: var(--text-xs); color: var(--color-text-secondary); margin: 0; }
-
-	.tts-extras {
-		display: flex; flex-direction: column; gap: var(--space-3);
-		margin-top: var(--space-3);
-		padding-top: var(--space-3);
-		border-top: 1px solid var(--color-border);
-	}
-	.test-voice-row {
-		display: flex; align-items: center; gap: var(--space-3);
-	}
-	.test-result {
-		font-size: var(--text-xs);
-	}
-	.test-result--ok { color: var(--color-success, #16a34a); }
-	.test-result--err { color: var(--color-error, #dc2626); }
-	.auto-speak-toggle {
-		display: flex; align-items: center; gap: var(--space-2);
-		font-size: var(--text-sm); color: var(--color-text);
-		cursor: pointer;
-	}
-	.auto-speak-toggle input[type='checkbox'] {
-		width: 16px; height: 16px; cursor: pointer;
-	}
-
 	.error-banner {
 		display: flex; align-items: center; gap: var(--space-2);
 		padding: var(--space-3) var(--space-4);
@@ -640,6 +570,4 @@
 		border-radius: var(--radius-md); font-size: var(--text-sm);
 		color: var(--color-error, #dc2626); margin-bottom: var(--space-4);
 	}
-	.spinner { display: inline-block; width: 0.75rem; height: 0.75rem; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.6s linear infinite; }
-	@keyframes spin { to { transform: rotate(360deg); } }
 </style>
