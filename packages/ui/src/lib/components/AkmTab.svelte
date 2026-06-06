@@ -5,6 +5,9 @@
 		saveAkmConfig,
 	} from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
+	import PasswordInput from '$lib/components/PasswordInput.svelte';
+	import EmbeddingSection from '$lib/components/akm/EmbeddingSection.svelte';
+	import BehaviorSection from '$lib/components/akm/BehaviorSection.svelte';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
@@ -107,7 +110,6 @@
 	let embModel = $state('');
 	let embProvider = $state('');
 	let embApiKey = $state('');
-	let showEmbApiKey = $state(false);
 	let embDimension = $state(1536);
 	let embLocalModel = $state('');
 	let embBatchSize = $state('');
@@ -723,140 +725,40 @@
 		</section>
 
 		<!-- ── Embedding (semantic search) — part of AI Services ─────────────── -->
-		<section class="config-section">
-			<h3 class="section-title">Semantic search (embeddings)</h3>
-			<p class="section-note">Vector embedding provider for semantic search. Leave Endpoint and Model blank to use built-in local embeddings.</p>
-			<div class="controls controls--grid">
-				<div class="control-group control-group--wide">
-					<label class="control-label" for="embEndpoint">Endpoint</label>
-					<input id="embEndpoint" class="control-input" type="url" spellcheck="false" placeholder="https://api.openai.com/v1/embeddings" bind:value={embEndpoint} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embModel">Model</label>
-					<input id="embModel" class="control-input" type="text" spellcheck="false" placeholder="text-embedding-3-small" bind:value={embModel} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embProvider">Provider (label)</label>
-					<input id="embProvider" class="control-input" type="text" spellcheck="false" placeholder="openai" bind:value={embProvider} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embApiKey">API Key</label>
-					<div class="input-with-toggle">
-						<input id="embApiKey" class="control-input" type={showEmbApiKey ? 'text' : 'password'} spellcheck="false" placeholder={'${AKM_EMBED_API_KEY}'} bind:value={embApiKey} disabled={loading || saving} />
-						<button type="button" class="btn-icon" onclick={() => { showEmbApiKey = !showEmbApiKey; }} aria-label={showEmbApiKey ? 'Hide API key' : 'Show API key'}>
-							{showEmbApiKey ? 'Hide' : 'Show'}
-						</button>
-					</div>
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embDimension">Dimensions</label>
-					<input id="embDimension" class="control-input control-input--narrow" type="number" min="1" bind:value={embDimension} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embLocalModel">Local model</label>
-					<input id="embLocalModel" class="control-input" type="text" spellcheck="false" placeholder="Xenova/bge-small-en-v1.5" bind:value={embLocalModel} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embBatchSize">Batch size</label>
-					<input id="embBatchSize" class="control-input control-input--narrow" type="number" min="1" bind:value={embBatchSize} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embChunkSize">Chunk size (chars)</label>
-					<input id="embChunkSize" class="control-input control-input--narrow" type="number" min="1" bind:value={embChunkSize} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embContextLength">Context length</label>
-					<input id="embContextLength" class="control-input control-input--narrow" type="number" min="1" bind:value={embContextLength} disabled={loading || saving} />
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="embOllamaNumCtx">Ollama num_ctx</label>
-					<input id="embOllamaNumCtx" class="control-input control-input--narrow" type="number" min="1" bind:value={embOllamaNumCtx} disabled={loading || saving} />
-				</div>
-			</div>
-		</section>
+		<EmbeddingSection
+			bind:endpoint={embEndpoint}
+			bind:model={embModel}
+			bind:provider={embProvider}
+			bind:apiKey={embApiKey}
+			bind:dimension={embDimension}
+			bind:localModel={embLocalModel}
+			bind:batchSize={embBatchSize}
+			bind:chunkSize={embChunkSize}
+			bind:contextLength={embContextLength}
+			bind:ollamaNumCtx={embOllamaNumCtx}
+			disabled={loading || saving}
+		/>
 
 		{/if}<!-- end AI Services group -->
 
 		<!-- ── Behavior group ────────────────────────────────────────────── -->
 		{#if knowledgeSection === 'behavior'}
 
-		<!-- ── Behavior ──────────────────────────────────────────────────── -->
-		<section class="config-section">
-			<h3 class="section-title">Behavior</h3>
-			<div class="controls controls--grid">
-				<div class="control-group">
-					<label class="control-label" for="semanticSearch">Semantic search</label>
-					<select id="semanticSearch" class="control-input" bind:value={semanticSearchMode} disabled={loading || saving}>
-						<option value="auto">Auto (vector index when available)</option>
-						<option value="off">Off (keyword only)</option>
-					</select>
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="outputFormat">Output format</label>
-					<select id="outputFormat" class="control-input" bind:value={outputFormat} disabled={loading || saving}>
-						<option value="json">JSON</option>
-						<option value="yaml">YAML</option>
-						<option value="text">Text</option>
-					</select>
-				</div>
-				<div class="control-group">
-					<label class="control-label" for="outputDetail">Output detail</label>
-					<select id="outputDetail" class="control-input" bind:value={outputDetail} disabled={loading || saving}>
-						<option value="brief">Brief</option>
-						<option value="normal">Normal</option>
-						<option value="full">Full</option>
-					</select>
-				</div>
-			</div>
-		</section>
-
-			<!-- ── Advanced (top-level improve / search / feedback / index) ─────── -->
-			<details class="adv-details">
-				<summary class="adv-summary">Advanced tuning — affects memory scoring &amp; indexing (leave at defaults unless you know the impact)</summary>
-				<section class="config-section">
-				<p class="section-note">Global tuning beyond per-profile settings. Leave blank to use akm defaults.</p>
-				<div class="controls controls--grid">
-					<div class="control-group">
-						<label class="control-label" for="adv-halflife">Utility decay half-life (days)</label>
-						<input id="adv-halflife" class="control-input control-input--narrow" type="number" min="0.1" step="0.1" placeholder="default" bind:value={imHalfLife} disabled={loading || saving} />
-					</div>
-					<div class="control-group">
-						<label class="control-label" for="adv-fbboost">Feedback stability boost (≥1)</label>
-						<input id="adv-fbboost" class="control-input control-input--narrow" type="number" min="1" step="0.1" placeholder="default" bind:value={imFeedbackBoost} disabled={loading || saving} />
-					</div>
-					<div class="control-group">
-						<label class="control-label" for="adv-eventret">Event retention (days)</label>
-						<input id="adv-eventret" class="control-input control-input--narrow" type="number" min="0" placeholder="default" bind:value={imEventRetention} disabled={loading || saving} />
-					</div>
-					<div class="control-group">
-						<label class="control-label" for="adv-minscore">Search min score</label>
-						<input id="adv-minscore" class="control-input control-input--narrow" type="number" min="0" step="0.01" placeholder="default" bind:value={searchMinScore} disabled={loading || saving} />
-					</div>
-					<div class="control-group">
-						<label class="control-label" for="adv-rerank">Curate rerank</label>
-						<select id="adv-rerank" class="control-input" bind:value={searchCurateRerank} disabled={loading || saving}>
-							<option value="">Default</option><option value="on">Enabled</option><option value="off">Disabled</option>
-						</select>
-					</div>
-					<div class="control-group">
-						<label class="control-label" for="adv-reqreason">Feedback requires reason</label>
-						<select id="adv-reqreason" class="control-input" bind:value={fbRequireReason} disabled={loading || saving}>
-							<option value="">Default</option><option value="on">Required</option><option value="off">Optional</option>
-						</select>
-					</div>
-					<div class="control-group control-group--wide">
-						<label class="control-label" for="adv-failmodes">Allowed feedback failure modes (comma-separated)</label>
-						<input id="adv-failmodes" class="control-input" type="text" spellcheck="false" placeholder="e.g. outdated, incorrect, irrelevant" bind:value={fbFailureModes} disabled={loading || saving} />
-					</div>
-					<div class="control-group control-group--wide">
-						<label class="control-label" for="adv-index">Index config (JSON, per-pass)</label>
-						<textarea id="adv-index" class="control-input" rows="4" spellcheck="false" placeholder={'{ "enrichment": { "llm": false } }'} bind:value={indexJson} disabled={loading || saving}></textarea>
-						<span class="section-note">Advanced per-pass indexing options (enrichment, graphExtraction, metadataEnhance, stalenessDetection). Must be a JSON object.</span>
-					</div>
-				</div>
-			</section>
-
-		</details>
+		<!-- ── Behavior + advanced tuning ────────────────────────────────── -->
+		<BehaviorSection
+			bind:semanticSearchMode
+			bind:outputFormat
+			bind:outputDetail
+			bind:imHalfLife
+			bind:imFeedbackBoost
+			bind:imEventRetention
+			bind:searchMinScore
+			bind:searchCurateRerank
+			bind:fbRequireReason
+			bind:fbFailureModes
+			bind:indexJson
+			disabled={loading || saving}
+		/>
 
 		{/if}<!-- end behavior group -->
 
@@ -898,12 +800,7 @@
 						</div>
 						<div class="control-group">
 							<label class="control-label" for="d-llm-apikey">API Key</label>
-							<div class="input-with-toggle">
-								<input id="d-llm-apikey" class="control-input" type={drawerLlm.showApiKey ? 'text' : 'password'} spellcheck="false" placeholder={'${AKM_LLM_API_KEY}'} bind:value={drawerLlm.apiKey} />
-								<button type="button" class="btn-icon" onclick={() => { if (drawerLlm) drawerLlm.showApiKey = !drawerLlm.showApiKey; }} aria-label={drawerLlm.showApiKey ? 'Hide' : 'Show'}>
-									{drawerLlm.showApiKey ? 'Hide' : 'Show'}
-								</button>
-							</div>
+							<PasswordInput id="d-llm-apikey" placeholder={'${AKM_LLM_API_KEY}'} bind:value={drawerLlm.apiKey} />
 						</div>
 						<div class="control-group">
 							<label class="control-label" for="d-llm-temperature">Temperature (0–2)</label>
@@ -1208,16 +1105,6 @@
 		font-size: var(--text-sm); color: var(--color-text-secondary);
 		max-width: 72ch; margin: 0 0 var(--space-4);
 	}
-	/* Advanced tuning collapsed by default. */
-	.adv-details { border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-top: var(--space-4); }
-	.adv-summary {
-		cursor: pointer; padding: var(--space-3) var(--space-4);
-		font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text);
-		list-style: revert;
-	}
-	.adv-summary:hover { color: var(--color-text); background: var(--color-surface-hover); }
-	.adv-details[open] .adv-summary { border-bottom: 1px solid var(--color-border); }
-	.adv-details .config-section { padding: var(--space-4); }
 
 	.section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
 	.empty-note { font-size: var(--text-sm); color: var(--color-text-secondary); font-style: italic; margin: 0; }
@@ -1263,17 +1150,6 @@
 	.control-input--narrow { max-width: 8rem; }
 	.control-input:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 	.control-input:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	/* Password toggle */
-	.input-with-toggle { display: flex; }
-	.input-with-toggle .control-input { border-radius: var(--radius-sm) 0 0 var(--radius-sm); border-right: 0; flex: 1; min-width: 0; }
-	.btn-icon {
-		flex-shrink: 0; padding: var(--space-2) var(--space-3); font-size: var(--text-xs);
-		font-weight: var(--font-medium); background: var(--color-bg-secondary);
-		border: 1px solid var(--color-border); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-		color: var(--color-text-secondary); cursor: pointer; white-space: nowrap;
-	}
-	.btn-icon:hover { background: var(--color-surface-hover); color: var(--color-text); }
 
 	/* Toggle row */
 	.toggle-row { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; font-size: var(--text-sm); }
