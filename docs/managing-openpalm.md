@@ -154,26 +154,24 @@ Disable first-party addons with `openpalm addon disable <name>` or the admin UI.
 You can schedule recurring tasks — like backups, cleanup scripts, or health checks —
 using AKM task files in `~/.openpalm/knowledge/tasks/`.
 
-Automations are markdown files with YAML frontmatter. The assistant container starts
+Automations are YAML files (`*.yml`). The assistant container starts
 `crond` at boot and calls `akm tasks sync` to register tasks with the OS scheduler.
 New task files written by admin are picked up within 60 seconds.
 
 ### How to add an automation
 
 1. Install one from the Registry tab in the admin console, or
-2. Create a `.md` file in `~/.openpalm/knowledge/tasks/` directly
+2. Create a `.yml` file in `~/.openpalm/knowledge/tasks/` directly
 
 **Example** — pull the latest container images every Sunday at 3 AM:
 
-```markdown
----
+```yaml
 schedule: "0 3 * * 0"
 enabled: true
 description: Pull latest images and recreate containers weekly
 tags: [openpalm, containers]
 timeoutMs: 300000
-command: ["sh","-c","openpalm update"]
----
+command: ["sh", "-c", "openpalm update"]
 ```
 
 OpenPalm ships several ready-to-use automations in `~/.openpalm/knowledge/tasks/` — install them
@@ -308,7 +306,7 @@ After restoring, start the stack using the compose commands in the [Manual Compo
 | `http://localhost:3800/` | OpenCode assistant UI |
 | `http://localhost:3820/` | Chat addon |
 | `http://localhost:3821/` | API addon |
-| `http://localhost:3810/` | Voice addon |
+| `http://localhost:8880/` | Voice addon (`OP_VOICE_PORT_HOST`) |
 
 All ports are `127.0.0.1`-bound by default.
 

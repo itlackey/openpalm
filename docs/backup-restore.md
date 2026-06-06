@@ -124,7 +124,7 @@ the current model.
 | `~/.openpalm/config/stack/custom.compose.yml` | Custom services and overlays |
 | `~/.openpalm/config/stack/stack.yml` | Stack schema marker and enabled first-party addons |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
-| `~/.openpalm/knowledge/tasks/` | Active AKM automation task files (markdown) |
+| `~/.openpalm/knowledge/tasks/` | Active AKM automation task files (YAML, `*.yml`) |
 | `~/.openpalm/knowledge/` | Shared akm stash (assistant + admin memory and knowledge) |
 | `~/.openpalm/workspace/` | Shared workspace |
 | `~/.openpalm/data/logs/` | Logs and audit files |

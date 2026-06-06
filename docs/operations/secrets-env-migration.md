@@ -7,7 +7,7 @@ automated migration** — move your files by hand using the steps below, then
 recreate the stack.
 
 > Stop the stack before migrating so nothing reads the old paths mid-move:
-> `openpalm down` (or `docker compose … down`).
+> `openpalm stop` (or `docker compose … down`).
 
 ## What moved
 
@@ -79,7 +79,7 @@ akm secret list
 Then bring the stack back up:
 
 ```sh
-openpalm up        # or your usual docker compose … up -d
+openpalm start     # or your usual docker compose … up -d
 ```
 
 The CLI/admin UI reads these new locations directly; the compose files mount

@@ -38,7 +38,7 @@ For provider display specifically, the usual path is:
 
 ```text
 Admin UI component
-  -> GET /admin/opencode/providers
+  -> GET /admin/providers
     -> admin route
       -> OpenCode GET /provider
       -> OpenCode GET /provider/auth
@@ -46,9 +46,9 @@ Admin UI component
 
 Relevant code paths:
 
-- `packages/ui/src/lib/components/opencode/ConnectProviderSheet.svelte`
-- `packages/ui/src/lib/components/CapabilitiesTab.svelte`
-- `packages/ui/src/routes/admin/opencode/providers/+server.ts`
+- `packages/ui/src/lib/components/providers/ConnectSheet.svelte`
+- `packages/ui/src/lib/components/providers/ProvidersPanel.svelte`
+- `packages/ui/src/routes/admin/providers/+server.ts`
 - `packages/lib/src/control-plane/opencode-client.ts`
 
 ## Distinguishing the Failure Domain
@@ -64,10 +64,10 @@ Relevant code paths:
 
 ### 1. UI issue
 
-Start here when `/admin/opencode/providers` returns the data you expect, but the
+Start here when `/admin/providers` returns the data you expect, but the
 UI still does not render it correctly.
 
-- Browser DevTools Network: inspect `/admin/opencode/providers`
+- Browser DevTools Network: inspect `/admin/providers`
 - Browser DevTools Console: look for runtime errors, hydration errors, and failed `fetch`
 - Confirm the response shape matches what the component expects:
   - `data.providers`
@@ -75,13 +75,13 @@ UI still does not render it correctly.
   - `provider.models`
   - `provider.authMethods`
 - Read the consuming components:
-  - `packages/ui/src/lib/components/opencode/ConnectProviderSheet.svelte`
-  - `packages/ui/src/lib/components/CapabilitiesTab.svelte`
+  - `packages/ui/src/lib/components/providers/ConnectSheet.svelte`
+  - `packages/ui/src/lib/components/providers/ProvidersPanel.svelte`
 
 Useful check from the host:
 
 ```bash
-curl -sS -b cookies.txt http://localhost:3880/admin/opencode/providers | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/providers | jq
 ```
 
 If that payload is correct and the browser still renders incorrectly, stay in the
@@ -95,23 +95,23 @@ differently from the downstream service.
 Useful endpoints:
 
 - `GET http://localhost:3880/health`
-- `GET http://localhost:3880/admin/opencode/status`
-- `GET http://localhost:3880/admin/opencode/providers`
-- `GET http://localhost:3880/admin/logs?service=admin&tail=200`
+- `GET http://localhost:3880/admin/providers/host-status`
+- `GET http://localhost:3880/admin/providers`
+- `GET http://localhost:3880/admin/logs?service=assistant&tail=200`
 - `GET http://localhost:3880/admin/config/validate`
 
 Useful commands:
 
 ```bash
 curl -sS http://localhost:3880/health | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/opencode/status | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/opencode/providers | jq
-curl -sS -b cookies.txt "http://localhost:3880/admin/logs?service=admin&tail=200"
+curl -sS -b cookies.txt http://localhost:3880/admin/providers/host-status | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/providers | jq
+curl -sS -b cookies.txt "http://localhost:3880/admin/logs?service=assistant&tail=200"
 ```
 
 Key lessons from the provider-display path:
 
-- the admin route is in `packages/ui/src/routes/admin/opencode/providers/+server.ts`
+- the admin route is in `packages/ui/src/routes/admin/providers/+server.ts`
 - it merges OpenCode provider data with auth-method data
 - the route can look broken even when the UI is fine if OpenCode returns an unexpected shape
 
@@ -130,9 +130,9 @@ Important details:
 Useful checks:
 
 ```bash
-curl -sS http://localhost:4096/provider | jq
-curl -sS http://localhost:4096/provider/auth | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/opencode/status | jq
+curl -sS http://localhost:3800/provider | jq
+curl -sS http://localhost:3800/provider/auth | jq
+curl -sS -b cookies.txt http://localhost:3880/admin/providers/host-status | jq
 ```
 
 Also verify which OpenCode runtime the admin UI is actually targeting. In
@@ -146,8 +146,8 @@ cat ~/.openpalm/knowledge/env/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
 
 Read these files if the behavior does not match the docs:
 
-- `packages/ui/src/lib/server/opencode/client.server.ts`
 - `packages/lib/src/control-plane/opencode-client.ts`
+- `packages/ui/src/lib/server/opencode/{catalog,config,http}.ts`
 - `docs/technical/api-spec.md`
 - `docs/technical/opencode-configuration.md`
 
@@ -175,7 +175,6 @@ Useful admin endpoints:
 - `GET /admin/containers/list`
 - `GET /admin/containers/events?since=1h`
 - `GET /admin/containers/stats`
-- `GET /admin/network/check`
 - `GET /admin/config/validate`
 
 Useful checks from the host:
@@ -183,7 +182,6 @@ Useful checks from the host:
 ```bash
 curl -sS -b cookies.txt http://localhost:3880/admin/containers/list | jq
 curl -sS -b cookies.txt "http://localhost:3880/admin/containers/events?since=1h" | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/network/check | jq
 curl -sS -b cookies.txt http://localhost:3880/admin/config/validate | jq
 ```
 
@@ -197,12 +195,12 @@ Especially check:
 
 When the symptom is "providers are missing or not displayed":
 
-1. Browser network request to `/admin/opencode/providers`
-2. Direct `curl` to `/admin/opencode/providers`
+1. Browser network request to `/admin/providers`
+2. Direct `curl` to `/admin/providers`
 3. Direct `curl` to OpenCode `/provider` and `/provider/auth`
-4. `GET /admin/opencode/status`
-5. `op logs admin` and `op logs assistant`
-6. `GET /admin/config/validate` and `GET /admin/network/check`
+4. `GET /admin/providers/host-status`
+5. `op logs assistant` (and the host `openpalm` process output for the UI)
+6. `GET /admin/config/validate`
 
 This order usually isolates the broken layer in a few minutes.
 
