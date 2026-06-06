@@ -89,6 +89,20 @@ docker version && docker compose version
 
 ### 4. Move (or re-create) secrets and env files
 
+> **Shortcut — the helper script does steps 4–6 for you.** From a checkout (or
+> `curl` it from the release tag), run:
+>
+> ```bash
+> scripts/migrate-0.10-to-0.11.sh --dry-run   # preview, writes nothing
+> scripts/migrate-0.10-to-0.11.sh             # backs up first, then migrates
+> ```
+>
+> It takes a full backup first, then **copies** (never deletes) your `vault/`
+> files into the new layout, transforms `stack.env`, splits channel secrets, and
+> writes `config/stack/stack.yml`. It does **not** run `openpalm update` or
+> migrate provider credentials — do those manually (below + step 7). Prefer the
+> manual walkthrough if you want to understand each change.
+
 `openpalm update` does **not** relocate your files. The cleanest, lowest-risk
 approach mixes a file move (for plain env/secret values) with **re-creating**
 the credentials whose format/location is easiest to regenerate.

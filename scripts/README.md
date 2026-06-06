@@ -45,6 +45,7 @@ Notes:
 
 ## Test and misc helpers
 
+- `migrate-0.10-to-0.11.sh` - back up + migrate an existing 0.10.x install to the 0.11.0 file layout (non-destructive; supports `--dry-run`). See [docs/operations/upgrade-0.10-to-0.11.md](../docs/operations/upgrade-0.10-to-0.11.md)
 - `dev-e2e-test.sh` - local dev-stack test flow
 - `release-e2e-test.sh` - release validation flow
 - `upgrade-test.sh` - upgrade scenario checks
