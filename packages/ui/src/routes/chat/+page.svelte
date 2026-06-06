@@ -240,7 +240,7 @@
 
   .messages-area > :global(*) {
     width: 100%;
-    max-width: 48rem; /* ~768px centered conversation column */
+    max-width: var(--chat-column); /* centered conversation column, shared with the composer */
   }
 
   .empty-state {

@@ -11,13 +11,13 @@
 </script>
 
 <nav class="mode-switch" aria-label="Chat mode">
-  <a href="/chat" class="mode-tab" class:active={onChat} aria-current={onChat ? 'page' : undefined}>
+  <a href="/chat" class="mode-tab" class:active={onChat} aria-current={onChat ? 'page' : undefined} aria-label="Chat" title="Chat">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
     <span>Chat</span>
   </a>
-  <a href="/advanced" class="mode-tab" class:active={onAdvanced} aria-current={onAdvanced ? 'page' : undefined}>
+  <a href="/advanced" class="mode-tab" class:active={onAdvanced} aria-current={onAdvanced ? 'page' : undefined} aria-label="Advanced" title="Advanced">
     <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="m7 9 3 3-3 3" /><line x1="13" y1="15" x2="17" y2="15" />
     </svg>
@@ -64,5 +64,16 @@
   }
   .mode-tab svg {
     flex-shrink: 0;
+  }
+
+  /* On narrow screens drop the labels so the global controls on the right stay
+     visible; the icons keep their accessible names via aria-label/title. */
+  @media (max-width: 640px) {
+    .mode-tab span {
+      display: none;
+    }
+    .mode-tab {
+      padding: 0 var(--space-1);
+    }
   }
 </style>

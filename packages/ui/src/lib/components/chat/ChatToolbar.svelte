@@ -1,10 +1,9 @@
 <script lang="ts">
-  import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
 
   // Chat content toolbar. The global controls (assistant, session, mic, speaker)
-  // live in the navbar; this strip carries the page-contextual bits: the
-  // Chat↔Advanced mode switch and a prominent New-chat action.
+  // and the Chat↔Advanced mode switch live in the navbar; this strip carries the
+  // page-contextual New-chat action.
   let starting = $state(false);
   async function newChat(): Promise<void> {
     if (starting) return;
@@ -18,7 +17,6 @@
 </script>
 
 <div class="chat-toolbar">
-  <ModeSwitch />
   <button
     type="button"
     class="new-chat"
@@ -38,7 +36,7 @@
   .chat-toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: var(--space-3);
     min-height: var(--chat-toolbar-height);
     padding: var(--space-2) var(--space-4);

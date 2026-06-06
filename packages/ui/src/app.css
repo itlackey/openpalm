@@ -118,6 +118,9 @@
      normal and advanced chat doesn't shift the content below by a few px.
      = 36px control + 2×--space-2 padding + 1px bottom border (border-box). */
   --chat-toolbar-height: 53px;
+  /* Reading-column width shared by the chat message list and the composer so
+     the input lines up exactly with the messages above it. */
+  --chat-column: 48rem;
 
   /* ── Sheet Modal ───────────────────────────────────────────────── */
   --sheet-width: 480px;

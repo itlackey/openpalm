@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import AuthGate from '$lib/components/common/AuthGate.svelte';
-  import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // ── Auth state (mirrors /chat + /admin) ───────────────────────────────
@@ -16,6 +15,18 @@
   // "Open OpenCode UI" action used — we just embed it instead of new-tabbing.
   // Host-machine-only, exactly like that link.
   let openCodeUrl = $derived(endpointsService.active?.url ?? 'http://127.0.0.1:3800');
+
+  // The embedded OpenCode UI fills the viewport below the navbar with its own
+  // internal scroll, so suppress the outer document scrollbar while we're here
+  // (same treatment as /chat). Cleanup on navigation away.
+  onMount(() => {
+    document.documentElement.classList.add('chat-locked');
+    document.body.classList.add('chat-locked');
+    return () => {
+      document.documentElement.classList.remove('chat-locked');
+      document.body.classList.remove('chat-locked');
+    };
+  });
 
   onMount(() => {
     // Probe auth via the session cookie (same as /chat). 401/503 → show the
@@ -79,11 +90,8 @@
   <Navbar />
 
   <div class="advanced-layout">
-    <!-- Slim bar: switch back to regular Chat. The assistant switcher is global
-         in the navbar; session management lives inside OpenCode itself. -->
-    <div class="advanced-toolbar">
-      <ModeSwitch />
-    </div>
+    <!-- The Chat↔Advanced switch is in the global navbar; session management
+         lives inside OpenCode itself, so the frame fills the whole area. -->
     <iframe
       class="opencode-frame"
       src={openCodeUrl}
@@ -102,18 +110,6 @@
     background: var(--color-bg);
     display: flex;
     flex-direction: column;
-  }
-
-  .advanced-toolbar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    /* Match the regular chat toolbar height so switching modes doesn't jump. */
-    min-height: var(--chat-toolbar-height);
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
-    flex-shrink: 0;
   }
 
   .opencode-frame {

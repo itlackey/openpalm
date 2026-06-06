@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
+  import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
   import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
@@ -13,10 +14,18 @@
   //   - mic + speaker (VoiceControl) — VoiceControl.initVoice() runs here so STT
   //     and TTS work globally; this component LIVING IN THE NAVBAR is what makes
   //     voice global. Do not move it into a page-scoped toolbar.
-  // The Chat↔Advanced mode switch is page-contextual and lives in the chat
-  // content (ChatToolbar / advanced bar), not here, so these four always fit.
+  // The Chat↔Advanced mode switch appears here (left of the global controls)
+  // only on the chat surfaces.
   const pathname = $derived(page.url?.pathname ?? '');
   const onAdmin = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
+  // The Chat↔Advanced mode switch lives in the global navbar on the chat
+  // surfaces so it's a stable, top-level destination.
+  const onChatSurface = $derived(
+    pathname === '/chat' ||
+    pathname.startsWith('/chat/') ||
+    pathname === '/advanced' ||
+    pathname.startsWith('/advanced/')
+  );
 
   // The Settings gear administers the LOCAL stack, so it only appears when the
   // selected assistant is local (loopback). Hidden for a remote assistant —
@@ -48,6 +57,10 @@
       </span>
       <span class="brand-text">OpenPalm</span>
     </a>
+
+    {#if onChatSurface}
+      <ModeSwitch />
+    {/if}
 
     <!-- Global controls, left→right: settings/chat · assistant · session · theme ·
          speaker · mic (speaker+mic come from VoiceControl). The leading button
