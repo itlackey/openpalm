@@ -4,6 +4,7 @@
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
   import FriendlyError from '$lib/components/FriendlyError.svelte';
   import { friendlyError } from '$lib/wizard/error-messages.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface Props {
     uiLoginPassword: string;
@@ -279,7 +280,7 @@
   </button>
   <button class="btn btn-secondary" onclick={onback}>Back</button>
   <button class="btn btn-primary" id="btn-install" onclick={oninstall} disabled={installing}>
-    {#if installing}<span class="spinner"></span> Installing...{:else}Install{/if}
+    {#if installing}<Spinner /> Installing...{:else}Install{/if}
   </button>
 </div>
 

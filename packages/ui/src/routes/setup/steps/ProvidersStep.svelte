@@ -2,6 +2,7 @@
   import { PROVIDERS, PROVIDER_GROUPS } from '$lib/wizard/constants.js';
   import type { ProviderState, DetectedProvider, OpenCodeProvider, AuthMethod } from '$lib/wizard/types.js';
   import { friendlyError } from '$lib/wizard/error-messages.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   function friendlyProviderError(raw: string | undefined, providerName?: string): string {
     if (!raw) return 'Connection failed';
@@ -11,6 +12,8 @@
   }
 
   interface Props {
+    /** True while the parent is importing providers from host OpenCode — shows a loading view in place of the step */
+    hostImporting?: boolean;
     opencodeAvailable: boolean;
     opencodeProviders: OpenCodeProvider[];
     opencodeAuth: Record<string, AuthMethod[]>;
@@ -46,6 +49,7 @@
   }
 
   let {
+    hostImporting = false,
     opencodeAvailable,
     opencodeProviders,
     opencodeAuth,
@@ -123,6 +127,11 @@
   let ocRestCount = $derived(ocFilterQuery ? 0 : ocRest.length);
 </script>
 
+{#if hostImporting}
+  <div class="host-importing-state">
+    <div class="loading-state"><Spinner />&nbsp;Importing providers from host OpenCode…</div>
+  </div>
+{:else}
 <h2>Where should your models run?</h2>
 <p class="step-description">Select one or more providers. Click a card to configure it.</p>
 
@@ -149,7 +158,7 @@
 {#if !hostProviderCount || importMode === 'manual'}
 {#if detecting}
   <div class="loading-state" id="conn-detecting">
-    <span class="spinner"></span>&nbsp;Detecting local providers...
+    <Spinner />&nbsp;Detecting local providers...
   </div>
 {/if}
 
@@ -290,7 +299,7 @@
                   {#if st.oauthInstructions}
                     <p style="margin-bottom:6px;white-space:pre-wrap;font-size:var(--text-xs)">{st.oauthInstructions}</p>
                   {/if}
-                  <p><span class="spinner"></span> Waiting for authorization...</p>
+                  <p><Spinner /> Waiting for authorization...</p>
                   <button class="auth-btn" style="margin-top:6px"
                     onclick={(e) => { e.stopPropagation(); onoauthcancel(ocp.id); }}>
                     Cancel
@@ -430,7 +439,7 @@
                     {#if st.oauthInstructions}
                       <p style="margin-bottom:6px;white-space:pre-wrap;font-size:var(--text-xs)">{st.oauthInstructions}</p>
                     {/if}
-                    <p><span class="spinner"></span> Waiting for authorization...</p>
+                    <p><Spinner /> Waiting for authorization...</p>
                     <button class="auth-btn" style="margin-top:6px"
                       onclick={(e) => { e.stopPropagation(); onoauthcancel(ocp.id); }}>
                       Cancel
@@ -641,8 +650,13 @@
     </button>
   {/if}
 </div>
+{/if}
 
 <style>
+  .host-importing-state {
+    text-align: center;
+    padding: 48px 0;
+  }
   .host-import-choice {
     display: flex;
     flex-direction: column;

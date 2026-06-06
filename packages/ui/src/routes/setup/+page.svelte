@@ -1423,12 +1423,8 @@
         </section>
       {:else if currentStep === 2}
         <section class="step-content" id="step-2" data-testid="step-capabilities">
-          {#if hostImporting}
-            <div style="text-align:center;padding:48px 0">
-              <div class="loading-state"><span class="spinner"></span>&nbsp;Importing providers from host OpenCode…</div>
-            </div>
-          {:else}
           <ProvidersStep
+            {hostImporting}
             {opencodeAvailable}
             {opencodeProviders}
             {opencodeAuth}
@@ -1462,7 +1458,6 @@
             onhostimport={() => void handleHostImport()}
             onallowemptyinstallchange={(v) => allowEmptyInstall = v}
           />
-          {/if}
         </section>
       {:else if currentStep === 3}
         <section class="step-content" id="step-3" data-testid="step-models">

@@ -1,6 +1,7 @@
 <script lang="ts">
   import FriendlyError from '$lib/components/FriendlyError.svelte';
   import { friendlyError } from '$lib/wizard/error-messages.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface ServiceStatus {
     service: string;
@@ -136,7 +137,7 @@
             </svg>
           </span>
         {:else}
-          <span class="deploy-spinner"><span class="spinner"></span></span>
+          <span class="deploy-spinner"><Spinner /></span>
         {/if}
       </div>
       <div class="deploy-service-info">

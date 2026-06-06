@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Spinner from '$lib/components/common/Spinner.svelte';
   interface Props {
     errorMessage: string;
     detectionReady: boolean;
@@ -33,9 +34,9 @@
     <button class="btn btn-primary-lg" id="btn-use-defaults" onclick={onusedefaults}
       disabled={!detectionReady || autoModeImporting}>
       {#if autoModeImporting}
-        <span class="spinner"></span> Importing providers…
+        <Spinner /> Importing providers…
       {:else if !detectionReady}
-        <span class="spinner"></span> Detecting your system…
+        <Spinner /> Detecting your system…
       {:else}
         Use recommended defaults
       {/if}
@@ -63,14 +64,4 @@
     justify-content: center;
     gap: 8px;
   }
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255,255,255,0.4);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
 </style>

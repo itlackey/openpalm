@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import FriendlyError from '$lib/components/FriendlyError.svelte';
   import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface CheckResult {
     ok: boolean;
@@ -90,7 +91,7 @@
   <div class="syscheck-row" class:syscheck-row--ok={result?.docker.ok} class:syscheck-row--fail={result && !result.docker.ok}>
     <div class="syscheck-icon">
       {#if loading}
-        <span class="spinner"></span>
+        <Spinner size={16} />
       {:else if result?.docker.ok}
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #16a34a)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
@@ -121,7 +122,7 @@
   <div class="syscheck-row" class:syscheck-row--ok={result?.compose.ok} class:syscheck-row--fail={result && !result.compose.ok}>
     <div class="syscheck-icon">
       {#if loading}
-        <span class="spinner"></span>
+        <Spinner size={16} />
       {:else if result?.compose.ok}
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #16a34a)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
@@ -239,14 +240,4 @@
     font-weight: 500;
   }
   .syscheck-link:hover { text-decoration: underline; }
-  .spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid #e5e7eb;
-    border-top-color: var(--color-primary, #4f6ef7);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
