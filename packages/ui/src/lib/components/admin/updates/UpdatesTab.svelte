@@ -10,6 +10,8 @@
     tokenStored: boolean;
     upgradeLoading: boolean;
     inElectron: boolean;
+    /** Running @openpalm/ui version (the build currently serving this page). */
+    uiVersion: string;
     uiVersions: UiVersionEntry[];
     uiVersionsLoading: boolean;
     selectedUiTag: string;
@@ -34,6 +36,7 @@
     tokenStored,
     upgradeLoading,
     inElectron,
+    uiVersion,
     uiVersions,
     uiVersionsLoading,
     selectedUiTag,
@@ -152,13 +155,14 @@
       <p class="version-hint">Downloads the latest assets, pulls images, and restarts services. Backs up current config first.</p>
     </div>
 
-    <!-- UI build (Electron only) -->
-    {#if inElectron}
-      <div class="version-divider"></div>
-      <div class="version-section">
-        <div class="version-row">
-          <span class="version-label">UI Version</span>
-        </div>
+    <!-- UI build -->
+    <div class="version-divider"></div>
+    <div class="version-section">
+      <div class="version-row">
+        <span class="version-label">UI Version</span>
+        <code class="version-value">{uiVersion || '—'}</code>
+      </div>
+      {#if inElectron}
         <div class="version-input-row">
           {#if uiVersionsLoading}
             <div class="version-select-skeleton"></div>
@@ -203,8 +207,8 @@
         {:else}
           <p class="version-hint">Downloads and replaces the UI from GitHub. Takes effect on restart.</p>
         {/if}
-      </div>
-    {/if}
+      {/if}
+    </div>
 
   </div>
 </div>

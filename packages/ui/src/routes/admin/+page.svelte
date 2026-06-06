@@ -499,7 +499,7 @@
 {:else}
   <Navbar />
 
-  <TabBar active={activeTab} onSelect={handleTabSelect} {uiVersion} />
+  <TabBar active={activeTab} onSelect={handleTabSelect} />
 
   <main>
     {#if activeTab === 'overview'}
@@ -527,6 +527,7 @@
         tokenStored={true}
         {upgradeLoading}
         {inElectron}
+        {uiVersion}
         {uiVersions}
         {uiVersionsLoading}
         {selectedUiTag}
