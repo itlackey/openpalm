@@ -3,6 +3,7 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import Drawer from '$lib/components/common/Drawer.svelte';
   import SessionList from '$lib/components/chat/SessionList.svelte';
+  import { resolveSessionTitle } from '$lib/session-title.js';
 
   // Navbar trigger that opens the session chooser in a drawer. The list body
   // lives in SessionList, shared with the chat side panel.
@@ -16,7 +17,7 @@
 
   const activeSummary = $derived(sessions.find((s) => s.id === activeSessionId) ?? null);
   const triggerLabel = $derived(
-    activeSummary ? activeSummary.title || 'Untitled session' : 'New session'
+    activeSummary ? resolveSessionTitle(activeSummary.title) : 'New session'
   );
 </script>
 

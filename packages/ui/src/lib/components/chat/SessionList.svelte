@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import SessionTitle from '$lib/components/chat/SessionTitle.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { formatRelativeTime, formatDateTime } from '$lib/format-date.js';
@@ -84,7 +85,7 @@
           title={formatDateTime(s.updatedAt)}
         >
           <span class="item-text">
-            <span class="item-label">{s.title || 'Untitled'}{#if s.id === activeSessionId}<span class="sr-only"> (current)</span>{/if}</span>
+            <span class="item-label"><SessionTitle title={s.title} />{#if s.id === activeSessionId}<span class="sr-only"> (current)</span>{/if}</span>
             <span class="item-meta">{formatRelativeTime(s.updatedAt)}</span>
           </span>
         </button>
