@@ -3,19 +3,18 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
-  import AuthGate from '$lib/components/common/AuthGate.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import EndpointList from '$lib/components/chat/EndpointList.svelte';
+  import SessionList from '$lib/components/chat/SessionList.svelte';
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
-  // ── Auth state ───────────────────────────────────────────────────────
-  let authLocked = $state(true);
-  let authLoading = $state(false);
-  let authError = $state('');
+  // Auth is enforced server-side in hooks.server.ts; this page only renders
+  // when the visitor is already an authenticated admin.
 
   // ── Scroll anchor ────────────────────────────────────────────────────
   let scrollAnchorEl = $state<HTMLDivElement | undefined>();
@@ -51,39 +50,6 @@
     });
   }
 
-  // ── Auth handlers ─────────────────────────────────────────────────────
-
-  async function handleAuthSuccess(token: string): Promise<boolean> {
-    if (authLoading) return false;
-    authLoading = true;
-    authError = '';
-    try {
-      const loginRes = await fetch('/admin/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password: token }),
-        credentials: 'include'
-      });
-      if (!loginRes.ok) {
-        authLocked = true;
-        authError = 'Invalid password.';
-        return false;
-      }
-      authLocked = false;
-      authError = '';
-      // Load endpoint list + sessions for the active endpoint, restoring
-      // the most recent session (or empty state if none).
-      await endpointsService.load();
-      await chat.onEndpointChanged(endpointsService.activeId);
-      return true;
-    } catch {
-      authError = 'Unable to reach admin API.';
-      return false;
-    } finally {
-      authLoading = false;
-    }
-  }
-
   // ── Body scroll lock (chat-page only) ────────────────────────────────
   // The chat layout is exactly viewport-height with internal scroll on the
   // messages area. Suppress body scroll while we're on this page so we
@@ -109,7 +75,6 @@
 
     function handleVisibilityChange(): void {
       if (destroyed || document.visibilityState !== 'visible') return;
-      if (authLocked) return;
       void (async () => {
         const reachable = await probeChatBackend();
         if (!reachable && !destroyed) {
@@ -129,16 +94,7 @@
 
   onMount(() => {
     void (async () => {
-      authLoading = true;
       try {
-        // Probe auth state via cookie
-        const probe = await fetch('/admin/health', { credentials: 'include' });
-        if (probe.status === 401 || probe.status === 503) {
-          authLocked = true;
-          authLoading = false;
-          return;
-        }
-        authLocked = false;
         // Load endpoint list + sessions for the active endpoint, restoring
         // the most recent session.
         await endpointsService.load();
@@ -150,10 +106,7 @@
           await goto('/chat', { replaceState: true });
         }
       } catch {
-        authLocked = true;
-        authError = 'Unable to reach admin API.';
-      } finally {
-        authLoading = false;
+        chat.error = 'Unable to reach the assistant.';
       }
     })();
   });
@@ -163,11 +116,9 @@
   <title>Chat — OpenPalm</title>
 </svelte:head>
 
-{#if authLocked}
-  <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
-{:else}
-  <Navbar />
+<Navbar />
 
+<div class="chat-shell">
   <div class="chat-layout">
     <!-- Message history -->
     <section class="messages-area" aria-label="Chat history" aria-live="polite">
@@ -213,7 +164,20 @@
       onSend={handleSend}
     />
   </div>
-{/if}
+
+  <!-- Right-side panel (≥1024px): assistant chooser + session list. Replaces the
+       navbar drawer triggers at this width. -->
+  <aside class="chat-side" aria-label="Assistant and sessions">
+    <section class="side-section">
+      <h2 class="side-heading">Assistant</h2>
+      <EndpointList />
+    </section>
+    <section class="side-section side-sessions">
+      <h2 class="side-heading">Sessions</h2>
+      <SessionList />
+    </section>
+  </aside>
+</div>
 
 <style>
   /* Body lock is applied via a class added in a $effect (see <script>)
@@ -222,11 +186,60 @@
      stylesheet for a page can stay loaded after we leave it, breaking
      scroll on other pages. The class-based approach guarantees cleanup. */
 
-  .chat-layout {
+  /* Shell splits the viewport into the chat column and the optional side panel. */
+  .chat-shell {
     display: flex;
-    flex-direction: column;
     height: calc(100dvh - var(--nav-height));
     margin: 0;
+  }
+
+  .chat-layout {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* Right-side panel — hidden until there's room for it alongside the chat. */
+  .chat-side {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .chat-side {
+      display: flex;
+      flex-direction: column;
+      width: 20rem;
+      flex-shrink: 0;
+      height: 100%;
+      border-left: 1px solid var(--color-border);
+      background: var(--color-bg-secondary);
+      overflow: hidden;
+    }
+  }
+
+  .side-section {
+    padding: var(--space-4) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+    min-height: 0;
+  }
+  /* Sessions section fills the remaining height and scrolls internally. */
+  .side-sessions {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-bottom: none;
+    overflow-y: auto;
+  }
+
+  .side-heading {
+    margin: 0 0 var(--space-2);
+    padding: 0 var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
   }
 
   .messages-area {

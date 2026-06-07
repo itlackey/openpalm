@@ -1,10 +1,10 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import IconButton from '$lib/components/common/IconButton.svelte';
   import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
   import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
   import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
-  import NewChatButton from '$lib/components/chat/NewChatButton.svelte';
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
@@ -69,34 +69,16 @@
          Settings (local assistant only). Present on every page, every width. -->
     <div class="navbar-actions">
       {#if onAdmin}
-        <a
-          href="/chat"
-          class="gear-btn"
-          aria-label="Back to chat"
-          title="Chat"
-        >
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-        </a>
+        <IconButton href="/chat" ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
       {:else if isLocalAssistant}
-      
-        <a
-          href="/admin"
-          class="gear-btn"
-          aria-label="Settings & administration"
-          title="Manage this machine"
-        >
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </a>
+        <IconButton href="/admin" ariaLabel="Settings & administration" title="Manage this machine" icon={gearIcon} />
       {/if}
       {#if onChatSurface}
-      <EndpointSwitcher />
-      <SessionPicker />
-      <!-- <NewChatButton /> -->
+        <!-- Hidden ≥1024px: the chat side panel hosts these selectors there. -->
+        <span class="chat-selectors">
+          <EndpointSwitcher />
+          <SessionPicker />
+        </span>
       {/if}
       {#if onChatSurface || onAdvancedSurface}
         <ModeSwitch />
@@ -106,6 +88,19 @@
     </div>
   </div>
 </header>
+
+{#snippet chatIcon()}
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+{/snippet}
+
+{#snippet gearIcon()}
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+{/snippet}
 
 <style>
   .navbar {
@@ -181,39 +176,23 @@
     min-width: 0;
   }
 
-  /* Icon-only square button, matching the theme + voice controls. */
-  .gear-btn {
+  /* The assistant + session selectors live in the navbar only below 1024px;
+     at wider widths the chat side panel hosts them, so hide the triggers. */
+  .chat-selectors {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    background: none;
-    color: var(--color-text-secondary);
-    text-decoration: none;
-    flex-shrink: 0;
-    cursor: pointer;
-    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+    gap: var(--space-2);
   }
-  .gear-btn:hover {
-    color: var(--color-text);
-    background: var(--color-surface-hover);
-  }
-  .gear-btn:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
-  .gear-btn svg {
-    flex-shrink: 0;
+  @media (min-width: 1024px) {
+    .chat-selectors {
+      display: none;
+    }
   }
 
   /* ── Responsive: shed labels, keep every control visible. ── */
   @media (max-width: 900px) {
     /* Assistant + session collapse to icon + status dot + caret (their own
-       dropdowns stay) — visible at every width, just compact. */
+       drawers stay) — visible at every width, just compact. */
     .navbar-actions :global(.trigger .label) {
       display: none;
     }
@@ -242,9 +221,6 @@
     .navbar-actions :global(.trigger) {
       padding-left: var(--space-2);
       padding-right: var(--space-2);
-    }
-    .gear-btn {
-      width: 36px;
     }
   }
 </style>

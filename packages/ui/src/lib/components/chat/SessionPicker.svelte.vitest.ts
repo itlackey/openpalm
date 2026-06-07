@@ -1,17 +1,13 @@
 /**
  * SessionPicker component tests.
  *
- * Dropdown with role="menu" / role="menuitemradio".
- * Mocks the chat and endpoint singletons to provide controlled state.
+ * The trigger opens a Drawer (role="dialog") holding the SessionList. Mocks the
+ * chat and endpoint singletons to provide controlled state.
  *
- * NOTE: The menu uses popover="auto". When hidden, the Popover API applies
- * display:none via the UA stylesheet, removing the element from the
- * accessibility tree. When open, the element is promoted to the top-layer.
  * Tests use:
  *   - aria-expanded on the trigger as the canonical open/closed signal
- *   - role-based queries for menu items (accessible when popover is open)
- *   - page.getByText() scoped to avoid the trigger label (which also shows
- *     the active session title)
+ *   - the drawer dialog title to confirm open state
+ *   - button text for list items (plain buttons, active = aria-current)
  */
 import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -57,38 +53,26 @@ describe('SessionPicker — renders', () => {
     await expect.element(page.getByRole('button', { name: 'Sessions' })).toBeVisible();
   });
 
-  test('trigger has aria-haspopup="menu"', async () => {
+  test('trigger opens a dialog (aria-haspopup="dialog")', async () => {
     render(SessionPicker);
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-haspopup', 'menu');
+    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-haspopup', 'dialog');
   });
 
-  test('menu is not visible before trigger is clicked', async () => {
+  test('drawer is closed before the trigger is clicked', async () => {
     render(SessionPicker);
-    // aria-expanded is the canonical signal for popover open/closed state.
-    // The popover="auto" element is display:none when closed (removed from
-    // accessibility tree) and in the top-layer when open, so aria-expanded
-    // is the reliable check for the closed state.
     await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'false');
-    // The menu header text is unique to the menu (not in the trigger).
-    await expect.element(page.getByText('Sessions on Local assistant')).not.toBeVisible();
   });
 });
 
 describe('SessionPicker — open/close', () => {
-  test('clicking trigger opens the menu', async () => {
+  test('clicking the trigger opens the drawer', async () => {
     render(SessionPicker);
     await page.getByRole('button', { name: 'Sessions' }).click();
     await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'true');
-    await expect.element(page.getByText('Sessions on Local assistant')).toBeVisible();
+    await expect.element(page.getByRole('dialog', { name: /sessions on local assistant/i })).toBeVisible();
   });
 
-  test('trigger shows aria-expanded=true when open', async () => {
-    render(SessionPicker);
-    await page.getByRole('button', { name: 'Sessions' }).click();
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  test('pressing Escape closes the menu', async () => {
+  test('pressing Escape closes the drawer', async () => {
     render(SessionPicker);
     await page.getByRole('button', { name: 'Sessions' }).click();
     await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'true');
@@ -98,16 +82,16 @@ describe('SessionPicker — open/close', () => {
 });
 
 describe('SessionPicker — session list', () => {
-  test('session items have role="menuitemradio"', async () => {
+  test('lists the existing sessions', async () => {
     render(SessionPicker);
     await page.getByRole('button', { name: 'Sessions' }).click();
-    const items = page.getByRole('menuitemradio');
-    await expect.element(items.first()).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /first session/i })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /second session/i })).toBeVisible();
   });
 
-  test('"New session" menu action is present', async () => {
+  test('"New session" action is present', async () => {
     render(SessionPicker);
     await page.getByRole('button', { name: 'Sessions' }).click();
-    await expect.element(page.getByRole('menuitem', { name: /new session/i })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /new session/i })).toBeVisible();
   });
 });
