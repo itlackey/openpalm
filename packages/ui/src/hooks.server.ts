@@ -12,7 +12,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { checkHostHeader, checkOriginHeader, UI_PORT } from "$lib/server/helpers.js";
+import { checkHostHeader, checkOriginHeader, UI_PORT, identifyCallerByToken } from "$lib/server/helpers.js";
 import {
   createLogger,
   ensureSecrets,
@@ -131,6 +131,26 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   if (!isSetupPath && !isSetupComplete(resolveStackDir())) {
     redirect(302, "/setup");
+  }
+
+  // ── Admin auth: resolve the session role once per request, then gate page
+  // navigations. This is the single auth boundary for the UI — pages carry no
+  // auth code and never flash a login screen, because the server decides before
+  // any HTML is sent.
+  //
+  // Only *document* navigations (GET + `Accept: text/html`) are redirected to
+  // /login. API/data requests are left alone: every `/admin/*` endpoint enforces
+  // auth itself via requireAdmin() and must return JSON 401, not an HTML 302
+  // (browser fetch() sends `Accept: */*`, so it never matches here).
+  event.locals.role = identifyCallerByToken(event);
+
+  const isAuthPath = path === "/login" || path.startsWith("/login/");
+  const wantsHtml =
+    event.request.method === "GET" &&
+    (event.request.headers.get("accept") ?? "").includes("text/html");
+  if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath) {
+    const redirectTo = path + event.url.search;
+    redirect(302, `/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
   const response = await resolve(event);

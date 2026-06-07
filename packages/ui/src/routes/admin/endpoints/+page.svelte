@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
-  import AuthGate from '$lib/components/common/AuthGate.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import {
     createEndpoint,
@@ -10,10 +9,8 @@
     type AssistantEndpoint,
   } from '$lib/api.js';
 
-  // ── Auth state ─────────────────────────────────────────────────────────
-  let authLocked = $state(true);
-  let authLoading = $state(false);
-  let authError = $state('');
+  // Auth is enforced server-side in hooks.server.ts; this page only renders
+  // when the visitor is already an authenticated admin.
 
   // ── Form state ─────────────────────────────────────────────────────────
   let formMode = $state<'idle' | 'add' | 'edit'>('idle');
@@ -31,49 +28,8 @@
   const endpoints = $derived(endpointsService.endpoints);
   const active = $derived(endpointsService.active);
 
-  async function handleAuthSuccess(token: string): Promise<boolean> {
-    if (authLoading) return false;
-    authLoading = true;
-    authError = '';
-    try {
-      const res = await fetch('/admin/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password: token }),
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        authError = 'Invalid password.';
-        return false;
-      }
-      authLocked = false;
-      await endpointsService.load(true);
-      return true;
-    } catch {
-      authError = 'Unable to reach admin API.';
-      return false;
-    } finally {
-      authLoading = false;
-    }
-  }
-
   onMount(() => {
-    void (async () => {
-      authLoading = true;
-      try {
-        const probe = await fetch('/admin/health', { credentials: 'include' });
-        if (probe.status === 401 || probe.status === 503) {
-          authLocked = true;
-          return;
-        }
-        authLocked = false;
-        await endpointsService.load(true);
-      } catch {
-        authError = 'Unable to reach admin API.';
-      } finally {
-        authLoading = false;
-      }
-    })();
+    void endpointsService.load(true);
   });
 
   function openAddForm(): void {
@@ -171,12 +127,9 @@
   <title>Assistant Endpoints — OpenPalm</title>
 </svelte:head>
 
-{#if authLocked}
-  <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
-{:else}
-  <Navbar />
+<Navbar />
 
-  <main class="page">
+<main class="page">
     <header class="page-header">
       <h1>Assistant Endpoints</h1>
       <p class="lede">
@@ -307,7 +260,6 @@
       </form>
     {/if}
   </main>
-{/if}
 
 <style>
   .page {

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { version as uiVersion } from '$app/environment';
+  import { goto } from '$app/navigation';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
-  import AuthGate from '$lib/components/common/AuthGate.svelte';
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import OverviewTab from '$lib/components/admin/overview/OverviewTab.svelte';
   import UpdatesTab from '$lib/components/admin/updates/UpdatesTab.svelte';
@@ -34,15 +34,13 @@
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
 
-  // ── Auth state ──────────────────────────────────────────────────────────────
-  let authLocked = $state(true);
-  let authLoading = $state(false);
-  let authError = $state('');
+  // Auth is enforced server-side in hooks.server.ts; this page only renders for
+  // an authenticated admin. A session that expires mid-operation surfaces as a
+  // 401 on an in-page API call, handled by redirecting to /login.
 
   // ── Health & service state ──────────────────────────────────────────────────
   let adminHealth = $state<HealthPayload | null>(null);
   let guardianHealth = $state<HealthPayload | null>(null);
-  let adminStatus = $state('');
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
@@ -87,8 +85,8 @@
   function startContainerPolling(): void {
     stopContainerPolling();
     pollTimer = setInterval(() => {
-      // Only poll when authenticated and data has been loaded at least once
-      if (!authLocked && containerData) {
+      // Only poll once data has been loaded at least once
+      if (containerData) {
         void loadContainers();
       }
     }, POLL_INTERVAL_MS);
@@ -160,46 +158,11 @@
 
   // ── Auth helpers ─────────────────────────────────────────────────────────────
 
+  // Called when an in-page API request returns 401 (session expired/invalid
+  // mid-session). Server-side gating handles page navigations; here we bounce to
+  // the login route and return to /admin after re-authenticating.
   function applyInvalidTokenState(): void {
-    authLocked = true;
-    authError = 'Invalid password.';
-    adminStatus = 'Invalid password.';
-  }
-
-
-  async function handleAuthSuccess(token: string): Promise<boolean> {
-    if (authLoading) return false;
-    authLoading = true;
-    authError = '';
-    try {
-      const loginRes = await fetch('/admin/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password: token }),
-        credentials: 'include'
-      });
-      if (!loginRes.ok) {
-        applyInvalidTokenState();
-        return false;
-      }
-      authLocked = false;
-      authError = '';
-      adminStatus = '';
-      // Auto-hydrate key data on login so the UI shows meaningful state immediately
-      startContainerPolling();
-      await loadHealth();
-      void loadContainers();
-      void loadAutomations();
-      void loadVersions();
-      void loadReleases();
-      return true;
-    } catch (e) {
-      console.warn('[page] Auth failed:', e);
-      authError = 'Unable to reach admin API.';
-      return false;
-    } finally {
-      authLoading = false;
-    }
+    void goto('/login?redirectTo=' + encodeURIComponent('/admin'));
   }
 
   // ── Data loaders ─────────────────────────────────────────────────────────────
@@ -458,35 +421,13 @@
   // ── Mount ────────────────────────────────────────────────────────────────────
 
   onMount(() => {
-    void (async () => {
-      authLoading = true;
-      try {
-        // Check session validity by attempting an authenticated request.
-        // A 401 means no valid session cookie — show auth gate.
-        const probe = await fetch('/admin/health', { credentials: 'include' });
-        if (probe.status === 401 || probe.status === 503) {
-          authLocked = true;
-          authLoading = false;
-          return;
-        }
-        authLocked = false;
-        authError = '';
-        adminStatus = '';
-        startContainerPolling();
-        // Auto-hydrate key data so tabs show meaningful state without manual refresh
-        void loadHealth();
-        void loadContainers();
-        void loadAutomations();
-        void loadVersions();
-        void loadReleases();
-        } catch (e) {
-        console.warn('[page] Session probe on mount failed:', e);
-        authLocked = true;
-        authError = 'Unable to reach admin API.';
-      } finally {
-        authLoading = false;
-      }
-    })();
+    startContainerPolling();
+    // Auto-hydrate key data so tabs show meaningful state without manual refresh.
+    void loadHealth();
+    void loadContainers();
+    void loadAutomations();
+    void loadVersions();
+    void loadReleases();
   });
 </script>
 
@@ -494,14 +435,11 @@
   <title>OpenPalm Console</title>
 </svelte:head>
 
-{#if authLocked}
-  <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
-{:else}
-  <Navbar />
+<Navbar />
 
-  <TabBar active={activeTab} onSelect={handleTabSelect} />
+<TabBar active={activeTab} onSelect={handleTabSelect} />
 
-  <main>
+<main>
     {#if activeTab === 'overview'}
       <OverviewTab
         {adminHealth}
@@ -591,7 +529,6 @@
       />
     {/if}
   </main>
-{/if}
 
 <style>
   /* Full-width admin: the content spans the viewport so the tab bar (rendered
