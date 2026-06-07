@@ -275,7 +275,7 @@
       connections: capabilities,
     };
 
-    // LLM and embedding go directly to akm config (not stack.yml capabilities)
+    // LLM and embedding go directly to akm config (config/akm/config.json)
     if (llmProvider && llm?.model) {
       result.llm = { provider: llmProvider, model: llm.model, baseUrl: llmCap?.baseUrl ?? '' };
     }

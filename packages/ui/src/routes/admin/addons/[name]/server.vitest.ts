@@ -46,6 +46,16 @@ function seedFixedAddon(homeDir: string, name: string): void {
   writeFileSync(join(stackDir, 'channels.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
 }
 
+function seedEnabledAddons(homeDir: string, csv: string): void {
+  const envDir = join(homeDir, 'knowledge', 'env');
+  mkdirSync(envDir, { recursive: true });
+  writeFileSync(join(envDir, 'stack.env'), `OP_ENABLED_ADDONS=${csv}\n`);
+}
+
+function readStackEnvFile(homeDir: string): string {
+  return readFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), 'utf-8');
+}
+
 let originalHome: string | undefined;
 
 beforeEach(() => {
@@ -69,7 +79,7 @@ describe('/admin/addons/:name route', () => {
   test('returns enabled state and schema metadata', async () => {
     const state = getState();
     seedFixedAddon(state.homeDir, 'chat');
-    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'version: 2\naddons:\n  - chat\n');
+    seedEnabledAddons(state.homeDir, 'chat');
 
     const res = await GET(makeGetEvent('chat'));
     expect(res.status).toBe(200);
@@ -114,7 +124,7 @@ describe('POST /admin/addons/:name', () => {
     expect(res.status).toBe(404);
   });
 
-  test('enables an addon by updating stack.yml', async () => {
+  test('enables an addon by updating stack.env', async () => {
     const state = getState();
     seedFixedAddon(state.homeDir, 'chat');
 
@@ -127,13 +137,13 @@ describe('POST /admin/addons/:name', () => {
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
 
-    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'utf-8')).toContain('- chat');
+    expect(readStackEnvFile(state.homeDir)).toContain('OP_ENABLED_ADDONS=chat');
   });
 
-  test('disables an addon by updating stack.yml', async () => {
+  test('disables an addon by updating stack.env', async () => {
     const state = getState();
     seedFixedAddon(state.homeDir, 'chat');
-    writeFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'version: 2\naddons:\n  - chat\n');
+    seedEnabledAddons(state.homeDir, 'chat');
 
     const res = await POST(makePostEvent('chat', { enabled: false }));
     expect(res.status).toBe(200);
@@ -143,7 +153,7 @@ describe('POST /admin/addons/:name', () => {
     expect(body.enabled).toBe(false);
     expect(body.changed).toBe(true);
 
-    expect(readFileSync(join(state.homeDir, 'config', 'stack', 'stack.yml'), 'utf-8')).not.toContain('- chat');
+    expect(readStackEnvFile(state.homeDir)).not.toContain('chat');
   });
 
   test('reports changed=false when already in target state', async () => {

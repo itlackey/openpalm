@@ -78,11 +78,21 @@ describe("ensureMigrated 0.10 → 0.11", () => {
       .toBe("slack-xyz");
     expect(existsSync(join(home, "knowledge", "secrets", "some.secret"))).toBe(true);
     expect(existsSync(join(home, "knowledge", "secrets", "apprise.yaml"))).toBe(true);
-    expect(readFileSync(join(home, "config", "stack", "stack.yml"), "utf-8")).toBe("version: 2\n");
+    // stack.yml is removed in 0.11.0 — the migration must NOT create one.
+    expect(existsSync(join(home, "config", "stack", "stack.yml"))).toBe(false);
     expect(readFileSync(join(home, "knowledge", "env", "user.env"), "utf-8")).toContain("MY_PREF=hello");
 
     // Non-destructive: originals untouched.
     expect(existsSync(join(home, "vault", "stack", "stack.env"))).toBe(true);
+  });
+
+  it("converts a legacy stack.yml addons[] into OP_ENABLED_ADDONS", () => {
+    seed010(home);
+    writeFileSync(join(home, "config", "stack.yml"), "version: 2\naddons:\n  - voice\n  - discord\n");
+    ensureMigrated();
+    const stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toContain("OP_ENABLED_ADDONS=discord,voice");
+    expect(existsSync(join(home, "config", "stack", "stack.yml"))).toBe(false);
   });
 
   it("is idempotent — a second run is a no-op", () => {

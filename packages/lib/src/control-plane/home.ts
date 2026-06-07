@@ -3,11 +3,11 @@
  *
  * Single ~/.openpalm/ root:
  *   config/    — user-editable config + system config files (akm/)
- *   config/stack/ — compose runtime + stack config (stack.env, stack.yml, auth.json, fixed compose files)
+ *   config/stack/ — fixed compose files (no stack.env/secrets/stack.yml)
  *   data/      — persistent service data, logs, backups, rollback
- *   knowledge/ — akm knowledge (env, secrets, tasks)
+ *   knowledge/ — akm knowledge (env, secrets, tasks); env/stack.env is the
+ *                authoritative stack composition + versions record
  *   workspace/ — shared assistant work area
- *   config/stack/ — compose runtime assets + stack config (stack.env, stack.yml)
  */
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";

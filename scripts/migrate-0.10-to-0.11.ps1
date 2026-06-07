@@ -3,7 +3,7 @@
 # Relocates the on-disk env files and secrets from the 0.10.x `vault/` layout to
 # the 0.11.0 `knowledge/env/` + `knowledge/secrets/` layout, transforms
 # `stack.env`, splits channel HMAC secrets into per-secret files, and
-# moves/strips `stack.yml` to `version: 2`.
+# converts any legacy stack.yml addons[] into OP_ENABLED_ADDONS.
 #
 # SAFETY: NON-DESTRUCTIVE. Always backs up first (a .zip of OP_HOME) and only
 # ever COPIES into the new locations — it never deletes your `vault/` files. It
@@ -215,18 +215,37 @@ foreach ($relDir in @('.gws', '.gcloud', '.mgc')) {
     Copy-Item-Safe (Join-Path $vault "user/$relDir") (Join-Path $newSecrets $relDir)
 }
 
-# ── Step 4: stack.yml ────────────────────────────────────────────────────────
-Write-Info '4/5  Migrating stack.yml -> config/stack/stack.yml (version: 2)'
-$oldYml = Join-Path $OpHome 'config/stack.yml'
-$newYml = Join-Path $OpHome 'config/stack/stack.yml'
-if (Test-Path -LiteralPath $oldYml) {
-    if ((Test-Path -LiteralPath $newYml) -and -not $Force) {
-        Write-Detail 'skip (exists): config/stack/stack.yml — use -Force to overwrite'
-    } else {
-        Ensure-Dir (Join-Path $OpHome 'config/stack')
-        Write-LfFile $newYml @('version: 2')
-        Write-Detail 'wrote config/stack/stack.yml (version: 2); the old config/stack.yml capabilities block is no longer used (LLM/embedding config -> config/akm/config.json)'
+# ── Step 4: addons -> stack.env ───────────────────────────────────────────────
+# stack.yml is removed in 0.11.0. Convert any legacy stack.yml addons[] into
+# OP_ENABLED_ADDONS in knowledge/env/stack.env; never create a stack.yml.
+Write-Info '4/5  Migrating addon enablement -> OP_ENABLED_ADDONS in stack.env'
+$addons = @()
+foreach ($ymlf in @((Join-Path $OpHome 'config/stack.yml'), (Join-Path $OpHome 'config/stack/stack.yml'))) {
+    if (-not (Test-Path -LiteralPath $ymlf)) { continue }
+    $inAddons = $false
+    foreach ($line in (Get-Content -LiteralPath $ymlf)) {
+        if ($line -match '^addons:') { $inAddons = $true; continue }
+        if ($inAddons -and $line -match '^\s*-\s*(.+?)\s*$') { $addons += $Matches[1] }
+        elseif ($inAddons -and $line -match '^\S') { $inAddons = $false }
     }
+    if ($addons.Count -gt 0) { break }
+}
+if ($addons.Count -gt 0) {
+    $csv = ($addons -join ',')
+    if ($DryRun) {
+        Write-Detail "[dry-run] set OP_ENABLED_ADDONS=$csv in knowledge/env/stack.env"
+    } elseif (Test-Path -LiteralPath $destStack) {
+        $content = Get-Content -LiteralPath $destStack -Raw
+        if ($content -match '(?m)^OP_ENABLED_ADDONS=') {
+            $content = $content -replace '(?m)^OP_ENABLED_ADDONS=.*$', "OP_ENABLED_ADDONS=$csv"
+            [IO.File]::WriteAllText($destStack, $content)
+        } else {
+            Add-Content -LiteralPath $destStack -Value "OP_ENABLED_ADDONS=$csv"
+        }
+        Write-Detail "set OP_ENABLED_ADDONS=$csv"
+    }
+} else {
+    Write-Detail 'no legacy addons[] to convert'
 }
 
 # ── Step 5: summary ──────────────────────────────────────────────────────────

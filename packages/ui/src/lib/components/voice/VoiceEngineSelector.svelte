@@ -60,7 +60,7 @@
 	function selectEngine(id: string) {
 		if (disabledEngines?.[id]?.disabled) return;
 		const config = engines[id];
-		// Drop fields that aren't supported by this engine to keep stack.yml clean
+		// Drop fields that aren't supported by this engine to keep the config clean
 		const allowed = new Set(config?.fields.map((f) => f.key));
 		const next: VoiceEngineValue = {
 			engine: id,

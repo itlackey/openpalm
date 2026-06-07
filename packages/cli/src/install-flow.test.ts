@@ -20,7 +20,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parse as yamlParse } from 'yaml';
-import { readStackSpec, parseEnvFile, expandEnvVars } from '@openpalm/lib';
+import { parseEnvFile, expandEnvVars } from '@openpalm/lib';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -49,7 +49,9 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   }
 
   if (enabledAddons.length > 0) {
-    writeFileSync(join(stackDir, 'stack.yml'), `version: 2\naddons:\n${enabledAddons.map((addon) => `  - ${addon}`).join('\n')}\n`);
+    const envDir = join(homeDir, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), `OP_ENABLED_ADDONS=${enabledAddons.join(',')}\n`);
   }
 
   // knowledge/tasks/ — active AKM task files (populated by setup)
@@ -168,11 +170,9 @@ describe('install flow — tier 1 (file validation)', () => {
     const result = await performSetup(spec as any);
     expect(result.ok).toBe(true);
 
-    // ── Validate stack.yml via lib parser ─────────────────────────
-    const stackSpec = readStackSpec(join(homeDir, 'config', 'stack'));
-    expect(stackSpec).not.toBeNull();
-    expect(stackSpec!.version).toBe(2);
-    expect(stackSpec!.addons).toContain('chat');
+    // ── Validate enabled addons via stack.env ─────────────────────────
+    const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
+    expect((stackEnv.OP_ENABLED_ADDONS ?? '').split(',')).toContain('chat');
     // LLM config lives in akm config.json.
     const akmConfigPath = join(homeDir, 'config/akm/config.json');
     expect(existsSync(akmConfigPath)).toBe(true);
@@ -188,7 +188,6 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'config/stack/services.compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/channels.compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/custom.compose.yml'))).toBe(true);
-    expect(readFileSync(join(homeDir, 'config/stack/stack.yml'), 'utf-8')).toContain('- chat');
 
     // ── Validate env/secret files are regular files (not directories) ─
     // Note: user-managed env config lives in the akm env:user file
@@ -364,8 +363,7 @@ describe('install flow — tier 1 (file validation)', () => {
     const result = await performSetup(makeSetupSpec() as any);
     expect(result.ok).toBe(true);
 
-    const noAddonSpec = readStackSpec(join(homeDir, 'config', 'stack'));
-    expect(noAddonSpec).not.toBeNull();
+    expect(existsSync(join(homeDir, 'knowledge', 'env', 'stack.env'))).toBe(true);
 
     // Core compose only, no addon files in the compose list.
     // Only knowledge/env/stack.env is needed for `compose config`.

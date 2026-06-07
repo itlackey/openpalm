@@ -12,7 +12,7 @@ Options:
                       .dev/knowledge/env/stack.env with auto-detected values, and
                       write system secrets under .dev/knowledge/secrets/.
   --force             Overwrite seeded files even if they already exist.
-  --enable-addon <n>  Add <n> to config/stack/stack.yml. Repeat to enable multiple dev addons.
+  --enable-addon <n>  Add <n> to OP_ENABLED_ADDONS in knowledge/env/stack.env. Repeat to enable multiple dev addons.
   --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
                       seconds on a warm cache). Default: build only when missing.
   --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
@@ -150,18 +150,8 @@ mkdir -p \
 	"$DATA_DIR/voice" "$DATA_DIR/voice/models" "$DATA_DIR/ollama" \
 	"$DEV_ROOT/workspace"
 
-# Enable requested addons in the dev runtime. stack.yml is templated from
-# .openpalm/config/stack/stack.yml via the rsync above; when addons are passed,
-# rewrite only the small declarative enablement file.
-if [[ ${#enabled_addons[@]} -gt 0 ]]; then
- 	stack_spec="$CONFIG_DIR/stack/stack.yml"
- 	{
- 		printf 'version: 2\naddons:\n'
- 		for addon in "${enabled_addons[@]}"; do
- 			printf '  - %s\n' "$addon"
- 		done
- 	} >"$stack_spec"
-fi
+# Addon enablement lives in OP_ENABLED_ADDONS in stack.env (set after the env
+# file is ensured, below) — there is no stack.yml.
 
 # Seed auth.json (empty — prevents Docker creating it as directory)
 mkdir -p "$STASH_DIR/secrets"
@@ -264,6 +254,15 @@ if grep -q '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" \
 	&& ! grep -q '^OP_HOST_UI_PORT=' "$STASH_DIR/env/stack.env"; then
 	_old_port="$(grep '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" | head -1 | cut -d= -f2-)"
 	printf 'OP_HOST_UI_PORT=%s\n' "$_old_port" >>"$STASH_DIR/env/stack.env"
+fi
+# Enable requested addons via OP_ENABLED_ADDONS (comma-separated) in stack.env.
+if [[ ${#enabled_addons[@]} -gt 0 ]]; then
+	_csv="$(IFS=,; echo "${enabled_addons[*]}")"
+	if grep -q '^OP_ENABLED_ADDONS=' "$STASH_DIR/env/stack.env"; then
+		sed -i "s/^OP_ENABLED_ADDONS=.*/OP_ENABLED_ADDONS=${_csv}/" "$STASH_DIR/env/stack.env"
+	else
+		printf 'OP_ENABLED_ADDONS=%s\n' "$_csv" >>"$STASH_DIR/env/stack.env"
+	fi
 fi
 
 secrets_dir="$STASH_DIR/secrets"

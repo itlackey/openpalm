@@ -1,6 +1,8 @@
 # Design: consolidate stack composition + versions into `stack.env`; drop `stack.yml`
 
-**Status:** proposed (0.12.0). **Author:** design pass.
+**Status:** IMPLEMENTED in 0.11.0 (#441) — `stack.yml` removed; addon enablement
+is `OP_ENABLED_ADDONS` in `stack.env`; the 0.10→0.11 migration harness converts
+legacy `addons[]`. Image-baked tool versions remain a follow-up (see Out of scope).
 **Related:** the 0.10→0.11 migration harness design, issue #440 (launch/status), the
 0.10→0.11 upgrade guide + scripts.
 

@@ -24,6 +24,7 @@ import {
   readdirSync, statSync, chmodSync, cpSync,
 } from "node:fs";
 import { join } from "node:path";
+import { parse as yamlParse } from "yaml";
 import {
   resolveOpenPalmHome, resolveDataDir, resolveStackDir, resolveStashDir, resolveConfigDir,
 } from "./home.js";
@@ -223,17 +224,33 @@ function migrate010to011(ctx: MigrationCtx): void {
     copyIfAbsent(ctx, join(vault, "user", d), join(newSecrets, d));
   }
 
-  // stack.yml: config/stack.yml → config/stack/stack.yml (version: 2)
-  const oldYml = join(ctx.configDir, "stack.yml");
-  const newYml = join(ctx.stackDir, "stack.yml");
-  if (existsSync(oldYml) && !existsSync(newYml)) {
-    ensureDir(ctx, ctx.stackDir);
-    if (ctx.dryRun) { ctx.log("[dry-run] write config/stack/stack.yml (version: 2)"); }
-    else {
-      writeFileSync(newYml, "version: 2\n");
-      ctx.log("wrote config/stack/stack.yml (version: 2)");
+  // Addon enablement: stack.yml is removed in 0.11.0. Convert any addons[] from
+  // a legacy stack.yml (config/stack.yml or config/stack/stack.yml) into
+  // OP_ENABLED_ADDONS in stack.env. Do NOT create stack.yml.
+  const addons = readLegacyStackYmlAddons(ctx);
+  if (addons.length > 0) {
+    const envPath = stackEnvFile(ctx.stashDir);
+    if (ctx.dryRun) {
+      ctx.log(`[dry-run] set OP_ENABLED_ADDONS=${addons.join(",")}`);
+    } else if (existsSync(envPath)) {
+      writeFile600(ctx, envPath, upsertEnvValue(readFileSync(envPath, "utf-8"), "OP_ENABLED_ADDONS", addons.join(",")));
+      ctx.log(`set OP_ENABLED_ADDONS=${addons.join(",")}`);
     }
   }
+}
+
+/** Extract a validated addons[] list from any legacy stack.yml, or []. */
+function readLegacyStackYmlAddons(ctx: MigrationCtx): string[] {
+  for (const p of [join(ctx.configDir, "stack.yml"), join(ctx.stackDir, "stack.yml")]) {
+    if (!existsSync(p)) continue;
+    try {
+      const raw = yamlParse(readFileSync(p, "utf-8")) as { addons?: unknown };
+      if (Array.isArray(raw?.addons)) {
+        return [...new Set(raw.addons.filter((v): v is string => typeof v === "string" && ADDON_NAME_RE.test(v)))].sort();
+      }
+    } catch { /* ignore unparseable */ }
+  }
+  return [];
 }
 
 const MIGRATIONS: Migration[] = [

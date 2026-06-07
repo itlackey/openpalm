@@ -10,7 +10,6 @@ import {
   performSetup,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
-import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 import { readSecret } from './secrets-files.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -431,15 +430,6 @@ describe("performSetup", () => {
     expect(config.llm).toBeUndefined();
   });
 
-  it("writes stack.yml v2 version marker", async () => {
-    const result = await performSetup(makeValidSpec());
-    expect(result.ok).toBe(true);
-
-    const spec = readStackSpec(stackDir);
-    expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(2);
-  });
-
   it("writes core compose file to stack/", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
@@ -522,16 +512,10 @@ describe("performSetup", () => {
     }
   });
 
-  it("writes stack.yml as version marker only", async () => {
+  it("does not create a stack.yml (addon state lives in stack.env)", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
-
-    const specPath = join(stackDir, STACK_SPEC_FILENAME);
-    expect(existsSync(specPath)).toBe(true);
-
-    const spec = readStackSpec(stackDir);
-    expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(2);
+    expect(existsSync(join(stackDir, "stack.yml"))).toBe(false);
   });
 
   it("completes setup with multiple connections", async () => {
@@ -544,10 +528,6 @@ describe("performSetup", () => {
 
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
-
-    const spec = readStackSpec(stackDir);
-    expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(2);
 
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
     expect(stackEnv).not.toContain('OPENAI_API_KEY=');

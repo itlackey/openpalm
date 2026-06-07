@@ -10,9 +10,8 @@ import type { ControlPlaneState } from "./types.js";
 import { buildComposeFileList } from "./lifecycle.js";
 import { buildEnvFiles } from "./config-persistence.js";
 import { resolveComposeProjectName } from "./docker.js";
-import { parseEnvFile } from "./env.js";
+import { parseEnvFile, parseEnabledAddons } from "./env.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
-import { listStackSpecAddons } from "./stack-spec.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -45,7 +44,7 @@ export function resolveActiveProfiles(state: ControlPlaneState): string[] {
     if (ollamaProfile) profiles.push(ollamaProfile);
   }
 
-  for (const addon of listStackSpecAddons(state.stackDir)) {
+  for (const addon of parseEnabledAddons(env.OP_ENABLED_ADDONS)) {
     if (addon === 'voice') {
       profiles.push(canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '') || 'addon.voice.cpu');
     } else if (addon === 'ollama') {

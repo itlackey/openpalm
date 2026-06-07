@@ -41,9 +41,13 @@ must move their files by hand. **Upgrading from 0.10.x? Start with the
   `knowledge/env/stack.env`. Until then the UI binds to the default `3880`.
   `OP_ADMIN_OPENCODE_PORT` and `OP_GUARDIAN_PORT` were removed outright (emitted
   but never read; the guardian is network-only, no host port mapping).
-- **`stack.yml` is `version: 2` only** — the `capabilities:` block was removed
-  (`OP_CAP_*` env vars are gone). LLM/embedding configuration now lives in
-  `config/akm/config.json`. Strip any leftover `capabilities:` block.
+- **`config/stack/stack.yml` is removed entirely** — stack composition + versions
+  are consolidated into `knowledge/env/stack.env` as the single authoritative
+  record: addon enablement is `OP_ENABLED_ADDONS` (was `stack.yml addons[]`), and
+  versions are `OP_IMAGE_TAG` / `OP_LAYOUT_VERSION` / `OP_UI_VERSION`. The
+  `capabilities:` block / `OP_CAP_*` are gone; LLM/embedding config lives in
+  `config/akm/config.json`. The auto-migration converts `addons[]` →
+  `OP_ENABLED_ADDONS` and deletes nothing.
 - **Admin UI is now a host process** (`openpalm ui serve`, `@openpalm/ui` from
   npm), not a container. The `admin` container/service, `docker-socket-proxy`,
   and the Caddy reverse proxy are all gone — services bind localhost (LAN-first).

@@ -5,7 +5,7 @@
 # Relocates the on-disk env files and secrets from the 0.10.x `vault/` layout to
 # the 0.11.0 `knowledge/env/` + `knowledge/secrets/` layout, transforms
 # `stack.env` (renamed/removed vars), splits channel HMAC secrets into per-secret
-# files, and moves/strips `stack.yml` to `version: 2`.
+# files, and converts any legacy stack.yml addons[] into OP_ENABLED_ADDONS.
 #
 # SAFETY: this script is NON-DESTRUCTIVE. It always takes a full backup FIRST and
 # only ever COPIES into the new locations — it never deletes your `vault/` files
@@ -249,20 +249,30 @@ for reldir in .gws .gcloud .mgc; do
 	fi
 done
 
-# ── Step 4: stack.yml ────────────────────────────────────────────────────────
-info "4/5  Migrating stack.yml → config/stack/stack.yml (version: 2)"
-old_stackyml="$op_home/config/stack.yml"
-new_stackyml="$op_home/config/stack/stack.yml"
-if [ -f "$old_stackyml" ]; then
-	if [ -e "$new_stackyml" ] && [ "$force" -ne 1 ]; then
-		log "skip (exists): config/stack/stack.yml — use --force to overwrite"
-	elif [ "$dry_run" -eq 1 ]; then
-		log "[dry-run] write config/stack/stack.yml = 'version: 2'"
-	else
-		mkdir -p "$op_home/config/stack"
-		printf 'version: 2\n' > "$new_stackyml"
-		log "wrote config/stack/stack.yml (version: 2); the old config/stack.yml capabilities block is no longer used (LLM/embedding config → config/akm/config.json)"
+# ── Step 4: addons → stack.env ───────────────────────────────────────────────
+# stack.yml is removed in 0.11.0. Convert any legacy stack.yml addons[] into
+# OP_ENABLED_ADDONS in knowledge/env/stack.env; never create a stack.yml.
+info "4/5  Migrating addon enablement → OP_ENABLED_ADDONS in stack.env"
+addons_csv=""
+for ymlf in "$op_home/config/stack.yml" "$op_home/config/stack/stack.yml"; do
+	[ -f "$ymlf" ] || continue
+	# Extract simple `  - name` list items under an `addons:` key.
+	addons_csv="$(awk '/^addons:/{f=1;next} f&&/^[[:space:]]*-[[:space:]]*/{gsub(/^[[:space:]]*-[[:space:]]*/,"");gsub(/[[:space:]]+$/,"");print;next} f&&/^[^[:space:]-]/{f=0}' "$ymlf" | paste -sd, -)"
+	[ -n "$addons_csv" ] && break
+done
+if [ -n "$addons_csv" ]; then
+	if [ "$dry_run" -eq 1 ]; then
+		log "[dry-run] set OP_ENABLED_ADDONS=$addons_csv in knowledge/env/stack.env"
+	elif [ -f "$dest_stack" ]; then
+		if grep -q '^OP_ENABLED_ADDONS=' "$dest_stack"; then
+			sed -i "s/^OP_ENABLED_ADDONS=.*/OP_ENABLED_ADDONS=${addons_csv}/" "$dest_stack"
+		else
+			printf 'OP_ENABLED_ADDONS=%s\n' "$addons_csv" >> "$dest_stack"
+		fi
+		log "set OP_ENABLED_ADDONS=$addons_csv"
 	fi
+else
+	log "no legacy addons[] to convert"
 fi
 
 # ── Step 5: summary ──────────────────────────────────────────────────────────

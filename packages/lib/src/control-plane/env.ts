@@ -82,6 +82,21 @@ export function upsertEnvValue(content: string, key: string, value: string): str
   return `${content}${suffix}${line}\n`;
 }
 
+/** Addon name shape (matches the former stack.yml validation). */
+export const ADDON_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+/**
+ * Parse the `OP_ENABLED_ADDONS` stack.env value (comma-separated) into a
+ * validated, de-duplicated, sorted list of addon ids. Replaces the former
+ * stack.yml `addons[]` array as the authoritative enabled-addon record.
+ */
+export function parseEnabledAddons(value: string | undefined): string[] {
+  if (!value) return [];
+  return [...new Set(
+    value.split(',').map((v) => v.trim()).filter((v) => ADDON_NAME_RE.test(v)),
+  )].sort();
+}
+
 export const RELEASE_TAG_REGEX = /^v?\d+\.\d+\.\d+(?:[-+](?:[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?$/;
 
 /**

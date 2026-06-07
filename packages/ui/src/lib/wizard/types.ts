@@ -114,8 +114,7 @@ export interface SttOption {
 /**
  * Settings shape persisted alongside a TTS or STT engine selection.
  * Fields are optional; an engine that needs no extra config (browser, skip)
- * leaves them empty. Stored in stack.yml `capabilities.tts` / `.stt` and
- * surfaced to the voice channel via TTS_ / STT_ env vars.
+ * leaves them empty. Surfaced to the voice channel via OP_TTS_ / OP_STT_ env vars.
  */
 export interface VoiceEngineValue {
   engine: string;

@@ -1,9 +1,9 @@
 /**
  * Built-in addon/profile discovery and legacy registry helpers.
  *
- * Runtime addon enablement is recorded in stack.yml and resolved to Compose
- * profiles. The fixed compose files under config/stack are the runtime source
- * of truth.
+ * Runtime addon enablement is recorded as OP_ENABLED_ADDONS in stack.env and
+ * resolved to Compose profiles. The fixed compose files under config/stack are
+ * the runtime source of truth.
  */
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
@@ -16,7 +16,7 @@ import { ensureChannelSecret } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
 import { readBundledStackAsset } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
-import { listStackSpecAddons, setStackSpecAddon } from './stack-spec.js';
+import { parseEnabledAddons } from './env.js';
 import type { ControlPlaneState } from './types.js';
 import {
   resolveRegistryAddonsDir,
@@ -430,8 +430,8 @@ export function listAvailableAddonIds(): string[] {
 }
 
 export function listEnabledAddonIds(homeDir: string): string[] {
-  const enabled = new Set(listStackSpecAddons(join(homeDir, 'config', 'stack')));
   const env = readStackEnv(join(homeDir, 'config', 'stack'));
+  const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
   const profiles = new Set((env.COMPOSE_PROFILES ?? '').split(',').map((p) => p.trim()).filter(Boolean));
   for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
     const profile = env[key]?.trim();
@@ -847,10 +847,18 @@ export function setAddonProfileSelection(stackDir: string, name: string, profile
   patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
 }
 
+/** Add/remove an addon id in the OP_ENABLED_ADDONS list in stack.env. */
+function setEnabledAddonState(stackDir: string, name: string, enabled: boolean): void {
+  const current = new Set(parseEnabledAddons(readStackEnv(stackDir).OP_ENABLED_ADDONS));
+  if (enabled) current.add(name);
+  else current.delete(name);
+  patchSecretsEnvFile(stackDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
+}
+
 function enableAddon(homeDir: string, stackDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-    setStackSpecAddon(stackDir, name, true);
+    setEnabledAddonState(stackDir, name, true);
     if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '1' });
     return { ok: true };
   } catch (error) {
@@ -861,7 +869,7 @@ function enableAddon(homeDir: string, stackDir: string, name: string): MutationR
 function disableAddonByName(homeDir: string, stackDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-    setStackSpecAddon(stackDir, name, false);
+    setEnabledAddonState(stackDir, name, false);
     if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '0' });
     return { ok: true };
   } catch (error) {

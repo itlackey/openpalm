@@ -21,9 +21,14 @@ import {
   readSecret,
   writeSecret,
   secretPath,
-  writeStackSpec,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup , stackEnvFor} from "./test-helpers.js";
+
+function enableAddons(homeDir: string, csv: string): void {
+  const envDir = join(homeDir, "knowledge", "env");
+  mkdirSync(envDir, { recursive: true });
+  writeFileSync(join(envDir, "stack.env"), `OP_ENABLED_ADDONS=${csv}\n`);
+}
 
 function writeStackCompose(homeDir: string, filename: string, yml: string): void {
   const stackDir = join(homeDir, "config", "stack");
@@ -215,7 +220,7 @@ describe("writeRuntimeFiles", () => {
 
   test("generates file-based channel secrets for discovered channels", () => {
     writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
-    writeStackSpec(state.stackDir, { version: 2, addons: ["chat"] });
+    enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);
 
@@ -250,7 +255,7 @@ describe("writeRuntimeFiles", () => {
     writeSecret(state.stackDir, "channel_chat_secret", "pre-existing-secret-value");
 
     writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
-    writeStackSpec(state.stackDir, { version: 2, addons: ["chat"] });
+    enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);
 

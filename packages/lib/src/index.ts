@@ -316,16 +316,6 @@ export {
   summarizeComposeStderr,
 } from "./control-plane/compose-errors.js";
 
-// ── Stack Spec (v2) ──────────────────────────────────────────────────────
-export type {
-  StackSpec,
-} from "./control-plane/stack-spec.js";
-export {
-  STACK_SPEC_FILENAME,
-  writeStackSpec,
-  readStackSpec,
-} from "./control-plane/stack-spec.js";
-
 // ── Spec-to-Env Derivation ──────────────────────────────────────────────
 export type { VoiceVarsConfig } from "./control-plane/spec-to-env.js";
 export {

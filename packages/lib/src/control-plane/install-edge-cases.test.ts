@@ -26,7 +26,6 @@ import {
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
-import { STACK_SPEC_FILENAME, readStackSpec } from "./stack-spec.js";
 import { readSecret } from './secrets-files.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -313,11 +312,6 @@ describe("Existing Install", () => {
       })
     );
 
-    // stack.yml is just a version marker now
-    const specAfterSecond = readStackSpec(stackDir);
-    expect(specAfterSecond).not.toBeNull();
-    expect(specAfterSecond!.version).toBe(2);
-
     const auth = JSON.parse(readFileSync(join(homeDir, "knowledge", "secrets", "auth.json"), "utf-8"));
     expect(auth.groq.key).toBe("gsk-test-key-456");
   });
@@ -426,12 +420,6 @@ describe("Broken/Corrupt State", () => {
     }
   });
 
-  // Scenario 13: Missing stack.yml returns null
-  it("readStackSpec returns null when stack.yml missing", () => {
-    const spec = readStackSpec(stackDir);
-    expect(spec).toBeNull();
-  });
-
   // Scenario 14: knowledge/tasks dir missing (performSetup should recreate it via ensureHomeDirs)
   it("performSetup creates missing subdirectories", async () => {
     // Seed the minimal env files first
@@ -453,16 +441,6 @@ describe("Broken/Corrupt State", () => {
     expect(existsSync(join(homeDir, "knowledge", "tasks"))).toBe(true);
   });
 
-  // Scenario 15: openpalm.yaml with old version
-  it("readStackSpec returns null for version 1 spec", () => {
-    writeFileSync(
-      join(stackDir, STACK_SPEC_FILENAME),
-      "version: 1\nconnections: []\n"
-    );
-
-    const spec = readStackSpec(stackDir);
-    expect(spec).toBeNull();
-  });
 });
 
 // =====================================================================
@@ -562,10 +540,6 @@ describe("Setup Input Variations", () => {
 
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
-
-    const spec = readStackSpec(stackDir);
-    expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(2);
   });
 
   // Scenario 21: Multiple providers map to correct env vars
@@ -626,12 +600,9 @@ describe("performSetup end-to-end artifacts", () => {
     rmSync(homeDir, { recursive: true, force: true });
   });
 
-  it("writes stack.yml and readStackSpec returns v2", async () => {
+  it("does not create a stack.yml (addon state lives in stack.env)", async () => {
     await performSetup(makeValidSpec());
-
-    const spec = readStackSpec(stackDir);
-    expect(spec).not.toBeNull();
-    expect(spec!.version).toBe(2);
+    expect(existsSync(join(stackDir, "stack.yml"))).toBe(false);
   });
 
   it("writes akm config with embedding dims from setup spec", async () => {

@@ -307,11 +307,11 @@ describe('cli main', () => {
 
     try {
       await main(['addon', 'enable', 'chat']);
-      expect(readFileSync(join(base, 'config', 'stack', 'stack.yml'), 'utf-8')).toContain('- chat');
+      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_ENABLED_ADDONS=chat');
       expect(readSecret(join(base, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
 
       await main(['addon', 'disable', 'chat']);
-      expect(readFileSync(join(base, 'config', 'stack', 'stack.yml'), 'utf-8')).not.toContain('- chat');
+      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).not.toContain('chat');
     } finally {
       delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       rmSync(base, { recursive: true, force: true });

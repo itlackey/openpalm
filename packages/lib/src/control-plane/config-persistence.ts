@@ -14,7 +14,7 @@ import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./registry.js";
 import { resolveOperatorIds, hasUsableOperatorId } from "./operator-ids.js";
-import { SPEC_DEFAULTS } from "./stack-spec.js";
+import { SPEC_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
 
 import {
@@ -131,6 +131,9 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "",
     "# ── Layout (on-disk schema version; managed by the migration harness) ──",
     `OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`,
+    "",
+    "# ── Enabled addons (comma-separated; managed via the Add-ons UI / CLI) ──",
+    "OP_ENABLED_ADDONS=",
     "",
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
     "# Guardian is network-only (no host port) — channels reach it via",

@@ -16,7 +16,7 @@ you skip a step.
 > jumps several versions). **Risk:** low if you back up first (step 1).
 >
 > **Manual work:** the secrets/env file move (step 4), the port-var rename if you
-> customized it (step 5), and stripping the `stack.yml` capabilities block if
+> customized it (step 5), and moving addon enablement into `stack.env` if
 > present (step 6). Everything else is handled by `openpalm update` (step 7).
 
 ---
@@ -32,7 +32,7 @@ you skip a step.
 | Secrets/env layout | top-level `vault/` directory | `knowledge/env/` (non-secret) + `knowledge/secrets/` (file secrets) |
 | User-secrets API / store | `/admin/secrets/user-vault`, akm `vault` type | `/admin/secrets/user-env`, akm `env` type (akm 0.8.0 **removed** `vault`; `akm vault set/unset` now error) |
 | LLM/embedding config | `OP_CAP_*` env vars | `config/akm/config.json` |
-| `stack.yml` | `capabilities:` block, at `config/stack.yml` | `version: 2` only, at `config/stack/stack.yml` |
+| Addon enablement | `stack.yml addons[]` | `OP_ENABLED_ADDONS` in `stack.env` (no `stack.yml`) |
 | Host UI port var | `OP_ADMIN_PORT` | `OP_HOST_UI_PORT` (default `3880`) |
 | Voice / runtime env vars | unprefixed (`TTS_*`, `STT_*`) | `OP_`-prefixed (`OP_TTS_*`, `OP_STT_*`, `OP_VOICE_*`) |
 | Channel adapters | baked into the image | **runtime npm installs** (`CHANNEL_PACKAGE`) |
@@ -114,7 +114,7 @@ docker version && docker compose version
 >
 > It takes a full backup first, then **copies** (never deletes) your `vault/`
 > files into the new layout, transforms `stack.env`, splits channel secrets, and
-> writes `config/stack/stack.yml`. It does **not** run `openpalm update` or
+> sets `OP_ENABLED_ADDONS`/version keys in `stack.env`. It does **not** run `openpalm update` or
 > migrate provider credentials — do those manually (below + step 7). Prefer the
 > manual walkthrough if you want to understand each change.
 
@@ -195,18 +195,19 @@ In the migrated `~/.openpalm/knowledge/env/stack.env`:
 
 Re-running the setup wizard also rewrites these correctly.
 
-### 6. Move and strip `stack.yml`
+### 6. Addons + versions live in `stack.env` (no `stack.yml`)
 
-In 0.10.x this file is at `~/.openpalm/config/stack.yml`; in 0.11.0 it is at
-`~/.openpalm/config/stack/stack.yml` and must be `version: 2` only. Move it and
-remove any `capabilities:` block:
+0.11.0 **removes `stack.yml`**. Stack composition + versions are consolidated into
+`knowledge/env/stack.env`:
 
-```yaml
-version: 2
-```
+- **Enabled addons** are an `OP_ENABLED_ADDONS=voice,discord` list (was
+  `stack.yml addons[]`). If a legacy `stack.yml` has an `addons:` list, copy the
+  names into `OP_ENABLED_ADDONS`; otherwise leave it empty.
+- **Versions** are recorded as `OP_IMAGE_TAG`, `OP_LAYOUT_VERSION`, and
+  `OP_UI_VERSION` in the same file.
 
-LLM/embedding settings now live in `config/akm/config.json` (set via the wizard /
-AKM config), not in `stack.yml`.
+You can then delete the old `config/stack.yml` — nothing reads it. LLM/embedding
+settings live in `config/akm/config.json` (set via the wizard / AKM config).
 
 ### 7. Apply the upgrade
 
@@ -261,7 +262,7 @@ line moves to `@latest`. See
 | Assistant starts but can't reach any LLM | `auth.json` not migrated | re-add providers in the **Connections** tab (step 4) |
 | Channels reject every message (HMAC) | `channel_*_secret` files missing | re-run channel setup, or create them by hand (step 4) |
 | UI on the wrong (default) port | `OP_ADMIN_PORT` no longer read | rename to `OP_HOST_UI_PORT` (step 5) |
-| `stack.yml` validation error / LLM config ignored | leftover `capabilities:` block, or file still at the old `config/stack.yml` path | move to `config/stack/stack.yml`, strip to `version: 2` (step 6) |
+| An addon isn't running after upgrade | enablement not carried over | add it to `OP_ENABLED_ADDONS` in `stack.env` (step 6) or re-enable via the Add-ons UI |
 | `openpalm update` can't resolve the latest image tag | version detection issue | set `OP_IMAGE_TAG` explicitly in `knowledge/env/stack.env` (e.g. `OP_IMAGE_TAG=0.11.0`) and re-run |
 | Setup wizard appears unexpectedly | install not detected as complete | finish the wizard, or verify `knowledge/env/stack.env` has `OP_SETUP_COMPLETE=true` |
 

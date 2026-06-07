@@ -6,7 +6,7 @@
  *
  * Layout:
  *   config/        — user-editable config + system config files (akm/)
- *   config/stack/  — compose runtime + stack config (stack.env, stack.yml, auth.json, fixed compose files)
+ *   config/stack/  — fixed compose files only (stack.env, secrets, auth.json live under knowledge/; no stack.yml)
  *   data/          — persistent service data, logs, backups, rollback
  *   knowledge/     — akm knowledge (skills, env, secrets, agents)
  *   workspace/     — shared work area

@@ -57,12 +57,13 @@ describe("skeleton: helper scripts", () => {
 // ── config/ subdirectory ──────────────────────────────────────────────
 
 describe("skeleton: .openpalm/config/ structure", () => {
-  test("config/stack/ exists with fixed compose files and stack.yml", () => {
+  test("config/stack/ exists with fixed compose files (no stack.yml)", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "core.compose.yml"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "services.compose.yml"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "channels.compose.yml"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "custom.compose.yml"))).toBe(true);
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "stack.yml"))).toBe(true);
+    // stack.yml removed in 0.11.0 — addon enablement lives in stack.env.
+    expect(existsSync(join(SKELETON_DIR, "config", "stack", "stack.yml"))).toBe(false);
   });
 
   test("config/stack/addons/ does not exist", () => {

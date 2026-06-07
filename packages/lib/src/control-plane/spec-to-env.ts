@@ -5,7 +5,7 @@
  * Voice channel vars (TTS/STT) are written separately via writeVoiceVars.
  */
 
-import { SPEC_DEFAULTS } from "./stack-spec.js";
+import { SPEC_DEFAULTS } from "./defaults.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { mergeEnvContent } from "./env.js";
@@ -14,7 +14,7 @@ import { assertNoSecretLikeStackEnvKeys } from './secrets.js';
 import { stackEnvPathFromStackDir } from './paths.js';
 
 /**
- * Derive the system.env key-value pairs from the StackSpec.
+ * Derive the system.env key-value pairs from the setup spec + defaults.
  * Secrets (tokens, API keys, HMAC) are NOT included — the caller merges them.
  */
 export function deriveSystemEnvFromSpec(homeDir: string): Record<string, string> {

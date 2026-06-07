@@ -4,8 +4,8 @@
  *
  * These are OpenCode's own settings — the same fields its desktop UI's
  * Settings → Models tab manages. We only touch opencode.json (via
- * setMainModel / unsetMainModel). stack.yml `capabilities.llm` is a
- * separate OpenPalm-side concept managed by the Capabilities tab.
+ * setMainModel / unsetMainModel). LLM configuration is a separate OpenPalm-side
+ * concept in config/akm/config.json.
  */
 import type { RequestHandler } from './$types';
 import {
