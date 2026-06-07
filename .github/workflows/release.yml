@@ -1,9 +1,11 @@
-name: Release
+name: Release (legacy — superseded by platform-release.yml)
 
+# SUPERSEDED by .github/workflows/platform-release.yml (the coordinated release
+# orchestrator). The `push: tags: v*` auto-trigger is removed so the
+# orchestrator's tag-last step does not double-fire this old pipeline. Kept as a
+# manual workflow_dispatch fallback only; slated for removal once the
+# orchestrator has cut a stable release (proposal increment 7).
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:

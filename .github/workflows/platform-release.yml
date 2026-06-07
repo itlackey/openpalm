@@ -299,6 +299,208 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
+  # ── Build layer: runs after npm is green (so a failed npm aborts before any
+  # immutable image tag is pushed). Builds happen even on dry_run (push/publish
+  # gated off) to validate Dockerfiles/build scripts. ─────────────────────────
+  images:
+    name: Docker image (${{ matrix.image }})
+    needs: [npm-lib, npm-cli, npm-sdk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: core/guardian/Dockerfile
+            image: openpalm/guardian
+          - dockerfile: core/channel/Dockerfile
+            image: openpalm/channel
+          - dockerfile: core/assistant/Dockerfile
+            image: openpalm/assistant
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        if: ${{ !inputs.dry_run }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: ${{ matrix.image }}
+          tags: |
+            type=raw,value=latest,enable=${{ !contains(inputs.version, '-') }}
+            type=raw,value=v${{ inputs.version }}
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          # Dry-run validates the Dockerfile on amd64 only (fast); real cuts go multi-arch.
+          platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ !inputs.dry_run }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  cli:
+    name: CLI binary (${{ matrix.artifact }})
+    needs: [npm-lib]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            script: build:linux-x64
+            artifact: openpalm-cli-linux-x64
+          - os: ubuntu-latest
+            script: build:linux-arm64
+            artifact: openpalm-cli-linux-arm64
+          - os: macos-latest
+            script: build:darwin-x64
+            artifact: openpalm-cli-darwin-x64
+          - os: macos-latest
+            script: build:darwin-arm64
+            artifact: openpalm-cli-darwin-arm64
+          - os: windows-latest
+            script: build:windows-x64
+            artifact: openpalm-cli-windows-x64.exe
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build CLI binary
+        run: bun run --cwd packages/cli ${{ matrix.script }}
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --sign - packages/cli/dist/${{ matrix.artifact }}
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: packages/cli/dist/${{ matrix.artifact }}
+
+  electron:
+    name: Electron installer (${{ matrix.platform }})
+    needs: [npm-lib]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            electron_flag: --mac
+          - os: ubuntu-latest
+            platform: linux
+            electron_flag: --linux
+          - os: windows-latest
+            platform: win
+            electron_flag: --win
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build UI (bundled into the app)
+        run: bun run ui:build
+      - name: Bundle Electron app
+        run: bun run --cwd packages/electron bundle
+      - name: Build Electron app
+        working-directory: packages/electron
+        shell: bash
+        run: |
+          CLI=$(node -e "console.log(require.resolve('electron-builder/cli.js'))")
+          node "$CLI" ${{ matrix.electron_flag }} --publish never
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-${{ matrix.platform }}
+          path: |
+            packages/electron/dist/packages/*.dmg
+            packages/electron/dist/packages/*.AppImage
+            packages/electron/dist/packages/*.exe
+            packages/electron/dist/packages/*.yml
+            packages/electron/dist/packages/*.blockmap
+
+  voice:
+    name: Voice image (${{ matrix.tag_suffix }})
+    needs: [bump]
+    # Stable-only and opt-in; voice is otherwise published out-of-band.
+    if: ${{ inputs.include_voice && !contains(inputs.version, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cpu
+            platforms: linux/amd64,linux/arm64
+            tag_suffix: cpu
+          - variant: cu121
+            platforms: linux/amd64
+            tag_suffix: cu121
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Skip heavy build on dry-run
+        if: ${{ inputs.dry_run }}
+        run: echo "::notice::dry-run — would build + push openpalm/voice:{latest,v${{ inputs.version }}}-${{ matrix.tag_suffix }} (${{ matrix.platforms }}); skipping the ~90m build (validated by publish-voice.yml)"
+      - uses: docker/setup-qemu-action@v3
+        if: ${{ !inputs.dry_run }}
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ !inputs.dry_run }}
+      - name: Login to Docker Hub
+        if: ${{ !inputs.dry_run }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Docker metadata
+        if: ${{ !inputs.dry_run }}
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: openpalm/voice
+          tags: |
+            type=raw,value=latest-${{ matrix.tag_suffix }}
+            type=raw,value=v${{ inputs.version }}-${{ matrix.tag_suffix }}
+      - name: Build and push image
+        if: ${{ !inputs.dry_run }}
+        uses: docker/build-push-action@v6
+        with:
+          context: core/voice
+          file: core/voice/Dockerfile
+          platforms: ${{ matrix.platforms }}
+          push: true
+          build-args: |
+            VARIANT=${{ matrix.variant }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=openpalm/voice-${{ matrix.variant }}
+          cache-to: type=gha,scope=openpalm/voice-${{ matrix.variant }},mode=max
+
   tag-release:
     name: Tag + GitHub release (LAST)
     needs:
@@ -310,17 +512,40 @@ jobs:
       - npm-channel-api
       - npm-channel-discord
       - npm-channel-slack
-    # Run only for a real release, and only if nothing upstream failed/cancelled
-    # (skipped independents are fine when coordinate_independents=false).
+      - images
+      - cli
+      - electron
+      - voice
+    # Real release only, and only if nothing upstream failed/cancelled (skipped
+    # optional jobs — independents off, voice off — are fine).
     if: ${{ !inputs.dry_run && always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build deploy bundle
+        run: |
+          mkdir -p dist
+          tar -czf "dist/openpalm-${{ inputs.version }}-deploy-bundle.tar.gz" \
+            .openpalm core packages scripts README.md
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: openpalm-cli-*
+          path: dist
+          merge-multiple: true
+      - name: Download Electron artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: electron-*
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        run: cd dist && sha256sum * > checksums-sha256.txt
       - name: Create + push tag (idempotent; refuses to move)
         env:
           TAG: v${{ needs.preflight.outputs.version }}
@@ -342,14 +567,31 @@ jobs:
             git tag -a "${TAG}" -m "Release ${TAG}"
             git push origin "${TAG}"
           fi
-      - name: Create GitHub release
+      - name: Delete existing release for clean republish
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           TAG: v${{ needs.preflight.outputs.version }}
-          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
         run: |
-          PRE_FLAG=""
-          if [ "${PRERELEASE}" = 'true' ]; then PRE_FLAG="--prerelease"; fi
-          # Idempotent: delete-then-recreate (softprops-style) so re-runs don't strip notes.
-          gh release delete "${TAG}" --yes 2>/dev/null || true
-          gh release create "${TAG}" --title "${TAG}" --generate-notes ${PRE_FLAG}
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release delete "${TAG}" --yes
+          fi
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.preflight.outputs.version }}
+          name: OpenPalm v${{ needs.preflight.outputs.version }}
+          prerelease: ${{ needs.preflight.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            dist/openpalm-${{ inputs.version }}-deploy-bundle.tar.gz
+            dist/checksums-sha256.txt
+            dist/openpalm-cli-linux-x64
+            dist/openpalm-cli-linux-arm64
+            dist/openpalm-cli-darwin-x64
+            dist/openpalm-cli-darwin-arm64
+            dist/openpalm-cli-windows-x64.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.exe
+            dist/*.yml
+            dist/*.blockmap
