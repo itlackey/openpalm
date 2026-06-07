@@ -84,6 +84,8 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
   into `vault/`), channel-secret split, `stack.yml addons[]` → `OP_ENABLED_ADDONS`,
   gated by `OP_LAYOUT_VERSION` and idempotent. Aborts safely (no changes) if the
   backup fails.
+- **Desktop tray mic** — the Electron app supports push-to-talk voice recording
+  from the system tray with updated shortcuts.
 
 ### Changed
 
@@ -93,6 +95,10 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
   independently of the platform release.
 - **Runtime env vars are `OP_`-prefixed** (e.g. `OP_TTS_*`, `OP_STT_*`,
   `OP_VOICE_*`) to avoid host-environment collisions.
+- **Release pipeline consolidated** into a single coordinated, manually-dispatched
+  `platform-release.yml` orchestrator (version-synced bump → ordered npm publish →
+  Docker/CLI/Electron/voice → tag + GitHub release last; fail-safe, resumable).
+  Auto-publish-on-merge triggers removed.
 - **CI moved off the deprecated Node 20 actions runtime** to Node 24
   (`actions/checkout`, `actions/setup-node`, `actions/upload-artifact`,
   `actions/download-artifact`, `softprops/action-gh-release`).
