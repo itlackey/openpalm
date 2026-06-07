@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('openpalm', {
     return ipcRenderer.invoke('restart-app');
   },
 
+  setTrayMicRecording(recording: boolean): Promise<void> {
+    return ipcRenderer.invoke('set-tray-mic-recording', recording);
+  },
+
   onGlobalMicToggle(callback: VoidCallback): VoidCallback {
     const listener = () => callback();
     ipcRenderer.on('global-mic-toggle', listener);

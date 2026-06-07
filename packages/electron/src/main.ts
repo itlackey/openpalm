@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, type NativeImage } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -45,8 +45,7 @@ function resolveAdminToolsPluginPath(): string {
 
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 const READY_TIMEOUT_MS = 60_000;
-const CTRL_DOUBLE_PRESS_WINDOW_MS = 500;
-const FALLBACK_MIC_SHORTCUT = 'CommandOrControl+Shift+M';
+const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -54,6 +53,10 @@ let tray: Tray | null = null;
 let uiProcess: ChildProcess | null = null;
 let localOpencode: LocalOpencodeHandle | null = null;
 let registeredMicShortcut: string | null = null;
+let trayIcon: NativeImage | null = null;
+let trayRecordingIcons: NativeImage[] = [];
+let trayAnimationTimer: ReturnType<typeof setInterval> | null = null;
+let trayAnimationFrame = 0;
 
 // ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
 const STDERR_RING_SIZE = 200;
@@ -146,22 +149,59 @@ function resolveAssetPath(fileName: string): string | null {
   return existsSync(assetPath) ? assetPath : null;
 }
 
-export function createDoublePressHandler(
-  onDoublePress: () => void,
-  windowMs = CTRL_DOUBLE_PRESS_WINDOW_MS,
-  now: () => number = () => Date.now(),
-): () => void {
-  let lastPressAt = 0;
+function createTrayIconVariant(icon: NativeImage, alpha = 1): NativeImage {
+  const bitmap = icon.toBitmap();
+  const variant = Buffer.from(bitmap);
 
-  return () => {
-    const pressedAt = now();
-    if (pressedAt - lastPressAt <= windowMs) {
-      lastPressAt = 0;
-      onDoublePress();
+  for (let i = 3; i < variant.length; i += 4) {
+    variant[i] = Math.round(variant[i] * alpha);
+  }
+
+  const size = icon.getSize();
+  return nativeImage.createFromBitmap(variant, {
+    width: size.width,
+    height: size.height,
+    scaleFactor: 1,
+  });
+}
+
+function stopTrayRecordingAnimation(): void {
+  if (trayAnimationTimer) {
+    clearInterval(trayAnimationTimer);
+    trayAnimationTimer = null;
+  }
+  trayAnimationFrame = 0;
+  if (tray && trayIcon) {
+    tray.setImage(trayIcon);
+    tray.setToolTip('OpenPalm');
+  }
+}
+
+function startTrayRecordingAnimation(): void {
+  if (!tray || trayRecordingIcons.length === 0) {
+    return;
+  }
+
+  stopTrayRecordingAnimation();
+  tray.setToolTip('OpenPalm — recording');
+  tray.setImage(trayRecordingIcons[0]);
+  trayAnimationTimer = setInterval(() => {
+    if (!tray || trayRecordingIcons.length === 0) {
+      stopTrayRecordingAnimation();
       return;
     }
-    lastPressAt = pressedAt;
-  };
+
+    trayAnimationFrame = (trayAnimationFrame + 1) % trayRecordingIcons.length;
+    tray.setImage(trayRecordingIcons[trayAnimationFrame]);
+  }, 280);
+}
+
+function setTrayMicRecording(recording: boolean): void {
+  if (recording) {
+    startTrayRecordingAnimation();
+    return;
+  }
+  stopTrayRecordingAnimation();
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
@@ -469,17 +509,9 @@ function triggerGlobalMicToggle(): void {
 }
 
 function registerGlobalMicShortcut(): void {
-  const ctrlDoublePress = createDoublePressHandler(triggerGlobalMicToggle);
-
-  if (globalShortcut.register('Ctrl', ctrlDoublePress)) {
-    registeredMicShortcut = 'Ctrl (double-press)';
+  if (globalShortcut.register(MIC_SHORTCUT, triggerGlobalMicToggle)) {
+    registeredMicShortcut = MIC_SHORTCUT;
     console.log('Registered global mic shortcut:', registeredMicShortcut);
-    return;
-  }
-
-  if (globalShortcut.register(FALLBACK_MIC_SHORTCUT, triggerGlobalMicToggle)) {
-    registeredMicShortcut = FALLBACK_MIC_SHORTCUT;
-    console.log('Registered fallback global mic shortcut:', registeredMicShortcut);
     return;
   }
 
@@ -494,7 +526,9 @@ function createTray(): void {
     return;
   }
 
-  tray = new Tray(iconPath);
+  trayIcon = nativeImage.createFromPath(iconPath);
+  trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon as NativeImage, alpha));
+  tray = new Tray(trayIcon);
 
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open OpenPalm', click: showWindow },
@@ -562,6 +596,10 @@ ipcMain.handle('restart-app', () => {
   app.quit();
 });
 
+ipcMain.handle('set-tray-mic-recording', (_event, recording: boolean) => {
+  setTrayMicRecording(recording);
+});
+
 let cleanupStarted = false;
 
 // Single guarded shutdown. The first quit defers (preventDefault) just long
@@ -578,6 +616,7 @@ app.on('before-quit', async (event) => {
   cleanupStarted = true;
   event.preventDefault();
   globalShortcut.unregisterAll();
+  stopTrayRecordingAnimation();
   stopUIServer();
   if (localOpencode) {
     const handle = localOpencode;

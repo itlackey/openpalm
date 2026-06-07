@@ -79,6 +79,13 @@ vi.mock('electron', () => ({
     register: vi.fn(() => false),
     unregisterAll: vi.fn(),
   },
+  nativeImage: {
+    createFromPath: vi.fn(() => ({
+      toBitmap: vi.fn(() => Buffer.from([])),
+      getSize: vi.fn(() => ({ width: 16, height: 16 })),
+    })),
+    createFromBitmap: vi.fn(() => ({})),
+  },
   Menu: { buildFromTemplate: vi.fn(() => ({})) },
   shell: { openExternal: vi.fn() },
   ipcMain: { handle: vi.fn() },
@@ -102,7 +109,7 @@ vi.mock('../src/local-opencode.js', () => ({
   killProcessTree: vi.fn(),
 }));
 
-import { buildUIServerEnv, createDoublePressHandler, resolveAssistantUrl, waitForReady } from '../src/main.js';
+import { buildUIServerEnv, resolveAssistantUrl, waitForReady } from '../src/main.js';
 import * as lib from '@openpalm/lib';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
@@ -217,35 +224,6 @@ describe('waitForReady', () => {
 
     const result = await promise;
     expect(result).toBe(false);
-  });
-});
-
-describe('createDoublePressHandler', () => {
-  it('triggers only on the second press inside the threshold window', () => {
-    const toggle = vi.fn();
-    let currentTime = 1_000;
-    const handler = createDoublePressHandler(toggle, 500, () => currentTime);
-
-    handler();
-    expect(toggle).not.toHaveBeenCalled();
-
-    currentTime = 1_300;
-    handler();
-    expect(toggle).toHaveBeenCalledTimes(1);
-  });
-
-  it('resets when the second press arrives too late', () => {
-    const toggle = vi.fn();
-    let currentTime = 1_000;
-    const handler = createDoublePressHandler(toggle, 500, () => currentTime);
-
-    handler();
-    currentTime = 1_700;
-    handler();
-    currentTime = 1_950;
-    handler();
-
-    expect(toggle).toHaveBeenCalledTimes(1);
   });
 });
 

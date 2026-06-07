@@ -21,6 +21,7 @@ declare global {
       };
       notify?: (title: string, body: string) => void;
       restart?: () => Promise<void>;
+      setTrayMicRecording?: (recording: boolean) => Promise<void>;
       onGlobalMicToggle?: (callback: () => void) => (() => void) | void;
     };
   }

@@ -15,6 +15,7 @@
 	import { chat } from '$lib/chat/chat-state.svelte.js';
 
 	type OpenPalmBridge = {
+		setTrayMicRecording?: (recording: boolean) => Promise<void>;
 		onGlobalMicToggle?: (callback: () => void) => (() => void) | void;
 	};
 
@@ -33,9 +34,15 @@
 	});
 
 	onDestroy(() => {
+		void (window as Window & { openpalm?: OpenPalmBridge }).openpalm?.setTrayMicRecording?.(false);
 		removeGlobalMicToggle?.();
 		removeGlobalMicToggle = null;
 		destroyVoice();
+	});
+
+	$effect(() => {
+		if (!mounted) return;
+		void (window as Window & { openpalm?: OpenPalmBridge }).openpalm?.setTrayMicRecording?.(isRecording);
 	});
 
 	// Mic only renders when a usable STT engine is configured AND available
