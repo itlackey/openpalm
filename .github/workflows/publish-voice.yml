@@ -18,9 +18,9 @@ name: Publish openpalm/voice images
 # NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
 # (main). Dispatching with --ref <branch> runs that branch's copy.
 on:
-  push:
-    branches: [main]
-    paths: ['core/voice/**']
+  # Auto-publish-on-merge removed (0.11.0): voice images are out-of-band and are
+  # published explicitly (workflow_dispatch), or by the platform-release
+  # orchestrator when include_voice is set for a stable cut.
   workflow_dispatch:
     inputs:
       version:

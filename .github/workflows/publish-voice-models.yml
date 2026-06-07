@@ -17,9 +17,8 @@ name: Publish openpalm/voice-models
 # NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
 # (main). Dispatching with --ref <branch> runs that branch's copy.
 on:
-  push:
-    branches: [main]
-    paths: ['core/voice/Dockerfile.models']
+  # Auto-publish-on-merge removed (0.11.0): the model bundle is published
+  # explicitly (workflow_dispatch) when the model pin changes.
   workflow_dispatch:
     inputs:
       tag:
