@@ -15,7 +15,7 @@ services:
       PORT: "8181"
       CHANNEL_NAME: "Chat"
       CHANNEL_ID: "chat"
-      CHANNEL_PACKAGE: "@openpalm/channel-api@next"
+      CHANNEL_PACKAGE: "@openpalm/channel-api@latest"
       CHANNEL_SECRET_FILE: /run/secrets/channel_chat_secret
     secrets: [channel_chat_secret]
     networks: [channel_lan]
@@ -44,7 +44,7 @@ services:
     environment:
       PORT: "8182"
       CHANNEL_NAME: "API"
-      CHANNEL_PACKAGE: "@openpalm/channel-api@next"
+      CHANNEL_PACKAGE: "@openpalm/channel-api@latest"
       CHANNEL_SECRET_FILE: /run/secrets/channel_api_secret
     secrets: [channel_api_secret]
     networks: [channel_lan]
@@ -70,7 +70,7 @@ services:
     environment:
       PORT: "8184"
       CHANNEL_NAME: "Discord Bot"
-      CHANNEL_PACKAGE: "@openpalm/channel-discord@next"
+      CHANNEL_PACKAGE: "@openpalm/channel-discord@latest"
       # Rich-UX streaming (live tokens + tool reactions + interactive prompts via
       # the guardian /oc proxy) is ON by default. Set DISCORD_STREAMING=false to
       # fall back to the buffered single-response path.
@@ -109,7 +109,7 @@ services:
     environment:
       PORT: "8185"
       CHANNEL_NAME: "Slack Bot"
-      CHANNEL_PACKAGE: "@openpalm/channel-slack@next"
+      CHANNEL_PACKAGE: "@openpalm/channel-slack@latest"
       # Rich-UX streaming is ON by default. Set SLACK_STREAMING=false to fall
       # back to the buffered single-response path.
       SLACK_STREAMING: "${SLACK_STREAMING:-true}"
