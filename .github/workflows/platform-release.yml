@@ -226,7 +226,9 @@ jobs:
     with:
       package-dir: packages/cli
       package-name: openpalm
-      needs-build: true
+      # No build: the CLI npm package is packed as-is (matches release.yml). Its
+      # `build` script compiles a native binary (release.yml build-cli-artifacts)
+      # and has a broken prebuild; it is not used for the npm publish.
       version: ${{ inputs.version }}
       ref: ${{ inputs.ref }}
       exact-version: true
