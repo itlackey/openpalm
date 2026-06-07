@@ -6,14 +6,20 @@ name: Publish @openpalm/ui
 #
 # NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
 # (main). Dispatching with --ref <branch> runs that branch's copy.
+# Auto-publish-on-merge removed (0.11.0): publishing is explicit — via this
+# workflow_dispatch for a standalone release, or via the platform-release
+# orchestrator (workflow_call) for a coordinated release.
 on:
-  push:
-    branches: [main]
-    paths: ['packages/ui/**']
   workflow_dispatch:
     inputs:
       version:
         description: 'Version or bump keyword (major/minor/patch/prerelease). Empty = auto patch-bump only if the current version is already published.'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to publish (passed by the platform-release orchestrator).'
         required: false
         type: string
 
