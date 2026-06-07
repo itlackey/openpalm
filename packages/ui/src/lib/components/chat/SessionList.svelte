@@ -90,7 +90,7 @@
   {:else if sessions.length === 0}
     <div class="empty">No sessions yet. Start the first one.</div>
   {:else}
-    <div class="session-list" role="none">
+    <div class="session-list" role="group" aria-label="Sessions">
       {#each visibleSessions as s (s.id)}
         <button
           type="button"
@@ -100,9 +100,8 @@
           onclick={() => pick(s.id)}
           disabled={chat.sending}
         >
-          <span class="check" aria-hidden="true">{s.id === activeSessionId ? '●' : '○'}</span>
           <span class="item-text">
-            <span class="item-label">{s.title || 'Untitled'}</span>
+            <span class="item-label">{s.title || 'Untitled'}{#if s.id === activeSessionId}<span class="sr-only"> (current)</span>{/if}</span>
             <span class="item-meta">{formatRelative(s.updatedAt)}</span>
           </span>
         </button>
@@ -146,20 +145,56 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
+  /* Active row: an inset primary bar instead of a background tint, so the
+     timestamp keeps full contrast against the panel/drawer surface. */
   .list-item.active {
-    background: var(--color-bg-tertiary);
+    box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+  .list-item.active .item-label {
+    font-weight: 600;
   }
 
+  /* Primary action — a filled, rounded, inset button (orange with dark text) so
+     it reads as a pressable CTA distinct from the flat list rows below, matching
+     the app's primary-fill convention. Orange is never used as text. */
   .new-btn {
-    color: var(--color-primary);
-    font-weight: 500;
+    background: var(--color-primary);
+    color: #000;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    justify-content: center;
+    margin: 0 var(--space-1) var(--space-3);
+  }
+  .new-btn:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+  }
+  .new-btn:focus-visible {
+    background: var(--color-primary);
+    outline: 2px solid var(--color-text);
+    outline-offset: 2px;
+  }
+  .new-btn .check,
+  .new-btn .item-label {
+    color: #000;
   }
 
+  /* The "+" on the filled New session button. */
   .check {
     flex-shrink: 0;
     width: 14px;
     text-align: center;
-    color: var(--color-primary);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .item-text {
@@ -235,14 +270,19 @@
     padding: var(--space-2) var(--space-3);
     background: transparent;
     border: 0;
-    color: var(--color-primary);
+    color: var(--color-text);
     font: inherit;
     font-size: var(--text-xs);
+    font-weight: 500;
     text-align: left;
     cursor: pointer;
     border-radius: var(--radius-sm, 6px);
   }
   .show-all:hover {
     background: var(--color-bg-tertiary);
+  }
+  .show-all:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
   }
 </style>

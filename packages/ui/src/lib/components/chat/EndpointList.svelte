@@ -37,22 +37,23 @@
   {#if endpointsService.error}
     <p class="list-error" role="alert">{endpointsService.error}</p>
   {/if}
-  {#each endpoints as ep (ep.id)}
-    <button
-      type="button"
-      class="list-item"
-      class:active={ep.id === active?.id}
-      aria-current={ep.id === active?.id ? 'true' : undefined}
-      onclick={() => activate(ep.id)}
-      disabled={switching}
-    >
-      <span class="check" aria-hidden="true">{ep.id === active?.id ? '●' : '○'}</span>
-      <span class="item-text">
-        <span class="item-label">{ep.label}</span>
-        <span class="item-url">{ep.url}</span>
-      </span>
-    </button>
-  {/each}
+  <div class="group" role="group" aria-label="Assistant endpoints">
+    {#each endpoints as ep (ep.id)}
+      <button
+        type="button"
+        class="list-item"
+        class:active={ep.id === active?.id}
+        aria-current={ep.id === active?.id ? 'true' : undefined}
+        onclick={() => activate(ep.id)}
+        disabled={switching}
+      >
+        <span class="item-text">
+          <span class="item-label">{ep.label}{#if ep.id === active?.id}<span class="sr-only"> (current)</span>{/if}</span>
+          <span class="item-url">{ep.url}</span>
+        </span>
+      </button>
+    {/each}
+  </div>
 
   <div class="divider"></div>
 
@@ -97,20 +98,31 @@
     opacity: 0.6;
     cursor: progress;
   }
+  /* Active row: an inset primary bar instead of a background tint, so secondary
+     metadata keeps full contrast against the panel/drawer surface. */
   .list-item.active {
-    background: var(--color-bg-tertiary);
+    box-shadow: inset 3px 0 0 var(--color-primary);
   }
-
-  .check {
-    flex-shrink: 0;
-    width: 14px;
-    color: var(--color-primary);
+  .list-item.active .item-label {
+    font-weight: 600;
   }
 
   .item-text {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
   .item-label {
     font-weight: 500;
@@ -130,8 +142,14 @@
     background: var(--color-border);
   }
 
+  /* Secondary action — normal text colour (orange is reserved for fills); an
+     underline on hover/focus marks it as a navigation link, not a list row. */
   .list-item.link {
-    color: var(--color-primary);
+    color: var(--color-text);
     text-decoration: none;
+  }
+  .list-item.link:hover,
+  .list-item.link:focus-visible {
+    text-decoration: underline;
   }
 </style>

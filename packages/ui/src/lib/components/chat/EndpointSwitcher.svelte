@@ -67,8 +67,9 @@
     cursor: progress;
   }
 
+  /* Always show the icon so the trigger stays recognizable when the label is
+     hidden at narrow widths (the drawer is the only switcher below 1024px). */
   .trigger-icon {
-    display: none;
     flex-shrink: 0;
     color: var(--color-text-secondary);
   }

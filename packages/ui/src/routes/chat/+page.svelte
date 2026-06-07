@@ -213,7 +213,7 @@
       flex-shrink: 0;
       height: 100%;
       border-left: 1px solid var(--color-border);
-      background: var(--color-bg-secondary);
+      background: var(--color-bg);
       overflow: hidden;
     }
   }

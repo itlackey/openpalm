@@ -206,6 +206,12 @@
       padding: 0 var(--space-3);
       gap: var(--space-2);
     }
+    /* Drop only the caret at narrow widths so the cluster fits a 320px viewport;
+       keep the status dot — it visually distinguishes the two picker triggers
+       from the plain utility icon buttons (gear/theme/mic). */
+    .navbar-actions :global(.trigger .caret) {
+      display: none;
+    }
   }
 
   /* Narrow phones: the controls are now 40px tall; tighten the icon-only
