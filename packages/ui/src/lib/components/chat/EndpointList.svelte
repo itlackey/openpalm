@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // The assistant-endpoint chooser body. Rendered both inside the navbar drawer
@@ -12,6 +13,7 @@
 
   const active = $derived(endpointsService.active);
   const endpoints = $derived(endpointsService.endpoints);
+  const showManageAssistant = $derived(isLocalAssistantUrl(active?.url));
 
   let switching = $state(false);
 
@@ -57,8 +59,14 @@
 
   <div class="divider"></div>
 
+  {#if showManageAssistant}
+    <a class="list-item link" href="/admin" onclick={() => onChosen?.()}>
+      Manage this assistant…
+    </a>
+  {/if}
+
   <a class="list-item link" href="/admin/endpoints" onclick={() => onChosen?.()}>
-    Manage endpoints…
+    Manage assistant connections…
   </a>
 </div>
 

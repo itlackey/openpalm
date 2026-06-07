@@ -6975,9 +6975,9 @@ var require_public_api = __commonJS((exports) => {
 
 // ../../node_modules/.bun/dotenv@17.4.2/node_modules/dotenv/lib/main.js
 var require_main = __commonJS((exports, module) => {
-  var fs2 = __require("fs");
+  var fs = __require("fs");
   var path = __require("path");
-  var os2 = __require("os");
+  var os = __require("os");
   var crypto = __require("crypto");
   var TIPS = [
     "◈ encrypted .env [www.dotenvx.com]",
@@ -7109,7 +7109,7 @@ var require_main = __commonJS((exports, module) => {
     if (options && options.path && options.path.length > 0) {
       if (Array.isArray(options.path)) {
         for (const filepath of options.path) {
-          if (fs2.existsSync(filepath)) {
+          if (fs.existsSync(filepath)) {
             possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
           }
         }
@@ -7119,13 +7119,13 @@ var require_main = __commonJS((exports, module) => {
     } else {
       possibleVaultPath = path.resolve(process.cwd(), ".env.vault");
     }
-    if (fs2.existsSync(possibleVaultPath)) {
+    if (fs.existsSync(possibleVaultPath)) {
       return possibleVaultPath;
     }
     return null;
   }
   function _resolveHome(envPath) {
-    return envPath[0] === "~" ? path.join(os2.homedir(), envPath.slice(1)) : envPath;
+    return envPath[0] === "~" ? path.join(os.homedir(), envPath.slice(1)) : envPath;
   }
   function _configVault(options) {
     const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
@@ -7172,7 +7172,7 @@ var require_main = __commonJS((exports, module) => {
     const parsedAll = {};
     for (const path2 of optionPaths) {
       try {
-        const parsed = DotenvModule.parse(fs2.readFileSync(path2, { encoding }));
+        const parsed = DotenvModule.parse(fs.readFileSync(path2, { encoding }));
         DotenvModule.populate(parsedAll, parsed, options);
       } catch (e) {
         if (debug) {
@@ -7189,8 +7189,8 @@ var require_main = __commonJS((exports, module) => {
       const shortPaths = [];
       for (const filePath of optionPaths) {
         try {
-          const relative2 = path.relative(process.cwd(), filePath);
-          shortPaths.push(relative2);
+          const relative = path.relative(process.cwd(), filePath);
+          shortPaths.push(relative);
         } catch (e) {
           if (debug) {
             _debug(`failed to load ${filePath} ${e.message}`);
@@ -7293,10 +7293,10 @@ var require_main = __commonJS((exports, module) => {
 });
 
 // src/main.ts
-import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain } from "electron";
-import { join as join4, dirname as dirname3 } from "node:path";
-import { existsSync as existsSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync4, rmSync as rmSync2 } from "node:fs";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut } from "electron";
+import { join as join3, dirname as dirname2 } from "node:path";
+import { existsSync as existsSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync as rmSync2 } from "node:fs";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { spawn as spawn2 } from "node:child_process";
 // ../lib/src/logger.ts
 var REDACT_PATTERN = /(?:^|_)(?:TOKEN|SECRET|KEY|PASSWORD|HMAC)(?:_|$)/i;
@@ -7386,14 +7386,92 @@ var $stringify = publicApi.stringify;
 var $visit = visit.visit;
 var $visitAsync = visit.visitAsync;
 
+// ../lib/src/control-plane/home.ts
+import { mkdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { resolve as resolvePath } from "node:path";
+function resolveHome() {
+  const home = homedir();
+  if (home)
+    return home;
+  return tmpdir();
+}
+function resolveOpenPalmHome() {
+  const raw = process.env.OP_HOME;
+  if (raw)
+    return resolvePath(raw);
+  return `${resolveHome()}/.openpalm`;
+}
+function resolveConfigDir() {
+  return `${resolveOpenPalmHome()}/config`;
+}
+function resolveDataDir() {
+  return `${resolveOpenPalmHome()}/data`;
+}
+function resolveBackupsDir() {
+  return `${resolveDataDir()}/backups`;
+}
+function ensureHomeDirs() {
+  const home = resolveOpenPalmHome();
+  for (const dir of [
+    `${home}/config`,
+    `${home}/config/assistant`,
+    `${home}/config/guardian`,
+    `${home}/config/akm`,
+    `${home}/data`,
+    `${home}/data/assistant`,
+    `${home}/data/assistant/.cache`,
+    `${home}/data/assistant/.local/bin`,
+    `${home}/data/assistant/.local/share/opencode`,
+    `${home}/data/assistant/.local/state/opencode`,
+    `${home}/data/guardian`,
+    `${home}/data/akm/cache`,
+    `${home}/data/akm/data`,
+    `${home}/data/akm/empty-host-stash`,
+    `${home}/data/logs`,
+    `${home}/data/backups`,
+    `${home}/data/rollback`,
+    `${home}/knowledge`,
+    `${home}/knowledge/env`,
+    `${home}/knowledge/secrets`,
+    `${home}/knowledge/tasks`,
+    `${home}/workspace`,
+    `${home}/config/stack`
+  ]) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+// ../lib/src/control-plane/install-lock.ts
+var logger = createLogger("install-lock");
+var STALE_AFTER_MS = 30 * 60 * 1000;
+
+// ../lib/src/control-plane/env.ts
+var import_dotenv = __toESM(require_main(), 1);
+import { readFileSync, existsSync, copyFileSync } from "node:fs";
+function parseEnvFile(filePath) {
+  if (!existsSync(filePath))
+    return {};
+  try {
+    return import_dotenv.parse(readFileSync(filePath, "utf-8"));
+  } catch {
+    try {
+      copyFileSync(filePath, `${filePath}.corrupt-${Date.now()}`);
+    } catch {}
+    return {};
+  }
+}
+
+// ../lib/src/control-plane/migrations.ts
+var RECOVERY_GUIDANCE = "Your original files were left untouched and a full backup was taken first. " + "To recover, restore the backup (see docs/operations/backup-restore.md) or run " + "the standalone migrator with --dry-run (scripts/migrate-0.10-to-0.11.sh / .ps1). " + "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
 // ../lib/src/control-plane/ui-assets.ts
 import {
-  existsSync,
+  existsSync as existsSync2,
   mkdirSync as mkdirSync2,
   readdirSync,
-  copyFileSync,
+  copyFileSync as copyFileSync2,
   writeFileSync,
-  readFileSync,
+  readFileSync as readFileSync2,
   rmSync,
   realpathSync,
   renameSync
@@ -10571,64 +10649,8 @@ var yo = (s3) => {
   s3.mtimeCache || (s3.mtimeCache = new Map), s3.filter = t ? (e, i) => t(e, i) && !((s3.mtimeCache?.get(e) ?? i.mtime ?? 0) > (i.mtime ?? 0)) : (e, i) => !((s3.mtimeCache?.get(e) ?? i.mtime ?? 0) > (i.mtime ?? 0));
 };
 
-// ../lib/src/control-plane/home.ts
-import { mkdirSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { resolve as resolvePath } from "node:path";
-function resolveHome() {
-  const home = homedir();
-  if (home)
-    return home;
-  return tmpdir();
-}
-function resolveOpenPalmHome() {
-  const raw = process.env.OP_HOME;
-  if (raw)
-    return resolvePath(raw);
-  return `${resolveHome()}/.openpalm`;
-}
-function resolveConfigDir() {
-  return `${resolveOpenPalmHome()}/config`;
-}
-function resolveDataDir() {
-  return `${resolveOpenPalmHome()}/data`;
-}
-function resolveBackupsDir() {
-  return `${resolveDataDir()}/backups`;
-}
-function ensureHomeDirs() {
-  const home = resolveOpenPalmHome();
-  for (const dir of [
-    `${home}/config`,
-    `${home}/config/assistant`,
-    `${home}/config/guardian`,
-    `${home}/config/akm`,
-    `${home}/data`,
-    `${home}/data/assistant`,
-    `${home}/data/assistant/.cache`,
-    `${home}/data/assistant/.local/bin`,
-    `${home}/data/assistant/.local/share/opencode`,
-    `${home}/data/assistant/.local/state/opencode`,
-    `${home}/data/guardian`,
-    `${home}/data/akm/cache`,
-    `${home}/data/akm/data`,
-    `${home}/data/akm/empty-host-stash`,
-    `${home}/data/logs`,
-    `${home}/data/backups`,
-    `${home}/data/rollback`,
-    `${home}/knowledge`,
-    `${home}/knowledge/env`,
-    `${home}/knowledge/secrets`,
-    `${home}/knowledge/tasks`,
-    `${home}/workspace`,
-    `${home}/config/stack`
-  ]) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
 // ../lib/src/control-plane/ui-assets.ts
-var logger = createLogger("lib:ui-assets");
+var logger2 = createLogger("lib:ui-assets");
 var REPO_OWNER = "itlackey";
 var REPO_NAME = "openpalm";
 async function fetchWithRetry(url, retries = 3) {
@@ -10648,7 +10670,7 @@ async function fetchWithRetry(url, retries = 3) {
   throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
 }
 function copyTree(src, dest, opts) {
-  if (!existsSync(src))
+  if (!existsSync2(src))
     return;
   const entries = readdirSync(src, { recursive: true, withFileTypes: true });
   for (const entry of entries) {
@@ -10658,17 +10680,17 @@ function copyTree(src, dest, opts) {
     const srcFile = join(parentDir, entry.name);
     const rel = relative(src, srcFile);
     const destFile = join(dest, rel);
-    if (opts?.skipExisting && existsSync(destFile))
+    if (opts?.skipExisting && existsSync2(destFile))
       continue;
     mkdirSync2(dirname(destFile), { recursive: true });
-    copyFileSync(srcFile, destFile);
+    copyFileSync2(srcFile, destFile);
   }
 }
 function resolveLocalCandidate(...strategies) {
   for (const strategy of strategies) {
     try {
       const p2 = strategy();
-      if (p2 && existsSync(p2))
+      if (p2 && existsSync2(p2))
         return p2;
     } catch {}
   }
@@ -10685,10 +10707,10 @@ function resolveLocalOpenpalmDir() {
 var SKELETON_VERSION_STAMP = ".skeleton-version";
 async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
   const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
-  if (existsSync(stampPath)) {
+  if (existsSync2(stampPath)) {
     try {
-      if (readFileSync(stampPath, "utf-8").trim() === repoRef.trim()) {
-        logger.debug("skeleton already seeded for this version — skipping", { repoRef });
+      if (readFileSync2(stampPath, "utf-8").trim() === repoRef.trim()) {
+        logger2.debug("skeleton already seeded for this version — skipping", { repoRef });
         return;
       }
     } catch {}
@@ -10701,13 +10723,13 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
   };
   const local = resolveLocalOpenpalmDir();
   if (local) {
-    logger.debug("seeding .openpalm from local source", { src: local, repoRef });
+    logger2.debug("seeding .openpalm from local source", { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
     stamp();
     return;
   }
   const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
-  logger.debug("downloading .openpalm skeleton", { url: tarballUrl });
+  logger2.debug("downloading .openpalm skeleton", { url: tarballUrl });
   const tmpDir = join(homeDir, ".seed-tmp");
   const tmpTar = join(tmpDir, "repo.tar.gz");
   mkdirSync2(tmpDir, { recursive: true });
@@ -10718,7 +10740,7 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
     writeFileSync(tmpTar, new Uint8Array(await res.arrayBuffer()));
     await fo({ file: tmpTar, cwd: tmpDir, strip: 1 });
     const srcOpenpalm = join(tmpDir, ".openpalm");
-    if (!existsSync(srcOpenpalm))
+    if (!existsSync2(srcOpenpalm))
       throw new Error(".openpalm/ not found in tarball");
     copyTree(srcOpenpalm, homeDir, { skipExisting: true });
     stamp();
@@ -10737,17 +10759,17 @@ function resolveLocalUiBuild() {
     if (meta.startsWith("/$bunfs/"))
       return null;
     const candidate = join(dirname(meta), "..", "..", "..", "..", "packages", "ui", "build");
-    return existsSync(join(candidate, "index.js")) ? candidate : null;
+    return existsSync2(join(candidate, "index.js")) ? candidate : null;
   }, () => {
     const binDir = dirname(realpathSync(process.execPath));
     const candidate = join(binDir, "..", "..", "..", "packages", "ui", "build");
-    return existsSync(join(candidate, "index.js")) ? candidate : null;
+    return existsSync2(join(candidate, "index.js")) ? candidate : null;
   });
 }
 var UI_VERSION_STAMP = ".openpalm-ui-version";
 function readUiBuildVersion(dir) {
   try {
-    const v2 = readFileSync(join(dir, UI_VERSION_STAMP), "utf-8").trim();
+    const v2 = readFileSync2(join(dir, UI_VERSION_STAMP), "utf-8").trim();
     return v2 || null;
   } catch {
     return null;
@@ -10755,9 +10777,9 @@ function readUiBuildVersion(dir) {
 }
 function resolveUiBuildDir() {
   const dataBuild = join(resolveDataDir(), "ui");
-  const hasData = existsSync(join(dataBuild, "index.js"));
+  const hasData = existsSync2(join(dataBuild, "index.js"));
   const bundledRaw = resolveLocalUiBuild();
-  const bundled = bundledRaw && existsSync(join(bundledRaw, "index.js")) ? bundledRaw : null;
+  const bundled = bundledRaw && existsSync2(join(bundledRaw, "index.js")) ? bundledRaw : null;
   if (hasData && bundled) {
     const dataVer = readUiBuildVersion(dataBuild);
     const bundledVer = readUiBuildVersion(bundled);
@@ -10811,7 +10833,7 @@ async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
     throw new Error(`npm manifest for ${UI_PACKAGE}@${manifest.version} has no integrity hash — refusing to install unverified`);
   }
   verifyNpmIntegrity(data, manifest.integrity);
-  logger.debug("UI bundle integrity verified", { version: manifest.version });
+  logger2.debug("UI bundle integrity verified", { version: manifest.version });
   const tmpTar = join(dataDir, ".ui-build.tgz.tmp");
   const staging = join(dataDir, ".ui-build.staging");
   try {
@@ -10824,7 +10846,7 @@ async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
       strip: 2,
       filter: (p2) => p2.startsWith("package/build/")
     });
-    if (!existsSync(join(staging, "index.js"))) {
+    if (!existsSync2(join(staging, "index.js"))) {
       throw new Error("downloaded UI bundle is missing build/index.js");
     }
     rmSync(uiDir, { recursive: true, force: true });
@@ -10839,15 +10861,15 @@ async function seedUiBuild(repoRef, dataDir, options) {
   mkdirSync2(uiDir, { recursive: true });
   const local = options?.forceRemote ? null : resolveLocalUiBuild();
   if (local) {
-    logger.debug("seeding UI build from local source", { src: local });
+    logger2.debug("seeding UI build from local source", { src: local });
     copyTree(local, uiDir);
     if (!readUiBuildVersion(uiDir)) {
-      logger.warn("seeded UI build has no version stamp — auto-update comparison will be unreliable", { src: local });
+      logger2.warn("seeded UI build has no version stamp — auto-update comparison will be unreliable", { src: local });
     }
     return;
   }
   const manifest = await fetchNpmUiManifest(toNpmVersion(repoRef));
-  logger.debug("downloading UI build from npm", { version: manifest.version });
+  logger2.debug("downloading UI build from npm", { version: manifest.version });
   await downloadNpmUiBundle(manifest, uiDir, dataDir);
 }
 function compareVersionTags(a, b2) {
@@ -10906,49 +10928,33 @@ async function checkAndUpdateUiBuild(appVersion, dataDir) {
     const latestVersion = manifest.version;
     const currentUiVersion = readUiBuildVersion(resolveUiBuildDir());
     if (currentUiVersion && compareVersionTags(latestVersion, currentUiVersion) <= 0) {
-      logger.debug("UI build is up to date", { currentUi: currentUiVersion, latest: latestVersion, channel });
+      logger2.debug("UI build is up to date", { currentUi: currentUiVersion, latest: latestVersion, channel });
       return { updated: false, latestVersion };
     }
     if (!currentUiVersion) {
-      logger.debug("UI build is unstamped — refreshing from npm to re-establish a known version", { latest: latestVersion, channel });
+      logger2.debug("UI build is unstamped — refreshing from npm to re-establish a known version", { latest: latestVersion, channel });
     }
     const uiDir = join(dataDir, "ui");
-    if (existsSync(join(uiDir, "index.js"))) {
+    if (existsSync2(join(uiDir, "index.js"))) {
       const backupDir = join(resolveBackupsDir(), `ui-${Date.now()}`);
       mkdirSync2(resolveBackupsDir(), { recursive: true });
       renameSync(uiDir, backupDir);
-      logger.debug("backed up UI build before update", { backup: backupDir });
+      logger2.debug("backed up UI build before update", { backup: backupDir });
     }
     await downloadNpmUiBundle(manifest, uiDir, dataDir);
-    logger.debug("UI build updated", { from: currentUiVersion ?? "(unstamped)", to: latestVersion });
+    logger2.debug("UI build updated", { from: currentUiVersion ?? "(unstamped)", to: latestVersion });
     return { updated: true, latestVersion };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    logger.debug("UI build update check failed (non-fatal)", { error });
+    logger2.debug("UI build update check failed (non-fatal)", { error });
     return { updated: false, latestVersion: null, error };
-  }
-}
-
-// ../lib/src/control-plane/env.ts
-var import_dotenv = __toESM(require_main(), 1);
-import { readFileSync as readFileSync2, existsSync as existsSync2, copyFileSync as copyFileSync2 } from "node:fs";
-function parseEnvFile(filePath) {
-  if (!existsSync2(filePath))
-    return {};
-  try {
-    return import_dotenv.parse(readFileSync2(filePath, "utf-8"));
-  } catch {
-    try {
-      copyFileSync2(filePath, `${filePath}.corrupt-${Date.now()}`);
-    } catch {}
-    return {};
   }
 }
 
 // ../lib/src/control-plane/secrets.ts
 var OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + `
 `;
-var logger2 = createLogger("secrets");
+var logger3 = createLogger("secrets");
 var PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
   "OP_OWNER_NAME",
@@ -10957,23 +10963,9 @@ var PLAIN_CONFIG_KEYS = new Set([
 var NON_SECRET_STACK_ENV_KEY_ALLOWLIST = new Set;
 
 // ../lib/src/control-plane/core-assets.ts
-import { mkdirSync as mkdirSync3, writeFileSync as writeFileSync2, readFileSync as readFileSync3, existsSync as existsSync3, copyFileSync as copyFileSync3 } from "node:fs";
-import { dirname as dirname2, join as join2 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-var logger3 = createLogger("core-assets");
-function resolveAssetVersion() {
-  if (process.env.OP_ASSET_VERSION)
-    return process.env.OP_ASSET_VERSION;
-  try {
-    const pkgJson = JSON.parse(readFileSync3(join2(dirname2(fileURLToPath2(import.meta.url)), "../../package.json"), "utf-8"));
-    return `v${pkgJson.version}`;
-  } catch {
-    return "main";
-  }
-}
-var VERSION = resolveAssetVersion();
+var logger4 = createLogger("core-assets");
 // ../lib/src/control-plane/registry.ts
-var logger4 = createLogger("registry");
+var logger5 = createLogger("registry");
 var availabilityCache = new Map;
 // ../lib/src/control-plane/secret-audit.ts
 var NON_SECRET_STACK_KEYS = new Set([
@@ -11005,14 +10997,10 @@ var NON_SECRET_STACK_KEYS = new Set([
   "OPENAI_BASE_URL"
 ]);
 // ../lib/src/control-plane/host-akm-sharing.ts
-var logger5 = createLogger("host-akm-sharing");
+var logger6 = createLogger("host-akm-sharing");
 // ../lib/src/control-plane/docker.ts
-var logger6 = createLogger("lib:docker");
+var logger7 = createLogger("lib:docker");
 var PULL_TIMEOUT_MS = 60 * 60000;
-
-// ../lib/src/control-plane/install-lock.ts
-var logger7 = createLogger("install-lock");
-var STALE_AFTER_MS = 30 * 60 * 1000;
 
 // ../lib/src/control-plane/lifecycle.ts
 var VALID_CALLERS = new Set([
@@ -11121,29 +11109,29 @@ function getCachedUpdateInfo() {
 
 // src/local-opencode.ts
 import {
-  mkdirSync as mkdirSync4,
-  writeFileSync as writeFileSync3,
-  readFileSync as readFileSync4,
-  existsSync as existsSync4,
+  mkdirSync as mkdirSync3,
+  writeFileSync as writeFileSync2,
+  readFileSync as readFileSync3,
+  existsSync as existsSync3,
   unlinkSync,
   chmodSync
 } from "node:fs";
-import { join as join3 } from "node:path";
+import { join as join2 } from "node:path";
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 var USERNAME = "openpalm";
 var STOP_GRACE_MS = 5000;
 function runtimePath(dataDir) {
-  return join3(dataDir, "local-opencode.runtime.json");
+  return join2(dataDir, "local-opencode.runtime.json");
 }
 function pidfilePath(dataDir) {
-  return join3(dataDir, "local-opencode.pid");
+  return join2(dataDir, "local-opencode.pid");
 }
 function unavailableSentinelPath(dataDir) {
-  return join3(dataDir, "local-opencode.unavailable");
+  return join2(dataDir, "local-opencode.unavailable");
 }
 function adminOpencodeHome(dataDir) {
-  return join3(dataDir, "admin-opencode-home");
+  return join2(dataDir, "admin-opencode-home");
 }
 function generatePassword() {
   return randomBytes(32).toString("base64url");
@@ -11157,6 +11145,9 @@ function buildRuntimeJson(url, password, pid, startedAt = new Date) {
     startedAt: startedAt.toISOString()
   };
 }
+function normalizeLoopbackUrl(raw) {
+  return raw.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
+}
 function isPidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0)
     return false;
@@ -11169,15 +11160,15 @@ function isPidAlive(pid) {
 }
 function stageAdminHome(dataDir, pluginPath) {
   const home = adminOpencodeHome(dataDir);
-  const configDir = join3(home, ".config", "opencode");
-  const shareDir = join3(home, ".local", "share", "opencode");
-  const ocStateDir = join3(home, ".local", "state", "opencode");
-  mkdirSync4(configDir, { recursive: true });
-  mkdirSync4(shareDir, { recursive: true });
-  mkdirSync4(ocStateDir, { recursive: true });
-  const configPath = join3(configDir, "opencode.json");
-  if (!existsSync4(configPath)) {
-    writeFileSync3(configPath, JSON.stringify({
+  const configDir = join2(home, ".config", "opencode");
+  const shareDir = join2(home, ".local", "share", "opencode");
+  const ocStateDir = join2(home, ".local", "state", "opencode");
+  mkdirSync3(configDir, { recursive: true });
+  mkdirSync3(shareDir, { recursive: true });
+  mkdirSync3(ocStateDir, { recursive: true });
+  const configPath = join2(configDir, "opencode.json");
+  if (!existsSync3(configPath)) {
+    writeFileSync2(configPath, JSON.stringify({
       $schema: "https://opencode.ai/config.json",
       plugin: [pluginPath]
     }, null, 2), { encoding: "utf-8" });
@@ -11186,16 +11177,16 @@ function stageAdminHome(dataDir, pluginPath) {
 }
 function writeRuntimeFile(dataDir, data) {
   const path = runtimePath(dataDir);
-  mkdirSync4(dataDir, { recursive: true });
-  writeFileSync3(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
+  mkdirSync3(dataDir, { recursive: true });
+  writeFileSync2(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
   } catch {}
 }
 function writePidFile(dataDir, pid) {
   const path = pidfilePath(dataDir);
-  mkdirSync4(dataDir, { recursive: true });
-  writeFileSync3(path, `${pid}
+  mkdirSync3(dataDir, { recursive: true });
+  writeFileSync2(path, `${pid}
 `, { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
@@ -11203,10 +11194,10 @@ function writePidFile(dataDir, pid) {
 }
 function readPidFile(dataDir) {
   const path = pidfilePath(dataDir);
-  if (!existsSync4(path))
+  if (!existsSync3(path))
     return null;
   try {
-    const raw = readFileSync4(path, "utf-8").trim();
+    const raw = readFileSync3(path, "utf-8").trim();
     const pid = Number.parseInt(raw, 10);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
@@ -11215,7 +11206,7 @@ function readPidFile(dataDir) {
 }
 function unlinkSafely(path) {
   try {
-    if (existsSync4(path))
+    if (existsSync3(path))
       unlinkSync(path);
   } catch {}
 }
@@ -11256,13 +11247,13 @@ function failUnavailable(dataDir, err) {
   const reason = looksMissing ? "opencode binary not on PATH" : `opencode spawn failed: ${msg}`;
   console.warn(`[local-opencode] ${reason}. Local admin OpenCode unavailable; remote endpoints still work.`);
   try {
-    writeFileSync3(unavailableSentinelPath(dataDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
+    writeFileSync2(unavailableSentinelPath(dataDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
   } catch {}
   return null;
 }
 async function startLocalOpenCode(opts) {
   const { dataDir, pluginPath } = opts;
-  mkdirSync4(dataDir, { recursive: true });
+  mkdirSync3(dataDir, { recursive: true });
   sweepStalePid(dataDir);
   const password = generatePassword();
   const { home } = stageAdminHome(dataDir, pluginPath);
@@ -11296,7 +11287,7 @@ async function startLocalOpenCode(opts) {
             const m2 = line.match(/on\s+(https?:\/\/[^\s]+)/);
             if (m2) {
               clearTimeout(timer);
-              resolve(m2[1]);
+              resolve(normalizeLoopbackUrl(m2[1]));
               return;
             }
           }
@@ -11354,24 +11345,27 @@ ${out}` : ""}`));
 if (!globalThis.Bun) {
   globalThis.Bun = { env: process.env };
 }
-var __filename2 = fileURLToPath3(import.meta.url);
-var __dirname2 = dirname3(__filename2);
+var __filename2 = fileURLToPath2(import.meta.url);
+var __dirname2 = dirname2(__filename2);
 function resolveAdminToolsPluginPath() {
-  const packed = join4(process.resourcesPath ?? "", "admin-tools", "index.js");
-  if (existsSync5(packed))
+  const packed = join3(process.resourcesPath ?? "", "admin-tools", "index.js");
+  if (existsSync4(packed))
     return packed;
-  const dev = join4(__dirname2, "..", "admin-tools", "dist", "index.js");
-  if (existsSync5(dev))
+  const dev = join3(__dirname2, "..", "admin-tools", "dist", "index.js");
+  if (existsSync4(dev))
     return dev;
   return "@openpalm/admin-tools-plugin";
 }
 var UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 var READY_TIMEOUT_MS = 60000;
+var CTRL_DOUBLE_PRESS_WINDOW_MS = 500;
+var FALLBACK_MIC_SHORTCUT = "CommandOrControl+Shift+M";
 var mainWindow = null;
 var splashWindow = null;
 var tray = null;
 var uiProcess = null;
 var localOpencode = null;
+var registeredMicShortcut = null;
 var STDERR_RING_SIZE = 200;
 var stderrRing = [];
 function appendStderrLine(line) {
@@ -11387,14 +11381,22 @@ function resolveAssistantUrl(homeDir) {
   const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
   if (userOverride)
     return userOverride;
-  const stackEnv = parseEnvFile(join4(homeDir, "knowledge", "env", "stack.env"));
+  const stackEnv = parseEnvFile(join3(homeDir, "knowledge", "env", "stack.env"));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || "127.0.0.1";
   const port = stackEnv.OP_ASSISTANT_PORT || "3800";
   return `http://${bind}:${port}`;
 }
 function buildUIServerEnv(homeDir, port, update) {
+  const stackEnv = parseEnvFile(join3(homeDir, "knowledge", "env", "stack.env"));
+  const stackForUi = {};
+  for (const [k2, v2] of Object.entries(stackEnv)) {
+    if (k2 === "OP_IMAGE_TAG" || k2 === "OP_HOME")
+      continue;
+    stackForUi[k2] = v2;
+  }
   const env = {
     ...process.env,
+    ...stackForUi,
     OP_HOME: homeDir,
     HOST: "127.0.0.1",
     PORT: String(port),
@@ -11403,8 +11405,8 @@ function buildUIServerEnv(homeDir, port, update) {
     OP_ELECTRON_VERSION: app.getVersion?.() ?? "",
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
-  const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");
-  if (existsSync5(skeletonDir)) {
+  const skeletonDir = join3(process.resourcesPath ?? "", "openpalm-skeleton");
+  if (existsSync4(skeletonDir)) {
     env.OPENPALM_SKELETON_DIR = skeletonDir;
   }
   if (update?.updateAvailable && update.latestVersion) {
@@ -11414,10 +11416,26 @@ function buildUIServerEnv(homeDir, port, update) {
   }
   return env;
 }
+function resolveAssetPath(fileName) {
+  const assetPath = join3(__dirname2, "..", "assets", fileName);
+  return existsSync4(assetPath) ? assetPath : null;
+}
+function createDoublePressHandler(onDoublePress, windowMs = CTRL_DOUBLE_PRESS_WINDOW_MS, now = () => Date.now()) {
+  let lastPressAt = 0;
+  return () => {
+    const pressedAt = now();
+    if (pressedAt - lastPressAt <= windowMs) {
+      lastPressAt = 0;
+      onDoublePress();
+      return;
+    }
+    lastPressAt = pressedAt;
+  };
+}
 async function killStaleUIServer(pidFile) {
   let pid = null;
   try {
-    const raw = readFileSync5(pidFile, "utf-8").trim();
+    const raw = readFileSync4(pidFile, "utf-8").trim();
     const n = Number.parseInt(raw, 10);
     if (Number.isFinite(n) && n > 0)
       pid = n;
@@ -11455,8 +11473,8 @@ async function startUIServer() {
   const dataDir = resolveDataDir();
   resolveConfigDir();
   ensureHomeDirs();
-  const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");
-  if (existsSync5(skeletonDir)) {
+  const skeletonDir = join3(process.resourcesPath ?? "", "openpalm-skeleton");
+  if (existsSync4(skeletonDir)) {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
     try {
       await seedOpenPalmDir(`v${app.getVersion()}`, homeDir, resolveConfigDir(), dataDir);
@@ -11478,7 +11496,7 @@ async function startUIServer() {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
   let uiBuildDir = resolveUiBuildDir();
-  if (!existsSync5(join4(uiBuildDir, "index.js"))) {
+  if (!existsSync4(join3(uiBuildDir, "index.js"))) {
     console.log("UI build not found — seeding @openpalm/ui from npm...");
     try {
       await seedUiBuild(uiUpdateChannel(version), dataDir);
@@ -11489,9 +11507,9 @@ async function startUIServer() {
       return;
     }
   }
-  const uiPidFile = join4(dataDir, ".ui-server.pid");
+  const uiPidFile = join3(dataDir, ".ui-server.pid");
   await killStaleUIServer(uiPidFile);
-  uiProcess = spawn2("node", [join4(uiBuildDir, "index.js")], {
+  uiProcess = spawn2("node", [join3(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
     env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
     detached: process.platform !== "win32",
@@ -11499,7 +11517,7 @@ async function startUIServer() {
   });
   if (uiProcess.pid) {
     try {
-      writeFileSync4(uiPidFile, String(uiProcess.pid));
+      writeFileSync3(uiPidFile, String(uiProcess.pid));
     } catch {}
   }
   uiProcess.stderr?.on("data", (chunk) => {
@@ -11551,10 +11569,11 @@ function stopUIServer() {
     killProcessTree(pid, "SIGKILL");
   }
   try {
-    rmSync2(join4(resolveDataDir(), ".ui-server.pid"), { force: true });
+    rmSync2(join3(resolveDataDir(), ".ui-server.pid"), { force: true });
   } catch {}
 }
 function createSplashWindow() {
+  const icon = resolveAssetPath("icon.png") ?? undefined;
   splashWindow = new BrowserWindow({
     width: 380,
     height: 200,
@@ -11563,6 +11582,7 @@ function createSplashWindow() {
     movable: true,
     alwaysOnTop: true,
     show: true,
+    icon,
     backgroundColor: "#0f172a",
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
@@ -11608,6 +11628,7 @@ async function resolveInitialUrl() {
 async function createWindow() {
   const update = getCachedUpdateInfo();
   const title = update?.updateAvailable ? `OpenPalm — Update available (v${update.latestVersion})` : "OpenPalm";
+  const icon = resolveAssetPath("icon.png") ?? undefined;
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 900,
@@ -11615,10 +11636,12 @@ async function createWindow() {
     minHeight: 400,
     title,
     show: false,
+    icon,
     webPreferences: {
-      preload: join4(__dirname2, "preload.cjs"),
+      preload: join3(__dirname2, "preload.cjs"),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      backgroundThrottling: false
     }
   });
   const initialUrl = await resolveInitialUrl();
@@ -11652,9 +11675,28 @@ function showWindow() {
     createWindow();
   }
 }
+function triggerGlobalMicToggle() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("global-mic-toggle");
+  }
+}
+function registerGlobalMicShortcut() {
+  const ctrlDoublePress = createDoublePressHandler(triggerGlobalMicToggle);
+  if (globalShortcut.register("Ctrl", ctrlDoublePress)) {
+    registeredMicShortcut = "Ctrl (double-press)";
+    console.log("Registered global mic shortcut:", registeredMicShortcut);
+    return;
+  }
+  if (globalShortcut.register(FALLBACK_MIC_SHORTCUT, triggerGlobalMicToggle)) {
+    registeredMicShortcut = FALLBACK_MIC_SHORTCUT;
+    console.log("Registered fallback global mic shortcut:", registeredMicShortcut);
+    return;
+  }
+  console.warn("Failed to register a global mic shortcut.");
+}
 function createTray() {
-  const iconPath = join4(__dirname2, "..", "assets", "tray-icon.png");
-  if (!existsSync5(iconPath)) {
+  const iconPath = resolveAssetPath("tray-icon.png");
+  if (!iconPath) {
     return;
   }
   tray = new Tray(iconPath);
@@ -11694,6 +11736,7 @@ app.whenReady().then(async () => {
   }
   await createWindow();
   createTray();
+  registerGlobalMicShortcut();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0)
       createWindow();
@@ -11713,6 +11756,7 @@ app.on("before-quit", async (event) => {
     return;
   cleanupStarted = true;
   event.preventDefault();
+  globalShortcut.unregisterAll();
   stopUIServer();
   if (localOpencode) {
     const handle = localOpencode;
@@ -11729,5 +11773,6 @@ export {
   waitForReady,
   resolveAssistantUrl,
   getRecentStderr,
+  createDoublePressHandler,
   buildUIServerEnv
 };

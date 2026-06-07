@@ -38,7 +38,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 const { mockBrowserWindow } = vi.hoisted(() => ({
   mockBrowserWindow: {
     loadURL: vi.fn(),
-    webContents: { setWindowOpenHandler: vi.fn() },
+    webContents: { setWindowOpenHandler: vi.fn(), send: vi.fn() },
     on: vi.fn(),
     once: vi.fn(),
     show: vi.fn(),
@@ -75,6 +75,10 @@ vi.mock('electron', () => ({
       on: vi.fn(),
     };
   },
+  globalShortcut: {
+    register: vi.fn(() => false),
+    unregisterAll: vi.fn(),
+  },
   Menu: { buildFromTemplate: vi.fn(() => ({})) },
   shell: { openExternal: vi.fn() },
   ipcMain: { handle: vi.fn() },
@@ -93,7 +97,12 @@ vi.mock('@openpalm/lib', () => ({
   parseEnvFile: vi.fn(() => ({})),
 }));
 
-import { buildUIServerEnv, resolveAssistantUrl, waitForReady } from '../src/main.js';
+vi.mock('../src/local-opencode.js', () => ({
+  startLocalOpenCode: vi.fn(() => Promise.resolve(null)),
+  killProcessTree: vi.fn(),
+}));
+
+import { buildUIServerEnv, createDoublePressHandler, resolveAssistantUrl, waitForReady } from '../src/main.js';
 import * as lib from '@openpalm/lib';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
@@ -208,6 +217,35 @@ describe('waitForReady', () => {
 
     const result = await promise;
     expect(result).toBe(false);
+  });
+});
+
+describe('createDoublePressHandler', () => {
+  it('triggers only on the second press inside the threshold window', () => {
+    const toggle = vi.fn();
+    let currentTime = 1_000;
+    const handler = createDoublePressHandler(toggle, 500, () => currentTime);
+
+    handler();
+    expect(toggle).not.toHaveBeenCalled();
+
+    currentTime = 1_300;
+    handler();
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets when the second press arrives too late', () => {
+    const toggle = vi.fn();
+    let currentTime = 1_000;
+    const handler = createDoublePressHandler(toggle, 500, () => currentTime);
+
+    handler();
+    currentTime = 1_700;
+    handler();
+    currentTime = 1_950;
+    handler();
+
+    expect(toggle).toHaveBeenCalledTimes(1);
   });
 });
 

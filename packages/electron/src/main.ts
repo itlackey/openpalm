@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -45,12 +45,15 @@ function resolveAdminToolsPluginPath(): string {
 
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 const READY_TIMEOUT_MS = 60_000;
+const CTRL_DOUBLE_PRESS_WINDOW_MS = 500;
+const FALLBACK_MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let uiProcess: ChildProcess | null = null;
 let localOpencode: LocalOpencodeHandle | null = null;
+let registeredMicShortcut: string | null = null;
 
 // ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
 const STDERR_RING_SIZE = 200;
@@ -136,6 +139,29 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     if (update.latestUrl) env.OP_ELECTRON_LATEST_URL = update.latestUrl;
   }
   return env;
+}
+
+function resolveAssetPath(fileName: string): string | null {
+  const assetPath = join(__dirname, '..', 'assets', fileName);
+  return existsSync(assetPath) ? assetPath : null;
+}
+
+export function createDoublePressHandler(
+  onDoublePress: () => void,
+  windowMs = CTRL_DOUBLE_PRESS_WINDOW_MS,
+  now: () => number = () => Date.now(),
+): () => void {
+  let lastPressAt = 0;
+
+  return () => {
+    const pressedAt = now();
+    if (pressedAt - lastPressAt <= windowMs) {
+      lastPressAt = 0;
+      onDoublePress();
+      return;
+    }
+    lastPressAt = pressedAt;
+  };
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
@@ -315,6 +341,7 @@ function stopUIServer(): void {
 // ── Window management ────────────────────────────────────────────────────────
 
 function createSplashWindow(): void {
+  const icon = resolveAssetPath('icon.png') ?? undefined;
   splashWindow = new BrowserWindow({
     width: 380,
     height: 200,
@@ -323,6 +350,7 @@ function createSplashWindow(): void {
     movable: true,
     alwaysOnTop: true,
     show: true,
+    icon,
     backgroundColor: '#0f172a',
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
@@ -375,6 +403,7 @@ async function createWindow(): Promise<void> {
   const title = update?.updateAvailable
     ? `OpenPalm — Update available (v${update.latestVersion})`
     : 'OpenPalm';
+  const icon = resolveAssetPath('icon.png') ?? undefined;
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -385,10 +414,12 @@ async function createWindow(): Promise<void> {
     minHeight: 400,
     title,
     show: false,
+    icon,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
     },
   });
 
@@ -431,11 +462,35 @@ function showWindow(): void {
   }
 }
 
+function triggerGlobalMicToggle(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('global-mic-toggle');
+  }
+}
+
+function registerGlobalMicShortcut(): void {
+  const ctrlDoublePress = createDoublePressHandler(triggerGlobalMicToggle);
+
+  if (globalShortcut.register('Ctrl', ctrlDoublePress)) {
+    registeredMicShortcut = 'Ctrl (double-press)';
+    console.log('Registered global mic shortcut:', registeredMicShortcut);
+    return;
+  }
+
+  if (globalShortcut.register(FALLBACK_MIC_SHORTCUT, triggerGlobalMicToggle)) {
+    registeredMicShortcut = FALLBACK_MIC_SHORTCUT;
+    console.log('Registered fallback global mic shortcut:', registeredMicShortcut);
+    return;
+  }
+
+  console.warn('Failed to register a global mic shortcut.');
+}
+
 // ── Tray ─────────────────────────────────────────────────────────────────────
 
 function createTray(): void {
-  const iconPath = join(__dirname, '..', 'assets', 'tray-icon.png');
-  if (!existsSync(iconPath)) {
+  const iconPath = resolveAssetPath('tray-icon.png');
+  if (!iconPath) {
     return;
   }
 
@@ -489,6 +544,7 @@ app.whenReady().then(async () => {
 
   await createWindow();
   createTray();
+  registerGlobalMicShortcut();
 
   app.on('activate', () => {
     // macOS: re-open window when dock icon is clicked
@@ -521,6 +577,7 @@ app.on('before-quit', async (event) => {
   if (cleanupStarted) return;
   cleanupStarted = true;
   event.preventDefault();
+  globalShortcut.unregisterAll();
   stopUIServer();
   if (localOpencode) {
     const handle = localOpencode;

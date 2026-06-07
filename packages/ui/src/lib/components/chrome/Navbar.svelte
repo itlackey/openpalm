@@ -1,11 +1,12 @@
 <script lang="ts">
   import { page } from '$app/state';
   import IconButton from '$lib/components/common/IconButton.svelte';
-  import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
   import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
+  import SettingsDrawer from '$lib/components/chrome/SettingsDrawer.svelte';
   import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
   import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
+  import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
@@ -23,31 +24,18 @@
   // surfaces so it's a stable, top-level destination.
   const onChatSurface = $derived(
     pathname === '/chat' ||
-    pathname.startsWith('/chat/') 
+    pathname.startsWith('/chat/')
   );
   const onAdvancedSurface = $derived(
     pathname === '/advanced' ||
     pathname.startsWith('/advanced/')
   );
 
-  // The Settings gear administers the LOCAL stack, so it only appears when the
-  // selected assistant is local (loopback). Hidden for a remote assistant —
-  // you don't administer a remote machine from here. Defaults to shown until an
-  // endpoint resolves.
+  // Only the local assistant should show the direct admin link. The drawer
+  // itself stays global so theme and endpoint-management remain available even
+  // while connected to a remote assistant.
   const isLocalAssistant = $derived.by(() => {
-    const url = endpointsService.active?.url ?? '';
-    if (!url) return true;
-    try {
-      const host = new URL(url).hostname;
-      return (
-        host === 'localhost' ||
-        host === '127.0.0.1' ||
-        host === '::1' ||
-        host === 'host.docker.internal'
-      );
-    } catch {
-      return true;
-    }
+    return isLocalAssistantUrl(endpointsService.active?.url);
   });
 </script>
 
@@ -63,16 +51,14 @@
 
 
 
-    <!-- Global controls, left→right: settings/chat · assistant · session · theme ·
-         speaker · mic (speaker+mic come from VoiceControl). The leading button
-         toggles by context: in admin it returns to Chat; elsewhere it opens
-         Settings (local assistant only). Present on every page, every width. -->
+    <!-- Global controls, left→right: chat/settings · assistant · session ·
+         advanced · speaker · mic (speaker+mic come from VoiceControl). Present
+         on every page, every width. -->
     <div class="navbar-actions">
       {#if onAdmin}
         <IconButton href="/chat" ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
-      {:else if isLocalAssistant}
-        <IconButton href="/admin" ariaLabel="Settings & administration" title="Manage this machine" icon={gearIcon} />
       {/if}
+      <SettingsDrawer showManageAssistant={isLocalAssistant} />
       {#if onChatSurface}
         <!-- Hidden ≥1024px: the chat side panel hosts these selectors there. -->
         <span class="chat-selectors">
@@ -83,7 +69,6 @@
       {#if onChatSurface || onAdvancedSurface}
         <ModeSwitch />
       {/if}
-      <ThemeToggle />
       <VoiceControl />
     </div>
   </div>
@@ -92,13 +77,6 @@
 {#snippet chatIcon()}
   <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
-{/snippet}
-
-{#snippet gearIcon()}
-  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
 {/snippet}
 
@@ -208,14 +186,14 @@
     }
     /* Drop only the caret at narrow widths so the cluster fits a 320px viewport;
        keep the status dot — it visually distinguishes the two picker triggers
-       from the plain utility icon buttons (gear/theme/mic). */
+       from the plain utility icon buttons (settings/mic). */
     .navbar-actions :global(.trigger .caret) {
       display: none;
     }
   }
 
   /* Narrow phones: the controls are now 40px tall; tighten the icon-only
-     switcher/gear padding + gutters so the cluster still fits within 320px. */
+     switcher padding + gutters so the cluster still fits within 320px. */
   @media (max-width: 400px) {
     .navbar-inner {
       padding: 0 var(--space-2);

@@ -22,8 +22,6 @@
     "test": "bun test",
     "test:e2e": "npx playwright test",
     "wizard:local": "bun run src/main.ts install --no-start --force",
-    "_build_note": "CI runs 'bun run ui:build:tar' from repo root before any build:* target. The prebuild hook below is npm-only; Bun does not run lifecycle hooks.",
-    "prebuild": "cd ../ui && npm run build && npm run build:tar",
     "build": "bun build src/main.ts --compile --outfile dist/openpalm-cli",
     "build:linux-x64": "bun build src/main.ts --compile --target=bun-linux-x64 --outfile dist/openpalm-cli-linux-x64",
     "build:linux-arm64": "bun build src/main.ts --compile --target=bun-linux-arm64 --outfile dist/openpalm-cli-linux-arm64",

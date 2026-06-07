@@ -56,13 +56,6 @@
     <div class="notice">Wait for the current reply to finish before switching.</div>
   {/if}
 
-  <button type="button" class="list-item new-btn" onclick={startNew} disabled={chat.sending}>
-    <span class="check" aria-hidden="true">+</span>
-    <span class="item-text"><span class="item-label">New session</span></span>
-  </button>
-
-  <div class="divider"></div>
-
   {#if loading}
     <div class="empty"><Spinner size={12} /><span>Loading sessions…</span></div>
   {:else if error}
@@ -97,6 +90,13 @@
       </button>
     {/if}
   {/if}
+
+  <div class="divider"></div>
+
+  <button type="button" class="list-item new-btn" onclick={startNew} disabled={chat.sending}>
+    <span class="check" aria-hidden="true">+</span>
+    <span class="item-text"><span class="item-label">New session</span></span>
+  </button>
 </div>
 
 <style>

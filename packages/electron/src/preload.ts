@@ -12,6 +12,8 @@ interface UpdateStatus {
   updateAvailable: boolean;
 }
 
+type VoidCallback = () => void;
+
 contextBridge.exposeInMainWorld('openpalm', {
   /** Synchronous read of update info from env vars set by main.ts. */
   updateStatus(): UpdateStatus {
@@ -39,5 +41,13 @@ contextBridge.exposeInMainWorld('openpalm', {
   /** Restart the Electron app (relaunch + quit). Only works inside Electron. */
   restart(): Promise<void> {
     return ipcRenderer.invoke('restart-app');
+  },
+
+  onGlobalMicToggle(callback: VoidCallback): VoidCallback {
+    const listener = () => callback();
+    ipcRenderer.on('global-mic-toggle', listener);
+    return () => {
+      ipcRenderer.removeListener('global-mic-toggle', listener);
+    };
   },
 });

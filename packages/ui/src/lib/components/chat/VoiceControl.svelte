@@ -14,15 +14,27 @@
 	const MAX_INTERIM_CHARS = 48;
 	import { chat } from '$lib/chat/chat-state.svelte.js';
 
+	type OpenPalmBridge = {
+		onGlobalMicToggle?: (callback: () => void) => (() => void) | void;
+	};
+
 	let mounted = $state(false);
+	let removeGlobalMicToggle: (() => void) | null = null;
 
 	onMount(() => {
 		void initVoice().then(() => {
 			mounted = true;
 		});
+
+		const openpalm = (window as Window & { openpalm?: OpenPalmBridge }).openpalm;
+		removeGlobalMicToggle = openpalm?.onGlobalMicToggle?.(() => {
+			handleMicClick();
+		}) ?? null;
 	});
 
 	onDestroy(() => {
+		removeGlobalMicToggle?.();
+		removeGlobalMicToggle = null;
 		destroyVoice();
 	});
 
@@ -54,6 +66,7 @@
 	 * Navbar (containing this component) is mounted everywhere.
 	 */
 	function handleMicClick(): void {
+		if (isProcessing) return;
 		if (isRecording) {
 			stopListening();
 			return;
