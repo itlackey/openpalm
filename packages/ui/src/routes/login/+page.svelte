@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto, invalidateAll } from '$app/navigation';
+  import { goto } from '$app/navigation';
   import AuthGate from '$lib/components/common/AuthGate.svelte';
   import type { PageData } from './$types';
 
@@ -10,6 +10,9 @@
 
   async function handleAuthSuccess(token: string): Promise<boolean> {
     if (loading) return false;
+    // Capture the destination before any await so it can't be clobbered by a
+    // data refresh mid-flight.
+    const target = data.redirectTo || '/chat';
     loading = true;
     error = '';
     try {
@@ -25,10 +28,11 @@
           : 'Invalid password.';
         return false;
       }
-      // Cookie is set; refresh server data so the hook now sees us as admin,
-      // then navigate to the originally-requested page.
-      await invalidateAll();
-      await goto(data.redirectTo);
+      // Cookie is set; navigate to the originally-requested page. goto runs the
+      // destination's loads fresh with the new cookie, so the hook admits us.
+      // (No invalidateAll: re-running this page's load would fire its own
+      // already-authed redirect and race this goto.)
+      await goto(target);
       return true;
     } catch {
       error = 'Unable to reach admin API.';
