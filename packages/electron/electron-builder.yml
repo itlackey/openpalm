@@ -37,7 +37,12 @@ linux:
 
 win:
   target:
+    # nsis = the "Setup.exe" installer (Start Menu, uninstaller, electron-updater
+    # auto-update via the .blockmap). zip = a portable, no-install build users can
+    # just extract and run.
     - target: nsis
+      arch: [x64]
+    - target: zip
       arch: [x64]
   icon: assets/icon.png
 

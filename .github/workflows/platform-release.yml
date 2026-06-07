@@ -463,6 +463,7 @@ jobs:
             packages/electron/dist/packages/*.dmg
             packages/electron/dist/packages/*.AppImage
             packages/electron/dist/packages/*.exe
+            packages/electron/dist/packages/*.zip
             packages/electron/dist/packages/*.yml
             packages/electron/dist/packages/*.blockmap
 
@@ -618,5 +619,6 @@ jobs:
             dist/*.dmg
             dist/*.AppImage
             dist/*.exe
+            dist/*.zip
             dist/*.yml
             dist/*.blockmap
