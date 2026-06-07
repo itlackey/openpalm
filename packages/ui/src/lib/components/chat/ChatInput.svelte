@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spinner from '$lib/components/common/Spinner.svelte';
+	import NewChatButton from './NewChatButton.svelte';
   interface Props {
     sending: boolean;
     onSend: (text: string) => void;
@@ -37,6 +38,7 @@
 
 <div class="chat-input-row">
   <div class="input-area">
+    <NewChatButton />
     <textarea
       id="chat-input"
       bind:this={textareaEl}
