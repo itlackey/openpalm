@@ -1,23 +1,31 @@
 # Upgrade guide: 0.10.x → 0.11.0
 
-OpenPalm 0.11.0 is a large architectural release. The platform binary and the
-container stack update automatically, **but the on-disk layout for env files and
-secrets changed and there is no automated migration for it** — you move (or
-re-create) a few files by hand, once.
+OpenPalm 0.11.0 is a large architectural release that also changes the on-disk
+layout for env files and secrets. **`openpalm update` migrates that layout
+automatically** — it detects a 0.10.x home, takes a full backup first, then
+copies your env/secret files into their new locations and transforms them
+(aborting safely, with no changes, if the backup fails). It is **copy-only**:
+your original `vault/` directory is left untouched as an in-place recovery copy.
+The only manual follow-up is re-adding provider API keys and LLM/embedding
+config, whose formats/locations changed (steps 5–6).
 
 This guide is the single place a 0.10.x operator should start. It covers the
-ordered procedure, the exact old→new file/variable mapping, and what breaks if
-you skip a step.
+ordered procedure, what the automatic migration does, the exact old→new
+file/variable mapping (also usable as a manual / no-CLI fallback), and what
+breaks if you skip a step.
 
 > **Who needs this:** anyone with an existing `~/.openpalm` from 0.10.x (or a
 > 0.11.0 **beta**). Fresh installs do not need it — run the setup wizard.
 >
 > **Time:** roughly 10–20 minutes, mostly image-pull time (the OpenCode runtime
-> jumps several versions). **Risk:** low if you back up first (step 1).
+> jumps several versions). **Risk:** low — `openpalm update` backs up first and
+> aborts safely if the backup fails.
 >
-> **Manual work:** the secrets/env file move (step 4), the port-var rename if you
-> customized it (step 5), and moving addon enablement into `stack.env` if
-> present (step 6). Everything else is handled by `openpalm update` (step 7).
+> **Manual work:** essentially none for the file layout — `openpalm update`
+> relocates and transforms env/secret files, renames the port var, splits channel
+> secrets, and converts addon enablement for you. You only re-add provider API
+> keys (Connections tab) and LLM/embedding config (`config/akm/config.json`)
+> afterward, since those formats changed (steps 5–6).
 
 ---
 
@@ -38,8 +46,9 @@ you skip a step.
 | Channel adapters | baked into the image | **runtime npm installs** (`CHANNEL_PACKAGE`) |
 | OpenCode runtime | 1.3.x | **1.15.13** |
 
-Most of this is handled for you by `openpalm update`. The manual work is steps
-4–6 below.
+All of this is handled for you by `openpalm update` — including the env/secret
+file relocation (step 4). The only manual follow-up is re-adding provider keys
+and LLM/embedding config (steps 5–6), whose formats changed.
 
 > **Terminology:** in 0.11.0, **env files** (`knowledge/env/*.env`) hold
 > non-secret settings (ports, paths) and are passed to Compose as a group;
@@ -118,9 +127,10 @@ docker version && docker compose version
 > migrate provider credentials — do those manually (below + step 7). Prefer the
 > manual walkthrough if you want to understand each change.
 
-`openpalm update` does **not** relocate your files. The cleanest, lowest-risk
-approach mixes a file move (for plain env/secret values) with **re-creating**
-the credentials whose format/location is easiest to regenerate.
+If you'd rather migrate by hand (or have no CLI), the mapping below is exactly
+what the automatic harness does. The cleanest manual approach mixes a file move
+(for plain env/secret values) with **re-creating** the credentials whose
+format/location is easiest to regenerate.
 
 **Coming from shipped 0.10.x** (top-level `vault/` directory). Create the
 destination dirs if missing; keep `chmod 700` on directories and `chmod 600` on
@@ -267,9 +277,11 @@ line moves to `@latest`. See
 | Setup wizard appears unexpectedly | install not detected as complete | finish the wizard, or verify `knowledge/env/stack.env` has `OP_SETUP_COMPLETE=true` |
 
 **Recovery:** `openpalm rollback` only restores the most recent `stack.env` /
-`auth.json` / compose snapshot — it does **not** undo the manual file move from
-step 4 or restore your 0.10.x `vault/` files. To recover from a bad migration,
-restore the tar backup from step 1 (see [backup-restore.md](../backup-restore.md)).
+`auth.json` / compose snapshot — it does **not** revert the layout migration. You
+have two safety nets: the migration is copy-only, so your original `vault/` is
+left untouched in place, and `openpalm update` takes a full home backup (under
+`data/backups/<timestamp>/`) before it migrates. To recover from a bad migration,
+restore that backup or the tar backup from step 1 (see [backup-restore.md](../backup-restore.md)).
 
 ---
 

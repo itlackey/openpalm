@@ -37,6 +37,11 @@ function seed010(h: string): void {
   writeFileSync(join(h, "config", "stack.yml"), "version: 1\ncapabilities:\n  llm: openai\n");
 }
 
+/** Sorted top-level entry names under a directory. */
+function entries(dir: string): string[] {
+  return readdirSync(dir).sort();
+}
+
 beforeEach(() => {
   prevOpHome = process.env.OP_HOME;
   home = mkdtempSync(join(tmpdir(), "op-migrate-"));
@@ -84,6 +89,112 @@ describe("ensureMigrated 0.10 → 0.11", () => {
 
     // Non-destructive: originals untouched.
     expect(existsSync(join(home, "vault", "stack", "stack.env"))).toBe(true);
+  });
+
+  it("ends with exactly the expected 0.11 directories and every datum in its proper location", () => {
+    seed010(home);
+    ensureMigrated();
+
+    // Only the expected top-level directories exist. The legacy vault/ is
+    // intentionally retained (copy-only recovery copy); nothing stray is created.
+    expect(entries(home)).toEqual(["config", "data", "knowledge", "vault"]);
+
+    // knowledge/ holds exactly the env + secrets stores.
+    expect(entries(join(home, "knowledge"))).toEqual(["env", "secrets"]);
+
+    // Every migrated datum landed in its proper 0.11 location — no missing, no extra.
+    expect(entries(join(home, "knowledge", "env"))).toEqual([
+      "stack.env",
+      "stack.env.removed-secrets.bak",
+      "user.env",
+    ]);
+    expect(entries(join(home, "knowledge", "secrets"))).toEqual([
+      "apprise.yaml",
+      "channel_discord_secret",
+      "channel_slack_secret",
+      "op_ui_login_password",
+      "some.secret",
+    ]);
+
+    // The full backup landed under data/backups (and nowhere else top-level).
+    expect(existsSync(join(home, "data", "backups"))).toBe(true);
+
+    // Nothing leaked into a wrong place: no 0.11 secrets under knowledge/env,
+    // and no plaintext login password left inside the migrated stack.env.
+    expect(existsSync(join(home, "knowledge", "env", "op_ui_login_password"))).toBe(false);
+    expect(readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8"))
+      .not.toContain("hunter2");
+  });
+
+  it("migrates a minimal home (only stack.env) without creating stray files", () => {
+    mkdirSync(join(home, "vault", "stack"), { recursive: true });
+    mkdirSync(join(home, "data"), { recursive: true });
+    writeFileSync(
+      join(home, "vault", "stack", "stack.env"),
+      "OP_IMAGE_TAG=0.10.2\nOP_ASSISTANT_PORT=3800\n",
+    );
+    const report = ensureMigrated();
+    expect(report.migrated).toBe(true);
+
+    // env/ has only stack.env — no user.env, no removed-secrets.bak (there were
+    // no secrets/cap keys to quarantine).
+    expect(entries(join(home, "knowledge", "env"))).toEqual(["stack.env"]);
+    // secrets/ exists (created) but is empty — nothing to migrate.
+    expect(entries(join(home, "knowledge", "secrets"))).toEqual([]);
+    const stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toContain("OP_IMAGE_TAG=0.10.2");
+    expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+  });
+
+  it("does not write a removed-secrets.bak when stack.env has no secret/cap keys", () => {
+    mkdirSync(join(home, "vault", "stack"), { recursive: true });
+    mkdirSync(join(home, "data"), { recursive: true });
+    writeFileSync(join(home, "vault", "stack", "stack.env"), "OP_ASSISTANT_PORT=3800\n");
+    ensureMigrated();
+    expect(existsSync(join(home, "knowledge", "env", "stack.env.removed-secrets.bak"))).toBe(false);
+  });
+
+  it("converts addons[] from a nested config/stack/stack.yml too", () => {
+    seed010(home);
+    rmSync(join(home, "config", "stack.yml"), { force: true });
+    mkdirSync(join(home, "config", "stack"), { recursive: true });
+    writeFileSync(join(home, "config", "stack", "stack.yml"), "version: 2\naddons:\n  - voice\n");
+    ensureMigrated();
+    expect(readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8"))
+      .toContain("OP_ENABLED_ADDONS=voice");
+  });
+
+  it("normalizes channel secret names to lowercase and skips invalid ones", () => {
+    mkdirSync(join(home, "vault", "stack"), { recursive: true });
+    mkdirSync(join(home, "data"), { recursive: true });
+    writeFileSync(join(home, "vault", "stack", "stack.env"), "OP_ASSISTANT_PORT=3800\n");
+    writeFileSync(
+      join(home, "vault", "stack", "guardian.env"),
+      // valid (mixed case → lowercase), and an invalid name with a space (skipped).
+      "CHANNEL_Discord_SECRET=abc\nCHANNEL_BAD NAME_SECRET=nope\n",
+    );
+    ensureMigrated();
+    expect(existsSync(join(home, "knowledge", "secrets", "channel_discord_secret"))).toBe(true);
+    expect(entries(join(home, "knowledge", "secrets"))).toEqual(["channel_discord_secret"]);
+  });
+
+  it("preserves user-edited destination files (copy-only, skip-if-exists)", () => {
+    seed010(home);
+    // Simulate a partially-migrated home where the user already has a user.env.
+    mkdirSync(join(home, "knowledge", "env"), { recursive: true });
+    writeFileSync(join(home, "knowledge", "env", "user.env"), "MY_PREF=edited-by-user\n");
+    ensureMigrated();
+    // The existing destination must NOT be clobbered by the vault copy.
+    expect(readFileSync(join(home, "knowledge", "env", "user.env"), "utf-8"))
+      .toContain("edited-by-user");
+  });
+
+  it("copies auth.json best-effort and surfaces a verify-providers note", () => {
+    seed010(home);
+    writeFileSync(join(home, "vault", "stack", "auth.json"), '{"openai":{"type":"api"}}');
+    const report = ensureMigrated();
+    expect(existsSync(join(home, "knowledge", "secrets", "auth.json"))).toBe(true);
+    expect(report.notes.join(" ")).toContain("auth.json");
   });
 
   it("converts a legacy stack.yml addons[] into OP_ENABLED_ADDONS", () => {
