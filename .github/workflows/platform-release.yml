@@ -30,8 +30,13 @@ on:
         required: true
         type: string
         default: main
+      only:
+        description: 'Out-of-band single-package publish: empty = full coordinated release; otherwise one of ui / channel-api / channel-discord / channel-slack (publishes only that npm package — no images/CLI/Electron/voice/tag).'
+        required: false
+        type: string
+        default: ''
       coordinate_independents:
-        description: 'Also stamp + publish the independent packages (UI + channel adapters) at this version.'
+        description: 'Also stamp + publish the independent packages (UI + channel adapters) at this version. Ignored when "only" is set.'
         required: false
         type: boolean
         default: true
@@ -104,6 +109,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           COORDINATE: ${{ inputs.coordinate_independents }}
+          ONLY: ${{ inputs.only }}
         run: |
           node -e "
             const fs = require('fs');
@@ -111,6 +117,7 @@ jobs:
             const groups = JSON.parse(fs.readFileSync('.github/release-package-groups.json', 'utf8'));
             const target = process.env.VERSION;
             const coordinate = process.env.COORDINATE === 'true';
+            const only = process.env.ONLY || '';
 
             // semver compare: returns 1 if a>b, -1 if a<b, 0 if equal. Stable > its
             // prerelease; prerelease identifiers compared per semver (numeric dot-parts
@@ -134,7 +141,10 @@ jobs:
               if(!Array.isArray(vs)) vs = vs ? [vs] : [];
               let mx=null; for(const v of vs){ if(mx===null||cmp(v,mx)>0) mx=v; } return mx; }
 
-            const manifests = coordinate ? groups.coordinatedManifests : groups.platformManifests;
+            // Single-package out-of-band publish: guard only that package.
+            const manifests = only
+              ? ['packages/' + only + '/package.json']
+              : (coordinate ? groups.coordinatedManifests : groups.platformManifests);
             const rows = []; let regressed = false;
             for (const m of manifests) {
               const name = JSON.parse(fs.readFileSync(m, 'utf8')).name;
@@ -173,20 +183,28 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Stamp coordinated manifests + setup scripts
+      - name: Stamp version(s)
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
           COORDINATE: ${{ inputs.coordinate_independents }}
           DRY_RUN: ${{ inputs.dry_run }}
+          ONLY: ${{ inputs.only }}
         run: |
-          KEY='platformManifests'
-          if [ "${COORDINATE}" = 'true' ]; then KEY='coordinatedManifests'; fi
-          mapfile -t MANIFESTS < <(node -p "JSON.parse(require('fs').readFileSync('.github/release-package-groups.json','utf8')).${KEY}.join('\n')")
-          for m in "${MANIFESTS[@]}"; do
-            node scripts/set-version.mjs "${m}" "${VERSION}"
-          done
-          sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
-          sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
+          if [ -n "${ONLY}" ]; then
+            # Single-package out-of-band publish: stamp only that manifest.
+            node scripts/set-version.mjs "packages/${ONLY}/package.json" "${VERSION}"
+            COMMIT_MSG="chore(release): publish ${ONLY}@${VERSION}"
+          else
+            KEY='platformManifests'
+            if [ "${COORDINATE}" = 'true' ]; then KEY='coordinatedManifests'; fi
+            mapfile -t MANIFESTS < <(node -p "JSON.parse(require('fs').readFileSync('.github/release-package-groups.json','utf8')).${KEY}.join('\n')")
+            for m in "${MANIFESTS[@]}"; do
+              node scripts/set-version.mjs "${m}" "${VERSION}"
+            done
+            sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
+            sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
+            COMMIT_MSG="chore(release): set platform version to ${VERSION}"
+          fi
           bun install
 
           if [ "${DRY_RUN}" = 'true' ]; then
@@ -204,11 +222,12 @@ jobs:
             exit 0
           fi
           git add -A
-          git commit -m "chore(release): set platform version to ${VERSION}"
+          git commit -m "${COMMIT_MSG}"
           git push origin "HEAD:${{ inputs.ref }}"
 
   npm-lib:
     needs: bump
+    if: ${{ inputs.only == '' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -221,6 +240,7 @@ jobs:
 
   npm-cli:
     needs: npm-lib
+    if: ${{ inputs.only == '' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -236,6 +256,7 @@ jobs:
 
   npm-sdk:
     needs: npm-lib
+    if: ${{ inputs.only == '' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -248,7 +269,7 @@ jobs:
 
   npm-ui:
     needs: bump
-    if: ${{ inputs.coordinate_independents }}
+    if: ${{ (inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'ui' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -261,8 +282,8 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   npm-channel-api:
-    needs: npm-sdk
-    if: ${{ inputs.coordinate_independents }}
+    needs: [bump, npm-sdk]
+    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result != 'failure' && ((inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'channel-api') }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -274,8 +295,8 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   npm-channel-discord:
-    needs: npm-sdk
-    if: ${{ inputs.coordinate_independents }}
+    needs: [bump, npm-sdk]
+    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result != 'failure' && ((inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'channel-discord') }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -287,8 +308,8 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   npm-channel-slack:
-    needs: npm-sdk
-    if: ${{ inputs.coordinate_independents }}
+    needs: [bump, npm-sdk]
+    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result != 'failure' && ((inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'channel-slack') }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -304,6 +325,7 @@ jobs:
   # gated off) to validate Dockerfiles/build scripts. ─────────────────────────
   images:
     name: Docker image (${{ matrix.image }})
+    if: ${{ inputs.only == '' }}
     needs: [npm-lib, npm-cli, npm-sdk]
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -353,6 +375,7 @@ jobs:
 
   cli:
     name: CLI binary (${{ matrix.artifact }})
+    if: ${{ inputs.only == '' }}
     needs: [npm-lib]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -395,6 +418,7 @@ jobs:
 
   electron:
     name: Electron installer (${{ matrix.platform }})
+    if: ${{ inputs.only == '' }}
     needs: [npm-lib]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -446,7 +470,7 @@ jobs:
     name: Voice image (${{ matrix.tag_suffix }})
     needs: [bump]
     # Stable-only and opt-in; voice is otherwise published out-of-band.
-    if: ${{ inputs.include_voice && !contains(inputs.version, '-') }}
+    if: ${{ inputs.only == '' && inputs.include_voice && !contains(inputs.version, '-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -516,9 +540,10 @@ jobs:
       - cli
       - electron
       - voice
-    # Real release only, and only if nothing upstream failed/cancelled (skipped
+    # Full coordinated release only (no tag/release for an out-of-band single
+    # package), real run, and only if nothing upstream failed/cancelled (skipped
     # optional jobs — independents off, voice off — are fine).
-    if: ${{ !inputs.dry_run && always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    if: ${{ inputs.only == '' && !inputs.dry_run && always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

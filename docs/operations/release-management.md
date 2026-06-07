@@ -295,6 +295,36 @@ release, and it is intentionally separate from the npm publish path.
 
 ---
 
+## npm publishing: single entry point (`platform-release.yml`)
+
+All npm publishing flows through **one** workflow, `.github/workflows/platform-release.yml`.
+This is required by npm trusted publishing (OIDC): npm allows **only one** trusted
+publisher per package and validates the **calling (top-level) workflow's name**, not
+the reusable workflow that runs `npm publish`. So every package's npm trusted
+publisher must be configured (on npmjs.com → package → Settings → Trusted Publisher)
+as:
+
+- Repository: `itlackey/openpalm`
+- Workflow: `platform-release.yml`
+- Environment: (none)
+
+Set this for **every published package**: `@openpalm/lib`, `openpalm`,
+`@openpalm/channels-sdk`, `@openpalm/ui`, `@openpalm/channel-api`,
+`@openpalm/channel-discord`, `@openpalm/channel-slack`. Until that is set, the
+orchestrator's real (non-dry) npm publish will 403.
+
+- **Coordinated release:** dispatch `platform-release.yml` with `version` + `ref`
+  (+ `coordinate_independents`, `include_voice`).
+- **Out-of-band single package** (e.g. a UI or adapter patch): dispatch the same
+  workflow with `only=<ui|channel-api|channel-discord|channel-slack>` — it bumps
+  and publishes just that package (no images/CLI/Electron/voice/tag).
+
+The standalone `publish-ui.yml` / `publish-channel-*.yml` workflows were retired
+(they would fail the trusted-publisher check as a different calling workflow).
+`publish-npm-package.yml` remains as the reusable child invoked by the orchestrator.
+
+---
+
 ## Beta → stable cutover checklist
 
 When promoting a `0.X.Y-beta.N` line to a stable `0.X.Y`:
