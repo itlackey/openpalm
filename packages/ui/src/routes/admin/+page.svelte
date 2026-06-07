@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { version as uiVersion } from '$app/environment';
   import { goto } from '$app/navigation';
+  import { formatTime } from '$lib/format-date.js';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import OverviewTab from '$lib/components/admin/overview/OverviewTab.svelte';
@@ -198,7 +199,7 @@
     }
     containersLoading = false;
     if (containerData) {
-      containersLastUpdated = new Date().toLocaleTimeString();
+      containersLastUpdated = formatTime(Date.now());
     }
   }
 

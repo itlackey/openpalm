@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ChatEntry } from '$lib/types.js';
   import { renderMarkdown } from '$lib/markdown.js';
+  import { formatTime } from '$lib/format-date.js';
 
   interface Props {
     entry: ChatEntry;
@@ -39,7 +40,7 @@
     </div>
     <span class="message-meta">
       {entry.role === 'user' ? 'You' : 'Assistant'}
-      · {new Date(entry.timestamp).toLocaleTimeString()}
+      · {formatTime(entry.timestamp)}
     </span>
   </div>
 {/if}

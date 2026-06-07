@@ -3,6 +3,7 @@
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
+  import { formatRelativeTime, formatDateTime } from '$lib/format-date.js';
 
   // The session chooser body. Rendered both inside the navbar drawer (small
   // screens) and inline in the chat side panel (large screens). Lazy-loads the
@@ -31,25 +32,6 @@
       void chat.loadSessions();
     }
   });
-
-  /** Tiny relative-time helper. No date-fns dep — that would be ~30 KB for 4 cases. */
-  function formatRelative(ts: number): string {
-    if (!ts) return '';
-    const diffSec = Math.max(0, (Date.now() - ts) / 1000);
-    if (diffSec < 60) return 'just now';
-    const min = Math.floor(diffSec / 60);
-    if (min < 60) return `${min}m ago`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h ago`;
-    const day = Math.floor(hr / 24);
-    if (day === 1) return 'yesterday';
-    if (day < 7) return `${day}d ago`;
-    const wk = Math.floor(day / 7);
-    if (wk < 5) return `${wk}w ago`;
-    const mo = Math.floor(day / 30);
-    if (mo < 12) return `${mo}mo ago`;
-    return `${Math.floor(day / 365)}y ago`;
-  }
 
   async function pick(id: string): Promise<void> {
     if (chat.sending) return;
@@ -99,10 +81,11 @@
           aria-current={s.id === activeSessionId ? 'true' : undefined}
           onclick={() => pick(s.id)}
           disabled={chat.sending}
+          title={formatDateTime(s.updatedAt)}
         >
           <span class="item-text">
             <span class="item-label">{s.title || 'Untitled'}{#if s.id === activeSessionId}<span class="sr-only"> (current)</span>{/if}</span>
-            <span class="item-meta">{formatRelative(s.updatedAt)}</span>
+            <span class="item-meta">{formatRelativeTime(s.updatedAt)}</span>
           </span>
         </button>
       {/each}
