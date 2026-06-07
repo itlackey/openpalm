@@ -224,6 +224,10 @@ function migrate010to011(ctx: MigrationCtx): void {
     copyIfAbsent(ctx, join(vault, "user", d), join(newSecrets, d));
   }
 
+  // Leave a README in the retained legacy vault/ explaining that it is now a
+  // recovery copy and how to remove it safely once 0.11.x is confirmed working.
+  writeVaultReadme(ctx, vault);
+
   // Addon enablement: stack.yml is removed in 0.11.0. Convert any addons[] from
   // a legacy stack.yml (config/stack.yml or config/stack/stack.yml) into
   // OP_ENABLED_ADDONS in stack.env. Do NOT create stack.yml.
@@ -237,6 +241,55 @@ function migrate010to011(ctx: MigrationCtx): void {
       ctx.log(`set OP_ENABLED_ADDONS=${addons.join(",")}`);
     }
   }
+}
+
+const VAULT_README = `# This \`vault/\` directory is from OpenPalm 0.10.x — it is now a RECOVERY COPY
+
+OpenPalm 0.11.0 changed the on-disk layout. The upgrade **copied** everything out
+of this \`vault/\` directory into the new locations and left these originals here,
+untouched, as a safety net:
+
+- \`vault/user/user.env\`        → \`knowledge/env/user.env\`
+- \`vault/stack/stack.env\`       → \`knowledge/env/stack.env\` (transformed)
+- \`vault/stack/guardian.env\`    → \`knowledge/secrets/channel_<name>_secret\`
+- \`vault/stack/services/*\`      → \`knowledge/secrets/\`
+- \`vault/stack/auth.json\`       → \`knowledge/secrets/auth.json\` (best-effort)
+- other user credential files   → \`knowledge/secrets/\`
+
+A full backup of your home was also taken under \`data/backups/\` before migrating.
+
+Nothing in 0.11.x reads this directory anymore. You can delete it once you have
+confirmed the new version works.
+
+## How to remove it safely
+
+1. Confirm 0.11.x is healthy: the stack starts (\`openpalm status\`), you can sign
+   in to the UI, your providers are connected (Connections tab), and your
+   channels still work.
+2. Spot-check that your data is in the new layout:
+   - \`knowledge/env/stack.env\` and \`knowledge/env/user.env\` look right
+   - your secrets are under \`knowledge/secrets/\` (login password, channel
+     secrets, \`auth.json\`, etc.)
+   - if \`knowledge/env/stack.env.removed-secrets.bak\` exists, re-enter those
+     provider keys (Connections) and LLM config (\`config/akm/config.json\`) — do
+     not put secrets back into \`stack.env\`.
+3. Only then remove this directory. Prefer your OS trash (reversible):
+   - Linux:   \`gio trash ~/.openpalm/vault\`  (or \`trash-put ~/.openpalm/vault\`)
+   - macOS:   \`trash ~/.openpalm/vault\`
+   - Windows: delete \`%USERPROFILE%\\.openpalm\\vault\` (sends to Recycle Bin)
+   - Last resort (irreversible): \`rm -rf ~/.openpalm/vault\`
+
+If anything looks wrong, do NOT delete this directory — restore from it or from
+\`data/backups/\`. Full guide: docs/operations/upgrade-0.10-to-0.11.md
+`;
+
+/** Drop a safe-removal README into the retained legacy vault/ (skip if present). */
+function writeVaultReadme(ctx: MigrationCtx, vault: string): void {
+  const dest = join(vault, "README.md");
+  if (existsSync(dest)) { ctx.log("skip (exists): vault/README.md"); return; }
+  if (ctx.dryRun) { ctx.log("[dry-run] write vault/README.md (safe-removal guide)"); return; }
+  writeFileSync(dest, VAULT_README);
+  ctx.log("wrote vault/README.md (safe-removal guide)");
 }
 
 /** Extract a validated addons[] list from any legacy stack.yml, or []. */

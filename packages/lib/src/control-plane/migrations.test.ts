@@ -119,6 +119,9 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     // The full backup landed under data/backups (and nowhere else top-level).
     expect(existsSync(join(home, "data", "backups"))).toBe(true);
 
+    // The retained vault/ carries a safe-removal README.
+    expect(existsSync(join(home, "vault", "README.md"))).toBe(true);
+
     // Nothing leaked into a wrong place: no 0.11 secrets under knowledge/env,
     // and no plaintext login password left inside the migrated stack.env.
     expect(existsSync(join(home, "knowledge", "env", "op_ui_login_password"))).toBe(false);
@@ -152,6 +155,32 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     writeFileSync(join(home, "vault", "stack", "stack.env"), "OP_ASSISTANT_PORT=3800\n");
     ensureMigrated();
     expect(existsSync(join(home, "knowledge", "env", "stack.env.removed-secrets.bak"))).toBe(false);
+  });
+
+  it("writes a safe-removal README into the retained vault/", () => {
+    seed010(home);
+    ensureMigrated();
+    const readme = readFileSync(join(home, "vault", "README.md"), "utf-8");
+    // It explains what the directory is and how to remove it safely.
+    expect(readme).toContain("RECOVERY COPY");
+    expect(readme).toContain("How to remove it safely");
+    expect(readme).toContain("gio trash");
+    expect(readme).toContain("data/backups");
+    // The original migrated files are still present (README is additive only).
+    expect(existsSync(join(home, "vault", "stack", "stack.env"))).toBe(true);
+  });
+
+  it("dry-run does not write the vault README", () => {
+    seed010(home);
+    ensureMigrated({ dryRun: true });
+    expect(existsSync(join(home, "vault", "README.md"))).toBe(false);
+  });
+
+  it("does not clobber a pre-existing vault/README.md", () => {
+    seed010(home);
+    writeFileSync(join(home, "vault", "README.md"), "user's own notes\n");
+    ensureMigrated();
+    expect(readFileSync(join(home, "vault", "README.md"), "utf-8")).toBe("user's own notes\n");
   });
 
   it("converts addons[] from a nested config/stack/stack.yml too", () => {

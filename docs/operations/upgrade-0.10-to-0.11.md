@@ -283,6 +283,10 @@ left untouched in place, and `openpalm update` takes a full home backup (under
 `data/backups/<timestamp>/`) before it migrates. To recover from a bad migration,
 restore that backup or the tar backup from step 1 (see [backup-restore.md](../backup-restore.md)).
 
+Once 0.11.x is confirmed working, the retained `vault/` can be removed — the
+migration drops a `vault/README.md` with the exact, OS-appropriate safe-removal
+steps.
+
 ---
 
 ## Related
