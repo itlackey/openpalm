@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.11.0-rc.6",
+  "version": "0.11.0-rc.18",
   "type": "module",
   "license": "MPL-2.0",
   "description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",
@@ -34,7 +34,7 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "@openpalm/lib": ">=0.11.0-rc.6 <1.0.0",
+    "@openpalm/lib": ">=0.11.0-rc.18 <1.0.0",
     "citty": "^0.2.1",
     "yaml": "^2.8.0"
   }
