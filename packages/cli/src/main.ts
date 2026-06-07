@@ -9,7 +9,7 @@ export { detectHostInfo } from './lib/host-info.ts';
 export type { HostInfo } from './lib/host-info.ts';
 
 const SUBCOMMAND_NAMES = new Set([
-  'install', 'uninstall', 'update', 'self-update', 'addon',
+  'install', 'uninstall', 'update', 'migrate', 'self-update', 'addon',
   'start', 'stop', 'restart', 'logs', 'status',
   'validate', 'scan', 'audit-secrets', 'rollback', 'automations',
   '--help', '-h', 'help',
@@ -107,6 +107,7 @@ export const mainCommand = defineCommand({
     install: () => import('./commands/install.ts').then((m) => m.default),
     uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
     update: () => import('./commands/update.ts').then((m) => m.default),
+    migrate: () => import('./commands/migrate.ts').then((m) => m.default),
     'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
     addon: () => import('./commands/addon.ts').then((m) => m.default),
     start: () => import('./commands/start.ts').then((m) => m.default),

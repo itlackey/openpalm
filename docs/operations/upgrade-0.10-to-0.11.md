@@ -89,6 +89,14 @@ docker version && docker compose version
 
 ### 4. Move (or re-create) secrets and env files
 
+> **Automatic on upgrade (0.11.0+).** `openpalm update` (and re-running
+> `openpalm install` / `setup.sh`, and the admin **Check-up → Update**) now
+> **detect a 0.10.x layout and migrate it automatically** — taking a full backup
+> first and aborting safely (no changes) if the backup fails. You can also run it
+> explicitly: `openpalm migrate --dry-run` then `openpalm migrate`. The harness
+> uses the same logic as the scripts below; the scripts remain the manual /
+> no-CLI fallback.
+
 > **Shortcut — the helper script does steps 4–6 for you.** From a checkout (or
 > `curl` it from the release tag):
 >

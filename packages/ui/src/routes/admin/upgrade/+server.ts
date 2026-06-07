@@ -12,6 +12,8 @@ import {
   ensureOpenCodeSystemConfig,
   ensureSecrets,
   ensureHomeDirs,
+  ensureMigrated,
+  MigrationError,
   checkDocker,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
@@ -23,6 +25,21 @@ export const POST: RequestHandler = async (event) => {
   logger.info("upgrade request received", { requestId });
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
+
+  // Auto-migrate the on-disk layout before touching state (getState/ensureSecrets
+  // assume the current layout). Backs up first; no-ops on an already-current home.
+  try {
+    const report = ensureMigrated();
+    if (report.migrated) {
+      logger.info("layout migrated", { requestId, from: report.from, to: report.to, backupDir: report.backupDir, notes: report.notes });
+    }
+  } catch (e) {
+    if (e instanceof MigrationError) {
+      logger.error("auto-migration aborted", { requestId, error: e.message, backupDir: e.backupDir });
+      return errorResponse(500, "migration_failed", e.message, { guidance: e.guidance, backupDir: e.backupDir }, requestId);
+    }
+    throw e;
+  }
 
   const state = getState();
 

@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { performUpgrade, checkAndUpdateUiBuild } from '@openpalm/lib';
+import { performUpgrade, checkAndUpdateUiBuild, ensureMigrated, MigrationError } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 
 export default defineCommand({
@@ -18,6 +18,24 @@ export default defineCommand({
 });
 
 export async function runUpgradeAction(): Promise<void> {
+  // Auto-migrate the on-disk layout BEFORE validating state — createState()
+  // assumes the current layout, so a 0.10.x home must be migrated first. This
+  // backs up first and fails safe (no-ops on an already-current install).
+  try {
+    const report = ensureMigrated({ log: (m) => console.log(`  ${m}`) });
+    if (report.migrated) {
+      console.log(`Migrated layout ${report.from} → ${report.to} (backup: ${report.backupDir}).`);
+      for (const note of report.notes) console.log(`  NOTE: ${note}`);
+    }
+  } catch (err) {
+    if (err instanceof MigrationError) {
+      console.error(`\nAutomatic migration aborted: ${err.message}\n${err.guidance}`);
+      if (err.backupDir) console.error(`Backup: ${err.backupDir}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+
   const state = ensureValidState();
 
   console.log('Upgrading stack...');

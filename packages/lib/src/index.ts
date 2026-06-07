@@ -39,6 +39,15 @@ export {
   backupOpenPalmHome,
 } from "./control-plane/backup.js";
 
+// ── Layout migration harness ────────────────────────────────────────────────
+export {
+  ensureMigrated,
+  MigrationError,
+  CURRENT_LAYOUT_VERSION,
+  LAYOUT_VERSION_KEY,
+} from "./control-plane/migrations.js";
+export type { MigrationReport } from "./control-plane/migrations.js";
+
 // ── Registry Catalog ─────────────────────────────────────────────────────
 export type {
   AddonMutationResult,

@@ -15,6 +15,7 @@ import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./registry.js";
 import { resolveOperatorIds, hasUsableOperatorId } from "./operator-ids.js";
 import { SPEC_DEFAULTS } from "./stack-spec.js";
+import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
 
 import {
   readCoreCompose,
@@ -127,6 +128,9 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
     `OP_IMAGE_TAG=${DEFAULT_IMAGE_TAG}`,
+    "",
+    "# ── Layout (on-disk schema version; managed by the migration harness) ──",
+    `OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`,
     "",
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
     "# Guardian is network-only (no host port) — channels reach it via",

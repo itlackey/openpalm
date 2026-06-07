@@ -19,6 +19,8 @@ import {
   createLogger,
   resolveRequestedImageTag,
   ensureAkmUserEnv,
+  ensureMigrated,
+  MigrationError,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -153,6 +155,25 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const configDir = resolveConfigDir();
   const dataDir = `${homeDir}/data`;
   const workDir = defaultWorkDir();
+
+  // Auto-migrate an old (0.10.x) layout BEFORE the already-installed check —
+  // a 0.10.x home has no knowledge/env/stack.env, so without this it would be
+  // treated as a fresh install and the vault/ data ignored. Backs up first;
+  // no-ops on a fresh or already-current home.
+  try {
+    const report = ensureMigrated({ log: (m) => console.log(`  ${m}`) });
+    if (report.migrated) {
+      console.log(`Migrated layout ${report.from} → ${report.to} (backup: ${report.backupDir}).`);
+      for (const note of report.notes) console.log(`  NOTE: ${note}`);
+    }
+  } catch (err) {
+    if (err instanceof MigrationError) {
+      console.error(`\nAutomatic migration aborted: ${err.message}\n${err.guidance}`);
+      if (err.backupDir) console.error(`Backup: ${err.backupDir}`);
+      process.exit(1);
+    }
+    throw err;
+  }
 
   // Use knowledge/env/stack.env (always present after a successful install) as the
   // canonical "already installed" indicator.
