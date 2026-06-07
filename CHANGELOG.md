@@ -5,17 +5,21 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.11.0] - 2026-06-07
 
-### Changed (BREAKING — manual migration required)
+### Changed (BREAKING — automatic migration on upgrade)
 
 The secrets/env filesystem layout was reorganized to align with the akm
 `env` + `secret` asset model and to consolidate all env files and secrets out
-of `config/stack/`. **There is no automated migration** — existing installs
-must move their files by hand. **Upgrading from 0.10.x? Start with the
-[0.10.x → 0.11.0 upgrade guide](docs/operations/upgrade-0.10-to-0.11.md)**
-(file/env/port mapping, ordered procedure); the detailed file-move reference is
-[`docs/operations/secrets-env-migration.md`](docs/operations/secrets-env-migration.md).
+of `config/stack/`. **`openpalm update` migrates an existing 0.10.x home
+automatically** — it takes a full backup first, then copies your env/secret
+files into the new locations (copy-only; your original `vault/` is left in place
+as a recovery copy, with a `README.md` describing safe removal) and aborts with
+no changes if the backup fails. **Upgrading from 0.10.x? Start with the
+[0.10.x → 0.11.0 upgrade guide](docs/operations/upgrade-0.10-to-0.11.md)** (what
+the migration does, file/env/port mapping, ordered procedure). The only manual
+follow-up is re-adding provider API keys (Connections) and LLM/embedding config
+(`config/akm/config.json`), whose formats changed.
 
 - **akm `vault` → `env` + `secret`** — akm 0.8.0 removed the `vault` type
   (per-entry `vault set`/`unset` hard-error). The user-managed env moves from
@@ -34,11 +38,9 @@ must move their files by hand. **Upgrading from 0.10.x? Start with the
 - akm-cli is pinned to the stable **0.8.0** release (it provides the `env` +
   `secret` asset types).
 - **`OP_ADMIN_PORT` → `OP_HOST_UI_PORT`** — the host admin/UI port env var was
-  renamed and the legacy name is no longer emitted or read anywhere. **There is
-  no automated migration.** Existing installs that customized the admin port must
-  re-run setup (`openpalm install` / the setup wizard; `bun run dev:setup` for
-  dev) or manually rename `OP_ADMIN_PORT`→`OP_HOST_UI_PORT` in
-  `knowledge/env/stack.env`. Until then the UI binds to the default `3880`.
+  renamed and the legacy name is no longer emitted or read anywhere. The
+  auto-migration renames it for you (in `knowledge/env/stack.env`); installs that
+  never customized it simply pick up the default `3880`.
   `OP_ADMIN_OPENCODE_PORT` and `OP_GUARDIAN_PORT` were removed outright (emitted
   but never read; the guardian is network-only, no host port mapping).
 - **`config/stack/stack.yml` is removed entirely** — stack composition + versions
@@ -75,6 +77,13 @@ must move their files by hand. **Upgrading from 0.10.x? Start with the
   the platform.
 - **Host ↔ assistant knowledge sharing** — the host akm stash can be shared
   (symmetric, writable) with the assistant.
+- **Automatic 0.10.x → 0.11.0 layout migration** — `openpalm update` / `install`
+  (and a standalone `openpalm migrate [--dry-run]`) detect a 0.10.x home and
+  migrate it to the `knowledge/env` + `knowledge/secrets` layout: full backup
+  first, copy-only (originals retained, with a safe-removal `README.md` written
+  into `vault/`), channel-secret split, `stack.yml addons[]` → `OP_ENABLED_ADDONS`,
+  gated by `OP_LAYOUT_VERSION` and idempotent. Aborts safely (no changes) if the
+  backup fails.
 
 ### Changed
 
@@ -87,6 +96,14 @@ must move their files by hand. **Upgrading from 0.10.x? Start with the
 - **CI moved off the deprecated Node 20 actions runtime** to Node 24
   (`actions/checkout`, `actions/setup-node`, `actions/upload-artifact`,
   `actions/download-artifact`, `softprops/action-gh-release`).
+- **Operator UI: server-side auth** — admin auth is enforced in the SvelteKit
+  server hook with a dedicated `/login` route; the login screen no longer flashes
+  on navigation and pages carry no client-side auth code.
+- **Operator UI: standardized chrome + chat layout** — shared `IconButton` /
+  `ToggleButton` components; the assistant + session selectors are drawers, with
+  a persistent assistant/session side panel on large screens; centralized
+  date/time formatting; session names OpenCode left as a default timestamp now
+  render as a formatted date.
 
 ### Fixed
 
@@ -95,6 +112,9 @@ must move their files by hand. **Upgrading from 0.10.x? Start with the
   degraded to `"main"` when `@openpalm/lib` was bundled into the UI/electron
   (the `import.meta.url` package.json read does not resolve in a bundle), 404ing
   the compose files on both the release and raw URLs.
+- **`/login` no longer redirects to a 404 after sign-in** — a stale post-login
+  navigation target (`invalidateAll()` racing the redirect) sent the browser to
+  `/undefined`; it now navigates to the originally-requested page.
 
 ## [0.11.0-beta.11] - 2026-05-29
 
