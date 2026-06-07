@@ -1,0 +1,339 @@
+name: Platform release (orchestrator)
+
+# Single manually-dispatched orchestrator for a coordinated platform release.
+# It bumps every shipped package to ONE version, runs a fail-fast preflight, and
+# publishes the npm layer in dependency order, creating the git tag + GitHub
+# release LAST ("tag exists => fully published").
+#
+# DISPATCH-FROM-MAIN: GitHub only dispatches workflows whose file lives on the
+# default branch. This file must be on `main`; supply `ref` to release a release
+# branch (e.g. release/0.11.0). The workflow *file* always comes from main; the
+# released *content* comes from `ref`.
+#
+# SCOPE (this increment): version sync + preflight + ALL npm packages + tag-last.
+# Docker images, CLI binaries, Electron installers and voice images are still
+# produced by release.yml / publish-voice.yml and are folded in next (see
+# docs/technical/master-release-workflow-proposal.md, increments 3-5). Run a
+# dry_run first: it validates semver, a clean tree, the test gate, the
+# independent-version regression guard, an already-published probe, the bump
+# plan, and packs every npm package WITHOUT publishing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (semver, e.g. 0.11.0 or 0.11.0-rc.18).'
+        required: true
+        type: string
+      ref:
+        description: 'Branch/ref to release from (e.g. release/0.11.0).'
+        required: true
+        type: string
+        default: main
+      coordinate_independents:
+        description: 'Also stamp + publish the independent packages (UI + channel adapters) at this version.'
+        required: false
+        type: boolean
+        default: true
+      include_voice:
+        description: 'Also (stable only) build + push the voice images. Off by default — voice is normally out-of-band.'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Validate + pack everything but do NOT bump-commit, publish, or tag.'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+concurrency:
+  group: platform-release-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight (validate, test, guard)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Validate version + resolve prerelease
+        id: meta
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node -e "
+            const v = process.env.VERSION;
+            const re = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
+            if (!re.test(v)) { console.error('::error::version must be semver, got ' + v); process.exit(1); }
+            const pre = v.includes('-') ? 'true' : 'false';
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + v + '\nprerelease=' + pre + '\n');
+            console.log('version=' + v + ' prerelease=' + pre);
+          "
+
+      - name: Working tree is clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Working tree is not clean on ${{ inputs.ref }}."
+            git status --porcelain
+            exit 1
+          fi
+
+      - name: Test gate
+        run: |
+          bun install --frozen-lockfile
+          bun run test
+
+      - name: Regression guard + already-published probe
+        env:
+          VERSION: ${{ inputs.version }}
+          COORDINATE: ${{ inputs.coordinate_independents }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const { execSync } = require('node:child_process');
+            const groups = JSON.parse(fs.readFileSync('.github/release-package-groups.json', 'utf8'));
+            const target = process.env.VERSION;
+            const coordinate = process.env.COORDINATE === 'true';
+
+            // semver compare: returns 1 if a>b, -1 if a<b, 0 if equal. Stable > its prerelease.
+            function parse(v){ const m=v.match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/); return m?{ma:+m[1],mi:+m[2],pa:+m[3],pre:m[4]||null}:null; }
+            function cmp(a,b){ const x=parse(a),y=parse(b); if(!x||!y) return null;
+              for(const k of ['ma','mi','pa']){ if(x[k]!==y[k]) return x[k]>y[k]?1:-1; }
+              if(x.pre===y.pre) return 0; if(x.pre===null) return 1; if(y.pre===null) return -1;
+              return x.pre>y.pre?1:(x.pre<y.pre?-1:0); }
+
+            const manifests = coordinate ? groups.coordinatedManifests : groups.platformManifests;
+            const rows = []; let regressed = false;
+            for (const m of manifests) {
+              const name = JSON.parse(fs.readFileSync(m, 'utf8')).name;
+              let published = '(none)';
+              try { published = execSync('npm view ' + name + ' version', {stdio:['ignore','pipe','ignore']}).toString().trim() || '(none)'; } catch {}
+              let exact = false;
+              try { execSync('npm view ' + name + '@' + target + ' version', {stdio:['ignore','pipe','ignore']}); exact = true; } catch {}
+              let status = 'ok';
+              if (exact) status = 'ALREADY PUBLISHED (resume: will skip)';
+              else if (published !== '(none)') { const c = cmp(target, published); if (c !== null && c <= 0) { status = 'REGRESSION (target <= published)'; regressed = true; } }
+              rows.push({ name, published, target, status });
+            }
+            console.log('\\nPackage'.padEnd(32) + 'published'.padEnd(18) + 'target'.padEnd(18) + 'status');
+            for (const r of rows) console.log(r.name.padEnd(32) + r.published.padEnd(18) + r.target.padEnd(18) + r.status);
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            if (summary) {
+              fs.appendFileSync(summary, '### Release ' + target + ' — package plan\\n\\n');
+              fs.appendFileSync(summary, '| package | published | target | status |\\n|---|---|---|---|\\n');
+              for (const r of rows) fs.appendFileSync(summary, '| ' + r.name + ' | ' + r.published + ' | ' + r.target + ' | ' + r.status + ' |\\n');
+            }
+            if (regressed) { console.error('::error::One or more packages would regress (target version <= already-published). Pick a higher version.'); process.exit(1); }
+          "
+
+  bump:
+    name: Bump + sync versions
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Stamp coordinated manifests + setup scripts
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          COORDINATE: ${{ inputs.coordinate_independents }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          KEY='platformManifests'
+          if [ "${COORDINATE}" = 'true' ]; then KEY='coordinatedManifests'; fi
+          mapfile -t MANIFESTS < <(node -p "JSON.parse(require('fs').readFileSync('.github/release-package-groups.json','utf8')).${KEY}.join('\n')")
+          for m in "${MANIFESTS[@]}"; do
+            node scripts/set-version.mjs "${m}" "${VERSION}"
+          done
+          sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
+          sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
+          bun install
+
+          if [ "${DRY_RUN}" = 'true' ]; then
+            echo "::notice::dry-run — planned version changes (not committed):"
+            git --no-pager diff --stat || true
+            git checkout -- . 2>/dev/null || true
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
+          if git diff --quiet; then
+            echo "Already at ${VERSION}; nothing to commit."
+            exit 0
+          fi
+          git add -A
+          git commit -m "chore(release): set platform version to ${VERSION}"
+          git push origin "HEAD:${{ inputs.ref }}"
+
+  npm-lib:
+    needs: bump
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/lib
+      package-name: '@openpalm/lib'
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-cli:
+    needs: npm-lib
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/cli
+      package-name: openpalm
+      needs-build: true
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-sdk:
+    needs: npm-lib
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/channels-sdk
+      package-name: '@openpalm/channels-sdk'
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-ui:
+    needs: bump
+    if: ${{ inputs.coordinate_independents }}
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/ui
+      package-name: '@openpalm/ui'
+      needs-build: true
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-channel-api:
+    needs: npm-sdk
+    if: ${{ inputs.coordinate_independents }}
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/channel-api
+      package-name: '@openpalm/channel-api'
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-channel-discord:
+    needs: npm-sdk
+    if: ${{ inputs.coordinate_independents }}
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/channel-discord
+      package-name: '@openpalm/channel-discord'
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-channel-slack:
+    needs: npm-sdk
+    if: ${{ inputs.coordinate_independents }}
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/channel-slack
+      package-name: '@openpalm/channel-slack'
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  tag-release:
+    name: Tag + GitHub release (LAST)
+    needs:
+      - preflight
+      - npm-lib
+      - npm-cli
+      - npm-sdk
+      - npm-ui
+      - npm-channel-api
+      - npm-channel-discord
+      - npm-channel-slack
+    # Run only for a real release, and only if nothing upstream failed/cancelled
+    # (skipped independents are fine when coordinate_independents=false).
+    if: ${{ !inputs.dry_run && always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create + push tag (idempotent; refuses to move)
+        env:
+          TAG: v${{ needs.preflight.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --tags origin
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            EXISTING=$(git rev-list -n1 "${TAG}")
+            if [ "${EXISTING}" = "${HEAD_SHA}" ]; then
+              echo "Tag ${TAG} already at HEAD — skipping."
+            else
+              echo "::error::Tag ${TAG} exists at ${EXISTING} but HEAD is ${HEAD_SHA}. Refusing to move it."
+              exit 1
+            fi
+          else
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+          fi
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ needs.preflight.outputs.version }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+        run: |
+          PRE_FLAG=""
+          if [ "${PRERELEASE}" = 'true' ]; then PRE_FLAG="--prerelease"; fi
+          # Idempotent: delete-then-recreate (softprops-style) so re-runs don't strip notes.
+          gh release delete "${TAG}" --yes 2>/dev/null || true
+          gh release create "${TAG}" --title "${TAG}" --generate-notes ${PRE_FLAG}
