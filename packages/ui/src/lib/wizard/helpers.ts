@@ -1,5 +1,32 @@
 import type { ChannelState, Provider, ProviderState } from './types.js';
 import { KNOWN_EMB_DIMS } from './constants.js';
+import { addonProfileId } from '@openpalm/lib';
+
+// ── Shared GPU-aware addon hardware-profile selection ────────────────────────
+// One implementation for voice/ollama profile picking, previously copy-pasted
+// across loadVoiceProfiles / handleEnableVoiceChange / handleInstall / the
+// Ollama enable path (each could drift). Prefers the requested variant (or CUDA
+// when a GPU was detected, else CPU), then the addon's default, then CPU, then
+// any available profile. Returns the chosen profile id, or undefined when none
+// is available.
+type SelectableProfile = { id: string; available?: boolean; default?: boolean };
+
+export function selectAddonProfileId(
+  profiles: SelectableProfile[],
+  addon: string,
+  gpuDetected: boolean,
+  variant?: 'cpu' | 'cuda' | 'rocm',
+): string | undefined {
+  const avail = (p: SelectableProfile) => p.available !== false;
+  const preferred = addonProfileId(addon, variant ?? (gpuDetected ? 'cuda' : 'cpu'));
+  const cpu = addonProfileId(addon, 'cpu');
+  return (
+    profiles.find((p) => p.id === preferred && avail(p))
+    ?? profiles.find((p) => p.default && avail(p))
+    ?? profiles.find((p) => p.id === cpu && avail(p))
+    ?? profiles.find((p) => avail(p))
+  )?.id;
+}
 
 // ── Shared model-option building (used by the wizard page + Models step) ─────
 // Single source of truth for turning detected provider models into role options

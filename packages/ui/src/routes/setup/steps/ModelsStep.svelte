@@ -116,7 +116,8 @@
 
           {#if isEmptyEmbedding}
             <div class="model-auto-note">
-              Handled automatically — uses built-in local embeddings. No model needed.
+              Automatic — the assistant self-embeds locally (akm), so no embedding
+              model is configured. Pick one above only if you want to override it.
             </div>
           {/if}
 

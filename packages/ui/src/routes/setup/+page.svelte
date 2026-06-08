@@ -3,13 +3,13 @@
   import {
     PROVIDERS, LOCAL_PROVIDERS, CHANNELS,
   } from '$lib/wizard/constants.js';
-  import { buildModelOptions } from '$lib/wizard/helpers.js';
+  import { buildModelOptions, selectAddonProfileId } from '$lib/wizard/helpers.js';
   import type {
     ProviderState, ModelSelection, DetectedProvider, ChannelState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
   } from '$lib/wizard/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
-  import type { SetupRecommendation } from '@openpalm/lib';
+  import { OLLAMA_DEFAULT_MODELS, type SetupRecommendation } from '@openpalm/lib';
   import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
   import ProgressBar from './ProgressBar.svelte';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
@@ -45,7 +45,8 @@
   // True while auto mode is performing a host provider import before jumping to Review
   let autoModeImporting = $state(false);
   // Enable Voice toggle on the Welcome step (auto-mode only)
-  let enableVoice = $state(false);
+  // enableVoice is DERIVED from the voice engines (declared after voiceTts/Stt
+  // below) — it is not its own state. See the $derived near the voice engines.
   // Include Ollama in the stack toggle on the Welcome step
   let includeOllama = $state(false);
   // Set when System Check detects a GPU — used to auto-select CUDA voice profile
@@ -93,6 +94,13 @@
   // Empty engine = not yet chosen; we fall back to voiceDefaults at render time.
   let voiceTts = $state<VoiceEngineValue>({ engine: '' });
   let voiceStt = $state<VoiceEngineValue>({ engine: '' });
+
+  // "Voice enabled" = the bundled OpenPalm Voice engine is selected on either
+  // side. DERIVED (not manually-synced state) so it can never drift from the
+  // engines after rerun deserialization or any out-of-band engine edit.
+  const enableVoice = $derived(
+    voiceTts.engine === 'openpalm-voice' || voiceStt.engine === 'openpalm-voice',
+  );
   // Hardware profiles for the bundled OpenPalm Voice addon (CPU / CUDA / …)
   let voiceProfiles = $state<VoiceAddonProfile[]>([]);
   let selectedVoiceProfile = $state('');
@@ -107,6 +115,10 @@
     slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
   });
   let ollamaEnabled = $state(false);
+  // Guard so the Options-step auto-sync from ollamaMode runs at most ONCE and
+  // never clobbers a restored (rerun) value or a user's explicit toggle when
+  // they navigate back and forth.
+  let ollamaEnabledInitialized = $state(false);
   let ollamaProfiles = $state<VoiceAddonProfile[]>([]);
   let selectedOllamaProfile = $state('');
   let imageTag = $state('');
@@ -193,18 +205,13 @@
   //   - A verified provider + a chosen chat model → ready.
   //   - OR the user explicitly opted into an empty (no-AI) install.
   const hasVerifiedProvider = $derived(verifiedProviders.length > 0);
+  // Once a provider is verified you must pick a chat model; the empty-install
+  // opt-in only governs the no-provider case. Expressed as a derived predicate
+  // (not a state-mutating $effect that flipped `allowEmptyInstall` off on every
+  // background verification — that silently moved the checkbox under the user).
   const canComplete = $derived(
-    (hasVerifiedProvider && !!modelSelection.llm?.model) || allowEmptyInstall,
+    hasVerifiedProvider ? !!modelSelection.llm?.model : allowEmptyInstall,
   );
-
-  // Reset the empty-install opt-in the moment a provider verifies. Otherwise a
-  // stale `allowEmptyInstall` (checked while no provider existed) would let a
-  // now-configured provider silently bypass the "select a chat model" check.
-  $effect(() => {
-    if (hasVerifiedProvider && allowEmptyInstall) {
-      allowEmptyInstall = false;
-    }
-  });
 
   const hasOpenAI = $derived(
     PROVIDERS.some((p) => p.id === 'openai' && providerState[p.id]?.verified)
@@ -409,15 +416,9 @@
       if (!Array.isArray(data.profiles)) return;
       voiceProfiles = data.profiles;
 
-      // Auto-select the best profile: CUDA if GPU detected, otherwise CPU/default
-      const fallback = gpuDetected
-        ? data.profiles.find((p) => p.id === addonProfileId('voice', 'cuda') && p.available !== false)
-          ?? data.profiles.find((p) => p.default && p.available !== false)
-          ?? data.profiles.find((p) => p.available !== false)
-        : data.profiles.find((p) => p.id === addonProfileId('voice', 'cpu') && p.available !== false)
-          ?? data.profiles.find((p) => p.default && p.available !== false)
-          ?? data.profiles.find((p) => p.available !== false);
-      if (fallback) selectedVoiceProfile = fallback.id;
+      // Auto-select the best profile: CUDA if GPU detected, otherwise CPU/default.
+      const fallback = selectAddonProfileId(data.profiles, 'voice', gpuDetected);
+      if (fallback) selectedVoiceProfile = fallback;
 
       // gpuDetected may have been set after this fetch started — upgrade now
       if (gpuDetected && selectedVoiceProfile !== addonProfileId('voice', 'cuda')) {
@@ -489,16 +490,16 @@
       st.verified = true;
       st.ollamaMode = 'instack';
       st.baseUrl = 'http://ollama:11434';
-      // Seed only the chat model. akm self-embeds locally, so the wizard must
-      // NOT configure embeddings by default (no nomic-embed-text seed).
-      if (st.models.length === 0) st.models = ['qwen3:4b'];
+      // Seed only the chat model, using the shared OLLAMA_DEFAULT_MODELS.chat
+      // constant (the same default the rest of the system pulls) instead of a
+      // divergent hardcode. akm self-embeds locally, so the wizard must NOT
+      // configure embeddings by default (no nomic-embed-text seed).
+      if (st.models.length === 0) st.models = [OLLAMA_DEFAULT_MODELS.chat];
     }
     // Prefer the recommended hardware variant (from the GPU-aware
     // recommendation); otherwise fall back to the ad-hoc GPU-detection guess.
-    const preferred = addonProfileId('ollama', variant ?? (gpuDetected ? 'cuda' : 'cpu'));
-    const match = ollamaProfiles.find((p) => p.id === preferred && p.available !== false)
-      ?? ollamaProfiles.find((p) => p.available !== false);
-    selectedOllamaProfile = match?.id ?? preferred;
+    selectedOllamaProfile = selectAddonProfileId(ollamaProfiles, 'ollama', gpuDetected, variant)
+      ?? addonProfileId('ollama', variant ?? (gpuDetected ? 'cuda' : 'cpu'));
   }
 
   // True once the recommendation fetch (display-only) has settled, regardless of
@@ -623,17 +624,16 @@
   }
 
   function handleEnableVoiceChange(v: boolean): void {
-    enableVoice = v;
+    // enableVoice is derived from the engines below — toggling drives the
+    // engines, and the derived follows.
     if (v) {
       // Toggle ON → make the Voice step concretely reflect OpenPalm Voice on
       // both sides (unless they already target it).
       if (voiceTts.engine !== 'openpalm-voice') voiceTts = { engine: 'openpalm-voice' };
       if (voiceStt.engine !== 'openpalm-voice') voiceStt = { engine: 'openpalm-voice' };
       if (!selectedVoiceProfile) {
-        const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
-        const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
-          ?? voiceProfiles.find((p) => p.available !== false);
-        if (match) selectedVoiceProfile = match.id;
+        const match = selectAddonProfileId(voiceProfiles, 'voice', gpuDetected);
+        if (match) selectedVoiceProfile = match;
       }
     } else {
       // Toggle OFF → clear any OpenPalm Voice engine back to "not chosen" so the
@@ -644,6 +644,8 @@
   }
 
   function handleOptionsOllamaChange(v: boolean): void {
+    // User took explicit control — never auto-sync over this choice afterward.
+    ollamaEnabledInitialized = true;
     if (v) {
       enableRecommendedOllama();
     } else {
@@ -721,9 +723,13 @@
       applyImportedModelPreferences();
       autoSelectModels();
     }
-    // Sync ollamaEnabled from ollamaMode when entering Options step (index 5)
-    if (n === 5 && hasOllamaVerified) {
+    // Sync ollamaEnabled from ollamaMode the FIRST time the Options step is
+    // entered. The init guard stops a back/forward navigation (or a rerun where
+    // ollamaEnabled was restored from config) from being overwritten by stale
+    // detection state.
+    if (n === 5 && hasOllamaVerified && !ollamaEnabledInitialized) {
       ollamaEnabled = providerState.ollama?.ollamaMode === 'instack';
+      ollamaEnabledInitialized = true;
     }
     // On first Providers visit (index 2), apply the GPU/provider-aware
     // recommendation. It supersedes the old ad-hoc host-import trigger:
@@ -767,12 +773,12 @@
     preferredModel: string | undefined,
   ): { connId: string; model: string; dims: number } | undefined {
     if (!preferredModel) return undefined;
-    const options = getModelOptionsForRole(roleId);
-    if (options.length === 0) return undefined;
 
     const slashIdx = preferredModel.indexOf('/');
     const providerHint = slashIdx > 0 ? preferredModel.slice(0, slashIdx) : '';
     const modelIdPart = slashIdx > 0 ? preferredModel.slice(slashIdx + 1) : preferredModel;
+
+    const options = getModelOptionsForRole(roleId);
 
     // Exact match on full id (e.g. "openai/gpt-4o")
     const exactFull = options.find((o) => o.id === preferredModel);
@@ -787,6 +793,15 @@
     // Match by model name part alone
     const nameMatch = options.find((o) => o.id === modelIdPart);
     if (nameMatch) return { connId: nameMatch.connId, model: nameMatch.id, dims: nameMatch.dims };
+
+    // Offline fallback (#5): the host preference names a provider that IS
+    // verified, but its model list hasn't loaded (OpenCode unreachable during
+    // setup, so providerState[provider].models is empty). Trust the host
+    // preference directly rather than silently dropping it and letting Ollama
+    // win — the model id is exactly what the host had configured.
+    if (providerHint && verifiedProviders.some((p) => p.id === providerHint)) {
+      return { connId: providerHint, model: modelIdPart, dims: 0 };
+    }
 
     return undefined;
   }
@@ -1102,11 +1117,8 @@
     // loadVoiceProfiles() is async and may not have resolved yet.
     const usesBundledVoice = persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice';
     if (usesBundledVoice && !selectedVoiceProfile) {
-      const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
-      const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
-        ?? voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cpu') && p.available !== false)
-        ?? voiceProfiles.find((p) => p.available !== false);
-      selectedVoiceProfile = match?.id ?? addonProfileId('voice', 'cpu');
+      selectedVoiceProfile = selectAddonProfileId(voiceProfiles, 'voice', gpuDetected)
+        ?? addonProfileId('voice', 'cpu');
     }
 
     // Ensure an Ollama profile is selected when Ollama is enabled in-stack.
@@ -1511,9 +1523,21 @@
             selectedVoiceProfile = data.voice.selectedProfile;
           }
 
+          // Restore host-imported model preferences so a rerun keeps the chat /
+          // small model the user configured on their host OpenCode (otherwise
+          // they had to re-import or re-pick). importedModelPreferences is added
+          // by /api/setup/current-config; applyImportedModelPreferences() runs
+          // when the Models step is entered (and after host import).
+          const imp = data.importedModelPreferences as { model?: string; small_model?: string } | null | undefined;
+          if (imp?.model) importedLlmModel = imp.model;
+          if (imp?.small_model) importedSmallModel = imp.small_model;
+
           // Enabled addons + channel credentials
           const enabled: string[] = Array.isArray(data.enabledAddons) ? data.enabledAddons : [];
           if (enabled.includes('ollama')) ollamaEnabled = true;
+          // The restored value is authoritative — don't let the Options-step
+          // auto-sync overwrite it (#16).
+          ollamaEnabledInitialized = true;
           if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
             selectedOllamaProfile = data.ollama.selectedProfile;
           }
@@ -1709,15 +1733,11 @@
             onchangetts={(v) => {
               voiceTts = v;
               voiceEngineUnknownTts = false;
-              // Keep the Options Voice toggle in sync with the Voice-step engine
-              // choice: picking OpenPalm Voice for either side turns it ON;
-              // choosing a different engine for both turns it OFF.
-              enableVoice = (voiceTts.engine === 'openpalm-voice' || voiceStt.engine === 'openpalm-voice');
+              // enableVoice is derived from the engines — no manual sync needed.
             }}
             onchangestt={(v) => {
               voiceStt = v;
               voiceEngineUnknownStt = false;
-              enableVoice = (voiceTts.engine === 'openpalm-voice' || voiceStt.engine === 'openpalm-voice');
             }}
             onprofilechange={(id) => { selectedVoiceProfile = id; }}
           />
