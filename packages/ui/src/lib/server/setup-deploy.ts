@@ -293,7 +293,13 @@ async function checkProjectNameCollision(state: ControlPlaneState): Promise<stri
   const projectName = projectNameForState(state);
   const existing = await detectExistingProject({
     projectName,
-    expectedWorkingDir: state.homeDir,
+    // Compose sets the project working_dir label to the first compose file's
+    // directory (OP_HOME/config/stack === state.stackDir), NOT OP_HOME. Passing
+    // state.homeDir here made EVERY re-install over our own stack look "foreign"
+    // and refuse — the label could never equal OP_HOME. Compare against the dir
+    // compose actually records so an existing OURS stack is recognized and
+    // recreated instead of erroring.
+    expectedWorkingDir: state.stackDir,
   });
   if (existing.exists && !existing.isOurs) {
     return (
@@ -645,13 +651,24 @@ async function bringUpVoiceIfEnabled(
   }
 
   _state.phase = "starting-voice";
+  // A voice service may already be in the managed-service list (when its profile
+  // resolves into the compose config), so DON'T blindly append — that listed
+  // voice twice on the progress page. Refresh any existing voice rows in place
+  // and append only the voice services not already shown.
+  const alreadyListed = new Set(_state.deployStatus.map((e) => e.service));
   _state.deployStatus = [
-    ..._state.deployStatus,
-    ...profileServices.map((svc) => ({
-      service: svc,
-      status: "pending" as const,
-      label: "Voice — starting container…",
-    })),
+    ..._state.deployStatus.map((e) =>
+      profileServices.includes(e.service)
+        ? { ...e, status: "pending" as const, label: "Voice — starting container…" }
+        : e,
+    ),
+    ...profileServices
+      .filter((svc) => !alreadyListed.has(svc))
+      .map((svc) => ({
+        service: svc,
+        status: "pending" as const,
+        label: "Voice — starting container…",
+      })),
   ];
 
   // For dev-tagged images, the voice image was verified locally in phase 2.

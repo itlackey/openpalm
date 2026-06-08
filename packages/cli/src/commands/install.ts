@@ -149,7 +149,10 @@ async function deployServices(mode: string, pull = true): Promise<string[]> {
   // --force-recreate below reconciles it idempotently.
   const existing = await detectExistingProject({
     projectName: projectNameForState(state),
-    expectedWorkingDir: state.homeDir,
+    // Compose records the project working_dir as the first compose file's dir
+    // (OP_HOME/config/stack === state.stackDir), not OP_HOME — so compare
+    // against state.stackDir or our own re-install looks "foreign" and refuses.
+    expectedWorkingDir: state.stackDir,
   });
   if (existing.exists && !existing.isOurs) {
     throw new Error(
