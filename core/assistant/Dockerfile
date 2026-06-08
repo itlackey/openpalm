@@ -59,6 +59,19 @@ RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
     && akm --version
 ENV BUN_INSTALL=
 
+# Pre-bake akm's default local embedding model so semantic search works out of
+# the box with NO embedding configuration and NO runtime network. When
+# config/akm/config.json has no embedding endpoint (the default), akm self-embeds
+# in-process via @huggingface/transformers (default model Xenova/bge-small-en-v1.5,
+# 384-dim) — see akm-cli dist/llm/embedders/local.js. transformers.js caches into
+# its package-local .cache (an image path, NOT the bind-mounted akm cache), so the
+# model ships baked into the image. Running one real inference here also FAILS THE
+# BUILD if the optional @huggingface/transformers / onnxruntime native binary
+# can't load on this arch — guaranteeing no silent fallback to keyword-only search.
+RUN cd /usr/local/install/global \
+    && node --input-type=module -e "import { pipeline } from '@huggingface/transformers'; const embed = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5'); const out = await embed('warmup', { pooling: 'mean', normalize: true }); if (!out?.data?.length) { console.error('local embedder produced no vector'); process.exit(1); } console.log('akm local embedder OK (' + out.data.length + ' dims)');" \
+    && chmod -R a+rX /usr/local/install/global/node_modules/@huggingface/transformers/.cache
+
 # Rename the base "node" user (UID 1000) to "opencode" for clarity.
 # Passwordless sudo lets agents run root operations; the entrypoint's gosu
 # drop keeps normal file I/O at the host user's UID.
