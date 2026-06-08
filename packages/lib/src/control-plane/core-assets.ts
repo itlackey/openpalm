@@ -40,7 +40,22 @@ export function readCoreCompose(): string {
 }
 
 export function readBundledStackAsset(name: string): string {
-  return readFileSync(bundledAssetPath(`config/stack/${name}`), 'utf-8');
+  // The bundled `.openpalm` assets are resolved relative to import.meta.url,
+  // which does not survive bundling into the UI/Electron build (the path lands
+  // outside the packaged app). When OP_HOME is already seeded this fallback is
+  // never reached; when it is NOT (e.g. a fresh Electron first-run) the read
+  // fails. Degrade gracefully to "" so callers (addon profile/service lookups)
+  // return empty rather than throwing a 500 — the live OP_HOME assets are the
+  // source of truth once seeded.
+  try {
+    return readFileSync(bundledAssetPath(`config/stack/${name}`), 'utf-8');
+  } catch (err) {
+    logger.warn('bundled stack asset unavailable (returning empty)', {
+      name,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return '';
+  }
 }
 
 // ── OpenCode System Config ──────────────────────────────────────────

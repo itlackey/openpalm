@@ -1,6 +1,14 @@
 import type { ChannelState, Provider, ProviderState } from './types.js';
 import { KNOWN_EMB_DIMS } from './constants.js';
-import { addonProfileId } from '@openpalm/lib';
+
+// Compose addon hardware-profile id. Inlined (NOT imported from @openpalm/lib):
+// this module is reachable from client-side wizard components, and importing the
+// server library here drags its whole runtime (node:fs / child_process / class
+// hierarchy) into the browser bundle — which crashes the wizard with
+// "Class extends value undefined" (the rc.2 regression). Keep it literal.
+function addonProfileId(addon: string, variant: 'cpu' | 'cuda' | 'rocm'): string {
+  return `addon.${addon}.${variant}`;
+}
 
 // ── Shared GPU-aware addon hardware-profile selection ────────────────────────
 // One implementation for voice/ollama profile picking, previously copy-pasted

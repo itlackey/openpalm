@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    PROVIDERS, LOCAL_PROVIDERS, CHANNELS,
+    PROVIDERS, LOCAL_PROVIDERS, CHANNELS, OLLAMA_DEFAULT_CHAT_MODEL,
   } from '$lib/wizard/constants.js';
   import { buildModelOptions, selectAddonProfileId } from '$lib/wizard/helpers.js';
   import type {
@@ -9,7 +9,7 @@
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
   } from '$lib/wizard/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
-  import { OLLAMA_DEFAULT_MODELS, type SetupRecommendation } from '@openpalm/lib';
+  import type { SetupRecommendation } from '@openpalm/lib';
   import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
   import ProgressBar from './ProgressBar.svelte';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
@@ -490,11 +490,11 @@
       st.verified = true;
       st.ollamaMode = 'instack';
       st.baseUrl = 'http://ollama:11434';
-      // Seed only the chat model, using the shared OLLAMA_DEFAULT_MODELS.chat
-      // constant (the same default the rest of the system pulls) instead of a
-      // divergent hardcode. akm self-embeds locally, so the wizard must NOT
-      // configure embeddings by default (no nomic-embed-text seed).
-      if (st.models.length === 0) st.models = [OLLAMA_DEFAULT_MODELS.chat];
+      // Seed only the chat model, using the client-safe default constant (the
+      // same default the rest of the system pulls) instead of a divergent
+      // hardcode. akm self-embeds locally, so the wizard must NOT configure
+      // embeddings by default (no nomic-embed-text seed).
+      if (st.models.length === 0) st.models = [OLLAMA_DEFAULT_CHAT_MODEL];
     }
     // Prefer the recommended hardware variant (from the GPU-aware
     // recommendation); otherwise fall back to the ad-hoc GPU-detection guess.

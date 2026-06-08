@@ -31,6 +31,11 @@ export const KNOWN_EMB_DIMS: Record<string, number> = {
   'intfloat/multilingual-e5-large': 1024,
 };
 
+// Default chat model the wizard seeds for the bundled in-stack Ollama. Kept as a
+// client-safe literal here (mirrors @openpalm/lib OLLAMA_DEFAULT_MODELS.chat) so
+// the wizard never imports the server library into the browser bundle.
+export const OLLAMA_DEFAULT_CHAT_MODEL = 'llama3.2:latest';
+
 export const STEP_LABELS = ['System Check', 'Get Started', 'Providers', 'Models', 'Voice', 'Options', 'Review'];
 export const MAX_VISIBLE_MODELS = 6;
 
