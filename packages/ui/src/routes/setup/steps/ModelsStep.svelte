@@ -118,8 +118,8 @@
 <p class="step-description">Pre-selected from your providers. Adjust if needed.</p>
 
 {#if verifiedProviders.length === 0}
-  <div class="field-error" style="margin-bottom:16px">
-    No providers configured. You can skip to complete setup and add providers from the admin panel later.
+  <div class="feedback feedback--error" style="margin-bottom:16px" role="alert">
+    <span>No providers configured. You can skip to complete setup and add providers from the admin panel later.</span>
   </div>
 {/if}
 
@@ -211,7 +211,7 @@
 <input type="hidden" id="emb-dims" value={String(modelSelection.embedding?.dims ?? 1536)}>
 
 {#if errorMessage}
-  <div class="field-error" id="step2-error" role="alert">{errorMessage}</div>
+  <div class="feedback feedback--error" id="step2-error" role="alert"><span>{errorMessage}</span></div>
 {/if}
 
 <div class="step-actions">

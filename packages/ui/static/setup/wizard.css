@@ -43,10 +43,6 @@
   --color-blue-soft: #EFF6FF;
   --color-teal: #0d9488;
   --color-teal-soft: #f0fdfa;
-  --color-purple: #7c3aed;
-  --color-purple-soft: #f5f3ff;
-  --color-red-soft: #fef2f2;
-  --color-green-soft: #f0fdf4;
 
   /* Transitions */
   --transition-fast: 0.15s ease;
@@ -59,10 +55,6 @@
   --color-blue-soft: rgba(37, 99, 235, 0.18);
   --color-teal: #5eead4;
   --color-teal-soft: rgba(13, 148, 136, 0.18);
-  --color-purple: #c4b5fd;
-  --color-purple-soft: rgba(124, 58, 237, 0.20);
-  --color-red-soft: rgba(220, 38, 38, 0.16);
-  --color-green-soft: rgba(34, 197, 94, 0.16);
 }
 
 /* ── Reset / Base ──────────────────────────────────────────────────────── */
@@ -168,7 +160,8 @@ body {
 }
 
 .hdr-suffix {
-  color: var(--color-text-tertiary);
+  /* AA contrast (WCAG 1.4.3): secondary passes ≥4.5:1 in both themes; tertiary did not. */
+  color: var(--color-text-secondary);
   font-weight: 400;
   margin-left: 4px;
 }
@@ -184,6 +177,8 @@ body {
 /* ── Segmented Progress Bar ───────────────────────────────────────────── */
 .prog-bar {
   margin-bottom: var(--space-6);
+  /* F1 (WCAG 1.4.10 Reflow): never let segments/labels spill past the card edge. */
+  overflow: hidden;
 }
 
 .prog-segments {
@@ -211,20 +206,79 @@ body {
 
 .prog-lbl {
   flex: 1;
+  min-width: 0;
   font-size: 11px;
   font-weight: var(--font-medium);
-  color: var(--color-text-tertiary);
+  /* F4 (WCAG 1.4.3): secondary passes AA ≥4.5:1 in both themes; tertiary failed in light. */
+  color: var(--color-text-secondary);
   transition: color 0.3s;
   cursor: pointer;
+  /* F3 (WCAG 2.5.8): ≥24px tall interactive target. */
+  min-height: 24px;
+  padding: 4px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-radius: var(--radius-sm, 6px);
+  /* The full label text is the accessible name; the dot is a compact fallback. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prog-lbl:hover {
+  background: var(--color-bg-secondary);
 }
 
 .prog-lbl.on {
-  color: var(--color-text-secondary);
+  color: var(--color-text);
 }
 
 .prog-lbl.active {
   color: var(--color-text);
   font-weight: var(--font-semibold);
+}
+
+/* F1: on narrow viewports the 7 word-labels cannot fit at 320px without
+   clipping, so collapse them to numbered dots that reflow cleanly. The
+   accessible name (aria-label="Go to step …") is unchanged. */
+.prog-lbl-num {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .prog-labels {
+    gap: 4px;
+  }
+  .prog-lbl {
+    flex: 1 1 0;
+    font-size: 0;
+    padding: 4px 0;
+  }
+  .prog-lbl-text {
+    display: none;
+  }
+  .prog-lbl-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    border-radius: var(--radius-full, 999px);
+    font-size: 11px;
+    font-weight: var(--font-semibold);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    line-height: 1;
+  }
+  .prog-lbl.on .prog-lbl-num {
+    color: var(--color-text);
+  }
+  .prog-lbl.active .prog-lbl-num {
+    background: var(--color-primary);
+    color: #1a1a1a;
+  }
 }
 
 /* ── Step Content ──────────────────────────────────────────────────────── */
@@ -320,7 +374,9 @@ body {
 
 .nav-info {
   font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
+  /* Secondary token meets AA (>=4.5:1) against the footer bg in both themes;
+     tertiary fails in light mode (2.5:1). */
+  color: var(--color-text-secondary);
   margin-right: auto;
   margin-left: var(--space-2);
 }
@@ -331,184 +387,15 @@ body {
 }
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 10px 24px;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--font-bold);
-  line-height: 1.4;
-  border: 1.5px solid transparent;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  justify-content: center;
-  text-decoration: none;
-}
-
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--color-primary);
-  color: #1a1a1a;
-  border-color: transparent;
-  box-shadow: 0 1px 3px rgba(255, 157, 0, 0.3), 0 4px 12px rgba(255, 157, 0, 0.2);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-  box-shadow: 0 2px 6px rgba(255, 157, 0, 0.4), 0 8px 20px rgba(255, 157, 0, 0.25);
-  transform: translateY(-1px);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(255, 157, 0, 0.2);
-  transition-duration: 0.1s;
-}
-
-.btn-primary-lg {
-  background: var(--color-primary);
-  color: #1a1a1a;
-  border-color: transparent;
-  padding: 12px 32px;
-  font-size: 15px;
-  font-weight: var(--font-bold);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 1px 3px rgba(255, 157, 0, 0.3), 0 4px 12px rgba(255, 157, 0, 0.2);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-sans);
-  line-height: 1.4;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  justify-content: center;
-  text-decoration: none;
-  border: none;
-}
-
-.btn-primary-lg:hover {
-  background: var(--color-primary-hover);
-  box-shadow: 0 2px 6px rgba(255, 157, 0, 0.4), 0 8px 20px rgba(255, 157, 0, 0.25);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: var(--color-bg);
-  color: var(--color-text);
-  border-color: var(--color-border-hover);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--color-bg-secondary);
-  border-color: var(--color-text-secondary);
-}
-
-.btn-outline {
-  background: transparent;
-  color: var(--color-primary);
-  border-color: var(--color-primary);
-}
-
-.btn-outline:hover:not(:disabled) {
-  background: var(--color-primary-subtle);
-}
+/* Button system (.btn, .btn-primary, .btn-secondary, .btn-outline, .btn-sm,
+   .btn-lg, …) lives in the app's shared design system (app.css). The wizard
+   inherits those classes — do not re-declare them here. */
 
 /* ── Form Fields ───────────────────────────────────────────────────────── */
-.field-group {
-  margin-bottom: var(--space-5);
-}
-
-.field-group--compact {
-  margin-bottom: 0;
-}
-
-.field-group label {
-  display: block;
-  font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
-  color: var(--color-text);
-  margin-bottom: var(--space-2);
-}
-
-.field-group input,
-.field-group select {
-  width: 100%;
-  height: 44px;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 0 14px;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-  transition: all 0.2s ease;
-}
-
-.field-group input::placeholder {
-  color: var(--color-text-tertiary);
-}
-
-.field-group input:hover,
-.field-group select:hover {
-  border-color: var(--color-border-hover);
-}
-
-.field-group input:focus,
-.field-group select:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 4px var(--color-primary-subtle);
-}
-
-.field-hint {
-  margin-top: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-}
-
-.field-hint--accent {
-  color: var(--color-primary-hover);
-  font-weight: var(--font-medium);
-}
-
-.field-error {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  color: var(--color-danger-fg);
-  font-size: var(--text-sm);
-  font-weight: var(--font-medium);
-}
-
-.field-warn {
-  margin-top: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--color-caution);
-  line-height: 1.5;
-}
-
-.field-warning {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-md);
-  color: var(--color-caution);
-  font-size: var(--text-sm);
-  font-weight: var(--font-medium);
-}
+/* Form controls, hints, and error/warning banners use the app design system
+   (.form-field / .form-label / .form-input / .field-hint and .feedback /
+   .feedback--error / .feedback--warning, all defined in app.css). The wizard's
+   bespoke .field-group / .field-error / .field-warning copies were removed. */
 
 /* ── Provider Card Grid ──────────────────────────────────────────────── */
 .provider-grid {
@@ -639,18 +526,9 @@ body {
 }
 
 /* ── Badges ──────────────────────────────────────────────────────────── */
-.badge {
-  font-size: 10px;
-  font-weight: var(--font-semibold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-
-.badge-cloud { background: var(--color-blue-soft); color: var(--color-blue); }
-.badge-local { background: var(--color-teal-soft); color: var(--color-teal); }
-.badge-hybrid { background: var(--color-purple-soft); color: var(--color-purple); }
+/* Badges use the app design system (.badge + .badge-neutral / .badge-success /
+   .badge-recommended, defined in app.css). The wizard's bespoke .badge /
+   .badge-cloud / .badge-local / .badge-hybrid copies were removed. */
 
 /* ── Verification Status ─────────────────────────────────────────────── */
 .vs {
@@ -725,24 +603,11 @@ body {
 .auth-btn-detected { background: var(--color-teal-soft); color: var(--color-teal); border: 1px solid var(--color-teal); }
 
 /* ── Auth Feedback ───────────────────────────────────────────────────── */
-.auth-feedback {
+/* In-panel verification feedback uses the app .feedback / .feedback--success /
+   .feedback--error banners (app.css). The bespoke .auth-feedback* copies were
+   removed. A small top gap is added so the banner clears the auth rows above. */
+.pcard-auth .feedback {
   margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-xs);
-  animation: fadeIn 0.2s;
-}
-
-.auth-feedback-ok {
-  background: var(--color-success-bg);
-  border: 1px solid var(--color-success-border);
-  color: var(--color-badge-success-fg);
-}
-
-.auth-feedback-err {
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  color: var(--color-badge-danger-fg);
 }
 
 /* ── Ollama Mode Prompt ──────────────────────────────────────────────── */
@@ -1017,6 +882,22 @@ body {
   align-items: center;
 }
 
+.review-edit-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--radius-md);
+  transition: all 0.15s ease;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.review-edit-btn:hover { background: var(--color-primary-subtle); color: var(--color-primary-hover); }
+
 .review-row {
   display: flex;
   align-items: center;
@@ -1089,136 +970,8 @@ body {
   margin-bottom: var(--space-3);
 }
 
-/* ── Legacy Review Grid (kept for backward compat / tests) ───────────── */
-.review-grid {
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  margin-bottom: var(--space-2);
-}
-
-.review-section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px var(--space-4);
-  background: rgba(0, 0, 0, 0.04);
-  font-size: var(--text-xs);
-  font-weight: var(--font-semibold);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.review-edit-btn {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--font-medium);
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: var(--radius-md);
-  transition: all 0.15s ease;
-  text-transform: none;
-  letter-spacing: normal;
-}
-
-.review-edit-btn:hover { background: var(--color-primary-subtle); color: var(--color-primary-hover); }
-
-.review-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-4);
-  padding: 10px var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.review-item:last-child { border-bottom: none; }
-.review-item:nth-child(even) { background: rgba(0, 0, 0, 0.03); }
-
-.review-label {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  flex-shrink: 0;
-  min-width: 140px;
-}
-
-.review-label--muted { color: var(--color-text-tertiary); font-style: italic; }
-
-.review-value {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  text-align: right;
-  word-break: break-all;
-  font-weight: var(--font-medium);
-}
-
-.review-value.mono { font-family: var(--font-mono); font-size: 0.8rem; }
-
-.install-error { margin-top: var(--space-3); color: var(--color-danger); font-size: var(--text-sm); }
-
-/* ── Optional Add-ons ──────────────────────────────────────────────────── */
-.addon-row {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-3);
-  overflow: hidden;
-}
-
-.addon-row--active { border-color: var(--color-primary); }
-
-.addon-toggle-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-}
-
-.addon-toggle-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.addon-label-text { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
-.addon-help { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.4; padding-top: 2px; }
-
-/* ── Reranking & Field Layout ──────────────────────────────────────────── */
-.reranking-options {
-  padding: var(--space-2) var(--space-4) var(--space-3);
-  border-left: 2px solid var(--color-border);
-  margin-left: var(--space-4);
-  margin-bottom: var(--space-3);
-}
-
-.field-select {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  color: var(--color-text);
-}
-
-.field-row {
-  display: flex;
-  gap: var(--space-4);
-}
-
-.field-group-half {
-  flex: 1;
-  min-width: 0;
-}
+/* (Removed: unused legacy review-grid, optional add-on row, and
+   reranking/field-layout blocks — no setup markup referenced them.) */
 
 /* ── Deploy Screen ─────────────────────────────────────────────────────── */
 .deploy-header { text-align: center; margin-bottom: var(--space-6); }
@@ -1339,18 +1092,8 @@ body {
 .deploy-error-details pre { margin: var(--space-3) 0 0; white-space: pre-wrap; word-break: break-word; font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.5; }
 
 /* ── Spinner ───────────────────────────────────────────────────────────── */
-.spinner {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+/* The wizard uses the shared common/Spinner.svelte component (self-contained
+   styles + reduced-motion handling). The bespoke .spinner copy was removed. */
 
 /* ── Loading State ─────────────────────────────────────────────────────── */
 .loading-state { display: flex; justify-content: center; align-items: center; padding: var(--space-8); }
@@ -1443,6 +1186,8 @@ body {
   color: var(--color-text-secondary);
   margin-bottom: var(--space-3);
   line-height: 1.5;
+  /* Cap the readable measure so long-form descriptions stay <=~75ch (F2). */
+  max-width: 70ch;
 }
 
 /* ── Toggle Card Grid ─────────────────────────────────────────────────── */
@@ -1514,7 +1259,10 @@ body {
 
 .toggle-card-desc {
   font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
+  /* Secondary (not tertiary) so the description meets AA (>=4.5:1) on both the
+     plain card bg and the tinted .toggle-card.on (--color-primary-subtle) state,
+     in light and dark themes. */
+  color: var(--color-text-secondary);
   margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;

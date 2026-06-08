@@ -4,6 +4,7 @@
   import type { VoiceAddonProfile } from '$lib/api.js';
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
+  import FormField from '$lib/components/common/FormField.svelte';
 
   interface Props {
     channelSelection: Record<string, boolean | ChannelState>;
@@ -81,7 +82,7 @@
           <div class="toggle-card-info">
             <div class="toggle-card-name">
               {ch.name}
-              {#if ch.locked}<span class="badge badge-local">Always on</span>{/if}
+              {#if ch.locked}<span class="badge badge-success">Always on</span>{/if}
             </div>
             <div class="toggle-card-desc">{ch.desc}</div>
           </div>
@@ -174,12 +175,10 @@
   <div class="options-section">
     <h3 class="options-section-title">Container Image</h3>
     <p class="options-section-desc">Tag or version of the OpenPalm images to deploy.</p>
-    <div class="field-group">
-      <label for="image-tag">Image tag</label>
-      <div class="field-hint">Advanced — leave blank to use the default.</div>
-      <input id="image-tag" type="text" placeholder="dev" value={imageTag}
+    <FormField label="Image tag" for="image-tag" hint="Advanced — leave blank to use the default.">
+      <input id="image-tag" class="form-input" type="text" placeholder="dev" value={imageTag}
         oninput={(e) => onimagtagchange((e.currentTarget as HTMLInputElement).value)}>
-    </div>
+    </FormField>
   </div>
 
   <!-- Shared AKM (only shown when ~/akm exists on the host) -->
@@ -209,7 +208,7 @@
 </details>
 
 {#if errorMessage}
-  <div class="field-error" role="alert">{errorMessage}</div>
+  <div class="feedback feedback--error" role="alert"><span>{errorMessage}</span></div>
 {/if}
 
 <div class="step-actions">
@@ -230,9 +229,4 @@
   .options-advanced-summary::-webkit-details-marker { display: none; }
   .options-advanced-summary::before { content: '▶ '; font-size: 0.7em; }
   details[open] .options-advanced-summary::before { content: '▼ '; }
-  .field-hint {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-secondary, #64748b);
-    margin: 2px 0 4px;
-  }
 </style>

@@ -221,15 +221,19 @@
   }
   .syscheck-body { flex: 1; min-width: 0; }
   .syscheck-title { font-weight: 600; font-size: var(--text-sm, 0.875rem); }
+  /* meta + hint sit inside the tinted status rows (success/danger/warning bg);
+     --color-text-secondary falls just under AA (4.5:1) on those light tints, so
+     use the primary text token — AA on every tint in both themes. Hierarchy is
+     held by the 600-weight, larger .syscheck-title above. */
   .syscheck-meta {
     margin-top: 2px;
     font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-secondary, #6b7280);
+    color: var(--color-text);
   }
   .syscheck-hint {
     margin-top: 4px;
     font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-secondary, #525252);
+    color: var(--color-text);
   }
   .syscheck-link {
     display: inline-block;

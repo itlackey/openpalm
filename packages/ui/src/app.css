@@ -557,6 +557,13 @@ body.chat-locked {
   font-size: var(--text-xs);
 }
 
+.btn-lg {
+  padding: 12px 32px;
+  min-height: 48px;
+  font-size: var(--text-base);
+  border-radius: var(--radius-lg);
+}
+
 .btn-secondary {
   background: var(--color-bg);
   color: var(--color-text);

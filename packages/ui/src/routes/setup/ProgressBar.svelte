@@ -22,10 +22,12 @@
         class="prog-lbl {i <= currentStep ? 'on' : ''} {i === currentStep ? 'active' : ''}"
         role="button"
         tabindex={i <= maxVisitedStep && canNavigateTo(i) ? 0 : -1}
+        aria-current={i === currentStep ? 'step' : undefined}
+        aria-disabled={i <= maxVisitedStep && canNavigateTo(i) ? undefined : 'true'}
         onclick={() => { if (i <= maxVisitedStep && canNavigateTo(i)) onnavigate(i); }}
         onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && i <= maxVisitedStep && canNavigateTo(i)) onnavigate(i); }}
         aria-label="Go to step {label}"
-      >{label}</span>
+      ><span class="prog-lbl-text">{label}</span><span class="prog-lbl-num" aria-hidden="true">{i + 1}</span></span>
     {/each}
   </div>
 </nav>

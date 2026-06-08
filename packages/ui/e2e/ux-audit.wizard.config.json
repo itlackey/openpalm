@@ -1,0 +1,20 @@
+{
+  "baseUrl": "http://localhost:5173",
+  "outDir": "../../.reviews/ux-gate-wizard",
+  "widths": [320, 360, 375, 414, 480, 640, 768, 900, 1024, 1280, 1440],
+  "themes": [
+    { "id": "light", "init": null },
+    { "id": "dark", "init": { "localStorage": { "openpalm.theme": "dark" } } }
+  ],
+  "states": [
+    { "id": "wizard-1-system-check", "path": "/setup", "waitFor": ".step-content" },
+    { "id": "wizard-2-get-started", "path": "/setup", "waitFor": ".step-content",
+      "setup": "(async () => { const s=ms=>new Promise(r=>setTimeout(r,ms)); let b; for(let t=0;t<80;t++){b=document.querySelector('#btn-syscheck-next:not([disabled])'); if(b)break; await s(250);} if(b){b.click(); await s(1200);} })()" },
+    { "id": "wizard-3-providers", "path": "/setup", "waitFor": ".step-content",
+      "setup": "(async () => { const s=ms=>new Promise(r=>setTimeout(r,ms)); let b; for(let t=0;t<80;t++){b=document.querySelector('#btn-syscheck-next:not([disabled])'); if(b)break; await s(250);} if(b){b.click(); await s(1200);} let n; for(let t=0;t<40;t++){n=document.querySelector('#btn-step0-next:not([disabled])'); if(n)break; await s(250);} if(n){n.click(); await s(1500);} })()" },
+    { "id": "wizard-4-review", "path": "/setup", "waitFor": ".step-content",
+      "setup": "(async () => { const s=ms=>new Promise(r=>setTimeout(r,ms)); let b; for(let t=0;t<80;t++){b=document.querySelector('#btn-syscheck-next:not([disabled])'); if(b)break; await s(250);} if(b){b.click(); await s(1200);} let u; for(let t=0;t<40;t++){u=document.querySelector('#btn-use-defaults:not([disabled])'); if(u)break; await s(250);} if(u){u.click(); await s(2000);} })()" }
+  ],
+  "axeWidths": [375, 1280],
+  "screenshot": true
+}

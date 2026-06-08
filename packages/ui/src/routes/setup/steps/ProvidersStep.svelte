@@ -206,7 +206,7 @@
         {#if isExpanded}
           <div class="pcard-auth">
             {#if st.verified}
-              <div class="auth-feedback auth-feedback-ok">
+              <div class="feedback feedback--success">
                 <span>Connected</span>
                 <button class="auth-disconnect" type="button"
                   onclick={(e) => { e.stopPropagation(); ondeselect(ocp.id); }}>
@@ -215,7 +215,7 @@
               </div>
             {:else}
               {#if st.error}
-                <div class="auth-feedback auth-feedback-err">{friendlyProviderError(st.errorMessage, ocp.name)}</div>
+                <div class="feedback feedback--error"><span>{friendlyProviderError(st.errorMessage, ocp.name)}</span></div>
               {/if}
 
               {#if authMethods.length > 0}
@@ -346,7 +346,7 @@
           {#if isExpanded}
             <div class="pcard-auth">
               {#if st.verified}
-                <div class="auth-feedback auth-feedback-ok">
+                <div class="feedback feedback--success">
                   <span>Connected</span>
                   <button class="auth-disconnect" type="button"
                     onclick={(e) => { e.stopPropagation(); ondeselect(ocp.id); }}>
@@ -355,7 +355,7 @@
                 </div>
               {:else}
                 {#if st.error}
-                  <div class="auth-feedback auth-feedback-err">{friendlyProviderError(st.errorMessage, ocp.name)}</div>
+                  <div class="feedback feedback--error"><span>{friendlyProviderError(st.errorMessage, ocp.name)}</span></div>
                 {/if}
 
                 {#if authMethods.length > 0}
@@ -479,7 +479,7 @@
             {#each members as p}
               {@const st = providerState[p.id] ?? { selected: false, verified: false, verifying: false, error: false, apiKey: '', baseUrl: '', models: [], ollamaMode: null }}
               {@const isExpanded = expandedProvider === p.id && st.selected}
-              {@const badgeCls = p.kind === 'cloud' ? 'badge-cloud' : p.kind === 'local' ? 'badge-local' : 'badge-hybrid'}
+              {@const badgeCls = p.kind === 'cloud' ? 'badge-neutral' : p.kind === 'local' ? 'badge-success' : 'badge-recommended'}
               <div class="pcard {st.selected ? 'selected' : ''} {st.verified ? 'verified' : ''} {isExpanded ? 'wide' : ''}"
                 data-provider={p.id}>
                 <div class="pcard-header" role="button" tabindex="0"
@@ -534,7 +534,7 @@
                       {:else}
                         <!-- instack mode -->
                         {#if st.verified}
-                          <div class="auth-feedback auth-feedback-ok">
+                          <div class="feedback feedback--success">
                             <span>Ollama will be added to your Docker stack with default models.</span>
                             <button class="auth-disconnect" type="button"
                               onclick={(e) => { e.stopPropagation(); ondeselect(p.id); }}>
@@ -598,7 +598,7 @@
 
                     <!-- Feedback for fallback mode -->
                     {#if st.verified && p.id !== 'ollama'}
-                      <div class="auth-feedback auth-feedback-ok">
+                      <div class="feedback feedback--success">
                         <span>Credentials verified</span>
                         <button class="auth-disconnect" type="button"
                           onclick={(e) => { e.stopPropagation(); ondeselect(p.id); }}>
@@ -606,8 +606,8 @@
                         </button>
                       </div>
                     {:else if st.error}
-                      <div class="auth-feedback auth-feedback-err">
-                        {friendlyProviderError(st.errorMessage, p.name) || ('Verification failed — check your ' + (p.needsKey ? 'credentials' : 'endpoint'))}
+                      <div class="feedback feedback--error">
+                        <span>{friendlyProviderError(st.errorMessage, p.name) || ('Verification failed — check your ' + (p.needsKey ? 'credentials' : 'endpoint'))}</span>
                       </div>
                     {/if}
                   </div>
@@ -662,15 +662,15 @@
     flex-direction: column;
     gap: 8px;
     padding: 16px;
-    border: 1px solid var(--color-border, #e2e8f0);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
+    background: var(--color-bg);
     margin-bottom: 16px;
   }
 
   .host-import-desc {
     font-size: 14px;
-    color: var(--color-text-secondary, #64748b);
+    color: var(--color-text-secondary);
     margin: 0 0 4px;
   }
 
@@ -680,10 +680,18 @@
     gap: 8px;
     font-size: 14px;
     cursor: pointer;
+    /* WCAG 2.5.8: ensure the clickable radio row is at least 24px tall. */
+    min-height: 24px;
   }
 
   .host-radio input[type="radio"] {
-    accent-color: var(--color-primary, #6366f1);
+    accent-color: var(--color-primary);
+    /* WCAG 2.5.8: the radio control itself is the pointer target — size it
+       >=24x24 (the stacked radios' 8px gap doesn't meet the spacing exception). */
+    width: 24px;
+    height: 24px;
+    margin: 0;
+    flex-shrink: 0;
   }
 
   .btn-show-all-providers {
@@ -728,12 +736,6 @@
   }
   .allow-empty-row input { margin-top: 2px; }
 
-  :global(.auth-feedback-ok) {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
   :global(.auth-disconnect) {
     background: none;
     border: 1px solid currentColor;

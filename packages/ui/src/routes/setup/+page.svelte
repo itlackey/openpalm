@@ -464,20 +464,49 @@
     selectedOllamaProfile = match?.id ?? preferred;
   }
 
+  // True once the recommendation fetch (display-only) has settled, regardless of
+  // outcome — drives the Welcome step's "Checking your system…" neutral state.
+  let recommendationFetched = $state(false);
+
+  // Fetch the GPU/provider-aware setup recommendation for DISPLAY only (no apply).
+  // Called as soon as Get Started is shown so the operator can see what was
+  // detected before committing. Caches into `recommendation` so the later
+  // apply path reuses it instead of re-fetching. Non-critical — on any failure
+  // we leave `recommendation` null and the Welcome step falls back to generic copy.
+  async function fetchRecommendation(): Promise<void> {
+    if (recommendationFetched || recommendation) return;
+    try {
+      const res = await fetch('/api/setup/recommend');
+      if (res.ok) {
+        const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation };
+        if (data.ok && data.recommendation) recommendation = data.recommendation;
+      }
+    } catch {
+      // non-critical — user can configure manually
+    } finally {
+      recommendationFetched = true;
+    }
+  }
+
   // Fetch the GPU/provider-aware setup recommendation once and apply it.
   // Supersedes the ad-hoc `gpuDetected ? 'cuda' : 'cpu'` guesses for the
-  // Ollama path. Safe to call multiple times — applies only once.
+  // Ollama path. Safe to call multiple times — applies only once. Reuses a
+  // recommendation already fetched for display (fetchRecommendation()).
   async function fetchAndApplyRecommendation(): Promise<void> {
     if (recommendationApplied) return;
     let rec: SetupRecommendation;
-    try {
-      const res = await fetch('/api/setup/recommend');
-      if (!res.ok) return;
-      const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation };
-      if (!data.ok || !data.recommendation) return;
-      rec = data.recommendation;
-    } catch {
-      return; // non-critical — user can configure manually
+    if (recommendation) {
+      rec = recommendation;
+    } else {
+      try {
+        const res = await fetch('/api/setup/recommend');
+        if (!res.ok) return;
+        const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation };
+        if (!data.ok || !data.recommendation) return;
+        rec = data.recommendation;
+      } catch {
+        return; // non-critical — user can configure manually
+      }
     }
     recommendationApplied = true;
     recommendation = rec;
@@ -615,6 +644,13 @@
     currentStep = n;
     if (n > maxVisitedStep) maxVisitedStep = n;
     showDeploy = false;
+    // On Get Started (index 1), fetch the recommendation for DISPLAY only so the
+    // operator sees what was detected + what "Use recommended defaults" will do
+    // before committing. No apply happens here. Skip on rerun — the user picks
+    // where to start and an install already exists.
+    if (n === 1 && !isRerun) {
+      void fetchRecommendation();
+    }
     // Auto-select model defaults when entering Models step (index 3)
     if (n === 3) {
       applyImportedModelPreferences();
@@ -1435,7 +1471,7 @@
       {/if}
 
       {#if !showDeploy && recommendationAlert && (currentStep === 2 || currentStep === 3)}
-        <div class="field-warning" role="alert" data-testid="recommendation-alert">{recommendationAlert}</div>
+        <div class="feedback feedback--warning" role="alert" data-testid="recommendation-alert"><span>{recommendationAlert}</span></div>
       {/if}
 
       {#if showDeploy}
@@ -1468,6 +1504,8 @@
             errorMessage={step0Error}
             {detectionReady}
             {autoModeImporting}
+            {recommendation}
+            {recommendationFetched}
             onnext={() => { if (validateStep0()) goToStep(2); }}
             onusedefaults={() => { if (validateStep0()) void handleUseDefaults(); }}
           />
@@ -1513,7 +1551,7 @@
       {:else if currentStep === 3}
         <section class="step-content" id="step-3" data-testid="step-models">
           {#if step2EmbDimWarning}
-            <div class="field-warning" role="alert">{step2EmbDimWarning}</div>
+            <div class="feedback feedback--warning" role="alert"><span>{step2EmbDimWarning}</span></div>
           {/if}
           <ModelsStep
             {verifiedProviders}
