@@ -5,6 +5,48 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-06-08
+
+A macOS + setup-experience stabilization patch. No migration needed from 0.11.0.
+
+### Added
+
+- **GPU-aware setup recommendation.** When setup starts with no provider
+  configured, OpenPalm now detects host GPUs (VRAM-aware) and local providers and
+  recommends the right path automatically: use a connected cloud provider; or
+  auto-add a host Ollama/LM Studio that's already running; or, when a capable GPU
+  (≥ 8 GB VRAM) is present, enable in-stack Ollama with the matching hardware
+  profile; otherwise prompt to connect a provider (OpenCode flow or a custom
+  OpenAI-compatible endpoint). (#453, #454)
+- **Semantic embeddings work out of the box with no configuration.** The default
+  local embedding model is pre-baked into the assistant image, so akm self-embeds
+  offline on first run instead of silently falling back to keyword search. (#453)
+
+### Fixed
+
+- **macOS: app failed to launch from the Finder icon.** The desktop app now runs
+  the UI server with its bundled Node and augments PATH, fixing the silent launch
+  failure (terminal-only PATH). Added file logging to `~/Library/Logs/OpenPalm/`
+  and a "Show Logs" tray item. (#456)
+- **macOS: oversized menu-bar tray icon** is now correctly sized. (#455)
+- **macOS/OrbStack: Ollama failed to start** ("access denied creating
+  `data/ollama`"). The data dir is mounted at Ollama's native `$HOME/.ollama`
+  path (no container mounts a generic `/data`), and pre-created bind-mount targets
+  are owned by the operator UID. (#452)
+- **Setup wizard dark mode** is readable again — the wizard inherits the app's
+  themeable design tokens instead of a light-only stylesheet. (#451)
+- **No more needless Ollama embedding config.** Enabling Ollama no longer writes
+  an embedding config that overrode akm's local embedder. (#454)
+- **Check-up: installing version `latest` failed** with a raw GitHub asset error.
+  `latest` now resolves to the concrete newest release tag before fetching stack
+  assets (or fails with a clear message). (#449)
+- **"Update now" now recreates the guardian and channel containers** so channel
+  adapters re-resolve their npm dist-tag packages and guardian picks up the new
+  image. (#450)
+- **Admin no longer re-prompts for the UI password with a valid session.** The
+  session cookie is cookie-first with sliding renewal (httpOnly, Secure on HTTPS
+  only so LAN installs still work). (#437)
+
 ## [0.11.0] - 2026-06-07
 
 ### Changed (BREAKING — automatic migration on upgrade)
