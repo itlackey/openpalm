@@ -11,6 +11,7 @@ export {
   LLM_PROVIDERS,
   EMBEDDING_DIMS,
   PROVIDER_KEY_MAP,
+  OLLAMA_DEFAULT_MODELS,
   lookupEmbeddingDims,
 } from "./provider-constants.js";
 

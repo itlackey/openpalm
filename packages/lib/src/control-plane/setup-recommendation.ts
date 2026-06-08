@@ -45,6 +45,16 @@ export type SetupRecommendationInput = {
    * apple GPU is routed to host-Ollama guidance instead of enable-ollama.
    */
   platform?: NodeJS.Platform;
+  /**
+   * Number of credentials found in the host user's OpenCode auth.json
+   * (~/.local/share/opencode/auth.json). When > 0 the host OpenCode has
+   * configured providers that should be imported rather than bypassed by
+   * auto-enabling the bundled in-stack Ollama.
+   *
+   * Gathered by the caller via detectHostOpenCode() — kept out of this module
+   * so the function stays pure and unit-testable.
+   */
+  hostCredentialCount?: number;
 };
 
 export type SetupRecommendation =
@@ -67,18 +77,38 @@ const labelHostProviders = (h: DetectedHostProvider[]): string =>
  * Decide what setup should do, given detected providers + hardware.
  *
  * Order (first match wins):
- *  1. cloud provider connected      -> use it.
- *  2. host-local provider running   -> add it, proceed.
- *  3. darwin + apple GPU            -> guide to HOST Ollama (Metal); never in-stack.
- *  4. capable GPU (>= threshold)    -> enable in-stack Ollama.
- *  5. otherwise                     -> ask the user to connect a provider.
+ *  1. cloud provider connected              -> use it.
+ *  2. host OpenCode has credentials         -> steer to import; NEVER auto-enable Ollama.
+ *  3. host-local provider running           -> add it, proceed.
+ *  4. darwin + apple GPU                    -> guide to HOST Ollama (Metal); never in-stack.
+ *  5. capable GPU (>= threshold)            -> enable in-stack Ollama.
+ *  6. otherwise                             -> ask the user to connect a provider.
  */
 export function recommendSetup(input: SetupRecommendationInput): SetupRecommendation {
   const { cloudProviders, hostProviders, gpu } = input;
   const platform = input.platform ?? process.platform;
+  const hostCredentialCount = input.hostCredentialCount ?? 0;
 
   if (cloudProviders.length > 0) {
     return { action: "use-cloud", cloudProviders };
+  }
+
+  // A host OpenCode installation with credentials outranks auto-enabling the
+  // bundled in-stack Ollama. The user already has configured providers — they
+  // should import them rather than spin up a new Ollama container. We reuse
+  // the existing `connect-manually` action (already handled by the wizard's
+  // Providers step) with an import-oriented alert so no new wizard branch is
+  // needed. This rule runs BEFORE host-local-provider detection so that even a
+  // running host Ollama does not shadow the richer "import your existing setup"
+  // guidance when host credentials are present.
+  if (hostCredentialCount > 0) {
+    return {
+      action: "connect-manually",
+      alert:
+        "Your host OpenCode installation has configured AI providers. " +
+        "Import them now to use your existing setup — click \"Import from host OpenCode\" " +
+        "on the Providers step, or connect a provider manually.",
+    };
   }
 
   if (hostProviders.length > 0) {

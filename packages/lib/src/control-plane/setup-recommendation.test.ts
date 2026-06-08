@@ -93,6 +93,81 @@ describe("recommendSetup", () => {
   });
 });
 
+describe("hostCredentialCount precedence", () => {
+  test("(a) host-configured + capable GPU + no cloud -> NOT enable-ollama (host wins)", () => {
+    const r = recommendSetup({
+      cloudProviders: [],
+      hostProviders: [],
+      gpu: gpu("nvidia", 24576),
+      hostCredentialCount: 2,
+    });
+    expect(r.action).not.toBe("enable-ollama");
+    expect(r.action).toBe("connect-manually");
+    if (r.action === "connect-manually") {
+      expect(r.alert).toContain("host OpenCode");
+      expect(r.alert).toContain("Import");
+    }
+  });
+
+  test("(b) cloud still wins over host-configured", () => {
+    const r = recommendSetup({
+      cloudProviders: ["openai"],
+      hostProviders: [],
+      gpu: null,
+      hostCredentialCount: 3,
+    });
+    expect(r.action).toBe("use-cloud");
+  });
+
+  test("(c) host-configured beats a running host Ollama (import hint over auto-add)", () => {
+    // When the user has both a running host Ollama AND host OpenCode credentials,
+    // the richer "import your existing setup" guidance wins over the auto-add path.
+    const r = recommendSetup({
+      cloudProviders: [],
+      hostProviders: [{ provider: "ollama", url: "http://localhost:11434" }],
+      gpu: null,
+      hostCredentialCount: 1,
+    });
+    expect(r.action).toBe("connect-manually");
+    expect(r.action).not.toBe("use-host-providers");
+    if (r.action === "connect-manually") expect(r.alert).toContain("host OpenCode");
+  });
+
+  test("host-configured with zero credentials -> falls through to normal rules", () => {
+    // hostCredentialCount: 0 (or absent) must not suppress the normal GPU path.
+    const r = recommendSetup({ ...base, gpu: gpu("nvidia", 24576), hostCredentialCount: 0 });
+    expect(r.action).toBe("enable-ollama");
+  });
+
+  test("host-configured omitted (undefined) -> falls through to normal rules", () => {
+    // No regression: callers that don't pass hostCredentialCount get the old behaviour.
+    const r = recommendSetup({ ...base, gpu: gpu("nvidia", 24576) });
+    expect(r.action).toBe("enable-ollama");
+  });
+
+  test("host-configured + no GPU + no cloud -> connect-manually with import alert", () => {
+    const r = recommendSetup({ ...base, hostCredentialCount: 1 });
+    expect(r.action).toBe("connect-manually");
+    if (r.action === "connect-manually") expect(r.alert).toContain("host OpenCode");
+  });
+
+  test("host-configured + darwin apple GPU -> connect-manually (host wins, not apple guidance)", () => {
+    // Both host-configured and darwin+apple would return connect-manually, but
+    // host-configured takes priority so the alert is the import one, not the Metal one.
+    const r = recommendSetup({
+      ...base,
+      platform: "darwin",
+      gpu: gpu("apple", 65536),
+      hostCredentialCount: 2,
+    });
+    expect(r.action).toBe("connect-manually");
+    if (r.action === "connect-manually") {
+      expect(r.alert).toContain("host OpenCode");
+      expect(r.alert).not.toContain("Metal");
+    }
+  });
+});
+
 describe("gpuToProfileVariant", () => {
   test("nvidia->cuda, amd->rocm, apple->cpu, unknown->cpu", () => {
     expect(gpuToProfileVariant(gpu("nvidia", 8192))).toBe("cuda");

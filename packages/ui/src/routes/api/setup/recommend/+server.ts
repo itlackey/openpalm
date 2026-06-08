@@ -3,6 +3,7 @@ import { json } from "@sveltejs/kit";
 import {
 	authJsonPath,
 	detectGpu,
+	detectHostOpenCode,
 	detectLocalProviders,
 	recommendSetup,
 	isSetupComplete,
@@ -63,17 +64,23 @@ export const GET: RequestHandler = async (event) => {
 		if (authError) return authError;
 	}
 
-	const [cloudProviders, gpu, localDetections] = await Promise.all([
+	const [cloudProviders, gpu, localDetections, hostOpenCode] = await Promise.all([
 		detectCloudProviders(),
 		detectGpu(),
 		detectLocalProviders(),
+		Promise.resolve(detectHostOpenCode()),
 	]);
 
 	const hostProviders = localDetections
 		.filter((p) => p.available)
 		.map((p) => ({ provider: p.provider, url: p.url }));
 
-	const recommendation = recommendSetup({ cloudProviders, hostProviders, gpu });
+	const recommendation = recommendSetup({
+		cloudProviders,
+		hostProviders,
+		gpu,
+		hostCredentialCount: hostOpenCode.credentialCount,
+	});
 
 	return json({ ok: true, recommendation, gpu, cloudProviders, hostProviders });
 };
