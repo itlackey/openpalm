@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 A macOS + setup-experience stabilization patch. No migration needed from 0.11.0.
 
+### Changed
+
+- **Desktop app ships as plain archives for the simplest unsigned install.** macOS
+  is a `.app` `.zip` and Windows is a portable `.zip` (extract and run) instead of
+  a `.dmg` / NSIS installer — removing the installer + Gatekeeper/SmartScreen
+  install-time friction. macOS still shows a one-time prompt for unsigned apps
+  (right-click → Open, or clear quarantine). Trade-off: the desktop app no longer
+  auto-updates (it never could on unsigned macOS anyway) — re-download to update.
+
 ### Added
 
 - **GPU-aware setup recommendation.** When setup starts with no provider

@@ -63,16 +63,16 @@ If you're running OpenPalm today, 0.11.0 is the release to be on. If you need pr
 
 **2. Download the OpenPalm desktop app** — Recommended for most users.
 
-| Platform | Download |
-|---|---|
-| **Mac (Apple Silicon)** | [OpenPalm‑arm64.dmg](https://github.com/itlackey/openpalm/releases/latest) |
-| **Mac (Intel)** | [OpenPalm.dmg](https://github.com/itlackey/openpalm/releases/latest) |
-| **Windows** | [OpenPalm-Setup.exe](https://github.com/itlackey/openpalm/releases/latest) |
-| **Linux** | [OpenPalm.AppImage](https://github.com/itlackey/openpalm/releases/latest) |
+| Platform | Download | Run |
+|---|---|---|
+| **Mac (Apple Silicon)** | [OpenPalm‑arm64‑mac.zip](https://github.com/itlackey/openpalm/releases/latest) | Unzip → drag **OpenPalm.app** to Applications |
+| **Mac (Intel)** | [OpenPalm‑x64‑mac.zip](https://github.com/itlackey/openpalm/releases/latest) | Unzip → drag **OpenPalm.app** to Applications |
+| **Windows** | [OpenPalm‑win.zip](https://github.com/itlackey/openpalm/releases/latest) | Unzip → run **OpenPalm.exe** (portable, no install) |
+| **Linux** | [OpenPalm.AppImage](https://github.com/itlackey/openpalm/releases/latest) | `chmod +x` → run |
 
 Open the app, follow the setup wizard (it'll confirm Docker is running, ask which AI provider to use, and start the stack), and land directly on the chat page. Done.
 
-> First launch on macOS/Windows: builds are not yet code-signed. On macOS, right-click the app and choose Open the first time. On Windows, click "More info" → "Run anyway" on the SmartScreen prompt.
+> First launch on macOS/Windows: builds are not code-signed, so there's a one-time security prompt. On macOS, **right-click OpenPalm.app → Open** the first time (or `xattr -dr com.apple.quarantine OpenPalm.app`). On Windows, click **More info → Run anyway** on the SmartScreen prompt. Subsequent launches are unrestricted.
 
 <details>
 <summary><strong>Advanced / headless install (CLI)</strong></summary>

@@ -2,7 +2,7 @@
 
 OpenPalm has three setup paths, in order of recommendation:
 
-1. **Desktop app** (most users) — download, double-click, follow the wizard. Recommended.
+1. **Desktop app** (most users) — download, unzip, run, follow the wizard. Recommended.
 2. **CLI install script** — for servers and headless environments. Same wizard, in your browser.
 3. **Manual compose** — copy `.openpalm/` by hand and run `docker compose` yourself.
 
@@ -26,14 +26,14 @@ The wizard's first screen verifies Docker is installed and running before any co
 
 ## 1. Desktop app (recommended)
 
-Download the latest installer for your platform from the [releases page](https://github.com/itlackey/openpalm/releases/latest):
+Download the archive for your platform from the [releases page](https://github.com/itlackey/openpalm/releases/latest) — no installer, just extract and run:
 
-| Platform | Artifact |
-|---|---|
-| Mac (Apple Silicon) | `OpenPalm-<version>-arm64.dmg` |
-| Mac (Intel) | `OpenPalm-<version>.dmg` |
-| Windows | `OpenPalm-Setup-<version>.exe` |
-| Linux | `OpenPalm-<version>.AppImage` |
+| Platform | Artifact | Run |
+|---|---|---|
+| Mac (Apple Silicon) | `OpenPalm-<version>-arm64-mac.zip` | Unzip → move `OpenPalm.app` to Applications |
+| Mac (Intel) | `OpenPalm-<version>-x64-mac.zip` | Unzip → move `OpenPalm.app` to Applications |
+| Windows | `OpenPalm-<version>-win.zip` | Unzip → run `OpenPalm.exe` (portable, no install) |
+| Linux | `OpenPalm-<version>.AppImage` | `chmod +x` → run |
 
 Open the app. The setup wizard will:
 
@@ -47,7 +47,7 @@ Open the app. The setup wizard will:
 
 When the install completes, the same window navigates to the chat page. That's it.
 
-> **First launch on macOS/Windows**: the installers aren't yet code-signed. On macOS, right-click the app and choose **Open**; on Windows, click **More info → Run anyway** on the SmartScreen prompt. Subsequent launches are unrestricted.
+> **First launch on macOS/Windows**: builds aren't code-signed, so there's a one-time security prompt. On macOS, **right-click `OpenPalm.app` → Open** the first time (or run `xattr -dr com.apple.quarantine OpenPalm.app`); on Windows, click **More info → Run anyway** on the SmartScreen prompt. Subsequent launches are unrestricted. (The desktop app does not auto-update — re-download to get a newer version.)
 
 ---
 
