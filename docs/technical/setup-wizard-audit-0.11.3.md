@@ -6,10 +6,14 @@ each finding adversarially verified against source. 40 candidates → 38 verifie
 
 Severity counts: high=9, medium=11, low=5.
 
-## Already fixed in this pass (on release/0.11.2)
+## Status: all HIGH + MED folded into 0.11.2; only LOW remain for 0.11.3
 
-The four user-reported bugs and their closest verified gaps are **patched** —
-the remaining issues below are tracked for 0.11.3:
+Every **high** and **medium** severity issue in this audit has now been patched
+on `release/0.11.2` (verified: lib 436 · cli 46 · ui unit 689 · ui check 0 ·
+build clean). The remaining open work is the **low**-severity / polish items at
+the bottom of this doc, tracked for 0.11.3.
+
+Headline fixes (the four user-reported bugs + their closest verified gaps):
 
 - ✅ **Guardian deployed/awaited with zero channels** — `buildManagedServices`
   now only manages guardian when a channel addon is enabled (assistant is the
