@@ -81,30 +81,69 @@ async function restartProviderConsumers(state: ReturnType<typeof getState>): Pro
   return { restarted, failed };
 }
 
-export const POST: RequestHandler = async () => {
+/** Read the provider ids present in an auth.json, ignoring read/parse errors. */
+function providerIdsFromAuth(authPath: string): string[] {
   try {
-    const state = getState();
-    const result = importHostOpenCode(state, { overwriteConflicts: false });
-    const hostStatus = detectHostOpenCode();
-    let pushResult: PushResult = { pushed: [], errors: [] };
-    const importedAuthPath = authJsonPath(state);
-    if (existsSync(importedAuthPath)) {
-      pushResult = await pushAuthToOpenCode(importedAuthPath);
-    } else if (hostStatus.authPath) {
-      pushResult = await pushAuthToOpenCode(hostStatus.authPath);
+    const raw = JSON.parse(readFileSync(authPath, 'utf-8')) as unknown;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return Object.keys(raw as Record<string, unknown>);
     }
-    const restart = await restartProviderConsumers(state);
-    return json({
-      ok: true,
-      imported: result.imported,
-      conflicts: result.conflicts.length,
-      livePushed: pushResult.pushed.length,
-      pushedProviders: pushResult.pushed,
-      errors: pushResult.errors,
-      restarted: restart.restarted,
-      restartFailed: restart.failed,
-    });
-  } catch (err) {
-    return json({ ok: false, error: err instanceof Error ? err.message : 'Import failed' }, { status: 500 });
+  } catch {
+    // ignore — caller falls back to an empty list
   }
+  return [];
+}
+
+export const POST: RequestHandler = async () => {
+  const state = getState();
+
+  // Copy host config + auth into OP_HOME. This is the only step that must
+  // succeed for the import to be meaningful — guard it so a filesystem error
+  // surfaces as a clear failure rather than a generic 500.
+  let result: ReturnType<typeof importHostOpenCode>;
+  try {
+    result = importHostOpenCode(state, { overwriteConflicts: false });
+  } catch (err) {
+    return json(
+      { ok: false, error: `Could not copy host OpenCode config: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 500 },
+    );
+  }
+
+  const hostStatus = detectHostOpenCode();
+  const importedAuthPath = authJsonPath(state);
+  const authPathToUse = existsSync(importedAuthPath)
+    ? importedAuthPath
+    : hostStatus.authPath ?? null;
+
+  // Provider ids that now have credentials in OP_HOME. These are "imported"
+  // regardless of whether the live push to a running OpenCode succeeds — the
+  // credentials are on disk and provider-consuming services pick them up on
+  // (re)start. The UI marks these verified.
+  const importedProviderIds = authPathToUse ? providerIdsFromAuth(authPathToUse) : [];
+
+  // Best-effort live push to a running OpenCode so providers appear connected
+  // immediately. A per-provider push error (or OpenCode not being reachable
+  // during setup) is NON-FATAL — it never fails the whole import.
+  let pushResult: PushResult = { pushed: [], errors: [] };
+  if (authPathToUse) {
+    pushResult = await pushAuthToOpenCode(authPathToUse);
+  }
+
+  // Restart provider-consuming services. During setup the stack may not be
+  // running yet, so restart failures are non-fatal (credentials are already
+  // on disk and will be read on first start).
+  const restart = await restartProviderConsumers(state);
+
+  return json({
+    ok: true,
+    imported: result.imported,
+    importedProviders: importedProviderIds,
+    conflicts: result.conflicts.length,
+    livePushed: pushResult.pushed.length,
+    pushedProviders: pushResult.pushed,
+    errors: pushResult.errors,
+    restarted: restart.restarted,
+    restartFailed: restart.failed,
+  });
 };

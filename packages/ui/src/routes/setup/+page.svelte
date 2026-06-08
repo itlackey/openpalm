@@ -712,8 +712,11 @@
     // pick any real embedding model the provider exposes in the advanced
     // Models step (those flow through the loop above).
     if (roleId === 'embedding') {
-      const filtered = options.filter((o) => o.isDefault || o.dims > 0);
-      if (filtered.length > 0) return filtered;
+      // ALWAYS return embedding-only options (real embedding models), even when
+      // empty. Never fall through to the full chat-model list — a chat model
+      // must never be offered or auto-selected for the embedding role. When
+      // empty, akm self-embeds locally and modelSelection.embedding stays unset.
+      return options.filter((o) => o.isDefault || o.dims > 0);
     }
     return options;
   }
@@ -1285,40 +1288,80 @@
     }
   }
 
+  function markProviderVerifiedFromImport(id: string): void {
+    let st = providerState[id];
+    if (!st) {
+      // OpenCode provider not yet in state (e.g. OpenCode unreachable during
+      // setup so loadOpenCodeProviders didn't run) — seed a minimal verified
+      // entry so the imported provider still counts toward verifiedProviders.
+      st = {
+        selected: true, verified: true, verifying: false, error: false,
+        apiKey: '', baseUrl: '', models: [], ollamaMode: null,
+      };
+      providerState[id] = st;
+      return;
+    }
+    st.verified = true;
+    st.error = false;
+  }
+
   async function handleHostImport(): Promise<void> {
     hostImporting = true;
+    hostStatusWarning = null;
     try {
       // Use setup-namespace endpoint — no admin auth needed during setup
       const res = await fetch('/api/setup/import-host', { method: 'POST' });
-      if (res.ok) {
-        const data = (await res.json()) as { ok: boolean; pushedProviders?: string[] };
-        if (data.ok) {
-          // Reload providers — loadOpenCodeProviders now marks connected providers
-          // verified using OpenCode's env-detection ∪ auth.json (same as admin panel).
-          if (opencodeAvailable) await loadOpenCodeProviders();
-          // Apply imported model preferences now that providers are verified.
-          // Called here explicitly to handle cases where the reactive chain inside
-          // loadOpenCodeProviders didn't find the models yet.
-          applyImportedModelPreferences();
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        importedProviders?: string[];
+        pushedProviders?: string[];
+      } | null;
 
-          // Verify local providers to fetch live models (non-blocking)
-          for (const id of Object.keys(providerState)) {
-            if (!providerState[id].verified && PROVIDERS.some((p) => p.id === id)) {
-              void verifyProvider(id);
-            }
-          }
+      if (!res.ok || !data?.ok) {
+        // Hard failure (could not copy host config). Keep the user on the
+        // Providers step with a clear message instead of silently doing nothing.
+        hostImporting = false;
+        hostStatusWarning = data?.error
+          ? `Couldn't import host providers: ${data.error}`
+          : "Couldn't import providers from host OpenCode. Configure providers manually below.";
+        return;
+      }
 
-          hostImporting = false;
-          // After host import, advance to Models step (index 3). Skip the
-          // auto-advance on rerun — the user picks where to start.
-          if (!isRerun) goToStep(3);
-          return;
+      // Mark every imported provider verified directly from the response. This
+      // does NOT depend on OpenCode being reachable: the credentials are on
+      // disk and provider-consuming services read them on start. A live push
+      // failure only delays the "connected" indicator, it isn't an import
+      // failure.
+      const importedIds = data.importedProviders ?? data.pushedProviders ?? [];
+      for (const id of importedIds) markProviderVerifiedFromImport(id);
+
+      // Reload providers when OpenCode is reachable so the full catalog +
+      // env-detected credentials are reflected. Non-fatal if it can't run.
+      if (opencodeAvailable) {
+        try { await loadOpenCodeProviders(); } catch { /* keep import-marked verified state */ }
+      }
+
+      // Apply imported model preferences now that providers are verified.
+      // Called here explicitly to handle cases where the reactive chain inside
+      // loadOpenCodeProviders didn't find the models yet.
+      applyImportedModelPreferences();
+
+      // Verify local providers to fetch live models (non-blocking)
+      for (const id of Object.keys(providerState)) {
+        if (!providerState[id].verified && PROVIDERS.some((p) => p.id === id)) {
+          void verifyProvider(id);
         }
       }
-    } catch {
-      // On failure fall through — user can configure manually
+
+      hostImporting = false;
+      // After host import, advance to Models step (index 3). Skip the
+      // auto-advance on rerun — the user picks where to start.
+      if (!isRerun) goToStep(3);
+    } catch (e) {
+      hostImporting = false;
+      hostStatusWarning = `Couldn't import providers from host OpenCode: ${e instanceof Error ? e.message : 'network error'}. Configure providers manually below.`;
     }
-    hostImporting = false;
   }
 
   let isRerun = $state(false);

@@ -20,6 +20,18 @@
     onusedefaults,
   }: Props = $props();
 
+  // Concise provider summary — never dumps the full provider list. Shows a
+  // plain count for 3+ providers, and at most 1–2 names (with "+N more") for
+  // small sets. `verb` = "Detected"/"Found", `state` = "connected"/"running…".
+  function summarizeProviders(names: string[], verb: string, state: string): string {
+    const n = names.length;
+    if (n === 0) return `${verb} a ${state} provider`;
+    if (n === 1) return `${verb} ${names[0]} ${state}`;
+    if (n === 2) return `${verb} ${names[0]} and ${names[1]} ${state}`;
+    if (n === 3) return `${verb} ${n} ${state} providers (${names[0]}, ${names[1]} +1 more)`;
+    return `${verb} ${n} ${state} providers (${names[0]}, ${names[1]} +${n - 2} more)`;
+  }
+
   // Concise, friendly detection + recommendation summary shown BEFORE the user
   // commits. Derives from the recommendation's action + detail fields. Falls
   // back to the recommendation's own `alert` text, then to generic copy so the
@@ -34,17 +46,17 @@
           detail: 'No external account or API key needed.',
         };
       case 'use-host-providers': {
-        const names = rec.hostProviders.map((p) => p.provider).join(' and ');
+        const names = rec.hostProviders.map((p) => p.provider);
         return {
-          headline: `Found ${names} running on your computer — recommended setup will use it.`,
+          headline: `${summarizeProviders(names, 'Found', 'running on your computer')} — recommended setup will use ${names.length === 1 ? 'it' : 'them'}.`,
           detail: 'You can pick which models to use on the next step.',
         };
       }
       case 'use-cloud': {
-        const names = rec.cloudProviders.join(', ');
+        const names = rec.cloudProviders;
         return {
-          headline: names
-            ? `Detected a connected provider (${names}) — recommended setup will use it.`
+          headline: names.length
+            ? `${summarizeProviders(names, 'Detected', 'connected')} — recommended setup will use ${names.length === 1 ? 'it' : 'them'}.`
             : 'Detected a connected provider — recommended setup will use it.',
           detail: 'You can pick which models to use on the next step.',
         };
@@ -69,11 +81,6 @@
   <div class="welcome-icon">👋</div>
   <h2>Welcome to OpenPalm</h2>
   <p class="welcome-subtitle">Your self-hosted AI assistant. Pick your providers, choose models, and you're up and running.</p>
-  <div class="welcome-pills">
-    <span class="pill">Cloud or local</span>
-    <span class="pill">Smart defaults</span>
-    <span class="pill">Privacy first</span>
-  </div>
 
   <!-- Detection + recommendation summary: shown before the user commits. -->
   {#if !recommendationFetched && !recommendation}
@@ -119,7 +126,9 @@
   }
   .welcome-actions .btn {
     width: 100%;
-    max-width: 360px;
+    /* Match .welcome-detection so the card and buttons form a single clean,
+       centered column. */
+    max-width: 420px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -135,8 +144,10 @@
   }
   .welcome-detection {
     margin-top: 20px;
+    margin-bottom: 4px;
     width: 100%;
-    max-width: 480px;
+    /* Match .welcome-actions .btn so the card and buttons share one column. */
+    max-width: 420px;
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;

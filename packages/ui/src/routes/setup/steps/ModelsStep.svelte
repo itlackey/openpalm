@@ -81,8 +81,12 @@
     }
 
     if (role.id === 'embedding') {
-      const embOptions = options.filter((o) => o.isDefault || o.dims > 0);
-      if (embOptions.length > 0) return embOptions;
+      // ALWAYS return embedding-only options (real embedding models), even when
+      // empty. Never fall through to the full chat-model list — a chat model
+      // must never be offered or highlighted as the embedding "Default". When
+      // empty, the role renders an "auto-handled" note (akm self-embeds locally)
+      // and modelSelection.embedding stays unset.
+      return options.filter((o) => o.isDefault || o.dims > 0);
     }
 
     if (role.id === 'small' && options.length === 0) {
@@ -126,7 +130,8 @@
 <div id="model-groups">
   {#each roles as role}
     {@const options = getOptionsForRole(role)}
-    {#if options.length > 0 || role.id === 'small'}
+    {@const isEmptyEmbedding = role.id === 'embedding' && options.length === 0}
+    {#if options.length > 0 || role.id === 'small' || isEmptyEmbedding}
       {@const hasOverflow = options.length > MAX_VISIBLE_MODELS}
       {@const query = filterQueries[role.id] ?? ''}
       {@const visible = filteredOptions(role, options)}
@@ -140,7 +145,7 @@
           {#if collapsedRoles.has(role.id)}
             {@const sel = modelSelection[role.id as 'llm' | 'embedding' | 'small']}
             <span style="flex:1;font-size:var(--text-xs);color:var(--color-text-secondary);margin-left:8px">
-              {sel?.model ?? '(none)'}
+              {isEmptyEmbedding && !sel?.model ? 'Automatic' : (sel?.model ?? '(none)')}
             </span>
             <span style="font-size:var(--text-xs);color:var(--color-text-secondary)">▶</span>
           {:else}
@@ -150,6 +155,12 @@
 
         {#if !collapsedRoles.has(role.id)}
           <div class="model-group-desc">{role.desc}</div>
+
+          {#if isEmptyEmbedding}
+            <div class="model-auto-note">
+              Handled automatically — uses built-in local embeddings. No model needed.
+            </div>
+          {/if}
 
           {#if role.id === 'small'}
             {@const noneOn = !modelSelection.small?.model}

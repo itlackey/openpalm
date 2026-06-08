@@ -333,23 +333,6 @@ body {
   line-height: 1.5;
 }
 
-.welcome-pills {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: var(--space-8);
-}
-
-.pill {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  padding: 5px 14px;
-  border-radius: 100px;
-}
-
 /* ── Step Actions ──────────────────────────────────────────────────────── */
 .step-actions {
   display: flex;
@@ -751,6 +734,16 @@ body {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   margin-bottom: var(--space-3);
+}
+
+/* Empty embedding role — akm self-embeds locally, so no model is offered. */
+.model-auto-note {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-3, 12px);
 }
 
 /* ── Model Search Filter ──────────────────────────────────────────── */
