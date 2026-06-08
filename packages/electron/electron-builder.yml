@@ -22,10 +22,20 @@ extraResources:
     to: openpalm-skeleton
     filter: "**/*"
 
+# NOTE: OpenPalm desktop builds are UNSIGNED (no Apple/Windows code-signing certs).
+# To keep install as frictionless as possible we ship plain archives, not OS
+# installers: a .zip of the .app on macOS and a portable .zip on Windows. This
+# trades away in-app auto-update (which on macOS requires a signed app anyway) for
+# the simplest possible "download → extract → run". macOS still shows a one-time
+# Gatekeeper prompt for unsigned apps — right-click the app → Open the first time
+# (or `xattr -dr com.apple.quarantine OpenPalm.app`). electron-builder ad-hoc
+# signs the macOS app by default, which keeps Apple Silicon from refusing it as
+# "damaged"; do NOT set `identity: null`.
+
 mac:
   category: public.app-category.developer-tools
   target:
-    - target: dmg
+    - target: zip
       arch: [arm64, x64]
   icon: assets/icon.png
 
@@ -37,23 +47,11 @@ linux:
 
 win:
   target:
-    # nsis = the "Setup.exe" installer (Start Menu, uninstaller, electron-updater
-    # auto-update via the .blockmap). zip = a portable, no-install build users can
-    # just extract and run.
-    - target: nsis
-      arch: [x64]
+    # Portable .zip only — extract and run, no installer, no admin, and no
+    # "Windows protected your PC" install-time SmartScreen step. (SmartScreen may
+    # still warn on first run of an unsigned .exe → "More info" → "Run anyway".)
     - target: zip
       arch: [x64]
   icon: assets/icon.png
 
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-
 npmRebuild: false
-generateUpdatesFilesForAllChannels: true
-publish:
-  provider: github
-  owner: itlackey
-  repo: openpalm
-  releaseType: release

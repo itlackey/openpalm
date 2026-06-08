@@ -515,13 +515,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: electron-${{ matrix.platform }}
+          # Unsigned builds ship as plain archives only (no installers/auto-update):
+          # macOS .app .zip, Windows portable .zip, Linux .AppImage.
           path: |
-            packages/electron/dist/packages/*.dmg
             packages/electron/dist/packages/*.AppImage
-            packages/electron/dist/packages/*.exe
             packages/electron/dist/packages/*.zip
-            packages/electron/dist/packages/*.yml
-            packages/electron/dist/packages/*.blockmap
 
   voice:
     name: Voice image (${{ matrix.tag_suffix }})
@@ -673,9 +671,5 @@ jobs:
             dist/openpalm-cli-darwin-x64
             dist/openpalm-cli-darwin-arm64
             dist/openpalm-cli-windows-x64.exe
-            dist/*.dmg
             dist/*.AppImage
-            dist/*.exe
             dist/*.zip
-            dist/*.yml
-            dist/*.blockmap
