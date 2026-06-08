@@ -148,6 +148,11 @@
     width: 100%;
     /* Match .welcome-actions .btn so the card and buttons share one column. */
     max-width: 420px;
+    /* Center the card within .welcome-hero like the buttons do — covers both
+       the grid-parent (justify-self) and flex-parent (align-self) cases. The
+       internal alignment stays left (align-items/text-align below). */
+    justify-self: center;
+    align-self: center;
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;

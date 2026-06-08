@@ -17,6 +17,9 @@
     ollamaEnabled: boolean;
     ollamaProfiles: VoiceAddonProfile[];
     selectedOllamaProfile: string;
+    /** True when Ollama/LM Studio is already running on the host — the in-stack
+     * Ollama addon is redundant, so its toggle is disabled with a note. */
+    hostLocalRunning?: boolean;
     errorMessage: string;
     onback: () => void;
     onnext: () => void;
@@ -41,6 +44,7 @@
     ollamaEnabled,
     ollamaProfiles,
     selectedOllamaProfile,
+    hostLocalRunning = false,
     errorMessage,
     onback,
     onnext,
@@ -144,20 +148,27 @@
     </div>
 
     <!-- Ollama -->
-    <div class="toggle-card {ollamaEnabled ? 'on' : ''} {ollamaEnabled && ollamaProfiles.length > 0 ? 'wide' : ''}">
-      <div class="toggle-card-header" role="button" tabindex="0"
-        onclick={() => onollamachange(!ollamaEnabled)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onollamachange(!ollamaEnabled); }}>
+    <div class="toggle-card {ollamaEnabled && !hostLocalRunning ? 'on' : ''} {hostLocalRunning ? 'addon-disabled' : ''} {ollamaEnabled && !hostLocalRunning && ollamaProfiles.length > 0 ? 'wide' : ''}">
+      <div class="toggle-card-header" role="button" tabindex={hostLocalRunning ? -1 : 0}
+        aria-disabled={hostLocalRunning ? 'true' : undefined}
+        onclick={() => { if (!hostLocalRunning) onollamachange(!ollamaEnabled); }}
+        onkeydown={(e) => { if (!hostLocalRunning && (e.key === 'Enter' || e.key === ' ')) onollamachange(!ollamaEnabled); }}>
         <div class="toggle-card-icon">🦙</div>
         <div class="toggle-card-info">
           <div class="toggle-card-name">Ollama</div>
-          <div class="toggle-card-desc">Run local AI models inside the stack. Downloads and serves models via Docker.</div>
+          <div class="toggle-card-desc">
+            {#if hostLocalRunning}
+              Ollama or LM Studio is already running on your computer — the bundled Ollama isn't needed.
+            {:else}
+              Run local AI models inside the stack. Downloads and serves models via Docker.
+            {/if}
+          </div>
         </div>
         <div class="toggle-card-switch">
-          <div class="toggle-track {ollamaEnabled ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+          <div class="toggle-track {ollamaEnabled && !hostLocalRunning ? 'on' : ''}"><div class="toggle-thumb"></div></div>
         </div>
       </div>
-      {#if ollamaEnabled && ollamaProfiles.length > 0}
+      {#if ollamaEnabled && !hostLocalRunning && ollamaProfiles.length > 0}
         <div class="pcard-auth">
           <VoiceProfileSelector profiles={ollamaProfiles} selectedProfile={selectedOllamaProfile} onchange={onollamaprofilechange} showDescription={false} />
         </div>
@@ -229,4 +240,8 @@
   .options-advanced-summary::-webkit-details-marker { display: none; }
   .options-advanced-summary::before { content: '▶ '; font-size: 0.7em; }
   details[open] .options-advanced-summary::before { content: '▼ '; }
+  /* Addon offered but not applicable (e.g. in-stack Ollama when host Ollama/LM
+     Studio is running): dim + non-interactive, with the explanatory desc copy. */
+  .toggle-card.addon-disabled { opacity: 0.6; }
+  .toggle-card.addon-disabled .toggle-card-header { cursor: default; }
 </style>

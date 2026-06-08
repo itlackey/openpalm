@@ -52,6 +52,13 @@
 
   // ── Step 1: Providers ─────────────────────────────────────────────────────
   let providerState = $state<Record<string, ProviderState>>({});
+  // Local LLM runtimes detected running on the host (ollama/lmstudio/model-runner),
+  // from /api/setup/recommend. When present, the in-stack Ollama addon is redundant.
+  let detectedHostProviders = $state<{ provider: string; url: string }[]>([]);
+  const hostLocalLlmRunning = $derived(
+    providerState['ollama']?.ollamaMode === 'running' ||
+      detectedHostProviders.some((p) => p.provider === 'ollama' || p.provider === 'lmstudio'),
+  );
   let expandedProvider = $state<string | null>(null);
   let detectedProviders = $state<DetectedProvider[]>([]);
   let detecting = $state(false);
@@ -273,7 +280,9 @@
     const embProvider = embCap?.provider ?? '';
 
     const addons: Record<string, boolean> = {};
-    if (ollamaEnabled) addons.ollama = true;
+    // Suppress the in-stack Ollama addon when a host Ollama/LM Studio is running
+    // (redundant; the toggle is disabled in that case).
+    if (ollamaEnabled && !hostLocalLlmRunning) addons.ollama = true;
     // Enable the bundled voice addon when either side targets it.
     // performSetup -> setAddonEnabled copies the compose overlay, then
     // startDeploy's composePull picks up the openpalm/voice image so
@@ -505,8 +514,9 @@
     try {
       const res = await fetch('/api/setup/recommend');
       if (res.ok) {
-        const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation };
+        const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation; hostProviders?: { provider: string; url: string }[] };
         if (data.ok && data.recommendation) recommendation = data.recommendation;
+        if (data.ok && Array.isArray(data.hostProviders)) detectedHostProviders = data.hostProviders;
       }
     } catch {
       // non-critical — user can configure manually
@@ -613,11 +623,22 @@
 
   function handleEnableVoiceChange(v: boolean): void {
     enableVoice = v;
-    if (v && !selectedVoiceProfile) {
-      const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
-      const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
-        ?? voiceProfiles.find((p) => p.available !== false);
-      if (match) selectedVoiceProfile = match.id;
+    if (v) {
+      // Toggle ON → make the Voice step concretely reflect OpenPalm Voice on
+      // both sides (unless they already target it).
+      if (voiceTts.engine !== 'openpalm-voice') voiceTts = { engine: 'openpalm-voice' };
+      if (voiceStt.engine !== 'openpalm-voice') voiceStt = { engine: 'openpalm-voice' };
+      if (!selectedVoiceProfile) {
+        const preferred = addonProfileId('voice', gpuDetected ? 'cuda' : 'cpu');
+        const match = voiceProfiles.find((p) => p.id === preferred && p.available !== false)
+          ?? voiceProfiles.find((p) => p.available !== false);
+        if (match) selectedVoiceProfile = match.id;
+      }
+    } else {
+      // Toggle OFF → clear any OpenPalm Voice engine back to "not chosen" so the
+      // Voice step no longer shows it (and addons.voice in the payload drops).
+      if (voiceTts.engine === 'openpalm-voice') voiceTts = { engine: '' };
+      if (voiceStt.engine === 'openpalm-voice') voiceStt = { engine: '' };
     }
   }
 
@@ -1699,8 +1720,19 @@
             {selectedVoiceProfile}
             onback={() => goToStep(3)}
             onnext={() => goToStep(5)}
-            onchangetts={(v) => { voiceTts = v; voiceEngineUnknownTts = false; }}
-            onchangestt={(v) => { voiceStt = v; voiceEngineUnknownStt = false; }}
+            onchangetts={(v) => {
+              voiceTts = v;
+              voiceEngineUnknownTts = false;
+              // Keep the Options Voice toggle in sync with the Voice-step engine
+              // choice: picking OpenPalm Voice for either side turns it ON;
+              // choosing a different engine for both turns it OFF.
+              enableVoice = (voiceTts.engine === 'openpalm-voice' || voiceStt.engine === 'openpalm-voice');
+            }}
+            onchangestt={(v) => {
+              voiceStt = v;
+              voiceEngineUnknownStt = false;
+              enableVoice = (voiceTts.engine === 'openpalm-voice' || voiceStt.engine === 'openpalm-voice');
+            }}
             onprofilechange={(id) => { selectedVoiceProfile = id; }}
           />
         </section>
@@ -1717,6 +1749,7 @@
             {ollamaEnabled}
             {ollamaProfiles}
             {selectedOllamaProfile}
+            hostLocalRunning={hostLocalLlmRunning}
             errorMessage={step4Error}
             onback={() => goToStep(4)}
             onnext={() => { if (validateStep4()) goToStep(6); }}
