@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, type NativeImage } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 
@@ -27,6 +27,71 @@ import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from '.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// ── PATH augmentation (macOS Finder launch) ──────────────────────────────────
+// GUI apps launched from the macOS Finder/Dock inherit only a minimal PATH
+// (/usr/bin:/bin:/usr/sbin:/sbin). Homebrew/nvm install dirs are absent, so
+// later child processes resolved via the inherited env (e.g. `opencode`,
+// `docker`) fail with ENOENT. Prepend the common install dirs once at startup
+// so those children can be found. Harmless on Linux/Windows — entries that
+// don't exist are simply never matched. The UI server itself no longer relies
+// on a system `node` (it spawns with Electron's bundled Node, below).
+function augmentPathForGuiLaunch(): void {
+  if (process.platform !== 'darwin') return;
+  const home = process.env.HOME ?? '';
+  const candidates = [
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    home ? join(home, '.nvm', 'current', 'bin') : '',
+  ].filter(Boolean);
+  const current = (process.env.PATH ?? '').split(':').filter(Boolean);
+  const missing = candidates.filter((dir) => !current.includes(dir));
+  if (missing.length > 0) {
+    process.env.PATH = [...missing, ...current].join(':');
+  }
+}
+augmentPathForGuiLaunch();
+
+// ── File logging (no extra deps) ─────────────────────────────────────────────
+// Finder-launched apps have no attached terminal, so console output is lost.
+// Tee the app's own console.* and the UI child's stdout/stderr to a log file
+// under the OS logs dir (macOS → ~/Library/Logs/OpenPalm/main.log) so failures
+// are diagnosable. Best-effort: any logging error must never crash the app.
+let logStream: WriteStream | null = null;
+
+function logFilePath(): string {
+  return join(app.getPath('logs'), 'main.log');
+}
+
+function initFileLogger(): void {
+  if (logStream) return;
+  try {
+    const logsDir = app.getPath('logs');
+    mkdirSync(logsDir, { recursive: true });
+    logStream = createWriteStream(logFilePath(), { flags: 'a' });
+
+    const tee = (orig: (...args: unknown[]) => void, level: string) => {
+      return (...args: unknown[]) => {
+        orig(...args);
+        try {
+          const line = args
+            .map((a) => (typeof a === 'string' ? a : a instanceof Error ? a.stack ?? a.message : String(a)))
+            .join(' ');
+          logStream?.write(`${new Date().toISOString()} [${level}] ${line}\n`);
+        } catch { /* best-effort */ }
+      };
+    };
+    console.log = tee(console.log.bind(console), 'info') as typeof console.log;
+    console.warn = tee(console.warn.bind(console), 'warn') as typeof console.warn;
+    console.error = tee(console.error.bind(console), 'error') as typeof console.error;
+  } catch { /* best-effort: logging is non-fatal */ }
+}
+
+/** Write a raw chunk (UI child stdout/stderr) to the log file. */
+function writeChildLog(text: string): void {
+  try { logStream?.write(text); } catch { /* best-effort */ }
+}
+
 /**
  * Resolve the admin-tools path. Priority:
  *   1. extraResources path (packaged Electron build)
@@ -46,6 +111,9 @@ function resolveAdminToolsPluginPath(): string {
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 const READY_TIMEOUT_MS = 60_000;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
+// Target menu-bar/tray icon size (points). The source asset is much larger;
+// macOS otherwise renders it at full bitmap height (#455).
+const TRAY_ICON_SIZE = 18;
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -150,19 +218,27 @@ function resolveAssetPath(fileName: string): string | null {
 }
 
 function createTrayIconVariant(icon: NativeImage, alpha = 1): NativeImage {
-  const bitmap = icon.toBitmap();
+  // Rebuild the recording-animation frame at the menu-bar target size. Without
+  // this resize the variant would reintroduce the oversized source bitmap and
+  // undo the menu-bar sizing applied to the base icon (#455).
+  const base = icon.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
+  const bitmap = base.toBitmap();
   const variant = Buffer.from(bitmap);
 
   for (let i = 3; i < variant.length; i += 4) {
     variant[i] = Math.round(variant[i] * alpha);
   }
 
-  const size = icon.getSize();
-  return nativeImage.createFromBitmap(variant, {
+  const size = base.getSize();
+  const result = nativeImage.createFromBitmap(variant, {
     width: size.width,
     height: size.height,
     scaleFactor: 1,
   });
+  if (process.platform === 'darwin') {
+    result.setTemplateImage(true);
+  }
+  return result;
 }
 
 function stopTrayRecordingAnimation(): void {
@@ -304,25 +380,39 @@ async function startUIServer(): Promise<void> {
   const uiPidFile = join(dataDir, '.ui-server.pid');
   await killStaleUIServer(uiPidFile);
 
-  uiProcess = spawn('node', [join(uiBuildDir, 'index.js')], {
+  // Spawn the UI Node server with Electron's OWN bundled Node (process.execPath
+  // + ELECTRON_RUN_AS_NODE) rather than a bare `node` on PATH. Finder-launched
+  // macOS apps don't get Homebrew/nvm on PATH, so `spawn('node', …)` failed
+  // with ENOENT and silently hung the splash for 60s (#456). Using the bundled
+  // runtime removes the system-Node dependency entirely.
+  uiProcess = spawn(process.execPath, [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
-    env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+    env: { ...buildUIServerEnv(homeDir, UI_PORT, appUpdate), ELECTRON_RUN_AS_NODE: '1' },
     // Own process group so shutdown can group-kill the UI server AND any
     // children it spawns (e.g. the wizard's `opencode serve` subprocess),
     // which a bare kill of the node pid would orphan.
     detached: process.platform !== 'win32',
-    // stdout inherits so terminal users see it; stderr is piped for diagnostics
-    stdio: ['ignore', 'inherit', 'pipe'],
+    // Capture both streams: under Finder there is no terminal, so 'inherit'
+    // would lose all output. Tee stdout+stderr to the log file (and still
+    // re-emit to the parent's streams for terminal users).
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (uiProcess.pid) {
     try { writeFileSync(uiPidFile, String(uiProcess.pid)); } catch { /* best-effort */ }
   }
 
-  // Tail UI server stderr into the ring buffer and re-emit to process.stderr
-  // so terminal users still see the output.
+  // Tail UI server stdout to the parent stdout + log file.
+  uiProcess.stdout?.on('data', (chunk: Buffer) => {
+    const text = chunk.toString();
+    process.stdout.write(text);
+    writeChildLog(text);
+  });
+
+  // Tail UI server stderr into the ring buffer, the parent stderr, and the log.
   uiProcess.stderr?.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
     process.stderr.write(text);
+    writeChildLog(text);
     // Split on newlines; keep partial last line if chunk doesn't end with \n
     const lines = text.split('\n');
     for (let i = 0; i < lines.length; i++) {
@@ -333,8 +423,20 @@ async function startUIServer(): Promise<void> {
     }
   });
 
+  // A spawn failure (ENOENT etc.) must surface immediately — don't let the
+  // ready-poll spin out its full 60s timeout with a useless splash (#456).
   uiProcess.on('error', (err) => {
     console.error('UI server process error:', err.message);
+    closeSplashWindow();
+    dialog.showErrorBox(
+      'OpenPalm failed to start',
+      [
+        `The UI server could not be started: ${err.message}`,
+        '',
+        `See the log file for details:\n${logFilePath()}`,
+      ].join('\n'),
+    );
+    app.quit();
   });
 
   uiProcess.on('exit', (code) => {
@@ -354,7 +456,7 @@ async function startUIServer(): Promise<void> {
         ? `Last output from UI server:\n${recentLogs}`
         : '(No UI server output was captured.)',
       '',
-      'Check the terminal where you launched OpenPalm for full logs.',
+      `See the log file for full logs:\n${logFilePath()}`,
     ].join('\n');
     console.error('UI server did not become ready in time');
     closeSplashWindow();
@@ -526,12 +628,21 @@ function createTray(): void {
     return;
   }
 
-  trayIcon = nativeImage.createFromPath(iconPath);
+  // The source asset is 128×122 RGBA; passing it straight to Tray renders it
+  // ~128pt tall in the macOS menu bar (#455). Resize to a menu-bar-appropriate
+  // size, and on macOS mark it as a template image so it adopts the menu bar's
+  // monochrome light/dark treatment. Follow-up polish: ship a dedicated
+  // monochrome trayTemplate.png/@2x asset rather than recolouring this one.
+  trayIcon = nativeImage.createFromPath(iconPath).resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
+  if (process.platform === 'darwin') {
+    trayIcon.setTemplateImage(true);
+  }
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon as NativeImage, alpha));
   tray = new Tray(trayIcon);
 
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open OpenPalm', click: showWindow },
+    { label: 'Show Logs', click: () => { void shell.openPath(app.getPath('logs')); } },
     { type: 'separator' },
     {
       label: 'Quit',
@@ -550,6 +661,8 @@ function createTray(): void {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  initFileLogger();
+  console.log(`OpenPalm starting (v${app.getVersion?.() ?? '?'}); logs at ${logFilePath()}`);
   createSplashWindow();
   try {
     await startUIServer();
