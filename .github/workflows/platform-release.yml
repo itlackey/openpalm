@@ -101,6 +101,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
       - name: Resolve units
         id: p
         env:
@@ -109,64 +112,7 @@ jobs:
           REL_ASSISTANT: ${{ inputs.release_assistant }}
           REL_VOICE: ${{ inputs.release_voice }}
           VERSION: ${{ inputs.version }}
-        run: |
-          node -e "
-            const fs = require('fs');
-            const groups = JSON.parse(fs.readFileSync('.github/release-package-groups.json', 'utf8'));
-            const units = groups.units;
-            const b = (v) => v === 'true';
-            const relHost = b(process.env.REL_HOST), relChannels = b(process.env.REL_CHANNELS);
-            const relAssistant = b(process.env.REL_ASSISTANT), relVoice = b(process.env.REL_VOICE);
-            const isPre = process.env.VERSION.includes('-');
-
-            // Full = nothing selected at all → host+channels+assistant (NOT voice;
-            // voice is heavy + stable-only, so it is always explicit). Selecting
-            // ONLY voice must NOT trigger a full release, so voice counts toward
-            // "anything selected" even though it never contributes to the core trio.
-            const full = !(relHost || relChannels || relAssistant || relVoice);
-            const do_host = full || relHost;
-            const do_channels = full || relChannels;
-            const do_assistant = full || relAssistant;
-            const do_voice = relVoice && !isPre;       // stable only, always explicit
-            const do_tag = full || do_host;            // tag/release for host + full only
-
-            if (relVoice && isPre) console.log('::notice::voice is stable-only — skipping voice for prerelease ' + process.env.VERSION);
-
-            // Manifests to stamp + regression-guard. Full uses coordinatedManifests
-            // (== host ∪ channels); a partial selection unions the picked units.
-            const picked = [];
-            if (do_host) picked.push('host');
-            if (do_channels) picked.push('channels');
-            if (do_assistant) picked.push('assistant');
-            const manifests = full
-              ? groups.coordinatedManifests
-              : [...new Set(picked.flatMap((u) => units[u] || []))];
-
-            // Image matrix: channels => guardian + channel; assistant => assistant.
-            const include = [];
-            if (do_channels) {
-              include.push({ dockerfile: 'core/guardian/Dockerfile', image: 'openpalm/guardian' });
-              include.push({ dockerfile: 'core/channel/Dockerfile', image: 'openpalm/channel' });
-            }
-            if (do_assistant) include.push({ dockerfile: 'core/assistant/Dockerfile', image: 'openpalm/assistant' });
-
-            const out = process.env.GITHUB_OUTPUT;
-            const w = (k, v) => fs.appendFileSync(out, k + '=' + v + '\n');
-            w('full', full); w('do_host', do_host); w('do_channels', do_channels);
-            w('do_assistant', do_assistant); w('do_voice', do_voice); w('do_tag', do_tag);
-            w('image_matrix', JSON.stringify({ include }));
-            w('manifests', JSON.stringify(manifests));
-
-            const summary = process.env.GITHUB_STEP_SUMMARY;
-            if (summary) {
-              fs.appendFileSync(summary, '### Release plan — ' + process.env.VERSION + '\\n\\n');
-              fs.appendFileSync(summary, '| unit | release? |\\n|---|---|\\n');
-              fs.appendFileSync(summary, '| host | ' + do_host + ' |\\n| channels | ' + do_channels + ' |\\n| assistant | ' + do_assistant + ' |\\n| voice | ' + do_voice + ' |\\n');
-              fs.appendFileSync(summary, '\\n**mode:** ' + (full ? 'full coordinated' : 'partial') + ' · **tag+release:** ' + do_tag + '\\n\\n');
-              fs.appendFileSync(summary, '**manifests stamped:** ' + (manifests.length ? manifests.join(', ') : '(none — image-only)') + '\\n');
-            }
-            console.log({ full, do_host, do_channels, do_assistant, do_voice, do_tag, manifests, include });
-          "
+        run: node scripts/release-plan.mjs
 
   preflight:
     name: Preflight (validate, test, guard)
