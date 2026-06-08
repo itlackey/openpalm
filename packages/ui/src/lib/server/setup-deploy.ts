@@ -59,6 +59,12 @@ type DeployState = {
   setupComplete: boolean;
   deployStatus: DeployEntry[];
   deployError: string | null;
+  // NON-fatal notice surfaced to the user when the install proceeded with
+  // CACHED images because the registry pull failed (e.g. a flaky network on the
+  // multi-GB assistant image). Without this the user could silently run a
+  // months-old assistant — the akm-0.3.1-vs-0.8.2 surprise. Independent of
+  // deployError (the install still succeeds).
+  imageWarning: string | null;
   phase: DeployPhase;
 };
 
@@ -67,6 +73,7 @@ let _state: DeployState = {
   setupComplete: false,
   deployStatus: [],
   deployError: null,
+  imageWarning: null,
   phase: "writing-config",
 };
 
@@ -84,6 +91,7 @@ export function resetDeployState(): void {
     setupComplete: false,
     deployStatus: [],
     deployError: null,
+    imageWarning: null,
     phase: "writing-config",
   };
 }
@@ -328,6 +336,7 @@ export function startDeploy(state: ControlPlaneState): void {
 
   _state.deploying = true;
   _state.deployError = null;
+  _state.imageWarning = null;
   _state.phase = "writing-config";
 
   void (async () => {
@@ -426,9 +435,16 @@ export function startDeploy(state: ControlPlaneState): void {
               imageTag, services,
             });
           } else {
-            logger.info("image pull failed but all images present locally — continuing", {
+            logger.warn("image pull failed but all images present locally — continuing with CACHED images", {
               services, stderrSlice: (pullResult?.stderr ?? "").slice(0, 200),
             });
+            // Surface to the user: they're running whatever images are already
+            // on disk, which may be out of date (this is how a stale assistant —
+            // e.g. an old akm — slips through unnoticed).
+            _state.imageWarning =
+              "Couldn't download the latest images (network or registry issue), so the install used the " +
+              "images already on your machine — these may be out of date. Check your connection and re-run " +
+              "setup or Update to pull the newest versions.";
           }
         } else {
           let msg: string;

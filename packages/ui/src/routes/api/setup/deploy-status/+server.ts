@@ -20,6 +20,7 @@ export const GET: RequestHandler = () => {
     deploying:     state.deploying,
     deployStatus:  state.deployStatus,
     deployError:   state.deployError,
+    imageWarning:  state.imageWarning,
     phase:         state.phase,
     ports:         resolvePorts(),
   });

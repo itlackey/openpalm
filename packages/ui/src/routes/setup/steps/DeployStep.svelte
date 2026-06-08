@@ -21,6 +21,8 @@
     setupComplete?: boolean;
     deployStatus?: ServiceStatus[];
     deployError?: string | null;
+    /** Non-fatal: install used cached images because the registry pull failed. */
+    imageWarning?: string | null;
     phase?: DeployPhase;
     ports?: { admin?: number; assistant?: number };
   }
@@ -211,6 +213,11 @@
       {#if deployHasWarnings && warningRows.length > 0}
         <div class="deploy-warnings-note" role="status" id="deploy-warnings-note">
           Still warming up: {warningRows.map((s) => s.label || s.service).join(', ')}. You can finish setup now — these will be ready shortly.
+        </div>
+      {/if}
+      {#if deployData.imageWarning}
+        <div class="feedback feedback--warning" role="status" id="deploy-image-warning" style="margin-top:12px">
+          <span>⚠ {deployData.imageWarning}</span>
         </div>
       {/if}
       {#if !isElectron}
