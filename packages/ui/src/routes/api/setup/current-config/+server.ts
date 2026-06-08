@@ -24,6 +24,30 @@ function readAkmConfig(configDir: string): AkmConfig {
   }
 }
 
+/**
+ * Read model preferences persisted by importHostOpenCode into
+ * <configDir>/assistant/opencode.json. This is the on-disk source of truth
+ * after a host import; reusing it means wizard reruns restore the same
+ * preferences without re-detecting the (possibly absent) host install.
+ * Returns undefined if the file doesn't exist or contains no model keys.
+ */
+function readPersistedModelPreferences(
+  configDir: string
+): { model?: string; small_model?: string } | undefined {
+  // assistantConfigDir(state) === state.configDir + "/assistant"
+  const path = join(configDir, "assistant", "opencode.json");
+  if (!existsSync(path)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    const prefs: { model?: string; small_model?: string } = {};
+    if (typeof parsed.model === "string" && parsed.model) prefs.model = parsed.model;
+    if (typeof parsed.small_model === "string" && parsed.small_model) prefs.small_model = parsed.small_model;
+    return prefs.model || prefs.small_model ? prefs : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // Derive a baseUrl from the akm config endpoint by stripping the well-known
 // suffixes (`/chat/completions`, `/embeddings`). Lets the wizard reuse the
 // same baseUrl shape connections were created with.
@@ -46,6 +70,7 @@ export const GET: RequestHandler = async (event) => {
   const env = readStackEnv(state.stackDir);
   const secretEnv = readStackSecretEnv(state.stackDir);
   const akm = readAkmConfig(state.configDir);
+  const importedModelPreferences = readPersistedModelPreferences(state.configDir);
 
   // Addon hardware profiles (CPU / CUDA / …)
   const rawVoiceProfiles = getAddonProfiles(state.homeDir, 'voice');
@@ -130,5 +155,6 @@ export const GET: RequestHandler = async (event) => {
     },
     enabledAddons: listEnabledAddonIds(state.homeDir),
     channelCredentials,
+    importedModelPreferences: importedModelPreferences ?? null,
   });
 };

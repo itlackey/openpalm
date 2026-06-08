@@ -15,11 +15,14 @@ import {
   buildComposeOptions,
   checkDocker,
   authJsonPath,
+  createLogger,
 } from '@openpalm/lib';
 import { composeRestart } from '$lib/server/docker.js';
 import { getState } from '$lib/server/state.js';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
 import type { RequestHandler } from './$types';
+
+const logger = createLogger('setup:import-host');
 
 type PushResult = {
   pushed: string[];
@@ -110,17 +113,37 @@ export const POST: RequestHandler = async () => {
     );
   }
 
-  const hostStatus = detectHostOpenCode();
+  // Provider ids that now have credentials in OP_HOME.
+  // Primary source: the copy result's credential count tells us something was
+  // copied, but it doesn't give us provider names. Read the imported auth.json
+  // for names. If that post-copy read fails but the copy DID report credentials,
+  // we warn and fall back to the host-side auth.json so we don't silently hide
+  // providers that ARE on disk.
   const importedAuthPath = authJsonPath(state);
-  const authPathToUse = existsSync(importedAuthPath)
-    ? importedAuthPath
-    : hostStatus.authPath ?? null;
+  let importedProviderIds: string[] = [];
+  if (result.imported.credentials > 0 || existsSync(importedAuthPath)) {
+    const fromDestination = providerIdsFromAuth(importedAuthPath);
+    if (fromDestination.length > 0) {
+      importedProviderIds = fromDestination;
+    } else if (result.imported.credentials > 0) {
+      // Post-copy read returned nothing despite a reported copy — warn and fall
+      // back to the host-side auth.json so providers aren't silently hidden.
+      const hostStatus = detectHostOpenCode();
+      const hostFallback = hostStatus.authPath ? providerIdsFromAuth(hostStatus.authPath) : [];
+      logger.warn('post-copy auth.json read returned no providers despite credentials being reported; falling back to host auth.json', {
+        importedAuthPath,
+        importedCredentials: result.imported.credentials,
+        fallbackCount: hostFallback.length,
+      });
+      importedProviderIds = hostFallback;
+    }
+  }
 
-  // Provider ids that now have credentials in OP_HOME. These are "imported"
-  // regardless of whether the live push to a running OpenCode succeeds — the
-  // credentials are on disk and provider-consuming services pick them up on
-  // (re)start. The UI marks these verified.
-  const importedProviderIds = authPathToUse ? providerIdsFromAuth(authPathToUse) : [];
+  // Conflict provider ids — provider entries that already existed in OP_HOME
+  // and were NOT overwritten. Exposed so the UI can show "X was skipped".
+  const conflictProviders: string[] = result.conflicts;
+
+  const authPathToUse = existsSync(importedAuthPath) ? importedAuthPath : null;
 
   // Best-effort live push to a running OpenCode so providers appear connected
   // immediately. A per-provider push error (or OpenCode not being reachable
@@ -129,6 +152,7 @@ export const POST: RequestHandler = async () => {
   if (authPathToUse) {
     pushResult = await pushAuthToOpenCode(authPathToUse);
   }
+  // authPathToUse is only null when nothing was imported — skip the live push.
 
   // Restart provider-consuming services. During setup the stack may not be
   // running yet, so restart failures are non-fatal (credentials are already
@@ -140,6 +164,7 @@ export const POST: RequestHandler = async () => {
     imported: result.imported,
     importedProviders: importedProviderIds,
     conflicts: result.conflicts.length,
+    conflictProviders,
     livePushed: pushResult.pushed.length,
     pushedProviders: pushResult.pushed,
     errors: pushResult.errors,
