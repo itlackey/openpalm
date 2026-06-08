@@ -260,10 +260,11 @@ export {
 } from "./control-plane/lifecycle.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
-export type { DockerResult } from "./control-plane/docker.js";
+export type { DockerResult, ExistingProject } from "./control-plane/docker.js";
 export {
   checkDocker,
   checkDockerCompose,
+  detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
   composeUp,
@@ -299,7 +300,7 @@ export { detectLocalProviders } from "./control-plane/model-runner.js";
 
 // ── Hardware detection + setup recommendation ───────────────────────────
 export type { GpuInfo, GpuVendor } from "./control-plane/hardware-detect.js";
-export { detectGpu, parseNvidiaSmi, parseRocmSmi } from "./control-plane/hardware-detect.js";
+export { detectGpu, parseNvidiaSmi, parseRocmSmi, parseAppleSilicon } from "./control-plane/hardware-detect.js";
 export type {
   DetectedHostProvider,
   SetupRecommendation,

@@ -5,7 +5,7 @@ import {
   MIN_LOCAL_GPU_VRAM_MB,
   type SetupRecommendationInput,
 } from "./setup-recommendation.js";
-import { parseNvidiaSmi, parseRocmSmi, type GpuInfo } from "./hardware-detect.js";
+import { parseNvidiaSmi, parseRocmSmi, parseAppleSilicon, type GpuInfo } from "./hardware-detect.js";
 
 const base: SetupRecommendationInput = { cloudProviders: [], hostProviders: [], gpu: null };
 const gpu = (vendor: GpuInfo["vendor"], vramMb: number, name = "Test GPU"): GpuInfo => ({ vendor, name, vramMb });
@@ -53,6 +53,39 @@ describe("recommendSetup", () => {
     expect(r.action).toBe("connect-manually");
   });
 
+  test("darwin + apple GPU + no provider -> connect-manually (NOT enable-ollama), Mac-tailored alert", () => {
+    const r = recommendSetup({ ...base, platform: "darwin", gpu: gpu("apple", 65536, "Apple Silicon (Mac15,7)") });
+    expect(r.action).toBe("connect-manually");
+    expect(r.action).not.toBe("enable-ollama");
+    if (r.action === "connect-manually") {
+      expect(r.alert).toContain("macOS");
+      expect(r.alert).toContain("Metal");
+      expect(r.alert.toLowerCase()).toContain("ollama");
+    }
+  });
+
+  test("darwin + apple GPU never selects cuda/rocm (no in-stack enable)", () => {
+    // Even with huge unified memory, darwin+apple must not enable in-stack ollama.
+    const r = recommendSetup({ ...base, platform: "darwin", gpu: gpu("apple", 131072) });
+    expect(r.action).not.toBe("enable-ollama");
+  });
+
+  test("darwin + host ollama running -> still use-host-providers (wins over apple guidance)", () => {
+    const r = recommendSetup({
+      ...base,
+      platform: "darwin",
+      hostProviders: [{ provider: "ollama", url: "http://localhost:11434" }],
+      gpu: gpu("apple", 65536),
+    });
+    expect(r.action).toBe("use-host-providers");
+  });
+
+  test("linux + nvidia >= threshold -> still enable-ollama cuda (unchanged)", () => {
+    const r = recommendSetup({ ...base, platform: "linux", gpu: gpu("nvidia", 24576) });
+    expect(r.action).toBe("enable-ollama");
+    if (r.action === "enable-ollama") expect(r.profileVariant).toBe("cuda");
+  });
+
   test("no cloud, no host, no GPU -> connect-manually", () => {
     const r = recommendSetup(base);
     expect(r.action).toBe("connect-manually");
@@ -61,10 +94,29 @@ describe("recommendSetup", () => {
 });
 
 describe("gpuToProfileVariant", () => {
-  test("nvidia->cuda, amd->rocm, unknown->cpu", () => {
+  test("nvidia->cuda, amd->rocm, apple->cpu, unknown->cpu", () => {
     expect(gpuToProfileVariant(gpu("nvidia", 8192))).toBe("cuda");
     expect(gpuToProfileVariant(gpu("amd", 8192))).toBe("rocm");
+    expect(gpuToProfileVariant(gpu("apple", 65536))).toBe("cpu");
     expect(gpuToProfileVariant(gpu("unknown", 8192))).toBe("cpu");
+  });
+});
+
+describe("parseAppleSilicon", () => {
+  test("parses hw.memsize bytes -> MiB + vendor apple + model name", () => {
+    const stdout = `${16 * 1024 * 1024 * 1024}\nMac15,7\n`;
+    const out = parseAppleSilicon(stdout);
+    expect(out).toEqual([{ vendor: "apple", name: "Apple Silicon (Mac15,7)", vramMb: 16384 }]);
+  });
+  test("missing model line -> falls back to arm64", () => {
+    const out = parseAppleSilicon(`${8 * 1024 * 1024 * 1024}\n`);
+    expect(out[0]?.vendor).toBe("apple");
+    expect(out[0]?.name).toBe("Apple Silicon (arm64)");
+    expect(out[0]?.vramMb).toBe(8192);
+  });
+  test("garbage / empty -> []", () => {
+    expect(parseAppleSilicon("")).toEqual([]);
+    expect(parseAppleSilicon("not-a-number\nMac15,7")).toEqual([]);
   });
 });
 

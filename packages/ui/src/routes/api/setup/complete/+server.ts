@@ -81,6 +81,20 @@ export const POST: RequestHandler = async (event) => {
     dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
       startDeploy(state);
+    } else {
+      // Docker is down. Config was persisted successfully, but we cannot
+      // deploy. Returning ok:true here used to leave the client polling the
+      // deploy state forever (it never starts). Surface a structured,
+      // actionable error instead (#464).
+      return json(
+        {
+          ok: false,
+          error: "docker_unavailable",
+          message:
+            "Docker isn't running. Start Docker Desktop or OrbStack, then try again.",
+        },
+        { status: 503, headers: { "content-type": "application/json" } }
+      );
     }
   }
 

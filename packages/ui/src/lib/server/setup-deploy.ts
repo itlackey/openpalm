@@ -15,6 +15,7 @@ import {
   composePs,
   composeUp,
   createLogger,
+  detectExistingProject,
   getAddonProfiles,
   getAddonProfileSelection,
   isSetupComplete,
@@ -39,7 +40,10 @@ function projectNameForComposeOptions(composeOpts: Parameters<typeof composePs>[
 
 export type DeployEntry = {
   service: string;
-  status: "pending" | "running" | "error";
+  // "warning" is a NON-error terminal state: the service didn't reach healthy
+  // in time but the install is allowed to complete (e.g. voice still warming
+  // up). The client treats warning as terminal-done-with-warnings, not a hang.
+  status: "pending" | "running" | "error" | "warning";
   label: string;
 };
 
@@ -279,40 +283,26 @@ async function pollContainerHealth(
  * project belong to a DIFFERENT OP_HOME than the one we're about to deploy.
  * Without this, two stacks (e.g. dev and host) that share the default
  * "openpalm" project name will silently clobber each other.
+ *
+ * Detection logic lives in lib (detectExistingProject) so the CLI and UI
+ * share the same ours-vs-foreign decision (CLAUDE.md: control-plane logic
+ * in lib). An existing OURS project is fine — startDeploy's down + force-recreate
+ * reconciles it. Only a FOREIGN project produces a refusal.
  */
 async function checkProjectNameCollision(state: ControlPlaneState): Promise<string | null> {
-  // Use docker CLI directly — composePs would require running the same
-  // compose file set we're about to launch, which is what we're guarding.
-  const { execFile } = await import("node:child_process");
-  return new Promise((resolve) => {
-    execFile(
-      "docker",
-      ["ps", "-q", "--filter", `label=com.docker.compose.project=${projectNameForState(state)}`],
-      (err, stdout) => {
-        if (err) return resolve(null); // docker not running / no permissions — let composeUp surface it
-        const ids = stdout.toString().trim().split(/\s+/).filter(Boolean);
-        if (ids.length === 0) return resolve(null);
-        // Inspect the first container's working_dir label to learn which OP_HOME it belongs to.
-        execFile(
-          "docker",
-          ["inspect", "--format", '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}', ids[0]],
-          (err2, stdout2) => {
-            if (err2) return resolve(null);
-            const runningHome = stdout2.toString().trim();
-            if (runningHome && runningHome !== state.homeDir) {
-              resolve(
-                `Refusing to deploy: docker project "${projectNameForState(state)}" is already running with OP_HOME=${runningHome}, ` +
-                `but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, ` +
-                `or stop the existing stack first.`
-              );
-              return;
-            }
-            resolve(null);
-          },
-        );
-      },
-    );
+  const projectName = projectNameForState(state);
+  const existing = await detectExistingProject({
+    projectName,
+    expectedWorkingDir: state.homeDir,
   });
+  if (existing.exists && !existing.isOurs) {
+    return (
+      `Refusing to deploy: docker project "${projectName}" is already running from ${existing.workingDir || "another OpenPalm install"}, ` +
+      `but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, ` +
+      `or stop the existing stack first.`
+    );
+  }
+  return null;
 }
 
 // ── Main deploy entry point ──────────────────────────────────────────────
@@ -453,7 +443,11 @@ export function startDeploy(state: ControlPlaneState): void {
       // Phase 3: start containers.
       _state.phase = "starting";
       _state.deployStatus = _state.deployStatus.map(e => ({ ...e, status: "pending", label: "Starting..." }));
-      const result = await composeUp(composeOpts);
+      // forceRecreate + removeOrphans: idempotent reconcile. Re-running install
+      // over an existing OURS stack (or after the pre-deploy `down`) cleanly
+      // recreates containers and prunes services dropped from the compose set,
+      // matching performUpgrade. (#461)
+      const result = await composeUp({ ...composeOpts, forceRecreate: true, removeOrphans: true });
 
       if (!result.ok) {
         const raw = result.stderr ?? "compose up failed";
@@ -699,8 +693,11 @@ async function bringUpVoiceIfEnabled(
     _state.deployStatus = _state.deployStatus.map((e) =>
       profileServices.includes(e.service)
         ? {
+          // NON-error terminal state: install completes "with warnings" rather
+          // than hanging. An "error" here would keep the client's
+          // every-row-running check from ever flipping to done.
           ...e,
-          status: "error" as const,
+          status: "warning" as const,
           label: "Voice is still warming up. You can finish setup; check the Voice tab in admin.",
         }
         : e,

@@ -18,6 +18,10 @@ export const MIN_LOCAL_GPU_VRAM_MB = 8 * 1024;
 const VENDOR_PROFILE_VARIANT: Record<GpuVendor, "cuda" | "rocm" | "cpu"> = {
   nvidia: "cuda",
   amd: "rocm",
+  // The in-stack Ollama container on a Mac is a Linux container with no Metal
+  // access, so it can only ever run CPU. (On darwin apple GPUs are routed to
+  // host-Ollama guidance and never reach enable-ollama — see recommendSetup.)
+  apple: "cpu",
   unknown: "cpu",
 };
 
@@ -34,6 +38,13 @@ export type SetupRecommendationInput = {
   hostProviders: DetectedHostProvider[];
   /** Best detected GPU, or null. */
   gpu: GpuInfo | null;
+  /**
+   * Host platform. Defaults to `process.platform` when omitted, but the decision
+   * logic only reads this field (never `process.*`) so the function stays pure.
+   * On darwin the in-stack Linux Ollama can't reach the Mac's Metal GPU, so an
+   * apple GPU is routed to host-Ollama guidance instead of enable-ollama.
+   */
+  platform?: NodeJS.Platform;
 };
 
 export type SetupRecommendation =
@@ -58,11 +69,13 @@ const labelHostProviders = (h: DetectedHostProvider[]): string =>
  * Order (first match wins):
  *  1. cloud provider connected      -> use it.
  *  2. host-local provider running   -> add it, proceed.
- *  3. capable GPU (>= threshold)    -> enable in-stack Ollama.
- *  4. otherwise                     -> ask the user to connect a provider.
+ *  3. darwin + apple GPU            -> guide to HOST Ollama (Metal); never in-stack.
+ *  4. capable GPU (>= threshold)    -> enable in-stack Ollama.
+ *  5. otherwise                     -> ask the user to connect a provider.
  */
 export function recommendSetup(input: SetupRecommendationInput): SetupRecommendation {
   const { cloudProviders, hostProviders, gpu } = input;
+  const platform = input.platform ?? process.platform;
 
   if (cloudProviders.length > 0) {
     return { action: "use-cloud", cloudProviders };
@@ -75,6 +88,22 @@ export function recommendSetup(input: SetupRecommendationInput): SetupRecommenda
       alert: `No cloud AI provider was detected, but ${labelHostProviders(hostProviders)} ${
         hostProviders.length > 1 ? "are" : "is"
       } running on your computer — added automatically. Pick your models on the next step.`,
+    };
+  }
+
+  // macOS: the in-stack Ollama is a Linux container with no access to the Mac's
+  // Metal GPU, so enabling it would silently fall back to slow CPU. When the Mac
+  // has an Apple-Silicon GPU and nothing is connected yet, steer the user to a
+  // native host Ollama (which DOES use Metal) via connect-manually — reusing the
+  // existing action avoids a new wizard branch (chosen for minimal UI impact).
+  if (platform === "darwin" && gpu && gpu.vendor === "apple") {
+    return {
+      action: "connect-manually",
+      alert:
+        "No AI provider was detected. On macOS, fast local models need Ollama running " +
+        "natively (it uses your Apple Silicon / Metal GPU) — the bundled in-stack Ollama " +
+        "runs in Linux and cannot reach Metal. Install Ollama for macOS (https://ollama.com/download), " +
+        "or connect a provider on the next step.",
     };
   }
 

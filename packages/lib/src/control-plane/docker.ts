@@ -51,6 +51,83 @@ export function resolveComposeProjectName(envOverrides: Record<string, string> =
   );
 }
 
+/**
+ * Result of probing the Docker daemon for an existing compose project that
+ * shares our project name.
+ *
+ * - `exists`   — at least one running container carries the project label.
+ * - `isOurs`   — those containers were launched from THIS install's working
+ *                dir (compose working_dir label === expectedWorkingDir). When
+ *                true the caller should reconcile in place (up --force-recreate).
+ *                When false a DIFFERENT OpenPalm install (e.g. dev vs host) owns
+ *                the name and the caller must refuse.
+ * - `workingDir` — the working_dir label read off the first container, for
+ *                error messages. Empty string when unknown.
+ */
+export type ExistingProject = {
+  exists: boolean;
+  isOurs: boolean;
+  workingDir: string;
+};
+
+/**
+ * Decide whether a running compose project (identified by its
+ * `com.docker.compose.project.working_dir` label) is OURS — i.e. was launched
+ * from this install's working dir. An empty/unknown label can't prove foreign,
+ * so it counts as ours (reconcile rather than wrongly refuse a redeploy).
+ *
+ * Pure decision split out from detectExistingProject so the ours-vs-foreign
+ * rule is unit-testable without a Docker daemon.
+ */
+export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: string): boolean {
+  const label = workingDirLabel.trim();
+  return label === "" || label === expectedWorkingDir;
+}
+
+/**
+ * Probe the Docker daemon for a running compose project that shares
+ * `projectName`. Decides ours-vs-foreign by comparing the project's
+ * `com.docker.compose.project.working_dir` label against `expectedWorkingDir`
+ * (the install's OP_HOME / compose context).
+ *
+ * Returns `{ exists:false }` on any docker error (daemon down, no permission) —
+ * detection is best-effort and never blocks the caller; a real failure surfaces
+ * later through composeUp.
+ */
+export function detectExistingProject(opts: {
+  projectName: string;
+  expectedWorkingDir: string;
+}): Promise<ExistingProject> {
+  const none: ExistingProject = { exists: false, isOurs: false, workingDir: "" };
+  return new Promise((resolve) => {
+    execFile(
+      "docker",
+      ["ps", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
+      { timeout: 10_000 },
+      (err, stdout) => {
+        if (err) return resolve(none);
+        const ids = stdout.toString().trim().split(/\s+/).filter(Boolean);
+        if (ids.length === 0) return resolve(none);
+        execFile(
+          "docker",
+          [
+            "inspect",
+            "--format",
+            '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}',
+            ids[0],
+          ],
+          { timeout: 10_000 },
+          (err2, stdout2) => {
+            if (err2) return resolve({ exists: true, isOurs: false, workingDir: "" });
+            const workingDir = stdout2.toString().trim();
+            resolve({ exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir });
+          },
+        );
+      },
+    );
+  });
+}
+
 /** Check if Docker is available */
 export async function checkDocker(): Promise<DockerResult> {
   return new Promise((resolve) => {
@@ -172,7 +249,21 @@ export async function composeUp(
   if (options.forceRecreate) args.push("--force-recreate");
   if (options.removeOrphans) args.push("--remove-orphans");
   if (options.services?.length) args.push(...options.services);
-  return run(args, undefined, 300_000, collectEnvOverrides(options.envFiles));
+  return run(args, undefined, composeUpTimeoutMs(), collectEnvOverrides(options.envFiles));
+}
+
+/**
+ * Timeout budget for `compose up`. A first install extracts multi-GB images
+ * (voice CUDA ~7.6 GB) onto slow disks; the previous hard 5-minute cap
+ * SIGTERM-killed the start mid-extraction and surfaced as an empty/opaque
+ * error. Default 30 min, override with OP_COMPOSE_UP_TIMEOUT_MS. Kept bounded
+ * (never removed) so a genuinely hung start still eventually fails.
+ */
+function composeUpTimeoutMs(): number {
+  const raw = process.env.OP_COMPOSE_UP_TIMEOUT_MS?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return 30 * 60_000;
 }
 
 /**

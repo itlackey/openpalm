@@ -15,6 +15,10 @@
     verifiedProviders: Provider[];
     providerState: Record<string, ProviderState>;
     modelSelection: { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection };
+    /** True only when the user explicitly opted into a no-AI install. */
+    allowEmptyInstall?: boolean;
+    /** Single source of truth: a verified provider + chat model, OR empty-install. */
+    canComplete?: boolean;
     errorMessage: string;
     onback: () => void;
     onnext: () => void;
@@ -22,7 +26,7 @@
     onselectnone: (role: string) => void;
   }
 
-  let { verifiedProviders, providerState, modelSelection, errorMessage, onback, onnext, onselect, onselectnone }: Props = $props();
+  let { verifiedProviders, providerState, modelSelection, allowEmptyInstall = false, canComplete = false, errorMessage, onback, onnext, onselect, onselectnone }: Props = $props();
 
   interface Role {
     id: string;
@@ -122,9 +126,15 @@
 <p class="step-description">Pre-selected from your providers. Adjust if needed.</p>
 
 {#if verifiedProviders.length === 0}
-  <div class="feedback feedback--error" style="margin-bottom:16px" role="alert">
-    <span>No providers configured. You can skip to complete setup and add providers from the admin panel later.</span>
-  </div>
+  {#if allowEmptyInstall}
+    <div class="feedback feedback--warning" style="margin-bottom:16px" role="status">
+      <span>Installing without an AI provider — the assistant won't be able to chat until you add one from the dashboard. No model selection is needed.</span>
+    </div>
+  {:else}
+    <div class="feedback feedback--error" style="margin-bottom:16px" role="alert">
+      <span>Connect a provider on the previous step to choose a chat model.</span>
+    </div>
+  {/if}
 {/if}
 
 <div id="model-groups">
@@ -227,7 +237,11 @@
 
 <div class="step-actions">
   <button class="btn btn-secondary" id="btn-step2-back" onclick={onback}>Back</button>
-  <button class="btn btn-primary" id="btn-step2-next" onclick={onnext}>
-    {verifiedProviders.length === 0 ? 'Skip for now' : 'Voice Setup'}
+  <button class="btn btn-primary" id="btn-step2-next" onclick={onnext} disabled={!canComplete}>
+    {#if verifiedProviders.length === 0 && allowEmptyInstall}
+      Skip for now
+    {:else}
+      Voice Setup
+    {/if}
   </button>
 </div>

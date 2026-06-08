@@ -46,6 +46,12 @@
     allowEmptyInstall?: boolean;
     /** Called when the "install without provider" checkbox flips */
     onallowemptyinstallchange?: (v: boolean) => void;
+    /**
+     * Single source of truth (from the parent) for whether the user may leave
+     * this step: a provider is verified OR they opted into an empty install.
+     * Drives the Next button + the copy so the two never contradict.
+     */
+    canProceed?: boolean;
   }
 
   let {
@@ -77,6 +83,7 @@
     hostStatusWarning = null,
     allowEmptyInstall = false,
     onallowemptyinstallchange,
+    canProceed = false,
   }: Props = $props();
 
   // When host providers are detected, default to Import mode.
@@ -640,13 +647,21 @@
     <span class="nav-info" id="provider-count-info">
       {#if verifiedCount > 0}
         <b>{verifiedCount}</b> provider{verifiedCount > 1 ? 's' : ''} ready
+      {:else if allowEmptyInstall}
+        Installing without an AI provider
       {:else}
         Connect a provider to continue
       {/if}
     </span>
     <button class="btn btn-primary" id="btn-step1-next" onclick={onnext}
-      disabled={verifiedCount === 0 && !allowEmptyInstall}>
-      {verifiedCount > 0 ? 'Choose Models' : 'Skip for now'}
+      disabled={!canProceed}>
+      {#if verifiedCount > 0}
+        Choose Models
+      {:else if allowEmptyInstall}
+        Install without AI
+      {:else}
+        Choose Models
+      {/if}
     </button>
   {/if}
 </div>

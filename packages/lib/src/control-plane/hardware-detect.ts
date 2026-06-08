@@ -11,7 +11,7 @@ import { createLogger } from "../logger.js";
 
 const logger = createLogger("hardware-detect");
 
-export type GpuVendor = "nvidia" | "amd" | "unknown";
+export type GpuVendor = "nvidia" | "amd" | "apple" | "unknown";
 
 export type GpuInfo = {
   vendor: GpuVendor;
@@ -27,6 +27,8 @@ type GpuProbe = {
   args: string[];
   /** Pure parser: tool stdout -> detected GPUs. Must not throw. */
   parse: (stdout: string) => GpuInfo[];
+  /** Optional gate — when present and false, the probe is skipped entirely. */
+  enabled?: boolean;
 };
 
 /** Parse `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`. */
@@ -68,6 +70,25 @@ export function parseRocmSmi(stdout: string): GpuInfo[] {
   return out;
 }
 
+/**
+ * Parse `sysctl -n hw.memsize hw.model` (two lines: total bytes, then model id)
+ * into an Apple-Silicon GpuInfo. `hw.memsize` is UNIFIED memory shared between
+ * CPU and GPU, carried here as vramMb for informational display only — callers
+ * must NOT treat it like discrete VRAM (see setup-recommendation). Pure; never throws.
+ */
+export function parseAppleSilicon(stdout: string): GpuInfo[] {
+  const lines = stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+  const bytes = Number.parseInt(lines[0] ?? "", 10);
+  if (!Number.isFinite(bytes) || bytes <= 0) return [];
+  const vramMb = Math.round(bytes / (1024 * 1024));
+  const model = lines[1] && lines[1].length > 0 ? lines[1] : "arm64";
+  return [{ vendor: "apple", name: `Apple Silicon (${model})`, vramMb }];
+}
+
 const GPU_PROBES: GpuProbe[] = [
   {
     vendor: "nvidia",
@@ -80,6 +101,16 @@ const GPU_PROBES: GpuProbe[] = [
     command: "rocm-smi",
     args: ["--showmeminfo", "vram", "--showproductname", "--json"],
     parse: parseRocmSmi,
+  },
+  {
+    // Apple Silicon Macs expose no nvidia-smi/rocm-smi. Probe macOS sysctl for
+    // unified-memory size + model id. Gated to darwin/arm64 so it never runs (and
+    // never spawns a missing binary) on Linux/Intel.
+    vendor: "apple",
+    command: "sysctl",
+    args: ["-n", "hw.memsize", "hw.model"],
+    parse: parseAppleSilicon,
+    enabled: process.platform === "darwin" && process.arch === "arm64",
   },
 ];
 
@@ -100,6 +131,7 @@ export async function detectGpu(): Promise<GpuInfo | null> {
   const found: GpuInfo[] = [];
   await Promise.all(
     GPU_PROBES.map(async (probe) => {
+      if (probe.enabled === false) return;
       const stdout = await run(probe.command, probe.args);
       if (stdout === null) return;
       try {

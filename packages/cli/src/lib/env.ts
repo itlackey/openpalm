@@ -42,15 +42,28 @@ export async function ensureStackEnv(
       ? explicitImageTag
       : (resolveRequestedImageTag(repoRef) || 'latest');
     const idLines = ids ? `OP_UID=${ids.uid}\nOP_GID=${ids.gid}\n` : '';
+    // Deterministic compose project name. Pinning it (vs. relying on the
+    // "openpalm" fallback) keeps every install/start/down targeting the same
+    // project, and lets dev seed a distinct value (openpalm-dev) so the two
+    // stacks never collide. Mirrors scripts/dev-setup.sh.
+    const projectName = process.env.OP_PROJECT_NAME?.trim() || 'openpalm';
     const content = `# OpenPalm System Environment — system-managed, do not edit
 OP_HOME=${homeDir}
 OP_WORK_DIR=${workDir}
+OP_PROJECT_NAME=${projectName}
 ${idLines}OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE || 'openpalm'}
 OP_IMAGE_TAG=${defaultImageTag}
 `;
     await Bun.write(systemEnvPath, content);
   } else {
     let current = await Bun.file(systemEnvPath).text();
+    // Non-destructively backfill OP_PROJECT_NAME for installs predating it.
+    if (!/^\s*OP_PROJECT_NAME\s*=/m.test(current)) {
+      const projectName = process.env.OP_PROJECT_NAME?.trim() || 'openpalm';
+      const next = (current.endsWith('\n') ? current : current + '\n') + `OP_PROJECT_NAME=${projectName}\n`;
+      await Bun.write(systemEnvPath, next);
+      current = next;
+    }
     const reconciled = reconcileStackEnvImageTag(
       current,
       repoRef,

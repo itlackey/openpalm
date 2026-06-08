@@ -109,6 +109,9 @@
   // ── Step 5: Review + Install ──────────────────────────────────────────────
   let installError = $state('');
   let installing = $state(false);
+  // Single explicit acknowledgment for an empty-AI install — replaces the
+  // scattered soft warnings. Set true once the user confirms the prompt.
+  let emptyAiAck = $state(false);
 
   // ── Deploy screen ─────────────────────────────────────────────────────────
   let deployData = $state<{
@@ -119,6 +122,10 @@
     ports?: { admin?: number; assistant?: number };
   }>({});
   let deployDone = $state(false);
+  // True when the deploy reached a terminal state but one or more non-running
+  // rows are warnings (e.g. voice still warming). Setup IS complete — this is a
+  // "Done (with warnings)" terminal state, not an error.
+  let deployHasWarnings = $state(false);
   let deployError = $state<string | null>(null);
   let deployTimer: ReturnType<typeof setInterval> | null = null;
   let deployPollErrors = $state(0);
@@ -170,6 +177,26 @@
   const hasOllamaVerified = $derived(
     PROVIDERS.some((p) => p.id === 'ollama' && providerState[p.id]?.verified)
   );
+
+  // ── Single source of truth for "can the user finish setup?" ──────────────
+  // ONE predicate drives the Providers Next button, the Models Next button,
+  // AND the Review/Install gate. The wizard must never simultaneously offer
+  // "continue without a provider" and error "a provider is required".
+  //   - A verified provider + a chosen chat model → ready.
+  //   - OR the user explicitly opted into an empty (no-AI) install.
+  const hasVerifiedProvider = $derived(verifiedProviders.length > 0);
+  const canComplete = $derived(
+    (hasVerifiedProvider && !!modelSelection.llm?.model) || allowEmptyInstall,
+  );
+
+  // Reset the empty-install opt-in the moment a provider verifies. Otherwise a
+  // stale `allowEmptyInstall` (checked while no provider existed) would let a
+  // now-configured provider silently bypass the "select a chat model" check.
+  $effect(() => {
+    if (hasVerifiedProvider && allowEmptyInstall) {
+      allowEmptyInstall = false;
+    }
+  });
 
   const hasOpenAI = $derived(
     PROVIDERS.some((p) => p.id === 'openai' && providerState[p.id]?.verified)
@@ -546,6 +573,14 @@
       // host). Don't force in-stack Ollama — those providers cover the assistant.
       applyImportedModelPreferences();
       autoSelectModels();
+      // The fast-path skips the Models step, so the LLM-required gate
+      // (validateStep2) never runs there. Validate it HERE instead so the
+      // recommended path can't reach install with no validated chat model.
+      // If auto-selection couldn't pick one, route the user through Models.
+      if (!modelSelection.llm?.model && !allowEmptyInstall) {
+        goToStep(3);
+        return;
+      }
       goToStep(5);
       return;
     }
@@ -568,6 +603,11 @@
     // usable provider. use-cloud is unreachable here (verifiedProviders === 0).
     applyImportedModelPreferences();
     autoSelectModels();
+    // Same LLM gate as the fast path: never skip to Options with no chat model.
+    if (!modelSelection.llm?.model && !allowEmptyInstall) {
+      goToStep(3);
+      return;
+    }
     goToStep(5);
   }
 
@@ -595,13 +635,16 @@
   }
 
   function validateStep2(): boolean {
+    // Single rule, identical to canComplete: either a verified provider with a
+    // chosen chat model, or an explicit empty-install opt-in. Empty-install is
+    // chosen on the Providers step; if it's set we never block here.
+    if (allowEmptyInstall) { step2Error = ''; return true; }
     if (verifiedProviders.length === 0) {
-      if (allowEmptyInstall) { step2Error = ''; return true; }
-      step2Error = 'Connect at least one provider, or check "Install without an AI provider" on the previous step.';
+      step2Error = 'Connect a provider on the previous step to continue.';
       return false;
     }
     if (!modelSelection.llm?.model) {
-      step2Error = 'Select a chat model.';
+      step2Error = 'Select a chat model to continue.';
       return false;
     }
     step2Error = '';
@@ -1041,6 +1084,20 @@
   async function handleInstall(): Promise<void> {
     if (installing) return;
     installError = '';
+
+    // Single "no AI configured" confirmation. When the payload has no `llm`,
+    // require one explicit acknowledgment before installing — this replaces the
+    // scattered soft warnings on Providers/Models/Review. Rerun keeps existing
+    // config, so don't re-prompt there.
+    const payloadHasLlm = !!(payload as { llm?: unknown }).llm;
+    if (!payloadHasLlm && !isRerun && !emptyAiAck) {
+      const ok = window.confirm(
+        'No AI provider is configured. Your assistant won’t be able to chat until you add one from the dashboard.\n\nInstall anyway?',
+      );
+      if (!ok) return;
+      emptyAiAck = true;
+    }
+
     installing = true;
 
     // Ensure a voice profile is selected when voice is enabled.
@@ -1065,11 +1122,16 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.ok) {
-        installError = data.error ?? data.message ?? 'Install failed.';
+        // Docker-down (HTTP 503 { error:'docker_unavailable', message }) and any
+        // other failure: surface the human-readable message and STOP. Do not
+        // flip into showDeploy / the polling "Preparing…" spinner — there's no
+        // deploy to poll, so doing so would hang forever.
+        installError = data.message ?? data.error ?? 'Install failed.';
         installing = false;
+        showDeploy = false;
         return;
       }
 
@@ -1120,9 +1182,21 @@
         stopDeployPolling();
         deployError = data.deployError;
       } else if (data.setupComplete && data.deployStatus && data.deployStatus.length > 0) {
-        const allRunning = data.deployStatus.every((s: { status: string }) => s.status === 'running');
+        const rows = data.deployStatus as { status: string }[];
+        const allRunning = rows.every((s) => s.status === 'running');
+        // Treat "warning" (e.g. voice still warming) as a NON-blocking terminal
+        // status. Once setup is complete and not deploying, any remaining
+        // non-running rows that are ALL warnings mean we're done — with
+        // warnings. Otherwise (non-running, non-warning rows) keep polling.
+        const onlyWarningsLeft = !data.deploying
+          && rows.every((s) => s.status === 'running' || s.status === 'warning')
+          && rows.some((s) => s.status === 'warning');
         if (allRunning) {
           stopDeployPolling();
+          deployDone = true;
+        } else if (onlyWarningsLeft) {
+          stopDeployPolling();
+          deployHasWarnings = true;
           deployDone = true;
         }
       } else if (data.setupComplete && !data.deploying && (!data.deployStatus || data.deployStatus.length === 0)) {
@@ -1239,6 +1313,7 @@
     installing = false;
     deployError = null;
     deployDone = false;
+    deployHasWarnings = false;
     deployData = {};
     lastDeployData = null;
     deployPollErrors = 0;
@@ -1249,6 +1324,7 @@
     installing = false;
     deployError = null;
     deployDone = false;
+    deployHasWarnings = false;
     deployData = {};
     deployPollErrors = 0;
     lastDeployData = null;
@@ -1521,6 +1597,7 @@
         <DeployStep
           {deployData}
           {deployDone}
+          {deployHasWarnings}
           {deployError}
           onback={handleDeployBack}
           onretry={handleDeployRetry}
@@ -1569,6 +1646,7 @@
             {hostProviderCount}
             {hostStatusWarning}
             {allowEmptyInstall}
+            canProceed={hasVerifiedProvider || allowEmptyInstall}
             onback={() => goToStep(1)}
             onnext={() => goToStep(3)}
             ontogglefallback={handleToggleFallback}
@@ -1600,6 +1678,8 @@
             {verifiedProviders}
             {providerState}
             {modelSelection}
+            {allowEmptyInstall}
+            {canComplete}
             errorMessage={step2Error}
             onback={() => goToStep(2)}
             onnext={() => { if (validateStep2()) goToStep(4); }}

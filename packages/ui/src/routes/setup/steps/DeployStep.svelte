@@ -28,12 +28,18 @@
   interface Props {
     deployData: DeployData;
     deployDone: boolean;
+    /** Terminal state reached with non-running rows that are all warnings. */
+    deployHasWarnings?: boolean;
     deployError: string | null;
     onback: () => void;
     onretry: () => void;
   }
 
-  let { deployData, deployDone, deployError, onback, onretry }: Props = $props();
+  let { deployData, deployDone, deployHasWarnings = false, deployError, onback, onretry }: Props = $props();
+
+  const warningRows = $derived(
+    (deployData.deployStatus ?? []).filter((s) => s.status === 'warning'),
+  );
 
   const isElectron = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).openpalm;
 
@@ -65,7 +71,7 @@
   );
 
   const deployTitle = $derived.by(() => {
-    if (deployDone) return 'Setup Complete';
+    if (deployDone) return deployHasWarnings ? 'Setup Complete (with warnings)' : 'Setup Complete';
     if (deployError) return 'Deployment Issue';
     switch (phase) {
       case 'writing-config': return 'Preparing Configuration…';
@@ -81,7 +87,11 @@
   });
 
   const deploySubtitle = $derived.by(() => {
-    if (deployDone) return 'Your OpenPalm stack is up and running.';
+    if (deployDone) {
+      return deployHasWarnings
+        ? 'Setup is complete. Some services are still warming up in the background — they will be ready shortly.'
+        : 'Your OpenPalm stack is up and running.';
+    }
     if (deployError) return 'Setup could not finish starting the stack.';
     switch (phase) {
       case 'writing-config': return 'Writing config files and validating settings.';
@@ -129,7 +139,7 @@
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </span>
-        {:else if svc.status === 'error'}
+        {:else if svc.status === 'error' || svc.status === 'warning'}
           <span class="deploy-warning">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 9v4"/><path d="M12 17h.01"/>
@@ -145,7 +155,7 @@
         <span class="deploy-service-status">{svc.label || svc.status}</span>
       </div>
       <div class="deploy-service-bar">
-        <div class="deploy-bar-fill {svc.status === 'running' ? 'complete' : svc.status === 'ready' ? 'ready' : svc.status === 'error' ? 'stopped' : 'indeterminate'}">
+        <div class="deploy-bar-fill {svc.status === 'running' ? 'complete' : svc.status === 'ready' ? 'ready' : svc.status === 'warning' ? 'warning' : svc.status === 'error' ? 'stopped' : 'indeterminate'}">
         </div>
       </div>
     </div>
@@ -189,11 +199,20 @@
         <polyline points="22 4 12 14.01 9 11.01"/>
       </svg>
     </div>
-    <h2>Setup Complete</h2>
+    <h2>{deployHasWarnings ? 'Setup Complete (with warnings)' : 'Setup Complete'}</h2>
     {#if noStartMode}
       <p class="done-subtitle">Configuration saved. Run 'openpalm start' to start services.</p>
     {:else}
-      <p class="done-subtitle">Your OpenPalm stack is up and running.</p>
+      <p class="done-subtitle">
+        {deployHasWarnings
+          ? 'Setup is complete. Some services are still warming up in the background.'
+          : 'Your OpenPalm stack is up and running.'}
+      </p>
+      {#if deployHasWarnings && warningRows.length > 0}
+        <div class="deploy-warnings-note" role="status" id="deploy-warnings-note">
+          Still warming up: {warningRows.map((s) => s.label || s.service).join(', ')}. You can finish setup now — these will be ready shortly.
+        </div>
+      {/if}
       {#if !isElectron}
         <p class="done-close-hint">Setup is complete. You can safely close this tab now.</p>
       {/if}
@@ -201,15 +220,16 @@
         {#each services as svc}
           {@const name = svc.service || svc.label || ''}
           {@const linkInfo = serviceLinks[name]}
+          {@const isWarming = svc.status === 'warning'}
           <li>
             {#if linkInfo}
               {@const url = 'http://127.0.0.1:' + linkInfo.port + linkInfo.path}
               <span class="deploy-svc-name">{linkInfo.label}</span>
               <a href={url} target="_blank" rel="noopener" class="deploy-svc-link">{url}</a>
-              <span class="deploy-svc-status">✓ Running</span>
+              <span class="deploy-svc-status">{isWarming ? (svc.label || '⚠ Warming up') : '✓ Running'}</span>
             {:else}
               <span class="deploy-svc-name">{name}</span>
-              <span class="deploy-svc-status">✓ Running</span>
+              <span class="deploy-svc-status">{isWarming ? (svc.label || '⚠ Warming up') : '✓ Running'}</span>
             {/if}
           </li>
         {/each}
@@ -235,6 +255,28 @@
 {/if}
 
 <style>
+  /* Warning bar variant — wizard.css ships complete/ready/stopped/indeterminate
+     but no `warning`. Voice-warming rows render distinctly (amber, settled —
+     NOT the animated indeterminate "still working" bar, and NOT the red error
+     bar). Uses the same amber tokens as the existing ready/stopped variants. */
+  .deploy-bar-fill.warning {
+    width: 72%;
+    background: var(--color-warning, #ffb020);
+    animation: none;
+    opacity: 0.9;
+  }
+
+  .deploy-warnings-note {
+    margin: 12px 0;
+    padding: 10px 14px;
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
+    border-radius: 8px;
+    color: var(--color-caution);
+    font-size: var(--text-sm, 0.875rem);
+    text-align: left;
+  }
+
   .done-close-hint {
     margin: 8px 0 12px;
     padding: 8px 12px;

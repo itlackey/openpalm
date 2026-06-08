@@ -11,6 +11,11 @@ import { runDockerCompose } from '../lib/docker.ts';
 import {
   backupOpenPalmHome,
   buildComposeCliArgs,
+  buildComposeOptions,
+  composeDown,
+  detectExistingProject,
+  resolveComposeProjectName,
+  parseEnvFile,
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
   applyInstall,
@@ -22,6 +27,7 @@ import {
   ensureMigrated,
   MigrationError,
   type SetupSpec,
+  type ControlPlaneState,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
@@ -128,13 +134,39 @@ async function requireDocker(): Promise<void> {
   await requireCmd(['docker', 'compose', 'version'], 'Docker Compose v2 is required. Install it: https://docs.docker.com/compose/install/');
 }
 
+/** Compose project name for a state, resolved from its stack.env. */
+function projectNameForState(state: ControlPlaneState): string {
+  return resolveComposeProjectName(parseEnvFile(`${state.stashDir}/env/stack.env`));
+}
+
 async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = ensureValidState();
+
+  // #461: detect an already-running compose project that shares our name.
+  // If it belongs to a DIFFERENT OpenPalm install (foreign working_dir),
+  // refuse with a clear message instead of letting `compose up` emit a raw
+  // "project already running"/port-bind error. If it's OURS, the
+  // --force-recreate below reconciles it idempotently.
+  const existing = await detectExistingProject({
+    projectName: projectNameForState(state),
+    expectedWorkingDir: state.homeDir,
+  });
+  if (existing.exists && !existing.isOurs) {
+    throw new Error(
+      `Another OpenPalm stack is already running from ${existing.workingDir || 'a different OP_HOME'} ` +
+      `under the docker project "${projectNameForState(state)}". Stop it first, or set OP_PROJECT_NAME ` +
+      `to a distinct value in knowledge/env/stack.env before installing here.`,
+    );
+  }
+
   await applyInstall(state);
   const managedServices = await buildManagedServices(state);
   const composeArgs = buildComposeCliArgs(state);
   if (pull) await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => console.warn('Warning: image pull failed.'));
-  await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
+  // force-recreate + remove-orphans: idempotent reconcile (matches performUpgrade
+  // and the UI deploy path). Recreates containers over an existing OURS stack and
+  // prunes services dropped from the compose set. (#461)
+  await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate', '--remove-orphans', ...managedServices]);
   console.log(JSON.stringify({ ok: true, mode, services: managedServices }, null, 2));
   return managedServices;
 }
@@ -200,6 +232,25 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
         return;
       }
     }
+    // #461: stop the currently-running stack BEFORE moving OP_HOME aside.
+    // Moving the home dir while the old stack is up leaves orphaned containers
+    // holding the project name + host ports, so the fresh install collides on
+    // `compose up`. Volumes are preserved (no -v). Best-effort: a Docker-down
+    // host or a never-started install simply has nothing to bring down.
+    try {
+      const existingState = createState();
+      const composeOpts = buildComposeOptions(existingState);
+      if (composeOpts.files.length > 0) {
+        console.log('Stopping existing stack before backup...');
+        const down = await composeDown({ ...composeOpts, removeVolumes: false });
+        if (!down.ok) {
+          logger.debug('pre-force compose down returned non-zero (likely nothing to stop)', { stderr: down.stderr?.slice(0, 300) });
+        }
+      }
+    } catch (err) {
+      logger.debug('pre-force compose down threw — continuing', { error: String(err) });
+    }
+
     const backupDir = backupOpenPalmHome(homeDir);
     if (backupDir) {
       console.log(`Backed up existing OP_HOME to ${backupDir}`);
