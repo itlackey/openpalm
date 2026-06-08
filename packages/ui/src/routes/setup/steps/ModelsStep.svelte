@@ -1,15 +1,9 @@
 <script lang="ts">
-  import { KNOWN_EMB_DIMS, MAX_VISIBLE_MODELS } from '$lib/wizard/constants.js';
+  import { MAX_VISIBLE_MODELS } from '$lib/wizard/constants.js';
+  import { buildModelOptions, type RoleModelOption } from '$lib/wizard/helpers.js';
   import type { Provider, ProviderState, ModelSelection } from '$lib/wizard/types.js';
 
-  interface ModelOption {
-    id: string;
-    connId: string;
-    providerName: string;
-    baseUrl: string;
-    isDefault: boolean;
-    dims: number;
-  }
+  type ModelOption = RoleModelOption;
 
   interface Props {
     verifiedProviders: Provider[];
@@ -55,58 +49,12 @@
     collapsedRoles = new Set(collapsedRoles);
   }
 
+  // Single shared builder (wizard/helpers.ts): ranked best-first, embedding
+  // models excluded from chat/small, host/cloud ranked over local Ollama. The
+  // old per-step copy offered embedding models as chat candidates and, for the
+  // small role, fell back to the first provider's ENTIRE list (embeddings too).
   function getOptionsForRole(role: Role): ModelOption[] {
-    const options: ModelOption[] = [];
-    for (const p of verifiedProviders) {
-      const st = providerState[p.id];
-      const defaultModel = role.id === 'embedding' ? p.embModel : p.llmModel;
-      const models = st.models.length > 0 ? st.models : [];
-
-      if (defaultModel && models.includes(defaultModel)) {
-        options.push({
-          id: defaultModel,
-          connId: p.id,
-          providerName: p.name,
-          baseUrl: st.baseUrl || p.baseUrl,
-          isDefault: true,
-          dims: role.id === 'embedding'
-            ? (KNOWN_EMB_DIMS[defaultModel] ?? KNOWN_EMB_DIMS[defaultModel.replace(/:.*$/, '')] ?? p.embDims ?? 0)
-            : 0,
-        });
-      }
-
-      for (const m of models) {
-        if (m === defaultModel) continue;
-        const dims = role.id === 'embedding'
-          ? (KNOWN_EMB_DIMS[m] ?? KNOWN_EMB_DIMS[m.replace(/:.*$/, '')] ?? 0)
-          : 0;
-        options.push({ id: m, connId: p.id, providerName: p.name, baseUrl: st.baseUrl || p.baseUrl, isDefault: false, dims });
-      }
-    }
-
-    if (role.id === 'embedding') {
-      // ALWAYS return embedding-only options (real embedding models), even when
-      // empty. Never fall through to the full chat-model list — a chat model
-      // must never be offered or highlighted as the embedding "Default". When
-      // empty, the role renders an "auto-handled" note (akm self-embeds locally)
-      // and modelSelection.embedding stays unset.
-      return options.filter((o) => o.isDefault || o.dims > 0);
-    }
-
-    if (role.id === 'small' && options.length === 0) {
-      const llmProvider = verifiedProviders[0];
-      if (llmProvider) {
-        for (const m of providerState[llmProvider.id].models) {
-          options.push({
-            id: m, connId: llmProvider.id, providerName: llmProvider.name,
-            baseUrl: providerState[llmProvider.id].baseUrl || llmProvider.baseUrl,
-            isDefault: false, dims: 0,
-          });
-        }
-      }
-    }
-
-    return options;
+    return buildModelOptions(role.id as 'llm' | 'embedding' | 'small', verifiedProviders, providerState);
   }
 
   function filteredOptions(role: Role, options: ModelOption[]): ModelOption[] {

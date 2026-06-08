@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    PROVIDERS, LOCAL_PROVIDERS, CHANNELS, KNOWN_EMB_DIMS,
+    PROVIDERS, LOCAL_PROVIDERS, CHANNELS,
   } from '$lib/wizard/constants.js';
+  import { buildModelOptions } from '$lib/wizard/helpers.js';
   import type {
     ProviderState, ModelSelection, DetectedProvider, ChannelState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
@@ -745,44 +746,20 @@
       if (roleId === 'embedding') continue;
       const options = getModelOptionsForRole(roleId);
       if (options.length === 0) continue;
-      const defaultOpt = options.find((o) => o.isDefault) ?? options[0];
-      modelSelection[roleId] = { connId: defaultOpt.connId, model: defaultOpt.id, dims: defaultOpt.dims };
+      // options are returned best-first (host/cloud > local, declared default,
+      // then role score), so options[0] is the sensible pick. This is what
+      // stops "first Ollama tag" (which could be an embedding model) from
+      // becoming the chat model, and lets an imported host provider win.
+      const best = options[0];
+      modelSelection[roleId] = { connId: best.connId, model: best.id, dims: best.dims };
     }
   }
 
+  // Shared, ranked, embedding-filtered option builder (wizard/helpers.ts) — the
+  // SAME implementation the Models step uses, so auto-select and the dropdown
+  // can never disagree.
   function getModelOptionsForRole(roleId: 'llm' | 'embedding' | 'small'): Array<{ id: string; connId: string; isDefault: boolean; dims: number }> {
-    const options: Array<{ id: string; connId: string; isDefault: boolean; dims: number }> = [];
-    for (const p of verifiedProviders) {
-      const st = providerState[p.id];
-      const defaultModel = roleId === 'embedding' ? p.embModel : p.llmModel;
-      const models = st.models.length > 0 ? st.models : [];
-
-      if (defaultModel && models.includes(defaultModel)) {
-        options.push({
-          id: defaultModel, connId: p.id, isDefault: true,
-          dims: roleId === 'embedding'
-            ? (KNOWN_EMB_DIMS[defaultModel] ?? KNOWN_EMB_DIMS[defaultModel.replace(/:.*$/, '')] ?? p.embDims ?? 0)
-            : 0,
-        });
-      }
-      for (const m of models) {
-        if (m === defaultModel) continue;
-        const dims = roleId === 'embedding' ? (KNOWN_EMB_DIMS[m] ?? KNOWN_EMB_DIMS[m.replace(/:.*$/, '')] ?? 0) : 0;
-        options.push({ id: m, connId: p.id, isDefault: false, dims });
-      }
-    }
-    // No synthetic Ollama embedding option is injected: akm self-embeds, so
-    // the wizard never auto-configures an embedding model. A user can still
-    // pick any real embedding model the provider exposes in the advanced
-    // Models step (those flow through the loop above).
-    if (roleId === 'embedding') {
-      // ALWAYS return embedding-only options (real embedding models), even when
-      // empty. Never fall through to the full chat-model list — a chat model
-      // must never be offered or auto-selected for the embedding role. When
-      // empty, akm self-embeds locally and modelSelection.embedding stays unset.
-      return options.filter((o) => o.isDefault || o.dims > 0);
-    }
-    return options;
+    return buildModelOptions(roleId, verifiedProviders, providerState);
   }
 
   function resolvePreferredModelSelection(
@@ -1439,17 +1416,26 @@
         try { await loadOpenCodeProviders(); } catch { /* keep import-marked verified state */ }
       }
 
-      // Apply imported model preferences now that providers are verified.
-      // Called here explicitly to handle cases where the reactive chain inside
-      // loadOpenCodeProviders didn't find the models yet.
+      // First pass: apply imported model preferences from whatever models are
+      // already loaded (host provider may already be populated by the reload).
       applyImportedModelPreferences();
 
-      // Verify local providers to fetch live models (non-blocking)
-      for (const id of Object.keys(providerState)) {
-        if (!providerState[id].verified && PROVIDERS.some((p) => p.id === id)) {
-          void verifyProvider(id);
-        }
-      }
+      // Verify local providers to fetch live models. AWAIT them so the host
+      // model preference (and host-over-Ollama precedence) is resolved against
+      // a fully-populated model list — applying before the lists loaded was the
+      // race that silently dropped the host preference (#4). Per-provider
+      // failures are non-fatal.
+      await Promise.allSettled(
+        Object.keys(providerState)
+          .filter((id) => !providerState[id].verified && PROVIDERS.some((p) => p.id === id))
+          .map((id) => verifyProvider(id)),
+      );
+
+      // Second pass: now that model lists are populated, re-apply the host
+      // preference (it overrides any earlier Ollama auto-pick) and fill any
+      // still-unset roles with the ranked default (host/cloud before Ollama).
+      applyImportedModelPreferences();
+      autoSelectModels();
 
       hostImporting = false;
       // After host import, advance to Models step (index 3). Skip the
