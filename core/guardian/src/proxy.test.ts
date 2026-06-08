@@ -558,14 +558,20 @@ describe("/oc proxy — /event filtered stream (§3.2)", () => {
     const idA = await createSessionFor("evt-alice");
     const idB = await createSessionFor("evt-bob");
 
-    // Queue: a frame for A, a frame for B, and a GLOBAL no-sessionID frame.
+    // The frames to queue: one for A, one for B, and a GLOBAL no-sessionID frame.
     const frameA = JSON.stringify({ type: "message.part.delta", properties: { sessionID: idA, delta: "for-A" } });
     const frameB = JSON.stringify({ type: "message.part.delta", properties: { sessionID: idB, delta: "for-B" } });
     const globalFrame = JSON.stringify({ type: "server.heartbeat", properties: {} });
-    eventStop = false;
-    eventFrames = [frameA, globalFrame, frameB];
 
-    // Open both filtered streams. The guardian holds ONE upstream subscription.
+    // Open both filtered streams FIRST, with NO frames queued yet. The guardian
+    // holds ONE upstream subscription (opened the instant A registers) and the
+    // mock flushes each queued frame exactly once. If we queued frames up front,
+    // that single deduped flush could route B's frame before B finished
+    // registering — B would miss it forever (the ~1/1000 cross-leak flake, #459).
+    // openEventStream adds the subscriber synchronously inside the stream's
+    // start(), so a 200 here guarantees the principal is attached.
+    eventStop = false;
+    eventFrames = [];
     const acA = new AbortController();
     const acB = new AbortController();
     const [respA, respB] = await Promise.all([
@@ -574,6 +580,11 @@ describe("/oc proxy — /event filtered stream (§3.2)", () => {
     ]);
     expect(respA.status).toBe(200);
     expect(respB.status).toBe(200);
+
+    // Both subscribers are now attached — queue the frames. The mock picks them
+    // up on its next tick and routes each to its owner; neither can be emitted
+    // before its principal is registered, so the assertions are deterministic.
+    eventFrames = [frameA, globalFrame, frameB];
 
     const seenA = await readStreamFor(respA, 700);
     const seenB = await readStreamFor(respB, 700);
