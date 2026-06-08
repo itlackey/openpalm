@@ -14,7 +14,7 @@
     "packages/channel-discord",
     "packages/channel-slack"
   ],
-  "_comment_coordinatedManifests": "Everything a coordinated major/minor platform release stamps to ONE version: the platform manifests plus the independently-versioned npm packages (each as <dir>/package.json). The platform-release orchestrator stamps these together; standalone publishers still use independentNpmPackages for one-off patches.",
+  "_comment_coordinatedManifests": "Everything a coordinated major/minor platform release stamps to ONE version: the platform manifests plus the independently-versioned npm packages (each as <dir>/package.json). The platform-release orchestrator stamps these together; standalone publishers still use independentNpmPackages for one-off patches. NOTE: coordinatedManifests == units.host ∪ units.channels.",
   "coordinatedManifests": [
     "package.json",
     "packages/lib/package.json",
@@ -27,5 +27,25 @@
     "packages/channel-api/package.json",
     "packages/channel-discord/package.json",
     "packages/channel-slack/package.json"
-  ]
+  ],
+  "_comment_units": "Release units (deployment bundles). The platform-release orchestrator releases by unit; each unit's manifests are stamped to ONE version and may drift independently of other units (CI's version-sync enforces intra-unit consistency, not cross-unit). 'host' MUST list package.json (root) first — CI anchors the host unit + the setup-script versions to root. assistant + voice are image-only (no npm manifest to stamp; their version is the Docker tag). full release == units.host ∪ units.channels (== coordinatedManifests).",
+  "units": {
+    "host": [
+      "package.json",
+      "packages/lib/package.json",
+      "packages/cli/package.json",
+      "packages/ui/package.json",
+      "packages/electron/package.json",
+      "packages/electron/admin-tools/package.json"
+    ],
+    "channels": [
+      "packages/channels-sdk/package.json",
+      "packages/channel-api/package.json",
+      "packages/channel-discord/package.json",
+      "packages/channel-slack/package.json",
+      "core/guardian/package.json"
+    ],
+    "assistant": [],
+    "voice": []
+  }
 }

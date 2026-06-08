@@ -196,23 +196,36 @@ jobs:
           fi
           echo "BUN_VERSION major.minor matches across assistant + guardian + channel: $ASSISTANT_MM"
 
-      - name: Validate platform version sync
+      - name: Validate per-unit version sync
         run: |
           set -euo pipefail
+          # Releases are by deployment UNIT (release-package-groups.json -> units).
+          # Each unit's manifests must share ONE version; units may drift from each
+          # other (a host-only or channels-only release is legitimate). The host
+          # unit lists package.json (root) first, so the host base == root version,
+          # and the setup-script versions are anchored to root.
           ROOT_VERSION=$(jq -r .version package.json)
-          mapfile -t PLATFORM_MANIFESTS_ARR < <(jq -r '.platformManifests[]' .github/release-package-groups.json)
-          PLATFORM_MANIFESTS="${PLATFORM_MANIFESTS_ARR[*]}"
           errors=0
 
-          for pkg in ${PLATFORM_MANIFESTS}; do
-            PKG_VERSION=$(jq -r .version "${pkg}")
-            if [ "${PKG_VERSION}" != "${ROOT_VERSION}" ]; then
-              echo "::error file=${pkg}::${pkg} version ${PKG_VERSION} does not match root ${ROOT_VERSION}"
-              errors=$((errors + 1))
-            fi
+          for unit in $(jq -r '.units | keys[]' .github/release-package-groups.json); do
+            mapfile -t MANS < <(jq -r --arg u "$unit" '.units[$u][]' .github/release-package-groups.json)
+            base=""
+            for m in "${MANS[@]}"; do
+              if [ ! -f "${m}" ]; then
+                echo "::error::unit '${unit}' lists missing manifest ${m}"
+                errors=$((errors + 1)); continue
+              fi
+              v=$(jq -r .version "${m}")
+              if [ -z "${base}" ]; then base="${v}"; fi
+              if [ "${v}" != "${base}" ]; then
+                echo "::error file=${m}::${m} version ${v} != unit '${unit}' base ${base}"
+                errors=$((errors + 1))
+              fi
+            done
+            echo "unit ${unit} @ ${base:-(image-only)}"
           done
 
-          # Validate setup script versions match
+          # Setup scripts track root (root is the first member of the host unit).
           SCRIPT_VERSION=$(grep -oP '^SCRIPT_VERSION="\K[^"]+' scripts/setup.sh || true)
           if [ -n "${SCRIPT_VERSION}" ] && [ "${SCRIPT_VERSION}" != "${ROOT_VERSION}" ]; then
             echo "::error file=scripts/setup.sh::setup.sh SCRIPT_VERSION ${SCRIPT_VERSION} does not match root ${ROOT_VERSION}"
@@ -226,10 +239,10 @@ jobs:
           fi
 
           if [ "$errors" -gt 0 ]; then
-            echo "::error::${errors} platform version(s) out of sync with root ${ROOT_VERSION}"
+            echo "::error::${errors} version(s) out of sync (intra-unit / setup scripts vs root ${ROOT_VERSION})"
             exit 1
           fi
-          echo "All platform versions match: ${ROOT_VERSION}"
+          echo "All units internally consistent; setup scripts match root ${ROOT_VERSION}"
 
   ui-unit-tests:
     name: UI unit tests (Vitest)

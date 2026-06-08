@@ -1,28 +1,43 @@
 name: Platform release (orchestrator)
 
-# Single manually-dispatched orchestrator for a coordinated platform release.
-# It bumps every shipped package to ONE version, runs a fail-fast preflight, and
-# publishes the npm layer in dependency order, creating the git tag + GitHub
-# release LAST ("tag exists => fully published").
+# Single manually-dispatched orchestrator for releasing OpenPalm by DEPLOYMENT UNIT.
+#
+# Units (see .github/release-package-groups.json -> units):
+#   host      = @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + CLI native
+#               binaries + Electron installers + git tag + GitHub release.
+#   channels  = @openpalm/channels-sdk + @openpalm/channel-{api,discord,slack} (npm)
+#               + guardian image + channel image.
+#   assistant = assistant image only.
+#   voice     = voice images (cpu / cu121). Stable only; always explicit.
+#
+# Select units with the release_* booleans. Leaving host/channels/assistant ALL
+# unchecked = a FULL coordinated release of those three (voice is never part of a
+# full release — check release_voice explicitly to include it).
+#
+# VERSIONING: a unit release stamps ONLY that unit's manifests to `version`; units
+# drift independently (CI version-sync enforces intra-unit consistency, not
+# cross-unit). The host unit owns root package.json + the setup-script versions, so
+# the "platform version" tracks the host/CLI line.
+#
+# TAG-LAST: the git tag + GitHub release are created LAST and only for host/full
+# ("tag exists => fully published"). channels/assistant/voice are registry-only
+# (npm + Docker), no git tag.
 #
 # DISPATCH-FROM-MAIN: GitHub only dispatches workflows whose file lives on the
 # default branch. This file must be on `main`; supply `ref` to release a release
 # branch (e.g. release/0.11.0). The workflow *file* always comes from main; the
 # released *content* comes from `ref`.
 #
-# SCOPE (this increment): version sync + preflight + ALL npm packages + tag-last.
-# Docker images, CLI binaries, Electron installers and voice images are still
-# produced by release.yml / publish-voice.yml and are folded in next (see
-# docs/technical/master-release-workflow-proposal.md, increments 3-5). Run a
-# dry_run first: it validates semver, a clean tree, the test gate, the
-# independent-version regression guard, an already-published probe, the bump
-# plan, and packs every npm package WITHOUT publishing.
+# Run a dry_run first: it validates semver, a clean tree, the test gate, the
+# per-unit regression guard + already-published probe, the bump plan, packs every
+# in-scope npm package and builds (amd64-only) every in-scope image WITHOUT
+# publishing, committing, or tagging.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (semver, e.g. 0.11.0 or 0.11.0-rc.18).'
+        description: 'Release version (semver, e.g. 0.11.1 or 0.11.1-rc.1).'
         required: true
         type: string
       ref:
@@ -30,23 +45,28 @@ on:
         required: true
         type: string
         default: main
-      only:
-        description: 'Out-of-band single-package publish: empty = full coordinated release; otherwise one of ui / channel-api / channel-discord / channel-slack (publishes only that npm package — no images/CLI/Electron/voice/tag).'
-        required: false
-        type: string
-        default: ''
-      coordinate_independents:
-        description: 'Also stamp + publish the independent packages (UI + channel adapters) at this version. Ignored when "only" is set.'
+      release_host:
+        description: 'Release the HOST unit (lib + CLI + UI npm, CLI binaries, Electron, tag + GitHub release).'
         required: false
         type: boolean
-        default: true
-      include_voice:
-        description: 'Also (stable only) build + push the voice images. Off by default — voice is normally out-of-band.'
+        default: false
+      release_channels:
+        description: 'Release the CHANNELS unit (channels-sdk + channel-* npm, guardian + channel images).'
+        required: false
+        type: boolean
+        default: false
+      release_assistant:
+        description: 'Release the ASSISTANT unit (assistant image only).'
+        required: false
+        type: boolean
+        default: false
+      release_voice:
+        description: 'Release the VOICE unit (voice cpu/cu121 images). Stable only; never part of a full release.'
         required: false
         type: boolean
         default: false
       dry_run:
-        description: 'Validate + pack everything but do NOT bump-commit, publish, or tag.'
+        description: 'Validate + pack/build everything in scope but do NOT bump-commit, publish, or tag.'
         required: false
         type: boolean
         default: true
@@ -61,8 +81,96 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── Resolve which units are in scope and emit gating flags, the manifest set to
+  # stamp/guard, and the Docker image matrix. Leaving host/channels/assistant all
+  # off = full (those three). Voice is independent: only when release_voice is on.
+  plan:
+    name: Plan units
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      full: ${{ steps.p.outputs.full }}
+      do_host: ${{ steps.p.outputs.do_host }}
+      do_channels: ${{ steps.p.outputs.do_channels }}
+      do_assistant: ${{ steps.p.outputs.do_assistant }}
+      do_voice: ${{ steps.p.outputs.do_voice }}
+      do_tag: ${{ steps.p.outputs.do_tag }}
+      image_matrix: ${{ steps.p.outputs.image_matrix }}
+      manifests: ${{ steps.p.outputs.manifests }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Resolve units
+        id: p
+        env:
+          REL_HOST: ${{ inputs.release_host }}
+          REL_CHANNELS: ${{ inputs.release_channels }}
+          REL_ASSISTANT: ${{ inputs.release_assistant }}
+          REL_VOICE: ${{ inputs.release_voice }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const groups = JSON.parse(fs.readFileSync('.github/release-package-groups.json', 'utf8'));
+            const units = groups.units;
+            const b = (v) => v === 'true';
+            const relHost = b(process.env.REL_HOST), relChannels = b(process.env.REL_CHANNELS);
+            const relAssistant = b(process.env.REL_ASSISTANT), relVoice = b(process.env.REL_VOICE);
+            const isPre = process.env.VERSION.includes('-');
+
+            // Full = nothing selected at all → host+channels+assistant (NOT voice;
+            // voice is heavy + stable-only, so it is always explicit). Selecting
+            // ONLY voice must NOT trigger a full release, so voice counts toward
+            // "anything selected" even though it never contributes to the core trio.
+            const full = !(relHost || relChannels || relAssistant || relVoice);
+            const do_host = full || relHost;
+            const do_channels = full || relChannels;
+            const do_assistant = full || relAssistant;
+            const do_voice = relVoice && !isPre;       // stable only, always explicit
+            const do_tag = full || do_host;            // tag/release for host + full only
+
+            if (relVoice && isPre) console.log('::notice::voice is stable-only — skipping voice for prerelease ' + process.env.VERSION);
+
+            // Manifests to stamp + regression-guard. Full uses coordinatedManifests
+            // (== host ∪ channels); a partial selection unions the picked units.
+            const picked = [];
+            if (do_host) picked.push('host');
+            if (do_channels) picked.push('channels');
+            if (do_assistant) picked.push('assistant');
+            const manifests = full
+              ? groups.coordinatedManifests
+              : [...new Set(picked.flatMap((u) => units[u] || []))];
+
+            // Image matrix: channels => guardian + channel; assistant => assistant.
+            const include = [];
+            if (do_channels) {
+              include.push({ dockerfile: 'core/guardian/Dockerfile', image: 'openpalm/guardian' });
+              include.push({ dockerfile: 'core/channel/Dockerfile', image: 'openpalm/channel' });
+            }
+            if (do_assistant) include.push({ dockerfile: 'core/assistant/Dockerfile', image: 'openpalm/assistant' });
+
+            const out = process.env.GITHUB_OUTPUT;
+            const w = (k, v) => fs.appendFileSync(out, k + '=' + v + '\n');
+            w('full', full); w('do_host', do_host); w('do_channels', do_channels);
+            w('do_assistant', do_assistant); w('do_voice', do_voice); w('do_tag', do_tag);
+            w('image_matrix', JSON.stringify({ include }));
+            w('manifests', JSON.stringify(manifests));
+
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            if (summary) {
+              fs.appendFileSync(summary, '### Release plan — ' + process.env.VERSION + '\\n\\n');
+              fs.appendFileSync(summary, '| unit | release? |\\n|---|---|\\n');
+              fs.appendFileSync(summary, '| host | ' + do_host + ' |\\n| channels | ' + do_channels + ' |\\n| assistant | ' + do_assistant + ' |\\n| voice | ' + do_voice + ' |\\n');
+              fs.appendFileSync(summary, '\\n**mode:** ' + (full ? 'full coordinated' : 'partial') + ' · **tag+release:** ' + do_tag + '\\n\\n');
+              fs.appendFileSync(summary, '**manifests stamped:** ' + (manifests.length ? manifests.join(', ') : '(none — image-only)') + '\\n');
+            }
+            console.log({ full, do_host, do_channels, do_assistant, do_voice, do_tag, manifests, include });
+          "
+
   preflight:
     name: Preflight (validate, test, guard)
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -108,16 +216,13 @@ jobs:
       - name: Regression guard + already-published probe
         env:
           VERSION: ${{ inputs.version }}
-          COORDINATE: ${{ inputs.coordinate_independents }}
-          ONLY: ${{ inputs.only }}
+          MANIFESTS: ${{ needs.plan.outputs.manifests }}
         run: |
           node -e "
             const fs = require('fs');
             const { execSync } = require('node:child_process');
-            const groups = JSON.parse(fs.readFileSync('.github/release-package-groups.json', 'utf8'));
             const target = process.env.VERSION;
-            const coordinate = process.env.COORDINATE === 'true';
-            const only = process.env.ONLY || '';
+            const manifests = JSON.parse(process.env.MANIFESTS);
 
             // semver compare: returns 1 if a>b, -1 if a<b, 0 if equal. Stable > its
             // prerelease; prerelease identifiers compared per semver (numeric dot-parts
@@ -141,19 +246,21 @@ jobs:
               if(!Array.isArray(vs)) vs = vs ? [vs] : [];
               let mx=null; for(const v of vs){ if(mx===null||cmp(v,mx)>0) mx=v; } return mx; }
 
-            // Single-package out-of-band publish: guard only that package.
-            const manifests = only
-              ? ['packages/' + only + '/package.json']
-              : (coordinate ? groups.coordinatedManifests : groups.platformManifests);
+            if (!manifests.length) { console.log('No npm manifests in scope (image-only release) — skipping guard.'); process.exit(0); }
+            // De-dup by package name (root + cli share name 'openpalm'; private
+            // manifests like 'openpalm'/@openpalm/guardian simply have no npm entry).
+            const seen = new Set();
             const rows = []; let regressed = false;
             for (const m of manifests) {
               const name = JSON.parse(fs.readFileSync(m, 'utf8')).name;
+              if (seen.has(name)) continue; seen.add(name);
               const published = maxPublished(name);
               let exact = false;
               if (published !== null) { try { execSync('npm view ' + name + '@' + target + ' version', {stdio:['ignore','pipe','ignore']}); exact = true; } catch {} }
               let status = 'ok';
-              if (exact) status = 'ALREADY PUBLISHED (resume: will skip)';
-              else if (published !== null) { const c = cmp(target, published); if (c !== null && c <= 0) { status = 'REGRESSION (target <= ' + published + ')'; regressed = true; } }
+              if (published === null) status = 'ok (not on npm)';
+              else if (exact) status = 'ALREADY PUBLISHED (resume: will skip)';
+              else { const c = cmp(target, published); if (c !== null && c <= 0) { status = 'REGRESSION (target <= ' + published + ')'; regressed = true; } }
               rows.push({ name, published: published || '(none)', target, status });
             }
             console.log('\\nPackage'.padEnd(32) + 'published'.padEnd(18) + 'target'.padEnd(18) + 'status');
@@ -169,7 +276,7 @@ jobs:
 
   bump:
     name: Bump + sync versions
-    needs: preflight
+    needs: [plan, preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -186,24 +293,29 @@ jobs:
       - name: Stamp version(s)
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
-          COORDINATE: ${{ inputs.coordinate_independents }}
           DRY_RUN: ${{ inputs.dry_run }}
-          ONLY: ${{ inputs.only }}
+          FULL: ${{ needs.plan.outputs.full }}
+          DO_HOST: ${{ needs.plan.outputs.do_host }}
+          MANIFESTS: ${{ needs.plan.outputs.manifests }}
         run: |
-          if [ -n "${ONLY}" ]; then
-            # Single-package out-of-band publish: stamp only that manifest.
-            node scripts/set-version.mjs "packages/${ONLY}/package.json" "${VERSION}"
-            COMMIT_MSG="chore(release): publish ${ONLY}@${VERSION}"
+          mapfile -t MANIFESTS < <(node -p "JSON.parse(process.env.MANIFESTS).join('\n')")
+          if [ "${#MANIFESTS[@]}" -eq 0 ]; then
+            echo "::notice::Image-only release (no npm manifests to stamp). Image tags come from the version input."
           else
-            KEY='platformManifests'
-            if [ "${COORDINATE}" = 'true' ]; then KEY='coordinatedManifests'; fi
-            mapfile -t MANIFESTS < <(node -p "JSON.parse(require('fs').readFileSync('.github/release-package-groups.json','utf8')).${KEY}.join('\n')")
             for m in "${MANIFESTS[@]}"; do
               node scripts/set-version.mjs "${m}" "${VERSION}"
             done
+          fi
+          # The host unit owns root package.json + the setup scripts (CI anchors
+          # SCRIPT_VERSION to root). Stamp the scripts whenever host is in scope.
+          if [ "${DO_HOST}" = 'true' ]; then
             sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
             sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
+          fi
+          if [ "${FULL}" = 'true' ]; then
             COMMIT_MSG="chore(release): set platform version to ${VERSION}"
+          else
+            COMMIT_MSG="chore(release): stamp units to ${VERSION}"
           fi
           bun install
 
@@ -225,9 +337,10 @@ jobs:
           git commit -m "${COMMIT_MSG}"
           git push origin "HEAD:${{ inputs.ref }}"
 
+  # ── npm layer (host unit: lib -> cli, ui) ───────────────────────────────────
   npm-lib:
-    needs: bump
-    if: ${{ inputs.only == '' }}
+    needs: [plan, bump]
+    if: ${{ always() && needs.bump.result == 'success' && needs.plan.outputs.do_host == 'true' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -239,37 +352,24 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   npm-cli:
-    needs: npm-lib
-    if: ${{ inputs.only == '' }}
+    needs: [plan, bump, npm-lib]
+    if: ${{ always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && needs.plan.outputs.do_host == 'true' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: packages/cli
       package-name: openpalm
       # No build: the CLI npm package is packed as-is (matches release.yml). Its
-      # `build` script compiles a native binary (release.yml build-cli-artifacts)
-      # and has a broken prebuild; it is not used for the npm publish.
-      version: ${{ inputs.version }}
-      ref: ${{ inputs.ref }}
-      exact-version: true
-      dry-run: ${{ inputs.dry_run }}
-
-  npm-sdk:
-    needs: npm-lib
-    if: ${{ inputs.only == '' }}
-    uses: ./.github/workflows/publish-npm-package.yml
-    secrets: inherit
-    with:
-      package-dir: packages/channels-sdk
-      package-name: '@openpalm/channels-sdk'
+      # `build` script compiles a native binary (the `cli` job below) and is not
+      # used for the npm publish.
       version: ${{ inputs.version }}
       ref: ${{ inputs.ref }}
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
   npm-ui:
-    needs: bump
-    if: ${{ (inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'ui' }}
+    needs: [plan, bump]
+    if: ${{ always() && needs.bump.result == 'success' && needs.plan.outputs.do_host == 'true' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -281,9 +381,23 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
+  # ── npm layer (channels unit: channels-sdk -> channel-*) ────────────────────
+  npm-sdk:
+    needs: [plan, bump]
+    if: ${{ always() && needs.bump.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/channels-sdk
+      package-name: '@openpalm/channels-sdk'
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
   npm-channel-api:
-    needs: [bump, npm-sdk]
-    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result != 'failure' && ((inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'channel-api') }}
+    needs: [plan, bump, npm-sdk]
+    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -295,8 +409,8 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   npm-channel-discord:
-    needs: [bump, npm-sdk]
-    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result != 'failure' && ((inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'channel-discord') }}
+    needs: [plan, bump, npm-sdk]
+    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -308,8 +422,8 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   npm-channel-slack:
-    needs: [bump, npm-sdk]
-    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result != 'failure' && ((inputs.only == '' && inputs.coordinate_independents) || inputs.only == 'channel-slack') }}
+    needs: [plan, bump, npm-sdk]
+    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -320,25 +434,19 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
-  # ── Build layer: runs after npm is green (so a failed npm aborts before any
-  # immutable image tag is pushed). Builds happen even on dry_run (push/publish
-  # gated off) to validate Dockerfiles/build scripts. ─────────────────────────
+  # ── Image layer (channels: guardian+channel; assistant: assistant). Matrix is
+  # computed by the plan job. Runs after the channels npm layer is green so a
+  # failed npm aborts before any immutable image tag is pushed. Builds happen even
+  # on dry_run (push gated off, amd64-only) to validate the Dockerfiles. ────────
   images:
     name: Docker image (${{ matrix.image }})
-    if: ${{ inputs.only == '' }}
-    needs: [npm-lib, npm-cli, npm-sdk]
+    needs: [plan, bump, npm-sdk, npm-channel-api, npm-channel-discord, npm-channel-slack]
+    if: ${{ always() && needs.bump.result == 'success' && !contains(needs.*.result, 'failure') && (needs.plan.outputs.do_channels == 'true' || needs.plan.outputs.do_assistant == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - dockerfile: core/guardian/Dockerfile
-            image: openpalm/guardian
-          - dockerfile: core/channel/Dockerfile
-            image: openpalm/channel
-          - dockerfile: core/assistant/Dockerfile
-            image: openpalm/assistant
+      matrix: ${{ fromJSON(needs.plan.outputs.image_matrix) }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -373,10 +481,12 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
+  # ── Host build artifacts: CLI native binaries + Electron installers (host unit
+  # only; published via the GitHub release in tag-release). ────────────────────
   cli:
     name: CLI binary (${{ matrix.artifact }})
-    if: ${{ inputs.only == '' }}
-    needs: [npm-lib]
+    needs: [plan, npm-lib, npm-cli, npm-ui]
+    if: ${{ always() && needs.plan.outputs.do_host == 'true' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && needs.npm-ui.result == 'success' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -418,8 +528,8 @@ jobs:
 
   electron:
     name: Electron installer (${{ matrix.platform }})
-    if: ${{ inputs.only == '' }}
-    needs: [npm-lib]
+    needs: [plan, npm-lib, npm-cli, npm-ui]
+    if: ${{ always() && needs.plan.outputs.do_host == 'true' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && needs.npm-ui.result == 'success' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -469,9 +579,8 @@ jobs:
 
   voice:
     name: Voice image (${{ matrix.tag_suffix }})
-    needs: [bump]
-    # Stable-only and opt-in; voice is otherwise published out-of-band.
-    if: ${{ inputs.only == '' && inputs.include_voice && !contains(inputs.version, '-') }}
+    needs: [plan, bump]
+    if: ${{ always() && needs.bump.result == 'success' && needs.plan.outputs.do_voice == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -529,11 +638,13 @@ jobs:
   tag-release:
     name: Tag + GitHub release (LAST)
     needs:
+      - plan
       - preflight
+      - bump
       - npm-lib
       - npm-cli
-      - npm-sdk
       - npm-ui
+      - npm-sdk
       - npm-channel-api
       - npm-channel-discord
       - npm-channel-slack
@@ -541,10 +652,10 @@ jobs:
       - cli
       - electron
       - voice
-    # Full coordinated release only (no tag/release for an out-of-band single
-    # package), real run, and only if nothing upstream failed/cancelled (skipped
-    # optional jobs — independents off, voice off — are fine).
-    if: ${{ inputs.only == '' && !inputs.dry_run && always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    # Host + full only (channels/assistant/voice are registry-only — no git tag),
+    # real run, and only if nothing in scope failed/cancelled (skipped optional
+    # jobs are fine).
+    if: ${{ needs.plan.outputs.do_tag == 'true' && !inputs.dry_run && always() && needs.bump.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

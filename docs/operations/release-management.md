@@ -313,11 +313,30 @@ Set this for **every published package**: `@openpalm/lib`, `openpalm`,
 `@openpalm/channel-discord`, `@openpalm/channel-slack`. Until that is set, the
 orchestrator's real (non-dry) npm publish will 403.
 
-- **Coordinated release:** dispatch `platform-release.yml` with `version` + `ref`
-  (+ `coordinate_independents`, `include_voice`).
-- **Out-of-band single package** (e.g. a UI or adapter patch): dispatch the same
-  workflow with `only=<ui|channel-api|channel-discord|channel-slack>` — it bumps
-  and publishes just that package (no images/CLI/Electron/voice/tag).
+The orchestrator releases by **deployment unit** (see
+[`.github/release-package-groups.json`](../../.github/release-package-groups.json) →
+`units`). Pick units with the `release_*` booleans on dispatch:
+
+| Unit | `release_*` | What it ships | Versioned manifests | Tag + GitHub release? |
+|---|---|---|---|---|
+| **host** | `release_host` | `@openpalm/lib` + `openpalm` (CLI) + `@openpalm/ui` (npm) + CLI native binaries + Electron installers | root, lib, cli, ui, electron, admin-tools (+ setup scripts) | **yes** (carries the binaries/installers) |
+| **channels** | `release_channels` | `@openpalm/channels-sdk` + `@openpalm/channel-{api,discord,slack}` (npm) + guardian image + channel image | channels-sdk, 3 adapters, guardian | no (registry-only) |
+| **assistant** | `release_assistant` | assistant image | (image-only) | no (registry-only) |
+| **voice** | `release_voice` | voice `cpu`/`cu121` images | (image-only) | no (registry-only) |
+
+- **Full coordinated release:** dispatch `platform-release.yml` with `version` +
+  `ref` and **leave all `release_*` unchecked** — it releases host + channels +
+  assistant together (voice is never part of a full release; check `release_voice`
+  to add it). This bumps the whole platform to one version and tags it.
+- **Per-unit release** (e.g. a UI/CLI patch, an adapter + guardian refresh, an
+  assistant rebuild): check just that unit's `release_*`. Only that unit's
+  manifests are stamped to `version`; **units drift independently** — CI's
+  version-sync enforces consistency *within* a unit, not across units. The host
+  unit owns root + the setup-script version, so the "platform version" tracks the
+  host/CLI line.
+- **Always `dry_run` first.** It validates semver, a clean tree, the test gate,
+  the per-unit regression guard, packs every in-scope npm package and builds
+  (amd64-only) every in-scope image without publishing/committing/tagging.
 
 The standalone `publish-ui.yml` / `publish-channel-*.yml` workflows were retired
 (they would fail the trusted-publisher check as a different calling workflow).
