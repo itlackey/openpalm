@@ -17,6 +17,7 @@ type ComposeUpFn = (args: unknown) => Promise<{
   code: number;
 }>;
 const composeUpMock = vi.fn<ComposeUpFn>();
+const composePullMock = vi.fn<ComposeUpFn>();
 const checkDockerMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
 const applyUpdateMock = vi.fn<() => Promise<{ restarted: string[] }>>();
 const buildManagedServicesMock = vi.fn<() => Promise<string[]>>();
@@ -27,6 +28,7 @@ vi.mock('@openpalm/lib', async () => {
     ...actual,
     applyUpdate: (...args: unknown[]) => applyUpdateMock(...(args as [])),
     composeUp: (...args: unknown[]) => composeUpMock(...(args as [unknown])),
+    composePull: (...args: unknown[]) => composePullMock(...(args as [unknown])),
     checkDocker: (...args: unknown[]) => checkDockerMock(...(args as [])),
     buildManagedServices: (...args: unknown[]) => buildManagedServicesMock(...(args as [])),
     ensureHomeDirs: () => undefined,
@@ -56,6 +58,8 @@ function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
 beforeEach(() => {
   resetState('admin-token');
   composeUpMock.mockReset();
+  composePullMock.mockReset();
+  composePullMock.mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
   checkDockerMock.mockReset();
   applyUpdateMock.mockReset();
   buildManagedServicesMock.mockReset();

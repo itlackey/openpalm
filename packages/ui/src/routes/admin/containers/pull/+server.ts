@@ -37,7 +37,11 @@ export const POST: RequestHandler = async (event) => {
 
     logger.info("recreating containers", { requestId });
     const managedServices = await buildManagedServices(state);
-    const upResult = await composeUp({ ...composeOpts, services: managedServices });
+    // forceRecreate: a freshly-pulled image with the SAME tag (an updated
+    // :latest, or a re-pulled :vX.Y.Z) does not reliably make a plain `up`
+    // replace the running container — so it would keep running the OLD image
+    // (the akm-0.3.1 surprise). Force the swap.
+    const upResult = await composeUp({ ...composeOpts, services: managedServices, forceRecreate: true });
     if (!upResult.ok) {
       logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
       return errorResponse(502, "up_failed", "Images pulled but failed to recreate containers", { stderr: upResult.stderr }, requestId);

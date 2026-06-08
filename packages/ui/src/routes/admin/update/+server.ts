@@ -14,6 +14,7 @@ import {
   buildComposeOptions,
   buildManagedServices,
   ensureHomeDirs,
+  composePull,
   composeUp,
   checkDocker,
   parseComposeStderr,
@@ -51,9 +52,24 @@ export const POST: RequestHandler = async (event) => {
     let dockerError: string | undefined;
 
     if (dockerCheck.ok) {
+      const composeOpts = buildComposeOptions(state);
+      // Update must actually fetch newer images before recreating — otherwise it
+      // only refreshes compose assets and recreates from whatever image is
+      // already on disk (so a months-old assistant keeps running). Pull first;
+      // a pull failure is non-fatal (offline / flaky network) — fall through to
+      // recreate from local images.
+      const pullResult = await composePull(composeOpts);
+      if (!pullResult.ok) {
+        logger.warn("update: image pull failed — recreating from local images", {
+          requestId, stderr: pullResult.stderr?.slice(0, 300),
+        });
+      }
+      // forceRecreate so a freshly-pulled same-tag image actually swaps the
+      // running container (a plain `up` may leave the old container in place).
       const composeResult = await composeUp({
-        ...buildComposeOptions(state),
+        ...composeOpts,
         services: intendedServices,
+        forceRecreate: true,
       });
 
       if (composeResult.ok) {
