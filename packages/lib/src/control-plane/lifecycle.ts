@@ -369,17 +369,32 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
   return discoverStackOverlays(state.stackDir, state.homeDir);
 }
 
+// Channel addons that require the guardian ingress. Mirrors the profile gate on
+// the guardian service in channels.compose.yml (profiles: addon.{chat,api,
+// discord,slack}) and the built-in channel id list used in registry.ts /
+// config-persistence.ts. Guardian is shared infra for these, not an addon
+// service of its own (getAddonServiceNames deliberately excludes it).
+const CHANNEL_ADDON_IDS = ["api", "chat", "discord", "slack"];
+
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
   const composeOpts = buildComposeOptions(state);
 
-  // Always force-recreate the core services (assistant + guardian) on upgrade,
-  // regardless of how the service set is discovered. getAddonServiceNames
-  // deliberately EXCLUDES guardian, so a fallback that relied on it alone would
-  // drop guardian from the recreated set when channel profiles are active —
-  // leaving guardian on stale state (issue #450).
-  const services = new Set<string>(CORE_SERVICES);
+  // The assistant is the only ALWAYS-on core service. The guardian is channel
+  // ingress — profile-gated to the channel addons in channels.compose.yml, so
+  // with zero channels enabled it is never deployed. Seeding it unconditionally
+  // made the installer health-wait on a guardian that never starts (a ~5-minute
+  // hang when no channel is selected). Add it back ONLY when a channel is
+  // enabled; that also preserves the #450 need to force-recreate guardian on
+  // upgrade when channel profiles ARE active (it is excluded from
+  // getAddonServiceNames, so the fallback below would otherwise drop it).
+  const enabledAddons = listEnabledAddonIds(state.homeDir);
+  const channelsEnabled = enabledAddons.some((a) => CHANNEL_ADDON_IDS.includes(a));
+  const services = new Set<string>(["assistant"]);
+  if (channelsEnabled) services.add("guardian");
 
-  // Prefer compose-derived service list when Docker is available
+  // Prefer compose-derived service list when Docker is available. Resolved with
+  // the active profiles, this already includes guardian iff a channel profile
+  // is active — the explicit add above just guarantees it for the fallback.
   if (composeOpts.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const result = await composeConfigServices(composeOpts);
     if (result.ok && result.services.length > 0) {
@@ -388,8 +403,9 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
     }
   }
 
-  // Fallback: static inference from CORE_SERVICES + active addon overlays
-  for (const addon of listEnabledAddonIds(state.homeDir)) {
+  // Fallback: static inference from assistant (+ guardian when channels) +
+  // active addon overlays.
+  for (const addon of enabledAddons) {
     for (const s of getAddonServiceNames(state.homeDir, addon)) services.add(s);
   }
   return [...services];

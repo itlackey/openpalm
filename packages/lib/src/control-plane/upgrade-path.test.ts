@@ -104,10 +104,19 @@ describe("performUpgrade force-recreates managed services (#450)", () => {
     expect(src).toMatch(/composeUp\(\{[^}]*forceRecreate:\s*true/);
   });
 
-  test("buildManagedServices always includes the core services (guardian)", () => {
+  test("buildManagedServices always manages the assistant", () => {
     const src = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
-    // Guardian comes from CORE_SERVICES and must be seeded into the set
-    // regardless of how the rest of the service list is discovered.
-    expect(src).toContain("new Set<string>(CORE_SERVICES)");
+    // The assistant is the only ALWAYS-on core service in the managed set.
+    expect(src).toContain('new Set<string>(["assistant"])');
+  });
+
+  test("buildManagedServices adds guardian ONLY when a channel addon is enabled", () => {
+    const src = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
+    // Guardian is channel ingress: profile-gated to the channel addons, so it
+    // must be added conditionally — never unconditionally seeded (that hung the
+    // installer on a guardian that never starts when no channel is enabled).
+    expect(src).toContain("channelsEnabled");
+    expect(src).toMatch(/if \(channelsEnabled\) services\.add\("guardian"\)/);
+    expect(src).not.toContain("new Set<string>(CORE_SERVICES)");
   });
 });

@@ -356,12 +356,15 @@ export function startDeploy(state: ControlPlaneState): void {
       // Phase 1b: best-effort `compose down` (volumes preserved) to clean up
       // any half-started containers left behind by a previous failed deploy
       // attempt. Without this, `compose up` may try to attach to a container
-      // that exited mid-start and fail in surprising ways. Failures here are
+      // that exited mid-start and fail in surprising ways. removeOrphans also
+      // prunes a previously-enabled-then-disabled profile-gated addon (e.g. the
+      // in-stack Ollama once a host LLM is detected): with its profile inactive
+      // `down` alone leaves its stopped container behind. Failures here are
       // expected on first install (nothing to remove) and intentionally
       // swallowed.
       const composeOpts = buildComposeOptions(state);
       try {
-        const downResult = await composeDown({ ...composeOpts, removeVolumes: false });
+        const downResult = await composeDown({ ...composeOpts, removeVolumes: false, removeOrphans: true });
         if (!downResult.ok) {
           logger.info("pre-deploy compose down returned non-zero (likely nothing to remove)", {
             stderr: downResult.stderr?.slice(0, 500),

@@ -275,6 +275,11 @@ export async function composeDown(
     profiles?: string[];
     removeVolumes?: boolean;
     envFiles?: string[];
+    // Remove containers for services NOT in the (profile-resolved) compose set.
+    // Needed to clean up a previously-enabled-then-disabled profile-gated addon
+    // (e.g. in-stack Ollama): with its profile now inactive, `down` alone leaves
+    // its stopped container behind because compose no longer "sees" the service.
+    removeOrphans?: boolean;
   }
 ): Promise<DockerResult> {
   await runPreflight(options);
@@ -284,6 +289,7 @@ export async function composeDown(
   const args = buildComposeArgs(options);
   args.push("down");
   if (options.removeVolumes) args.push("-v");
+  if (options.removeOrphans) args.push("--remove-orphans");
   return run(args, undefined);
 }
 
