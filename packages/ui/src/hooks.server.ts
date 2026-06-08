@@ -13,6 +13,8 @@ import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import { checkHostHeader, checkOriginHeader, UI_PORT, identifyCallerByToken } from "$lib/server/helpers.js";
+import { touchSession } from "$lib/server/session-store.js";
+import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
 import {
   createLogger,
   ensureSecrets,
@@ -144,6 +146,21 @@ export const handle: Handle = async ({ event, resolve }) => {
   // (browser fetch() sends `Accept: */*`, so it never matches here).
   event.locals.role = identifyCallerByToken(event);
 
+  // ── Sliding renewal: a valid cookie was just resolved to a role, so push its
+  // expiry back to a full TTL (in the in-memory store) and re-issue the cookie
+  // with a fresh Max-Age. This keeps active operators signed in indefinitely
+  // while idle sessions still time out after the TTL. Cheap: one map get+set
+  // plus one Set-Cookie header. We capture the renewed value here and attach it
+  // to the response after resolve() so it isn't clobbered by the handler.
+  let renewedCookie: string | null = null;
+  if (event.locals.role === "admin") {
+    const cookieHeader = event.request.headers.get("cookie") ?? "";
+    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
+    if (match && touchSession(match[1])) {
+      renewedCookie = sessionCookieHeader(match[1], event.request);
+    }
+  }
+
   const isAuthPath = path === "/login" || path.startsWith("/login/");
   const wantsHtml =
     event.request.method === "GET" &&
@@ -154,6 +171,15 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   const response = await resolve(event);
+  // Apply the sliding-renewal cookie unless the handler itself already issued an
+  // op_session cookie (e.g. logout clears it, or a re-login re-issues it) — in
+  // that case the handler's intent wins and we must not stomp it.
+  if (renewedCookie) {
+    const existing = response.headers.get("set-cookie") ?? "";
+    if (!existing.includes(`${SESSION_COOKIE_NAME}=`)) {
+      response.headers.append("set-cookie", renewedCookie);
+    }
+  }
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "no-referrer");

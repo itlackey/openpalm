@@ -10,6 +10,7 @@
  */
 import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
 import { createSession } from "$lib/server/session-store.js";
+import { sessionCookieHeader } from "$lib/server/session-cookie.js";
 import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async (event) => {
@@ -39,14 +40,14 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(401, "unauthorized", "Invalid password", {}, requestId);
   }
 
-  // HttpOnly prevents JS access; SameSite=Strict blocks CSRF.
-  // Cookie value is an opaque session token — not the plaintext password.
+  // HttpOnly prevents JS access; SameSite=Lax + the Origin check (SEC-2) block
+  // CSRF. Cookie value is an opaque session token — not the plaintext password.
   const sessionToken = createSession();
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "set-cookie": `op_session=${sessionToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`,
+      "set-cookie": sessionCookieHeader(sessionToken, event.request),
       "x-request-id": requestId,
     },
   });

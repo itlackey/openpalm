@@ -1,8 +1,9 @@
 /**
  * POST /admin/auth/login
  *
- * Issues the `op_session` cookie (HttpOnly, SameSite=Strict, Max-Age=86400)
- * after verifying the operator-supplied password in the request body against
+ * Issues the `op_session` cookie (HttpOnly, SameSite=Lax, Secure-on-HTTPS,
+ * Max-Age=7d — see session-cookie.ts) after verifying the operator-supplied
+ * password in the request body against
  * `process.env.OP_UI_LOGIN_PASSWORD`.
  *
  * The cookie value is a random UUID session token — NOT the plaintext password.
@@ -11,9 +12,7 @@
 import type { RequestHandler } from "./$types";
 import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
 import { createSession } from "$lib/server/session-store.js";
-
-const COOKIE_NAME = "op_session";
-const COOKIE_OPTS = "HttpOnly; SameSite=Strict; Path=/; Max-Age=86400";
+import { sessionCookieHeader } from "$lib/server/session-cookie.js";
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -47,7 +46,7 @@ export const POST: RequestHandler = async (event) => {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "set-cookie": `${COOKIE_NAME}=${sessionToken}; ${COOKIE_OPTS}`,
+      "set-cookie": sessionCookieHeader(sessionToken, event.request),
       "x-request-id": requestId
     }
   });

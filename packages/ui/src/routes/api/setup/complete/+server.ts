@@ -5,6 +5,7 @@ import { startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
 import { getUiLoginPassword, requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
 import { isSetupComplete, resolveStackDir } from "@openpalm/lib";
 import { createSession } from "$lib/server/session-store.js";
+import { sessionCookieHeader } from "$lib/server/session-cookie.js";
 import type { RequestHandler } from "./$types";
 
 interface CompleteBody extends SetupSpec {
@@ -91,10 +92,7 @@ export const POST: RequestHandler = async (event) => {
     getUiLoginPassword();
   if (hasPassword) {
     const sessionToken = createSession();
-    headers.set(
-      "set-cookie",
-      `op_session=${sessionToken}; Path=/; HttpOnly; SameSite=Strict`
-    );
+    headers.set("set-cookie", sessionCookieHeader(sessionToken, event.request));
   }
 
   return new Response(JSON.stringify({
