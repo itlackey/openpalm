@@ -5,15 +5,16 @@
  * Files are validated in-place before writing; rollback is handled by
  * the rollback module (snapshot to OP_HOME/data/rollback/).
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
+import { createLogger } from "../logger.js";
 import { parseEnvContent, parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./registry.js";
-import { resolveOperatorIds, hasUsableOperatorId } from "./operator-ids.js";
+import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { SPEC_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
 
@@ -25,6 +26,8 @@ export { sha256, randomHex } from "./crypto.js";
 import { sha256, randomHex } from "./crypto.js";
 
 const DEFAULT_IMAGE_TAG = "latest";
+
+const logger = createLogger("config-persistence");
 
 // ── Env File Management ──────────────────────────────────────────────
 
@@ -223,6 +226,13 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
   const composeFiles = discoverStackOverlays(state.stackDir, state.homeDir);
   if (composeFiles.length === 0) return;
 
+  // Resolve the operator UID/GID compose runs containers as (`user:`), so we
+  // can chown the dirs we pre-create to match. Without this, dirs created by
+  // a root-running install (or a host UID that differs from the forced
+  // container UID) are unwritable inside the non-root container — on OrbStack
+  // real UIDs are preserved, so e.g. ollama's mkdir is denied (issue #452).
+  const operatorIds = resolveOperatorIds(state.homeDir);
+
   const envVars: Record<string, string> = {
     ...(process.env as Record<string, string>),
     ...parseEnvFile(`${state.stashDir}/env/stack.env`),
@@ -264,13 +274,37 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
         const isFile = basename.includes('.');
 
         if (isFile) {
-          mkdirSync(dirname(resolvedHostPath), { recursive: true });
+          const parent = dirname(resolvedHostPath);
+          mkdirSync(parent, { recursive: true });
           writeFileSync(resolvedHostPath, '');
+          chownVolumeTarget(parent, operatorIds);
+          chownVolumeTarget(resolvedHostPath, operatorIds);
         } else {
           mkdirSync(resolvedHostPath, { recursive: true });
+          chownVolumeTarget(resolvedHostPath, operatorIds);
         }
       }
     }
+  }
+}
+
+/**
+ * chown a just-created bind-mount target to the operator UID/GID so the
+ * non-root container (`user: ${OP_UID}:${OP_GID}`) can write to it.
+ *
+ * No-op on Windows (chown is meaningless there) or when no operator can be
+ * resolved. A failure (e.g. not the owner) is logged and swallowed — the
+ * mkdir already succeeded and Docker Desktop's gRPC-FUSE masks ownership
+ * anyway, so a chown failure must not abort the install.
+ */
+function chownVolumeTarget(path: string, operatorIds: OperatorIds | null): void {
+  if (process.platform === "win32" || !operatorIds) return;
+  try {
+    chownSync(path, operatorIds.uid, operatorIds.gid);
+  } catch (error) {
+    logger.warn(
+      `Could not chown volume target ${path} to ${operatorIds.uid}:${operatorIds.gid}: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 

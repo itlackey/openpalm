@@ -8,9 +8,14 @@ services:
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
-      OLLAMA_MODELS: /data/models
+      # Bind the data dir at ollama's native data path ($HOME/.ollama), not a
+      # generic /data root. HOME drives that path; ollama persists its models,
+      # blobs, manifests, and server key there. The host dir is created owned by
+      # the operator UID (the container's `user:`), so the non-root process can
+      # write — incl. on OrbStack, which preserves real UIDs (issue #452).
+      HOME: /home/ollama
     volumes:
-      - ${OP_HOME}/data/ollama:/data
+      - ${OP_HOME}/data/ollama:/home/ollama/.ollama
     networks: [assistant_net]
     healthcheck:
       test: ["CMD", "ollama", "list"]
@@ -33,11 +38,13 @@ services:
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     runtime: nvidia
     environment:
-      OLLAMA_MODELS: /data/models
+      # Native data path ($HOME/.ollama), not a generic /data root — HOME drives
+      # it so models + server key persist in the bind mount (issue #452).
+      HOME: /home/ollama
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - ${OP_HOME}/data/ollama:/data
+      - ${OP_HOME}/data/ollama:/home/ollama/.ollama
     networks:
       assistant_net:
         aliases: [ollama]
@@ -61,10 +68,12 @@ services:
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
-      OLLAMA_MODELS: /data/models
+      # Native data path ($HOME/.ollama), not a generic /data root — HOME drives
+      # it so models + server key persist in the bind mount (issue #452).
+      HOME: /home/ollama
       HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
     volumes:
-      - ${OP_HOME}/data/ollama:/data
+      - ${OP_HOME}/data/ollama:/home/ollama/.ollama
     networks:
       assistant_net:
         aliases: [ollama]

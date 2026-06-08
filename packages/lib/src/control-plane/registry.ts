@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
-import { ensureChannelSecret } from './config-persistence.js';
+import { ensureChannelSecret, ensureComposeVolumeTargets } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
 import { readBundledStackAsset } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
@@ -906,6 +906,15 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
       for (const channel of ['api', 'chat', 'discord', 'slack']) {
         ensureChannelSecret(stackDir, channel);
       }
+    }
+
+    // Pre-create (and chown) any host-side bind-mount targets the newly
+    // enabled addon declares — e.g. ollama's data dir. Matches the install
+    // path (applyInstall → ensureComposeVolumeTargets) so enabling an addon
+    // post-install isn't more exposed than enabling it at install time
+    // (issue #452). Guarded on `state` since callers may omit it.
+    if (state) {
+      ensureComposeVolumeTargets(state);
     }
   }
 
