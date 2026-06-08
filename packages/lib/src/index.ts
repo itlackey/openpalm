@@ -296,6 +296,20 @@ export {
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
 
+// ── Hardware detection + setup recommendation ───────────────────────────
+export type { GpuInfo, GpuVendor } from "./control-plane/hardware-detect.js";
+export { detectGpu, parseNvidiaSmi, parseRocmSmi } from "./control-plane/hardware-detect.js";
+export type {
+  DetectedHostProvider,
+  SetupRecommendation,
+  SetupRecommendationInput,
+} from "./control-plane/setup-recommendation.js";
+export {
+  recommendSetup,
+  gpuToProfileVariant,
+  MIN_LOCAL_GPU_VRAM_MB,
+} from "./control-plane/setup-recommendation.js";
+
 // ── Compose Arguments ────────────────────────────────────────────────────
 export {
   buildComposeOptions,

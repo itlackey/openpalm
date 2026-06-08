@@ -8,6 +8,7 @@
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
   } from '$lib/wizard/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
+  import type { SetupRecommendation } from '@openpalm/lib';
   import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
   import ProgressBar from './ProgressBar.svelte';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
@@ -62,6 +63,11 @@
   let hostProviderCount = $state(0);
   let hostStatusWarning = $state<string | null>(null);
   let allowEmptyInstall = $state(false);
+  // Setup recommendation (from /api/setup/recommend) — drives auto-configuration
+  // of providers/Ollama based on detected cloud providers, host providers + GPU.
+  let recommendation = $state<SetupRecommendation | null>(null);
+  let recommendationAlert = $state('');
+  let recommendationApplied = $state(false);
   let voiceEngineUnknownTts = $state(false);
   let voiceEngineUnknownStt = $state(false);
   /** Generation counter per provider — discard stale verify results */
@@ -438,7 +444,7 @@
     return true;
   }
 
-  function enableRecommendedOllama(): void {
+  function enableRecommendedOllama(variant?: 'cuda' | 'rocm' | 'cpu'): void {
     ollamaEnabled = true;
     const st = providerState['ollama'];
     if (st) {
@@ -446,47 +452,93 @@
       st.verified = true;
       st.ollamaMode = 'instack';
       st.baseUrl = 'http://ollama:11434';
-      if (st.models.length === 0) st.models = ['nomic-embed-text', 'qwen3:4b'];
+      // Seed only the chat model. akm self-embeds locally, so the wizard must
+      // NOT configure embeddings by default (no nomic-embed-text seed).
+      if (st.models.length === 0) st.models = ['qwen3:4b'];
     }
-    // Always pick the best available profile based on current GPU detection state.
-    const preferred = addonProfileId('ollama', gpuDetected ? 'cuda' : 'cpu');
+    // Prefer the recommended hardware variant (from the GPU-aware
+    // recommendation); otherwise fall back to the ad-hoc GPU-detection guess.
+    const preferred = addonProfileId('ollama', variant ?? (gpuDetected ? 'cuda' : 'cpu'));
     const match = ollamaProfiles.find((p) => p.id === preferred && p.available !== false)
       ?? ollamaProfiles.find((p) => p.available !== false);
     selectedOllamaProfile = match?.id ?? preferred;
   }
 
+  // Fetch the GPU/provider-aware setup recommendation once and apply it.
+  // Supersedes the ad-hoc `gpuDetected ? 'cuda' : 'cpu'` guesses for the
+  // Ollama path. Safe to call multiple times — applies only once.
+  async function fetchAndApplyRecommendation(): Promise<void> {
+    if (recommendationApplied) return;
+    let rec: SetupRecommendation;
+    try {
+      const res = await fetch('/api/setup/recommend');
+      if (!res.ok) return;
+      const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation };
+      if (!data.ok || !data.recommendation) return;
+      rec = data.recommendation;
+    } catch {
+      return; // non-critical — user can configure manually
+    }
+    recommendationApplied = true;
+    recommendation = rec;
+
+    switch (rec.action) {
+      case 'use-cloud':
+        // A cloud provider is already connected — nothing to auto-do. The
+        // connected providers flow through the existing detection path.
+        recommendationAlert = '';
+        break;
+      case 'use-host-providers': {
+        recommendationAlert = rec.alert;
+        // Import host ollama/lmstudio so they become real providers, then
+        // continue model detection via the existing host-import path.
+        if (!hostImportTriggered) {
+          hostImportTriggered = true;
+          await handleHostImport();
+        }
+        break;
+      }
+      case 'enable-ollama':
+        recommendationAlert = rec.alert;
+        enableRecommendedOllama(rec.profileVariant);
+        break;
+      case 'connect-manually':
+        // Do NOT enable Ollama and do NOT silently allow an empty install.
+        // Keep the user on the Providers step with the alert visible so they
+        // can sign in or add a custom OpenAI-compatible endpoint + key.
+        recommendationAlert = rec.alert;
+        break;
+    }
+  }
+
   async function handleUseDefaults(): Promise<void> {
     if (verifiedProviders.length >= 1) {
-      // Fast path: providers already verified by background detection.
-      enableRecommendedOllama();
+      // Fast path: providers already verified by background detection (cloud or
+      // host). Don't force in-stack Ollama — those providers cover the assistant.
       applyImportedModelPreferences();
       autoSelectModels();
       goToStep(5);
       return;
     }
 
-    // Slow path: try a host import without navigating to the Providers step.
-    // Shows a spinner on the button while waiting.
-    if (hostProviderCount > 0 && !hostImportTriggered) {
-      autoModeImporting = true;
-      hostImportTriggered = true;
-      try {
-        const res = await fetch('/api/setup/import-host', { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json() as { ok: boolean };
-          if (data.ok && opencodeAvailable) await loadOpenCodeProviders();
-        }
-      } catch {
-        // proceed without provider — user can add one from admin panel
-      }
-      autoModeImporting = false;
+    // No verified provider yet — consult the GPU/provider-aware recommendation
+    // to decide what "defaults" means.
+    autoModeImporting = true;
+    await fetchAndApplyRecommendation();
+    autoModeImporting = false;
+
+    if (recommendation?.action === 'connect-manually') {
+      // No provider and no capable GPU — refuse to silently install empty.
+      // Send the user to the Providers step with the alert visible.
+      goToStep(2);
+      return;
     }
 
-    // Pick models from whatever was imported; allow empty install as fallback.
-    enableRecommendedOllama();
+    // use-host-providers (handled by fetchAndApplyRecommendation -> handleHostImport,
+    // which already imports + advances) and enable-ollama both leave us with a
+    // usable provider. use-cloud is unreachable here (verifiedProviders === 0).
     applyImportedModelPreferences();
     autoSelectModels();
-    allowEmptyInstall = true;
     goToStep(5);
   }
 
@@ -572,10 +624,14 @@
     if (n === 5 && hasOllamaVerified) {
       ollamaEnabled = providerState.ollama?.ollamaMode === 'instack';
     }
-    // Auto-import from host on first Providers visit if host providers detected (index 2)
-    if (n === 2 && hostProviderCount > 0 && !hostImportTriggered) {
-      hostImportTriggered = true;
-      void handleHostImport();
+    // On first Providers visit (index 2), apply the GPU/provider-aware
+    // recommendation. It supersedes the old ad-hoc host-import trigger:
+    //  - use-host-providers imports host providers + advances to Models
+    //  - enable-ollama enables in-stack Ollama
+    //  - connect-manually keeps the user here with the alert visible
+    // On rerun we don't auto-apply — the user picks where to start.
+    if (n === 2 && !isRerun) {
+      void fetchAndApplyRecommendation();
     }
   }
 
@@ -583,16 +639,14 @@
     const roles = ['llm', 'embedding', 'small'] as const;
     for (const roleId of roles) {
       if (modelSelection[roleId]) continue;
+      // Embedding is never auto-selected — akm self-embeds locally, so the
+      // wizard leaves modelSelection.embedding unset unless a user explicitly
+      // picks one in the advanced Models step.
+      if (roleId === 'embedding') continue;
       const options = getModelOptionsForRole(roleId);
       if (options.length === 0) continue;
-      // When Ollama is enabled, prefer its embedding model for memory
-      const defaultOpt = roleId === 'embedding' && ollamaEnabled
-        ? options.find((o) => o.connId === 'ollama') ?? options.find((o) => o.isDefault) ?? options[0]
-        : options.find((o) => o.isDefault) ?? options[0];
+      const defaultOpt = options.find((o) => o.isDefault) ?? options[0];
       modelSelection[roleId] = { connId: defaultOpt.connId, model: defaultOpt.id, dims: defaultOpt.dims };
-      if (roleId === 'embedding' && (defaultOpt.dims <= 0)) {
-        step2EmbDimWarning = 'Unknown embedding model dimensions — set manually in akm config after install.';
-      }
     }
   }
 
@@ -617,17 +671,10 @@
         options.push({ id: m, connId: p.id, isDefault: false, dims });
       }
     }
-    // When Ollama is enabled, ensure its embedding model is available
-    if (roleId === 'embedding' && ollamaEnabled) {
-      const ollamaSt = providerState['ollama'];
-      if (ollamaSt?.verified && !options.some((o) => o.connId === 'ollama')) {
-        const embModel = 'nomic-embed-text';
-        if (ollamaSt.models.includes(embModel) || ollamaSt.models.length > 0) {
-          const dims = KNOWN_EMB_DIMS[embModel] ?? 768;
-          options.unshift({ id: embModel, connId: 'ollama', isDefault: false, dims });
-        }
-      }
-    }
+    // No synthetic Ollama embedding option is injected: akm self-embeds, so
+    // the wizard never auto-configures an embedding model. A user can still
+    // pick any real embedding model the provider exposes in the advanced
+    // Models step (those flow through the loop above).
     if (roleId === 'embedding') {
       const filtered = options.filter((o) => o.isDefault || o.dims > 0);
       if (filtered.length > 0) return filtered;
@@ -1385,6 +1432,10 @@
           onnavigate={goToStep}
           {canNavigateTo}
         />
+      {/if}
+
+      {#if !showDeploy && recommendationAlert && (currentStep === 2 || currentStep === 3)}
+        <div class="field-warning" role="alert" data-testid="recommendation-alert">{recommendationAlert}</div>
       {/if}
 
       {#if showDeploy}

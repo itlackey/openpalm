@@ -1,24 +1,8 @@
 import { json } from "@sveltejs/kit";
-import { checkDocker, checkDockerCompose } from "@openpalm/lib";
+import { checkDocker, checkDockerCompose, detectGpu } from "@openpalm/lib";
 import { createServer } from "node:net";
 import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
-
-// Detect GPU via nvidia-smi — returns name if found, null otherwise.
-function detectGpu(): Promise<string | null> {
-  return new Promise((resolve) => {
-    execFile(
-      "nvidia-smi",
-      ["--query-gpu=name", "--format=csv,noheader"],
-      { timeout: 3_000 },
-      (err, stdout) => {
-        if (err) return resolve(null);
-        const name = stdout?.toString().trim().split("\n")[0]?.trim();
-        resolve(name || null);
-      },
-    );
-  });
-}
 
 /**
  * Returns true when the named port is published by an openpalm-managed
@@ -137,7 +121,10 @@ export const GET: RequestHandler = async () => {
     portCheckReliable: docker.ok,
     ports,
     platform: process.platform,
-    gpu: gpu ?? undefined,
+    // Back-compat: `gpu` is the display name string (SystemCheckStep reads it).
+    // `gpuInfo` carries the full VRAM-aware detection.
+    gpu: gpu?.name ?? undefined,
+    gpuInfo: gpu ?? undefined,
   });
 };
 
