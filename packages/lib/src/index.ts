@@ -252,6 +252,7 @@ export {
   applyUpgrade,
   performUpgrade,
   applyTagChange,
+  resolveLatestPlatformTag,
   updateStackEnvToLatestImageTag,
   buildComposeFileList,
   buildManagedServices,

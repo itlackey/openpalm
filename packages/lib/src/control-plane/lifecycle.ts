@@ -172,10 +172,7 @@ function resolveNewestDockerTag(payload: unknown): string | null {
   return fallback;
 }
 
-export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): Promise<{
-  namespace: string;
-  tag: string;
-}> {
+function resolveImageNamespace(state: ControlPlaneState): string {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
   const parsed = parseEnvFile(systemEnvPath);
   const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
@@ -183,11 +180,21 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   if (!IMAGE_NAMESPACE_RE.test(namespace)) {
     throw new Error(`Invalid image namespace in system.env: ${namespace}`);
   }
+  return namespace;
+}
 
-  // `assistant` is the version-of-record image: all platform images
-  // (assistant, guardian, channel, voice) are published in lockstep under the
-  // same OP_IMAGE_TAG, so its newest tag is the canonical platform version.
-
+/**
+ * Resolve the newest published platform tag from the Docker registry.
+ *
+ * `assistant` is the version-of-record image: all platform images
+ * (assistant, guardian, channel, voice) are published in lockstep under the
+ * same OP_IMAGE_TAG, so its newest tag is the canonical platform version.
+ *
+ * Used both to auto-detect during "Update now" and to resolve a requested
+ * `latest` selection into a concrete release tag before fetching stack assets
+ * (GitHub has no asset tree at a `latest` ref).
+ */
+export async function resolveLatestPlatformTag(namespace: string): Promise<string> {
   let response: Response;
   try {
     response = await fetch(
@@ -207,6 +214,16 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   if (!latestTag) {
     throw new Error("No usable Docker image tag found");
   }
+  return latestTag;
+}
+
+export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): Promise<{
+  namespace: string;
+  tag: string;
+}> {
+  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const namespace = resolveImageNamespace(state);
+  const latestTag = await resolveLatestPlatformTag(namespace);
 
   const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   const updatedContent = mergeEnvContent(currentContent, { OP_IMAGE_TAG: latestTag }, { uncomment: true });
@@ -288,9 +305,14 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     throw new Error(`Failed to pull images: ${pullResult.stderr}`);
   }
 
-  // 4. Recreate containers (includes profiles for voice addon)
+  // 4. Recreate containers (includes profiles for voice addon).
+  // forceRecreate is REQUIRED: channel adapters are installed at container
+  // startup from npm dist-tags (CHANNEL_PACKAGE, e.g. @openpalm/channel-discord@latest),
+  // so an unchanged compose config would leave those containers running on the
+  // old adapter. --force-recreate guarantees guardian + channel containers
+  // restart and re-resolve their dist-tag adapters (issue #450).
   const services = await buildManagedServices(state);
-  const upResult = await composeUp({ ...composeOpts, services, removeOrphans: true });
+  const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
   if (!upResult.ok) {
     throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
   }
@@ -309,13 +331,34 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
  * Used by the admin "set version" action — skips the auto-detect step in performUpgrade.
  */
 export async function applyTagChange(state: ControlPlaneState, tag: string): Promise<UpgradeResult> {
+  const namespace = resolveImageNamespace(state);
+
+  // "latest" (or an empty selection) is not a real GitHub ref — there are no
+  // `.openpalm/...` stack assets at a `latest` tag, so refreshCoreAssets would
+  // fail with a raw download error. Resolve it to the concrete newest published
+  // platform tag BEFORE writing the env or fetching assets, so images and
+  // stack assets stay in lockstep on a real release tag.
+  const requested = tag.trim();
+  let resolvedTag = requested;
+  if (requested === "" || requested.toLowerCase() === "latest") {
+    try {
+      resolvedTag = await resolveLatestPlatformTag(namespace);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `Cannot resolve "latest" to a concrete release: ${msg}. ` +
+        "Check your network connection or select a specific version."
+      );
+    }
+  }
+
   const stackEnvPath = `${state.stashDir}/env/stack.env`;
   const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
-  writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: tag }, { uncomment: true }));
-  const upgradeResult = await applyUpgrade(state, tag);
+  writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: resolvedTag }, { uncomment: true }));
+  const upgradeResult = await applyUpgrade(state, resolvedTag);
   return {
-    imageTag: tag,
-    namespace: "openpalm",
+    imageTag: resolvedTag,
+    namespace,
     backupDir: upgradeResult.backupDir,
     assetsUpdated: upgradeResult.updated,
     restarted: upgradeResult.restarted,
@@ -329,20 +372,27 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
   const composeOpts = buildComposeOptions(state);
 
+  // Always force-recreate the core services (assistant + guardian) on upgrade,
+  // regardless of how the service set is discovered. getAddonServiceNames
+  // deliberately EXCLUDES guardian, so a fallback that relied on it alone would
+  // drop guardian from the recreated set when channel profiles are active —
+  // leaving guardian on stale state (issue #450).
+  const services = new Set<string>(CORE_SERVICES);
+
   // Prefer compose-derived service list when Docker is available
   if (composeOpts.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const result = await composeConfigServices(composeOpts);
     if (result.ok && result.services.length > 0) {
-      return result.services;
+      for (const s of result.services) services.add(s);
+      return [...services];
     }
   }
 
   // Fallback: static inference from CORE_SERVICES + active addon overlays
-  const services: string[] = [...CORE_SERVICES];
   for (const addon of listEnabledAddonIds(state.homeDir)) {
-    services.push(...getAddonServiceNames(state.homeDir, addon));
+    for (const s of getAddonServiceNames(state.homeDir, addon)) services.add(s);
   }
-  return services;
+  return [...services];
 }
 
 
