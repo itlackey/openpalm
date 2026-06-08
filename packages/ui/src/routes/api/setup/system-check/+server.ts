@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { checkDocker, checkDockerCompose, detectGpu } from "@openpalm/lib";
+import { checkDocker, checkDockerCompose, detectGpu, detectLocalProviders } from "@openpalm/lib";
 import { createServer } from "node:net";
 import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
@@ -88,7 +88,7 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
 const SERVER_PORT = Number(process.env.PORT ?? process.env.OP_HOST_UI_PORT ?? 3880);
 
 export const GET: RequestHandler = async () => {
-  const [docker, compose, gpu] = await Promise.all([checkDocker(), checkDockerCompose(), detectGpu()]);
+  const [docker, compose, gpu, localProviders] = await Promise.all([checkDocker(), checkDockerCompose(), detectGpu(), detectLocalProviders()]);
 
   const targets = resolvePortsToCheck();
   const ports = await Promise.all(
@@ -125,6 +125,9 @@ export const GET: RequestHandler = async () => {
     // `gpuInfo` carries the full VRAM-aware detection.
     gpu: gpu?.name ?? undefined,
     gpuInfo: gpu ?? undefined,
+    hostProviders: localProviders
+      .filter((p) => p.available)
+      .map(({ provider, url }) => ({ provider, url })),
   });
 };
 

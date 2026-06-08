@@ -12,6 +12,8 @@
 
   interface PortResult { port: number; available: boolean; blocking?: boolean; }
 
+  interface HostProvider { provider: string; url: string; }
+
   interface SystemCheckResponse {
     ok: boolean;
     docker: CheckResult;
@@ -20,7 +22,20 @@
     ports: PortResult[];
     platform: string;
     gpu?: string;
+    hostProviders?: HostProvider[];
   }
+
+  const PROVIDER_LABELS: Record<string, string> = {
+    ollama: 'Ollama',
+    lmstudio: 'LM Studio',
+    'model-runner': 'Docker Model Runner',
+  };
+
+  const PROVIDER_ICONS: Record<string, string> = {
+    ollama: '🦙',
+    lmstudio: '🖥️',
+    'model-runner': '🐳',
+  };
 
   interface Props {
     onnext: () => void;
@@ -162,6 +177,21 @@
     </div>
   {/if}
 
+  {#if result?.hostProviders && result.hostProviders.length > 0}
+    {#each result.hostProviders as hp (hp.provider)}
+      <div class="syscheck-row syscheck-row--info">
+        <div class="syscheck-icon syscheck-icon--emoji" aria-hidden="true">
+          {PROVIDER_ICONS[hp.provider] ?? '🔌'}
+        </div>
+        <div class="syscheck-body">
+          <div class="syscheck-title">{PROVIDER_LABELS[hp.provider] ?? hp.provider} is running</div>
+          <div class="syscheck-meta">{hp.url}</div>
+          <div class="syscheck-hint">We can use this automatically — pick your model on the Models step.</div>
+        </div>
+      </div>
+    {/each}
+  {/if}
+
   {#if result && portConflicts.length > 0}
     <div class="syscheck-row {hasBlockingConflict ? 'syscheck-row--fail' : 'syscheck-row--warn'}">
       <div class="syscheck-icon">
@@ -212,12 +242,23 @@
   .syscheck-row--ok { background: var(--color-success-bg); border-color: var(--color-success-border); }
   .syscheck-row--fail { background: var(--color-danger-bg); border-color: var(--color-danger-border); }
   .syscheck-row--warn { background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+  /* Info rows: neutral blue tint — informational only, no pass/fail signal.
+     Uses --color-info-bg/border tokens if present; falls back to a blue-50/blue-200
+     pair that clears 4.5:1 AA contrast for --color-text on both light and dark themes. */
+  .syscheck-row--info {
+    background: var(--color-info-bg, #eff6ff);
+    border-color: var(--color-info-border, #bfdbfe);
+  }
   .syscheck-icon {
     flex: 0 0 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     padding-top: 2px;
+  }
+  .syscheck-icon--emoji {
+    font-size: 1.1rem;
+    line-height: 1;
   }
   .syscheck-body { flex: 1; min-width: 0; }
   .syscheck-title { font-weight: 600; font-size: var(--text-sm, 0.875rem); }
