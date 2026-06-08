@@ -288,11 +288,11 @@
   .review-warning {
     margin: 12px 0;
     padding: 10px 14px;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
     border-radius: 8px;
     font-size: var(--text-sm, 0.875rem);
-    color: #92400e;
+    color: var(--color-caution);
   }
 
   .review-row--alert {
@@ -301,7 +301,8 @@
   .token-save-box {
     font-family: monospace;
     font-size: var(--text-sm, 0.875rem);
-    background: #fff;
+    background: var(--color-bg);
+    color: var(--color-text);
     border: 1px solid var(--color-border, #e2e8f0);
     border-radius: 6px;
     padding: 4px 8px;
@@ -312,7 +313,8 @@
   .token-save-input {
     font-family: monospace;
     font-size: var(--text-sm, 0.875rem);
-    background: #fff;
+    background: var(--color-bg);
+    color: var(--color-text);
     border: 1px solid var(--color-border, #e2e8f0);
     border-radius: 6px;
     padding: 4px 8px;

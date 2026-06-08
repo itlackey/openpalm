@@ -707,10 +707,10 @@
   .host-status-warning {
     margin: 0 0 12px;
     padding: 10px 14px;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
     border-radius: 8px;
-    color: #92400e;
+    color: var(--color-caution);
     font-size: var(--text-sm, 0.875rem);
   }
 

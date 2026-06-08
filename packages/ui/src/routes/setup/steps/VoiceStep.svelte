@@ -177,19 +177,19 @@
   .voice-unknown {
     margin: 12px 0;
     padding: 10px 14px;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
     border-radius: 8px;
-    color: #92400e;
+    color: var(--color-caution);
     font-size: var(--text-sm, 0.875rem);
   }
   .voice-download-notice {
     margin: 12px 0 20px;
     padding: 12px 16px;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info);
     border-radius: 8px;
-    color: #1e3a8a;
+    color: var(--color-text);
     font-size: var(--text-sm, 0.875rem);
     line-height: 1.55;
   }
@@ -198,7 +198,7 @@
     padding: 0;
   }
   .voice-download-notice strong {
-    color: #1e40af;
+    color: var(--color-info);
   }
   .voice-profile-inline {
     margin: -2px 0 16px;

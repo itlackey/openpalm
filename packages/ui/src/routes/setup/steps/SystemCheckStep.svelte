@@ -97,7 +97,7 @@
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       {:else}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       {/if}
@@ -128,7 +128,7 @@
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       {:else}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       {/if}
@@ -165,7 +165,7 @@
   {#if result && portConflicts.length > 0}
     <div class="syscheck-row {hasBlockingConflict ? 'syscheck-row--fail' : 'syscheck-row--warn'}">
       <div class="syscheck-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hasBlockingConflict ? '#dc2626' : '#d97706'} stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hasBlockingConflict ? 'var(--color-danger)' : 'var(--color-warning)'} stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 9v4"/><path d="M12 17h.01"/>
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
         </svg>
@@ -209,9 +209,9 @@
     border-radius: 8px;
     background: var(--color-bg, #fff);
   }
-  .syscheck-row--ok { background: #f0fdf4; border-color: #bbf7d0; }
-  .syscheck-row--fail { background: #fef2f2; border-color: #fecaca; }
-  .syscheck-row--warn { background: #fffbeb; border-color: #fde68a; }
+  .syscheck-row--ok { background: var(--color-success-bg); border-color: var(--color-success-border); }
+  .syscheck-row--fail { background: var(--color-danger-bg); border-color: var(--color-danger-border); }
+  .syscheck-row--warn { background: var(--color-warning-bg); border-color: var(--color-warning-border); }
   .syscheck-icon {
     flex: 0 0 24px;
     display: flex;
