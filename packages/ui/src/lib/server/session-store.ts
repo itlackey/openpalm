@@ -1,133 +1,92 @@
 /**
- * Persistent session store for op_session cookies.
+ * Stateless signed session tokens.
  *
- * Tokens are written to ${dataDir}/admin/sessions.json so they survive UI
- * server restarts (the Electron app killing and respawning the Node child
- * process). Without persistence the browser holds a valid 14-day cookie but
- * the server has no record of it → forced login on every app launch.
+ * Token format: `<expiresAt>.<hmac-sha256-hex>`
+ *   expiresAt — unix ms timestamp when the session expires
+ *   signature — HMAC-SHA256(expiresAt, OP_UI_LOGIN_PASSWORD)
  *
- * Sessions are valid for 14 days and are lazily pruned on access. Active use
- * renews the session via sliding expiry: `touchSession()` (called from
- * hooks.server.ts on every authenticated request) pushes the expiry back to a
- * full TTL so active operators are never logged out mid-session, while idle
- * sessions still expire.
+ * Tokens are self-validating: the server holds no state and sessions survive
+ * UI server restarts without any disk I/O. Signing with the login password
+ * means a password change invalidates all existing sessions — correct behaviour.
+ *
+ * Logout adds the token to a small in-memory revocation list. That list is
+ * cleared on server restart, which is acceptable: nobody holds a just-logged-out
+ * token across a restart.
  */
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-/** Session lifetime — both the in-store expiry and the cookie Max-Age. 14 days. */
-export const SESSION_TTL_MS = 1_209_600_000; // 14 days
+/** Session lifetime for both the token expiry and the cookie Max-Age. 14 days. */
+export const SESSION_TTL_MS = 1_209_600_000;
 /** Cookie Max-Age in seconds (Set-Cookie uses seconds, not ms). */
 export const SESSION_TTL_SECONDS = SESSION_TTL_MS / 1000;
 
-/** token → absolute expiry timestamp (ms since epoch) */
-const sessions = new Map<string, number>();
+// Small in-memory revocation list for logout. Cleared on server restart.
+const _revoked = new Set<string>();
+// Test-only bypass set: populated by _seedSession, always empty in production.
+const _testOverrides = new Set<string>();
 
-// ── Disk persistence ─────────────────────────────────────────────────────────
-
-function sessionFilePath(): string | null {
-  const dataDir = process.env.OP_DATA_DIR ?? '';
-  if (!dataDir) return null;
-  return join(dataDir, 'admin', 'sessions.json');
+function getSecret(): string {
+  return process.env.OP_UI_LOGIN_PASSWORD ?? 'no-secret-set';
 }
 
-function loadFromDisk(): void {
-  const path = sessionFilePath();
-  if (!path || !existsSync(path)) return;
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, number>;
-    const now = Date.now();
-    for (const [token, expiresAt] of Object.entries(raw)) {
-      if (typeof expiresAt === 'number' && expiresAt > now) {
-        sessions.set(token, expiresAt);
-      }
-    }
-  } catch {
-    // Corrupt or missing file — start fresh. Not fatal.
-  }
+function signToken(expiresAt: number): string {
+  return createHmac('sha256', getSecret()).update(String(expiresAt)).digest('hex');
 }
-
-function saveToDisk(): void {
-  const path = sessionFilePath();
-  if (!path) return;
-  try {
-    mkdirSync(join(path, '..'), { recursive: true });
-    const obj: Record<string, number> = {};
-    for (const [token, expiresAt] of sessions) obj[token] = expiresAt;
-    writeFileSync(path, JSON.stringify(obj), { mode: 0o600 });
-  } catch {
-    // Best-effort. A write failure degrades to the in-memory-only behaviour.
-  }
-}
-
-// Load persisted sessions eagerly at module init so the first request after
-// a UI server restart already finds the live token.
-loadFromDisk();
-
-// ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Mint a new session token, store it with a 14-day TTL, and return it.
- * The caller is responsible for placing the token in the `op_session` cookie.
+ * Mint a new signed session token with a 14-day TTL.
+ * Place the result in the `op_session` cookie.
  */
 export function createSession(): string {
-  const token = crypto.randomUUID();
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
-  saveToDisk();
-  return token;
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  return `${expiresAt}.${signToken(expiresAt)}`;
 }
 
 /**
- * Return true iff `token` is a known, non-expired session.
- * Expired entries are removed on access.
+ * Return true iff `token` is a valid, non-expired, non-revoked session.
  */
 export function validateSession(token: string): boolean {
   if (!token) return false;
-  const expiresAt = sessions.get(token);
-  if (expiresAt === undefined) return false;
-  if (Date.now() >= expiresAt) {
-    sessions.delete(token);
-    saveToDisk();
-    return false;
-  }
-  return true;
+  if (_testOverrides.has(token)) return true;
+  if (_revoked.has(token)) return false;
+  const dot = token.lastIndexOf('.');
+  if (dot < 0) return false;
+  const expiresAt = Number(token.slice(0, dot));
+  if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) return false;
+  const sig = token.slice(dot + 1);
+  const expected = signToken(expiresAt);
+  if (sig.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
 }
 
 /**
- * Sliding renewal: push the session expiry back to a full TTL from now.
- * Returns false (no-op) for unknown or already-expired tokens.
- * Callers re-issue the cookie with a fresh Max-Age only when this returns true.
+ * Sliding renewal: validate the old token, return a new one with a fresh
+ * 14-day TTL, or return false if the old token is invalid/expired.
+ * The caller must place the returned token in the `op_session` cookie.
  */
-export function touchSession(token: string): boolean {
-  if (!token) return false;
-  const expiresAt = sessions.get(token);
-  if (expiresAt === undefined) return false;
-  if (Date.now() >= expiresAt) {
-    sessions.delete(token);
-    saveToDisk();
-    return false;
-  }
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
-  saveToDisk();
-  return true;
+export function touchSession(token: string): string | false {
+  if (!validateSession(token)) return false;
+  return createSession();
 }
 
 /**
- * Remove a session token from the store (used by logout).
- * Safe to call with an unknown token — it's a no-op.
+ * Revoke a token (logout). The browser cookie must also be cleared by the caller.
+ * The revocation list survives until the next server restart.
  */
 export function invalidateSession(token: string): void {
-  sessions.delete(token);
-  saveToDisk();
+  _revoked.add(token);
 }
 
-/** For tests only — seed a known token and optional clear of the entire map. */
+// ── Test helpers ──────────────────────────────────────────────────────────────
+
+/** For tests only — seed an arbitrary string as a valid token. */
 export function _seedSession(token: string, ttlMs = SESSION_TTL_MS): void {
-  sessions.set(token, Date.now() + ttlMs);
+  if (ttlMs <= 0) return; // negative TTL = intentionally expired; leave it out so validateSession returns false
+  _testOverrides.add(token);
 }
 
-/** For tests only — clear all sessions. */
+/** For tests only — clear all overrides and revocations. */
 export function _clearSessions(): void {
-  sessions.clear();
+  _revoked.clear();
+  _testOverrides.clear();
 }

@@ -1,14 +1,7 @@
 /**
- * Tests for session-store.ts — opaque session tokens with sliding renewal.
- *
- * Verifies (issue #437):
- *  - a freshly minted token validates as a session
- *  - an expired token is rejected and pruned
- *  - touchSession renews a valid session's expiry (sliding window) and no-ops
- *    for unknown/expired tokens
- *  - invalidateSession (logout) drops the session so it re-prompts
+ * Tests for session-store.ts — stateless HMAC-signed tokens.
  */
-import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   createSession,
   validateSession,
@@ -20,21 +13,22 @@ import {
 } from "./session-store.js";
 
 beforeEach(() => {
+  process.env.OP_UI_LOGIN_PASSWORD = "test-secret";
   _clearSessions();
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  delete process.env.OP_UI_LOGIN_PASSWORD;
 });
 
 describe("createSession / validateSession", () => {
-  test("a freshly minted token is a valid session", () => {
+  test("a freshly minted token is valid", () => {
     const token = createSession();
     expect(validateSession(token)).toBe(true);
   });
 
-  test("an unknown token is not valid", () => {
-    createSession();
+  test("an unknown string is not valid", () => {
     expect(validateSession("not-a-real-token")).toBe(false);
   });
 
@@ -42,39 +36,57 @@ describe("createSession / validateSession", () => {
     expect(validateSession("")).toBe(false);
   });
 
-  test("an expired token is rejected and pruned", () => {
-    _seedSession("stale", -1); // already expired
-    expect(validateSession("stale")).toBe(false);
-    // pruned: a second call is still false (and the map no longer holds it)
-    expect(validateSession("stale")).toBe(false);
+  test("a token signed with a different secret is rejected", () => {
+    const token = createSession();
+    process.env.OP_UI_LOGIN_PASSWORD = "different-secret";
+    expect(validateSession(token)).toBe(false);
+  });
+
+  test("an expired token is rejected", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now());
+    const token = createSession();
+    vi.setSystemTime(Date.now() + SESSION_TTL_MS + 1000);
+    expect(validateSession(token)).toBe(false);
   });
 });
 
 describe("touchSession (sliding renewal)", () => {
-  test("renews a valid session's expiry by a full TTL", () => {
+  test("returns a new token for a valid session", () => {
+    const token = createSession();
+    const newToken = touchSession(token);
+    expect(typeof newToken).toBe("string");
+    expect(newToken).not.toBe(false);
+    expect(validateSession(newToken as string)).toBe(true);
+  });
+
+  test("the new token has a fresh TTL past the original expiry", () => {
     vi.useFakeTimers();
     const now = Date.now();
     vi.setSystemTime(now);
     const token = createSession();
 
-    // Advance most of the way through the TTL — still valid.
+    // Advance close to the original expiry, then touch.
     vi.setSystemTime(now + SESSION_TTL_MS - 1000);
-    expect(validateSession(token)).toBe(true);
-    expect(touchSession(token)).toBe(true);
+    const newToken = touchSession(token) as string;
+    expect(newToken).toBeTruthy();
 
-    // Past the ORIGINAL expiry it would have lapsed, but the touch pushed it out.
+    // Past the original expiry — old token expires, new token is still valid.
     vi.setSystemTime(now + SESSION_TTL_MS + 1000);
-    expect(validateSession(token)).toBe(true);
+    expect(validateSession(token)).toBe(false);
+    expect(validateSession(newToken)).toBe(true);
   });
 
-  test("returns false (no-op) for an unknown token", () => {
+  test("returns false for an unknown token", () => {
     expect(touchSession("nope")).toBe(false);
   });
 
-  test("returns false and prunes an expired token", () => {
-    _seedSession("old", -1);
-    expect(touchSession("old")).toBe(false);
-    expect(validateSession("old")).toBe(false);
+  test("returns false for an expired token", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now());
+    const token = createSession();
+    vi.setSystemTime(Date.now() + SESSION_TTL_MS + 1000);
+    expect(touchSession(token)).toBe(false);
   });
 
   test("returns false for an empty token", () => {
@@ -83,10 +95,22 @@ describe("touchSession (sliding renewal)", () => {
 });
 
 describe("invalidateSession (logout)", () => {
-  test("a logged-out token no longer validates → re-prompt", () => {
+  test("a revoked token no longer validates", () => {
     const token = createSession();
     expect(validateSession(token)).toBe(true);
     invalidateSession(token);
     expect(validateSession(token)).toBe(false);
+  });
+});
+
+describe("_seedSession (test helper)", () => {
+  test("a seeded token validates", () => {
+    _seedSession("test-admin-token");
+    expect(validateSession("test-admin-token")).toBe(true);
+  });
+
+  test("a token seeded with negative TTL is rejected (intentionally expired)", () => {
+    _seedSession("stale", -1);
+    expect(validateSession("stale")).toBe(false);
   });
 });

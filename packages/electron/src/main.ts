@@ -189,11 +189,6 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
-    // Session tokens are persisted to ${OP_DATA_DIR}/admin/sessions.json so
-    // they survive UI server restarts (the Node child process is killed and
-    // respawned each app launch). Without this, a valid browser cookie finds
-    // no matching token in the freshly-cleared in-memory store → forced login.
-    OP_DATA_DIR: resolveDataDir(),
     // Do NOT set OP_IMAGE_TAG here. Docker precedence is shell-env >
     // --env-file, so any value injected into the UI server's process.env
     // overrides the authoritative OP_IMAGE_TAG written to stack.env (e.g.

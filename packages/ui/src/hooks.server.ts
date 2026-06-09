@@ -156,8 +156,9 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (event.locals.role === "admin") {
     const cookieHeader = event.request.headers.get("cookie") ?? "";
     const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
-    if (match && touchSession(match[1])) {
-      renewedCookie = sessionCookieHeader(match[1], event.request);
+    const renewed = match ? touchSession(match[1]) : false;
+    if (renewed) {
+      renewedCookie = sessionCookieHeader(renewed, event.request);
     }
   }
 

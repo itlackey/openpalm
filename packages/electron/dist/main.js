@@ -7293,9 +7293,9 @@ var require_main = __commonJS((exports, module) => {
 });
 
 // src/main.ts
-import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage } from "electron";
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences } from "electron";
 import { join as join3, dirname as dirname2 } from "node:path";
-import { existsSync as existsSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync as rmSync2 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync as rmSync2, mkdirSync as mkdirSync4, createWriteStream } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { spawn as spawn2 } from "node:child_process";
 // ../lib/src/logger.ts
@@ -10705,14 +10705,30 @@ function resolveLocalOpenpalmDir() {
   }, () => join(dirname(realpathSync(process.execPath)), "..", "..", "..", ".openpalm"));
 }
 var SKELETON_VERSION_STAMP = ".skeleton-version";
+var MANAGED_STACK_ASSETS = [
+  "config/stack/core.compose.yml",
+  "config/stack/services.compose.yml",
+  "config/stack/channels.compose.yml"
+];
+function refreshManagedStackAssets(srcOpenpalm, homeDir) {
+  const refreshed = [];
+  for (const rel of MANAGED_STACK_ASSETS) {
+    const src = join(srcOpenpalm, rel);
+    if (!existsSync2(src))
+      continue;
+    const dest = join(homeDir, rel);
+    mkdirSync2(dirname(dest), { recursive: true });
+    copyFileSync2(src, dest);
+    refreshed.push(rel);
+  }
+  return refreshed;
+}
 async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
   const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
+  let alreadySeeded = false;
   if (existsSync2(stampPath)) {
     try {
-      if (readFileSync2(stampPath, "utf-8").trim() === repoRef.trim()) {
-        logger2.debug("skeleton already seeded for this version — skipping", { repoRef });
-        return;
-      }
+      alreadySeeded = readFileSync2(stampPath, "utf-8").trim() === repoRef.trim();
     } catch {}
   }
   const stamp = () => {
@@ -10723,9 +10739,20 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
   };
   const local = resolveLocalOpenpalmDir();
   if (local) {
+    const refreshed = refreshManagedStackAssets(local, homeDir);
+    if (refreshed.length)
+      logger2.debug("refreshed managed stack assets", { refreshed });
+    if (alreadySeeded) {
+      logger2.debug("skeleton already seeded for this version — managed assets refreshed, skipping full seed", { repoRef });
+      return;
+    }
     logger2.debug("seeding .openpalm from local source", { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
     stamp();
+    return;
+  }
+  if (alreadySeeded) {
+    logger2.debug("skeleton already seeded and no local source to refresh from — skipping", { repoRef });
     return;
   }
   const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
@@ -10742,6 +10769,7 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
     const srcOpenpalm = join(tmpDir, ".openpalm");
     if (!existsSync2(srcOpenpalm))
       throw new Error(".openpalm/ not found in tarball");
+    refreshManagedStackAssets(srcOpenpalm, homeDir);
     copyTree(srcOpenpalm, homeDir, { skipExisting: true });
     stamp();
   } finally {
@@ -10964,8 +10992,11 @@ var NON_SECRET_STACK_ENV_KEY_ALLOWLIST = new Set;
 
 // ../lib/src/control-plane/core-assets.ts
 var logger4 = createLogger("core-assets");
+// ../lib/src/control-plane/config-persistence.ts
+var logger5 = createLogger("config-persistence");
+
 // ../lib/src/control-plane/registry.ts
-var logger5 = createLogger("registry");
+var logger6 = createLogger("registry");
 var availabilityCache = new Map;
 // ../lib/src/control-plane/secret-audit.ts
 var NON_SECRET_STACK_KEYS = new Set([
@@ -10996,12 +11027,11 @@ var NON_SECRET_STACK_KEYS = new Set([
   "OP_OWNER_EMAIL",
   "OPENAI_BASE_URL"
 ]);
-// ../lib/src/control-plane/host-akm-sharing.ts
-var logger6 = createLogger("host-akm-sharing");
 // ../lib/src/control-plane/docker.ts
 var logger7 = createLogger("lib:docker");
 var PULL_TIMEOUT_MS = 60 * 60000;
-
+// ../lib/src/control-plane/host-akm-sharing.ts
+var logger8 = createLogger("host-akm-sharing");
 // ../lib/src/control-plane/lifecycle.ts
 var VALID_CALLERS = new Set([
   "assistant",
@@ -11011,14 +11041,83 @@ var VALID_CALLERS = new Set([
   "test"
 ]);
 // ../lib/src/control-plane/markdown-task.ts
-var logger8 = createLogger("task-file");
+var logger9 = createLogger("task-file");
 
 // ../lib/src/control-plane/scheduler.ts
-var logger9 = createLogger("scheduler");
+var logger10 = createLogger("scheduler");
 // ../lib/src/control-plane/model-runner.ts
-var logger10 = createLogger("local-providers");
+var logger11 = createLogger("local-providers");
+// ../lib/src/control-plane/hardware-detect.ts
+var logger12 = createLogger("hardware-detect");
+function parseNvidiaSmi(stdout) {
+  return stdout.split(`
+`).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const idx = line.lastIndexOf(",");
+    if (idx === -1)
+      return null;
+    const name = line.slice(0, idx).trim();
+    const vramMb = Number.parseInt(line.slice(idx + 1).trim(), 10);
+    if (!name || !Number.isFinite(vramMb))
+      return null;
+    return { vendor: "nvidia", name, vramMb };
+  }).filter((g2) => g2 !== null);
+}
+function parseRocmSmi(stdout) {
+  let doc;
+  try {
+    doc = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const card of Object.values(doc)) {
+    if (!card || typeof card !== "object")
+      continue;
+    const vramKey = Object.keys(card).find((k2) => /vram total memory/i.test(k2));
+    const nameKey = Object.keys(card).find((k2) => /product name|card series|gfx/i.test(k2));
+    const bytes = vramKey ? Number.parseInt(String(card[vramKey]).trim(), 10) : NaN;
+    const vramMb = Number.isFinite(bytes) ? Math.round(bytes / (1024 * 1024)) : 0;
+    out.push({ vendor: "amd", name: nameKey ? String(card[nameKey]).trim() : "AMD GPU", vramMb });
+  }
+  return out;
+}
+function parseAppleSilicon(stdout) {
+  const lines = stdout.split(`
+`).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0)
+    return [];
+  const bytes = Number.parseInt(lines[0] ?? "", 10);
+  if (!Number.isFinite(bytes) || bytes <= 0)
+    return [];
+  const vramMb = Math.round(bytes / (1024 * 1024));
+  const model = lines[1] && lines[1].length > 0 ? lines[1] : "arm64";
+  return [{ vendor: "apple", name: `Apple Silicon (${model})`, vramMb }];
+}
+var GPU_PROBES = [
+  {
+    vendor: "nvidia",
+    command: "nvidia-smi",
+    args: ["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+    parse: parseNvidiaSmi
+  },
+  {
+    vendor: "amd",
+    command: "rocm-smi",
+    args: ["--showmeminfo", "vram", "--showproductname", "--json"],
+    parse: parseRocmSmi
+  },
+  {
+    vendor: "apple",
+    command: "sysctl",
+    args: ["-n", "hw.memsize", "hw.model"],
+    parse: parseAppleSilicon,
+    enabled: process.platform === "darwin" && process.arch === "arm64"
+  }
+];
+// ../lib/src/control-plane/setup-recommendation.ts
+var MIN_LOCAL_GPU_VRAM_MB = 8 * 1024;
 // ../lib/src/control-plane/setup.ts
-var logger11 = createLogger("setup");
+var logger13 = createLogger("setup");
 // ../lib/src/control-plane/host-opencode.ts
 var ALLOWED_CONFIG_KEYS = new Set(["$schema", "provider", "model", "small_model", "disabled_providers"]);
 // src/update-check.ts
@@ -11347,6 +11446,54 @@ if (!globalThis.Bun) {
 }
 var __filename2 = fileURLToPath2(import.meta.url);
 var __dirname2 = dirname2(__filename2);
+function augmentPathForGuiLaunch() {
+  if (process.platform !== "darwin")
+    return;
+  const home = process.env.HOME ?? "";
+  const candidates = [
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    home ? join3(home, ".nvm", "current", "bin") : ""
+  ].filter(Boolean);
+  const current = (process.env.PATH ?? "").split(":").filter(Boolean);
+  const missing = candidates.filter((dir) => !current.includes(dir));
+  if (missing.length > 0) {
+    process.env.PATH = [...missing, ...current].join(":");
+  }
+}
+augmentPathForGuiLaunch();
+var logStream = null;
+function logFilePath() {
+  return join3(app.getPath("logs"), "main.log");
+}
+function initFileLogger() {
+  if (logStream)
+    return;
+  try {
+    const logsDir = app.getPath("logs");
+    mkdirSync4(logsDir, { recursive: true });
+    logStream = createWriteStream(logFilePath(), { flags: "a" });
+    const tee = (orig, level) => {
+      return (...args) => {
+        orig(...args);
+        try {
+          const line = args.map((a) => typeof a === "string" ? a : a instanceof Error ? a.stack ?? a.message : String(a)).join(" ");
+          logStream?.write(`${new Date().toISOString()} [${level}] ${line}
+`);
+        } catch {}
+      };
+    };
+    console.log = tee(console.log.bind(console), "info");
+    console.warn = tee(console.warn.bind(console), "warn");
+    console.error = tee(console.error.bind(console), "error");
+  } catch {}
+}
+function writeChildLog(text) {
+  try {
+    logStream?.write(text);
+  } catch {}
+}
 function resolveAdminToolsPluginPath() {
   const packed = join3(process.resourcesPath ?? "", "admin-tools", "index.js");
   if (existsSync4(packed))
@@ -11359,6 +11506,7 @@ function resolveAdminToolsPluginPath() {
 var UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 var READY_TIMEOUT_MS = 60000;
 var MIC_SHORTCUT = "CommandOrControl+Shift+M";
+var TRAY_ICON_SIZE = 18;
 var mainWindow = null;
 var splashWindow = null;
 var tray = null;
@@ -11424,17 +11572,22 @@ function resolveAssetPath(fileName) {
   return existsSync4(assetPath) ? assetPath : null;
 }
 function createTrayIconVariant(icon, alpha = 1) {
-  const bitmap = icon.toBitmap();
+  const base = icon.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
+  const bitmap = base.toBitmap();
   const variant = Buffer.from(bitmap);
   for (let i = 3;i < variant.length; i += 4) {
     variant[i] = Math.round(variant[i] * alpha);
   }
-  const size = icon.getSize();
-  return nativeImage.createFromBitmap(variant, {
+  const size = base.getSize();
+  const result = nativeImage.createFromBitmap(variant, {
     width: size.width,
     height: size.height,
     scaleFactor: 1
   });
+  if (process.platform === "darwin") {
+    result.setTemplateImage(true);
+  }
+  return result;
 }
 function stopTrayRecordingAnimation() {
   if (trayAnimationTimer) {
@@ -11547,20 +11700,26 @@ async function startUIServer() {
   }
   const uiPidFile = join3(dataDir, ".ui-server.pid");
   await killStaleUIServer(uiPidFile);
-  uiProcess = spawn2("node", [join3(uiBuildDir, "index.js")], {
+  uiProcess = spawn2(process.execPath, [join3(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
-    env: buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+    env: { ...buildUIServerEnv(homeDir, UI_PORT, appUpdate), ELECTRON_RUN_AS_NODE: "1" },
     detached: process.platform !== "win32",
-    stdio: ["ignore", "inherit", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"]
   });
   if (uiProcess.pid) {
     try {
       writeFileSync3(uiPidFile, String(uiProcess.pid));
     } catch {}
   }
+  uiProcess.stdout?.on("data", (chunk) => {
+    const text = chunk.toString();
+    process.stdout.write(text);
+    writeChildLog(text);
+  });
   uiProcess.stderr?.on("data", (chunk) => {
     const text = chunk.toString();
     process.stderr.write(text);
+    writeChildLog(text);
     const lines = text.split(`
 `);
     for (let i = 0;i < lines.length; i++) {
@@ -11572,6 +11731,15 @@ async function startUIServer() {
   });
   uiProcess.on("error", (err) => {
     console.error("UI server process error:", err.message);
+    closeSplashWindow();
+    dialog.showErrorBox("OpenPalm failed to start", [
+      `The UI server could not be started: ${err.message}`,
+      "",
+      `See the log file for details:
+${logFilePath()}`
+    ].join(`
+`));
+    app.quit();
   });
   uiProcess.on("exit", (code) => {
     if (code !== 0 && code !== null) {
@@ -11588,7 +11756,8 @@ async function startUIServer() {
       recentLogs ? `Last output from UI server:
 ${recentLogs}` : "(No UI server output was captured.)",
       "",
-      "Check the terminal where you launched OpenPalm for full logs."
+      `See the log file for full logs:
+${logFilePath()}`
     ].join(`
 `);
     console.error("UI server did not become ready in time");
@@ -11713,6 +11882,36 @@ function showWindow() {
     createWindow();
   }
 }
+function isTrustedLocalOrigin(url) {
+  return url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost");
+}
+function configureMediaPermissions() {
+  const ses = session.defaultSession;
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    if (permission === "media" && isTrustedLocalOrigin(details.requestingUrl ?? "")) {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+    return permission === "media" && isTrustedLocalOrigin(requestingOrigin ?? "");
+  });
+}
+async function requestMicrophoneAccess() {
+  if (process.platform !== "darwin")
+    return "granted";
+  try {
+    const current = systemPreferences.getMediaAccessStatus("microphone");
+    if (current === "granted")
+      return "granted";
+    const granted = await systemPreferences.askForMediaAccess("microphone");
+    return granted ? "granted" : "denied";
+  } catch (err) {
+    console.warn("Microphone access request failed:", err instanceof Error ? err.message : String(err));
+    return "unknown";
+  }
+}
 function triggerGlobalMicToggle() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("global-mic-toggle");
@@ -11726,16 +11925,44 @@ function registerGlobalMicShortcut() {
   }
   console.warn("Failed to register a global mic shortcut.");
 }
+function showNotification(title, body) {
+  if (!Notification.isSupported())
+    return;
+  const n = new Notification({ title, body: body ?? "" });
+  n.show();
+}
 function createTray() {
   const iconPath = resolveAssetPath("tray-icon.png");
   if (!iconPath) {
     return;
   }
-  trayIcon = nativeImage.createFromPath(iconPath);
+  trayIcon = nativeImage.createFromPath(iconPath).resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
+  if (process.platform === "darwin") {
+    trayIcon.setTemplateImage(true);
+  }
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon, alpha));
   tray = new Tray(trayIcon);
+  const loginSettings = app.getLoginItemSettings();
   const contextMenu = Menu.buildFromTemplate([
     { label: "Open OpenPalm", click: showWindow },
+    { label: "Show Logs", click: () => {
+      shell.openPath(app.getPath("logs"));
+    } },
+    { type: "separator" },
+    {
+      label: "Start at Login",
+      type: "checkbox",
+      checked: loginSettings.openAtLogin,
+      click: (menuItem) => {
+        app.setLoginItemSettings({ openAtLogin: menuItem.checked });
+      }
+    },
+    {
+      label: "Test Notification",
+      click: () => {
+        showNotification("OpenPalm", "Notifications are working.");
+      }
+    },
     { type: "separator" },
     {
       label: "Quit",
@@ -11747,9 +11974,10 @@ function createTray() {
   ]);
   tray.setToolTip("OpenPalm");
   tray.setContextMenu(contextMenu);
-  tray.on("click", showWindow);
 }
 app.whenReady().then(async () => {
+  initFileLogger();
+  console.log(`OpenPalm starting (v${app.getVersion?.() ?? "?"}); logs at ${logFilePath()}`);
   createSplashWindow();
   try {
     await startUIServer();
@@ -11768,6 +11996,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     console.warn("Local OpenCode spawn raised; continuing without it:", err instanceof Error ? err.message : String(err));
   }
+  await configureMediaPermissions();
   await createWindow();
   createTray();
   registerGlobalMicShortcut();
@@ -11786,8 +12015,11 @@ ipcMain.handle("restart-app", () => {
 ipcMain.handle("set-tray-mic-recording", (_event, recording) => {
   setTrayMicRecording(recording);
 });
+ipcMain.handle("request-mic-permission", async () => {
+  return requestMicrophoneAccess();
+});
 var cleanupStarted = false;
-app.on("before-quit", async (event) => {
+app.on("before-quit", (event) => {
   app.isQuitting = true;
   if (cleanupStarted)
     return;
@@ -11796,19 +12028,24 @@ app.on("before-quit", async (event) => {
   globalShortcut.unregisterAll();
   stopTrayRecordingAnimation();
   stopUIServer();
-  if (localOpencode) {
-    const handle = localOpencode;
-    localOpencode = null;
-    try {
-      await handle.stop();
-    } catch (err) {
+  const handle = localOpencode;
+  localOpencode = null;
+  const forceQuitTimer = setTimeout(() => app.quit(), 500);
+  if (handle) {
+    handle.stop().catch((err) => {
       console.warn("Local OpenCode stop raised:", err instanceof Error ? err.message : String(err));
-    }
+    }).finally(() => {
+      clearTimeout(forceQuitTimer);
+      app.quit();
+    });
+  } else {
+    clearTimeout(forceQuitTimer);
+    app.quit();
   }
-  app.quit();
 });
 export {
   waitForReady,
+  showNotification,
   resolveAssistantUrl,
   getRecentStderr,
   buildUIServerEnv
