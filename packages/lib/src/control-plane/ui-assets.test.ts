@@ -132,6 +132,29 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     expect(existsSync(seededFile())).toBe(true);
     expect(readFileSync(stamp(), "utf-8").trim()).toBe("v2");
   });
+
+  it("REFRESHES system-managed stack assets on every seed (even same version), preserving user files (#472)", async () => {
+    const core = join(opHome, "config", "stack", "core.compose.yml");
+    const custom = join(opHome, "config", "stack", "custom.compose.yml");
+    // Skeleton ships the CURRENT managed compose. (custom.compose.yml is user-owned
+    // and intentionally not part of the skeleton refresh.)
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
+
+    // First seed materializes everything + stamps the version.
+    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+
+    // Simulate an OLD OP_HOME: a STALE managed compose + a user-owned overlay.
+    writeFileSync(core, "services:\n  assistant:\n    image: STALE\n");
+    writeFileSync(custom, "services:\n  my-thing:\n    image: user\n");
+
+    // Re-seed the SAME version (stamp matches → the old code skipped entirely).
+    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+
+    // Managed asset is refreshed to the shipped version; user file is untouched.
+    expect(readFileSync(core, "utf-8")).toContain("image: current");
+    expect(readFileSync(core, "utf-8")).not.toContain("STALE");
+    expect(readFileSync(custom, "utf-8")).toContain("image: user");
+  });
 });
 
 // ── uiUpdateChannel ───────────────────────────────────────────────────────────
