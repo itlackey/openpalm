@@ -458,6 +458,7 @@
         {anyDangerousLoading}
         {automationsData}
         {mergedServices}
+        managedServices={containerData?.managedServices ?? []}
         onCheckHealth={loadHealth}
         onApplyChanges={handleApplyChanges}
         onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}

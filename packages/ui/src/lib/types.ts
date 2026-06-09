@@ -19,6 +19,13 @@ export type ContainerListResponse = {
   containers: Record<string, 'running' | 'stopped'>;
   dockerContainers: DockerContainer[] | null;
   dockerAvailable: boolean;
+  /**
+   * Services this stack actually deploys (compose model resolved with active
+   * profiles). The Overview health summary measures THIS set, not `containers`
+   * (the optimistic seed), so a service the stack never deploys is never
+   * reported as a failed container.
+   */
+  managedServices: string[];
 };
 
 /** Unified display entry for the containers list */

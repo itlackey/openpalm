@@ -4,7 +4,7 @@ import {
   requireAdmin,
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { buildComposeOptions } from "@openpalm/lib";
+import { buildComposeOptions, buildManagedServices } from "@openpalm/lib";
 import { composePs, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -52,12 +52,37 @@ export const GET: RequestHandler = async (event) => {
     }
   }
 
+  // The authoritative set of services this stack actually deploys, resolved
+  // from the compose model with the active profiles (or static addon inference
+  // when Docker is down). This is what the UI reports on — NOT the optimistic
+  // state.services seed, which can list a service the stack never deploys (e.g.
+  // guardian on a no-channel install) and so render it as a perpetually-stopped
+  // container that does not exist in Docker.
+  let managedServices: string[];
+  try {
+    managedServices = await buildManagedServices(state);
+  } catch {
+    // Fall back to the seeded expected set rather than reporting nothing.
+    managedServices = Object.keys(state.services);
+  }
+
+  // Only report seeded services the stack actually manages. A live Docker
+  // container that isn't managed (a true orphan) still surfaces via
+  // dockerContainers below, so nothing real is hidden — we just stop inventing
+  // a stopped row for a service compose never deploys.
+  const managedSet = new Set(managedServices);
+  const containers: Record<string, "running" | "stopped"> = {};
+  for (const [name, status] of Object.entries(state.services)) {
+    if (managedSet.has(name)) containers[name] = status;
+  }
+
   return jsonResponse(
     200,
     {
-      containers: state.services,
+      containers,
       dockerContainers,
-      dockerAvailable: dockerCheck.ok
+      dockerAvailable: dockerCheck.ok,
+      managedServices
     },
     requestId
   );

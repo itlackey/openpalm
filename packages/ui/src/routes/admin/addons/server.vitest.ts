@@ -143,4 +143,26 @@ describe('POST /admin/addons', () => {
     expect(body.enabled).toBe(false);
     expect(readEnabledAddonsEnv(state.homeDir)).not.toContain('chat');
   });
+
+  // Source-of-truth regression: state.services seeds guardian (channel ingress)
+  // only when a channel is enabled, ONCE at creation. Disabling the last channel
+  // must rebuild the singleton so guardian stops being reported as a phantom
+  // "stopped" service that no longer belongs to the stack.
+  test('disabling the last channel drops guardian from the rebuilt state', async () => {
+    const homeDir = getState().homeDir;
+    seedRegistryAddon(homeDir, 'chat');
+    enableAddon(homeDir, 'chat');
+    // Rebuild the singleton from disk so it reflects the enabled channel — this
+    // is the state a freshly-started host process would have.
+    resetState('admin-token');
+    expect(getState().services.guardian).toBeDefined();
+
+    const res = await POST(makePostEvent({ name: 'chat', enabled: false }));
+    expect(res.status).toBe(200);
+
+    // The toggle must have busted the singleton; the next getState() re-derives
+    // the gated set from the now-channel-free OP_ENABLED_ADDONS.
+    expect(getState().services.guardian).toBeUndefined();
+    expect(getState().services.assistant).toBeDefined();
+  });
 });

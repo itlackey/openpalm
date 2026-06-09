@@ -140,34 +140,32 @@
     <!-- Current versions (informational, not actions). -->
     <dl class="versions">
       <div class="versions-row">
-        <dt>OpenPalm</dt>
+        <dt>OpenPalm Assistant</dt>
         <dd><code class="version-value">{currentImageTag || '—'}</code></dd>
       </div>
       <div class="versions-row">
-        <dt>Admin interface</dt>
+        <dt>OpenPalm App</dt>
+        <dd class="desktop-version">
+          <code class="version-value">{electronVersion || '—'}</code>
+          {#if electronLatestVersion && electronLatestUrl}
+            <span class="update-pill">Update available: v{electronLatestVersion}</span>
+            <a
+              class="btn btn-sm btn-secondary"
+              href={electronLatestUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >Download</a>
+          {:else if electronLatestVersion}
+            <span class="update-pill">Update available: v{electronLatestVersion}</span>
+          {:else if inElectron && electronVersion}
+            <span class="up-to-date">Up to date</span>
+          {/if}
+        </dd>
+      </div>
+      <div class="versions-row">
+        <dt>OpenPalm UI</dt>
         <dd><code class="version-value">{uiVersion || '—'}</code></dd>
       </div>
-      {#if inElectron}
-        <div class="versions-row">
-          <dt>Desktop app</dt>
-          <dd class="desktop-version">
-            <code class="version-value">{electronVersion || '—'}</code>
-            {#if electronLatestVersion && electronLatestUrl}
-              <span class="update-pill">Update available: v{electronLatestVersion}</span>
-              <a
-                class="btn btn-sm btn-secondary"
-                href={electronLatestUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >Download</a>
-            {:else if electronLatestVersion}
-              <span class="update-pill">Update available: v{electronLatestVersion}</span>
-            {:else}
-              <span class="up-to-date">Up to date</span>
-            {/if}
-          </dd>
-        </div>
-      {/if}
     </dl>
 
     <!-- Advanced: pin a specific version (rollback / troubleshooting). -->

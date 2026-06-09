@@ -20,6 +20,13 @@
     anyDangerousLoading: boolean;
     automationsData: AutomationsResponse | null;
     mergedServices: Map<string, string>;
+    /**
+     * Services this stack actually deploys (compose model resolved with active
+     * profiles). Health is measured against THIS set so a service the stack
+     * never deploys (e.g. guardian on a no-channel install) is never counted as
+     * a failed container. Falls back to the merged container keys when empty.
+     */
+    managedServices: string[];
     onCheckHealth: () => void;
     onApplyChanges: () => void;
     onDismissResult: () => void;
@@ -36,6 +43,7 @@
     anyDangerousLoading,
     automationsData,
     mergedServices,
+    managedServices,
     onCheckHealth,
     onApplyChanges,
     onDismissResult,
@@ -73,21 +81,23 @@
     automationsData?.automations.filter((a) => a.enabled).length ?? 0
   );
 
+  // Measure health against the services the stack actually deploys, not every
+  // container Docker happens to report or the optimistic seed. Falls back to the
+  // merged container keys for older server responses that omit managedServices.
+  let healthServices = $derived(
+    managedServices.length > 0 ? managedServices : [...mergedServices.keys()]
+  );
+
   let containerCounts = $derived.by(() => {
-    if (mergedServices.size === 0) return null;
-    const total = mergedServices.size;
-    const running = [...mergedServices.values()].filter((s) => s === 'running').length;
-    return { total, running };
+    if (healthServices.length === 0) return null;
+    const running = healthServices.filter((name) => mergedServices.get(name) === 'running').length;
+    return { total: healthServices.length, running };
   });
 
   // Services that aren't running, by name — drives the actionable status line.
-  let downServices = $derived.by(() => {
-    const out: string[] = [];
-    for (const [name, status] of mergedServices) {
-      if (status !== 'running') out.push(name);
-    }
-    return out;
-  });
+  let downServices = $derived.by(() =>
+    healthServices.filter((name) => mergedServices.get(name) !== 'running')
+  );
 
   let health = $derived.by((): { status: 'ok' | 'warning' | 'unknown'; title: string; detail: string } => {
     if (!containerCounts) {

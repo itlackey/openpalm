@@ -7,6 +7,7 @@
  */
 import { createLogger, getAddonServiceNames, listEnabledAddonIds, setAddonEnabled, composeStop, buildComposeOptions, checkDocker } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
+import { resetState } from './state.js';
 
 const logger = createLogger('addon-helpers');
 
@@ -44,6 +45,16 @@ export async function performAddonToggle(
 
   const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, nextEnabled, state);
   if (!mutation.ok) return mutation;
+
+  // The shared state singleton seeds its expected-service set (CORE_SERVICES,
+  // gated on whether a channel addon is enabled) ONCE at creation. setAddonEnabled
+  // only rewrites OP_ENABLED_ADDONS on disk — it does NOT touch state.services —
+  // so toggling a channel leaves the in-memory expected set stale until the host
+  // process restarts. Most visibly: disabling the last channel left guardian in
+  // state.services as a phantom "stopped" service that no longer belongs to the
+  // stack. Bust the singleton so the next getState() re-derives the gated set
+  // from the updated OP_ENABLED_ADDONS.
+  if (mutation.changed) resetState();
 
   const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);
   return { ok: true, enabled: resultEnabled, changed: mutation.changed };
