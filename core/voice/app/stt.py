@@ -95,6 +95,16 @@ class STT:
             language=language,
             initial_prompt=prompt,
             temperature=temperature,
+            # Silero VAD drops non-speech audio BEFORE decoding. Without it,
+            # Whisper hallucinates filler phrases on silence/near-silence — most
+            # notoriously a lone "You" / "Thank you." — which is what a quick
+            # push-to-talk tap (or a moment of quiet) produced. Filtering the
+            # silence yields an empty transcript instead, and the caller drops
+            # empty results rather than sending a phantom "You" to the assistant.
+            vad_filter=True,
+            # Each utterance is independent (push-to-talk), so don't let a prior
+            # segment's text bias the next — another hallucination source.
+            condition_on_previous_text=False,
         )
         text = "".join(seg.text for seg in segments).strip()
         return text, info.language

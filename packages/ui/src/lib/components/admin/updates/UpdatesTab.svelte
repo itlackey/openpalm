@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ReleaseEntry, UiVersionEntry } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import { updateStatus, latestForChannel, type UpdateStatus } from '$lib/version-compare.js';
 
   interface Props {
     currentImageTag: string;
@@ -67,6 +68,42 @@
     if (v.distTag) tags.push(v.distTag);
     else if (v.prerelease) tags.push('pre-release');
     return tags.length ? `${v.version} (${tags.join(', ')})` : v.version;
+  }
+
+  const RELEASES_URL = 'https://github.com/itlackey/openpalm/releases';
+
+  // Per-unit "is there a newer build on this channel?" status, computed in the
+  // browser from the release/npm data already loaded for the pickers. Each unit
+  // compares against the newest version on ITS channel (a pre-release install
+  // sees pre-releases; a stable one only sees stable), so the indicator can't
+  // falsely read "up to date" the way a fixed text label did.
+  const releaseCandidates = $derived(releases.map((r) => ({ version: r.tag, prerelease: r.prerelease })));
+  const uiCandidates = $derived(uiVersions.map((v) => ({ version: v.version, prerelease: v.prerelease })));
+
+  // Assistant = the platform image line (OP_IMAGE_TAG); latest = newest GitHub
+  // platform release on this channel.
+  const assistantLatest = $derived(latestForChannel(currentImageTag, releaseCandidates));
+  const assistantStatus = $derived<UpdateStatus>(updateStatus(currentImageTag, assistantLatest));
+
+  // App = the desktop (Electron) installer, shipped with each GitHub release.
+  // Prefer the app's own update-check result; fall back to the newest release on
+  // this channel. Only meaningful when actually running inside the desktop app.
+  const appLatest = $derived(electronLatestVersion ?? latestForChannel(electronVersion, releaseCandidates));
+  const appStatus = $derived<UpdateStatus>(inElectron ? updateStatus(electronVersion, appLatest) : 'unknown');
+  const appDownloadUrl = $derived(
+    electronLatestUrl ?? (appLatest ? `${RELEASES_URL}/tag/v${appLatest}` : RELEASES_URL),
+  );
+
+  // UI = the @openpalm/ui npm build serving this page; latest = newest on the
+  // npm dist-tag channel that matches this build's stability.
+  const uiLatest = $derived(latestForChannel(uiVersion, uiCandidates));
+  const uiStatus = $derived<UpdateStatus>(updateStatus(uiVersion, uiLatest));
+
+  function statusEmoji(s: UpdateStatus): string {
+    return s === 'current' ? '✅' : s === 'update' ? '⬆️' : '';
+  }
+  function statusTitle(s: UpdateStatus): string {
+    return s === 'current' ? 'Up to date' : s === 'update' ? 'Update available' : 'Update status unknown';
   }
 
   // Single spoken status for screen readers — covers every in-flight operation
@@ -137,34 +174,80 @@
       </button>
     </section>
 
-    <!-- Current versions (informational, not actions). -->
+    <!-- Current versions + per-unit update status. The version chip's border
+         colour + the emoji beside it signal up-to-date vs update-available; the
+         inline action downloads/installs the newest build on this channel. -->
     <dl class="versions">
       <div class="versions-row">
         <dt>OpenPalm Assistant</dt>
-        <dd><code class="version-value">{currentImageTag || '—'}</code></dd>
-      </div>
-      <div class="versions-row">
-        <dt>OpenPalm App</dt>
-        <dd class="desktop-version">
-          <code class="version-value">{electronVersion || '—'}</code>
-          {#if electronLatestVersion && electronLatestUrl}
-            <span class="update-pill">Update available: v{electronLatestVersion}</span>
-            <a
-              class="btn btn-sm btn-secondary"
-              href={electronLatestUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >Download</a>
-          {:else if electronLatestVersion}
-            <span class="update-pill">Update available: v{electronLatestVersion}</span>
-          {:else if inElectron && electronVersion}
-            <span class="up-to-date">Up to date</span>
+        <dd>
+          <span class="version-cell">
+            <code class="version-value status-{assistantStatus}">{currentImageTag || '—'}</code>
+            {#if statusEmoji(assistantStatus)}
+              <span class="status-emoji" role="img" aria-label={statusTitle(assistantStatus)} title={statusTitle(assistantStatus)}>{statusEmoji(assistantStatus)}</span>
+            {/if}
+          </span>
+          {#if assistantStatus === 'update'}
+            <button
+              class="btn btn-sm btn-secondary version-action"
+              onclick={onUpgradeStack}
+              disabled={anyDangerousLoading || !tokenStored}
+              aria-busy={upgradeLoading}
+            >
+              {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {assistantLatest}{/if}
+            </button>
           {/if}
         </dd>
       </div>
+
+      <div class="versions-row">
+        <dt>OpenPalm App</dt>
+        <dd>
+          <span class="version-cell">
+            <code class="version-value status-{appStatus}">{electronVersion || '—'}</code>
+            {#if statusEmoji(appStatus)}
+              <span class="status-emoji" role="img" aria-label={statusTitle(appStatus)} title={statusTitle(appStatus)}>{statusEmoji(appStatus)}</span>
+            {/if}
+          </span>
+          {#if appStatus === 'update'}
+            <a class="btn btn-sm btn-secondary version-action" href={appDownloadUrl} target="_blank" rel="noopener noreferrer">
+              Download {appLatest}
+            </a>
+          {/if}
+        </dd>
+      </div>
+
       <div class="versions-row">
         <dt>OpenPalm UI</dt>
-        <dd><code class="version-value">{uiVersion || '—'}</code></dd>
+        <dd>
+          <span class="version-cell">
+            <code class="version-value status-{uiStatus}">{uiVersion || '—'}</code>
+            {#if statusEmoji(uiStatus)}
+              <span class="status-emoji" role="img" aria-label={statusTitle(uiStatus)} title={statusTitle(uiStatus)}>{statusEmoji(uiStatus)}</span>
+            {/if}
+          </span>
+          {#if uiStatus === 'update'}
+            {#if uiDownloadReady}
+              <span class="version-action-note">
+                Downloaded.
+                {#if inElectron}
+                  <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart app</button>
+                {:else}
+                  Restart OpenPalm to apply.
+                {/if}
+              </span>
+            {:else}
+              <button
+                class="btn btn-sm btn-secondary version-action"
+                onclick={() => { if (uiLatest) onDownloadUiVersion(uiLatest); }}
+                disabled={uiDownloadLoading || !uiLatest}
+                aria-busy={uiDownloadLoading}
+              >
+                {#if uiDownloadLoading}<Spinner /> Downloading…{:else}Download {uiLatest}{/if}
+              </button>
+            {/if}
+          {/if}
+        </dd>
       </div>
     </dl>
 
@@ -375,36 +458,56 @@
   }
   .versions-row dd {
     margin: 0;
-  }
-
-  .version-value {
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    background: var(--color-bg-secondary);
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-  }
-
-  .desktop-version {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  .update-pill {
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    color: var(--color-primary);
-    background: var(--color-primary-bg, var(--color-bg-secondary));
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
+
+  .version-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
   }
-  .up-to-date {
+
+  .version-value {
     font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
+    background: var(--color-bg-secondary);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    /* Border colour IS the status signal — a 2px ring reads at a glance. */
+    border: 2px solid var(--color-border);
+    color: var(--color-text);
+  }
+  /* Up to date — green ring. */
+  .version-value.status-current {
+    border-color: var(--color-success, #16a34a);
+  }
+  /* Update available — amber ring. */
+  .version-value.status-update {
+    border-color: var(--color-warning, #d97706);
+  }
+  /* Unknown (no release data / moving tag) — neutral. */
+  .version-value.status-unknown {
+    border-color: var(--color-border);
+  }
+
+  .status-emoji {
+    font-size: var(--text-sm);
+    line-height: 1;
+  }
+
+  .version-action {
+    flex-shrink: 0;
+  }
+  .version-action-note {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
   }
 
   /* ── Advanced disclosure ── */
