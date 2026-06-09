@@ -51,6 +51,10 @@ const { mockBrowserWindow } = vi.hoisted(() => ({
   },
 }));
 
+const { mockNotificationShow } = vi.hoisted(() => ({
+  mockNotificationShow: vi.fn(),
+}));
+
 vi.mock('electron', () => ({
   app: {
     getVersion: vi.fn(() => '0.11.0'),
@@ -59,6 +63,12 @@ vi.mock('electron', () => ({
     whenReady: vi.fn(() => Promise.resolve()),
     on: vi.fn(),
     getAppPath: vi.fn(() => '/mock/app'),
+    // main.ts resolves a log path at import time via app.getPath('logs');
+    // without this mock the unmocked call rejected at module load and made the
+    // suite exit non-zero (an "unhandled rejection", not a true failure).
+    getPath: vi.fn(() => '/mock/logs'),
+    getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+    setLoginItemSettings: vi.fn(),
   },
   // Regular function (not arrow) so `new BrowserWindow(...)` works as a
   // constructor; vitest 4 enforces this stricter than 3 did.
@@ -89,6 +99,12 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn(() => ({})) },
   shell: { openExternal: vi.fn() },
   ipcMain: { handle: vi.fn() },
+  // Notification mock: constructor returns an object with a show() spy so we
+  // can assert showNotification() calls it.
+  Notification: Object.assign(
+    function MockNotification() { return { show: mockNotificationShow }; },
+    { isSupported: vi.fn(() => true) },
+  ),
 }));
 
 // ── Mock @openpalm/lib ───────────────────────────────────────────────────────
@@ -109,7 +125,7 @@ vi.mock('../src/local-opencode.js', () => ({
   killProcessTree: vi.fn(),
 }));
 
-import { buildUIServerEnv, resolveAssistantUrl, waitForReady } from '../src/main.js';
+import { buildUIServerEnv, resolveAssistantUrl, waitForReady, showNotification } from '../src/main.js';
 import * as lib from '@openpalm/lib';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
@@ -224,6 +240,33 @@ describe('waitForReady', () => {
 
     const result = await promise;
     expect(result).toBe(false);
+  });
+});
+
+// ── showNotification ──────────────────────────────────────────────────────────
+
+import { Notification } from 'electron';
+
+describe('showNotification', () => {
+  beforeEach(() => {
+    mockNotificationShow.mockReset();
+    vi.mocked(Notification.isSupported).mockReturnValue(true);
+  });
+
+  it('calls show() on the Notification instance', () => {
+    showNotification('Test Title', 'Test body');
+    expect(mockNotificationShow).toHaveBeenCalledTimes(1);
+  });
+
+  it('works with title only (no body argument)', () => {
+    showNotification('Title only');
+    expect(mockNotificationShow).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op when Notification.isSupported() returns false', () => {
+    vi.mocked(Notification.isSupported).mockReturnValue(false);
+    showNotification('Should not fire');
+    expect(mockNotificationShow).not.toHaveBeenCalled();
   });
 });
 

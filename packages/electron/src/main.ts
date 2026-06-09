@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, type NativeImage } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, type NativeImage } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -620,6 +620,23 @@ function registerGlobalMicShortcut(): void {
   console.warn('Failed to register a global mic shortcut.');
 }
 
+// ── Desktop notifications ─────────────────────────────────────────────────────
+// On macOS and Windows, Electron's Notification API works without an explicit
+// OS permission request — do NOT add a web-style requestPermission() flow here.
+// On Linux, notifications go through libnotify; they work as long as a
+// notification daemon is running (standard on any DE).
+
+/**
+ * Show a native desktop notification. Safe to call from the main process at
+ * any time after `app.whenReady()`. No-ops if the platform reports that
+ * notifications are not supported (unlikely in practice).
+ */
+export function showNotification(title: string, body?: string): void {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body: body ?? '' });
+  n.show();
+}
+
 // ── Tray ─────────────────────────────────────────────────────────────────────
 
 function createTray(): void {
@@ -640,13 +657,39 @@ function createTray(): void {
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon as NativeImage, alpha));
   tray = new Tray(trayIcon);
 
+  const loginSettings = app.getLoginItemSettings();
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open OpenPalm', click: showWindow },
     { label: 'Show Logs', click: () => { void shell.openPath(app.getPath('logs')); } },
     { type: 'separator' },
     {
+      // "Start at Login" checkbox — reads and writes Electron's cross-platform
+      // login-item API (macOS LaunchAgent, Windows Run registry key).
+      // Default OFF; the user's current setting drives the initial checked state.
+      label: 'Start at Login',
+      type: 'checkbox',
+      checked: loginSettings.openAtLogin,
+      click: (menuItem) => {
+        app.setLoginItemSettings({ openAtLogin: menuItem.checked });
+      },
+    },
+    // Developer convenience: prove that native notifications are wired up.
+    // Remove this item (and the separator above it) once the first real
+    // notification call-site is in place.
+    {
+      label: 'Test Notification',
+      click: () => {
+        showNotification('OpenPalm', 'Notifications are working.');
+      },
+    },
+    { type: 'separator' },
+    {
       label: 'Quit',
       click: () => {
+        // Set isQuitting here so the window 'close' handler (which hides to
+        // tray when !isQuitting) does not re-hide during teardown.
+        // before-quit also sets this, but the tray handler fires before
+        // before-quit, so the early set avoids a transient re-hide on macOS.
         (app as unknown as Record<string, unknown>).isQuitting = true;
         app.quit();
       },
@@ -655,7 +698,11 @@ function createTray(): void {
 
   tray.setToolTip('OpenPalm');
   tray.setContextMenu(contextMenu);
-  tray.on('click', showWindow);
+  // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
+  // NOT open/restore the window.  The window is always accessible via the
+  // "Open OpenPalm" item in the context menu (right-click or left-click the
+  // tray icon to see it, depending on the OS).  Removing the click handler
+  // prevents the surprise "tray icon pops my window" behavior reported in #427.
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
