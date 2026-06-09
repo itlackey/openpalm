@@ -10,6 +10,8 @@
  * The UI server hops on the operator's behalf.
  */
 import type { RequestHandler } from './$types';
+import { readStackEnv } from '@openpalm/lib';
+import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
   getRequestId,
@@ -35,14 +37,19 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  // OP_ prefix is mandatory — unprefixed TTS_*/STT_* vars are owned by
-  // other ecosystems (OpenAI tooling, kokoro-fastapi, etc.) and operators
-  // routinely have them set in their shell pointing at unrelated
-  // endpoints. We deliberately read only the namespaced names so a leaked
-  // shell var can't silently override the user's saved Voice settings.
-  const ttsBaseURL = (process.env.OP_TTS_BASE_URL ?? '').trim();
-  const ttsModel = (process.env.OP_TTS_MODEL ?? '').trim() || DEFAULT_MODEL;
-  const ttsVoice = (process.env.OP_TTS_VOICE ?? '').trim() || DEFAULT_VOICE;
+  // Read saved Voice settings from stack.env ON DISK (source of truth written
+  // by the wizard / Admin → Voice). The UI host process isn't started with
+  // stack.env loaded, and the wizard writes voice config after the UI starts —
+  // so process.env alone was empty and 503'd even when voice was configured
+  // (the "voice broken after install" bug). process.env stays a dev fallback.
+  // OP_ prefix only — a leaked unprefixed shell TTS_* var must never override
+  // the saved selection.
+  const stackEnv = readStackEnv(getState().stackDir);
+  const ttsBaseURL = (stackEnv.OP_TTS_BASE_URL ?? process.env.OP_TTS_BASE_URL ?? '').trim();
+  const ttsModel = (stackEnv.OP_TTS_MODEL ?? process.env.OP_TTS_MODEL ?? '').trim() || DEFAULT_MODEL;
+  const ttsVoice = (stackEnv.OP_TTS_VOICE ?? process.env.OP_TTS_VOICE ?? '').trim() || DEFAULT_VOICE;
+  // API key (if any) is a secret — not in non-secret stack.env — so it stays on
+  // process.env. The bundled OpenPalm Voice needs no key.
   const ttsApiKey = (process.env.OP_TTS_API_KEY ?? '').trim();
 
   if (!ttsBaseURL) {

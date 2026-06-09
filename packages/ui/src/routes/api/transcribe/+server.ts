@@ -8,6 +8,8 @@
  * `{ text }`.
  */
 import type { RequestHandler } from './$types';
+import { readStackEnv } from '@openpalm/lib';
+import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
   getRequestId,
@@ -31,13 +33,20 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  // OP_ prefix is mandatory — unprefixed STT_*/TTS_* vars are owned by
-  // other ecosystems and operators routinely have them in their shell
-  // pointing at unrelated endpoints. Reading only the namespaced names
-  // keeps a leaked shell var from silently overriding saved settings.
-  const sttBaseURL = (process.env.OP_STT_BASE_URL ?? '').trim();
-  const sttModel = (process.env.OP_STT_MODEL ?? '').trim() || DEFAULT_MODEL;
-  const sttLanguageEnv = (process.env.OP_STT_LANGUAGE ?? '').trim();
+  // Read the saved Voice settings from stack.env ON DISK — the source of truth
+  // the wizard and Admin → Voice write to. The UI host process is NOT started
+  // with stack.env loaded into its environment (ui-server.ts only forwards
+  // process.env + a few vars), and the wizard writes voice config AFTER the UI
+  // process starts — so reading process.env alone returned nothing and 503'd
+  // even when voice was fully configured (the "voice broken after install"
+  // bug). process.env stays a fallback/override for dev. OP_ prefix only — a
+  // leaked unprefixed shell STT_* var must never override the saved selection.
+  const stackEnv = readStackEnv(getState().stackDir);
+  const sttBaseURL = (stackEnv.OP_STT_BASE_URL ?? process.env.OP_STT_BASE_URL ?? '').trim();
+  const sttModel = (stackEnv.OP_STT_MODEL ?? process.env.OP_STT_MODEL ?? '').trim() || DEFAULT_MODEL;
+  const sttLanguageEnv = (stackEnv.OP_STT_LANGUAGE ?? process.env.OP_STT_LANGUAGE ?? '').trim();
+  // API key (if any) is a secret — not in the non-secret stack.env — so it stays
+  // on process.env. The bundled OpenPalm Voice needs no key.
   const sttApiKey = (process.env.OP_STT_API_KEY ?? '').trim();
 
   if (!sttBaseURL) {

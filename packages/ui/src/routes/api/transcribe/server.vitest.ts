@@ -88,6 +88,31 @@ describe('POST /api/transcribe', () => {
 		expect(body.error).toBe('stt_not_configured');
 	});
 
+	test('reads saved STT config from stack.env on disk (the voice-not-configured fix) — no process.env needed', async () => {
+		// Simulate what the wizard / Admin → Voice do: persist the OpenPalm Voice
+		// engine to stack.env. process.env has NO OP_STT_* set (cleared in
+		// beforeEach), mirroring the UI host process that never loaded stack.env.
+		const { writeVoiceVars } = await import('@openpalm/lib');
+		writeVoiceVars({ stt: { engine: 'openpalm-voice' } }, getState().stackDir);
+
+		let capturedUrl = '';
+		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+			capturedUrl = String(url);
+			return new Response(JSON.stringify({ text: 'from disk' }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+
+		const form = new FormData();
+		form.append('audio', makeAudio(), 'recording.webm');
+		const res = await POST(makePostEvent(form));
+		// Before the fix this 503'd (stt_not_configured) because process.env was empty.
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as { text: string }).text).toBe('from disk');
+		expect(capturedUrl).toBe('http://127.0.0.1:8880/v1/audio/transcriptions');
+	});
+
 	test('400 when audio field is missing', async () => {
 		process.env.OP_STT_BASE_URL = 'http://stt.local';
 		const form = new FormData();
