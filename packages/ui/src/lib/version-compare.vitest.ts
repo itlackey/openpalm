@@ -19,6 +19,12 @@ describe('compareVersions', () => {
     expect(compareVersions('v0.11.3', '0.11.3')).toBe(0);
     expect(compareVersions('v0.11.3-rc.3', '0.11.3-rc.2')).toBe(1);
   });
+
+  test('ignores build metadata per semver (no NaN corruption)', () => {
+    expect(compareVersions('0.11.3+build.5', '0.11.3')).toBe(0);
+    expect(compareVersions('0.11.4+build.1', '0.11.3')).toBe(1);
+    expect(compareVersions('0.11.3-rc.2+sha.abc', '0.11.3-rc.1')).toBe(1);
+  });
 });
 
 describe('isSemver', () => {

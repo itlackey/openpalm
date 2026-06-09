@@ -2,12 +2,12 @@
  * POST /admin/auth/login
  *
  * Issues the `op_session` cookie (HttpOnly, SameSite=Lax, Secure-on-HTTPS,
- * Max-Age=7d — see session-cookie.ts) after verifying the operator-supplied
- * password in the request body against
- * `process.env.OP_UI_LOGIN_PASSWORD`.
+ * Max-Age=14d — see session-cookie.ts) after verifying the operator-supplied
+ * password in the request body against the configured login password
+ * (env var or stack secret file — see getUiLoginPassword).
  *
- * The cookie value is a random UUID session token — NOT the plaintext password.
- * `requireAdmin()` validates the token against the in-memory session store.
+ * The cookie value is a stateless HMAC-signed session token — NOT the plaintext
+ * password. `requireAdmin()` validates the token's signature and expiry.
  */
 import type { RequestHandler } from "./$types";
 import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";

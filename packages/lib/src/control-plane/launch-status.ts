@@ -130,6 +130,12 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
  *   - setup_incomplete: stack present but OP_SETUP_COMPLETE !== 'true'
  *   - installed:        OP_SETUP_COMPLETE === 'true' (caller maps to
  *                       running/offline/broken via a container-health probe)
+ *
+ * Edge case (deliberate): OP_SETUP_COMPLETE === 'true' with core.compose.yml
+ * MISSING still classifies as "installed" — the user DID complete setup, and
+ * the subsequent health probe will surface the damage as offline/broken,
+ * which routes to the splash with the install's attention-needed state rather
+ * than silently restarting the wizard over their config.
  */
 export function classifyLocalInstall(stackDir: string): "not_installed" | "setup_incomplete" | "installed" {
   const hasCompose = existsSync(join(stackDir, "core.compose.yml"));

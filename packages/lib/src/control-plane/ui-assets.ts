@@ -469,7 +469,9 @@ export async function seedUiBuild(repoRef: string, dataDir: string, options?: { 
 /** Returns 1 if a > b, -1 if a < b, 0 if equal. Strips leading 'v'. Handles pre-release tags. */
 function compareVersionTags(a: string, b: string): number {
   const parse = (v: string): [number, number, number, string | null] => {
-    const clean = v.replace(/^v/, '');
+    // Strip build metadata (`+build.5`) first — semver ignores it in precedence,
+    // and leaving it in turns the patch number into NaN (`Number('3+build')`).
+    const clean = v.replace(/^v/, '').split('+')[0];
     const dashIdx = clean.indexOf('-');
     const main = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
     const pre = dashIdx === -1 ? null : clean.slice(dashIdx + 1);

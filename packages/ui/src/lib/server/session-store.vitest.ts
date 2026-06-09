@@ -2,6 +2,9 @@
  * Tests for session-store.ts — stateless HMAC-signed tokens.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { createHmac } from "node:crypto";
+import { rmSync } from "node:fs";
+import { writeSecret, secretPath, resolveStackDir } from "@openpalm/lib";
 import {
   createSession,
   validateSession,
@@ -48,6 +51,36 @@ describe("createSession / validateSession", () => {
     const token = createSession();
     vi.setSystemTime(Date.now() + SESSION_TTL_MS + 1000);
     expect(validateSession(token)).toBe(false);
+  });
+});
+
+describe("secret resolution (the forgeable-token regression)", () => {
+  test("with NO password anywhere, validation fails closed and minting throws", () => {
+    delete process.env.OP_UI_LOGIN_PASSWORD;
+    // No secret file exists in the test OP_HOME either. A token forged with
+    // any constant key (the old 'no-secret-set' fallback) must NOT validate.
+    const expiresAt = Date.now() + SESSION_TTL_MS;
+    const forged = `${expiresAt}.${createHmac("sha256", "no-secret-set").update(String(expiresAt)).digest("hex")}`;
+    expect(validateSession(forged)).toBe(false);
+    expect(() => createSession()).toThrow();
+  });
+
+  test("falls back to the on-disk stack secret when the env var is unset (first-run wizard window)", () => {
+    delete process.env.OP_UI_LOGIN_PASSWORD;
+    // Simulate the wizard writing the password mid-process (env never updated).
+    writeSecret(resolveStackDir(), "op_ui_login_password", "wizard-set-password");
+    try {
+      const token = createSession();
+      expect(validateSession(token)).toBe(true);
+      // And a constant-key forgery still fails.
+      const expiresAt = Date.now() + SESSION_TTL_MS;
+      const forged = `${expiresAt}.${createHmac("sha256", "no-secret-set").update(String(expiresAt)).digest("hex")}`;
+      expect(validateSession(forged)).toBe(false);
+    } finally {
+      // The temp OP_HOME is shared across test files in this run — don't leak
+      // a configured password into suites that assert the unconfigured state.
+      rmSync(secretPath(resolveStackDir(), "op_ui_login_password"), { force: true });
+    }
   });
 });
 

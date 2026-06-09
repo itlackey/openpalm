@@ -23,7 +23,7 @@
  *                     on those deployments. We honour `x-forwarded-proto` first
  *                     (reverse-proxy TLS termination) then the request URL.
  *  - Path=/         — valid for the whole app; matched by the clear on logout.
- *  - Max-Age        — 7 days, in lockstep with the in-store session TTL.
+ *  - Max-Age        — SESSION_TTL_SECONDS (14 days), in lockstep with the token expiry.
  */
 import { SESSION_TTL_SECONDS } from "./session-store.js";
 

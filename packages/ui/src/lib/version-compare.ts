@@ -17,13 +17,17 @@ export function isSemver(v: string | null | undefined): boolean {
 }
 
 function isPrerelease(v: string): boolean {
-  return v.replace(/^v/, '').includes('-');
+  // Strip build metadata first — a `-` inside `+build-5` is not a pre-release.
+  return v.replace(/^v/, '').split('+')[0].includes('-');
 }
 
 /** Returns 1 if a > b, -1 if a < b, 0 if equal. Strips a leading `v`. */
 export function compareVersions(a: string, b: string): number {
   const parse = (v: string): [number, number, number, string | null] => {
-    const clean = v.trim().replace(/^v/, '');
+    // Strip build metadata (`+build.5`) FIRST — semver says it's ignored in
+    // precedence, and leaving it in would turn the patch number into NaN
+    // (`Number('3+build')`), corrupting every comparison.
+    const clean = v.trim().replace(/^v/, '').split('+')[0];
     const dashIdx = clean.indexOf('-');
     const main = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
     const pre = dashIdx === -1 ? null : clean.slice(dashIdx + 1);
