@@ -42,9 +42,12 @@ export const POST: RequestHandler = async (event) => {
   // bug). process.env stays a fallback/override for dev. OP_ prefix only — a
   // leaked unprefixed shell STT_* var must never override the saved selection.
   const stackEnv = readStackEnv(getState().stackDir);
-  const sttBaseURL = (stackEnv.OP_STT_BASE_URL ?? process.env.OP_STT_BASE_URL ?? '').trim();
-  const sttModel = (stackEnv.OP_STT_MODEL ?? process.env.OP_STT_MODEL ?? '').trim() || DEFAULT_MODEL;
-  const sttLanguageEnv = (stackEnv.OP_STT_LANGUAGE ?? process.env.OP_STT_LANGUAGE ?? '').trim();
+  // `||` not `??`: an empty value on disk (`OP_STT_BASE_URL=`) must fall back to
+  // process.env, not shadow it — otherwise a blank disk entry silently breaks a
+  // desktop install whose env already carries the working value.
+  const sttBaseURL = (stackEnv.OP_STT_BASE_URL || process.env.OP_STT_BASE_URL || '').trim();
+  const sttModel = (stackEnv.OP_STT_MODEL || process.env.OP_STT_MODEL || '').trim() || DEFAULT_MODEL;
+  const sttLanguageEnv = (stackEnv.OP_STT_LANGUAGE || process.env.OP_STT_LANGUAGE || '').trim();
   // API key (if any) is a secret — not in the non-secret stack.env — so it stays
   // on process.env. The bundled OpenPalm Voice needs no key.
   const sttApiKey = (process.env.OP_STT_API_KEY ?? '').trim();

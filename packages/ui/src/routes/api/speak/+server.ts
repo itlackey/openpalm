@@ -45,9 +45,11 @@ export const POST: RequestHandler = async (event) => {
   // OP_ prefix only — a leaked unprefixed shell TTS_* var must never override
   // the saved selection.
   const stackEnv = readStackEnv(getState().stackDir);
-  const ttsBaseURL = (stackEnv.OP_TTS_BASE_URL ?? process.env.OP_TTS_BASE_URL ?? '').trim();
-  const ttsModel = (stackEnv.OP_TTS_MODEL ?? process.env.OP_TTS_MODEL ?? '').trim() || DEFAULT_MODEL;
-  const ttsVoice = (stackEnv.OP_TTS_VOICE ?? process.env.OP_TTS_VOICE ?? '').trim() || DEFAULT_VOICE;
+  // `||` not `??`: an empty value on disk must fall back to process.env, not
+  // shadow it (see transcribe/+server.ts for the desktop-install rationale).
+  const ttsBaseURL = (stackEnv.OP_TTS_BASE_URL || process.env.OP_TTS_BASE_URL || '').trim();
+  const ttsModel = (stackEnv.OP_TTS_MODEL || process.env.OP_TTS_MODEL || '').trim() || DEFAULT_MODEL;
+  const ttsVoice = (stackEnv.OP_TTS_VOICE || process.env.OP_TTS_VOICE || '').trim() || DEFAULT_VOICE;
   // API key (if any) is a secret — not in non-secret stack.env — so it stays on
   // process.env. The bundled OpenPalm Voice needs no key.
   const ttsApiKey = (process.env.OP_TTS_API_KEY ?? '').trim();
