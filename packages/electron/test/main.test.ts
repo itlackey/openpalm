@@ -126,6 +126,7 @@ vi.mock('../src/local-opencode.js', () => ({
 }));
 
 import { buildUIServerEnv, resolveAssistantUrl, waitForReady, showNotification } from '../src/main.js';
+import { app } from 'electron';
 import * as lib from '@openpalm/lib';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
@@ -286,5 +287,41 @@ describe('lib integration', () => {
     const homeDir = lib.resolveOpenPalmHome();
     const env = buildUIServerEnv(homeDir, 3880);
     expect(env.OP_HOME).toBe('/home/user/.openpalm');
+  });
+});
+
+// ── before-quit handler (double-quit fix) ─────────────────────────────────────
+// The handler must be synchronous — Electron doesn't await async event handlers.
+// First call: preventDefault + cleanup + app.quit().
+// Second call (re-entrant, cleanupStarted=true): returns immediately, no preventDefault.
+// Without this fix a second manual Quit click was required.
+
+describe('before-quit handler', () => {
+  it('handler is synchronous', () => {
+    const entry = vi.mocked(app.on).mock.calls.find(([e]) => e === 'before-quit');
+    expect(entry, 'before-quit handler must be registered').toBeDefined();
+    const handler = entry![1] as (...args: unknown[]) => unknown;
+    expect(handler.constructor.name, 'handler must not be AsyncFunction').not.toBe('AsyncFunction');
+  });
+
+  it('first call: prevents default and calls app.quit; second call: passes through', () => {
+    const entry = vi.mocked(app.on).mock.calls.find(([e]) => e === 'before-quit');
+    const handler = entry![1] as (event: { preventDefault: () => void }) => void;
+
+    vi.mocked(app.quit).mockClear();
+
+    // First call — should prevent default and trigger cleanup + quit.
+    const event1 = { preventDefault: vi.fn() };
+    handler(event1);
+    expect(event1.preventDefault).toHaveBeenCalledOnce();
+    expect(app.quit).toHaveBeenCalledOnce();
+
+    // Second call — simulates Electron re-firing before-quit after app.quit().
+    // cleanupStarted is now true; must NOT call preventDefault (lets Electron proceed).
+    const event2 = { preventDefault: vi.fn() };
+    handler(event2);
+    expect(event2.preventDefault).not.toHaveBeenCalled();
+    // app.quit should not have been called again from within the handler
+    expect(app.quit).toHaveBeenCalledOnce();
   });
 });
