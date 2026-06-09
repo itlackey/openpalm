@@ -847,7 +847,11 @@ app.on('before-quit', (event) => {
   const handle = localOpencode;
   localOpencode = null;
   // Safety net: if stop() hangs, force-quit after 500 ms.
-  const forceQuitTimer = setTimeout(() => app.quit(), 500);
+  // Use app.exit(0), NOT app.quit() — calling app.quit() from within a
+  // before-quit handler is re-entrant; Electron may silently no-op it on
+  // some versions, leaving the app hanging. app.exit() exits the process
+  // directly without re-firing before-quit.
+  const forceQuitTimer = setTimeout(() => app.exit(0), 500);
   if (handle) {
     handle.stop()
       .catch((err: unknown) => {
@@ -855,10 +859,10 @@ app.on('before-quit', (event) => {
       })
       .finally(() => {
         clearTimeout(forceQuitTimer);
-        app.quit();
+        app.exit(0);
       });
   } else {
     clearTimeout(forceQuitTimer);
-    app.quit();
+    app.exit(0);
   }
 });

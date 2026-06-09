@@ -59,6 +59,7 @@ vi.mock('electron', () => ({
   app: {
     getVersion: vi.fn(() => '0.11.0'),
     quit: vi.fn(),
+    exit: vi.fn(),
     isQuitting: false,
     whenReady: vi.fn(() => Promise.resolve()),
     on: vi.fn(),
@@ -304,24 +305,31 @@ describe('before-quit handler', () => {
     expect(handler.constructor.name, 'handler must not be AsyncFunction').not.toBe('AsyncFunction');
   });
 
-  it('first call: prevents default and calls app.quit; second call: passes through', () => {
+  it('first call: prevents default and calls app.exit(0); second call: passes through', () => {
     const entry = vi.mocked(app.on).mock.calls.find(([e]) => e === 'before-quit');
     const handler = entry![1] as (event: { preventDefault: () => void }) => void;
 
+    vi.mocked(app.exit).mockClear();
     vi.mocked(app.quit).mockClear();
 
-    // First call — should prevent default and trigger cleanup + quit.
+    // First call — should prevent default and trigger cleanup + exit.
+    // NOTE: app.exit(0) is used (not app.quit) because calling app.quit()
+    // re-entrantly from within before-quit is silently no-op'd by Electron on
+    // some versions, leaving the app hanging (root cause of the double-quit bug).
     const event1 = { preventDefault: vi.fn() };
     handler(event1);
     expect(event1.preventDefault).toHaveBeenCalledOnce();
-    expect(app.quit).toHaveBeenCalledOnce();
+    expect(app.exit).toHaveBeenCalledOnce();
+    expect(app.exit).toHaveBeenCalledWith(0);
+    // app.quit must NOT be called — we use app.exit exclusively for the cleanup path
+    expect(app.quit).not.toHaveBeenCalled();
 
-    // Second call — simulates Electron re-firing before-quit after app.quit().
+    // Second call — simulates Electron re-firing before-quit after app.exit().
     // cleanupStarted is now true; must NOT call preventDefault (lets Electron proceed).
     const event2 = { preventDefault: vi.fn() };
     handler(event2);
     expect(event2.preventDefault).not.toHaveBeenCalled();
-    // app.quit should not have been called again from within the handler
-    expect(app.quit).toHaveBeenCalledOnce();
+    // app.exit should not have been called again
+    expect(app.exit).toHaveBeenCalledOnce();
   });
 });

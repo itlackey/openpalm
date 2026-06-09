@@ -71,7 +71,7 @@
 	 * backend. Works from any page because `chat` is a singleton and the
 	 * Navbar (containing this component) is mounted everywhere.
 	 */
-	function handleMicClick(): void {
+	async function handleMicClick(): Promise<void> {
 		if (isProcessing) return;
 		if (isRecording) {
 			stopListening();
@@ -85,14 +85,22 @@
 		// the assistant's previous response.
 		stopSpeaking();
 
-		// Let getUserMedia in startListening trigger the macOS TCC prompt
-		// directly from the renderer — that is the only path that registers
-		// the app under System Settings → Privacy → Microphone and shows the
-		// OS dialog. Any main-process pre-flight (askForMediaAccess) uses a
-		// different TCC path, returns 'denied' for unsigned/ad-hoc apps, and
-		// blocks getUserMedia from ever firing so the app never appears in
-		// Privacy settings. Errors (denied, no device) surface via
-		// voiceState.errorMessage inside startListening → startRecording.
+		// On macOS inside Electron, setPermissionRequestHandler granting 'media'
+		// is necessary but NOT sufficient — macOS TCC must also grant audio access.
+		// Without askForMediaAccess(), the stream is silently empty (TCC never
+		// asked), and Whisper transcribes silence as "You". Call the IPC shim so
+		// the main process triggers the OS dialog on first click; subsequent calls
+		// return 'granted' instantly from TCC's cache.
+		const openpalm = (window as Window & { openpalm?: OpenPalmBridge }).openpalm;
+		if (openpalm?.requestMicPermission) {
+			const status = await openpalm.requestMicPermission();
+			if (status === 'denied' || status === 'restricted') {
+				voiceState.errorMessage =
+					'Microphone access denied. Open System Settings → Privacy & Security → Microphone and enable OpenPalm, then restart the app.';
+				return;
+			}
+		}
+
 		startListening((transcript: string) => {
 			const trimmed = transcript.trim();
 			if (!trimmed) return;

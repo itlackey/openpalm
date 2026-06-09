@@ -12030,17 +12030,17 @@ app.on("before-quit", (event) => {
   stopUIServer();
   const handle = localOpencode;
   localOpencode = null;
-  const forceQuitTimer = setTimeout(() => app.quit(), 500);
+  const forceQuitTimer = setTimeout(() => app.exit(0), 500);
   if (handle) {
     handle.stop().catch((err) => {
       console.warn("Local OpenCode stop raised:", err instanceof Error ? err.message : String(err));
     }).finally(() => {
       clearTimeout(forceQuitTimer);
-      app.quit();
+      app.exit(0);
     });
   } else {
     clearTimeout(forceQuitTimer);
-    app.quit();
+    app.exit(0);
   }
 });
 export {
