@@ -33,7 +33,10 @@
 	});
 
 	onDestroy(() => {
-		void (window as Window & { openpalm?: OpenPalmBridge }).openpalm?.setTrayMicRecording?.(false);
+		// onDestroy runs on the server during SSR — guard window access or it throws 500.
+		if (typeof window !== 'undefined') {
+			void (window as Window & { openpalm?: OpenPalmBridge }).openpalm?.setTrayMicRecording?.(false);
+		}
 		removeGlobalMicToggle?.();
 		removeGlobalMicToggle = null;
 		destroyVoice();
