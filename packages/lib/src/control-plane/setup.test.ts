@@ -387,6 +387,41 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
+  // ── OP_IMAGE_TAG reconcile (A1: stop preserving a stale pinned tag) ──────
+  const stackEnvPath = () => join(homeDir, "knowledge", "env", "stack.env");
+
+  it("blank imageTag RESETS a stale pinned OP_IMAGE_TAG to the platform default (latest)", async () => {
+    // Simulate an old OP_HOME whose stack.env pinned a now-stale version tag.
+    writeFileSync(
+      stackEnvPath(),
+      ["OP_SETUP_COMPLETE=false", "OP_IMAGE_TAG=v0.11.1", ""].join("\n"),
+    );
+    const result = await performSetup(makeValidSpec()); // no imageTag => blank
+    expect(result.ok).toBe(true);
+    const env = readFileSync(stackEnvPath(), "utf-8");
+    expect(env).toMatch(/^OP_IMAGE_TAG=latest$/m);
+    expect(env).not.toMatch(/OP_IMAGE_TAG=v0\.11\.1/);
+  });
+
+  it("a non-empty imageTag pins deliberately (kept verbatim)", async () => {
+    const result = await performSetup(makeValidSpec({ imageTag: "v0.11.1" }));
+    expect(result.ok).toBe(true);
+    expect(readFileSync(stackEnvPath(), "utf-8")).toMatch(/^OP_IMAGE_TAG=v0\.11\.1$/m);
+  });
+
+  it("imageTag is trimmed before writing", async () => {
+    const result = await performSetup(makeValidSpec({ imageTag: "  dev  " }));
+    expect(result.ok).toBe(true);
+    expect(readFileSync(stackEnvPath(), "utf-8")).toMatch(/^OP_IMAGE_TAG=dev$/m);
+  });
+
+  it("fresh install with blank imageTag writes OP_IMAGE_TAG=latest", async () => {
+    // beforeEach's stub stack.env has no OP_IMAGE_TAG.
+    const result = await performSetup(makeValidSpec());
+    expect(result.ok).toBe(true);
+    expect(readFileSync(stackEnvPath(), "utf-8")).toMatch(/^OP_IMAGE_TAG=latest$/m);
+  });
+
   it("writes the UI login password to knowledge/secrets", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);

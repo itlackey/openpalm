@@ -25,7 +25,7 @@ import {
 export { sha256, randomHex } from "./crypto.js";
 import { sha256, randomHex } from "./crypto.js";
 
-const DEFAULT_IMAGE_TAG = "latest";
+export const DEFAULT_IMAGE_TAG = "latest";
 
 const logger = createLogger("config-persistence");
 

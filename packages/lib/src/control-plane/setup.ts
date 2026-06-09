@@ -14,6 +14,7 @@ import {
   PROVIDER_KEY_MAP,
 } from "../provider-constants.js";
 import { mergeEnvContent } from "./env.js";
+import { DEFAULT_IMAGE_TAG } from "./config-persistence.js";
 import { ensureHomeDirs } from "./home.js";
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "./install-lock.js";
 import {
@@ -226,7 +227,14 @@ export async function performSetup(
         ? readFileSync(`${state.stashDir}/env/stack.env`, "utf-8")
         : "";
       const akmUpdates: Record<string, string> = {};
-      if (imageTag) akmUpdates.OP_IMAGE_TAG = imageTag;
+      // Reconcile OP_IMAGE_TAG on EVERY setup run. A non-empty wizard value pins
+      // a tag deliberately; a BLANK field means "track the platform default", so
+      // write `latest` rather than silently preserving a stale pin left in an
+      // existing stack.env. Without this, re-running setup over an OP_HOME whose
+      // OP_IMAGE_TAG was pinned to an old version (e.g. v0.11.1) kept deploying a
+      // months-old image — the akm-0.3.1 surprise. The Advanced image-tag field
+      // still lets a power user pin deliberately by entering a value.
+      akmUpdates.OP_IMAGE_TAG = imageTag && imageTag.trim() ? imageTag.trim() : DEFAULT_IMAGE_TAG;
       // NOTE: host-akm sharing no longer repoints the container's primary stash
       // (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is
       // wired as a read-write SECONDARY source — see configureHostAkmSharing()

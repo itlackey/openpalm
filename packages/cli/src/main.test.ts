@@ -201,24 +201,15 @@ describe('cli main', () => {
     }
   });
 
-  it('resolves version-pinned install ref (falls back to CLI package version)', async () => {
-    // Read the CLI package version to verify the fallback behaviour
-    const cliPkg = JSON.parse(
-      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-    ) as { version: string };
-    const expectedRef = `v${cliPkg.version}`;
-
-    // Mock the GitHub /releases/latest redirect to fail (network error).
-    // This forces resolveDefaultInstallRef to fall back to cliPkg.version.
+  it('OP_IMAGE_TAG defaults to `latest` when no --version is given (decoupled from the install ref)', async () => {
+    // With no --version, the install ref still falls back to the CLI version for
+    // GitHub asset download, but OP_IMAGE_TAG must NOT be pinned to the host
+    // version — images track `latest` (host & images version independently).
+    // Mock the GitHub redirect to fail so resolveDefaultInstallRef falls back.
     globalThis.fetch = mock(async () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
 
-    // The install command's resolveDefaultInstallRef is not exported, so we
-    // exercise the public install command path: when fetch fails and no
-    // --version is provided, the resolved ref must include the CLI's pinned
-    // version (not 'main'). Capture stack.env to verify it carries the
-    // version-derived OP_IMAGE_TAG.
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
     const workDir = join(base, 'work');
     const specFile = writeMinimalSetupSpec(base);
@@ -232,11 +223,29 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-
-      // stack.env should be present with the pinned image tag derived from
-      // the CLI package version (the fallback path).
       const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
-      expect(stackEnv).toMatch(new RegExp(`OP_IMAGE_TAG=(${expectedRef}|${cliPkg.version})`));
+      expect(stackEnv).toMatch(/^OP_IMAGE_TAG=latest$/m);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('an explicit --version pins OP_IMAGE_TAG to that version', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-pin-'));
+    const workDir = join(base, 'work');
+    const specFile = writeMinimalSetupSpec(base);
+
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
+
+    mockDockerCli();
+    console.log = mock(() => {}) as typeof console.log;
+    console.warn = mock(() => {}) as typeof console.warn;
+
+    try {
+      await main(['install', '--no-start', '--version', 'v0.11.0', '--file', specFile]);
+      const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
+      expect(stackEnv).toMatch(/^OP_IMAGE_TAG=v0\.11\.0$/m);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

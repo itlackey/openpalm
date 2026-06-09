@@ -83,9 +83,17 @@ export default defineCommand({
   async run({ args }) {
     try {
       const version = args.version || await resolveDefaultInstallRef();
+      // Only a user-supplied --version pins the Docker image tag. Otherwise the
+      // images track `latest`: the host (CLI/UI) and the service images version
+      // INDEPENDENTLY (host-only releases publish no matching image), so pinning
+      // the image to the resolved host version stranded installs on a stale
+      // assistant. The install REF (GitHub assets) still falls back to the CLI
+      // version above; only OP_IMAGE_TAG is decoupled.
+      const explicitImageTag = args.version ? (resolveRequestedImageTag(args.version) ?? undefined) : undefined;
       await bootstrapInstall({
         force: args.force,
         version,
+        explicitImageTag,
         noStart: !args.start,
         noOpen: !args.open,
         file: args.file,
@@ -101,6 +109,8 @@ export default defineCommand({
 type InstallOptions = {
   force: boolean;
   version: string;
+  /** Image tag pin from an explicit --version; undefined => track `latest`. */
+  explicitImageTag?: string;
   noStart: boolean;
   noOpen: boolean;
   file?: string;
@@ -266,7 +276,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // ── Configure ──────────────────────────────────────────────────────────
   // File-based install: read config, run performSetup, optionally deploy
   if (options.file) {
-    await runFileInstall(options.file, options.noStart);
+    await runFileInstall(options.file, options.noStart, options.explicitImageTag);
     return;
   }
 
@@ -343,7 +353,7 @@ async function runWizardInstall(noOpen: boolean): Promise<void> {
   await startUIServer({ open: !noOpen, port });
 }
 
-async function runFileInstall(filePath: string, noStart: boolean): Promise<void> {
+async function runFileInstall(filePath: string, noStart: boolean, explicitImageTag?: string): Promise<void> {
   console.log(`Reading setup config from ${filePath}...`);
   if (!(await Bun.file(filePath).exists())) {
     throw new Error(`Setup config file not found: ${filePath}. Check the --file path and try again.`);
@@ -364,6 +374,13 @@ async function runFileInstall(filePath: string, noStart: boolean): Promise<void>
   if (config.version !== 2) throw new Error('Setup config must be version 2. See example.spec.yaml for the format.');
   if (!config.capabilities || typeof config.capabilities !== 'object' || Array.isArray(config.capabilities)) {
     throw new Error('Setup config must contain a "capabilities" object (llm, embeddings).');
+  }
+
+  // A deliberate --version pins the image tag; thread it into the spec so
+  // performSetup writes it. With no --version (and no spec imageTag),
+  // performSetup defaults OP_IMAGE_TAG to `latest` rather than the host version.
+  if (explicitImageTag && !(config as { imageTag?: string }).imageTag) {
+    (config as { imageTag?: string }).imageTag = explicitImageTag;
   }
 
   // Resolve security.uiLoginPassword from environment when not in spec.
