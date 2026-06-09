@@ -1,9 +1,15 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { listEnabledAddonIds } from "@openpalm/lib";
 import { getRequestId, jsonResponse } from "$lib/server/helpers.js";
+import { getState } from "$lib/server/state.js";
 import type { RequestHandler } from "./$types";
 
 const execFileAsync = promisify(execFile);
+
+// Guardian is channel ingress — it is profile-gated to these addons and is NOT
+// deployed when none are enabled. Mirrors CHANNEL_ADDON_IDS in lifecycle.ts.
+const CHANNEL_ADDON_IDS = ["api", "chat", "discord", "slack"];
 
 /**
  * Guardian health — queries the running container directly.
@@ -21,6 +27,21 @@ const execFileAsync = promisify(execFile);
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+
+  // With no channel enabled, guardian is intentionally not in the stack — report
+  // that cleanly (200) instead of letting a `docker inspect` miss 503-spam the
+  // console. (Guardian is only deployed as channel ingress.)
+  try {
+    const channelsEnabled = listEnabledAddonIds(getState().homeDir).some((a) =>
+      CHANNEL_ADDON_IDS.includes(a),
+    );
+    if (!channelsEnabled) {
+      return jsonResponse(200, { status: "not_deployed", service: "guardian" }, requestId);
+    }
+  } catch {
+    // Fall through to the container probe on any addon-read error.
+  }
+
   try {
     const { stdout } = await execFileAsync(
       "docker",
