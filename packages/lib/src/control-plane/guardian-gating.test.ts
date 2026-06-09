@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildManagedServices } from "./lifecycle.js";
+import { buildManagedServices, createState } from "./lifecycle.js";
 import type { ControlPlaneState } from "./types.js";
 
 let tempDir: string;
@@ -96,5 +96,35 @@ describe("buildManagedServices guardian gating", () => {
     expect(services).toContain("assistant");
     expect(services).toContain("guardian");
     expect(services).toContain("discord");
+  });
+});
+
+// The EXPECTED-services map (createState → state.services) is a separate path
+// from the deploy set. It drove the UI bug: the Overview/Containers status
+// reported "Guardian not running" forever on a no-channel install because
+// guardian was seeded as a perpetually-stopped expected service.
+describe("createState expected-services guardian gating", () => {
+  let prevOpHome: string | undefined;
+
+  beforeEach(() => { prevOpHome = process.env.OP_HOME; });
+  afterEach(() => {
+    if (prevOpHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = prevOpHome;
+  });
+
+  it("does NOT list guardian as an expected service with no channels", () => {
+    seedStackEnv(""); // no addons
+    process.env.OP_HOME = tempDir;
+    const state = createState();
+    expect(Object.keys(state.services)).toContain("assistant");
+    expect(Object.keys(state.services)).not.toContain("guardian");
+  });
+
+  it("DOES list guardian as expected once a channel addon is enabled", () => {
+    seedStackEnv("discord");
+    process.env.OP_HOME = tempDir;
+    const state = createState();
+    expect(Object.keys(state.services)).toContain("assistant");
+    expect(Object.keys(state.services)).toContain("guardian");
   });
 });

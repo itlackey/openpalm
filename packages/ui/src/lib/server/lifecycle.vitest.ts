@@ -148,14 +148,15 @@ describe("createState", () => {
     expect(state.stackDir).toBeDefined();
   });
 
-  test("initializes all core services as stopped", () => {
+  test("seeds the assistant as stopped; guardian is gated to channels", () => {
     const base = trackDir(makeTempDir());
     process.env.OP_HOME = base;
 
+    // No channel addon enabled → guardian is NOT an expected service (it mirrors
+    // the deploy gating, so the Overview doesn't report it perpetually stopped).
     const state = createState();
-    for (const service of CORE_SERVICES) {
-      expect(state.services[service]).toBe("stopped");
-    }
+    expect(state.services.assistant).toBe("stopped");
+    expect(state.services.guardian).toBeUndefined();
   });
 });
 
@@ -185,15 +186,12 @@ describe("CORE_SERVICES", () => {
 // ── Lifecycle State Transitions ─────────────────────────────────────────
 
 describe("applyInstall", () => {
-  test("marks all core services as running", async () => {
+  test("marks the assistant running on install (guardian gated to channels)", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     process.env.OP_HOME = state.homeDir;
 
-    // Initialize services as stopped
-    for (const service of CORE_SERVICES) {
-      state.services[service] = "stopped";
-    }
+    state.services = { assistant: "stopped" };
 
     // Create required dirs and seed core compose for writeRuntimeFiles
     mkdirSync(state.stackDir, { recursive: true });
@@ -201,9 +199,9 @@ describe("applyInstall", () => {
 
     await applyInstall(state);
 
-    for (const service of CORE_SERVICES) {
-      expect(state.services[service]).toBe("running");
-    }
+    expect(state.services.assistant).toBe("running");
+    // No channel addon → reconcileCore must NOT force-activate guardian.
+    expect(state.services.guardian).toBeUndefined();
   });
 });
 

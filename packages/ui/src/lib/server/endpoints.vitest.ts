@@ -7,6 +7,7 @@ import { _replaceState, getState } from './state.js';
 import {
   makeTestState,
   registerCleanup,
+  seedSecretsEnv,
   trackDir,
 } from './test-helpers.js';
 import {
@@ -124,6 +125,20 @@ describe('default endpoint synthesis', () => {
   it('picks up OPENCODE_SERVER_PASSWORD for default', () => {
     process.env.OPENCODE_SERVER_PASSWORD = 'secret';
     expect(getActiveEndpoint().password).toBe('secret');
+  });
+
+  it('reads OP_ASSISTANT_PORT from stack.env on disk when process.env lacks it', () => {
+    // The UI host process does not load non-secret stack.env into process.env,
+    // so a non-default assistant port must still be picked up from disk —
+    // otherwise the proxy hits :3800 and every /proxy/assistant/* call 503s.
+    seedSecretsEnv(getState().stackDir, 'OP_ASSISTANT_PORT=4800\n');
+    expect(getActiveEndpoint().url).toBe('http://127.0.0.1:4800');
+  });
+
+  it('lets process.env override stack.env for the assistant port', () => {
+    seedSecretsEnv(getState().stackDir, 'OP_ASSISTANT_PORT=4800\n');
+    process.env.OP_ASSISTANT_PORT = '5900';
+    expect(getActiveEndpoint().url).toBe('http://127.0.0.1:5900');
   });
 });
 

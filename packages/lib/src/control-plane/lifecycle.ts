@@ -38,8 +38,13 @@ export function createState(): ControlPlaneState {
   const dataDir = resolveDataDir();
   const stackDir = resolveStackDir();
 
+  const withGuardian = hasEnabledChannel(listEnabledAddonIds(homeDir));
   const services: Record<string, "running" | "stopped"> = {};
   for (const name of CORE_SERVICES) {
+    // Guardian is only an expected service when a channel addon is enabled —
+    // matches its deploy gating, so a no-channel install does not report it as
+    // a perpetually-stopped service in the Overview/Containers status.
+    if (name === "guardian" && !withGuardian) continue;
     services[name] = "stopped";
   }
 
@@ -67,7 +72,11 @@ async function reconcileCore(
   opts: { activateServices?: boolean; deactivateServices?: boolean },
 ): Promise<string[]> {
   if (opts.activateServices) {
-    for (const s of CORE_SERVICES) state.services[s] = "running";
+    const withGuardian = hasEnabledChannel(listEnabledAddonIds(state.homeDir));
+    for (const s of CORE_SERVICES) {
+      if (s === "guardian" && !withGuardian) continue;
+      state.services[s] = "running";
+    }
   }
 
   for (const addonName of listEnabledAddonIds(state.homeDir)) {
@@ -386,6 +395,19 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 // guardian-gating.test.ts pins this.
 const CHANNEL_ADDON_IDS = ["api", "chat", "discord", "slack"];
 
+/**
+ * Guardian is channel ingress: it is both DEPLOYED and treated as an EXPECTED
+ * service only when ≥1 channel addon is enabled. Single predicate so the deploy
+ * set (buildManagedServices), the expected-service seed (createState), and the
+ * activation loop (reconcileCore) all gate guardian identically — otherwise the
+ * Overview/Containers status reports "Guardian not running" forever on a
+ * no-channel install (it is never deployed). Takes the resolved addon list so
+ * callers that already have it don't re-read stack.env.
+ */
+function hasEnabledChannel(enabledAddons: string[]): boolean {
+  return enabledAddons.some((a) => CHANNEL_ADDON_IDS.includes(a));
+}
+
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
   const composeOpts = buildComposeOptions(state);
 
@@ -398,9 +420,8 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
   // upgrade when channel profiles ARE active (it is excluded from
   // getAddonServiceNames, so the fallback below would otherwise drop it).
   const enabledAddons = listEnabledAddonIds(state.homeDir);
-  const channelsEnabled = enabledAddons.some((a) => CHANNEL_ADDON_IDS.includes(a));
   const services = new Set<string>(["assistant"]);
-  if (channelsEnabled) services.add("guardian");
+  if (hasEnabledChannel(enabledAddons)) services.add("guardian");
 
   // Prefer compose-derived service list when Docker is available. Resolved with
   // the active profiles, this already includes guardian iff a channel profile

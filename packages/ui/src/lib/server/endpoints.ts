@@ -17,6 +17,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { readStackEnv } from '@openpalm/lib';
 import { getState } from './state.js';
 
 export type EndpointEntry = {
@@ -189,11 +190,24 @@ function writeFile(data: EndpointsFile): void {
 }
 
 function defaultEndpoint(): ActiveEndpoint {
+  // The assistant URL/port are NON-secret stack config living in
+  // knowledge/env/stack.env. The UI host process (ui serve) does NOT load that
+  // file into process.env (createState only loads the secret env), so a
+  // non-default OP_ASSISTANT_PORT would otherwise be invisible here and the
+  // proxy would hit 127.0.0.1:3800 — connection-refused → 503 on every
+  // /proxy/assistant/* call. Read it from disk (process.env still wins if set,
+  // e.g. a launcher override). The Basic-auth password stays from process.env:
+  // it IS a secret, so createState already loads it via readStackSecretEnv.
+  let stackEnv: Record<string, string> = {};
+  try { stackEnv = readStackEnv(getState().stackDir); } catch { /* pre-install / no stack.env */ }
+  const port = process.env.OP_ASSISTANT_PORT ?? stackEnv.OP_ASSISTANT_PORT ?? '3800';
   const url =
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
-    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
-  const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
+    stackEnv.OP_OPENCODE_URL ??
+    stackEnv.OP_ASSISTANT_URL ??
+    `http://127.0.0.1:${port}`;
+  const username = process.env.OPENCODE_SERVER_USERNAME || stackEnv.OPENCODE_SERVER_USERNAME || 'openpalm';
   const password = process.env.OPENCODE_SERVER_PASSWORD || undefined;
   return { id: DEFAULT_ID, label: 'Local Assistant', url, username, password, isDefault: true };
 }

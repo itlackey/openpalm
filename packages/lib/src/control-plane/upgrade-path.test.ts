@@ -115,8 +115,10 @@ describe("performUpgrade force-recreates managed services (#450)", () => {
     // Guardian is channel ingress: profile-gated to the channel addons, so it
     // must be added conditionally — never unconditionally seeded (that hung the
     // installer on a guardian that never starts when no channel is enabled).
-    expect(src).toContain("channelsEnabled");
-    expect(src).toMatch(/if \(channelsEnabled\) services\.add\("guardian"\)/);
+    // Behavioral coverage lives in guardian-gating.test.ts; this guard just
+    // pins that guardian stays conditionally added (never unconditionally seeded).
+    expect(src).toContain("hasEnabledChannel");
+    expect(src).toMatch(/if \(hasEnabledChannel\(enabledAddons\)\) services\.add\("guardian"\)/);
     expect(src).not.toContain("new Set<string>(CORE_SERVICES)");
   });
 });
