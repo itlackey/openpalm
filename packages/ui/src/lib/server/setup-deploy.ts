@@ -352,18 +352,12 @@ export function startDeploy(state: ControlPlaneState): void {
       // Phase 1: write compose files, env, etc.
       await applyInstall(state);
 
-      // Ensure addon profiles are set before building compose options.
-      // If Ollama is enabled but no profile is stored, default to canonical CPU.
-      const enabledAddons = listEnabledAddonIds(state.homeDir);
-      if (enabledAddons.includes('ollama') && !getAddonProfileSelection(state.stackDir, 'ollama')) {
-        try {
-          setAddonProfileSelection(state.stackDir, 'ollama', addonProfileId('ollama', 'cpu'), state);
-        } catch (err) {
-          logger.warn("ollama: failed to persist default profile selection (continuing)", {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
+      // (#470) No separate post-applyInstall write to default OP_OLLAMA_PROFILE:
+      // resolveActiveProfiles() already resolves an enabled-but-unprofiled ollama
+      // (and voice) addon to `addon.<name>.cpu` deterministically. The old write
+      // happened OUTSIDE the install lock — an interrupt between applyInstall and
+      // it could leave OP_ENABLED_ADDONS=ollama with no profile. Resolving the
+      // default at compose time removes the write (and the race) entirely.
 
       const services = await buildManagedServices(state);
       _state.deployStatus = services.map(s => ({ service: s, status: "pending", label: "Waiting..." }));

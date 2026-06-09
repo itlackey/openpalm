@@ -144,6 +144,19 @@ describe("buildComposeCliArgs", () => {
     expect(args).toContain("addon.ollama.cpu");
   });
 
+  it("(#470) defaults an enabled-but-unprofiled ollama addon to addon.ollama.cpu", () => {
+    // No OP_OLLAMA_PROFILE written — only the enable flag. resolveActiveProfiles
+    // must resolve the canonical CPU profile so setup-deploy does NOT need a
+    // separate (non-atomic) post-install write.
+    seedCoreCompose();
+    const envDir = join(tempDir, "knowledge", "env");
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, "stack.env"), "OP_ENABLED_ADDONS=ollama\n");
+    const state = makeState();
+    const args = buildComposeCliArgs(state);
+    expect(args).toContain("addon.ollama.cpu");
+  });
+
   it("ignores non-canonical addon profile ids", () => {
     seedCoreCompose();
     seedEnvFiles({ stack: true });
