@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, type NativeImage } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences, type NativeImage } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -604,6 +604,53 @@ function showWindow(): void {
   }
 }
 
+// The navbar mic records via getUserMedia in the renderer. Two layers must both
+// grant access or the captured audio is SILENT (not an error) — and silence is
+// what makes Whisper transcribe a phantom "You":
+//   1. Electron's session permission layer must approve the `media` request from
+//      our trusted local UI origin (127.0.0.1/localhost). We deny everything else.
+//   2. macOS TCC must have granted the app mic access. That requires
+//      NSMicrophoneUsageDescription in the app's Info.plist (set in
+//      electron-builder.yml) AND a one-time askForMediaAccess() prompt; without
+//      the prompt the app captures a muted device and never appears in
+//      System Settings → Privacy → Microphone.
+function isTrustedLocalOrigin(url: string): boolean {
+  return url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost');
+}
+
+async function configureMediaPermissions(): Promise<void> {
+  const ses = session.defaultSession;
+
+  // Async grant (Chromium asks once per origin). Approve audio capture only for
+  // our own UI; deny anything unexpected.
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    if (permission === 'media' && isTrustedLocalOrigin(details.requestingUrl ?? '')) {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
+
+  // Some getUserMedia paths consult the synchronous check handler instead of
+  // raising a request — grant media there for the same trusted origin.
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+    return permission === 'media' && isTrustedLocalOrigin(requestingOrigin ?? '');
+  });
+
+  // macOS: surface the OS mic prompt up front and register the app under
+  // Privacy → Microphone. Harmless/no-op on Windows + Linux. Non-fatal: a
+  // refusal just means the mic stays unavailable (the UI shows a disabled mic).
+  if (process.platform === 'darwin') {
+    try {
+      if (systemPreferences.getMediaAccessStatus('microphone') !== 'granted') {
+        await systemPreferences.askForMediaAccess('microphone');
+      }
+    } catch (err) {
+      console.warn('Microphone access request failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
 function triggerGlobalMicToggle(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('global-mic-toggle');
@@ -736,6 +783,7 @@ app.whenReady().then(async () => {
     );
   }
 
+  await configureMediaPermissions();
   await createWindow();
   createTray();
   registerGlobalMicShortcut();

@@ -38,6 +38,12 @@ mac:
     - target: zip
       arch: [arm64, x64]
   icon: assets/icon.png
+  # macOS refuses microphone access (and never lists the app under Privacy →
+  # Microphone) unless the Info.plist declares why it needs the mic. Without
+  # this, the navbar mic captures a SILENT stream and Whisper transcribes a
+  # phantom "You". The string is shown in the OS permission prompt.
+  extendInfo:
+    NSMicrophoneUsageDescription: OpenPalm uses the microphone for voice input — speaking to your assistant.
 
 linux:
   target:
