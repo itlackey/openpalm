@@ -221,29 +221,20 @@
     ? { tts: 'openai-tts', stt: 'openai-stt' }
     : { tts: 'browser-tts', stt: 'browser-stt' });
 
-  const displayedVoiceTts = $derived.by(() => {
-    if (voiceTts.engine) return voiceTts;
+  // Resolve one voice side (tts|stt): an explicit engine wins; else OpenPalm
+  // Voice when the bundled voice is enabled; else the given fallback. The
+  // `displayed*` derivations pass a sensible default engine (for the UI); the
+  // `persisted*` ones pass '' (an empty engine means "don't save this side").
+  function resolveVoiceSide(side: VoiceEngineValue, fallbackEngine: string): VoiceEngineValue {
+    if (side.engine) return side;
     if (enableVoice) return { engine: 'openpalm-voice' };
-    return { engine: voiceDefaults.tts };
-  });
+    return { engine: fallbackEngine };
+  }
 
-  const displayedVoiceStt = $derived.by(() => {
-    if (voiceStt.engine) return voiceStt;
-    if (enableVoice) return { engine: 'openpalm-voice' };
-    return { engine: voiceDefaults.stt };
-  });
-
-  const persistedVoiceTts = $derived.by(() => {
-    if (voiceTts.engine) return voiceTts;
-    if (enableVoice) return { engine: 'openpalm-voice' };
-    return { engine: '' };
-  });
-
-  const persistedVoiceStt = $derived.by(() => {
-    if (voiceStt.engine) return voiceStt;
-    if (enableVoice) return { engine: 'openpalm-voice' };
-    return { engine: '' };
-  });
+  const displayedVoiceTts = $derived(resolveVoiceSide(voiceTts, voiceDefaults.tts));
+  const displayedVoiceStt = $derived(resolveVoiceSide(voiceStt, voiceDefaults.stt));
+  const persistedVoiceTts = $derived(resolveVoiceSide(voiceTts, ''));
+  const persistedVoiceStt = $derived(resolveVoiceSide(voiceStt, ''));
 
   const selectedVoiceProfileLabel = $derived.by(() => {
     if (!selectedVoiceProfile) return '';
@@ -579,21 +570,21 @@
     }
   }
 
+  // Apply imported prefs + auto-select, then route: the recommended fast-path
+  // skips the Models step, so the "a chat model is required" gate never runs
+  // there — enforce it here. Route to Models (3) when no chat model could be
+  // picked (and the user hasn't opted into an empty install), else Options (5).
+  function applyDefaultsAndRoute(): void {
+    applyImportedModelPreferences();
+    autoSelectModels();
+    goToStep(!modelSelection.llm?.model && !allowEmptyInstall ? 3 : 5);
+  }
+
   async function handleUseDefaults(): Promise<void> {
     if (verifiedProviders.length >= 1) {
       // Fast path: providers already verified by background detection (cloud or
       // host). Don't force in-stack Ollama — those providers cover the assistant.
-      applyImportedModelPreferences();
-      autoSelectModels();
-      // The fast-path skips the Models step, so the LLM-required gate
-      // (validateStep2) never runs there. Validate it HERE instead so the
-      // recommended path can't reach install with no validated chat model.
-      // If auto-selection couldn't pick one, route the user through Models.
-      if (!modelSelection.llm?.model && !allowEmptyInstall) {
-        goToStep(3);
-        return;
-      }
-      goToStep(5);
+      applyDefaultsAndRoute();
       return;
     }
 
@@ -613,14 +604,7 @@
     // use-host-providers (handled by fetchAndApplyRecommendation -> handleHostImport,
     // which already imports + advances) and enable-ollama both leave us with a
     // usable provider. use-cloud is unreachable here (verifiedProviders === 0).
-    applyImportedModelPreferences();
-    autoSelectModels();
-    // Same LLM gate as the fast path: never skip to Options with no chat model.
-    if (!modelSelection.llm?.model && !allowEmptyInstall) {
-      goToStep(3);
-      return;
-    }
-    goToStep(5);
+    applyDefaultsAndRoute();
   }
 
   function handleEnableVoiceChange(v: boolean): void {
