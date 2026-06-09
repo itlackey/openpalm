@@ -168,6 +168,21 @@ export {
 export {
   isSetupComplete,
 } from "./control-plane/setup-status.js";
+// ── Launch Status (#440 — routing SSOT for UI + CLI) ──────────────────────
+export {
+  deriveLaunchStatus,
+  classifyLocalInstall,
+  detectRuntime,
+} from "./control-plane/launch-status.js";
+export type {
+  LaunchStatus,
+  LocalStatus,
+  LocalStackState,
+  RemoteStatus,
+  RemoteReachability,
+  RuntimeInfo,
+  ActiveAssistant,
+} from "./control-plane/launch-status.js";
 
 // ── Channels ────────────────────────────────────────────────────────────
 export {

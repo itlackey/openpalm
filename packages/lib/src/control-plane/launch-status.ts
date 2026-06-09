@@ -1,0 +1,151 @@
+/**
+ * Launch status — the single source of truth for "what state is the local stack
+ * in, what remotes are reachable, and where should the app land the user."
+ *
+ * Replaces the binary `isSetupComplete()` for routing decisions. The keystone is
+ * the PURE `deriveLaunchStatus()` — it takes already-collected facts and produces
+ * the authoritative `recommendedRoute`, so the routing table is exhaustively
+ * unit-testable with no I/O. The UI and CLI both collect their facts (local
+ * install state from disk, container health, remote reachability) and feed them
+ * through this one function, so neither duplicates the routing logic.
+ *
+ * Routing rule (authoritative, from #440):
+ *   recommendedRoute === 'chat'  IFF  hasHealthyLocal
+ *                                     OR (local is not_installed AND a remote is accessible)
+ *   every other case → 'splash'   — crucially, an INSTALLED-but-unhealthy local
+ *   stack routes to the splash even when a healthy remote exists, so a broken
+ *   local install always gets the user's attention instead of being silently
+ *   routed around.
+ */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { parseEnvFile } from "./env.js";
+import { stackEnvPathFromStackDir } from "./paths.js";
+import { checkDocker, checkDockerCompose } from "./docker.js";
+
+export type LocalStackState =
+  | "not_installed"     // nothing installed — offer install / add remote
+  | "setup_incomplete"  // install started, OP_SETUP_COMPLETE not set
+  | "installed_offline" // setup complete, stack not running
+  | "installed_broken"  // setup complete, running but unhealthy / config error
+  | "running";          // healthy
+
+export type RemoteReachability = "accessible" | "unreachable" | "unauthorized" | "unknown";
+
+export interface RuntimeInfo {
+  /** A container runtime (Docker or a compatible engine) responded. */
+  dockerPresent: boolean;
+  /** Reported server version when present. */
+  dockerVersion?: string;
+  /** `docker compose` (or equivalent) is usable. */
+  composeAvailable: boolean;
+}
+
+export interface RemoteStatus {
+  id: string;
+  name: string;
+  url: string;
+  state: RemoteReachability;
+  detail?: string;
+}
+
+export interface LocalStatus {
+  state: LocalStackState;
+  detail?: Record<string, unknown>;
+  /** Present (and meaningful) when nothing is installed: can the user install? */
+  runtime?: RuntimeInfo;
+}
+
+export type ActiveAssistant = { kind: "local" } | { kind: "remote"; id: string } | null;
+
+export interface LaunchStatus {
+  local: LocalStatus;
+  remotes: RemoteStatus[];
+  // Convenience derivations used by the router:
+  hasHealthyLocal: boolean;
+  localInstalledButUnhealthy: boolean;
+  hasAccessibleRemote: boolean;
+  recommendedRoute: "chat" | "splash";
+  /** Which assistant to default to when routing to chat (null on splash). */
+  activeAssistant: ActiveAssistant;
+  /** Non-blocking alerts to show when routing to chat (e.g. other dead remotes). */
+  alerts: string[];
+}
+
+/** Local states that mean "installed, but the user needs to act" → always splash. */
+const INSTALLED_UNHEALTHY: readonly LocalStackState[] = [
+  "setup_incomplete",
+  "installed_offline",
+  "installed_broken",
+];
+
+/**
+ * Pure routing derivation. No I/O — give it the collected facts, get the route.
+ * This is the function with exhaustive table tests.
+ */
+export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: RemoteStatus[] }): LaunchStatus {
+  const remotes = input.remotes ?? [];
+  const state = input.local.state;
+
+  const hasHealthyLocal = state === "running";
+  const localInstalledButUnhealthy = INSTALLED_UNHEALTHY.includes(state);
+  const accessibleRemotes = remotes.filter((r) => r.state === "accessible");
+  const hasAccessibleRemote = accessibleRemotes.length > 0;
+
+  // Authoritative rule. Note: an installed-but-unhealthy local NEVER routes to
+  // chat, even with a healthy remote — it falls through to splash.
+  const recommendedRoute: "chat" | "splash" =
+    hasHealthyLocal || (state === "not_installed" && hasAccessibleRemote) ? "chat" : "splash";
+
+  let activeAssistant: ActiveAssistant = null;
+  if (recommendedRoute === "chat") {
+    activeAssistant = hasHealthyLocal ? { kind: "local" } : { kind: "remote", id: accessibleRemotes[0]!.id };
+  }
+
+  // When landing on chat, surface every OTHER failure as a non-blocking alert.
+  const alerts: string[] = [];
+  if (recommendedRoute === "chat") {
+    for (const r of remotes) {
+      if (r.state === "unreachable" || r.state === "unauthorized") {
+        alerts.push(`Remote connection "${r.name}" is ${r.state}${r.detail ? `: ${r.detail}` : ""}`);
+      }
+    }
+  }
+
+  return {
+    local: input.local,
+    remotes,
+    hasHealthyLocal,
+    localInstalledButUnhealthy,
+    hasAccessibleRemote,
+    recommendedRoute,
+    activeAssistant,
+    alerts,
+  };
+}
+
+/**
+ * Classify the on-disk local install WITHOUT a live health probe:
+ *   - not_installed:    no materialized stack (no core.compose.yml)
+ *   - setup_incomplete: stack present but OP_SETUP_COMPLETE !== 'true'
+ *   - installed:        OP_SETUP_COMPLETE === 'true' (caller maps to
+ *                       running/offline/broken via a container-health probe)
+ */
+export function classifyLocalInstall(stackDir: string): "not_installed" | "setup_incomplete" | "installed" {
+  const hasCompose = existsSync(join(stackDir, "core.compose.yml"));
+  const env = parseEnvFile(stackEnvPathFromStackDir(stackDir));
+  if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
+  if (env.OP_SETUP_COMPLETE === "true") return "installed";
+  return "setup_incomplete";
+}
+
+/** Detect the host container runtime — meaningful for the not_installed splash. */
+export async function detectRuntime(): Promise<RuntimeInfo> {
+  const [docker, compose] = await Promise.all([checkDocker(), checkDockerCompose()]);
+  const version = docker.ok ? docker.stdout.trim() : "";
+  return {
+    dockerPresent: docker.ok,
+    dockerVersion: version.length > 0 ? version : undefined,
+    composeAvailable: compose.ok,
+  };
+}
