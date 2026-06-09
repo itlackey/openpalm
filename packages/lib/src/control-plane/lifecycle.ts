@@ -374,6 +374,16 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 // discord,slack}) and the built-in channel id list used in registry.ts /
 // config-persistence.ts. Guardian is shared infra for these, not an addon
 // service of its own (getAddonServiceNames deliberately excludes it).
+//
+// Deploy dependency contract (one place to read it):
+//   • assistant — ALWAYS deployed; depends on nothing.
+//   • guardian  — channel ingress; deployed ONLY when ≥1 channel addon is
+//                 enabled; depends on assistant.
+//   • channels  — each depends on guardian (compose `depends_on`), so they are
+//                 never deployed without it.
+// A zero-channel install therefore deploys assistant alone and must NOT
+// include or health-wait on guardian. The integration test in
+// guardian-gating.test.ts pins this.
 const CHANNEL_ADDON_IDS = ["api", "chat", "discord", "slack"];
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
