@@ -1,34 +1,80 @@
 /**
- * In-memory session store for op_session cookies.
+ * Persistent session store for op_session cookies.
  *
- * Replaces the plaintext-password-as-cookie scheme: instead of storing the
- * operator's password in the cookie jar, `createSession()` mints a random
- * opaque token and maps it to an expiry timestamp. `requireAdmin` /
- * `validateSession` then check the token without touching the password.
+ * Tokens are written to ${dataDir}/admin/sessions.json so they survive UI
+ * server restarts (the Electron app killing and respawning the Node child
+ * process). Without persistence the browser holds a valid 14-day cookie but
+ * the server has no record of it → forced login on every app launch.
  *
- * The store is module-level (process lifetime). Sessions are valid for 7 days
- * and are lazily pruned on access so the map does not grow unbounded. Active
- * use renews the session via sliding expiry: `touchSession()` (called from
+ * Sessions are valid for 14 days and are lazily pruned on access. Active use
+ * renews the session via sliding expiry: `touchSession()` (called from
  * hooks.server.ts on every authenticated request) pushes the expiry back to a
  * full TTL so active operators are never logged out mid-session, while idle
- * sessions still expire after `SESSION_TTL_MS`.
+ * sessions still expire.
  */
 
-/** Session lifetime — both the in-store expiry and the cookie Max-Age. 7 days. */
-export const SESSION_TTL_MS = 604_800_000; // 7 days
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/** Session lifetime — both the in-store expiry and the cookie Max-Age. 14 days. */
+export const SESSION_TTL_MS = 1_209_600_000; // 14 days
 /** Cookie Max-Age in seconds (Set-Cookie uses seconds, not ms). */
 export const SESSION_TTL_SECONDS = SESSION_TTL_MS / 1000;
 
 /** token → absolute expiry timestamp (ms since epoch) */
 const sessions = new Map<string, number>();
 
+// ── Disk persistence ─────────────────────────────────────────────────────────
+
+function sessionFilePath(): string | null {
+  const dataDir = process.env.OP_DATA_DIR ?? '';
+  if (!dataDir) return null;
+  return join(dataDir, 'admin', 'sessions.json');
+}
+
+function loadFromDisk(): void {
+  const path = sessionFilePath();
+  if (!path || !existsSync(path)) return;
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, number>;
+    const now = Date.now();
+    for (const [token, expiresAt] of Object.entries(raw)) {
+      if (typeof expiresAt === 'number' && expiresAt > now) {
+        sessions.set(token, expiresAt);
+      }
+    }
+  } catch {
+    // Corrupt or missing file — start fresh. Not fatal.
+  }
+}
+
+function saveToDisk(): void {
+  const path = sessionFilePath();
+  if (!path) return;
+  try {
+    mkdirSync(join(path, '..'), { recursive: true });
+    const obj: Record<string, number> = {};
+    for (const [token, expiresAt] of sessions) obj[token] = expiresAt;
+    writeFileSync(path, JSON.stringify(obj), { mode: 0o600 });
+  } catch {
+    // Best-effort. A write failure degrades to the in-memory-only behaviour.
+  }
+}
+
+// Load persisted sessions eagerly at module init so the first request after
+// a UI server restart already finds the live token.
+loadFromDisk();
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /**
- * Mint a new session token, store it with a 7-day TTL, and return it.
+ * Mint a new session token, store it with a 14-day TTL, and return it.
  * The caller is responsible for placing the token in the `op_session` cookie.
  */
 export function createSession(): string {
   const token = crypto.randomUUID();
   sessions.set(token, Date.now() + SESSION_TTL_MS);
+  saveToDisk();
   return token;
 }
 
@@ -42,18 +88,16 @@ export function validateSession(token: string): boolean {
   if (expiresAt === undefined) return false;
   if (Date.now() >= expiresAt) {
     sessions.delete(token);
+    saveToDisk();
     return false;
   }
   return true;
 }
 
 /**
- * Sliding renewal: if `token` is a known, non-expired session, push its expiry
- * back to a full TTL from now and return true. Returns false (no-op) for
- * unknown or already-expired tokens. Cheap — a single map get + set.
- *
- * Callers re-issue the cookie with a fresh Max-Age only when this returns true,
- * keeping active operators signed in while idle sessions still time out.
+ * Sliding renewal: push the session expiry back to a full TTL from now.
+ * Returns false (no-op) for unknown or already-expired tokens.
+ * Callers re-issue the cookie with a fresh Max-Age only when this returns true.
  */
 export function touchSession(token: string): boolean {
   if (!token) return false;
@@ -61,9 +105,11 @@ export function touchSession(token: string): boolean {
   if (expiresAt === undefined) return false;
   if (Date.now() >= expiresAt) {
     sessions.delete(token);
+    saveToDisk();
     return false;
   }
   sessions.set(token, Date.now() + SESSION_TTL_MS);
+  saveToDisk();
   return true;
 }
 
@@ -73,6 +119,7 @@ export function touchSession(token: string): boolean {
  */
 export function invalidateSession(token: string): void {
   sessions.delete(token);
+  saveToDisk();
 }
 
 /** For tests only — seed a known token and optional clear of the entire map. */

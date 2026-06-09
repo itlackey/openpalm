@@ -189,6 +189,11 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
+    // Session tokens are persisted to ${OP_DATA_DIR}/admin/sessions.json so
+    // they survive UI server restarts (the Node child process is killed and
+    // respawned each app launch). Without this, a valid browser cookie finds
+    // no matching token in the freshly-cleared in-memory store → forced login.
+    OP_DATA_DIR: resolveDataDir(),
     // Do NOT set OP_IMAGE_TAG here. Docker precedence is shell-env >
     // --env-file, so any value injected into the UI server's process.env
     // overrides the authoritative OP_IMAGE_TAG written to stack.env (e.g.
@@ -611,14 +616,15 @@ function showWindow(): void {
 //      our trusted local UI origin (127.0.0.1/localhost). We deny everything else.
 //   2. macOS TCC must have granted the app mic access. That requires
 //      NSMicrophoneUsageDescription in the app's Info.plist (set in
-//      electron-builder.yml) AND a one-time askForMediaAccess() prompt; without
-//      the prompt the app captures a muted device and never appears in
-//      System Settings → Privacy → Microphone.
+//      electron-builder.yml) AND askForMediaAccess() — BUT the OS only shows the
+//      prompt in response to an actual user interaction (clicking the mic button),
+//      not at app startup. We therefore expose this as an IPC call so the renderer
+//      can request it precisely when the user first clicks the mic.
 function isTrustedLocalOrigin(url: string): boolean {
   return url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost');
 }
 
-async function configureMediaPermissions(): Promise<void> {
+function configureMediaPermissions(): void {
   const ses = session.defaultSession;
 
   // Async grant (Chromium asks once per origin). Approve audio capture only for
@@ -631,23 +637,27 @@ async function configureMediaPermissions(): Promise<void> {
     callback(false);
   });
 
-  // Some getUserMedia paths consult the synchronous check handler instead of
-  // raising a request — grant media there for the same trusted origin.
+  // Some getUserMedia paths consult the synchronous check handler — grant media
+  // there for the same trusted origin.
   ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
     return permission === 'media' && isTrustedLocalOrigin(requestingOrigin ?? '');
   });
+}
 
-  // macOS: surface the OS mic prompt up front and register the app under
-  // Privacy → Microphone. Harmless/no-op on Windows + Linux. Non-fatal: a
-  // refusal just means the mic stays unavailable (the UI shows a disabled mic).
-  if (process.platform === 'darwin') {
-    try {
-      if (systemPreferences.getMediaAccessStatus('microphone') !== 'granted') {
-        await systemPreferences.askForMediaAccess('microphone');
-      }
-    } catch (err) {
-      console.warn('Microphone access request failed:', err instanceof Error ? err.message : String(err));
-    }
+// Called from the renderer via IPC when the user clicks the mic button.
+// Returns the access status ('granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown').
+// On Windows/Linux the Electron permission handler above is sufficient; this
+// is only a meaningful prompt on macOS (the OS ignores non-user-gesture calls).
+async function requestMicrophoneAccess(): Promise<string> {
+  if (process.platform !== 'darwin') return 'granted';
+  try {
+    const current = systemPreferences.getMediaAccessStatus('microphone');
+    if (current === 'granted') return 'granted';
+    const granted = await systemPreferences.askForMediaAccess('microphone');
+    return granted ? 'granted' : 'denied';
+  } catch (err) {
+    console.warn('Microphone access request failed:', err instanceof Error ? err.message : String(err));
+    return 'unknown';
   }
 }
 
@@ -808,17 +818,30 @@ ipcMain.handle('set-tray-mic-recording', (_event, recording: boolean) => {
   setTrayMicRecording(recording);
 });
 
+// Request microphone access from the OS (macOS TCC). Called by the renderer
+// when the user clicks the mic button — the OS only shows the permission dialog
+// in response to a real user gesture, not at app startup.
+ipcMain.handle('request-mic-permission', async (): Promise<string> => {
+  return requestMicrophoneAccess();
+});
+
 let cleanupStarted = false;
 
-// Single guarded shutdown. The first quit defers (preventDefault) just long
-// enough to signal and reap both children — the UI server (group-killed in
-// stopUIServer) and the admin OpenCode (handle.stop(), which now resolves as
-// soon as the child is dead rather than after a fixed delay) — then re-quits.
-// The re-entrant call hits the `cleanupStarted` guard and passes straight
-// through. Doing all teardown in one handler (instead of splitting it across
-// before-quit/will-quit with a silent multi-second wait) is what removes the
-// "have to quit twice" behaviour.
-app.on('before-quit', async (event) => {
+// Guarded shutdown. `before-quit` is intentionally NOT async — Electron does
+// not await async before-quit handlers: `event.preventDefault()` fires
+// synchronously and the async continuation runs detached, so the original quit
+// races ahead before cleanup finishes (root cause of the "quit twice" bug).
+// Instead we:
+//   1. preventDefault synchronously on the FIRST call (cleanupStarted=false).
+//   2. Fire cleanup synchronously (stopUIServer SIGKILL, unregister shortcuts).
+//   3. For the optional LocalOpenCode graceful stop, detach a best-effort
+//      promise that calls app.quit() when done — the process exits either way
+//      within the 500ms forceful timeout below.
+//   4. As a safety net, schedule app.quit() 500ms out so a hung stop() can't
+//      leave the app hanging (the user would have to force-quit).
+//   5. The re-entrant call (cleanupStarted=true) does nothing — passes through
+//      so Electron completes the quit.
+app.on('before-quit', (event) => {
   (app as unknown as Record<string, unknown>).isQuitting = true;
   if (cleanupStarted) return;
   cleanupStarted = true;
@@ -826,17 +849,21 @@ app.on('before-quit', async (event) => {
   globalShortcut.unregisterAll();
   stopTrayRecordingAnimation();
   stopUIServer();
-  if (localOpencode) {
-    const handle = localOpencode;
-    localOpencode = null;
-    try {
-      await handle.stop();
-    } catch (err) {
-      console.warn(
-        'Local OpenCode stop raised:',
-        err instanceof Error ? err.message : String(err),
-      );
-    }
+  const handle = localOpencode;
+  localOpencode = null;
+  // Safety net: if stop() hangs, force-quit after 500 ms.
+  const forceQuitTimer = setTimeout(() => app.quit(), 500);
+  if (handle) {
+    handle.stop()
+      .catch((err: unknown) => {
+        console.warn('Local OpenCode stop raised:', err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        clearTimeout(forceQuitTimer);
+        app.quit();
+      });
+  } else {
+    clearTimeout(forceQuitTimer);
+    app.quit();
   }
-  app.quit();
 });

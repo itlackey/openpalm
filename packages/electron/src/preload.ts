@@ -47,6 +47,16 @@ contextBridge.exposeInMainWorld('openpalm', {
     return ipcRenderer.invoke('set-tray-mic-recording', recording);
   },
 
+  /**
+   * Request microphone access from the OS (macOS TCC permission dialog).
+   * Call when the user first clicks the mic button — the OS only shows the
+   * prompt in response to a real user gesture, not at app startup.
+   * Returns: 'granted' | 'denied' | 'restricted' | 'unknown'
+   */
+  requestMicPermission(): Promise<string> {
+    return ipcRenderer.invoke('request-mic-permission');
+  },
+
   onGlobalMicToggle(callback: VoidCallback): VoidCallback {
     const listener = () => callback();
     ipcRenderer.on('global-mic-toggle', listener);

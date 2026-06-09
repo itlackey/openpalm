@@ -17,6 +17,7 @@
 	type OpenPalmBridge = {
 		setTrayMicRecording?: (recording: boolean) => Promise<void>;
 		onGlobalMicToggle?: (callback: () => void) => (() => void) | void;
+		requestMicPermission?: () => Promise<string>;
 	};
 
 	let mounted = $state(false);
@@ -28,9 +29,7 @@
 		});
 
 		const openpalm = (window as Window & { openpalm?: OpenPalmBridge }).openpalm;
-		removeGlobalMicToggle = openpalm?.onGlobalMicToggle?.(() => {
-			handleMicClick();
-		}) ?? null;
+		removeGlobalMicToggle = openpalm?.onGlobalMicToggle?.(() => { handleMicClick(); }) ?? null;
 	});
 
 	onDestroy(() => {
@@ -85,6 +84,25 @@
 		// If TTS is mid-utterance, stop it so we don't hear ourselves over
 		// the assistant's previous response.
 		stopSpeaking();
+
+		// On macOS the OS only shows the microphone permission dialog in response
+		// to a real user gesture. Request access here on the first click so the
+		// user can grant it immediately. No-op outside the Electron shell.
+		const openpalm = (window as Window & { openpalm?: OpenPalmBridge }).openpalm;
+		if (openpalm?.requestMicPermission) {
+			void openpalm.requestMicPermission().then((status) => {
+				if (status === 'denied' || status === 'restricted') {
+					voiceState.errorMessage = 'Microphone access denied. Allow it in System Settings → Privacy → Microphone, then try again.';
+					return;
+				}
+				startListening((transcript: string) => {
+					const trimmed = transcript.trim();
+					if (!trimmed) return;
+					void chat.send(trimmed);
+				});
+			});
+			return;
+		}
 
 		startListening((transcript: string) => {
 			const trimmed = transcript.trim();
