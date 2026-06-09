@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ThemePreference } from '$lib/theme-state.svelte.js';
+  import { afterNavigate } from '$app/navigation';
   import Drawer from '$lib/components/common/Drawer.svelte';
   import IconButton from '$lib/components/common/IconButton.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
@@ -11,6 +12,11 @@
   let { showManageAssistant = true }: Props = $props();
 
   let open = $state(false);
+
+  // Always close on navigation (back/forward or programmatic), not just the two
+  // in-drawer links — otherwise the drawer can linger open over the next page
+  // (the mobile "drawer over content" bug, #473).
+  afterNavigate(() => { open = false; });
 
   function setTheme(event: Event): void {
     const next = (event.currentTarget as HTMLSelectElement).value;
