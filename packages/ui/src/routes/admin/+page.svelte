@@ -67,6 +67,9 @@
   // ── Version management ──────────────────────────────────────────────────────
   let currentImageTag = $state('');
   let inElectron = $state(false);
+  let electronVersion = $state<string | null>(null);
+  let electronLatestVersion = $state<string | null>(null);
+  let electronLatestUrl = $state<string | null>(null);
   let tagChangeLoading = $state(false);
   let uiDownloadLoading = $state(false);
   let uiDownloadReady = $state(false);
@@ -226,6 +229,9 @@
       const data = await fetchVersions();
       currentImageTag = data.imageTag;
       inElectron = data.inElectron;
+      electronVersion = data.electronVersion;
+      electronLatestVersion = data.electronLatestVersion;
+      electronLatestUrl = data.electronLatestUrl;
       // Do not reset selectedImageTag/selectedUiTag here — loadReleases initializes them
     } catch {
       // Non-fatal — version info is supplementary
@@ -466,6 +472,9 @@
         tokenStored={true}
         {upgradeLoading}
         {inElectron}
+        {electronVersion}
+        {electronLatestVersion}
+        {electronLatestUrl}
         {uiVersion}
         {uiVersions}
         {uiVersionsLoading}

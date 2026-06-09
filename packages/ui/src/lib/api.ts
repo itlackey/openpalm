@@ -152,9 +152,21 @@ export async function upgradeStack(): Promise<UpgradeStackResult> {
 
 // ── Version management ───────────────────────────────────────────────────
 
-export async function fetchVersions(): Promise<{ imageTag: string; inElectron: boolean }> {
+export interface VersionsResponse {
+  imageTag: string;
+  inElectron: boolean;
+  /** Desktop (Electron) app version — null when not running in Electron. */
+  electronVersion: string | null;
+  /** Newer desktop version from the app's GitHub update check, if any. */
+  electronLatestVersion: string | null;
+  /** Download URL for the newer desktop release. */
+  electronLatestUrl: string | null;
+  electronUpdateAvailable: boolean;
+}
+
+export async function fetchVersions(): Promise<VersionsResponse> {
   const res = await requireOk(await request('GET', '/admin/versions'));
-  return (await res.json()) as { imageTag: string; inElectron: boolean };
+  return (await res.json()) as VersionsResponse;
 }
 
 export interface ReleaseEntry {

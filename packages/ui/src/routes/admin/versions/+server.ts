@@ -18,5 +18,20 @@ export const GET: RequestHandler = (event) => {
 
   const inElectron = process.env.OP_INSIDE_ELECTRON === "1";
 
-  return json({ imageTag, inElectron });
+  // Desktop (Electron) app version + update info, injected by buildUIServerEnv()
+  // in packages/electron/src/main.ts. Present only when running inside Electron.
+  // OP_ELECTRON_LATEST_* are set only when the app's GitHub update check found a
+  // newer release, so latestVersion non-null ⇒ an update is available.
+  const electronVersion = process.env.OP_ELECTRON_VERSION ?? null;
+  const electronLatestVersion = process.env.OP_ELECTRON_LATEST_VERSION ?? null;
+  const electronLatestUrl = process.env.OP_ELECTRON_LATEST_URL ?? null;
+
+  return json({
+    imageTag,
+    inElectron,
+    electronVersion,
+    electronLatestVersion,
+    electronLatestUrl,
+    electronUpdateAvailable: !!electronLatestVersion,
+  });
 };

@@ -10,6 +10,12 @@
     tokenStored: boolean;
     upgradeLoading: boolean;
     inElectron: boolean;
+    /** Desktop (Electron) app version — null when not running in Electron. */
+    electronVersion: string | null;
+    /** Newer desktop version from the app's GitHub update check, if any. */
+    electronLatestVersion: string | null;
+    /** Download URL for the newer desktop release. */
+    electronLatestUrl: string | null;
     /** Running @openpalm/ui version (the build currently serving this page). */
     uiVersion: string;
     uiVersions: UiVersionEntry[];
@@ -36,6 +42,9 @@
     tokenStored,
     upgradeLoading,
     inElectron,
+    electronVersion,
+    electronLatestVersion,
+    electronLatestUrl,
     uiVersion,
     uiVersions,
     uiVersionsLoading,
@@ -138,6 +147,27 @@
         <dt>Admin interface</dt>
         <dd><code class="version-value">{uiVersion || '—'}</code></dd>
       </div>
+      {#if inElectron}
+        <div class="versions-row">
+          <dt>Desktop app</dt>
+          <dd class="desktop-version">
+            <code class="version-value">{electronVersion || '—'}</code>
+            {#if electronLatestVersion && electronLatestUrl}
+              <span class="update-pill">Update available: v{electronLatestVersion}</span>
+              <a
+                class="btn btn-sm btn-secondary"
+                href={electronLatestUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >Download</a>
+            {:else if electronLatestVersion}
+              <span class="update-pill">Update available: v{electronLatestVersion}</span>
+            {:else}
+              <span class="up-to-date">Up to date</span>
+            {/if}
+          </dd>
+        </div>
+      {/if}
     </dl>
 
     <!-- Advanced: pin a specific version (rollback / troubleshooting). -->
@@ -357,6 +387,26 @@
     border-radius: var(--radius-sm);
     border: 1px solid var(--color-border);
     color: var(--color-text-secondary);
+  }
+
+  .desktop-version {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .update-pill {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-primary);
+    background: var(--color-primary-bg, var(--color-bg-secondary));
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+  }
+  .up-to-date {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
   }
 
   /* ── Advanced disclosure ── */
