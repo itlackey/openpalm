@@ -41,10 +41,10 @@ export async function startRecording(): Promise<RecordingSession> {
 	} catch (err) {
 		const name = (err as { name?: string })?.name ?? '';
 		if (name === 'NotAllowedError' || name === 'SecurityError') {
-			throw new Error('Microphone access denied');
+			throw new Error('Microphone access denied. Open System Settings → Privacy & Security → Microphone and enable OpenPalm, then restart the app.');
 		}
 		if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-			throw new Error('No microphone was found');
+			throw new Error('No microphone was found. Plug in a microphone and try again.');
 		}
 		throw new Error(`Microphone error: ${(err as Error)?.message ?? String(err)}`);
 	}

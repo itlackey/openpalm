@@ -85,25 +85,14 @@
 		// the assistant's previous response.
 		stopSpeaking();
 
-		// On macOS the OS only shows the microphone permission dialog in response
-		// to a real user gesture. Request access here on the first click so the
-		// user can grant it immediately. No-op outside the Electron shell.
-		const openpalm = (window as Window & { openpalm?: OpenPalmBridge }).openpalm;
-		if (openpalm?.requestMicPermission) {
-			void openpalm.requestMicPermission().then((status) => {
-				if (status === 'denied' || status === 'restricted') {
-					voiceState.errorMessage = 'Microphone access denied. Allow it in System Settings → Privacy → Microphone, then try again.';
-					return;
-				}
-				startListening((transcript: string) => {
-					const trimmed = transcript.trim();
-					if (!trimmed) return;
-					void chat.send(trimmed);
-				});
-			});
-			return;
-		}
-
+		// Let getUserMedia in startListening trigger the macOS TCC prompt
+		// directly from the renderer — that is the only path that registers
+		// the app under System Settings → Privacy → Microphone and shows the
+		// OS dialog. Any main-process pre-flight (askForMediaAccess) uses a
+		// different TCC path, returns 'denied' for unsigned/ad-hoc apps, and
+		// blocks getUserMedia from ever firing so the app never appears in
+		// Privacy settings. Errors (denied, no device) surface via
+		// voiceState.errorMessage inside startListening → startRecording.
 		startListening((transcript: string) => {
 			const trimmed = transcript.trim();
 			if (!trimmed) return;
