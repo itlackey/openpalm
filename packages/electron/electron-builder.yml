@@ -38,12 +38,23 @@ mac:
     - target: zip
       arch: [arm64, x64]
   icon: assets/icon.png
-  # macOS refuses microphone access (and never lists the app under Privacy →
-  # Microphone) unless the Info.plist declares why it needs the mic. Without
-  # this, the navbar mic captures a SILENT stream and Whisper transcribes a
-  # phantom "You". The string is shown in the OS permission prompt.
+  # Microphone access on macOS needs BOTH of the following or capture is denied
+  # without any prompt and the app never appears under Privacy → Microphone:
+  #
+  # 1. NSMicrophoneUsageDescription in Info.plist — the string macOS shows in
+  #    the permission prompt. Without it askForMediaAccess() crashes/denies.
+  # 2. com.apple.security.device.audio-input in the signing entitlements —
+  #    electron-builder signs with the Hardened Runtime flag BY DEFAULT (even
+  #    for the ad-hoc identity), and the hardened runtime blocks mic capture
+  #    before TCC unless this entitlement is present. Its default entitlements
+  #    file does NOT include it, which is why 0.11.3 showed "Microphone access
+  #    denied" while OpenPalm was absent from the Settings list. We therefore
+  #    ship our own entitlements (Electron baseline + audio-input).
   extendInfo:
     NSMicrophoneUsageDescription: OpenPalm uses the microphone for voice input — speaking to your assistant.
+  hardenedRuntime: true
+  entitlements: assets/entitlements.mac.plist
+  entitlementsInherit: assets/entitlements.mac.plist
 
 linux:
   target:

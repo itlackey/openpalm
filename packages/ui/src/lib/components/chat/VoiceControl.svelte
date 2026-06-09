@@ -97,9 +97,20 @@
 		const openpalm = (window as Window & { openpalm?: OpenPalmBridge }).openpalm;
 		if (openpalm?.requestMicPermission) {
 			const status = await openpalm.requestMicPermission();
-			if (status === 'denied' || status === 'restricted') {
+			if (status === 'denied-no-prompt') {
+				// macOS denied without ever showing a prompt — the app build is
+				// missing the audio-input entitlement, so OpenPalm will NOT appear
+				// in the Settings list. Telling the user to enable it there is
+				// impossible to follow; the only fix is an updated build.
 				voiceState.errorMessage =
-					'Microphone access denied. Open System Settings → Privacy & Security → Microphone and enable OpenPalm, then restart the app.';
+					'This OpenPalm build cannot request microphone access on macOS. Please update to the latest version of the desktop app.';
+				return;
+			}
+			if (status === 'denied' || status === 'restricted') {
+				// Main process opened System Settings → Privacy & Security →
+				// Microphone for us; the app is in the list with the toggle off.
+				voiceState.errorMessage =
+					'Microphone access is turned off. In the System Settings window that just opened, enable OpenPalm under Microphone, then quit and reopen the app.';
 				return;
 			}
 		}

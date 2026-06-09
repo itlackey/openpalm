@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the OpenPalm desktop app.
+
+  electron-builder signs macOS builds (ad-hoc, identity "-") with the Hardened
+  Runtime flag ENABLED BY DEFAULT (app-builder-lib macPackager:
+  `hardenedRuntime !== false`). Under the hardened runtime, microphone access
+  requires com.apple.security.device.audio-input — WITHOUT it, macOS denies
+  the capture before TCC is even consulted: no permission prompt is shown, the
+  app NEVER appears under System Settings → Privacy & Security → Microphone,
+  and askForMediaAccess() resolves false. That is exactly the 0.11.3
+  "mic denied, but OpenPalm isn't in the Settings list" bug.
+
+  The first three keys are an exact copy of electron-builder's default
+  entitlements template (templates/entitlements.mac.plist) that the 0.11.3
+  app was signed with and runs fine under — only audio-input is added.
+-->
+<plist version="1.0">
+  <dict>
+    <!-- https://github.com/electron/electron-notarize#prerequisites -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- https://github.com/electron-userland/electron-builder/issues/3940 -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Microphone capture under the hardened runtime (voice input). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

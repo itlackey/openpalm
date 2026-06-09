@@ -51,7 +51,9 @@ contextBridge.exposeInMainWorld('openpalm', {
    * Request microphone access from the OS (macOS TCC permission dialog).
    * Call when the user first clicks the mic button — the OS only shows the
    * prompt in response to a real user gesture, not at app startup.
-   * Returns: 'granted' | 'denied' | 'restricted' | 'unknown'
+   * Returns: 'granted' | 'denied' | 'restricted' | 'denied-no-prompt' | 'unknown'
+   * ('denied-no-prompt' = macOS refused without consulting TCC — the build
+   *  lacks the audio-input entitlement and won't appear in Settings.)
    */
   requestMicPermission(): Promise<string> {
     return ipcRenderer.invoke('request-mic-permission');

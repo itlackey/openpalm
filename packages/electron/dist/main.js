@@ -11902,11 +11902,22 @@ async function requestMicrophoneAccess() {
   if (process.platform !== "darwin")
     return "granted";
   try {
-    const current = systemPreferences.getMediaAccessStatus("microphone");
-    if (current === "granted")
+    const before = systemPreferences.getMediaAccessStatus("microphone");
+    console.log("Microphone TCC status before request:", before);
+    if (before === "granted")
       return "granted";
+    if (before === "denied" || before === "restricted") {
+      shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
+      return before;
+    }
     const granted = await systemPreferences.askForMediaAccess("microphone");
-    return granted ? "granted" : "denied";
+    const after = systemPreferences.getMediaAccessStatus("microphone");
+    console.log("Microphone TCC status after request:", after, "(askForMediaAccess →", granted, ")");
+    if (granted)
+      return "granted";
+    if (after === "not-determined")
+      return "denied-no-prompt";
+    return "denied";
   } catch (err) {
     console.warn("Microphone access request failed:", err instanceof Error ? err.message : String(err));
     return "unknown";
@@ -11955,12 +11966,6 @@ function createTray() {
       checked: loginSettings.openAtLogin,
       click: (menuItem) => {
         app.setLoginItemSettings({ openAtLogin: menuItem.checked });
-      }
-    },
-    {
-      label: "Test Notification",
-      click: () => {
-        showNotification("OpenPalm", "Notifications are working.");
       }
     },
     { type: "separator" },
