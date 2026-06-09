@@ -12,6 +12,7 @@ vi.mock('$app/state', () => ({
 
 vi.mock('$app/navigation', () => ({
   goto: vi.fn(),
+  afterNavigate: vi.fn(),
 }));
 
 vi.mock('$lib/endpoints-state.svelte.js', () => ({
