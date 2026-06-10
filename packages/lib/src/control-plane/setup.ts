@@ -16,6 +16,7 @@ import {
 import { buildAkmEndpoint } from './akm-endpoints.js';
 import { mergeEnvContent } from "./env.js";
 import { DEFAULT_IMAGE_TAG } from "./config-persistence.js";
+import { buildPlatformImageTagEnv } from './image-tags.js';
 import { ensureHomeDirs } from "./home.js";
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "./install-lock.js";
 import {
@@ -235,7 +236,10 @@ export async function performSetup(
       // OP_IMAGE_TAG was pinned to an old version (e.g. v0.11.1) kept deploying a
       // months-old image — the akm-0.3.1 surprise. The Advanced image-tag field
       // still lets a power user pin deliberately by entering a value.
-      akmUpdates.OP_IMAGE_TAG = imageTag && imageTag.trim() ? imageTag.trim() : DEFAULT_IMAGE_TAG;
+      Object.assign(
+        akmUpdates,
+        buildPlatformImageTagEnv(imageTag && imageTag.trim() ? imageTag.trim() : DEFAULT_IMAGE_TAG),
+      );
       // NOTE: host-akm sharing no longer repoints the container's primary stash
       // (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is
       // wired as a read-write SECONDARY source — see configureHostAkmSharing()

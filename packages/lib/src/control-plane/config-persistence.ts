@@ -17,6 +17,7 @@ import { listEnabledAddonIds } from "./registry.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { SPEC_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
+import { buildPlatformImageTagEnv } from './image-tags.js';
 
 import {
   readCoreCompose,
@@ -130,7 +131,7 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
-    `OP_IMAGE_TAG=${DEFAULT_IMAGE_TAG}`,
+    ...Object.entries(buildPlatformImageTagEnv(DEFAULT_IMAGE_TAG)).map(([key, value]) => `${key}=${value}`),
     "",
     "# ── Layout (on-disk schema version; managed by the migration harness) ──",
     `OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`,

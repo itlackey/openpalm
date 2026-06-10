@@ -43,11 +43,12 @@ export {
 // ── Layout migration harness ────────────────────────────────────────────────
 export {
   ensureMigrated,
+  ensureReleaseMigrated,
   MigrationError,
   CURRENT_LAYOUT_VERSION,
   LAYOUT_VERSION_KEY,
 } from "./control-plane/migrations.js";
-export type { MigrationReport } from "./control-plane/migrations.js";
+export type { MigrationReport, ReleaseMigrationReport } from "./control-plane/migrations.js";
 
 // ── Registry Catalog ─────────────────────────────────────────────────────
 export type {
@@ -405,6 +406,9 @@ export {
   readUserEnvSync,
   userEnvPathSync,
 } from "./control-plane/akm-user-env.js";
+
+export type { AkmStats } from './control-plane/akm-stats.js';
+export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
 export type { UiBuildUpdateResult } from "./control-plane/ui-assets.js";

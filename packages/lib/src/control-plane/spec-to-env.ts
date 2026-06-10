@@ -12,6 +12,7 @@ import { mergeEnvContent } from "./env.js";
 import { resolveOperatorIds } from "./operator-ids.js";
 import { assertNoSecretLikeStackEnvKeys } from './secrets.js';
 import { stackEnvPathFromStackDir } from './paths.js';
+import { buildPlatformImageTagEnv } from './image-tags.js';
 
 /**
  * Derive the system.env key-value pairs from the setup spec + defaults.
@@ -36,7 +37,7 @@ export function deriveSystemEnvFromSpec(homeDir: string): Record<string, string>
   }
   // Image
   result["OP_IMAGE_NAMESPACE"] = image.namespace;
-  result["OP_IMAGE_TAG"] = image.tag;
+  Object.assign(result, buildPlatformImageTagEnv(image.tag));
 
   // Ports — only the services that publish to the host. Guardian is
   // network-only (no host port mapping) so OP_GUARDIAN_PORT is no longer

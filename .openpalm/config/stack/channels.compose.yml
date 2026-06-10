@@ -6,7 +6,7 @@
 services:
   chat:
     profiles: ["addon.chat"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_CHANNEL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     ports:
@@ -36,7 +36,7 @@ services:
 
   api:
     profiles: ["addon.api"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_CHANNEL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     ports:
@@ -65,7 +65,7 @@ services:
 
   discord:
     profiles: ["addon.discord"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_CHANNEL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
     environment:
       PORT: "8184"
@@ -104,7 +104,7 @@ services:
 
   slack:
     profiles: ["addon.slack"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_CHANNEL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
     environment:
       PORT: "8185"
@@ -138,7 +138,7 @@ services:
 
   guardian:
     profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
     environment:
       HOME: /opt/openpalm/guardian

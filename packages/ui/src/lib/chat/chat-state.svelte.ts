@@ -51,6 +51,7 @@ import {
 } from './oc-events.js';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
+import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
 
 type EndpointId = string;
 type SessionId = string;
@@ -329,6 +330,7 @@ class ChatService {
 				assistantText: text,
 			});
 		}
+		notifyAssistantReply(text === '(no response)' ? '' : text);
 		pending.resolve();
 	}
 
@@ -650,6 +652,7 @@ class ChatService {
 						assistantText: text,
 					});
 				}
+				notifyAssistantReply(text === '(no response)' ? '' : text);
 			}
 		} catch (e) {
 			const err = e as { status?: number; message?: string };
@@ -663,6 +666,7 @@ class ChatService {
 			} else {
 				this.error = err.message ?? 'Message failed.';
 			}
+			notifyAssistantError();
 		} finally {
 			this.sending = false;
 		}

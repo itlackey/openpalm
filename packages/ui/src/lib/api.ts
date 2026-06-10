@@ -543,6 +543,54 @@ export async function fetchAkmHealth(): Promise<AkmHealth> {
   return (await res.json()) as AkmHealth;
 }
 
+export type AkmKnowledgeStats =
+  | { available: false; reason?: string }
+  | {
+      available: true;
+      version: string | null;
+      health: {
+        status: 'pass' | 'warn' | 'unknown';
+        advisories: string[];
+      };
+      index: {
+        entryCount: number | null;
+        lastBuiltAt: string | null;
+        hasEmbeddings: boolean | null;
+        vecAvailable: boolean | null;
+      };
+      assetCounts: {
+        memory: number | null;
+        skill: number | null;
+        lesson: number | null;
+      };
+      improve: {
+        invoked: number | null;
+        completed: number | null;
+        skipped: number | null;
+        reflectOk: number | null;
+        reflectCooldown: number | null;
+        consolidation: {
+          promoted: number | null;
+          merged: number | null;
+          deleted: number | null;
+        };
+      };
+      proposals: {
+        pending: number;
+        items: Array<{
+          ref: string | null;
+          generator: string | null;
+          createdAt: string | null;
+          status: string | null;
+        }>;
+      };
+    };
+
+export async function fetchAkmKnowledgeStats(): Promise<AkmKnowledgeStats> {
+  const res = await requireOk(await request('GET', '/admin/akm/stats'));
+  return (await res.json()) as AkmKnowledgeStats;
+}
+
 // ── Host AKM sharing ────────────────────────────────────────────────
 export type HostAkmSharing = {
   sharing: { available: boolean; enabled: boolean; hostStashPath: string | null };

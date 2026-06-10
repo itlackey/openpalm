@@ -24,6 +24,11 @@ import {
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
 import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
 
+export type LaunchOnLoginStatus = {
+  supported: boolean;
+  enabled: boolean;
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -114,6 +119,7 @@ const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 // Target menu-bar/tray icon size (points). The source asset is much larger;
 // macOS otherwise renders it at full bitmap height (#455).
 const TRAY_ICON_SIZE = 18;
+const APP_USER_MODEL_ID = 'com.openpalm.app';
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -715,6 +721,30 @@ export function showNotification(title: string, body?: string): void {
   n.show();
 }
 
+export function supportsLaunchOnLogin(platform = process.platform): boolean {
+  return platform === 'darwin' || platform === 'win32';
+}
+
+export function getLaunchOnLoginStatus(platform = process.platform): LaunchOnLoginStatus {
+  if (!supportsLaunchOnLogin(platform)) {
+    return { supported: false, enabled: false };
+  }
+
+  return {
+    supported: true,
+    enabled: !!app.getLoginItemSettings().openAtLogin,
+  };
+}
+
+export function setLaunchOnLogin(enabled: boolean, platform = process.platform): LaunchOnLoginStatus {
+  if (!supportsLaunchOnLogin(platform)) {
+    return { supported: false, enabled: false };
+  }
+
+  app.setLoginItemSettings({ openAtLogin: enabled });
+  return getLaunchOnLoginStatus(platform);
+}
+
 // ── Tray ─────────────────────────────────────────────────────────────────────
 
 function createTray(): void {
@@ -735,7 +765,7 @@ function createTray(): void {
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon as NativeImage, alpha));
   tray = new Tray(trayIcon);
 
-  const loginSettings = app.getLoginItemSettings();
+  const loginSettings = getLaunchOnLoginStatus();
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open OpenPalm', click: showWindow },
     { label: 'Show Logs', click: () => { void shell.openPath(app.getPath('logs')); } },
@@ -746,9 +776,10 @@ function createTray(): void {
       // Default OFF; the user's current setting drives the initial checked state.
       label: 'Start at Login',
       type: 'checkbox',
-      checked: loginSettings.openAtLogin,
+      checked: loginSettings.enabled,
+      enabled: loginSettings.supported,
       click: (menuItem) => {
-        app.setLoginItemSettings({ openAtLogin: menuItem.checked });
+        setLaunchOnLogin(menuItem.checked);
       },
     },
     { type: 'separator' },
@@ -778,6 +809,7 @@ function createTray(): void {
 
 app.whenReady().then(async () => {
   initFileLogger();
+  app.setAppUserModelId?.(APP_USER_MODEL_ID);
   console.log(`OpenPalm starting (v${app.getVersion?.() ?? '?'}); logs at ${logFilePath()}`);
   createSplashWindow();
   try {
@@ -824,6 +856,24 @@ app.on('window-all-closed', () => {
 ipcMain.handle('restart-app', () => {
   app.relaunch();
   app.quit();
+});
+
+ipcMain.handle('launch-on-login-status', (): LaunchOnLoginStatus => {
+  return getLaunchOnLoginStatus();
+});
+
+ipcMain.handle('set-launch-on-login', (_event, enabled: boolean): LaunchOnLoginStatus => {
+  return setLaunchOnLogin(!!enabled);
+});
+
+ipcMain.on('notify', (_event, payload: { title?: string; body?: string } | null) => {
+  const focusedWindow = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+  if (focusedWindow?.isFocused()) return;
+  const title = payload?.title?.trim();
+  if (!title) return;
+  const notification = new Notification({ title, body: payload?.body ?? '' });
+  notification.on('click', showWindow);
+  notification.show();
 });
 
 ipcMain.handle('set-tray-mic-recording', (_event, recording: boolean) => {

@@ -21,6 +21,14 @@ declare global {
       };
       notify?: (title: string, body: string) => void;
       restart?: () => Promise<void>;
+      launchOnLoginStatus?: () => Promise<{
+        supported: boolean;
+        enabled: boolean;
+      }>;
+      setLaunchOnLogin?: (enabled: boolean) => Promise<{
+        supported: boolean;
+        enabled: boolean;
+      }>;
       setTrayMicRecording?: (recording: boolean) => Promise<void>;
       onGlobalMicToggle?: (callback: () => void) => (() => void) | void;
     };

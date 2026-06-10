@@ -121,6 +121,14 @@ describe('default endpoint synthesis', () => {
     expect(getActiveEndpoint().url).toBe('http://127.0.0.1:4800');
   });
 
+  it('rewrites wildcard bind hosts to loopback for browser-facing default urls', () => {
+    process.env.OP_ASSISTANT_URL = 'http://0.0.0.0:4800';
+    expect(getActiveEndpoint().url).toBe('http://127.0.0.1:4800');
+
+    process.env.OP_OPENCODE_URL = 'http://[::]:3900/';
+    expect(getActiveEndpoint().url).toBe('http://127.0.0.1:3900');
+  });
+
   it('picks up OPENCODE_SERVER_PASSWORD for default', () => {
     process.env.OPENCODE_SERVER_PASSWORD = 'secret';
     expect(getActiveEndpoint().password).toBe('secret');

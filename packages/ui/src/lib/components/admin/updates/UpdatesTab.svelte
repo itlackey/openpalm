@@ -1,6 +1,13 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { ReleaseEntry, UiVersionEntry } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import {
+    desktopNotifyEnabled,
+    desktopReplyPreviewEnabled,
+    setDesktopNotifyEnabled,
+    setDesktopReplyPreviewEnabled,
+  } from '$lib/desktop-notifications.js';
   import { updateStatus, latestForChannel, type UpdateStatus } from '$lib/version-compare.js';
 
   interface Props {
@@ -98,6 +105,41 @@
   // npm dist-tag channel that matches this build's stability.
   const uiLatest = $derived(latestForChannel(uiVersion, uiCandidates));
   const uiStatus = $derived<UpdateStatus>(updateStatus(uiVersion, uiLatest));
+  let notificationsEnabled = $state(false);
+  let replyPreviewEnabled = $state(false);
+  let launchOnLoginSupported = $state(false);
+  let launchOnLoginEnabled = $state(false);
+  let launchOnLoginSaving = $state(false);
+
+  onMount(() => {
+    notificationsEnabled = desktopNotifyEnabled();
+    replyPreviewEnabled = desktopReplyPreviewEnabled();
+    void hydrateLaunchOnLogin();
+  });
+
+  async function hydrateLaunchOnLogin(): Promise<void> {
+    const status = await window.openpalm?.launchOnLoginStatus?.();
+    if (!status) return;
+    launchOnLoginSupported = status.supported;
+    launchOnLoginEnabled = status.enabled;
+  }
+
+  async function onLaunchOnLoginChange(event: Event): Promise<void> {
+    const enabled = (event.currentTarget as HTMLInputElement).checked;
+    if (!window.openpalm?.setLaunchOnLogin) {
+      launchOnLoginEnabled = false;
+      return;
+    }
+
+    launchOnLoginSaving = true;
+    try {
+      const status = await window.openpalm.setLaunchOnLogin(enabled);
+      launchOnLoginSupported = status.supported;
+      launchOnLoginEnabled = status.enabled;
+    } finally {
+      launchOnLoginSaving = false;
+    }
+  }
 
   function statusEmoji(s: UpdateStatus): string {
     return s === 'current' ? '✅' : s === 'update' ? '⬆️' : '';
@@ -357,6 +399,60 @@
               <p class="version-hint">Downloads and replaces the admin interface. Takes effect after restart.</p>
             {/if}
           </div>
+
+          <div class="version-divider"></div>
+          <div class="version-section">
+            <div class="version-label">Launch on login</div>
+            <label class="desktop-toggle">
+              <input
+                type="checkbox"
+                checked={launchOnLoginEnabled}
+                disabled={!launchOnLoginSupported || launchOnLoginSaving}
+                onchange={onLaunchOnLoginChange}
+              />
+              <span>Start OpenPalm automatically when you sign in on this device.</span>
+            </label>
+            <p class="version-hint">
+              {#if launchOnLoginSupported}
+                Uses the native desktop login-item integration for this platform.
+              {:else}
+                Not wired on this platform yet. The current desktop build only exposes this safely on macOS and Windows.
+              {/if}
+            </p>
+          </div>
+
+          <div class="version-divider"></div>
+          <div class="version-section">
+            <div class="version-label">Desktop notifications</div>
+            <label class="desktop-toggle">
+              <input
+                type="checkbox"
+                checked={notificationsEnabled}
+                onchange={(event) => {
+                  notificationsEnabled = (event.currentTarget as HTMLInputElement).checked;
+                  setDesktopNotifyEnabled(notificationsEnabled);
+                  if (!notificationsEnabled) {
+                    replyPreviewEnabled = false;
+                    setDesktopReplyPreviewEnabled(false);
+                  }
+                }}
+              />
+              <span>Notify when the assistant replies or errors while the app is in the background.</span>
+            </label>
+            <label class="desktop-toggle desktop-toggle--nested">
+              <input
+                type="checkbox"
+                checked={replyPreviewEnabled}
+                disabled={!notificationsEnabled}
+                onchange={(event) => {
+                  replyPreviewEnabled = (event.currentTarget as HTMLInputElement).checked;
+                  setDesktopReplyPreviewEnabled(replyPreviewEnabled);
+                }}
+              />
+              <span>Include reply preview in the notification body.</span>
+            </label>
+            <p class="version-hint">Reply previews stay off by default because desktop notifications can persist outside the app.</p>
+          </div>
         {/if}
 
       </div>
@@ -445,6 +541,19 @@
     flex-direction: column;
     gap: var(--space-2);
     margin: var(--space-5) 0 0;
+  }
+
+  .desktop-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+  }
+
+  .desktop-toggle--nested {
+    margin-left: var(--space-6);
   }
   .versions-row {
     display: flex;

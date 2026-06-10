@@ -240,6 +240,9 @@ describe("writeRuntimeFiles", () => {
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
     expect(content).toContain(`OP_IMAGE_TAG=`);
+    expect(content).toContain('OP_ASSISTANT_IMAGE_TAG=');
+    expect(content).toContain('OP_GUARDIAN_IMAGE_TAG=');
+    expect(content).toContain('OP_CHANNEL_IMAGE_TAG=');
   });
 
   test("stack.env does NOT leak user-managed secrets", () => {

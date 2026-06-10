@@ -271,6 +271,9 @@ describe("updateStackEnvToLatestImageTag", () => {
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
     expect(updated).toContain("OP_IMAGE_TAG=v0.7.7");
+    expect(updated).toContain('OP_ASSISTANT_IMAGE_TAG=v0.7.7');
+    expect(updated).toContain('OP_GUARDIAN_IMAGE_TAG=v0.7.7');
+    expect(updated).toContain('OP_CHANNEL_IMAGE_TAG=v0.7.7');
   });
 
   test('uses the running OpenPalm major when OP_IMAGE_TAG is non-semver', async () => {
@@ -296,6 +299,38 @@ describe("updateStackEnvToLatestImageTag", () => {
 
     expect(result.tag).toBe('v0.12.0');
     expect(updated).toContain('OP_IMAGE_TAG=v0.12.0');
+    expect(updated).toContain('OP_ASSISTANT_IMAGE_TAG=v0.12.0');
+  });
+
+  test('refuses to advance to a partially published tag for enabled channel services', async () => {
+    const state = makeTestState();
+    trackDir(state.homeDir);
+    mkdirSync(join(state.stashDir, 'env'), { recursive: true });
+    mkdirSync(join(state.stackDir), { recursive: true });
+    writeFileSync(
+      stackEnvFor(state.stackDir),
+      'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.11.0\nOP_ENABLED_ADDONS=discord\n',
+    );
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/assistant/tags?page_size=')) {
+        return new Response(
+          JSON.stringify({ results: [{ name: 'v0.11.3' }, { name: 'v0.11.0' }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/assistant/tags/v0.11.3')) {
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.includes('/guardian/tags/v0.11.3') || url.includes('/channel/tags/v0.11.3')) {
+        return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    await expect(updateStackEnvToLatestImageTag(state)).rejects.toThrow(/missing published image tag\(s\) for guardian, channel/);
+    expect(readFileSync(stackEnvFor(state.stackDir), 'utf-8')).toContain('OP_IMAGE_TAG=v0.11.0');
   });
 
   test("throws when docker tag lookup fails", async () => {

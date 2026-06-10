@@ -104,6 +104,8 @@ describe('GET /admin/akm/health-report', () => {
     expect(html).toContain('Knowledge Health for 72h');
     expect(html).toContain('Pending Proposals (1)');
     expect(html).toContain('chartWallTime');
+    expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
+    expect(res.headers.get('content-security-policy')).toContain('https://cdn.jsdelivr.net');
   });
 
   test('falls back to the default 72h window for invalid values', async () => {

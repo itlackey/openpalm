@@ -35,7 +35,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 // vi.mock() factories are hoisted above other top-level code, so the mock
 // objects they close over must be created via vi.hoisted() to be reachable
 // at hoist time.
-const { mockBrowserWindow } = vi.hoisted(() => ({
+const { mockBrowserWindow, ipcMainOnHandlers, ipcMainHandleHandlers, notificationInstances, mockSetAppUserModelId } = vi.hoisted(() => ({
   mockBrowserWindow: {
     loadURL: vi.fn(),
     webContents: { setWindowOpenHandler: vi.fn(), send: vi.fn() },
@@ -43,12 +43,17 @@ const { mockBrowserWindow } = vi.hoisted(() => ({
     once: vi.fn(),
     show: vi.fn(),
     focus: vi.fn(),
+    isFocused: vi.fn(() => false),
     hide: vi.fn(),
     close: vi.fn(),
     setTitle: vi.fn(),
     isDestroyed: vi.fn(() => false),
     getAllWindows: vi.fn(() => []),
   },
+  ipcMainOnHandlers: new Map<string, (...args: unknown[]) => void>(),
+  ipcMainHandleHandlers: new Map<string, (...args: unknown[]) => unknown>(),
+  notificationInstances: [] as Array<{ show: ReturnType<typeof vi.fn>; on: ReturnType<typeof vi.fn> }>,
+  mockSetAppUserModelId: vi.fn(),
 }));
 
 const { mockNotificationShow } = vi.hoisted(() => ({
@@ -68,6 +73,8 @@ vi.mock('electron', () => ({
     // without this mock the unmocked call rejected at module load and made the
     // suite exit non-zero (an "unhandled rejection", not a true failure).
     getPath: vi.fn(() => '/mock/logs'),
+    relaunch: vi.fn(),
+    setAppUserModelId: mockSetAppUserModelId,
     getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
     setLoginItemSettings: vi.fn(),
   },
@@ -75,7 +82,7 @@ vi.mock('electron', () => ({
   // constructor; vitest 4 enforces this stricter than 3 did.
   BrowserWindow: Object.assign(
     function MockBrowserWindow() { return mockBrowserWindow; },
-    { getAllWindows: vi.fn(() => []) },
+    { getAllWindows: vi.fn(() => [mockBrowserWindow]) },
   ),
   contextBridge: { exposeInMainWorld: vi.fn() },
   dialog: { showErrorBox: vi.fn() },
@@ -99,11 +106,22 @@ vi.mock('electron', () => ({
   },
   Menu: { buildFromTemplate: vi.fn(() => ({})) },
   shell: { openExternal: vi.fn() },
-  ipcMain: { handle: vi.fn() },
+  ipcMain: {
+    handle: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {
+      ipcMainHandleHandlers.set(event, handler);
+    }),
+    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      ipcMainOnHandlers.set(event, handler);
+    }),
+  },
   // Notification mock: constructor returns an object with a show() spy so we
   // can assert showNotification() calls it.
   Notification: Object.assign(
-    function MockNotification() { return { show: mockNotificationShow }; },
+    function MockNotification() {
+      const instance = { show: mockNotificationShow, on: vi.fn() };
+      notificationInstances.push(instance);
+      return instance;
+    },
     { isSupported: vi.fn(() => true) },
   ),
 }));
@@ -126,8 +144,16 @@ vi.mock('../src/local-opencode.js', () => ({
   killProcessTree: vi.fn(),
 }));
 
-import { buildUIServerEnv, resolveAssistantUrl, waitForReady, showNotification } from '../src/main.js';
-import { app } from 'electron';
+import {
+  buildUIServerEnv,
+  getLaunchOnLoginStatus,
+  resolveAssistantUrl,
+  setLaunchOnLogin,
+  showNotification,
+  supportsLaunchOnLogin,
+  waitForReady,
+} from '../src/main.js';
+import { app, Notification } from 'electron';
 import * as lib from '@openpalm/lib';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
@@ -245,13 +271,10 @@ describe('waitForReady', () => {
   });
 });
 
-// ── showNotification ──────────────────────────────────────────────────────────
-
-import { Notification } from 'electron';
-
 describe('showNotification', () => {
   beforeEach(() => {
     mockNotificationShow.mockReset();
+    notificationInstances.length = 0;
     vi.mocked(Notification.isSupported).mockReturnValue(true);
   });
 
@@ -269,6 +292,78 @@ describe('showNotification', () => {
     vi.mocked(Notification.isSupported).mockReturnValue(false);
     showNotification('Should not fire');
     expect(mockNotificationShow).not.toHaveBeenCalled();
+  });
+
+  it('registers a renderer notification bridge that shows only when unfocused', () => {
+    const handler = ipcMainOnHandlers.get('notify');
+    expect(handler).toBeDefined();
+
+    mockBrowserWindow.isFocused.mockReturnValue(false);
+    handler?.({}, { title: 'OpenPalm', body: 'Assistant replied' });
+    expect(notificationInstances).toHaveLength(1);
+    expect(notificationInstances[0].show).toHaveBeenCalledTimes(1);
+    expect(notificationInstances[0].on).toHaveBeenCalledWith('click', expect.any(Function));
+  });
+
+  it('suppresses renderer notifications while the main window is focused', () => {
+    const handler = ipcMainOnHandlers.get('notify');
+    mockBrowserWindow.isFocused.mockReturnValue(true);
+    notificationInstances.length = 0;
+    mockNotificationShow.mockClear();
+
+    handler?.({}, { title: 'OpenPalm', body: 'Assistant replied' });
+    expect(notificationInstances).toHaveLength(0);
+    expect(mockNotificationShow).not.toHaveBeenCalled();
+  });
+});
+
+describe('launch-on-login helpers', () => {
+  beforeEach(() => {
+    vi.mocked(app.getLoginItemSettings).mockClear();
+    vi.mocked(app.getLoginItemSettings).mockReturnValue({ openAtLogin: false });
+    vi.mocked(app.setLoginItemSettings).mockClear();
+  });
+
+  it('reports launch-on-login support only on macOS and Windows', () => {
+    expect(supportsLaunchOnLogin('darwin')).toBe(true);
+    expect(supportsLaunchOnLogin('win32')).toBe(true);
+    expect(supportsLaunchOnLogin('linux')).toBe(false);
+  });
+
+  it('reads the current launch-on-login state on supported platforms', () => {
+    vi.mocked(app.getLoginItemSettings).mockReturnValue({ openAtLogin: true });
+
+    expect(getLaunchOnLoginStatus('darwin')).toEqual({ supported: true, enabled: true });
+  });
+
+  it('returns unsupported on Linux without touching Electron login settings', () => {
+    expect(getLaunchOnLoginStatus('linux')).toEqual({ supported: false, enabled: false });
+    expect(app.getLoginItemSettings).not.toHaveBeenCalled();
+  });
+
+  it('writes launch-on-login via Electron and returns the updated state', () => {
+    vi.mocked(app.getLoginItemSettings).mockReturnValue({ openAtLogin: true });
+
+    expect(setLaunchOnLogin(true, 'win32')).toEqual({ supported: true, enabled: true });
+    expect(app.setLoginItemSettings).toHaveBeenCalledWith({ openAtLogin: true });
+  });
+
+  it('registers ipc handlers for launch-on-login reads and writes', () => {
+    const statusHandler = ipcMainHandleHandlers.get('launch-on-login-status');
+    const setHandler = ipcMainHandleHandlers.get('set-launch-on-login');
+    expect(statusHandler).toBeDefined();
+    expect(setHandler).toBeDefined();
+
+    expect(statusHandler?.()).toEqual({ supported: false, enabled: false });
+    expect(setHandler?.({}, true)).toEqual({ supported: false, enabled: false });
+    expect(app.setLoginItemSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe('desktop bootstrap', () => {
+  it('sets the App User Model ID on startup', async () => {
+    await Promise.resolve();
+    expect(mockSetAppUserModelId).toHaveBeenCalledWith('com.openpalm.app');
   });
 });
 

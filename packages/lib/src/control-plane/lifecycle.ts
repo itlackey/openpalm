@@ -20,6 +20,7 @@ import {
   ensureComposeVolumeTargets,
 } from "./config-persistence.js";
 import { refreshCoreAssets } from "./core-assets.js";
+import { ensureReleaseMigrated } from './migrations.js';
 import { isSetupComplete } from "./setup-status.js";
 import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
@@ -27,9 +28,11 @@ import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
 import { compareComparableVersions, isComparableSemver, isSameMajorVersion } from "./versioning.js";
+import { buildPlatformImageTagEnv } from './image-tags.js';
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const PLATFORM_IMAGE_NAMES = ['assistant', 'guardian', 'channel'] as const;
 
 
 export function createState(): ControlPlaneState {
@@ -215,6 +218,52 @@ function resolveImageNamespace(state: ControlPlaneState): string {
   return namespace;
 }
 
+function resolveRequiredPlatformImages(state: ControlPlaneState): string[] {
+  const required = new Set<string>(['assistant']);
+  if (hasEnabledChannel(listEnabledAddonIds(state.homeDir))) {
+    required.add('guardian');
+    required.add('channel');
+  }
+  return PLATFORM_IMAGE_NAMES.filter((name) => required.has(name));
+}
+
+async function isDockerImageTagPublished(namespace: string, imageName: string, tag: string): Promise<boolean> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://registry.hub.docker.com/v2/repositories/${namespace}/${imageName}/tags/${tag}`,
+      { headers: { Accept: 'application/json' } },
+    );
+  } catch (e) {
+    throw new Error(`Failed to verify Docker image tag ${namespace}/${imageName}:${tag}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    throw new Error(`Docker tag verification failed for ${namespace}/${imageName}:${tag} (${response.status})`);
+  }
+  return true;
+}
+
+async function ensurePlatformImagesPublished(state: ControlPlaneState, namespace: string, tag: string): Promise<void> {
+  if (namespace !== 'openpalm') return;
+
+  const requiredImages = resolveRequiredPlatformImages(state);
+  const checks = await Promise.all(
+    requiredImages.map(async (imageName) => ({
+      imageName,
+      published: await isDockerImageTagPublished(namespace, imageName, tag),
+    })),
+  );
+  const missing = checks.filter((entry) => !entry.published).map((entry) => entry.imageName);
+  if (missing.length === 0) return;
+
+  throw new Error(
+    `Refusing to update to ${namespace}/*:${tag}: missing published image tag(s) for ${missing.join(', ')}. ` +
+    'This release is incomplete for the enabled services; stack.env was left unchanged.'
+  );
+}
+
 /**
  * Resolve the newest published platform tag from the Docker registry.
  *
@@ -275,16 +324,20 @@ export async function resolveLatestPlatformTagForCurrentMajor(
   return latestTag;
 }
 
-export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): Promise<{
+export async function updateStackEnvToLatestImageTag(
+  state: ControlPlaneState,
+  resolvedTag?: string,
+): Promise<{
   namespace: string;
   tag: string;
 }> {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
   const namespace = resolveImageNamespace(state);
-  const latestTag = await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
+  const latestTag = resolvedTag ?? await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
+  await ensurePlatformImagesPublished(state, namespace, latestTag);
 
   const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
-  const updatedContent = mergeEnvContent(currentContent, { OP_IMAGE_TAG: latestTag }, { uncomment: true });
+  const updatedContent = mergeEnvContent(currentContent, buildPlatformImageTagEnv(latestTag), { uncomment: true });
   writeFileSync(systemEnvPath, updatedContent);
 
   return { namespace, tag: latestTag };
@@ -318,6 +371,25 @@ export type UpgradeResult = {
   restarted: string[];
 };
 
+async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Promise<T>): Promise<T> {
+  const stackEnvPath = `${state.stashDir}/env/stack.env`;
+  let originalStackEnv: string | null = null;
+  try {
+    originalStackEnv = readFileSync(stackEnvPath, 'utf-8');
+  } catch { /* stack.env may not exist yet */ }
+
+  try {
+    return await run();
+  } catch (e) {
+    if (originalStackEnv !== null) {
+      try {
+        writeFileSync(stackEnvPath, originalStackEnv);
+      } catch { /* best effort */ }
+    }
+    throw e;
+  }
+}
+
 /**
  * Full upgrade: resolve latest image tag, refresh assets, pull images,
  * and recreate containers. Used by both the admin endpoint and CLI.
@@ -325,63 +397,50 @@ export type UpgradeResult = {
  * Callers handle their own audit logging and admin self-recreation.
  */
 export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeResult> {
-  const composeOpts = buildComposeOptions(state);
+  return withStackEnvRollback(state, async () => {
+    const composeOpts = buildComposeOptions(state);
 
-  // Compose preflight runs inside `applyUpgrade` -> `reconcileCore`, so we
-  // skip the redundant top-level call. Any merge failure aborts before
-  // mutation just the same.
+    // Compose preflight runs inside `applyUpgrade` -> `reconcileCore`, so we
+    // skip the redundant top-level call. Any merge failure aborts before
+    // mutation just the same.
 
-  // 1. Snapshot stack.env for rollback on failure
-  const stackEnvPath = `${state.stashDir}/env/stack.env`;
-  let originalStackEnv: string | null = null;
-  try {
-    originalStackEnv = readFileSync(stackEnvPath, "utf-8");
-  } catch { /* stack.env may not exist yet */ }
-
-  // 2. Update image tag + refresh core assets
-  let imageTag: string;
-  let namespace: string;
-  let upgradeResult: { backupDir: string | null; updated: string[]; restarted: string[] };
-  try {
-    const tagResult = await updateStackEnvToLatestImageTag(state);
-    imageTag = tagResult.tag;
-    namespace = tagResult.namespace;
+    // 1. Update image tag + refresh core assets
+    const namespace = resolveImageNamespace(state);
+    const imageTag = await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
+    await ensurePlatformImagesPublished(state, namespace, imageTag);
+    ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: imageTag });
+    const tagResult = await updateStackEnvToLatestImageTag(state, imageTag);
+    const { tag: confirmedImageTag } = tagResult;
     // The resolved platform tag IS the version whose stack assets we fetch —
     // keeps compose files and images in lockstep.
-    upgradeResult = await applyUpgrade(state, imageTag);
-  } catch (e) {
-    // Restore stack.env on failure
-    if (originalStackEnv !== null) {
-      try { writeFileSync(stackEnvPath, originalStackEnv); } catch { /* best effort */ }
+    const upgradeResult = await applyUpgrade(state, confirmedImageTag);
+
+    // 2. Pull all images (core + addons, including profile-gated voice)
+    const pullResult = await composePull(composeOpts);
+    if (!pullResult.ok) {
+      throw new Error(`Failed to pull images: ${pullResult.stderr}`);
     }
-    throw e;
-  }
 
-  // 3. Pull all images (core + addons, including profile-gated voice)
-  const pullResult = await composePull(composeOpts);
-  if (!pullResult.ok) {
-    throw new Error(`Failed to pull images: ${pullResult.stderr}`);
-  }
+    // 3. Recreate containers (includes profiles for voice addon).
+    // forceRecreate is REQUIRED: channel adapters are installed at container
+    // startup from npm dist-tags (CHANNEL_PACKAGE, e.g. @openpalm/channel-discord@latest),
+    // so an unchanged compose config would leave those containers running on the
+    // old adapter. --force-recreate guarantees guardian + channel containers
+    // restart and re-resolve their dist-tag adapters (issue #450).
+    const services = await buildManagedServices(state);
+    const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
+    if (!upResult.ok) {
+      throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
+    }
 
-  // 4. Recreate containers (includes profiles for voice addon).
-  // forceRecreate is REQUIRED: channel adapters are installed at container
-  // startup from npm dist-tags (CHANNEL_PACKAGE, e.g. @openpalm/channel-discord@latest),
-  // so an unchanged compose config would leave those containers running on the
-  // old adapter. --force-recreate guarantees guardian + channel containers
-  // restart and re-resolve their dist-tag adapters (issue #450).
-  const services = await buildManagedServices(state);
-  const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
-  if (!upResult.ok) {
-    throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
-  }
-
-  return {
-    imageTag,
-    namespace,
-    backupDir: upgradeResult.backupDir,
-    assetsUpdated: upgradeResult.updated,
-    restarted: upgradeResult.restarted,
-  };
+    return {
+      imageTag: confirmedImageTag,
+      namespace,
+      backupDir: upgradeResult.backupDir,
+      assetsUpdated: upgradeResult.updated,
+      restarted: upgradeResult.restarted,
+    };
+  });
 }
 
 /**
@@ -389,38 +448,43 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
  * Used by the admin "set version" action — skips the auto-detect step in performUpgrade.
  */
 export async function applyTagChange(state: ControlPlaneState, tag: string): Promise<UpgradeResult> {
-  const namespace = resolveImageNamespace(state);
+  return withStackEnvRollback(state, async () => {
+    const namespace = resolveImageNamespace(state);
 
-  // "latest" (or an empty selection) is not a real GitHub ref — there are no
-  // `.openpalm/...` stack assets at a `latest` tag, so refreshCoreAssets would
-  // fail with a raw download error. Resolve it to the concrete newest published
-  // platform tag BEFORE writing the env or fetching assets, so images and
-  // stack assets stay in lockstep on a real release tag.
-  const requested = tag.trim();
-  let resolvedTag = requested;
-  if (requested === "" || requested.toLowerCase() === "latest") {
-    try {
-      resolvedTag = await resolveLatestPlatformTag(namespace);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(
-        `Cannot resolve "latest" to a concrete release: ${msg}. ` +
-        "Check your network connection or select a specific version."
-      );
+    // "latest" (or an empty selection) is not a real GitHub ref — there are no
+    // `.openpalm/...` stack assets at a `latest` tag, so refreshCoreAssets would
+    // fail with a raw download error. Resolve it to the concrete newest published
+    // platform tag BEFORE writing the env or fetching assets, so images and
+    // stack assets stay in lockstep on a real release tag.
+    const requested = tag.trim();
+    let resolvedTag = requested;
+    if (requested === "" || requested.toLowerCase() === "latest") {
+      try {
+        resolvedTag = await resolveLatestPlatformTag(namespace);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(
+          `Cannot resolve "latest" to a concrete release: ${msg}. ` +
+          "Check your network connection or select a specific version."
+        );
+      }
     }
-  }
 
-  const stackEnvPath = `${state.stashDir}/env/stack.env`;
-  const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
-  writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { OP_IMAGE_TAG: resolvedTag }, { uncomment: true }));
-  const upgradeResult = await applyUpgrade(state, resolvedTag);
-  return {
-    imageTag: resolvedTag,
-    namespace,
-    backupDir: upgradeResult.backupDir,
-    assetsUpdated: upgradeResult.updated,
-    restarted: upgradeResult.restarted,
-  };
+    await ensurePlatformImagesPublished(state, namespace, resolvedTag);
+    ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: resolvedTag });
+
+    const stackEnvPath = `${state.stashDir}/env/stack.env`;
+    const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
+    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, buildPlatformImageTagEnv(resolvedTag), { uncomment: true }));
+    const upgradeResult = await applyUpgrade(state, resolvedTag);
+    return {
+      imageTag: resolvedTag,
+      namespace,
+      backupDir: upgradeResult.backupDir,
+      assetsUpdated: upgradeResult.updated,
+      restarted: upgradeResult.restarted,
+    };
+  });
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {

@@ -181,7 +181,10 @@ export const handle: Handle = async ({ event, resolve }) => {
       response.headers.append("set-cookie", renewedCookie);
     }
   }
-  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set(
+    "X-Frame-Options",
+    path === '/admin/akm/health-report' ? 'SAMEORIGIN' : 'DENY',
+  );
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "no-referrer");
   return response;

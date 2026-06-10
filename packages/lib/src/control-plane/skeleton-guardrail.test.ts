@@ -6,7 +6,7 @@
  * stash-seeds/) and ensure the v0.11.0 structure stays intact.
  */
 import { describe, test, expect } from "bun:test";
-import { readdirSync, statSync, existsSync } from "node:fs";
+import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
@@ -84,6 +84,15 @@ describe("skeleton: .openpalm/config/ structure", () => {
 
   test("config/guardian/ ships the message-moderation instructions", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "guardian", "instructions", "moderation.md"))).toBe(true);
+  });
+
+  test('stack compose assets use per-service image tags with OP_IMAGE_TAG fallback', () => {
+    const coreCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'core.compose.yml'), 'utf-8');
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'channels.compose.yml'), 'utf-8');
+
+    expect(coreCompose).toContain('assistant:${OP_ASSISTANT_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
+    expect(channelsCompose).toContain('channel:${OP_CHANNEL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
+    expect(channelsCompose).toContain('guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
   });
 });
 

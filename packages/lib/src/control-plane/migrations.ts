@@ -23,6 +23,7 @@ import {
   existsSync, mkdirSync, readFileSync, writeFileSync,
   readdirSync, statSync, chmodSync, cpSync,
 } from "node:fs";
+import libPkg from '../../package.json' with { type: 'json' };
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import {
@@ -31,6 +32,8 @@ import {
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { backupOpenPalmHome } from "./backup.js";
 import { upsertEnvValue } from "./env.js";
+import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
+import { compareComparableVersions, isComparableSemver } from './versioning.js';
 
 export const LAYOUT_VERSION_KEY = "OP_LAYOUT_VERSION";
 /** Bump when the on-disk layout changes and add a Migration to MIGRATIONS. */
@@ -45,6 +48,9 @@ export interface MigrationReport {
   applied: string[];
   backupDir: string | null;
   notes: string[];
+  releaseFrom: string | null;
+  releaseTo: string;
+  releaseApplied: string[];
 }
 
 export class MigrationError extends Error {
@@ -75,6 +81,41 @@ interface Migration {
   describe: string;
   apply(ctx: MigrationCtx): void;
   verify(ctx: MigrationCtx): void;
+}
+
+interface ReleaseMigration {
+  version: string;
+  describe: string;
+  apply(ctx: MigrationCtx): void;
+  verify(ctx: MigrationCtx): void;
+}
+
+export interface ReleaseMigrationReport {
+  migrated: boolean;
+  from: string | null;
+  to: string;
+  applied: string[];
+  backupDir: string | null;
+  notes: string[];
+}
+
+const RELEASE_VERSION_KEY = 'OP_RELEASE_VERSION';
+const CURRENT_RELEASE_VERSION = `v${libPkg.version}`;
+
+function selectPendingReleaseMigrations(
+  releaseFrom: string | null,
+  targetVersion: string,
+): ReleaseMigration[] {
+  if (!isComparableSemver(targetVersion)) return [];
+
+  return RELEASE_MIGRATIONS
+    .filter((migration) => {
+      if (!isComparableSemver(migration.version)) return false;
+      if (compareComparableVersions(migration.version, targetVersion) > 0) return false;
+      if (releaseFrom === null || !isComparableSemver(releaseFrom)) return true;
+      return compareComparableVersions(migration.version, releaseFrom) > 0;
+    })
+    .sort((a, b) => compareComparableVersions(a.version, b.version));
 }
 
 // ── Layout-version read/write (stack.env is the single source of truth) ───────
@@ -108,6 +149,36 @@ function stampLayoutVersion(stashDir: string, version: number): void {
   writeFileSync(envPath, next);
 }
 
+function readReleaseVersion(stashDir: string): string | null {
+  const envPath = stackEnvFile(stashDir);
+  if (!existsSync(envPath)) return null;
+
+  let imageTagFallback: string | null = null;
+  for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
+    const releaseMatch = line.match(/^OP_RELEASE_VERSION=(.+)\s*$/);
+    if (releaseMatch) return releaseMatch[1].trim();
+
+    const imageTagMatch = line.match(/^OP_IMAGE_TAG=(.+)\s*$/);
+    if (imageTagMatch && !imageTagFallback) imageTagFallback = imageTagMatch[1].trim();
+  }
+
+  return imageTagFallback;
+}
+
+function stampReleaseVersion(stashDir: string, version: string): void {
+  const envPath = stackEnvFile(stashDir);
+  if (!existsSync(envPath)) return;
+  const next = upsertEnvValue(readFileSync(envPath, 'utf-8'), RELEASE_VERSION_KEY, version);
+  writeFileSync(envPath, next);
+}
+
+function upsertMany(content: string, values: Record<string, string>): string {
+  return Object.entries(values).reduce(
+    (next, [key, value]) => upsertEnvValue(next, key, value),
+    content,
+  );
+}
+
 // ── helpers (non-destructive: copy, never delete the source) ──────────────────
 
 function ensureDir(ctx: MigrationCtx, dir: string): void {
@@ -135,6 +206,27 @@ function writeFile600(ctx: MigrationCtx, path: string, content: string): void {
   if (ctx.dryRun) { ctx.log(`[dry-run] write ${rel(ctx, path)}`); return; }
   writeFileSync(path, content);
   try { chmodSync(path, 0o600); } catch { /* best-effort */ }
+}
+
+function seedPerImageTagVars(ctx: MigrationCtx): void {
+  const envPath = stackEnvFile(ctx.stashDir);
+  if (!existsSync(envPath)) return;
+
+  const current = readFileSync(envPath, 'utf-8');
+  const imageTagMatch = current.match(/^OP_IMAGE_TAG=(.+)$/m);
+  const imageTag = imageTagMatch?.[1]?.trim();
+  if (!imageTag) return;
+
+  const missingKeys = PLATFORM_IMAGE_TAG_KEYS.filter((key) => !new RegExp(`^${key}=`, 'm').test(current));
+  if (missingKeys.length === 0) return;
+
+  if (ctx.dryRun) {
+    ctx.log(`[dry-run] seed per-image tag vars from OP_IMAGE_TAG=${imageTag}`);
+    return;
+  }
+
+  writeFile600(ctx, envPath, upsertMany(current, buildPlatformImageTagEnv(imageTag)));
+  ctx.log(`seeded per-image tag vars from OP_IMAGE_TAG=${imageTag}`);
 }
 
 // ── Migration 0 → 1: 0.10.x `vault/` layout → 0.11.0 knowledge/ layout ────────
@@ -323,6 +415,26 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
+const RELEASE_MIGRATIONS: ReleaseMigration[] = [
+  {
+    version: CURRENT_RELEASE_VERSION,
+    describe: 'seed per-image platform tags from OP_IMAGE_TAG',
+    apply: seedPerImageTagVars,
+    verify(ctx) {
+      if (ctx.dryRun) return;
+      const envPath = stackEnvFile(ctx.stashDir);
+      if (!existsSync(envPath)) return;
+      const content = readFileSync(envPath, 'utf-8');
+      if (!/^OP_IMAGE_TAG=/m.test(content)) return;
+      for (const key of PLATFORM_IMAGE_TAG_KEYS) {
+        if (!new RegExp(`^${key}=`, 'm').test(content)) {
+          throw new Error(`post-migration check failed: ${key} is missing`);
+        }
+      }
+    },
+  },
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 const RECOVERY_GUIDANCE =
@@ -353,19 +465,28 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
   };
 
   const from = readLayoutVersion(ctxBase);
-  const empty: MigrationReport = { migrated: false, from, to: from, applied: [], backupDir: null, notes: [] };
-
-  // Fast path: already current → just ensure the marker is stamped, no lock/backup.
-  if (from >= CURRENT_LAYOUT_VERSION) {
-    if (!dryRun) stampLayoutVersion(stashDir, CURRENT_LAYOUT_VERSION);
-    return { ...empty, to: CURRENT_LAYOUT_VERSION };
-  }
+  const releaseFrom = readReleaseVersion(stashDir);
+  const empty: MigrationReport = {
+    migrated: false,
+    from,
+    to: from,
+    applied: [],
+    backupDir: null,
+    notes: [],
+    releaseFrom,
+    releaseTo: CURRENT_RELEASE_VERSION,
+    releaseApplied: [],
+  };
 
   const pending = MIGRATIONS
     .filter((m) => m.from >= from && m.to <= CURRENT_LAYOUT_VERSION)
     .sort((a, b) => a.from - b.from);
-  if (pending.length === 0) {
-    if (!dryRun) stampLayoutVersion(stashDir, CURRENT_LAYOUT_VERSION);
+  const pendingRelease = selectPendingReleaseMigrations(releaseFrom, CURRENT_RELEASE_VERSION);
+  if (pending.length === 0 && pendingRelease.length === 0) {
+    if (!dryRun) {
+      stampLayoutVersion(stashDir, CURRENT_LAYOUT_VERSION);
+      stampReleaseVersion(stashDir, CURRENT_RELEASE_VERSION);
+    }
     return { ...empty, to: CURRENT_LAYOUT_VERSION };
   }
 
@@ -397,6 +518,7 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
     }
 
     const applied: string[] = [];
+    const releaseApplied: string[] = [];
     const notes: string[] = [];
     for (const m of pending) {
       const ctx: MigrationCtx = { ...ctxBase, notes };
@@ -406,10 +528,123 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
       applied.push(`${m.from}->${m.to}`);
     }
 
-    // Commit point: bump the layout version LAST.
-    if (!dryRun) stampLayoutVersion(stashDir, CURRENT_LAYOUT_VERSION);
+    for (const migration of pendingRelease) {
+      const ctx: MigrationCtx = { ...ctxBase, notes };
+      log(`Migrating release ${releaseFrom ?? 'unknown'} → ${migration.version}: ${migration.describe}`);
+      migration.apply(ctx);
+      migration.verify(ctx);
+      releaseApplied.push(migration.version);
+    }
 
-    return { migrated: true, from, to: CURRENT_LAYOUT_VERSION, applied, backupDir, notes };
+    // Commit point: bump the version markers LAST.
+    if (!dryRun) {
+      stampLayoutVersion(stashDir, CURRENT_LAYOUT_VERSION);
+      stampReleaseVersion(stashDir, CURRENT_RELEASE_VERSION);
+    }
+
+    return {
+      migrated: true,
+      from,
+      to: CURRENT_LAYOUT_VERSION,
+      applied,
+      backupDir,
+      notes,
+      releaseFrom,
+      releaseTo: CURRENT_RELEASE_VERSION,
+      releaseApplied,
+    };
+  } catch (e) {
+    if (e instanceof MigrationError) throw e;
+    throw new MigrationError(
+      `Migration failed: ${e instanceof Error ? e.message : String(e)}`,
+      RECOVERY_GUIDANCE,
+      backupDir,
+    );
+  } finally {
+    releaseInstallLock(lock);
+  }
+}
+
+export function ensureReleaseMigrated(
+  opts: { homeDir?: string; targetVersion: string; dryRun?: boolean; log?: (m: string) => void },
+): ReleaseMigrationReport {
+  const homeDir = opts.homeDir ?? resolveOpenPalmHome();
+  const dryRun = opts.dryRun ?? false;
+  const log = opts.log ?? (() => {});
+  const stashDir = resolveStashDir();
+  const targetVersion = opts.targetVersion.trim();
+  const releaseFrom = readReleaseVersion(stashDir);
+  const pendingRelease = selectPendingReleaseMigrations(releaseFrom, targetVersion);
+  const empty: ReleaseMigrationReport = {
+    migrated: false,
+    from: releaseFrom,
+    to: targetVersion,
+    applied: [],
+    backupDir: null,
+    notes: [],
+  };
+
+  if (pendingRelease.length === 0) {
+    if (!dryRun && releaseFrom !== targetVersion) stampReleaseVersion(stashDir, targetVersion);
+    return empty;
+  }
+
+  const ctxBase = {
+    homeDir,
+    dataDir: resolveDataDir(),
+    stackDir: resolveStackDir(),
+    stashDir,
+    configDir: resolveConfigDir(),
+    dryRun,
+    log,
+    notes: [] as string[],
+  };
+
+  let lock: ReturnType<typeof acquireInstallLock> = null;
+  let backupDir: string | null = null;
+  try {
+    if (!dryRun) {
+      try {
+        mkdirSync(ctxBase.dataDir, { recursive: true });
+      } catch (e) {
+        throw new MigrationError(`Could not prepare the data directory: ${e instanceof Error ? e.message : String(e)}`, RECOVERY_GUIDANCE, null);
+      }
+      lock = acquireInstallLock(ctxBase.dataDir);
+      if (!lock) {
+        throw new MigrationError('Another install/upgrade is in progress.', RECOVERY_GUIDANCE, null);
+      }
+      log('Taking a full backup before migrating…');
+      try {
+        backupDir = backupOpenPalmHome(homeDir);
+      } catch (e) {
+        throw new MigrationError(`Could not create a safety backup; upgrade aborted (no changes made): ${e instanceof Error ? e.message : String(e)}`, RECOVERY_GUIDANCE, null);
+      }
+      if (!backupDir) {
+        throw new MigrationError('Could not create a safety backup; upgrade aborted (no changes made).', RECOVERY_GUIDANCE, null);
+      }
+      log(`Backup: ${backupDir}`);
+    }
+
+    const applied: string[] = [];
+    const notes: string[] = [];
+    for (const migration of pendingRelease) {
+      const ctx: MigrationCtx = { ...ctxBase, notes };
+      log(`Migrating release ${releaseFrom ?? 'unknown'} → ${migration.version}: ${migration.describe}`);
+      migration.apply(ctx);
+      migration.verify(ctx);
+      applied.push(migration.version);
+    }
+
+    if (!dryRun) stampReleaseVersion(stashDir, targetVersion);
+
+    return {
+      migrated: true,
+      from: releaseFrom,
+      to: targetVersion,
+      applied,
+      backupDir,
+      notes,
+    };
   } catch (e) {
     if (e instanceof MigrationError) throw e;
     throw new MigrationError(

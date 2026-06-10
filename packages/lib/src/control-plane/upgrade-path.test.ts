@@ -129,4 +129,14 @@ describe("performUpgrade force-recreates managed services (#450)", () => {
     expect(src).toMatch(/if \(hasEnabledChannel\(enabledAddons\)\) services\.add\("guardian"\)/);
     expect(src).not.toContain("new Set<string>(CORE_SERVICES)");
   });
+
+  test('performUpgrade runs target-version release migrations before mutating stack.env (#474)', () => {
+    const src = readFileSync(join(LIB_CONTROL_PLANE_DIR, 'lifecycle.ts'), 'utf-8');
+    expect(src).toContain("ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: imageTag });");
+  });
+
+  test('applyTagChange runs target-version release migrations for an explicit tag change (#474)', () => {
+    const src = readFileSync(join(LIB_CONTROL_PLANE_DIR, 'lifecycle.ts'), 'utf-8');
+    expect(src).toContain("ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: resolvedTag });");
+  });
 });

@@ -12,6 +12,11 @@ interface UpdateStatus {
   updateAvailable: boolean;
 }
 
+interface LaunchOnLoginStatus {
+  supported: boolean;
+  enabled: boolean;
+}
+
 type VoidCallback = () => void;
 
 contextBridge.exposeInMainWorld('openpalm', {
@@ -31,16 +36,23 @@ contextBridge.exposeInMainWorld('openpalm', {
 
   /**
    * Show a desktop notification from within the renderer.
-   * Electron apps do not require OS permission for Notification on macOS/Windows.
-   * Usage: window.openpalm?.notify('Setup complete', 'Your assistant is ready.')
+   * Usage: window.openpalm?.notify('OpenPalm', 'Assistant replied')
    */
   notify(title: string, body: string): void {
-    new Notification(title, { body });
+    ipcRenderer.send('notify', { title, body });
   },
 
   /** Restart the Electron app (relaunch + quit). Only works inside Electron. */
   restart(): Promise<void> {
     return ipcRenderer.invoke('restart-app');
+  },
+
+  launchOnLoginStatus(): Promise<LaunchOnLoginStatus> {
+    return ipcRenderer.invoke('launch-on-login-status');
+  },
+
+  setLaunchOnLogin(enabled: boolean): Promise<LaunchOnLoginStatus> {
+    return ipcRenderer.invoke('set-launch-on-login', enabled);
   },
 
   setTrayMicRecording(recording: boolean): Promise<void> {

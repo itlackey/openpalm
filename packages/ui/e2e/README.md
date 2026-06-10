@@ -73,6 +73,29 @@ channel credentials, AKM stash configuration, etc.).
 Current manual-only files: `voice.manual.ts`, `channel-guardian-pipeline.manual.ts`,
 `scheduler.manual.ts`, `akm-config.manual.ts`.
 
+## Wizard UX gate capture
+
+The setup wizard has a dedicated UX audit config for the three-judge gate:
+
+```bash
+cd packages/ui
+npm run ux:audit:wizard
+```
+
+It captures the full wizard sweep needed for review evidence: System Check,
+Get Started, Providers (recommended + manual card-expanded), Models, Voice,
+Options, and the real Review screen.
+
+Repo-local guard coverage for this config lives in
+`e2e/ux-audit.wizard.config.vitest.ts`, which now runs as part of
+`npm run test:unit` / `bun run ui:test:unit` so config regressions fail fast
+without needing the external audit runner.
+
+The capture command itself still depends on the external AKM `web-ux`
+`ux-dom-audit` skill at `${AKM_HOME:-$HOME/akm}/skills/web-ux/...`; if that
+runner or its downstream judging/evidence pipeline is unavailable, that is an
+external blocker rather than a missing repo-local wiring issue.
+
 ## Isolation guarantees
 
 `dev-e2e-test.sh` creates a completely isolated environment:

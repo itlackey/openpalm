@@ -9,6 +9,7 @@
 	} from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import AkmKnowledgeStatsSection from '$lib/components/akm/AkmKnowledgeStatsSection.svelte';
 	import EmbeddingSection from '$lib/components/akm/EmbeddingSection.svelte';
 	import BehaviorSection from '$lib/components/akm/BehaviorSection.svelte';
 	import AkmHealthReportSection from '$lib/components/akm/AkmHealthReportSection.svelte';
@@ -528,6 +529,8 @@
 
 		<!-- ── AI Services group (model/agent/improve connections + embedding) ── -->
 		{#if knowledgeSection === 'ai-services'}
+		<AkmKnowledgeStatsSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored} />
+
 		<p class="section-note section-note--lead">The AI services your assistant uses to build and search its memory — the language models that organize memories, the embedding provider for semantic search, and the maintenance pipeline.</p>
 
 		<!-- ── LLM Profiles ──────────────────────────────────────────────── -->

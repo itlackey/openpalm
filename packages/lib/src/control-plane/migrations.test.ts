@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureMigrated, MigrationError, CURRENT_LAYOUT_VERSION } from "./migrations.js";
+import libPkg from '../../package.json' with { type: 'json' };
+import { ensureMigrated, ensureReleaseMigrated, MigrationError, CURRENT_LAYOUT_VERSION } from "./migrations.js";
+
+const CURRENT_RELEASE_VERSION = `v${libPkg.version}`;
 
 // The harness resolves all paths from OP_HOME; point it at a synthetic 0.10 home.
 let home: string;
@@ -70,6 +73,7 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(stackEnv).toContain("OP_TTS_VOICE=alloy");    // prefixed
     expect(stackEnv).toContain("OP_ASSISTANT_PORT=3800"); // kept
     expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`); // commit
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=');
     expect(stackEnv).not.toContain("OPENAI_API_KEY");    // quarantined
     expect(stackEnv).not.toContain("OP_CAP_LLM_MODEL");  // quarantined
 
@@ -146,6 +150,9 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(entries(join(home, "knowledge", "secrets"))).toEqual([]);
     const stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toContain("OP_IMAGE_TAG=0.10.2");
+    expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=0.10.2');
+    expect(stackEnv).toContain('OP_GUARDIAN_IMAGE_TAG=0.10.2');
+    expect(stackEnv).toContain('OP_CHANNEL_IMAGE_TAG=0.10.2');
     expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
   });
 
@@ -264,9 +271,34 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     mkdirSync(join(home, "knowledge", "env"), { recursive: true });
     writeFileSync(join(home, "knowledge", "env", "stack.env"), "OP_IMAGE_TAG=0.11.0\n");
     const report = ensureMigrated();
-    expect(report.migrated).toBe(false);
+    expect(report.migrated).toBe(true);
     expect(report.to).toBe(CURRENT_LAYOUT_VERSION);
-    expect(readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8"))
-      .toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+    const stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+    expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=0.11.0');
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=');
+    expect(report.releaseApplied.length).toBeGreaterThan(0);
+  });
+
+  it("runs the current release hook only when the upgrade target reaches that version", () => {
+    mkdirSync(join(home, "knowledge", "env"), { recursive: true });
+    writeFileSync(
+      join(home, "knowledge", "env", "stack.env"),
+      "OP_IMAGE_TAG=v0.11.0\nOP_RELEASE_VERSION=v0.11.0\n",
+    );
+
+    const lowerTarget = ensureReleaseMigrated({ targetVersion: 'v0.11.4' });
+    expect(lowerTarget.applied).toEqual([]);
+    let stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.4');
+    expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
+
+    const currentTarget = ensureReleaseMigrated({ targetVersion: CURRENT_RELEASE_VERSION });
+    expect(currentTarget.applied).toEqual([CURRENT_RELEASE_VERSION]);
+    stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toContain(`OP_RELEASE_VERSION=${CURRENT_RELEASE_VERSION}`);
+    expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=v0.11.0');
+    expect(stackEnv).toContain('OP_GUARDIAN_IMAGE_TAG=v0.11.0');
+    expect(stackEnv).toContain('OP_CHANNEL_IMAGE_TAG=v0.11.0');
   });
 });

@@ -22,6 +22,15 @@
     timestamp: number;
   };
 
+  type FeedItem = {
+    id: string;
+    type: string;
+    sessionId: string;
+    title: string;
+    detail: string;
+    timestamp: number;
+  };
+
   let loading = $state(false);
   let messagesLoading = $state(false);
   let error = $state('');
@@ -31,6 +40,11 @@
   let selectedSessionId = $state<string | null>(null);
   let selectedMessages = $state<ChatEntry[]>([]);
   let attentionFeed = $state<AttentionItem[]>([]);
+  let eventFeed = $state<FeedItem[]>([]);
+  let eventCounts = $state<Record<string, number>>({});
+  let sessionEventCounts = $state<Record<string, number>>({});
+  let minuteTimestamps = $state<number[]>([]);
+  let lastEventAt = $state<number | null>(null);
   let clock = $state(Date.now());
 
   let unsubscribe: (() => void) | null = null;
@@ -45,7 +59,7 @@
   }
 
   function truncate(text: string, max = 140): string {
-    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    return text.length > max ? `${text.slice(0, max - 1)}...` : text;
   }
 
   function summarizeEvent(payload: OpenCodeSessionEventPayload): Omit<AttentionItem, 'id' | 'timestamp'> | null {
@@ -148,6 +162,47 @@
     return null;
   }
 
+  function eventTitle(payload: OpenCodeSessionEventPayload): string {
+    const props = payload.properties as Record<string, unknown> | undefined;
+    const info = props?.info as { title?: unknown } | undefined;
+    if (typeof info?.title === 'string' && info.title.trim()) return info.title;
+
+    const summary = summarizeEvent(payload);
+    if (summary?.title) return summary.title;
+
+    const sessionId = eventSessionId(payload);
+    return sessionId ? `Session ${sessionId.slice(0, 8)}` : 'Assistant event';
+  }
+
+  function eventDetail(payload: OpenCodeSessionEventPayload): string {
+    const props = payload.properties as Record<string, unknown> | undefined;
+    const summary = summarizeEvent(payload);
+    if (summary?.detail) return summary.detail;
+    if (!props) return '';
+
+    if (payload.type.startsWith('session.next.tool.')) {
+      const tool = typeof props.tool === 'string' ? props.tool : 'tool';
+      const progress = typeof props.progress === 'string'
+        ? props.progress
+        : typeof props.message === 'string'
+          ? props.message
+          : '';
+      return truncate(progress ? `${tool}: ${progress}` : tool);
+    }
+
+    if (payload.type === 'message.part.updated') {
+      const part = props.part as { type?: unknown; tool?: unknown; state?: { status?: unknown } } | undefined;
+      if (typeof part?.tool === 'string') {
+        const status = typeof part.state?.status === 'string' ? part.state.status : 'updated';
+        return `${part.tool} ${status}`;
+      }
+      if (typeof part?.type === 'string') return part.type;
+    }
+
+    if (payload.type === 'session.updated') return 'Session metadata changed.';
+    return '';
+  }
+
   function pushAttention(payload: OpenCodeSessionEventPayload): void {
     const summary = summarizeEvent(payload);
     if (!summary) return;
@@ -160,6 +215,29 @@
       },
       ...attentionFeed,
     ].slice(0, 30);
+  }
+
+  function pushEvent(payload: OpenCodeSessionEventPayload): void {
+    const timestamp = Date.now();
+    const type = payload.type || 'unknown';
+    const sessionId = eventSessionId(payload);
+    eventFeed = [
+      {
+        id: `${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+        type,
+        sessionId,
+        title: eventTitle(payload),
+        detail: eventDetail(payload),
+        timestamp,
+      },
+      ...eventFeed,
+    ].slice(0, 80);
+    eventCounts = { ...eventCounts, [type]: (eventCounts[type] ?? 0) + 1 };
+    if (sessionId) {
+      sessionEventCounts = { ...sessionEventCounts, [sessionId]: (sessionEventCounts[sessionId] ?? 0) + 1 };
+    }
+    minuteTimestamps = [timestamp, ...minuteTimestamps.filter((value) => timestamp - value <= 5 * 60_000)];
+    lastEventAt = timestamp;
   }
 
   function upsertSession(summary: SessionSummary): void {
@@ -248,6 +326,19 @@
   let failingItems = $derived(attentionFeed.filter((item) => item.severity === 'high').length);
   let activeSessions = $derived(sessions.filter((session) => clock - session.updatedAt <= 5 * 60_000).length);
   let latestAttention = $derived(attentionFeed.slice(0, 10));
+  let eventsLastMinute = $derived(minuteTimestamps.filter((timestamp) => clock - timestamp <= 60_000).length);
+  let eventsLastFiveMinutes = $derived(minuteTimestamps.filter((timestamp) => clock - timestamp <= 5 * 60_000).length);
+  let eventTypeRows = $derived(
+    Object.entries(eventCounts)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 8),
+  );
+  let hotSessions = $derived(
+    sessions
+      .map((session) => ({ ...session, events: sessionEventCounts[session.id] ?? 0 }))
+      .sort((left, right) => right.events - left.events || right.updatedAt - left.updatedAt)
+      .slice(0, 8),
+  );
 
   onMount(() => {
     void endpointsService.load();
@@ -268,6 +359,7 @@
       onEvent: (payload) => {
         streamState = 'connected';
         pushAttention(payload);
+        pushEvent(payload);
         handleSessionPayload(payload);
       },
     });
@@ -286,7 +378,7 @@
   <div class="panel-header">
     <div>
       <h2>Activity</h2>
-      <p class="panel-subtitle">A readable view of what the assistant is doing right now, which sessions need attention, and the recent history for a selected conversation.</p>
+      <p class="panel-subtitle">Readable operator telemetry for the active assistant endpoint: what is blocked, what is failing, which sessions are busiest, and the recent history for a selected conversation.</p>
     </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={() => void loadSessions()} disabled={loading}>
@@ -301,11 +393,20 @@
     <div class="error-banner"><span>{streamError}</span></div>
   {/if}
 
+  <div class="endpoint-banner">
+    <div>
+      <div class="endpoint-label">Endpoint</div>
+      <div class="endpoint-value">{endpointsService.active?.label ?? 'Active assistant endpoint'}</div>
+      <div class="endpoint-url mono">{endpointsService.active?.url ?? 'Loading endpoint URL...'}</div>
+    </div>
+    <div class="stream-badge stream-badge--{streamState}">{streamState}</div>
+  </div>
+
   <div class="summary-grid">
     <div class="summary-card">
-      <span class="summary-label">Stream</span>
-      <strong class="summary-value">{streamState}</strong>
-      <small>{streamState === 'connected' ? 'Live events are flowing.' : streamState === 'connecting' ? 'Connecting to the assistant event stream.' : 'Reconnect needed.'}</small>
+      <span class="summary-label">Events / minute</span>
+      <strong class="summary-value">{eventsLastMinute}</strong>
+      <small>{eventsLastFiveMinutes} events seen in the last 5 minutes</small>
     </div>
     <div class="summary-card">
       <span class="summary-label">Sessions</span>
@@ -318,7 +419,17 @@
       <small>Permissions and answers that block the assistant.</small>
     </div>
     <div class="summary-card" class:summary-card--danger={failingItems > 0}>
-      <span class="summary-label">Attention items</span>
+      <span class="summary-label">Last event</span>
+      <strong class="summary-value summary-value--small">{fmtTime(lastEventAt)}</strong>
+      <small>{failingItems > 0 ? `${failingItems} failure${failingItems === 1 ? '' : 's'} need review.` : streamState === 'connected' ? 'Stream healthy.' : 'Reconnect needed.'}</small>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Observed types</span>
+      <strong class="summary-value">{Object.keys(eventCounts).length}</strong>
+      <small>{eventFeed.length} recent events buffered</small>
+    </div>
+    <div class="summary-card" class:summary-card--danger={failingItems > 0}>
+      <span class="summary-label">Failures seen</span>
       <strong class="summary-value">{failingItems}</strong>
       <small>{failingItems > 0 ? 'Tool or session failures need review.' : 'No current failures seen.'}</small>
     </div>
@@ -349,6 +460,33 @@
           </article>
         {/each}
       </div>
+
+      <div class="subsection-head">
+        <h4>Live event feed</h4>
+        <span>{eventFeed.length}</span>
+      </div>
+      <div class="feed-list">
+        {#if eventFeed.length === 0}
+          <div class="empty-card">Waiting for OpenCode events...</div>
+        {/if}
+        {#each eventFeed.slice(0, 12) as event (event.id)}
+          <article class="feed-row">
+            <div class="feed-top">
+              <span class="feed-type mono">{event.type}</span>
+              <span>{fmtTime(event.timestamp)}</span>
+            </div>
+            <strong>{event.title}</strong>
+            {#if event.detail}
+              <p>{event.detail}</p>
+            {/if}
+            {#if event.sessionId}
+              <button class="attention-session mono" type="button" onclick={() => void selectSession(event.sessionId)}>
+                {event.sessionId}
+              </button>
+            {/if}
+          </article>
+        {/each}
+      </div>
     </section>
 
     <section class="card-section">
@@ -366,8 +504,51 @@
               <div class="session-title">{session.title || 'Untitled session'}</div>
               <div class="session-meta">Updated {fmtDateTime(session.updatedAt)}</div>
             </div>
-            <div class="session-id mono">{session.id.slice(0, 12)}…</div>
+            <div class="session-stats">
+              <strong>{sessionEventCounts[session.id] ?? 0} evt</strong>
+              <span class="session-id mono">{session.id.slice(0, 12)}...</span>
+            </div>
           </button>
+        {/each}
+      </div>
+
+      <div class="subsection-head">
+        <h4>Event breakdown</h4>
+        <span>{eventTypeRows.length}</span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>Type</th><th>Total</th></tr>
+        </thead>
+        <tbody>
+          {#if eventTypeRows.length === 0}
+            <tr><td colspan="2" class="empty-cell">No events observed yet.</td></tr>
+          {/if}
+          {#each eventTypeRows as [type, count]}
+            <tr>
+              <td class="mono">{type}</td>
+              <td>{count}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+
+      <div class="subsection-head">
+        <h4>Most active sessions</h4>
+        <span>{hotSessions.length}</span>
+      </div>
+      <div class="hot-session-list">
+        {#if hotSessions.length === 0}
+          <div class="empty-card">No session activity captured yet.</div>
+        {/if}
+        {#each hotSessions as session (session.id)}
+          <div class="hot-session-row">
+            <div>
+              <div class="session-title">{session.title || 'Untitled session'}</div>
+              <div class="session-meta mono">{session.id}</div>
+            </div>
+            <strong>{session.events}</strong>
+          </div>
         {/each}
       </div>
     </section>
@@ -384,6 +565,7 @@
         <div><span>Created</span><strong>{fmtDateTime(selectedSession.createdAt)}</strong></div>
         <div><span>Updated</span><strong>{fmtDateTime(selectedSession.updatedAt)}</strong></div>
         <div><span>Session ID</span><strong class="mono">{selectedSession.id}</strong></div>
+        <div><span>Events seen</span><strong>{sessionEventCounts[selectedSession.id] ?? 0}</strong></div>
       </div>
 
       <div class="message-panel-head">
@@ -414,19 +596,31 @@
   .panel-subtitle { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 75ch; }
   .panel-header-actions { display: flex; gap: var(--space-2); }
   .error-banner { background: var(--color-danger-subtle, rgba(239,68,68,0.1)); color: var(--color-danger, #ef4444); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin-bottom: var(--space-4); }
-  .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+  .endpoint-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: linear-gradient(135deg, color-mix(in srgb, var(--color-bg-secondary) 92%, transparent), color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-secondary))); margin-bottom: var(--space-4); flex-wrap: wrap; }
+  .endpoint-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-secondary); }
+  .endpoint-value { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); }
+  .endpoint-url { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .stream-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 7rem; padding: var(--space-2) var(--space-3); border-radius: 999px; font-size: var(--text-xs); font-weight: var(--font-semibold); text-transform: uppercase; }
+  .stream-badge--connected { background: rgba(34,197,94,0.14); color: #16a34a; }
+  .stream-badge--connecting { background: rgba(245,158,11,0.14); color: #d97706; }
+  .stream-badge--disconnected { background: rgba(239,68,68,0.14); color: #dc2626; }
+  .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
   .summary-card { display: grid; gap: var(--space-1); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-secondary); }
   .summary-card--warning { background: color-mix(in srgb, var(--color-bg-secondary) 92%, #f59e0b 8%); }
   .summary-card--danger { background: color-mix(in srgb, var(--color-bg-secondary) 90%, #ef4444 10%); }
   .summary-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); }
   .summary-value { font-size: clamp(1.2rem, 3vw, 1.9rem); color: var(--color-text); }
+  .summary-value--small { font-size: clamp(1rem, 2vw, 1.35rem); }
   .summary-card small { font-size: var(--text-xs); color: var(--color-text-secondary); }
   .activity-layout { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: var(--space-4); margin-bottom: var(--space-4); }
   .card-section { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-secondary); padding: var(--space-4); min-width: 0; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
   .card-head h3 { margin: 0; font-size: var(--text-base); color: var(--color-text); }
   .card-head span { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .attention-list, .session-list, .selected-message-list { display: flex; flex-direction: column; gap: var(--space-2); }
+  .subsection-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: var(--space-4) 0 var(--space-2); }
+  .subsection-head h4 { margin: 0; font-size: var(--text-sm); color: var(--color-text); }
+  .subsection-head span { font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .attention-list, .session-list, .selected-message-list, .feed-list, .hot-session-list { display: flex; flex-direction: column; gap: var(--space-2); }
   .attention-item { padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-bg); }
   .attention-item--high { border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); }
   .attention-item--medium { border-color: color-mix(in srgb, #f59e0b 45%, var(--color-border)); }
@@ -440,13 +634,23 @@
   .session-title { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
   .session-meta { font-size: var(--text-xs); color: var(--color-text-secondary); }
   .session-id { font-size: var(--text-xs); color: var(--color-text-tertiary); }
-  .selected-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+  .session-stats { display: grid; justify-items: end; gap: var(--space-1); }
+  .feed-row { padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-bg); display: grid; gap: var(--space-1); }
+  .feed-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+  .feed-type, .feed-top span:last-child { font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .feed-row strong { font-size: var(--text-sm); color: var(--color-text); }
+  .feed-row p { margin: 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th, .data-table td { padding: var(--space-2) var(--space-1); border-bottom: 1px solid var(--color-border); text-align: left; font-size: var(--text-sm); color: var(--color-text); }
+  .data-table th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); }
+  .hot-session-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); }
+  .selected-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
   .selected-meta div { display: grid; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); }
   .selected-meta span { font-size: var(--text-xs); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
   .selected-meta strong { font-size: var(--text-sm); color: var(--color-text); }
   .message-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
-  .empty-card { font-size: var(--text-sm); color: var(--color-text-secondary); text-align: center; padding: var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-sm); }
+  .empty-card, .empty-cell { font-size: var(--text-sm); color: var(--color-text-secondary); text-align: center; padding: var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-sm); }
   .mono { font-family: var(--font-mono); }
-  @media (max-width: 1100px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .activity-layout { grid-template-columns: 1fr; } .selected-meta { grid-template-columns: 1fr; } }
-  @media (max-width: 640px) { .summary-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 1100px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .activity-layout { grid-template-columns: 1fr; } .selected-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .summary-grid, .selected-meta { grid-template-columns: 1fr; } }
 </style>

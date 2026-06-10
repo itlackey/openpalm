@@ -138,12 +138,25 @@ function localEndpoint(): ActiveEndpoint | null {
   return {
     id: LOCAL_ELECTRON_ID,
     label: 'OpenPalm Admin',
-    url: rt.url,
+    url: normalizeBrowserFacingUrl(rt.url),
     username: rt.username || 'openpalm',
     ...(rt.password ? { password: rt.password } : {}),
     isDefault: false,
     isLocal: true,
   };
+}
+
+function normalizeBrowserFacingUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (host === '0.0.0.0' || host === '::') {
+      url.hostname = '127.0.0.1';
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return raw;
+  }
 }
 
 function readFile(): EndpointsFile {
@@ -195,7 +208,14 @@ function defaultEndpoint(): ActiveEndpoint {
     `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
   const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
   const password = process.env.OPENCODE_SERVER_PASSWORD || undefined;
-  return { id: DEFAULT_ID, label: 'Local Assistant', url, username, password, isDefault: true };
+  return {
+    id: DEFAULT_ID,
+    label: 'Local Assistant',
+    url: normalizeBrowserFacingUrl(url),
+    username,
+    password,
+    isDefault: true,
+  };
 }
 
 /**
