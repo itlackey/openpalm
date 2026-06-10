@@ -3,13 +3,17 @@
 	import NewChatButton from './NewChatButton.svelte';
   interface Props {
     sending: boolean;
+    questionPending?: boolean;
     onSend: (text: string) => void;
   }
 
-  let { sending, onSend }: Props = $props();
+  let { sending, questionPending = false, onSend }: Props = $props();
 
   let inputText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
+
+  const inputDisabled = $derived(sending && !questionPending);
+  const actionLabel = $derived(questionPending ? 'Answer' : 'Send');
 
   function handleKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -20,7 +24,7 @@
 
   function submit(): void {
     const text = inputText.trim();
-    if (!text || sending) return;
+    if (!text || inputDisabled) return;
     onSend(text);
     inputText = '';
     // Reset textarea height after clearing
@@ -45,20 +49,23 @@
       bind:value={inputText}
       onkeydown={handleKeydown}
       oninput={handleInput}
-      placeholder="Send a message… (Enter to send, Shift+Enter for newline)"
+      placeholder={questionPending
+        ? 'Answer the assistant… (Enter to send, Shift+Enter for newline)'
+        : 'Send a message… (Enter to send, Shift+Enter for newline)'}
       rows="1"
-      disabled={sending}
+      disabled={inputDisabled}
       aria-label="Message input"
     ></textarea>
     <button
-      class="send-btn"
+      class="btn btn-primary send-btn"
       type="button"
-      disabled={sending || !inputText.trim()}
+      disabled={inputDisabled || !inputText.trim()}
       onclick={submit}
-      aria-label="Send message"
+      aria-label={questionPending ? 'Send answer' : 'Send message'}
     >
-      {#if sending}
+      {#if sending && !questionPending}
         <Spinner />
+        <span>Sending...</span>
       {:else}
         <svg
           aria-hidden="true"
@@ -74,6 +81,7 @@
           <line x1="22" y1="2" x2="11" y2="13" />
           <polygon points="22 2 15 22 11 13 2 9 22 2" />
         </svg>
+        <span>{actionLabel}</span>
       {/if}
     </button>
   </div>
@@ -128,28 +136,9 @@
   }
 
   .send-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    padding: 0;
+    min-width: 92px;
     flex-shrink: 0;
-    background: var(--color-primary);
-    border: none;
-    border-radius: var(--radius-md);
-    color: #000;
-    cursor: pointer;
-    transition: background var(--transition-fast);
-  }
-
-  .send-btn:hover:not(:disabled) {
-    background: var(--color-primary-hover);
-  }
-
-  .send-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
+    padding-inline: var(--space-4);
   }
 
 </style>

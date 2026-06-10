@@ -17,6 +17,7 @@ import {
   getRequestId,
   requireAdmin,
 } from '$lib/server/helpers.js';
+import { prepareSpeechText } from '$lib/server/speech-prep.js';
 
 const DEFAULT_MODEL = 'kokoro';
 const DEFAULT_VOICE = 'bf_isabella';
@@ -75,8 +76,21 @@ export const POST: RequestHandler = async (event) => {
   if (!text) {
     return errorResponse(400, 'bad_request', '"text" is required', {}, requestId);
   }
+  const mode = b.mode === 'chat_ack' || b.mode === 'chat_reply' ? b.mode : null;
+  const userText = typeof b.userText === 'string' ? b.userText.trim() : '';
+  const assistantText = typeof b.assistantText === 'string' ? b.assistantText.trim() : '';
   const voice = typeof b.voice === 'string' && b.voice.trim() ? b.voice.trim() : ttsVoice;
   const format = typeof b.format === 'string' && b.format.trim() ? b.format.trim() : DEFAULT_FORMAT;
+
+  let speechText = text;
+  if (mode) {
+    try {
+      const prepared = await prepareSpeechText({ mode, userText, assistantText });
+      if (prepared) speechText = prepared;
+    } catch (err) {
+      console.warn('[api/speak] speech prep failed; falling back to raw text', err);
+    }
+  }
 
   const upstreamUrl = ttsBaseURL.replace(/\/+$/, '') + '/v1/audio/speech';
   const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -87,7 +101,7 @@ export const POST: RequestHandler = async (event) => {
     upstream = await fetch(upstreamUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ model: ttsModel, voice, input: text, response_format: format }),
+      body: JSON.stringify({ model: ttsModel, voice, input: speechText, response_format: format }),
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (err) {

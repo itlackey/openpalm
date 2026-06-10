@@ -11,6 +11,7 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import EmbeddingSection from '$lib/components/akm/EmbeddingSection.svelte';
 	import BehaviorSection from '$lib/components/akm/BehaviorSection.svelte';
+	import AkmHealthReportSection from '$lib/components/akm/AkmHealthReportSection.svelte';
 	import LlmProfilesSection from '$lib/components/akm/LlmProfilesSection.svelte';
 	import AgentProfilesSection from '$lib/components/akm/AgentProfilesSection.svelte';
 	import ImproveProfilesSection from '$lib/components/akm/ImproveProfilesSection.svelte';
@@ -88,7 +89,7 @@
 	// ── Knowledge subtab ─────────────────────────────────────────────────────────
 	// Two sections: AI Services (model/agent/improve connections + embedding) and
 	// Behavior. Host Sharing moved to its own Knowledge sub-tab.
-	let knowledgeSection = $state<'ai-services' | 'behavior'>('ai-services');
+	let knowledgeSection = $state<'ai-services' | 'behavior' | 'health-report'>('ai-services');
 
 	// ── Drawer ────────────────────────────────────────────────────────────────────
 	type DrawerType = 'llm' | 'agent' | 'improve' | null;
@@ -516,6 +517,13 @@
 				aria-selected={knowledgeSection === 'behavior'}
 				onclick={() => { knowledgeSection = 'behavior'; }}
 			>Behavior</button>
+			<button
+				role="tab"
+				class="k-tab"
+				class:k-tab--active={knowledgeSection === 'health-report'}
+				aria-selected={knowledgeSection === 'health-report'}
+				onclick={() => { knowledgeSection = 'health-report'; }}
+			>Health Report</button>
 		</div>
 
 		<!-- ── AI Services group (model/agent/improve connections + embedding) ── -->
@@ -593,6 +601,10 @@
 		/>
 
 		{/if}<!-- end behavior group -->
+
+		{#if knowledgeSection === 'health-report'}
+		<AkmHealthReportSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored} />
+		{/if}
 
 	</div>
 

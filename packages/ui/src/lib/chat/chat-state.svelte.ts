@@ -22,7 +22,11 @@ import {
 	createSession,
 	getSessionMessages,
 	listSessions,
+	rejectChatQuestion,
+	replyChatPermission,
+	replyChatQuestion,
 	sendChatMessage,
+	startChatMessageTurn,
 } from '$lib/api.js';
 import type {
 	ChatEntry,
@@ -30,11 +34,61 @@ import type {
 	EndpointChatState,
 	SessionSummary,
 } from '$lib/types.js';
-import { subscribeSessionEvents } from './session-events.js';
+import {
+	extractTextDelta,
+	extractPermissionAsk,
+	extractQuestionAsk,
+	extractStepUpdate,
+	extractToolUpdate,
+	isSessionError,
+	isTurnEnd,
+	partSnapshotType,
+	type PermissionAsk,
+	type QuestionAsk,
+	type ToolUpdate,
+	type RawEvent,
+	type StepUpdate,
+} from './oc-events.js';
+import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
 
 type EndpointId = string;
 type SessionId = string;
+const STREAM_TURN_TIMEOUT_MS = 150_000;
+
+export type LiveToolState = {
+	id: string;
+	kind: 'tool' | 'step';
+	tool: string;
+	status: string;
+	title: string;
+	detail: string;
+	output: string;
+	error: string;
+	updatedAt: number;
+};
+
+export type PendingPermissionState = PermissionAsk & {
+	status: 'pending' | 'submitting' | 'resolved' | 'error';
+	decision: '' | 'once' | 'always' | 'reject';
+	message: string;
+};
+
+export type PendingQuestionState = QuestionAsk & {
+	status: 'pending' | 'submitting' | 'answered' | 'rejected' | 'error';
+	answers: string[];
+	message: string;
+};
+
+type PendingTurn = {
+	endpointId: EndpointId;
+	sessionId: SessionId;
+	userText: string;
+	reasoningPartIds: Set<string>;
+	resolve: () => void;
+	reject: (error: Error) => void;
+	timeout: ReturnType<typeof setTimeout>;
+};
 
 function emptyEndpointState(): EndpointChatState {
 	return {
@@ -64,6 +118,10 @@ class ChatService {
 	entriesLoading = $state(false);
 	sending = $state(false);
 	error = $state('');
+	pendingAssistantText = $state('');
+	pendingToolStates = $state<LiveToolState[]>([]);
+	pendingPermission = $state<PendingPermissionState | null>(null);
+	pendingQuestion = $state<PendingQuestionState | null>(null);
 
 	/**
 	 * Set true while the SSE event stream is connected. Surfaced by the
@@ -77,6 +135,7 @@ class ChatService {
 	 * Plain field (not `$state`) — only the chat service touches it.
 	 */
 	private _unsubscribeEvents: (() => void) | null = null;
+	private _pendingTurn: PendingTurn | null = null;
 
 	activeSessionId: SessionId | null = $derived(
 		this.byEndpoint.get(this.activeEndpointId)?.activeSessionId ?? null
@@ -164,13 +223,189 @@ class ChatService {
 			onDeleted: (id) => {
 				void this._onSessionDeleted(id);
 			},
+			onEvent: (event) => {
+				this._onLiveEvent(event);
+			},
 			onConnect: () => {
 				this.liveConnected = true;
 			},
 			onDisconnect: () => {
 				this.liveConnected = false;
+				if (this._pendingTurn) {
+					this._failPendingTurn(new Error('Assistant event stream disconnected.'));
+				}
 			},
 		});
+	}
+
+	private _toRawEvent(event: OpenCodeSessionEventPayload): RawEvent {
+		return {
+			type: event.type,
+			properties: (event.properties ?? {}) as Record<string, unknown>,
+		};
+	}
+
+	private _upsertPendingToolState(update: ToolUpdate): void {
+		const id = update.callID || `${update.tool}:${this.pendingToolStates.length}`;
+		const next: LiveToolState = {
+			id,
+			kind: 'tool',
+			tool: update.tool,
+			status: update.status,
+			title: update.title ?? update.tool,
+			detail: update.detail ?? '',
+			output: update.output ?? '',
+			error: update.error ?? '',
+			updatedAt: Date.now(),
+		};
+		const existing = this.pendingToolStates.find((item) => item.id === id);
+		if (!existing) {
+			this.pendingToolStates = [...this.pendingToolStates, next];
+			return;
+		}
+		this.pendingToolStates = this.pendingToolStates.map((item) =>
+			item.id === id ? { ...item, ...next } : item
+		);
+	}
+
+	private _upsertPendingStepState(update: StepUpdate): void {
+		const next: LiveToolState = {
+			id: update.id,
+			kind: 'step',
+			tool: 'step',
+			status: update.status,
+			title: update.title,
+			detail: update.detail ?? '',
+			output: '',
+			error: '',
+			updatedAt: Date.now(),
+		};
+		const existing = this.pendingToolStates.find((item) => item.id === update.id);
+		if (!existing) {
+			this.pendingToolStates = [...this.pendingToolStates, next];
+			return;
+		}
+		this.pendingToolStates = this.pendingToolStates.map((item) =>
+			item.id === update.id ? { ...item, ...next } : item
+		);
+	}
+
+	private _resetPendingRenderState(): void {
+		this.pendingAssistantText = '';
+		this.pendingToolStates = [];
+		this.pendingPermission = null;
+		this.pendingQuestion = null;
+	}
+
+	private _appendAssistantReply(text: string): void {
+		const assistantEntry: ChatMessage = {
+			id: crypto.randomUUID(),
+			role: 'assistant',
+			text,
+			timestamp: Date.now(),
+		};
+		this.entries = [...this.entries, assistantEntry];
+	}
+
+	private _clearPendingTurn(): PendingTurn | null {
+		const pending = this._pendingTurn;
+		if (!pending) return null;
+		clearTimeout(pending.timeout);
+		this._pendingTurn = null;
+		return pending;
+	}
+
+	private _finishPendingTurn(replyText?: string): void {
+		const pending = this._clearPendingTurn();
+		if (!pending) return;
+		const text = (replyText ?? this.pendingAssistantText).trim() || '(no response)';
+		this._appendAssistantReply(text);
+		this._resetPendingRenderState();
+		this._bumpSession(pending.sessionId);
+		if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && text && text !== '(no response)') {
+			void speakText(text, {
+				mode: 'chat_reply',
+				userText: pending.userText,
+				assistantText: text,
+			});
+		}
+		pending.resolve();
+	}
+
+	private _failPendingTurn(error: Error): void {
+		const pending = this._clearPendingTurn();
+		if (!pending) return;
+		this._resetPendingRenderState();
+		pending.reject(error);
+	}
+
+	private _bumpSession(sessionId: SessionId): void {
+		const endpointId = this.activeEndpointId;
+		const prev = this.byEndpoint.get(endpointId);
+		if (!prev) return;
+		const now = Date.now();
+		const existing = prev.sessions.find((s) => s.id === sessionId);
+		const updated = existing
+			? { ...existing, updatedAt: now }
+			: { id: sessionId, title: '', createdAt: now, updatedAt: now };
+		const rest = prev.sessions.filter((s) => s.id !== sessionId);
+		this.setEndpointState(endpointId, { sessions: [updated, ...rest] });
+	}
+
+	private _onLiveEvent(event: OpenCodeSessionEventPayload): void {
+		const pending = this._pendingTurn;
+		if (!pending) return;
+		const raw = this._toRawEvent(event);
+		if (pending.endpointId !== this.activeEndpointId) return;
+
+		const snapshot = partSnapshotType(raw);
+		if (snapshot?.type === 'reasoning') {
+			pending.reasoningPartIds.add(snapshot.partID);
+		}
+
+		const textDelta = extractTextDelta(raw, pending.sessionId, pending.reasoningPartIds);
+		if (textDelta) {
+			this.pendingAssistantText += textDelta;
+		}
+
+		const toolUpdate = extractToolUpdate(raw, pending.sessionId);
+		if (toolUpdate) {
+			this._upsertPendingToolState(toolUpdate);
+		}
+
+		const stepUpdate = extractStepUpdate(raw, pending.sessionId);
+		if (stepUpdate) {
+			this._upsertPendingStepState(stepUpdate);
+		}
+
+		const permissionAsk = extractPermissionAsk(raw, pending.sessionId);
+		if (permissionAsk) {
+			this.pendingPermission = {
+				...permissionAsk,
+				status: 'pending',
+				decision: '',
+				message: '',
+			};
+		}
+
+		const questionAsk = extractQuestionAsk(raw, pending.sessionId);
+		if (questionAsk) {
+			this.pendingQuestion = {
+				...questionAsk,
+				status: 'pending',
+				answers: questionAsk.questions.map(() => ''),
+				message: '',
+			};
+		}
+
+		if (isSessionError(raw, pending.sessionId)) {
+			this._failPendingTurn(new Error('Assistant session ended unexpectedly.'));
+			return;
+		}
+
+		if (isTurnEnd(raw, pending.sessionId)) {
+			this._finishPendingTurn();
+		}
 	}
 
 	/**
@@ -281,6 +516,7 @@ class ChatService {
 		const endpointId = this.activeEndpointId;
 		this.setEndpointState(endpointId, { activeSessionId: sessionId });
 		this.entries = [];
+		this._resetPendingRenderState();
 		this.entriesLoading = true;
 		this.error = '';
 		try {
@@ -325,6 +561,7 @@ class ChatService {
 				activeSessionId: id,
 			});
 			this.entries = [];
+			this._resetPendingRenderState();
 			return id;
 		} catch (e) {
 			const err = e as { message?: string };
@@ -338,9 +575,21 @@ class ChatService {
 	 * first (matches the "zero sessions" empty-state flow).
 	 */
 	async send(text: string): Promise<void> {
-		if (this.sending) return;
 		const trimmed = text.trim();
 		if (!trimmed) return;
+		if (this.pendingQuestion && this.pendingQuestion.questions.length === 1 && this.sending) {
+			await this.answerQuestion(trimmed);
+			return;
+		}
+		if (this.pendingQuestion && this.sending) {
+			this.pendingQuestion = {
+				...this.pendingQuestion,
+				status: 'error',
+				message: 'This question has multiple parts and must be answered with the provided controls.',
+			};
+			return;
+		}
+		if (this.sending) return;
 
 		let sessionId = this.activeSessionId;
 		if (!sessionId) {
@@ -355,45 +604,56 @@ class ChatService {
 			timestamp: Date.now(),
 		};
 		this.entries = [...this.entries, userEntry];
+		this._resetPendingRenderState();
 		this.error = '';
 		this.sending = true;
+		if (voiceState.ttsSupported && voiceState.ttsAutoEnabled) {
+			void speakText('Working on it.', {
+				mode: 'chat_ack',
+				userText: trimmed,
+			});
+		}
 
 		try {
-			const response = await sendChatMessage(sessionId, trimmed);
-			const replyText = response.parts
-				.filter((p) => p.type === 'text' && p.text)
-				.map((p) => p.text ?? '')
-				.join('');
-
-			const assistantEntry: ChatMessage = {
-				id: crypto.randomUUID(),
-				role: 'assistant',
-				text: replyText || '(no response)',
-				timestamp: Date.now(),
-			};
-			this.entries = [...this.entries, assistantEntry];
-
-			// Bump the session's updatedAt + move it to the top of the list.
-			const endpointId = this.activeEndpointId;
-			const prev = this.byEndpoint.get(endpointId);
-			if (prev) {
-				const now = Date.now();
-				const existing = prev.sessions.find((s) => s.id === sessionId);
-				const updated = existing
-					? { ...existing, updatedAt: now }
-					: { id: sessionId, title: '', createdAt: now, updatedAt: now };
-				const rest = prev.sessions.filter((s) => s.id !== sessionId);
-				this.setEndpointState(endpointId, { sessions: [updated, ...rest] });
-			}
-
-			// Global auto-TTS: speak the reply only when the user has the
-			// speaker toggle on. Works from any page because this service is
-			// the one place the reply arrives.
-			if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && replyText) {
-				speakText(replyText);
+			if (this._unsubscribeEvents && this.liveConnected) {
+				await new Promise<void>((resolve, reject) => {
+					const timeout = setTimeout(() => {
+						this._pendingTurn = null;
+						reject(new Error('Timed out waiting for the assistant response.'));
+					}, STREAM_TURN_TIMEOUT_MS);
+					this._pendingTurn = {
+						endpointId: this.activeEndpointId,
+						sessionId,
+						userText: trimmed,
+						reasoningPartIds: new Set(),
+						resolve,
+						reject,
+						timeout,
+					};
+					void startChatMessageTurn(sessionId, trimmed).catch((error) => {
+						this._failPendingTurn(error instanceof Error ? error : new Error(String(error)));
+					});
+				});
+			} else {
+				const response = await sendChatMessage(sessionId, trimmed);
+				const replyText = response.parts
+					.filter((p) => p.type === 'text' && p.text)
+					.map((p) => p.text ?? '')
+					.join('');
+				const text = replyText.trim() || '(no response)';
+				this._appendAssistantReply(text);
+				this._bumpSession(sessionId);
+				if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && text !== '(no response)') {
+					void speakText(text, {
+						mode: 'chat_reply',
+						userText: trimmed,
+						assistantText: text,
+					});
+				}
 			}
 		} catch (e) {
 			const err = e as { status?: number; message?: string };
+			this._resetPendingRenderState();
 			if (err.status === 503 || err.status === 502) {
 				this.error = 'Assistant is not reachable. Try reconnecting.';
 				// Clear active session so a retry can re-establish.
@@ -408,10 +668,117 @@ class ChatService {
 		}
 	}
 
+	async answerPermission(reply: 'once' | 'always' | 'reject'): Promise<void> {
+		if (!this.pendingPermission || this.pendingPermission.status === 'submitting') return;
+		const current = this.pendingPermission;
+		this.pendingPermission = {
+			...current,
+			status: 'submitting',
+			decision: reply,
+			message: '',
+		};
+		try {
+			await replyChatPermission(current.requestID, reply);
+			this.pendingPermission = {
+				...current,
+				status: 'resolved',
+				decision: reply,
+				message:
+					reply === 'once'
+						? `Allowed ${current.permission} once. Waiting for the assistant to continue...`
+						: reply === 'always'
+							? `Always allowed future matching ${current.permission} requests.`
+							: `Denied ${current.permission}. Waiting for the assistant to continue...`,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to record permission reply.';
+			this.pendingPermission = {
+				...current,
+				status: 'error',
+				decision: reply,
+				message,
+			};
+		}
+	}
+
+	setQuestionAnswer(index: number, answer: string): void {
+		if (!this.pendingQuestion) return;
+		if (index < 0 || index >= this.pendingQuestion.questions.length) return;
+		const answers = [...this.pendingQuestion.answers];
+		answers[index] = answer;
+		this.pendingQuestion = { ...this.pendingQuestion, answers, message: '' };
+	}
+
+	async answerQuestion(answer?: string): Promise<void> {
+		if (!this.pendingQuestion || this.pendingQuestion.status === 'submitting') return;
+		const current = this.pendingQuestion;
+		const answers = current.questions.length === 1 && typeof answer === 'string'
+			? [answer.trim()]
+			: current.answers.map((item) => item.trim());
+		if (answers.some((item) => !item)) {
+			this.pendingQuestion = {
+				...current,
+				status: 'error',
+				message: 'Answer every question before submitting.',
+			};
+			return;
+		}
+		this.pendingQuestion = {
+			...current,
+			status: 'submitting',
+			answers,
+			message: '',
+		};
+		try {
+			await replyChatQuestion(current.requestID, answers.map((item) => [item]));
+			this.pendingQuestion = {
+				...current,
+				status: 'answered',
+				answers,
+				message: 'Answer sent.',
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to send answer.';
+			this.pendingQuestion = {
+				...current,
+				status: 'error',
+				answers,
+				message,
+			};
+		}
+	}
+
+	async rejectQuestion(): Promise<void> {
+		if (!this.pendingQuestion || this.pendingQuestion.status === 'submitting') return;
+		const current = this.pendingQuestion;
+		this.pendingQuestion = {
+			...current,
+			status: 'submitting',
+			message: '',
+		};
+		try {
+			await rejectChatQuestion(current.requestID);
+			this.pendingQuestion = {
+				...current,
+				status: 'rejected',
+				message: 'Question declined.',
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to reject question.';
+			this.pendingQuestion = {
+				...current,
+				status: 'error',
+				message,
+			};
+		}
+	}
+
 	reset(): void {
 		stopSpeaking();
+		this._clearPendingTurn();
 		this.entries = [];
 		this.error = '';
+		this._resetPendingRenderState();
 		// Reassign to a fresh Map so subscribers re-render to empty state.
 		this.byEndpoint = new Map();
 		// Tear down the SSE subscription on logout / state wipe.

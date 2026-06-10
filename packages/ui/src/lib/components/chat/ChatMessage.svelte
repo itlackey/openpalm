@@ -13,7 +13,7 @@
   // by reinterpreting punctuation as markdown. Assistant messages get
   // rendered (markdown-it strips raw HTML at the source).
   const renderedHtml = $derived(
-    entry.type !== 'divider' && entry.role === 'assistant'
+    entry.type !== 'divider' && entry.type !== 'note' && entry.role === 'assistant'
       ? renderMarkdown(entry.text)
       : null,
   );
@@ -24,6 +24,11 @@
     <span class="divider-line"></span>
     <span class="divider-label">{entry.label}</span>
     <span class="divider-line"></span>
+  </div>
+{:else if entry.type === 'note'}
+  <div class="thread-note" aria-label={entry.label}>
+    <span class="thread-note-label">{entry.label}</span>
+    <span class="thread-note-text">{entry.text}</span>
   </div>
 {:else}
   <div
@@ -72,6 +77,32 @@
     background: var(--color-bg);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
+  }
+
+  .thread-note {
+    margin: 0 auto;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    text-align: center;
+    color: var(--color-text-secondary);
+  }
+
+  .thread-note-label {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-tertiary);
+  }
+
+  .thread-note-text {
+    font-size: var(--text-xs);
+    line-height: 1.4;
   }
 
   /* Standard chat layout inside the centered conversation column: user turns

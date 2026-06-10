@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolveLatestPlatformTag, applyTagChange } from "./lifecycle.js";
+import { resolveLatestPlatformTag, resolveLatestPlatformTagForCurrentMajor, applyTagChange } from "./lifecycle.js";
 import type { ControlPlaneState } from "./types.js";
 
 const LIB_CONTROL_PLANE_DIR = join(import.meta.dir);
@@ -48,6 +48,14 @@ describe("resolveLatestPlatformTag (#449)", () => {
     await expect(resolveLatestPlatformTag("openpalm")).rejects.toThrow(
       /No usable Docker image tag/,
     );
+  });
+
+  test('returns the newest tag within the current major version', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v1.0.0', 'v0.12.1', 'v0.12.0', 'latest'])) as typeof fetch;
+
+    const tag = await resolveLatestPlatformTagForCurrentMajor('openpalm', 'v0.11.4');
+    expect(tag).toBe('v0.12.1');
   });
 });
 

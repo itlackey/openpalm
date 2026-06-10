@@ -40,7 +40,26 @@
 
   async function handleSend(text: string): Promise<void> {
     await chat.send(text);
-    scrollToBottom();
+  }
+
+  async function handlePermissionReply(reply: 'once' | 'always' | 'reject'): Promise<void> {
+    await chat.answerPermission(reply);
+  }
+
+  async function handleQuestionOption(answer: string): Promise<void> {
+    await chat.answerQuestion(answer);
+  }
+
+  function handleQuestionDraft(index: number, event: Event): void {
+    chat.setQuestionAnswer(index, (event.currentTarget as HTMLInputElement).value);
+  }
+
+  async function handleQuestionSubmit(): Promise<void> {
+    await chat.answerQuestion();
+  }
+
+  async function handleQuestionReject(): Promise<void> {
+    await chat.rejectQuestion();
   }
 
   function scrollToBottom(): void {
@@ -48,6 +67,68 @@
     queueMicrotask(() => {
       scrollAnchorEl?.scrollIntoView({ behavior: 'smooth' });
     });
+  }
+
+  // Keep the newest turn in view whenever the rendered transcript changes,
+  // including the pending assistant indicator shown during a reply.
+  $effect(() => {
+    const lastEntry = chat.entries.at(-1);
+    const lastEntryContent =
+      lastEntry?.type === 'divider'
+        ? lastEntry.label
+        : lastEntry?.text ?? '';
+
+    if (!lastEntry && !entriesLoading && !sessionsLoading && !chat.sending) {
+      return;
+    }
+
+    lastEntryContent;
+    chat.pendingAssistantText;
+    chat.pendingToolStates.length;
+    chat.pendingPermission?.requestID;
+    chat.pendingQuestion?.requestID;
+    scrollToBottom();
+  });
+
+  function liveStatusText(): string {
+    if (chat.pendingPermission) return 'Assistant paused for approval';
+    if (chat.pendingQuestion) return 'Assistant is waiting for your answer';
+    if (chat.pendingAssistantText) return 'Assistant is responding';
+    return 'Assistant is typing';
+  }
+
+  function clamp(text: string, max = 160): string {
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  }
+
+  function toolEmoji(tool: string, status: string): string {
+    const name = tool.toLowerCase();
+    if (status === 'error' || status === 'failed') return '⚠️';
+    if (name.includes('bash') || name.includes('shell') || name.includes('command')) return '🛠️';
+    if (name.includes('grep') || name.includes('search')) return '🔎';
+    if (name.includes('read') || name.includes('file')) return '📄';
+    if (name.includes('edit') || name.includes('write') || name.includes('patch')) return '✍️';
+    if (name.includes('web') || name.includes('http') || name.includes('fetch')) return '🌐';
+    if (name.includes('task') || name.includes('agent')) return '🤖';
+    return status === 'completed' ? '✅' : '⏳';
+  }
+
+  function timelineTitle(entry: (typeof chat.pendingToolStates)[number]): string {
+    return entry.kind === 'step' ? entry.title : entry.title || entry.tool;
+  }
+
+  function toolStatusLabel(status: string): string {
+    switch (status) {
+      case 'completed':
+        return 'completed';
+      case 'error':
+      case 'failed':
+        return 'failed';
+      case 'pending':
+        return 'queued';
+      default:
+        return 'running';
+    }
   }
 
   // ── Body scroll lock (chat-page only) ────────────────────────────────
@@ -137,6 +218,175 @@
         <ChatMessage {entry} />
       {/each}
 
+      {#if chat.sending}
+        <div class="typing-message" aria-live="polite" aria-label={liveStatusText()}>
+          <div class="typing-bubble">
+            {#if chat.pendingAssistantText}
+              <p class="typing-text typing-text-streaming">{chat.pendingAssistantText}</p>
+            {:else}
+              <div class="typing-state-row">
+                <span class="typing-text">{liveStatusText()}</span>
+                {#if !chat.pendingPermission && !chat.pendingQuestion}
+                  <span class="typing-indicator" aria-hidden="true">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                  </span>
+                {/if}
+              </div>
+            {/if}
+
+            {#if chat.pendingToolStates.length > 0}
+              <div class="tool-timeline" class:tool-timeline-muted={!!chat.pendingPermission || !!chat.pendingQuestion} aria-label="Assistant activity">
+                {#each chat.pendingToolStates as tool (tool.id)}
+                  <div class="tool-timeline-item">
+                    <span class="tool-emoji" aria-hidden="true">{toolEmoji(tool.tool, tool.status)}</span>
+                    <div class="tool-copy">
+                      <span class="tool-label">
+                        {timelineTitle(tool)}
+                        <span class="tool-status">{toolStatusLabel(tool.status)}</span>
+                      </span>
+                      {#if tool.detail && (!chat.pendingPermission && !chat.pendingQuestion)}
+                        <span class="tool-detail">{clamp(tool.detail)}</span>
+                      {/if}
+                      {#if tool.output && (!chat.pendingPermission && !chat.pendingQuestion)}
+                        <code class="tool-output">{clamp(tool.output, 120)}</code>
+                      {/if}
+                      {#if tool.error}
+                        <span class="tool-error">{clamp(tool.error, 120)}</span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
+            {#if chat.pendingPermission}
+              <div class="live-card permission-card" role="group" aria-label="Permission request">
+                <div class="live-card-header">
+                  <span class="live-card-kicker">Permission request</span>
+                  <span class="live-card-title">{chat.pendingPermission.permission}</span>
+                </div>
+                {#if chat.pendingPermission.detail}
+                  <p class="live-card-message">{clamp(chat.pendingPermission.detail)}</p>
+                {/if}
+                {#if chat.pendingPermission.patterns.length > 0}
+                  <div>
+                    <span class="live-card-label">Requested now</span>
+                    <code class="live-card-code">{chat.pendingPermission.patterns.join(', ')}</code>
+                  </div>
+                {/if}
+                {#if chat.pendingPermission.always.length > 0}
+                  <div>
+                    <span class="live-card-label">Saved if always allowed</span>
+                    <code class="live-card-code">{chat.pendingPermission.always.join(', ')}</code>
+                  </div>
+                {/if}
+                {#if chat.pendingPermission.message}
+                  <p class="live-card-message">{chat.pendingPermission.message}</p>
+                {/if}
+                <div class="live-card-actions">
+                  <button class="btn btn-primary btn-sm" type="button" onclick={() => void handlePermissionReply('once')} disabled={chat.pendingPermission.status === 'submitting' || chat.pendingPermission.status === 'resolved'}>
+                    Allow this once
+                  </button>
+                  <button class="btn btn-secondary btn-sm" type="button" onclick={() => void handlePermissionReply('always')} disabled={chat.pendingPermission.status === 'submitting' || chat.pendingPermission.status === 'resolved'}>
+                    Always allow matches
+                  </button>
+                  <button class="btn btn-danger btn-sm" type="button" onclick={() => void handlePermissionReply('reject')} disabled={chat.pendingPermission.status === 'submitting' || chat.pendingPermission.status === 'resolved'}>
+                    Deny request
+                  </button>
+                </div>
+              </div>
+            {/if}
+
+            {#if chat.pendingQuestion}
+              <div class="live-card question-card" role="group" aria-label="Assistant question">
+                <div class="live-card-header">
+                  <span class="live-card-kicker">Assistant question</span>
+                  {#if chat.pendingQuestion.questions.length === 1 && chat.pendingQuestion.questions[0]?.header}
+                    <span class="live-card-title">{chat.pendingQuestion.questions[0].header}</span>
+                  {:else if chat.pendingQuestion.questions.length > 1}
+                    <span class="live-card-title">{chat.pendingQuestion.questions.length} answers required</span>
+                  {/if}
+                </div>
+
+                {#if chat.pendingQuestion.questions.length === 1 && chat.pendingQuestion.questions[0]}
+                  <p class="live-card-question">{chat.pendingQuestion.questions[0].question}</p>
+                  {#if chat.pendingQuestion.questions[0].options.length > 0}
+                    <div class="question-options">
+                      {#each chat.pendingQuestion.questions[0].options as option, index (`${chat.pendingQuestion.requestID}:${index}`)}
+                        <button class="btn btn-secondary btn-sm question-option" type="button" onclick={() => void handleQuestionOption(option.label)} disabled={chat.pendingQuestion.status === 'submitting' || chat.pendingQuestion.status === 'answered' || chat.pendingQuestion.status === 'rejected'}>
+                          <span>{option.label}</span>
+                          {#if option.description}
+                            <span class="question-option-description">{option.description}</span>
+                          {/if}
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                  <p class="live-card-hint">Use the composer below to send a custom answer.</p>
+                {:else}
+                  <div class="multi-question-list">
+                    {#each chat.pendingQuestion.questions as question, index (`${chat.pendingQuestion.requestID}:question:${index}`)}
+                      <div class="multi-question-item">
+                        {#if question.header}
+                          <span class="live-card-label">{question.header}</span>
+                        {/if}
+                        <p class="live-card-question">{question.question}</p>
+                        {#if question.options.length > 0}
+                          <div class="question-options">
+                            {#each question.options as option, optionIndex (`${chat.pendingQuestion.requestID}:${index}:${optionIndex}`)}
+                              <button
+                                class="btn btn-secondary btn-sm question-option"
+                                class:selected-option={chat.pendingQuestion.answers[index] === option.label}
+                                type="button"
+                                onclick={() => chat.setQuestionAnswer(index, option.label)}
+                                disabled={chat.pendingQuestion.status === 'submitting' || chat.pendingQuestion.status === 'answered' || chat.pendingQuestion.status === 'rejected'}
+                              >
+                                <span>{option.label}</span>
+                                {#if option.description}
+                                  <span class="question-option-description">{option.description}</span>
+                                {/if}
+                              </button>
+                            {/each}
+                          </div>
+                        {/if}
+                        <input
+                          class="question-input"
+                          type="text"
+                          value={chat.pendingQuestion.answers[index]}
+                          placeholder="Type an answer"
+                          oninput={(event) => handleQuestionDraft(index, event)}
+                          disabled={chat.pendingQuestion.status === 'submitting' || chat.pendingQuestion.status === 'answered' || chat.pendingQuestion.status === 'rejected'}
+                        />
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+
+                {#if chat.pendingQuestion.answers.some((answer) => answer)}
+                  <code class="live-card-code">{chat.pendingQuestion.answers.filter(Boolean).join(' | ')}</code>
+                {/if}
+                {#if chat.pendingQuestion.message}
+                  <p class="live-card-message">{chat.pendingQuestion.message}</p>
+                {/if}
+                <div class="live-card-actions">
+                  {#if chat.pendingQuestion.questions.length > 1}
+                    <button class="btn btn-primary btn-sm" type="button" onclick={() => void handleQuestionSubmit()} disabled={chat.pendingQuestion.status === 'submitting' || chat.pendingQuestion.status === 'answered' || chat.pendingQuestion.status === 'rejected'}>
+                      Submit answers
+                    </button>
+                  {/if}
+                  <button class="btn btn-secondary btn-sm" type="button" onclick={() => void handleQuestionReject()} disabled={chat.pendingQuestion.status === 'submitting' || chat.pendingQuestion.status === 'answered' || chat.pendingQuestion.status === 'rejected'}>
+                    Can't answer
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
+          <span class="typing-meta">Assistant</span>
+        </div>
+      {/if}
+
       <div bind:this={scrollAnchorEl} aria-hidden="true"></div>
     </section>
 
@@ -161,6 +411,7 @@
     <!-- Input area — always at the bottom. -->
     <ChatInput
       sending={chat.sending}
+      questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
       onSend={handleSend}
     />
   </div>
@@ -275,6 +526,292 @@
     font-size: var(--text-sm);
     padding: var(--space-4);
     margin: auto;
+  }
+
+  .typing-message {
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .typing-bubble {
+    max-width: 85%;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-tertiary);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    border-bottom-left-radius: var(--radius-sm);
+    line-height: var(--leading-normal);
+  }
+
+  .typing-text {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin: 0;
+  }
+
+  .typing-text-streaming {
+    color: var(--color-text);
+    white-space: pre-wrap;
+  }
+
+  .typing-state-row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .typing-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .typing-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--color-text-secondary);
+    opacity: 0.35;
+    animation: typing-bounce 1.1s infinite ease-in-out;
+  }
+
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.16s;
+  }
+
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.32s;
+  }
+
+  .typing-meta {
+    margin-top: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+
+  .tool-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: 100%;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .tool-timeline-muted {
+    opacity: 0.78;
+  }
+
+  .tool-timeline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+
+  .tool-emoji {
+    flex-shrink: 0;
+    width: 1.25rem;
+    text-align: center;
+  }
+
+  .tool-label {
+    display: inline-flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .tool-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tool-detail,
+  .tool-output,
+  .tool-error {
+    font-size: var(--text-xs);
+    line-height: 1.45;
+  }
+
+  .tool-detail {
+    color: var(--color-text-tertiary);
+    white-space: pre-wrap;
+  }
+
+  .tool-output {
+    display: inline-block;
+    max-width: 100%;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .tool-error {
+    color: var(--color-danger);
+  }
+
+  .tool-status {
+    color: var(--color-text-tertiary);
+    text-transform: lowercase;
+  }
+
+  .live-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+  }
+
+  .live-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .live-card-kicker {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-tertiary);
+  }
+
+  .live-card-title {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+
+  .live-card-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .live-card-question,
+  .live-card-message,
+  .live-card-hint {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .live-card-message,
+  .live-card-hint {
+    color: var(--color-text-secondary);
+  }
+
+  .live-card-code {
+    display: inline-block;
+    max-width: 100%;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .live-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .question-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .multi-question-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .multi-question-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .multi-question-item:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .question-option {
+    justify-content: flex-start;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .question-option.selected-option {
+    border-color: var(--color-primary);
+    background: var(--color-primary-subtle);
+    color: var(--color-text);
+  }
+
+  .question-option-description {
+    color: var(--color-text-secondary);
+    font-weight: var(--font-normal);
+  }
+
+  .question-input {
+    width: 100%;
+    min-height: 40px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font: inherit;
+  }
+
+  .question-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-subtle);
+  }
+
+  @keyframes typing-bounce {
+    0%,
+    80%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.35;
+    }
+
+    40% {
+      transform: translateY(-3px);
+      opacity: 0.95;
+    }
   }
 
   .chat-error-banner {

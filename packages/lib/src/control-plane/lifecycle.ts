@@ -1,5 +1,6 @@
 /** Lifecycle helpers — state factory, apply transitions, compose file list. */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import libPkg from "../../package.json" with { type: "json" };
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
@@ -25,6 +26,7 @@ import { checkDocker, composePreflight, composePull, composeUp, composeConfigSer
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
+import { compareComparableVersions, isComparableSemver, isSameMajorVersion } from "./versioning.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -181,6 +183,27 @@ function resolveNewestDockerTag(payload: unknown): string | null {
   return fallback;
 }
 
+function resolvePlatformVersionPolicyBaseTag(state: ControlPlaneState): string {
+  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const parsed = parseEnvFile(systemEnvPath);
+  const configured = parsed.OP_IMAGE_TAG?.trim();
+  if (isComparableSemver(configured)) return configured;
+  return `v${libPkg.version}`;
+}
+
+function resolveNewestDockerTagForCurrentMajor(payload: unknown, currentTag: string): string | null {
+  const results = (payload as DockerTagsResponse)?.results;
+  if (!Array.isArray(results)) return null;
+
+  let best: string | null = null;
+  for (const entry of results as DockerTagEntry[]) {
+    const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+    if (!isComparableSemver(name) || !isSameMajorVersion(name, currentTag)) continue;
+    if (!best || compareComparableVersions(name, best) > 0) best = name;
+  }
+  return best;
+}
+
 function resolveImageNamespace(state: ControlPlaneState): string {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
   const parsed = parseEnvFile(systemEnvPath);
@@ -226,13 +249,39 @@ export async function resolveLatestPlatformTag(namespace: string): Promise<strin
   return latestTag;
 }
 
+export async function resolveLatestPlatformTagForCurrentMajor(
+  namespace: string,
+  currentTag: string,
+): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://registry.hub.docker.com/v2/repositories/${namespace}/assistant/tags?page_size=25&ordering=last_updated`,
+      { headers: { Accept: "application/json" } }
+    );
+  } catch (e) {
+    throw new Error(`Failed to query Docker tags: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Docker tag lookup failed (${response.status})`);
+  }
+
+  const payload = await response.json();
+  const latestTag = resolveNewestDockerTagForCurrentMajor(payload, currentTag);
+  if (!latestTag) {
+    throw new Error(`No usable Docker image tag found in major ${currentTag.replace(/^v/, '').split('.')[0]}`);
+  }
+  return latestTag;
+}
+
 export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): Promise<{
   namespace: string;
   tag: string;
 }> {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
   const namespace = resolveImageNamespace(state);
-  const latestTag = await resolveLatestPlatformTag(namespace);
+  const latestTag = await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
 
   const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   const updatedContent = mergeEnvContent(currentContent, { OP_IMAGE_TAG: latestTag }, { uncomment: true });

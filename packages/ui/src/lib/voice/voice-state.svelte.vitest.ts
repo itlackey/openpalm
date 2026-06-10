@@ -108,6 +108,33 @@ describe('voice-state speakText error surfacing', () => {
 			}
 		}
 	});
+
+	test('forwards chat speech-prep options to /api/speak', async () => {
+		voiceState.ttsEngine = 'remote';
+		let capturedBody = '';
+		const mockFetch = vi.fn(async (_url, init) => {
+			capturedBody = String(init?.body ?? '');
+			return new Response(JSON.stringify({ error: 'tts_not_configured' }), {
+				status: 503,
+				headers: { 'content-type': 'application/json' },
+			});
+		}) as unknown as typeof fetch;
+		globalThis.fetch = mockFetch;
+
+		const ss = (window as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
+		try {
+			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+			await speakText('Working on it.', { mode: 'chat_ack', userText: 'Plan the work.' });
+			const parsed = JSON.parse(capturedBody) as Record<string, unknown>;
+			expect(parsed.text).toBe('Working on it.');
+			expect(parsed.mode).toBe('chat_ack');
+			expect(parsed.userText).toBe('Plan the work.');
+		} finally {
+			if (ss !== undefined) {
+				(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = ss;
+			}
+		}
+	});
 });
 
 describe('voice-state queue', () => {

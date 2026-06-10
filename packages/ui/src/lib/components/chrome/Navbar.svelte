@@ -20,17 +20,13 @@
   // only on the chat surfaces.
   const pathname = $derived(page.url?.pathname ?? '');
   const onAdmin = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
-  // The Chat↔Advanced mode switch lives in the global navbar on the chat
-  // surfaces so it's a stable, top-level destination.
+  // The Chat↔Advanced mode switch lives in the global navbar so it's always a
+  // stable, top-level destination. Only the left-most utility button swaps:
+  // settings on most pages, chat on admin.
   const onChatSurface = $derived(
     pathname === '/chat' ||
     pathname.startsWith('/chat/')
   );
-  const onAdvancedSurface = $derived(
-    pathname === '/advanced' ||
-    pathname.startsWith('/advanced/')
-  );
-
   // Only the local assistant should show the direct admin link. The drawer
   // itself stays global so theme and endpoint-management remain available even
   // while connected to a remote assistant.
@@ -57,8 +53,9 @@
     <div class="navbar-actions">
       {#if onAdmin}
         <IconButton href="/chat" ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
+      {:else}
+        <SettingsDrawer showManageAssistant={isLocalAssistant} />
       {/if}
-      <SettingsDrawer showManageAssistant={isLocalAssistant} />
       {#if onChatSurface}
         <!-- Hidden ≥1024px: the chat side panel hosts these selectors there. -->
         <span class="chat-selectors">
@@ -66,9 +63,7 @@
           <SessionPicker />
         </span>
       {/if}
-      {#if onChatSurface || onAdvancedSurface}
-        <ModeSwitch />
-      {/if}
+      <ModeSwitch />
       <VoiceControl />
     </div>
   </div>

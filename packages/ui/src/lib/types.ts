@@ -109,7 +109,15 @@ export type ChatDivider = {
   timestamp: number;
 };
 
-export type ChatEntry = ChatMessage | ChatDivider;
+export type ChatNote = {
+  id: string;
+  type: 'note';
+  label: string;
+  text: string;
+  timestamp: number;
+};
+
+export type ChatEntry = ChatMessage | ChatDivider | ChatNote;
 
 export type OpenCodeMessageResponse = {
   parts: Array<{ type: string; text?: string }>;
@@ -140,4 +148,3 @@ export type EndpointChatState = {
   sessionsError: string;
   activeSessionId: string | null;
 };
-

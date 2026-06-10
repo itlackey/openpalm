@@ -13,6 +13,8 @@
   import ProvidersPanel from '$lib/components/providers/ProvidersPanel.svelte';
   import LogsTab from '$lib/components/admin/logs/LogsTab.svelte';
   import SecretsTab from '$lib/components/admin/secrets/SecretsTab.svelte';
+  import AssistantTab from '$lib/components/admin/assistant/AssistantTab.svelte';
+  import ActivityTab from '$lib/components/admin/activity/ActivityTab.svelte';
   import AkmTab from '$lib/components/akm/AkmTab.svelte';
   import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
   import VoiceTab from '$lib/components/voice/VoiceTab.svelte';
@@ -522,8 +524,12 @@
         tokenStored={true}
         onRefresh={loadAutomations}
       />
+    {:else if activeTab === 'activity'}
+      <ActivityTab />
     {:else if activeTab === 'connections'}
       <ProvidersPanel />
+    {:else if activeTab === 'assistant'}
+      <AssistantTab tokenStored={true} />
     {:else if activeTab === 'secrets'}
       <SecretsTab tokenStored={true} />
     {/if}

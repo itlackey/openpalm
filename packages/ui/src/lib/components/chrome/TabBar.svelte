@@ -7,7 +7,9 @@
 		| 'secrets'
 		| 'voice'
 		| 'akm'
+		| 'assistant'
 		| 'host-sharing'
+		| 'activity'
 		| 'containers'
 		| 'logs'
 		| 'updates';
@@ -40,7 +42,9 @@
 		logs: `<polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />`,
 		connections: `<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />`,
 		akm: `<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />`,
+		assistant: `<path d="M12 2a4 4 0 0 1 4 4v2h1a3 3 0 0 1 3 3v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-6a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z" /><path d="M9 8h6" /><circle cx="9" cy="14" r="1" /><circle cx="15" cy="14" r="1" /><path d="M9 18c1 .8 2 .8 3 .8s2 0 3-.8" />`,
 		'host-sharing': `<circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />`,
+		activity: `<path d="M3 12h4l2-5 4 10 2-5h6" />`,
 		voice: `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />`,
 		addons: `<path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />`,
 		automations: `<circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />`,
@@ -56,6 +60,7 @@
 			label: 'Health',
 			tabs: [
 				{ id: 'overview', label: 'Overview', icon: ICONS.overview },
+				{ id: 'activity', label: 'Activity', icon: ICONS.activity },
 				{ id: 'containers', label: 'Systems', icon: ICONS.containers },
 				{ id: 'logs', label: 'Journal', icon: ICONS.logs },
 				{ id: 'updates', label: 'Check-up', icon: ICONS.updates },
@@ -86,6 +91,7 @@
 			label: 'Knowledge',
 			tabs: [
 				{ id: 'akm', label: 'Memory', icon: ICONS.akm },
+				{ id: 'assistant', label: 'Assistant', icon: ICONS.assistant },
 				{ id: 'secrets', label: 'Secrets', icon: ICONS.secrets },
 				{ id: 'host-sharing', label: 'Sharing', icon: ICONS['host-sharing'] },
 			],

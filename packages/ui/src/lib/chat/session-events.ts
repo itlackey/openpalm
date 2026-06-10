@@ -21,6 +21,7 @@ export type SessionEventHandlers = {
   onCreated(sessionId: string): void;
   onUpdated(sessionId: string, info?: { title?: string; updatedAt?: number }): void;
   onDeleted(sessionId: string): void;
+  onEvent?: (event: OpenCodeSessionEventPayload) => void;
   onConnect?: () => void;
   onDisconnect?: (error: Error) => void;
 };
@@ -57,10 +58,12 @@ export function parseFrame(chunk: string): ParsedFrame {
   return frame;
 }
 
-type OpenCodeSessionEventPayload = {
+export type OpenCodeSessionEventPayload = {
   type: 'session.created' | 'session.updated' | 'session.deleted' | string;
+  sessionID?: string;
   properties?: {
     info?: { id?: string; title?: string; time?: { updated?: number } };
+    [key: string]: unknown;
   };
 };
 
@@ -147,6 +150,7 @@ export function subscribeSessionEvents(handlers: SessionEventHandlers): () => vo
             console.warn('[session-events] Bad JSON in SSE frame', err);
             continue;
           }
+          handlers.onEvent?.(payload);
           dispatch(handlers, payload);
         }
       }

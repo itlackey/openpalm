@@ -1,5 +1,6 @@
 import type {
   HealthPayload,
+  ChatEntry,
   ContainerListResponse,
   AutomationsResponse,
   ChatMessage,
@@ -498,6 +499,28 @@ export async function reindexAkm(): Promise<{ ok: boolean; message: string; outp
   return (await res.json()) as { ok: boolean; message: string; output?: string };
 }
 
+export type AssistantSettings = {
+  projectName: string;
+  lanExposureEnabled: boolean;
+  stackEnvPath: string;
+  personaPath: string;
+  personaContent: string;
+};
+
+export async function fetchAssistantSettings(): Promise<AssistantSettings> {
+  const res = await requireOk(await request('GET', '/admin/assistant'));
+  return (await res.json()) as AssistantSettings;
+}
+
+export async function saveAssistantSettings(input: {
+  projectName: string;
+  lanExposureEnabled: boolean;
+  personaContent: string;
+}): Promise<{ ok: boolean; projectName: string; lanExposureEnabled: boolean; stackEnvPath: string; personaPath: string; personaContent: string }> {
+  const res = await requireOk(await request('PUT', '/admin/assistant', input));
+  return (await res.json()) as { ok: boolean; projectName: string; lanExposureEnabled: boolean; stackEnvPath: string; personaPath: string; personaContent: string };
+}
+
 // ── AKM Health (dashboard metrics) ──────────────────────────────────
 export type AkmHealth =
   | { available: false; reason?: string }
@@ -642,7 +665,38 @@ export async function listSessions(): Promise<SessionSummary[]> {
  * Skips non-text parts (tool calls, files, reasoning, etc.). Empty-text
  * messages are dropped so the UI doesn't render placeholder bubbles.
  */
-export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
+type SessionMessagePart = {
+  type: string;
+  text?: string;
+  tool?: string;
+  callID?: string;
+  id?: string;
+  state?: {
+    status?: string;
+    title?: string;
+    output?: unknown;
+    error?: string;
+  };
+};
+
+function toolSummary(part: SessionMessagePart): string | null {
+  const tool = part.tool ?? 'tool';
+  const status = part.state?.status ?? 'running';
+  const title = part.state?.title?.trim();
+  const error = part.state?.error?.trim();
+  const output = typeof part.state?.output === 'string'
+    ? part.state.output.trim()
+    : part.state?.output != null
+      ? JSON.stringify(part.state.output)
+      : '';
+  const fragments = [tool, status];
+  if (title) fragments.push(title);
+  if (error) fragments.push(error);
+  else if (output) fragments.push(output);
+  return fragments.filter(Boolean).join(' · ');
+}
+
+export async function getSessionMessages(sessionId: string): Promise<ChatEntry[]> {
   const res = await requireOk(
     await request(
       'GET',
@@ -655,21 +709,50 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
       role: 'user' | 'assistant';
       time?: { created?: number };
     };
-    parts: Array<{ type: string; text?: string }>;
+    parts: SessionMessagePart[];
   }>;
-  const messages: ChatMessage[] = [];
+  const messages: ChatEntry[] = [];
   for (const row of rows) {
-    const text = row.parts
-      .filter((p) => p.type === 'text' && p.text)
-      .map((p) => p.text ?? '')
-      .join('');
-    if (!text) continue;
-    messages.push({
-      id: row.info.id,
-      role: row.info.role,
-      text,
-      timestamp: row.info.time?.created ?? Date.now(),
+    const timestamp = row.info.time?.created ?? Date.now();
+    let textBuffer = '';
+    let textIndex = 0;
+
+    const flushText = (): void => {
+      const text = textBuffer.trim();
+      if (!text) {
+        textBuffer = '';
+        return;
+      }
+      messages.push({
+        id: textIndex === 0 ? row.info.id : `${row.info.id}:text:${textIndex}`,
+        role: row.info.role,
+        text,
+        timestamp,
+      });
+      textIndex += 1;
+      textBuffer = '';
+    };
+
+    row.parts.forEach((part, index) => {
+      if (part.type === 'text' && part.text) {
+        textBuffer += part.text;
+        return;
+      }
+      if (part.type === 'tool' || part.state) {
+        flushText();
+        const summary = toolSummary(part);
+        if (!summary) return;
+        messages.push({
+          id: `${row.info.id}:tool:${part.callID ?? part.id ?? index}`,
+          type: 'note',
+          label: 'Tool',
+          text: summary,
+          timestamp,
+        });
+      }
     });
+
+    flushText();
   }
   return messages;
 }
@@ -704,6 +787,58 @@ export async function sendChatMessage(
     throw Object.assign(new Error(msg), { status: res.status });
   }
   return (await res.json()) as import('./types.js').OpenCodeMessageResponse;
+}
+
+export async function startChatMessageTurn(
+  sessionId: string,
+  text: string
+): Promise<void> {
+  const res = await fetch(
+    `/proxy/assistant/session/${encodeURIComponent(sessionId)}/message`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...buildHeaders(),
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        parts: [{ type: 'text', text }],
+      }),
+      signal: AbortSignal.timeout(150_000),
+    }
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Sign-in required.'), { status: 401 });
+  }
+  if (!res.ok) {
+    const msg = await readErrorMessage(res);
+    throw Object.assign(new Error(msg), { status: res.status });
+  }
+}
+
+export async function replyChatPermission(
+  requestId: string,
+  reply: 'once' | 'always' | 'reject'
+): Promise<void> {
+  const res = await requireOk(
+    await request('POST', `/proxy/assistant/permission/${encodeURIComponent(requestId)}/reply`, { reply })
+  );
+  await res.text().catch(() => '');
+}
+
+export async function replyChatQuestion(requestId: string, answers: string[][]): Promise<void> {
+  const res = await requireOk(
+    await request('POST', `/proxy/assistant/question/${encodeURIComponent(requestId)}/reply`, { answers })
+  );
+  await res.text().catch(() => '');
+}
+
+export async function rejectChatQuestion(requestId: string): Promise<void> {
+  const res = await requireOk(
+    await request('POST', `/proxy/assistant/question/${encodeURIComponent(requestId)}/reject`, {})
+  );
+  await res.text().catch(() => '');
 }
 
 /**

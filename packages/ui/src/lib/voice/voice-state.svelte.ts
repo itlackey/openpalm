@@ -22,6 +22,11 @@ import { notifications } from '$lib/notifications.svelte.js';
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 export type TtsEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
+export type SpeakTextOptions = {
+	mode?: 'plain' | 'chat_ack' | 'chat_reply';
+	userText?: string;
+	assistantText?: string;
+};
 
 /** Wall-clock cap on a single recording, regardless of engine. */
 const MAX_RECORDING_MS = 60_000;
@@ -72,6 +77,7 @@ let activeRecording: RecordingSession | null = null;
 let activeRecognition: SpeechRecognitionInstance | null = null;
 let recordingTimeout: ReturnType<typeof setTimeout> | null = null;
 let activeOnResult: ((transcript: string) => void) | null = null;
+type SpeakQueueEntry = { text: string; options?: SpeakTextOptions };
 
 /** Toggle the global auto-TTS flag and persist to localStorage. */
 export function setTtsAutoEnabled(value: boolean): void {
@@ -431,7 +437,7 @@ let activeAudioUrl: string | null = null;
 // Cap on queued utterances. Three replies in flight = drop the oldest.
 // Keeps memory bounded if the assistant streams a flurry of short messages.
 const SPEAK_QUEUE_MAX = 3;
-const speakQueue: string[] = [];
+const speakQueue: SpeakQueueEntry[] = [];
 
 // Have we already toasted the user about an overflow drop in the current
 // burst? Reset back to false when the queue drains so a NEW burst can
@@ -519,13 +525,13 @@ export function resumeAutoplay(): void {
  * If a previous utterance is still playing, queues this one (FIFO, cap 3)
  * instead of cutting it off mid-sentence.
  */
-export async function speakText(text: string): Promise<void> {
+export async function speakText(text: string, options?: SpeakTextOptions): Promise<void> {
 	if (typeof window === 'undefined' || !text.trim()) return;
 
 	// Queue if something else is already speaking. The onended handler
 	// drains the queue.
 	if (voiceState.status === 'speaking') {
-		speakQueue.push(text);
+		speakQueue.push({ text, options });
 		// Drop oldest if over cap, and let the user know once per burst
 		// so they understand WHY they're missing replies.
 		let dropped = 0;
@@ -543,11 +549,11 @@ export async function speakText(text: string): Promise<void> {
 		return;
 	}
 
-	await playOne(text);
+	await playOne(text, options);
 }
 
 /** Internal: actually trigger the audio for one text chunk. */
-async function playOne(text: string): Promise<void> {
+async function playOne(text: string, options?: SpeakTextOptions): Promise<void> {
 	if (typeof window === 'undefined' || !text.trim()) return;
 
 	// We're about to start fresh — any pending autoplay-retry from a
@@ -567,7 +573,12 @@ async function playOne(text: string): Promise<void> {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				credentials: 'include',
-				body: JSON.stringify({ text }),
+				body: JSON.stringify({
+					text,
+					...(options?.mode && options.mode !== 'plain' ? { mode: options.mode } : {}),
+					...(options?.userText ? { userText: options.userText } : {}),
+					...(options?.assistantText ? { assistantText: options.assistantText } : {}),
+				}),
 			});
 		} catch {
 			// Network/CORS — fall through to browser TTS if available.
@@ -579,22 +590,22 @@ async function playOne(text: string): Promise<void> {
 			const audio = new Audio(url);
 			activeAudio = audio;
 			activeAudioUrl = url;
-			audio.onended = () => {
-				voiceState.status = 'idle';
-				teardownActiveAudio();
-				// Drain the queue.
-				const next = speakQueue.shift();
-				if (next) void playOne(next);
-				else overflowNoticed = false;
-			};
-			audio.onerror = () => {
-				voiceState.status = 'idle';
-				voiceState.errorMessage = 'Audio playback failed.';
-				teardownActiveAudio();
-				const next = speakQueue.shift();
-				if (next) void playOne(next);
-				else overflowNoticed = false;
-			};
+				audio.onended = () => {
+					voiceState.status = 'idle';
+					teardownActiveAudio();
+					// Drain the queue.
+					const next = speakQueue.shift();
+					if (next) void playOne(next.text, next.options);
+					else overflowNoticed = false;
+				};
+				audio.onerror = () => {
+					voiceState.status = 'idle';
+					voiceState.errorMessage = 'Audio playback failed.';
+					teardownActiveAudio();
+					const next = speakQueue.shift();
+					if (next) void playOne(next.text, next.options);
+					else overflowNoticed = false;
+				};
 			voiceState.status = 'speaking';
 			try {
 				await audio.play();
@@ -639,13 +650,13 @@ async function playOne(text: string): Promise<void> {
 	utterance.onend = () => {
 		voiceState.status = 'idle';
 		const next = speakQueue.shift();
-		if (next) void playOne(next);
+		if (next) void playOne(next.text, next.options);
 		else overflowNoticed = false;
 	};
 	utterance.onerror = () => {
 		voiceState.status = 'idle';
 		const next = speakQueue.shift();
-		if (next) void playOne(next);
+		if (next) void playOne(next.text, next.options);
 		else overflowNoticed = false;
 	};
 	window.speechSynthesis.speak(utterance);

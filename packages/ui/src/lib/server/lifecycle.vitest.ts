@@ -259,7 +259,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          results: [{ name: "latest" }, { name: "v0.7.7" }, { name: "v0.7.6" }]
+          results: [{ name: "latest" }, { name: "v1.0.0" }, { name: "v0.7.7" }, { name: "v0.7.6" }]
         }),
         { status: 200, headers: { "content-type": "application/json" } }
       )
@@ -271,6 +271,31 @@ describe("updateStackEnvToLatestImageTag", () => {
     expect(result.namespace).toBe("openpalm");
     expect(result.tag).toBe("v0.7.7");
     expect(updated).toContain("OP_IMAGE_TAG=v0.7.7");
+  });
+
+  test('uses the running OpenPalm major when OP_IMAGE_TAG is non-semver', async () => {
+    const state = makeTestState();
+    trackDir(state.homeDir);
+    mkdirSync(join(state.stashDir, 'env'), { recursive: true });
+    writeFileSync(
+      stackEnvFor(state.stackDir),
+      'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=latest\n'
+    );
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [{ name: 'v1.0.0' }, { name: 'v0.12.0' }, { name: 'v0.11.9' }]
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    );
+
+    const result = await updateStackEnvToLatestImageTag(state);
+    const updated = readFileSync(stackEnvFor(state.stackDir), 'utf-8');
+
+    expect(result.tag).toBe('v0.12.0');
+    expect(updated).toContain('OP_IMAGE_TAG=v0.12.0');
   });
 
   test("throws when docker tag lookup fails", async () => {

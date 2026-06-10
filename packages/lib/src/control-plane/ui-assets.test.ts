@@ -353,4 +353,44 @@ describe("checkAndUpdateUiBuild", () => {
     expect(result.updated).toBe(false);
     expect(result.error).toMatch(/no integrity hash/i);
   });
+
+  it('does not auto-update the UI across a major version boundary', async () => {
+    makeBuild(dataUi, '0.11.0');
+
+    let tarballFetched = false;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('registry.npmjs.org')) {
+        return manifestResponse('1.0.0');
+      }
+      tarballFetched = true;
+      return new Response('', { status: 200 });
+    };
+
+    const result = await checkAndUpdateUiBuild('0.11.0', join(opHome, 'data'));
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe('1.0.0');
+    expect(result.error).toBeUndefined();
+    expect(tarballFetched).toBe(false);
+  });
+
+  it('uses the app major as the fallback policy base for unstamped UI builds', async () => {
+    makeBuild(dataUi, null);
+
+    let tarballFetched = false;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('registry.npmjs.org')) {
+        return manifestResponse('1.0.0');
+      }
+      tarballFetched = true;
+      return new Response('', { status: 200 });
+    };
+
+    const result = await checkAndUpdateUiBuild('0.11.0', join(opHome, 'data'));
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe('1.0.0');
+    expect(result.error).toBeUndefined();
+    expect(tarballFetched).toBe(false);
+  });
 });

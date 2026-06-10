@@ -38,6 +38,7 @@ vi.mock('./session-events.js', () => ({
 }));
 
 import * as api from '$lib/api.js';
+import * as voice from '$lib/voice/voice-state.svelte.js';
 import * as sse from './session-events.js';
 import type { SessionSummary, ChatMessage } from '$lib/types.js';
 import { chat } from './chat-state.svelte.js';
@@ -65,10 +66,13 @@ beforeEach(() => {
   mocked.createSession.mockReset();
   mocked.getSessionMessages.mockReset();
   mocked.listSessions.mockReset();
-  mocked.sendChatMessage.mockReset();
-  sseCaptured.handlers = null;
-  sseCaptured.unsub.mockReset();
-  mocked.subscribeSessionEvents.mockClear();
+	mocked.sendChatMessage.mockReset();
+	vi.mocked(voice.speakText).mockReset();
+	voice.voiceState.ttsSupported = false;
+	voice.voiceState.ttsAutoEnabled = false;
+	sseCaptured.handlers = null;
+	sseCaptured.unsub.mockReset();
+	mocked.subscribeSessionEvents.mockClear();
 });
 
 afterEach(() => {
@@ -180,7 +184,7 @@ describe('openSession', () => {
 });
 
 describe('send', () => {
-  it('starts a new session when none is active before sending', async () => {
+	it('starts a new session when none is active before sending', async () => {
     // Endpoint with no sessions → activeSessionId stays null.
     mocked.listSessions.mockResolvedValueOnce([]);
     await chat.onEndpointChanged('empty');
@@ -202,10 +206,34 @@ describe('send', () => {
       throw new Error('expected message entries, got divider');
     }
     expect(first.text).toBe('ping');
-    expect(second.text).toBe('pong');
-  });
+		expect(second.text).toBe('pong');
+	});
 
-  it('is rejected when already sending', async () => {
+	it('speaks an acknowledgement and then a persona-shaped final reply when auto-TTS is enabled', async () => {
+		voice.voiceState.ttsSupported = true;
+		voice.voiceState.ttsAutoEnabled = true;
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockResolvedValueOnce({
+			parts: [{ type: 'text', text: 'Here is the answer.' }],
+		});
+
+		await chat.send('Please help.');
+
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Working on it.', {
+			mode: 'chat_ack',
+			userText: 'Please help.',
+		});
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(2, 'Here is the answer.', {
+			mode: 'chat_reply',
+			userText: 'Please help.',
+			assistantText: 'Here is the answer.',
+		});
+	});
+
+	it('is rejected when already sending', async () => {
     chat.sending = true;
     await chat.send('hello');
     expect(mocked.sendChatMessage).not.toHaveBeenCalled();

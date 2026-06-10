@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
 import { resolveBackupsDir, resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
+import { compareComparableVersions, isSameMajorVersion } from './versioning.js';
 
 const logger = createLogger('lib:ui-assets');
 
@@ -303,7 +304,7 @@ export function resolveUiBuildDir(): string {
     const dataVer = readUiBuildVersion(dataBuild);
     const bundledVer = readUiBuildVersion(bundled);
     // data/ui wins only when we can prove it's strictly newer.
-    if (dataVer && bundledVer && compareVersionTags(dataVer, bundledVer) > 0) return dataBuild;
+    if (dataVer && bundledVer && compareComparableVersions(dataVer, bundledVer) > 0) return dataBuild;
     return bundled;
   }
   if (hasData) return dataBuild;
@@ -466,50 +467,6 @@ export async function seedUiBuild(repoRef: string, dataDir: string, options?: { 
 
 // ── UI update check ──────────────────────────────────────────────────────────
 
-/** Returns 1 if a > b, -1 if a < b, 0 if equal. Strips leading 'v'. Handles pre-release tags. */
-function compareVersionTags(a: string, b: string): number {
-  const parse = (v: string): [number, number, number, string | null] => {
-    // Strip build metadata (`+build.5`) first — semver ignores it in precedence,
-    // and leaving it in turns the patch number into NaN (`Number('3+build')`).
-    const clean = v.replace(/^v/, '').split('+')[0];
-    const dashIdx = clean.indexOf('-');
-    const main = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
-    const pre = dashIdx === -1 ? null : clean.slice(dashIdx + 1);
-    const parts = main.split('.').map(Number);
-    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0, pre];
-  };
-  const comparePre = (x: string, y: string): number => {
-    const xp = x.split('.');
-    const yp = y.split('.');
-    for (let i = 0; i < Math.max(xp.length, yp.length); i++) {
-      if (i >= xp.length) return -1;
-      if (i >= yp.length) return 1;
-      const xn = Number(xp[i]);
-      const yn = Number(yp[i]);
-      const xIsNum = !isNaN(xn);
-      const yIsNum = !isNaN(yn);
-      if (xIsNum && yIsNum) {
-        if (xn !== yn) return xn > yn ? 1 : -1;
-      } else if (xIsNum !== yIsNum) {
-        return xIsNum ? -1 : 1; // numeric < alphanumeric per semver
-      } else {
-        if (xp[i] !== yp[i]) return xp[i]! > yp[i]! ? 1 : -1;
-      }
-    }
-    return 0;
-  };
-  const [aM, am, ap, aPre] = parse(a);
-  const [bM, bm, bp, bPre] = parse(b);
-  if (aM !== bM) return aM > bM ? 1 : -1;
-  if (am !== bm) return am > bm ? 1 : -1;
-  if (ap !== bp) return ap > bp ? 1 : -1;
-  // Same numeric version: stable > pre-release (semver spec)
-  if (aPre === null && bPre !== null) return 1;
-  if (aPre !== null && bPre === null) return -1;
-  if (aPre !== null && bPre !== null) return comparePre(aPre, bPre);
-  return 0;
-}
-
 export interface UiBuildUpdateResult {
   updated: boolean;
   latestVersion: string | null;
@@ -544,14 +501,23 @@ export async function checkAndUpdateUiBuild(
 
     // Compare against the UI build currently on disk, NOT the app version — the
     // UI floats on its own version line, so the platform/app version is not
-    // comparable. If the build is unstamped (e.g. a legacy data/ui seeded by the
-    // old GitHub-asset path before npm distribution), we cannot compare, so we
-    // refresh once from npm — the npm bundle is stamped, so it self-heals to the
-    // normal compare path on the next launch. Do NOT fall back to appVersion:
-    // comparing two independent version lines silently suppresses real updates.
+    // directly comparable for freshness. We DO use the app version as a fallback
+    // major-version guard when the current UI build is unstamped: that preserves
+    // the current release lane without guessing across majors.
     const currentUiVersion = readUiBuildVersion(resolveUiBuildDir());
+    const currentVersionForPolicy = currentUiVersion ?? appVersion;
 
-    if (currentUiVersion && compareVersionTags(latestVersion, currentUiVersion) <= 0) {
+    if (!isSameMajorVersion(latestVersion, currentVersionForPolicy)) {
+      logger.debug('UI build update blocked by major-version policy', {
+        currentUi: currentUiVersion ?? '(unstamped)',
+        policyBase: currentVersionForPolicy,
+        latest: latestVersion,
+        channel,
+      });
+      return { updated: false, latestVersion };
+    }
+
+    if (currentUiVersion && compareComparableVersions(latestVersion, currentUiVersion) <= 0) {
       logger.debug('UI build is up to date', { currentUi: currentUiVersion, latest: latestVersion, channel });
       return { updated: false, latestVersion };
     }
