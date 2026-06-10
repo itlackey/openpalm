@@ -19,13 +19,34 @@
 
 	let reportWindow = $state<ReportWindow>('72h');
 	let refreshKey = $state(0);
+	let loading = $state(false);
 	let frameLoaded = $state(false);
+	let loadError = $state('');
+	let reportHtml = $state('');
 
 	let reportUrl = $derived(`/admin/akm/health-report?since=${encodeURIComponent(reportWindow)}&refresh=${refreshKey}`);
 
-	function refresh(): void {
+	async function loadReport(): Promise<void> {
+		loading = true;
 		frameLoaded = false;
+		loadError = '';
+		try {
+			const res = await fetch(reportUrl, { credentials: 'include' });
+			if (!res.ok) {
+				throw new Error(`Report request failed (HTTP ${res.status})`);
+			}
+			reportHtml = await res.text();
+		} catch (error) {
+			loadError = error instanceof Error ? error.message : 'Failed to load report.';
+			reportHtml = '';
+		} finally {
+			loading = false;
+		}
+	}
+
+	function refresh(): void {
 		refreshKey += 1;
+		void loadReport();
 	}
 
 	function handleWindowChange(): void {
@@ -33,7 +54,7 @@
 	}
 
 	onMount(() => {
-		frameLoaded = false;
+		void loadReport();
 	});
 </script>
 
@@ -57,16 +78,22 @@
 	</div>
 
 	<div class="report-frame-wrap">
-		{#if !frameLoaded}
+		{#if loading || (!frameLoaded && !loadError)}
 			<div class="report-loading">Generating report…</div>
 		{/if}
-		<iframe
-			title="AKM Health Report"
-			class="report-frame"
-			src={reportUrl}
-			sandbox="allow-scripts"
-			onload={() => { frameLoaded = true; }}
-		></iframe>
+		{#if loadError}
+			<div class="report-error" role="alert">
+				<p>{loadError}</p>
+				<button class="btn btn-secondary btn-sm" type="button" onclick={() => void loadReport()} {disabled}>Try again</button>
+			</div>
+		{:else if reportHtml}
+			<iframe
+				title="AKM Health Report"
+				class="report-frame"
+				srcdoc={reportHtml}
+				onload={() => { frameLoaded = true; }}
+			></iframe>
+		{/if}
 	</div>
 </section>
 
@@ -140,6 +167,17 @@
 		color: var(--color-text-secondary);
 		background: color-mix(in srgb, var(--color-bg-secondary) 88%, transparent);
 		z-index: 1;
+	}
+
+	.report-error {
+		height: 100%;
+		min-height: 70dvh;
+		display: grid;
+		place-items: center;
+		gap: var(--space-3);
+		padding: var(--space-4);
+		text-align: center;
+		color: var(--color-text-secondary);
 	}
 
 	.report-frame {

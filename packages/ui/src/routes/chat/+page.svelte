@@ -18,6 +18,7 @@
 
   // ── Scroll anchor ────────────────────────────────────────────────────
   let scrollAnchorEl = $state<HTMLDivElement | undefined>();
+  let expandedToolIds = $state<Record<string, boolean>>({});
 
   // ── Loading state for the messages area ───────────────────────────────
   // While the per-endpoint session list is loading we don't know which
@@ -99,6 +100,46 @@
 
   function clamp(text: string, max = 160): string {
     return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  }
+
+  function toggleToolDetails(id: string): void {
+    expandedToolIds = { ...expandedToolIds, [id]: !expandedToolIds[id] };
+  }
+
+  function isExpanded(id: string): boolean {
+    return !!expandedToolIds[id];
+  }
+
+  function toolSummary(entry: (typeof chat.pendingToolStates)[number]): string {
+    if (entry.error) return 'Needs attention';
+    if (entry.status === 'completed') return 'Completed';
+    if (entry.status === 'pending') return 'Queued';
+    return 'In progress';
+  }
+
+  function parseStructured(value: string): unknown {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (!((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']')))) {
+      return null;
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
+  function formatDetail(value: string): string {
+    const structured = parseStructured(value);
+    return structured === null ? value : JSON.stringify(structured, null, 2);
+  }
+
+  function detailLabel(entry: (typeof chat.pendingToolStates)[number]): string {
+    if (entry.error) return 'Error';
+    if (entry.output) return 'Result';
+    if (entry.kind === 'step') return 'Step detail';
+    return 'Tool detail';
   }
 
   function toolEmoji(tool: string, status: string): string {
@@ -240,22 +281,39 @@
               <div class="tool-timeline" class:tool-timeline-muted={!!chat.pendingPermission || !!chat.pendingQuestion} aria-label="Assistant activity">
                 {#each chat.pendingToolStates as tool (tool.id)}
                   <div class="tool-timeline-item">
-                    <span class="tool-emoji" aria-hidden="true">{toolEmoji(tool.tool, tool.status)}</span>
-                    <div class="tool-copy">
-                      <span class="tool-label">
-                        {timelineTitle(tool)}
-                        <span class="tool-status">{toolStatusLabel(tool.status)}</span>
-                      </span>
-                      {#if tool.detail && (!chat.pendingPermission && !chat.pendingQuestion)}
-                        <span class="tool-detail">{clamp(tool.detail)}</span>
-                      {/if}
-                      {#if tool.output && (!chat.pendingPermission && !chat.pendingQuestion)}
-                        <code class="tool-output">{clamp(tool.output, 120)}</code>
-                      {/if}
-                      {#if tool.error}
-                        <span class="tool-error">{clamp(tool.error, 120)}</span>
-                      {/if}
-                    </div>
+                    <button
+                      class="tool-summary-btn"
+                      type="button"
+                      aria-expanded={isExpanded(tool.id)}
+                      onclick={() => toggleToolDetails(tool.id)}
+                    >
+                      <span class="tool-emoji" aria-hidden="true">{toolEmoji(tool.tool, tool.status)}</span>
+                      <span class="tool-label">{timelineTitle(tool)}</span>
+                      <span class="tool-status-chip">{toolStatusLabel(tool.status)}</span>
+                      <span class="tool-summary-copy">{toolSummary(tool)}</span>
+                    </button>
+                    {#if isExpanded(tool.id)}
+                      <div class="tool-detail-panel">
+                        {#if tool.detail}
+                          <div class="tool-detail-block">
+                            <span class="tool-detail-label">{detailLabel(tool)}</span>
+                            <pre class="tool-pre">{formatDetail(tool.detail)}</pre>
+                          </div>
+                        {/if}
+                        {#if tool.output}
+                          <div class="tool-detail-block">
+                            <span class="tool-detail-label">Output</span>
+                            <pre class="tool-pre">{formatDetail(tool.output)}</pre>
+                          </div>
+                        {/if}
+                        {#if tool.error}
+                          <div class="tool-detail-block">
+                            <span class="tool-detail-label">Error</span>
+                            <pre class="tool-pre tool-pre-error">{formatDetail(tool.error)}</pre>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                 {/each}
               </div>
@@ -613,10 +671,8 @@
 
   .tool-timeline-item {
     display: flex;
-    align-items: flex-start;
+    flex-direction: column;
     gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
   }
 
   .tool-emoji {
@@ -631,44 +687,78 @@
     flex-wrap: wrap;
   }
 
-  .tool-copy {
+  .tool-summary-btn {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .tool-summary-btn:hover {
+    color: var(--color-text);
+  }
+
+  .tool-summary-copy {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    justify-self: end;
+  }
+
+  .tool-status-chip {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    padding: 2px 8px;
+    text-transform: lowercase;
+  }
+
+  .tool-detail-panel {
+    margin-left: calc(1.25rem + var(--space-2));
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    min-width: 0;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-left: 1px solid var(--color-border);
   }
 
-  .tool-detail,
-  .tool-output,
-  .tool-error {
+  .tool-detail-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tool-detail-label {
     font-size: var(--text-xs);
-    line-height: 1.45;
-  }
-
-  .tool-detail {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--color-text-tertiary);
-    white-space: pre-wrap;
   }
 
-  .tool-output {
-    display: inline-block;
-    max-width: 100%;
-    padding: 2px 6px;
-    border-radius: 6px;
+  .tool-pre {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
     background: var(--color-bg);
     border: 1px solid var(--color-border);
     color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
   }
 
-  .tool-error {
+  .tool-pre-error {
     color: var(--color-danger);
-  }
-
-  .tool-status {
-    color: var(--color-text-tertiary);
-    text-transform: lowercase;
   }
 
   .live-card {

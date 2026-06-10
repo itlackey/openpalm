@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { getSessionMessages, listSessions } from '$lib/api.js';
   import type { ChatEntry, SessionSummary } from '$lib/types.js';
@@ -10,13 +11,14 @@
   } from '$lib/chat/session-events.js';
 
   type StreamState = 'connecting' | 'connected' | 'disconnected';
+  type AttentionSeverity = 'high' | 'medium' | 'low';
 
-  type FeedItem = {
+  type AttentionItem = {
     id: string;
-    type: string;
-    sessionId: string;
+    severity: AttentionSeverity;
     title: string;
     detail: string;
+    sessionId: string;
     timestamp: number;
   };
 
@@ -28,11 +30,7 @@
   let sessions = $state<SessionSummary[]>([]);
   let selectedSessionId = $state<string | null>(null);
   let selectedMessages = $state<ChatEntry[]>([]);
-  let eventFeed = $state<FeedItem[]>([]);
-  let eventCounts = $state<Record<string, number>>({});
-  let sessionEventCounts = $state<Record<string, number>>({});
-  let minuteTimestamps = $state<number[]>([]);
-  let lastEventAt = $state<number | null>(null);
+  let attentionFeed = $state<AttentionItem[]>([]);
   let clock = $state(Date.now());
 
   let unsubscribe: (() => void) | null = null;
@@ -46,27 +44,122 @@
     return typeof info?.id === 'string' ? info.id : '';
   }
 
-  function eventTitle(payload: OpenCodeSessionEventPayload): string {
-    const props = payload.properties as Record<string, unknown> | undefined;
-    const info = props?.info as { title?: unknown } | undefined;
-    if (typeof info?.title === 'string' && info.title.trim()) return info.title;
-    const sessionId = eventSessionId(payload);
-    return sessionId ? `Session ${sessionId.slice(0, 8)}` : 'Global event';
+  function truncate(text: string, max = 140): string {
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
   }
 
-  function eventDetail(payload: OpenCodeSessionEventPayload): string {
+  function summarizeEvent(payload: OpenCodeSessionEventPayload): Omit<AttentionItem, 'id' | 'timestamp'> | null {
     const props = payload.properties as Record<string, unknown> | undefined;
-    if (!props) return '';
-    if (payload.type === 'permission.asked') return typeof props.permission === 'string' ? props.permission : 'Permission requested';
-    if (payload.type === 'question.asked') return Array.isArray(props.questions) ? `${props.questions.length} question(s)` : 'Question requested';
-    if (payload.type.startsWith('session.next.tool.')) return typeof props.tool === 'string' ? props.tool : 'Tool activity';
-    if (payload.type === 'message.part.updated') {
-      const part = props.part as { type?: unknown; tool?: unknown } | undefined;
-      if (typeof part?.tool === 'string') return part.tool;
-      if (typeof part?.type === 'string') return part.type;
+    const sessionId = eventSessionId(payload);
+    const type = payload.type;
+
+    if (type === 'permission.asked') {
+      return {
+        severity: 'high',
+        title: 'Approval needed',
+        detail: typeof props?.permission === 'string' ? props.permission : 'Assistant is waiting for a permission decision.',
+        sessionId,
+      };
     }
-    if (payload.type === 'session.updated') return typeof (props.info as { title?: unknown } | undefined)?.title === 'string' ? 'Session metadata changed' : 'Session updated';
-    return '';
+
+    if (type === 'question.asked') {
+      return {
+        severity: 'high',
+        title: 'Answer requested',
+        detail: Array.isArray(props?.questions)
+          ? `${props.questions.length} question${props.questions.length === 1 ? '' : 's'} waiting for an answer.`
+          : 'Assistant asked a question.',
+        sessionId,
+      };
+    }
+
+    if (type === 'session.error') {
+      return {
+        severity: 'high',
+        title: 'Session error',
+        detail: typeof props?.error === 'string' ? props.error : 'Assistant session reported an error.',
+        sessionId,
+      };
+    }
+
+    if (type === 'session.deleted') {
+      return {
+        severity: 'medium',
+        title: 'Session removed',
+        detail: 'An active session was deleted.',
+        sessionId,
+      };
+    }
+
+    if (type === 'session.created') {
+      return {
+        severity: 'low',
+        title: 'New session started',
+        detail: 'A new conversation became active.',
+        sessionId,
+      };
+    }
+
+    if (type.startsWith('session.next.tool.')) {
+      const toolName = typeof props?.tool === 'string' ? props.tool : 'tool';
+      const progress = typeof props?.progress === 'string'
+        ? props.progress
+        : typeof props?.message === 'string'
+          ? props.message
+          : '';
+      if (type.endsWith('.failed')) {
+        return {
+          severity: 'high',
+          title: `Tool failed: ${toolName}`,
+          detail: truncate(progress || 'Assistant tool execution failed.'),
+          sessionId,
+        };
+      }
+      if (type.endsWith('.called')) {
+        return {
+          severity: 'medium',
+          title: `Tool running: ${toolName}`,
+          detail: truncate(progress || 'Assistant started a tool.'),
+          sessionId,
+        };
+      }
+      if (type.endsWith('.completed')) {
+        return {
+          severity: 'low',
+          title: `Tool finished: ${toolName}`,
+          detail: 'Assistant completed a tool call.',
+          sessionId,
+        };
+      }
+    }
+
+    if (type === 'message.part.updated') {
+      const part = props?.part as { tool?: unknown; state?: { status?: unknown; error?: unknown } } | undefined;
+      if (typeof part?.tool === 'string' && part.state?.status === 'error') {
+        return {
+          severity: 'high',
+          title: `Tool failed: ${part.tool}`,
+          detail: typeof part.state.error === 'string' ? truncate(part.state.error) : 'Assistant tool execution failed.',
+          sessionId,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function pushAttention(payload: OpenCodeSessionEventPayload): void {
+    const summary = summarizeEvent(payload);
+    if (!summary) return;
+    const timestamp = Date.now();
+    attentionFeed = [
+      {
+        id: `${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp,
+        ...summary,
+      },
+      ...attentionFeed,
+    ].slice(0, 30);
   }
 
   function upsertSession(summary: SessionSummary): void {
@@ -102,27 +195,6 @@
       createdAt,
       updatedAt,
     });
-  }
-
-  function pushEvent(payload: OpenCodeSessionEventPayload): void {
-    const timestamp = Date.now();
-    const type = payload.type || 'unknown';
-    const sessionId = eventSessionId(payload);
-    const item: FeedItem = {
-      id: `${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-      type,
-      sessionId,
-      title: eventTitle(payload),
-      detail: eventDetail(payload),
-      timestamp,
-    };
-    eventFeed = [item, ...eventFeed].slice(0, 120);
-    eventCounts = { ...eventCounts, [type]: (eventCounts[type] ?? 0) + 1 };
-    if (sessionId) {
-      sessionEventCounts = { ...sessionEventCounts, [sessionId]: (sessionEventCounts[sessionId] ?? 0) + 1 };
-    }
-    minuteTimestamps = [timestamp, ...minuteTimestamps.filter((value) => timestamp - value <= 5 * 60_000)];
-    lastEventAt = timestamp;
   }
 
   async function loadSessions(): Promise<void> {
@@ -172,20 +244,10 @@
   }
 
   let selectedSession = $derived(sessions.find((session) => session.id === selectedSessionId) ?? null);
-  let eventsLastMinute = $derived(minuteTimestamps.filter((timestamp) => clock - timestamp <= 60_000).length);
-  let eventsLastFiveMinutes = $derived(minuteTimestamps.filter((timestamp) => clock - timestamp <= 5 * 60_000).length);
+  let waitingItems = $derived(attentionFeed.filter((item) => item.title === 'Approval needed' || item.title === 'Answer requested').length);
+  let failingItems = $derived(attentionFeed.filter((item) => item.severity === 'high').length);
   let activeSessions = $derived(sessions.filter((session) => clock - session.updatedAt <= 5 * 60_000).length);
-  let eventTypeRows = $derived(
-    Object.entries(eventCounts)
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 10),
-  );
-  let hotSessions = $derived(
-    sessions
-      .map((session) => ({ ...session, events: sessionEventCounts[session.id] ?? 0 }))
-      .sort((left, right) => right.events - left.events || right.updatedAt - left.updatedAt)
-      .slice(0, 8),
-  );
+  let latestAttention = $derived(attentionFeed.slice(0, 10));
 
   onMount(() => {
     void endpointsService.load();
@@ -205,7 +267,7 @@
       onDeleted: () => {},
       onEvent: (payload) => {
         streamState = 'connected';
-        pushEvent(payload);
+        pushAttention(payload);
         handleSessionPayload(payload);
       },
     });
@@ -224,7 +286,7 @@
   <div class="panel-header">
     <div>
       <h2>Activity</h2>
-      <p class="panel-subtitle">Real-time observability for the assistant's active OpenCode endpoint. Tracks live session events, recent session churn, and per-session activity through the existing brokered event stream.</p>
+      <p class="panel-subtitle">A readable view of what the assistant is doing right now, which sessions need attention, and the recent history for a selected conversation.</p>
     </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={() => void loadSessions()} disabled={loading}>
@@ -235,195 +297,156 @@
   </div>
 
   {#if error}<div class="error-banner"><span>{error}</span></div>{/if}
+  {#if streamError && streamState === 'disconnected'}
+    <div class="error-banner"><span>{streamError}</span></div>
+  {/if}
 
-  <div class="endpoint-banner">
-    <div>
-      <div class="endpoint-label">Endpoint</div>
-      <div class="endpoint-value">{endpointsService.active?.label ?? 'Active assistant endpoint'}</div>
-      <div class="endpoint-url">{endpointsService.active?.url ?? 'Loading endpoint URL…'}</div>
+  <div class="summary-grid">
+    <div class="summary-card">
+      <span class="summary-label">Stream</span>
+      <strong class="summary-value">{streamState}</strong>
+      <small>{streamState === 'connected' ? 'Live events are flowing.' : streamState === 'connecting' ? 'Connecting to the assistant event stream.' : 'Reconnect needed.'}</small>
     </div>
-    <div class="stream-badge stream-badge--{streamState}">{streamState}</div>
+    <div class="summary-card">
+      <span class="summary-label">Sessions</span>
+      <strong class="summary-value">{sessions.length}</strong>
+      <small>{activeSessions} active in the last 5 minutes</small>
+    </div>
+    <div class="summary-card summary-card--warning">
+      <span class="summary-label">Waiting on people</span>
+      <strong class="summary-value">{waitingItems}</strong>
+      <small>Permissions and answers that block the assistant.</small>
+    </div>
+    <div class="summary-card" class:summary-card--danger={failingItems > 0}>
+      <span class="summary-label">Attention items</span>
+      <strong class="summary-value">{failingItems}</strong>
+      <small>{failingItems > 0 ? 'Tool or session failures need review.' : 'No current failures seen.'}</small>
+    </div>
   </div>
 
-  <div class="metric-grid">
-    <div class="metric-card"><span>Tracked sessions</span><strong>{sessions.length}</strong><small>{activeSessions} active in last 5m</small></div>
-    <div class="metric-card"><span>Events / minute</span><strong>{eventsLastMinute}</strong><small>{eventsLastFiveMinutes} in last 5m</small></div>
-    <div class="metric-card"><span>Last event</span><strong>{fmtTime(lastEventAt)}</strong><small>{streamError || 'Stream healthy'}</small></div>
-    <div class="metric-card"><span>Observed types</span><strong>{Object.keys(eventCounts).length}</strong><small>{eventFeed.length} recent events buffered</small></div>
-  </div>
-
-  <div class="activity-grid">
+  <div class="activity-layout">
     <section class="card-section">
       <div class="card-head">
-        <h3>Live Sessions</h3>
+        <h3>Needs attention</h3>
+        <span>{latestAttention.length}</span>
+      </div>
+      <div class="attention-list">
+        {#if latestAttention.length === 0}
+          <div class="empty-card">Nothing urgent has happened yet.</div>
+        {/if}
+        {#each latestAttention as item (item.id)}
+          <article class="attention-item attention-item--{item.severity}">
+            <div class="attention-top">
+              <strong>{item.title}</strong>
+              <span>{fmtTime(item.timestamp)}</span>
+            </div>
+            <p>{item.detail}</p>
+            {#if item.sessionId}
+              <button class="attention-session mono" type="button" onclick={() => void selectSession(item.sessionId)}>
+                {item.sessionId}
+              </button>
+            {/if}
+          </article>
+        {/each}
+      </div>
+    </section>
+
+    <section class="card-section">
+      <div class="card-head">
+        <h3>Recent sessions</h3>
         <span>{sessions.length}</span>
       </div>
       <div class="session-list">
         {#if sessions.length === 0 && !loading}
-          <div class="empty-card">No sessions found on the active OpenCode endpoint.</div>
+          <div class="empty-card">No sessions found on the active assistant endpoint.</div>
         {/if}
-        {#each sessions as session (session.id)}
+        {#each sessions.slice(0, 12) as session (session.id)}
           <button class:selected={selectedSessionId === session.id} class="session-row" onclick={() => void selectSession(session.id)}>
             <div>
               <div class="session-title">{session.title || 'Untitled session'}</div>
-              <div class="session-meta mono">{session.id}</div>
+              <div class="session-meta">Updated {fmtDateTime(session.updatedAt)}</div>
             </div>
-            <div class="session-stats">
-              <span>{fmtDateTime(session.updatedAt)}</span>
-              <strong>{sessionEventCounts[session.id] ?? 0} evt</strong>
-            </div>
+            <div class="session-id mono">{session.id.slice(0, 12)}…</div>
           </button>
         {/each}
       </div>
     </section>
-
-    <section class="card-section">
-      <div class="card-head">
-        <h3>Live Event Feed</h3>
-        <span>{eventFeed.length}</span>
-      </div>
-      <div class="feed-list">
-        {#if eventFeed.length === 0}
-          <div class="empty-card">Waiting for OpenCode events…</div>
-        {/if}
-        {#each eventFeed as event (event.id)}
-          <div class="feed-row">
-            <div class="feed-top">
-              <span class="feed-type mono">{event.type}</span>
-              <span class="feed-time">{fmtTime(event.timestamp)}</span>
-            </div>
-            <div class="feed-title">{event.title}</div>
-            {#if event.detail}<div class="feed-detail">{event.detail}</div>{/if}
-            {#if event.sessionId}<div class="feed-session mono">{event.sessionId}</div>{/if}
-          </div>
-        {/each}
-      </div>
-    </section>
   </div>
 
-  <div class="details-grid">
-    <section class="card-section">
-      <div class="card-head">
-        <h3>Selected Session</h3>
-        {#if selectedSession}<span>{selectedSession.title || selectedSession.id}</span>{/if}
+  <section class="card-section session-details">
+    <div class="card-head">
+      <h3>Selected session</h3>
+      {#if selectedSession}<span>{selectedSession.title || selectedSession.id}</span>{/if}
+    </div>
+
+    {#if selectedSession}
+      <div class="selected-meta">
+        <div><span>Created</span><strong>{fmtDateTime(selectedSession.createdAt)}</strong></div>
+        <div><span>Updated</span><strong>{fmtDateTime(selectedSession.updatedAt)}</strong></div>
+        <div><span>Session ID</span><strong class="mono">{selectedSession.id}</strong></div>
       </div>
-      {#if selectedSession}
-        <div class="selected-meta">
-          <div><span>ID</span><strong class="mono">{selectedSession.id}</strong></div>
-          <div><span>Created</span><strong>{fmtDateTime(selectedSession.createdAt)}</strong></div>
-          <div><span>Updated</span><strong>{fmtDateTime(selectedSession.updatedAt)}</strong></div>
-          <div><span>Events seen</span><strong>{sessionEventCounts[selectedSession.id] ?? 0}</strong></div>
-        </div>
-        <div class="message-panel">
-          <div class="message-panel-head">
-            <span>Recent messages</span>
-            <button class="btn btn-ghost btn-sm" onclick={() => void loadMessages(selectedSession.id)} disabled={messagesLoading}>
-              {#if messagesLoading}<Spinner />{/if}
-              Refresh
-            </button>
-          </div>
-          {#if selectedMessages.length === 0 && !messagesLoading}
-            <div class="empty-card">No message or tool activity available for this session yet.</div>
-          {/if}
-          <div class="message-list">
-            {#each selectedMessages.slice(-8).reverse() as message (message.id)}
-              <div class="message-row">
-                <div class="message-role">{message.type === 'divider' ? 'divider' : message.type === 'note' ? message.label.toLowerCase() : message.role}</div>
-                <div class="message-text">{message.type === 'divider' ? message.label : message.text}</div>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {:else}
-        <div class="empty-card">Select a session to inspect its recent messages.</div>
+
+      <div class="message-panel-head">
+        <span>Recent activity</span>
+        <button class="btn btn-ghost btn-sm" onclick={() => void loadMessages(selectedSession.id)} disabled={messagesLoading}>
+          {#if messagesLoading}<Spinner />{/if}
+          Refresh
+        </button>
+      </div>
+
+      {#if selectedMessages.length === 0 && !messagesLoading}
+        <div class="empty-card">No chat or tool activity available for this session yet.</div>
       {/if}
-    </section>
 
-    <section class="card-section">
-      <div class="card-head">
-        <h3>Event Breakdown</h3>
-        <span>{eventTypeRows.length} types</span>
-      </div>
-      <table class="data-table">
-        <thead>
-          <tr><th>Event type</th><th>Total</th></tr>
-        </thead>
-        <tbody>
-          {#if eventTypeRows.length === 0}
-            <tr><td colspan="2" class="empty-cell">No events observed yet.</td></tr>
-          {/if}
-          {#each eventTypeRows as [type, count]}
-            <tr><td class="mono">{type}</td><td>{count}</td></tr>
-          {/each}
-        </tbody>
-      </table>
-
-      <div class="hot-sessions">
-        <h4>Most active sessions</h4>
-        {#if hotSessions.length === 0}
-          <div class="empty-card">No session activity captured yet.</div>
-        {/if}
-        {#each hotSessions as session (session.id)}
-          <div class="hot-session-row">
-            <div>
-              <div class="session-title">{session.title || 'Untitled session'}</div>
-              <div class="session-meta mono">{session.id}</div>
-            </div>
-            <strong>{session.events}</strong>
-          </div>
+      <div class="selected-message-list">
+        {#each selectedMessages.slice(-12) as entry (entry.id)}
+          <ChatMessage {entry} />
         {/each}
       </div>
-    </section>
-  </div>
+    {:else}
+      <div class="empty-card">Select a session to inspect its recent chat and tool activity.</div>
+    {/if}
+  </section>
 </div>
 
 <style>
   .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-  .panel-subtitle { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 80ch; }
+  .panel-subtitle { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 75ch; }
   .panel-header-actions { display: flex; gap: var(--space-2); }
   .error-banner { background: var(--color-danger-subtle, rgba(239,68,68,0.1)); color: var(--color-danger, #ef4444); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin-bottom: var(--space-4); }
-  .endpoint-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: linear-gradient(135deg, color-mix(in srgb, var(--color-bg-secondary) 92%, transparent), color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-secondary))); margin-bottom: var(--space-4); flex-wrap: wrap; }
-  .endpoint-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-secondary); }
-  .endpoint-value { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); }
-  .endpoint-url { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-text-secondary); font-family: var(--font-mono); }
-  .stream-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 7rem; padding: var(--space-2) var(--space-3); border-radius: 999px; font-size: var(--text-xs); font-weight: var(--font-semibold); text-transform: uppercase; }
-  .stream-badge--connected { background: rgba(34,197,94,0.14); color: #16a34a; }
-  .stream-badge--connecting { background: rgba(245,158,11,0.14); color: #d97706; }
-  .stream-badge--disconnected { background: rgba(239,68,68,0.14); color: #dc2626; }
-  .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-  .metric-card { display: grid; gap: var(--space-1); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-secondary); }
-  .metric-card span { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); }
-  .metric-card strong { font-size: clamp(1.3rem, 3vw, 1.9rem); color: var(--color-text); }
-  .metric-card small { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .activity-grid, .details-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+  .summary-card { display: grid; gap: var(--space-1); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-secondary); }
+  .summary-card--warning { background: color-mix(in srgb, var(--color-bg-secondary) 92%, #f59e0b 8%); }
+  .summary-card--danger { background: color-mix(in srgb, var(--color-bg-secondary) 90%, #ef4444 10%); }
+  .summary-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); }
+  .summary-value { font-size: clamp(1.2rem, 3vw, 1.9rem); color: var(--color-text); }
+  .summary-card small { font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .activity-layout { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: var(--space-4); margin-bottom: var(--space-4); }
   .card-section { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-secondary); padding: var(--space-4); min-width: 0; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
-  .card-head h3, .hot-sessions h4 { margin: 0; font-size: var(--text-base); color: var(--color-text); }
+  .card-head h3 { margin: 0; font-size: var(--text-base); color: var(--color-text); }
   .card-head span { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .session-list, .feed-list, .message-list, .hot-sessions { display: flex; flex-direction: column; gap: var(--space-2); }
-  .session-row, .feed-row, .hot-session-row { width: 100%; display: flex; justify-content: space-between; gap: var(--space-3); text-align: left; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text); }
-  .session-row { cursor: pointer; align-items: center; }
+  .attention-list, .session-list, .selected-message-list { display: flex; flex-direction: column; gap: var(--space-2); }
+  .attention-item { padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-bg); }
+  .attention-item--high { border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); }
+  .attention-item--medium { border-color: color-mix(in srgb, #f59e0b 45%, var(--color-border)); }
+  .attention-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-1); }
+  .attention-top strong { font-size: var(--text-sm); color: var(--color-text); }
+  .attention-top span { font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .attention-item p { margin: 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
+  .attention-session { margin-top: var(--space-2); border: 0; background: transparent; color: var(--color-primary); padding: 0; cursor: pointer; text-align: left; }
+  .session-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); text-align: left; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text); cursor: pointer; }
   .session-row.selected { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); }
-  .session-title, .feed-title { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
-  .session-meta, .feed-session, .feed-type { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .session-stats { display: grid; justify-items: end; gap: var(--space-1); font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .feed-row { flex-direction: column; }
-  .feed-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-  .feed-detail, .message-text { font-size: var(--text-sm); color: var(--color-text-secondary); white-space: pre-wrap; word-break: break-word; }
-  .feed-time { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .selected-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+  .session-title { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
+  .session-meta { font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .session-id { font-size: var(--text-xs); color: var(--color-text-tertiary); }
+  .selected-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
   .selected-meta div { display: grid; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); }
   .selected-meta span { font-size: var(--text-xs); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
   .selected-meta strong { font-size: var(--text-sm); color: var(--color-text); }
-  .message-panel { border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
   .message-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
-  .message-row { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); }
-  .message-role { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); margin-bottom: var(--space-1); }
-  .data-table { width: 100%; border-collapse: collapse; }
-  .data-table th, .data-table td { padding: var(--space-2) var(--space-1); border-bottom: 1px solid var(--color-border); text-align: left; font-size: var(--text-sm); color: var(--color-text); }
-  .data-table th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); }
-  .empty-card, .empty-cell { font-size: var(--text-sm); color: var(--color-text-secondary); text-align: center; padding: var(--space-4); }
+  .empty-card { font-size: var(--text-sm); color: var(--color-text-secondary); text-align: center; padding: var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-sm); }
   .mono { font-family: var(--font-mono); }
-  @media (max-width: 1100px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .activity-grid, .details-grid { grid-template-columns: 1fr; } }
-  @media (max-width: 640px) { .metric-grid, .selected-meta { grid-template-columns: 1fr; } }
+  @media (max-width: 1100px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .activity-layout { grid-template-columns: 1fr; } .selected-meta { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { .summary-grid { grid-template-columns: 1fr; } }
 </style>
