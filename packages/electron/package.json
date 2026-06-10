@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/electron",
-  "version": "0.11.4",
+  "version": "0.11.5-rc.3",
   "private": true,
   "type": "module",
   "description": "OpenPalm desktop app (Electron harness)",
