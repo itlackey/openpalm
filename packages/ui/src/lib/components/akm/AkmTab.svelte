@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
+ import {
 		fetchAkmConfig,
+		detectAkmEmbedding,
+		reindexAkm,
 		saveAkmConfig,
+		testAkmEmbedding,
 	} from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 	import Spinner from '$lib/components/common/Spinner.svelte';
@@ -35,6 +38,9 @@
 	// ── Status ───────────────────────────────────────────────────────────────────
 	let loading = $state(false);
 	let saving = $state(false);
+	let detectingEmbedding = $state(false);
+	let testingEmbedding = $state(false);
+	let reindexing = $state(false);
 	let error = $state('');
 
 	// Host AKM sharing now lives in its own Knowledge sub-tab
@@ -414,6 +420,60 @@
 		}
 	}
 
+	async function detectEmbedding(): Promise<void> {
+		detectingEmbedding = true;
+		error = '';
+		try {
+			const detected = await detectAkmEmbedding();
+			embEndpoint = detected.endpoint;
+			embModel = detected.model;
+			embProvider = detected.provider;
+			embDimension = detected.dimension;
+			notifications.push('success', detected.message);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Failed to detect embedding settings.';
+			notifications.push('error', msg);
+		}
+		finally {
+			detectingEmbedding = false;
+		}
+	}
+
+	async function testEmbedding(): Promise<void> {
+		testingEmbedding = true;
+		error = '';
+		try {
+			const result = await testAkmEmbedding({
+				endpoint: embEndpoint,
+				model: embModel,
+				provider: embProvider,
+				apiKey: embApiKey,
+				dimension: embDimension,
+			});
+			embDimension = result.dimension;
+			notifications.push('success', result.message);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Failed to test embedding settings.';
+			notifications.push('error', msg);
+		}
+		finally {
+			testingEmbedding = false;
+		}
+	}
+
+	async function reindexKnowledge(): Promise<void> {
+		reindexing = true;
+		try {
+			const result = await reindexAkm();
+			notifications.push('success', result.message);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Failed to rebuild the AKM index.';
+			notifications.push('error', msg);
+		} finally {
+			reindexing = false;
+		}
+	}
+
 	onMount(() => { if (tokenStored) { void load(); } });
 </script>
 
@@ -421,11 +481,15 @@
 	<div class="panel-header">
 		<h2>Knowledge</h2>
 		<div class="panel-header-actions">
-			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || !tokenStored}>
+			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored}>
 				{#if loading}<Spinner />{/if}
 				Refresh
 			</button>
-			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
+			<button class="btn btn-secondary btn-sm" onclick={() => void reindexKnowledge()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored}>
+				{#if reindexing}<Spinner />{/if}
+				Re-index
+			</button>
+			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored}>
 				{#if saving}<Spinner />{/if}
 				Save
 			</button>
@@ -500,7 +564,11 @@
 			bind:chunkSize={embChunkSize}
 			bind:contextLength={embContextLength}
 			bind:ollamaNumCtx={embOllamaNumCtx}
-			disabled={loading || saving}
+			detecting={detectingEmbedding}
+			testing={testingEmbedding}
+			ondetect={() => void detectEmbedding()}
+			ontest={() => void testEmbedding()}
+			disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing}
 		/>
 
 		{/if}<!-- end AI Services group -->

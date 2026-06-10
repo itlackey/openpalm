@@ -476,8 +476,8 @@ describe("performSetup", () => {
 
   it("writes akm config.json with ollama llm settings", async () => {
     const input = makeValidSpec({
-      llm: { provider: "ollama", model: "llama3.2", baseUrl: "http://localhost:11434/v1" },
-      embedding: { provider: "ollama", model: "nomic-embed-text", dims: 768, baseUrl: "http://localhost:11434/v1" },
+      llm: { provider: "ollama", model: "llama3.2", baseUrl: "http://localhost:11434" },
+      embedding: { provider: "ollama", model: "nomic-embed-text", dims: 768, baseUrl: "http://localhost:11434" },
       connections: [
         { id: "ollama-local", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
       ],
@@ -493,7 +493,28 @@ describe("performSetup", () => {
     expect(config.profiles.llm.default.model).toBe("llama3.2");
     expect(config.profiles.llm.default.endpoint).toBe("http://localhost:11434/v1/chat/completions");
     expect(config.defaults.llm).toBe("default");
+    expect(config.embedding.endpoint).toBe("http://localhost:11434/v1/embeddings");
     expect(config.embedding.dimension).toBe(768);
+  });
+
+  it("canonicalizes OpenAI-style setup base URLs to v1 endpoints", async () => {
+    const input = makeValidSpec({
+      llm: { provider: "openai", model: "gpt-4o", baseUrl: "https://api.openai.com" },
+      embedding: {
+        provider: "openai",
+        model: "text-embedding-3-small",
+        dims: 1536,
+        baseUrl: "https://api.openai.com",
+      },
+    });
+
+    const result = await performSetup(input);
+    expect(result.ok).toBe(true);
+
+    const akmConfigPath = join(homeDir, "config", "akm", "config.json");
+    const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
+    expect(config.profiles.llm.default.endpoint).toBe("https://api.openai.com/v1/chat/completions");
+    expect(config.embedding.endpoint).toBe("https://api.openai.com/v1/embeddings");
   });
 
   it("auto-enables host akm sharing when host AKM is available (no overlay, no personal-side write)", async () => {

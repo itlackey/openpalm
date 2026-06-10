@@ -398,7 +398,7 @@ test.describe("AKM Config API", () => {
       headers: adminHeaders(),
       data: {
         embedding: {
-          endpoint: "http://localhost:11434/api/embeddings",
+          endpoint: "http://localhost:11434/v1/embeddings",
           model: "nomic-embed-text",
           provider: "ollama",
           dimension: 768,
@@ -409,7 +409,7 @@ test.describe("AKM Config API", () => {
 
     const onDisk = readConfigFile();
     const emb = onDisk.embedding as Record<string, unknown>;
-    expect(emb.endpoint).toBe("http://localhost:11434/api/embeddings");
+    expect(emb.endpoint).toBe("http://localhost:11434/v1/embeddings");
     expect(emb.model).toBe("nomic-embed-text");
     expect(emb.provider).toBe("ollama");
     expect(emb.dimension).toBe(768);

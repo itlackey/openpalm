@@ -199,6 +199,10 @@ export type {
 export {
   fetchProviderModels,
 } from "./control-plane/provider-models.js";
+export {
+  buildAkmEndpoint,
+  normalizeAkmBaseUrl,
+} from './control-plane/akm-endpoints.js';
 
 // ── AKM host/assistant source wiring ──────────────────────────────────────
 export {

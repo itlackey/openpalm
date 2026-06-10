@@ -13,6 +13,7 @@ import { enableHostAkmSharing, ensureHostStashEnv, isHostAkmAvailable } from "./
 import {
   PROVIDER_KEY_MAP,
 } from "../provider-constants.js";
+import { buildAkmEndpoint } from './akm-endpoints.js';
 import { mergeEnvContent } from "./env.js";
 import { DEFAULT_IMAGE_TAG } from "./config-persistence.js";
 import { ensureHomeDirs } from "./home.js";
@@ -254,7 +255,6 @@ export async function performSetup(
         }
         const updated = { ...existing };
         if (llm) {
-          const base = llm.baseUrl ? llm.baseUrl.replace(/\/+$/, "") : "";
           // Write the CANONICAL akm 0.8.0 shape: profiles.llm.default + defaults.llm.
           // The runtime resolver reads profiles.llm[defaults.llm] (akm config.ts).
           // Do NOT write a top-level `llm` — akm's top-level schema is .strict()
@@ -266,7 +266,7 @@ export async function performSetup(
           const llmProfiles = (profiles.llm as Record<string, unknown>) ?? {};
           llmProfiles.default = {
             ...((llmProfiles.default as Record<string, unknown>) ?? {}),
-            endpoint: base ? `${base}/chat/completions` : "",
+            endpoint: buildAkmEndpoint(llm.provider, llm.baseUrl, "/chat/completions"),
             model: llm.model,
             provider: llm.provider,
           };
@@ -278,10 +278,9 @@ export async function performSetup(
           delete (updated as Record<string, unknown>).llm; // never persist the legacy key
         }
         if (embedding) {
-          const base = embedding.baseUrl ? embedding.baseUrl.replace(/\/+$/, "") : "";
           updated.embedding = {
             ...((existing.embedding as Record<string, unknown>) ?? {}),
-            endpoint: base ? `${base}/embeddings` : "",
+            endpoint: buildAkmEndpoint(embedding.provider, embedding.baseUrl, "/embeddings"),
             model: embedding.model,
             provider: embedding.provider,
             dimension: embedding.dims,

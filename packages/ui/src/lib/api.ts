@@ -461,6 +461,43 @@ export async function saveAkmConfig(settings: Record<string, unknown>): Promise<
   return (await res.json()) as { ok: boolean };
 }
 
+export type AkmEmbeddingDetection = {
+  ok: true;
+  endpoint: string;
+  model: string;
+  provider: string;
+  dimension: number;
+  message: string;
+};
+
+export type AkmEmbeddingTestResult = {
+  ok: true;
+  dimension: number;
+  message: string;
+  provider?: string;
+};
+
+export async function detectAkmEmbedding(): Promise<AkmEmbeddingDetection> {
+  const res = await requireOk(await request('POST', '/admin/akm/embedding/detect', {}));
+  return (await res.json()) as AkmEmbeddingDetection;
+}
+
+export async function testAkmEmbedding(settings: {
+  endpoint: string;
+  model: string;
+  provider?: string;
+  apiKey?: string;
+  dimension?: number;
+}): Promise<AkmEmbeddingTestResult> {
+  const res = await requireOk(await request('POST', '/admin/akm/embedding/test', settings));
+  return (await res.json()) as AkmEmbeddingTestResult;
+}
+
+export async function reindexAkm(): Promise<{ ok: boolean; message: string; output?: string }> {
+  const res = await requireOk(await request('POST', '/admin/akm/reindex', {}));
+  return (await res.json()) as { ok: boolean; message: string; output?: string };
+}
+
 // ── AKM Health (dashboard metrics) ──────────────────────────────────
 export type AkmHealth =
   | { available: false; reason?: string }

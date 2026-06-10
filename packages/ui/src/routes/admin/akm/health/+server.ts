@@ -6,31 +6,10 @@
  * if the CLI is missing or errors, returns { available: false } so the dashboard
  * can show an "unavailable" state instead of breaking.
  */
-import { execFile } from 'node:child_process';
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
 import { getRequestId, jsonResponse, requireAdmin } from '$lib/server/helpers.js';
-
-function runAkm(
-  args: string[],
-  env: NodeJS.ProcessEnv,
-  timeoutMs: number,
-): Promise<{ ok: boolean; stdout: string }> {
-  return new Promise((resolve) => {
-    execFile('akm', args, { timeout: timeoutMs, env, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
-      resolve({ ok: !error, stdout: stdout?.toString() ?? '' });
-    });
-  });
-}
-
-function safeParse(s: string): Record<string, unknown> | null {
-  try {
-    const v = JSON.parse(s);
-    return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
+import { runAkmCommand, safeParseJsonObject } from '$lib/server/akm.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -38,22 +17,14 @@ export const GET: RequestHandler = async (event) => {
   if (denied) return denied;
 
   const state = getState();
-  // Point akm at the stack's stash + durable data + config (matches the
-  // assistant container's AKM_* wiring), not the host operator's personal stash.
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    AKM_STASH_DIR: state.stashDir,
-    AKM_DATA_DIR: `${state.dataDir}/akm/data`,
-    AKM_CONFIG_DIR: `${state.configDir}/akm`,
-  };
 
   const [health, info] = await Promise.all([
-    runAkm(['health', '--json', '--quiet'], env, 8000),
-    runAkm(['info', '--json', '--quiet'], env, 8000),
+    runAkmCommand(state, ['health', '--json', '--quiet'], 8000),
+    runAkmCommand(state, ['info', '--json', '--quiet'], 8000),
   ]);
 
-  const parsedHealth = safeParse(health.stdout);
-  const parsedInfo = safeParse(info.stdout);
+  const parsedHealth = safeParseJsonObject(health.stdout);
+  const parsedInfo = safeParseJsonObject(info.stdout);
 
   if (!parsedHealth && !parsedInfo) {
     return jsonResponse(200, { available: false, reason: 'akm CLI unavailable' }, requestId);

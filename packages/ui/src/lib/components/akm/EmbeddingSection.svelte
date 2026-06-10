@@ -1,5 +1,6 @@
 <script lang="ts">
   import PasswordInput from '$lib/components/common/PasswordInput.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
 
   // Embedding / semantic-search connection. All fields are bound back to the
   // parent's state (which load()/save() own) — this component is presentation
@@ -16,6 +17,10 @@
     contextLength?: string;
     ollamaNumCtx?: string;
     disabled?: boolean;
+    detecting?: boolean;
+    testing?: boolean;
+    ondetect?: () => void;
+    ontest?: () => void;
   }
   let {
     endpoint = $bindable(''),
@@ -29,11 +34,27 @@
     contextLength = $bindable(''),
     ollamaNumCtx = $bindable(''),
     disabled = false,
+    detecting = false,
+    testing = false,
+    ondetect,
+    ontest,
   }: Props = $props();
 </script>
 
 <section class="config-section">
-  <h3 class="section-title">Semantic search (embeddings)</h3>
+  <div class="section-header">
+    <h3 class="section-title">Semantic search (embeddings)</h3>
+    <div class="section-actions">
+      <button class="btn btn-secondary btn-sm" type="button" onclick={ondetect} disabled={disabled || detecting || testing}>
+        {#if detecting}<Spinner />{/if}
+        Detect
+      </button>
+      <button class="btn btn-secondary btn-sm" type="button" onclick={ontest} disabled={disabled || detecting || testing}>
+        {#if testing}<Spinner />{/if}
+        Test
+      </button>
+    </div>
+  </div>
   <p class="section-note">Vector embedding provider for semantic search. Leave Endpoint and Model blank to use built-in local embeddings.</p>
   <div class="controls--grid">
     <div class="control-group control-group--wide">
@@ -81,6 +102,8 @@
 
 <style>
   .config-section { display: flex; flex-direction: column; gap: var(--space-3); }
+  .section-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+  .section-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
   .section-title { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border); }
   .section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; max-width: 72ch; }
   .controls--grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4); }
