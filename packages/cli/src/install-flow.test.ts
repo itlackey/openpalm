@@ -28,6 +28,7 @@ const REPO_ROOT = resolve(import.meta.dir, '../../..');
 const OPENPALM_SRC = join(REPO_ROOT, '.openpalm');
 const ASSISTANT_SRC = join(OPENPALM_SRC, 'config', 'assistant');
 const SKIP_INSTALL_FLOW_IN_CI = process.env.CI === 'true';
+const DOCKER_AVAILABLE = Boolean(Bun.which('docker'));
 
 /** Copy a directory tree using cp -a (preserves structure, fast). */
 function cpTree(src: string, dest: string): void {
@@ -273,6 +274,7 @@ describe('install flow — tier 1 (file validation)', () => {
   }, 30_000);
 
   tier1Test('compose config validates with selected addons', async () => {
+    if (!DOCKER_AVAILABLE) return;
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
@@ -353,6 +355,7 @@ describe('install flow — tier 1 (file validation)', () => {
   }, 30_000);
 
   tier1Test('performSetup with no addons produces only core services', async () => {
+    if (!DOCKER_AVAILABLE) return;
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
