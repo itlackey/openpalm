@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { existsSync } from 'node:fs';
 
 type RollbackScenario = {
   mode: 'performUpgrade' | 'applyTagChange';
@@ -25,21 +24,19 @@ const moduleUrls = {
   registry: new URL('./registry.js', import.meta.url).href,
 };
 
-function runRollbackScenario(scenario: RollbackScenario): { stdout: string; stderr: string; ok: boolean } {
+function runRollbackScenario(scenario: RollbackScenario): { stdout: string; stderr: string; status: number | null } {
   const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-lifecycle-rollback-'));
-  const scriptPath = join(tempDir, 'rollback-scenario.test.ts');
-  const markerPath = join(tempDir, 'rollback-ok.marker');
+  const scriptPath = join(tempDir, 'rollback-scenario.ts');
   const script = `
-import { describe, test, expect, mock } from 'bun:test';
+import { mock } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const lifecycleUrl = ${JSON.stringify(lifecycleUrl)};
 const scenario = ${JSON.stringify(scenario)};
-const markerPath = ${JSON.stringify(markerPath)};
 
-function dockerTagsResponse(names: string[]) {
+function dockerTagsResponse(names) {
   return new Response(
     JSON.stringify({ results: names.map((name) => ({ name })) }),
     { status: 200, headers: { 'content-type': 'application/json' } },
@@ -111,34 +108,57 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   listEnabledAddonIds: () => [],
 }));
 
-describe('rollback scenario', () => {
-  test('restores stack.env', async () => {
-    globalThis.fetch = (async () => dockerTagsResponse(['v0.12.0', 'v0.11.5']));
+async function main() {
+  try {
+    globalThis.fetch = async () => dockerTagsResponse(['v0.12.0', 'v0.11.5']);
     const state = makeState();
     const stackEnvPath = join(state.stashDir, 'env', 'stack.env');
     const original = readFileSync(stackEnvPath, 'utf-8');
     const lifecycle = await import(lifecycleUrl + '?scenario=' + Math.random());
-      const run = scenario.mode === 'performUpgrade'
+    const run = scenario.mode === 'performUpgrade'
       ? lifecycle.performUpgrade(state)
       : lifecycle.applyTagChange(state, 'v0.12.0');
 
-      await expect(run).rejects.toThrow(new RegExp(scenario.expectedError));
-      expect(readFileSync(stackEnvPath, 'utf-8')).toBe(original);
-      writeFileSync(markerPath, 'ok');
-    });
-});
+    let threw = false;
+    try {
+      await run;
+    } catch (error) {
+      threw = true;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!new RegExp(scenario.expectedError).test(message)) {
+        throw new Error('Unexpected error: ' + message);
+      }
+    }
+
+    if (!threw) {
+      throw new Error('Expected rollback scenario to throw.');
+    }
+
+    const restored = readFileSync(stackEnvPath, 'utf-8');
+    if (restored !== original) {
+      throw new Error('stack.env was not restored after failure.');
+    }
+
+    process.exit(0);
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
+  }
+}
+
+await main();
 `;
 
   try {
     writeFileSync(scriptPath, script);
-    const result = spawnSync('bun', ['test', scriptPath], {
+    const result = spawnSync('bun', [scriptPath], {
       cwd: '/work/itlackey/openpalm/packages/lib',
       encoding: 'utf-8',
     });
     return {
       stdout: result.stdout ?? '',
       stderr: result.stderr ?? '',
-      ok: existsSync(markerPath),
+      status: result.status,
     };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -154,7 +174,7 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
       expectedError: 'Failed to pull images: pull failed',
     });
 
-    expect(result.ok, `${result.stdout}\n${result.stderr}`).toBe(true);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
   test('performUpgrade restores stack.env when composeUp fails after a successful pull', () => {
@@ -165,7 +185,7 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
       expectedError: 'Images pulled but failed to recreate containers: up failed',
     });
 
-    expect(result.ok, `${result.stdout}\n${result.stderr}`).toBe(true);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
   test('applyTagChange restores stack.env when asset refresh fails', () => {
@@ -175,6 +195,6 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
       expectedError: 'asset refresh failed',
     });
 
-    expect(result.ok, `${result.stdout}\n${result.stderr}`).toBe(true);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 });
