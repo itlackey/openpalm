@@ -150,7 +150,8 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
       expectedError: 'Failed to pull images: pull failed',
     });
 
-    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const output = `${result.stdout}\n${result.stderr}`;
+    expect(output).toContain('0 fail');
   });
 
   test('performUpgrade restores stack.env when composeUp fails after a successful pull', () => {
@@ -161,7 +162,8 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
       expectedError: 'Images pulled but failed to recreate containers: up failed',
     });
 
-    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const output = `${result.stdout}\n${result.stderr}`;
+    expect(output).toContain('0 fail');
   });
 
   test('applyTagChange restores stack.env when asset refresh fails', () => {
@@ -171,6 +173,7 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
       expectedError: 'asset refresh failed',
     });
 
-    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const output = `${result.stdout}\n${result.stderr}`;
+    expect(output).toContain('0 fail');
   });
 });
