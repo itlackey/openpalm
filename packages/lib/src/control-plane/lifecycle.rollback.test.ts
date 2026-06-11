@@ -22,9 +22,10 @@ const moduleUrls = {
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./registry.js', import.meta.url).href,
 };
+const rollbackHarnessDir = '/work/itlackey/openpalm/packages/lib';
 
 function runRollbackScenario(scenario: RollbackScenario): { stdout: string; stderr: string; exitCode: number } {
-  const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-lifecycle-rollback-'));
+  const tempDir = mkdtempSync(join(rollbackHarnessDir, '.tmp-openpalm-lifecycle-rollback-'));
   const scriptPath = join(tempDir, 'rollback-scenario.ts');
   const runnerPath = join(tempDir, 'run-bun.sh');
   const script = `
