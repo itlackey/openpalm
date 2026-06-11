@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -150,15 +151,14 @@ await main();
   try {
     writeFileSync(scriptPath, script);
     writeFileSync(runnerPath, runner);
-    const proc = Bun.spawnSync(['/bin/bash', runnerPath, scriptPath], {
-      cwd: '/work/itlackey/openpalm/packages/lib',
-      stdout: 'pipe',
-      stderr: 'pipe',
+    const proc = spawnSync('bash', [runnerPath, scriptPath], {
+      cwd: rollbackHarnessDir,
+      encoding: 'utf8',
     });
     return {
-      stdout: new TextDecoder().decode(proc.stdout),
-      stderr: new TextDecoder().decode(proc.stderr),
-      exitCode: proc.exitCode,
+      stdout: proc.stdout ?? '',
+      stderr: proc.stderr ?? '',
+      exitCode: proc.status ?? 1,
     };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
