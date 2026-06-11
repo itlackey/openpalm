@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 type RollbackScenario = {
   mode: 'performUpgrade' | 'applyTagChange';
@@ -22,7 +23,7 @@ const moduleUrls = {
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./registry.js', import.meta.url).href,
 };
-const rollbackHarnessDir = '/work/itlackey/openpalm/packages/lib';
+const rollbackHarnessDir = fileURLToPath(new URL('../../', import.meta.url));
 
 function runRollbackScenario(scenario: RollbackScenario): { stdout: string; stderr: string; exitCode: number } {
   const tempDir = mkdtempSync(join(rollbackHarnessDir, '.tmp-openpalm-lifecycle-rollback-'));
