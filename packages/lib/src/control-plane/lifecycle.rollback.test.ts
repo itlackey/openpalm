@@ -144,7 +144,7 @@ await main();
 
   try {
     writeFileSync(scriptPath, script);
-    const proc = Bun.spawnSync(['bun', scriptPath], {
+    const proc = Bun.spawnSync([process.execPath, scriptPath], {
       cwd: '/work/itlackey/openpalm/packages/lib',
       stdout: 'pipe',
       stderr: 'pipe',
