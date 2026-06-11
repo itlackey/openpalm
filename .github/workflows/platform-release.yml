@@ -5,14 +5,15 @@ name: Platform release (orchestrator)
 # Units (see .github/release-package-groups.json -> units):
 #   host      = @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + CLI native
 #               binaries + Electron installers + git tag + GitHub release.
+#   web ui    = @openpalm/ui (npm) only.
 #   channels  = @openpalm/channels-sdk + @openpalm/channel-{api,discord,slack} (npm)
 #               + guardian image + channel image.
 #   assistant = assistant image only.
 #   voice     = voice images (cpu / cu121). Stable only; always explicit.
 #
-# Select units with the release_* booleans. Leaving host/channels/assistant ALL
-# unchecked = a FULL coordinated release of those three (voice is never part of a
-# full release — check release_voice explicitly to include it).
+# Select units with the release_* booleans. Leaving host/web_ui/channels/assistant
+# ALL unchecked = a FULL coordinated release of host + channels + assistant (voice
+# is never part of a full release — check release_voice explicitly to include it).
 #
 # VERSIONING: a unit release stamps ONLY that unit's manifests to `version`; units
 # drift independently (CI version-sync enforces intra-unit consistency, not
@@ -50,6 +51,11 @@ on:
         required: false
         type: boolean
         default: false
+      release_web_ui:
+        description: 'Release the WEB UI package only (@openpalm/ui npm).'
+        required: false
+        type: boolean
+        default: false
       release_channels:
         description: 'Release the CHANNELS unit (channels-sdk + channel-* npm, guardian + channel images).'
         required: false
@@ -82,8 +88,9 @@ concurrency:
 
 jobs:
   # ── Resolve which units are in scope and emit gating flags, the manifest set to
-  # stamp/guard, and the Docker image matrix. Leaving host/channels/assistant all
-  # off = full (those three). Voice is independent: only when release_voice is on.
+  # stamp/guard, and the Docker image matrix. Leaving host/web_ui/channels/
+  # assistant all off = full (host + channels + assistant). Voice is independent:
+  # only when release_voice is on.
   plan:
     name: Plan units
     runs-on: ubuntu-latest
@@ -91,6 +98,7 @@ jobs:
     outputs:
       full: ${{ steps.p.outputs.full }}
       do_host: ${{ steps.p.outputs.do_host }}
+      do_ui: ${{ steps.p.outputs.do_ui }}
       do_channels: ${{ steps.p.outputs.do_channels }}
       do_assistant: ${{ steps.p.outputs.do_assistant }}
       do_voice: ${{ steps.p.outputs.do_voice }}
@@ -108,6 +116,7 @@ jobs:
         id: p
         env:
           REL_HOST: ${{ inputs.release_host }}
+          REL_UI: ${{ inputs.release_web_ui }}
           REL_CHANNELS: ${{ inputs.release_channels }}
           REL_ASSISTANT: ${{ inputs.release_assistant }}
           REL_VOICE: ${{ inputs.release_voice }}
@@ -315,7 +324,7 @@ jobs:
 
   npm-ui:
     needs: [plan, bump]
-    if: ${{ always() && needs.bump.result == 'success' && needs.plan.outputs.do_host == 'true' }}
+    if: ${{ always() && needs.bump.result == 'success' && needs.plan.outputs.do_ui == 'true' }}
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:

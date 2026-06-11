@@ -38,6 +38,9 @@
       "packages/electron/package.json",
       "packages/electron/admin-tools/package.json"
     ],
+    "ui": [
+      "packages/ui/package.json"
+    ],
     "channels": [
       "packages/channels-sdk/package.json",
       "packages/channel-api/package.json",
