@@ -12,10 +12,7 @@
  * 8. composePull builds pull command
  * 9. All commands use execFile (no shell injection — core security invariant)
  */
-import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-
-// Pre-warm the module so @openpalm/lib captures the mocked execFile before any test runs.
-beforeAll(async () => { await import("./docker.js"); });
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 
 const execFileMock = vi.fn();
 const spawnMock = vi.fn();

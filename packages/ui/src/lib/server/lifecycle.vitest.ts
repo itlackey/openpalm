@@ -186,6 +186,14 @@ describe("CORE_SERVICES", () => {
 // ── Lifecycle State Transitions ─────────────────────────────────────────
 
 describe("applyInstall", () => {
+  beforeEach(() => {
+    process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+  });
+
+  afterEach(() => {
+    delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+  });
+
   test("marks the assistant running on install (guardian gated to channels)", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
@@ -206,6 +214,14 @@ describe("applyInstall", () => {
 });
 
 describe("applyUpdate", () => {
+  beforeEach(() => {
+    process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+  });
+
+  afterEach(() => {
+    delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+  });
+
   test("returns list of running services that were restarted", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
@@ -223,6 +239,14 @@ describe("applyUpdate", () => {
 });
 
 describe("applyUninstall", () => {
+  beforeEach(() => {
+    process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+  });
+
+  afterEach(() => {
+    delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+  });
+
   test("stops all services", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
