@@ -11,12 +11,12 @@
 
 FROM node:22-trixie-slim
 
-ARG OPENCODE_VERSION=1.15.13
+ARG OPENCODE_VERSION=1.17.3
 ARG BUN_VERSION=bun-v1.3.10
-# Pinned to the latest stable akm-cli release (0.8.5). Bump deliberately; CI
+# Pinned to the latest stable akm-cli release (0.8.7). Bump deliberately; CI
 # validates this pin is extractable. Carries the env/secret asset types, profiles
 # config, multi-source, and the built-in local embedder (Xenova/bge-small-en).
-ARG AKM_CLI_VERSION=0.8.5
+ARG AKM_CLI_VERSION=0.8.7
 
 # Re-export for runtime introspection.
 ENV OPENCODE_VERSION=${OPENCODE_VERSION} \
