@@ -3,7 +3,7 @@
   import {
     PROVIDERS, LOCAL_PROVIDERS, CHANNELS, OLLAMA_DEFAULT_CHAT_MODEL,
   } from '$lib/wizard/constants.js';
-  import { buildModelOptions, selectAddonProfileId } from '$lib/wizard/helpers.js';
+  import { buildModelOptions, selectAddonProfileId, resolveVoiceSide } from '$lib/wizard/helpers.js';
   import type {
     ProviderState, ModelSelection, DetectedProvider, ChannelState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
@@ -225,16 +225,11 @@
   // Voice when the bundled voice is enabled; else the given fallback. The
   // `displayed*` derivations pass a sensible default engine (for the UI); the
   // `persisted*` ones pass '' (an empty engine means "don't save this side").
-  function resolveVoiceSide(side: VoiceEngineValue, fallbackEngine: string): VoiceEngineValue {
-    if (side.engine) return side;
-    if (enableVoice) return { engine: 'openpalm-voice' };
-    return { engine: fallbackEngine };
-  }
-
-  const displayedVoiceTts = $derived(resolveVoiceSide(voiceTts, voiceDefaults.tts));
-  const displayedVoiceStt = $derived(resolveVoiceSide(voiceStt, voiceDefaults.stt));
-  const persistedVoiceTts = $derived(resolveVoiceSide(voiceTts, ''));
-  const persistedVoiceStt = $derived(resolveVoiceSide(voiceStt, ''));
+  // resolveVoiceSide is exported from helpers.ts for testability.
+  const displayedVoiceTts = $derived(resolveVoiceSide(voiceTts, enableVoice, voiceDefaults.tts));
+  const displayedVoiceStt = $derived(resolveVoiceSide(voiceStt, enableVoice, voiceDefaults.stt));
+  const persistedVoiceTts = $derived(resolveVoiceSide(voiceTts, enableVoice, ''));
+  const persistedVoiceStt = $derived(resolveVoiceSide(voiceStt, enableVoice, ''));
 
   const selectedVoiceProfileLabel = $derived.by(() => {
     if (!selectedVoiceProfile) return '';
@@ -978,6 +973,7 @@
     st.error = false;
 
     try {
+      // Step 1: store the key in OpenCode auth
       const res = await fetch('/api/setup/opencode/auth/' + encodeURIComponent(providerId), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -987,8 +983,14 @@
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { message?: string }).message ?? ('Failed to connect (HTTP ' + res.status + ')'));
       }
-      st.verified = true;
-      st.error = false;
+
+      // Step 2: validate by fetching models — proves the key actually works.
+      // verifying stays true until verifyProvider clears it.
+      // verifyProvider sets verified=true on success, error=true on failure.
+      await verifyProvider(providerId);
+      // verifyProvider sets st.verifying = false itself; return here so the
+      // finally below does not double-clear it.
+      return;
     } catch (e) {
       st.verified = false;
       st.error = true;
@@ -1766,8 +1768,8 @@
             {uiLoginPassword}
             {verifiedProviders}
             {modelSelection}
-            activeTts={persistedVoiceTts.engine}
-            activeStt={persistedVoiceStt.engine}
+            activeTts={displayedVoiceTts.engine}
+            activeStt={displayedVoiceStt.engine}
             voiceProfileLabel={selectedVoiceProfileLabel}
             ollamaProfileLabel={selectedOllamaProfileLabel}
             {channelSelection}

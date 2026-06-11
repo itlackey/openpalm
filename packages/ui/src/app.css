@@ -13,6 +13,9 @@
 
   /* ── Semantic Colors ──────────────────────────────────────────────── */
   --color-success: #40c057;
+  /* Text-safe success: --color-success (#40c057) is ~2.5:1 on white and fails
+     WCAG AA for text. Use this token whenever success-green is TEXT. */
+  --color-success-text: #15803d;
   --color-success-bg: rgba(64, 192, 87, 0.1);
   --color-success-border: rgba(64, 192, 87, 0.25);
   --color-success-subtle: var(--color-success-bg);
@@ -153,6 +156,7 @@
   --color-primary-border: rgba(255, 157, 0, 0.34);
 
   --color-success: #5ad57f;
+  --color-success-text: #5ad57f; /* passes AA on dark backgrounds */
   --color-success-bg: rgba(90, 213, 127, 0.14);
   --color-success-border: rgba(90, 213, 127, 0.3);
   --color-success-subtle: var(--color-success-bg);

@@ -191,26 +191,30 @@
       <span>Channels</span>
       <button class="review-edit-btn" type="button" onclick={() => ongostepedit(5)}>Edit</button>
     </div>
-    {#each activeChannels as ch}
-      <div class="review-row">
-        <span class="review-row-label">{ch.icon} {ch.name}</span>
-        <span class="review-row-value review-row-value-ok">Enabled ✓</span>
-      </div>
-      {#if ch.credentials}
-        {@const sel = channelSelection[ch.id]}
-        {#if typeof sel === 'object' && sel !== null && sel.enabled}
-          {#each ch.credentials as cred}
-            {@const val = getCredValue(ch.id, cred.key)}
-            {#if val}
-              <div class="review-row">
-                <span class="review-row-label" style="padding-left:24px">{cred.label}</span>
-                <span class="review-row-value">{maskSecret(val)}</span>
-              </div>
-            {/if}
-          {/each}
+    {#if activeChannels.length === 0}
+      <div class="review-row"><span class="review-row-label review-row-label--muted">None enabled</span></div>
+    {:else}
+      {#each activeChannels as ch}
+        <div class="review-row">
+          <span class="review-row-label">{ch.icon} {ch.name}</span>
+          <span class="review-row-value review-row-value-ok">Enabled ✓</span>
+        </div>
+        {#if ch.credentials}
+          {@const sel = channelSelection[ch.id]}
+          {#if typeof sel === 'object' && sel !== null && sel.enabled}
+            {#each ch.credentials as cred}
+              {@const val = getCredValue(ch.id, cred.key)}
+              {#if val}
+                <div class="review-row">
+                  <span class="review-row-label" style="padding-left:24px">{cred.label}</span>
+                  <span class="review-row-value">{maskSecret(val)}</span>
+                </div>
+              {/if}
+            {/each}
+          {/if}
         {/if}
-      {/if}
-    {/each}
+      {/each}
+    {/if}
   </div>
 
   <!-- Voice -->
@@ -253,6 +257,8 @@
           <span class="review-row-value">{ollamaProfileLabel}</span>
         </div>
       {/if}
+    {:else}
+      <div class="review-row"><span class="review-row-label review-row-label--muted">None enabled</span></div>
     {/if}
   </div>
 
@@ -275,7 +281,9 @@
 {/if}
 
 <div class="step-actions" id="review-actions">
-  <button type="button" class="btn btn-info" onclick={() => saveConfig(payload)}>
+  <!-- Tertiary action: .btn-outline is the defined token-system variant
+       (.btn-info does not exist and fell through to a UA-gray fill). -->
+  <button type="button" class="btn btn-outline" onclick={() => saveConfig(payload)}>
     Save configuration
   </button>
   <button class="btn btn-secondary" onclick={onback}>Back</button>
@@ -322,13 +330,21 @@
   }
   .token-save-hint {
     font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-tertiary, #94a3b8);
+    /* --color-text-tertiary (~#9ca3af) fails WCAG AA contrast on white.
+       Use --color-text-secondary (~#6b7280) which passes ≥4.5:1. */
+    color: var(--color-text-secondary, #6b7280);
     margin-left: 8px;
   }
   .token-save-hint code {
     font-family: monospace;
     background: var(--color-bg-secondary, #f1f5f9);
+    /* Ensure the code text color passes contrast on its background. */
+    color: var(--color-text, #1e293b);
     padding: 1px 5px;
     border-radius: 4px;
+  }
+  .review-row-label--muted {
+    color: var(--color-text-secondary, #64748b);
+    font-style: italic;
   }
 </style>

@@ -189,6 +189,8 @@
         data-provider={ocp.id}>
         <!-- Header -->
         <div class="pcard-header" role="button" tabindex="0"
+          aria-expanded={isExpanded}
+          aria-label="{ocp.name}{st.verified ? ', verified' : ''}"
           onclick={() => ontoggleopencode(ocp.id)}
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggleopencode(ocp.id); }}>
           <div class="pcard-info">
@@ -211,7 +213,7 @@
 
         <!-- Expanded auth panel -->
         {#if isExpanded}
-          <div class="pcard-auth">
+          <div class="pcard-auth" id="pcard-auth-{ocp.id}">
             {#if st.verified}
               <div class="feedback feedback--success">
                 <span>Connected</span>
@@ -329,6 +331,8 @@
           data-provider={ocp.id}>
           <!-- Header -->
           <div class="pcard-header" role="button" tabindex="0"
+            aria-expanded={isExpanded}
+            aria-label="{ocp.name}{st.verified ? ', verified' : ''}"
             onclick={() => ontoggleopencode(ocp.id)}
             onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggleopencode(ocp.id); }}>
             <div class="pcard-info">
@@ -351,7 +355,7 @@
 
           <!-- Expanded auth panel -->
           {#if isExpanded}
-            <div class="pcard-auth">
+            <div class="pcard-auth" id="pcard-auth-{ocp.id}">
               {#if st.verified}
                 <div class="feedback feedback--success">
                   <span>Connected</span>
@@ -490,6 +494,8 @@
               <div class="pcard {st.selected ? 'selected' : ''} {st.verified ? 'verified' : ''} {isExpanded ? 'wide' : ''}"
                 data-provider={p.id}>
                 <div class="pcard-header" role="button" tabindex="0"
+                  aria-expanded={isExpanded}
+                  aria-label="{p.name}{st.verified ? ', verified' : ''}"
                   data-toggle-provider={p.id}
                   onclick={() => ontogglefallback(p.id)}
                   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontogglefallback(p.id); }}>
@@ -511,7 +517,7 @@
                 </div>
 
                 {#if isExpanded}
-                  <div class="pcard-auth">
+                  <div class="pcard-auth" id="pcard-auth-{p.id}">
                     {#if p.id === 'ollama'}
                       {#if !st.ollamaMode}
                         <div class="ollama-mode-prompt">
@@ -755,11 +761,15 @@
     background: none;
     border: 1px solid currentColor;
     color: inherit;
-    padding: 2px 8px;
+    /* WCAG 2.5.8: touch target must be ≥24px; 32px with padding is practical. */
+    min-height: 32px;
+    padding: 6px 10px;
     border-radius: 6px;
     font-size: var(--text-xs, 0.75rem);
     cursor: pointer;
     opacity: 0.7;
+    display: inline-flex;
+    align-items: center;
   }
   :global(.auth-disconnect:hover) { opacity: 1; }
 </style>

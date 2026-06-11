@@ -79,7 +79,7 @@
       {@const isOn = isChannelEnabled(ch.id, ch.locked)}
       <div class="toggle-card {isOn ? 'on' : ''} {ch.locked ? 'locked' : ''} {ch.credentials && isOn ? 'wide' : ''}"
         data-channel={ch.id}>
-        <div class="toggle-card-header" role="button" tabindex={ch.locked ? -1 : 0}
+        <div class="toggle-card-header" role="switch" aria-checked={isOn} tabindex={ch.locked ? -1 : 0}
           onclick={() => { if (!ch.locked) onchanneltoggle(ch.id); }}
           onkeydown={(e) => { if (!ch.locked && (e.key === 'Enter' || e.key === ' ')) onchanneltoggle(ch.id); }}>
           <div class="toggle-card-icon">{ch.icon}</div>
@@ -92,9 +92,9 @@
           </div>
           <div class="toggle-card-switch">
             {#if ch.locked}
-              <div class="toggle-track on locked"><div class="toggle-thumb"></div></div>
+              <div class="toggle-track on locked" aria-hidden="true"><div class="toggle-thumb"></div></div>
             {:else}
-              <div class="toggle-track {isOn ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+              <div class="toggle-track {isOn ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
             {/if}
           </div>
         </div>
@@ -128,7 +128,7 @@
 
     <!-- Voice -->
     <div class="toggle-card {enableVoice ? 'on' : ''} {enableVoice && voiceProfiles.length > 0 ? 'wide' : ''}">
-      <div class="toggle-card-header" role="button" tabindex="0"
+      <div class="toggle-card-header" role="switch" aria-checked={enableVoice} tabindex="0"
         onclick={() => onenablevoicechange(!enableVoice)}
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onenablevoicechange(!enableVoice); }}>
         <div class="toggle-card-icon">🎙️</div>
@@ -137,7 +137,7 @@
           <div class="toggle-card-desc">Bundled text-to-speech and speech-to-text. Requires a one-time local model download.</div>
         </div>
         <div class="toggle-card-switch">
-          <div class="toggle-track {enableVoice ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+          <div class="toggle-track {enableVoice ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
         </div>
       </div>
       {#if enableVoice && voiceProfiles.length > 0}
@@ -149,7 +149,7 @@
 
     <!-- Ollama -->
     <div class="toggle-card {ollamaEnabled && !hostLocalRunning ? 'on' : ''} {hostLocalRunning ? 'addon-disabled' : ''} {ollamaEnabled && !hostLocalRunning && ollamaProfiles.length > 0 ? 'wide' : ''}">
-      <div class="toggle-card-header" role="button" tabindex={hostLocalRunning ? -1 : 0}
+      <div class="toggle-card-header" role="switch" aria-checked={ollamaEnabled && !hostLocalRunning} tabindex={hostLocalRunning ? -1 : 0}
         aria-disabled={hostLocalRunning ? 'true' : undefined}
         onclick={() => { if (!hostLocalRunning) onollamachange(!ollamaEnabled); }}
         onkeydown={(e) => { if (!hostLocalRunning && (e.key === 'Enter' || e.key === ' ')) onollamachange(!ollamaEnabled); }}>
@@ -165,7 +165,7 @@
           </div>
         </div>
         <div class="toggle-card-switch">
-          <div class="toggle-track {ollamaEnabled && !hostLocalRunning ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+          <div class="toggle-track {ollamaEnabled && !hostLocalRunning ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
         </div>
       </div>
       {#if ollamaEnabled && !hostLocalRunning && ollamaProfiles.length > 0}
@@ -199,7 +199,7 @@
       <p class="options-section-desc">Adds a source entry to your personal <code>~/.config/akm/config.json</code> and mounts <code>~/akm</code> into the assistant as a secondary source. Your files' ownership is not changed and your primary stash is unchanged — your <code>~/akm</code> data and cache stay yours.</p>
       <div class="toggle-grid">
         <div class="toggle-card {hostAkmEnabled ? 'on' : ''}">
-          <div class="toggle-card-header" role="button" tabindex="0"
+          <div class="toggle-card-header" role="switch" aria-checked={hostAkmEnabled} tabindex="0"
             onclick={() => onhostakmchange(!hostAkmEnabled)}
             onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onhostakmchange(!hostAkmEnabled); }}>
             <div class="toggle-card-icon">🧠</div>
@@ -208,7 +208,7 @@
               <div class="toggle-card-desc">The assistant reads your personal knowledge and can contribute back. Each side keeps its own primary stash, database, and cache — only the knowledge files are shared.</div>
             </div>
             <div class="toggle-card-switch">
-              <div class="toggle-track {hostAkmEnabled ? 'on' : ''}"><div class="toggle-thumb"></div></div>
+              <div class="toggle-track {hostAkmEnabled ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
             </div>
           </div>
         </div>

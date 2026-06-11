@@ -48,7 +48,13 @@
 </script>
 
 <h2>Voice Capabilities</h2>
-<p class="step-description">Browser voice is ready out of the box — no setup needed.</p>
+<p class="step-description">
+  {#if tts.engine === 'openai-tts' || stt.engine === 'openai-stt'}
+    OpenAI detected — TTS and STT default to OpenAI. You can change them below.
+  {:else}
+    Browser voice is ready out of the box — no setup needed. Expand below to change.
+  {/if}
+</p>
 
 {#if unknownTts || unknownStt}
   <div class="voice-unknown" role="alert">
@@ -158,7 +164,10 @@
   .voice-configure-summary {
     cursor: pointer;
     font-size: var(--text-sm, 0.875rem);
-    color: var(--color-primary, #4f6ef7);
+    /* --color-primary (orange, ~#ff9d00) on white fails WCAG AA contrast
+       (~2.7:1 in light mode). Use --color-text-secondary which passes ≥4.5:1
+       in both light and dark themes. */
+    color: var(--color-text-secondary, #6b7280);
     font-weight: 500;
     padding: 4px 0;
     list-style: none;

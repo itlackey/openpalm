@@ -1,4 +1,4 @@
-import type { ChannelState, Provider, ProviderState } from './types.js';
+import type { ChannelState, Provider, ProviderState, VoiceEngineValue } from './types.js';
 import { KNOWN_EMB_DIMS } from './constants.js';
 
 // Compose addon hardware-profile id. Inlined (NOT imported from @openpalm/lib):
@@ -127,6 +127,22 @@ export function buildModelOptions(
     || (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)
     || scoreModelForRole(roleId, b.id) - scoreModelForRole(roleId, a.id),
   );
+}
+
+/**
+ * Resolve which voice engine to use for one side (TTS or STT).
+ *
+ * - An explicit engine in `side` wins unconditionally.
+ * - No explicit engine + bundled voice enabled → openpalm-voice.
+ * - No explicit engine + bundled voice off → fallback engine (e.g. 'browser-tts').
+ *
+ * Pass fallbackEngine='' for the "persisted" form (nothing saved when untouched).
+ * Pass a concrete fallback for the "displayed" form so the UI shows the real default.
+ */
+export function resolveVoiceSide(side: VoiceEngineValue, enableVoice: boolean, fallbackEngine: string): VoiceEngineValue {
+  if (side.engine) return side;
+  if (enableVoice) return { engine: 'openpalm-voice' };
+  return { engine: fallbackEngine };
 }
 
 export function isChannelEnabled(channelSelection: Record<string, boolean | ChannelState>, chId: string, locked?: boolean): boolean {

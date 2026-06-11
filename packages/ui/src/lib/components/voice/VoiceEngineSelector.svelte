@@ -81,7 +81,9 @@
 	}
 </script>
 
-<div class="engine-list">
+<!-- Engine choice is single-select: radio semantics expose the selected
+     state programmatically (WCAG 4.1.2) — the CSS tint alone is silent to AT. -->
+<div class="engine-list" role="radiogroup" aria-label="{kind === 'tts' ? 'Text-to-speech' : 'Speech-to-text'} engine">
 	{#each options as o (o.id)}
 		{@const selected = value.engine === o.id}
 		{@const config = engines[o.id]}
@@ -92,6 +94,8 @@
 			class="engine-card"
 			class:engine-card--selected={selected}
 			class:engine-card--disabled={isDisabled}
+			role="radio"
+			aria-checked={selected}
 			disabled={isDisabled}
 			onclick={() => selectEngine(o.id)}
 		>

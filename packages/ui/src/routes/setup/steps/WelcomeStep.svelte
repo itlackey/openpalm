@@ -49,7 +49,7 @@
         const names = rec.hostProviders.map((p) => p.provider);
         return {
           headline: `${summarizeProviders(names, 'Found', 'running on your computer')} — recommended setup will use ${names.length === 1 ? 'it' : 'them'}.`,
-          detail: 'You can pick which models to use on the next step.',
+          detail: 'Takes you to Models to confirm the auto-selected model before continuing.',
         };
       }
       case 'use-cloud': {
@@ -58,7 +58,7 @@
           headline: names.length
             ? `${summarizeProviders(names, 'Detected', 'connected')} — recommended setup will use ${names.length === 1 ? 'it' : 'them'}.`
             : 'Detected a connected provider — recommended setup will use it.',
-          detail: 'You can pick which models to use on the next step.',
+          detail: 'Skips to Options with an auto-selected model — you can adjust models later.',
         };
       }
       case 'connect-manually':

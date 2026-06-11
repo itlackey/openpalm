@@ -93,14 +93,16 @@
       {@const hasOverflow = options.length > MAX_VISIBLE_MODELS}
       {@const query = filterQueries[role.id] ?? ''}
       {@const visible = filteredOptions(role, options)}
+      {@const isCollapsed = collapsedRoles.has(role.id)}
       <div class="model-group">
         <div class="model-group-header" role="button" tabindex="0"
+          aria-expanded={!isCollapsed}
           onclick={() => toggleCollapse(role.id)}
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleCollapse(role.id); }}
           style="cursor:pointer;user-select:none">
           <span class="model-group-title">{role.label}</span>
           <span class="model-group-tag {role.tag === 'required' ? 'model-group-tag-required' : 'model-group-tag-optional'}">{role.tag}</span>
-          {#if collapsedRoles.has(role.id)}
+          {#if isCollapsed}
             {@const sel = modelSelection[role.id as 'llm' | 'embedding' | 'small']}
             <span style="flex:1;font-size:var(--text-xs);color:var(--color-text-secondary);margin-left:8px">
               {isEmptyEmbedding && !sel?.model ? 'Automatic' : (sel?.model ?? '(none)')}
@@ -111,7 +113,7 @@
           {/if}
         </div>
 
-        {#if !collapsedRoles.has(role.id)}
+        {#if !isCollapsed}
           <div class="model-group-desc">{role.desc}</div>
 
           {#if isEmptyEmbedding}
@@ -121,51 +123,53 @@
             </div>
           {/if}
 
-          {#if role.id === 'small'}
-            {@const noneOn = !modelSelection.small?.model}
-            <div class="model-opt {noneOn ? 'on' : ''}" role="button" tabindex="0"
-              onclick={() => onselectnone('small')}
-              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onselectnone('small'); }}>
-              <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
-              <div style="flex:1">
-                <div class="model-opt-name">(same as chat model)</div>
-                <div class="model-opt-meta">No separate small model</div>
+          <!-- Radio group: each role's model list is a single-select group -->
+          <div role="radiogroup" aria-label="{role.label} selection">
+            {#if role.id === 'small'}
+              {@const noneOn = !modelSelection.small?.model}
+              <div class="model-opt {noneOn ? 'on' : ''}" role="radio" aria-checked={noneOn} tabindex="0"
+                onclick={() => onselectnone('small')}
+                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onselectnone('small'); }}>
+                <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
+                <div style="flex:1">
+                  <div class="model-opt-name">(same as chat model)</div>
+                  <div class="model-opt-meta">No separate small model</div>
+                </div>
+                <span class="model-opt-badge model-opt-badge-auto">Default</span>
               </div>
-              <span class="model-opt-badge model-opt-badge-auto">Default</span>
-            </div>
-          {/if}
+            {/if}
 
-          {#if options.length > 3}
-            <div class="model-filter-row">
-              <input type="text" class="model-filter-input" placeholder="Search {options.length} models…"
-                value={query}
-                oninput={(e) => { filterQueries[role.id] = (e.currentTarget as HTMLInputElement).value; }}
-                autocomplete="off">
-            </div>
-          {/if}
-
-          {#each query ? visible : options as opt, idx}
-            {@const firstDefaultIdx = options.findIndex((o) => o.isDefault)}
-            {@const sel = modelSelection[role.id as 'llm' | 'embedding' | 'small']}
-            {@const isOn = !!sel && sel.model === opt.id && sel.connId === opt.connId}
-            {@const isHidden = !query && hasOverflow && idx >= MAX_VISIBLE_MODELS && !isOn}
-            {@const meta = 'via ' + opt.providerName + (opt.dims > 0 ? ' · ' + opt.dims + 'd' : '')}
-            <div class="model-opt {isOn ? 'on' : ''} {isHidden ? 'model-opt-filtered' : ''}"
-              role="button" tabindex="0"
-              data-model-select="{role.id}:{opt.connId}:{opt.id}:{opt.dims}"
-              data-model-name={opt.id.toLowerCase()}
-              onclick={() => handleSelect(role.id, opt.connId, opt.id, opt.dims)}
-              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelect(role.id, opt.connId, opt.id, opt.dims); }}>
-              <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
-              <div style="flex:1;min-width:0">
-                <div class="model-opt-name">{opt.id}</div>
-                <div class="model-opt-meta">{meta}</div>
+            {#if options.length > 3}
+              <div class="model-filter-row">
+                <input type="text" class="model-filter-input" placeholder="Search {options.length} models…"
+                  value={query}
+                  oninput={(e) => { filterQueries[role.id] = (e.currentTarget as HTMLInputElement).value; }}
+                  autocomplete="off">
               </div>
-              {#if idx === firstDefaultIdx && opt.isDefault}
-                <span class="model-opt-badge model-opt-badge-top">Top Pick</span>
-              {/if}
-            </div>
-          {/each}
+            {/if}
+
+            {#each query ? visible : options as opt, idx}
+              {@const sel = modelSelection[role.id as 'llm' | 'embedding' | 'small']}
+              {@const isOn = !!sel && sel.model === opt.id && sel.connId === opt.connId}
+              {@const isHidden = !query && hasOverflow && idx >= MAX_VISIBLE_MODELS && !isOn}
+              {@const meta = 'via ' + opt.providerName + (opt.dims > 0 ? ' · ' + opt.dims + 'd' : '')}
+              <div class="model-opt {isOn ? 'on' : ''} {isHidden ? 'model-opt-filtered' : ''}"
+                role="radio" aria-checked={isOn} tabindex="0"
+                data-model-select="{role.id}:{opt.connId}:{opt.id}:{opt.dims}"
+                data-model-name={opt.id.toLowerCase()}
+                onclick={() => handleSelect(role.id, opt.connId, opt.id, opt.dims)}
+                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelect(role.id, opt.connId, opt.id, opt.dims); }}>
+                <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
+                <div style="flex:1;min-width:0">
+                  <div class="model-opt-name">{opt.id}</div>
+                  <div class="model-opt-meta">{meta}</div>
+                </div>
+                {#if !query && idx === 0}
+                  <span class="model-opt-badge model-opt-badge-top">Top Pick</span>
+                {/if}
+              </div>
+            {/each}
+          </div>
         {/if}
       </div>
     {/if}
