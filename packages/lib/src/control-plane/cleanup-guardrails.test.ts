@@ -119,9 +119,15 @@ describe("guardrail: compose preflight before mutation", () => {
     expect(preflightIdx).toBeLessThan(snapshotIdx);
   });
 
-  test("preflight error includes resolved command string", () => {
+  test("preflight error lists the compose inputs structurally", () => {
+    // The error must surface the compose inputs, but as structured fields —
+    // not a joined shell-style command string (misleading for paths with
+    // spaces and invites copy-paste execution).
     const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
-    expect(lifecycleTs).toContain("Resolved command:");
+    expect(lifecycleTs).not.toContain("Resolved command:");
+    expect(lifecycleTs).toContain("Files: ${files.join");
+    expect(lifecycleTs).toContain("Env files: ${envFiles");
+    expect(lifecycleTs).toContain("Project: ${projectName}");
   });
 });
 

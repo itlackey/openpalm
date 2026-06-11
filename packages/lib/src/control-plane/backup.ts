@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-function timestampDirName(now = new Date()): string {
+export function timestampDirName(now = new Date()): string {
   return now.toISOString().replace(/[:.]/g, "-");
 }
 

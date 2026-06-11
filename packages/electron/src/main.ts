@@ -182,8 +182,18 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
   // authoritative tag (see the OP_IMAGE_TAG note below).
   const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
   const stackForUi: NodeJS.ProcessEnv = {};
+  // Per-image tag keys get the same treatment as OP_IMAGE_TAG: shell-env
+  // beats --env-file in docker compose, so leaking them here would override
+  // the authoritative tags in stack.env during deploys.
+  const skippedKeys = new Set([
+    'OP_HOME',
+    'OP_IMAGE_TAG',
+    'OP_ASSISTANT_IMAGE_TAG',
+    'OP_GUARDIAN_IMAGE_TAG',
+    'OP_CHANNEL_IMAGE_TAG',
+  ]);
   for (const [k, v] of Object.entries(stackEnv)) {
-    if (k === 'OP_IMAGE_TAG' || k === 'OP_HOME') continue;
+    if (skippedKeys.has(k)) continue;
     stackForUi[k] = v;
   }
   const env: NodeJS.ProcessEnv = {

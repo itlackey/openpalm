@@ -74,7 +74,7 @@ export function createState(): ControlPlaneState {
 
 async function reconcileCore(
   state: ControlPlaneState,
-  opts: { activateServices?: boolean; deactivateServices?: boolean },
+  opts: { activateServices?: boolean; deactivateServices?: boolean; skipSnapshot?: boolean },
 ): Promise<string[]> {
   if (opts.activateServices) {
     const withGuardian = hasEnabledChannel(listEnabledAddonIds(state.homeDir));
@@ -112,22 +112,23 @@ async function reconcileCore(
     const preflight = await composePreflight({ files, envFiles, profiles });
     if (!preflight.ok) {
       const projectName = resolveComposeProjectName(Object.assign({}, ...envFiles.map((f) => parseEnvFile(f))));
-      const fileArgs = files.flatMap((f) => ["-f", f]).join(" ");
-      const envArgs = envFiles.filter(existsSync).flatMap((f) => ["--env-file", f]).join(" ");
-      const profileArgs = profiles.flatMap((p) => ["--profile", p]).join(" ");
-      const resolvedCmd = `docker compose ${fileArgs} --project-name ${projectName} ${envArgs} ${profileArgs} config --quiet`;
+      // List the inputs structurally — a joined shell-style command string is
+      // misleading for paths with spaces and invites copy-paste execution.
       throw new Error(
         `Compose preflight failed: ${preflight.stderr}\n` +
-        `Resolved command: ${resolvedCmd}\n` +
         `Files: ${files.join(", ")}\n` +
-        `Env files: ${envFiles.join(", ")}\n` +
+        `Env files: ${envFiles.filter(existsSync).join(", ")}\n` +
+        `Profiles: ${profiles.join(", ") || "(none)"}\n` +
         `Project: ${projectName}`
       );
     }
   }
 
-  // Snapshot before writing (for rollback on failure)
-  snapshotCurrentState(state);
+  // Snapshot before writing (for rollback on failure). Upgrade flows skip
+  // this: withStackEnvRollback already snapshotted BEFORE the new image tags
+  // were written to stack.env, and re-snapshotting here would overwrite that
+  // pre-upgrade state with the new (possibly broken) tags.
+  if (!opts.skipSnapshot) snapshotCurrentState(state);
 
   // Resolve and write runtime files to live paths
   state.artifacts = resolveRuntimeFiles();
@@ -393,7 +394,9 @@ export async function applyUpgrade(
   if (!lock) throw new Error("Another install is already in progress");
   try {
     const { backupDir, updated } = await refreshCoreAssets(version);
-    const restarted = await reconcileCore(state, {});
+    // skipSnapshot: the upgrade wrapper (withStackEnvRollback) snapshotted the
+    // pre-upgrade state before the new image tags were written.
+    const restarted = await reconcileCore(state, { skipSnapshot: true });
     return { backupDir, updated, restarted };
   } finally {
     releaseInstallLock(lock);
@@ -414,6 +417,12 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   try {
     originalStackEnv = readFileSync(stackEnvPath, 'utf-8');
   } catch { /* stack.env may not exist yet */ }
+
+  // Persist the PRE-upgrade state for `openpalm rollback`. Without this, the
+  // snapshot taken later inside reconcileCore captures stack.env AFTER the new
+  // image tags were written, so a post-crash manual rollback would "restore"
+  // the broken tag.
+  snapshotCurrentState(state);
 
   try {
     return await run();

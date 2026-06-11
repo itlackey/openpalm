@@ -21,7 +21,7 @@
  */
 import {
   existsSync, mkdirSync, readFileSync, writeFileSync,
-  readdirSync, statSync, chmodSync, cpSync,
+  readdirSync, statSync, chmodSync, cpSync, copyFileSync,
 } from "node:fs";
 import libPkg from '../../package.json' with { type: 'json' };
 import { join } from "node:path";
@@ -30,7 +30,7 @@ import {
   resolveOpenPalmHome, resolveDataDir, resolveStackDir, resolveStashDir, resolveConfigDir,
 } from "./home.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
-import { backupOpenPalmHome } from "./backup.js";
+import { backupOpenPalmHome, timestampDirName } from "./backup.js";
 import { upsertEnvValue } from "./env.js";
 import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
 import { compareComparableVersions, isComparableSemver } from './versioning.js';
@@ -621,16 +621,21 @@ export function ensureReleaseMigrated(
       if (!lock) {
         throw new MigrationError('Another install/upgrade is in progress.', RECOVERY_GUIDANCE, null);
       }
-      log('Taking a full backup before migrating…');
-      try {
-        backupDir = backupOpenPalmHome(homeDir);
-      } catch (e) {
-        throw new MigrationError(`Could not create a safety backup; upgrade aborted (no changes made): ${e instanceof Error ? e.message : String(e)}`, RECOVERY_GUIDANCE, null);
+      // Release migrations only edit knowledge/env/stack.env, so back up just
+      // that file — a full OP_HOME copy (data/ can be gigabytes) is the layout
+      // migration's job, not warranted for an env-file append.
+      const envPath = stackEnvFile(stashDir);
+      if (existsSync(envPath)) {
+        log('Backing up stack.env before migrating…');
+        try {
+          backupDir = join(ctxBase.dataDir, 'backups', `${timestampDirName()}-release`);
+          mkdirSync(backupDir, { recursive: true });
+          copyFileSync(envPath, join(backupDir, 'stack.env'));
+        } catch (e) {
+          throw new MigrationError(`Could not create a safety backup; upgrade aborted (no changes made): ${e instanceof Error ? e.message : String(e)}`, RECOVERY_GUIDANCE, null);
+        }
+        log(`Backup: ${backupDir}`);
       }
-      if (!backupDir) {
-        throw new MigrationError('Could not create a safety backup; upgrade aborted (no changes made).', RECOVERY_GUIDANCE, null);
-      }
-      log(`Backup: ${backupDir}`);
     }
 
     const applied: string[] = [];
