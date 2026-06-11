@@ -52,18 +52,29 @@ ENV PATH="/usr/local/.opencode/bin:$PATH"
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 
-# Install assistant CLIs globally through Bun where packages exist. chmod a+rX
-# makes them world-readable so the unprivileged opencode user can exec them.
-RUN BUN_INSTALL=/usr/local bun add -g \
-        "akm-cli@${AKM_CLI_VERSION}" \
-        "@anthropic-ai/claude-code" \
-        "@github/copilot" \
-        "@openai/codex" \
-    && chmod -R a+rX /usr/local/install/global \
-    && chmod 755 /usr/local/bin/akm /usr/local/bin/claude /usr/local/bin/copilot /usr/local/bin/codex \
-    && akm --version \
-    && command -v claude \
-    && command -v copilot \
+# Install assistant CLIs globally through Bun where packages exist.
+# One RUN per package: a single combined layer weighed ~1.9GB (0.7GB
+# compressed), which Docker Hub repeatedly rejected on blob upload (400) and
+# which re-uploads in full whenever ANY one CLI bumps. Per-package layers are
+# individually cacheable and stay well under upload limits.
+# The find-chmod fixes world-readability (for the unprivileged opencode user)
+# but ONLY on files that lack it — a blanket `chmod -R` would overlayfs-copy-up
+# every previously installed file into each new layer, ballooning the image.
+RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
+    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
+    && chmod 755 /usr/local/bin/akm \
+    && akm --version
+RUN BUN_INSTALL=/usr/local bun add -g "@anthropic-ai/claude-code" \
+    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
+    && chmod 755 /usr/local/bin/claude \
+    && command -v claude
+RUN BUN_INSTALL=/usr/local bun add -g "@github/copilot" \
+    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
+    && chmod 755 /usr/local/bin/copilot \
+    && command -v copilot
+RUN BUN_INSTALL=/usr/local bun add -g "@openai/codex" \
+    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
+    && chmod 755 /usr/local/bin/codex \
     && command -v codex
 ENV BUN_INSTALL=
 
