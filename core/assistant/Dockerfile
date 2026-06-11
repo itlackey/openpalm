@@ -52,12 +52,19 @@ ENV PATH="/usr/local/.opencode/bin:$PATH"
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 
-# Install akm-cli globally. chmod a+rX makes it world-readable so the
-# unprivileged opencode user can exec the binary.
-RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
+# Install assistant CLIs globally through Bun where packages exist. chmod a+rX
+# makes them world-readable so the unprivileged opencode user can exec them.
+RUN BUN_INSTALL=/usr/local bun add -g \
+        "akm-cli@${AKM_CLI_VERSION}" \
+        "@anthropic-ai/claude-code" \
+        "@github/copilot" \
+        "@openai/codex" \
     && chmod -R a+rX /usr/local/install/global \
-    && chmod 755 /usr/local/bin/akm \
-    && akm --version
+    && chmod 755 /usr/local/bin/akm /usr/local/bin/claude /usr/local/bin/copilot /usr/local/bin/codex \
+    && akm --version \
+    && command -v claude \
+    && command -v copilot \
+    && command -v codex
 ENV BUN_INSTALL=
 
 # Pre-bake akm's default local embedding model so semantic search works out of
