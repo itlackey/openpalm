@@ -28,7 +28,7 @@ import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
 import { compareComparableVersions, isComparableSemver, isSameMajorVersion } from "./versioning.js";
-import { buildPlatformImageTagEnv } from './image-tags.js';
+import { buildPlatformImageTagEnv, type PlatformImageTagKey } from './image-tags.js';
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -245,41 +245,11 @@ async function isDockerImageTagPublished(namespace: string, imageName: string, t
   return true;
 }
 
-async function ensurePlatformImagesPublished(state: ControlPlaneState, namespace: string, tag: string): Promise<void> {
-  if (namespace !== 'openpalm') return;
-
-  const requiredImages = resolveRequiredPlatformImages(state);
-  const checks = await Promise.all(
-    requiredImages.map(async (imageName) => ({
-      imageName,
-      published: await isDockerImageTagPublished(namespace, imageName, tag),
-    })),
-  );
-  const missing = checks.filter((entry) => !entry.published).map((entry) => entry.imageName);
-  if (missing.length === 0) return;
-
-  throw new Error(
-    `Refusing to update to ${namespace}/*:${tag}: missing published image tag(s) for ${missing.join(', ')}. ` +
-    'This release is incomplete for the enabled services; stack.env was left unchanged.'
-  );
-}
-
-/**
- * Resolve the newest published platform tag from the Docker registry.
- *
- * `assistant` is the version-of-record image: all platform images
- * (assistant, guardian, channel, voice) are published in lockstep under the
- * same OP_IMAGE_TAG, so its newest tag is the canonical platform version.
- *
- * Used both to auto-detect during "Update now" and to resolve a requested
- * `latest` selection into a concrete release tag before fetching stack assets
- * (GitHub has no asset tree at a `latest` ref).
- */
-export async function resolveLatestPlatformTag(namespace: string): Promise<string> {
+async function fetchDockerTagsPayload(namespace: string, imageName: string): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(
-      `https://registry.hub.docker.com/v2/repositories/${namespace}/assistant/tags?page_size=25&ordering=last_updated`,
+      `https://registry.hub.docker.com/v2/repositories/${namespace}/${imageName}/tags?page_size=25&ordering=last_updated`,
       { headers: { Accept: "application/json" } }
     );
   } catch (e) {
@@ -290,8 +260,87 @@ export async function resolveLatestPlatformTag(namespace: string): Promise<strin
     throw new Error(`Docker tag lookup failed (${response.status})`);
   }
 
-  const payload = await response.json();
-  const latestTag = resolveNewestDockerTag(payload);
+  return response.json();
+}
+
+/** Newest comparable semver tag for an image that is <= ceilingTag in the same major. */
+function resolveNewestDockerTagAtOrBelow(payload: unknown, ceilingTag: string): string | null {
+  const results = (payload as DockerTagsResponse)?.results;
+  if (!Array.isArray(results)) return null;
+
+  let best: string | null = null;
+  for (const entry of results as DockerTagEntry[]) {
+    const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+    if (!isComparableSemver(name) || !isSameMajorVersion(name, ceilingTag)) continue;
+    if (compareComparableVersions(name, ceilingTag) > 0) continue;
+    if (!best || compareComparableVersions(name, best) > 0) best = name;
+  }
+  return best;
+}
+
+/**
+ * Resolve the per-image tag env for a target platform tag (#477).
+ *
+ * `assistant` is the version-of-record image and must be published at the
+ * platform tag. Guardian/channel may lag: a release that ships only a subset
+ * of images leaves them at an older tag, so each falls back to its newest
+ * published tag <= the platform tag in the same major. Fail closed only when
+ * a REQUIRED image (guardian/channel with a channel addon enabled) has no
+ * usable tag at all.
+ */
+async function resolvePlatformImageTags(
+  state: ControlPlaneState,
+  namespace: string,
+  platformTag: string,
+): Promise<Record<string, string>> {
+  // Non-default namespaces are local/self-built images — no Docker Hub to ask.
+  if (namespace !== 'openpalm') return buildPlatformImageTagEnv(platformTag);
+
+  if (!(await isDockerImageTagPublished(namespace, 'assistant', platformTag))) {
+    throw new Error(
+      `Refusing to update to ${namespace}/assistant:${platformTag}: tag is not published. ` +
+      'stack.env was left unchanged.'
+    );
+  }
+
+  const required = new Set(resolveRequiredPlatformImages(state));
+  const perImage: Partial<Record<PlatformImageTagKey, string>> = {};
+  for (const imageName of ['guardian', 'channel'] as const) {
+    if (await isDockerImageTagPublished(namespace, imageName, platformTag)) continue;
+
+    const fallbackTag = resolveNewestDockerTagAtOrBelow(
+      await fetchDockerTagsPayload(namespace, imageName),
+      platformTag,
+    );
+    if (fallbackTag) {
+      perImage[`OP_${imageName.toUpperCase()}_IMAGE_TAG` as PlatformImageTagKey] = fallbackTag;
+      continue;
+    }
+    if (required.has(imageName)) {
+      throw new Error(
+        `Refusing to update to ${namespace}/*:${platformTag}: no published tag found for ${imageName} ` +
+        `at or below ${platformTag}. This release is incomplete for the enabled services; stack.env was left unchanged.`
+      );
+    }
+    // Image is not deployed (no channel addon enabled) — leave it at the
+    // platform tag; nothing will pull it.
+  }
+  return buildPlatformImageTagEnv(platformTag, perImage);
+}
+
+/**
+ * Resolve the newest published platform tag from the Docker registry.
+ *
+ * `assistant` is the version-of-record image: its newest tag is the canonical
+ * platform version. Guardian/channel may lag behind it when a release shipped
+ * only a subset of images — see resolvePlatformImageTags.
+ *
+ * Used both to auto-detect during "Update now" and to resolve a requested
+ * `latest` selection into a concrete release tag before fetching stack assets
+ * (GitHub has no asset tree at a `latest` ref).
+ */
+export async function resolveLatestPlatformTag(namespace: string): Promise<string> {
+  const latestTag = resolveNewestDockerTag(await fetchDockerTagsPayload(namespace, 'assistant'));
   if (!latestTag) {
     throw new Error("No usable Docker image tag found");
   }
@@ -302,22 +351,10 @@ export async function resolveLatestPlatformTagForCurrentMajor(
   namespace: string,
   currentTag: string,
 ): Promise<string> {
-  let response: Response;
-  try {
-    response = await fetch(
-      `https://registry.hub.docker.com/v2/repositories/${namespace}/assistant/tags?page_size=25&ordering=last_updated`,
-      { headers: { Accept: "application/json" } }
-    );
-  } catch (e) {
-    throw new Error(`Failed to query Docker tags: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`Docker tag lookup failed (${response.status})`);
-  }
-
-  const payload = await response.json();
-  const latestTag = resolveNewestDockerTagForCurrentMajor(payload, currentTag);
+  const latestTag = resolveNewestDockerTagForCurrentMajor(
+    await fetchDockerTagsPayload(namespace, 'assistant'),
+    currentTag,
+  );
   if (!latestTag) {
     throw new Error(`No usable Docker image tag found in major ${currentTag.replace(/^v/, '').split('.')[0]}`);
   }
@@ -334,10 +371,10 @@ export async function updateStackEnvToLatestImageTag(
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
   const namespace = resolveImageNamespace(state);
   const latestTag = resolvedTag ?? await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
-  await ensurePlatformImagesPublished(state, namespace, latestTag);
+  const imageTagEnv = await resolvePlatformImageTags(state, namespace, latestTag);
 
   const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
-  const updatedContent = mergeEnvContent(currentContent, buildPlatformImageTagEnv(latestTag), { uncomment: true });
+  const updatedContent = mergeEnvContent(currentContent, imageTagEnv, { uncomment: true });
   writeFileSync(systemEnvPath, updatedContent);
 
   return { namespace, tag: latestTag };
@@ -404,10 +441,10 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     // skip the redundant top-level call. Any merge failure aborts before
     // mutation just the same.
 
-    // 1. Update image tag + refresh core assets
+    // 1. Update image tag + refresh core assets. Per-image publication checks
+    // and fallback resolution happen inside updateStackEnvToLatestImageTag.
     const namespace = resolveImageNamespace(state);
     const imageTag = await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
-    await ensurePlatformImagesPublished(state, namespace, imageTag);
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: imageTag });
     const tagResult = await updateStackEnvToLatestImageTag(state, imageTag);
     const { tag: confirmedImageTag } = tagResult;
@@ -470,12 +507,12 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
       }
     }
 
-    await ensurePlatformImagesPublished(state, namespace, resolvedTag);
+    const imageTagEnv = await resolvePlatformImageTags(state, namespace, resolvedTag);
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: resolvedTag });
 
     const stackEnvPath = `${state.stashDir}/env/stack.env`;
     const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
-    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, buildPlatformImageTagEnv(resolvedTag), { uncomment: true }));
+    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, imageTagEnv, { uncomment: true }));
     const upgradeResult = await applyUpgrade(state, resolvedTag);
     return {
       imageTag: resolvedTag,

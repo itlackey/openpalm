@@ -97,6 +97,34 @@ seed_default_agents_md() {
   [ -f "$src" ] && [ ! -f "$dest" ] && cp "$src" "$dest" 2>/dev/null || true
 }
 
+run_akm_schema_migration() {
+  # akm auto-migrates its db/stash schema whenever it opens the database.
+  # Run a deterministic db-opening command HERE — as the opencode user, with
+  # output surfaced to docker logs — so the migration happens under the
+  # correct uid (root-owned db files in the bind-mounted stash are the
+  # chown-clobber class of bug) and a failed migration is visible instead of
+  # being swallowed by the silenced `akm tasks sync` call below.
+  # Idempotent (akm no-ops when the schema is current) and non-fatal: a
+  # migration hiccup must never block the assistant from starting. (#474)
+  if ! command -v akm >/dev/null 2>&1; then return 0; fi
+
+  echo "entrypoint: running akm schema migration (akm health)..." >&2
+  local cmd=(akm health)
+  if [ "$IS_ROOT" = "1" ]; then
+    cmd=(gosu opencode env HOME=/home/opencode "${cmd[@]}")
+  fi
+  # akm health exit codes: 0 = ok, 4 = health warn (db still opened + migrated).
+  # Anything else means the db could not be opened/migrated — surface it loudly
+  # but keep booting.
+  local rc=0
+  "${cmd[@]}" >&2 || rc=$?
+  if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
+    echo "entrypoint: akm schema migration check complete (exit $rc)" >&2
+  else
+    echo "warning: akm schema migration check failed (exit $rc); continuing startup" >&2
+  fi
+}
+
 start_cron_and_sync_tasks() {
   # Build a crontab preamble with environment variables and user env keys
   # so cron jobs inherit the same secrets as the main process.
@@ -172,5 +200,6 @@ ensure_home_layout
 maybe_enable_ssh
 maybe_source_akm_user_env
 seed_default_agents_md
+run_akm_schema_migration
 start_cron_and_sync_tasks
 start_opencode

@@ -417,7 +417,12 @@ const MIGRATIONS: Migration[] = [
 
 const RELEASE_MIGRATIONS: ReleaseMigration[] = [
   {
-    version: CURRENT_RELEASE_VERSION,
+    // Pinned to the release that INTRODUCED per-image tags, not the lib
+    // version: tying it to CURRENT_RELEASE_VERSION would re-select the
+    // migration on every future release whose stamp predates the running lib.
+    // Every release migration must also be idempotent — it may run again on
+    // installs whose OP_RELEASE_VERSION was never stamped.
+    version: 'v0.11.5-rc.1',
     describe: 'seed per-image platform tags from OP_IMAGE_TAG',
     apply: seedPerImageTagVars,
     verify(ctx) {
@@ -478,8 +483,11 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
     releaseApplied: [],
   };
 
+  // Upper-bound on the SOURCE version: a migration whose `from` is below the
+  // current layout ceiling must run. Bounding on `m.to` instead would silently
+  // drop a newly added migration if CURRENT_LAYOUT_VERSION lagged behind it.
   const pending = MIGRATIONS
-    .filter((m) => m.from >= from && m.to <= CURRENT_LAYOUT_VERSION)
+    .filter((m) => m.from >= from && m.from < CURRENT_LAYOUT_VERSION)
     .sort((a, b) => a.from - b.from);
   const pendingRelease = selectPendingReleaseMigrations(releaseFrom, CURRENT_RELEASE_VERSION);
   if (pending.length === 0 && pendingRelease.length === 0) {

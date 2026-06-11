@@ -19,18 +19,43 @@
 	let refreshKey = $state(0);
 	let loading = $state(true);
 	let frameLoaded = $state(false);
+	let frameSrc = $state<string | null>(null);
+	let loadError = $state('');
 
 	let reportUrl = $derived(`/admin/akm/health-report?since=${encodeURIComponent(reportWindow)}&refresh=${refreshKey}`);
 
-	function refresh(): void {
+	async function loadReport(): Promise<void> {
 		loading = true;
 		frameLoaded = false;
+		frameSrc = null;
+		loadError = '';
+		try {
+			const res = await fetch(reportUrl, { method: 'HEAD' });
+			if (!res.ok) {
+				loadError = `Failed to generate report (${res.status} ${res.statusText}).`;
+				loading = false;
+				return;
+			}
+		} catch {
+			loadError = 'Could not reach the report endpoint. Check that the stack is running.';
+			loading = false;
+			return;
+		}
+		frameSrc = reportUrl;
+	}
+
+	function refresh(): void {
 		refreshKey += 1;
 	}
 
 	function handleWindowChange(): void {
-		refresh();
+		refreshKey += 1;
 	}
+
+	$effect(() => {
+		// Re-run the preflight whenever reportUrl changes (window or refreshKey).
+		void loadReport();
+	});
 </script>
 
 <section class="report-section">

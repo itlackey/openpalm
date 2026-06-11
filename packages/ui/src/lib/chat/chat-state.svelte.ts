@@ -620,8 +620,7 @@ class ChatService {
 			if (this._unsubscribeEvents && this.liveConnected) {
 				await new Promise<void>((resolve, reject) => {
 					const timeout = setTimeout(() => {
-						this._pendingTurn = null;
-						reject(new Error('Timed out waiting for the assistant response.'));
+						this._failPendingTurn(new Error('Timed out waiting for the assistant response.'));
 					}, STREAM_TURN_TIMEOUT_MS);
 					this._pendingTurn = {
 						endpointId: this.activeEndpointId,

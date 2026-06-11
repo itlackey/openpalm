@@ -294,7 +294,8 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
 
     const currentTarget = ensureReleaseMigrated({ targetVersion: CURRENT_RELEASE_VERSION });
-    expect(currentTarget.applied).toEqual([CURRENT_RELEASE_VERSION]);
+    // The per-image-tag migration is pinned to the release that introduced it.
+    expect(currentTarget.applied).toEqual(['v0.11.5-rc.1']);
     stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toContain(`OP_RELEASE_VERSION=${CURRENT_RELEASE_VERSION}`);
     expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=v0.11.0');
