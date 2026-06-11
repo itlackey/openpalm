@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -144,7 +144,8 @@ await main();
 
   try {
     writeFileSync(scriptPath, script);
-    const proc = Bun.spawnSync([process.execPath, scriptPath], {
+    const bunBinary = Bun.which('bun') ?? (existsSync(process.execPath) ? process.execPath : process.argv0);
+    const proc = Bun.spawnSync([bunBinary, scriptPath], {
       cwd: '/work/itlackey/openpalm/packages/lib',
       stdout: 'pipe',
       stderr: 'pipe',
