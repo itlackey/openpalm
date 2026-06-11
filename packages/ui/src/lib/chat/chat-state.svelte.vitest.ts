@@ -20,6 +20,10 @@ vi.mock('$lib/api.js', () => ({
   getSessionMessages: vi.fn(),
   listSessions: vi.fn(),
   sendChatMessage: vi.fn(),
+  startChatMessageTurn: vi.fn(),
+  replyChatPermission: vi.fn(),
+  replyChatQuestion: vi.fn(),
+  rejectChatQuestion: vi.fn(),
 }));
 
 // Mock the SSE consumer so chat-state tests don't open network sockets.

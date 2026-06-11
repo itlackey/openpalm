@@ -22,10 +22,10 @@ describe('TabBar', () => {
     const subtabLabels = Array.from(
       subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Overview', 'Systems', 'Journal', 'Check-up']);
+    expect(subtabLabels).toEqual(['Overview', 'Activity', 'Systems', 'Journal', 'Check-up']);
   });
 
-  it('shows Knowledge subtabs (Memory, Secrets, Sharing) when active is "akm"', async () => {
+  it('shows Knowledge subtabs (Memory, Assistant, Secrets, Sharing) when active is "akm"', async () => {
     render(TabBar, { props: { active: 'akm', onSelect: vi.fn() } });
 
     const subtabTablist = document.querySelector('[aria-label="Knowledge tabs"]');
@@ -33,7 +33,7 @@ describe('TabBar', () => {
     const subtabLabels = Array.from(
       subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Memory', 'Secrets', 'Sharing']);
+    expect(subtabLabels).toEqual(['Memory', 'Assistant', 'Secrets', 'Sharing']);
   });
 
   it('hides the subtab row for single-destination sections (Routines, Capabilities, Mind)', async () => {
