@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -26,6 +26,7 @@ const moduleUrls = {
 function runRollbackScenario(scenario: RollbackScenario): { stdout: string; stderr: string; exitCode: number } {
   const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-lifecycle-rollback-'));
   const scriptPath = join(tempDir, 'rollback-scenario.ts');
+  const runnerPath = join(tempDir, 'run-bun.sh');
   const script = `
 import { mock } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -52,6 +53,7 @@ function makeState() {
     'OP_IMAGE_NAMESPACE=openpalm\\nOP_IMAGE_TAG=v0.11.5\\n',
   );
   process.env.OP_HOME = home;
+  process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
   return {
     homeDir: home,
     configDir: join(home, 'config'),
@@ -141,13 +143,13 @@ async function main() {
 
 await main();
 `;
+  const runner = '#!/usr/bin/env bash\nexec bun "$1"\n';
 
   try {
     writeFileSync(scriptPath, script);
-    const bunBinary = existsSync('/proc/self/exe')
-      ? '/proc/self/exe'
-      : Bun.which('bun') ?? (existsSync(process.execPath) ? process.execPath : process.argv0);
-    const proc = Bun.spawnSync([bunBinary, scriptPath], {
+    writeFileSync(runnerPath, runner);
+    chmodSync(runnerPath, 0o755);
+    const proc = Bun.spawnSync([runnerPath, scriptPath], {
       cwd: '/work/itlackey/openpalm/packages/lib',
       stdout: 'pipe',
       stderr: 'pipe',
