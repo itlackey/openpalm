@@ -1,3 +1,5 @@
+import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
+
 export type HealthPayload = { status: string; service: string };
 
 export type DockerContainer = {
@@ -117,7 +119,14 @@ export type ChatNote = {
   timestamp: number;
 };
 
-export type ChatEntry = ChatMessage | ChatDivider | ChatNote;
+export type ChatToolEntry = {
+  id: string;
+  type: 'tool';
+  toolState: ToolStripEntry;
+  timestamp: number;
+};
+
+export type ChatEntry = ChatMessage | ChatDivider | ChatNote | ChatToolEntry;
 
 export type OpenCodeMessageResponse = {
   parts: Array<{ type: string; text?: string }>;

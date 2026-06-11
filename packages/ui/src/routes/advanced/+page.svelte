@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { onMount } from 'svelte';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import { buildAdvancedIframeUrl } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders
@@ -11,7 +13,11 @@
   // host-mapped port; 4096 is container-internal). Same source the Overview
   // "Open OpenCode UI" action used — we just embed it instead of new-tabbing.
   // Host-machine-only, exactly like that link.
-  let openCodeUrl = $derived(endpointsService.active?.url ?? 'http://127.0.0.1:3800');
+  let openCodeUrl = $derived.by(() => {
+    const baseUrl = endpointsService.active?.url ?? 'http://127.0.0.1:3800';
+    const sessionId = page.url.searchParams.get('session');
+    return buildAdvancedIframeUrl(baseUrl, sessionId);
+  });
 
   // The embedded OpenCode UI fills the viewport below the navbar with its own
   // internal scroll, so suppress the outer document scrollbar while we're here

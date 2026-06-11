@@ -206,8 +206,8 @@ describe('send', () => {
     expect(chat.activeSessionId).toBe('fresh');
     expect(chat.entries.length).toBe(2); // user + assistant
     const [first, second] = chat.entries;
-    if (first.type === 'divider' || second.type === 'divider') {
-      throw new Error('expected message entries, got divider');
+    if (first.type || second.type) {
+      throw new Error('expected plain chat messages');
     }
     expect(first.text).toBe('ping');
 		expect(second.text).toBe('pong');

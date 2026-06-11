@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { page } from '$app/state';
   import IconButton from '$lib/components/common/IconButton.svelte';
   import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
@@ -7,6 +8,8 @@
   import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
+  import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
+  import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
@@ -27,18 +30,32 @@
     pathname === '/chat' ||
     pathname.startsWith('/chat/')
   );
+  const onAdvancedSurface = $derived(
+    pathname === '/advanced' ||
+    pathname.startsWith('/advanced/')
+  );
+  const onConversationSurface = $derived(onChatSurface || onAdvancedSurface);
   // Only the local assistant should show the direct admin link. The drawer
   // itself stays global so theme and endpoint-management remain available even
   // while connected to a remote assistant.
   const isLocalAssistant = $derived.by(() => {
     return isLocalAssistantUrl(endpointsService.active?.url);
   });
+
+  const preferredChatHref = $derived.by(() => {
+    const sessionId = page.url.searchParams.get('session') ?? currentChatSessionId();
+    return advancedModeService.enabled ? buildAdvancedPath(sessionId) : buildChatPath(sessionId);
+  });
+
+  onMount(() => {
+    advancedModeService.init();
+  });
 </script>
 
 <header class="navbar">
   <div class="navbar-inner">
     <!-- Brand -->
-    <a class="navbar-brand" href="/chat" aria-label="OpenPalm — go to chat">
+    <a class="navbar-brand" href={preferredChatHref} aria-label="OpenPalm — go to chat">
       <span class="brand-icon" aria-hidden="true">
         <img src="/logo-128.png" alt="" />
       </span>
@@ -52,11 +69,11 @@
          on every page, every width. -->
     <div class="navbar-actions">
       {#if onAdmin}
-        <IconButton href="/chat" ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
-      {:else}
+        <IconButton href={preferredChatHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
+      {:else if onConversationSurface}
         <SettingsDrawer showManageAssistant={isLocalAssistant} />
       {/if}
-      {#if onChatSurface}
+      {#if onConversationSurface}
         <!-- Hidden ≥1024px: the chat side panel hosts these selectors there. -->
         <span class="chat-selectors">
           <EndpointSwitcher />

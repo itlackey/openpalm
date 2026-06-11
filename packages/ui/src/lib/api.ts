@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   SessionSummary,
 } from './types.js';
+import { toolStripEntryFromSessionPart, type SessionMessagePart } from '$lib/chat/tool-strip.js';
 
 const apiBase = '';
 
@@ -710,39 +711,9 @@ export async function listSessions(): Promise<SessionSummary[]> {
 /**
  * Fetch the messages for a session and map them to UI `ChatMessage`s.
  *
- * Skips non-text parts (tool calls, files, reasoning, etc.). Empty-text
- * messages are dropped so the UI doesn't render placeholder bubbles.
+ * Skips non-text parts (files, reasoning, etc.). Empty-text messages are
+ * dropped so the UI doesn't render placeholder bubbles.
  */
-type SessionMessagePart = {
-  type: string;
-  text?: string;
-  tool?: string;
-  callID?: string;
-  id?: string;
-  state?: {
-    status?: string;
-    title?: string;
-    output?: unknown;
-    error?: string;
-  };
-};
-
-function toolSummary(part: SessionMessagePart): string | null {
-  const tool = part.tool ?? 'tool';
-  const status = part.state?.status ?? 'running';
-  const title = part.state?.title?.trim();
-  const error = part.state?.error?.trim();
-  const output = typeof part.state?.output === 'string'
-    ? part.state.output.trim()
-    : part.state?.output != null
-      ? JSON.stringify(part.state.output)
-      : '';
-  const fragments = [tool, status];
-  if (title) fragments.push(title);
-  if (error) fragments.push(error);
-  else if (output) fragments.push(output);
-  return fragments.filter(Boolean).join(' · ');
-}
 
 export async function getSessionMessages(sessionId: string): Promise<ChatEntry[]> {
   const res = await requireOk(
@@ -788,13 +759,12 @@ export async function getSessionMessages(sessionId: string): Promise<ChatEntry[]
       }
       if (part.type === 'tool' || part.state) {
         flushText();
-        const summary = toolSummary(part);
-        if (!summary) return;
+        const toolState = toolStripEntryFromSessionPart(part, `${row.info.id}:${index}`);
+        if (!toolState) return;
         messages.push({
           id: `${row.info.id}:tool:${part.callID ?? part.id ?? index}`,
-          type: 'note',
-          label: 'Tool',
-          text: summary,
+          type: 'tool',
+          toolState,
           timestamp,
         });
       }

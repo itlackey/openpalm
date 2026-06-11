@@ -445,10 +445,25 @@
 		testingEmbedding = true;
 		error = '';
 		try {
+			let endpoint = embEndpoint.trim();
+			let model = embModel.trim();
+			let provider = embProvider.trim();
+
+			if (!endpoint || !model) {
+				const detected = await detectAkmEmbedding();
+				endpoint = detected.endpoint;
+				model = detected.model;
+				provider = detected.provider;
+				embEndpoint = detected.endpoint;
+				embModel = detected.model;
+				embProvider = detected.provider;
+				embDimension = detected.dimension;
+			}
+
 			const result = await testAkmEmbedding({
-				endpoint: embEndpoint,
-				model: embModel,
-				provider: embProvider,
+				endpoint,
+				model,
+				provider,
 				apiKey: embApiKey,
 				dimension: embDimension,
 			});

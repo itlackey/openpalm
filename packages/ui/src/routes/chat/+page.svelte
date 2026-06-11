@@ -5,11 +5,14 @@
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
+  import ToolStrip from '$lib/components/chat/ToolStrip.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import EndpointList from '$lib/components/chat/EndpointList.svelte';
   import SessionList from '$lib/components/chat/SessionList.svelte';
   import { stopSpeaking } from '$lib/voice/voice-state.svelte.js';
   import { probeChatBackend } from '$lib/api.js';
+  import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
+  import { buildAdvancedPath } from '$lib/chat/navigation.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
@@ -18,7 +21,6 @@
 
   // ── Scroll anchor ────────────────────────────────────────────────────
   let scrollAnchorEl = $state<HTMLDivElement | undefined>();
-  let expandedToolIds = $state<Record<string, boolean>>({});
 
   // ── Loading state for the messages area ───────────────────────────────
   // While the per-endpoint session list is loading we don't know which
@@ -77,7 +79,11 @@
     const lastEntryContent =
       lastEntry?.type === 'divider'
         ? lastEntry.label
-        : lastEntry?.text ?? '';
+        : lastEntry?.type === 'note'
+          ? lastEntry.text
+          : lastEntry?.type === 'tool'
+            ? lastEntry.toolState.title
+            : lastEntry?.text ?? '';
 
     if (!lastEntry && !entriesLoading && !sessionsLoading && !chat.sending) {
       return;
@@ -100,76 +106,6 @@
 
   function clamp(text: string, max = 160): string {
     return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-  }
-
-  function toggleToolDetails(id: string): void {
-    expandedToolIds = { ...expandedToolIds, [id]: !expandedToolIds[id] };
-  }
-
-  function isExpanded(id: string): boolean {
-    return !!expandedToolIds[id];
-  }
-
-  function toolSummary(entry: (typeof chat.pendingToolStates)[number]): string {
-    if (entry.error) return 'Needs attention';
-    if (entry.status === 'completed') return 'Completed';
-    if (entry.status === 'pending') return 'Queued';
-    return 'In progress';
-  }
-
-  function parseStructured(value: string): unknown {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (!((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']')))) {
-      return null;
-    }
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return null;
-    }
-  }
-
-  function formatDetail(value: string): string {
-    const structured = parseStructured(value);
-    return structured === null ? value : JSON.stringify(structured, null, 2);
-  }
-
-  function detailLabel(entry: (typeof chat.pendingToolStates)[number]): string {
-    if (entry.error) return 'Error';
-    if (entry.output) return 'Result';
-    if (entry.kind === 'step') return 'Step detail';
-    return 'Tool detail';
-  }
-
-  function toolEmoji(tool: string, status: string): string {
-    const name = tool.toLowerCase();
-    if (status === 'error' || status === 'failed') return '⚠️';
-    if (name.includes('bash') || name.includes('shell') || name.includes('command')) return '🛠️';
-    if (name.includes('grep') || name.includes('search')) return '🔎';
-    if (name.includes('read') || name.includes('file')) return '📄';
-    if (name.includes('edit') || name.includes('write') || name.includes('patch')) return '✍️';
-    if (name.includes('web') || name.includes('http') || name.includes('fetch')) return '🌐';
-    if (name.includes('task') || name.includes('agent')) return '🤖';
-    return status === 'completed' ? '✅' : '⏳';
-  }
-
-  function timelineTitle(entry: (typeof chat.pendingToolStates)[number]): string {
-    return entry.kind === 'step' ? entry.title : entry.title || entry.tool;
-  }
-
-  function toolStatusLabel(status: string): string {
-    switch (status) {
-      case 'completed':
-        return 'completed';
-      case 'error':
-      case 'failed':
-        return 'failed';
-      case 'pending':
-        return 'queued';
-      default:
-        return 'running';
-    }
   }
 
   // ── Body scroll lock (chat-page only) ────────────────────────────────
@@ -217,10 +153,19 @@
   onMount(() => {
     void (async () => {
       try {
+        advancedModeService.init();
+        const requestedSessionId = page.url.searchParams.get('session');
+        if (advancedModeService.enabled) {
+          await goto(buildAdvancedPath(requestedSessionId), { replaceState: true });
+          return;
+        }
         // Load endpoint list + sessions for the active endpoint, restoring
         // the most recent session.
         await endpointsService.load();
         await chat.onEndpointChanged(endpointsService.activeId);
+        if (requestedSessionId) {
+          await chat.openSession(requestedSessionId);
+        }
         // Honour the global navbar's "new chat" handshake (?new=1) once the
         // endpoint + sessions are loaded, then drop the param from the URL.
         if (page.url.searchParams.get('new') === '1') {
@@ -278,45 +223,12 @@
             {/if}
 
             {#if chat.pendingToolStates.length > 0}
-              <div class="tool-timeline" class:tool-timeline-muted={!!chat.pendingPermission || !!chat.pendingQuestion} aria-label="Assistant activity">
-                {#each chat.pendingToolStates as tool (tool.id)}
-                  <div class="tool-timeline-item">
-                    <button
-                      class="tool-summary-btn"
-                      type="button"
-                      aria-expanded={isExpanded(tool.id)}
-                      onclick={() => toggleToolDetails(tool.id)}
-                    >
-                      <span class="tool-emoji" aria-hidden="true">{toolEmoji(tool.tool, tool.status)}</span>
-                      <span class="tool-label">{timelineTitle(tool)}</span>
-                      <span class="tool-status-chip">{toolStatusLabel(tool.status)}</span>
-                      <span class="tool-summary-copy">{toolSummary(tool)}</span>
-                    </button>
-                    {#if isExpanded(tool.id)}
-                      <div class="tool-detail-panel">
-                        {#if tool.detail}
-                          <div class="tool-detail-block">
-                            <span class="tool-detail-label">{detailLabel(tool)}</span>
-                            <pre class="tool-pre">{formatDetail(tool.detail)}</pre>
-                          </div>
-                        {/if}
-                        {#if tool.output}
-                          <div class="tool-detail-block">
-                            <span class="tool-detail-label">Output</span>
-                            <pre class="tool-pre">{formatDetail(tool.output)}</pre>
-                          </div>
-                        {/if}
-                        {#if tool.error}
-                          <div class="tool-detail-block">
-                            <span class="tool-detail-label">Error</span>
-                            <pre class="tool-pre tool-pre-error">{formatDetail(tool.error)}</pre>
-                          </div>
-                        {/if}
-                      </div>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
+              <ToolStrip
+                items={chat.pendingToolStates}
+                muted={!!chat.pendingPermission || !!chat.pendingQuestion}
+                bordered={true}
+                ariaLabel="Assistant tool activity"
+              />
             {/if}
 
             {#if chat.pendingPermission}
@@ -654,111 +566,6 @@
     margin-top: var(--space-1);
     font-size: var(--text-xs);
     color: var(--color-text-secondary);
-  }
-
-  .tool-timeline {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    width: 100%;
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border);
-  }
-
-  .tool-timeline-muted {
-    opacity: 0.78;
-  }
-
-  .tool-timeline-item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .tool-emoji {
-    flex-shrink: 0;
-    width: 1.25rem;
-    text-align: center;
-  }
-
-  .tool-label {
-    display: inline-flex;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-
-  .tool-summary-btn {
-    width: 100%;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .tool-summary-btn:hover {
-    color: var(--color-text);
-  }
-
-  .tool-summary-copy {
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
-    justify-self: end;
-  }
-
-  .tool-status-chip {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    padding: 2px 8px;
-    text-transform: lowercase;
-  }
-
-  .tool-detail-panel {
-    margin-left: calc(1.25rem + var(--space-2));
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-left: 1px solid var(--color-border);
-  }
-
-  .tool-detail-block {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .tool-detail-label {
-    font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-tertiary);
-  }
-
-  .tool-pre {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .tool-pre-error {
-    color: var(--color-danger);
   }
 
   .live-card {

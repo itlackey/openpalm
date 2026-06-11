@@ -2,9 +2,16 @@
   import { onDestroy, onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+  import ToolStrip from '$lib/components/chat/ToolStrip.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { getSessionMessages, listSessions } from '$lib/api.js';
   import type { ChatEntry, SessionSummary } from '$lib/types.js';
+  import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
+  import {
+    extractStepUpdate,
+    extractToolUpdate,
+    type RawEvent,
+  } from '$lib/chat/oc-events.js';
   import {
     subscribeSessionEvents,
     type OpenCodeSessionEventPayload,
@@ -28,6 +35,7 @@
     sessionId: string;
     title: string;
     detail: string;
+    toolState?: ToolStripEntry;
     timestamp: number;
   };
 
@@ -60,6 +68,51 @@
 
   function truncate(text: string, max = 140): string {
     return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+  }
+
+  function toRawEvent(payload: OpenCodeSessionEventPayload): RawEvent {
+    return {
+      type: payload.type,
+      properties: (payload.properties ?? {}) as Record<string, unknown>,
+    };
+  }
+
+  function toToolStripEntry(payload: OpenCodeSessionEventPayload): ToolStripEntry | null {
+    const sessionId = eventSessionId(payload);
+    if (!sessionId) return null;
+
+    const raw = toRawEvent(payload);
+    const toolUpdate = extractToolUpdate(raw, sessionId);
+    if (toolUpdate) {
+      return {
+        id: toolUpdate.callID || `${toolUpdate.tool}:${Date.now()}`,
+        kind: 'tool',
+        tool: toolUpdate.tool,
+        status: toolUpdate.status,
+        title: toolUpdate.title ?? toolUpdate.tool,
+        detail: toolUpdate.detail ?? '',
+        output: toolUpdate.output ?? '',
+        error: toolUpdate.error ?? '',
+        updatedAt: Date.now(),
+      };
+    }
+
+    const stepUpdate = extractStepUpdate(raw, sessionId);
+    if (stepUpdate) {
+      return {
+        id: stepUpdate.id,
+        kind: 'step',
+        tool: 'step',
+        status: stepUpdate.status,
+        title: stepUpdate.title,
+        detail: stepUpdate.detail ?? '',
+        output: '',
+        error: '',
+        updatedAt: Date.now(),
+      };
+    }
+
+    return null;
   }
 
   function summarizeEvent(payload: OpenCodeSessionEventPayload): Omit<AttentionItem, 'id' | 'timestamp'> | null {
@@ -221,6 +274,7 @@
     const timestamp = Date.now();
     const type = payload.type || 'unknown';
     const sessionId = eventSessionId(payload);
+    const toolState = toToolStripEntry(payload) ?? undefined;
     eventFeed = [
       {
         id: `${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
@@ -228,6 +282,7 @@
         sessionId,
         title: eventTitle(payload),
         detail: eventDetail(payload),
+        toolState,
         timestamp,
       },
       ...eventFeed,
@@ -476,7 +531,9 @@
               <span>{fmtTime(event.timestamp)}</span>
             </div>
             <strong>{event.title}</strong>
-            {#if event.detail}
+            {#if event.toolState}
+              <ToolStrip items={[event.toolState]} ariaLabel="Activity tool event" />
+            {:else if event.detail}
               <p>{event.detail}</p>
             {/if}
             {#if event.sessionId}

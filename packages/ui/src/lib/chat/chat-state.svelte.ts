@@ -49,6 +49,7 @@ import {
 	type RawEvent,
 	type StepUpdate,
 } from './oc-events.js';
+import type { ToolStripEntry } from './tool-strip.js';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
@@ -57,17 +58,7 @@ type EndpointId = string;
 type SessionId = string;
 const STREAM_TURN_TIMEOUT_MS = 150_000;
 
-export type LiveToolState = {
-	id: string;
-	kind: 'tool' | 'step';
-	tool: string;
-	status: string;
-	title: string;
-	detail: string;
-	output: string;
-	error: string;
-	updatedAt: number;
-};
+export type LiveToolState = ToolStripEntry;
 
 export type PendingPermissionState = PermissionAsk & {
 	status: 'pending' | 'submitting' | 'resolved' | 'error';

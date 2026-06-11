@@ -2,6 +2,7 @@
   import type { ChatEntry } from '$lib/types.js';
   import { renderMarkdown } from '$lib/markdown.js';
   import { formatTime } from '$lib/format-date.js';
+  import ToolStrip from '$lib/components/chat/ToolStrip.svelte';
 
   interface Props {
     entry: ChatEntry;
@@ -12,11 +13,10 @@
   // User messages are echoed verbatim — they typed it, don't surprise them
   // by reinterpreting punctuation as markdown. Assistant messages get
   // rendered (markdown-it strips raw HTML at the source).
-  const renderedHtml = $derived(
-    entry.type !== 'divider' && entry.type !== 'note' && entry.role === 'assistant'
-      ? renderMarkdown(entry.text)
-      : null,
-  );
+  const renderedHtml = $derived.by(() => {
+    if (entry.type === 'divider' || entry.type === 'note' || entry.type === 'tool') return null;
+    return entry.role === 'assistant' ? renderMarkdown(entry.text) : null;
+  });
 </script>
 
 {#if entry.type === 'divider'}
@@ -29,6 +29,13 @@
   <div class="thread-note" aria-label={entry.label}>
     <span class="thread-note-label">{entry.label}</span>
     <span class="thread-note-text">{entry.text}</span>
+  </div>
+{:else if entry.type === 'tool'}
+  <div class="message message-assistant message-tool">
+    <div class="tool-message-bubble">
+      <ToolStrip items={[entry.toolState]} ariaLabel="Assistant tool activity" />
+    </div>
+    <span class="message-meta">Assistant · {formatTime(entry.timestamp)}</span>
   </div>
 {:else}
   <div
@@ -128,6 +135,10 @@
     align-items: flex-start;
   }
 
+  .message-tool {
+    gap: var(--space-1);
+  }
+
   .message-bubble {
     max-width: 85%;
     padding: var(--space-3) var(--space-4);
@@ -152,6 +163,15 @@
     background: var(--color-bg-tertiary);
     color: var(--color-text);
     border: 1px solid var(--color-border);
+    border-bottom-left-radius: var(--radius-sm);
+  }
+
+  .tool-message-bubble {
+    max-width: 85%;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
     border-bottom-left-radius: var(--radius-sm);
   }
 
