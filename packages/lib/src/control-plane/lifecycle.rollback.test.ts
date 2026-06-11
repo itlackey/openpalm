@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -150,8 +150,7 @@ await main();
   try {
     writeFileSync(scriptPath, script);
     writeFileSync(runnerPath, runner);
-    chmodSync(runnerPath, 0o755);
-    const proc = Bun.spawnSync([runnerPath, scriptPath], {
+    const proc = Bun.spawnSync(['/usr/bin/bash', runnerPath, scriptPath], {
       cwd: '/work/itlackey/openpalm/packages/lib',
       stdout: 'pipe',
       stderr: 'pipe',
