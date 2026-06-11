@@ -2,8 +2,15 @@
   import type { AutomationsResponse } from '$lib/types.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import EmptyState from '$lib/components/common/EmptyState.svelte';
+  import TaskDrawer from './TaskDrawer.svelte';
   import { fetchTaskFile, saveTaskFile, deleteTaskFile } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import {
+    yamlToFormData,
+    newFormData,
+    cronToPresetId,
+    type TaskFormData,
+  } from './task-form.js';
 
   interface Props {
     data: AutomationsResponse | null;
@@ -19,84 +26,94 @@
     data !== null && Array.isArray(data.automations) && data.automations.length > 0
   );
 
-  // ── Task-file editor (edits the raw .yml/.md in /stash/tasks) ─────────────
-  let editingFile = $state<string | null>(null);
-  let editorContent = $state('');
-  let busy = $state(false);
+  // ── Drawer state ──────────────────────────────────────────────────────────
+  let drawerOpen = $state(false);
+  let drawerDraft = $state<TaskFormData | null>(null);
+  let drawerSaving = $state(false);
+  let drawerError = $state('');
 
-  async function openEditor(fileName: string): Promise<void> {
-    if (busy) return;
-    busy = true;
+  function openNewTask(): void {
+    const form = newFormData();
+    drawerDraft = form;
+    drawerError = '';
+    drawerOpen = true;
+  }
+
+  async function openEditTask(fileName: string): Promise<void> {
+    if (drawerSaving) return;
+    drawerSaving = true;
+    drawerError = '';
     try {
-      editingFile = fileName;
-      editorContent = (await fetchTaskFile(fileName)).content;
+      const { content } = await fetchTaskFile(fileName);
+      drawerDraft = yamlToFormData(fileName, content);
+      drawerOpen = true;
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to read task file.');
-      editingFile = null;
     } finally {
-      busy = false;
+      drawerSaving = false;
     }
   }
 
-  function startNewTask(): void {
-    const name = (prompt('New task file name (.yml):', 'my-task.yml') ?? '').trim();
-    if (!name) return;
-    editingFile = name;
-    editorContent = "schedule: '0 9 * * *'\nenabled: false\ndescription: \ncommand:\n  - sh\n  - -c\n  - echo hello\n";
+  function closeDrawer(): void {
+    drawerOpen = false;
+    drawerDraft = null;
+    drawerError = '';
   }
 
-  function closeEditor(): void {
-    editingFile = null;
-    editorContent = '';
-  }
-
-  async function saveEditor(): Promise<void> {
-    if (!editingFile || busy) return;
-    busy = true;
+  async function handleSave(fileName: string, yaml: string): Promise<void> {
+    drawerSaving = true;
+    drawerError = '';
     try {
-      await saveTaskFile(editingFile, editorContent);
-      notifications.push('success', `Saved ${editingFile}. Refreshing…`);
-      closeEditor();
+      await saveTaskFile(fileName, yaml);
+      notifications.push('success', `Saved ${fileName}. Refreshing…`);
+      closeDrawer();
       onRefresh();
     } catch (e) {
-      notifications.push('error', e instanceof Error ? e.message : 'Failed to save task file.');
+      drawerError = e instanceof Error ? e.message : 'Failed to save task file.';
     } finally {
-      busy = false;
+      drawerSaving = false;
     }
   }
 
   async function removeTask(fileName: string): Promise<void> {
-    if (busy || !confirm(`Delete task file "${fileName}"?`)) return;
-    busy = true;
+    if (drawerSaving || !confirm(`Delete task file "${fileName}"?`)) return;
+    drawerSaving = true;
     try {
       await deleteTaskFile(fileName);
       notifications.push('success', `Deleted ${fileName}.`);
-      if (editingFile === fileName) closeEditor();
       onRefresh();
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to delete task file.');
     } finally {
-      busy = false;
+      drawerSaving = false;
     }
   }
 
-  /** Reverse map: cron expression -> friendly label */
-  const CRON_TO_LABEL: Record<string, string> = {
-    '* * * * *': 'Every minute',
-    '*/5 * * * *': 'Every 5 minutes',
-    '*/15 * * * *': 'Every 15 minutes',
-    '0 * * * *': 'Every hour',
-    '0 0 * * *': 'Daily at midnight',
-    '0 8 * * *': 'Daily at 8 AM',
-    '0 0 * * 0': 'Weekly (Sunday midnight)',
-    '0 3 * * 0': 'Weekly (Sunday 3 AM)',
-    '0 4 * * 0': 'Weekly (Sunday 4 AM)'
-  };
-
-  function formatSchedule(cron: string): { label: string; cron: string } | null {
-    const friendly = CRON_TO_LABEL[cron];
-    if (friendly) return { label: friendly, cron };
-    return null;
+  /** Map a cron expression to a friendly display string. */
+  function formatSchedule(cron: string): string {
+    const preset = cronToPresetId(cron);
+    switch (preset) {
+      case 'every-15-minutes': return 'Every 15 minutes';
+      case 'every-hour':       return 'Every hour';
+      case 'daily': {
+        const h = parseInt(cron.split(' ')[1] ?? '0', 10);
+        return `Daily at ${String(h).padStart(2, '0')}:00`;
+      }
+      case 'weekly': {
+        const parts = cron.split(' ');
+        const h = parseInt(parts[1] ?? '0', 10);
+        const d = parseInt(parts[4] ?? '0', 10);
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return `Weekly (${days[d] ?? 'Sun'}) at ${String(h).padStart(2, '0')}:00`;
+      }
+      case 'monthly': {
+        const parts = cron.split(' ');
+        const h = parseInt(parts[1] ?? '0', 10);
+        const dom = parseInt(parts[2] ?? '1', 10);
+        return `Monthly (day ${dom}) at ${String(h).padStart(2, '0')}:00`;
+      }
+      default: return cron;
+    }
   }
 </script>
 
@@ -104,10 +121,10 @@
   <div class="panel-header">
     <div>
       <h2>Automations</h2>
-      <p class="panel-subtitle">Scheduled tasks read from <code>~/.openpalm/knowledge/tasks/</code>. Add or edit task files there to manage automations — changes take effect on refresh.</p>
+      <p class="panel-subtitle">Scheduled tasks from <code>~/.openpalm/knowledge/tasks/</code>.</p>
     </div>
     <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={startNewTask} disabled={busy || !tokenStored}>New task</button>
+      <button class="btn btn-secondary btn-sm" onclick={openNewTask} disabled={drawerSaving || !tokenStored}>New task</button>
       <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
         {#if loading}
           <Spinner />
@@ -117,27 +134,10 @@
     </div>
   </div>
 
-  {#if editingFile}
-    <div class="task-editor">
-      <div class="task-editor-head">
-        <span class="task-editor-name">{editingFile}</span>
-        <span class="task-editor-hint">Raw akm task file (YAML) — set <code>enabled</code>, <code>schedule</code>, <code>command</code>, etc.</span>
-      </div>
-      <textarea class="task-editor-area" spellcheck="false" rows="14" bind:value={editorContent} disabled={busy}></textarea>
-      <div class="task-editor-actions">
-        <button class="btn btn-secondary btn-sm" onclick={closeEditor} disabled={busy}>Cancel</button>
-        <button class="btn btn-primary btn-sm" onclick={() => void saveEditor()} disabled={busy}>
-          {#if busy}<Spinner />{/if} Save
-        </button>
-      </div>
-    </div>
-  {/if}
-
   <div class="panel-body">
     {#if hasAutomations && data}
       <div class="automation-list">
         {#each data.automations as automation}
-          {@const preset = formatSchedule(automation.schedule)}
           <div class="automation-card">
             <div class="automation-row">
               <div class="automation-main">
@@ -153,19 +153,23 @@
                 {/if}
               </div>
               <div class="automation-meta">
-                {#if preset?.cron}
-                  <span class="meta-item schedule-friendly">{preset.label}</span>
-                {:else}
-                  <span class="meta-item"><code>{automation.schedule}</code></span>
-                  <span class="meta-item meta-tz">{automation.timezone}</span>
-                {/if}
+                <span class="meta-item">{formatSchedule(automation.schedule)}</span>
               </div>
             </div>
             <div class="automation-footer">
               <span class="automation-file">{automation.fileName}</span>
               <div class="automation-actions">
-                <button class="btn btn-ghost btn-sm" onclick={() => void openEditor(automation.fileName)} disabled={busy || !tokenStored}>Edit</button>
-                <button class="btn btn-ghost btn-sm" onclick={() => void removeTask(automation.fileName)} disabled={busy || !tokenStored} aria-label="Delete {automation.fileName}">Delete</button>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onclick={() => void openEditTask(automation.fileName)}
+                  disabled={drawerSaving || !tokenStored}
+                >Edit</button>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onclick={() => void removeTask(automation.fileName)}
+                  disabled={drawerSaving || !tokenStored}
+                  aria-label="Delete {automation.fileName}"
+                >Delete</button>
               </div>
             </div>
           </div>
@@ -186,12 +190,22 @@
           <button class="btn btn-secondary btn-sm empty-state-btn" onclick={onRefresh}>Try Again</button>
         {:else}
           <p>No automations configured.</p>
-          <p class="empty-state-hint">Drop <code>.md</code> task files into <code>~/.openpalm/knowledge/tasks/</code>, or install via <code>akm</code>.</p>
+          <button class="btn btn-secondary btn-sm empty-state-btn" onclick={openNewTask} disabled={!tokenStored}>Create your first task</button>
+          <p class="empty-state-hint">Or drop <code>.md</code>/<code>.yml</code> files into <code>~/.openpalm/knowledge/tasks/</code>.</p>
         {/if}
       </EmptyState>
     {/if}
   </div>
 </div>
+
+<TaskDrawer
+  open={drawerOpen}
+  draft={drawerDraft}
+  saving={drawerSaving}
+  saveError={drawerError}
+  onClose={closeDrawer}
+  onSave={(fileName, yaml) => void handleSave(fileName, yaml)}
+/>
 
 <style>
   .automation-list {
@@ -246,29 +260,12 @@
   .meta-item {
     font-size: var(--text-xs);
     color: var(--color-text-secondary);
-  }
-
-  .meta-item code {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--color-bg-tertiary);
-    padding: 1px 6px;
-    border-radius: var(--radius-sm);
-  }
-
-  .schedule-friendly {
     font-weight: var(--font-medium);
-    color: var(--color-text);
-  }
-
-  .meta-tz {
-    color: var(--color-text-tertiary);
   }
 
   .badge-type {
     background: var(--color-bg-tertiary);
     color: var(--color-text-secondary);
-    /* Inherits white-space:nowrap and font-size:12px from global .badge */
   }
 
   .automation-footer {
@@ -282,21 +279,6 @@
   }
 
   .automation-actions { display: flex; gap: var(--space-1); }
-
-  .task-editor {
-    border: 1px solid var(--color-border); border-radius: var(--radius-md);
-    background: var(--color-bg-secondary); padding: var(--space-4);
-    margin-bottom: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2);
-  }
-  .task-editor-head { display: flex; flex-direction: column; gap: 2px; }
-  .task-editor-name { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: var(--font-semibold); }
-  .task-editor-hint { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .task-editor-area {
-    width: 100%; font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.5;
-    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-    background: var(--color-bg); color: var(--color-text); padding: var(--space-3); resize: vertical;
-  }
-  .task-editor-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
   .automation-file {
     font-size: var(--text-xs);
@@ -337,5 +319,4 @@
       gap: var(--space-3);
     }
   }
-
 </style>
