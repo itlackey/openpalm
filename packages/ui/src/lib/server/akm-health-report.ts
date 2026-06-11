@@ -388,6 +388,32 @@ function renderHtml(window: AkmHealthReportWindow, health: Json, proposals: Prop
       body { padding: 12px; }
       .grid-two { grid-template-columns: 1fr; }
     }
+    @media (prefers-color-scheme: light) {
+      :root {
+        color-scheme: light;
+        --bg: #f9fafb;
+        --panel: #ffffff;
+        --panel-soft: #f3f4f6;
+        --border: rgba(0, 0, 0, 0.1);
+        --text: #111827;
+        --muted: #6b7280;
+        --ok: #16a34a;
+        --warn: #d97706;
+        --fail: #dc2626;
+        --accent: #2563eb;
+      }
+      body {
+        background: radial-gradient(circle at top, #e9f0ff 0%, var(--bg) 55%);
+        color: var(--text);
+      }
+      .hero, .panel {
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      }
+      .status.ok { color: #15803d; background: rgba(22, 163, 74, 0.1); border-color: rgba(22, 163, 74, 0.3); }
+      .status.warn { color: #b45309; background: rgba(217, 119, 6, 0.1); border-color: rgba(217, 119, 6, 0.3); }
+      .status.fail { color: #b91c1c; background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.3); }
+    }
   </style>
 </head>
 <body>

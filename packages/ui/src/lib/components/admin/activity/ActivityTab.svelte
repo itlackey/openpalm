@@ -20,8 +20,11 @@
   type StreamState = 'connecting' | 'connected' | 'disconnected';
   type AttentionSeverity = 'high' | 'medium' | 'low';
 
+  type AttentionKind = 'permission' | 'question' | 'error' | 'info';
+
   type AttentionItem = {
     id: string;
+    kind: AttentionKind;
     severity: AttentionSeverity;
     title: string;
     detail: string;
@@ -122,6 +125,7 @@
 
     if (type === 'permission.asked') {
       return {
+        kind: 'permission',
         severity: 'high',
         title: 'Approval needed',
         detail: typeof props?.permission === 'string' ? props.permission : 'Assistant is waiting for a permission decision.',
@@ -131,6 +135,7 @@
 
     if (type === 'question.asked') {
       return {
+        kind: 'question',
         severity: 'high',
         title: 'Answer requested',
         detail: Array.isArray(props?.questions)
@@ -142,6 +147,7 @@
 
     if (type === 'session.error') {
       return {
+        kind: 'error',
         severity: 'high',
         title: 'Session error',
         detail: typeof props?.error === 'string' ? props.error : 'Assistant session reported an error.',
@@ -151,6 +157,7 @@
 
     if (type === 'session.deleted') {
       return {
+        kind: 'info',
         severity: 'medium',
         title: 'Session removed',
         detail: 'An active session was deleted.',
@@ -160,6 +167,7 @@
 
     if (type === 'session.created') {
       return {
+        kind: 'info',
         severity: 'low',
         title: 'New session started',
         detail: 'A new conversation became active.',
@@ -176,6 +184,7 @@
           : '';
       if (type.endsWith('.failed')) {
         return {
+          kind: 'error',
           severity: 'high',
           title: `Tool failed: ${toolName}`,
           detail: truncate(progress || 'Assistant tool execution failed.'),
@@ -184,6 +193,7 @@
       }
       if (type.endsWith('.called')) {
         return {
+          kind: 'info',
           severity: 'medium',
           title: `Tool running: ${toolName}`,
           detail: truncate(progress || 'Assistant started a tool.'),
@@ -192,6 +202,7 @@
       }
       if (type.endsWith('.completed')) {
         return {
+          kind: 'info',
           severity: 'low',
           title: `Tool finished: ${toolName}`,
           detail: 'Assistant completed a tool call.',
@@ -204,6 +215,7 @@
       const part = props?.part as { tool?: unknown; state?: { status?: unknown; error?: unknown } } | undefined;
       if (typeof part?.tool === 'string' && part.state?.status === 'error') {
         return {
+          kind: 'error',
           severity: 'high',
           title: `Tool failed: ${part.tool}`,
           detail: typeof part.state.error === 'string' ? truncate(part.state.error) : 'Assistant tool execution failed.',
@@ -367,7 +379,16 @@
 
   function fmtTime(timestamp: number | null): string {
     if (!timestamp) return 'n/a';
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const d = new Date(timestamp);
+    const today = new Date();
+    const sameDay =
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate();
+    if (sameDay) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   function fmtDateTime(timestamp: number): string {
@@ -377,7 +398,7 @@
   }
 
   let selectedSession = $derived(sessions.find((session) => session.id === selectedSessionId) ?? null);
-  let waitingItems = $derived(attentionFeed.filter((item) => item.title === 'Approval needed' || item.title === 'Answer requested').length);
+  let waitingItems = $derived(attentionFeed.filter((item) => item.kind === 'permission' || item.kind === 'question').length);
   let failingItems = $derived(attentionFeed.filter((item) => item.severity === 'high').length);
   let activeSessions = $derived(sessions.filter((session) => clock - session.updatedAt <= 5 * 60_000).length);
   let latestAttention = $derived(attentionFeed.slice(0, 10));
@@ -508,8 +529,14 @@
             </div>
             <p>{item.detail}</p>
             {#if item.sessionId}
-              <button class="attention-session mono" type="button" onclick={() => void selectSession(item.sessionId)}>
-                {item.sessionId}
+              {@const sessionTitle = sessions.find((s) => s.id === item.sessionId)?.title}
+              <button
+                class="attention-session mono"
+                type="button"
+                aria-label={item.sessionId}
+                onclick={() => void selectSession(item.sessionId)}
+              >
+                {sessionTitle || `Session ${item.sessionId.slice(0, 8)}…`}
               </button>
             {/if}
           </article>
@@ -537,8 +564,14 @@
               <p>{event.detail}</p>
             {/if}
             {#if event.sessionId}
-              <button class="attention-session mono" type="button" onclick={() => void selectSession(event.sessionId)}>
-                {event.sessionId}
+              {@const sessionTitle = sessions.find((s) => s.id === event.sessionId)?.title}
+              <button
+                class="attention-session mono"
+                type="button"
+                aria-label={event.sessionId}
+                onclick={() => void selectSession(event.sessionId)}
+              >
+                {sessionTitle || `Session ${event.sessionId.slice(0, 8)}…`}
               </button>
             {/if}
           </article>
@@ -573,22 +606,24 @@
         <h4>Event breakdown</h4>
         <span>{eventTypeRows.length}</span>
       </div>
-      <table class="data-table">
-        <thead>
-          <tr><th>Type</th><th>Total</th></tr>
-        </thead>
-        <tbody>
-          {#if eventTypeRows.length === 0}
-            <tr><td colspan="2" class="empty-cell">No events observed yet.</td></tr>
-          {/if}
-          {#each eventTypeRows as [type, count]}
-            <tr>
-              <td class="mono">{type}</td>
-              <td>{count}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr><th>Type</th><th>Total</th></tr>
+          </thead>
+          <tbody>
+            {#if eventTypeRows.length === 0}
+              <tr><td colspan="2" class="empty-cell">No events observed yet.</td></tr>
+            {/if}
+            {#each eventTypeRows as [type, count]}
+              <tr>
+                <td class="mono">{type}</td>
+                <td>{count}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
 
       <div class="subsection-head">
         <h4>Most active sessions</h4>
@@ -658,13 +693,13 @@
   .endpoint-value { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); }
   .endpoint-url { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-text-secondary); }
   .stream-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 7rem; padding: var(--space-2) var(--space-3); border-radius: 999px; font-size: var(--text-xs); font-weight: var(--font-semibold); text-transform: uppercase; }
-  .stream-badge--connected { background: rgba(34,197,94,0.14); color: #16a34a; }
-  .stream-badge--connecting { background: rgba(245,158,11,0.14); color: #d97706; }
-  .stream-badge--disconnected { background: rgba(239,68,68,0.14); color: #dc2626; }
+  .stream-badge--connected { background: color-mix(in srgb, var(--color-success) 14%, transparent); color: var(--color-success); }
+  .stream-badge--connecting { background: color-mix(in srgb, var(--color-warning) 14%, transparent); color: var(--color-warning); }
+  .stream-badge--disconnected { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-danger); }
   .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
   .summary-card { display: grid; gap: var(--space-1); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-secondary); }
-  .summary-card--warning { background: color-mix(in srgb, var(--color-bg-secondary) 92%, #f59e0b 8%); }
-  .summary-card--danger { background: color-mix(in srgb, var(--color-bg-secondary) 90%, #ef4444 10%); }
+  .summary-card--warning { background: color-mix(in srgb, var(--color-bg-secondary) 92%, var(--color-warning) 8%); }
+  .summary-card--danger { background: color-mix(in srgb, var(--color-bg-secondary) 90%, var(--color-danger) 10%); }
   .summary-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); }
   .summary-value { font-size: clamp(1.2rem, 3vw, 1.9rem); color: var(--color-text); }
   .summary-value--small { font-size: clamp(1rem, 2vw, 1.35rem); }
@@ -680,12 +715,12 @@
   .attention-list, .session-list, .selected-message-list, .feed-list, .hot-session-list { display: flex; flex-direction: column; gap: var(--space-2); }
   .attention-item { padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-bg); }
   .attention-item--high { border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); }
-  .attention-item--medium { border-color: color-mix(in srgb, #f59e0b 45%, var(--color-border)); }
+  .attention-item--medium { border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border)); }
   .attention-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-1); }
   .attention-top strong { font-size: var(--text-sm); color: var(--color-text); }
   .attention-top span { font-size: var(--text-xs); color: var(--color-text-secondary); }
   .attention-item p { margin: 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
-  .attention-session { margin-top: var(--space-2); border: 0; background: transparent; color: var(--color-primary); padding: 0; cursor: pointer; text-align: left; }
+  .attention-session { margin-top: var(--space-2); border: 0; background: transparent; color: var(--color-primary); padding: 0; cursor: pointer; text-align: left; word-break: break-all; max-width: 100%; }
   .session-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); text-align: left; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text); cursor: pointer; }
   .session-row.selected { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); }
   .session-title { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
@@ -697,6 +732,7 @@
   .feed-type, .feed-top span:last-child { font-size: var(--text-xs); color: var(--color-text-secondary); }
   .feed-row strong { font-size: var(--text-sm); color: var(--color-text); }
   .feed-row p { margin: 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
+  .table-scroll { overflow-x: auto; }
   .data-table { width: 100%; border-collapse: collapse; }
   .data-table th, .data-table td { padding: var(--space-2) var(--space-1); border-bottom: 1px solid var(--color-border); text-align: left; font-size: var(--text-sm); color: var(--color-text); }
   .data-table th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); }

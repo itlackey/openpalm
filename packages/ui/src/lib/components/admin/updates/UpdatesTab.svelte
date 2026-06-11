@@ -424,34 +424,46 @@
           <div class="version-divider"></div>
           <div class="version-section">
             <div class="version-label">Desktop notifications</div>
-            <label class="desktop-toggle">
-              <input
-                type="checkbox"
-                checked={notificationsEnabled}
-                onchange={(event) => {
-                  notificationsEnabled = (event.currentTarget as HTMLInputElement).checked;
-                  setDesktopNotifyEnabled(notificationsEnabled);
-                  if (!notificationsEnabled) {
-                    replyPreviewEnabled = false;
-                    setDesktopReplyPreviewEnabled(false);
-                  }
-                }}
-              />
-              <span>Notify when the assistant replies or errors while the app is in the background.</span>
-            </label>
-            <label class="desktop-toggle desktop-toggle--nested">
-              <input
-                type="checkbox"
-                checked={replyPreviewEnabled}
-                disabled={!notificationsEnabled}
-                onchange={(event) => {
-                  replyPreviewEnabled = (event.currentTarget as HTMLInputElement).checked;
-                  setDesktopReplyPreviewEnabled(replyPreviewEnabled);
-                }}
-              />
-              <span>Include reply preview in the notification body.</span>
-            </label>
-            <p class="version-hint">Reply previews stay off by default because desktop notifications can persist outside the app.</p>
+            {#if typeof window !== 'undefined' && typeof window.openpalm?.notify === 'function'}
+              <label class="desktop-toggle">
+                <input
+                  type="checkbox"
+                  checked={notificationsEnabled}
+                  onchange={(event) => {
+                    notificationsEnabled = (event.currentTarget as HTMLInputElement).checked;
+                    setDesktopNotifyEnabled(notificationsEnabled);
+                    if (!notificationsEnabled) {
+                      replyPreviewEnabled = false;
+                      setDesktopReplyPreviewEnabled(false);
+                    }
+                  }}
+                />
+                <span>Notify when the assistant replies or errors while the app is in the background.</span>
+              </label>
+              <label class="desktop-toggle desktop-toggle--nested">
+                <input
+                  type="checkbox"
+                  checked={replyPreviewEnabled}
+                  disabled={!notificationsEnabled}
+                  onchange={(event) => {
+                    replyPreviewEnabled = (event.currentTarget as HTMLInputElement).checked;
+                    setDesktopReplyPreviewEnabled(replyPreviewEnabled);
+                  }}
+                />
+                <span>Include reply preview in the notification body.</span>
+              </label>
+              <p class="version-hint">Reply previews stay off by default because desktop notifications can persist outside the app.</p>
+            {:else}
+              <label class="desktop-toggle">
+                <input type="checkbox" disabled />
+                <span>Notify when the assistant replies or errors while the app is in the background.</span>
+              </label>
+              <label class="desktop-toggle desktop-toggle--nested">
+                <input type="checkbox" disabled />
+                <span>Include reply preview in the notification body.</span>
+              </label>
+              <p class="version-hint">Desktop notifications are available in the OpenPalm desktop app.</p>
+            {/if}
           </div>
         {/if}
 
@@ -554,6 +566,7 @@
 
   .desktop-toggle--nested {
     margin-left: var(--space-6);
+    margin-bottom: var(--space-2);
   }
   .versions-row {
     display: flex;

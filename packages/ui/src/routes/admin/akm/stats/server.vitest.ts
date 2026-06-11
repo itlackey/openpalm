@@ -132,4 +132,23 @@ describe('GET /admin/akm/stats', () => {
       requestId: 'req-akm-stats',
     });
   });
+
+  test('concurrent requests share a single in-flight CLI call', async () => {
+    let resolveStats!: (value: Awaited<ReturnType<typeof getAkmStats>>) => void;
+    const statsPromise = new Promise<Awaited<ReturnType<typeof getAkmStats>>>((resolve) => {
+      resolveStats = resolve;
+    });
+    vi.mocked(getAkmStats).mockReturnValue(statsPromise);
+
+    // Fire two requests simultaneously before the CLI resolves.
+    const [res1Promise, res2Promise] = [GET(makeEvent()), GET(makeEvent())];
+
+    resolveStats({ available: false, reason: 'deduped' });
+    const [res1, res2] = await Promise.all([res1Promise, res2Promise]);
+
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+    // Despite two concurrent requests, getAkmStats should only be called once.
+    expect(getAkmStats).toHaveBeenCalledTimes(1);
+  });
 });

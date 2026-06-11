@@ -26,6 +26,10 @@ vi.mock('$lib/chat/chat-state.svelte.js', () => ({
   chat: {
     sending: false,
     send: vi.fn().mockResolvedValue(undefined),
+    // Navbar renders SessionPicker, which reads the per-endpoint session state.
+    byEndpoint: new Map(),
+    activeSessionId: null,
+    liveConnected: false,
   },
 }));
 

@@ -7,10 +7,14 @@ const CACHE_TTL_MS = 15_000;
 
 let cachedStats: Awaited<ReturnType<typeof getAkmStats>> | null = null;
 let cachedAt = 0;
+// Single in-flight promise guards concurrent refreshes so parallel requests
+// don't each spin up their own CLI subprocess.
+let inFlight: Promise<Awaited<ReturnType<typeof getAkmStats>>> | null = null;
 
 export function _resetStatsCacheForTests(): void {
   cachedStats = null;
   cachedAt = 0;
+  inFlight = null;
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -23,7 +27,12 @@ export const GET: RequestHandler = async (event) => {
   }
 
   try {
-    const stats = await getAkmStats(getState());
+    if (!inFlight) {
+      inFlight = getAkmStats(getState()).finally(() => {
+        inFlight = null;
+      });
+    }
+    const stats = await inFlight;
     cachedStats = stats;
     cachedAt = Date.now();
     return jsonResponse(200, stats, requestId);

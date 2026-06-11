@@ -15,6 +15,8 @@
   let personaPath = $state('config/assistant/openpalm.md');
   let stackEnvPath = $state('knowledge/env/stack.env');
   let personaContent = $state('');
+  // Snapshot of last-saved persona content for dirty detection.
+  let savedPersonaContent = $state('');
 
   async function load(): Promise<void> {
     loading = true;
@@ -26,6 +28,7 @@
       personaPath = data.personaPath;
       stackEnvPath = data.stackEnvPath;
       personaContent = data.personaContent;
+      savedPersonaContent = data.personaContent;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load assistant settings.';
     } finally {
@@ -41,6 +44,7 @@
       projectName = data.projectName;
       lanExposureEnabled = data.lanExposureEnabled;
       personaContent = data.personaContent;
+      savedPersonaContent = data.personaContent;
       notifications.push('success', 'Assistant settings saved. Restart the assistant container to apply them.');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to save assistant settings.';
@@ -50,6 +54,8 @@
       saving = false;
     }
   }
+
+  let isDirty = $derived(personaContent !== savedPersonaContent);
 
   onMount(() => { if (tokenStored) void load(); });
 </script>
@@ -65,7 +71,10 @@
         {#if loading}<Spinner />{/if}
         Refresh
       </button>
-      <button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
+      {#if isDirty}
+        <span class="unsaved-hint" aria-live="polite">Unsaved changes</span>
+      {/if}
+      <button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored || !isDirty}>
         {#if saving}<Spinner />{/if}
         Save
       </button>
@@ -121,5 +130,6 @@
   .field-hint { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--color-text-secondary); }
   .path-chip { display: inline-flex; align-items: center; margin-bottom: var(--space-3); padding: var(--space-1) var(--space-2); border-radius: 999px; background: var(--color-bg-tertiary, var(--color-bg)); color: var(--color-text-secondary); font-size: var(--text-xs); font-family: var(--font-mono); }
   .persona-editor { min-height: 26rem; resize: vertical; }
+  .unsaved-hint { font-size: var(--text-xs); color: var(--color-warning); font-weight: var(--font-medium); }
   @media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr; } .persona-editor { min-height: 18rem; } }
 </style>

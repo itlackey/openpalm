@@ -78,15 +78,24 @@
 	</div>
 
 	<div class="report-frame-wrap">
-		{#if loading || !frameLoaded}
-			<div class="report-loading">Generating report…</div>
+		{#if loadError}
+			<div class="report-error" role="alert">
+				<p>{loadError}</p>
+				<button class="btn btn-secondary btn-sm" type="button" onclick={refresh}>Retry</button>
+			</div>
+		{:else}
+			{#if loading || !frameLoaded}
+				<div class="report-loading">Generating report…</div>
+			{/if}
+			{#if frameSrc}
+				<iframe
+					title="AKM Health Report"
+					class="report-frame"
+					src={frameSrc}
+					onload={() => { loading = false; frameLoaded = true; }}
+				></iframe>
+			{/if}
 		{/if}
-		<iframe
-			title="AKM Health Report"
-			class="report-frame"
-			src={reportUrl}
-			onload={() => { loading = false; frameLoaded = true; }}
-		></iframe>
 	</div>
 </section>
 
@@ -167,7 +176,24 @@
 		width: 100%;
 		min-height: 70dvh;
 		border: 0;
-		background: #07111f;
+		background: var(--color-bg-tertiary);
+	}
+
+	.report-error {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-3);
+		padding: var(--space-6);
+		color: var(--color-danger);
+		font-size: var(--text-sm);
+		min-height: 30dvh;
+		text-align: center;
+	}
+
+	.report-error p {
+		margin: 0;
 	}
 
 	@media (max-width: 640px) {

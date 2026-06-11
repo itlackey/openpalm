@@ -45,8 +45,15 @@
     await chat.send(text);
   }
 
+  let permissionActionInFlight = $state<'once' | 'always' | 'reject' | null>(null);
+
   async function handlePermissionReply(reply: 'once' | 'always' | 'reject'): Promise<void> {
-    await chat.answerPermission(reply);
+    permissionActionInFlight = reply;
+    try {
+      await chat.answerPermission(reply);
+    } finally {
+      permissionActionInFlight = null;
+    }
   }
 
   async function handleQuestionOption(answer: string): Promise<void> {
@@ -74,6 +81,14 @@
 
   // Keep the newest turn in view whenever the rendered transcript changes,
   // including the pending assistant indicator shown during a reply.
+  //
+  // pendingPermission and pendingQuestion objects are replaced by reference on
+  // every status transition. Tracking only the requestID prevents yanking the
+  // user back to the bottom when they click "Allow" — an ID change means a
+  // genuinely new prompt, which does warrant scrolling.
+  let lastSeenPermissionId = '';
+  let lastSeenQuestionId = '';
+
   $effect(() => {
     const lastEntry = chat.entries.at(-1);
     const lastEntryContent =
@@ -81,20 +96,31 @@
         ? lastEntry.label
         : lastEntry?.type === 'note'
           ? lastEntry.text
-          : lastEntry?.type === 'tool'
-            ? lastEntry.toolState.title
+          : lastEntry?.type === 'tool-group'
+            ? (lastEntry.toolStates[0]?.title ?? '')
             : lastEntry?.text ?? '';
 
     if (!lastEntry && !entriesLoading && !sessionsLoading && !chat.sending) {
       return;
     }
 
+    const permissionId = chat.pendingPermission?.requestID ?? '';
+    const questionId = chat.pendingQuestion?.requestID ?? '';
+    const permissionChanged = permissionId !== lastSeenPermissionId;
+    const questionChanged = questionId !== lastSeenQuestionId;
+
+    // Read streaming/entry signals for reactivity, but only scroll when
+    // content actually changes — not on status-only object identity churn.
     lastEntryContent;
     chat.pendingAssistantText;
     chat.pendingToolStates.length;
-    chat.pendingPermission?.requestID;
-    chat.pendingQuestion?.requestID;
-    scrollToBottom();
+
+    if (permissionChanged) lastSeenPermissionId = permissionId;
+    if (questionChanged) lastSeenQuestionId = questionId;
+
+    if (lastEntry || entriesLoading || sessionsLoading || chat.sending || permissionChanged || questionChanged) {
+      scrollToBottom();
+    }
   });
 
   function liveStatusText(): string {
@@ -188,7 +214,7 @@
 <div class="chat-shell">
   <div class="chat-layout">
     <!-- Message history -->
-    <section class="messages-area" aria-label="Chat history" aria-live="polite">
+    <section class="messages-area" aria-label="Chat history">
       {#if sessionsLoading || entriesLoading}
         <div class="session-loading" aria-live="polite">
           <Spinner />
@@ -257,13 +283,13 @@
                 {/if}
                 <div class="live-card-actions">
                   <button class="btn btn-primary btn-sm" type="button" onclick={() => void handlePermissionReply('once')} disabled={chat.pendingPermission.status === 'submitting' || chat.pendingPermission.status === 'resolved'}>
-                    Allow this once
+                    {permissionActionInFlight === 'once' ? 'Sending…' : 'Allow this once'}
                   </button>
                   <button class="btn btn-secondary btn-sm" type="button" onclick={() => void handlePermissionReply('always')} disabled={chat.pendingPermission.status === 'submitting' || chat.pendingPermission.status === 'resolved'}>
-                    Always allow matches
+                    {permissionActionInFlight === 'always' ? 'Sending…' : 'Always allow matches'}
                   </button>
                   <button class="btn btn-danger btn-sm" type="button" onclick={() => void handlePermissionReply('reject')} disabled={chat.pendingPermission.status === 'submitting' || chat.pendingPermission.status === 'resolved'}>
-                    Deny request
+                    {permissionActionInFlight === 'reject' ? 'Sending…' : 'Deny request'}
                   </button>
                 </div>
               </div>
@@ -326,6 +352,8 @@
                           type="text"
                           value={chat.pendingQuestion.answers[index]}
                           placeholder="Type an answer"
+                          aria-required="true"
+                          aria-invalid={chat.pendingQuestion.status === 'error' ? !chat.pendingQuestion.answers[index] : undefined}
                           oninput={(event) => handleQuestionDraft(index, event)}
                           disabled={chat.pendingQuestion.status === 'submitting' || chat.pendingQuestion.status === 'answered' || chat.pendingQuestion.status === 'rejected'}
                         />

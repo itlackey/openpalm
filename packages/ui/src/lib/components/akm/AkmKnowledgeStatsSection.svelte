@@ -75,7 +75,7 @@
 		</div>
 	{:else}
 		<div class="stats-status">
-			<span class={`stats-badge ${stats.health.status === 'warn' ? 'stats-badge-warn' : ''}`}>{healthLabel(stats.health.status)}</span>
+			<span class={`stats-badge ${stats.health.status === 'warn' ? 'stats-badge-warn' : stats.health.status === 'unknown' ? 'stats-badge-unknown' : ''}`}>{healthLabel(stats.health.status)}</span>
 			{#if stats.health.advisories.length > 0}
 				<ul class="stats-advisories">
 					{#each stats.health.advisories as advisory (advisory)}
@@ -191,6 +191,11 @@
 		color: var(--color-warning);
 	}
 
+	.stats-badge-unknown {
+		background: color-mix(in srgb, var(--color-text-secondary) 12%, transparent);
+		color: var(--color-text-secondary);
+	}
+
 	.stats-advisories {
 		margin: 0;
 		padding-left: 1.25rem;
@@ -223,12 +228,6 @@
 		font-weight: var(--font-bold);
 		color: var(--color-text);
 		line-height: 1.1;
-	}
-
-	.stats-sub {
-		font-size: var(--text-base);
-		font-weight: var(--font-medium);
-		color: var(--color-text-secondary);
 	}
 
 	.stats-label {

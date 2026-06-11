@@ -12,7 +12,7 @@
  * 8. composePull builds pull command
  * 9. All commands use execFile (no shell injection — core security invariant)
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
 const execFileMock = vi.fn();
 const spawnMock = vi.fn();
@@ -72,6 +72,13 @@ function capturedArgs(): string[] {
 // Skip compose preflight in all docker tests since execFile is mocked
 beforeEach(() => { process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1'; });
 afterEach(() => { delete process.env.OP_SKIP_COMPOSE_PREFLIGHT; });
+
+// Warm the module once: the first dynamic import transforms the whole
+// @openpalm/lib chain through vite SSR, which can exceed the per-test 5s
+// timeout under full-suite load. Generous hook timeout for the same reason.
+beforeAll(async () => {
+  await import("./docker.js");
+}, 60_000);
 
 describe("checkDocker", () => {
   beforeEach(() => {
