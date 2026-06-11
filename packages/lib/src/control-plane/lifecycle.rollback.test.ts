@@ -144,7 +144,9 @@ await main();
 
   try {
     writeFileSync(scriptPath, script);
-    const bunBinary = Bun.which('bun') ?? (existsSync(process.execPath) ? process.execPath : process.argv0);
+    const bunBinary = existsSync('/proc/self/exe')
+      ? '/proc/self/exe'
+      : Bun.which('bun') ?? (existsSync(process.execPath) ? process.execPath : process.argv0);
     const proc = Bun.spawnSync([bunBinary, scriptPath], {
       cwd: '/work/itlackey/openpalm/packages/lib',
       stdout: 'pipe',
