@@ -289,12 +289,13 @@ class ChatService {
 		this.pendingQuestion = null;
 	}
 
-	private _appendAssistantReply(text: string): void {
+	private _appendAssistantReply(text: string, toolStates?: LiveToolState[]): void {
 		const assistantEntry: ChatMessage = {
 			id: crypto.randomUUID(),
 			role: 'assistant',
 			text,
 			timestamp: Date.now(),
+			...(toolStates && toolStates.length > 0 ? { toolStates: [...toolStates] } : {}),
 		};
 		this.entries = [...this.entries, assistantEntry];
 	}
@@ -311,7 +312,24 @@ class ChatService {
 		const pending = this._clearPendingTurn();
 		if (!pending) return;
 		const text = (replyText ?? this.pendingAssistantText).trim() || '(no response)';
-		this._appendAssistantReply(text);
+
+		// Preserve answered-question acknowledgment as a transcript note so
+		// "Answer sent." isn't lost when pendingQuestion is cleared below.
+		if (this.pendingQuestion?.status === 'answered' && this.pendingQuestion.message) {
+			const questionNote = {
+				id: crypto.randomUUID(),
+				type: 'note' as const,
+				label: 'Question answered',
+				text: this.pendingQuestion.message,
+				timestamp: Date.now(),
+			};
+			this.entries = [...this.entries, questionNote];
+		}
+
+		const capturedToolStates = this.pendingToolStates.length > 0
+			? [...this.pendingToolStates]
+			: undefined;
+		this._appendAssistantReply(text, capturedToolStates);
 		this._resetPendingRenderState();
 		this._bumpSession(pending.sessionId);
 		if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && text && text !== '(no response)') {
@@ -633,7 +651,11 @@ class ChatService {
 					.map((p) => p.text ?? '')
 					.join('');
 				const text = replyText.trim() || '(no response)';
-				this._appendAssistantReply(text);
+				const capturedTools = this.pendingToolStates.length > 0
+					? [...this.pendingToolStates]
+					: undefined;
+				this._appendAssistantReply(text, capturedTools);
+				this._resetPendingRenderState();
 				this._bumpSession(sessionId);
 				if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && text !== '(no response)') {
 					void speakText(text, {

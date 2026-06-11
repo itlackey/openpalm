@@ -1,9 +1,10 @@
 import type {
   HealthPayload,
   ChatEntry,
+  ChatMessage,
+  ChatToolGroup,
   ContainerListResponse,
   AutomationsResponse,
-  ChatMessage,
   SessionSummary,
 } from './types.js';
 import { toolStripEntryFromSessionPart, type SessionMessagePart } from '$lib/chat/tool-strip.js';
@@ -709,12 +710,16 @@ export async function listSessions(): Promise<SessionSummary[]> {
 }
 
 /**
- * Fetch the messages for a session and map them to UI `ChatMessage`s.
+ * Fetch the messages for a session and map them to UI `ChatEntry`s.
  *
- * Skips non-text parts (files, reasoning, etc.). Empty-text messages are
- * dropped so the UI doesn't render placeholder bubbles.
+ * Tool parts are grouped into the assistant turn that follows them (attached
+ * as `toolStates` on the `ChatMessage`). If tool parts appear with no
+ * following assistant text in the same OpenCode message they are emitted as a
+ * single `ChatToolGroup` entry — never as N separate entries.
+ *
+ * Skips non-text, non-tool parts (files, reasoning, etc.). Empty-text
+ * messages with no tool activity are dropped.
  */
-
 export async function getSessionMessages(sessionId: string): Promise<ChatEntry[]> {
   const res = await requireOk(
     await request(
@@ -735,21 +740,38 @@ export async function getSessionMessages(sessionId: string): Promise<ChatEntry[]
     const timestamp = row.info.time?.created ?? Date.now();
     let textBuffer = '';
     let textIndex = 0;
+    const pendingToolStates: import('./types.js').ToolStripEntry[] = [];
 
     const flushText = (): void => {
       const text = textBuffer.trim();
-      if (!text) {
-        textBuffer = '';
-        return;
-      }
-      messages.push({
-        id: textIndex === 0 ? row.info.id : `${row.info.id}:text:${textIndex}`,
-        role: row.info.role,
-        text,
-        timestamp,
-      });
-      textIndex += 1;
       textBuffer = '';
+      if (!text && pendingToolStates.length === 0) return;
+
+      if (text) {
+        const entry: ChatMessage = {
+          id: textIndex === 0 ? row.info.id : `${row.info.id}:text:${textIndex}`,
+          role: row.info.role,
+          text,
+          timestamp,
+        };
+        if (pendingToolStates.length > 0) {
+          entry.toolStates = [...pendingToolStates];
+          pendingToolStates.length = 0;
+        }
+        messages.push(entry);
+        textIndex += 1;
+      } else if (pendingToolStates.length > 0) {
+        // Tools with no following text in this message — emit as orphan group.
+        const group: ChatToolGroup = {
+          id: `${row.info.id}:tools:${textIndex}`,
+          type: 'tool-group',
+          toolStates: [...pendingToolStates],
+          timestamp,
+        };
+        pendingToolStates.length = 0;
+        messages.push(group);
+        textIndex += 1;
+      }
     };
 
     row.parts.forEach((part, index) => {
@@ -758,15 +780,9 @@ export async function getSessionMessages(sessionId: string): Promise<ChatEntry[]
         return;
       }
       if (part.type === 'tool' || part.state) {
-        flushText();
         const toolState = toolStripEntryFromSessionPart(part, `${row.info.id}:${index}`);
         if (!toolState) return;
-        messages.push({
-          id: `${row.info.id}:tool:${part.callID ?? part.id ?? index}`,
-          type: 'tool',
-          toolState,
-          timestamp,
-        });
+        pendingToolStates.push(toolState);
       }
     });
 

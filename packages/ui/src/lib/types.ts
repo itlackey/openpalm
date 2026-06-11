@@ -1,5 +1,7 @@
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
+export type { ToolStripEntry };
+
 export type HealthPayload = { status: string; service: string };
 
 export type DockerContainer = {
@@ -102,6 +104,8 @@ export type ChatMessage = {
   role: 'user' | 'assistant';
   text: string;
   timestamp: number;
+  /** Tool activity attached to an assistant turn. Shown as a compact strip below the text. */
+  toolStates?: ToolStripEntry[];
 };
 
 export type ChatDivider = {
@@ -119,14 +123,19 @@ export type ChatNote = {
   timestamp: number;
 };
 
-export type ChatToolEntry = {
+/**
+ * Orphan tool group: tool activity with no following assistant text in the
+ * same OpenCode message. Rendered as a single grouped strip, never as N
+ * separate bubbles.
+ */
+export type ChatToolGroup = {
   id: string;
-  type: 'tool';
-  toolState: ToolStripEntry;
+  type: 'tool-group';
+  toolStates: ToolStripEntry[];
   timestamp: number;
 };
 
-export type ChatEntry = ChatMessage | ChatDivider | ChatNote | ChatToolEntry;
+export type ChatEntry = ChatMessage | ChatDivider | ChatNote | ChatToolGroup;
 
 export type OpenCodeMessageResponse = {
   parts: Array<{ type: string; text?: string }>;

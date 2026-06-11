@@ -14,7 +14,7 @@
   // by reinterpreting punctuation as markdown. Assistant messages get
   // rendered (markdown-it strips raw HTML at the source).
   const renderedHtml = $derived.by(() => {
-    if (entry.type === 'divider' || entry.type === 'note' || entry.type === 'tool') return null;
+    if (entry.type === 'divider' || entry.type === 'note' || entry.type === 'tool-group') return null;
     return entry.role === 'assistant' ? renderMarkdown(entry.text) : null;
   });
 </script>
@@ -30,10 +30,11 @@
     <span class="thread-note-label">{entry.label}</span>
     <span class="thread-note-text">{entry.text}</span>
   </div>
-{:else if entry.type === 'tool'}
-  <div class="message message-assistant message-tool">
+{:else if entry.type === 'tool-group'}
+  <!-- Orphan tool activity (no following assistant text in the same turn) -->
+  <div class="message message-assistant message-tool-group">
     <div class="tool-message-bubble">
-      <ToolStrip items={[entry.toolState]} ariaLabel="Assistant tool activity" />
+      <ToolStrip items={entry.toolStates} ariaLabel="Assistant tool activity" />
     </div>
     <span class="message-meta">Assistant · {formatTime(entry.timestamp)}</span>
   </div>
@@ -48,6 +49,14 @@
         <div class="message-text markdown-body">{@html renderedHtml}</div>
       {:else}
         <p class="message-text">{entry.text}</p>
+      {/if}
+      {#if entry.role === 'assistant' && entry.toolStates && entry.toolStates.length > 0}
+        <ToolStrip
+          items={entry.toolStates}
+          bordered={true}
+          muted={true}
+          ariaLabel="Tool activity for this response"
+        />
       {/if}
     </div>
     <span class="message-meta">
@@ -135,7 +144,7 @@
     align-items: flex-start;
   }
 
-  .message-tool {
+  .message-tool-group {
     gap: var(--space-1);
   }
 

@@ -45,6 +45,7 @@ import * as api from '$lib/api.js';
 import * as voice from '$lib/voice/voice-state.svelte.js';
 import * as sse from './session-events.js';
 import type { SessionSummary, ChatMessage } from '$lib/types.js';
+import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 import { chat } from './chat-state.svelte.js';
 
 const mocked = {
@@ -253,6 +254,126 @@ describe('byEndpoint Map reactivity', () => {
     // The Map reference should change after a write.
     expect(chat.byEndpoint).not.toBe(initial);
     expect(chat.byEndpoint.get('alpha')).toBeDefined();
+  });
+});
+
+describe('tool grouping — finalized turn', () => {
+  it('attaches tool states to the assistant entry via SSE events during the turn', async () => {
+    mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+
+    // Mark SSE connected so chat.send() uses the SSE path.
+    sseCaptured.handlers?.onConnect?.();
+    expect(chat.liveConnected).toBe(true);
+
+    // startChatMessageTurn resolves immediately (fire-and-forget internally).
+    vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+    // Run send() and interleave SSE events after the turn is registered.
+    // We drive the events inside a microtask after send() begins waiting.
+    const sendPromise = chat.send('run some tools');
+
+    // Yield to let send() register _pendingTurn (startChatMessageTurn is async
+    // but resolves quickly; one macrotask is enough).
+    await new Promise<void>((r) => setTimeout(r, 0));
+
+    // Two tool completions over SSE (session.next.tool.completed format).
+    sseCaptured.handlers?.onEvent?.({
+      type: 'session.next.tool.completed',
+      properties: { sessionID: 'sess1', callID: 'c1', tool: 'bash', output: 'ok' },
+    });
+    sseCaptured.handlers?.onEvent?.({
+      type: 'session.next.tool.completed',
+      properties: { sessionID: 'sess1', callID: 'c2', tool: 'read', output: 'content' },
+    });
+
+    // Text delta then turn end.
+    sseCaptured.handlers?.onEvent?.({
+      type: 'message.part.delta',
+      properties: { sessionID: 'sess1', delta: 'Done!' },
+    });
+    sseCaptured.handlers?.onEvent?.({
+      type: 'session.idle',
+      properties: { sessionID: 'sess1' },
+    });
+
+    await sendPromise;
+
+    // 1 user entry + 1 assistant entry — no separate tool entries.
+    const assistantEntries = chat.entries.filter(
+      (e) => !e.type && (e as ChatMessage).role === 'assistant'
+    );
+    expect(assistantEntries.length).toBe(1);
+
+    const assistantEntry = assistantEntries[0] as ChatMessage;
+    expect(assistantEntry.toolStates).toBeDefined();
+    expect(assistantEntry.toolStates!.length).toBe(2);
+    expect(assistantEntry.toolStates![0].id).toBe('c1');
+    expect(assistantEntry.toolStates![1].id).toBe('c2');
+
+    // No standalone tool-group entries in the transcript.
+    const toolEntries = chat.entries.filter(
+      (e) =>
+        (e as { type?: string }).type === 'tool' ||
+        (e as { type?: string }).type === 'tool-group'
+    );
+    expect(toolEntries.length).toBe(0);
+
+    // pendingToolStates must be cleared after finalization.
+    expect(chat.pendingToolStates.length).toBe(0);
+  });
+
+  it('assistant entry has no toolStates when no tools fired during the turn', async () => {
+    mocked.listSessions.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+
+    mocked.createSession.mockResolvedValueOnce({ id: 'sess2' });
+    await chat.startNewSession();
+
+    mocked.sendChatMessage.mockResolvedValueOnce({
+      parts: [{ type: 'text', text: 'Simple answer.' }],
+    });
+
+    await chat.send('hello');
+
+    const assistantEntry = chat.entries.find(
+      (e) => !e.type && (e as ChatMessage).role === 'assistant'
+    ) as ChatMessage | undefined;
+    expect(assistantEntry).toBeDefined();
+    expect(assistantEntry!.toolStates).toBeUndefined();
+  });
+});
+
+describe('tool grouping — session reload (getSessionMessages)', () => {
+  it('groups tools into the assistant message toolStates on reload', async () => {
+    const toolState: ToolStripEntry = {
+      id: 'c1',
+      kind: 'tool',
+      tool: 'bash',
+      status: 'completed',
+      title: 'bash',
+      detail: '',
+      output: 'result',
+      error: '',
+      updatedAt: 1000,
+    };
+    const assistantMsg: ChatMessage = {
+      id: 'msg1',
+      role: 'assistant',
+      text: 'Done.',
+      timestamp: 2000,
+      toolStates: [toolState],
+    };
+    mocked.listSessions.mockResolvedValueOnce([{ id: 's1', title: '', createdAt: 1, updatedAt: 2 }]);
+    mocked.getSessionMessages.mockResolvedValueOnce([assistantMsg]);
+    await chat.onEndpointChanged('alpha');
+
+    expect(chat.entries.length).toBe(1);
+    const entry = chat.entries[0] as ChatMessage;
+    expect(entry.role).toBe('assistant');
+    expect(entry.toolStates).toBeDefined();
+    expect(entry.toolStates![0].id).toBe('c1');
   });
 });
 

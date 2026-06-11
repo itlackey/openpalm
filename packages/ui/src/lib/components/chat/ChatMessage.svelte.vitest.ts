@@ -2,13 +2,15 @@
  * ChatMessage component tests.
  *
  * Every message the user sees passes through this component.
- * Tests: user/assistant rendering, markdown for assistant only, divider.
+ * Tests: user/assistant rendering, markdown for assistant only, divider,
+ * assistant message with tool strip, orphan tool-group.
  */
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import ChatMessage from './ChatMessage.svelte';
-import type { ChatEntry } from '$lib/types.js';
+import type { ChatEntry, ChatToolGroup } from '$lib/types.js';
+import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
 const NOW = Date.now();
 
@@ -20,8 +22,30 @@ function assistantMsg(text: string): ChatEntry {
   return { id: '2', role: 'assistant', text, timestamp: NOW };
 }
 
+function assistantMsgWithTools(text: string, tools: ToolStripEntry[]): ChatEntry {
+  return { id: '2', role: 'assistant', text, timestamp: NOW, toolStates: tools };
+}
+
 function divider(label: string): ChatEntry {
   return { id: '3', type: 'divider', label, timestamp: NOW };
+}
+
+function toolGroup(tools: ToolStripEntry[]): ChatToolGroup {
+  return { id: '4', type: 'tool-group', toolStates: tools, timestamp: NOW };
+}
+
+function makeTool(id: string, toolName: string): ToolStripEntry {
+  return {
+    id,
+    kind: 'tool',
+    tool: toolName,
+    status: 'completed',
+    title: toolName,
+    detail: '',
+    output: 'result',
+    error: '',
+    updatedAt: NOW,
+  };
 }
 
 describe('ChatMessage — user messages', () => {
@@ -71,5 +95,47 @@ describe('ChatMessage — divider', () => {
   test('divider has aria-label', async () => {
     const { container } = render(ChatMessage, { props: { entry: divider('Session start') } });
     expect(container.querySelector('[aria-label="Session start"]')).not.toBeNull();
+  });
+});
+
+describe('ChatMessage — assistant with tool strip', () => {
+  test('renders tool strip inside the assistant bubble when toolStates present', async () => {
+    const tools = [makeTool('c1', 'bash'), makeTool('c2', 'read')];
+    const { container } = render(ChatMessage, {
+      props: { entry: assistantMsgWithTools('Here is the result.', tools) },
+    });
+    await expect.element(page.getByText('Here is the result.')).toBeVisible();
+    // ToolStrip renders emoji buttons; there should be 2.
+    const toolBtns = container.querySelectorAll('.tool-emoji-btn');
+    expect(toolBtns.length).toBe(2);
+  });
+
+  test('does NOT render tool strip when toolStates is absent', async () => {
+    const { container } = render(ChatMessage, { props: { entry: assistantMsg('No tools.') } });
+    await expect.element(page.getByText('No tools.')).toBeVisible();
+    expect(container.querySelector('.tool-emoji-btn')).toBeNull();
+  });
+
+  test('does NOT render tool strip for user messages even if toolStates were somehow set', async () => {
+    // TypeScript prevents this but the component must be robust.
+    const entry = { id: '1', role: 'user' as const, text: 'hi', timestamp: NOW, toolStates: [makeTool('c1', 'bash')] };
+    const { container } = render(ChatMessage, { props: { entry } });
+    expect(container.querySelector('.tool-emoji-btn')).toBeNull();
+  });
+});
+
+describe('ChatMessage — orphan tool-group', () => {
+  test('renders tool-group as a single bubble with all tools', async () => {
+    const tools = [makeTool('c1', 'bash'), makeTool('c2', 'grep'), makeTool('c3', 'read')];
+    const { container } = render(ChatMessage, { props: { entry: toolGroup(tools) } });
+    const toolBtns = container.querySelectorAll('.tool-emoji-btn');
+    expect(toolBtns.length).toBe(3);
+  });
+
+  test('tool-group has accessible aria-label on strip', async () => {
+    const tools = [makeTool('c1', 'bash')];
+    const { container } = render(ChatMessage, { props: { entry: toolGroup(tools) } });
+    // The tool-strip div has the ariaLabel passed in.
+    expect(container.querySelector('[aria-label="Assistant tool activity"]')).not.toBeNull();
   });
 });
