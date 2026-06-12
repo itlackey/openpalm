@@ -109,6 +109,7 @@ export {
   platformImageTagKeyFor,
   resolveEffectivePlatformImageTag,
 } from './control-plane/image-tags.js';
+export type { PinnablePlatformImage } from './control-plane/image-tags.js';
 
 export type {
   AssistantCliToolId,
