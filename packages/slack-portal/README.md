@@ -45,6 +45,7 @@ See `docs/channels/slack-setup.md` for the full setup guide.
 
 | Variable | Required | Purpose |
 |---|---|---|
+| `OPENCODE_BASE_URL` | no | OpenCode/guardian `/oc` base URL, default `http://guardian:8080/oc` |
 | `PRINCIPAL_ID` | system-managed | Guardian principal id used for Basic auth |
 | `PRINCIPAL_SECRET_FILE` | system-managed | Shared secret file path used for Basic auth |
 | `SLACK_BOT_TOKEN_FILE` | yes | Bot User OAuth token file path |
@@ -54,6 +55,8 @@ See `docs/channels/slack-setup.md` for the full setup guide.
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
 
 Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` for setup, but setup persists them under `knowledge/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and `SLACK_APP_TOKEN_FILE`, not raw tokens.
+
+The shipped Compose overlay exposes per-portal overrides through `SLACK_OPENCODE_BASE_URL`, `SLACK_PRINCIPAL_ID`, and `SLACK_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed first-party wiring.
 
 ## Slack app configuration
 

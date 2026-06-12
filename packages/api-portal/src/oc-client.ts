@@ -1,6 +1,6 @@
 import type { Event } from '@opencode-ai/sdk';
 
-const GUARDIAN_OC_BASE = 'http://guardian:8080/oc';
+const DEFAULT_OPENCODE_BASE_URL = 'http://guardian:8080/oc';
 
 const H_USER = 'x-openpalm-user';
 const H_SESSION_KEY = 'x-openpalm-session-key';
@@ -27,7 +27,7 @@ export class OcClient {
   constructor(opts: OcClientOptions) {
     this.principalId = opts.principalId ?? opts.channel ?? '';
     this.secret = opts.secret;
-    this.base = opts.baseUrl ?? GUARDIAN_OC_BASE;
+    this.base = opts.baseUrl ?? Bun.env.OPENCODE_BASE_URL ?? DEFAULT_OPENCODE_BASE_URL;
     this.fetchFn = opts.fetch ?? globalThis.fetch;
   }
 

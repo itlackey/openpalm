@@ -20,6 +20,7 @@ There is no runtime `bun add`, no adapter npm install at boot, and no separate
 |---|---|---|
 | `PORT` | `8080` | HTTP listen port |
 | `CHANNEL_PACKAGE` | — | baked adapter package to run (for example `@openpalm/discord-portal`) |
+| `OPENCODE_BASE_URL` | `http://guardian:8080/oc` | OpenCode/guardian `/oc` base URL used by the portal |
 | `PRINCIPAL_ID` | — | guardian principal id used for Basic auth |
 | `PRINCIPAL_SECRET_FILE` | — | shared secret file used as the Basic auth password |
 

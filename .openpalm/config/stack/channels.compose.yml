@@ -15,8 +15,9 @@ services:
     environment:
       PORT: "8182"
       PORTAL_NAME: "API"
-      PRINCIPAL_ID: "api"
-      PRINCIPAL_SECRET_FILE: /run/secrets/channel_api_secret
+      OPENCODE_BASE_URL: ${API_OPENCODE_BASE_URL:-http://guardian:8080/oc}
+      PRINCIPAL_ID: ${API_PRINCIPAL_ID:-api}
+      PRINCIPAL_SECRET_FILE: ${API_PRINCIPAL_SECRET_FILE:-/run/secrets/channel_api_secret}
       CHANNEL_PACKAGE: "@openpalm/api-portal"
     secrets: [channel_api_secret]
     networks: [portal_net]
@@ -35,8 +36,9 @@ services:
     environment:
       PORT: "8184"
       PORTAL_NAME: "Discord Bot"
-      PRINCIPAL_ID: "discord"
-      PRINCIPAL_SECRET_FILE: /run/secrets/channel_discord_secret
+      OPENCODE_BASE_URL: ${DISCORD_OPENCODE_BASE_URL:-http://guardian:8080/oc}
+      PRINCIPAL_ID: ${DISCORD_PRINCIPAL_ID:-discord}
+      PRINCIPAL_SECRET_FILE: ${DISCORD_PRINCIPAL_SECRET_FILE:-/run/secrets/channel_discord_secret}
       CHANNEL_PACKAGE: "@openpalm/discord-portal"
       # Rich-UX streaming (live tokens + tool reactions + interactive prompts via
       # the guardian /oc proxy) is ON by default. Set DISCORD_STREAMING=false to
@@ -68,8 +70,9 @@ services:
     environment:
       PORT: "8185"
       PORTAL_NAME: "Slack Bot"
-      PRINCIPAL_ID: "slack"
-      PRINCIPAL_SECRET_FILE: /run/secrets/channel_slack_secret
+      OPENCODE_BASE_URL: ${SLACK_OPENCODE_BASE_URL:-http://guardian:8080/oc}
+      PRINCIPAL_ID: ${SLACK_PRINCIPAL_ID:-slack}
+      PRINCIPAL_SECRET_FILE: ${SLACK_PRINCIPAL_SECRET_FILE:-/run/secrets/channel_slack_secret}
       CHANNEL_PACKAGE: "@openpalm/slack-portal"
       # Rich-UX streaming is ON by default. Set SLACK_STREAMING=false to fall
       # back to the buffered single-response path.

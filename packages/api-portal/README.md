@@ -44,8 +44,11 @@ Use `openpalm addon enable api` (CLI) or the admin UI to enable the portal; manu
 | Variable | Scope | Purpose |
 |---|---|---|
 | `PORT` | API portal | Container listen port, default `8182` |
+| `OPENCODE_BASE_URL` | API portal | OpenCode/guardian `/oc` base URL, default `http://guardian:8080/oc` |
 | `PRINCIPAL_ID` | API portal | Guardian principal id used for Basic auth |
 | `PRINCIPAL_SECRET_FILE` | API portal | Shared secret file path used for Basic auth |
 | `OPENAI_COMPAT_API_KEY_FILE` | API portal | Optional incoming Bearer or `x-api-key` auth token file path |
 
 Secret values are stored as files and exposed only through `*_FILE` variables. Do not put raw API keys or principal secrets in `stack.env` or service-level `env_file` entries.
+
+The shipped Compose overlay exposes per-portal overrides through `API_OPENCODE_BASE_URL`, `API_PRINCIPAL_ID`, and `API_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed first-party wiring.

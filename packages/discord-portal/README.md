@@ -40,6 +40,7 @@ The service definition uses explicit non-secret environment entries and Docker s
 
 | Variable | Required | Purpose |
 |---|---|---|
+| `OPENCODE_BASE_URL` | no | OpenCode/guardian `/oc` base URL, default `http://guardian:8080/oc` |
 | `PRINCIPAL_ID` | system-managed | Guardian principal id used for Basic auth |
 | `PRINCIPAL_SECRET_FILE` | system-managed | Shared secret file path used for Basic auth |
 | `DISCORD_APPLICATION_ID` | yes for command registration | Discord application ID |
@@ -52,6 +53,8 @@ The service definition uses explicit non-secret environment entries and Docker s
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom command definitions |
 
 Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `DISCORD_BOT_TOKEN` for setup, but setup persists it under `knowledge/secrets/` and the runtime receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
+
+The shipped Compose overlay exposes per-portal overrides through `DISCORD_OPENCODE_BASE_URL`, `DISCORD_PRINCIPAL_ID`, and `DISCORD_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed first-party wiring.
 
 ## Conversation behavior
 
