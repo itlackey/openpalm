@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/server.ts",
+    "start:openai-api": "bun run src/openai-api-server.ts",
     "test": "bun test"
   },
   "dependencies": {

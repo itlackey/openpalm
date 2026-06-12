@@ -69,7 +69,7 @@ separately to produce a self-contained installer.
 | `openpalm/voice` (`-cpu`, `-cu121`) | Voice addon images | `platform-release.yml` | `workflow_dispatch` | Docker Hub | A (platform, additive — never blocks the release) |
 | CLI binaries (5 platforms) | Standalone `bun build --compile` binaries | `platform-release.yml` | `workflow_dispatch` | GitHub assets | A (platform) |
 | GitHub release | Release page + all assets + checksums | `platform-release.yml` | `workflow_dispatch` | GitHub release | A (platform) |
-| `@openpalm/api-portal` | API portal adapter | baked into `openpalm/portal` | n/a | Docker image only | A (platform) |
+| `guardian-api` | Guardian-hosted OpenAI-compatible API service | baked into `openpalm/guardian` | n/a | Docker image only | A (platform) |
 | `@openpalm/discord-portal` | Discord portal adapter | baked into `openpalm/portal` | n/a | Docker image only | A (platform) |
 | `@openpalm/slack-portal` | Slack portal adapter | baked into `openpalm/portal` | n/a | Docker image only | A (platform) |
 

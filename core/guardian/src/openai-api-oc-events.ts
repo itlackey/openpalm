@@ -4,16 +4,16 @@ export interface RawEvent {
 }
 
 export function asRaw(ev: unknown): RawEvent {
-  const e = ev as RawEvent;
+  const event = ev as RawEvent;
   return {
-    type: typeof e?.type === 'string' ? e.type : '',
-    properties: (e?.properties ?? {}) as Record<string, unknown>,
+    type: typeof event?.type === 'string' ? event.type : '',
+    properties: (event?.properties ?? {}) as Record<string, unknown>,
   };
 }
 
 function propStr(props: Record<string, unknown> | undefined, key: string): string | undefined {
-  const v = props?.[key];
-  return typeof v === 'string' ? v : undefined;
+  const value = props?.[key];
+  return typeof value === 'string' ? value : undefined;
 }
 
 export function partSnapshotType(e: RawEvent): { partID: string; type: string } | null {
@@ -61,38 +61,6 @@ export function isTurnEnd(e: RawEvent, sessionId: string): boolean {
   return false;
 }
 
-export interface ToolUpdate {
-  callID: string;
-  tool: string;
-  status: string;
-  title?: string;
-  error?: string;
-}
-
-export function extractToolUpdate(e: RawEvent, sessionId: string): ToolUpdate | null {
-  if (propStr(e.properties, 'sessionID') !== sessionId) return null;
-  const part = (e.properties?.part ?? e.properties?.tool) as Record<string, unknown> | undefined;
-  if (e.type === 'message.part.updated' && part && (part.type === 'tool' || part.state)) {
-    const state = (part.state ?? {}) as Record<string, unknown>;
-    return {
-      callID: String(part.callID ?? part.id ?? ''),
-      tool: String(part.tool ?? 'tool'),
-      status: String(state.status ?? 'running'),
-      title: typeof state.title === 'string' ? state.title : undefined,
-      error: typeof state.error === 'string' ? state.error : undefined,
-    };
-  }
-  if (e.type.startsWith('session.next.tool.')) {
-    return {
-      callID: propStr(e.properties, 'callID') ?? '',
-      tool: propStr(e.properties, 'tool') ?? 'tool',
-      status: e.type === 'session.next.tool.called' ? 'running' : (propStr(e.properties, 'status') ?? 'running'),
-      title: propStr(e.properties, 'title'),
-    };
-  }
-  return null;
-}
-
 export interface PermissionAsk {
   requestID: string;
   permission: string;
@@ -105,7 +73,7 @@ export function extractPermissionAsk(e: RawEvent, sessionId: string): Permission
   const id = propStr(e.properties, 'id');
   if (!id) return null;
   const patterns = Array.isArray(e.properties?.patterns)
-    ? (e.properties!.patterns as unknown[]).filter((p): p is string => typeof p === 'string')
+    ? (e.properties.patterns as unknown[]).filter((pattern): pattern is string => typeof pattern === 'string')
     : [];
   return { requestID: id, permission: propStr(e.properties, 'permission') ?? 'tool', patterns };
 }
@@ -135,17 +103,17 @@ export function extractQuestionAsk(e: RawEvent, sessionId: string): QuestionAsk 
   if (propStr(e.properties, 'sessionID') !== sessionId) return null;
   const id = propStr(e.properties, 'id');
   if (!id) return null;
-  const rawQuestions = Array.isArray(e.properties?.questions) ? (e.properties!.questions as unknown[]) : [];
+  const rawQuestions = Array.isArray(e.properties?.questions) ? (e.properties.questions as unknown[]) : [];
   const questions: QuestionInfo[] = [];
-  for (const q of rawQuestions) {
-    const qo = q as { question?: unknown; header?: unknown; options?: unknown };
-    const question = typeof qo.question === 'string' ? qo.question : '';
-    const header = typeof qo.header === 'string' ? qo.header : '';
-    const options: QuestionOption[] = Array.isArray(qo.options)
-      ? (qo.options as unknown[])
-          .map((o) => o as { label?: unknown; description?: unknown })
-          .filter((o) => typeof o.label === 'string')
-          .map((o) => ({ label: o.label as string, description: typeof o.description === 'string' ? o.description : '' }))
+  for (const rawQuestion of rawQuestions) {
+    const questionData = rawQuestion as { question?: unknown; header?: unknown; options?: unknown };
+    const question = typeof questionData.question === 'string' ? questionData.question : '';
+    const header = typeof questionData.header === 'string' ? questionData.header : '';
+    const options: QuestionOption[] = Array.isArray(questionData.options)
+      ? (questionData.options as unknown[])
+          .map((option) => option as { label?: unknown; description?: unknown })
+          .filter((option) => typeof option.label === 'string')
+          .map((option) => ({ label: option.label as string, description: typeof option.description === 'string' ? option.description : '' }))
       : [];
     questions.push({ question, header, options });
   }

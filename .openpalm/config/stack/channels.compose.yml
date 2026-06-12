@@ -4,28 +4,27 @@
 # by passing --profile manually.
 
 services:
-  api:
+  guardian-api:
     profiles: ["addon.chat", "addon.api"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     ports:
       - "${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182"
       - "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182"
     environment:
       PORT: "8182"
-      PORTAL_NAME: "API"
+      GUARDIAN_SERVICE_MODE: openai-api
+      GUARDIAN_URL: http://guardian:8080
       OPENCODE_BASE_URL: ${API_OPENCODE_BASE_URL:-http://guardian:8080/oc}
       PRINCIPAL_ID: ${API_PRINCIPAL_ID:-api}
       PRINCIPAL_SECRET_FILE: ${API_PRINCIPAL_SECRET_FILE:-/run/secrets/channel_api_secret}
-      CHANNEL_PACKAGE: "@openpalm/api-portal"
     secrets: [channel_api_secret]
     networks: [portal_net]
     depends_on:
       guardian:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8182' || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8182/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3

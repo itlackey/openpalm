@@ -19,7 +19,6 @@ describe('channel image bake contract', () => {
   test('docker image bakes the first-party adapters from the workspace', () => {
     const dockerfile = readRelative('core/channel/Dockerfile');
 
-    expect(dockerfile).toContain('COPY packages/api-portal /app/packages/api-portal');
     expect(dockerfile).toContain('COPY packages/discord-portal /app/packages/discord-portal');
     expect(dockerfile).toContain('COPY packages/slack-portal /app/packages/slack-portal');
     expect(dockerfile).toContain('COPY core/channel/channel-entrypoint.ts /app/channel-entrypoint.ts');
@@ -30,7 +29,6 @@ describe('channel image bake contract', () => {
     const compose = readRelative('.openpalm/config/stack/channels.compose.yml');
 
     expect(compose).not.toContain('@latest');
-    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/api-portal"');
     expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/discord-portal"');
     expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/slack-portal"');
   });

@@ -4,7 +4,6 @@
     "packages/lib/package.json",
     "core/guardian/package.json",
     "packages/cli/package.json",
-    "packages/api-portal/package.json",
     "packages/discord-portal/package.json",
     "packages/slack-portal/package.json",
     "packages/electron/package.json",
@@ -19,7 +18,6 @@
     "packages/lib/package.json",
     "core/guardian/package.json",
     "packages/cli/package.json",
-    "packages/api-portal/package.json",
     "packages/discord-portal/package.json",
     "packages/slack-portal/package.json",
     "packages/electron/package.json",
@@ -40,7 +38,6 @@
       "packages/ui/package.json"
     ],
     "channels": [
-       "packages/api-portal/package.json",
       "packages/discord-portal/package.json",
       "packages/slack-portal/package.json",
       "core/guardian/package.json"

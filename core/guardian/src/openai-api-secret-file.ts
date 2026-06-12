@@ -13,21 +13,16 @@ function stripTrailingNewline(value: string): string {
 
 export function readRequiredSecretFile(envKey: string, env: Record<string, string | undefined> = Bun.env): string {
   const path = env[envKey]?.trim();
-  if (!path) {
-    throw new SecretFileError(envKey, 'secret file env var is not set');
-  }
+  if (!path) throw new SecretFileError(envKey, 'secret file env var is not set');
 
-  let value: string;
+  let value = '';
   try {
     value = stripTrailingNewline(readFileSync(path, 'utf8'));
   } catch {
     throw new SecretFileError(envKey, 'secret file is unreadable');
   }
 
-  if (!value) {
-    throw new SecretFileError(envKey, 'secret file is empty');
-  }
-
+  if (!value) throw new SecretFileError(envKey, 'secret file is empty');
   return value;
 }
 

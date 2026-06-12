@@ -13,13 +13,6 @@
         "dotenv": "^17.4.2",
       },
     },
-    "packages/api-portal": {
-      "name": "@openpalm/api-portal",
-      "version": "0.12.0-rc.1",
-      "dependencies": {
-        "@opencode-ai/sdk": "1.15.13",
-      },
-    },
     "packages/cli": {
       "name": "openpalm",
       "version": "0.12.0-rc.1",
@@ -242,8 +235,6 @@
     "@opencode-ai/sdk": ["@opencode-ai/sdk@1.15.13", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-4TwojIoQ8EG6/mVBuUVYZXiFcwNmiiytEnjnvyuvSJjGwFIlw2YIBFxtSVC3FbwwbwHT63teh1RHiQUUC4U5xw=="],
 
     "@openpalm/admin-tools-plugin": ["@openpalm/admin-tools-plugin@workspace:packages/electron/admin-tools"],
-
-    "@openpalm/api-portal": ["@openpalm/api-portal@workspace:packages/api-portal"],
 
     "@openpalm/discord-portal": ["@openpalm/discord-portal@workspace:packages/discord-portal"],
 

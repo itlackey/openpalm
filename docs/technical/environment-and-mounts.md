@@ -207,14 +207,14 @@ Key env (host process, not container):
 
 | Addon | Host bind | Internal port | Network(s) | Notes |
 |---|---|---:|---|---|
-| `chat` | `${OP_CHAT_BIND_ADDRESS:-127.0.0.1}:${OP_CHAT_PORT:-3820}` | `8181` | `channel_lan` | Guardian-facing chat edge |
-| `api` | `${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}` | `8182` | `channel_lan` | OpenAI/Anthropic-compatible edge |
+| `chat` | `${OP_CHAT_BIND_ADDRESS:-127.0.0.1}:${OP_CHAT_PORT:-3820}` | `8182` | `portal_net` | Guardian image OpenAI-compatible edge (chat profile alias) |
+| `api` | `${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}` | `8182` | `portal_net` | Guardian image OpenAI/Anthropic-compatible edge |
 | `voice` | `${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}` | `8186` | `channel_lan` | Voice interface |
 | `discord` | none | service-specific | `channel_lan` | No host port exposure |
 | `slack` | none | service-specific | `channel_lan` | No host port exposure |
 | `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/data`, `user: ${OP_UID}:${OP_GID}`, `OLLAMA_MODELS=/data/models` |
 
-All addon and channel services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` to ensure bind-mounted files are owned by the host user. Shipped channel overlays depend on guardian and receive only their own HMAC secret file through Compose `secrets:` plus a matching `*_FILE` environment variable.
+Portal services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` where they write host mounts. The optional guardian-hosted OpenAI-compatible edge talks back to the main guardian over `/oc` using its own principal secret file.
 
 ---
 

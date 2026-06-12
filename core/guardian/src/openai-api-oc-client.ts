@@ -1,13 +1,11 @@
-import type { Event } from '@opencode-ai/sdk';
+type Event = Record<string, unknown>;
 
-const DEFAULT_OPENCODE_BASE_URL = 'http://guardian:8080/oc';
-
+const DEFAULT_GUARDIAN_OC_BASE_URL = `${Bun.env.GUARDIAN_URL ?? 'http://guardian:8080'}/oc`;
 const H_USER = 'x-openpalm-user';
 const H_SESSION_KEY = 'x-openpalm-session-key';
 
 export interface OcClientOptions {
   principalId: string;
-  channel?: string;
   secret: string;
   baseUrl?: string;
   fetch?: typeof fetch;
@@ -25,9 +23,9 @@ export class OcClient {
   private readonly fetchFn: typeof fetch;
 
   constructor(opts: OcClientOptions) {
-    this.principalId = opts.principalId ?? opts.channel ?? '';
+    this.principalId = opts.principalId;
     this.secret = opts.secret;
-    this.base = opts.baseUrl ?? Bun.env.OPENCODE_BASE_URL ?? DEFAULT_OPENCODE_BASE_URL;
+    this.base = opts.baseUrl ?? Bun.env.OPENCODE_BASE_URL ?? DEFAULT_GUARDIAN_OC_BASE_URL;
     this.fetchFn = opts.fetch ?? globalThis.fetch;
   }
 
@@ -40,7 +38,7 @@ export class OcClient {
       authorization: `Basic ${credentials}`,
     });
     if (body) headers.set('content-type', 'application/json');
-    if (extra) for (const [k, v] of Object.entries(extra)) headers.set(k, v);
+    if (extra) for (const [key, value] of Object.entries(extra)) headers.set(key, value);
     return headers;
   }
 
@@ -74,31 +72,13 @@ export class OcClient {
     return true;
   }
 
-  async replyQuestion(userId: string, requestID: string, answers: string[][]): Promise<boolean> {
-    const resp = await this.call('POST', `/question/${requestID}/reply`, userId, { answers });
-    if (!resp.ok) throw new Error(`replyQuestion failed: ${resp.status}`);
-    return true;
-  }
-
   async rejectQuestion(userId: string, requestID: string): Promise<void> {
     const resp = await this.call('POST', `/question/${requestID}/reject`, userId, {});
     if (!resp.ok) throw new Error(`rejectQuestion failed: ${resp.status}`);
   }
 
-  async abort(userId: string, sessionId: string): Promise<void> {
-    const resp = await this.call('POST', `/session/${sessionId}/abort`, userId, {});
-    if (!resp.ok) throw new Error(`abort failed: ${resp.status}`);
-  }
-
-  async deleteSession(userId: string, sessionId: string): Promise<void> {
-    await this.call('DELETE', `/session/${sessionId}`, userId);
-  }
-
   async *events(userId: string, signal: AbortSignal): AsyncGenerator<Event> {
-    const resp = await this.call('GET', '/event', userId, undefined, {
-      signal,
-      accept: 'text/event-stream',
-    });
+    const resp = await this.call('GET', '/event', userId, undefined, { signal, accept: 'text/event-stream' });
     if (!resp.ok || !resp.body) throw new Error(`events open failed: ${resp.status}`);
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -108,19 +88,18 @@ export class OcClient {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        let boundary: number;
-        while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
           const frame = buffer.slice(0, boundary);
           buffer = buffer.slice(boundary + 2);
           const data = extractSseData(frame);
-          if (data === null) continue;
-          let parsed: Event | null = null;
-          try {
-            parsed = JSON.parse(data) as Event;
-          } catch {
-            parsed = null;
+          if (data !== null) {
+            try {
+              yield JSON.parse(data) as Event;
+            } catch {
+            }
           }
-          if (parsed) yield parsed;
+          boundary = buffer.indexOf('\n\n');
         }
       }
     } finally {
@@ -139,9 +118,7 @@ export function createGatewayClient(baseUrl: string, principalId: string, secret
 function extractSseData(frame: string): string | null {
   const dataLines: string[] = [];
   for (const line of frame.split(/\r?\n/)) {
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(line.startsWith('data: ') ? 6 : 5));
-    }
+    if (line.startsWith('data:')) dataLines.push(line.slice(line.startsWith('data: ') ? 6 : 5));
   }
   return dataLines.length === 0 ? null : dataLines.join('\n');
 }

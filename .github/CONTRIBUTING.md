@@ -34,7 +34,7 @@ bun run ui:check   # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
 bun run cli:test         # packages/cli tests
-bun run channel:api:dev     # api channel dev server (also serves the chat addon when CHANNEL_ID=chat)
+bun run guardian:api:dev    # guardian OpenAI-compatible API server (also serves the chat addon profile)
 bun run channel:discord:dev # discord channel dev server
 bun run dev:setup        # seed .dev/ dirs and configs
 bun run dev:stack        # start dev stack (pull images)
@@ -109,7 +109,7 @@ bun run ui:test:e2e:mocked # UI Playwright mocked browser contract tests
 ```bash
 bun run ui:dev         # UI SvelteKit dev server (:8100)
 bun run guardian:dev         # Guardian Bun server
-bun run channel:api:dev      # API channel (CHANNEL_ID=chat reuses this image to serve the chat addon)
+bun run guardian:api:dev     # Guardian-hosted OpenAI-compatible API service
 bun run channel:discord:dev  # Discord channel
 ```
 
@@ -128,7 +128,7 @@ All scripts are defined in the root [`package.json`](../package.json):
 | `bun run ui:test:e2e:mocked` | Playwright mocked browser contracts |
 | `bun run guardian:dev` | Guardian server |
 | `bun run guardian:test` | Guardian tests |
-| `bun run channel:api:dev` | API channel dev server (also serves chat addon via `CHANNEL_ID=chat`) |
+| `bun run guardian:api:dev` | Guardian-hosted OpenAI-compatible API service |
 | `bun run channel:discord:dev` | Discord channel dev server |
 | `bun run cli:test` | CLI tests |
 | `bun run dev:setup` | Seed `.dev/` dirs and configs |

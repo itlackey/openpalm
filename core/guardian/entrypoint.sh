@@ -17,7 +17,7 @@ case "${GUARDIAN_CONTENT_VALIDATION:-0}" in
   1 | true | TRUE | yes | on) enabled=1 ;;
 esac
 
-if [[ "$enabled" == "1" ]]; then
+if [[ "$enabled" == "1" && "${GUARDIAN_SERVICE_MODE:-gateway}" == "gateway" ]]; then
   port="${GUARDIAN_MODERATION_PORT:-4097}"
   log_dir="${HOME:-/opt/openpalm/guardian}"
   echo "[guardian] starting OpenCode moderator on 127.0.0.1:${port}"
@@ -33,6 +33,10 @@ if [[ "$enabled" == "1" ]]; then
   OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-/etc/opencode}" \
     opencode serve --hostname 127.0.0.1 --port "${port}" \
     --print-logs --log-level INFO 2>&1 | sed -u 's/^/[moderator] /' >&2 &
+fi
+
+if [[ "${GUARDIAN_SERVICE_MODE:-gateway}" == "openai-api" ]]; then
+  exec bun run src/openai-api-server.ts
 fi
 
 exec bun run src/server.ts

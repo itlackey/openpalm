@@ -1,6 +1,6 @@
 # core/channel — Unified Portal Image
 
-A single Docker image used by every first-party portal adapter (`api`, `discord`,
+A single Docker image used by every first-party portal adapter (`discord`,
 `slack`). The image bakes the first-party adapter packages from the workspace at
 build time.
 
@@ -26,6 +26,9 @@ There is no runtime `bun add`, no adapter npm install at boot, and no separate
 
 Adapter-specific secrets follow the same `*_FILE` pattern, for example
 `DISCORD_BOT_TOKEN_FILE` or `SLACK_BOT_TOKEN_FILE`.
+
+OpenAI-compatible chat/completions endpoints are now served by the guardian image
+itself via the optional `guardian-api` service, not by the portal image.
 
 ## Example
 

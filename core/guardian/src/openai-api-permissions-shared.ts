@@ -3,7 +3,7 @@ export function parseIdList(raw: string | undefined): Set<string> {
   return new Set(
     raw
       .split(',')
-      .map((s) => s.trim())
+      .map((entry) => entry.trim())
       .filter(Boolean),
   );
 }

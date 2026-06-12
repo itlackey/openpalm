@@ -10,14 +10,12 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Build against a minimal workspace root so the baked adapters resolve as local workspaces.
-RUN mkdir -p /app/packages/api-portal /app/packages/discord-portal /app/packages/slack-portal
-COPY packages/api-portal/package.json /app/packages/api-portal/package.json
+RUN mkdir -p /app/packages/discord-portal /app/packages/slack-portal
 COPY packages/discord-portal/package.json /app/packages/discord-portal/package.json
 COPY packages/slack-portal/package.json /app/packages/slack-portal/package.json
-RUN printf '%s\n' '{' '  "name": "openpalm-channel-image",' '  "private": true,' '  "workspaces": [' '    "packages/api-portal",' '    "packages/discord-portal",' '    "packages/slack-portal"' '  ]' '}' > /app/package.json
+RUN printf '%s\n' '{' '  "name": "openpalm-channel-image",' '  "private": true,' '  "workspaces": [' '    "packages/discord-portal",' '    "packages/slack-portal"' '  ]' '}' > /app/package.json
 
 # Bake the first-party adapters into the image from the workspace.
-COPY packages/api-portal /app/packages/api-portal
 COPY packages/discord-portal /app/packages/discord-portal
 COPY packages/slack-portal /app/packages/slack-portal
 COPY core/channel/channel-entrypoint.ts /app/channel-entrypoint.ts

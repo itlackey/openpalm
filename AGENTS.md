@@ -59,7 +59,7 @@ bun run ui:dev     # Runs UI dev from root
 bun run ui:build   # Builds UI from root
 bun run ui:check   # svelte-check + TypeScript for UI
 bun run guardian:dev     # Runs guardian server
-bun run channel:api:dev     # Runs api channel dev server
+bun run guardian:api:dev    # Runs guardian OpenAI-compatible API server
 bun run channel:discord:dev # Runs discord channel dev server
 bun run channel:slack:dev   # Runs slack channel dev server
 bun run channel:voice:dev   # Runs voice channel dev server

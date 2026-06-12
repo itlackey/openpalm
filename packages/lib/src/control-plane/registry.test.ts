@@ -90,21 +90,19 @@ describe('addon runtime state', () => {
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
 
-    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', true)).toEqual({
-      ok: true,
-      enabled: true,
-      changed: true,
-      services: ['api'],
-    });
+    const enabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', true);
+    expect(enabled.ok).toBe(true);
+    expect(enabled.enabled).toBe(true);
+    expect(enabled.changed).toBe(true);
+    expect(enabled.services).toEqual(expect.arrayContaining(['guardian-api']));
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
     expect(readSecret(stackDir, 'channel_chat_secret')).toBeTruthy();
 
-    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false)).toEqual({
-      ok: true,
-      enabled: false,
-      changed: true,
-      services: ['api'],
-    });
+    const disabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false);
+    expect(disabled.ok).toBe(true);
+    expect(disabled.enabled).toBe(false);
+    expect(disabled.changed).toBe(true);
+    expect(disabled.services).toEqual(expect.arrayContaining(['guardian-api']));
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
   });
 
