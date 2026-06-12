@@ -106,26 +106,14 @@ docker version && docker compose version
 > uses the same logic as the scripts below; the scripts remain the manual /
 > no-CLI fallback.
 
-> **Shortcut — the helper script does steps 4–6 for you.** From a checkout (or
-> `curl` it from the release tag):
->
-> ```bash
-> # Linux / macOS
-> scripts/migrate-0.10-to-0.11.sh --dry-run   # preview, writes nothing
-> scripts/migrate-0.10-to-0.11.sh             # backs up first, then migrates
-> ```
->
-> ```powershell
-> # Windows (PowerShell 7+)
-> ./scripts/migrate-0.10-to-0.11.ps1 -DryRun
-> ./scripts/migrate-0.10-to-0.11.ps1
-> ```
->
-> It takes a full backup first, then **copies** (never deletes) your `vault/`
-> files into the new layout, transforms `stack.env`, splits channel secrets, and
-> sets `OP_ENABLED_ADDONS`/version keys in `stack.env`. It does **not** run `openpalm update` or
-> migrate provider credentials — do those manually (below + step 7). Prefer the
-> manual walkthrough if you want to understand each change.
+> **CLI path only:** use `openpalm migrate --dry-run` to preview and
+> `openpalm migrate` to apply. The built-in migration harness takes a full
+> backup first, then **copies** (never deletes) your `vault/` files into the
+> new layout, transforms `stack.env`, splits channel secrets, and sets
+> `OP_ENABLED_ADDONS`/version keys in `stack.env`. It does **not** run
+> `openpalm update` or migrate provider credentials — do those manually
+> (below + step 7). Prefer the manual walkthrough if you want to understand
+> each change.
 
 If you'd rather migrate by hand (or have no CLI), the mapping below is exactly
 what the automatic harness does. The cleanest manual approach mixes a file move

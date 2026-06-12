@@ -42,10 +42,10 @@ Three hard rules define the whole design:
 The web face of the harness. Started by `openpalm ui serve` as a host process — no container. Accesses Docker and `~/.openpalm/` directly on the host.
 
 Responsibilities:
-- Writes runtime configuration directly to `~/.openpalm/config/stack/` and `~/.openpalm/config/akm/`
+- Writes runtime configuration directly to `~/.openpalm/config/stack/`, `~/.openpalm/knowledge/env/stack.env`, and `~/.openpalm/config/akm/`
 - Runs `docker compose` for all lifecycle operations (install, update, up, down, restart)
 - Exposes an authenticated API used by the browser UI and the assistant
-- Manages first-party addon activation in `~/.openpalm/config/stack/stack.yml`, resolves enabled addons to Compose profiles, and supports custom services in `custom.compose.yml`
+- Manages first-party addon activation in `~/.openpalm/knowledge/env/stack.env` via `OP_ENABLED_ADDONS`, resolves enabled addons to Compose profiles, and supports custom services in `custom.compose.yml`
 - Writes the audit log
 
 ### Guardian (Bun server, port 8080)
@@ -147,10 +147,10 @@ Returns result
 openpalm install   ->   writes files into ~/.openpalm/
                               |
                               v
-                    Install seeds the base compose files and stack.yml
+                    Install seeds the base compose files and stack.env
                                |
                                v
-                    You / CLI enable addons in stack.yml:
+                    You / CLI enable addons via OP_ENABLED_ADDONS:
                         core.compose.yml (always)
                         + channels.compose.yml / services.compose.yml
                         + --profile addon.<name> per enabled addon
@@ -181,7 +181,6 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/config/stack/services.compose.yml -> first-party optional services
 ~/.openpalm/config/stack/channels.compose.yml -> first-party optional channels and guardian
 ~/.openpalm/config/stack/custom.compose.yml   -> custom services and overlays
-~/.openpalm/config/stack/stack.yml            -> first-party addon activation state
 ~/.openpalm/knowledge/env/stack.env            -> non-secret values passed via --env-file
 ~/.openpalm/knowledge/secrets/             -> system-managed Compose secret files
 ~/.openpalm/knowledge/env/user.env             -> user-managed secrets (akm env:user)
@@ -224,7 +223,7 @@ Anything not on the list is rejected with `400 invalid_service` or
 ## Adding a Channel (the whole process)
 
 **First-party channel (chat, api, discord, slack):**
-1. Add the addon name to `~/.openpalm/config/stack/stack.yml` through the CLI or admin UI.
+1. Add the addon name to `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` through the CLI or admin UI.
 2. OpenPalm resolves the name to a `--profile addon.<name>` argument against `channels.compose.yml`.
 3. Rerun the OpenPalm compose command (or use the admin UI restart action).
 4. If admin tooling is involved, it may also ensure/generate the channel HMAC secret first.

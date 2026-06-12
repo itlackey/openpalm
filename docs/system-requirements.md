@@ -127,5 +127,6 @@ unless you intentionally change bind addresses in `knowledge/env/stack.env`.
 ## Operational note
 
 The compose file set under `~/.openpalm/config/stack/` is the live deployment truth.
-`~/.openpalm/config/stack.yml` is optional metadata for tooling and does not
-change Docker's requirements on its own.
+OpenPalm derives first-party addon profiles from `OP_ENABLED_ADDONS` in
+`~/.openpalm/knowledge/env/stack.env`, but Docker itself still only sees the
+compose files and explicit `--profile` arguments.

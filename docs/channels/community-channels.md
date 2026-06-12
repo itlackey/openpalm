@@ -35,7 +35,7 @@ export default class MyChannel extends BaseChannel {
    }
    ```
 3. Write a custom runtime service in `~/.openpalm/config/stack/custom.compose.yml`, or add a first-party channel service to `channels.compose.yml`.
-4. For first-party channel services, add the addon name to `~/.openpalm/config/stack/stack.yml` through the CLI or admin UI.
+4. For first-party channel services, add the addon name to `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` through the CLI or admin UI.
 5. Rerun the OpenPalm compose command.
 
 Example overlay:

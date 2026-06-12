@@ -6,7 +6,7 @@ When in doubt, inspect the exact compose file set you started from
 `~/.openpalm/config/stack/` and rerun that same file set explicitly.
 
 > **Upgrading from 0.10.x?** Many post-upgrade issues (missing secrets, wrong UI
-> port, `stack.yml` errors) come from the changed file layout. See the
+> port, stale addon state, wrong env paths) come from the changed file layout. See the
 > [0.10.x → 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md).
 
 ---
@@ -100,7 +100,7 @@ docker compose \
   up -d
 ```
 
-The enabled addon names in `~/.openpalm/config/stack/stack.yml` are used by OpenPalm
+The enabled addon names in `OP_ENABLED_ADDONS` inside `~/.openpalm/knowledge/env/stack.env` are used by OpenPalm
 tooling to build the `--profile` arguments. Manual invocations must pass them
 explicitly.
 

@@ -15,6 +15,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  stack-hygiene:
+    name: Stack hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Gate legacy stack.yml readers
+        run: |
+          set -euo pipefail
+          matches=$(grep -RInE \
+            --exclude-dir=node_modules \
+            --exclude-dir=dist \
+            --exclude-dir=build \
+            --exclude-dir=.svelte-kit \
+            --include='*.ts' \
+            --include='*.js' \
+            --include='*.sh' \
+            --include='*.ps1' \
+            --include='*.yml' \
+            '["'"'"']stack\.yml["'"'"']' \
+            packages core scripts .openpalm/config/stack || true)
+
+          if [ -z "$matches" ]; then
+            echo "::error::Expected the legacy stack.yml migration reader in migrations.ts"
+            exit 1
+          fi
+
+          filtered=$(printf '%s\n' "$matches" \
+            | grep -v 'packages/lib/src/control-plane/migrations.ts:' \
+            | grep -vE '\.test\.ts:|\.vitest\.ts:|scripts/migrate-0\.10-to-0\.11\.(sh|ps1):' || true)
+          if [ -n "$filtered" ]; then
+            echo "::error::Legacy stack.yml references are only allowed in migrations.ts"
+            printf '%s\n' "$filtered"
+            exit 1
+          fi
+
+          echo "Only migrations.ts references legacy stack.yml."
+
+      - name: Gate host bind safety defaults
+        run: |
+          set -euo pipefail
+          published=$(grep -nE '^[[:space:]]+- ".*\$\{OP_[A-Z0-9_]+PORT.*:[0-9]+"' .openpalm/config/stack/*.yml || true)
+
+          if [ -z "$published" ]; then
+            echo "::error::No published port bindings found to validate"
+            exit 1
+          fi
+
+          violations=$(printf '%s\n' "$published" | grep -vE '127\.0\.0\.1:|:-127\.0\.0\.1\}|:-\$\{OP_BIND_ADDRESS:-127\.0\.0\.1\}' || true)
+          if [ -n "$violations" ]; then
+            echo "::error::Host port bindings must keep a loopback literal or an innermost :-127.0.0.1 default"
+            printf '%s\n' "$violations"
+            exit 1
+          fi
+
+          echo "All published host binds keep the required loopback defaults."
+
   quality-gates:
     name: Quality gates
     runs-on: ubuntu-latest
@@ -111,6 +171,12 @@ jobs:
             echo "::error file=.openpalm/stack/start.sh::.openpalm/stack/start.sh must not exist — deleted in P1-5 cleanup"
             exit 1
           fi
+          for path in scripts/migrate-0.10-to-0.11.sh scripts/migrate-0.10-to-0.11.ps1; do
+            if [ -f "$path" ]; then
+              echo "::error file=$path::$path must not exist — use 'openpalm migrate' instead"
+              exit 1
+            fi
+          done
           echo "Deleted script assertion passed"
 
       - name: Validate shipped addon catalog and automations

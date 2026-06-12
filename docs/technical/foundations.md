@@ -23,7 +23,7 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ```text
 ~/.openpalm/
 ├── config/          user-editable config (assistant/, akm/, guardian/)
-│   └── stack/       live compose assembly (core.compose.yml, stack.yml, addons/) — no secrets, no env
+│   └── stack/       live compose assembly (core.compose.yml, services.compose.yml, channels.compose.yml, custom.compose.yml) — no secrets, no env
 ├── knowledge/           AKM knowledge base (env/, secrets/, tasks/, skills/)
 │   ├── env/         user.env (env:user) + stack.env (env:stack, Compose --env-file)
 │   └── secrets/     system-managed service secrets + auth.json (akm secret — Compose grants)
@@ -305,7 +305,7 @@ Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata
 - `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
 - `openpalm.healthcheck` (optional) — internal health check URL
 
-The admin UI reads first-party addon metadata from the fixed compose files under `config/stack/` and active first-party state from `config/stack/stack.yml`; runtime Compose uses those fixed files plus profiles derived from addon state, not Docker labels alone.
+The admin UI reads first-party addon metadata from the fixed compose files under `config/stack/` and active first-party state from `knowledge/env/stack.env` (`OP_ENABLED_ADDONS`); runtime Compose uses those fixed files plus profiles derived from addon state, not Docker labels alone.
 
 ---
 

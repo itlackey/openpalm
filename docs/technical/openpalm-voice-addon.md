@@ -5,7 +5,7 @@
 > as written. In particular, `data/registry/`, `enabled-addons.json`, and the
 > `setAddonEnabled` flow referencing those paths do not exist in the current
 > codebase. The shipped voice addon uses Compose profiles (`--profile addon.voice`)
-> and `stack.yml` addon state instead of a registry catalog.
+> and `OP_ENABLED_ADDONS` in `knowledge/env/stack.env` instead of a registry catalog.
 > Authoritative rules in [`core-principles.md`](./core-principles.md) take
 > precedence over anything here.
 

@@ -22,7 +22,7 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | Host path | Purpose |
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
-| `~/.openpalm/config/stack/` | Live compose assembly; non-secret runtime env (`stack.env`), `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, `custom.compose.yml`, `stack.yml` |
+| `~/.openpalm/config/stack/` | Live compose assembly; `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and `custom.compose.yml` |
 | `~/.openpalm/knowledge/` | AKM knowledge base (user-managed: `env/`, `secrets/`, `tasks/`) |
 | `~/.openpalm/knowledge/env/` | User-managed env config (`user.env`, AKM env backing store) |
 | `~/.openpalm/knowledge/secrets/` | System-managed file secrets (akm secret — Compose grants) |

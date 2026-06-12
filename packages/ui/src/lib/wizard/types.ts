@@ -140,9 +140,8 @@ export interface VoiceEngineField {
 export interface VoiceEngineConfig {
   /** Engine identifier matching TTS_OPTIONS / STT_OPTIONS. */
   id: string;
-  /** The provider name used at the stack-yml level (`tts.provider`). */
+  /** Stable provider/runtime identifier used for default URL selection. */
   provider?: string;
   /** Fields the operator can configure for this engine. */
   fields: VoiceEngineField[];
 }
-

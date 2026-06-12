@@ -40,17 +40,17 @@ OpenPalm uses one home directory: `~/.openpalm/` by default.
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/config/stack/` | Live compose files and system-managed env |
+| `~/.openpalm/config/stack/` | Live compose files |
 | `~/.openpalm/knowledge/tasks/` | Available automation task files |
-| `~/.openpalm/knowledge/env/stack.env` | System-managed stack values and tokens |
+| `~/.openpalm/knowledge/env/stack.env` | System-managed non-secret stack values |
 | `~/.openpalm/knowledge/env/user.env` | Optional user-managed extension settings |
 | `~/.openpalm/config/` | User-editable config and assistant extensions |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/data/logs/` | Logs and audit output |
 
-`~/.openpalm/config/stack/stack.yml` stores the stack schema marker and enabled
-first-party addon names. Docker Compose deployment still comes from the fixed
-compose files and profiles derived by OpenPalm tooling.
+First-party addon activation lives in `OP_ENABLED_ADDONS` inside
+`~/.openpalm/knowledge/env/stack.env`. Docker Compose deployment still comes
+from the fixed compose files and profiles derived by OpenPalm tooling.
 
 ---
 
@@ -90,7 +90,7 @@ preferences and addon-specific values.
 
 First-party addons are defined in `services.compose.yml` and `channels.compose.yml`
 under `~/.openpalm/config/stack/`. They become active when their names are recorded
-in `~/.openpalm/config/stack/stack.yml`; OpenPalm converts those names to Compose
+in `OP_ENABLED_ADDONS` inside `~/.openpalm/knowledge/env/stack.env`; OpenPalm converts those names to Compose
 `--profile` arguments at launch time. Custom services and overlays go in
 `custom.compose.yml`.
 

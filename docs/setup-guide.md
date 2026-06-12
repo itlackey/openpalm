@@ -86,7 +86,7 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 - `~/.openpalm/config/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/config/stack/core.compose.yml`.
-- First-party addons are defined in `services.compose.yml` and `channels.compose.yml`, then enabled by name in `~/.openpalm/config/stack/stack.yml`.
+- First-party addons are defined in `services.compose.yml` and `channels.compose.yml`, then enabled by name through `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env`.
 - Custom services and overlays live in `~/.openpalm/config/stack/custom.compose.yml`.
 - OpenPalm resolves enabled addon names to Compose profiles; the fixed compose files remain deployment truth.
 
@@ -115,7 +115,7 @@ op logs -f      # follow all logs
 
 Repo setup scripts can still help bootstrap files on a fresh machine, but they should be understood as convenience tooling that prepares the same `~/.openpalm/` layout. They do not replace the compose-first model.
 
-If you use helper tooling that reads `config/stack/stack.yml`, treat that file as OpenPalm addon state - not as a Compose file.
+If you use helper tooling around addon activation, treat `OP_ENABLED_ADDONS` in `knowledge/env/stack.env` as the live OpenPalm addon state - not any extra Compose file.
 
 ---
 
@@ -160,9 +160,9 @@ docker info
 
 Re-check the exact compose file list in your command. Docker Compose only deploys the files you pass.
 
-### `config/stack/stack.yml` had no effect
+### `OP_ENABLED_ADDONS` had no effect
 
-That file is OpenPalm addon state. Regenerate or rerun the OpenPalm compose command so the selected addon names become `--profile` arguments.
+`OP_ENABLED_ADDONS` is OpenPalm addon state. Regenerate or rerun the OpenPalm compose command so the selected addon names become `--profile` arguments.
 
 ### An addon fails to start
 

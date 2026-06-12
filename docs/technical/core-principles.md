@@ -87,19 +87,16 @@ Subtrees:
 ### 1b) Stack (system-managed runtime assembly)
 
 **Location:** `~/.openpalm/config/stack/`
-**Purpose:** live Docker Compose assembly and stack configuration used to run the stack.
+**Purpose:** live Docker Compose assembly used to run the stack.
 
 Subtrees:
 
-- `stack.yml` — stack schema marker and enabled first-party addon names (`version: 2`, optional `addons: []`)
-- `stack.env` — system-managed non-secret environment variables written by CLI/admin (paths, ports, image tags, hardware profile selections, feature flags)
-- `auth.json` — OpenCode provider credentials (API keys / OAuth tokens), mode 0600. The single shared credential store, bind-mounted into the assistant (read-write) and the guardian (read-only) so both OpenCode runtimes use the same providers.
 - `core.compose.yml` — base compose definition for core assistant runtime services
 - `services.compose.yml` — system-managed first-party optional services, profile-gated
 - `channels.compose.yml` — system-managed first-party optional channels, profile-gated
 - `custom.compose.yml` — user-editable custom services and overlays, seeded once and never overwritten automatically
 
-First-party optional services are enabled by adding their addon names to `stack.yml`; OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit manual `--profile` arguments remain valid for ad hoc Docker Compose use. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
+First-party optional services are enabled by updating `OP_ENABLED_ADDONS` in `knowledge/env/stack.env`; OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit manual `--profile` arguments remain valid for ad hoc Docker Compose use. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
 
 ### 2) Knowledge / Vaults (user-managed secrets and knowledge)
 
@@ -111,7 +108,7 @@ Subtrees:
 - `env/user.env` — AKM env backing file for user-managed secrets. It is not a Compose `--env-file`; secrets are accessible inside the assistant container via `akm env:user`.
 - `tasks/` — AKM YAML task files for scheduled automations. AKM owns task enablement state.
 
-System-managed runtime files live in `config/stack/`:
+System-managed runtime configuration and secrets live under `knowledge/`:
 - `knowledge/env/stack.env` — system-managed non-secret configuration: paths, ports, image tags, profiles, and feature flags. Written by CLI/admin. Advanced users may edit directly with understanding of the compose substitution model.
 - `knowledge/secrets/` — system-managed file secrets. Compose grants each service only the files it needs; containers receive secret paths through `*_FILE` variables.
 
@@ -182,7 +179,7 @@ The stack is defined by combining the fixed Compose file set with Compose's nati
 To guarantee lifecycle operations never clobber user configuration:
 
 - **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits, CLI/admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested.
-- **`config/stack/` is the live runtime assembly and system-managed configuration.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and non-secret `stack.env`. `custom.compose.yml` is seeded once and user edits always win.
+- **`config/stack/` is the live runtime assembly.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, and `channels.compose.yml`. `custom.compose.yml` is seeded once and user edits always win. Non-secret runtime configuration lives in `knowledge/env/stack.env`.
 - **`knowledge/env/` has strict access rules.** The assistant accesses user secrets via `akm env:user` from its `/stash` stash mount. There is no separate `/etc/vault/` mount. No container mounts `knowledge/env/` directly. Lifecycle operations never overwrite `knowledge/env/user.env`; they may update non-secret `knowledge/env/stack.env` and system-managed secret files in `knowledge/secrets/`.
 - **`data/` is service-writable within ownership boundaries.** Each container owns its designated data subdirectories. No container may access another service's data directories. Stack-wide data operations require the admin API.
 - **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies (in `/tmp/openpalm`) before writing to live paths (`$OP_HOME/config/stack`). A snapshot of the current stack configuration is saved to `$OP_HOME/data/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored. See § Rollback scope below for what is included in the snapshot.
@@ -265,7 +262,7 @@ When a channel addon is installed, the following secret distribution flow occurs
 
 Secret grants are intentionally narrow: assistant services may receive assistant/provider/user secret files, guardian may receive guardian and channel verification secret files, channel services may receive only their own channel secret files, and admin host processes read required secrets directly from the host filesystem. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths.
 
-Both sides must have the same secret value. Rotating a channel secret requires updating both the guardian's secret store and the channel's env, then restarting the channel (guardian picks up the change via hot-reload if using `GUARDIAN_SECRETS_PATH`).
+Both sides must have the same secret value. Rotating a channel secret requires updating both secret files, then recreating the guardian and affected channel services so both read the new value.
 
 ---
 
@@ -291,7 +288,7 @@ On health check failure after deploy, the snapshot is automatically restored and
 
 ## Operational behavior
 
-- **Add an addon:** enable its name in `~/.openpalm/config/stack/stack.yml` (for first-party addons) or add a service block to `custom.compose.yml` (for custom services), then rerun the compose command with the appropriate `--profile addon.<name>` arguments. ([Docker Documentation][3])
+- **Add an addon:** update `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` (for first-party addons) or add a service block to `custom.compose.yml` (for custom services), then rerun the compose command with the appropriate `--profile addon.<name>` arguments. ([Docker Documentation][3])
 - **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode's directory structure. ([OpenCode][1])
 - **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
 - **Apply changes:** the CLI or admin validates proposed changes (compose config and secret-audit rules) before writing anything. If validation passes, a snapshot of current live files is saved to `$OP_HOME/data/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution for non-secret values. Compose is normally invoked with non-secret `knowledge/env/stack.env`; service secrets live under `knowledge/secrets/` and are granted via Compose `secrets:`. `knowledge/env/user.env` is not a Compose env-file. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` user files and `knowledge/env/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `config/stack/`.

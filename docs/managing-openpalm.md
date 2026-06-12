@@ -23,7 +23,7 @@ Keep this split in mind:
 - `~/.openpalm/config/stack/services.compose.yml` contains first-party optional services
 - `~/.openpalm/config/stack/channels.compose.yml` contains first-party optional channels and the channel-scoped guardian
 - `~/.openpalm/config/stack/custom.compose.yml` contains user custom services and overlays
-- `~/.openpalm/config/stack/stack.yml` contains the stack schema marker and enabled first-party addon names
+- `~/.openpalm/knowledge/env/stack.env` contains non-secret runtime config, including `OP_ENABLED_ADDONS`
 - `~/.openpalm/knowledge/tasks/` contains AKM automation task files
 
 ---
@@ -38,7 +38,6 @@ Keep this split in mind:
 │   │   ├── services.compose.yml      # First-party optional services, profile-gated
 │   │   ├── channels.compose.yml      # First-party optional channels, profile-gated
 │   │   ├── custom.compose.yml        # User custom services and overlays
-│   │   └── stack.yml                 # Version marker + enabled addons
 │   ├── assistant/
 │   │   ├── opencode.json             # OpenCode config (LLM provider, settings)
 │   │   ├── tools/                    # Drop custom tools here
@@ -101,7 +100,7 @@ via the AKM tab in the admin UI -- no manual file editing required.
 
 An addon has two states:
 - available as a built-in service in `services.compose.yml` or `channels.compose.yml`
-- enabled at runtime in `~/.openpalm/config/stack/stack.yml`
+- enabled at runtime via `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env`
 
 OpenPalm resolves enabled first-party addon names to Compose profiles. Custom or multi-instance services belong in `config/stack/custom.compose.yml`.
 
@@ -128,14 +127,14 @@ curl -b cookies.txt -X POST http://localhost:3880/admin/addons/chat \
   -d '{"enabled":true}'
 ```
 
-This records the addon name in `config/stack/stack.yml`; runtime Compose uses the fixed compose files plus the derived profiles.
+This updates `OP_ENABLED_ADDONS` in `knowledge/env/stack.env`; runtime Compose uses the fixed compose files plus the derived profiles.
 
 ### Configure an addon
 
 - Put secret values in `~/.openpalm/knowledge/secrets/` and non-secret settings in `~/.openpalm/knowledge/env/stack.env`
 - Rerun your compose command or restart affected services
 
-Addon config is schema-driven and file-based. There is no addon config block in `stack.yml`.
+Addon config is schema-driven and file-based. There is no addon config block separate from Compose plus `stack.env`.
 
 ### Add an addon manually
 

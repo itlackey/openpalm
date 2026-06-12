@@ -914,9 +914,8 @@ Error responses:
 
 ### `POST /admin/opencode/model`
 
-Update the active model. Persists to `stack.yml` and attempts live-apply
-via OpenCode's config API. If live-apply fails, the model is still persisted
-and a container restart will pick it up.
+Update the active model. Persists to the assistant OpenCode config and attempts
+live-apply via OpenCode's config API.
 
 Auth: `requireAdmin`
 
@@ -941,7 +940,7 @@ Response (persisted only):
 Error responses:
 
 - `400 bad_request` -- `model` is missing or empty.
-- `500 internal_error` -- `stack.yml` not found or write failed.
+- `500 internal_error` -- persisting the OpenCode model selection failed.
 
 ### `GET /admin/opencode/providers`
 
