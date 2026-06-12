@@ -23,12 +23,8 @@ import {
   existsSync, mkdirSync, readFileSync, writeFileSync,
   readdirSync, statSync, chmodSync, cpSync, copyFileSync,
 } from "node:fs";
-import libPkg from '../../package.json' with { type: 'json' };
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
-import {
-  resolveOpenPalmHome, resolveDataDir, resolveStackDir, resolveStashDir, resolveConfigDir,
-} from "./home.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { backupOpenPalmHome, timestampDirName } from "./backup.js";
 import { upsertEnvValue } from "./env.js";
@@ -100,7 +96,16 @@ export interface ReleaseMigrationReport {
 }
 
 const RELEASE_VERSION_KEY = 'OP_RELEASE_VERSION';
-const CURRENT_RELEASE_VERSION = `v${libPkg.version}`;
+
+function resolveMigrationPaths(homeDir: string): Pick<MigrationCtx, 'homeDir' | 'dataDir' | 'stackDir' | 'stashDir' | 'configDir'> {
+  return {
+    homeDir,
+    dataDir: join(homeDir, 'data'),
+    stackDir: join(homeDir, 'config', 'stack'),
+    stashDir: join(homeDir, 'knowledge'),
+    configDir: join(homeDir, 'config'),
+  };
+}
 
 function selectPendingReleaseMigrations(
   releaseFrom: string | null,
@@ -124,6 +129,18 @@ function stackEnvFile(stashDir: string): string {
   return join(stashDir, "env", "stack.env");
 }
 
+function readStackEnvValue(stashDir: string, key: string): string | null {
+  const envPath = stackEnvFile(stashDir);
+  if (!existsSync(envPath)) return null;
+
+  for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
+    const match = line.match(new RegExp(`^${key}=(.+)\\s*$`));
+    if (match) return match[1].trim();
+  }
+
+  return null;
+}
+
 /**
  * Resolve the current on-disk layout version.
  *   - explicit OP_LAYOUT_VERSION in knowledge/env/stack.env wins
@@ -142,34 +159,42 @@ function readLayoutVersion(ctx: { homeDir: string; stashDir: string }): number {
   return CURRENT_LAYOUT_VERSION;
 }
 
-function stampLayoutVersion(stashDir: string, version: number): void {
+function readStampedLayoutVersion(stashDir: string): number | null {
+  const raw = readStackEnvValue(stashDir, LAYOUT_VERSION_KEY);
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+function stampLayoutVersion(stashDir: string, version: number): boolean {
   const envPath = stackEnvFile(stashDir);
-  if (!existsSync(envPath)) return; // nothing to stamp; not a usable install
-  const next = upsertEnvValue(readFileSync(envPath, "utf-8"), LAYOUT_VERSION_KEY, String(version));
+  if (!existsSync(envPath)) return false; // nothing to stamp; not a usable install
+  const current = readFileSync(envPath, 'utf-8');
+  const next = upsertEnvValue(current, LAYOUT_VERSION_KEY, String(version));
+  if (next === current) return false;
   writeFileSync(envPath, next);
+  return true;
 }
 
 function readReleaseVersion(stashDir: string): string | null {
-  const envPath = stackEnvFile(stashDir);
-  if (!existsSync(envPath)) return null;
-
-  let imageTagFallback: string | null = null;
-  for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
-    const releaseMatch = line.match(/^OP_RELEASE_VERSION=(.+)\s*$/);
-    if (releaseMatch) return releaseMatch[1].trim();
-
-    const imageTagMatch = line.match(/^OP_IMAGE_TAG=(.+)\s*$/);
-    if (imageTagMatch && !imageTagFallback) imageTagFallback = imageTagMatch[1].trim();
-  }
-
-  return imageTagFallback;
+  return readStampedReleaseVersion(stashDir) ?? readImageTag(stashDir);
 }
 
-function stampReleaseVersion(stashDir: string, version: string): void {
+function readStampedReleaseVersion(stashDir: string): string | null {
+  return readStackEnvValue(stashDir, RELEASE_VERSION_KEY);
+}
+
+function readImageTag(stashDir: string): string | null {
+  return readStackEnvValue(stashDir, 'OP_IMAGE_TAG');
+}
+
+function stampReleaseVersion(stashDir: string, version: string): boolean {
   const envPath = stackEnvFile(stashDir);
-  if (!existsSync(envPath)) return;
-  const next = upsertEnvValue(readFileSync(envPath, 'utf-8'), RELEASE_VERSION_KEY, version);
+  if (!existsSync(envPath)) return false;
+  const current = readFileSync(envPath, 'utf-8');
+  const next = upsertEnvValue(current, RELEASE_VERSION_KEY, version);
+  if (next === current) return false;
   writeFileSync(envPath, next);
+  return true;
 }
 
 function upsertMany(content: string, values: Record<string, string>): string {
@@ -448,29 +473,69 @@ const RECOVERY_GUIDANCE =
   "the standalone migrator with --dry-run (scripts/migrate-0.10-to-0.11.sh / .ps1). " +
   "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
 
+function resolveComparableReleaseTarget(rawVersion: string | null): string | null {
+  if (!rawVersion) return null;
+  return isComparableSemver(rawVersion) ? rawVersion : null;
+}
+
+function logSkippedNonComparableReleaseStamp(
+  log: (m: string) => void,
+  notes: string[],
+  requestedVersion: string,
+): void {
+  const note = `Skipped OP_RELEASE_VERSION stamp for non-comparable deployed tag \"${requestedVersion}\".`;
+  log(JSON.stringify({ event: 'release-version-stamp-skipped', requestedVersion, reason: 'non-comparable-tag' }));
+  notes.push(note);
+}
+
+function runReleaseMigrations(
+  ctxBase: MigrationCtx,
+  releaseFrom: string | null,
+  targetVersion: string | null,
+): { applied: string[] } {
+  const comparableTarget = resolveComparableReleaseTarget(targetVersion);
+  if (!comparableTarget) return { applied: [] };
+
+  const applied: string[] = [];
+  for (const migration of selectPendingReleaseMigrations(releaseFrom, comparableTarget)) {
+    const ctx: MigrationCtx = { ...ctxBase, notes: ctxBase.notes };
+    ctx.log(`Migrating release ${releaseFrom ?? 'unknown'} → ${migration.version}: ${migration.describe}`);
+    migration.apply(ctx);
+    migration.verify(ctx);
+    applied.push(migration.version);
+  }
+
+  return { applied };
+}
+
 /**
  * Ensure the home directory is migrated to the current layout. Safe to call at
  * the top of any upgrade/install entry point. Resolves its own paths (must run
  * before createState, which assumes the current layout).
  */
 export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?: (m: string) => void } = {}): MigrationReport {
-  const homeDir = opts.homeDir ?? resolveOpenPalmHome();
+  const homeDir = opts.homeDir
+    ? resolvePath(opts.homeDir)
+    : process.env.OP_HOME
+      ? resolvePath(process.env.OP_HOME)
+      : resolvePath(process.env.HOME ?? '', '.openpalm');
   const dryRun = opts.dryRun ?? false;
   const log = opts.log ?? (() => {});
-  const stashDir = resolveStashDir();
   const ctxBase = {
-    homeDir,
-    dataDir: resolveDataDir(),
-    stackDir: resolveStackDir(),
-    stashDir,
-    configDir: resolveConfigDir(),
+    ...resolveMigrationPaths(homeDir),
     dryRun,
     log,
     notes: [] as string[],
   };
 
   const from = readLayoutVersion(ctxBase);
-  const releaseFrom = readReleaseVersion(stashDir);
+  const releaseFrom = readReleaseVersion(ctxBase.stashDir);
+  const releaseStamp = readStampedReleaseVersion(ctxBase.stashDir);
+  const layoutStamp = readStampedLayoutVersion(ctxBase.stashDir);
+  const releaseTargetRaw = releaseStamp ?? readImageTag(ctxBase.stashDir);
+  const comparableReleaseTarget = resolveComparableReleaseTarget(releaseTargetRaw);
+  const needsLayoutStamp = layoutStamp !== CURRENT_LAYOUT_VERSION;
+  const needsReleaseStamp = comparableReleaseTarget !== null && releaseStamp !== comparableReleaseTarget;
   const empty: MigrationReport = {
     migrated: false,
     from,
@@ -479,7 +544,7 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
     backupDir: null,
     notes: [],
     releaseFrom,
-    releaseTo: CURRENT_RELEASE_VERSION,
+    releaseTo: comparableReleaseTarget ?? releaseFrom ?? '',
     releaseApplied: [],
   };
 
@@ -489,12 +554,8 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
   const pending = MIGRATIONS
     .filter((m) => m.from >= from && m.from < CURRENT_LAYOUT_VERSION)
     .sort((a, b) => a.from - b.from);
-  const pendingRelease = selectPendingReleaseMigrations(releaseFrom, CURRENT_RELEASE_VERSION);
-  if (pending.length === 0 && pendingRelease.length === 0) {
-    if (!dryRun) {
-      stampLayoutVersion(stashDir, CURRENT_LAYOUT_VERSION);
-      stampReleaseVersion(stashDir, CURRENT_RELEASE_VERSION);
-    }
+  const pendingRelease = comparableReleaseTarget ? selectPendingReleaseMigrations(releaseFrom, comparableReleaseTarget) : [];
+  if (pending.length === 0 && pendingRelease.length === 0 && !needsLayoutStamp && !needsReleaseStamp) {
     return { ...empty, to: CURRENT_LAYOUT_VERSION };
   }
 
@@ -526,7 +587,6 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
     }
 
     const applied: string[] = [];
-    const releaseApplied: string[] = [];
     const notes: string[] = [];
     for (const m of pending) {
       const ctx: MigrationCtx = { ...ctxBase, notes };
@@ -536,18 +596,18 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
       applied.push(`${m.from}->${m.to}`);
     }
 
-    for (const migration of pendingRelease) {
-      const ctx: MigrationCtx = { ...ctxBase, notes };
-      log(`Migrating release ${releaseFrom ?? 'unknown'} → ${migration.version}: ${migration.describe}`);
-      migration.apply(ctx);
-      migration.verify(ctx);
-      releaseApplied.push(migration.version);
+    const { applied: releaseApplied } = runReleaseMigrations({ ...ctxBase, notes }, releaseFrom, releaseTargetRaw);
+
+    if (!dryRun && releaseTargetRaw && comparableReleaseTarget === null) {
+      logSkippedNonComparableReleaseStamp(log, notes, releaseTargetRaw);
     }
 
     // Commit point: bump the version markers LAST.
     if (!dryRun) {
-      stampLayoutVersion(stashDir, CURRENT_LAYOUT_VERSION);
-      stampReleaseVersion(stashDir, CURRENT_RELEASE_VERSION);
+      stampLayoutVersion(ctxBase.stashDir, CURRENT_LAYOUT_VERSION);
+      if (comparableReleaseTarget) {
+        stampReleaseVersion(ctxBase.stashDir, comparableReleaseTarget);
+      }
     }
 
     return {
@@ -558,7 +618,7 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
       backupDir,
       notes,
       releaseFrom,
-      releaseTo: CURRENT_RELEASE_VERSION,
+      releaseTo: comparableReleaseTarget ?? releaseFrom ?? '',
       releaseApplied,
     };
   } catch (e) {
@@ -576,13 +636,19 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
 export function ensureReleaseMigrated(
   opts: { homeDir?: string; targetVersion: string; dryRun?: boolean; log?: (m: string) => void },
 ): ReleaseMigrationReport {
-  const homeDir = opts.homeDir ?? resolveOpenPalmHome();
+  const homeDir = opts.homeDir
+    ? resolvePath(opts.homeDir)
+    : process.env.OP_HOME
+      ? resolvePath(process.env.OP_HOME)
+      : resolvePath(process.env.HOME ?? '', '.openpalm');
   const dryRun = opts.dryRun ?? false;
   const log = opts.log ?? (() => {});
-  const stashDir = resolveStashDir();
+  const paths = resolveMigrationPaths(homeDir);
   const targetVersion = opts.targetVersion.trim();
-  const releaseFrom = readReleaseVersion(stashDir);
-  const pendingRelease = selectPendingReleaseMigrations(releaseFrom, targetVersion);
+  const comparableTarget = resolveComparableReleaseTarget(targetVersion);
+  const releaseFrom = readReleaseVersion(paths.stashDir);
+  const releaseStamp = readStampedReleaseVersion(paths.stashDir);
+  const pendingRelease = comparableTarget ? selectPendingReleaseMigrations(releaseFrom, comparableTarget) : [];
   const empty: ReleaseMigrationReport = {
     migrated: false,
     from: releaseFrom,
@@ -592,17 +658,20 @@ export function ensureReleaseMigrated(
     notes: [],
   };
 
-  if (pendingRelease.length === 0) {
-    if (!dryRun && releaseFrom !== targetVersion) stampReleaseVersion(stashDir, targetVersion);
+  if (comparableTarget === null) {
+    const notes: string[] = [];
+    if (!dryRun) {
+      logSkippedNonComparableReleaseStamp(log, notes, targetVersion);
+    }
+    return { ...empty, notes };
+  }
+
+  if (pendingRelease.length === 0 && releaseStamp === comparableTarget) {
     return empty;
   }
 
-  const ctxBase = {
-    homeDir,
-    dataDir: resolveDataDir(),
-    stackDir: resolveStackDir(),
-    stashDir,
-    configDir: resolveConfigDir(),
+  const ctxBase: MigrationCtx = {
+    ...paths,
     dryRun,
     log,
     notes: [] as string[],
@@ -624,7 +693,7 @@ export function ensureReleaseMigrated(
       // Release migrations only edit knowledge/env/stack.env, so back up just
       // that file — a full OP_HOME copy (data/ can be gigabytes) is the layout
       // migration's job, not warranted for an env-file append.
-      const envPath = stackEnvFile(stashDir);
+      const envPath = stackEnvFile(paths.stashDir);
       if (existsSync(envPath)) {
         log('Backing up stack.env before migrating…');
         try {
@@ -638,17 +707,12 @@ export function ensureReleaseMigrated(
       }
     }
 
-    const applied: string[] = [];
     const notes: string[] = [];
-    for (const migration of pendingRelease) {
-      const ctx: MigrationCtx = { ...ctxBase, notes };
-      log(`Migrating release ${releaseFrom ?? 'unknown'} → ${migration.version}: ${migration.describe}`);
-      migration.apply(ctx);
-      migration.verify(ctx);
-      applied.push(migration.version);
-    }
+    const { applied } = runReleaseMigrations({ ...ctxBase, notes }, releaseFrom, targetVersion);
 
-    if (!dryRun) stampReleaseVersion(stashDir, targetVersion);
+    if (!dryRun && comparableTarget) {
+      stampReleaseVersion(paths.stashDir, comparableTarget);
+    }
 
     return {
       migrated: true,

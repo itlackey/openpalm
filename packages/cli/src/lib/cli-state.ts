@@ -5,7 +5,9 @@
  * Validates configuration in place.
  */
 import {
+  classifyLocalInstall,
   createState,
+  initializeStateSecrets,
   resolveRuntimeFiles,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
@@ -21,6 +23,10 @@ import type { ControlPlaneState } from '@openpalm/lib';
  */
 export function ensureValidState(): ControlPlaneState {
   const state = createState();
+  initializeStateSecrets(state);
+  if (classifyLocalInstall(state.stackDir) === 'not_installed') {
+    throw new Error('OpenPalm is not installed in this OP_HOME yet. Run `openpalm install` first.');
+  }
   state.artifacts = resolveRuntimeFiles();
   return state;
 }

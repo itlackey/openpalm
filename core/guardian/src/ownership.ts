@@ -21,16 +21,17 @@
 
 /** The identity that owns a session/permission request. */
 export interface Principal {
-  channel: string;
+  id: string;
+  kind: 'channel' | 'direct';
   userId: string;
 }
 
 /** Stable string key for a principal — used for equality and Map keys. */
 export function principalKey(p: Principal): string {
-  // userId is opaque (e.g. "discord:123"); channel is normalized upstream.
+  // userId is opaque (e.g. "discord:123"); principal id is normalized upstream.
   // JSON-encode both segments so a userId containing the delimiter cannot
   // forge another principal's key.
-  return JSON.stringify([p.channel, p.userId]);
+  return JSON.stringify([p.kind, p.id, p.userId]);
 }
 
 // TTL mirrors the buffered session cache (forward.ts: GUARDIAN_SESSION_TTL_MS,

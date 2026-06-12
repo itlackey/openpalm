@@ -50,7 +50,7 @@ export async function runUpgradeAction(): Promise<void> {
   // release (including the one just upgraded to) triggers a download.
   // Existing data/ui/ is backed up to data/backups/ui-{timestamp}/ before
   // replacement. Non-fatal — existing build remains on any error.
-  const currentVersion = state.imageTag ?? '0.0.0';
+  const currentVersion = result.imageTag;
   console.log('Checking for UI build update...');
   const uiResult = await checkAndUpdateUiBuild(currentVersion, state.dataDir);
   if (uiResult.updated) {

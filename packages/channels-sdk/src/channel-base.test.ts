@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { signPayload } from "./crypto.ts";
 import { BaseChannel, type HandleResult } from "./channel-base.ts";
 
 // ── Test channel implementations ────────────────────────────────────────
@@ -47,20 +46,35 @@ function postRequest(path: string, body: unknown): Request {
 }
 
 function capturingFetch() {
-  let capturedUrl = "";
-  let capturedHeaders: Record<string, string> = {};
-  let capturedBody = "";
+  const calls: Array<{ url: string; method: string; headers: Headers; body: string }> = [];
   const mockFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    capturedUrl = String(input);
-    capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
-    capturedBody = String(init?.body);
-    return new Response(JSON.stringify({ answer: "ok", requestId: "r1", sessionId: "s1", userId: "u1" }), { status: 200 });
+    const call = {
+      url: String(input),
+      method: init?.method ?? "GET",
+      headers: new Headers(init?.headers),
+      body: typeof init?.body === "string" ? init.body : "",
+    };
+    calls.push(call);
+
+    const path = call.url.replace("http://guardian:8080", "");
+    if (call.method === "POST" && path === "/oc/session") {
+      return Response.json({ id: "s1" });
+    }
+    if (call.method === "GET" && path === "/oc/event") {
+      const sse = [
+        JSON.stringify({ type: "message.part.delta", properties: { sessionID: "s1", messageID: "^m1", delta: "ok" } }),
+        JSON.stringify({ type: "session.idle", properties: { sessionID: "s1" } }),
+      ].map((frame) => `data: ${frame}\n\n`).join("");
+      return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+    if (call.method === "POST" && path === "/oc/session/s1/message") {
+      return Response.json({ parts: [{ type: "text", text: "ok" }] });
+    }
+    return new Response("not found", { status: 404 });
   };
   return {
     mockFetch: mockFetch as typeof fetch,
-    get url() { return capturedUrl; },
-    get headers() { return capturedHeaders; },
-    get body() { return capturedBody; },
+    get calls() { return calls; },
   };
 }
 
@@ -91,24 +105,28 @@ describe("BaseChannel message forwarding", () => {
     const resp = await handler(postRequest("/webhook", {}));
     expect(resp.status).toBe(200);
 
-    const forwarded = JSON.parse(cap.body) as Record<string, unknown>;
-    expect(forwarded.userId).toBe("user-1");
-    expect(forwarded.channel).toBe("test");
-    expect(forwarded.text).toBe("hello world");
-    expect((forwarded.metadata as Record<string, unknown>).source).toBe("test");
-    expect(cap.url).toBe("http://guardian:8080/channel/inbound");
+    const createCall = cap.calls.find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session");
+    const eventCall = cap.calls.find((call) => call.method === "GET" && call.url === "http://guardian:8080/oc/event");
+    const messageCall = cap.calls.find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session/s1/message");
+
+    expect(createCall?.headers.get("authorization")).toBe(`Basic ${Buffer.from("test:test-secret", "utf-8").toString("base64")}`);
+    expect(createCall?.headers.get("x-openpalm-user")).toBe("user-1");
+    expect(createCall?.headers.get("x-openpalm-session-key")).toBe("user-1");
+    expect(eventCall?.headers.get("x-openpalm-user")).toBe("user-1");
+
+    const forwarded = JSON.parse(messageCall?.body ?? "{}") as Record<string, unknown>;
+    expect((forwarded.parts as Array<Record<string, unknown>>)[0]?.text).toBe("hello world");
   });
 
-  it("HMAC signature matches signPayload", async () => {
+  it("uses Basic auth derived from principal id and secret", async () => {
     const cap = capturingFetch();
     const channel = new TestChannel(async () => ({ userId: "u1", text: "hmac check" }));
-    // Override secret for deterministic testing
     Object.defineProperty(channel, "secret", { get: () => "test-secret" });
     const handler = channel.createFetch(cap.mockFetch);
 
     await handler(postRequest("/webhook", {}));
-    const expected = signPayload("test-secret", cap.body);
-    expect(cap.headers["x-channel-signature"]).toBe(expected);
+    const createCall = cap.calls.find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session");
+    expect(createCall?.headers.get("authorization")).toBe(`Basic ${Buffer.from("test:test-secret", "utf-8").toString("base64")}`);
   });
 });
 
@@ -161,12 +179,12 @@ describe("BaseChannel guardian errors", () => {
     expect(resp.status).toBe(502);
   });
 
-  it("returns guardian status on non-ok response", async () => {
+  it("maps non-ok guardian responses during session create to 502", async () => {
     const errorFetch = (async () => new Response("{}", { status: 429 })) as typeof fetch;
     const channel = new TestChannel(async () => ({ userId: "u1", text: "hi" }));
     const handler = channel.createFetch(errorFetch);
     const resp = await handler(postRequest("/webhook", {}));
-    expect(resp.status).toBe(429);
+    expect(resp.status).toBe(502);
   });
 
   it("maps 5xx guardian errors to 502", async () => {

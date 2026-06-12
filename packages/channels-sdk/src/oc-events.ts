@@ -97,10 +97,10 @@ export function extractTextDelta(e: RawEvent, sessionId: string, reasoningPartId
  * whose `status` is missing/empty/unknown is an intermediate or partial frame
  * and must NOT be treated as turn-end — doing so cuts the render off mid-stream
  * (the §4.2 "pin the exact end-of-turn condition empirically" open question).
- * `session.idle` remains the unambiguous fallback. The exact 1.15.13 idle marker
- * is being pinned against a live stream; add any observed terminal value here.
+ * `session.idle` remains the unambiguous fallback, and `session.status` only ends
+ * a turn when it explicitly reports `idle`.
  */
-export const TURN_IDLE_STATUSES: ReadonlySet<string> = new Set(["idle", "completed", "done"]);
+export const TURN_IDLE_STATUSES: ReadonlySet<string> = new Set(["idle"]);
 
 /**
  * The `session.status` `status` field on a live OpenCode 1.15.13 server is an

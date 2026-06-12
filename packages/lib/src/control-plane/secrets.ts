@@ -6,7 +6,7 @@ import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath, stackEnvPathFromStackDir } from "./paths.js";
 import { dirname } from "node:path";
-import { listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
+import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
 const logger = createLogger("secrets");
@@ -24,11 +24,16 @@ const VAULT_DIR_MODE = 0o700;
 const VAULT_FILE_MODE = 0o600;
 
 export const SECRET_ENV_KEY_RE = /(?:^OP_UI_LOGIN_PASSWORD$|^OP_OPENCODE_PASSWORD$|_API_KEY$|_TOKEN$|_SECRET$|_PASSWORD$)/;
-const SECRET_LIKE_STACK_ENV_KEY_RE = /(SECRET|TOKEN|PASSWORD|API_KEY|PRIVATE_KEY|CLIENT_SECRET|AUTH_JSON|CREDENTIALS)/;
-const NON_SECRET_STACK_ENV_KEY_ALLOWLIST = new Set<string>();
+const SECRET_LIKE_KEY_RE = /(^|_)(SECRET|TOKEN|PASSWORD|PASS|API_KEY|PRIVATE_KEY|CLIENT_SECRET|AUTH_JSON|CREDENTIALS)(_|$)/;
+
+export function isSecretLikeKey(key: string): boolean {
+  const normalized = key.toUpperCase();
+  if (normalized.endsWith('_FILE')) return false;
+  return SECRET_LIKE_KEY_RE.test(normalized);
+}
 
 export function isSecretLikeStackEnvKey(key: string): boolean {
-  return SECRET_LIKE_STACK_ENV_KEY_RE.test(key) && !NON_SECRET_STACK_ENV_KEY_ALLOWLIST.has(key);
+  return isSecretLikeKey(key);
 }
 
 export function assertNoSecretLikeStackEnvKeys(updates: Record<string, string>): void {
@@ -137,6 +142,8 @@ export function ensureSecrets(state: ControlPlaneState): void {
 
   ensureSystemSecrets(state);
   ensureAuthJson(state);
+  ensureSecret(state.stackDir, 'op_guardian_admin_token', () => crypto.randomUUID().replace(/-/g, ''));
+  ensureSecret(state.stackDir, 'op_guardian_mcp_token', () => crypto.randomUUID().replace(/-/g, ''));
 }
 
 function ensureAuthJson(state: ControlPlaneState): void {

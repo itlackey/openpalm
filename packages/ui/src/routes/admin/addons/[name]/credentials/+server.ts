@@ -106,7 +106,7 @@ export const GET: RequestHandler = async (event) => {
 
   let config;
   try {
-    config = getRegistryAddonConfig(state.homeDir, name);
+    config = getRegistryAddonConfig(name);
   } catch (error) {
     logger.error("schema read failed", { name, error: String(error), requestId });
     return errorResponse(500, "internal_error", `Addon "${name}" schema is unavailable`, {}, requestId);
@@ -149,7 +149,7 @@ export const POST: RequestHandler = async (event) => {
 
   let config;
   try {
-    config = getRegistryAddonConfig(state.homeDir, name);
+    config = getRegistryAddonConfig(name);
   } catch (error) {
     logger.error("schema read failed (post)", { name, error: String(error), requestId });
     return errorResponse(500, "internal_error", `Addon "${name}" schema is unavailable`, {}, requestId);

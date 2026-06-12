@@ -42,9 +42,9 @@ services:
       # the assistant over assistant_net without credentials, and the
       # scheduler now runs as a co-process inside this container so it
       # reaches OpenCode via http://localhost:4096.
-      # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, you MUST set
-      # op_opencode_password in knowledge/secrets/
-      # and set OPENCODE_AUTH to "true".
+      # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, the assistant is
+      # no longer loopback-only. Guardian-side upstream auth plumbing has been
+      # removed, so enabling assistant auth is not a supported hardening path.
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
@@ -67,7 +67,7 @@ services:
       # SSH remains loopback-bound. The port is always declared so enabling
       # SSH only needs OPENCODE_ENABLE_SSH=1 in stack.env; sshd is not started
       # when that flag is 0.
-      - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
+      - "127.0.0.1:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
       - ${OP_HOME}/config/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
@@ -98,9 +98,10 @@ services:
       retries: 5
       start_period: 30s
 
-# Channel networks: services join channel_lan (LAN-restricted) to reach
-# the guardian. Public exposure is opt-in per-service via host port bindings.
+# Portal-style ingress services join portal_net to reach the guardian.
+# channel_lan remains defined for one release so custom overlays keep validating.
 networks:
+  portal_net:
   channel_lan:
   assistant_net:
 

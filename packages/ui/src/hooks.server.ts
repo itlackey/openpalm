@@ -17,6 +17,9 @@ import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
 import {
   createLogger,
+  composePs,
+  deriveLaunchStatus,
+  deriveLocalStackState,
   ensureSecrets,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
@@ -27,11 +30,23 @@ import {
   resolveStackDir,
   readStackRuntimeEnv,
   readSecret,
+  classifyLocalInstall,
+  detectRuntime,
+  buildComposeOptions,
+  type ComposeServiceStatus,
 } from "@openpalm/lib";
+import { listRemoteStatuses } from "$lib/server/endpoints.js";
 
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
+let setupCompleteMemo = false;
+type LaunchRouting = {
+  installState: ReturnType<typeof classifyLocalInstall>;
+  launch: ReturnType<typeof deriveLaunchStatus>;
+};
+
+let localStatusCache: { expiresAt: number; value: LaunchRouting } | null = null;
 
 function runStartupApply(): void {
   if (startupApplyDone) return;
@@ -105,6 +120,45 @@ function isLocalhostAddress(ip: string): boolean {
   return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 }
 
+function parseComposePsServices(stdout: string): ComposeServiceStatus[] {
+  const services: ComposeServiceStatus[] = [];
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      services.push({
+        service: String(parsed.Service ?? parsed.Name ?? ''),
+        state: String(parsed.State ?? ''),
+        health: String(parsed.Health ?? ''),
+      });
+    } catch {
+      continue;
+    }
+  }
+  return services;
+}
+
+async function resolveLaunchRouting(): Promise<LaunchRouting> {
+  if (localStatusCache && localStatusCache.expiresAt > Date.now()) return localStatusCache.value;
+  const state = getState();
+  const installState = classifyLocalInstall(state.stackDir);
+  const composeResult = await composePs(buildComposeOptions(state));
+  const services = composeResult.ok ? parseComposePsServices(composeResult.stdout) : [];
+  const localState = deriveLocalStackState(installState, services);
+  const launch = deriveLaunchStatus({
+    local: {
+      state: localState,
+      runtime: installState === 'not_installed' ? await detectRuntime() : undefined,
+      detail: { installState },
+    },
+    remotes: await listRemoteStatuses(),
+  });
+  const value = { installState, launch };
+  localStatusCache = { value, expiresAt: Date.now() + 5_000 };
+  return value;
+}
+
 export const handle: Handle = async ({ event, resolve }) => {
   const hostError = checkHostHeader(event.request, UI_PORT);
   if (hostError) return hostError;
@@ -118,7 +172,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   // by design (first-run). Restrict them to the local machine so a remote actor
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
-  if (isSetupPath && !isSetupComplete(resolveStackDir())) {
+  const setupComplete = setupCompleteMemo || isSetupComplete(resolveStackDir());
+  if (setupComplete) setupCompleteMemo = true;
+
+  if (isSetupPath && !setupComplete) {
     const clientIp = event.getClientAddress();
     if (!isLocalhostAddress(clientIp)) {
       return new Response(
@@ -131,8 +188,16 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  if (!isSetupPath && !isSetupComplete(resolveStackDir())) {
-    redirect(302, "/setup");
+  if (!isSetupPath) {
+    const { installState, launch } = await resolveLaunchRouting();
+    const desiredPath = installState === 'setup_incomplete' && launch.local.state === 'running'
+      ? '/splash'
+      : launch.recommendedRoute === 'chat'
+        ? '/chat'
+        : '/splash';
+    if (path === '/' || (path !== desiredPath && !path.startsWith('/api/') && !path.startsWith('/login') && !path.startsWith('/health') && !path.startsWith('/guardian/health') && !path.startsWith('/admin') && !path.startsWith('/chat') && !path.startsWith('/splash') && !path.startsWith('/advanced'))) {
+      redirect(302, desiredPath);
+    }
   }
 
   // ── Admin auth: resolve the session role once per request, then gate page

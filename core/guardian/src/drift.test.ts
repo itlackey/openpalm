@@ -10,12 +10,11 @@
  *
  * Integration (real guardian subprocess + mock assistant whose /doc has DRIFTED):
  *   - the /oc/* proxy route is DISABLED → 503;
- *   - the legacy buffered /channel/inbound path STAYS UP → 200.
+ *   - health/stats remain up so the failure is isolated to the proxy.
  *
  * This proves the guard is FAIL-CLOSED for the proxy only, not warning-only.
  */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { signPayload } from "@openpalm/channels-sdk/crypto";
 import type { Subprocess } from "bun";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
@@ -92,7 +91,7 @@ describe("assertDocCompatible (pure, §5)", () => {
   });
 });
 
-// ── Integration: drifted /doc disables the proxy but not the buffered path ──
+// ── Integration: drifted /doc disables the proxy only ─────────────────────
 
 const TEST_SECRET = "drift-secret-value-9876";
 const TEST_CHANNEL = "test";
@@ -123,14 +122,15 @@ function getAvailablePort(): Promise<number> {
 beforeAll(async () => {
   const assistantPort = await getAvailablePort();
   const guardianPort = await getAvailablePort();
+  const directPort = await getAvailablePort();
+  const adminPort = await getAvailablePort();
 
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-drift-"));
   const secretPath = join(tmpDir, "secret");
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
 
   // A DRIFTED /doc: drop an allowlisted path (/event) so assertDocCompatible
-  // fails → the boot-time guard disables the proxy. The buffered path (/session
-  // POST + /message) is still served so /channel/inbound keeps working.
+  // fails → the boot-time guard disables the proxy.
   const driftedDoc = JSON.parse(JSON.stringify(OC_DOC_FIXTURE));
   delete driftedDoc.paths["/event"];
 
@@ -164,6 +164,9 @@ beforeAll(async () => {
     env: {
       ...process.env,
       PORT: String(guardianPort),
+      GUARDIAN_DIRECT_PORT: String(directPort),
+      GUARDIAN_ADMIN_PORT: String(adminPort),
+      GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
       CHANNEL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
@@ -204,25 +207,20 @@ afterAll(() => {
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-describe("drift guard — proxy fail-closed, buffered path up (§5, Stage 7)", () => {
+describe("drift guard — proxy fail-closed (§5, Stage 7)", () => {
   it("/stats reports oc_proxy.enabled === false on drift", async () => {
     const resp = await fetch(`${guardianUrl}/stats`);
     expect(resp.status).toBe(200);
     expect((await resp.json()).oc_proxy.enabled).toBe(false);
   });
 
-  it("a signed /oc/* call is rejected 503 oc_proxy_disabled", async () => {
-    // A fully valid signed call (using legacy whole-body signing is enough — the
-    // route returns 503 BEFORE any signature work because the proxy is disabled).
+  it("an authenticated /oc/* call is rejected 503 oc_proxy_disabled", async () => {
     const resp = await fetch(`${guardianUrl}/oc/session`, {
       method: "POST",
       headers: {
+        authorization: `Basic ${Buffer.from(`${TEST_CHANNEL}:${TEST_SECRET}`, "utf-8").toString("base64")}`,
         "content-type": "application/json",
-        "x-channel-name": TEST_CHANNEL,
-        "x-channel-user-id": "drift-u",
-        "x-channel-nonce": crypto.randomUUID(),
-        "x-channel-timestamp": String(Date.now()),
-        "x-channel-signature": "anything",
+        "x-openpalm-user": "drift-u",
       },
       body: "{}",
     });
@@ -230,26 +228,10 @@ describe("drift guard — proxy fail-closed, buffered path up (§5, Stage 7)", (
     expect((await resp.json()).error).toBe("oc_proxy_disabled");
   });
 
-  it("the legacy buffered /channel/inbound path STILL works (200)", async () => {
-    const body = {
-      userId: "buffered-u",
-      channel: TEST_CHANNEL,
-      text: "hello despite drift",
-      nonce: crypto.randomUUID(),
-      timestamp: Date.now(),
-    };
-    const raw = JSON.stringify(body);
-    const resp = await fetch(`${guardianUrl}/channel/inbound`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-channel-signature": signPayload(TEST_SECRET, raw),
-      },
-      body: raw,
-    });
+  it("health remains up while the proxy is disabled", async () => {
+    const resp = await fetch(`${guardianUrl}/health`);
     expect(resp.status).toBe(200);
     const data = await resp.json();
-    expect(typeof data.answer).toBe("string");
-    expect(data.userId).toBe("buffered-u");
+    expect(data.ok).toBe(true);
   });
 });

@@ -22,19 +22,8 @@ const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 0);
 const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
 const SESSION_KEY_MAX_LENGTH = 256;
 
-function readSecretFile(path: string | undefined): string | undefined {
-  if (!path) return undefined;
-  try {
-    return Bun.file(path).textSync().replace(/[\r\n]+$/, '');
-  } catch {
-    return undefined;
-  }
-}
-
 const CLIENT_OPTS: AssistantClientOptions = Object.freeze({
   baseUrl: ASSISTANT_URL,
-  username: Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode",
-  password: readSecretFile(Bun.env.OPENCODE_SERVER_PASSWORD_FILE) ?? Bun.env.OPENCODE_SERVER_PASSWORD,
   messageTimeoutMs: MESSAGE_TIMEOUT,
 });
 

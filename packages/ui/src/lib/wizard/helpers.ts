@@ -1,14 +1,5 @@
 import type { ChannelState, Provider, ProviderState, VoiceEngineValue } from './types.js';
-import { KNOWN_EMB_DIMS } from './constants.js';
-
-// Compose addon hardware-profile id. Inlined (NOT imported from @openpalm/lib):
-// this module is reachable from client-side wizard components, and importing the
-// server library here drags its whole runtime (node:fs / child_process / class
-// hierarchy) into the browser bundle — which crashes the wizard with
-// "Class extends value undefined" (the rc.2 regression). Keep it literal.
-function addonProfileId(addon: string, variant: 'cpu' | 'cuda' | 'rocm'): string {
-  return `addon.${addon}.${variant}`;
-}
+import { addonProfileId, KNOWN_EMBEDDING_MODEL_DIMS } from '@openpalm/lib/provider-constants';
 
 // ── Shared GPU-aware addon hardware-profile selection ────────────────────────
 // One implementation for voice/ollama profile picking, previously copy-pasted
@@ -50,7 +41,7 @@ export function baseModelId(model: string): string {
 /** True for embedding models — never offered/auto-picked for the chat/small role. */
 export function isEmbeddingModelId(model: string): boolean {
   const base = baseModelId(model);
-  if (KNOWN_EMB_DIMS[model] !== undefined || KNOWN_EMB_DIMS[base] !== undefined) return true;
+  if (KNOWN_EMBEDDING_MODEL_DIMS[model] !== undefined || KNOWN_EMBEDDING_MODEL_DIMS[base] !== undefined) return true;
   return /(?:^|[-/_.])(embed|embedding|bge|gte|e5|nomic|mxbai|arctic-embed|minilm)/i.test(model);
 }
 
@@ -109,7 +100,7 @@ export function buildModelOptions(
     for (const m of models) {
       if (roleId !== 'embedding' && isEmbeddingModelId(m)) continue;
       const dims = roleId === 'embedding'
-        ? (KNOWN_EMB_DIMS[m] ?? KNOWN_EMB_DIMS[baseModelId(m)] ?? (m === matchedDefault ? p.embDims : 0) ?? 0)
+        ? (KNOWN_EMBEDDING_MODEL_DIMS[m] ?? KNOWN_EMBEDDING_MODEL_DIMS[baseModelId(m)] ?? (m === matchedDefault ? p.embDims : 0) ?? 0)
         : 0;
       options.push({
         id: m, connId: p.id, providerName: p.name, baseUrl: st.baseUrl || p.baseUrl,

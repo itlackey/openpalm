@@ -65,17 +65,22 @@ RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
     && chmod 755 /usr/local/bin/akm \
     && akm --version
 RUN BUN_INSTALL=/usr/local bun add -g "@anthropic-ai/claude-code" \
+    && node /usr/local/install/global/node_modules/@anthropic-ai/claude-code/install.cjs \
     && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
     && chmod 755 /usr/local/bin/claude \
-    && command -v claude
+    && claude --version
 RUN BUN_INSTALL=/usr/local bun add -g "@github/copilot" \
     && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
     && chmod 755 /usr/local/bin/copilot \
-    && command -v copilot
+    && copilot --version
 RUN BUN_INSTALL=/usr/local bun add -g "@openai/codex" \
     && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
     && chmod 755 /usr/local/bin/codex \
-    && command -v codex
+    && codex --version
+RUN BUN_INSTALL=/usr/local bun add -g "@mariozechner/pi-coding-agent" \
+    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
+    && chmod 755 /usr/local/bin/pi \
+    && pi --version
 ENV BUN_INSTALL=
 
 # Pre-bake akm's default local embedding model so semantic search works out of

@@ -26,8 +26,8 @@ import {
   ensureOpenCodeConfig,
   writeAuthJsonProviderKeys,
 } from "./secrets.js";
-import { createState } from "./lifecycle.js";
-import { writeVoiceVars } from "./spec-to-env.js";
+import { createState, initializeStateSecrets } from "./lifecycle.js";
+import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
 import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./registry.js";
@@ -177,6 +177,7 @@ export async function performSetup(
 
   const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
   const state = opts?.state ?? createState();
+  initializeStateSecrets(state);
 
   // Acquire install lock to prevent two concurrent setup runs from racing on
   // the same config directory. The lock lives in dataDir so it is co-located
@@ -332,11 +333,11 @@ export async function performSetup(
 
 
       if (voiceProfile?.trim()) {
-        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim(), state);
+        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim());
       }
 
       if (ollamaProfile?.trim()) {
-        setAddonProfileSelection(state.stackDir, 'ollama', ollamaProfile.trim(), state);
+        setAddonProfileSelection(state.stackDir, 'ollama', ollamaProfile.trim());
       }
 
       ensureOpenCodeConfig();

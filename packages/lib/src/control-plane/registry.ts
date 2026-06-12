@@ -1,14 +1,13 @@
 /**
- * Built-in addon/profile discovery and legacy registry helpers.
+ * Built-in addon/profile discovery helpers.
  *
  * Runtime addon enablement is recorded as OP_ENABLED_ADDONS in stack.env and
  * resolved to Compose profiles. The fixed compose files under config/stack are
  * the runtime source of truth.
  */
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { execFile, execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
@@ -18,18 +17,11 @@ import { readBundledStackAsset } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
 import { parseEnabledAddons } from './env.js';
 import type { ControlPlaneState } from './types.js';
-import {
-  resolveRegistryAddonsDir,
-  resolveRegistryAutomationsDir,
-  resolveRegistryDir,
-  resolveStashDir,
-} from './home.js';
+import { resolveStashDir } from './home.js';
 
-const BRANCH_RE = /^[a-zA-Z0-9._\/-]+$/;
-const URL_RE = /^(https:\/\/|git@)/;
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
-const BUILTIN_ADDONS = ['api', 'chat', 'discord', 'ollama', 'slack', 'ssh', 'voice'] as const;
+const BUILTIN_ADDONS = ['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice'] as const;
 
 // Credential/config field definitions for the first-party addons, parsed by the
 // admin Secrets/Addons UI (`# @sensitive` → password+masked, `KEY=DEFAULT`).
@@ -95,9 +87,6 @@ DISCORD_BLOCKED_USERS=
 # Register slash commands on startup.
 DISCORD_REGISTER_COMMANDS=true
 
-# JSON array of custom slash command definitions.
-DISCORD_CUSTOM_COMMANDS=
-
 # Hours before a conversation thread expires.
 DISCORD_THREAD_TTL_HOURS=24
 
@@ -136,23 +125,9 @@ SLACK_ALLOWED_USERS=
 # Comma-separated blocked user IDs.
 SLACK_BLOCKED_USERS=
 
-# ---
-# Behavior
-# ---
-
-# Hours before a conversation thread expires.
-SLACK_THREAD_TTL_HOURS=24
-
-# Milliseconds to allow for guardian forwarding before timing out (default 30m).
-SLACK_FORWARD_TIMEOUT_MS=1800000
 `,
-  ollama: `# Ollama component configuration
-# ---
-
-# Bind address for the Ollama HTTP API (default: localhost only).
-# @required
-OP_OLLAMA_BIND_ADDRESS=127.0.0.1
-`,
+  gateway: '',
+  ollama: '',
   voice: `# OpenPalm Voice (Kokoro TTS + Whisper STT) configuration
 # ---
 # Local inference server — no upstream API or key. Values are optional; the
@@ -170,64 +145,10 @@ OP_VOICE_LOG_LEVEL=info
 `,
 };
 
-let warnedMissingRegistryAddonsDir = false;
-
-export function validateBranch(branch: string): string {
-  const normalized = branch.trim();
-  if (!BRANCH_RE.test(normalized)) throw new Error(`Invalid registry branch name: ${branch}`);
-  if (normalized.includes('..')) throw new Error(`Invalid registry branch name (contains '..'): ${branch}`);
-  return normalized;
-}
-
-export function validateRegistryUrl(url: string): string {
-  const normalized = url.trim();
-  if (!normalized.startsWith('/') && !URL_RE.test(normalized)) {
-    throw new Error(`Invalid registry URL: ${url}`);
-  }
-  return normalized;
-}
-
-export function isValidComponentName(name: string): boolean {
-  return VALID_NAME_RE.test(name);
-}
-
-const DEFAULT_REPO = 'itlackey/openpalm';
-
-export type RegistryConfig = {
-  repoUrl: string;
-  branch: string;
-};
-
-export function getRegistryConfig(): RegistryConfig {
-  return {
-    repoUrl: validateRegistryUrl(process.env.OP_REGISTRY_URL ?? `https://github.com/${DEFAULT_REPO}.git`),
-    branch: validateBranch(process.env.OP_REGISTRY_BRANCH ?? 'main'),
-  };
-}
-
-export type RegistryAutomationEntry = {
-  name: string;
-  type: 'automation';
-  description: string;
-  schedule: string;
-  content: string;
-};
-
-export type RegistryComponentEntry = {
-  compose: string;
-  schema: string;
-};
-
 export type RegistryAddonConfig = {
   schemaPath: string;
   userEnvPath: string;
   envSchema: string;
-};
-
-export type RegistryCatalogVerification = {
-  root: string;
-  addonCount: number;
-  automationCount: number;
 };
 
 type MutationResult = { ok: true } | { ok: false; error: string };
@@ -236,166 +157,12 @@ export type AddonMutationResult = (
   | { ok: false; error: string }
 );
 
-function countValidAddons(rootDir: string): number {
-  const addonsDir = join(rootDir, 'addons');
-  if (!existsSync(addonsDir)) return 0;
-  return readdirSync(addonsDir, { withFileTypes: true }).filter((entry) => {
-    if (!entry.isDirectory() || !isValidComponentName(entry.name)) return false;
-    const addonDir = join(addonsDir, entry.name);
-    // An addon is valid if it has a compose.yml. Overlay-only addons that only
-    // patch existing services (ports, env, volumes) do not need an .env.schema;
-    // full addons that introduce services and env vars do.
-    return existsSync(join(addonDir, 'compose.yml'));
-  }).length;
-}
-
-function countValidAutomations(rootDir: string): number {
-  const automationsDir = join(rootDir, 'automations');
-  if (!existsSync(automationsDir)) return 0;
-  return readdirSync(automationsDir).filter((file) => {
-    if (!file.endsWith('.yml')) return false;
-    return isValidComponentName(file.replace(/\.yml$/, ''));
-  }).length;
-}
-
-export function verifyRegistryCatalog(rootDir = resolveRegistryDir()): RegistryCatalogVerification {
-  const addonCount = countValidAddons(rootDir);
-  const automationCount = countValidAutomations(rootDir);
-
-  if (addonCount === 0) throw new Error('Registry catalog is incomplete: missing valid addons');
-  if (automationCount === 0) throw new Error('Registry catalog is incomplete: missing valid automations');
-
-  return {
-    root: rootDir,
-    addonCount,
-    automationCount,
-  };
-}
-
-export function materializeRegistryCatalog(sourceRoot: string): string {
-  const sourceAddonsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons');
-  const sourceAutomationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-  const tempRoot = mkdtempSync(join(tmpdir(), 'openpalm-registry-materialize-'));
-
-  try {
-    const tempAddonsDir = join(tempRoot, 'addons');
-    const tempAutomationsDir = join(tempRoot, 'automations');
-    mkdirSync(tempAddonsDir, { recursive: true });
-    mkdirSync(tempAutomationsDir, { recursive: true });
-
-    if (existsSync(sourceAddonsDir)) cpSync(sourceAddonsDir, tempAddonsDir, { recursive: true });
-    if (existsSync(sourceAutomationsDir)) cpSync(sourceAutomationsDir, tempAutomationsDir, { recursive: true });
-
-    verifyRegistryCatalog(tempRoot);
-
-    rmSync(resolveRegistryDir(), { recursive: true, force: true });
-    mkdirSync(resolveRegistryDir(), { recursive: true });
-    cpSync(tempAddonsDir, resolveRegistryAddonsDir(), { recursive: true });
-    cpSync(tempAutomationsDir, resolveRegistryAutomationsDir(), { recursive: true });
-    return resolveRegistryDir();
-  } finally {
-    rmSync(tempRoot, { recursive: true, force: true });
-  }
-}
-
-export function refreshRegistryCatalog(config?: RegistryConfig): RegistryCatalogVerification {
-  const raw = config ?? getRegistryConfig();
-  const repoUrl = validateRegistryUrl(raw.repoUrl);
-  const branch = validateBranch(raw.branch);
-  const cloneDir = mkdtempSync(join(tmpdir(), 'openpalm-registry-refresh-'));
-
-  try {
-    execFileSync(
-      'git',
-      ['clone', '--depth', '1', '--filter=blob:none', '--sparse', '--branch', branch, repoUrl, '.'],
-      { cwd: cloneDir, stdio: 'pipe', timeout: 60_000 },
-    );
-    execFileSync('git', ['sparse-checkout', 'set', '.openpalm'], {
-      cwd: cloneDir,
-      stdio: 'pipe',
-      timeout: 30_000,
-    });
-    const root = materializeRegistryCatalog(cloneDir);
-    return verifyRegistryCatalog(root);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to refresh registry from ${repoUrl}: ${msg}`);
-  } finally {
-    rmSync(cloneDir, { recursive: true, force: true });
-  }
-}
-
-export function discoverRegistryComponents(): Record<string, RegistryComponentEntry> {
-  const addonsDir = resolveRegistryAddonsDir();
-  if (!existsSync(addonsDir)) return {};
-
-  const result: Record<string, RegistryComponentEntry> = {};
-  for (const entry of readdirSync(addonsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !VALID_NAME_RE.test(entry.name)) continue;
-    const addonDir = join(addonsDir, entry.name);
-    const composeFile = join(addonDir, 'compose.yml');
-    if (!existsSync(composeFile)) continue;
-
-    // .env.schema is optional: overlay-only addons (e.g. a port toggle) do
-    // not introduce new env vars, so they ship just compose.yml.
-    const schemaFile = join(addonDir, '.env.schema');
-    const schema = existsSync(schemaFile) ? readFileSync(schemaFile, 'utf-8') : '';
-
-    result[entry.name] = {
-      compose: readFileSync(composeFile, 'utf-8'),
-      schema,
-    };
-  }
-
-  return result;
-}
-
-export function discoverRegistryAutomations(stashDir: string): RegistryAutomationEntry[] {
-  const localOpenpalmDir = resolveLocalOpenpalmDir();
-  const automationsDir = localOpenpalmDir
-    ? join(localOpenpalmDir, 'knowledge', 'tasks')
-    : join(stashDir, 'tasks');
-  if (!existsSync(automationsDir)) return [];
-
-  return readdirSync(automationsDir)
-    .filter((file) => file.endsWith('.yml'))
-    .map((file) => {
-      const name = file.replace(/\.yml$/, '');
-      if (!VALID_NAME_RE.test(name)) return null;
-
-      const content = readFileSync(join(automationsDir, file), 'utf-8');
-      let description = '';
-      let schedule = '';
-
-      // Extract YAML metadata.
-      try {
-        const parsed = parseYaml(content);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          description = (parsed as Record<string, unknown>).description as string ?? '';
-          schedule = (parsed as Record<string, unknown>).schedule as string ?? '';
-        }
-      } catch {
-        // best-effort metadata extraction
-      }
-
-      return {
-        name,
-        type: 'automation' as const,
-        description,
-        schedule,
-        content,
-      };
-    })
-    .filter((entry): entry is RegistryAutomationEntry => entry !== null);
-}
-
 export function getRegistryAutomation(name: string): string | null {
   if (!VALID_NAME_RE.test(name)) return null;
   const localOpenpalmDir = resolveLocalOpenpalmDir();
   const candidates = [
     localOpenpalmDir ? join(localOpenpalmDir, 'knowledge', 'tasks', `${name}.yml`) : '',
     join(resolveStashDir(), 'tasks', `${name}.yml`),
-    join(resolveRegistryAutomationsDir(), `${name}.yml`),
   ].filter(Boolean);
   for (const ymlPath of candidates) {
     if (existsSync(ymlPath)) return readFileSync(ymlPath, 'utf-8');
@@ -403,20 +170,9 @@ export function getRegistryAutomation(name: string): string | null {
   return null;
 }
 
-export function getRegistryAddonConfig(_homeDir: string, name: string): RegistryAddonConfig {
+export function getRegistryAddonConfig(name: string): RegistryAddonConfig {
   if (!VALID_NAME_RE.test(name)) {
     throw new Error(`Invalid addon name: ${name}`);
-  }
-
-  // Resolve the addon's `.env.schema` (credential/config field definitions):
-  //   1. A materialized registry copy at OP_HOME/data/registry/addons (custom
-  //      addons installed from a registry win).
-  //   2. The built-in schema embedded below (the first-party addons). The
-  //      file-based registry was removed from the skeleton, so the built-in
-  //      addon credential schemas live in-code rather than as bundled files.
-  const materialized = join(resolveRegistryAddonsDir(), name, '.env.schema');
-  if (existsSync(materialized)) {
-    return { schemaPath: materialized, userEnvPath: 'knowledge/env/stack.env', envSchema: readFileSync(materialized, 'utf-8') };
   }
   return {
     schemaPath: '',
@@ -432,7 +188,7 @@ export function listAvailableAddonIds(): string[] {
 export function listEnabledAddonIds(homeDir: string): string[] {
   const env = readStackEnv(join(homeDir, 'config', 'stack'));
   const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
-  const profiles = new Set((env.COMPOSE_PROFILES ?? '').split(',').map((p) => p.trim()).filter(Boolean));
+  const profiles = new Set<string>();
   for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
     const profile = env[key]?.trim();
     if (profile) profiles.add(profile);
@@ -841,7 +597,7 @@ export function getAddonProfileSelection(stackDir: string, name: string): string
   return normalized ? normalized : null;
 }
 
-export function setAddonProfileSelection(stackDir: string, name: string, profile: string, state?: ControlPlaneState): void {
+export function setAddonProfileSelection(stackDir: string, name: string, profile: string): void {
   const trimmed = canonicalAddonProfileSelection(name, profile);
   if (!trimmed) throw new Error(`Invalid canonical profile id for addon ${name}: ${profile}`);
   patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
@@ -855,7 +611,7 @@ function setEnabledAddonState(stackDir: string, name: string, enabled: boolean):
   patchSecretsEnvFile(stackDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
 }
 
-function enableAddon(homeDir: string, stackDir: string, name: string): MutationResult {
+function enableAddon(stackDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(stackDir, name, true);
@@ -866,7 +622,7 @@ function enableAddon(homeDir: string, stackDir: string, name: string): MutationR
   }
 }
 
-function disableAddonByName(homeDir: string, stackDir: string, name: string): MutationResult {
+function disableAddonByName(stackDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(stackDir, name, false);
@@ -898,7 +654,7 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
     };
   }
 
-  const mutation = enabled ? enableAddon(homeDir, stackDir, name) : disableAddonByName(homeDir, stackDir, name);
+  const mutation = enabled ? enableAddon(stackDir, name) : disableAddonByName(stackDir, name);
   if (!mutation.ok) return mutation;
 
   if (enabled) {

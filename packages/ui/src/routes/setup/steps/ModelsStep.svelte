@@ -2,6 +2,7 @@
   import { MAX_VISIBLE_MODELS } from '$lib/wizard/constants.js';
   import { buildModelOptions, type RoleModelOption } from '$lib/wizard/helpers.js';
   import type { Provider, ProviderState, ModelSelection } from '$lib/wizard/types.js';
+  import RadioRow from '$lib/components/common/RadioRow.svelte';
 
   type ModelOption = RoleModelOption;
 
@@ -127,16 +128,14 @@
           <div role="radiogroup" aria-label="{role.label} selection">
             {#if role.id === 'small'}
               {@const noneOn = !modelSelection.small?.model}
-              <div class="model-opt {noneOn ? 'on' : ''}" role="radio" aria-checked={noneOn} tabindex="0"
-                onclick={() => onselectnone('small')}
-                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onselectnone('small'); }}>
-                <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
-                <div style="flex:1">
-                  <div class="model-opt-name">(same as chat model)</div>
-                  <div class="model-opt-meta">No separate small model</div>
-                </div>
-                <span class="model-opt-badge model-opt-badge-auto">Default</span>
-              </div>
+              <RadioRow
+                title="(same as chat model)"
+                meta="No separate small model"
+                selected={noneOn}
+                badgeText="Default"
+                badgeTone="auto"
+                onSelect={() => onselectnone('small')}
+              />
             {/if}
 
             {#if options.length > 3}
@@ -153,20 +152,17 @@
               {@const isOn = !!sel && sel.model === opt.id && sel.connId === opt.connId}
               {@const isHidden = !query && hasOverflow && idx >= MAX_VISIBLE_MODELS && !isOn}
               {@const meta = 'via ' + opt.providerName + (opt.dims > 0 ? ' · ' + opt.dims + 'd' : '')}
-              <div class="model-opt {isOn ? 'on' : ''} {isHidden ? 'model-opt-filtered' : ''}"
-                role="radio" aria-checked={isOn} tabindex="0"
-                data-model-select="{role.id}:{opt.connId}:{opt.id}:{opt.dims}"
-                data-model-name={opt.id.toLowerCase()}
-                onclick={() => handleSelect(role.id, opt.connId, opt.id, opt.dims)}
-                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelect(role.id, opt.connId, opt.id, opt.dims); }}>
-                <div class="model-opt-dot"><div class="model-opt-dot-inner"></div></div>
-                <div style="flex:1;min-width:0">
-                  <div class="model-opt-name">{opt.id}</div>
-                  <div class="model-opt-meta">{meta}</div>
-                </div>
-                {#if !query && idx === 0}
-                  <span class="model-opt-badge model-opt-badge-top">Top Pick</span>
-                {/if}
+              <div data-model-name={opt.id.toLowerCase()}>
+                <RadioRow
+                  title={opt.id}
+                  {meta}
+                  selected={isOn}
+                  hidden={isHidden}
+                  value={`${role.id}:${opt.connId}:${opt.id}:${opt.dims}`}
+                  badgeText={!query && idx === 0 ? 'Top Pick' : undefined}
+                  badgeTone="top"
+                  onSelect={() => handleSelect(role.id, opt.connId, opt.id, opt.dims)}
+                />
               </div>
             {/each}
           </div>
@@ -175,14 +171,6 @@
     {/if}
   {/each}
 </div>
-
-<!-- Hidden fields for test compatibility and payload inspection -->
-<input type="hidden" id="llm-connection" value={modelSelection.llm?.connId ?? ''}>
-<input type="hidden" id="llm-model" value={modelSelection.llm?.model ?? ''}>
-<input type="hidden" id="llm-small-model" value={modelSelection.small?.model ?? ''}>
-<input type="hidden" id="emb-connection" value={modelSelection.embedding?.connId ?? ''}>
-<input type="hidden" id="emb-model" value={modelSelection.embedding?.model ?? ''}>
-<input type="hidden" id="emb-dims" value={String(modelSelection.embedding?.dims ?? 1536)}>
 
 {#if errorMessage}
   <div class="feedback feedback--error" id="step2-error" role="alert"><span>{errorMessage}</span></div>

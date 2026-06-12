@@ -5,6 +5,20 @@
     "akm-opencode@latest"
   ],
 
+  // MCP consume-only example: OpenCode can connect to external MCP servers,
+  // but it does not serve MCP itself. Seed-only file: existing installs keep
+  // their current config unless the operator edits it.
+  // "mcp": {
+  //   "docs": {
+  //     "type": "local",
+  //     "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/work"]
+  //   },
+  //   "local-http": {
+  //     "type": "remote",
+  //     "url": "http://127.0.0.1:8787/mcp"
+  //   }
+  // },
+
   "server": {
     "port": 4096,
     "hostname": "0.0.0.0",

@@ -3,7 +3,7 @@
  * stack.yml removal because these are the canonical fallback values used when a
  * key is absent from stack.env.
  */
-export const SPEC_DEFAULTS = {
+export const STACK_DEFAULTS = {
   ports: {
     assistant: 3800,
     hostUi: 3880,

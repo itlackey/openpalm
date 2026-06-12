@@ -40,26 +40,11 @@ import {
   recordPermissionOwner,
 } from "./ownership";
 import { endTurnsForSession } from "./oc-bounds";
+import { runDriftCheck } from './drift';
 
 const logger = createLogger("guardian:event");
 
 const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
-
-function upstreamAuthHeader(): string | undefined {
-  const username = Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode";
-  let password = Bun.env.OPENCODE_SERVER_PASSWORD;
-  const passwordFile = Bun.env.OPENCODE_SERVER_PASSWORD_FILE;
-  if (!password && passwordFile) {
-    try {
-      password = Bun.file(passwordFile).textSync().replace(/[\r\n]+$/, "");
-    } catch {
-      password = undefined;
-    }
-  }
-  if (!password) return undefined;
-  const encoded = Buffer.from(`${username}:${password}`, "utf8").toString("base64");
-  return `Basic ${encoded}`;
-}
 
 // ── A connected principal stream ───────────────────────────────────────────
 
@@ -75,6 +60,12 @@ interface Subscriber {
 const subscribers = new Set<Subscriber>();
 
 const encoder = new TextEncoder();
+const DIRECT_GLOBAL_EVENT_ALLOWLIST = new Set(['server.heartbeat', 'server.connected']);
+
+function isDirectGlobalFrame(frameJson: string): boolean {
+  const type = frameType(frameJson);
+  return type !== undefined && (DIRECT_GLOBAL_EVENT_ALLOWLIST.has(type) || type.startsWith('installation.'));
+}
 
 // Keepalive: the guardian drops upstream server.heartbeat frames (no sessionID,
 // §3.2), so a turn whose model is quiet would send NO bytes to the channel for a
@@ -174,7 +165,15 @@ function frameIsTurnEnd(frameJson: string): boolean {
  */
 export function routeFrame(frameJson: string): void {
   const sessionId = frameSessionId(frameJson);
-  if (sessionId === undefined) return; // HARD DROP — no sessionID
+  if (sessionId === undefined) {
+    if (!isDirectGlobalFrame(frameJson)) return;
+    const sseBytes = encoder.encode(`data: ${frameJson}\n\n`);
+    for (const sub of subscribers) {
+      if (sub.closed || sub.principal.kind !== 'direct') continue;
+      writeTo(sub, sseBytes);
+    }
+    return;
+  }
 
   // permission.asked AND question.asked both carry their reply id at
   // properties.id (per_… / que_…) and are answered by requestID; record
@@ -315,8 +314,6 @@ async function runUpstream(): Promise<void> {
   upstreamAbort = abort;
   try {
     const headers = new Headers({ accept: "text/event-stream" });
-    const auth = upstreamAuthHeader();
-    if (auth) headers.set("authorization", auth);
 
     const resp = await fetch(`${ASSISTANT_URL}/event`, {
       method: "GET",
@@ -355,7 +352,11 @@ async function runUpstream(): Promise<void> {
       broadcastUpstreamReset({ name: "GuardianUpstreamReset", message: "assistant event stream reset" });
       // Brief backoff before re-establishing the single upstream subscription.
       setTimeout(() => {
-        if (subscribers.size > 0) ensureUpstream();
+        if (subscribers.size > 0) {
+          void runDriftCheck().then((enabled) => {
+            if (enabled && subscribers.size > 0) ensureUpstream();
+          });
+        }
       }, 1_000).unref();
     }
   }

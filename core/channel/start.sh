@@ -1,21 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-# Install the channel npm package if specified.
-#
-# CHANNEL_PACKAGE should pin the version to keep restarts reproducible
-# (e.g. `@openpalm/channel-api@1.4.2`, not `@openpalm/channel-api@latest`).
-# `--exact` forces bun to record that exact version in the per-container
-# package.json so subsequent installs in this same container resolve to the
-# same artifact even if the registry advances.
-#
-# TODO (follow-up): bake one image per channel at build time so we stop
-# making a network round-trip on every container start. The per-channel
-# image keeps the unified runtime entrypoint and just pre-installs
-# CHANNEL_PACKAGE so this curl-then-run pattern goes away.
-if [ -n "$CHANNEL_PACKAGE" ]; then
-	echo "Installing channel package: $CHANNEL_PACKAGE"
-	bun add --exact "$CHANNEL_PACKAGE"
+if [ -z "$CHANNEL_PACKAGE" ]; then
+	echo "CHANNEL_PACKAGE must name a baked adapter package" >&2
+	exit 1
 fi
 
 # Run the channel entrypoint. varlock-based runtime redaction was retired
@@ -23,6 +11,6 @@ fi
 # (`@openpalm/lib/logger`) and the akm secret store (knowledge/secrets/).
 #
 # Channels that do not use the default BaseChannel entrypoint can override
-# this by setting CHANNEL_ENTRYPOINT to a path inside the installed package.
+# this by setting CHANNEL_ENTRYPOINT to a path inside the baked package.
 ENTRYPOINT="${CHANNEL_ENTRYPOINT:-node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts}"
 exec bun run "$ENTRYPOINT"

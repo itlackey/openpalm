@@ -8,9 +8,8 @@
  */
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { resolveOpenPalmHome, resolveConfigDir, resolveUiBuildDir, createLogger, readSecret } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
-import { startOpenCodeSubprocess, type OpenCodeSubprocess } from './opencode-subprocess.ts';
 import { openBrowser } from './browser.ts';
 
 const UI_BUILD_DIR = resolveUiBuildDir();
@@ -52,9 +51,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     process.exit(1);
   }
 
-  const homeDir   = resolveOpenPalmHome();
-  const configDir = resolveConfigDir();
-  const dataDir  = `${homeDir}/data`;
+  const homeDir = resolveOpenPalmHome();
 
   if (!existsSync(join(UI_BUILD_DIR, 'index.js'))) {
     console.error(`UI build not found at ${UI_BUILD_DIR}`);
@@ -71,26 +68,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
       ?? readSecret(state.stackDir, 'op_ui_login_password')?.trimEnd()
       ?? '';
 
-  // Start OpenCode subprocess (non-fatal — UI still works without it)
-  let openCodeSub: OpenCodeSubprocess | null = null;
-  let openCodeBaseUrl: string | undefined;
-  try {
-    console.log('Starting OpenCode subprocess...');
-    openCodeSub = await startOpenCodeSubprocess({ homeDir, configDir, dataDir });
-    const ready = await openCodeSub.waitForReady();
-    if (ready) {
-      openCodeBaseUrl = openCodeSub.baseUrl;
-      console.log(`OpenCode subprocess ready at ${openCodeBaseUrl}`);
-    } else {
-      console.warn('OpenCode subprocess did not become ready. /proxy/assistant will return 503.');
-      await openCodeSub.stop();
-      openCodeSub = null;
-    }
-  } catch (err) {
-    console.warn(`OpenCode subprocess failed to start: ${err instanceof Error ? err.message : String(err)}`);
-    openCodeSub = null;
-  }
-
   console.log('Starting UI server...');
   const uiProc = Bun.spawn(
     ['node', join(UI_BUILD_DIR, 'index.js')],
@@ -106,7 +83,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
         PORT:                   String(port),
         ORIGIN:                 `http://127.0.0.1:${port}`,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
-        ...(openCodeBaseUrl ? { OP_OPENCODE_URL: openCodeBaseUrl } : {}),
       },
       stdout: 'inherit',
       stderr: 'inherit',
@@ -115,7 +91,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   if (!await waitForReady(port)) {
     uiProc.kill('SIGTERM');
-    if (openCodeSub) await openCodeSub.stop().catch(() => {});
     console.error('UI server did not become ready in time.');
     process.exit(1);
   }
@@ -133,7 +108,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
         new Promise(r => setTimeout(r, STOP_TIMEOUT_MS)),
       ]);
       if (!uiProc.killed) uiProc.kill('SIGKILL');
-      if (openCodeSub) await openCodeSub.stop().catch(() => {});
       console.log('Shutdown complete.');
     } catch (err) {
       logger.error('Error during shutdown', { error: String(err) });

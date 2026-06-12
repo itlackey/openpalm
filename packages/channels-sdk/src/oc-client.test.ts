@@ -1,15 +1,13 @@
 /**
- * OcClient — guardian-signed native OpenCode client unit tests.
+ * OcClient — guardian-authenticated native OpenCode client unit tests.
  *
  * Stubs `fetch` (no library, per the channel-base.test.ts convention) and
- * asserts the wire contract: each call carries the §3.1 signed headers, the
- * signature actually verifies with the same secret on the guardian side, fresh
- * nonce/timestamp per call, and the SSE event reader yields parsed native
- * Event objects from the filtered /event stream.
+ * asserts the wire contract: each call carries Basic auth + the OpenPalm user
+ * headers the guardian reads today, and the SSE event reader yields parsed
+ * native Event objects from the filtered /event stream.
  */
 import { describe, test, expect, afterEach } from "bun:test";
-import { OcClient, generateMessageId } from "./oc-client.ts";
-import { verifyRequest } from "./crypto.ts";
+import { OcClient } from "./oc-client.ts";
 
 // Save the real fetch and restore it after each test — overriding the global
 // here would otherwise pollute sibling test files in the same `bun test` run.
@@ -51,35 +49,21 @@ function clientWithCapture(respond: (req: CapturedReq) => Response): {
   return { client, calls };
 }
 
-/** Reconstruct the signed fields from captured headers + verify the signature. */
-function verifyCapturedSignature(req: CapturedReq): boolean {
-  const ocPath = req.url.slice(BASE.length);
-  return verifyRequest(
-    SECRET,
-    {
-      method: req.method,
-      pathWithQuery: ocPath,
-      body: req.body,
-      nonce: req.headers.get("x-channel-nonce") ?? "",
-      timestamp: Number(req.headers.get("x-channel-timestamp")),
-      userId: req.headers.get("x-channel-user-id") ?? "",
-    },
-    req.headers.get("x-channel-signature") ?? "",
-  );
+function expectedAuthorization(principalId: string): string {
+  return `Basic ${Buffer.from(`${principalId}:${SECRET}`, "utf-8").toString("base64")}`;
 }
 
-describe("OcClient — signed calls (§3.1)", () => {
-  test("createSession signs with the channel secret + userId and verifies", async () => {
+describe("OcClient — authenticated calls", () => {
+  test("createSession sends Basic auth, user header, and session key", async () => {
     const { client, calls } = clientWithCapture(() => Response.json({ id: "ses_1" }));
     const session = await client.createSession("discord:alice", "discord:thread:42");
     expect(session.id).toBe("ses_1");
     const req = calls[0];
     expect(req.method).toBe("POST");
     expect(req.url).toBe(`${BASE}/session`);
-    expect(req.headers.get("x-channel-name")).toBe("discord");
-    expect(req.headers.get("x-channel-user-id")).toBe("discord:alice");
-    expect(req.headers.get("x-channel-session-key")).toBe("discord:thread:42");
-    expect(verifyCapturedSignature(req)).toBe(true);
+    expect(req.headers.get("authorization")).toBe(expectedAuthorization("discord"));
+    expect(req.headers.get("x-openpalm-user")).toBe("discord:alice");
+    expect(req.headers.get("x-openpalm-session-key")).toBe("discord:thread:42");
   });
 
   test("prompt posts to /session/{id}/message with text parts and NO client messageID", async () => {
@@ -92,20 +76,19 @@ describe("OcClient — signed calls (§3.1)", () => {
     // No client messageID — a client id makes OpenCode no-op follow-up turns.
     expect(body.messageID).toBeUndefined();
     expect(body.parts[0].text).toBe("hello there");
-    expect(verifyCapturedSignature(req)).toBe(true);
+    expect(req.headers.get("authorization")).toBe(expectedAuthorization("discord"));
+    expect(req.headers.get("x-openpalm-user")).toBe("discord:bob");
   });
 
-  test("replyPermission uses a FRESH nonce (not reused) and verifies", async () => {
+  test("replyPermission keeps Basic auth and user headers on follow-up calls", async () => {
     const { client, calls } = clientWithCapture(() => new Response("true", { headers: { "content-type": "application/json" } }));
     await client.prompt("discord:carol", "ses_3", "do a thing");
     await client.replyPermission("discord:carol", "per_9", "once");
-    const promptReq = calls[0];
     const replyReq = calls[1];
     expect(replyReq.url).toBe(`${BASE}/permission/per_9/reply`);
     expect(JSON.parse(replyReq.body).reply).toBe("once");
-    // Fresh per-call signing → different nonce from the prompt.
-    expect(replyReq.headers.get("x-channel-nonce")).not.toBe(promptReq.headers.get("x-channel-nonce"));
-    expect(verifyCapturedSignature(replyReq)).toBe(true);
+    expect(replyReq.headers.get("authorization")).toBe(expectedAuthorization("discord"));
+    expect(replyReq.headers.get("x-openpalm-user")).toBe("discord:carol");
   });
 
   test('replyPermission "always" maps through verbatim', async () => {
@@ -114,11 +97,12 @@ describe("OcClient — signed calls (§3.1)", () => {
     expect(JSON.parse(calls[0].body).reply).toBe("always");
   });
 
-  test("abort signs POST /session/{id}/abort and verifies", async () => {
+  test("abort posts to /session/{id}/abort with Basic auth", async () => {
     const { client, calls } = clientWithCapture(() => new Response("true", { headers: { "content-type": "application/json" } }));
     await client.abort("discord:e", "ses_4");
     expect(calls[0].url).toBe(`${BASE}/session/ses_4/abort`);
-    expect(verifyCapturedSignature(calls[0])).toBe(true);
+    expect(calls[0].headers.get("authorization")).toBe(expectedAuthorization("discord"));
+    expect(calls[0].headers.get("x-openpalm-user")).toBe("discord:e");
   });
 });
 
@@ -143,7 +127,7 @@ describe("OcClient — filtered /event stream (§3.2, §4.2)", () => {
     expect(seen).toEqual(["message.part.delta", "message.part.delta", "session.idle"]);
   });
 
-  test("events() open is one signed GET with accept text/event-stream", async () => {
+  test("events() open is one authenticated GET with accept text/event-stream", async () => {
     const { client, calls } = clientWithCapture(() =>
       new Response(new TextEncoder().encode(""), { status: 200, headers: { "content-type": "text/event-stream" } }),
     );
@@ -155,15 +139,7 @@ describe("OcClient — filtered /event stream (§3.2, §4.2)", () => {
     expect(req.method).toBe("GET");
     expect(req.url).toBe(`${BASE}/event`);
     expect(req.headers.get("accept")).toBe("text/event-stream");
-    // Empty-body GET signs SHA256("") — verifies.
-    expect(verifyCapturedSignature(req)).toBe(true);
-  });
-});
-
-describe("generateMessageId", () => {
-  test("produces a msg_-prefixed id (OpenCode convention)", () => {
-    const id = generateMessageId();
-    expect(id.startsWith("msg_")).toBe(true);
-    expect(id.length).toBeGreaterThan(4);
+    expect(req.headers.get("authorization")).toBe(expectedAuthorization("discord"));
+    expect(req.headers.get("x-openpalm-user")).toBe("discord:g");
   });
 });

@@ -94,4 +94,3 @@ export const coreComposePath       = (s: ControlPlaneState): string => `${s.stac
 export const servicesComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/services.compose.yml`;
 export const channelsComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/channels.compose.yml`;
 export const customComposePath     = (s: ControlPlaneState): string => `${s.stackDir}/custom.compose.yml`;
-export const addonComposePath      = (s: ControlPlaneState, name: string): string => `${s.stackDir}/addons/${name}/compose.yml`;

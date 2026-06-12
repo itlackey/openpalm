@@ -10,11 +10,13 @@
  */
 import { spawn } from 'node:child_process';
 import { json } from '@sveltejs/kit';
+import { setWizardOpencodeUrl } from '$lib/server/endpoints.js';
 import type { RequestHandler } from './$types';
 
 // Module-level singleton — persists for the lifetime of the wizard server process.
 let _url: string | null = null;
 let _proc: ReturnType<typeof spawn> | null = null;
+let _inFlight: Promise<{ url: string; started: boolean }> | null = null;
 
 // Ensure the wizard's opencode child never outlives this server. Under Electron
 // the parent group-kills the whole UI-server process group, but `openpalm ui
@@ -26,6 +28,9 @@ function killWizardOpencode(): void {
   if (proc && proc.exitCode === null && proc.pid) {
     try { proc.kill('SIGTERM'); } catch { /* best effort */ }
   }
+  _proc = null;
+  _url = null;
+  setWizardOpencodeUrl(null);
 }
 if (!(globalThis as Record<string, unknown>).__opWizardOpencodeReaper) {
   (globalThis as Record<string, unknown>).__opWizardOpencodeReaper = true;
@@ -43,6 +48,19 @@ async function checkReachable(url: string): Promise<boolean> {
   }
 }
 
+async function stopWizardOpencode(proc: ReturnType<typeof spawn> | null): Promise<void> {
+  if (!proc || proc.exitCode !== null || !proc.pid) return;
+  try {
+    proc.kill('SIGTERM');
+  } catch {
+    return;
+  }
+  await Promise.race([
+    new Promise<void>((resolve) => proc.once('exit', () => resolve())),
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
+}
+
 function spawnOpencodeServer(): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn('opencode', ['serve', '--hostname=127.0.0.1', '--port=0'], {
@@ -51,6 +69,7 @@ function spawnOpencodeServer(): Promise<string> {
     });
     _proc = proc;
 
+    let resolved = false;
     const timer = setTimeout(() => {
       proc.kill();
       reject(new Error('Timed out waiting for OpenCode server to start (15s)'));
@@ -63,6 +82,7 @@ function spawnOpencodeServer(): Promise<string> {
         if (line.includes('server listening')) {
           const m = line.match(/on\s+(https?:\/\/[^\s]+)/);
           if (m) {
+            resolved = true;
             clearTimeout(timer);
             resolve(m[1]);
           }
@@ -72,11 +92,21 @@ function spawnOpencodeServer(): Promise<string> {
 
     proc.on('exit', (code) => {
       clearTimeout(timer);
-      if (code !== 0) reject(new Error(`OpenCode exited (code ${code}). Output: ${out.slice(0, 300)}`));
+      if (_proc === proc) {
+        _proc = null;
+        _url = null;
+        setWizardOpencodeUrl(null);
+      }
+      if (!resolved && code !== 0) reject(new Error(`OpenCode exited (code ${code}). Output: ${out.slice(0, 300)}`));
     });
 
     proc.on('error', (err) => {
       clearTimeout(timer);
+      if (_proc === proc) {
+        _proc = null;
+        _url = null;
+        setWizardOpencodeUrl(null);
+      }
       reject(err);
     });
   });
@@ -98,14 +128,36 @@ export const POST: RequestHandler = async () => {
     return json({ ok: true, url: _url, started: false });
   }
 
+  if (_inFlight) {
+    try {
+      const result = await _inFlight;
+      return json({ ok: true, ...result });
+    } catch (err) {
+      return json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Failed to start OpenCode',
+      });
+    }
+  }
+
   // 3. Start a dedicated instance for this wizard session
   try {
-    const url = await spawnOpencodeServer();
+    _inFlight = (async () => {
+      await stopWizardOpencode(_proc);
+      const url = await spawnOpencodeServer();
+      _url = url;
+      setWizardOpencodeUrl(url);
+      return { url, started: true };
+    })();
+    const { url, started } = await _inFlight;
+    _inFlight = null;
     _url = url;
-    // Override so opencodeFetch picks up the new URL for the rest of setup
-    process.env.OP_OPENCODE_URL = url;
-    return json({ ok: true, url, started: true });
+    return json({ ok: true, url, started });
   } catch (err) {
+    _inFlight = null;
+    _proc = null;
+    _url = null;
+    setWizardOpencodeUrl(null);
     return json({
       ok: false,
       error: err instanceof Error ? err.message : 'Failed to start OpenCode',

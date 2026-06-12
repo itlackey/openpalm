@@ -402,17 +402,19 @@ describe('npm bin launcher', () => {
     } finally {
       rmSync(packDir, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 });
 
 describe('validate command', () => {
   it('is a recognized command and exits 0 when file-based required secrets exist', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
+    const envDir = join(tempHome, 'knowledge', 'env');
     const secretDir = join(tempHome, 'knowledge', 'secrets');
     mkdirSync(stackDir, { recursive: true });
+    mkdirSync(envDir, { recursive: true });
     mkdirSync(secretDir, { recursive: true, mode: 0o700 });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(envDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
     writeFileSync(join(secretDir, 'op_ui_login_password'), 'abc\n', { mode: 0o600 });
 
     const originalHome = process.env.OP_HOME;

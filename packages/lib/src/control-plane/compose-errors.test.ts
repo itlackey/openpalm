@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  mapDockerError,
   parseComposeStderr,
   summarizeComposeStderr,
 } from "./compose-errors.js";
@@ -102,5 +103,46 @@ describe("summarizeComposeStderr", () => {
 
   it("returns empty string for empty input", () => {
     expect(summarizeComposeStderr("")).toBe("");
+  });
+});
+
+describe("mapDockerError", () => {
+  it("maps docker daemon outages", () => {
+    expect(mapDockerError("Cannot connect to the Docker daemon at unix:///var/run/docker.sock")).toEqual({
+      code: "docker_unavailable",
+      message: "Docker appears to be stopped or unreachable. Start Docker, then retry.",
+    });
+  });
+
+  it("maps port conflicts", () => {
+    expect(mapDockerError("Error response from daemon: Ports are not available: exposing port TCP 0.0.0.0:3880 -> 0.0.0.0:0: listen tcp 0.0.0.0:3880: bind: address already in use")).toEqual({
+      code: "port_in_use",
+      message: "Port 3880 is already in use by another program. Free it, then retry.",
+    });
+  });
+
+  it("maps platform mismatches", () => {
+    expect(mapDockerError("no matching manifest for linux/arm64/v8 in the manifest list entries").code).toBe("platform_mismatch");
+  });
+
+  it("maps image auth failures", () => {
+    expect(mapDockerError("pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'").code).toBe("image_auth");
+  });
+
+  it("maps OOM failures", () => {
+    expect(mapDockerError("container exited: OOMKilled").code).toBe("out_of_memory");
+  });
+
+  it("maps healthcheck failures from parsed service errors", () => {
+    const mapped = mapDockerError("assistant Error container is unhealthy");
+    expect(mapped.code).toBe("healthcheck_failed");
+    expect(mapped.message).toContain("assistant");
+  });
+
+  it("falls back to the summarized first line", () => {
+    expect(mapDockerError("\n\n  first useful line\nsecond line")).toEqual({
+      code: "docker_error",
+      message: "first useful line",
+    });
   });
 });

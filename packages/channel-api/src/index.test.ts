@@ -1,10 +1,9 @@
 import { describe, expect, it, afterEach } from "bun:test";
-import { signPayload } from "@openpalm/channels-sdk";
 import ApiChannel from "./index.ts";
 
 // ── Streaming stub (OcClient uses the global fetch, not the injected one) ────
 // The streaming path drives the guardian /oc proxy via OcClient → global fetch.
-// Stub it to emulate create-session → prompt_async (204) → a one-frame /event
+// Stub it to emulate create-session → prompt (200) → a one-frame /event
 // stream that ends the turn, so `stream:true` returns a real SSE response.
 
 const REAL_FETCH = globalThis.fetch;
@@ -20,7 +19,9 @@ function stubStreamingGuardian(): void {
     if (method === "POST" && path === "/session") {
       return new Response(JSON.stringify({ id: "ses_stub" }), { status: 200 });
     }
-    if (path.endsWith("/prompt_async")) return new Response(null, { status: 204 });
+    if (method === "POST" && path === "/session/ses_stub/message") {
+      return new Response(JSON.stringify({ parts: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     if (path === "/event") {
       const body = new ReadableStream<Uint8Array>({
         start(c) {
@@ -38,9 +39,42 @@ function stubStreamingGuardian(): void {
 // ── Test helpers ─────────────────────────────────────────────────────────
 
 function mockGuardianFetch() {
-  return (async () =>
-    new Response(JSON.stringify({ answer: "hello back", sessionId: "s1" }), { status: 200 })
-  ) as typeof fetch;
+  return ocFetchStub() as typeof fetch;
+}
+
+type CapturedCall = {
+  url: string;
+  method: string;
+  headers: Headers;
+  body: string;
+};
+
+function ocFetchStub(calls?: CapturedCall[]) {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const call: CapturedCall = {
+      url: String(input),
+      method: init?.method ?? "GET",
+      headers: new Headers(init?.headers),
+      body: typeof init?.body === "string" ? init.body : "",
+    };
+    calls?.push(call);
+
+    const path = call.url.replace("http://guardian:8080/oc", "");
+    if (call.method === "POST" && path === "/session") {
+      return Response.json({ id: "s1" });
+    }
+    if (call.method === "GET" && path === "/event") {
+      const sse = [
+        JSON.stringify({ type: "message.part.delta", properties: { sessionID: "s1", messageID: "^msg1", delta: "hello back" } }),
+        JSON.stringify({ type: "session.idle", properties: { sessionID: "s1" } }),
+      ].map((frame) => `data: ${frame}\n\n`).join("");
+      return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+    if (call.method === "POST" && path === "/session/s1/message") {
+      return new Response(JSON.stringify({ parts: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response("not found", { status: 404 });
+  };
 }
 
 function createHandler(opts?: { apiKey?: string }) {
@@ -53,15 +87,8 @@ function createHandler(opts?: { apiKey?: string }) {
 }
 
 function createHandlerWithCapture(opts?: { apiKey?: string }) {
-  let capturedUrl = "";
-  let capturedSignature = "";
-  let capturedBody = "";
-  const mockFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    capturedUrl = String(input);
-    capturedSignature = String((init?.headers as Record<string, string>)["x-channel-signature"]);
-    capturedBody = String(init?.body);
-    return new Response(JSON.stringify({ answer: "hello back" }), { status: 200 });
-  }) as typeof fetch;
+  const calls: CapturedCall[] = [];
+  const mockFetch = ocFetchStub(calls) as typeof fetch;
 
   const channel = new ApiChannel();
   Object.defineProperty(channel, "secret", { get: () => "test-secret" });
@@ -69,7 +96,7 @@ function createHandlerWithCapture(opts?: { apiKey?: string }) {
     Object.defineProperty(channel, "apiKey", { get: () => opts.apiKey });
   }
   const handler = channel.createFetch(mockFetch);
-  return { handler, captured: () => ({ url: capturedUrl, signature: capturedSignature, body: capturedBody }) };
+  return { handler, captured: () => calls };
 }
 
 // ── Health ────────────────────────────────────────────────────────────────
@@ -116,8 +143,8 @@ describe("api channel CHANNEL_ID override", () => {
         method: "POST",
         body: JSON.stringify({ model: "gpt-4", messages: [{ role: "user", content: "hello" }] }),
       }));
-      const parsed = JSON.parse(captured().body) as Record<string, unknown>;
-      expect(parsed.channel).toBe("chat");
+      const createCall = captured().find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session");
+      expect(createCall?.headers.get("authorization")).toBe(`Basic ${Buffer.from("chat:test-secret", "utf-8").toString("base64")}`);
     } finally {
       if (origId === undefined) delete Bun.env.CHANNEL_ID;
       else Bun.env.CHANNEL_ID = origId;
@@ -169,15 +196,14 @@ describe("api channel chat completions", () => {
       method: "POST",
       body: JSON.stringify({ model: "gpt-4o-mini", user: "u1", messages: [{ role: "user", content: "hello" }] }),
     }));
-    const { url, body, signature } = captured();
-    expect(url).toBe("http://guardian:8080/channel/inbound");
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    expect(parsed.channel).toBe("api");
-    // SDK's forwardToGuardian prefixes userId with "{channel}:" so external
-    // callers don't accidentally collide with other channels.
-    expect(parsed.userId).toBe("api:u1");
-    expect(parsed.text).toBe("hello");
-    expect(signature).toBe(signPayload("test-secret", body));
+    const calls = captured();
+    const createCall = calls.find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session");
+    const messageCall = calls.find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session/s1/message");
+    expect(createCall?.headers.get("authorization")).toBe(`Basic ${Buffer.from("api:test-secret", "utf-8").toString("base64")}`);
+    expect(createCall?.headers.get("x-openpalm-user")).toBe("api:u1");
+    expect(createCall?.headers.get("x-openpalm-session-key")).toBe("api:u1");
+    const parsed = JSON.parse(messageCall?.body ?? "{}") as Record<string, unknown>;
+    expect((parsed.parts as Array<Record<string, unknown>>)[0]?.text).toBe("hello");
   });
 
   it("extracts text from content-block array messages", async () => {
@@ -189,8 +215,9 @@ describe("api channel chat completions", () => {
         messages: [{ role: "user", content: [{ type: "text", text: "part1" }, { type: "text", text: "part2" }] }],
       }),
     }));
-    const parsed = JSON.parse(captured().body) as Record<string, unknown>;
-    expect(parsed.text).toBe("part1\npart2");
+    const messageCall = captured().find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session/s1/message");
+    const parsed = JSON.parse(messageCall?.body ?? "{}") as Record<string, unknown>;
+    expect((parsed.parts as Array<Record<string, unknown>>)[0]?.text).toBe("part1\npart2");
   });
 
   it("returns 400 when no user message found", async () => {
@@ -277,10 +304,12 @@ describe("api channel legacy completions", () => {
       method: "POST",
       body: JSON.stringify({ model: "gpt-3.5", user: "u2", prompt: "test prompt" }),
     }));
-    const parsed = JSON.parse(captured().body) as Record<string, unknown>;
-    expect(parsed.channel).toBe("api");
-    expect(parsed.userId).toBe("api:u2");
-    expect(parsed.text).toBe("test prompt");
+    const calls = captured();
+    const createCall = calls.find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session");
+    const messageCall = calls.find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session/s1/message");
+    expect(createCall?.headers.get("x-openpalm-user")).toBe("api:u2");
+    const parsed = JSON.parse(messageCall?.body ?? "{}") as Record<string, unknown>;
+    expect((parsed.parts as Array<Record<string, unknown>>)[0]?.text).toBe("test prompt");
   });
 
   it("accepts array prompt values", async () => {
@@ -290,8 +319,9 @@ describe("api channel legacy completions", () => {
       body: JSON.stringify({ model: "gpt-3.5", prompt: ["test", "prompt"] }),
     }));
     expect(resp.status).toBe(200);
-    const parsed = JSON.parse(captured().body) as Record<string, unknown>;
-    expect(parsed.text).toBe("test prompt");
+    const messageCall = captured().find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session/s1/message");
+    const parsed = JSON.parse(messageCall?.body ?? "{}") as Record<string, unknown>;
+    expect((parsed.parts as Array<Record<string, unknown>>)[0]?.text).toBe("test prompt");
   });
 });
 
@@ -334,8 +364,9 @@ describe("api channel Anthropic messages", () => {
         messages: [{ role: "user", content: [{ type: "text", text: "block content" }] }],
       }),
     }));
-    const parsed = JSON.parse(captured().body) as Record<string, unknown>;
-    expect(parsed.text).toBe("block content");
+    const messageCall = captured().find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session/s1/message");
+    const parsed = JSON.parse(messageCall?.body ?? "{}") as Record<string, unknown>;
+    expect((parsed.parts as Array<Record<string, unknown>>)[0]?.text).toBe("block content");
   });
 
   it("extracts user_id from Anthropic metadata", async () => {
@@ -349,8 +380,8 @@ describe("api channel Anthropic messages", () => {
         metadata: { user_id: "anthro-user-1" },
       }),
     }));
-    const parsed = JSON.parse(captured().body) as Record<string, unknown>;
-    expect(parsed.userId).toBe("api:anthro-user-1");
+    const createCall = captured().find((call) => call.method === "POST" && call.url === "http://guardian:8080/oc/session");
+    expect(createCall?.headers.get("x-openpalm-user")).toBe("api:anthro-user-1");
   });
 
   it("returns 400 when no user message found", async () => {

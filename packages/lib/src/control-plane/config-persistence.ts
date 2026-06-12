@@ -15,13 +15,14 @@ import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./registry.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
-import { SPEC_DEFAULTS } from "./defaults.js";
+import { STACK_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
 import { buildPlatformImageTagEnv } from './image-tags.js';
 
 import {
   readCoreCompose,
   readBundledStackAsset,
+  refreshCoreAssetsFromSource,
 } from "./core-assets.js";
 export { sha256, randomHex } from "./crypto.js";
 import { sha256, randomHex } from "./crypto.js";
@@ -142,8 +143,8 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
     "# Guardian is network-only (no host port) — channels reach it via",
     "# http://guardian:8080 over the channel_lan Docker network.",
-    `OP_ASSISTANT_PORT=${SPEC_DEFAULTS.ports.assistant}`,
-    `OP_HOST_UI_PORT=${SPEC_DEFAULTS.ports.hostUi}`,
+    `OP_ASSISTANT_PORT=${STACK_DEFAULTS.ports.assistant}`,
+    `OP_HOST_UI_PORT=${STACK_DEFAULTS.ports.hostUi}`,
     ""
   ].join("\n");
 }
@@ -161,7 +162,7 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
  * is purely a writable secondary source entry in config/akm/config.json. No
  * conditional overlay file is involved.
  */
-export function discoverStackOverlays(stackDir: string, _homeDir?: string): string[] {
+export function discoverStackOverlays(stackDir: string): string[] {
   const files: string[] = [];
 
   const coreYml = `${stackDir}/core.compose.yml`;
@@ -224,7 +225,7 @@ export function ensureChannelSecret(stackDir: string, addon: string): string {
  * explicit OP_HOME paths.
  */
 export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
-  const composeFiles = discoverStackOverlays(state.stackDir, state.homeDir);
+  const composeFiles = discoverStackOverlays(state.stackDir);
   if (composeFiles.length === 0) return;
 
   // Resolve the operator UID/GID compose runs containers as (`user:`), so we
@@ -314,18 +315,19 @@ function chownVolumeTarget(path: string, operatorIds: OperatorIds | null): void 
 export function writeRuntimeFiles(
   state: ControlPlaneState
 ): void {
-  // Write core compose to config/stack/ only on first install —
-  // refreshCoreAssets() is the canonical writer on update.
   mkdirSync(state.stackDir, { recursive: true });
-  const composePath = `${state.stackDir}/core.compose.yml`;
-  if (!existsSync(composePath)) {
-    writeFileSync(composePath, state.artifacts.compose);
+  const managedSourceRoot = `${state.homeDir}/.openpalm`;
+  if (existsSync(`${managedSourceRoot}/config/stack/core.compose.yml`)) {
+    refreshCoreAssetsFromSource(managedSourceRoot, state.homeDir);
   }
-
-  for (const name of ['services.compose.yml', 'channels.compose.yml', 'custom.compose.yml']) {
+  const composePath = `${state.stackDir}/core.compose.yml`;
+  if (!existsSync(composePath)) writeFileSync(composePath, state.artifacts.compose);
+  for (const name of ['services.compose.yml', 'channels.compose.yml']) {
     const path = `${state.stackDir}/${name}`;
     if (!existsSync(path)) writeFileSync(path, readBundledStackAsset(name));
   }
+  const customComposePath = `${state.stackDir}/custom.compose.yml`;
+  if (!existsSync(customComposePath)) writeFileSync(customComposePath, readBundledStackAsset('custom.compose.yml'));
 
   for (const addon of listEnabledAddonIds(state.homeDir)) {
     if (['api', 'chat', 'discord', 'slack'].includes(addon)) {

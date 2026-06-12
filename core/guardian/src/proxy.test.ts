@@ -2,13 +2,12 @@
  * Guardian /oc/* proxy — Stage 1 integration tests (design §3.1, §3.3, §3.4, §7).
  *
  * Spawns the real guardian as a subprocess with a temp channel-secret file and a
- * mock OpenCode assistant. Signs each native call with signRequest (signed
- * userId). Asserts: allowlist default-deny + hardened matching, session-ownership
+ * mock OpenCode assistant. Uses the shipped Basic-auth /oc contract. Asserts:
+ * allowlist default-deny + hardened matching, session-ownership
  * authz (A cannot touch B's session), POST /session create-body rewrite, and
  * GET /session response filtering. Mirrors server.test.ts harness conventions.
  */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { signRequest } from "@openpalm/channels-sdk/crypto";
 import type { Subprocess } from "bun";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
@@ -53,30 +52,25 @@ function getAvailablePort(): Promise<number> {
   });
 }
 
-/** Sign + send a native proxy call. Returns the Response. */
+/** Issue a native proxy call with the shipped Basic-auth headers. */
 function ocCall(
   method: string,
   ocPath: string,
-  opts: { userId?: string; channel?: string; body?: string; sessionKey?: string; headerOverrides?: Record<string, string>; signal?: AbortSignal } = {},
+  opts: { userId?: string; principalId?: string; secret?: string; body?: string; sessionKey?: string; headerOverrides?: Record<string, string>; signal?: AbortSignal } = {},
 ): Promise<Response> {
   const userId = opts.userId ?? "user-a";
-  const channel = opts.channel ?? TEST_CHANNEL;
   const body = opts.body ?? "";
-  const nonce = crypto.randomUUID();
-  const timestamp = Date.now();
-  const pathWithQuery = ocPath; // no query in these tests
-  const sig = signRequest(TEST_SECRET, { method, pathWithQuery, body, nonce, timestamp, userId });
-
-  const headers: Record<string, string> = {
-    "x-channel-signature": sig,
-    "x-channel-name": channel,
-    "x-channel-user-id": userId,
-    "x-channel-nonce": nonce,
-    "x-channel-timestamp": String(timestamp),
-  };
-  if (opts.sessionKey) headers["x-channel-session-key"] = opts.sessionKey;
-  if (body) headers["content-type"] = "application/json";
-  Object.assign(headers, opts.headerOverrides ?? {});
+  const principalId = opts.principalId ?? TEST_CHANNEL;
+  const secret = opts.secret ?? TEST_SECRET;
+  const headers = new Headers({
+    authorization: `Basic ${Buffer.from(`${principalId}:${secret}`, "utf-8").toString("base64")}`,
+    "x-openpalm-user": userId,
+  });
+  if (opts.sessionKey) headers.set("x-openpalm-session-key", opts.sessionKey);
+  if (body) headers.set("content-type", "application/json");
+  if (opts.headerOverrides) {
+    for (const [key, value] of Object.entries(opts.headerOverrides)) headers.set(key, value);
+  }
 
   const init: RequestInit = { method, headers };
   if (method !== "GET" && method !== "HEAD") init.body = body;
@@ -169,6 +163,9 @@ beforeAll(async () => {
     env: {
       ...process.env,
       PORT: String(guardianPort),
+      GUARDIAN_DIRECT_PORT: String(await getAvailablePort()),
+      GUARDIAN_ADMIN_PORT: String(await getAvailablePort()),
+      GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
       CHANNEL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: auditPath,
@@ -228,7 +225,7 @@ async function createSessionFor(userId: string, sessionKey?: string): Promise<st
   return data.id;
 }
 
-describe("/oc proxy — authentication (§3.1)", () => {
+describe("/oc proxy — authentication", () => {
   it("valid signed POST /session → 200 and records ownership", async () => {
     const resp = await ocCall("POST", "/session", { userId: "auth-ok", body: JSON.stringify({}) });
     expect(resp.status).toBe(200);
@@ -236,50 +233,37 @@ describe("/oc proxy — authentication (§3.1)", () => {
     expect(typeof data.id).toBe("string");
   });
 
-  it("bad signature → 403 invalid_signature", async () => {
+  it("bad Basic secret → 401 unauthorized", async () => {
     const resp = await ocCall("POST", "/session", {
       userId: "auth-bad",
       body: JSON.stringify({}),
-      headerOverrides: { "x-channel-signature": "deadbeef" },
+      secret: "wrong-secret",
     });
-    expect(resp.status).toBe(403);
-    expect((await resp.json()).error).toBe("invalid_signature");
+    expect(resp.status).toBe(401);
+    expect((await resp.json()).error).toBe("unauthorized");
   });
 
-  it("unknown channel → 403 invalid_signature (no enumeration oracle)", async () => {
-    // Sign with the right secret but claim a channel that has no grant.
-    const resp = await ocCall("GET", "/session", { userId: "u", channel: "nonexistent" });
-    expect(resp.status).toBe(403);
-    expect((await resp.json()).error).toBe("invalid_signature");
+  it("unknown principal → 401 unauthorized", async () => {
+    const resp = await ocCall("GET", "/session", { userId: "u", principalId: "nonexistent" });
+    expect(resp.status).toBe(401);
+    expect((await resp.json()).error).toBe("unauthorized");
   });
 
-  it("swapped userId (reusing another field's signed material) → 403", async () => {
-    // Sign for userId=alice, then send the header as userId=mallory.
-    const method = "GET";
-    const ocPath = "/session";
-    const nonce = crypto.randomUUID();
-    const timestamp = Date.now();
-    const sig = signRequest(TEST_SECRET, { method, pathWithQuery: ocPath, body: "", nonce, timestamp, userId: "alice" });
-    const resp = await fetch(`${guardianUrl}/oc${ocPath}`, {
-      method,
-      headers: {
-        "x-channel-signature": sig,
-        "x-channel-name": TEST_CHANNEL,
-        "x-channel-user-id": "mallory", // swapped
-        "x-channel-nonce": nonce,
-        "x-channel-timestamp": String(timestamp),
-      },
-    });
-    expect(resp.status).toBe(403);
-    expect((await resp.json()).error).toBe("invalid_signature");
-  });
-
-  it("missing signed headers → 403", async () => {
+  it("missing x-openpalm-user falls back to the authenticated principal id", async () => {
     const resp = await fetch(`${guardianUrl}/oc/session`, {
       method: "GET",
-      headers: { "x-channel-signature": "x", "x-channel-name": TEST_CHANNEL },
+      headers: {
+        authorization: `Basic ${Buffer.from(`${TEST_CHANNEL}:${TEST_SECRET}`, "utf-8").toString("base64")}`,
+      },
     });
-    expect(resp.status).toBe(403);
+    expect(resp.status).toBe(200);
+  });
+
+  it("missing Basic auth → 401", async () => {
+    const resp = await fetch(`${guardianUrl}/oc/session`, {
+      method: "GET",
+    });
+    expect(resp.status).toBe(401);
   });
 });
 

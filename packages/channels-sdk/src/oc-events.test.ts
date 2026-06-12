@@ -107,6 +107,11 @@ describe("isTurnEnd — session.status idle, fallback session.idle (§1.1)", () 
     expect(isTurnEnd(ev("session.status", { sessionID: SID, status: { type: "thinking" } }), SID)).toBe(false);
   });
 
+  test("session.status completed/done do NOT end the turn", () => {
+    expect(isTurnEnd(ev("session.status", { sessionID: SID, status: "completed" }), SID)).toBe(false);
+    expect(isTurnEnd(ev("session.status", { sessionID: SID, status: "done" }), SID)).toBe(false);
+  });
+
   test("turn-end for a DIFFERENT session is ignored", () => {
     expect(isTurnEnd(ev("session.idle", { sessionID: "other" }), SID)).toBe(false);
   });

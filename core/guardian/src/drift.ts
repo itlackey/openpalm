@@ -31,22 +31,6 @@ const logger = createLogger("guardian:drift");
 const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 const DRIFT_DOC_TIMEOUT_MS = Number(Bun.env.GUARDIAN_DRIFT_DOC_TIMEOUT_MS ?? 5_000);
 
-function upstreamAuthHeader(): string | undefined {
-  const username = Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode";
-  let password = Bun.env.OPENCODE_SERVER_PASSWORD;
-  const passwordFile = Bun.env.OPENCODE_SERVER_PASSWORD_FILE;
-  if (!password && passwordFile) {
-    try {
-      password = Bun.file(passwordFile).textSync().replace(/[\r\n]+$/, "");
-    } catch {
-      password = undefined;
-    }
-  }
-  if (!password) return undefined;
-  const encoded = Buffer.from(`${username}:${password}`, "utf8").toString("base64");
-  return `Basic ${encoded}`;
-}
-
 // ── Runtime state: is the proxy enabled? ───────────────────────────────────
 //
 // Starts DISABLED (fail-closed). The boot-time check flips it on ONLY when the
@@ -201,8 +185,6 @@ export async function runDriftCheck(): Promise<boolean> {
   let doc: unknown;
   try {
     const headers = new Headers({ accept: "application/json" });
-    const auth = upstreamAuthHeader();
-    if (auth) headers.set("authorization", auth);
     const resp = await fetch(`${ASSISTANT_URL}/doc`, {
       method: "GET",
       headers,

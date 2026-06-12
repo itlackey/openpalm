@@ -94,6 +94,35 @@ describe("skeleton: .openpalm/config/ structure", () => {
     expect(channelsCompose).toContain('channel:${OP_CHANNEL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
     expect(channelsCompose).toContain('guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
   });
+
+  test('host-published optional listeners use OP_BIND_ADDRESS nested defaults', () => {
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'channels.compose.yml'), 'utf-8');
+    const servicesCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'services.compose.yml'), 'utf-8');
+    const coreCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'core.compose.yml'), 'utf-8');
+
+    expect(channelsCompose).toContain('${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8181');
+    expect(channelsCompose).toContain('${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182');
+    expect(servicesCompose).toContain('${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880');
+    expect(coreCompose).toContain('127.0.0.1:${OP_ASSISTANT_SSH_PORT:-2222}:22');
+    expect(coreCompose).not.toContain('OP_ASSISTANT_SSH_BIND_ADDRESS');
+  });
+
+  test('compose assets keep only consumed openpalm.profile labels', () => {
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'channels.compose.yml'), 'utf-8');
+    const servicesCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'services.compose.yml'), 'utf-8');
+
+    expect(channelsCompose).not.toContain('openpalm.name:');
+    expect(channelsCompose).not.toContain('openpalm.description:');
+    expect(channelsCompose).not.toContain('openpalm.icon:');
+    expect(channelsCompose).not.toContain('openpalm.category:');
+    expect(channelsCompose).not.toContain('openpalm.healthcheck:');
+    expect(servicesCompose).not.toContain('openpalm.name:');
+    expect(servicesCompose).not.toContain('openpalm.description:');
+    expect(servicesCompose).not.toContain('openpalm.icon:');
+    expect(servicesCompose).not.toContain('openpalm.category:');
+    expect(servicesCompose).not.toContain('openpalm.healthcheck:');
+    expect(servicesCompose).toContain('openpalm.profile.label:');
+  });
 });
 
 // ── no runtime registry ───────────────────────────────────────────────

@@ -40,6 +40,8 @@ export const PROVIDER_KEY_MAP: Record<string, string> = {
   huggingface: "HF_TOKEN",
 };
 
+export type HardwareProfileVariant = 'cpu' | 'cuda' | 'rocm';
+
 /** Known embedding model dimensions. Keyed by `provider/model`. */
 export const EMBEDDING_DIMS: Record<string, number> = {
   "openai/text-embedding-3-small": 1536,
@@ -56,6 +58,11 @@ export const EMBEDDING_DIMS: Record<string, number> = {
   "huggingface/sentence-transformers/all-MiniLM-L6-v2": 384,
   "huggingface/intfloat/multilingual-e5-large": 1024,
 };
+
+/** Bare model-name lookup used by the browser wizard helpers. */
+export const KNOWN_EMBEDDING_MODEL_DIMS: Record<string, number> = Object.fromEntries(
+  Object.entries(EMBEDDING_DIMS).map(([key, dims]) => [key.slice(key.indexOf('/') + 1), dims])
+);
 
 /**
  * Look up embedding model dimensions. Tries the full key first, then strips
@@ -97,11 +104,17 @@ export const OLLAMA_DEFAULT_MODELS = {
   embedding: "nomic-embed-text",
 } as const;
 
+export const OLLAMA_DEFAULT_CHAT_MODEL = OLLAMA_DEFAULT_MODELS.chat;
+
 /**
  * Base URL for Ollama when running as an in-stack compose service.
  * Uses Docker network name instead of host.docker.internal.
  */
 export const OLLAMA_INSTACK_URL = "http://ollama:11434";
+
+export function addonProfileId(addon: string, variant: HardwareProfileVariant): string {
+  return `addon.${addon}.${variant}`;
+}
 
 /** Contextual help for local/self-hosted providers. */
 export const LOCAL_PROVIDER_HELP: Record<string, string> = {

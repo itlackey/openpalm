@@ -36,6 +36,14 @@ function writeStackCompose(homeDir: string, filename: string, yml: string): void
   writeFileSync(join(stackDir, filename), yml);
 }
 
+function seedManagedSource(homeDir: string, files: Record<string, string>): void {
+  for (const [relPath, content] of Object.entries(files)) {
+    const path = join(homeDir, '.openpalm', relPath);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, content);
+  }
+}
+
 registerCleanup();
 
 // ── Pure Utility Functions ──────────────────────────────────────────────
@@ -216,6 +224,23 @@ describe("writeRuntimeFiles", () => {
     const composePath = join(state.stackDir, "core.compose.yml");
     expect(existsSync(composePath)).toBe(true);
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
+  });
+
+  test('refreshes managed compose assets on rerun but preserves custom.compose.yml', () => {
+    seedManagedSource(state.homeDir, {
+      'config/stack/core.compose.yml': 'services:\n  assistant:\n    image: current\n',
+      'config/stack/services.compose.yml': 'services:\n  ollama: {}\n',
+      'config/stack/channels.compose.yml': 'services:\n  chat: {}\n',
+      'config/stack/custom.compose.yml': 'services:\n  seeded: {}\n',
+      'config/assistant/opencode.jsonc': '{}\n',
+    });
+    writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services:\n  assistant:\n    image: stale\n');
+    writeFileSync(join(state.stackDir, 'custom.compose.yml'), 'services:\n  mine: {}\n');
+
+    writeRuntimeFiles(state);
+
+    expect(readFileSync(join(state.stackDir, 'core.compose.yml'), 'utf-8')).toContain('image: current');
+    expect(readFileSync(join(state.stackDir, 'custom.compose.yml'), 'utf-8')).toContain('mine');
   });
 
   test("generates file-based channel secrets for discovered channels", () => {

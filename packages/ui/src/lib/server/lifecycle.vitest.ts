@@ -21,6 +21,7 @@ import {
   normalizeCaller,
   randomHex,
   CORE_SERVICES,
+  readSecret,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup , stackEnvFor} from "./test-helpers.js";
 
@@ -146,6 +147,17 @@ describe("createState", () => {
     expect(state.homeDir).toBe(base);
     expect(state.configDir).toBeDefined();
     expect(state.stackDir).toBeDefined();
+  });
+
+  test('does not write secrets or mutate process env', () => {
+    const base = trackDir(makeTempDir());
+    process.env.OP_HOME = base;
+    delete process.env.OP_UI_LOGIN_PASSWORD;
+
+    const state = createState();
+
+    expect(readSecret(state.stackDir, 'op_ui_login_password')).toBeNull();
+    expect(process.env.OP_UI_LOGIN_PASSWORD).toBeUndefined();
   });
 
   test("seeds the assistant as stopped; guardian is gated to channels", () => {

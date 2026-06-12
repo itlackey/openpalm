@@ -65,7 +65,6 @@ export {
 // ── Guardian-signed native OpenCode client (rich-UX /oc proxy) ────────────
 export {
   OcClient,
-  generateMessageId,
   type OcClientOptions,
   type OcSession,
 } from "./oc-client.ts";

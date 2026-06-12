@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import libPkg from '../../package.json' with { type: 'json' };
 import { ensureMigrated, ensureReleaseMigrated, MigrationError, CURRENT_LAYOUT_VERSION } from "./migrations.js";
-
-const CURRENT_RELEASE_VERSION = `v${libPkg.version}`;
 
 // The harness resolves all paths from OP_HOME; point it at a synthetic 0.10 home.
 let home: string;
@@ -73,7 +70,7 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(stackEnv).toContain("OP_TTS_VOICE=alloy");    // prefixed
     expect(stackEnv).toContain("OP_ASSISTANT_PORT=3800"); // kept
     expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`); // commit
-    expect(stackEnv).toContain('OP_RELEASE_VERSION=');
+    expect(stackEnv).not.toContain('OP_RELEASE_VERSION=');
     expect(stackEnv).not.toContain("OPENAI_API_KEY");    // quarantined
     expect(stackEnv).not.toContain("OP_CAP_LLM_MODEL");  // quarantined
 
@@ -150,9 +147,9 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(entries(join(home, "knowledge", "secrets"))).toEqual([]);
     const stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toContain("OP_IMAGE_TAG=0.10.2");
-    expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=0.10.2');
-    expect(stackEnv).toContain('OP_GUARDIAN_IMAGE_TAG=0.10.2');
-    expect(stackEnv).toContain('OP_CHANNEL_IMAGE_TAG=0.10.2');
+    expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
+    expect(stackEnv).not.toContain('OP_GUARDIAN_IMAGE_TAG=');
+    expect(stackEnv).not.toContain('OP_CHANNEL_IMAGE_TAG=');
     expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
   });
 
@@ -269,15 +266,44 @@ describe("ensureMigrated 0.10 → 0.11", () => {
 
   it("treats an already-0.11 home (no vault) as current and stamps it", () => {
     mkdirSync(join(home, "knowledge", "env"), { recursive: true });
-    writeFileSync(join(home, "knowledge", "env", "stack.env"), "OP_IMAGE_TAG=0.11.0\n");
+    writeFileSync(join(home, "knowledge", "env", "stack.env"), "OP_IMAGE_TAG=v0.11.0\n");
     const report = ensureMigrated();
     expect(report.migrated).toBe(true);
     expect(report.to).toBe(CURRENT_LAYOUT_VERSION);
     const stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
-    expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=0.11.0');
-    expect(stackEnv).toContain('OP_RELEASE_VERSION=');
-    expect(report.releaseApplied.length).toBeGreaterThan(0);
+    expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.0');
+    expect(report.releaseApplied).toEqual([]);
+  });
+
+  it('does not stamp OP_RELEASE_VERSION with a non-comparable deployed tag', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=latest\n');
+
+    const report = ensureMigrated();
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+
+    expect(report.migrated).toBe(true);
+    expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+    expect(stackEnv).not.toContain('OP_RELEASE_VERSION=latest');
+    expect(stackEnv).not.toContain('OP_RELEASE_VERSION=');
+    expect(report.notes.join(' ')).toContain('Skipped OP_RELEASE_VERSION stamp');
+  });
+
+  it('honors opts.homeDir instead of process.env.OP_HOME for every migration path', () => {
+    const otherHome = mkdtempSync(join(tmpdir(), 'op-migrate-other-'));
+    try {
+      mkdirSync(join(otherHome, 'knowledge', 'env'), { recursive: true });
+      writeFileSync(join(otherHome, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.11.0\n');
+
+      const report = ensureMigrated({ homeDir: otherHome });
+      expect(report.migrated).toBe(true);
+      expect(readFileSync(join(otherHome, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+      expect(existsSync(join(home, 'knowledge', 'env', 'stack.env'))).toBe(false);
+    } finally {
+      rmSync(otherHome, { recursive: true, force: true });
+    }
   });
 
   it("runs the current release hook only when the upgrade target reaches that version", () => {
@@ -293,13 +319,27 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.4');
     expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
 
-    const currentTarget = ensureReleaseMigrated({ targetVersion: CURRENT_RELEASE_VERSION });
+    const currentTarget = ensureReleaseMigrated({ targetVersion: 'v0.11.5-rc.1' });
     // The per-image-tag migration is pinned to the release that introduced it.
     expect(currentTarget.applied).toEqual(['v0.11.5-rc.1']);
     stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
-    expect(stackEnv).toContain(`OP_RELEASE_VERSION=${CURRENT_RELEASE_VERSION}`);
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.5-rc.1');
     expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=v0.11.0');
     expect(stackEnv).toContain('OP_GUARDIAN_IMAGE_TAG=v0.11.0');
     expect(stackEnv).toContain('OP_CHANNEL_IMAGE_TAG=v0.11.0');
+  });
+
+  it('skips stamping a non-comparable explicit release target', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.11.0\n');
+
+    const report = ensureReleaseMigrated({ targetVersion: 'latest' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+
+    expect(report.migrated).toBe(false);
+    expect(report.applied).toEqual([]);
+    expect(stackEnv).not.toContain('OP_RELEASE_VERSION=latest');
+    expect(stackEnv).not.toContain('OP_RELEASE_VERSION=');
+    expect(report.notes.join(' ')).toContain('Skipped OP_RELEASE_VERSION stamp');
   });
 });

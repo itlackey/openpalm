@@ -19,26 +19,23 @@
  */
 
 import type { Event } from "@opencode-ai/sdk";
-import { signRequest } from "./crypto.ts";
 
 /** The guardian's /oc base, hardcoded like guardianUrl in channel-sdk.ts (no env override by design). */
 const GUARDIAN_OC_BASE = "http://guardian:8080/oc";
 
-// Wire header names — MUST match core/guardian/src/proxy.ts.
-const H_SIG = "x-channel-signature";
-const H_CHANNEL = "x-channel-name";
-const H_USER = "x-channel-user-id";
-const H_NONCE = "x-channel-nonce";
-const H_TIMESTAMP = "x-channel-timestamp";
-const H_SESSION_KEY = "x-channel-session-key";
+const H_USER = 'x-openpalm-user';
+const H_SESSION_KEY = 'x-openpalm-session-key';
 
 export interface OcClientOptions {
-  /** The channel name (e.g. "discord") — used as the secret-map key + signed material. */
-  channel: string;
-  /** The per-channel HMAC secret (read from CHANNEL_SECRET_FILE by the adapter). */
+  /** The guardian principal id (for example `discord` or `api`). */
+  principalId: string;
+  /** Transitional alias for older callers/tests. */
+  channel?: string;
+  /** The guardian principal secret read from PRINCIPAL_SECRET_FILE. */
   secret: string;
   /** Override the guardian /oc base (tests only; production uses the hardcoded default). */
   baseUrl?: string;
+  fetch?: typeof fetch;
 }
 
 /** A minimal OpenCode Session shape (the create/get response we read). */
@@ -56,14 +53,16 @@ export interface OcSession {
  * reuse the prompt_async nonce — §3.1).
  */
 export class OcClient {
-  private readonly channel: string;
+  private readonly principalId: string;
   private readonly secret: string;
   private readonly base: string;
+  private readonly fetchFn?: typeof fetch;
 
   constructor(opts: OcClientOptions) {
-    this.channel = opts.channel;
+    this.principalId = opts.principalId ?? opts.channel ?? '';
     this.secret = opts.secret;
     this.base = opts.baseUrl ?? GUARDIAN_OC_BASE;
+    this.fetchFn = opts.fetch;
   }
 
   private headers(
@@ -73,15 +72,10 @@ export class OcClient {
     userId: string,
     extra?: Record<string, string>,
   ): Headers {
-    const nonce = crypto.randomUUID();
-    const timestamp = Date.now();
-    const sig = signRequest(this.secret, { method, pathWithQuery: ocPath, body, nonce, timestamp, userId });
+    const credentials = Buffer.from(`${this.principalId}:${this.secret}`, 'utf-8').toString('base64');
     const headers = new Headers({
-      [H_SIG]: sig,
-      [H_CHANNEL]: this.channel,
       [H_USER]: userId,
-      [H_NONCE]: nonce,
-      [H_TIMESTAMP]: String(timestamp),
+      authorization: `Basic ${credentials}`,
     });
     if (body) headers.set("content-type", "application/json");
     if (extra) for (const [k, v] of Object.entries(extra)) headers.set(k, v);
@@ -103,7 +97,8 @@ export class OcClient {
     const headers = this.headers(method, ocPath, bodyStr, userId, extra);
     const init: RequestInit = { method, headers, signal: opts.signal };
     if (method !== "GET" && method !== "HEAD") init.body = bodyStr;
-    return fetch(`${this.base}${ocPath}`, init);
+    const fetchFn = this.fetchFn ?? ((input: RequestInfo | URL, innerInit?: RequestInit) => globalThis.fetch(input, innerInit));
+    return fetchFn(`${this.base}${ocPath}`, init);
   }
 
   /**
@@ -245,15 +240,4 @@ function extractSseData(frame: string): string | null {
     }
   }
   return dataLines.length === 0 ? null : dataLines.join("\n");
-}
-
-/**
- * Generate a messageID to pass to `prompt_async`. OpenCode uses the `msg_`
- * prefix convention and accepts a client-supplied id for the USER message (it
- * still assigns the assistant reply its own server id — see extractTextDelta,
- * which is why turn correlation is sessionID-based, not by this id). A `msg_`
- * prefix avoids any chance of OpenCode rejecting a non-conventional id.
- */
-export function generateMessageId(): string {
-  return `msg_${crypto.randomUUID().replace(/-/g, "")}`;
 }

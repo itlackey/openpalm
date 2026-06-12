@@ -10,6 +10,7 @@
   } from '$lib/wizard/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
   import type { SetupRecommendation } from '@openpalm/lib';
+  import { addonProfileId } from '@openpalm/lib/provider-constants';
   import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
   import ProgressBar from './ProgressBar.svelte';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
@@ -242,11 +243,6 @@
     const profile = ollamaProfiles.find((p) => p.id === selectedOllamaProfile);
     return profile?.label ?? profile?.id ?? selectedOllamaProfile;
   });
-
-  function addonProfileId(addon: 'voice' | 'ollama', variant: 'cpu' | 'cuda' | 'rocm'): string {
-    return `addon.${addon}.${variant}`;
-  }
-
 
   // Build the install payload for /api/setup/complete
   const payload = $derived.by(() => {
@@ -1305,7 +1301,7 @@
     delete modelSelection[role as 'llm' | 'embedding' | 'small'];
   }
 
-  function handleDeployRetry(): void {
+  async function handleDeployRetry(): Promise<void> {
     installing = false;
     deployError = null;
     deployDone = false;
@@ -1313,7 +1309,14 @@
     deployData = {};
     lastDeployData = null;
     deployPollErrors = 0;
-    void handleInstall();
+    const res = await fetch('/api/setup/retry-deploy', { method: 'POST' });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload?.ok === false) {
+      deployError = payload?.message ?? 'Retry failed.';
+      return;
+    }
+    installing = true;
+    void pollDeployStatus();
   }
 
   function handleDeployBack(): void {
@@ -1584,7 +1587,6 @@
 
 <svelte:head>
   <title>OpenPalm Setup</title>
-  <link rel="stylesheet" href="/setup/wizard.css">
 </svelte:head>
 
 <main class="setup-page" aria-label="Setup wizard">

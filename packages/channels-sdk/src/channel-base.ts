@@ -15,10 +15,10 @@
  *   }
  */
 
-import type { ChannelPayload } from "./channel.ts";
-import { buildChannelMessage, forwardChannelMessage } from "./channel-sdk.ts";
 import { createLogger } from "./logger.ts";
 import { readRequiredSecretFile, SecretFileError } from "./secret-file.ts";
+import { OcClient } from './oc-client.ts';
+import { asRaw, extractTextDelta, isTurnEnd, partSnapshotType } from './oc-events.ts';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -51,7 +51,8 @@ export abstract class BaseChannel {
    * Can be overridden for testing.
    */
   get secret(): string {
-    return readRequiredSecretFile("CHANNEL_SECRET_FILE");
+    const key = Bun.env.PRINCIPAL_SECRET_FILE ? 'PRINCIPAL_SECRET_FILE' : 'CHANNEL_SECRET_FILE';
+    return readRequiredSecretFile(key);
   }
 
   /**
@@ -111,20 +112,25 @@ export abstract class BaseChannel {
     timeoutMs?: number,
   ): Promise<Response> {
     const fn = fetchFn ?? this._fetchFn;
-    const payload: ChannelPayload = buildChannelMessage({
-      userId: result.userId,
-      channel: this.name,
-      text: result.text,
-      metadata: result.metadata,
-    });
-
-    return forwardChannelMessage(
-      this.guardianUrl,
-      this.secret,
-      payload,
-      fn,
-      timeoutMs,
-    );
+    const controller = timeoutMs && timeoutMs > 0 ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const client = new OcClient({
+        principalId: Bun.env.PRINCIPAL_ID ?? this.name,
+        secret: this.secret,
+        baseUrl: `${this.guardianUrl}/oc`,
+        fetch: fn,
+      });
+      const sessionKey = typeof result.metadata?.sessionKey === 'string' ? result.metadata.sessionKey : result.userId;
+      const session = await client.createSession(result.userId, sessionKey);
+      const answerPromise = collectTurnAnswer(client, result.userId, session.id, controller?.signal ?? new AbortController().signal);
+      await client.prompt(result.userId, session.id, result.text);
+      const answer = await answerPromise;
+      return this.json(200, { userId: result.userId, sessionId: session.id, answer });
+    } finally {
+      if (timer) clearTimeout(timer);
+      controller?.abort();
+    }
   }
 
   /**
@@ -219,4 +225,18 @@ export abstract class BaseChannel {
       process.exit(1);
     }
   }
+}
+
+async function collectTurnAnswer(client: OcClient, userId: string, sessionId: string, signal: AbortSignal): Promise<string> {
+  const reasoningPartIds = new Set<string>();
+  let answer = '';
+  for await (const event of client.events(userId, signal)) {
+    const raw = asRaw(event);
+    const snapshot = partSnapshotType(raw);
+    if (snapshot?.type === 'reasoning') reasoningPartIds.add(snapshot.partID);
+    const delta = extractTextDelta(raw, sessionId, reasoningPartIds);
+    if (delta) answer += delta;
+    if (isTurnEnd(raw, sessionId)) break;
+  }
+  return answer || '(no response)';
 }

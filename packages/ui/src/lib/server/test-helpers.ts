@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmSync } from "node:fs";
 import type { ControlPlaneState } from "@openpalm/lib";
-import { createState, stackEnvPathFromStackDir } from "@openpalm/lib";
+import { createState, initializeStateSecrets, stackEnvPathFromStackDir } from "@openpalm/lib";
 import { dirname } from "node:path";
 import { _replaceState, getState } from "./state.js";
 import { _seedSession, _clearSessions } from "./session-store.js";
@@ -88,9 +88,9 @@ export function resetState(uiLoginPassword?: string): ControlPlaneState {
     process.env.OP_UI_LOGIN_PASSWORD = uiLoginPassword;
   }
   const state = createState();
+  initializeStateSecrets(state);
   if (uiLoginPassword !== undefined) {
-    // createState() loads file-based stack secrets into process.env; restore
-    // the test-provided login password after that bootstrap read.
+    // Secret bootstrap may override the test-provided login password; restore it.
     process.env.OP_UI_LOGIN_PASSWORD = uiLoginPassword;
     // Seed the password value as a valid session token so tests can pass it
     // directly as the op_session cookie value without calling createSession().

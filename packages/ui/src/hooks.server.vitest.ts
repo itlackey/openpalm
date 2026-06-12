@@ -22,11 +22,11 @@ function seedSetupComplete(stackDir: string): void {
   writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 }
 
-function makeEvent(path: string, token: string | null): RequestEvent {
+function makeEvent(path: string, token: string | null, accept = 'application/json'): RequestEvent {
   const url = new URL(`http://localhost:3880${path}`);
   const headers: Record<string, string> = {
     host: 'localhost:3880',
-    accept: 'application/json',
+    accept,
   };
   if (token) headers.cookie = `${SESSION_COOKIE_NAME}=${token}`;
 
@@ -85,5 +85,16 @@ describe('hooks.server — sliding renewal', () => {
 
     const setCookie = response.headers.get('set-cookie') ?? '';
     expect(setCookie).not.toContain(`${SESSION_COOKIE_NAME}=`);
+  });
+
+  test('first-run document navigation routes to splash instead of setup', async () => {
+    const state = resetState('test-admin-pw');
+    const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+    mkdirSync(kvDir, { recursive: true });
+    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
+
+    const event = makeEvent('/', null, 'text/html');
+
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
   });
 });

@@ -29,10 +29,9 @@
  */
 
 import { matchAllowlist, type AllowlistMatch } from "@openpalm/channels-sdk/oc-allowlist";
-import { verifyRequest, type RequestSignatureFields } from "@openpalm/channels-sdk/crypto";
 import { createLogger } from "@openpalm/channels-sdk/logger";
 
-import { checkNonce } from "./replay";
+import { authenticate, type AuthenticatedPrincipal } from "./auth";
 import {
   type Principal,
   ownsSession,
@@ -77,56 +76,18 @@ const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576
 // upstream abort itself (it must stay free of the upstream fetch to remain
 // unit-testable); the proxy owns that side-effect. Best-effort, fire-and-forget.
 setTurnAbortFn((sessionId) => {
-  const auth = upstreamAuthHeader();
   const headers = new Headers({ "content-type": "application/json" });
-  if (auth) headers.set("authorization", auth);
   void fetch(`${ASSISTANT_URL}/session/${sessionId}/abort`, { method: "POST", headers, body: "{}" })
     .then(() => logger.warn("oc_turn_wall_clock_abort", { sessionId }))
     .catch((err) => logger.error("oc_turn_abort_failed", { sessionId, error: String(err) }));
 });
 
-function readSecretFile(path: string | undefined): string | undefined {
-  if (!path) return undefined;
-  try {
-    return Bun.file(path).textSync().replace(/[\r\n]+$/, "");
-  } catch {
-    return undefined;
-  }
-}
-
-// Server-to-server Basic auth to the upstream OpenCode (same creds the buffered
-// forward path uses). Computed once.
-const UPSTREAM_USERNAME = Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode";
-const UPSTREAM_PASSWORD =
-  readSecretFile(Bun.env.OPENCODE_SERVER_PASSWORD_FILE) ?? Bun.env.OPENCODE_SERVER_PASSWORD;
-
-function upstreamAuthHeader(): string | undefined {
-  if (!UPSTREAM_PASSWORD) return undefined;
-  const encoded = Buffer.from(`${UPSTREAM_USERNAME}:${UPSTREAM_PASSWORD}`, "utf8").toString("base64");
-  return `Basic ${encoded}`;
-}
-
-// ── Header names (wire contract) ──────────────────────────────────────────
-
-const H_SIG = "x-channel-signature";
-const H_CHANNEL = "x-channel-name";
-const H_USER = "x-channel-user-id";
-const H_NONCE = "x-channel-nonce";
-const H_TIMESTAMP = "x-channel-timestamp";
+const H_SESSION_KEY = 'x-openpalm-session-key';
 
 // ── Result type ───────────────────────────────────────────────────────────
 
 function json(status: number, data: unknown): Response {
   return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
-}
-
-/**
- * Normalize a channel name to the secret-map key the same way the buffered path
- * does (lower-case, hyphens→underscores). MUST match server.ts inbound + the
- * CHANNEL_<NAME>_SECRET_FILE env-key derivation, else hyphenated channels 403.
- */
-function channelKey(channel: string): string {
-  return channel.toLowerCase().replace(/-/g, "_");
 }
 
 // ── Upstream request header construction ───────────────────────────────────
@@ -143,8 +104,6 @@ function buildUpstreamHeaders(req: Request, hasBody: boolean): Headers {
     const ct = req.headers.get("content-type");
     headers.set("content-type", ct ?? "application/json");
   }
-  const auth = upstreamAuthHeader();
-  if (auth) headers.set("authorization", auth);
   // Pass through the SSE Accept for /event so OpenCode streams text/event-stream.
   const accept = req.headers.get("accept");
   if (accept) headers.set("accept", accept);
@@ -176,14 +135,11 @@ function buildResponseHeaders(upstream: Response, rid: string): Headers {
  * Returns a Response. On any gate failure it returns a 4xx and audits;
  * otherwise it forwards transparently and streams `upstream.body` back.
  *
- * `secretFor` resolves a channel's HMAC secret (so server.ts owns secret
- * loading/caching and this stays pure-ish + unit-testable). It returns "" for
- * unknown channels.
  */
 export async function handleProxy(
   req: Request,
   rid: string,
-  secretFor: (channelKey: string) => string,
+  expectedKind?: 'channel' | 'direct',
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -198,73 +154,82 @@ export async function handleProxy(
 
   const method = req.method;
 
-  // ── Gate 1a: read + reconstruct the signed material from headers ──────────
-  const channel = req.headers.get(H_CHANNEL) ?? "";
-  const userId = req.headers.get(H_USER) ?? "";
-  const nonce = req.headers.get(H_NONCE) ?? "";
-  const timestampRaw = req.headers.get(H_TIMESTAMP) ?? "";
-  const sig = req.headers.get(H_SIG) ?? "";
-  const timestamp = Number(timestampRaw);
-
   // ── Read the body (bounded) BEFORE signature so SHA256(body) can be checked ──
   let body = "";
   if (method !== "GET" && method !== "HEAD") {
     body = await req.text();
     if (body.length > OC_MAX_BODY_BYTES) {
-      return deny(rid, 413, "payload_too_large", { channel, userId, bodyLength: body.length });
+      return deny(rid, 413, "payload_too_large", { bodyLength: body.length });
     }
   }
 
-  // ── Gate 1b: per-call HMAC verify (signed userId) ────────────────────────
-  // ALWAYS run a verify even for unknown channels (dummy secret) to avoid a
-  // timing/enumeration oracle (mirrors the buffered path's C1 discipline).
-  const secret = channel ? secretFor(channelKey(channel)) : "";
-  const fields: RequestSignatureFields = {
-    method,
-    pathWithQuery: rawPath + url.search,
-    body,
-    nonce,
-    timestamp,
-    userId,
-  };
-  if (!userId || !nonce || !timestampRaw || Number.isNaN(timestamp)) {
-    // Run a dummy verify for timing parity, then reject.
-    verifyRequest("dummy-secret-for-timing-parity", fields, sig);
-    return deny(rid, 403, "invalid_signature", { channel, reason: "missing_signed_fields" });
-  }
-  if (!secret) {
-    verifyRequest("dummy-secret-for-timing-parity", fields, sig);
-    return deny(rid, 403, "invalid_signature", { channel, reason: "unknown_channel" });
-  }
-  if (!verifyRequest(secret, fields, sig)) {
-    return deny(rid, 403, "invalid_signature", { channel, userId });
+  const authenticated = authenticate(req, expectedKind);
+  if (!authenticated) {
+    return deny(rid, 401, 'unauthorized', {});
   }
 
   // ── Gate 1c: per-user / per-channel rate limit (§3.6) — counts discrete ──
   // signed calls (a GET /event open counts as one). BEFORE the nonce check (H3
   // discipline: a rate-limited flood must not burn nonce-store capacity).
   if (
-    !allow(`oc:${userId}`, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) ||
-    !allow(`oc:ch:${channel}`, CHANNEL_RATE_LIMIT, CHANNEL_RATE_WINDOW_MS)
+    !allow(`oc:${authenticated.kind}:${authenticated.id}:${authenticated.userId}`, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) ||
+    !allow(`oc:${authenticated.kind}:${authenticated.id}`, CHANNEL_RATE_LIMIT, CHANNEL_RATE_WINDOW_MS)
   ) {
-    return deny(rid, 429, "rate_limited", { channel, userId });
-  }
-
-  // ── Gate 1d: replay protection (reuse the buffered path's nonce store) ────
-  if (!checkNonce(nonce, timestamp)) {
-    return deny(rid, 409, "replay_detected", { channel, userId, nonce });
+    return deny(rid, 429, "rate_limited", { principalId: authenticated.id, userId: authenticated.userId });
   }
 
   // ── Gate 2: endpoint allowlist, default-deny, hardened matching ──────────
-  const match = matchAllowlist(method, rawPath);
+  const match = authenticated.kind === 'channel'
+    ? matchAllowlist(method, rawPath)
+    : allowDirect(method, rawPath);
   if (!match.allowed) {
-    return deny(rid, 403, "forbidden_endpoint", { channel, userId, method, path: rawPath, reason: match.reason });
+    return deny(rid, 403, "forbidden_endpoint", {
+      principalId: authenticated.id,
+      userId: authenticated.userId,
+      method,
+      path: rawPath,
+      reason: match.reason,
+    });
   }
 
-  const principal: Principal = { channel, userId };
+  const principal: Principal = { id: authenticated.id, kind: authenticated.kind, userId: authenticated.userId };
 
   // ── Gate 3: session/permission ownership + body rewrite + filtering ──────
-  return await routeAllowed(req, rid, principal, match, rawPath, url.search, body, secret);
+  return await routeAllowed(req, rid, principal, match, rawPath, url.search, body);
+}
+
+function allowDirect(method: string, rawPath: string): AllowlistMatch {
+  if (rawPath === '/doc' && method === 'GET') {
+    return { allowed: true, route: { method, template: '/doc' }, params: {} } as AllowlistMatch;
+  }
+  const match = matchAllowlist(method, rawPath);
+  if (match.allowed) return match;
+  const route = directRouteFor(rawPath, method);
+  if (route) return route;
+  return match;
+}
+
+function directRouteFor(rawPath: string, method: string): AllowlistMatch | null {
+  if (rawPath === '/event' && method === 'GET') {
+    return { allowed: true, route: { method, template: '/event' }, params: {} } as AllowlistMatch;
+  }
+  const sessionRoot = rawPath.match(/^\/session\/([^/]+)$/);
+  if (sessionRoot && (method === 'GET' || method === 'DELETE')) {
+    return { allowed: true, route: { method, template: '/session/{id}' }, params: { id: sessionRoot[1] } } as AllowlistMatch;
+  }
+  const message = rawPath.match(/^\/session\/([^/]+)\/(message|prompt_async|abort)$/);
+  if (message && method === 'POST') {
+    return { allowed: true, route: { method, template: `/session/{id}/${message[2]}` }, params: { id: message[1] } } as AllowlistMatch;
+  }
+  const permission = rawPath.match(/^\/permission\/([^/]+)\/reply$/);
+  if (permission && method === 'POST') {
+    return { allowed: true, route: { method, template: '/permission/{requestID}/reply' }, params: { requestID: permission[1] } } as AllowlistMatch;
+  }
+  const question = rawPath.match(/^\/question\/([^/]+)\/(reply|reject)$/);
+  if (question && method === 'POST') {
+    return { allowed: true, route: { method, template: `/question/{requestID}/${question[2]}` }, params: { requestID: question[1] } } as AllowlistMatch;
+  }
+  return null;
 }
 
 /**
@@ -279,7 +244,6 @@ async function routeAllowed(
   rawPath: string,
   search: string,
   body: string,
-  _secret: string,
 ): Promise<Response> {
   const template = match.route!.template;
   const params = match.params ?? {};
@@ -297,6 +261,10 @@ async function routeAllowed(
     return await forwardSessionList(req, rid, principal, rawPath, search, body);
   }
 
+  if (template === '/doc' && req.method === 'GET') {
+    return await forwardTransparent(req, rid, rawPath, search, body);
+  }
+
   // POST /permission/{requestID}/reply — own requestID only (§3.4). The /event
   // fan-out records requestID→principal when it relays the permission.asked
   // frame (event-fanout.ts), so only the principal that was SHOWN the request
@@ -306,7 +274,7 @@ async function routeAllowed(
   // the originating prompt_async nonce (§3.1).
   if (template === "/permission/{requestID}/reply") {
     if (!requestID || !ownsPermission(requestID, principal)) {
-      return deny(rid, 403, "forbidden_permission", { channel: principal.channel, userId: principal.userId, requestID });
+      return deny(rid, 403, "forbidden_permission", { principalId: principal.id, userId: principal.userId, requestID });
     }
     return await forwardTransparent(req, rid, rawPath, search, body);
   }
@@ -317,7 +285,7 @@ async function routeAllowed(
   // may answer/decline it (ownsPermission covers both per_ and que_ ids).
   if (template === "/question/{requestID}/reply" || template === "/question/{requestID}/reject") {
     if (!requestID || !ownsPermission(requestID, principal)) {
-      return deny(rid, 403, "forbidden_question", { channel: principal.channel, userId: principal.userId, requestID });
+      return deny(rid, 403, "forbidden_question", { principalId: principal.id, userId: principal.userId, requestID });
     }
     return await forwardTransparent(req, rid, rawPath, search, body);
   }
@@ -325,7 +293,7 @@ async function routeAllowed(
   // All other allowlisted routes are session-scoped: assert ownership of {id}.
   if (sessionId !== undefined) {
     if (!ownsSession(sessionId, principal)) {
-      return deny(rid, 403, "forbidden_session", { channel: principal.channel, userId: principal.userId, sessionId });
+      return deny(rid, 403, "forbidden_session", { principalId: principal.id, userId: principal.userId, sessionId });
     }
     // Gate 4: content moderation — WRITE-PATH ONLY (§3.5). Only the two
     // prompt-bearing POSTs are screened; everything else (GET/DELETE/abort)
@@ -335,15 +303,16 @@ async function routeAllowed(
       req.method === "POST" &&
       (template === "/session/{id}/message" || template === "/session/{id}/prompt_async")
     ) {
-      const blocked = await screenPromptBody(rid, principal, template, body);
-      if (blocked) return blocked;
+      const screened = await screenPromptBody(rid, principal, template, body);
+      if (screened instanceof Response) return screened;
+      const promptBody = typeof screened === 'string' ? screened : body;
       // §3.6 in-flight-turn cap: a prompt turn holds assistant compute until the
       // session goes idle. Bound how many a principal can hold concurrently; the
       // (cap+1)th is 429'd.
       const turnId = beginTurn(principal, sessionId);
       if (turnId === null) {
         return deny(rid, 429, "too_many_inflight_turns", {
-          channel: principal.channel,
+          principalId: principal.id,
           userId: principal.userId,
           sessionId,
         });
@@ -360,12 +329,12 @@ async function routeAllowed(
       //    on a non-OK upstream response — the turn never actually started.
       if (template === "/session/{id}/message") {
         try {
-          return await forwardTransparent(req, rid, rawPath, search, body);
+           return await forwardTransparent(req, rid, rawPath, search, promptBody);
         } finally {
           endTurn(turnId);
         }
       }
-      const asyncResp = await forwardTransparent(req, rid, rawPath, search, body);
+      const asyncResp = await forwardTransparent(req, rid, rawPath, search, promptBody);
       if (!asyncResp.ok) endTurn(turnId);
       return asyncResp;
     }
@@ -391,15 +360,15 @@ async function routeAllowed(
     // §3.6 reconnect cap: bound /event opens per principal per window so a
     // reconnect loop cannot churn nonces and pressure the replay store.
     if (!allowEventReconnect(principal)) {
-      return deny(rid, 429, "event_reconnect_limited", { channel: principal.channel, userId: principal.userId });
+      return deny(rid, 429, "event_reconnect_limited", { principalId: principal.id, userId: principal.userId });
     }
     // §3.6 concurrent-stream cap: at most N held-open streams per principal.
     // Reserve a slot; release it when the stream closes (client abort/cancel).
     if (!reserveEventStream(principal)) {
-      return deny(rid, 429, "too_many_event_streams", { channel: principal.channel, userId: principal.userId });
+      return deny(rid, 429, "too_many_event_streams", { principalId: principal.id, userId: principal.userId });
     }
-    audit({ requestId: rid, action: "oc_event_open", status: "ok", channel: principal.channel, userId: principal.userId });
-    const resp = openEventStream(principal, req.signal);
+      audit({ requestId: rid, action: "oc_event_open", status: "ok", channel: principal.id, userId: principal.userId });
+      const resp = openEventStream(principal, req.signal);
     // Release the concurrency slot once the client disconnects. openEventStream
     // wires the same signal to drop the subscriber; we mirror it for the slot so
     // a closed stream frees the principal to reconnect.
@@ -410,7 +379,7 @@ async function routeAllowed(
   }
 
   // Unreachable: every allowlisted template is handled above.
-  return deny(rid, 403, "forbidden_endpoint", { channel: principal.channel, userId: principal.userId, path: rawPath });
+  return deny(rid, 403, "forbidden_endpoint", { principalId: principal.id, userId: principal.userId, path: rawPath });
 }
 
 /**
@@ -440,12 +409,15 @@ async function screenPromptBody(
   principal: Principal,
   template: string,
   body: string,
-): Promise<Response | null> {
+): Promise<Response | string | null> {
   const text = extractPromptText(body);
   const moderation = await moderateMessage(text, undefined);
   if (moderation.verdict === "block") {
+    if (principal.kind === 'direct') {
+      return rewritePromptBody(body);
+    }
     return deny(rid, 403, "content_blocked", {
-      channel: principal.channel,
+      principalId: principal.id,
       userId: principal.userId,
       template,
       source: moderation.source,
@@ -457,7 +429,7 @@ async function screenPromptBody(
   if (moderation.verdict === "flag") {
     logger.warn("oc_content_flagged", {
       requestId: rid,
-      channel: principal.channel,
+      channel: principal.id,
       userId: principal.userId,
       template,
       reason: moderation.reason,
@@ -466,6 +438,29 @@ async function screenPromptBody(
     });
   }
   return null;
+}
+
+function rewritePromptBody(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return JSON.stringify({ parts: [{ type: 'text', text: refusalText() }] });
+  }
+  const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as { parts?: unknown }
+    : {};
+  const parts = Array.isArray(record.parts) ? record.parts : [];
+  const rewritten = parts.length > 0
+    ? parts.map((part, index) => index === 0 && part && typeof part === 'object'
+        ? { ...(part as Record<string, unknown>), text: refusalText() }
+        : part)
+    : [{ type: 'text', text: refusalText() }];
+  return JSON.stringify({ ...record, parts: rewritten });
+}
+
+function refusalText(): string {
+  return 'Refuse this request briefly and safely. Explain that the request was blocked by the guardian safety policy.';
 }
 
 /**
@@ -541,11 +536,13 @@ async function forwardSessionCreate(
   // sessionKey rides as a header so multi-thread channels keep their grouping;
   // absent → falls back to userId inside resolveSessionTarget. The channel can
   // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
-  const sessionKeyHeader = req.headers.get("x-channel-session-key") ?? undefined;
-  const metadata = sessionKeyHeader ? { sessionKey: sessionKeyHeader } : undefined;
-  const target = resolveSessionTarget(principal.userId, principal.channel, metadata);
-  const cacheKey = `${principal.channel}:${target.sessionKey}`;
-  const title = `${principal.channel}/${target.sessionKey}`;
+  const sessionKeyHeader = req.headers.get(H_SESSION_KEY) ?? undefined;
+  const directSessionKeyHeader = req.headers.get(H_SESSION_KEY) ?? undefined;
+  const sessionKey = sessionKeyHeader ?? directSessionKeyHeader;
+  const metadata = sessionKey ? { sessionKey } : undefined;
+  const target = resolveSessionTarget(principal.userId, principal.id, metadata);
+  const cacheKey = `${principal.id}:${target.sessionKey}`;
+  const title = `${principal.id}/${target.sessionKey}`;
 
   let inflight = ocSessionCreateLocks.get(cacheKey);
   if (!inflight) {
@@ -575,12 +572,12 @@ async function forwardSessionCreate(
   try {
     sessionId = await inflight;
   } catch (err) {
-    logger.warn("oc_session_create_failed", { requestId: rid, channel: principal.channel, userId: principal.userId, error: String(err) });
-    return deny(rid, 502, "oc_session_create_failed", { channel: principal.channel, userId: principal.userId });
+    logger.warn("oc_session_create_failed", { requestId: rid, channel: principal.id, userId: principal.userId, error: String(err) });
+    return deny(rid, 502, "oc_session_create_failed", { principalId: principal.id, userId: principal.userId });
   }
 
   recordSessionOwner(sessionId, principal);
-  audit({ requestId: rid, action: "oc_session_create", status: "ok", channel: principal.channel, userId: principal.userId, sessionId });
+  audit({ requestId: rid, action: "oc_session_create", status: "ok", channel: principal.id, userId: principal.userId, sessionId });
   // Synthesize the create response the channel reads (it only needs id/title).
   return Response.json({ id: sessionId, title });
 }
@@ -613,7 +610,7 @@ async function forwardSessionList(
       });
     }
   } catch {
-    logger.warn("oc_session_list_unparsable", { requestId: rid, channel: principal.channel, userId: principal.userId });
+    logger.warn("oc_session_list_unparsable", { requestId: rid, channel: principal.id, userId: principal.userId });
     filtered = [];
   }
   return json(upstream.status, filtered);

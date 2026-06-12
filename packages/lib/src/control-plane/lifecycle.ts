@@ -26,6 +26,7 @@ import { snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
+import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
 import { compareComparableVersions, isComparableSemver, isSameMajorVersion } from "./versioning.js";
 import { buildPlatformImageTagEnv, type PlatformImageTagKey } from './image-tags.js';
@@ -65,10 +66,12 @@ export function createState(): ControlPlaneState {
     artifactMeta: [],
   };
 
-  ensureSecrets(bootstrapState);
-  Object.assign(process.env, readStackSecretEnv(stackDir));
-
   return bootstrapState;
+}
+
+export function initializeStateSecrets(state: ControlPlaneState): void {
+  ensureSecrets(state);
+  Object.assign(process.env, readStackSecretEnv(state.stackDir));
 }
 
 
@@ -136,8 +139,20 @@ async function reconcileCore(
   return active;
 }
 
-export async function applyInstall(state: ControlPlaneState): Promise<void> {
-  const lock = acquireInstallLock(state.dataDir);
+type LockedLifecycleOptions = { lock?: InstallLockHandle | null };
+
+function resolveLifecycleLock(state: ControlPlaneState, opts?: LockedLifecycleOptions): InstallLockHandle | null {
+  if (opts && 'lock' in opts) return opts.lock ?? null;
+  return acquireInstallLock(state.dataDir);
+}
+
+function releaseLifecycleLock(lock: InstallLockHandle | null, opts?: LockedLifecycleOptions): void {
+  if (opts && 'lock' in opts) return;
+  releaseInstallLock(lock);
+}
+
+export async function applyInstall(state: ControlPlaneState, opts?: LockedLifecycleOptions): Promise<void> {
+  const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     await reconcileCore(state, { activateServices: true });
@@ -146,32 +161,34 @@ export async function applyInstall(state: ControlPlaneState): Promise<void> {
     // non-root containers).
     ensureComposeVolumeTargets(state);
   } finally {
-    releaseInstallLock(lock);
+    releaseLifecycleLock(lock, opts);
   }
 }
 
-export async function applyUpdate(state: ControlPlaneState): Promise<{ restarted: string[] }> {
-  const lock = acquireInstallLock(state.dataDir);
+export async function applyUpdate(state: ControlPlaneState, opts?: LockedLifecycleOptions): Promise<{ restarted: string[] }> {
+  const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     return { restarted: await reconcileCore(state, {}) };
   } finally {
-    releaseInstallLock(lock);
+    releaseLifecycleLock(lock, opts);
   }
 }
 
-export async function applyUninstall(state: ControlPlaneState): Promise<{ stopped: string[] }> {
-  const lock = acquireInstallLock(state.dataDir);
+export async function applyUninstall(state: ControlPlaneState, opts?: LockedLifecycleOptions): Promise<{ stopped: string[] }> {
+  const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     return { stopped: await reconcileCore(state, { deactivateServices: true }) };
   } finally {
-    releaseInstallLock(lock);
+    releaseLifecycleLock(lock, opts);
   }
 }
 
 type DockerTagEntry = { name?: unknown };
 type DockerTagsResponse = { results?: unknown };
+
+const DOCKER_REGISTRY_TIMEOUT_MS = 10_000;
 
 function resolveNewestDockerTag(payload: unknown): string | null {
   const results = (payload as DockerTagsResponse)?.results;
@@ -233,7 +250,7 @@ async function isDockerImageTagPublished(namespace: string, imageName: string, t
   try {
     response = await fetch(
       `https://registry.hub.docker.com/v2/repositories/${namespace}/${imageName}/tags/${tag}`,
-      { headers: { Accept: 'application/json' } },
+      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(DOCKER_REGISTRY_TIMEOUT_MS) },
     );
   } catch (e) {
     throw new Error(`Failed to verify Docker image tag ${namespace}/${imageName}:${tag}: ${e instanceof Error ? e.message : String(e)}`);
@@ -251,7 +268,7 @@ async function fetchDockerTagsPayload(namespace: string, imageName: string): Pro
   try {
     response = await fetch(
       `https://registry.hub.docker.com/v2/repositories/${namespace}/${imageName}/tags?page_size=25&ordering=last_updated`,
-      { headers: { Accept: "application/json" } }
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(DOCKER_REGISTRY_TIMEOUT_MS) }
     );
   } catch (e) {
     throw new Error(`Failed to query Docker tags: ${e instanceof Error ? e.message : String(e)}`);
@@ -375,7 +392,7 @@ export async function updateStackEnvToLatestImageTag(
   const imageTagEnv = await resolvePlatformImageTags(state, namespace, latestTag);
 
   const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
-  const updatedContent = mergeEnvContent(currentContent, imageTagEnv, { uncomment: true });
+  const updatedContent = mergeEnvContent(currentContent, imageTagEnv);
   writeFileSync(systemEnvPath, updatedContent);
 
   return { namespace, tag: latestTag };
@@ -384,13 +401,14 @@ export async function updateStackEnvToLatestImageTag(
 export async function applyUpgrade(
   state: ControlPlaneState,
   /** Release tag whose stack assets to fetch (e.g. "v0.11.0-rc.6"). Caller-supplied. */
-  version: string
+  version: string,
+  opts?: LockedLifecycleOptions,
 ): Promise<{
   backupDir: string | null;
   updated: string[];
   restarted: string[];
 }> {
-  const lock = acquireInstallLock(state.dataDir);
+  const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
     const { backupDir, updated } = await refreshCoreAssets(version);
@@ -399,7 +417,7 @@ export async function applyUpgrade(
     const restarted = await reconcileCore(state, { skipSnapshot: true });
     return { backupDir, updated, restarted };
   } finally {
-    releaseInstallLock(lock);
+    releaseLifecycleLock(lock, opts);
   }
 }
 
@@ -468,11 +486,8 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     }
 
     // 3. Recreate containers (includes profiles for voice addon).
-    // forceRecreate is REQUIRED: channel adapters are installed at container
-    // startup from npm dist-tags (CHANNEL_PACKAGE, e.g. @openpalm/channel-discord@latest),
-    // so an unchanged compose config would leave those containers running on the
-    // old adapter. --force-recreate guarantees guardian + channel containers
-    // restart and re-resolve their dist-tag adapters (issue #450).
+    // forceRecreate is REQUIRED so channel containers restart onto the newly
+    // pulled baked image even when the managed compose config is unchanged.
     const services = await buildManagedServices(state);
     const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
     if (!upResult.ok) {
@@ -521,7 +536,7 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
 
     const stackEnvPath = `${state.stashDir}/env/stack.env`;
     const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
-    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, imageTagEnv, { uncomment: true }));
+    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, imageTagEnv));
     const upgradeResult = await applyUpgrade(state, resolvedTag);
     return {
       imageTag: resolvedTag,
@@ -534,7 +549,7 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  return discoverStackOverlays(state.stackDir, state.homeDir);
+  return discoverStackOverlays(state.stackDir);
 }
 
 // Channel addons that require the guardian ingress. Mirrors the profile gate on
@@ -552,7 +567,7 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 // A zero-channel install therefore deploys assistant alone and must NOT
 // include or health-wait on guardian. The integration test in
 // guardian-gating.test.ts pins this.
-const CHANNEL_ADDON_IDS = ["api", "chat", "discord", "slack"];
+const CHANNEL_ADDON_IDS = ["api", "chat", "discord", "slack", "gateway"];
 
 /**
  * Guardian is channel ingress: it is both DEPLOYED and treated as an EXPECTED

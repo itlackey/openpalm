@@ -1,4 +1,5 @@
 import { json } from "@sveltejs/kit";
+import { getState } from "$lib/server/state.js";
 import { getDeployState } from "$lib/server/setup-deploy.js";
 import type { RequestHandler } from "./$types";
 
@@ -13,7 +14,7 @@ function resolvePorts() {
 }
 
 export const GET: RequestHandler = () => {
-  const state = getDeployState();
+  const state = getDeployState(getState());
   return json({
     ok: true,
     setupComplete: state.setupComplete,

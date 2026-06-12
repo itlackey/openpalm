@@ -69,7 +69,7 @@ export default class SlackChannel extends BaseChannel {
   private get ocClient(): OcClient {
     if (!this.ocClientInstance) {
       this.ocClientInstance = new OcClient({
-        channel: this.name,
+        principalId: this.name,
         secret: this.secret,
         baseUrl: `${this.guardianUrl}/oc`,
       });

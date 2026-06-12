@@ -16,6 +16,9 @@ import {
   PROVIDER_LABELS,
   LOCAL_PROVIDER_HELP,
   EMBEDDING_DIMS,
+  KNOWN_EMBEDDING_MODEL_DIMS,
+  OLLAMA_DEFAULT_CHAT_MODEL,
+  addonProfileId,
 } from '@openpalm/lib/provider-constants';
 
 // ── PROVIDER_LABELS coverage ──────────────────────────────────────────────
@@ -133,6 +136,11 @@ describe("EMBEDDING_DIMS", () => {
     expect(EMBEDDING_DIMS['openai/text-embedding-3-large']).toBe(3072);
     expect(EMBEDDING_DIMS['google/text-embedding-004']).toBe(768);
   });
+
+  test('exposes bare model-name dimensions for browser helpers', () => {
+    expect(KNOWN_EMBEDDING_MODEL_DIMS['text-embedding-3-small']).toBe(1536);
+    expect(KNOWN_EMBEDDING_MODEL_DIMS['nomic-embed-text']).toBe(768);
+  });
 });
 
 // ── LLM_PROVIDERS array ──────────────────────────────────────────────────
@@ -159,5 +167,10 @@ describe("LLM_PROVIDERS", () => {
   test("has no duplicate entries", () => {
     const unique = new Set(LLM_PROVIDERS);
     expect(unique.size).toBe(LLM_PROVIDERS.length);
+  });
+
+  test('exports wizard-safe helpers', () => {
+    expect(OLLAMA_DEFAULT_CHAT_MODEL).toBe('llama3.2:latest');
+    expect(addonProfileId('voice', 'cuda')).toBe('addon.voice.cuda');
   });
 });

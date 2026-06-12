@@ -1,4 +1,7 @@
 import type { Provider, ProviderGroup, TtsOption, SttOption, Channel, OpenCodeProvider, VoiceEngineConfig } from './types.js';
+import { OLLAMA_DEFAULT_CHAT_MODEL } from '@openpalm/lib/provider-constants';
+
+export { OLLAMA_DEFAULT_CHAT_MODEL };
 
 export const PROVIDER_GROUPS: ProviderGroup[] = [
   { id: 'recommended', label: 'Recommended', desc: 'Best options to get started quickly' },
@@ -21,20 +24,6 @@ export const PROVIDERS: Provider[] = [
   { id: 'xai', name: 'xAI (Grok)', kind: 'cloud', group: 'advanced', order: 2, icon: '✦', desc: 'Grok models', needsKey: true, placeholder: 'xai-...', baseUrl: 'https://api.x.ai', llmModel: 'grok-2', embModel: '', embDims: 0 },
   { id: 'openai-compatible', name: 'Custom API server', kind: 'cloud', group: 'advanced', order: 3, icon: '🔧', desc: 'Connect any AI server that uses the standard OpenAI API format.', needsKey: false, needsUrl: true, optionalKey: true, placeholder: 'API key (optional)', baseUrl: '', llmModel: '', embModel: '', embDims: 0 },
 ];
-
-export const KNOWN_EMB_DIMS: Record<string, number> = {
-  'text-embedding-3-small': 1536, 'text-embedding-3-large': 3072,
-  'text-embedding-ada-002': 1536, 'nomic-embed-text': 768,
-  'mxbai-embed-large': 1024, 'mxbai-embed-large-v1': 1024,
-  'ai/mxbai-embed-large-v1': 1024, 'mistral-embed': 1024,
-  'all-minilm': 384, 'snowflake-arctic-embed': 1024,
-  'intfloat/multilingual-e5-large': 1024,
-};
-
-// Default chat model the wizard seeds for the bundled in-stack Ollama. Kept as a
-// client-safe literal here (mirrors @openpalm/lib OLLAMA_DEFAULT_MODELS.chat) so
-// the wizard never imports the server library into the browser bundle.
-export const OLLAMA_DEFAULT_CHAT_MODEL = 'llama3.2:latest';
 
 export const STEP_LABELS = ['System Check', 'Get Started', 'Providers', 'Models', 'Voice', 'Options', 'Review'];
 export const MAX_VISIBLE_MODELS = 6;

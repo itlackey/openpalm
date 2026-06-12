@@ -3,6 +3,7 @@
   import type { ProviderState, DetectedProvider, OpenCodeProvider, AuthMethod } from '$lib/wizard/types.js';
   import { friendlyError } from '$lib/wizard/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import SelectableCard from '$lib/components/common/SelectableCard.svelte';
 
   function friendlyProviderError(raw: string | undefined, providerName?: string): string {
     if (!raw) return 'Connection failed';
@@ -132,6 +133,23 @@
   // When a filter query is active, skip the recommended/rest split
   let ocDisplayList = $derived(ocFilterQuery ? filteredOcProviders : ocRecommended);
   let ocRestCount = $derived(ocFilterQuery ? 0 : ocRest.length);
+
+  function emptyProviderState(): ProviderState {
+    return {
+      selected: false,
+      verified: false,
+      verifying: false,
+      error: false,
+      apiKey: '',
+      baseUrl: '',
+      models: [],
+      ollamaMode: null,
+    };
+  }
+
+  function getProviderState(id: string): ProviderState {
+    return providerState[id] ?? emptyProviderState();
+  }
 </script>
 
 {#if hostImporting}
@@ -169,7 +187,7 @@
   </div>
 {/if}
 
-<div class="provider-grid" id="provider-grid">
+<div class="provider-grid">
   {#if opencodeAvailable}
     <!-- OpenCode provider grid -->
     <div class="model-filter-row" style="margin-bottom:12px">
@@ -180,40 +198,23 @@
         autocomplete="off">
     </div>
 
-    {#each ocDisplayList as ocp}
-      {@const st = providerState[ocp.id] ?? { selected: false, verified: false, verifying: false, error: false, apiKey: '', baseUrl: '', models: [], ollamaMode: null }}
-      {@const modelCount = (st.models && st.models.length > 0) ? st.models.length : Object.keys(ocp.models ?? {}).length}
+    {#snippet openCodeProviderCard(ocp: OpenCodeProvider)}
+      {@const st = getProviderState(ocp.id)}
+      {@const modelCount = st.models.length > 0 ? st.models.length : Object.keys(ocp.models ?? {}).length}
       {@const authMethods = opencodeAuth[ocp.id] ?? []}
       {@const isExpanded = expandedProvider === ocp.id}
-      <div class="pcard {st.verified ? 'selected verified' : isExpanded ? 'selected' : ''} {isExpanded ? 'wide' : ''}"
-        data-provider={ocp.id}>
-        <!-- Header -->
-        <div class="pcard-header" role="button" tabindex="0"
-          aria-expanded={isExpanded}
-          aria-label="{ocp.name}{st.verified ? ', verified' : ''}"
-          onclick={() => ontoggleopencode(ocp.id)}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggleopencode(ocp.id); }}>
-          <div class="pcard-info">
-            <div class="pcard-name">
-              {ocp.name}
-              {#if st.verified}<span class="vs vs-ok">✓</span>
-              {:else if st.verifying}<span class="vs vs-wait">⟳</span>
-              {:else if st.error}<span class="vs vs-err">✗</span>
-              {/if}
-            </div>
-            <div class="pcard-desc">
-              {modelCount} model{modelCount !== 1 ? 's' : ''}
-              {#if authMethods.length > 0} · {authMethods.length} auth method{authMethods.length !== 1 ? 's' : ''}{/if}
-            </div>
-          </div>
-          <div class="pcard-check" aria-hidden="true">
-            {st.verified ? '✓' : ''}
-          </div>
-        </div>
-
-        <!-- Expanded auth panel -->
-        {#if isExpanded}
-          <div class="pcard-auth" id="pcard-auth-{ocp.id}">
+      <SelectableCard
+        title={ocp.name}
+        description={`${modelCount} model${modelCount !== 1 ? 's' : ''}${authMethods.length > 0 ? ` · ${authMethods.length} auth method${authMethods.length !== 1 ? 's' : ''}` : ''}`}
+        selected={st.verified || isExpanded}
+        verified={st.verified}
+        expanded={isExpanded}
+        status={st.verifying ? 'verifying' : st.error ? 'error' : null}
+        ariaLabel={`${ocp.name}${st.verified ? ', verified' : ''}`}
+        dataId={ocp.id}
+        onToggle={() => ontoggleopencode(ocp.id)}
+      >
+        {#snippet children()}
             {#if st.verified}
               <div class="feedback feedback--success">
                 <span>Connected</span>
@@ -316,151 +317,17 @@
                 </div>
               {/if}
             {/if}
-          </div>
-        {/if}
-      </div>
+        {/snippet}
+      </SelectableCard>
+    {/snippet}
+
+    {#each ocDisplayList as ocp}
+      {@render openCodeProviderCard(ocp)}
     {/each}
 
     {#if showAllOcProviders}
       {#each ocRest as ocp}
-        {@const st = providerState[ocp.id] ?? { selected: false, verified: false, verifying: false, error: false, apiKey: '', baseUrl: '', models: [], ollamaMode: null }}
-        {@const modelCount = (st.models && st.models.length > 0) ? st.models.length : Object.keys(ocp.models ?? {}).length}
-        {@const authMethods = opencodeAuth[ocp.id] ?? []}
-        {@const isExpanded = expandedProvider === ocp.id}
-        <div class="pcard {st.verified ? 'selected verified' : isExpanded ? 'selected' : ''} {isExpanded ? 'wide' : ''}"
-          data-provider={ocp.id}>
-          <!-- Header -->
-          <div class="pcard-header" role="button" tabindex="0"
-            aria-expanded={isExpanded}
-            aria-label="{ocp.name}{st.verified ? ', verified' : ''}"
-            onclick={() => ontoggleopencode(ocp.id)}
-            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggleopencode(ocp.id); }}>
-            <div class="pcard-info">
-              <div class="pcard-name">
-                {ocp.name}
-                {#if st.verified}<span class="vs vs-ok">✓</span>
-                {:else if st.verifying}<span class="vs vs-wait">⟳</span>
-                {:else if st.error}<span class="vs vs-err">✗</span>
-                {/if}
-              </div>
-              <div class="pcard-desc">
-                {modelCount} model{modelCount !== 1 ? 's' : ''}
-                {#if authMethods.length > 0} · {authMethods.length} auth method{authMethods.length !== 1 ? 's' : ''}{/if}
-              </div>
-            </div>
-            <div class="pcard-check" aria-hidden="true">
-              {st.verified ? '✓' : ''}
-            </div>
-          </div>
-
-          <!-- Expanded auth panel -->
-          {#if isExpanded}
-            <div class="pcard-auth" id="pcard-auth-{ocp.id}">
-              {#if st.verified}
-                <div class="feedback feedback--success">
-                  <span>Connected</span>
-                  <button class="auth-disconnect" type="button"
-                    onclick={(e) => { e.stopPropagation(); ondeselect(ocp.id); }}>
-                    Disconnect
-                  </button>
-                </div>
-              {:else}
-                {#if st.error}
-                  <div class="feedback feedback--error"><span>{friendlyProviderError(st.errorMessage, ocp.name)}</span></div>
-                {/if}
-
-                {#if authMethods.length > 0}
-                  {#each authMethods as method, idx}
-                    {#if method.type === 'api'}
-                      <div class="auth-row" style="margin-bottom:6px">
-                        <input type="password" placeholder="API key" value={st.apiKey ?? ''}
-                          oninput={(e) => { e.stopPropagation(); onapikey(ocp.id, (e.currentTarget as HTMLInputElement).value); }}
-                          onclick={(e) => e.stopPropagation()}>
-                        <button class="auth-btn auth-btn-verify"
-                          disabled={st.verifying}
-                          onclick={(e) => { e.stopPropagation(); onverify(ocp.id); }}>
-                          {st.verifying ? 'Connecting...' : method.label}
-                        </button>
-                      </div>
-                    {:else if method.type === 'oauth'}
-                      <div class="auth-row" style="margin-bottom:6px">
-                        <button class="auth-btn auth-btn-detect" style="width:100%"
-                          disabled={st.verifying}
-                          onclick={(e) => { e.stopPropagation(); onoauthstart(ocp.id, idx); }}>
-                          {st.verifying ? 'Waiting...' : method.label}
-                        </button>
-                      </div>
-                    {/if}
-                  {/each}
-                {:else if (ocp.env ?? []).length > 0}
-                  <div class="auth-row">
-                    <input type="password" placeholder={(ocp.env ?? [])[0]} value={st.apiKey ?? ''}
-                      oninput={(e) => { e.stopPropagation(); onapikey(ocp.id, (e.currentTarget as HTMLInputElement).value); }}
-                      onclick={(e) => e.stopPropagation()}>
-                    <button class="auth-btn auth-btn-verify"
-                      disabled={st.verifying}
-                      onclick={(e) => { e.stopPropagation(); onverify(ocp.id); }}>
-                      {st.verifying ? 'Connecting...' : 'Connect'}
-                    </button>
-                  </div>
-                {:else if ocp.id === 'openai-compatible'}
-                  <div class="auth-row" style="margin-bottom:6px">
-                    <input type="url" placeholder="https://your-server.example/v1" value={st.baseUrl ?? ''}
-                      oninput={(e) => { e.stopPropagation(); onbaseurl(ocp.id, (e.currentTarget as HTMLInputElement).value); }}
-                      onclick={(e) => e.stopPropagation()}>
-                  </div>
-                  <div class="auth-row" style="margin-bottom:6px">
-                    <input type="password" placeholder="API key (optional)" value={st.apiKey ?? ''}
-                      oninput={(e) => { e.stopPropagation(); onapikey(ocp.id, (e.currentTarget as HTMLInputElement).value); }}
-                      onclick={(e) => e.stopPropagation()}>
-                  </div>
-                  <div class="auth-row">
-                    <button class="auth-btn auth-btn-verify"
-                      disabled={st.verifying}
-                      onclick={(e) => { e.stopPropagation(); onverify(ocp.id); }}>
-                      {st.verifying ? 'Checking...' : 'Connect'}
-                    </button>
-                  </div>
-                {:else if ocp.localUrl}
-                  <div class="auth-row">
-                    <input type="url" placeholder={ocp.localUrl} value={st.baseUrl || ocp.localUrl}
-                      oninput={(e) => { e.stopPropagation(); onbaseurl(ocp.id, (e.currentTarget as HTMLInputElement).value); }}
-                      onclick={(e) => e.stopPropagation()}>
-                    <button class="auth-btn {st.verified ? 'auth-btn-detected' : 'auth-btn-detect'}"
-                      disabled={st.verifying}
-                      onclick={(e) => { e.stopPropagation(); onverify(ocp.id); }}>
-                      {st.verifying ? 'Detecting...' : st.verified ? 'Connected ✓' : 'Detect'}
-                    </button>
-                  </div>
-                {:else}
-                  <div style="padding:4px 0;color:var(--color-text-secondary);font-size:var(--text-xs)">No authentication required</div>
-                  <button class="auth-btn auth-btn-detect"
-                    onclick={(e) => { e.stopPropagation(); onmarkready(ocp.id); }}>
-                    Mark as ready
-                  </button>
-                {/if}
-
-                {#if st.oauthPolling}
-                  <div style="text-align:center;padding:8px">
-                    {#if st.oauthUrl}
-                      <p style="margin-bottom:6px">
-                        <a href={st.oauthUrl} target="_blank" rel="noopener" style="color:var(--color-accent)">Open authorization page →</a>
-                      </p>
-                    {/if}
-                    {#if st.oauthInstructions}
-                      <p style="margin-bottom:6px;white-space:pre-wrap;font-size:var(--text-xs)">{st.oauthInstructions}</p>
-                    {/if}
-                    <p><Spinner /> Waiting for authorization...</p>
-                    <button class="auth-btn" style="margin-top:6px"
-                      onclick={(e) => { e.stopPropagation(); onoauthcancel(ocp.id); }}>
-                      Cancel
-                    </button>
-                  </div>
-                {/if}
-              {/if}
-            </div>
-          {/if}
-        </div>
+        {@render openCodeProviderCard(ocp)}
       {/each}
     {/if}
 
@@ -491,33 +358,22 @@
               {@const st = providerState[p.id] ?? { selected: false, verified: false, verifying: false, error: false, apiKey: '', baseUrl: '', models: [], ollamaMode: null }}
               {@const isExpanded = expandedProvider === p.id && st.selected}
               {@const badgeCls = p.kind === 'cloud' ? 'badge-neutral' : p.kind === 'local' ? 'badge-success' : 'badge-recommended'}
-              <div class="pcard {st.selected ? 'selected' : ''} {st.verified ? 'verified' : ''} {isExpanded ? 'wide' : ''}"
-                data-provider={p.id}>
-                <div class="pcard-header" role="button" tabindex="0"
-                  aria-expanded={isExpanded}
-                  aria-label="{p.name}{st.verified ? ', verified' : ''}"
-                  data-toggle-provider={p.id}
-                  onclick={() => ontogglefallback(p.id)}
-                  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontogglefallback(p.id); }}>
-                  <div class="pcard-icon">{p.icon}</div>
-                  <div class="pcard-info">
-                    <div class="pcard-name">
-                      {p.name}
-                      <span class="badge {badgeCls}">{p.kind}</span>
-                      {#if st.verified}<span class="vs vs-ok">✓</span>
-                      {:else if st.verifying}<span class="vs vs-wait">⟳</span>
-                      {:else if st.error}<span class="vs vs-err">✗</span>
-                      {/if}
-                    </div>
-                    <div class="pcard-desc">{p.desc}</div>
-                  </div>
-                  <div class="pcard-check" aria-hidden="true">
-                    {st.selected ? '✓' : ''}
-                  </div>
-                </div>
-
-                {#if isExpanded}
-                  <div class="pcard-auth" id="pcard-auth-{p.id}">
+              <SelectableCard
+                title={p.name}
+                description={p.desc}
+                icon={p.icon}
+                selected={st.selected}
+                verified={st.verified}
+                expanded={isExpanded}
+                status={st.verifying ? 'verifying' : st.error ? 'error' : null}
+                ariaLabel={`${p.name}${st.verified ? ', verified' : ''}`}
+                dataId={p.id}
+                onToggle={() => ontogglefallback(p.id)}
+              >
+                {#snippet titleSuffix()}
+                  <span class={`badge ${badgeCls}`}>{p.kind}</span>
+                {/snippet}
+                {#snippet children()}
                     {#if p.id === 'ollama'}
                       {#if !st.ollamaMode}
                         <div class="ollama-mode-prompt">
@@ -623,9 +479,8 @@
                         <span>{friendlyProviderError(st.errorMessage, p.name) || ('Verification failed — check your ' + (p.needsKey ? 'credentials' : 'endpoint'))}</span>
                       </div>
                     {/if}
-                  </div>
-                {/if}
-              </div>
+                {/snippet}
+              </SelectableCard>
             {/each}
           </div>
         </div>

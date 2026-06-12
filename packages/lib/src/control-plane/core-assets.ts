@@ -18,6 +18,7 @@ import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
 const logger = createLogger("core-assets");
+const GITHUB_ASSET_TIMEOUT_MS = 10_000;
 
 function bundledAssetPath(relPath: string): string {
   return join(dirname(fileURLToPath(import.meta.url)), '../../../../.openpalm', relPath);
@@ -94,7 +95,7 @@ function normalizeAssetRef(version: string): string {
 // Persona files (openpalm.md, system.md), stash seeds, and user-editable config
 // files are intentionally NOT in this list. They are seeded once (never
 // overwritten) via seedOpenPalmDir (skipExisting) or SEEDED_ASSETS below.
-const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
+export const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/config/stack/core.compose.yml" },
   { relPath: "config/stack/services.compose.yml", githubFilename: ".openpalm/config/stack/services.compose.yml" },
   { relPath: "config/stack/channels.compose.yml", githubFilename: ".openpalm/config/stack/channels.compose.yml" },
@@ -102,7 +103,7 @@ const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
 
 // Seeded once — written only when the file does not exist yet.
 // User edits always win; upgrade never touches these files.
-const SEEDED_ASSETS: { relPath: string; githubFilename: string }[] = [
+export const SEEDED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/assistant/opencode.jsonc", githubFilename: ".openpalm/config/assistant/opencode.jsonc" },
   { relPath: "config/stack/custom.compose.yml", githubFilename: ".openpalm/config/stack/custom.compose.yml" },
 ];
@@ -113,13 +114,61 @@ async function downloadAsset(filename: string, version: string): Promise<string>
 
   for (const url of [releaseUrl, rawUrl]) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(GITHUB_ASSET_TIMEOUT_MS) });
       if (res.ok) return await res.text();
     } catch {
       // try next URL
     }
   }
   throw new Error(`Failed to download ${filename} from GitHub (tried release and raw URLs for version "${version}")`);
+}
+
+function ensureBackupDir(backupDir: string | null, suffix = ''): string {
+  if (backupDir) return backupDir;
+  return join(resolveBackupsDir(), `${new Date().toISOString().replace(/[:.]/g, "-")}${suffix}`);
+}
+
+function backupExistingFile(targetPath: string, assetRelPath: string, backupDir: string | null, suffix = ''): string {
+  const resolvedBackupDir = ensureBackupDir(backupDir, suffix);
+  const backupPath = join(resolvedBackupDir, assetRelPath);
+  mkdirSync(dirname(backupPath), { recursive: true });
+  copyFileSync(targetPath, backupPath);
+  return resolvedBackupDir;
+}
+
+export function refreshCoreAssetsFromSource(sourceRoot: string, homeDir = resolveOpenPalmHome()): {
+  backupDir: string | null;
+  updated: string[];
+} {
+  const updated: string[] = [];
+  let backupDir: string | null = null;
+
+  for (const asset of MANAGED_ASSETS) {
+    const sourcePath = join(sourceRoot, asset.relPath);
+    const targetPath = join(homeDir, asset.relPath);
+    const freshContent = readFileSync(sourcePath, 'utf-8');
+
+    if (existsSync(targetPath)) {
+      const currentContent = readFileSync(targetPath, 'utf-8');
+      if (sha256(currentContent) === sha256(freshContent)) continue;
+      backupDir = backupExistingFile(targetPath, asset.relPath, backupDir);
+    }
+
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, freshContent);
+    updated.push(asset.relPath);
+  }
+
+  for (const asset of SEEDED_ASSETS) {
+    const sourcePath = join(sourceRoot, asset.relPath);
+    const targetPath = join(homeDir, asset.relPath);
+    if (existsSync(targetPath)) continue;
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, readFileSync(sourcePath, 'utf-8'));
+    updated.push(asset.relPath);
+  }
+
+  return { backupDir, updated };
 }
 
 export async function refreshCoreAssets(version: string): Promise<{
@@ -141,12 +190,7 @@ export async function refreshCoreAssets(version: string): Promise<{
         continue;
       }
 
-      if (!backupDir) {
-        backupDir = join(resolveBackupsDir(), new Date().toISOString().replace(/[:.]/g, "-"));
-      }
-      const backupPath = join(backupDir, asset.relPath);
-      mkdirSync(dirname(backupPath), { recursive: true });
-      copyFileSync(targetPath, backupPath);
+      backupDir = backupExistingFile(targetPath, asset.relPath, backupDir);
     }
 
     mkdirSync(dirname(targetPath), { recursive: true });

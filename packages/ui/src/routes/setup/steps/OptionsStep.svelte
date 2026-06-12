@@ -5,6 +5,7 @@
   import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
   import FormField from '$lib/components/common/FormField.svelte';
+  import SettingToggle from '$lib/components/common/SettingToggle.svelte';
 
   interface Props {
     channelSelection: Record<string, boolean | ChannelState>;
@@ -77,30 +78,20 @@
   <div class="toggle-grid" id="channels-grid">
     {#each CHANNELS as ch}
       {@const isOn = isChannelEnabled(ch.id, ch.locked)}
-      <div class="toggle-card {isOn ? 'on' : ''} {ch.locked ? 'locked' : ''} {ch.credentials && isOn ? 'wide' : ''}"
-        data-channel={ch.id}>
-        <div class="toggle-card-header" role="switch" aria-checked={isOn} tabindex={ch.locked ? -1 : 0}
-          onclick={() => { if (!ch.locked) onchanneltoggle(ch.id); }}
-          onkeydown={(e) => { if (!ch.locked && (e.key === 'Enter' || e.key === ' ')) onchanneltoggle(ch.id); }}>
-          <div class="toggle-card-icon">{ch.icon}</div>
-          <div class="toggle-card-info">
-            <div class="toggle-card-name">
-              {ch.name}
-              {#if ch.locked}<span class="badge badge-success">Always on</span>{/if}
-            </div>
-            <div class="toggle-card-desc">{ch.desc}</div>
-          </div>
-          <div class="toggle-card-switch">
-            {#if ch.locked}
-              <div class="toggle-track on locked" aria-hidden="true"><div class="toggle-thumb"></div></div>
-            {:else}
-              <div class="toggle-track {isOn ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
-            {/if}
-          </div>
-        </div>
-
-        {#if ch.credentials && isOn}
-          <div class="pcard-auth">
+      <div data-channel={ch.id}>
+        <SettingToggle
+          title={ch.name}
+          description={ch.desc}
+          icon={ch.icon}
+          checked={isOn}
+          locked={!!ch.locked}
+          expanded={!!(ch.credentials && isOn)}
+          onToggle={() => onchanneltoggle(ch.id)}
+        >
+          {#snippet titleSuffix()}
+            {#if ch.locked}<span class="badge badge-success">Always on</span>{/if}
+          {/snippet}
+          {#snippet children()}
             {#each ch.credentials as cred}
               {@const inputType = cred.secret === false ? 'text' : 'password'}
               <div class="auth-row">
@@ -113,8 +104,8 @@
                   onclick={(e) => e.stopPropagation()}>
               </div>
             {/each}
-          </div>
-        {/if}
+          {/snippet}
+        </SettingToggle>
       </div>
     {/each}
   </div>
@@ -127,53 +118,35 @@
   <div class="toggle-grid" id="addons-grid">
 
     <!-- Voice -->
-    <div class="toggle-card {enableVoice ? 'on' : ''} {enableVoice && voiceProfiles.length > 0 ? 'wide' : ''}">
-      <div class="toggle-card-header" role="switch" aria-checked={enableVoice} tabindex="0"
-        onclick={() => onenablevoicechange(!enableVoice)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onenablevoicechange(!enableVoice); }}>
-        <div class="toggle-card-icon">🎙️</div>
-        <div class="toggle-card-info">
-          <div class="toggle-card-name">Voice</div>
-          <div class="toggle-card-desc">Bundled text-to-speech and speech-to-text. Requires a one-time local model download.</div>
-        </div>
-        <div class="toggle-card-switch">
-          <div class="toggle-track {enableVoice ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
-        </div>
-      </div>
-      {#if enableVoice && voiceProfiles.length > 0}
-        <div class="pcard-auth">
-          <VoiceProfileSelector profiles={voiceProfiles} selectedProfile={selectedVoiceProfile} onchange={onvoiceprofilechange} showDescription={false} />
-        </div>
-      {/if}
-    </div>
+    <SettingToggle
+      title="Voice"
+      description="Bundled text-to-speech and speech-to-text. Requires a one-time local model download."
+      icon="🎙️"
+      checked={enableVoice}
+      expanded={enableVoice && voiceProfiles.length > 0}
+      onToggle={() => onenablevoicechange(!enableVoice)}
+    >
+      {#snippet children()}
+        <VoiceProfileSelector profiles={voiceProfiles} selectedProfile={selectedVoiceProfile} onchange={onvoiceprofilechange} showDescription={false} />
+      {/snippet}
+    </SettingToggle>
 
     <!-- Ollama -->
-    <div class="toggle-card {ollamaEnabled && !hostLocalRunning ? 'on' : ''} {hostLocalRunning ? 'addon-disabled' : ''} {ollamaEnabled && !hostLocalRunning && ollamaProfiles.length > 0 ? 'wide' : ''}">
-      <div class="toggle-card-header" role="switch" aria-checked={ollamaEnabled && !hostLocalRunning} tabindex={hostLocalRunning ? -1 : 0}
-        aria-disabled={hostLocalRunning ? 'true' : undefined}
-        onclick={() => { if (!hostLocalRunning) onollamachange(!ollamaEnabled); }}
-        onkeydown={(e) => { if (!hostLocalRunning && (e.key === 'Enter' || e.key === ' ')) onollamachange(!ollamaEnabled); }}>
-        <div class="toggle-card-icon">🦙</div>
-        <div class="toggle-card-info">
-          <div class="toggle-card-name">Ollama</div>
-          <div class="toggle-card-desc">
-            {#if hostLocalRunning}
-              Ollama or LM Studio is already running on your computer — the bundled Ollama isn't needed.
-            {:else}
-              Run local AI models inside the stack. Downloads and serves models via Docker.
-            {/if}
-          </div>
-        </div>
-        <div class="toggle-card-switch">
-          <div class="toggle-track {ollamaEnabled && !hostLocalRunning ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
-        </div>
-      </div>
-      {#if ollamaEnabled && !hostLocalRunning && ollamaProfiles.length > 0}
-        <div class="pcard-auth">
-          <VoiceProfileSelector profiles={ollamaProfiles} selectedProfile={selectedOllamaProfile} onchange={onollamaprofilechange} showDescription={false} />
-        </div>
-      {/if}
-    </div>
+    <SettingToggle
+      title="Ollama"
+      description={hostLocalRunning
+        ? "Ollama or LM Studio is already running on your computer — the bundled Ollama isn't needed."
+        : 'Run local AI models inside the stack. Downloads and serves models via Docker.'}
+      icon="🦙"
+      checked={ollamaEnabled && !hostLocalRunning}
+      disabled={hostLocalRunning}
+      expanded={ollamaEnabled && !hostLocalRunning && ollamaProfiles.length > 0}
+      onToggle={() => onollamachange(!ollamaEnabled)}
+    >
+      {#snippet children()}
+        <VoiceProfileSelector profiles={ollamaProfiles} selectedProfile={selectedOllamaProfile} onchange={onollamaprofilechange} showDescription={false} />
+      {/snippet}
+    </SettingToggle>
 
   </div>
 </div>
@@ -198,20 +171,13 @@
       <h3 class="options-section-title">Share knowledge with my host AKM</h3>
       <p class="options-section-desc">Adds a source entry to your personal <code>~/.config/akm/config.json</code> and mounts <code>~/akm</code> into the assistant as a secondary source. Your files' ownership is not changed and your primary stash is unchanged — your <code>~/akm</code> data and cache stay yours.</p>
       <div class="toggle-grid">
-        <div class="toggle-card {hostAkmEnabled ? 'on' : ''}">
-          <div class="toggle-card-header" role="switch" aria-checked={hostAkmEnabled} tabindex="0"
-            onclick={() => onhostakmchange(!hostAkmEnabled)}
-            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onhostakmchange(!hostAkmEnabled); }}>
-            <div class="toggle-card-icon">🧠</div>
-            <div class="toggle-card-info">
-              <div class="toggle-card-name">Share knowledge with my host AKM (read + contribute)</div>
-              <div class="toggle-card-desc">The assistant reads your personal knowledge and can contribute back. Each side keeps its own primary stash, database, and cache — only the knowledge files are shared.</div>
-            </div>
-            <div class="toggle-card-switch">
-              <div class="toggle-track {hostAkmEnabled ? 'on' : ''}" aria-hidden="true"><div class="toggle-thumb"></div></div>
-            </div>
-          </div>
-        </div>
+        <SettingToggle
+          title="Share knowledge with my host AKM (read + contribute)"
+          description="The assistant reads your personal knowledge and can contribute back. Each side keeps its own primary stash, database, and cache — only the knowledge files are shared."
+          icon="🧠"
+          checked={hostAkmEnabled}
+          onToggle={() => onhostakmchange(!hostAkmEnabled)}
+        />
       </div>
     </div>
   {/if}
@@ -240,8 +206,4 @@
   .options-advanced-summary::-webkit-details-marker { display: none; }
   .options-advanced-summary::before { content: '▶ '; font-size: 0.7em; }
   details[open] .options-advanced-summary::before { content: '▼ '; }
-  /* Addon offered but not applicable (e.g. in-stack Ollama when host Ollama/LM
-     Studio is running): dim + non-interactive, with the explanatory desc copy. */
-  .toggle-card.addon-disabled { opacity: 0.6; }
-  .toggle-card.addon-disabled .toggle-card-header { cursor: default; }
 </style>

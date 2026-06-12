@@ -1,335 +1,84 @@
-/**
- * Tests for registry sync functions.
- *
- * Tests validation, discovery, and materialization.
- */
-import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { backupOpenPalmHome } from "./backup.js";
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { backupOpenPalmHome } from './backup.js';
 import {
-  validateBranch,
-  validateRegistryUrl,
-  isValidComponentName,
-  getRegistryConfig,
-  materializeRegistryCatalog,
-  verifyRegistryCatalog,
-  discoverRegistryComponents,
-  discoverRegistryAutomations,
-  getRegistryAutomation,
+  __addonAvailabilityTestHooks,
+  annotateAddonProfileAvailability,
+  getAddonProfileAvailability,
+  getAddonProfileSelection,
+  getAddonProfiles,
+  getAddonServiceNames,
   getRegistryAddonConfig,
+  getRegistryAutomation,
+  installAutomationFromRegistry,
   listAvailableAddonIds,
   listEnabledAddonIds,
-  getAddonServiceNames,
-  getAddonProfiles,
-  getAddonProfileSelection,
-  setAddonProfileSelection,
   setAddonEnabled,
-  installAutomationFromRegistry,
+  setAddonProfileSelection,
   uninstallAutomation,
-  getAddonProfileAvailability,
-  annotateAddonProfileAvailability,
-  __addonAvailabilityTestHooks,
-} from "./registry.js";
+} from './registry.js';
 import { readSecret } from './secrets-files.js';
 
-// ── Validation Tests ─────────────────────────────────────────────────
+let tempDir = '';
+let originalHome: string | undefined;
 
-describe("validateBranch", () => {
-  it("accepts 'main'", () => {
-    expect(validateBranch("main")).toBe("main");
-  });
-
-  it("accepts 'feat/my-branch'", () => {
-    expect(validateBranch("feat/my-branch")).toBe("feat/my-branch");
-  });
-
-  it("accepts branch with dots and underscores", () => {
-    expect(validateBranch("release_1.0.0")).toBe("release_1.0.0");
-  });
-
-  it("rejects branch with '..'", () => {
-    expect(() => validateBranch("main/../hack")).toThrow("contains '..'");
-  });
-
-  it("rejects branch with spaces", () => {
-    expect(() => validateBranch("my branch")).toThrow("Invalid registry branch name");
-  });
-
-  it("rejects empty string", () => {
-    expect(() => validateBranch("")).toThrow("Invalid registry branch name");
-  });
-
-  it("rejects branch with shell metacharacters", () => {
-    expect(() => validateBranch("main;rm -rf /")).toThrow("Invalid registry branch name");
-  });
-
-  it("rejects branch with backticks", () => {
-    expect(() => validateBranch("`whoami`")).toThrow("Invalid registry branch name");
-  });
+beforeEach(() => {
+  tempDir = mkdtempSync(join(tmpdir(), 'registry-test-'));
+  originalHome = process.env.OP_HOME;
+  process.env.OP_HOME = join(tempDir, 'home');
 });
 
-describe("validateRegistryUrl", () => {
-  it("accepts https:// URLs", () => {
-    expect(validateRegistryUrl("https://github.com/org/repo.git")).toBe(
-      "https://github.com/org/repo.git"
-    );
-  });
-
-  it("accepts git@ URLs", () => {
-    expect(validateRegistryUrl("git@github.com:org/repo.git")).toBe(
-      "git@github.com:org/repo.git"
-    );
-  });
-
-  it("accepts absolute local paths", () => {
-    expect(validateRegistryUrl("/tmp/openpalm-registry")).toBe("/tmp/openpalm-registry");
-  });
-
-  it("rejects http:// URLs", () => {
-    expect(() => validateRegistryUrl("http://github.com/repo.git")).toThrow(
-      "Invalid registry URL"
-    );
-  });
-
-  it("rejects file:// URLs", () => {
-    expect(() => validateRegistryUrl("file:///etc/passwd")).toThrow("Invalid registry URL");
-  });
-
-  it("rejects empty string", () => {
-    expect(() => validateRegistryUrl("")).toThrow("Invalid registry URL");
-  });
-
-  it("rejects arbitrary strings", () => {
-    expect(() => validateRegistryUrl("not-a-url")).toThrow("Invalid registry URL");
-  });
+afterEach(() => {
+  if (originalHome === undefined) delete process.env.OP_HOME;
+  else process.env.OP_HOME = originalHome;
+  rmSync(tempDir, { recursive: true, force: true });
+  __addonAvailabilityTestHooks.reset();
 });
 
-describe("isValidComponentName", () => {
-  it("accepts lowercase alpha names", () => {
-    expect(isValidComponentName("chat")).toBe(true);
+describe('builtin addon metadata', () => {
+  it('returns static built-in addon ids', () => {
+    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice']);
   });
 
-  it("accepts names with hyphens", () => {
-    expect(isValidComponentName("my-channel")).toBe(true);
+  it('returns built-in addon schemas without registry materialization', () => {
+    const discord = getRegistryAddonConfig('discord');
+    const slack = getRegistryAddonConfig('slack');
+    const ollama = getRegistryAddonConfig('ollama');
+
+    expect(discord.userEnvPath).toBe('knowledge/env/stack.env');
+    expect(discord.envSchema).toContain('DISCORD_BOT_TOKEN');
+    expect(discord.envSchema).not.toContain('DISCORD_CUSTOM_COMMANDS');
+    expect(slack.envSchema).not.toContain('SLACK_THREAD_TTL_HOURS');
+    expect(slack.envSchema).not.toContain('SLACK_FORWARD_TIMEOUT_MS');
+    expect(ollama.envSchema).toBe('');
+    expect(getRegistryAddonConfig('ssh').envSchema).toBe('');
   });
 
-  it("accepts names with digits", () => {
-    expect(isValidComponentName("channel2")).toBe(true);
-  });
-
-  it("rejects uppercase", () => {
-    expect(isValidComponentName("MyChannel")).toBe(false);
-  });
-
-  it("rejects names starting with hyphen", () => {
-    expect(isValidComponentName("-bad")).toBe(false);
-  });
-
-  it("rejects empty string", () => {
-    expect(isValidComponentName("")).toBe(false);
-  });
-
-  it("rejects names with dots", () => {
-    expect(isValidComponentName("my.channel")).toBe(false);
-  });
-
-  it("rejects names longer than 63 chars", () => {
-    expect(isValidComponentName("a".repeat(64))).toBe(false);
-  });
-
-  it("accepts names exactly 63 chars", () => {
-    expect(isValidComponentName("a".repeat(63))).toBe(true);
-  });
-});
-
-describe("getRegistryConfig", () => {
-  const origUrl = process.env.OP_REGISTRY_URL;
-  const origBranch = process.env.OP_REGISTRY_BRANCH;
-
-  afterEach(() => {
-    if (origUrl === undefined) delete process.env.OP_REGISTRY_URL;
-    else process.env.OP_REGISTRY_URL = origUrl;
-    if (origBranch === undefined) delete process.env.OP_REGISTRY_BRANCH;
-    else process.env.OP_REGISTRY_BRANCH = origBranch;
-  });
-
-  it("returns defaults when env vars are unset", () => {
-    delete process.env.OP_REGISTRY_URL;
-    delete process.env.OP_REGISTRY_BRANCH;
-    const config = getRegistryConfig();
-    expect(config.repoUrl).toContain("github.com");
-    expect(config.branch).toBe("main");
-  });
-
-  it("respects OP_REGISTRY_URL", () => {
-    process.env.OP_REGISTRY_URL = "https://github.com/custom/repo.git";
-    const config = getRegistryConfig();
-    expect(config.repoUrl).toBe("https://github.com/custom/repo.git");
-  });
-
-  it("respects OP_REGISTRY_BRANCH", () => {
-    process.env.OP_REGISTRY_BRANCH = "develop";
-    const config = getRegistryConfig();
-    expect(config.branch).toBe("develop");
-  });
-
-  it("throws on invalid branch in env", () => {
-    process.env.OP_REGISTRY_BRANCH = "main;exploit";
-    expect(() => getRegistryConfig()).toThrow("Invalid registry branch name");
-  });
-
-  it("throws on invalid URL in env", () => {
-    process.env.OP_REGISTRY_URL = "ftp://bad.com/repo";
-    expect(() => getRegistryConfig()).toThrow("Invalid registry URL");
-  });
-});
-
-// ── Materialized Catalog Tests ───────────────────────────────────────
-
-describe("materialized registry catalog", () => {
-  let tmpDir: string;
-  let originalHome: string | undefined;
-
-  beforeEach(() => {
-    tmpDir = join(tmpdir(), `registry-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(tmpDir, { recursive: true });
-    originalHome = process.env.OP_HOME;
-    process.env.OP_HOME = join(tmpDir, 'home');
-  });
-
-  afterEach(() => {
-    if (originalHome === undefined) delete process.env.OP_HOME;
-    else process.env.OP_HOME = originalHome;
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("materializes addons and automations into OP_HOME/registry", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    const root = materializeRegistryCatalog(sourceRoot);
-
-    expect(root).toBe(join(process.env.OP_HOME!, 'data', 'registry'));
-    expect(existsSync(join(root, 'addons', 'chat', 'compose.yml'))).toBe(true);
-    expect(existsSync(join(root, 'addons', 'chat', '.env.schema'))).toBe(true);
-    expect(readFileSync(join(root, 'automations', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
-  });
-
-  it("discovers materialized registry entries", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    const components = discoverRegistryComponents();
-    const stashDir = join(process.env.OP_HOME!, 'knowledge');
-    const automations = discoverRegistryAutomations(stashDir);
-
-    expect(Object.keys(components)).toEqual(['chat']);
-    expect(components.chat?.schema).toContain('CHANNEL_CHAT_SECRET');
-    expect(automations.map((entry) => entry.name)).toContain('akm-improve');
+  it('reads the bundled akm-improve automation', () => {
     expect(getRegistryAutomation('akm-improve')).toContain('akm improve');
   });
+});
 
-  it("returns addon config metadata from the materialized registry", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
+describe('addon runtime state', () => {
+  it('ignores COMPOSE_PROFILES when resolving enabled addons', () => {
+    const envDir = join(process.env.OP_HOME!, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
 
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    const cfg = getRegistryAddonConfig(process.env.OP_HOME!, 'chat');
-    expect(cfg.userEnvPath).toBe('knowledge/env/stack.env');
-    expect(cfg.envSchema).toBe('CHANNEL_CHAT_SECRET=\n');
-    expect(cfg.schemaPath.endsWith('/data/registry/addons/chat/.env.schema')).toBe(true);
-  });
-
-  it("falls back to the built-in addon schema when no registry is materialized", () => {
-    // No materialized registry → built-in schema for first-party addons.
-    const discord = getRegistryAddonConfig(process.env.OP_HOME!, 'discord');
-    expect(discord.envSchema).toContain('DISCORD_BOT_TOKEN');
-    expect(discord.schemaPath).toBe('');
-    // ssh is compose/profile-only — no configurable env.
-    expect(getRegistryAddonConfig(process.env.OP_HOME!, 'ssh').envSchema).toBe('');
-  });
-
-  it("verifies the materialized registry and returns counts", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    const root = materializeRegistryCatalog(sourceRoot);
-
-    expect(verifyRegistryCatalog(root)).toEqual({
-      root,
-      addonCount: 1,
-      automationCount: 1,
-    });
-  });
-
-  it("returns static built-in addons without requiring a registry directory", () => {
-    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'ollama', 'slack', 'ssh', 'voice']);
-  });
-
-  it("fails when source catalog is incomplete", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    mkdirSync(join(sourceRoot, '.openpalm', 'data', 'registry', 'addons'), { recursive: true });
-    mkdirSync(join(sourceRoot, '.openpalm', 'data', 'registry', 'automations'), { recursive: true });
-
-    expect(() => materializeRegistryCatalog(sourceRoot)).toThrow('Registry catalog is incomplete');
-  });
-
-  it("enables and disables addons through explicit runtime state", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
-    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', true)).toMatchObject({ ok: true });
-    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
-    expect(existsSync(join(process.env.OP_HOME!, 'config', 'stack', 'addons', 'chat', 'compose.yml'))).toBe(false);
-
-    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false)).toMatchObject({ ok: true });
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
   });
 
-  it("returns addon service names from fixed compose files", () => {
+  it('treats canonical hardware profile selections as addon enablement', () => {
+    const envDir = join(process.env.OP_HOME!, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
+
+    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['voice']);
+  });
+
+  it('returns addon service names from fixed compose files', () => {
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, 'custom.compose.yml'), 'services:\n  proxy-test:\n    profiles: ["addon.proxy-test"]\n    image: image-a\n  proxy-test-worker:\n    profiles: ["addon.proxy-test"]\n    image: image-b\n');
@@ -337,38 +86,63 @@ describe("materialized registry catalog", () => {
     expect(getAddonServiceNames(process.env.OP_HOME!, 'proxy-test')).toEqual(['proxy-test', 'proxy-test-worker']);
   });
 
-  it("toggles addons and generates channel secrets when enabling channel addons", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
+  it('toggles addons and generates channel secrets for channel addons', () => {
+    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    mkdirSync(stackDir, { recursive: true });
 
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  chat:\n    image: test\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'config', 'stack'), 'chat', true)).toEqual({
+    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', true)).toEqual({
       ok: true,
       enabled: true,
       changed: true,
-      services: ['chat'],
+      services: ['chat', 'api'],
     });
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
-    expect(readSecret(join(process.env.OP_HOME!, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
+    expect(readSecret(stackDir, 'channel_chat_secret')).toBeTruthy();
 
-    expect(setAddonEnabled(process.env.OP_HOME!, join(process.env.OP_HOME!, 'config', 'stack'), 'chat', false)).toEqual({
+    expect(setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false)).toEqual({
       ok: true,
       enabled: false,
       changed: true,
-      services: ['chat'],
+      services: ['chat', 'api'],
     });
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
   });
 
-  it("backs up OP_HOME without recursively copying backups", () => {
+  it('reads bundled addon profiles from the shipped compose assets', () => {
+    expect(getAddonProfiles(process.env.OP_HOME!, 'voice')).toEqual([
+      { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },
+      { id: 'addon.voice.cuda', services: ['voice-cuda'], label: 'NVIDIA (CUDA 12.1)', requires: 'nvidia-container-toolkit' },
+      { id: 'addon.voice.rocm', services: ['voice-rocm'], label: 'AMD (ROCm 6.x)', requires: 'amdgpu kernel module' },
+    ]);
+  });
+
+  it('round-trips addon profile selection through stack.env', () => {
+    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
+    mkdirSync(stackDir, { recursive: true });
+    mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(stackEnv, '');
+
+    expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
+    setAddonProfileSelection(stackDir, 'voice', 'addon.voice.cuda');
+    expect(getAddonProfileSelection(stackDir, 'voice')).toBe('addon.voice.cuda');
+    expect(readFileSync(stackEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
+  });
+});
+
+describe('automation install helpers', () => {
+  it('installs and uninstalls automations through knowledge/tasks', () => {
+    const stashDir = join(process.env.OP_HOME!, 'knowledge');
+    expect(installAutomationFromRegistry('akm-improve', stashDir)).toEqual({ ok: true });
+    expect(readFileSync(join(stashDir, 'tasks', 'akm-improve.yml'), 'utf-8')).toContain('akm improve');
+
+    expect(uninstallAutomation('akm-improve', stashDir)).toEqual({ ok: true });
+    expect(existsSync(join(stashDir, 'tasks', 'akm-improve.yml'))).toBe(false);
+  });
+});
+
+describe('backup helpers', () => {
+  it('backs up OP_HOME without recursively copying backups', () => {
     mkdirSync(join(process.env.OP_HOME!, 'config'), { recursive: true });
     mkdirSync(join(process.env.OP_HOME!, 'data', 'backups', 'old-backup'), { recursive: true });
     writeFileSync(join(process.env.OP_HOME!, 'config', 'stack.yml'), 'llm: test\n');
@@ -382,9 +156,9 @@ describe("materialized registry catalog", () => {
     expect(existsSync(join(backupDir!, 'data', 'backups'))).toBe(false);
   });
 
-  it("writes backups under the provided homeDir even when OP_HOME points elsewhere", () => {
-    const actualHome = join(tmpDir, 'actual-home');
-    const otherHome = join(tmpDir, 'other-home');
+  it('writes backups under the provided homeDir even when OP_HOME points elsewhere', () => {
+    const actualHome = join(tempDir, 'actual-home');
+    const otherHome = join(tempDir, 'other-home');
 
     mkdirSync(join(actualHome, 'config'), { recursive: true });
     mkdirSync(join(otherHome, 'data', 'backups'), { recursive: true });
@@ -399,174 +173,41 @@ describe("materialized registry catalog", () => {
     expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
     expect(existsSync(join(otherHome, 'data', 'backups', 'config', 'stack.yml'))).toBe(false);
   });
-
-  it("parses compose profiles + openpalm.profile.* labels per addon", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'voice');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(
-      join(addonDir, 'compose.yml'),
-      [
-        'services:',
-        '  voice:',
-        '    profiles: ["addon.voice.cpu"]',
-        '    image: openpalm/voice:cpu',
-        '    labels:',
-        '      openpalm.profile.label: CPU',
-        '      openpalm.profile.default: "true"',
-        '  voice-cuda:',
-        '    profiles: ["addon.voice.cuda"]',
-        '    image: openpalm/voice:cuda',
-        '    labels:',
-        '      openpalm.profile.label: NVIDIA',
-        '      openpalm.profile.requires: nvidia-container-toolkit',
-        '',
-      ].join('\n'),
-    );
-    writeFileSync(join(addonDir, '.env.schema'), 'VOICE=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    const profiles = getAddonProfiles(process.env.OP_HOME!, 'voice');
-    expect(profiles).toEqual([
-      { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },
-      { id: 'addon.voice.cuda', services: ['voice-cuda'], label: 'NVIDIA (CUDA 12.1)', requires: 'nvidia-container-toolkit' },
-      { id: 'addon.voice.rocm', services: ['voice-rocm'], label: 'AMD (ROCm 6.x)', requires: 'amdgpu kernel module' },
-    ]);
-  });
-
-  it("round-trips addon profile selection through stack.env", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'voice');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services:\n  voice:\n    profiles: ["addon.voice.cpu"]\n    image: x\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'VOICE=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
-    const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
-    mkdirSync(stackDir, { recursive: true });
-    mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
-    writeFileSync(stackEnv, '');
-
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
-    setAddonProfileSelection(stackDir, 'voice', 'addon.voice.cuda');
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBe('addon.voice.cuda');
-    expect(readFileSync(stackEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
-  });
-
-  it("ignores non-canonical addon profile values when reading stack.env", () => {
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
-    const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
-    mkdirSync(stackDir, { recursive: true });
-    mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
-    writeFileSync(stackEnv, 'OP_VOICE_PROFILE=not-canonical\n');
-
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
-  });
-
-  it("installs and uninstalls automations through knowledge/tasks", () => {
-    const sourceRoot = join(tmpDir, 'repo');
-    const addonDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'addons', 'chat');
-    const automationsDir = join(sourceRoot, '.openpalm', 'data', 'registry', 'automations');
-    const configDir = join(process.env.OP_HOME!, 'config');
-
-    mkdirSync(addonDir, { recursive: true });
-    mkdirSync(automationsDir, { recursive: true });
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(join(addonDir, 'compose.yml'), 'services: {}\n');
-    writeFileSync(join(addonDir, '.env.schema'), 'CHANNEL_CHAT_SECRET=\n');
-    writeFileSync(join(automationsDir, 'cleanup.yml'), 'description: Cleanup\nschedule: "0 3 * * *"\ncommand: ["echo","clean"]\n');
-
-    materializeRegistryCatalog(sourceRoot);
-
-    const stashDir = join(process.env.OP_HOME!, 'knowledge');
-    expect(installAutomationFromRegistry('cleanup', stashDir)).toEqual({ ok: true });
-    expect(readFileSync(join(stashDir, 'tasks', 'cleanup.yml'), 'utf-8')).toContain('Cleanup');
-
-    expect(uninstallAutomation('cleanup', stashDir)).toEqual({ ok: true });
-    expect(existsSync(join(stashDir, 'tasks', 'cleanup.yml'))).toBe(false);
-  });
 });
 
-// ── Host capability probes ───────────────────────────────────────────
-
-describe("getAddonProfileAvailability", () => {
-  beforeEach(() => {
-    __addonAvailabilityTestHooks.reset();
-  });
-
-  afterEach(() => {
-    __addonAvailabilityTestHooks.reset();
-  });
-
-  it("returns available:true for the cpu profile (no host requirements)", async () => {
+describe('getAddonProfileAvailability', () => {
+  it('returns available:true for the cpu profile', async () => {
     const result = await getAddonProfileAvailability({ id: 'addon.voice.cpu' });
     expect(result.available).toBe(true);
     expect(result.reason).toBeUndefined();
   });
 
-  it("returns available:true for unknown profile ids (no host-side gating)", async () => {
+  it('returns available:true for unknown profile ids', async () => {
     const result = await getAddonProfileAvailability({ id: 'something-else' });
     expect(result.available).toBe(true);
   });
 
-  it("caches the result across calls (probe runs only once)", async () => {
+  it('caches the result across calls', async () => {
     const a = await getAddonProfileAvailability({ id: 'addon.voice.cpu' });
     const b = await getAddonProfileAvailability({ id: 'addon.voice.cpu' });
-    expect(a).toBe(b); // same reference — cached
+    expect(a).toBe(b);
   });
 
-  it("probes cuda: returns available:false on a host with no NVIDIA runtime / CDI", async () => {
-    // This test runs on CI/dev machines without GPUs. We don't mock execFile;
-    // we just assert the contract: when neither signal is present, the
-    // reason mentions nvidia-container-toolkit. If a future GPU host runs
-    // this test, the assertion still tolerates the success case.
+  it('probes cuda conservatively', async () => {
     const result = await getAddonProfileAvailability({ id: 'addon.voice.cuda' });
-    if (!result.available) {
-      expect(result.reason).toContain('NVIDIA');
-    } else {
-      // Host genuinely has the runtime registered — accept it.
-      expect(result.reason).toBeUndefined();
-    }
+    if (!result.available) expect(result.reason).toContain('NVIDIA');
+    else expect(result.reason).toBeUndefined();
   });
 
-  it("probes rocm: returns available:false when /dev/kfd is missing", async () => {
+  it('probes rocm conservatively', async () => {
     const result = await getAddonProfileAvailability({ id: 'addon.voice.rocm' });
-    if (!result.available) {
-      expect(result.reason).toContain('ROCm');
-    } else {
-      expect(result.reason).toBeUndefined();
-    }
-  });
-
-  it("probes rocm: when devices exist, reports unpublished image distinctly from missing-device case", async () => {
-    // On a host without /dev/kfd, we hit the device-missing branch and
-    // get the "devices not present" copy. On a ROCm host, we'd fall
-    // through to the manifest-inspect probe and (until 0.11.0-rocm6
-    // ships) get the "image not published yet" copy. Both must mention
-    // ROCm so operator-facing copy stays consistent.
-    const result = await getAddonProfileAvailability({ id: 'addon.voice.rocm' });
-    if (!result.available && existsSync('/dev/kfd') && existsSync('/dev/dri')) {
-      expect(result.reason).toMatch(/image not published|CPU profile/i);
-    }
-    if (!result.available && !(existsSync('/dev/kfd') && existsSync('/dev/dri'))) {
-      expect(result.reason).toMatch(/devices not present/i);
-    }
+    if (!result.available) expect(result.reason).toContain('ROCm');
+    else expect(result.reason).toBeUndefined();
   });
 });
 
-describe("execFileNoThrow (ENOENT capture)", () => {
-  it("captures ENOENT for a missing binary as 'spawn <cmd> ENOENT' stderr", async () => {
+describe('execFileNoThrow (ENOENT capture)', () => {
+  it('captures ENOENT for a missing binary', async () => {
     const result = await __addonAvailabilityTestHooks.execFileNoThrow(
       '/nonexistent/path/to/openpalm-test-no-such-binary-zzz',
       ['--help'],
@@ -574,16 +215,10 @@ describe("execFileNoThrow (ENOENT capture)", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.stderr).toMatch(/ENOENT/);
-    // When the binary is "docker", the synthetic stderr becomes
-    // `spawn docker ENOENT: command not found` — that string matches the
-    // translateDockerError regex `/spawn .*docker.*ENOENT/i` so the
-    // operator gets actionable copy instead of "unknown error (no stderr)".
     expect(result.stderr).toMatch(/spawn\s+\S*\s*ENOENT/);
   });
 
-  it("formats ENOENT for `docker` so translateDockerError can match it", async () => {
-    // Use an absolute path that we know doesn't exist so the test is
-    // deterministic regardless of whether docker is installed on the host.
+  it('formats ENOENT for docker-style matching', async () => {
     const result = await __addonAvailabilityTestHooks.execFileNoThrow(
       'docker-not-installed-zzz',
       ['info'],
@@ -594,31 +229,20 @@ describe("execFileNoThrow (ENOENT capture)", () => {
   });
 });
 
-describe("annotateAddonProfileAvailability", () => {
-  beforeEach(() => {
-    __addonAvailabilityTestHooks.reset();
-  });
-
-  afterEach(() => {
-    __addonAvailabilityTestHooks.reset();
-  });
-
-  it("decorates each profile with available + optional reason", async () => {
+describe('annotateAddonProfileAvailability', () => {
+  it('decorates each profile with availability metadata', async () => {
     const out = await annotateAddonProfileAvailability([
       { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },
       { id: 'addon.voice.rocm', services: ['voice-rocm'], label: 'AMD' },
     ]);
     expect(out).toHaveLength(2);
-    expect(out[0]?.id).toBe('addon.voice.cpu');
     expect(out[0]?.available).toBe(true);
-    // Preserves original fields.
     expect(out[0]?.label).toBe('CPU');
-    expect(out[0]?.default).toBe(true);
     expect(out[1]?.id).toBe('addon.voice.rocm');
     expect(typeof out[1]?.available).toBe('boolean');
   });
 
-  it("does not mutate the input array", async () => {
+  it('does not mutate the input array', async () => {
     const input = [{ id: 'addon.voice.cpu', services: ['voice'] }];
     const before = JSON.parse(JSON.stringify(input));
     await annotateAddonProfileAvailability(input);

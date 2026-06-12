@@ -423,6 +423,11 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ !contains(inputs.version, '-') }}
             type=raw,value=v${{ inputs.version }}
+      - name: Assistant image smoke
+        if: ${{ matrix.dockerfile == 'core/assistant/Dockerfile' }}
+        run: |
+          docker build -f core/assistant/Dockerfile -t openpalm-assistant-smoke:${{ github.run_id }} .
+          docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} -lc 'codex --version && claude --version && pi --version && copilot --version'
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:

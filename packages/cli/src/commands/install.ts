@@ -4,30 +4,23 @@ import { createInterface } from 'node:readline';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { ensureDirectoryTree, seedOpenPalmDir, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
-import { openBrowser } from '../lib/browser.ts';
-import { runDockerCompose } from '../lib/docker.ts';
 import {
   backupOpenPalmHome,
-  buildComposeCliArgs,
   buildComposeOptions,
   composeDown,
-  detectExistingProject,
-  resolveComposeProjectName,
-  parseEnvFile,
+  initializeStateSecrets,
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
-  applyInstall,
-  buildManagedServices,
   createState,
   createLogger,
   resolveRequestedImageTag,
   ensureAkmUserEnv,
   ensureMigrated,
   MigrationError,
+  runDeploy,
+  writeSystemEnv,
   type SetupSpec,
-  type ControlPlaneState,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
@@ -144,44 +137,12 @@ async function requireDocker(): Promise<void> {
   await requireCmd(['docker', 'compose', 'version'], 'Docker Compose v2 is required. Install it: https://docs.docker.com/compose/install/');
 }
 
-/** Compose project name for a state, resolved from its stack.env. */
-function projectNameForState(state: ControlPlaneState): string {
-  return resolveComposeProjectName(parseEnvFile(`${state.stashDir}/env/stack.env`));
-}
-
 async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = ensureValidState();
-
-  // #461: detect an already-running compose project that shares our name.
-  // If it belongs to a DIFFERENT OpenPalm install (foreign working_dir),
-  // refuse with a clear message instead of letting `compose up` emit a raw
-  // "project already running"/port-bind error. If it's OURS, the
-  // --force-recreate below reconciles it idempotently.
-  const existing = await detectExistingProject({
-    projectName: projectNameForState(state),
-    // Compose records the project working_dir as the first compose file's dir
-    // (OP_HOME/config/stack === state.stackDir), not OP_HOME — so compare
-    // against state.stackDir or our own re-install looks "foreign" and refuses.
-    expectedWorkingDir: state.stackDir,
-  });
-  if (existing.exists && !existing.isOurs) {
-    throw new Error(
-      `Another OpenPalm stack is already running from ${existing.workingDir || 'a different OP_HOME'} ` +
-      `under the docker project "${projectNameForState(state)}". Stop it first, or set OP_PROJECT_NAME ` +
-      `to a distinct value in knowledge/env/stack.env before installing here.`,
-    );
-  }
-
-  await applyInstall(state);
-  const managedServices = await buildManagedServices(state);
-  const composeArgs = buildComposeCliArgs(state);
-  if (pull) await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => console.warn('Warning: image pull failed.'));
-  // force-recreate + remove-orphans: idempotent reconcile (matches performUpgrade
-  // and the UI deploy path). Recreates containers over an existing OURS stack and
-  // prunes services dropped from the compose set. (#461)
-  await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate', '--remove-orphans', ...managedServices]);
-  console.log(JSON.stringify({ ok: true, mode, services: managedServices }, null, 2));
-  return managedServices;
+  const result = await runDeploy(state);
+  if (result.deployError) throw new Error(result.deployError);
+  console.log(JSON.stringify({ ok: true, mode, services: result.deployStatus.map((entry) => entry.service), pull }, null, 2));
+  return result.deployStatus.map((entry) => entry.service);
 }
 
 async function parseConfigFile(filePath: string, raw: string): Promise<Record<string, unknown>> {
@@ -321,15 +282,12 @@ async function prepareInstallFiles(
   }
 
   console.log('Configuring secrets...');
-  await ensureSecrets(dataDir);
-  await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
-
-  if (!(await Bun.file(join(configDir, 'stack', 'auth.json')).exists())) {
-    await Bun.write(join(configDir, 'stack', 'auth.json'), '{}\n');
-  }
+  const bootstrapState = createState();
+  initializeStateSecrets(bootstrapState);
+  writeSystemEnv(bootstrapState);
   // Ensure the akm env:user file exists (empty 0600) so the assistant can
   // source it. Owned and edited directly by OpenPalm — see akm-user-env.ts.
-  ensureAkmUserEnv(createState());
+  ensureAkmUserEnv(bootstrapState);
 
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 }

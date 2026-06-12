@@ -634,7 +634,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
       );
     }
     activeProfile = requestedProfile;
-    setAddonProfileSelection(state.stackDir, VOICE_ADDON, activeProfile, state);
+    setAddonProfileSelection(state.stackDir, VOICE_ADDON, activeProfile);
   } else {
     activeProfile =
       getAddonProfileSelection(state.stackDir, VOICE_ADDON) ??

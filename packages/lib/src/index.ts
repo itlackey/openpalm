@@ -55,17 +55,9 @@ export type {
   AddonMutationResult,
   AddonProfile,
   AddonProfileAvailability,
-  RegistryAutomationEntry,
-  RegistryComponentEntry,
   RegistryAddonConfig,
-  RegistryCatalogVerification,
 } from "./control-plane/registry.js";
 export {
-  materializeRegistryCatalog,
-  refreshRegistryCatalog,
-  verifyRegistryCatalog,
-  discoverRegistryComponents,
-  discoverRegistryAutomations,
   getRegistryAutomation,
   getRegistryAddonConfig,
   getAddonServiceNames,
@@ -108,6 +100,16 @@ export {
   reconcileStackEnvImageTag,
   RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
+
+export type {
+  AssistantCliToolId,
+  AssistantCliProviderMapping,
+  AssistantCliToolStatus,
+} from './control-plane/assistant-cli-tools.js';
+export {
+  listAssistantCliTools,
+  useExistingProviderForAssistantCli,
+} from './control-plane/assistant-cli-tools.js';
 
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
@@ -173,17 +175,33 @@ export {
 export {
   deriveLaunchStatus,
   classifyLocalInstall,
+  deriveLocalStackState,
   detectRuntime,
 } from "./control-plane/launch-status.js";
 export type {
   LaunchStatus,
   LocalStatus,
   LocalStackState,
+  ComposeServiceStatus,
   RemoteStatus,
   RemoteReachability,
   RuntimeInfo,
   ActiveAssistant,
 } from "./control-plane/launch-status.js";
+
+export {
+  runDeploy,
+  readDeployJournal,
+  resolveDeployJournalPath,
+  markSetupComplete,
+  backupSetupInputs,
+} from './control-plane/deploy.js';
+export type {
+  DeployEntry,
+  DeployPhase,
+  DeployJournal,
+  DeployProgress,
+} from './control-plane/deploy.js';
 
 // ── Channels ────────────────────────────────────────────────────────────
 export {
@@ -242,15 +260,27 @@ export {
   sha256,
   randomHex,
   buildEnvFiles,
+  writeSystemEnv,
   discoverStackOverlays,
   resolveRuntimeFiles,
   buildRuntimeFileMeta,
   writeRuntimeFiles,
-  writeSystemEnv,
   channelSecretName,
   ensureChannelSecret,
   ensureComposeVolumeTargets,
 } from "./control-plane/config-persistence.js";
+
+export {
+  createState,
+  initializeStateSecrets,
+  applyInstall,
+  applyUpdate,
+  applyUninstall,
+  applyUpgrade,
+  buildManagedServices,
+  performUpgrade,
+  updateStackEnvToLatestImageTag,
+} from './control-plane/lifecycle.js';
 
 // ── Rollback ─────────────────────────────────────────────────────────────
 export {
@@ -266,17 +296,9 @@ export {
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
-  createState,
-  applyInstall,
-  applyUpdate,
-  applyUninstall,
-  applyUpgrade,
-  performUpgrade,
   applyTagChange,
   resolveLatestPlatformTag,
-  updateStackEnvToLatestImageTag,
   buildComposeFileList,
-  buildManagedServices,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
 
@@ -349,15 +371,16 @@ export {
 // ── Compose Error Parsing ────────────────────────────────────────────────
 export type { ComposeServiceFailure } from "./control-plane/compose-errors.js";
 export {
+  mapDockerError,
   parseComposeStderr,
   summarizeComposeStderr,
 } from "./control-plane/compose-errors.js";
 
-// ── Spec-to-Env Derivation ──────────────────────────────────────────────
-export type { VoiceVarsConfig } from "./control-plane/spec-to-env.js";
+// ── Voice Env ───────────────────────────────────────────────────────────
+export type { VoiceVarsConfig } from "./control-plane/voice-env.js";
 export {
   writeVoiceVars,
-} from "./control-plane/spec-to-env.js";
+} from "./control-plane/voice-env.js";
 
 // ── Operator UID/GID Detection ──────────────────────────────────────────
 export type { OperatorIds } from "./control-plane/operator-ids.js";

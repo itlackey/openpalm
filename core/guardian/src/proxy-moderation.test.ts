@@ -13,10 +13,9 @@
  *     title contains a malicious string forwards untouched (200).
  *
  * Mirrors server-moderation.test.ts (fail-closed via dead moderator port) and
- * proxy.test.ts (signRequest harness).
+ * proxy.test.ts (Basic-auth harness).
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { signRequest } from "@openpalm/channels-sdk/crypto";
 import type { Subprocess } from "bun";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
@@ -65,17 +64,11 @@ function ocCall(
 ): Promise<Response> {
   const userId = opts.userId ?? "user-a";
   const body = opts.body ?? "";
-  const nonce = crypto.randomUUID();
-  const timestamp = Date.now();
-  const sig = signRequest(TEST_SECRET, { method, pathWithQuery: ocPath, body, nonce, timestamp, userId });
-  const headers: Record<string, string> = {
-    "x-channel-signature": sig,
-    "x-channel-name": TEST_CHANNEL,
-    "x-channel-user-id": userId,
-    "x-channel-nonce": nonce,
-    "x-channel-timestamp": String(timestamp),
-  };
-  if (body) headers["content-type"] = "application/json";
+  const headers = new Headers({
+    authorization: `Basic ${Buffer.from(`${TEST_CHANNEL}:${TEST_SECRET}`, "utf-8").toString("base64")}`,
+    "x-openpalm-user": userId,
+  });
+  if (body) headers.set("content-type", "application/json");
   const init: RequestInit = { method, headers };
   if (method !== "GET" && method !== "HEAD") init.body = body;
   return fetch(`${guardianUrl}/oc${ocPath}`, init);
@@ -90,6 +83,8 @@ async function createSessionFor(userId: string): Promise<string> {
 beforeAll(async () => {
   const assistantPort = await getAvailablePort();
   const guardianPort = await getAvailablePort();
+  const directPort = await getAvailablePort();
+  const adminPort = await getAvailablePort();
   const deadPort = await getAvailablePort(); // nothing listens → moderator unreachable
 
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-proxy-mod-"));
@@ -135,6 +130,9 @@ beforeAll(async () => {
     env: {
       ...process.env,
       PORT: String(guardianPort),
+      GUARDIAN_DIRECT_PORT: String(directPort),
+      GUARDIAN_ADMIN_PORT: String(adminPort),
+      GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
       CHANNEL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),

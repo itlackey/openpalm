@@ -169,6 +169,15 @@ describe("buildComposeCliArgs", () => {
     expect(args).not.toContain("addon.ollama.cpu");
   });
 
+  it('does not synthesize profiles from COMPOSE_PROFILES', () => {
+    seedCoreCompose();
+    seedEnvFiles({ stack: true });
+    writeFileSync(join(tempDir, 'knowledge', 'env', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
+    const state = makeState();
+    const args = buildComposeCliArgs(state);
+    expect(args).not.toContain('addon.chat');
+  });
+
   it("includes -f flags for compose files", () => {
     seedCoreCompose();
     const state = makeState();
