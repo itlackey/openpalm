@@ -11,8 +11,8 @@ export type CoreServiceName =
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
 
-/** Info about a discovered channel */
-export type ChannelInfo = {
+/** Info about a discovered portal service */
+export type PortalInfo = {
   name: string;
   ymlPath: string;
 };

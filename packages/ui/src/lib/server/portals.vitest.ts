@@ -1,5 +1,5 @@
 /**
- * Tests for channels.ts — channel validation and discovery.
+ * Tests for portals.ts - portal validation and discovery.
  */
 import { describe, test, expect, beforeEach } from "vitest";
 import {
@@ -9,9 +9,9 @@ import {
 import { join } from "node:path";
 
 import {
-  discoverChannels,
+  discoverPortals,
   isAllowedService,
-  isValidChannel,
+  isValidPortal,
 } from "@openpalm/lib";
 import { CORE_SERVICES } from "@openpalm/lib";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
@@ -24,9 +24,9 @@ function writeStackCompose(homeDir: string, filename: string, yml: string): void
   writeFileSync(join(stackDir, filename), yml);
 }
 
-// ── Channel Name Validation & Discovery ─────────────────────────────────
+// ── Portal Name Validation & Discovery ──────────────────────────────────
 
-describe("discoverChannels", () => {
+describe("discoverPortals", () => {
   let homeDir: string;
   let configDir: string;
 
@@ -36,50 +36,50 @@ describe("discoverChannels", () => {
     mkdirSync(configDir, { recursive: true });
   });
 
-  test("returns empty array when no fixed channel compose exists", () => {
-    const result = discoverChannels(configDir);
+  test("returns empty array when no fixed portal compose exists", () => {
+    const result = discoverPortals(configDir);
     expect(result).toEqual([]);
   });
 
-  test("discovers channel services (those with PORTAL_NAME)", () => {
+  test("discovers portal services (those with PORTAL_NAME)", () => {
     writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
-    const result = discoverChannels(configDir);
+    const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("chat");
     expect(result[0].ymlPath).toContain("compose.yml");
   });
 
-  test("discovers multiple channels", () => {
+  test("discovers multiple portals", () => {
     writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n  discord:\n    environment:\n      PORTAL_NAME: Discord\n  api:\n    environment:\n      PORTAL_NAME: API\n");
 
-    const result = discoverChannels(configDir);
+    const result = discoverPortals(configDir);
     expect(result).toHaveLength(3);
     const names = result.map((c) => c.name).sort();
     expect(names).toEqual(["api", "chat", "discord"]);
   });
 
-  test("excludes non-channel addons (no PORTAL_NAME)", () => {
+  test("excludes non-portal addons (no PORTAL_NAME)", () => {
     writeStackCompose(homeDir, "channels.compose.yml", "services:\n  admin:\n    image: admin:latest\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
-    const result = discoverChannels(configDir);
+    const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("chat");
   });
 
-  test("filters out invalid channel names", () => {
+  test("filters out invalid portal names", () => {
     writeStackCompose(homeDir, "channels.compose.yml", "services:\n  UPPER:\n    environment:\n      PORTAL_NAME: X\n  -leading-hyphen:\n    environment:\n      PORTAL_NAME: X\n  valid-name:\n    environment:\n      PORTAL_NAME: Valid\n");
 
-    const result = discoverChannels(configDir);
+    const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("valid-name");
   });
 
-  test("ignores fixed compose files without channels", () => {
+  test("ignores fixed compose files without portals", () => {
     writeStackCompose(homeDir, "services.compose.yml", "services:\n  ollama:\n    image: ollama/ollama\n");
     writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
-    const result = discoverChannels(configDir);
+    const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("chat");
   });
@@ -126,7 +126,7 @@ describe("isAllowedService", () => {
     expect(isAllowedService("chat", configDir)).toBe(false);
   });
 
-  test("rejects non-core, non-channel services", () => {
+  test("rejects non-core, non-portal services", () => {
     expect(isAllowedService("unknown-service")).toBe(false);
     expect(isAllowedService("nginx")).toBe(false);
   });
@@ -152,36 +152,36 @@ describe("isAllowedService", () => {
   });
 });
 
-describe("isValidChannel", () => {
-  test("validates channel name format (lowercase alnum + hyphens)", () => {
+describe("isValidPortal", () => {
+  test("validates portal name format (lowercase alnum + hyphens)", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
     writeStackCompose(homeDir, "custom.compose.yml", "services:\n  my-channel:\n    environment:\n      PORTAL_NAME: Custom\n");
 
-    expect(isValidChannel("my-channel", configDir)).toBe(true);
+    expect(isValidPortal("my-channel", configDir)).toBe(true);
   });
 
   test("rejects empty and whitespace", () => {
-    expect(isValidChannel("")).toBe(false);
-    expect(isValidChannel("  ")).toBe(false);
+    expect(isValidPortal("")).toBe(false);
+    expect(isValidPortal("  ")).toBe(false);
   });
 
   test("rejects invalid names even without configDir", () => {
-    expect(isValidChannel("UPPER")).toBe(false);
-    expect(isValidChannel("-leading")).toBe(false);
-    expect(isValidChannel("has space")).toBe(false);
+    expect(isValidPortal("UPPER")).toBe(false);
+    expect(isValidPortal("-leading")).toBe(false);
+    expect(isValidPortal("has space")).toBe(false);
   });
 
   test("requires configDir to confirm addon overlay", () => {
     // Without configDir: format-valid but returns false (no overlay check)
-    expect(isValidChannel("chat")).toBe(false);
+    expect(isValidPortal("chat")).toBe(false);
   });
 
   test("rejects valid-format name if not installed as addon", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    expect(isValidChannel("unstaged", configDir)).toBe(false);
+    expect(isValidPortal("unstaged", configDir)).toBe(false);
   });
 });

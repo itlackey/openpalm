@@ -244,7 +244,7 @@ jobs:
             exit 1
           fi
           errors=0
-          for df in core/guardian/Dockerfile core/channel/Dockerfile; do
+          for df in core/guardian/Dockerfile core/portal/Dockerfile; do
             TAG=$(grep -oP '^FROM oven/bun:\K[^ ]+' "$df" || true)
             if [ -z "$TAG" ]; then
               echo "::error file=$df::Could not extract oven/bun image tag"

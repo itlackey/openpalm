@@ -58,9 +58,9 @@ policy, Basic-auth `/oc/*` calls, and session/stream behavior.
 
 ## Built-in examples
 
-- `packages/channel-api/README.md` (also serves the chat addon when run with `CHANNEL_ID=chat`)
-- `packages/channel-discord/README.md`
-- `packages/channel-slack/README.md`
+- `core/guardian/src/openai-api.ts` (guardian-hosted OpenAI-compatible API)
+- `packages/discord-portal/README.md`
+- `packages/slack-portal/README.md`
 
 ## Related addons
 

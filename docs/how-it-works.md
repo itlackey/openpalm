@@ -86,7 +86,7 @@ them do the same thing at the end: sign the message with their HMAC secret and
 POST it to Guardian.
 
 The runtime image for registry-backed adapters is the unified
-`channel`, built from `core/channel/Dockerfile`.
+`portal`, built from `core/portal/Dockerfile`.
 
 ### Supporting services
 - **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM markdown task files in `~/.openpalm/knowledge/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.

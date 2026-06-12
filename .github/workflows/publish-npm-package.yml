@@ -1,7 +1,7 @@
 name: Publish npm package
 # Reusable workflow for independently versioned npm packages
-# (@openpalm/ui, channel-api, channel-discord, channel-slack).
-# Platform-coupled packages (lib, CLI, channels-sdk) ship via release.yml.
+# (@openpalm/ui and other independently versioned npm packages).
+# Platform-coupled packages ship via release.yml.
 
 on:
   workflow_call:

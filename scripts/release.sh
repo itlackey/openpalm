@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Bump platform versions, commit, push the CURRENT branch, and tag a release.
 # Platform packages (defined in .github/release-package-groups.json plus Docker
-# images) share a single coordinated version. Channel adapters
-# (packages/channel-*) are versioned independently via their own publish
-# workflows and are NOT touched here.
+# images) share a single coordinated version. Portal adapters and the guardian
+# OpenAI-compatible API are part of that coordinated platform release.
 #
 # The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
 # See docs/operations/release-management.md for the full process.

@@ -144,10 +144,10 @@ describe("guardrail: compose-derived service discovery", () => {
     expect(lifecycleTs).not.toContain("discoverComponentOverlays");
   });
 
-  test("channels.ts does not scan config/components for channel discovery", () => {
-    const channelsTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "channels.ts"), "utf-8");
+  test("portals.ts does not scan config/components for portal discovery", () => {
+    const portalsTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "portals.ts"), "utf-8");
     // Active code should not reference config/components path
-    const activeLines = channelsTs.split("\n").filter(
+    const activeLines = portalsTs.split("\n").filter(
       (l) => !l.trim().startsWith("//") && !l.trim().startsWith("*") && !l.includes("@deprecated")
     );
     const hasConfigComponents = activeLines.some((l) => l.includes("config/components"));

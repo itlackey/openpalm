@@ -197,56 +197,25 @@ elsewhere, the job refuses to move it.
 
 ---
 
-## Publishing a channel adapter (Track B)
+## Publishing Portal Runtime Inputs (Track B)
 
-Channel adapters publish to **npm only** and reach users **without an image
-rebuild**. The `openpalm/channel` image bundles the `@openpalm/channels-sdk`
-framework; the adapter itself is installed at container start by
-[`core/channel/start.sh`](../../core/channel/start.sh) via
-`bun add --exact "$CHANNEL_PACKAGE"`.
+First-party portal adapters are baked into the `openpalm/portal` image, and the
+OpenAI-compatible API now ships from the `openpalm/guardian` image. These are
+platform-coupled release inputs, not independently published npm packages.
 
-### How to publish one adapter
+### How portal updates reach users
 
-Two triggers feed `publish-npm-package.yml`:
+Portal runtime changes ship through the coordinated platform release flow:
 
-1. **Automatic** — push to `main` that touches `packages/channel-<name>/**`. The
-   workflow auto-bumps the patch (or prerelease segment) if the current version is
-   already on npm, publishes, then commits the bump back.
-2. **Manual** — run the matching workflow (`Publish @openpalm/channel-<name>`)
-   via `workflow_dispatch` with a `version` input: an explicit version
-   (`1.2.0`), or a bump keyword (`major` / `minor` / `patch` / `prerelease`).
+1. Update the baked portal adapter sources under `packages/discord-portal/` or
+   `packages/slack-portal/`, or the guardian-hosted OpenAI-compatible API under
+   `core/guardian/src/openai-api*.ts`.
+2. Cut the normal platform release.
+3. Users receive the new portal behavior when they pull the new image tags and
+   recreate the affected services.
 
-Prerelease versions (containing `-`) publish under the npm `next` tag.
-
-### How an adapter update reaches users
-
-`CHANNEL_PACKAGE` in
-[`.openpalm/config/stack/channels.compose.yml`](../../.openpalm/config/stack/channels.compose.yml)
-carries a dist-tag, e.g. `@openpalm/channel-discord@next`. On container restart,
-`start.sh` re-resolves that tag, so a freshly published `next` adapter rolls out
-automatically — no image rebuild, no platform release.
-
-### Why adapters must declare channels-sdk as an OPTIONAL peer
-
-Adapters declare:
-
-```jsonc
-{
-  "peerDependencies":     { "@openpalm/channels-sdk": ">=0.8.0 <1.0.0" },
-  "peerDependenciesMeta": { "@openpalm/channels-sdk": { "optional": true } }
-}
-```
-
-Without `optional: true`, `bun add <adapter>` resolves the peer to the latest
-**stable** channels-sdk (semver ranges exclude prereleases) and installs it
-**over** the framework bundled in the image — breaking the running entrypoint
-during a beta line. Optional tells the installer "the host already provides the
-framework." See [`core/channel/README.md`](../../core/channel/README.md) and
-[`docs/channels/community-channels.md`](../channels/community-channels.md).
-
-The entrypoint imports the adapter by its **bare package name**, stripping any
-trailing `@<version>` / `@<tag>` from `CHANNEL_PACKAGE`
-([`channel-entrypoint.ts`](../../packages/channels-sdk/src/channel-entrypoint.ts)).
+The `openpalm/portal` image selects its baked adapter via `PORTAL_PACKAGE` in
+[`channels.compose.yml`](../../.openpalm/config/stack/channels.compose.yml).
 
 ---
 
@@ -352,14 +321,12 @@ When promoting a `0.X.Y-beta.N` line to a stable `0.X.Y`:
       via `packages/ui/**` push) or dispatch `publish-ui.yml` with an explicit
       version. Without this step, any fresh install that fetches `@openpalm/ui@latest`
       would pull the previous stable line's UI.
-- [ ] Publish stable versions of the three channel adapters (Track B) so a
-      `@latest` adapter actually exists.
-- [ ] **Flip `CHANNEL_PACKAGE` from `@next` to `@latest`** (or a pinned stable
-      version) in
-      [`.openpalm/config/stack/channels.compose.yml`](../../.openpalm/config/stack/channels.compose.yml).
-      Leaving it `@next` would keep pulling prerelease adapters; leaving it bare /
-      `@latest` *before* stable adapters exist pulls the old `0.10.x` line and the
-      channel crashes.
+- [ ] Publish the stable portal and guardian images (Track B) so the baked
+      portal adapters and guardian-hosted OpenAI-compatible API are available
+      under stable image tags.
+- [ ] **Flip `PORTAL_PACKAGE` and image tags to the stable line** in
+      [`.openpalm/config/stack/channels.compose.yml`](../../.openpalm/config/stack/channels.compose.yml)
+      when cutting stable from a prerelease branch.
 - [ ] Verify `scripts/setup.sh` / `scripts/setup.ps1` `SCRIPT_VERSION` equals the
       stable version (the tag-push guard enforces this).
 - [ ] Update `CHANGELOG.md`.
@@ -388,12 +355,10 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
       must be able to resolve `@openpalm/ui@latest`. Merge the current `packages/ui`
       state to `main` (or dispatch `publish-ui.yml` with an explicit stable version)
       to create the first `latest` UI tag.
-- [ ] **Republish the three channel adapters as a stable (non-prerelease) version**
-      so they land on npm `@latest`. Today `@latest` for `channel-*` is still the
-      old `0.10.x` line; `@next` holds `0.11.x`. Until stable adapters exist,
-      `CHANNEL_PACKAGE@latest` resolves to the broken `0.10.x` (env-secret) adapter.
-- [ ] **Then flip `CHANNEL_PACKAGE` `@next` → `@latest`** in
-      `.openpalm/config/stack/channels.compose.yml` (4 occurrences).
+- [ ] **Publish the stable portal and guardian images** so the baked portal
+      adapters and guardian-hosted API move onto the stable image tags.
+- [ ] **Then flip `PORTAL_PACKAGE` / image pins from prerelease to stable** in
+      `.openpalm/config/stack/channels.compose.yml` where applicable.
 - [ ] **Verify the first stable publishes the moving Docker tags** — `latest`,
       and especially `openpalm/voice:latest-cpu` / `latest-cu121`, which have
       **never existed** (gated off for prereleases). Confirm `push-voice-images`
@@ -451,6 +416,6 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 | `.github/workflows/publish-ui.yml` | UI publish trigger (Track C); calls `publish-npm-package.yml` with `needs-build: true` |
 | `.github/workflows/publish-npm-package.yml` | Reusable npm publish used by the UI (Track C) and channel-adapter (Track B) workflows |
 | `.github/workflows/publish-channel-{api,discord,slack}.yml` | Per-adapter publish triggers (Track B) |
-| `core/channel/README.md` | Channel runtime architecture (image bundles framework, adapters at runtime) |
+| `core/portal/README.md` | Portal runtime architecture (image bundles baked adapters) |
 | `docs/channels/community-channels.md` | Channel adapter authoring guide |
 | `docs/technical/package-management.md` | Single-lockfile policy and cross-package reference rules |

@@ -27,7 +27,7 @@ export {
 export type {
   ControlPlaneState,
   CoreServiceName,
-  ChannelInfo,
+  PortalInfo,
   CallerType,
   ArtifactMeta,
 } from "./control-plane/types.js";
@@ -213,12 +213,12 @@ export type {
   DeployProgress,
 } from './control-plane/deploy.js';
 
-// ── Channels ────────────────────────────────────────────────────────────
+// ── Portals ─────────────────────────────────────────────────────────────
 export {
-  discoverChannels,
+  discoverPortals,
   isAllowedService,
-  isValidChannel,
-} from "./control-plane/channels.js";
+  isValidPortal,
+} from "./control-plane/portals.js";
 
 // ── Provider Model Discovery ────────────────────────────────────────────
 export type {

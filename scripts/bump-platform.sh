@@ -2,8 +2,8 @@
 # Bump the "version" field in platform package.json files only.
 # Platform package manifests are sourced from
 # .github/release-package-groups.json -> platformManifests.
-# Channel adapters (packages/channel-*) are independently versioned and
-# published by their own workflows.
+# Portal adapters and guardian runtime inputs are platform-coupled and are
+# versioned here with the rest of the coordinated release surface.
 #
 # Usage: ./scripts/bump-platform.sh 0.8.0
 set -euo pipefail

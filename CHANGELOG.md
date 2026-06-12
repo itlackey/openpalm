@@ -141,9 +141,8 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 ### Changed
 
 - **OpenCode runtime bumped to 1.15.13** (assistant + admin tools).
-- **Channel adapters are runtime npm installs** (`CHANNEL_PACKAGE`), with
-  `@openpalm/channels-sdk` as an optional peer — adapter updates ship
-  independently of the platform release.
+- **Portal adapters are baked into the portal image**, and the OpenAI-compatible
+  API is served by the guardian image.
 - **Runtime env vars are `OP_`-prefixed** (e.g. `OP_TTS_*`, `OP_STT_*`,
   `OP_VOICE_*`) to avoid host-environment collisions.
 - **Release pipeline consolidated** into a single coordinated, manually-dispatched

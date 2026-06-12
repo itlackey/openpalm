@@ -8,28 +8,28 @@ function readRelative(path: string): string {
   return readFileSync(`${ROOT_DIR}/${path}`, 'utf8');
 }
 
-describe('channel image bake contract', () => {
+describe('portal image bake contract', () => {
   test('startup script no longer installs adapters at boot', () => {
-    const startScript = readRelative('core/channel/start.sh');
+    const startScript = readRelative('core/portal/start.sh');
 
     expect(startScript).not.toContain('bun add');
-    expect(startScript).toContain('CHANNEL_PACKAGE must name a baked adapter package');
+    expect(startScript).toContain('PORTAL_PACKAGE must name a baked adapter package');
   });
 
   test('docker image bakes the first-party adapters from the workspace', () => {
-    const dockerfile = readRelative('core/channel/Dockerfile');
+    const dockerfile = readRelative('core/portal/Dockerfile');
 
     expect(dockerfile).toContain('COPY packages/discord-portal /app/packages/discord-portal');
     expect(dockerfile).toContain('COPY packages/slack-portal /app/packages/slack-portal');
-    expect(dockerfile).toContain('COPY core/channel/channel-entrypoint.ts /app/channel-entrypoint.ts');
+    expect(dockerfile).toContain('COPY core/portal/portal-entrypoint.ts /app/portal-entrypoint.ts');
     expect(dockerfile).toContain('RUN bun install --production');
   });
 
-  test('managed channel compose uses baked package names, not dist-tags', () => {
+  test('managed portal compose uses baked package names, not dist-tags', () => {
     const compose = readRelative('.openpalm/config/stack/channels.compose.yml');
 
     expect(compose).not.toContain('@latest');
-    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/discord-portal"');
-    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/slack-portal"');
+    expect(compose).toContain('PORTAL_PACKAGE: "@openpalm/discord-portal"');
+    expect(compose).toContain('PORTAL_PACKAGE: "@openpalm/slack-portal"');
   });
 });

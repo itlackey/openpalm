@@ -32,8 +32,8 @@ services:
       dockerfile: core/assistant/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
 
-  channel:
+  portal:
     build:
       context: .
-      dockerfile: core/channel/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:dev
+      dockerfile: core/portal/Dockerfile
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:dev

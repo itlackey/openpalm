@@ -1,20 +1,20 @@
 /**
- * Channel validation, discovery, and allowlist checks for the OpenPalm control plane.
+ * Portal validation, discovery, and allowlist checks for the OpenPalm control plane.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parse as yamlParse } from "yaml";
-import type { ChannelInfo } from "./types.js";
+import type { PortalInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 
-// ── Channel Name Validation ───────────────────────────────────────────
+// ── Portal Name Validation ────────────────────────────────────────────
 
 /** Strict channel name: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
 const CHANNEL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 const PORTAL_MARKER_KEYS = ['PORTAL_NAME', 'CHANNEL_NAME'] as const;
 
-function isValidChannelName(name: string): boolean {
+function isValidPortalName(name: string): boolean {
   return CHANNEL_NAME_RE.test(name);
 }
 
@@ -29,7 +29,7 @@ function addonComposePaths(homeDir: string): string[] {
   return paths;
 }
 
-function channelNamesFromCompose(composePath: string): string[] {
+function portalNamesFromCompose(composePath: string): string[] {
   try {
     const content = readFileSync(composePath, "utf-8");
     const doc = yamlParse(content);
@@ -55,16 +55,16 @@ function channelNamesFromCompose(composePath: string): string[] {
   }
 }
 
-// ── Channel Discovery ─────────────────────────────────────────────────
+// ── Portal Discovery ──────────────────────────────────────────────────
 
 /**
- * Check if a compose file defines a channel service (has PORTAL_NAME or legacy CHANNEL_NAME).
+ * Check if a compose file defines a portal service (has PORTAL_NAME or legacy CHANNEL_NAME).
  * Compose-derived: we parse the actual compose content rather than rely on
  * filename or directory naming conventions. (GUARDIAN_URL used to be a
  * fallback signal — it's been removed since channels-sdk now hardcodes the
  * in-network guardian URL.)
  */
-export function isChannelAddon(composePath: string): boolean {
+export function isPortalAddon(composePath: string): boolean {
   try {
     const content = readFileSync(composePath, "utf-8");
     const doc = yamlParse(content);
@@ -90,9 +90,9 @@ export function isChannelAddon(composePath: string): boolean {
 }
 
 /**
- * Discover installed channels from explicit first-party addon state plus
+ * Discover installed portals from explicit first-party addon state plus
  * custom stack/addons/ overlays.
- * A channel addon is identified by compose-derived truth: its compose.yml
+ * A portal addon is identified by compose-derived truth: its compose.yml
  * defines services with a PORTAL_NAME environment variable (or the legacy CHANNEL_NAME during migration).
  *
  * Non-channel addons (admin, ollama, etc.) are excluded.
@@ -100,11 +100,11 @@ export function isChannelAddon(composePath: string): boolean {
  * @param configDir - The config directory (~/.openpalm/config). The stack
  *   directory is derived from the parent (homeDir).
  */
-export function discoverChannels(configDir: string): ChannelInfo[] {
+export function discoverPortals(configDir: string): PortalInfo[] {
   const homeDir = dirname(configDir);
   return addonComposePaths(homeDir)
-    .flatMap((composePath) => channelNamesFromCompose(composePath).map((name) => ({ name, ymlPath: composePath })))
-    .filter((ch) => isValidChannelName(ch.name));
+    .flatMap((composePath) => portalNamesFromCompose(composePath).map((name) => ({ name, ymlPath: composePath })))
+    .filter((portal) => isValidPortalName(portal.name));
 }
 
 // ── Allowlist Checks ───────────────────────────────────────────────────
@@ -141,14 +141,14 @@ export function isAllowedService(value: string, configDir?: string): boolean {
 }
 
 /**
- * Check if a channel name is valid and installed.
- * Accepts enabled first-party channels and custom channel overlays.
+ * Check if a portal name is valid and installed.
+ * Accepts enabled first-party portals and custom portal overlays.
  */
-export function isValidChannel(value: string, configDir?: string): boolean {
+export function isValidPortal(value: string, configDir?: string): boolean {
   if (!value || !value.trim()) return false;
-  if (!isValidChannelName(value)) return false;
+  if (!isValidPortalName(value)) return false;
   if (configDir) {
-    return discoverChannels(configDir).some((channel) => channel.name === value);
+    return discoverPortals(configDir).some((portal) => portal.name === value);
   }
   return false;
 }

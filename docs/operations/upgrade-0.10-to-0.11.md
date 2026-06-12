@@ -43,7 +43,7 @@ breaks if you skip a step.
 | Addon enablement | `stack.yml addons[]` | `OP_ENABLED_ADDONS` in `stack.env` (no `stack.yml`) |
 | Host UI port var | `OP_ADMIN_PORT` | `OP_HOST_UI_PORT` (default `3880`) |
 | Voice / runtime env vars | unprefixed (`TTS_*`, `STT_*`) | `OP_`-prefixed (`OP_TTS_*`, `OP_STT_*`, `OP_VOICE_*`) |
-| Channel adapters | baked into the image | **runtime npm installs** (`CHANNEL_PACKAGE`) |
+| Portal adapters | baked into the image | baked into the image (`PORTAL_PACKAGE` selects the baked adapter) |
 | OpenCode runtime | 1.3.x | **1.15.13** |
 
 All of this is handled for you by `openpalm update` — including the env/secret
@@ -242,14 +242,11 @@ Then confirm it actually works:
 
 ---
 
-## Channel adapters
+## Portal adapters
 
-Channel adapters are now **runtime npm installs** (`CHANNEL_PACKAGE`), not baked
-into the image, with `@openpalm/channels-sdk` as an optional peer. After
-upgrading, recreate channel containers so they pull the current adapter. While
-0.11.0 is in prerelease, adapters track the npm `@next` dist-tag; the stable
-line moves to `@latest`. See
-[release-management.md](release-management.md) for the dist-tag details.
+Portal adapters are now baked into the portal image, and the OpenAI-compatible
+API runs from the guardian image. After upgrading, recreate the affected
+services so they pick up the new image tag.
 
 ---
 
