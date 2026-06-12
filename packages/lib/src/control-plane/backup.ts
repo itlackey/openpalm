@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 export function timestampDirName(now = new Date()): string {
@@ -37,4 +37,26 @@ export function backupOpenPalmHome(homeDir: string): string | null {
   }
 
   return copiedAny ? backupDir : null;
+}
+
+export function listBackupDirs(homeDir: string): string[] {
+  const backupsDir = join(homeDir, 'data', 'backups');
+  if (!existsSync(backupsDir)) return [];
+
+  return readdirSync(backupsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(backupsDir, entry.name))
+    .sort((a, b) => b.localeCompare(a));
+}
+
+export function pruneBackupDirs(homeDir: string, keep: number): string[] {
+  if (!Number.isInteger(keep) || keep < 0) {
+    throw new Error('keep must be a non-negative integer');
+  }
+
+  const toDelete = listBackupDirs(homeDir).slice(keep);
+  for (const backupDir of toDelete) {
+    rmSync(backupDir, { recursive: true, force: true });
+  }
+  return toDelete;
 }

@@ -38,6 +38,8 @@ export {
 // ── Backups ───────────────────────────────────────────────────────────────
 export {
   backupOpenPalmHome,
+  listBackupDirs,
+  pruneBackupDirs,
 } from "./control-plane/backup.js";
 
 // ── Layout migration harness ────────────────────────────────────────────────
@@ -100,6 +102,13 @@ export {
   reconcileStackEnvImageTag,
   RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
+export {
+  buildPinnedImageTagEnv,
+  buildPinnedImagesValue,
+  parsePinnedImages,
+  platformImageTagKeyFor,
+  resolveEffectivePlatformImageTag,
+} from './control-plane/image-tags.js';
 
 export type {
   AssistantCliToolId,

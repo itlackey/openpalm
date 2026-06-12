@@ -470,7 +470,7 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
 const RECOVERY_GUIDANCE =
   "Your original files were left untouched and a full backup was taken first. " +
   "To recover, restore the backup (see docs/operations/backup-restore.md) or run " +
-  "the standalone migrator with --dry-run (scripts/migrate-0.10-to-0.11.sh / .ps1). " +
+  "`openpalm migrate --dry-run` to preview the current copy-only migration. " +
   "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
 
 function resolveComparableReleaseTarget(rawVersion: string | null): string | null {

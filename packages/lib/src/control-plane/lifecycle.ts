@@ -22,18 +22,26 @@ import {
 import { refreshCoreAssets } from "./core-assets.js";
 import { ensureReleaseMigrated } from './migrations.js';
 import { isSetupComplete } from "./setup-status.js";
-import { snapshotCurrentState } from "./rollback.js";
+import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
 import { compareComparableVersions, isComparableSemver, isSameMajorVersion } from "./versioning.js";
-import { buildPlatformImageTagEnv, type PlatformImageTagKey } from './image-tags.js';
+import {
+  buildPinnedImageTagEnv,
+  buildPlatformImageTagEnv,
+  parsePinnedImages,
+  resolveEffectivePlatformImageTag,
+  type PinnablePlatformImage,
+  type PlatformImageTagKey,
+} from './image-tags.js';
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const PLATFORM_IMAGE_NAMES = ['assistant', 'guardian', 'channel'] as const;
+const AUTH_TRANSITION_BOUNDARY_TAG = 'v0.12.0';
 
 
 export function createState(): ControlPlaneState {
@@ -131,7 +139,7 @@ async function reconcileCore(
   // this: withStackEnvRollback already snapshotted BEFORE the new image tags
   // were written to stack.env, and re-snapshotting here would overwrite that
   // pre-upgrade state with the new (possibly broken) tags.
-  if (!opts.skipSnapshot) snapshotCurrentState(state);
+  if (!opts.skipSnapshot && !hasArmedSnapshot()) snapshotCurrentState(state);
 
   // Resolve and write runtime files to live paths
   state.artifacts = resolveRuntimeFiles();
@@ -310,9 +318,10 @@ async function resolvePlatformImageTags(
   state: ControlPlaneState,
   namespace: string,
   platformTag: string,
+  pinnedImages: PinnablePlatformImage[],
 ): Promise<Record<string, string>> {
   // Non-default namespaces are local/self-built images — no Docker Hub to ask.
-  if (namespace !== 'openpalm') return buildPlatformImageTagEnv(platformTag);
+  if (namespace !== 'openpalm') return buildPlatformImageTagEnv(platformTag, undefined, pinnedImages);
 
   if (!(await isDockerImageTagPublished(namespace, 'assistant', platformTag))) {
     throw new Error(
@@ -324,6 +333,7 @@ async function resolvePlatformImageTags(
   const required = new Set(resolveRequiredPlatformImages(state));
   const perImage: Partial<Record<PlatformImageTagKey, string>> = {};
   for (const imageName of ['guardian', 'channel'] as const) {
+    if (pinnedImages.includes(imageName)) continue;
     if (await isDockerImageTagPublished(namespace, imageName, platformTag)) continue;
 
     const fallbackTag = resolveNewestDockerTagAtOrBelow(
@@ -343,7 +353,35 @@ async function resolvePlatformImageTags(
     // Image is not deployed (no channel addon enabled) — leave it at the
     // platform tag; nothing will pull it.
   }
-  return buildPlatformImageTagEnv(platformTag, perImage);
+  return buildPlatformImageTagEnv(platformTag, perImage, pinnedImages);
+}
+
+function collectPinnedImageWarnings(
+  currentEnv: Record<string, string>,
+  pinnedImages: PinnablePlatformImage[],
+  platformTag: string,
+): string[] {
+  if (!isComparableSemver(platformTag) || compareComparableVersions(platformTag, AUTH_TRANSITION_BOUNDARY_TAG) < 0) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+  for (const image of pinnedImages) {
+    const pinnedTag = resolveEffectivePlatformImageTag(currentEnv, image);
+    if (!isComparableSemver(pinnedTag) || compareComparableVersions(pinnedTag, AUTH_TRANSITION_BOUNDARY_TAG) >= 0) {
+      continue;
+    }
+
+    warnings.push(JSON.stringify({
+      event: 'unsupported-cross-boundary-pin',
+      service: image,
+      pinnedTag,
+      platformTag,
+      message: `Pinned ${image} image ${pinnedTag} is older than ${AUTH_TRANSITION_BOUNDARY_TAG} while the platform tag is ${platformTag}. Mixed-auth pinning across the 0.12 boundary is unsupported.`,
+    }));
+  }
+
+  return warnings;
 }
 
 /**
@@ -385,17 +423,22 @@ export async function updateStackEnvToLatestImageTag(
 ): Promise<{
   namespace: string;
   tag: string;
+  warnings: string[];
 }> {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const currentEnv = parseEnvFile(systemEnvPath);
+  const pinnedImages = parsePinnedImages(currentEnv.OP_PINNED_IMAGES);
   const namespace = resolveImageNamespace(state);
   const latestTag = resolvedTag ?? await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
-  const imageTagEnv = await resolvePlatformImageTags(state, namespace, latestTag);
+  const imageTagEnv = await resolvePlatformImageTags(state, namespace, latestTag, pinnedImages);
+  const pinnedImageEnv = buildPinnedImageTagEnv(currentEnv, pinnedImages);
+  const warnings = collectPinnedImageWarnings(currentEnv, pinnedImages, latestTag);
 
   const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
-  const updatedContent = mergeEnvContent(currentContent, imageTagEnv);
+  const updatedContent = mergeEnvContent(currentContent, { ...pinnedImageEnv, ...imageTagEnv });
   writeFileSync(systemEnvPath, updatedContent);
 
-  return { namespace, tag: latestTag };
+  return { namespace, tag: latestTag, warnings };
 }
 
 export async function applyUpgrade(
@@ -427,6 +470,7 @@ export type UpgradeResult = {
   backupDir: string | null;
   assetsUpdated: string[];
   restarted: string[];
+  warnings: string[];
 };
 
 async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Promise<T>): Promise<T> {
@@ -440,7 +484,7 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   // snapshot taken later inside reconcileCore captures stack.env AFTER the new
   // image tags were written, so a post-crash manual rollback would "restore"
   // the broken tag.
-  snapshotCurrentState(state);
+  snapshotCurrentState(state, { arm: true });
 
   try {
     return await run();
@@ -474,7 +518,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     const imageTag = await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: imageTag });
     const tagResult = await updateStackEnvToLatestImageTag(state, imageTag);
-    const { tag: confirmedImageTag } = tagResult;
+    const { tag: confirmedImageTag, warnings } = tagResult;
     // The resolved platform tag IS the version whose stack assets we fetch —
     // keeps compose files and images in lockstep.
     const upgradeResult = await applyUpgrade(state, confirmedImageTag);
@@ -500,6 +544,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
       backupDir: upgradeResult.backupDir,
       assetsUpdated: upgradeResult.updated,
       restarted: upgradeResult.restarted,
+      warnings,
     };
   });
 }
@@ -531,12 +576,16 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
       }
     }
 
-    const imageTagEnv = await resolvePlatformImageTags(state, namespace, resolvedTag);
+    const stackEnvPath = `${state.stashDir}/env/stack.env`;
+    const currentEnv = parseEnvFile(stackEnvPath);
+    const pinnedImages = parsePinnedImages(currentEnv.OP_PINNED_IMAGES);
+    const imageTagEnv = await resolvePlatformImageTags(state, namespace, resolvedTag, pinnedImages);
+    const pinnedImageEnv = buildPinnedImageTagEnv(currentEnv, pinnedImages);
+    const warnings = collectPinnedImageWarnings(currentEnv, pinnedImages, resolvedTag);
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: resolvedTag });
 
-    const stackEnvPath = `${state.stashDir}/env/stack.env`;
     const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
-    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, imageTagEnv));
+    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { ...pinnedImageEnv, ...imageTagEnv }));
     const upgradeResult = await applyUpgrade(state, resolvedTag);
     return {
       imageTag: resolvedTag,
@@ -544,6 +593,7 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
       backupDir: upgradeResult.backupDir,
       assetsUpdated: upgradeResult.updated,
       restarted: upgradeResult.restarted,
+      warnings,
     };
   });
 }
