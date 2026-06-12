@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/guardian",
-  "description": "HMAC-verified message gateway with replay detection and rate limiting",
-  "version": "0.11.5",
+  "description": "Basic-auth message gateway with ownership, moderation, and rate limiting",
+  "version": "0.12.0-rc.1",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@openpalm/channels-sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2"
   }
 }

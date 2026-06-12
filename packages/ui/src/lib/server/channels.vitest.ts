@@ -41,8 +41,8 @@ describe("discoverChannels", () => {
     expect(result).toEqual([]);
   });
 
-  test("discovers channel services (those with CHANNEL_NAME)", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+  test("discovers channel services (those with PORTAL_NAME)", () => {
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -51,7 +51,7 @@ describe("discoverChannels", () => {
   });
 
   test("discovers multiple channels", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n  discord:\n    environment:\n      CHANNEL_NAME: Discord\n  api:\n    environment:\n      CHANNEL_NAME: API\n");
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n  discord:\n    environment:\n      PORTAL_NAME: Discord\n  api:\n    environment:\n      PORTAL_NAME: API\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(3);
@@ -59,8 +59,8 @@ describe("discoverChannels", () => {
     expect(names).toEqual(["api", "chat", "discord"]);
   });
 
-  test("excludes non-channel addons (no CHANNEL_NAME)", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  admin:\n    image: admin:latest\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+  test("excludes non-channel addons (no PORTAL_NAME)", () => {
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  admin:\n    image: admin:latest\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -68,7 +68,7 @@ describe("discoverChannels", () => {
   });
 
   test("filters out invalid channel names", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  UPPER:\n    environment:\n      CHANNEL_NAME: X\n  -leading-hyphen:\n    environment:\n      CHANNEL_NAME: X\n  valid-name:\n    environment:\n      CHANNEL_NAME: Valid\n");
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  UPPER:\n    environment:\n      PORTAL_NAME: X\n  -leading-hyphen:\n    environment:\n      PORTAL_NAME: X\n  valid-name:\n    environment:\n      PORTAL_NAME: Valid\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -77,7 +77,7 @@ describe("discoverChannels", () => {
 
   test("ignores fixed compose files without channels", () => {
     writeStackCompose(homeDir, "services.compose.yml", "services:\n  ollama:\n    image: ollama/ollama\n");
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
     const result = discoverChannels(configDir);
     expect(result).toHaveLength(1);
@@ -157,7 +157,7 @@ describe("isValidChannel", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    writeStackCompose(homeDir, "custom.compose.yml", "services:\n  my-channel:\n    environment:\n      CHANNEL_NAME: Custom\n");
+    writeStackCompose(homeDir, "custom.compose.yml", "services:\n  my-channel:\n    environment:\n      PORTAL_NAME: Custom\n");
 
     expect(isValidChannel("my-channel", configDir)).toBe(true);
   });

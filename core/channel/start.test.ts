@@ -19,10 +19,10 @@ describe('channel image bake contract', () => {
   test('docker image bakes the first-party adapters from the workspace', () => {
     const dockerfile = readRelative('core/channel/Dockerfile');
 
-    expect(dockerfile).toContain('"packages/channels-sdk",');
-    expect(dockerfile).toContain('COPY packages/channel-api /app/packages/channel-api');
-    expect(dockerfile).toContain('COPY packages/channel-discord /app/packages/channel-discord');
-    expect(dockerfile).toContain('COPY packages/channel-slack /app/packages/channel-slack');
+    expect(dockerfile).toContain('COPY packages/api-portal /app/packages/api-portal');
+    expect(dockerfile).toContain('COPY packages/discord-portal /app/packages/discord-portal');
+    expect(dockerfile).toContain('COPY packages/slack-portal /app/packages/slack-portal');
+    expect(dockerfile).toContain('COPY core/channel/channel-entrypoint.ts /app/channel-entrypoint.ts');
     expect(dockerfile).toContain('RUN bun install --production');
   });
 
@@ -30,8 +30,8 @@ describe('channel image bake contract', () => {
     const compose = readRelative('.openpalm/config/stack/channels.compose.yml');
 
     expect(compose).not.toContain('@latest');
-    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/channel-api"');
-    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/channel-discord"');
-    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/channel-slack"');
+    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/api-portal"');
+    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/discord-portal"');
+    expect(compose).toContain('CHANNEL_PACKAGE: "@openpalm/slack-portal"');
   });
 });

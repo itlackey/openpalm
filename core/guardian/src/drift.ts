@@ -12,19 +12,19 @@
  *
  * On guardian boot we fetch the assistant `/doc` (its live OpenAPI document) and
  * ASSERT those three couplings still exist. On drift OR fetch failure we DISABLE
- * the /oc/* route (it returns 503) — but the legacy buffered /channel/inbound
- * path STAYS UP. This is FAIL-CLOSED for the proxy, not warning-only.
+ * the /oc/* route (it returns 503). This is fail-closed for the proxy, not
+ * warning-only.
  *
  * Guardian-LOCAL on purpose (the assertion runs against the live assistant and
- * flips runtime state), mirroring replay.ts / rate-limit.ts / ownership.ts — NOT
+ * flips runtime state), mirroring rate-limit.ts / ownership.ts — NOT
  * @openpalm/lib. The PURE assertion (`assertDocCompatible`) takes a parsed doc so
  * it is trivially unit-testable; the fetch + state flip live here too but read no
  * shared control-plane code. The proxy's own allowlist is the source of truth for
  * which paths must exist, so this can never drift from the allowlist itself.
  */
 
-import { OC_ALLOWLIST } from "@openpalm/channels-sdk/oc-allowlist";
-import { createLogger } from "@openpalm/channels-sdk/logger";
+import { OC_ALLOWLIST } from './oc-allowlist.ts';
+import { createLogger } from './logger.ts';
 
 const logger = createLogger("guardian:drift");
 

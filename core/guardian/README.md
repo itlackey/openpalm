@@ -1,22 +1,21 @@
 # core/guardian — Message Guardian
 
-Bun HTTP server that acts as the security checkpoint for all inbound channel traffic. Every channel message must pass through the guardian before reaching the assistant.
+Bun HTTP server that acts as the security checkpoint for all inbound portal traffic. Every first-party portal adapter and direct MCP/API ingress path passes through the guardian before reaching the assistant.
 
 The image also ships the OpenCode binary (pinned to the same `OPENCODE_VERSION` as the assistant). Guardian-side OpenCode instances read their global config from `/etc/opencode` (bind-mounted from `OP_HOME/config/guardian`, set via `OPENCODE_CONFIG_DIR`) and share provider credentials with the assistant through the read-only `auth.json` mount (from `OP_HOME/knowledge/secrets/auth.json`).
 
 ## Security pipeline
 
-For each `POST /channel/inbound` request:
+For each authenticated `/oc/*` request:
 
-1. Reject bodies over 100 KiB; parse JSON
-2. Validate payload shape (channel, userId, text, nonce, timestamp + length bounds)
-3. Look up `CHANNEL_<NAME>_SECRET` and verify the HMAC-SHA256 signature (`x-channel-signature`)
-4. Enforce rate limits — 120 req/min per user, 200 req/min per channel
-5. Reject replayed nonces (5-minute window)
-6. **Content validation** (opt-in) — semantic check for malicious content (see below)
-7. Forward validated message to the assistant
+1. Authenticate the principal with Basic auth (`PRINCIPAL_ID` + secret file contents)
+2. Enforce the endpoint allowlist / direct-tier routing rules
+3. Enforce session and permission/question ownership
+4. Enforce rate limits and stream/turn resource bounds
+5. **Content validation** (opt-in) on prompt-bearing write routes — semantic check for malicious content (see below)
+6. Proxy native OpenCode traffic to the assistant
 
-Any failure returns an error and the message never reaches the assistant.
+Any failure returns an error and the request never reaches the assistant.
 
 ## Content validation (opt-in)
 
@@ -25,7 +24,7 @@ that it is *safe*. When `GUARDIAN_CONTENT_VALIDATION` is enabled, step 6 adds a
 semantic layer that inspects what the message is actually trying to do, using a
 local OpenCode moderator. It is layered cheap → expensive:
 
-- **Heuristic pre-screen** (`@openpalm/channels-sdk/content-screen`): pure,
+- **Heuristic pre-screen** (`core/guardian/src/content-screen.ts`): pure,
   in-process pattern matching that scores prompt-injection / jailbreak /
   exfiltration / obfuscation signals. Most traffic scores 0 and is forwarded
   without ever touching a model.
@@ -45,8 +44,11 @@ contract live in `config/guardian/instructions/moderation.md`.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/channel/inbound` | Receive a signed channel message |
 | `GET` | `/health` | Health check |
+| `GET` | `/stats` | Guardian and proxy runtime stats |
+| `*` | `/oc/*` | Authenticated native OpenCode proxy |
+| `*` | `/mcp` | Optional direct MCP gateway on the direct listener |
+| `*` | `/admin/*` | Optional guardian admin CRUD API on the admin listener |
 
 ## Environment variables
 
@@ -55,14 +57,16 @@ contract live in `config/guardian/instructions/moderation.md`.
 | `PORT` | `8080` | HTTP listen port |
 | `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant endpoint |
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | OpenCode global config dir (bind-mounted from `config/guardian`) |
-| `GUARDIAN_SECRETS_PATH` | — | Path to env file containing channel secrets |
 | `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
-| `CHANNEL_<NAME>_SECRET` | — | Per-channel HMAC secret (from secrets file or env) |
 | `GUARDIAN_CONTENT_VALIDATION` | `0` | Enable LLM-assisted content validation (fail-closed) |
 | `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local OpenCode moderator endpoint |
 | `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
 | `GUARDIAN_MODERATION_THRESHOLD` | `3` | Heuristic risk score at/above which a message is escalated to the model |
 | `GUARDIAN_MODERATION_TIMEOUT_MS` | `4000` | Per-classification timeout; on expiry the message fails closed |
+| `GUARDIAN_DIRECT_INGRESS` | `false` | Enable the direct `/oc/*` listener on `GUARDIAN_DIRECT_PORT` |
+| `GUARDIAN_MCP` | `false` | Enable the `/mcp` gateway on the direct listener |
+| `GUARDIAN_ADMIN_TOKEN_FILE` | — | Admin CRUD bearer token file |
+| `GUARDIAN_MCP_TOKEN_FILE` | — | MCP bearer token file |
 
 ## Development
 

@@ -13,10 +13,9 @@
  * /event fan-out stage (Stage 2); this module exposes the map + assert/record
  * seam now so the proxy can authorize replies once that lands.
  *
- * This mirrors replay.ts / rate-limit.ts EXACTLY: a module-scoped Map (no class,
- * no DI), a `.unref()`'d prune timer, a hard size cap with oldest-first eviction,
- * and a size getter for /stats. It is guardian-local on purpose — NOT @openpalm/lib
- * (the guardian image depends only on @openpalm/channels-sdk + dotenv, §2.2).
+ * This mirrors rate-limit.ts exactly: a module-scoped Map (no class, no DI), a
+ * `.unref()`'d prune timer, a hard size cap with oldest-first eviction, and a
+ * size getter for /stats. It is guardian-local on purpose — NOT @openpalm/lib.
  */
 
 /** The identity that owns a session/permission request. */

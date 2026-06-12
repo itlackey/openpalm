@@ -1,4 +1,4 @@
-import { createLogger } from '@openpalm/channels-sdk/logger';
+import { createLogger } from './logger.ts';
 
 import { invalidatePrincipalCache } from './auth';
 import {

@@ -1,0 +1,24 @@
+{
+  "name": "@openpalm/discord-portal",
+  "description": "Discord bot portal adapter for OpenPalm",
+  "version": "0.12.0-rc.1",
+  "type": "module",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm.git",
+    "directory": "packages/discord-portal"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "main": "src/index.ts",
+  "dependencies": {
+    "@opencode-ai/sdk": "1.15.13",
+    "discord.js": "^14.16.3"
+  }
+}

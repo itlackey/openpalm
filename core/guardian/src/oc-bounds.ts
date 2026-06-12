@@ -1,21 +1,17 @@
 /**
  * Guardian-LOCAL resource bounds for the /oc/* proxy (design §3.6).
  *
- * The per-call HMAC + replay + allowlist gates stop forged/replayed/forbidden
- * calls, but the proxy adds NEW held-open surfaces (the multiplexed /event
- * stream) and NEW unbounded pressure (reconnect loops churning nonces, an
- * unbounded number of in-flight turns). This module bounds them. It is
- * guardian-LOCAL runtime state on purpose — mirroring replay.ts / rate-limit.ts
- * / ownership.ts (module-scoped Maps, an .unref()'d prune timer, hard size caps,
- * size getters for /stats) — NOT @openpalm/lib (the guardian image depends only
- * on @openpalm/channels-sdk + dotenv, §2.2).
+ * The allowlist and ownership gates stop forbidden calls, but the proxy adds new
+ * held-open surfaces (the multiplexed /event stream) and new unbounded pressure
+ * (reconnect loops and in-flight turns). This module bounds them. It is
+ * guardian-local runtime state on purpose — mirroring rate-limit.ts /
+ * ownership.ts (module-scoped Maps, an .unref()'d prune timer, hard size caps,
+ * size getters for /stats) — NOT @openpalm/lib.
  *
  * Bounds implemented (each a NAMED constant with rationale):
  *   1. /event reconnect cap (§3.6 F4): ≤ OC_EVENT_RECONNECT_LIMIT opens per
  *      window per principal. A reconnect loop (mobile, gateway flaps) or an
- *      adversary must not be able to churn nonces and pressure the replay store
- *      into evicting still-valid nonces. The nonce store keeps its hard cap;
- *      this bounds the dominant NEW pressure on it.
+ *      adversary must not be able to churn reconnections without bound.
  *   2. Concurrent /event streams per principal (§3.6): at most
  *      OC_EVENT_MAX_CONCURRENT_STREAMS open at once; a second open is rejected
  *      429 — the channel must close the first. Prevents unbounded held-open

@@ -244,7 +244,7 @@ describe("writeRuntimeFiles", () => {
   });
 
   test("generates file-based channel secrets for discovered channels", () => {
-    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
     enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);
@@ -267,7 +267,7 @@ describe("writeRuntimeFiles", () => {
     expect(content).toContain(`OP_IMAGE_TAG=`);
     expect(content).toContain('OP_ASSISTANT_IMAGE_TAG=');
     expect(content).toContain('OP_GUARDIAN_IMAGE_TAG=');
-    expect(content).toContain('OP_CHANNEL_IMAGE_TAG=');
+    expect(content).toContain('OP_PORTAL_IMAGE_TAG=');
   });
 
   test("stack.env does NOT leak user-managed secrets", () => {
@@ -282,7 +282,7 @@ describe("writeRuntimeFiles", () => {
   test("preserves existing file-based channel secrets (does not regenerate)", () => {
     writeSecret(state.stackDir, "channel_chat_secret", "pre-existing-secret-value");
 
-    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
     enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);

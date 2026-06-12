@@ -53,11 +53,11 @@ const manifests = full
   ? groups.coordinatedManifests
   : [...new Set(picked.flatMap((u) => units[u] || []))];
 
-// Image matrix: channels => guardian + channel; assistant => assistant.
+// Image matrix: channels => guardian + portal; assistant => assistant.
 const include = [];
 if (doChannels) {
   include.push({ dockerfile: "core/guardian/Dockerfile", image: "openpalm/guardian" });
-  include.push({ dockerfile: "core/channel/Dockerfile", image: "openpalm/channel" });
+  include.push({ dockerfile: "core/channel/Dockerfile", image: "openpalm/portal" });
 }
 if (doAssistant) include.push({ dockerfile: "core/assistant/Dockerfile", image: "openpalm/assistant" });
 

@@ -141,8 +141,8 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "OP_ENABLED_ADDONS=",
     "",
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
-    "# Guardian is network-only (no host port) — channels reach it via",
-    "# http://guardian:8080 over the channel_lan Docker network.",
+    "# Guardian is network-only (no host port) — portals reach it via",
+    "# http://guardian:8080 over the portal_net Docker network.",
     `OP_ASSISTANT_PORT=${STACK_DEFAULTS.ports.assistant}`,
     `OP_HOST_UI_PORT=${STACK_DEFAULTS.ports.hostUi}`,
     ""

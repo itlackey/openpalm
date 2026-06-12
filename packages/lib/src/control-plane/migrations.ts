@@ -250,7 +250,12 @@ function seedPerImageTagVars(ctx: MigrationCtx): void {
     return;
   }
 
-  writeFile600(ctx, envPath, upsertMany(current, buildPlatformImageTagEnv(imageTag)));
+  let next = upsertMany(current, buildPlatformImageTagEnv(imageTag));
+  const legacyPortalTag = readStackEnvValue(ctx.stashDir, 'OP_CHANNEL_IMAGE_TAG');
+  if (legacyPortalTag && !/^OP_PORTAL_IMAGE_TAG=/m.test(next)) {
+    next = upsertEnvValue(next, 'OP_PORTAL_IMAGE_TAG', legacyPortalTag);
+  }
+  writeFile600(ctx, envPath, next);
   ctx.log(`seeded per-image tag vars from OP_IMAGE_TAG=${imageTag}`);
 }
 

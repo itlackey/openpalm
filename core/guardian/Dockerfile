@@ -35,17 +35,8 @@ ENV OPENCODE_CONFIG_DIR=/etc/opencode
 # never a third writer) — do not reintroduce a bare global install.
 
 WORKDIR /app
-# Bun workspace symlinks are not available inside Docker builds, so we copy the
-# raw TypeScript source of @openpalm/channels-sdk directly into node_modules.
-COPY packages/channels-sdk /app/node_modules/@openpalm/channels-sdk
 COPY core/guardian/ .
-# Install channels-sdk's own declared dependencies so transitive imports
-# from sdk source resolve correctly at runtime.
-RUN cd /app/node_modules/@openpalm/channels-sdk && bun install --production
-# Strip workspace:* dep (pre-installed via COPY above) and remove the workspace
-# lockfile so bun install resolves remaining deps without CI frozen-lockfile enforcement.
-RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/channels-sdk'];writeFileSync('package.json',JSON.stringify(p,null,2))" \
-    && rm -f bun.lock bun.lockb \
+RUN rm -f bun.lock bun.lockb \
     && bun install --production
 
 RUN mkdir -p /opt/openpalm/guardian /app/audit /app/secrets \

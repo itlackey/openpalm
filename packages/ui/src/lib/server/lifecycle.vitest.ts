@@ -309,7 +309,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     expect(updated).toContain("OP_IMAGE_TAG=v0.7.7");
     expect(updated).toContain('OP_ASSISTANT_IMAGE_TAG=v0.7.7');
     expect(updated).toContain('OP_GUARDIAN_IMAGE_TAG=v0.7.7');
-    expect(updated).toContain('OP_CHANNEL_IMAGE_TAG=v0.7.7');
+    expect(updated).toContain('OP_PORTAL_IMAGE_TAG=v0.7.7');
   });
 
   test('uses the running OpenPalm major when OP_IMAGE_TAG is non-semver', async () => {
@@ -359,10 +359,10 @@ describe("updateStackEnvToLatestImageTag", () => {
       if (url.includes('/assistant/tags/v0.11.3')) {
         return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
       }
-      if (url.includes('/guardian/tags/v0.11.3') || url.includes('/channel/tags/v0.11.3')) {
+      if (url.includes('/guardian/tags/v0.11.3') || url.includes('/portal/tags/v0.11.3')) {
         return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
       }
-      if (url.includes('/guardian/tags?page_size=') || url.includes('/channel/tags?page_size=')) {
+      if (url.includes('/guardian/tags?page_size=') || url.includes('/portal/tags?page_size=')) {
         return new Response(
           JSON.stringify({ results: [{ name: 'v0.11.0' }] }),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -377,7 +377,7 @@ describe("updateStackEnvToLatestImageTag", () => {
     expect(updated).toContain('OP_IMAGE_TAG=v0.11.3');
     expect(updated).toContain('OP_ASSISTANT_IMAGE_TAG=v0.11.3');
     expect(updated).toContain('OP_GUARDIAN_IMAGE_TAG=v0.11.0');
-    expect(updated).toContain('OP_CHANNEL_IMAGE_TAG=v0.11.0');
+    expect(updated).toContain('OP_PORTAL_IMAGE_TAG=v0.11.0');
   });
 
   test('refuses to advance when a required image has no usable published tag', async () => {
@@ -401,7 +401,7 @@ describe("updateStackEnvToLatestImageTag", () => {
       if (url.includes('/assistant/tags/v0.11.3')) {
         return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
       }
-      if (url.includes('/guardian/tags/v0.11.3') || url.includes('/channel/tags/v0.11.3')) {
+      if (url.includes('/guardian/tags/v0.11.3') || url.includes('/portal/tags/v0.11.3')) {
         return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
       }
       // No published tags at all for guardian/channel

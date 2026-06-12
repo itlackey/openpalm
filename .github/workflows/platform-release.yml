@@ -6,8 +6,8 @@ name: Platform release (orchestrator)
 #   host      = @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + CLI native
 #               binaries + Electron installers + git tag + GitHub release.
 #   web ui    = @openpalm/ui (npm) only.
-#   channels  = @openpalm/channels-sdk + @openpalm/channel-{api,discord,slack} (npm)
-#               + guardian image + channel image.
+#   channels  = guardian image + portal image, with the baked runtime manifests
+#               versioned in-repo but not published to npm.
 #   assistant = assistant image only.
 #   voice     = voice images (cpu / cu121). Stable only; always explicit.
 #
@@ -22,7 +22,7 @@ name: Platform release (orchestrator)
 #
 # TAG-LAST: the git tag + GitHub release are created LAST and only for host/full
 # ("tag exists => fully published"). channels/assistant/voice are registry-only
-# (npm + Docker), no git tag.
+# (Docker only for portals/channels), no git tag.
 #
 # DISPATCH-FROM-MAIN: GitHub only dispatches workflows whose file lives on the
 # default branch. This file must be on `main`; supply `ref` to release a release
@@ -57,7 +57,7 @@ on:
         type: boolean
         default: false
       release_channels:
-        description: 'Release the CHANNELS unit (channels-sdk + channel-* npm, guardian + channel images).'
+        description: 'Release the CHANNELS unit (guardian + portal images; baked runtime manifests are versioned in-repo only).'
         required: false
         type: boolean
         default: false
@@ -336,66 +336,12 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
-  # ── npm layer (channels unit: channels-sdk -> channel-*) ────────────────────
-  npm-sdk:
-    needs: [plan, bump]
-    if: ${{ always() && needs.bump.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
-    uses: ./.github/workflows/publish-npm-package.yml
-    secrets: inherit
-    with:
-      package-dir: packages/channels-sdk
-      package-name: '@openpalm/channels-sdk'
-      version: ${{ inputs.version }}
-      ref: ${{ inputs.ref }}
-      exact-version: true
-      dry-run: ${{ inputs.dry_run }}
-
-  npm-channel-api:
-    needs: [plan, bump, npm-sdk]
-    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
-    uses: ./.github/workflows/publish-npm-package.yml
-    secrets: inherit
-    with:
-      package-dir: packages/channel-api
-      package-name: '@openpalm/channel-api'
-      version: ${{ inputs.version }}
-      ref: ${{ inputs.ref }}
-      exact-version: true
-      dry-run: ${{ inputs.dry_run }}
-
-  npm-channel-discord:
-    needs: [plan, bump, npm-sdk]
-    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
-    uses: ./.github/workflows/publish-npm-package.yml
-    secrets: inherit
-    with:
-      package-dir: packages/channel-discord
-      package-name: '@openpalm/channel-discord'
-      version: ${{ inputs.version }}
-      ref: ${{ inputs.ref }}
-      exact-version: true
-      dry-run: ${{ inputs.dry_run }}
-
-  npm-channel-slack:
-    needs: [plan, bump, npm-sdk]
-    if: ${{ always() && needs.bump.result == 'success' && needs.npm-sdk.result == 'success' && needs.plan.outputs.do_channels == 'true' }}
-    uses: ./.github/workflows/publish-npm-package.yml
-    secrets: inherit
-    with:
-      package-dir: packages/channel-slack
-      package-name: '@openpalm/channel-slack'
-      version: ${{ inputs.version }}
-      ref: ${{ inputs.ref }}
-      exact-version: true
-      dry-run: ${{ inputs.dry_run }}
-
-  # ── Image layer (channels: guardian+channel; assistant: assistant). Matrix is
-  # computed by the plan job. Runs after the channels npm layer is green so a
-  # failed npm aborts before any immutable image tag is pushed. Builds happen even
-  # on dry_run (push gated off, amd64-only) to validate the Dockerfiles. ────────
+  # ── Image layer (channels: guardian+portal; assistant: assistant). Matrix is
+  # computed by the plan job. Builds happen even on dry_run (push gated off,
+  # amd64-only) to validate the Dockerfiles. ────────────────────────────────────
   images:
     name: Docker image (${{ matrix.image }})
-    needs: [plan, bump, npm-sdk, npm-channel-api, npm-channel-discord, npm-channel-slack]
+    needs: [plan, bump]
     if: ${{ always() && needs.bump.result == 'success' && !contains(needs.*.result, 'failure') && (needs.plan.outputs.do_channels == 'true' || needs.plan.outputs.do_assistant == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -602,10 +548,6 @@ jobs:
       - npm-lib
       - npm-cli
       - npm-ui
-      - npm-sdk
-      - npm-channel-api
-      - npm-channel-discord
-      - npm-channel-slack
       - images
       - cli
       - electron

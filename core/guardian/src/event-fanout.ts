@@ -25,13 +25,12 @@
  *     attempting resubscribe.
  *   - Ignore unknown event types / tolerate added fields (graceful degrade, §5).
  *
- * This is guardian-LOCAL runtime state on purpose (mirrors replay.ts /
- * rate-limit.ts / ownership.ts) — NOT @openpalm/lib. The guardian image depends
- * only on @openpalm/channels-sdk + dotenv (§2.2).
+ * This is guardian-local runtime state on purpose (mirrors rate-limit.ts /
+ * ownership.ts) — NOT @openpalm/lib.
  */
 
-import { createLogger } from "@openpalm/channels-sdk/logger";
-import { TURN_IDLE_STATUSES, statusName } from "@openpalm/channels-sdk/oc-events";
+import { createLogger } from './logger.ts';
+import { TURN_IDLE_STATUSES, statusName } from './oc-events.ts';
 
 import {
   type Principal,

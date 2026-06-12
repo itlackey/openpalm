@@ -121,7 +121,7 @@ describe("User extensions in knowledge/env/user.env (akm env:user)", () => {
 describe("Runtime validation uses fixed compose overlays", () => {
   test("isValidChannel checks channel services from fixed compose files", () => {
     const state = makeState(baseDir);
-    writeStackCompose(state.homeDir, "custom.compose.yml", "services:\n  custom:\n    environment:\n      CHANNEL_NAME: Custom\n");
+    writeStackCompose(state.homeDir, "custom.compose.yml", "services:\n  custom:\n    environment:\n      PORTAL_NAME: Custom\n");
 
     expect(isValidChannel("custom", state.configDir)).toBe(true);
 

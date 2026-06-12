@@ -1,12 +1,12 @@
 export const PLATFORM_IMAGE_TAG_KEYS = [
   'OP_ASSISTANT_IMAGE_TAG',
   'OP_GUARDIAN_IMAGE_TAG',
-  'OP_CHANNEL_IMAGE_TAG',
+  'OP_PORTAL_IMAGE_TAG',
 ] as const;
 
 export type PlatformImageTagKey = (typeof PLATFORM_IMAGE_TAG_KEYS)[number];
 
-export const PINNABLE_PLATFORM_IMAGES = ['guardian', 'channel'] as const;
+export const PINNABLE_PLATFORM_IMAGES = ['guardian', 'portal'] as const;
 
 export type PinnablePlatformImage = (typeof PINNABLE_PLATFORM_IMAGES)[number];
 
@@ -31,13 +31,19 @@ export function platformImageTagKeyFor(image: PinnablePlatformImage): PlatformIm
   switch (image) {
     case 'guardian':
       return 'OP_GUARDIAN_IMAGE_TAG';
-    case 'channel':
-      return 'OP_CHANNEL_IMAGE_TAG';
+    case 'portal':
+      return 'OP_PORTAL_IMAGE_TAG';
   }
 }
 
 export function resolveEffectivePlatformImageTag(env: Record<string, string>, image: PinnablePlatformImage): string {
-  return env[platformImageTagKeyFor(image)]?.trim() || env.OP_IMAGE_TAG?.trim() || 'latest';
+  const primary = env[platformImageTagKeyFor(image)]?.trim();
+  if (primary) return primary;
+  if (image === 'portal') {
+    const legacy = env.OP_CHANNEL_IMAGE_TAG?.trim();
+    if (legacy) return legacy;
+  }
+  return env.OP_IMAGE_TAG?.trim() || 'latest';
 }
 
 export function buildPinnedImageTagEnv(
@@ -61,7 +67,7 @@ export function buildPinnedImageTagEnv(
  */
 export function buildPlatformImageTagEnv(
   tag: string,
-  perImage?: Partial<Record<PlatformImageTagKey, string>>,
+  perImage?: Partial<Record<PlatformImageTagKey | 'OP_CHANNEL_IMAGE_TAG', string>>,
   pinnedImages: Iterable<PinnablePlatformImage> = [],
 ): Record<string, string> {
   const pinned = new Set(pinnedImages);
@@ -69,6 +75,6 @@ export function buildPlatformImageTagEnv(
     OP_IMAGE_TAG: tag,
     OP_ASSISTANT_IMAGE_TAG: perImage?.OP_ASSISTANT_IMAGE_TAG ?? tag,
     ...(pinned.has('guardian') ? {} : { OP_GUARDIAN_IMAGE_TAG: perImage?.OP_GUARDIAN_IMAGE_TAG ?? tag }),
-    ...(pinned.has('channel') ? {} : { OP_CHANNEL_IMAGE_TAG: perImage?.OP_CHANNEL_IMAGE_TAG ?? tag }),
+    ...(pinned.has('portal') ? {} : { OP_PORTAL_IMAGE_TAG: perImage?.OP_PORTAL_IMAGE_TAG ?? perImage?.OP_CHANNEL_IMAGE_TAG ?? tag }),
   };
 }

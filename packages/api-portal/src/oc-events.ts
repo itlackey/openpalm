@@ -1,0 +1,154 @@
+export interface RawEvent {
+  type: string;
+  properties?: Record<string, unknown>;
+}
+
+export function asRaw(ev: unknown): RawEvent {
+  const e = ev as RawEvent;
+  return {
+    type: typeof e?.type === 'string' ? e.type : '',
+    properties: (e?.properties ?? {}) as Record<string, unknown>,
+  };
+}
+
+function propStr(props: Record<string, unknown> | undefined, key: string): string | undefined {
+  const v = props?.[key];
+  return typeof v === 'string' ? v : undefined;
+}
+
+export function partSnapshotType(e: RawEvent): { partID: string; type: string } | null {
+  if (e.type !== 'message.part.updated') return null;
+  const part = e.properties?.part as { id?: unknown; type?: unknown } | undefined;
+  if (part && typeof part.id === 'string' && typeof part.type === 'string') {
+    return { partID: part.id, type: part.type };
+  }
+  return null;
+}
+
+export function extractTextDelta(e: RawEvent, sessionId: string, reasoningPartIds?: ReadonlySet<string>): string | null {
+  const props = e.properties ?? {};
+  if (propStr(props, 'sessionID') !== sessionId) return null;
+
+  if (e.type === 'session.next.text.delta') {
+    return propStr(props, 'delta') ?? propStr(props, 'text') ?? null;
+  }
+  if (e.type === 'message.part.delta') {
+    if (propStr(props, 'field') && propStr(props, 'field') !== 'text') return null;
+    const partID = propStr(props, 'partID');
+    if (partID && reasoningPartIds?.has(partID)) return null;
+    return propStr(props, 'delta') ?? null;
+  }
+  return null;
+}
+
+export const TURN_IDLE_STATUSES: ReadonlySet<string> = new Set(['idle']);
+
+export function statusName(status: unknown): string | undefined {
+  if (typeof status === 'string') return status;
+  if (status && typeof status === 'object' && typeof (status as { type?: unknown }).type === 'string') {
+    return (status as { type: string }).type;
+  }
+  return undefined;
+}
+
+export function isTurnEnd(e: RawEvent, sessionId: string): boolean {
+  if (propStr(e.properties, 'sessionID') !== sessionId) return false;
+  if (e.type === 'session.idle') return true;
+  if (e.type === 'session.status') {
+    const name = statusName(e.properties?.status);
+    return name !== undefined && TURN_IDLE_STATUSES.has(name);
+  }
+  return false;
+}
+
+export interface ToolUpdate {
+  callID: string;
+  tool: string;
+  status: string;
+  title?: string;
+  error?: string;
+}
+
+export function extractToolUpdate(e: RawEvent, sessionId: string): ToolUpdate | null {
+  if (propStr(e.properties, 'sessionID') !== sessionId) return null;
+  const part = (e.properties?.part ?? e.properties?.tool) as Record<string, unknown> | undefined;
+  if (e.type === 'message.part.updated' && part && (part.type === 'tool' || part.state)) {
+    const state = (part.state ?? {}) as Record<string, unknown>;
+    return {
+      callID: String(part.callID ?? part.id ?? ''),
+      tool: String(part.tool ?? 'tool'),
+      status: String(state.status ?? 'running'),
+      title: typeof state.title === 'string' ? state.title : undefined,
+      error: typeof state.error === 'string' ? state.error : undefined,
+    };
+  }
+  if (e.type.startsWith('session.next.tool.')) {
+    return {
+      callID: propStr(e.properties, 'callID') ?? '',
+      tool: propStr(e.properties, 'tool') ?? 'tool',
+      status: e.type === 'session.next.tool.called' ? 'running' : (propStr(e.properties, 'status') ?? 'running'),
+      title: propStr(e.properties, 'title'),
+    };
+  }
+  return null;
+}
+
+export interface PermissionAsk {
+  requestID: string;
+  permission: string;
+  patterns: string[];
+}
+
+export function extractPermissionAsk(e: RawEvent, sessionId: string): PermissionAsk | null {
+  if (e.type !== 'permission.asked') return null;
+  if (propStr(e.properties, 'sessionID') !== sessionId) return null;
+  const id = propStr(e.properties, 'id');
+  if (!id) return null;
+  const patterns = Array.isArray(e.properties?.patterns)
+    ? (e.properties!.patterns as unknown[]).filter((p): p is string => typeof p === 'string')
+    : [];
+  return { requestID: id, permission: propStr(e.properties, 'permission') ?? 'tool', patterns };
+}
+
+export function isSessionError(e: RawEvent, sessionId: string): boolean {
+  return e.type === 'session.error' && propStr(e.properties, 'sessionID') === sessionId;
+}
+
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface QuestionInfo {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+}
+
+export interface QuestionAsk {
+  requestID: string;
+  questions: QuestionInfo[];
+}
+
+export function extractQuestionAsk(e: RawEvent, sessionId: string): QuestionAsk | null {
+  if (e.type !== 'question.asked') return null;
+  if (propStr(e.properties, 'sessionID') !== sessionId) return null;
+  const id = propStr(e.properties, 'id');
+  if (!id) return null;
+  const rawQuestions = Array.isArray(e.properties?.questions) ? (e.properties!.questions as unknown[]) : [];
+  const questions: QuestionInfo[] = [];
+  for (const q of rawQuestions) {
+    const qo = q as { question?: unknown; header?: unknown; options?: unknown };
+    const question = typeof qo.question === 'string' ? qo.question : '';
+    const header = typeof qo.header === 'string' ? qo.header : '';
+    const options: QuestionOption[] = Array.isArray(qo.options)
+      ? (qo.options as unknown[])
+          .map((o) => o as { label?: unknown; description?: unknown })
+          .filter((o) => typeof o.label === 'string')
+          .map((o) => ({ label: o.label as string, description: typeof o.description === 'string' ? o.description : '' }))
+      : [];
+    questions.push({ question, header, options });
+  }
+  if (questions.length === 0) return null;
+  return { requestID: id, questions };
+}

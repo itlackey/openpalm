@@ -91,7 +91,7 @@ All Bun services must use `createLogger` from `packages/channels-sdk/src/logger.
 for structured JSON output. Do not use bare `console.log` for operational events.
 
 ```typescript
-import { createLogger } from "@openpalm/channels-sdk/logger";
+import { createLogger } from '@openpalm/lib';
 const logger = createLogger("guardian"); // or "channel-discord", "channel-slack", etc.
 
 logger.info("Request accepted", { requestId, actor });

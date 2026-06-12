@@ -17,10 +17,10 @@
  * allowed (the structural + HMAC guarantees still apply upstream).
  */
 
-import { screenContent, type ContentSignal } from "@openpalm/channels-sdk/content-screen";
-import { createSession, deleteSession, sendMessage } from "@openpalm/channels-sdk/assistant-client";
-import type { AssistantClientOptions } from "@openpalm/channels-sdk/assistant-client";
-import { createLogger } from "@openpalm/channels-sdk/logger";
+import { screenContent, type ContentSignal } from './content-screen.ts';
+import { createSession, deleteSession, sendMessage } from './assistant-client.ts';
+import type { AssistantClientOptions } from './assistant-client.ts';
+import { createLogger } from './logger.ts';
 
 const logger = createLogger("guardian-moderation");
 

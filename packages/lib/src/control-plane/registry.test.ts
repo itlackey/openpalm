@@ -94,7 +94,7 @@ describe('addon runtime state', () => {
       ok: true,
       enabled: true,
       changed: true,
-      services: ['chat', 'api'],
+      services: ['api'],
     });
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
     expect(readSecret(stackDir, 'channel_chat_secret')).toBeTruthy();
@@ -103,7 +103,7 @@ describe('addon runtime state', () => {
       ok: true,
       enabled: false,
       changed: true,
-      services: ['chat', 'api'],
+      services: ['api'],
     });
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
   });

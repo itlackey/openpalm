@@ -402,7 +402,7 @@ describe("performSetup", () => {
     expect(env).toMatch(/^OP_IMAGE_TAG=latest$/m);
     expect(env).toMatch(/^OP_ASSISTANT_IMAGE_TAG=latest$/m);
     expect(env).toMatch(/^OP_GUARDIAN_IMAGE_TAG=latest$/m);
-    expect(env).toMatch(/^OP_CHANNEL_IMAGE_TAG=latest$/m);
+    expect(env).toMatch(/^OP_PORTAL_IMAGE_TAG=latest$/m);
     expect(env).not.toMatch(/OP_IMAGE_TAG=v0\.11\.1/);
   });
 
@@ -419,7 +419,7 @@ describe("performSetup", () => {
     expect(result.ok).toBe(true);
     const env = readFileSync(stackEnvPath(), 'utf-8');
     expect(env).toMatch(/^OP_IMAGE_TAG=dev$/m);
-    expect(env).toMatch(/^OP_CHANNEL_IMAGE_TAG=dev$/m);
+    expect(env).toMatch(/^OP_PORTAL_IMAGE_TAG=dev$/m);
   });
 
   it("fresh install with blank imageTag writes OP_IMAGE_TAG=latest", async () => {

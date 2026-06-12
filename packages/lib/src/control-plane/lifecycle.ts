@@ -40,7 +40,7 @@ import {
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-const PLATFORM_IMAGE_NAMES = ['assistant', 'guardian', 'channel'] as const;
+const PLATFORM_IMAGE_NAMES = ['assistant', 'guardian', 'portal'] as const;
 const AUTH_TRANSITION_BOUNDARY_TAG = 'v0.12.0';
 
 
@@ -248,7 +248,7 @@ function resolveRequiredPlatformImages(state: ControlPlaneState): string[] {
   const required = new Set<string>(['assistant']);
   if (hasEnabledChannel(listEnabledAddonIds(state.homeDir))) {
     required.add('guardian');
-    required.add('channel');
+    required.add('portal');
   }
   return PLATFORM_IMAGE_NAMES.filter((name) => required.has(name));
 }
@@ -308,10 +308,10 @@ function resolveNewestDockerTagAtOrBelow(payload: unknown, ceilingTag: string): 
  * Resolve the per-image tag env for a target platform tag (#477).
  *
  * `assistant` is the version-of-record image and must be published at the
- * platform tag. Guardian/channel may lag: a release that ships only a subset
+ * platform tag. Guardian/portal may lag: a release that ships only a subset
  * of images leaves them at an older tag, so each falls back to its newest
  * published tag <= the platform tag in the same major. Fail closed only when
- * a REQUIRED image (guardian/channel with a channel addon enabled) has no
+ * a required image (guardian/portal with a portal addon enabled) has no
  * usable tag at all.
  */
 async function resolvePlatformImageTags(
@@ -332,7 +332,7 @@ async function resolvePlatformImageTags(
 
   const required = new Set(resolveRequiredPlatformImages(state));
   const perImage: Partial<Record<PlatformImageTagKey, string>> = {};
-  for (const imageName of ['guardian', 'channel'] as const) {
+  for (const imageName of ['guardian', 'portal'] as const) {
     if (pinnedImages.includes(imageName)) continue;
     if (await isDockerImageTagPublished(namespace, imageName, platformTag)) continue;
 

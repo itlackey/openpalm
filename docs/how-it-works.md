@@ -100,29 +100,28 @@ The runtime image for registry-backed adapters is the unified
 User sends message via chat client
         |
         v
-chat :3820 (host) -> :8181 (container)
-  Reads CHANNEL_CHAT_SECRET_FILE
-  Signs message: HMAC-SHA256(channel secret, payload)
-  POSTs to guardian:8080/channel/inbound
+portal adapter (:3820 host -> :8182 container for chat/api)
+  Reads PRINCIPAL_SECRET_FILE
+  Calls guardian:8080/oc/* with Basic auth
+  Streams /event frames for the owned session
         |
         v
 Guardian validates:
-  + Payload shape + size valid
-  + HMAC signature correct
-  + Timestamp within 5 min skew
-  + Not a replayed nonce
-  + Rate limit not exceeded
+  + Principal credentials match a seeded token
+  + Endpoint is allowlisted
+  + Session/request ownership matches the principal
+  + Rate limit and resource bounds allow the call
   + Content validation (optional, fail-closed): heuristic screen -> local moderator
         |
         v
-Guardian forwards to assistant:4096
+Guardian proxies native OpenCode traffic to assistant:4096
         |
         v
 Assistant (OpenCode) processes the message
   Calls tools, reads memory, generates response
         |
         v
-Response flows back through Guardian -> chat -> user
+Response and event frames flow back through Guardian -> portal adapter -> user
 ```
 
 If the assistant needs to do a stack operation during its turn (e.g., restart

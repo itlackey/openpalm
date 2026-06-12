@@ -124,10 +124,10 @@ globalThis.fetch = async (input) => {
   if (url.includes('/assistant/tags/v0.12.0')) {
     return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
   }
-  if (url.includes('/guardian/tags/v0.12.0') || url.includes('/channel/tags/v0.12.0')) {
+      if (url.includes('/guardian/tags/v0.12.0') || url.includes('/portal/tags/v0.12.0')) {
     return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
   }
-  if (url.includes('/guardian/tags?page_size=') || url.includes('/channel/tags?page_size=')) {
+      if (url.includes('/guardian/tags?page_size=') || url.includes('/portal/tags?page_size=')) {
     return new Response(JSON.stringify({ results: [{ name: 'v0.12.0' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });

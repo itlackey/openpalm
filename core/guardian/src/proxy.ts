@@ -6,7 +6,7 @@
  * the rich-UX design (docs/technical/channel-rich-ux-design.md §2–§3). Stage 1
  * implements:
  *
- *   1. Per-call HMAC verify (signed userId) — §3.1, channels-sdk verifyRequest.
+ *   1. Per-call Basic auth + user identity binding.
  *   2. Endpoint allowlist, default-deny, hardened matching — §3.3, channels-sdk
  *      matchAllowlist.
  *   3. Session-ownership authz + POST /session create-body rewrite + GET /session
@@ -18,18 +18,18 @@
  * Stage 4 adds (this change):
  *   6. Permission-reply ownership (§3.4): the /event relay records
  *      requestID→principal; a reply is authorized against that record so
- *      principal A cannot answer principal B's request. Fresh per-call signing.
- *   7. Resource bounds (§3.6): per-user/per-channel proxy call rate limits
+ *      principal A cannot answer principal B's request.
+ *   7. Resource bounds (§3.6): per-user/per-principal proxy call rate limits
  *      (reused rate-limit.ts), a /event reconnect cap, a concurrent-/event-
  *      stream cap (1/principal), and an in-flight-turn cap with a per-turn
  *      wall-clock abort — all in guardian-local oc-bounds.ts.
  *
- * The legacy buffered POST /channel/inbound path is untouched; this route is
- * purely additive (§7).
+ * The legacy buffered /channel/inbound transport has been removed; /oc/* is the
+ * single assistant ingress path.
  */
 
-import { matchAllowlist, type AllowlistMatch } from "@openpalm/channels-sdk/oc-allowlist";
-import { createLogger } from "@openpalm/channels-sdk/logger";
+import { matchAllowlist, type AllowlistMatch } from './oc-allowlist.ts';
+import { createLogger } from './logger.ts';
 
 import { authenticate, type AuthenticatedPrincipal } from "./auth";
 import {

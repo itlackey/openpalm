@@ -11,9 +11,9 @@ import {
   deleteSession,
   listSessions,
   sendMessage,
-} from "@openpalm/channels-sdk/assistant-client";
-import type { AssistantClientOptions } from "@openpalm/channels-sdk/assistant-client";
-import { asRecord } from "@openpalm/channels-sdk/utils";
+} from './assistant-client.ts';
+import type { AssistantClientOptions } from './assistant-client.ts';
+import { asRecord } from './utils.ts';
 
 // ── Config ──────────────────────────────────────────────────────────────
 

@@ -94,6 +94,7 @@ function isChannelService(name: string, service: ComposeService): boolean {
   const normalized = normalizedSecretName(name);
   if (normalized.startsWith('channel_')) return true;
   const image = typeof service.image === 'string' ? service.image.toLowerCase() : '';
+  if (image.includes('/portal') || image.endsWith(':portal') || image.includes('openpalm/portal')) return true;
   if (image.includes('/channel') || image.endsWith(':channel') || image.includes('openpalm/channel')) return true;
   return serviceNetworks(service.networks).includes('channel_lan') && name !== 'guardian';
 }

@@ -12,5 +12,5 @@ fi
 #
 # Channels that do not use the default BaseChannel entrypoint can override
 # this by setting CHANNEL_ENTRYPOINT to a path inside the baked package.
-ENTRYPOINT="${CHANNEL_ENTRYPOINT:-node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts}"
+ENTRYPOINT="${CHANNEL_ENTRYPOINT:-/app/channel-entrypoint.ts}"
 exec bun run "$ENTRYPOINT"

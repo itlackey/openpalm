@@ -1,7 +1,6 @@
 // Two prompts to the SAME session (guardian dedupes by sessionKey) to reproduce
 // the "empty follow-up turn" — does a short reply after a question get an answer?
-import { OcClient } from "/app/packages/channels-sdk/src/oc-client.ts";
-import { asRaw, partSnapshotType, extractTextDelta, isTurnEnd, isSessionError } from "/app/packages/channels-sdk/src/oc-events.ts";
+import { OcClient, asRaw, partSnapshotType, extractTextDelta, isTurnEnd, isSessionError } from '/app/packages/discord-portal/src/runtime.ts';
 
 const secret = Bun.env.OC_SECRET ?? "";
 const userId = "discord:2turn-probe";

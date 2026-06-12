@@ -1,8 +1,9 @@
-import { createLogger } from '@openpalm/channels-sdk/logger';
+import { createLogger } from './logger.ts';
 
 import { handleAdminRequest } from './admin';
 import { audit } from './audit';
 import { eventSubscriberCount } from './event-fanout';
+import { handleMcpRequest, seedMcpPrincipalFromToken } from './mcp';
 import { sessionOwnerCount, permissionOwnerCount } from './ownership';
 import {
   activeStreamPrincipalCount,
@@ -112,7 +113,9 @@ async function handleDirectRequest(req: Request): Promise<Response> {
   if (!DIRECT_INGRESS_ENABLED) return json(404, { error: 'not_found', requestId });
   if (url.pathname === '/mcp') {
     if (!MCP_ENABLED) return json(404, { error: 'not_found', requestId });
-    return json(501, { error: 'mcp_not_implemented', requestId });
+    const response = await handleMcpRequest(req, requestId);
+    countRequest(`mcp:${response.status}`);
+    return response;
   }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
     return handleOcRequest(req, requestId, 'direct');
@@ -130,6 +133,7 @@ async function handleAdminListenerRequest(req: Request): Promise<Response> {
 
 initializePrincipalStore();
 seedChannelPrincipalsFromEnv();
+if (MCP_ENABLED) seedMcpPrincipalFromToken();
 
 void runDriftCheck().catch((err) => {
   logger.error('drift_check_error', { error: String(err) });

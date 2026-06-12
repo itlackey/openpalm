@@ -1,41 +1,15 @@
 # Community Channels
 
-OpenPalm's channel SDK (`@openpalm/channels-sdk`) lets you ship custom channel adapters that run behind guardian in the shared `channel` image.
-The deployment model is compose-first: create a compose overlay, include it in your file set, and let guardian handle signed forwarding.
+OpenPalm's current ingress model is guardian `/oc/*` traffic authenticated with a principal id and shared secret file. First-party adapters are baked into the shared `portal` image.
+
+For custom community integrations, the deployment model remains compose-first: create a compose overlay, include it in your file set, and let guardian handle authenticated `/oc/*` traffic.
 
 ## Quick start
 
-1. Write a class that extends `BaseChannel`:
-
-```ts
-import { BaseChannel, type HandleResult } from '@openpalm/channels-sdk';
-
-export default class MyChannel extends BaseChannel {
-  name = 'my-channel';
-
-  async handleRequest(req: Request): Promise<HandleResult | null> {
-    const body = await req.json() as Record<string, unknown>;
-    const text = typeof body.text === 'string' ? body.text.trim() : '';
-    const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
-    if (!userId || !text) return null;
-    return { userId, text };
-  }
-}
-```
-
-2. Publish it as an npm package, or mount a local file and use `CHANNEL_FILE`.
-   The package **must declare `@openpalm/channels-sdk` as an _optional_ peer** —
-   the `channel` image already bundles the framework, and this stops the runtime
-   `bun add` from installing its own (stale) copy over it:
-
-   ```jsonc
-   {
-     "peerDependencies":     { "@openpalm/channels-sdk": ">=0.8.0 <1.0.0" },
-     "peerDependenciesMeta": { "@openpalm/channels-sdk": { "optional": true } }
-   }
-   ```
-3. Write a custom runtime service in `~/.openpalm/config/stack/custom.compose.yml`, or add a first-party channel service to `channels.compose.yml`.
-4. For first-party channel services, add the addon name to `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` through the CLI or admin UI.
+1. Build a small Bun service that accepts the external protocol you care about.
+2. Read `PRINCIPAL_ID` and `PRINCIPAL_SECRET_FILE` from the environment.
+3. Call guardian `/oc/*` using Basic auth plus `x-openpalm-user`.
+4. Write a custom runtime service in `~/.openpalm/config/stack/custom.compose.yml`, or use one of the first-party portal services in `channels.compose.yml`.
 5. Rerun the OpenPalm compose command.
 
 Example overlay:
@@ -43,13 +17,12 @@ Example overlay:
 ```yaml
 services:
   my-channel:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/channel:${OP_IMAGE_TAG:-latest}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
     environment:
       PORT: '8187'
-      GUARDIAN_URL: http://guardian:8080
-      CHANNEL_PACKAGE: '@your-scope/openpalm-channel-my-channel@latest'
-      CHANNEL_MY_CHANNEL_SECRET_FILE: /run/secrets/channel_my_channel_hmac
+      PRINCIPAL_ID: my-channel
+      PRINCIPAL_SECRET_FILE: /run/secrets/channel_my_channel_hmac
     secrets:
       - channel_my_channel_hmac
     networks: [channel_lan]
@@ -59,52 +32,29 @@ secrets:
     file: ${OP_HOME}/knowledge/secrets/channel_my_channel_hmac
 ```
 
-> **`CHANNEL_PACKAGE` should carry a dist-tag or version**, not be left bare. The
-> container runs `bun add` on start, so a tag like `@latest` (or `@next` for
-> prereleases) auto-rolls adapter updates to users on restart — no compose edit,
-> no image rebuild. The first-party adapters (`channel-discord`/`slack`/`api`)
-> track `@next` during the beta line.
+> First-party portal adapters are baked into the portal image. Custom community
+> integrations should ship as normal containers or compose overlays, not as
+> runtime-installed npm packages.
 
-## What the SDK gives you
+## What your integration needs
 
 - `Bun.serve()` startup with `/health`
-- HMAC signing and guardian forwarding helpers
-- Structured logging
-- Optional request routing override
-- `createFetch()` for tests without starting a real server
-
-You implement `handleRequest(req)` and return `{ userId, text }` or `null`.
+- Basic-auth calls to guardian `/oc/*`
+- structured logging
+- tests that exercise the guardian-facing contract
 
 ## Runtime variables
 
 | Variable | Purpose |
 |---|---|
 | `PORT` | Listen port inside the container |
-| `GUARDIAN_URL` | Guardian forwarding target |
-| `CHANNEL_<NAME>_SECRET_FILE` | Path to the granted Guardian HMAC secret file |
-| `CHANNEL_PACKAGE` | npm package to import |
-| `CHANNEL_FILE` | Local module path when not using a package |
+| `PRINCIPAL_ID` | Guardian principal id |
+| `PRINCIPAL_SECRET_FILE` | Path to the shared secret file used for Basic auth |
 
 ## Testing
 
-```ts
-import { expect, mock, test } from 'bun:test';
-import MyChannel from './my-channel.ts';
-
-test('handles a simple request', async () => {
-  const channel = new MyChannel();
-  const handler = channel.createFetch(mock());
-
-  const response = await handler(new Request('http://localhost/', {
-    method: 'POST',
-    body: JSON.stringify({ userId: 'u1', text: 'hello' }),
-  }));
-
-  expect(response.status).toBe(200);
-});
-```
-
-See `packages/channels-sdk/src/channel-base.test.ts` for fuller examples.
+Test the same things the first-party adapters test: health responses, permission
+policy, Basic-auth `/oc/*` calls, and session/stream behavior.
 
 ## Built-in examples
 
@@ -112,6 +62,6 @@ See `packages/channels-sdk/src/channel-base.test.ts` for fuller examples.
 - `packages/channel-discord/README.md`
 - `packages/channel-slack/README.md`
 
-## Related addons (not channels-sdk channels)
+## Related addons
 
-- `packages/channel-voice/README.md` — serves a static voice chat UI directly from the browser; has no guardian pipeline or channels-sdk dependency. It is an addon, not a channel in the SDK sense.
+- The voice addon serves a static browser UI and is not a guardian-fronted portal.

@@ -12,6 +12,8 @@ import { CORE_SERVICES } from "./types.js";
 /** Strict channel name: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
 const CHANNEL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
+const PORTAL_MARKER_KEYS = ['PORTAL_NAME', 'CHANNEL_NAME'] as const;
+
 function isValidChannelName(name: string): boolean {
   return CHANNEL_NAME_RE.test(name);
 }
@@ -41,8 +43,8 @@ function channelNamesFromCompose(composePath: string): string[] {
       const env = (svcDef as Record<string, unknown>).environment;
       if (typeof env === "object" && env !== null) {
         if (Array.isArray(env)) {
-          if (env.some((e: unknown) => typeof e === "string" && e.startsWith("CHANNEL_NAME="))) names.push(svcName);
-        } else if ("CHANNEL_NAME" in (env as Record<string, unknown>)) {
+          if (env.some((e: unknown) => typeof e === 'string' && PORTAL_MARKER_KEYS.some((key) => e.startsWith(`${key}=`)))) names.push(svcName);
+        } else if (PORTAL_MARKER_KEYS.some((key) => key in (env as Record<string, unknown>))) {
           names.push(svcName);
         }
       }
@@ -56,7 +58,7 @@ function channelNamesFromCompose(composePath: string): string[] {
 // ── Channel Discovery ─────────────────────────────────────────────────
 
 /**
- * Check if a compose file defines a channel service (has CHANNEL_NAME).
+ * Check if a compose file defines a channel service (has PORTAL_NAME or legacy CHANNEL_NAME).
  * Compose-derived: we parse the actual compose content rather than rely on
  * filename or directory naming conventions. (GUARDIAN_URL used to be a
  * fallback signal — it's been removed since channels-sdk now hardcodes the
@@ -75,9 +77,9 @@ export function isChannelAddon(composePath: string): boolean {
       const env = (svcDef as Record<string, unknown>).environment;
       if (typeof env === "object" && env !== null) {
         if (Array.isArray(env)) {
-          if (env.some((e: unknown) => typeof e === "string" && e.startsWith("CHANNEL_NAME="))) return true;
+          if (env.some((e: unknown) => typeof e === 'string' && PORTAL_MARKER_KEYS.some((key) => e.startsWith(`${key}=`)))) return true;
         } else {
-          if ("CHANNEL_NAME" in (env as Record<string, unknown>)) return true;
+          if (PORTAL_MARKER_KEYS.some((key) => key in (env as Record<string, unknown>))) return true;
         }
       }
     }
@@ -91,7 +93,7 @@ export function isChannelAddon(composePath: string): boolean {
  * Discover installed channels from explicit first-party addon state plus
  * custom stack/addons/ overlays.
  * A channel addon is identified by compose-derived truth: its compose.yml
- * defines services with a CHANNEL_NAME environment variable.
+ * defines services with a PORTAL_NAME environment variable (or the legacy CHANNEL_NAME during migration).
  *
  * Non-channel addons (admin, ollama, etc.) are excluded.
  *

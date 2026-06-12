@@ -306,7 +306,7 @@ describe('cli main', () => {
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
     mkdirSync(join(base, 'data'), { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(base, 'config', 'stack', 'channels.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
+    writeFileSync(join(base, 'config', 'stack', 'channels.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      PORTAL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
 
     process.env.OP_HOME = base;
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';

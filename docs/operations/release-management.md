@@ -59,24 +59,23 @@ separately to produce a self-contained installer.
 
 | Layer | What it is | How it's published | Trigger | Artifact(s) | Track |
 |---|---|---|---|---|---|
-| `openpalm` (CLI) | Host orchestrator. **npm name is `openpalm`**, not `@openpalm/cli`. | `release.yml` → `publish-cli-npm` | `v*` tag | npm | A (platform) |
-| `@openpalm/lib` | Shared control-plane library | `release.yml` → `publish-lib-npm` | `v*` tag | npm | A (platform) |
-| `@openpalm/channels-sdk` | Channel **framework** (`BaseChannel`, guardian client, `channel-entrypoint.ts`) | `release.yml` → `publish-channels-sdk-npm` | `v*` tag | npm | A (platform) |
+| `openpalm` (CLI) | Host orchestrator. **npm name is `openpalm`**, not `@openpalm/cli`. | `platform-release.yml` | `workflow_dispatch` | npm | A (platform) |
+| `@openpalm/lib` | Shared control-plane library | `platform-release.yml` | `workflow_dispatch` | npm | A (platform) |
 | `@openpalm/ui` (`packages/ui`) | SvelteKit operator UI + API (adapter-node bundle, `files:["build"]`) | `publish-ui.yml` → `publish-npm-package.yml` | push to `main` touching `packages/ui/**`, or `workflow_dispatch` | npm only (`next` for prereleases, `latest` for stable) | **C (independent)** |
-| `packages/electron` + `admin-tools` | Desktop app + bundled admin-tools plugin | `release.yml` → `build-electron-artifacts` | `v*` tag | GitHub assets (.dmg/.AppImage/.exe + update metadata) — **not** on npm | A (platform) |
-| `openpalm/assistant` | OpenCode assistant image | `release.yml` → `push-images` | `v*` tag | Docker Hub | A (platform) |
-| `openpalm/guardian` | Guardian image | `release.yml` → `push-images` | `v*` tag | Docker Hub | A (platform) |
-| `openpalm/channel` | Unified channel runtime image (bundles channels-sdk) | `release.yml` → `push-images` | `v*` tag | Docker Hub | A (platform) |
-| `openpalm/voice` (`-cpu`, `-cu121`) | Voice addon images | `release.yml` → `push-voice-images` | `v*` tag | Docker Hub | A (platform, additive — never blocks the release) |
-| CLI binaries (5 platforms) | Standalone `bun build --compile` binaries | `release.yml` → `build-cli-artifacts` | `v*` tag | GitHub assets | A (platform) |
-| GitHub release | Release page + all assets + checksums | `release.yml` → `release` | `v*` tag | GitHub release | A (platform) |
-| `@openpalm/channel-api` | API channel adapter | `publish-channel-api.yml` → `publish-npm-package.yml` | push to `main` touching `packages/channel-api/**`, or `workflow_dispatch` | npm only | **B (independent)** |
-| `@openpalm/channel-discord` | Discord channel adapter | `publish-channel-discord.yml` → `publish-npm-package.yml` | push to `main` touching `packages/channel-discord/**`, or `workflow_dispatch` | npm only | **B (independent)** |
-| `@openpalm/channel-slack` | Slack channel adapter | `publish-channel-slack.yml` → `publish-npm-package.yml` | push to `main` touching `packages/channel-slack/**`, or `workflow_dispatch` | npm only | **B (independent)** |
+| `packages/electron` + `admin-tools` | Desktop app + bundled admin-tools plugin | `platform-release.yml` | `workflow_dispatch` | GitHub assets (.dmg/.AppImage/.exe + update metadata) — **not** on npm | A (platform) |
+| `openpalm/assistant` | OpenCode assistant image | `platform-release.yml` | `workflow_dispatch` | Docker Hub | A (platform) |
+| `openpalm/guardian` | Guardian image | `platform-release.yml` | `workflow_dispatch` | Docker Hub | A (platform) |
+| `openpalm/portal` | Unified portal runtime image (bakes shared runtime + first-party adapters) | `platform-release.yml` | `workflow_dispatch` | Docker Hub | A (platform) |
+| `openpalm/voice` (`-cpu`, `-cu121`) | Voice addon images | `platform-release.yml` | `workflow_dispatch` | Docker Hub | A (platform, additive — never blocks the release) |
+| CLI binaries (5 platforms) | Standalone `bun build --compile` binaries | `platform-release.yml` | `workflow_dispatch` | GitHub assets | A (platform) |
+| GitHub release | Release page + all assets + checksums | `platform-release.yml` | `workflow_dispatch` | GitHub release | A (platform) |
+| `@openpalm/api-portal` | API portal adapter | baked into `openpalm/portal` | n/a | Docker image only | A (platform) |
+| `@openpalm/discord-portal` | Discord portal adapter | baked into `openpalm/portal` | n/a | Docker image only | A (platform) |
+| `@openpalm/slack-portal` | Slack portal adapter | baked into `openpalm/portal` | n/a | Docker image only | A (platform) |
 
 > **Platform packages that do NOT publish to npm.** Of the seven `platformManifests`
-> entries, only three publish to npm: `@openpalm/lib`, `openpalm` (CLI), and
-> `@openpalm/channels-sdk`. The root manifest, `core/guardian`, `packages/electron`,
+> entries, only two publish to npm: `@openpalm/lib` and `openpalm` (CLI). The
+> root manifest, `packages/portal-runtime`, `core/guardian`, `packages/electron`,
 > and `packages/electron/admin-tools` are version-stamped for coordination but ship
 > as Docker images / GitHub assets only. `bump-platform.sh` stamps the version on
 > all seven so the lockfile and cross-references stay consistent.
@@ -98,9 +97,8 @@ separately to produce a self-contained installer.
 - Docker `latest` (and voice `latest-cpu` / `latest-cu121`) tags are gated with
   `enable=${{ ... prerelease != 'true' }}`, so during a beta line **only the
   immutable `vX.Y.Z` Docker tags exist** — never a moving `latest`.
-- The reusable `publish-npm-package.yml` applies the same rule for channel
-  adapters **and** `@openpalm/ui` (`-` in the version → `--tag next`). Both Track B
-  and Track C feed through the same reusable workflow.
+- The reusable `publish-npm-package.yml` applies the same rule to `@openpalm/ui`
+  (`-` in the version → `--tag next`).
 
 ---
 
@@ -308,9 +306,8 @@ as:
 - Workflow: `platform-release.yml`
 - Environment: (none)
 
-Set this for **every published package**: `@openpalm/lib`, `openpalm`,
-`@openpalm/channels-sdk`, `@openpalm/ui`, `@openpalm/channel-api`,
-`@openpalm/channel-discord`, `@openpalm/channel-slack`. Until that is set, the
+Set this for every published package: `@openpalm/lib`, `openpalm`, and
+`@openpalm/ui`. Until that is set, the
 orchestrator's real (non-dry) npm publish will 403.
 
 The orchestrator releases by **deployment unit** (see
@@ -320,7 +317,7 @@ The orchestrator releases by **deployment unit** (see
 | Unit | `release_*` | What it ships | Versioned manifests | Tag + GitHub release? |
 |---|---|---|---|---|
 | **host** | `release_host` | `@openpalm/lib` + `openpalm` (CLI) + `@openpalm/ui` (npm) + CLI native binaries + Electron installers | root, lib, cli, ui, electron, admin-tools (+ setup scripts) | **yes** (carries the binaries/installers) |
-| **channels** | `release_channels` | `@openpalm/channels-sdk` + `@openpalm/channel-{api,discord,slack}` (npm) + guardian image + channel image | channels-sdk, 3 adapters, guardian | no (registry-only) |
+| **channels** | `release_channels` | guardian image + portal image | portal-runtime, guardian, baked portal adapters | no (registry-only) |
 | **assistant** | `release_assistant` | assistant image | (image-only) | no (registry-only) |
 | **voice** | `release_voice` | voice `cpu`/`cu121` images | (image-only) | no (registry-only) |
 

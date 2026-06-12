@@ -9,20 +9,18 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Build against a minimal workspace root so the baked adapters can keep their
-# local workspace reference to @openpalm/channels-sdk during install.
-RUN mkdir -p /app/packages/channels-sdk /app/packages/channel-api /app/packages/channel-discord /app/packages/channel-slack
-COPY packages/channels-sdk/package.json /app/packages/channels-sdk/package.json
-COPY packages/channel-api/package.json /app/packages/channel-api/package.json
-COPY packages/channel-discord/package.json /app/packages/channel-discord/package.json
-COPY packages/channel-slack/package.json /app/packages/channel-slack/package.json
-RUN printf '%s\n' '{' '  "name": "openpalm-channel-image",' '  "private": true,' '  "workspaces": [' '    "packages/channels-sdk",' '    "packages/channel-api",' '    "packages/channel-discord",' '    "packages/channel-slack"' '  ]' '}' > /app/package.json
+# Build against a minimal workspace root so the baked adapters resolve as local workspaces.
+RUN mkdir -p /app/packages/api-portal /app/packages/discord-portal /app/packages/slack-portal
+COPY packages/api-portal/package.json /app/packages/api-portal/package.json
+COPY packages/discord-portal/package.json /app/packages/discord-portal/package.json
+COPY packages/slack-portal/package.json /app/packages/slack-portal/package.json
+RUN printf '%s\n' '{' '  "name": "openpalm-channel-image",' '  "private": true,' '  "workspaces": [' '    "packages/api-portal",' '    "packages/discord-portal",' '    "packages/slack-portal"' '  ]' '}' > /app/package.json
 
-# Bake the SDK and first-party adapters into the image from the workspace.
-COPY packages/channels-sdk /app/packages/channels-sdk
-COPY packages/channel-api /app/packages/channel-api
-COPY packages/channel-discord /app/packages/channel-discord
-COPY packages/channel-slack /app/packages/channel-slack
+# Bake the first-party adapters into the image from the workspace.
+COPY packages/api-portal /app/packages/api-portal
+COPY packages/discord-portal /app/packages/discord-portal
+COPY packages/slack-portal /app/packages/slack-portal
+COPY core/channel/channel-entrypoint.ts /app/channel-entrypoint.ts
 
 RUN bun install --production
 

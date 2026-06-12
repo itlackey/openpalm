@@ -190,7 +190,7 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     'OP_IMAGE_TAG',
     'OP_ASSISTANT_IMAGE_TAG',
     'OP_GUARDIAN_IMAGE_TAG',
-    'OP_CHANNEL_IMAGE_TAG',
+    'OP_PORTAL_IMAGE_TAG',
   ]);
   for (const [k, v] of Object.entries(stackEnv)) {
     if (skippedKeys.has(k)) continue;

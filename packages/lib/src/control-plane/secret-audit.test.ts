@@ -87,7 +87,7 @@ services:
           secrets: [{ source: 'guardian_channel_secret' }, { source: 'channel_chat_hmac' }],
         },
         chat: {
-          image: 'openpalm/channel:latest',
+          image: 'openpalm/portal:latest',
           secrets: ['channel_chat_hmac'],
         },
       },
@@ -100,7 +100,7 @@ services:
     const issues = auditComposeSecrets({
       services: {
         assistant: { secrets: ['guardian_channel_secret'] },
-        chat: { image: 'openpalm/channel:latest', secrets: ['channel_slack_hmac'] },
+        chat: { image: 'openpalm/portal:latest', secrets: ['channel_slack_hmac'] },
         guardian: { secrets: ['admin_session_key'] },
       },
     });

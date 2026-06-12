@@ -11,7 +11,7 @@ Repo layout convention:
 | Tool | Version | Why |
 |------|---------|-----|
 | [Docker](https://docs.docker.com/get-docker/) | 24+ (Compose V2) | Runs the full stack |
-| [Bun](https://bun.sh/) | 1.1+ | Workspace manager, guardian/channel runtime, test runner |
+| [Bun](https://bun.sh/) | 1.1+ | Workspace manager, guardian/portal runtime, test runner |
 | [Node](https://nodejs.org/) | 22+ | Admin (SvelteKit) build and dev server |
 
 ## Quick Start
@@ -33,15 +33,14 @@ bun run ui:dev     # packages/ui dev server
 bun run ui:check   # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
-bun run sdk:test         # packages/channels-sdk tests
 bun run cli:test         # packages/cli tests
 bun run channel:api:dev     # api channel dev server (also serves the chat addon when CHANNEL_ID=chat)
 bun run channel:discord:dev # discord channel dev server
 bun run dev:setup        # seed .dev/ dirs and configs
 bun run dev:stack        # start dev stack (pull images)
 bun run dev:build        # start dev stack (build from source)
-bun run test             # all non-UI tests (sdk, guardian, channels, cli)
-bun run check            # ui:check + sdk:test
+bun run test             # all non-UI tests (guardian, portals, cli)
+bun run check            # ui:check
 ```
 
 `dev:stack` pulls pre-built images from the configured container registries — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yml` — use it when developing services or testing Dockerfile changes.
@@ -89,7 +88,7 @@ Both scripts read env files from `.dev/config/stack/` and `.dev/knowledge/env/`.
 # Type check the UI
 bun run ui:check
 
-# Non-UI tests (sdk, guardian, channels, cli)
+# Non-UI tests (guardian, portals, cli)
 bun run test
 
 # Both of the above
@@ -97,7 +96,6 @@ bun run check
 
 # Individual test suites
 bun run guardian:test        # Guardian security tests
-bun run sdk:test             # Channels SDK unit tests
 bun run cli:test             # CLI tests
 bun run ui:test:unit      # UI Vitest (unit + browser components)
 bun run ui:test:e2e       # UI Playwright integration tests (no-skip enforced locally)
@@ -130,7 +128,6 @@ All scripts are defined in the root [`package.json`](../package.json):
 | `bun run ui:test:e2e:mocked` | Playwright mocked browser contracts |
 | `bun run guardian:dev` | Guardian server |
 | `bun run guardian:test` | Guardian tests |
-| `bun run sdk:test` | Channels SDK tests |
 | `bun run channel:api:dev` | API channel dev server (also serves chat addon via `CHANNEL_ID=chat`) |
 | `bun run channel:discord:dev` | Discord channel dev server |
 | `bun run cli:test` | CLI tests |
@@ -138,7 +135,7 @@ All scripts are defined in the root [`package.json`](../package.json):
 | `bun run dev:stack` | Start dev stack (pull images) |
 | `bun run dev:build` | Start dev stack (build from source) |
 | `bun run test` | All non-UI tests |
-| `bun run check` | ui:check + sdk:test |
+| `bun run check` | ui:check |
 
 ## Dev directory layout
 
@@ -164,7 +161,7 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** — Guardian and channel Dockerfiles must install `packages/channels-sdk` deps with `bun install --production` after copying sdk source (no symlink-based node_modules). UI is a host binary — no Docker build. The assistant **and guardian** images ship the OpenCode binary; keep `OPENCODE_VERSION` in lockstep between `core/assistant/Dockerfile` and `core/guardian/Dockerfile`.
+3. **Docker builds** — Guardian and portal Dockerfiles must install each service's own deps directly (no symlink-based node_modules). UI is a host binary — no Docker build. The assistant and guardian images ship the OpenCode binary; keep `OPENCODE_VERSION` in lockstep between `core/assistant/Dockerfile` and `core/guardian/Dockerfile`.
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 
@@ -172,8 +169,8 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
 
 OpenPalm has two release tracks (see [docs/operations/release-management.md](../docs/operations/release-management.md) for the full guide):
 
-- **Platform release (single coordinated version)** — the packages listed in [`.github/release-package-groups.json`](release-package-groups.json) `platformManifests` (`packages/lib`, `packages/ui`, `packages/cli` → npm `openpalm`, `core/guardian`, `packages/channels-sdk`, `packages/electron` + `admin-tools`, and the root) share one version, bumped together by `scripts/bump-platform.sh` and published as a unit by `.github/workflows/release.yml` when a `v*` tag is pushed (npm + Docker images + CLI binaries + Electron installers + GitHub release).
-- **Channel adapters (independent)** — `packages/channel-{api,discord,slack}` are versioned and published to npm independently via their own `publish-channel-*.yml` workflows (push to `main` touching their paths, or `workflow_dispatch`). These change most often and roll to users at runtime via the `@next`/`@latest` dist-tag, with no platform release required.
+- **Platform release (single coordinated version)** — guardian, portal image, baked portal adapters, CLI binaries, Electron installers, and other platform manifests ship together through `.github/workflows/platform-release.yml`.
+- **UI release (independent npm)** — `packages/ui` remains independently published to npm.
 
 ## Key docs for contributors
 
@@ -184,5 +181,5 @@ OpenPalm has two release tracks (see [docs/operations/release-management.md](../
 | [docs/technical/api-spec.md](../docs/technical/api-spec.md) | API endpoint contract |
 | [docs/technical/bunjs-rules.md](../docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
 | [docs/technical/sveltekit-rules.md](../docs/technical/sveltekit-rules.md) | SvelteKit patterns (UI) |
-| [docs/community-channels.md](../docs/community-channels.md) | BaseChannel SDK for building custom channel adapters |
+| [docs/channels/community-channels.md](../docs/channels/community-channels.md) | Community portal adapter notes |
 | [docs/technical/environment-and-mounts.md](../docs/technical/environment-and-mounts.md) | All environment variables and volume mounts |

@@ -149,7 +149,7 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(stackEnv).toContain("OP_IMAGE_TAG=0.10.2");
     expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
     expect(stackEnv).not.toContain('OP_GUARDIAN_IMAGE_TAG=');
-    expect(stackEnv).not.toContain('OP_CHANNEL_IMAGE_TAG=');
+    expect(stackEnv).not.toContain('OP_PORTAL_IMAGE_TAG=');
     expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
   });
 
@@ -326,7 +326,7 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.5-rc.1');
     expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=v0.11.0');
     expect(stackEnv).toContain('OP_GUARDIAN_IMAGE_TAG=v0.11.0');
-    expect(stackEnv).toContain('OP_CHANNEL_IMAGE_TAG=v0.11.0');
+    expect(stackEnv).toContain('OP_PORTAL_IMAGE_TAG=v0.11.0');
   });
 
   it('skips stamping a non-comparable explicit release target', () => {

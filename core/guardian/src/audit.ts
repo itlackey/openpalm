@@ -8,7 +8,7 @@
  * unflushed writes from the OS buffer.
  */
 
-import { createLogger } from "@openpalm/channels-sdk/logger";
+import { createLogger } from './logger.ts';
 
 const logger = createLogger("guardian:audit");
 
