@@ -10,18 +10,18 @@ function readRelative(path: string): string {
 
 describe('portal image bake contract', () => {
   test('startup script no longer installs adapters at boot', () => {
-    const startScript = readRelative('core/portal/start.sh');
+    const startScript = readRelative('containers/portal/start.sh');
 
     expect(startScript).not.toContain('bun add');
     expect(startScript).toContain('PORTAL_PACKAGE must name a baked adapter package');
   });
 
   test('docker image bakes the first-party adapters from the workspace', () => {
-    const dockerfile = readRelative('core/portal/Dockerfile');
+    const dockerfile = readRelative('containers/portal/Dockerfile');
 
-    expect(dockerfile).toContain('COPY packages/discord-portal /app/packages/discord-portal');
-    expect(dockerfile).toContain('COPY packages/slack-portal /app/packages/slack-portal');
-    expect(dockerfile).toContain('COPY core/portal/portal-entrypoint.ts /app/portal-entrypoint.ts');
+    expect(dockerfile).toContain('COPY portals/discord /app/portals/discord');
+    expect(dockerfile).toContain('COPY portals/slack /app/portals/slack');
+    expect(dockerfile).toContain('COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts');
     expect(dockerfile).toContain('RUN bun install --production');
   });
 

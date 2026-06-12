@@ -75,7 +75,7 @@ separately to produce a self-contained installer.
 
 > **Platform packages that do NOT publish to npm.** Of the seven `platformManifests`
 > entries, only two publish to npm: `@openpalm/lib` and `openpalm` (CLI). The
-> root manifest, `packages/portal-runtime`, `core/guardian`, `packages/electron`,
+> root manifest, `containers/portal`, `containers/guardian`, `packages/electron`,
 > and `packages/electron/admin-tools` are version-stamped for coordination but ship
 > as Docker images / GitHub assets only. `bump-platform.sh` stamps the version on
 > all seven so the lockfile and cross-references stay consistent.
@@ -207,9 +207,9 @@ platform-coupled release inputs, not independently published npm packages.
 
 Portal runtime changes ship through the coordinated platform release flow:
 
-1. Update the baked portal adapter sources under `packages/discord-portal/` or
-   `packages/slack-portal/`, or the guardian-hosted OpenAI-compatible API under
-   `core/guardian/src/openai-api*.ts`.
+1. Update the baked portal adapter sources under `portals/discord/` or
+   `portals/slack/`, or the guardian-hosted OpenAI-compatible API under
+   `containers/guardian/src/openai-api*.ts`.
 2. Cut the normal platform release.
 3. Users receive the new portal behavior when they pull the new image tags and
    recreate the affected services.
@@ -340,7 +340,7 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 
 **Required for a correct stable cut**
 
-- [x] **Move `akm-cli` off the `next` prerelease tag.** Done — `core/assistant/Dockerfile`
+- [x] **Move `akm-cli` off the `next` prerelease tag.** Done — `containers/assistant/Dockerfile`
       pins `ARG AKM_CLI_VERSION=0.8.0` (stable). The guardian no longer installs
       akm-cli (its OpenCode is a pure moderator), so there is no second pin to keep
       in lockstep; CI validates the assistant pin and only compares the guardian if
@@ -416,6 +416,6 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 | `.github/workflows/publish-ui.yml` | UI publish trigger (Track C); calls `publish-npm-package.yml` with `needs-build: true` |
 | `.github/workflows/publish-npm-package.yml` | Reusable npm publish used by the UI (Track C) and channel-adapter (Track B) workflows |
 | `.github/workflows/publish-channel-{api,discord,slack}.yml` | Per-adapter publish triggers (Track B) |
-| `core/portal/README.md` | Portal runtime architecture (image bundles baked adapters) |
+| `containers/portal/README.md` | Portal runtime architecture (image bundles baked adapters) |
 | `docs/channels/community-channels.md` | Channel adapter authoring guide |
 | `docs/technical/package-management.md` | Single-lockfile policy and cross-package reference rules |

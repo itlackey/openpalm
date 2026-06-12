@@ -6,7 +6,7 @@ containers today.
 Primary runtime sources:
 
 - `.openpalm/config/stack/core.compose.yml`
-- `core/assistant/entrypoint.sh`
+- `containers/assistant/entrypoint.sh`
 
 ---
 

@@ -9,7 +9,7 @@ Primary sources:
 - `.openpalm/config/stack/services.compose.yml`
 - `.openpalm/config/stack/channels.compose.yml`
 - `.openpalm/config/stack/custom.compose.yml`
-- `core/*/entrypoint.sh` and service source where runtime defaults matter
+- `containers/*/entrypoint.sh` and service source where runtime defaults matter
 
 When this document conflicts with older prose elsewhere, the compose files win.
 
@@ -169,9 +169,9 @@ Notes:
 
 The scheduler is no longer a separate compose service. It runs as a Bun
 co-process inside the `assistant` container, launched by
-`core/assistant/entrypoint.sh`.
+`containers/assistant/entrypoint.sh`.
 
-Scheduling control plane (crond started by `core/assistant/entrypoint.sh`):
+Scheduling control plane (crond started by `containers/assistant/entrypoint.sh`):
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|

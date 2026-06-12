@@ -1,7 +1,7 @@
 ## BunJS implementation rules
 
 This document defines Bun-specific implementation rules for OpenPalm's **Bun
-services only**: `core/guardian/`, portal packages, and any
+services only**: `containers/guardian/`, portal packages, and any
 Bun-based utilities. It does **not** apply to the admin UI (`packages/ui/`),
 which is a SvelteKit/Node.js app and follows Node.js and SvelteKit conventions
 (see `docs/technical/sveltekit-rules.md`).

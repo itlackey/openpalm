@@ -11,7 +11,7 @@
 Unit/integration coverage (~1130 tests, no Docker required):
 - `packages/ui/src/**/*.vitest.ts` — SvelteKit routes + server modules (mocked lib)
 - `packages/lib/src/**/*.test.ts` — control-plane logic
-- `packages/cli/src/*.test.ts`, `packages/channels-sdk/src/*.test.ts`, `core/guardian/src/*.test.ts`
+- `packages/cli/src/*.test.ts`, `packages/channels-sdk/src/*.test.ts`, `containers/guardian/src/*.test.ts`
 
 ## File conventions
 

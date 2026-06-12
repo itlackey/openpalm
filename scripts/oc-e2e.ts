@@ -10,7 +10,7 @@
  * Env: OC_CHANNEL, OC_SECRET, OC_USER, OC_PROMPT, OC_EXPECT_TOOL ("1" to wait for
  * permission.asked and reply). Exits non-zero on failure.
  */
-import { OcClient, asRaw, partSnapshotType, extractTextDelta, extractToolUpdate, extractPermissionAsk, isTurnEnd, isSessionError } from '/app/packages/discord-portal/src/runtime.ts';
+import { OcClient, asRaw, partSnapshotType, extractTextDelta, extractToolUpdate, extractPermissionAsk, isTurnEnd, isSessionError } from '/app/portals/discord/src/runtime.ts';
 
 const channel = Bun.env.OC_CHANNEL ?? "discord";
 const secret = Bun.env.OC_SECRET ?? "";

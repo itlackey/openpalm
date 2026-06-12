@@ -1,4 +1,4 @@
-# core/portal — Unified Portal Image
+# containers/portal — Unified Portal Image
 
 A single Docker image used by every first-party portal adapter (`discord`,
 `slack`). The image bakes the first-party adapter packages from the workspace at

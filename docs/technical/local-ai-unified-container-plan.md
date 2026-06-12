@@ -20,13 +20,13 @@
 OpenPalm already ships a local, OpenAI-compatible **voice** runtime that is, in
 effect, Phase 0 of this plan and the template for everything below:
 
-- **`openpalm/voice`** (`core/voice/`) — Kokoro TTS + faster-whisper STT behind a
+- **`openpalm/voice`** (`containers/voice/`) — Kokoro TTS + faster-whisper STT behind a
   FastAPI app, OpenAI-compatible (`/v1/audio/speech`, `/v1/audio/transcriptions`),
   multi-variant (`cpu`, `cu121`, `rocm6`).
-- **`openpalm/voice-models:v1`** (`core/voice/Dockerfile.models`) — a prebuilt
+- **`openpalm/voice-models:v1`** (`containers/voice/Dockerfile.models`) — a prebuilt
   **model bundle** image (Kokoro + Whisper, `scratch` final) the runtime
   `COPY --from`s, so the heavy model download happens **once per model bump**, not
-  per hardware build. Pinned in `core/voice/Dockerfile` via
+  per hardware build. Pinned in `containers/voice/Dockerfile` via
   `FROM --platform=$BUILDPLATFORM openpalm/voice-models:v1 AS modelfetch`.
 - **Out-of-band CI** — `publish-voice.yml` (images) and `publish-voice-models.yml`
   (the bundle) publish on their own cadence; they are **removed from the platform
@@ -201,7 +201,7 @@ Generalize the voice bundle to a Local AI bundle:
 openpalm/local-ai-models:<tag>     # e.g. v1, all-defaults
 ```
 
-Build it exactly like `core/voice/Dockerfile.models`:
+Build it exactly like `containers/voice/Dockerfile.models`:
 
 - `FROM python:3.11-slim … AS fetch` → download Kokoro/Whisper/agent/embedding
   defaults, then **`FROM scratch`** with just the data → tiny, pull-only image.

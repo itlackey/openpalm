@@ -58,9 +58,9 @@ policy, Basic-auth `/oc/*` calls, and session/stream behavior.
 
 ## Built-in examples
 
-- `core/guardian/src/openai-api.ts` (guardian-hosted OpenAI-compatible API)
-- `packages/discord-portal/README.md`
-- `packages/slack-portal/README.md`
+- `containers/guardian/src/openai-api.ts` (guardian-hosted OpenAI-compatible API)
+- `portals/discord/README.md`
+- `portals/slack/README.md`
 
 ## Related addons
 

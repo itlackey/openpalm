@@ -4,7 +4,7 @@ Documentation index for OpenPalm.
 
 Repo layout convention:
 - `packages/*` contains app/package source code.
-- `core/*` contains container/runtime assembly assets and Docker build contexts.
+- `containers/*` contains container/runtime assembly assets and Docker build contexts.
 
 ## Getting started
 

@@ -1,4 +1,4 @@
-# core/assistant — OpenCode Runtime
+# containers/assistant — OpenCode Runtime
 
 Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of OpenPalm. It has **no Docker socket access** and no network path to the host admin process — it cannot perform stack operations. Stack management is handled by the host CLI and admin UI.
 

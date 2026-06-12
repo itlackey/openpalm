@@ -2,10 +2,10 @@
   "platformManifests": [
     "package.json",
     "packages/lib/package.json",
-    "core/guardian/package.json",
+    "containers/guardian/package.json",
     "packages/cli/package.json",
-    "packages/discord-portal/package.json",
-    "packages/slack-portal/package.json",
+    "portals/discord/package.json",
+    "portals/slack/package.json",
     "packages/electron/package.json",
     "packages/electron/admin-tools/package.json"
   ],
@@ -16,10 +16,10 @@
   "coordinatedManifests": [
     "package.json",
     "packages/lib/package.json",
-    "core/guardian/package.json",
+    "containers/guardian/package.json",
     "packages/cli/package.json",
-    "packages/discord-portal/package.json",
-    "packages/slack-portal/package.json",
+    "portals/discord/package.json",
+    "portals/slack/package.json",
     "packages/electron/package.json",
     "packages/electron/admin-tools/package.json",
     "packages/ui/package.json"
@@ -38,9 +38,9 @@
       "packages/ui/package.json"
     ],
     "channels": [
-      "packages/discord-portal/package.json",
-      "packages/slack-portal/package.json",
-      "core/guardian/package.json"
+      "portals/discord/package.json",
+      "portals/slack/package.json",
+      "containers/guardian/package.json"
     ],
     "assistant": [],
     "voice": []

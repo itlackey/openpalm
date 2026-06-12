@@ -84,8 +84,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: core/voice
-          file: core/voice/Dockerfile
+          context: containers/voice
+          file: containers/voice/Dockerfile
           platforms: ${{ matrix.platforms }}
           push: true
           build-args: |

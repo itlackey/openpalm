@@ -385,7 +385,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
   and shared with the host-side UI process.
 - **Scheduler co-process inside the assistant container** — the standalone
   `scheduler` compose service has been removed. The scheduler now runs as a
-  lightweight co-process inside `core/assistant/entrypoint.sh`.
+  lightweight co-process inside `containers/assistant/entrypoint.sh`.
 - **Seeds in the akm stash** — built-in skills, commands, and agents are seeded
   into `OP_HOME/stash/` on first install via the CLI embedded assets.
 - **Periodic `akm improve` automation** — a catalog automation that runs
@@ -461,7 +461,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 
 ### Removed
 
-- **`core/assistant/opencode/`** — legacy assistant config location. Now lives
+- **`containers/assistant/opencode/`** — legacy assistant config location. Now lives
   solely at `.openpalm/config/assistant/`.
 - **`ControlPlaneState.setupToken`** — field, generator, all test fixtures,
   and the `state.vitest.ts` "generates setupToken on each reset" test.
@@ -483,7 +483,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 - **`admin`/`ui` subcommand** — folded into the bare `openpalm` command.
   Use `openpalm --no-open` for headless invocation (systemd, scripts).
 - **Shared `openpalm-base` Docker image** — inlined into
-  `core/assistant/Dockerfile` since it was the only consumer.
+  `containers/assistant/Dockerfile` since it was the only consumer.
 - **Memory service** (`packages/memory`) — the Bun-based memory service and all
   OpenMemory integration deleted. Memory and knowledge recall now live in the
   shared akm stash.
@@ -517,7 +517,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 - **Channel adapters** — web chat (`channel-chat`), OpenAI-compatible API
   (`channel-api`), and Discord (`channel-discord`) channels, each running as a
   standalone Docker container.
-- **Guardian** (`core/guardian/`) — Bun HTTP server enforcing HMAC verification,
+- **Guardian** (`containers/guardian/`) — Bun HTTP server enforcing HMAC verification,
   timestamp skew rejection, replay detection, and rate limiting on all channel
   ingress traffic.
 - **Automation scheduler** — in-process Croner-based scheduler on the admin

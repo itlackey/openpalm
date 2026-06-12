@@ -41,7 +41,7 @@ export type ControlPlaneState = {
 // ── Constants ──────────────────────────────────────────────────────────
 
 // Scheduler is no longer a separate service — it runs as a co-process inside
-// the assistant container. See core/assistant/entrypoint.sh.
+// the assistant container. See containers/assistant/entrypoint.sh.
 // Memory has been replaced by the akm-cli stash (shared with assistant).
 export const CORE_SERVICES: CoreServiceName[] = [
   "assistant",

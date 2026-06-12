@@ -28,10 +28,10 @@ strategy).
 # From the repo root.
 
 # CPU variant (default — pulls torch+cpu, ~420 MB compressed)
-docker build -t openpalm/voice:v0.11.0-cpu core/voice
+docker build -t openpalm/voice:v0.11.0-cpu containers/voice
 
 # CUDA 12.1 variant (~1.4 GB compressed)
-docker build --build-arg VARIANT=cu121 -t openpalm/voice:v0.11.0-cu121 core/voice
+docker build --build-arg VARIANT=cu121 -t openpalm/voice:v0.11.0-cu121 containers/voice
 ```
 
 ## Run (standalone, for testing)

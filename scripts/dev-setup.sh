@@ -17,7 +17,7 @@ Options:
                       seconds on a warm cache). Default: build only when missing.
   --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
                       the voice addon will fail with "image not found" until
-                      built manually via \`docker build -t openpalm/voice:dev-cpu core/voice\`.
+                       built manually via \`docker build -t openpalm/voice:dev-cpu containers/voice\`.
   -h, --help          Show this help
 EOF
 }
@@ -304,17 +304,17 @@ if [[ $skip_voice_build -eq 1 ]]; then
 	echo "Skipping voice image build (--skip-voice-build)."
 elif ! command -v docker &>/dev/null; then
 	echo "WARNING: docker CLI not found; skipping voice image build." >&2
-	echo "  Install docker, then run: docker build -t openpalm/voice:dev-cpu core/voice" >&2
+	echo "  Install docker, then run: docker build -t openpalm/voice:dev-cpu containers/voice" >&2
 elif ! docker info >/dev/null 2>&1; then
 	echo "WARNING: docker daemon unreachable; skipping voice image build." >&2
 elif [[ $rebuild_voice -eq 1 ]] || ! docker image inspect openpalm/voice:dev-cpu >/dev/null 2>&1; then
-	echo "Building openpalm/voice:dev-cpu from core/voice/ (first build ~5-15 min;"
+	echo "Building openpalm/voice:dev-cpu from containers/voice/ (first build ~5-15 min;"
 	echo "subsequent rebuilds use the layer cache and complete in seconds)…"
-	if docker build -t openpalm/voice:dev-cpu "$ROOT_DIR/core/voice"; then
+	if docker build -t openpalm/voice:dev-cpu "$ROOT_DIR/containers/voice"; then
 		echo "Voice image built: openpalm/voice:dev-cpu"
 	else
 		echo "WARNING: voice image build failed. The voice addon won't start." >&2
-		echo "  Retry manually: docker build -t openpalm/voice:dev-cpu core/voice" >&2
+		echo "  Retry manually: docker build -t openpalm/voice:dev-cpu containers/voice" >&2
 	fi
 else
 	echo "Voice image already present (openpalm/voice:dev-cpu) — skipping build."

@@ -1,4 +1,4 @@
-# core/guardian — Message Guardian
+# containers/guardian — Message Guardian
 
 Bun HTTP server that acts as the security checkpoint for all inbound portal traffic. Every first-party portal adapter and direct MCP/API ingress path passes through the guardian before reaching the assistant.
 
@@ -24,7 +24,7 @@ that it is *safe*. When `GUARDIAN_CONTENT_VALIDATION` is enabled, step 6 adds a
 semantic layer that inspects what the message is actually trying to do, using a
 local OpenCode moderator. It is layered cheap → expensive:
 
-- **Heuristic pre-screen** (`core/guardian/src/content-screen.ts`): pure,
+- **Heuristic pre-screen** (`containers/guardian/src/content-screen.ts`): pure,
   in-process pattern matching that scores prompt-injection / jailbreak /
   exfiltration / obfuscation signals. Most traffic scores 0 and is forwarded
   without ever touching a model.
@@ -84,5 +84,5 @@ bun run guardian:test
 ## Testing
 
 ```bash
-cd core/guardian && bun test
+cd containers/guardian && bun test
 ```

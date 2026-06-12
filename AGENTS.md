@@ -15,7 +15,7 @@ Two core containers: **guardian** (principal-authenticated ingress + optional co
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces
-- `core/*` — container/runtime assembly assets and image build contexts
+- `containers/*` — container/runtime assembly assets and image build contexts
 
 ```
 CLI (host)            ->  Docker Compose (lifecycle)    <- primary orchestrator
@@ -32,11 +32,11 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, portal discovery, connections, scheduler logic. Both CLI and UI import from this package.
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without UI.
 - **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
-- **Guardian** (`core/guardian/`) — Bun HTTP server: principal auth, allowlisted `/oc/*` proxying, ownership checks, rate limiting, and opt-in fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
-- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
+- **Guardian** (`containers/guardian/`) — Bun HTTP server: principal auth, allowlisted `/oc/*` proxying, ownership checks, rate limiting, and opt-in fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
+- **Assistant** (`containers/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
 - **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM markdown task files in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
-- **Portal runtime** (`core/portal/`) — Unified `portal` image build for baked first-party adapters.
-- **Portal adapters** (`packages/discord-portal/`, `packages/slack-portal/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
+- **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
+- **Portal adapters** (`portals/discord/`, `portals/slack/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
 - **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains core, services, channels, and custom compose files. Enabled first-party addons are tracked in `~/.openpalm/config/stack/stack.yml` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
 
 ---
@@ -52,7 +52,7 @@ npm run build                                       # Production build
 npm run check                                       # svelte-check + TypeScript
 
 # Guardian (Bun)
-cd core/guardian && bun install && bun run src/server.ts
+cd containers/guardian && bun install && bun run src/server.ts
 
 # Root shortcuts
 bun run ui:dev     # Runs UI dev from root
@@ -60,8 +60,8 @@ bun run ui:build   # Builds UI from root
 bun run ui:check   # svelte-check + TypeScript for UI
 bun run guardian:dev     # Runs guardian server
 bun run guardian:api:dev    # Runs guardian OpenAI-compatible API server
-bun run channel:discord:dev # Runs discord channel dev server
-bun run channel:slack:dev   # Runs slack channel dev server
+bun run portal:discord:dev # Runs discord portal dev server
+bun run portal:slack:dev   # Runs slack portal dev server
 bun run channel:voice:dev   # Runs voice channel dev server
 
 # Dev environment setup
@@ -86,7 +86,7 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 | Runner | Command | Scope |
 |--------|---------|-------|
 | `bun test` (root) | `bun run test` | guardian, cli, all portal packages (excludes ui) |
-| `bun test` (guardian) | `bun run guardian:test` | core/guardian security tests |
+| `bun test` (guardian) | `bun run guardian:test` | containers/guardian security tests |
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
 | Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
 | Playwright (UI integration) | `bun run ui:test:e2e` | packages/ui integration tests (no browser route mocks) |
@@ -97,10 +97,10 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 
 ```bash
 # Run guardian tests
-cd core/guardian && bun test
+cd containers/guardian && bun test
 
 # Run a single test file
-cd core/guardian && bun test src/server.test.ts
+cd containers/guardian && bun test src/server.test.ts
 
 # Run UI unit tests (Vitest, CI-friendly)
 bun run ui:test:unit
@@ -262,7 +262,7 @@ Dev mode uses `.dev/` with the same subdirectory structure.
 Before submitting any change:
 
 - [ ] `cd packages/ui && npm run check` passes (UI type correctness)
-- [ ] `cd core/guardian && bun test` passes (security-critical branches covered)
+- [ ] `cd containers/guardian && bun test` passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
@@ -291,8 +291,8 @@ Before submitting any change:
 | `packages/ui/src/lib/api.ts` | API call functions |
 | `packages/cli/src/lib/cli-state.ts` | CLI state helpers (ensureValidState) |
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |
-| `core/guardian/src/server.ts` | HMAC-signed message guardian |
-| `core/guardian/src/logger.ts` | Guardian-local logger (createLogger factory) |
+| `containers/guardian/src/server.ts` | HMAC-signed message guardian |
+| `containers/guardian/src/logger.ts` | Guardian-local logger (createLogger factory) |
 | `.openpalm/config/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
 | `.openpalm/config/stack/` | Fixed stack compose files and enabled-addon state |
 | `.opencode/opencode.json` | OpenCode project configuration |

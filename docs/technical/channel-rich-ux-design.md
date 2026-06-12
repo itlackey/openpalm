@@ -14,7 +14,7 @@ An earlier draft proposed a normalized "Guardian Event Protocol" that translated
 
 **Therefore:** the guardian forwards native OpenCode calls and responses transparently, *except* for a small, explicit set of fail-closed security gates. Channels speak native OpenCode (via `@opencode-ai/sdk`) through the guardian. The contract is the OpenCode API, pinned to `OPENCODE_VERSION`.
 
-Validated against **OpenCode `1.15.13`** — the version now pinned in `core/assistant/Dockerfile` and `core/guardian/Dockerfile` (bumped from `1.3.3`). The endpoint/event surface below was read from `1.15.13`'s OpenAPI spec, and the permission flow (§1.2) was **empirically driven end-to-end** against a live `1.15.13` server.
+Validated against **OpenCode `1.15.13`** — the version now pinned in `containers/assistant/Dockerfile` and `containers/guardian/Dockerfile` (bumped from `1.3.3`). The endpoint/event surface below was read from `1.15.13`'s OpenAPI spec, and the permission flow (§1.2) was **empirically driven end-to-end** against a live `1.15.13` server.
 
 > **Prerequisite — permission prompts must actually fire (§1.2). VERIFIED on 1.15.13.** Whether a tool pauses with `permission.asked` depends on the assistant's permission configuration. The current `.openpalm/config/assistant/opencode.jsonc` sets only file-read denials and `external_directory` allows — it does **not** gate tool execution, so as shipped no `permission.asked` fires. Adding `"permission": { "bash": "ask" }` (etc.) makes the gate work: this was driven end-to-end against a live 1.15.13 server (tool blocked → `permission.asked` → reply → resume). The remaining work is configuration, not an upstream unknown — see §1.2.
 
@@ -113,10 +113,10 @@ A **principal** is `(channel, userId)` — the identity the channel already auth
 
 ### 2.2 Code placement (and why not `@openpalm/lib`)
 
-A reviewer suggested extracting the proxy/allowlist/ownership logic into `@openpalm/lib`. **We deliberately do not.** The guardian (`core/guardian`, Bun) is built as a minimal image that depends only on `channels-sdk` — the Docker dependency-resolution pattern in `CLAUDE.md` keeps `@openpalm/lib` (a CLI/UI control-plane package) out of the guardian and channel images on purpose. Forcing a lib dependency would *add* build complexity, not remove it. Correct homes:
+A reviewer suggested extracting the proxy/allowlist/ownership logic into `@openpalm/lib`. **We deliberately do not.** The guardian (`containers/guardian`, Bun) is built as a minimal image that depends only on its local runtime deps — the Docker dependency-resolution pattern in `CLAUDE.md` keeps `@openpalm/lib` (a CLI/UI control-plane package) out of the guardian and portal images on purpose. Forcing a lib dependency would *add* build complexity, not remove it. Correct homes:
 
 - **Shared, pure, channel+guardian:** `signRequest`/`verifyRequest` and the allowlist path-matcher → `packages/channels-sdk` (both already depend on it).
-- **Guardian-only runtime state:** the session/permission-ownership maps and `/event` fan-out → local to `core/guardian`, mirroring its existing `replay.ts` and `rate-limit.ts` (which are *also* guardian-local, not in lib). This is consistent with the established structure, not a violation of it.
+- **Guardian-only runtime state:** the session/permission-ownership maps and `/event` fan-out → local to `containers/guardian`, mirroring its existing `replay.ts` and `rate-limit.ts` (which are *also* guardian-local, not in lib). This is consistent with the established structure, not a violation of it.
 - The UI proxy and the guardian proxy share only the *idea*; a generic "proxy helper" that both consume would conflate two different auth models (operator cookie vs. per-channel HMAC) and is rejected. At most, a tiny pure `forwardStreaming(targetUrl, method, headers, body, signal) → Response` could be shared, but each side keeps its own gates.
 
 ---
@@ -236,7 +236,7 @@ No human is present to click. Each channel declares a policy the adapter applies
 
 ## 5. Version coupling & fail-closed drift guard
 
-The guardian couples to OpenCode at exactly **three** pinned points: the allowlist paths (§3.3), `event.properties.sessionID` on session events (§3.2), and the `message`/`prompt_async` prompt-body shape (§3.5). All pinned to `OPENCODE_VERSION` (`core/assistant/Dockerfile` and `core/guardian/Dockerfile` in lockstep).
+The guardian couples to OpenCode at exactly **three** pinned points: the allowlist paths (§3.3), `event.properties.sessionID` on session events (§3.2), and the `message`/`prompt_async` prompt-body shape (§3.5). All pinned to `OPENCODE_VERSION` (`containers/assistant/Dockerfile` and `containers/guardian/Dockerfile` in lockstep).
 
 - **Startup assertion is fail-closed for the proxy path (security review, low):** on boot the guardian fetches the assistant `/doc` and asserts the allowlisted paths and the two payload shapes exist. On drift or fetch failure it **disables the proxy route and returns `503`** there (with a clear log); the legacy buffered `/channel/inbound` path stays up. Not a warning-only path.
 - The `/event` filter **ignores unknown event types** and tolerates added fields — an OpenCode bump degrades gracefully rather than breaking channels.
@@ -305,7 +305,7 @@ Each stage ships independently; the buffered path is the safe default throughout
 ## 10. References
 
 - `packages/ui/src/routes/proxy/assistant/[...path]/+server.ts` — the transparent streaming proxy precedent.
-- `core/guardian/src/{server,forward,replay,rate-limit,signature}.ts` — current pipeline and guardian-local runtime state pattern.
+- `containers/guardian/src/{server,forward,replay,rate-limit,signature}.ts` — current pipeline and guardian-local runtime state pattern.
 - `packages/channels-sdk/src/crypto.ts` — signing primitives to generalize.
 - `.openpalm/config/assistant/opencode.jsonc` — assistant permission config (§1.2).
 - Live OpenCode OpenAPI: `curl http://127.0.0.1:3800/doc` (assistant on :3800 → OpenCode :4096).
@@ -388,7 +388,7 @@ The proxy contract **is** the OpenCode API pinned to `OPENCODE_VERSION` (§0, §
 
 | What | Where it's pinned | Rule |
 |---|---|---|
-| **OpenCode binary** | `core/assistant/Dockerfile` `ARG OPENCODE_VERSION`; `core/guardian/Dockerfile` `ARG OPENCODE_VERSION` | **Must be identical in both** (CI enforces lockstep). The guardian ships OpenCode as a content moderator and, for the proxy, couples to this exact API surface (§5). |
+| **OpenCode binary** | `containers/assistant/Dockerfile` `ARG OPENCODE_VERSION`; `containers/guardian/Dockerfile` `ARG OPENCODE_VERSION` | **Must be identical in both** (CI enforces lockstep). The guardian ships OpenCode as a content moderator and, for the proxy, couples to this exact API surface (§5). |
 | **`@opencode-ai/plugin` / `@opencode-ai/sdk`** (host npm) | `packages/electron/admin-tools/package.json`; `.opencode/package.json` (gitignored, local tooling); root `bun.lock` | Caret is fine for a published lib, but **refresh the lockfile** after bumping so the resolved version actually moves. |
 | **`akm-opencode` plugin** | `.openpalm/config/assistant/opencode.jsonc` → `"plugin": ["akm-opencode@latest"]` (installed at runtime, not baked) | **Must be compatible with the OpenCode binary version.** `akm-opencode`'s declared `@opencode-ai/plugin: ^1.2.20` is too loose to trust — a given plugin release may require a newer runtime than it advertises. |
 
@@ -403,7 +403,7 @@ npm view opencode-ai version; npm view @opencode-ai/plugin version; npm view @op
 git grep -nE "OPENCODE_VERSION|@opencode-ai|akm-opencode" -- . ':!bun.lock'
 ```
 
-1. Set the **same** `ARG OPENCODE_VERSION=<new>` in `core/assistant/Dockerfile` **and** `core/guardian/Dockerfile`.
+1. Set the **same** `ARG OPENCODE_VERSION=<new>` in `containers/assistant/Dockerfile` **and** `containers/guardian/Dockerfile`.
 2. Bump `@opencode-ai/plugin` in `packages/electron/admin-tools/package.json` (and `.opencode/package.json` if used locally).
 3. `bun install` to refresh `bun.lock`, then **verify** `bun install --frozen-lockfile` is clean and the lockfile resolved both `@opencode-ai/plugin` and its transitive `@opencode-ai/sdk` to `<new>`. Rebuild any consumer that bundles the plugin (`bun run --cwd packages/electron/admin-tools build`).
 4. `akm-opencode` itself needs no source edit (it's `@latest`), **but** confirm the published `@latest` is intact before relying on it: `npm pack akm-opencode@latest` and check the tarball actually contains every file `index.ts` imports (a past `@latest` shipped `index.ts` importing `./shared/feedback-signals` with no `shared/` in the tarball — a broken publish that fails to load in *any* OpenCode version).
@@ -413,7 +413,7 @@ git grep -nE "OPENCODE_VERSION|@opencode-ai|akm-opencode" -- . ':!bun.lock'
 A multi-minor OpenCode jump can break config-schema validation, the plugin loader, or the entrypoint. Smoke-test the **real** image with the **real** mounted config:
 
 ```bash
-docker build -f core/assistant/Dockerfile -t openpalm/assistant:smoke-<new> .
+docker build -f containers/assistant/Dockerfile -t openpalm/assistant:smoke-<new> .
 # Mount the actual assistant config (copy it OUTSIDE /tmp — see the trap below) and boot:
 SMOKE=~/.cache/op-smoke-cfg; rm -rf "$SMOKE"; mkdir -p "$SMOKE"
 cp -r .openpalm/config/assistant/. "$SMOKE"/; chmod -R a+rX "$SMOKE"

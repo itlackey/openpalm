@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
  *   6. Response flows back: assistant -> guardian -> test client
  *
  * This closes the test coverage gap where assistant-pipeline.pw.ts talks
- * to OpenCode directly (bypassing guardian) and `core/guardian/src/server.test.ts`
+ * to OpenCode directly (bypassing guardian) and `containers/guardian/src/server.test.ts`
  * uses a mock
  * assistant (never hitting the real one).
  *

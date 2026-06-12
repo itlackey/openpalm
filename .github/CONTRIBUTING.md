@@ -4,7 +4,7 @@ Quick-start cheatsheet for getting a dev environment running and submitting chan
 
 Repo layout convention:
 - `packages/*` = app/package source workspaces
-- `core/*` = container/runtime assembly assets and image build contexts
+- `containers/*` = container/runtime assembly assets and image build contexts
 
 ## Prerequisites
 
@@ -31,11 +31,11 @@ From the repo root, convenience scripts are available:
 ```bash
 bun run ui:dev     # packages/ui dev server
 bun run ui:check   # svelte-check + TypeScript
-bun run guardian:dev     # core/guardian server
+bun run guardian:dev     # containers/guardian server
 bun run guardian:test    # guardian tests
 bun run cli:test         # packages/cli tests
 bun run guardian:api:dev    # guardian OpenAI-compatible API server (also serves the chat addon profile)
-bun run channel:discord:dev # discord channel dev server
+bun run portal:discord:dev # discord portal dev server
 bun run dev:setup        # seed .dev/ dirs and configs
 bun run dev:stack        # start dev stack (pull images)
 bun run dev:build        # start dev stack (build from source)
@@ -110,7 +110,7 @@ bun run ui:test:e2e:mocked # UI Playwright mocked browser contract tests
 bun run ui:dev         # UI SvelteKit dev server (:8100)
 bun run guardian:dev         # Guardian Bun server
 bun run guardian:api:dev     # Guardian-hosted OpenAI-compatible API service
-bun run channel:discord:dev  # Discord channel
+bun run portal:discord:dev  # Discord portal
 ```
 
 ## Convenience scripts (full list)
@@ -129,7 +129,7 @@ All scripts are defined in the root [`package.json`](../package.json):
 | `bun run guardian:dev` | Guardian server |
 | `bun run guardian:test` | Guardian tests |
 | `bun run guardian:api:dev` | Guardian-hosted OpenAI-compatible API service |
-| `bun run channel:discord:dev` | Discord channel dev server |
+| `bun run portal:discord:dev` | Discord portal dev server |
 | `bun run cli:test` | CLI tests |
 | `bun run dev:setup` | Seed `.dev/` dirs and configs |
 | `bun run dev:stack` | Start dev stack (pull images) |
@@ -161,7 +161,7 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** — Guardian and portal Dockerfiles must install each service's own deps directly (no symlink-based node_modules). UI is a host binary — no Docker build. The assistant and guardian images ship the OpenCode binary; keep `OPENCODE_VERSION` in lockstep between `core/assistant/Dockerfile` and `core/guardian/Dockerfile`.
+3. **Docker builds** — Guardian and portal Dockerfiles must install each service's own deps directly (no symlink-based node_modules). UI is a host binary — no Docker build. The assistant and guardian images ship the OpenCode binary; keep `OPENCODE_VERSION` in lockstep between `containers/assistant/Dockerfile` and `containers/guardian/Dockerfile`.
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 

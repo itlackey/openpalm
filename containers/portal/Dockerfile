@@ -10,14 +10,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Build against a minimal workspace root so the baked portals resolve as local workspaces.
-RUN mkdir -p /app/packages/discord-portal /app/packages/slack-portal
-COPY packages/discord-portal/package.json /app/packages/discord-portal/package.json
-COPY packages/slack-portal/package.json /app/packages/slack-portal/package.json
-RUN printf '%s\n' '{' '  "name": "openpalm-channel-image",' '  "private": true,' '  "workspaces": [' '    "packages/discord-portal",' '    "packages/slack-portal"' '  ]' '}' > /app/package.json
+RUN mkdir -p /app/portals/discord /app/portals/slack
+COPY portals/discord/package.json /app/portals/discord/package.json
+COPY portals/slack/package.json /app/portals/slack/package.json
+RUN printf '%s\n' '{' '  "name": "openpalm-portal-image",' '  "private": true,' '  "workspaces": [' '    "portals/discord",' '    "portals/slack"' '  ]' '}' > /app/package.json
 
 # Bake the first-party portal adapters into the image from the workspace.
-COPY packages/discord-portal /app/packages/discord-portal
-COPY packages/slack-portal /app/packages/slack-portal
+COPY portals/discord /app/portals/discord
+COPY portals/slack /app/portals/slack
 COPY core/portal/portal-entrypoint.ts /app/portal-entrypoint.ts
 
 RUN bun install --production
