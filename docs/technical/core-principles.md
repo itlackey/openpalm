@@ -84,6 +84,8 @@ Subtrees:
 
 **Rule:** allowed writers are: user direct edits and explicit admin UI/API config actions. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or make targeted updates.
 
+**Guardian config refresh (skip-if-user-modified):** Files under `config/guardian/` that ship with sensible defaults (currently `instructions/moderation.md`) are _managed_ but operator-editable. On a managed-asset refresh (install, upgrade, or explicit refresh), such a file is only overwritten when its on-disk content is byte-identical to one of the previously shipped defaults recorded in `SHIPPED_DEFAULT_HASHES` in `packages/lib/src/control-plane/core-assets.ts`. If the operator has edited the file, the refresh keeps the existing content and surfaces a structured log notice: _"guardian managed asset kept (user-modified); new default available"_. The list of kept paths is also returned as `kept[]` by `refreshCoreAssetsFromSource` / `refreshCoreAssets` so callers can display the notice to the operator. When a new shipped default is released, its sha256 hash must be appended to the corresponding `SHIPPED_DEFAULT_HASHES` entry so older unmodified installs can still be upgraded.
+
 ### 1b) Stack (system-managed runtime assembly)
 
 **Location:** `~/.openpalm/config/stack/`

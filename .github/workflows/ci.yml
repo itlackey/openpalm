@@ -139,6 +139,9 @@ jobs:
       - name: Type check admin UI
         run: cd packages/ui && bun run check
 
+      - name: Type check CLI
+        run: cd packages/cli && bun run typecheck
+
       - name: Test (sdk + guardian + channels)
         run: |
           set -euo pipefail
