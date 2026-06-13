@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import ProvidersStep from './ProvidersStep.svelte';
-import type { OpenCodeProvider, ProviderState } from '$lib/wizard/types.js';
+import type { OpenCodeProvider, ProviderState } from '$lib/client/types.js';
 
 const baseProps = {
   hostImporting: false,

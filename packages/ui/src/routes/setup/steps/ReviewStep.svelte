@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { CHANNELS, TTS_OPTIONS, STT_OPTIONS, PROVIDERS } from '$lib/wizard/constants.js';
-  import type { Provider, ModelSelection, ChannelState } from '$lib/wizard/types.js';
-  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
+  import { CHANNELS, TTS_OPTIONS, STT_OPTIONS, PROVIDERS } from '$lib/client/constants.js';
+  import type { Provider, ModelSelection, ChannelState } from '$lib/client/types.js';
+  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
-  import { friendlyError } from '$lib/wizard/error-messages.js';
+  import { friendlyError } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface Props {

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { MAX_VISIBLE_MODELS } from '$lib/wizard/constants.js';
-  import { buildModelOptions, type RoleModelOption } from '$lib/wizard/helpers.js';
-  import type { Provider, ProviderState, ModelSelection } from '$lib/wizard/types.js';
+  import { MAX_VISIBLE_MODELS } from '$lib/client/constants.js';
+  import { buildModelOptions, type RoleModelOption } from '$lib/client/helpers.js';
+  import type { Provider, ProviderState, ModelSelection } from '$lib/client/types.js';
   import RadioRow from '$lib/components/common/RadioRow.svelte';
 
   type ModelOption = RoleModelOption;

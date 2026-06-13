@@ -1,6 +1,6 @@
 <script lang="ts">
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
-  import { friendlyError } from '$lib/wizard/error-messages.js';
+  import { friendlyError } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface ServiceStatus {

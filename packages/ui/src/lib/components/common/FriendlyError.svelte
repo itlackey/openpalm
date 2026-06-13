@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FriendlyErrorView } from '$lib/wizard/error-messages.js';
+  import type { FriendlyErrorView } from '$lib/client/error-messages.js';
 
   interface Props {
     error: FriendlyErrorView | null | undefined;

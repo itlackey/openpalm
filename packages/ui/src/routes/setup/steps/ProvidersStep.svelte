@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { PROVIDERS, PROVIDER_GROUPS } from '$lib/wizard/constants.js';
-  import type { ProviderState, DetectedProvider, OpenCodeProvider, AuthMethod } from '$lib/wizard/types.js';
-  import { friendlyError } from '$lib/wizard/error-messages.js';
+  import { PROVIDERS, PROVIDER_GROUPS } from '$lib/client/constants.js';
+  import type { ProviderState, DetectedProvider, OpenCodeProvider, AuthMethod } from '$lib/client/types.js';
+  import { friendlyError } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import SelectableCard from '$lib/components/common/SelectableCard.svelte';
 

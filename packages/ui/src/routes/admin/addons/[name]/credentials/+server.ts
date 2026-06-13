@@ -2,11 +2,14 @@
  * GET  /admin/addons/:name/credentials — Return the addon's .env.schema as
  *   structured fields plus secret presence metadata.
  * POST /admin/addons/:name/credentials — Write supplied fields into
- *   knowledge/secrets/<ENV_KEY>.
+ *   knowledge/secrets/<ENV_KEY> (@sensitive) or knowledge/env/stack.env
+ *   (non-sensitive). Split determined by `# @sensitive` schema annotation.
  *   Body shape: { values: { KEY: VALUE | "" } }. Empty strings clear the key.
  *
- * Addon credentials (Discord/Slack bot tokens, channel HMAC secrets, etc.)
- * are read by channel containers as file-backed compose secrets.
+ * Sensitive addon credentials (bot tokens, API keys) stay as file-backed
+ * compose secrets. Non-sensitive config (allowed guilds, model names, etc.)
+ * goes to stack.env so it is visible to `docker compose config` and is not
+ * treated as a secret by compose.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -23,7 +26,9 @@ import {
   getRegistryAddonConfig,
   listAvailableAddonIds,
   readStackSecretEnv,
+  readStackEnv,
   writeStackSecretEnv,
+  patchSecretsEnvFile,
 } from "@openpalm/lib";
 
 const logger = createLogger("addons.name.credentials");
@@ -113,10 +118,13 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const schemaFields = parseEnvSchema(config.envSchema);
+  // Sensitive fields live in knowledge/secrets/; non-sensitive in stack.env.
   const secretEnv = readStackSecretEnv(state.stackDir);
+  const stackEnv = readStackEnv(state.stackDir);
 
   const fields = schemaFields.map((f) => {
-    const set = (secretEnv[f.key] ?? "").length > 0;
+    const stored = f.sensitive ? secretEnv[f.key] : stackEnv[f.key];
+    const set = (stored ?? "").length > 0;
     return {
       key: f.key,
       sensitive: f.sensitive,
@@ -154,25 +162,42 @@ export const POST: RequestHandler = async (event) => {
     logger.error("schema read failed (post)", { name, error: String(error), requestId });
     return errorResponse(500, "internal_error", `Addon "${name}" schema is unavailable`, {}, requestId);
   }
-  const allowedKeys = new Set(parseEnvSchema(config.envSchema).map((f) => f.key));
+  const schemaFields = parseEnvSchema(config.envSchema);
+  const sensitiveKeys = new Set(schemaFields.filter((f) => f.sensitive).map((f) => f.key));
+  const allowedKeys = new Set(schemaFields.map((f) => f.key));
 
   // Only accept keys declared in the schema; silently drop anything else.
-  const updates: Record<string, string> = {};
+  // Split by @sensitive annotation: sensitive fields → compose secret files;
+  // non-sensitive fields → stack.env (visible to `docker compose config`).
+  const sensitiveUpdates: Record<string, string> = {};
+  const configUpdates: Record<string, string> = {};
   for (const [k, v] of Object.entries(valuesRaw)) {
     if (!allowedKeys.has(k)) continue;
-    updates[k] = typeof v === "string" ? v : "";
+    const val = typeof v === "string" ? v : "";
+    if (sensitiveKeys.has(k)) {
+      sensitiveUpdates[k] = val;
+    } else {
+      configUpdates[k] = val;
+    }
   }
 
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(sensitiveUpdates).length === 0 && Object.keys(configUpdates).length === 0) {
     return errorResponse(400, "bad_request", "no schema-declared keys supplied", {}, requestId);
   }
 
   try {
-    writeStackSecretEnv(state, updates);
+    if (Object.keys(sensitiveUpdates).length > 0) {
+      writeStackSecretEnv(state, sensitiveUpdates);
+    }
+    if (Object.keys(configUpdates).length > 0) {
+      patchSecretsEnvFile(state.stackDir, configUpdates);
+    }
   } catch (err) {
     logger.error("write failed", { name, error: String(err), requestId });
     return errorResponse(500, "internal_error", err instanceof Error ? err.message : "write failed", {}, requestId);
   }
 
-  return jsonResponse(200, { ok: true, name, updated: Object.keys(updates).sort() }, requestId);
+  const updated = [...Object.keys(sensitiveUpdates), ...Object.keys(configUpdates)].sort();
+
+  return jsonResponse(200, { ok: true, name, updated }, requestId);
 };

@@ -2,16 +2,16 @@
   import { onMount } from 'svelte';
   import {
     PROVIDERS, LOCAL_PROVIDERS, CHANNELS, OLLAMA_DEFAULT_CHAT_MODEL,
-  } from '$lib/wizard/constants.js';
-  import { buildModelOptions, selectAddonProfileId, resolveVoiceSide } from '$lib/wizard/helpers.js';
+  } from '$lib/client/constants.js';
+  import { buildModelOptions, selectAddonProfileId, resolveVoiceSide } from '$lib/client/helpers.js';
   import type {
     ProviderState, ModelSelection, DetectedProvider, ChannelState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
-  } from '$lib/wizard/types.js';
+  } from '$lib/client/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
   import type { SetupRecommendation } from '@openpalm/lib';
   import { addonProfileId } from '@openpalm/lib/provider-constants';
-  import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
+  import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
   import ProgressBar from './ProgressBar.svelte';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
   import WelcomeStep from './steps/WelcomeStep.svelte';

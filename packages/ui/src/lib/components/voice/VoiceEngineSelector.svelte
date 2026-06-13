@@ -14,13 +14,13 @@
 		STT_OPTIONS,
 		TTS_ENGINES,
 		STT_ENGINES,
-	} from '$lib/wizard/constants.js';
+	} from '$lib/client/constants.js';
 	import type {
 		SttOption,
 		TtsOption,
 		VoiceEngineConfig,
 		VoiceEngineValue,
-	} from '$lib/wizard/types.js';
+	} from '$lib/client/types.js';
 
 	let {
 		kind,

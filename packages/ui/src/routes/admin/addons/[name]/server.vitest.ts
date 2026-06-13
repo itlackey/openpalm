@@ -93,8 +93,8 @@ describe('/admin/addons/:name route', () => {
     expect(body.enabled).toBe(true);
     expect(body.config.schemaPath).toBe(''); // built-in (in-code) schema, no materialized file
     expect(body.config.userEnvPath).toBe('knowledge/env/stack.env');
-    // chat now carries its built-in credential schema (was an empty stub before).
-    expect(body.config.envSchema).toContain('CHANNEL_CHAT_SECRET');
+    // chat schema is a header-only stub (no HMAC secret rows after D4 removal).
+    expect(body.config.envSchema).toContain('Web Chat channel configuration');
   });
 
   test('returns 404 for unknown addons', async () => {

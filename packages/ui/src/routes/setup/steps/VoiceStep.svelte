@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { VoiceEngineValue } from '$lib/wizard/types.js';
+  import type { VoiceEngineValue } from '$lib/client/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
   import VoiceEngineSelector from '$lib/components/voice/VoiceEngineSelector.svelte';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
-  import { TTS_OPTIONS, STT_OPTIONS } from '$lib/wizard/constants.js';
+  import { TTS_OPTIONS, STT_OPTIONS } from '$lib/client/constants.js';
 
   interface Props {
     tts: VoiceEngineValue;

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { CHANNELS } from '$lib/wizard/constants.js';
-  import type { ChannelState } from '$lib/wizard/types.js';
+  import { CHANNELS } from '$lib/client/constants.js';
+  import type { ChannelState } from '$lib/client/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
-  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/wizard/helpers.js';
+  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
   import FormField from '$lib/components/common/FormField.svelte';
   import SettingToggle from '$lib/components/common/SettingToggle.svelte';

@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import ModelsStep from './ModelsStep.svelte';
-import type { Provider, ProviderState } from '$lib/wizard/types.js';
+import type { Provider, ProviderState } from '$lib/client/types.js';
 
 const ollamaProvider: Provider = {
   id: 'ollama',

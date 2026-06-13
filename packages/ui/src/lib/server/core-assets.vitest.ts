@@ -163,6 +163,10 @@ describe("refreshCoreAssets", () => {
       if (url.includes("system.md")) {
         return new Response("# System Prompt\n", { status: 200 });
       }
+      // Guardian managed asset added in A6 (skip-if-user-modified).
+      if (url.includes("moderation.md")) {
+        return new Response("# Moderation Instructions\n", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
   }
@@ -240,6 +244,10 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), content);
     writeFileSync(join(homeDir, "config/assistant/openpalm.md"), content);
     writeFileSync(join(homeDir, "config/assistant/system.md"), content);
+    // Guardian managed asset (A6): must be on disk with identical content so the
+    // sha256 equality check short-circuits before reaching the user-modified check.
+    mkdirSync(join(homeDir, "config/guardian/instructions"), { recursive: true });
+    writeFileSync(join(homeDir, "config/guardian/instructions/moderation.md"), content);
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });
     });

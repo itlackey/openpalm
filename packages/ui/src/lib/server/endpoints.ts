@@ -57,6 +57,11 @@ const LOCAL_ELECTRON_ID = 'local-electron';
 let wizardOpencodeUrl: string | null = null;
 let remoteStatusCache: { expiresAt: number; value: RemoteStatus[] } | null = null;
 
+/** Reset the in-memory probe cache. Exposed for tests only — do not call from production code. */
+export function _resetRemoteStatusCache(): void {
+  remoteStatusCache = null;
+}
+
 export function setWizardOpencodeUrl(url: string | null): void {
   wizardOpencodeUrl = url ? normalizeBrowserFacingUrl(url) : null;
 }

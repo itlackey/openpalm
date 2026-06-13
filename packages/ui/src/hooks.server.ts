@@ -33,6 +33,7 @@ import {
   classifyLocalInstall,
   detectRuntime,
   buildComposeOptions,
+  collectBindAddressWarnings,
   type ComposeServiceStatus,
 } from "@openpalm/lib";
 import { listRemoteStatuses } from "$lib/server/endpoints.js";
@@ -51,6 +52,11 @@ let localStatusCache: { expiresAt: number; value: LaunchRouting } | null = null;
 function runStartupApply(): void {
   if (startupApplyDone) return;
   startupApplyDone = true;
+
+  // Warn early if any bind address is non-loopback.
+  for (const line of collectBindAddressWarnings(process.env as Record<string, string>)) {
+    logger.warn(line);
+  }
 
   try {
     ensureHomeDirs();
