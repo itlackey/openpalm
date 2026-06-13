@@ -4,19 +4,19 @@ node_modules
 .plans
 .opencode
 .state
-# core/ layout
-core/guardian/node_modules
-# channel adapter packages
-channels/chat/node_modules
-channels/api/node_modules
-channels/discord/node_modules
-channels/telegram/node_modules
-channels/voice/node_modules
+# containers/ layout
+containers/guardian/node_modules
+containers/assistant/node_modules
+containers/portal/node_modules
+# portal adapter packages
+portals/discord/node_modules
+portals/slack/node_modules
 docs/
 *.md
 !AGENTS.md
-!core/**/*.md
+!containers/**/*.md
 !packages/**/*.md
+!portals/**/*.md
 !.openpalm/**/*.md
 # Secrets — never send to Docker build context
 # Stack/channel secrets (OP_HOME/config/stack/)

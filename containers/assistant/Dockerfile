@@ -6,7 +6,7 @@
 # v0.11.0: the previously-shared `openpalm-base` image has been inlined here.
 # The guardian also ships OpenCode + akm-cli (on `oven/bun:1.3-slim`); channels
 # use `oven/bun:1.3-slim` directly. CI keeps AKM_CLI_VERSION and OPENCODE_VERSION
-# between this file and core/guardian/Dockerfile in lockstep.
+# between this file and containers/guardian/Dockerfile in lockstep.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM node:22-trixie-slim
@@ -149,7 +149,7 @@ RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/a
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
 
-COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
+COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
 # Container starts as root intentionally. The entrypoint uses gosu to drop to

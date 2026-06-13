@@ -115,7 +115,7 @@ A **principal** is `(channel, userId)` — the identity the channel already auth
 
 A reviewer suggested extracting the proxy/allowlist/ownership logic into `@openpalm/lib`. **We deliberately do not.** The guardian (`containers/guardian`, Bun) is built as a minimal image that depends only on its local runtime deps — the Docker dependency-resolution pattern in `CLAUDE.md` keeps `@openpalm/lib` (a CLI/UI control-plane package) out of the guardian and portal images on purpose. Forcing a lib dependency would *add* build complexity, not remove it. Correct homes:
 
-- **Shared, pure, channel+guardian:** `signRequest`/`verifyRequest` and the allowlist path-matcher → `packages/channels-sdk` (both already depend on it).
+- **Shared, pure, channel+guardian:** request signing/verification primitives and the allowlist path-matcher. These now live as guardian-local and adapter-local helpers rather than a shared `packages/channels-sdk` package.
 - **Guardian-only runtime state:** the session/permission-ownership maps and `/event` fan-out → local to `containers/guardian`, mirroring its existing `replay.ts` and `rate-limit.ts` (which are *also* guardian-local, not in lib). This is consistent with the established structure, not a violation of it.
 - The UI proxy and the guardian proxy share only the *idea*; a generic "proxy helper" that both consume would conflate two different auth models (operator cookie vs. per-channel HMAC) and is rejected. At most, a tiny pure `forwardStreaming(targetUrl, method, headers, body, signal) → Response` could be shared, but each side keeps its own gates.
 
@@ -123,9 +123,9 @@ A reviewer suggested extracting the proxy/allowlist/ownership logic into `@openp
 
 ## 3. The gates in detail
 
-### 3.1 Authentication — per-call HMAC with signed `userId`
+### 3.1 Authentication — per-principal auth with scoped `userId`
 
-Today: one signed envelope (`x-channel-signature` over the body). The proxy keeps the primitive but signs **each native call**, and **`userId` is a mandatory positional field in the signed string** (not an unsigned header):
+The shipped model uses per-principal Basic auth (`PRINCIPAL_ID` + `PRINCIPAL_SECRET_FILE`) plus guardian ownership checks. This section describes the older per-call HMAC design that was evaluated before the current principal-authenticated `/oc/*` model landed.
 
 ```
 signed = METHOD "\n" PATH+QUERY "\n" SHA256(body) "\n" nonce "\n" timestamp "\n" userId
@@ -138,7 +138,7 @@ x-channel-signature = HMAC-SHA256(channel_secret, signed)
 - **The SSE `GET /event`:** no body; sign with `SHA256("")`. It is **one** authenticated GET; replay protection covers the open handshake. The held-open stream is not re-validated per frame — its safety comes from the ownership filter (§3.2), not per-frame auth.
 - **Permission replies use fresh per-call signing** with a new nonce/timestamp — never the nonce from the originating `prompt_async` (which may be long expired by the time a tool pauses). Stated explicitly to prevent an implementer reusing it.
 
-`signPayload`/`verifySignature` in `channels-sdk/src/crypto.ts` gain `signRequest`/`verifyRequest`; the envelope path remains for the legacy buffered endpoint.
+The older `signPayload`/`verifySignature` proposal is superseded by the current principal-authenticated guardian ingress model.
 
 ### 3.2 `/event` ownership filtering — the gate that forbids pure transparency
 

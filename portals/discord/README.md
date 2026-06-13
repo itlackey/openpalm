@@ -23,7 +23,7 @@ Manual start example:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file stack.env \
+  --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
   -f channels.compose.yml \

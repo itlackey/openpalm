@@ -40,7 +40,7 @@ docker compose \
   -f core.compose.yml \
   -f channels.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   down
 ```
 
@@ -86,7 +86,7 @@ docker compose \
   -f core.compose.yml \
   -f channels.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   up -d
 ```
 

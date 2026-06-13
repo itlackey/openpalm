@@ -132,15 +132,15 @@ Mounts:
 | `$OP_HOME/config/guardian` | `/etc/opencode` | rw | Guardian OpenCode global config (`OPENCODE_CONFIG_DIR`) |
 | `$OP_HOME/knowledge/secrets/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` | ro | Shared OpenCode provider credentials (same file the assistant mounts) |
 | `$OP_HOME/data/logs` | `/opt/openpalm/logs` | rw | Guardian audit log directory |
-| `$OP_HOME/knowledge/secrets/<guardian-or-channel-secret>` | `/run/secrets/<name>` | ro | Guardian and channel HMAC secret files granted by Compose |
+| `$OP_HOME/knowledge/secrets/<guardian-or-principal-secret>` | `/run/secrets/<name>` | ro | Guardian and portal/direct principal secret files granted by Compose |
 
 Ports and networks:
 
 | Item | Value |
 |---|---|
 | Container port | `8080` |
-| Host bind | none |
-| Networks | `channel_lan`, `channel_public`, `assistant_net` |
+| Host bind | `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` plus `127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}` |
+| Networks | `portal_net`, `channel_lan`, `assistant_net` |
 
 Key env:
 
@@ -152,7 +152,7 @@ Key env:
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Moderator OpenCode config dir (from `config/guardian`) |
 | `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
-| `CHANNEL_<NAME>_SECRET_FILE` | `/run/secrets/channel_<name>_hmac` | Channel HMAC verification secret file |
+| `CHANNEL_<NAME>_SECRET_FILE` | `/run/secrets/channel_<name>_secret` | Channel principal seed secret file |
 | `GUARDIAN_CONTENT_VALIDATION` | `0` | Enable opt-in, fail-closed content validation of inbound messages |
 | `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local OpenCode moderator endpoint |
 | `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
@@ -161,7 +161,7 @@ Key env:
 
 Notes:
 
-- Guardian is internal-only from the host perspective.
+- Guardian's main proxy is localhost-published by default and never exposed publicly unless the bind address is changed deliberately.
 - It is the only bridge between addon ingress networks and `assistant_net`.
 - Guardian receives only explicitly granted secret files from `knowledge/secrets/`; it must not use service-level `env_file` or raw secret env values.
 
@@ -210,8 +210,8 @@ Key env (host process, not container):
 | `chat` | `${OP_CHAT_BIND_ADDRESS:-127.0.0.1}:${OP_CHAT_PORT:-3820}` | `8182` | `portal_net` | Guardian image OpenAI-compatible edge (chat profile alias) |
 | `api` | `${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}` | `8182` | `portal_net` | Guardian image OpenAI/Anthropic-compatible edge |
 | `voice` | `${OP_VOICE_BIND_ADDRESS:-127.0.0.1}:${OP_VOICE_PORT:-3810}` | `8186` | `channel_lan` | Voice interface |
-| `discord` | none | service-specific | `channel_lan` | No host port exposure |
-| `slack` | none | service-specific | `channel_lan` | No host port exposure |
+| `discord` | none | service-specific | `portal_net` | No host port exposure |
+| `slack` | none | service-specific | `portal_net` | No host port exposure |
 | `ollama` | `${OP_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434` | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/data`, `user: ${OP_UID}:${OP_GID}`, `OLLAMA_MODELS=/data/models` |
 
 Portal services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` where they write host mounts. The optional guardian-hosted OpenAI-compatible edge talks back to the main guardian over `/oc` using its own principal secret file.

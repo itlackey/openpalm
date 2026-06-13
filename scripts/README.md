@@ -27,7 +27,7 @@ Creates a local `.dev/` OpenPalm home for development.
 
 - Seeds `.dev/knowledge/env/user.env` and `.dev/knowledge/env/stack.env` when `--seed-env` is used
 - Copies the repo registry catalog into `.dev/registry/`
-- Copies `.dev/registry/addons/<name>/` into `.dev/config/stack/addons/<name>/` when `--enable-addon <name>` is used
+- Updates `.dev/knowledge/env/stack.env` `OP_ENABLED_ADDONS` when `--enable-addon <name>` is used
 - Seeds a local OpenCode config and memory `default_config.json`
 
 Examples:
@@ -41,7 +41,7 @@ Examples:
 Notes:
 
 - This is a dev-only compatibility layout, not the recommended user-facing manual setup flow
-- `stack.yml` in `.dev/config/stack/stack.yml` is capability metadata only; enabled addons still live in `.dev/config/stack/addons/`
+- Enabled addons live in `.dev/knowledge/env/stack.env` as `OP_ENABLED_ADDONS`
 
 ## Test and misc helpers
 
@@ -51,4 +51,3 @@ Notes:
 - `upgrade-test.sh` - upgrade scenario checks
 - `validate-registry.sh` - registry validation
 - `install-hooks.sh` - git hook setup
-

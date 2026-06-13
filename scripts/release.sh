@@ -4,7 +4,7 @@
 # images) share a single coordinated version. Portal adapters and the guardian
 # OpenAI-compatible API are part of that coordinated platform release.
 #
-# The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
+# The tag triggers the platform release workflow (Docker images, CLI binaries, GitHub release).
 # See docs/operations/release-management.md for the full process.
 #
 # Usage: ./scripts/release.sh 0.7.2
@@ -28,15 +28,10 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
-if git rev-parse "${TAG}" >/dev/null 2>&1; then
-  echo "Error: tag ${TAG} already exists." >&2
-  exit 1
-fi
-
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo ""
 echo "This will commit the release prep and push directly to '${CURRENT_BRANCH}'," >&2
-echo "then create and push tag '${TAG}' (which triggers the Release workflow)." >&2
+echo "then dispatch platform-release.yml for ref '${CURRENT_BRANCH}'." >&2
 echo "Ensure branch protection allows direct pushes for your account." >&2
 echo ""
 # Skip the prompt in non-interactive shells (CI) or when RELEASE_YES=1.
@@ -53,10 +48,9 @@ echo "Bumping platform packages to ${VERSION}..."
 ./scripts/bump-platform.sh "${VERSION}"
 
 # --- Stamp install-script versions ---
-# The Release workflow's tag-push path VERIFIES (does not bump) that the setup
-# scripts carry SCRIPT_VERSION == release version, and bump-platform.sh only
-# touches package.json manifests. Stamp them here so the tag created below
-# passes that guard. Keep these patterns in lockstep with release.yml.
+# The platform release workflow verifies these setup-script versions against the
+# requested release version. Stamp them here so the dispatched workflow sees a
+# coherent worktree.
 echo "Stamping setup scripts to ${VERSION}..."
 sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
 sed -i "s/^\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
@@ -79,13 +73,18 @@ git commit -m "chore: release ${VERSION}"
 echo "Pushing to ${CURRENT_BRANCH}..."
 git push origin "${CURRENT_BRANCH}"
 
-# --- Tag and push (triggers Release workflow) ---
-echo "Tagging ${TAG} and pushing..."
-git tag "${TAG}"
-git push origin "${TAG}"
+# --- Dispatch platform release workflow ---
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: gh CLI is required to dispatch platform-release.yml" >&2
+  exit 1
+fi
+
+echo "Dispatching platform-release.yml..."
+gh workflow run "platform-release.yml" --ref main -f version="${VERSION}" -f ref="${CURRENT_BRANCH}" -f dry_run=false
 
 echo ""
 echo "Release ${VERSION} initiated."
-echo "  Docker + CLI:   triggered by tag ${TAG}"
-echo "  npm packages:   platform packages (lib, channels-sdk, openpalm CLI) via the release workflow; channel adapters publish independently via publish-channel-*.yml"
+echo "  Workflow:       platform-release.yml"
+echo "  Release ref:    ${CURRENT_BRANCH}"
+echo "  npm packages:   platform packages via the platform release workflow; full/host releases include @openpalm/ui"
 echo "  Monitor:        gh run list --limit 10"

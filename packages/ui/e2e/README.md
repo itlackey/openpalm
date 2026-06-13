@@ -11,7 +11,7 @@
 Unit/integration coverage (~1130 tests, no Docker required):
 - `packages/ui/src/**/*.vitest.ts` — SvelteKit routes + server modules (mocked lib)
 - `packages/lib/src/**/*.test.ts` — control-plane logic
-- `packages/cli/src/*.test.ts`, `packages/channels-sdk/src/*.test.ts`, `containers/guardian/src/*.test.ts`
+- `packages/cli/src/*.test.ts`, `containers/guardian/src/*.test.ts`
 
 ## File conventions
 
@@ -70,7 +70,7 @@ NOT collected by Playwright (neither `*.pw.ts` nor `*.stack.ts`). Scripts that
 require special operator setup beyond the isolated stack (real voice hardware,
 channel credentials, AKM stash configuration, etc.).
 
-Current manual-only files: `voice.manual.ts`, `channel-guardian-pipeline.manual.ts`,
+Current manual-only files: `voice.manual.ts`, `channel-guardian-pipeline.manual.ts` (legacy placeholder that points at `scripts/oc-e2e.ts` / `scripts/oc-2turn.ts`),
 `scheduler.manual.ts`, `akm-config.manual.ts`.
 
 ## Wizard UX gate capture

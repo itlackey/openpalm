@@ -167,6 +167,8 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bun run test
+          bun run ui:check
+          bun run electron:test
 
       - name: Regression guard + already-published probe
         env:
@@ -568,7 +570,7 @@ jobs:
         run: |
           mkdir -p dist
           tar -czf "dist/openpalm-${{ inputs.version }}-deploy-bundle.tar.gz" \
-            .openpalm core packages scripts README.md
+            .openpalm containers packages portals scripts README.md
       - name: Download CLI artifacts
         uses: actions/download-artifact@v8
         with:

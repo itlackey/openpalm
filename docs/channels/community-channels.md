@@ -22,14 +22,14 @@ services:
     environment:
       PORT: '8187'
       PRINCIPAL_ID: my-channel
-      PRINCIPAL_SECRET_FILE: /run/secrets/channel_my_channel_hmac
+      PRINCIPAL_SECRET_FILE: /run/secrets/channel_my_channel_secret
     secrets:
-      - channel_my_channel_hmac
-    networks: [channel_lan]
+      - channel_my_channel_secret
+    networks: [portal_net]
 
 secrets:
-  channel_my_channel_hmac:
-    file: ${OP_HOME}/knowledge/secrets/channel_my_channel_hmac
+  channel_my_channel_secret:
+    file: ${OP_HOME}/knowledge/secrets/channel_my_channel_secret
 ```
 
 > First-party portal adapters are baked into the portal image. Custom community

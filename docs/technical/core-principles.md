@@ -12,7 +12,7 @@ The stack allows for three primary extension points.
 2. **Assistant extensions** are standard OpenCode resources that are mounted into the assistant container.
 3. **Automations** that run on the scheduler co-process inside the assistant container and have direct in-container access to the assistant to execute workflows on a recurring basis.
 
-The stack defines a special type of addon, referred to as a portal-style ingress addon. These services use the `openpalm/portal` docker image and are meant to be the entry point to the stack for external protocols such as Discord, Slack, MCP, and OpenAI/Anthropic-compatible APIs. Addons that provide services/tools to the rest of the stack can also be added — these can be any container you have access to pull (ollama for example, or the voice static file server which serves a browser UI without a guardian pipeline).
+The stack defines a special type of addon, referred to as a portal-style ingress addon. These services use the `openpalm/portal` docker image for baked protocol adapters such as Discord and Slack, while guardian-hosted ingress surfaces such as the OpenAI-compatible API and MCP gateway run from the `openpalm/guardian` image. These are the entry points to the stack for external protocols. Addons that provide services/tools to the rest of the stack can also be added — these can be any container you have access to pull (ollama for example, or the voice static file server which serves a browser UI without a guardian pipeline).
 
 ## File System
 
@@ -82,7 +82,7 @@ Subtrees:
 - `akm/` — AKM configuration (LLM, embedding, and related settings in `config.json`)
 - `endpoints.json` — OpenCode connection list (URL, label, optional password per endpoint) used by the admin UI's connection switcher; mode 0600. Survives `data/` wipes by design.
 
-**Rule:** allowed writers are: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or making targeted updates.
+**Rule:** allowed writers are: user direct edits and explicit admin UI/API config actions. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or make targeted updates.
 
 ### 1b) Stack (system-managed runtime assembly)
 
@@ -178,7 +178,7 @@ The stack is defined by combining the fixed Compose file set with Compose's nati
 
 To guarantee lifecycle operations never clobber user configuration:
 
-- **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits, CLI/admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested.
+- **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits and CLI/admin UI/API config actions — may create/update/remove files as requested.
 - **`config/stack/` is the live runtime assembly.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, and `channels.compose.yml`. `custom.compose.yml` is seeded once and user edits always win. Non-secret runtime configuration lives in `knowledge/env/stack.env`.
 - **`knowledge/env/` has strict access rules.** The assistant accesses user secrets via `akm env:user` from its `/stash` stash mount. There is no separate `/etc/vault/` mount. No container mounts `knowledge/env/` directly. Lifecycle operations never overwrite `knowledge/env/user.env`; they may update non-secret `knowledge/env/stack.env` and system-managed secret files in `knowledge/secrets/`.
 - **`data/` is service-writable within ownership boundaries.** Each container owns its designated data subdirectories. No container may access another service's data directories. Stack-wide data operations require the admin API.
@@ -216,7 +216,7 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | Service | Internal Port | Default Host Bind | Purpose |
 |---------|--------------|-------------------|---------|
 | **Assistant** (OpenCode) | 4096 | `127.0.0.1:3800` | OpenCode web UI + API |
-| **Voice addon** | 8186 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
+| **Voice addon** | 8186 | `127.0.0.1:8880` | Voice interface (TTS/STT) |
 | **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
 | **Guardian** | 8080 | (internal only) | Principal auth, `/oc/*` proxy, rate limiting, optional content validation |
 | **Guardian moderator** (OpenCode) | 4097 | (loopback only) | Local content-moderation model (when content validation is enabled) |

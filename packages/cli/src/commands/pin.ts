@@ -12,26 +12,26 @@ import {
 } from '@openpalm/lib';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-function selectedImages(args: { guardian?: string | boolean; channel?: string | boolean }): PinnablePlatformImage[] {
+function selectedImages(args: { guardian?: string | boolean; portal?: string | boolean }): PinnablePlatformImage[] {
   return [
     ...(args.guardian ? ['guardian' as const] : []),
-    ...(args.channel ? ['channel' as const] : []),
+    ...(args.portal ? ['portal' as const] : []),
   ];
 }
 
 export default defineCommand({
   meta: {
     name: 'pin',
-    description: 'Pin guardian/channel image tags in stack.env',
+    description: 'Pin guardian/portal image tags in stack.env',
   },
   args: {
     guardian: {
       type: 'string',
       description: 'Pin guardian to an explicit image tag',
     },
-    channel: {
+    portal: {
       type: 'string',
-      description: 'Pin channel to an explicit image tag',
+      description: 'Pin portal to an explicit image tag',
     },
     unpin: {
       type: 'boolean',
@@ -42,7 +42,7 @@ export default defineCommand({
   async run({ args }) {
     const images = selectedImages(args);
     if (images.length === 0) {
-      console.error('Select at least one target: --guardian <tag> and/or --channel <tag> (or use --unpin).');
+      console.error('Select at least one target: --guardian <tag> and/or --portal <tag> (or use --unpin).');
       process.exit(1);
     }
 

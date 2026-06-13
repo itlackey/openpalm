@@ -452,7 +452,7 @@ Mostly unchanged. Corrections:
   `publish-voice*.yml`. This is the proven model-image + decoupled-build pattern.
 - **Phase 1 — Local AI single image (CPU): voice + embeddings baked in.** Build the
   one `local-ai:latest-cpu` image with the gateway **plus** the Kokoro/Whisper
-  runtimes (folded in from `core/voice`) **and** an embedding runtime, all in the
+  runtimes (folded in from `containers/voice`) **and** an embedding runtime, all in the
   one container; `local-ai-models:v1` carries every default model. Wire embeddings
   to `config/akm/config.json` and voice to `OP_TTS/STT_BASE_URL` (pointing at the
   gateway). Ship `publish-local-ai.yml` + `publish-local-ai-models.yml`. No

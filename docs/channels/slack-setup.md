@@ -60,7 +60,7 @@ SLACK_ALLOWED_USERS=U01ABCDEF23
 SLACK_BLOCKED_USERS=U09ZZZZZZ99
 ```
 
-`CHANNEL_SLACK_SECRET_FILE` is system-managed and points to the channel HMAC secret granted from `~/.openpalm/knowledge/secrets/`.
+`PRINCIPAL_SECRET_FILE` is system-managed and points to the portal's Basic-auth principal secret granted from `~/.openpalm/knowledge/secrets/`.
 
 ## 3. Start the addon
 
@@ -70,7 +70,7 @@ Manual-first path:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f channels.compose.yml \
   --profile addon.slack \
@@ -122,9 +122,9 @@ Conversation notes:
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `SLACK_BOT_TOKEN` | yes | Bot User OAuth token (`xoxb-...`) |
-| `SLACK_APP_TOKEN` | yes | App-level Socket Mode token (`xapp-...`) |
+| `SLACK_BOT_TOKEN_FILE` | yes | Bot User OAuth token secret file (`xoxb-...`) |
+| `SLACK_APP_TOKEN_FILE` | yes | App-level Socket Mode token secret file (`xapp-...`) |
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
-| `CHANNEL_SLACK_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `knowledge/secrets/` |
+| `PRINCIPAL_SECRET_FILE` | system-managed | Path to the Guardian Basic-auth principal secret file |

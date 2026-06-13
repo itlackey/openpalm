@@ -19,13 +19,13 @@ OpenPalm ships on **three independent tracks** (per the knowledge note and `rele
 
 | Track | What | Versioning | Trigger today |
 |---|---|---|---|
-| **A — Platform** | lib, CLI, channels-sdk, guardian/assistant/channel images, voice images, CLI binaries, Electron, GitHub release | single coordinated version (`platformManifests`) | `v*` tag push **or** `release.yml` `workflow_dispatch` |
-| **B — Channel adapters** | `@openpalm/channel-{api,discord,slack}` | independent, per-package | push to `main` touching `packages/channel-*/**`, **or** per-adapter `workflow_dispatch` |
+| **A — Platform** | lib, CLI, guardian/assistant/portal images, voice images, CLI binaries, Electron, GitHub release | single coordinated version (`platformManifests`) | `v*` tag push **or** `release.yml` `workflow_dispatch` |
+| **B — Portal runtime inputs** | baked portal adapters + guardian-hosted API | coordinated with platform | same platform release flow |
 | **C — UI** | `@openpalm/ui` | independent | push to `main` touching `packages/ui/**`, **or** `publish-ui.yml` `workflow_dispatch` |
 
 `.github/release-package-groups.json` is the authoritative list:
-- `platformManifests` (7): `package.json`, `packages/lib`, `core/guardian`, `packages/cli`, `packages/channels-sdk`, `packages/electron`, `packages/electron/admin-tools`.
-- `independentNpmPackages` (4): `packages/ui`, `packages/channel-api`, `packages/channel-discord`, `packages/channel-slack`.
+- `platformManifests`: `package.json`, `packages/lib`, `containers/guardian`, `packages/cli`, `portals/discord`, `portals/slack`, `packages/electron`, `packages/electron/admin-tools`.
+- `independentNpmPackages`: `packages/ui`.
 
 Current version drift snapshot (proves the tracks really do drift): all 7 platform manifests + 3 adapters are `0.11.0-rc.6`; `packages/ui` is `0.11.0-rc.17`.
 
@@ -35,33 +35,31 @@ Current version drift snapshot (proves the tracks really do drift): all 7 platfo
 |---|---|---|---|---|---|
 | 1 | `@openpalm/lib` (npm) | `release.yml` → `publish-lib-npm` (release.yml:549) | `v*` tag / dispatch | npmjs | `platformManifests` |
 | 2 | `openpalm` CLI (npm) | `release.yml` → `publish-cli-npm` (release.yml:609) | `v*` tag / dispatch | npmjs | platform |
-| 3 | `@openpalm/channels-sdk` (npm) | `release.yml` → `publish-channels-sdk-npm` (release.yml:696) | `v*` tag / dispatch | npmjs | platform |
-| 4 | `openpalm/assistant`, `/guardian`, `/channel` (Docker, amd64+arm64) | `release.yml` → `push-images` matrix (release.yml:203) | `v*` tag / dispatch | Docker Hub | `v<version>` + `latest` (stable only) |
-| 5 | `openpalm/voice:{latest,v<v>}-{cpu,cu121}` | **`publish-voice.yml`** (separate) | push `core/voice/**` / dispatch | Docker Hub | own `version` input |
-| 6 | `openpalm/voice-models` | **`publish-voice-models.yml`** (separate) | push `core/voice/Dockerfile.models` / dispatch | Docker Hub | own `tag` input |
+| 3 | `openpalm/assistant`, `/guardian`, `/portal` (Docker, amd64+arm64) | `release.yml` → `push-images` matrix (release.yml:203) | `v*` tag / dispatch | Docker Hub | `v<version>` + `latest` (stable only) |
+| 4 | `openpalm/voice:{latest,v<v>}-{cpu,cu121}` | **`publish-voice.yml`** (separate) | push `containers/voice/**` / dispatch | Docker Hub | own `version` input |
+| 5 | `openpalm/voice-models` | **`publish-voice-models.yml`** (separate) | push `containers/voice/Dockerfile.models` / dispatch | Docker Hub | own `tag` input |
 | 7 | CLI binaries ×5 | `release.yml` → `build-cli-artifacts` (release.yml:275) | `v*` tag / dispatch | GitHub assets | platform |
 | 8 | Electron installers (mac/linux/win) | `release.yml` → `build-electron-artifacts` (release.yml:328) | `v*` tag / dispatch | GitHub assets | platform |
 | 9 | GitHub release + checksums + deploy bundle | `release.yml` → `release` (release.yml:418) | `v*` tag / dispatch | GitHub release | platform |
 | 10 | git tag `v<version>` | `release.yml` → `prepare-tag` (release.yml:29) | dispatch creates; push consumes | git | platform |
 | 11 | `scripts/setup.sh` / `setup.ps1` `SCRIPT_VERSION` stamps | `prepare-tag` (dispatch) / `release.sh` (manual) | with platform bump | repo file | platform |
 | 12 | `@openpalm/ui` (npm) + `ui-v<v>` GitHub release | **`publish-ui.yml`** → `publish-npm-package.yml` | push `packages/ui/**` / dispatch | npmjs + GitHub | independent |
-| 13 | `@openpalm/channel-{api,discord,slack}` (npm) | **`publish-channel-*.yml`** → `publish-npm-package.yml` | push `packages/channel-*/**` / dispatch | npmjs | independent |
 
 ### 1.3 Internal coupling the bump must keep coherent
 
 - **CLI → lib floor range.** `bump-platform.sh` (scripts/bump-platform.sh:53-65) rewrites any `@openpalm/lib` `">=X <N.0.0"` dependency range so the floor tracks lib's version. CI enforces this (ci.yml "Validate platform version sync").
 - **Dockerfile ARG pins** that are *not* a release version but must be kept in lockstep by CI, not the release workflow:
-  - `OPENCODE_VERSION=1.15.13` in `core/assistant/Dockerfile:14` **and** `core/guardian/Dockerfile:18` (ci.yml validates).
-  - `AKM_CLI_VERSION=0.8.0` in `core/assistant/Dockerfile:18` (ci.yml validates; guardian no longer installs akm-cli).
-  - `BUN_VERSION` lockstep across assistant/guardian/channel (ci.yml "Validate BUN_VERSION sync").
+  - `OPENCODE_VERSION=1.15.13` in `containers/assistant/Dockerfile:14` **and** `containers/guardian/Dockerfile:18` (ci.yml validates).
+  - `AKM_CLI_VERSION=0.8.0` in `containers/assistant/Dockerfile:18` (ci.yml validates; guardian no longer installs akm-cli).
+  - `BUN_VERSION` lockstep across assistant/guardian/portal (ci.yml "Validate BUN_VERSION sync").
 - **Image tag resolution at runtime.** `config-persistence.ts:27` `DEFAULT_IMAGE_TAG = "latest"`; `stack.env` carries `OP_IMAGE_TAG=latest`. Voice resolves `${OP_VOICE_IMAGE_TAG:-latest-<variant>}` (registry.ts `voiceImageRef`). So Docker images are consumed by **moving `latest` tags**, not by `v<version>` — meaning a stable platform release MUST produce `latest`/`latest-*` tags or fresh installs break (documented as an outstanding 0.11.0 risk in release-management.md:351-357).
-- **`CHANNEL_PACKAGE`** in `.openpalm/config/stack/channels.compose.yml` (lines 18/47/73/112) currently reads `@openpalm/channel-*@latest`. Adapters reach users at container restart via `bun add` — so a coherent release also needs the adapter `@latest`/`@next` dist-tags to actually exist (release-management.md:309-316).
+- **`PORTAL_PACKAGE`** in `.openpalm/config/stack/channels.compose.yml` selects baked portal adapters in the shared `openpalm/portal` image.
 
 ### 1.4 Where the current design risks half-published releases
 
-1. **Platform npm vs Docker ordering is wrong for a bundling guarantee.** `push-images` (Docker) runs in parallel with `release`/npm jobs and only `needs: prepare-tag`. npm publish jobs run *after* `release` (release.yml:554-556). But the assistant/guardian/channel images **bundle `channels-sdk` at build time** (channel Dockerfile:13) and install `akm-cli`/adapters at runtime — so images can be pushed **before** the npm packages they conceptually correspond to are live. For platform packages this is mostly cosmetic (images bundle from source, not npm), but it means a release can show "images pushed, npm failed" with no gate.
-2. **Tracks are siloed — no single coherent version.** A major/minor cut requires the maintainer to run `release.yml` (Track A) **and** separately dispatch `publish-ui.yml` (Track C) **and** the three `publish-channel-*.yml` (Track B) **and** possibly `publish-voice.yml`. Nothing enforces they share a version or all succeed. The 0.11.0 cutover checklist (release-management.md:298-321) is a manual, error-prone list precisely because of this.
-3. **Auto-triggers on merge-to-main publish unpredictably.** Any push to `main` touching `packages/ui/**` or `packages/channel-*/**` auto-publishes a patch/prerelease bump (publish-ui.yml:10-12, publish-channel-*.yml:3-5). During a coordinated release this races the orchestrator and can publish an *uncoordinated* version mid-release.
+1. **Platform npm vs Docker ordering can still half-publish.** `push-images` (Docker) runs in parallel with `release`/npm jobs and only `needs: prepare-tag`. For platform packages this is mostly cosmetic (images bundle from source, not npm), but it means a release can show "images pushed, npm failed" with no gate.
+2. **Tracks are still split.** A major/minor cut requires the maintainer to run `release.yml` (Track A), separately dispatch `publish-ui.yml` (Track C), and possibly `publish-voice.yml`. Nothing fully enforces they share a version or all succeed.
+3. **Auto-triggers on merge-to-main publish unpredictably.** Any push to `main` touching `packages/ui/**` auto-publishes a patch/prerelease bump. During a coordinated release this can still race the orchestrator.
 4. **Voice is fully out-of-band.** `push-voice-images` is *commented out* of `release.yml` (release.yml:264-269); voice ships only via `publish-voice.yml`. A platform release never produces matching voice tags unless the maintainer remembers to dispatch it. release-management.md:351-354 flags that `voice:latest-*` has **never existed**.
 5. **Partial GitHub release.** Mitigated already: the release job deletes-then-recreates (release.yml:469-480) because `softprops` strips assets on re-cut. Good pattern, but it lives only in Track A.
 6. **No global preflight.** Nothing checks "is `v<version>` already on npm / Docker / git" before starting. Individual npm jobs treat "already published" as success (idempotent), but there is no upfront "this version is partially out there, resume vs abort" decision.
@@ -72,11 +70,9 @@ Current version drift snapshot (proves the tracks really do drift): all 7 platfo
 
 ### 2.1 Hard ordering constraints
 
-- **C1 — npm before the Docker images that consume them at build:** the **channel** image bundles `channels-sdk` from *source* (channel Dockerfile:13), so it does not literally need npm. BUT for a coherent release we still publish npm first so a failed npm publish aborts before we push immutable image tags. (Soft for platform; see C5.)
+- **C1 — npm before Docker when the release depends on npm artifacts:** still useful so a failed npm publish aborts before immutable image tags are pushed.
 - **C2 — `@openpalm/lib` before `openpalm` (CLI) on npm:** the CLI's `publish-cli-npm` already waits for lib to be resolvable on the registry (release.yml:640-664). Enforce in the DAG.
-- **C3 — `@openpalm/channels-sdk` before the channel adapters:** adapters declare `channels-sdk` as an **optional peer** `>=0.8.0 <1.0.0` (channel-discord/package.json). For a coordinated major/minor, the new sdk must exist on npm before adapters are published so the floor range resolves.
-- **C4 — adapters/`@openpalm/ui` on npm before flipping `CHANNEL_PACKAGE` / declaring the release done:** runtime `bun add @openpalm/channel-*@<tag>` and `@openpalm/ui@<tag>` must resolve (release-management.md:309-316).
-- **C5 — voice-models image before voice images:** `core/voice/Dockerfile` pulls `voice-models` (publish-voice-models.yml header). So `publish-voice-models.yml` must precede `publish-voice.yml` *when the model pin changed*.
+- **C3 — voice-models image before voice images:** `containers/voice/Dockerfile` pulls `voice-models` (publish-voice-models.yml header). So `publish-voice-models.yml` must precede `publish-voice.yml` *when the model pin changed*.
 - **C6 — git tag + GitHub release LAST:** the tag is the immutable "this happened" marker; publish it only after npm + Docker succeed, so a failed publish never leaves a tag pointing at an unpublished release. (Today `prepare-tag` creates the tag FIRST on dispatch — see Risk in §4.)
 
 ### 2.2 Proposed publish DAG (top = first)
@@ -91,18 +87,13 @@ prepare (validate version, clean tree, preflight "not already published", run te
   │  @openpalm/lib                                                     │
   │     │                                                              │
   │     ├──► openpalm (CLI)         [C2]                               │
-  │     └──► @openpalm/channels-sdk                                    │
-  │              │                                                     │
-  │              ├──► @openpalm/channel-api      [C3]                  │
-  │              ├──► @openpalm/channel-discord  [C3]                  │
-  │              └──► @openpalm/channel-slack    [C3]                  │
   │  @openpalm/ui  (independent of lib at runtime; can run in parallel)│
   └───────────────────────────────────────────────────────────────────┘
         │ (all npm green)
         ▼
   ┌──────────── Docker + binaries layer (parallel matrices) ──────────┐
-  │  push-images: assistant / guardian / channel   [C1]               │
-  │  voice-models (only if model pin changed)  ──► voice cpu/cu121 [C5]│
+  │  push-images: assistant / guardian / portal   [C1]                │
+  │  voice-models (only if model pin changed)  ──► voice cpu/cu121 [C3]│
   │  build-cli-artifacts ×5                                            │
   │  build-electron-artifacts ×3 (builds UI for bundle)               │
   └───────────────────────────────────────────────────────────────────┘
@@ -111,8 +102,8 @@ prepare (validate version, clean tree, preflight "not already published", run te
   git tag v<version>  +  GitHub release (assets, checksums)   [C6]
         │
         ▼
-  post-publish: flip/verify CHANNEL_PACKAGE tag, verify latest/latest-* exist,
-                update CHANGELOG marker (stable only)   [C4]
+  post-publish: verify baked portal adapter selection + latest/latest-* tags,
+                update CHANGELOG marker (stable only)
 ```
 
 Rationale: the npm layer is the only one with intra-dependency edges, so order it strictly. Docker/binary/electron matrices are mutually independent (`fail-fast: false`) and only need "npm is live" as a gate. Tag + GitHub release go last so the immutable marker implies everything before it succeeded.

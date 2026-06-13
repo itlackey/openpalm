@@ -326,7 +326,7 @@ to the in-container OpenCode (which is the assistant) via
 automations that exist in the wild (Report 2 confirms none in our bundled set
 but user automations are out of our control). The OpenCode password is already
 the right credential for this — the cron preamble in
-`core/assistant/entrypoint.sh:123` is the only consumer and is easy to retarget.
+`containers/assistant/entrypoint.sh:123` is the only consumer and is easy to retarget.
 
 **Migration:** `entrypoint.sh:123` changes from exporting `OP_ASSISTANT_TOKEN`
 to exporting `OPENCODE_SERVER_PASSWORD` (already in env) under the name
@@ -459,7 +459,7 @@ phase until the previous one is green on main.**
 
 - Add `OPENCODE_SERVER_PASSWORD` and `OPENCODE_SERVER_USERNAME` plumbing to the
   guardian env block in `.openpalm/config/stack/core.compose.yml:120-127`. Today
-  guardian reads these in `core/guardian/src/forward.ts:25-30` but the compose
+  guardian reads these in `containers/guardian/src/forward.ts:25-30` but the compose
   block doesn't set them. (Report 2 finding.)
 - Add migration log path constant `data/logs/migration-0.11.0.log`.
 - Add `config/endpoints.json` to the file-permissions test suite (mode 0600).
@@ -521,7 +521,7 @@ phase until the previous one is green on main.**
   - `packages/lib/src/control-plane/types.ts` (`adminToken`, `assistantToken` fields)
   - `packages/lib/src/control-plane/lifecycle.ts:37-83`
   - `.openpalm/config/stack/core.compose.yml:66`
-  - `core/assistant/entrypoint.sh:123` (replace with `OPENCODE_SERVER_PASSWORD`)
+  - `containers/assistant/entrypoint.sh:123` (replace with `OPENCODE_SERVER_PASSWORD`)
   - wizard token-display UI (`packages/ui/src/routes/setup/+page.svelte` token block)
 - Delete `packages/ui/src/lib/components/AuthGate.svelte` (~120 LOC) — the
   admin/non-admin toggle is gone. Connection switcher replaces it.
@@ -568,7 +568,7 @@ LOC are approximate (from Report 2 plus my read-through).
 | `packages/lib/src/control-plane/config-persistence.ts` (token writers) | ~30 | Persisted token blocks in stack.env. |
 | `packages/ui/src/routes/setup/+page.svelte` (wizard token UI block) | ~40 | Wizard no longer displays admin token. |
 | Per-route `requireAdmin` token-fallback branches | ~80 | ~38 routes; just the `else if (token)` branch in each. |
-| `core/assistant/entrypoint.sh:123` `OP_ASSISTANT_TOKEN` export | ~10 | Replaced by `OPENCODE_SERVER_PASSWORD` export. |
+| `containers/assistant/entrypoint.sh:123` `OP_ASSISTANT_TOKEN` export | ~10 | Replaced by `OPENCODE_SERVER_PASSWORD` export. |
 | `packages/ui/src/routes/admin/audit/+server.ts` | ~60 | Audit API route. OpenCode session logs replace it. |
 | `packages/ui/src/lib/components/AuditTab.svelte` | ~150 | Audit tab UI. Operator reads OpenCode session logs directly. |
 | `appendAudit` call sites across `/admin/*` routes (~25 routes) | ~75 | One call per route after auth check. |

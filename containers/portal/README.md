@@ -11,8 +11,7 @@ build time.
 3. `portal-entrypoint.ts` imports that package.
 4. The adapter is instantiated and its `start()` method is called.
 
-There is no runtime `bun add`, no adapter npm install at boot, and no separate
-`channels-sdk` package.
+There is no runtime `bun add` and no adapter npm install at boot.
 
 ## Environment variables
 

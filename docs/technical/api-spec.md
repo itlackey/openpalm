@@ -57,8 +57,8 @@ Status code is `200` when running, `503` when unavailable.
 
 ### `GET /guardian/stats`
 
-Returns guardian runtime statistics: uptime, rate limiter state, nonce cache
-size, active session counts, and per-channel/per-status request counters.
+Returns guardian runtime statistics: uptime, rate limiter state, event/session
+ownership counters, and per-status request counters.
 This endpoint is served directly by the guardian process (not proxied through admin).
 
 Auth: Protected by the `op_session` cookie when an admin password is
@@ -79,12 +79,15 @@ Response:
     "active_user_limiters": 5,
     "active_channel_limiters": 2
   },
-  "nonce_cache": { "size": 42, "max_size": 50000, "window_ms": 300000 },
-  "sessions": { "active": 3, "max_size": 10000, "ttl_ms": 900000 },
+  "oc_proxy": {
+    "enabled": true,
+    "session_owners": 3,
+    "permission_owners": 1,
+    "event_subscribers": 2
+  },
   "requests": {
     "total": 150,
-    "by_status": { "ok": 140, "rate_limited": 10 },
-    "by_channel": { "chat": 100, "api": 50 }
+    "by_status": { "ok": 140, "rate_limited": 10 }
   }
 }
 ```
@@ -221,7 +224,8 @@ Rules:
 - Allowed core services:
   `assistant`, `guardian`, `admin`
 - Allowed addon services: installed addon service names such as `chat`, `api`,
-  `voice`, `discord`, or `slack` when a matching overlay exists in `stack/addons/`.
+  `voice`, `discord`, or `slack` when enabled through the fixed compose set and
+  active addon/profile selection.
 
 Success response:
 
@@ -375,7 +379,7 @@ Body:
 - `enabled` (optional) -- Set to `true` or `false`.
 
 When disabling, runs compose down for affected services.
-When enabling a channel addon, generates an HMAC secret.
+When enabling a portal-style addon, ensures the required principal secret files exist.
 
 Response:
 
@@ -857,7 +861,7 @@ Auth: `requireAdmin`
 Body:
 
 ```json
-{ "key": "openpalm/HMAC_SECRET", "length": 32 }
+{ "key": "openpalm/guardian-admin-token", "length": 32 }
 ```
 
 - `key` (required) -- Secret entry name.
@@ -866,7 +870,7 @@ Body:
 Response:
 
 ```json
-{ "ok": true, "provider": "env-file", "entry": { "key": "openpalm/HMAC_SECRET", "scope": "system", "kind": "generated" } }
+{ "ok": true, "provider": "env-file", "entry": { "key": "openpalm/guardian-admin-token", "scope": "system", "kind": "generated" } }
 ```
 
 Error responses:

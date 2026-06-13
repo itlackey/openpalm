@@ -220,6 +220,8 @@ describe('sweepStalePid', () => {
 
 describe('startLocalOpenCode (SDK stubbed)', () => {
   it('spawns, writes runtime.json + pidfile, and stop() cleans them up', async () => {
+    const originalPassword = process.env.OPENCODE_SERVER_PASSWORD;
+    const originalUsername = process.env.OPENCODE_SERVER_USERNAME;
     _setSpawn(() => makeFakeChild({ listenUrl: 'http://127.0.0.1:54321' }) as never);
 
     const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
@@ -244,8 +246,8 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
 
     // Process env is restored after spawn — the password should not leak
     // into the rest of the Electron main.
-    expect(process.env.OPENCODE_SERVER_PASSWORD).toBeUndefined();
-    expect(process.env.OPENCODE_SERVER_USERNAME).toBeUndefined();
+    expect(process.env.OPENCODE_SERVER_PASSWORD).toBe(originalPassword);
+    expect(process.env.OPENCODE_SERVER_USERNAME).toBe(originalUsername);
 
     await handle!.stop();
     expect(existsSync(runtimePath(dataDir))).toBe(false);
@@ -253,6 +255,7 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
   }, 10_000);
 
   it('writes the unavailable sentinel and returns null when spawn throws', async () => {
+    const originalPassword = process.env.OPENCODE_SERVER_PASSWORD;
     _setSpawn(() => { throw new Error('spawn opencode ENOENT: no such file or directory'); });
 
     const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
@@ -265,7 +268,7 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     expect(existsSync(pidfilePath(dataDir))).toBe(false);
 
     // Env is restored even after failure.
-    expect(process.env.OPENCODE_SERVER_PASSWORD).toBeUndefined();
+    expect(process.env.OPENCODE_SERVER_PASSWORD).toBe(originalPassword);
   });
 
   it('sweeps stale state from a previous run before spawning', async () => {

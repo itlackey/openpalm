@@ -417,14 +417,12 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
  * that needs no manual setup beyond installing nvidia-container-toolkit).
  *
  * Returns the absolute path of the overlay, or null when there is no
- * enabled voice addon directory to write into.
+ * voice compose overlay to patch.
  */
 function writeCdiOverlayIfNeeded(homeDir: string): string | null {
-  const addonDir = join(homeDir, 'config', 'stack', 'addons', VOICE_ADDON);
-  // No addon directory → nothing to overlay onto. Returning null keeps
-  // composeUp's file list valid (no stray reference to a non-existent file).
-  if (!existsSync(addonDir)) return null;
-  const overlayPath = join(addonDir, 'compose.cdi.yml');
+  const stackDir = join(homeDir, 'config', 'stack');
+  if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
+  const overlayPath = join(stackDir, 'voice.compose.cdi.yml');
   const yaml = [
     '# Generated overlay — switches voice-cuda from runtime:nvidia to CDI.',
     '# Applied only when the host probe shows the legacy NVIDIA runtime is',
@@ -490,13 +488,13 @@ async function detectRootlessDocker(): Promise<boolean> {
  * Write a sibling overlay that drops the `user:` directive from each
  * voice service. Mirrors writeCdiOverlayIfNeeded: caller includes the
  * returned path in composeUp's file list. Returns null when there is
- * no enabled voice addon directory to write into (so the file list
- * stays valid and Docker doesn't blow up on a missing -f arg).
+ * no voice compose overlay to patch (so the file list stays valid and Docker
+ * doesn't blow up on a missing -f arg).
  */
 function writeRootlessOverlayIfNeeded(homeDir: string): string | null {
-  const addonDir = join(homeDir, 'config', 'stack', 'addons', VOICE_ADDON);
-  if (!existsSync(addonDir)) return null;
-  const overlayPath = join(addonDir, 'compose.rootless.yml');
+  const stackDir = join(homeDir, 'config', 'stack');
+  if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
+  const overlayPath = join(stackDir, 'voice.compose.rootless.yml');
   // `user: null` in YAML drops the directive when compose merges files.
   // We cover all three voice service variants so the overlay works no
   // matter which profile is active.

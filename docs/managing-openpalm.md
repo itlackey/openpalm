@@ -108,7 +108,7 @@ Channels, services, and integrations are all addons.
 
 Current shipped network model:
 
-- channel-style addons join `channel_lan` by default
+- first-party portals join `portal_net` by default; `channel_lan` remains as a compatibility bridge for legacy/custom overlays
 - guardian bridges addon ingress to `assistant_net`
 - public exposure only happens when an overlay intentionally joins `channel_public` or changes its host bind policy
 
@@ -334,7 +334,7 @@ All ports are `127.0.0.1`-bound by default.
 
 **View audit / activity logs:**
 ```bash
-# Channel ingress (HMAC, replay, rate limit) — guardian's structured audit
+# Portal/direct ingress decisions (auth, ownership, rate limit) — guardian's structured audit
 tail -f ~/.openpalm/data/logs/guardian-audit.log
 
 # Chat + tool activity (the audit trail since v0.11.0)

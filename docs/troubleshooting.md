@@ -96,7 +96,7 @@ docker compose \
   -f core.compose.yml \
   -f channels.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   up -d
 ```
 
@@ -127,7 +127,7 @@ grep -E 'BASE_URL' ~/.openpalm/knowledge/env/stack.env
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  --env-file stack.env \
+  --env-file ../../knowledge/env/stack.env \
   logs assistant
 ```
 
@@ -149,15 +149,15 @@ Then recreate any services that depend on that value.
 
 ---
 
-## 7. Channel HMAC or auth errors
+## 7. Portal auth or guardian ingress errors
 
-**Symptoms:** channel containers return `401`, `403`, or guardian verification errors.
+**Symptoms:** portal containers return `401`, `403`, or guardian authorization errors.
 
 **Fix:**
 
-- verify the channel addon is part of the compose file set you started
-- check `~/.openpalm/knowledge/secrets/` for the relevant channel HMAC secret file and verify the service has a matching `*_FILE` grant
-- recreate the affected channel and guardian services after changing secrets
+- verify the portal addon is part of the compose file set you started
+- check `~/.openpalm/knowledge/secrets/` for the relevant principal secret file and verify the service has a matching `PRINCIPAL_SECRET_FILE` grant
+- recreate the affected portal and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the
 live non-secret values come straight from `knowledge/env/stack.env`; service secrets come from `knowledge/secrets/`.
@@ -209,7 +209,7 @@ docker compose \
   -f core.compose.yml \
   -f channels.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   down -v
 
 rm -rf "$HOME/.openpalm"

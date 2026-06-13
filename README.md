@@ -13,7 +13,7 @@ OpenPalm is two things: a **harness** and a **stack**.
 **The harness** runs on your machine — either as a CLI binary or an Electron desktop app. It manages a single directory (`~/.openpalm/`) that contains plain files you can read and edit:
 
 - Docker Compose files and addon overlays
-- Environment variable files (system config, channel secrets, user API keys)
+- Environment variable files (system config, principal secret files, user API keys)
 - OpenCode configuration (model, providers, persona)
 - AKM configuration (memory, embeddings, knowledge stash)
 - Voice and channel configuration
@@ -23,10 +23,10 @@ The harness job is unglamorous: download Docker images, place the right content 
 **The stack** is what the harness runs. At its core:
 
 - An **OpenCode assistant** in Docker — your AI, talking to whatever model you point it at, with persistent memory and skills via AKM
-- A **Guardian** — the only way in from the outside, enforcing HMAC signatures, replay detection, and rate limiting on every message, with optional fail-closed content validation (heuristic screen + local OpenCode moderator) when enabled
-- Optional **channel containers** — Discord, Slack, API, voice chat, or anything you build — each one just a compose overlay
+- A **Guardian** — the only way in from the outside, enforcing principal-authenticated ingress, ownership checks, and rate limiting on every request, with optional fail-closed content validation (heuristic screen + local OpenCode moderator) when enabled
+- Optional **portal containers** — Discord, Slack, voice chat, or anything you build — each one just a compose overlay
 
-Official clients are the Electron desktop app and the OpenCode web interface (served directly by the assistant container). Everything else reaches the assistant through a channel → guardian pipeline.
+Official clients are the Electron desktop app and the OpenCode web interface (served directly by the assistant container). Everything else reaches the assistant through a portal/direct-ingress → guardian pipeline.
 
 ---
 
@@ -36,7 +36,7 @@ No proprietary orchestration layer, no magic runtime, no lock-in. Just container
 
 ## Where things stand
 
-**0.11.0** is a refactor and simplification release. The architecture is stable — assistant, guardian, channels, and the AKM memory/skills layer all work and are in daily use. This release consolidates the stack layout, removes a lot of incidental complexity, and ships the revised setup wizard.
+**0.11.0** is a refactor and simplification release. The architecture is stable — assistant, guardian, portal/direct ingress, and the AKM memory/skills layer all work and are in daily use. This release consolidates the stack layout, removes a lot of incidental complexity, and ships the revised setup wizard.
 
 **0.12.x** will focus on stabilization and hardening: install/upgrade lifecycle robustness, better error recovery, and closing the remaining rough edges before v1.
 
@@ -46,8 +46,8 @@ If you're running OpenPalm today, 0.11.0 is the release to be on. If you need pr
 ## What you get
 
 - **An AI assistant that's yours** — Runs on [OpenCode](https://opencode.ai), talks to any OpenAI-compatible model (local or remote), and remembers things between sessions.
-- **Channels** — Talk to your assistant through a web chat, an API, Discord, Slack, or build your own adapter.
-- **Security by default** — Every message passes through HMAC-signed verification, replay detection, and rate limiting before it reaches the assistant. The assistant itself has no Docker socket access.
+- **Portals** — Talk to your assistant through a web chat, an API, Discord, Slack, or build your own adapter.
+- **Security by default** — Every ingress request passes through guardian principal authentication, ownership checks, and rate limiting before it reaches the assistant. The assistant itself has no Docker socket access.
 - **Plain files all the way down** — The stack is Docker Compose files. Config is env files. Addons are compose overlays. No database for state, no hidden config, nothing you can't `cat`.
 - **LAN-first** — Nothing is exposed to the internet unless you explicitly choose to expose it.
 
@@ -90,7 +90,7 @@ This downloads the CLI binary for your platform, seeds `~/.openpalm/`, opens the
 ## Make it yours
 
 - **Swap models** — Point it at OpenAI, Anthropic, Groq, Ollama, LMStudio, or anything OpenAI-compatible.
-- **Add channels** — Enable Discord, Slack, API, or web chat by copying an addon into your stack.
+- **Add portals** — Enable Discord, Slack, API, or web chat by enabling the relevant addon in your stack.
 - **Extend the assistant** — Drop in OpenCode plugins, custom tools, or let the assistant find what they need with built-in [AKM](https://github.com/itlackey/akm) support.
 - **Schedule automations** — Add YAML files to run recurring tasks on a cron schedule.
 - **Protect your secrets** — Built-in log redactor masks token/secret/key/password/HMAC values from every service log; `openpalm scan` lists which sensitive slots are populated in your env files.
@@ -99,7 +99,7 @@ This downloads the CLI binary for your platform, seeds `~/.openpalm/`, opens the
 
 <div>
 <img src="packages/ui/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
-<p>Clients talk to channels. Channels sign messages and send them through the guardian. The guardian validates everything and forwards to the assistant. The assistant does the work. That's it.</p>
+<p>Clients talk to portals or guardian-hosted ingress surfaces. Portals authenticate to the guardian, the guardian validates and forwards to the assistant, and the assistant does the work. That's it.</p>
 </div>
 
 ![Architecture](docs/technical/architecture.svg)
@@ -115,7 +115,7 @@ For the full walkthrough, see [How It Works](docs/how-it-works.md). For security
 | [How It Works](docs/how-it-works.md) | Architecture and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Config, addons, secrets, automations |
 | [Core Principles](docs/technical/core-principles.md) | Security invariants and design rules |
-| [Community Channels](docs/channels/community-channels.md) | Build your own channel adapter |
+| [Community Channels](docs/channels/community-channels.md) | Build your own guardian-facing portal adapter |
 | [Full docs index](docs/README.md) | Everything else |
 
 ## Contributing

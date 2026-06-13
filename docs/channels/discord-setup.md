@@ -52,7 +52,7 @@ Manual-first path:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f channels.compose.yml \
   --profile addon.discord \
@@ -106,7 +106,7 @@ Conversation notes:
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DISCORD_BOT_TOKEN` | yes | Bot token |
+| `DISCORD_BOT_TOKEN_FILE` | yes | Bot token secret file path |
 | `DISCORD_APPLICATION_ID` | yes for command registration | Discord application ID |
 | `DISCORD_REGISTER_COMMANDS` | no | Disable startup slash-command registration when `false` |
 | `DISCORD_ALLOWED_GUILDS` | no | Comma-separated guild allowlist |
@@ -114,4 +114,4 @@ Conversation notes:
 | `DISCORD_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom slash commands |
-| `CHANNEL_DISCORD_SECRET_FILE` | system-managed | Path to Guardian HMAC secret file granted from `knowledge/secrets/` |
+| `PRINCIPAL_SECRET_FILE` | system-managed | Path to the Guardian Basic-auth principal secret file |

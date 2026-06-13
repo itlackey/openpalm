@@ -53,10 +53,10 @@ Docker `restart` does NOT re-read compose config changes (env_file paths, mount 
 **Time:** ~10s | **Prerequisites:** None
 
 ```bash
-bun run check    # svelte-check + TypeScript + sdk tests
+bun run check    # svelte-check + TypeScript
 ```
 
-Validates type correctness across all SvelteKit admin code and channels-sdk.
+Validates type correctness across all SvelteKit admin code.
 
 ---
 
@@ -68,7 +68,7 @@ Validates type correctness across all SvelteKit admin code and channels-sdk.
 bun run test
 ```
 
-Runs all non-admin unit tests: lib, cli, guardian, channels-sdk, channel adapters, scheduler, assistant-tools.
+Runs all non-admin unit tests: lib, cli, guardian, portal adapters, scheduler-related helpers, and admin-tools.
 
 ---
 

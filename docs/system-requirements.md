@@ -114,13 +114,13 @@ unless you intentionally change bind addresses in `knowledge/env/stack.env`.
 | Host port | Service | Variable |
 |---|---|---|
 | `3800` | Assistant | `OP_ASSISTANT_PORT` |
-| `3810` | Voice addon | `OP_VOICE_PORT` |
+| `8880` | Voice addon | `OP_VOICE_PORT_HOST` |
 | `3820` | Chat addon | `OP_CHAT_PORT` |
 | `3821` | Guardian OpenAI API addon | `OP_API_PORT` |
 | `3880` | Admin UI (host process) | `OP_HOST_UI_PORT` |
 | `2222` | Assistant SSH (optional) | `OP_ASSISTANT_SSH_PORT` |
 
-`guardian` stays internal to Docker networks by default.
+`guardian` exposes only localhost-bound direct/admin listeners by default.
 
 ---
 

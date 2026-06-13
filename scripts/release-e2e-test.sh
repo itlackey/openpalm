@@ -611,31 +611,31 @@ for forbidden in OP_UI_LOGIN_PASSWORD OPENAI_API_KEY GROQ_API_KEY; do
   fi
 done
 
-# ── Step 12: Test chat channel (if installed) ─────────────────────────
+# ── Step 12: Test guardian-hosted chat/api edge (if installed) ────────
 
-step "Check for chat channel"
+step "Check for guardian-hosted chat/api edge"
 
-CHAT_CONTAINER=$(docker ps --format '{{.Names}}' | grep "openpalm-chat" || true)
+CHAT_CONTAINER=$(docker ps --format '{{.Names}}' | grep "openpalm-guardian-api" || true)
 if [ -n "$CHAT_CONTAINER" ]; then
-  pass "Chat channel container is running: $CHAT_CONTAINER"
+  pass "Guardian-hosted chat/api edge is running: $CHAT_CONTAINER"
 
   # Check chat channel health
   CHAT_HEALTH=$(docker inspect --format '{{.State.Health.Status}}' "$CHAT_CONTAINER" 2>/dev/null || echo "no-healthcheck")
   if [ "$CHAT_HEALTH" = "healthy" ]; then
-    pass "Chat channel is healthy"
+    pass "Guardian-hosted chat/api edge is healthy"
   elif [ "$CHAT_HEALTH" = "no-healthcheck" ]; then
     # Container running but no healthcheck defined
     CHAT_RUNNING=$(docker inspect --format '{{.State.Status}}' "$CHAT_CONTAINER" 2>/dev/null || echo "unknown")
     if [ "$CHAT_RUNNING" = "running" ]; then
-      pass "Chat channel is running (no healthcheck defined)"
+      pass "Guardian-hosted chat/api edge is running (no healthcheck defined)"
     else
-      fail "Chat channel status: $CHAT_RUNNING"
+      fail "Guardian-hosted chat/api edge status: $CHAT_RUNNING"
     fi
   else
-    fail "Chat channel health: $CHAT_HEALTH"
+    fail "Guardian-hosted chat/api edge health: $CHAT_HEALTH"
   fi
 else
-  skip "Chat channel not installed (optional)"
+  skip "Guardian-hosted chat/api edge not installed (optional)"
 fi
 
 # ── Step 13: Verify no root-owned files (if we created temp dirs) ────

@@ -14,7 +14,7 @@ RUN apt-get update \
 
 # OpenCode binary. Mirrors the assistant image: install with HOME=/usr/local so
 # the binary lands at /usr/local/.opencode/bin and is reachable from any user.
-# Keep OPENCODE_VERSION in lockstep with core/assistant/Dockerfile.
+# Keep OPENCODE_VERSION in lockstep with containers/assistant/Dockerfile.
 ARG OPENCODE_VERSION=1.17.3
 ENV OPENCODE_VERSION=${OPENCODE_VERSION}
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install \
@@ -35,7 +35,7 @@ ENV OPENCODE_CONFIG_DIR=/etc/opencode
 # never a third writer) — do not reintroduce a bare global install.
 
 WORKDIR /app
-COPY core/guardian/ .
+COPY containers/guardian/ .
 RUN rm -f bun.lock bun.lockb \
     && bun install --production
 
