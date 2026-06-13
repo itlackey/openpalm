@@ -98,6 +98,67 @@ services:
       retries: 5
       start_period: 30s
 
+  # ── mDNS: guardian advertises <name>-guardian.local on the LAN ───────
+  # Activated by profile addon.mdns (default OFF). Set OP_ASSISTANT_NAME in
+  # stack.env to override the base name (default: openpalm). Requires
+  # OP_BIND_ADDRESS != 127.0.0.1 (i.e. LAN exposure must already be enabled).
+  # network_mode:host is mandatory for avahi to publish to the LAN interface;
+  # the container installs avahi-daemon + dbus-daemon at startup.
+  #
+  # DAEMON WIRING NOTE: the avahi-daemon entrypoint script is embedded here as
+  # a command override. Requires the host to have D-Bus available or dbus-daemon
+  # to start inside the container. Tested on Linux (systemd hosts). On macOS
+  # (OrbStack/Docker Desktop) mDNS is handled by the OS and this sidecar has
+  # no effect — do not enable on macOS.
+  mdns-guardian:
+    profiles: ["addon.mdns"]
+    image: alpine:3.20
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      OP_ASSISTANT_NAME: ${OP_ASSISTANT_NAME:-openpalm}
+    command: >
+      sh -c "
+        apk add --no-cache avahi avahi-tools dbus &&
+        mkdir -p /run/dbus &&
+        dbus-daemon --system --fork --nopidfile &&
+        NAME=\"$${OP_ASSISTANT_NAME:-openpalm}-guardian\" &&
+        avahi-daemon --no-chroot --daemonize &&
+        avahi-publish -s \"$$NAME\" _http._tcp 3830 \"hostname=$$NAME.local\" &
+        echo \"mDNS: advertising $$NAME.local\" &&
+        wait
+      "
+    # NOTE: This sidecar publishes the mDNS name but the actual resolution
+    # entry is <OP_ASSISTANT_NAME>-guardian.local. The avahi-daemon registers
+    # the hostname and the avahi-publish command registers the service record.
+    # Requires the guardian to be LAN-exposed (OP_BIND_ADDRESS=0.0.0.0 or a
+    # LAN IP). Enable: add addon.mdns to OP_ENABLED_ADDONS in stack.env.
+
+  # ── mDNS: assistant advertises <name>.local when LAN-enabled ─────────
+  # Only enable when OP_ASSISTANT_BIND_ADDRESS is non-loopback. When the
+  # assistant port is loopback-only (default), this sidecar is harmless but
+  # misleading — keep both OFF unless you have enabled LAN access.
+  mdns-assistant:
+    profiles: ["addon.mdns.assistant"]
+    image: alpine:3.20
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      OP_ASSISTANT_NAME: ${OP_ASSISTANT_NAME:-openpalm}
+    command: >
+      sh -c "
+        apk add --no-cache avahi avahi-tools dbus &&
+        mkdir -p /run/dbus &&
+        dbus-daemon --system --fork --nopidfile &&
+        NAME=\"$${OP_ASSISTANT_NAME:-openpalm}\" &&
+        avahi-daemon --no-chroot --daemonize &&
+        avahi-publish -s \"$$NAME\" _http._tcp 3800 \"hostname=$$NAME.local\" &
+        echo \"mDNS: advertising $$NAME.local\" &&
+        wait
+      "
+
 # Portal-style ingress services join portal_net to reach the guardian.
 # channel_lan remains defined for one release so custom overlays keep validating.
 networks:
