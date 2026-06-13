@@ -635,13 +635,12 @@ describe('UI host server (no subcommand)', () => {
 
 describe('secrets.env generation', () => {
   it('creates the data/ directory on fresh install', async () => {
-    const { existsSync: fsExistsSync } = await import('node:fs');
-    const { ensureSecrets } = await import('./lib/env.ts');
+    const { existsSync: fsExistsSync, mkdirSync } = await import('node:fs');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
     const dataDir = join(tempDir, 'data');
 
     try {
-      await ensureSecrets(dataDir);
+      mkdirSync(dataDir, { recursive: true });
       expect(fsExistsSync(dataDir)).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });

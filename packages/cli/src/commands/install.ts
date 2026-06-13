@@ -20,6 +20,7 @@ import {
   MigrationError,
   runDeploy,
   writeSystemEnv,
+  collectBindAddressWarnings,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -157,6 +158,12 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 }
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
+  // Warn early if any bind address is non-loopback so the operator sees it
+  // before services start.
+  for (const line of collectBindAddressWarnings(process.env as Record<string, string>)) {
+    logger.warn(line);
+  }
+
   const homeDir = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
   const dataDir = `${homeDir}/data`;
@@ -189,7 +196,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   if (alreadyInstalled && options.force) {
-    // Use the helper's own backup-path convention so the prompt is honest about
     // Match backupOpenPalmHome()'s convention so the prompt is honest.
     const plannedBackup = `${homeDir}/data/backups/<timestamp>`;
 
@@ -199,15 +205,15 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const interactive = process.stdin.isTTY && process.stdout.isTTY;
     if (!options.assumeYes && interactive) {
       const proceed = await promptYesNo(
-        `--force will move the existing OpenPalm install at ${homeDir} to ${plannedBackup}. Continue? [y/N]`,
+        `--force will back up (copy) the existing OpenPalm install at ${homeDir} to ${plannedBackup}. Continue? [y/N]`,
       );
       if (!proceed) {
         console.log('Install aborted. Re-run with --yes (or -y) to skip this confirmation in non-interactive use.');
         return;
       }
     }
-    // #461: stop the currently-running stack BEFORE moving OP_HOME aside.
-    // Moving the home dir while the old stack is up leaves orphaned containers
+    // #461: stop the currently-running stack BEFORE backing up OP_HOME.
+    // Backing up the home dir while the old stack is up leaves orphaned containers
     // holding the project name + host ports, so the fresh install collides on
     // `compose up`. Volumes are preserved (no -v). Best-effort: a Docker-down
     // host or a never-started install simply has nothing to bring down.

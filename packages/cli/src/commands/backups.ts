@@ -22,12 +22,26 @@ export default defineCommand({
     prune: defineCommand({
       meta: {
         name: 'prune',
-        description: 'Prune older backup snapshots while keeping the newest N',
+        description: [
+          'Prune older backup snapshots while keeping the newest N.',
+          '',
+          'Recommended retention policy (owner decision #3):',
+          '  - Major upgrade (e.g. 0.x → 1.0.0): keep backups covering 1 major release back',
+          '    plus all intermediate minor versions (e.g. upgrading to 1.0.0 → retain 0.13.x).',
+          '  - Minor upgrade (e.g. 0.12.0 → 0.13.0): keep 1 prior minor (the most recent',
+          '    backup from the previous minor series).',
+          '',
+          'Pruning is never automatic and always confirm-gated. Use --yes to skip the prompt.',
+        ].join('\n'),
       },
       args: {
         keep: {
           type: 'string',
-          description: 'Number of newest backups to keep',
+          description: [
+            'Number of newest backups to keep.',
+            'Policy guidance: for a minor upgrade, --keep 2 retains the pre-upgrade snapshot',
+            'plus one prior; for a major upgrade, set N to cover all intermediate minors.',
+          ].join(' '),
           required: true,
         },
         yes: {
