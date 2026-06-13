@@ -4,7 +4,7 @@
  * Runs AFTER structural validation (validatePayload) and BEFORE the message is
  * forwarded to the assistant. Two layers, cheap → expensive:
  *
- *   1. Heuristic pre-screen (channels-sdk/content-screen): pure, in-process,
+ *   1. Heuristic pre-screen (content-screen.ts): pure, in-process,
  *      ~microseconds. Scores every message. Most traffic stops here (risk 0).
  *   2. LLM escalation: only messages whose risk crosses the threshold are sent
  *      to the guardian's local OpenCode moderator (a small model, warm), which
@@ -14,7 +14,7 @@
  * escalated message (timeout, error, unparseable output), the message is
  * BLOCKED. Because that trades availability for security, the whole stage is
  * opt-in via GUARDIAN_CONTENT_VALIDATION — when disabled, every message is
- * allowed (the structural + HMAC guarantees still apply upstream).
+ * allowed (the structural + auth guarantees still apply upstream).
  */
 
 import { screenContent, type ContentSignal } from './content-screen.ts';

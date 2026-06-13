@@ -1,9 +1,9 @@
 /**
  * Live E2E of the guardian /oc/* proxy path using the baked OpenCode client,
- * run inside a throwaway container on the channel_lan network (the guardian has no
+ * run inside a throwaway container with direct access to the guardian (no
  * host port). Drives exactly what the Discord/Slack/API renderers do:
  *   create session -> open filtered /event -> prompt_async -> stream deltas to
- *   turn-end -> abort/delete. Proves signing, allowlist, ownership, /event
+ *   turn-end -> abort/delete. Proves Basic auth, allowlist, ownership, /event
  *   ownership-filter + fan-out, sessionID correlation, and turn-end — end to end
  *   against the live assistant. NO Discord required.
  *

@@ -183,7 +183,7 @@ export function endTurn(turnId: string): void {
 /**
  * End every in-flight turn for `sessionId` and return how many were ended. The
  * /event fan-out calls this when it observes the session's turn-end signal
- * (session.idle / an explicit idle session.status — channels-sdk isTurnEnd). An
+ * (session.idle / an explicit idle session.status — isTurnEnd from the portal runtime). An
  * async prompt_async turn returns 204 immediately while the model keeps working,
  * so its slot must be released at SESSION-IDLE, not at HTTP return — otherwise
  * the in-flight cap and the wall-clock sweep are both dead. Idempotent.

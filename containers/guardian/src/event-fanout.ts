@@ -133,7 +133,7 @@ function framePermissionRequestId(frameJson: string): string | undefined {
 
 /**
  * Pure: does this frame signal turn-end for its session? Uses the SAME idle
- * definition the channels use (channels-sdk isTurnEnd / TURN_IDLE_STATUSES) so
+ * definition the channels use (isTurnEnd / TURN_IDLE_STATUSES from the portal runtime) so
  * the guardian's turn accounting and the channel's render agree on "turn over".
  */
 function frameIsTurnEnd(frameJson: string): boolean {

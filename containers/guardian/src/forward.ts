@@ -3,7 +3,7 @@
  *
  * Manages session lifecycle (create, reuse, clear) with caching and
  * per-key locking to avoid duplicate session creation under concurrent
- * requests. Uses the shared assistant HTTP client from channels-sdk.
+ * requests. Uses the shared assistant HTTP client (assistant-client.ts).
  */
 
 import {

@@ -7,7 +7,7 @@
  * implements:
  *
  *   1. Per-call Basic auth + user identity binding.
- *   2. Endpoint allowlist, default-deny, hardened matching — §3.3, channels-sdk
+ *   2. Endpoint allowlist, default-deny, hardened matching — §3.3, oc-bounds.ts
  *      matchAllowlist.
  *   3. Session-ownership authz + POST /session create-body rewrite + GET /session
  *      response filtering — §3.4, guardian-local ownership.ts.
@@ -95,7 +95,7 @@ function json(status: number, data: unknown): Response {
 /**
  * Build a FRESH minimal header set for the upstream call — never forward the
  * channel's incoming headers wholesale (host/content-length/connection corrupt
- * the stream; the channel HMAC headers must not leak to the assistant). Mirrors
+ * the stream; inbound auth headers must not leak to the assistant). Mirrors
  * the UI proxy's buildForwardHeaders.
  */
 function buildUpstreamHeaders(req: Request, hasBody: boolean): Headers {
@@ -270,7 +270,7 @@ async function routeAllowed(
   // frame (event-fanout.ts), so only the principal that was SHOWN the request
   // can answer it. A reply for an unrelayed/foreign requestID is fail-closed
   // denied (principal A cannot answer principal B's request). The reply itself
-  // carries fresh per-call signing (new nonce/timestamp) verified above — never
+  // carries fresh per-call Basic auth verified above — never
   // the originating prompt_async nonce (§3.1).
   if (template === "/permission/{requestID}/reply") {
     if (!requestID || !ownsPermission(requestID, principal)) {
