@@ -17,12 +17,13 @@
  *   local install always gets the user's attention instead of being silently
  *   routed around.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
 import { stackEnvPathFromStackDir } from "./paths.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
+import { SKELETON_VERSION_STAMP } from "./ui-assets.js";
 
 export type LocalStackState =
   | "not_installed"     // nothing installed — offer install / add remote
@@ -73,6 +74,8 @@ export interface LocalStatus {
   detail?: Record<string, unknown>;
   /** Present (and meaningful) when nothing is installed: can the user install? */
   runtime?: RuntimeInfo;
+  /** Skeleton version mismatch alert (when OP_HOME was seeded from a different release). */
+  skeletonMismatch?: { expected: string; actual: string };
 }
 
 export type ComposeServiceStatus = {
@@ -168,6 +171,23 @@ export function classifyLocalInstall(stackDir: string): "not_installed" | "setup
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
   return "setup_incomplete";
+}
+
+/** Check if the OP_HOME skeleton was seeded from a different release. */
+export function checkSkeletonMismatch(stackDir: string): { expected: string; actual: string } | null {
+  const homeDir = join(stackDir, "..", "..");
+  const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
+  if (!existsSync(stampPath)) return null;
+  let actual: string;
+  try {
+    actual = readFileSync(stampPath, "utf-8").trim();
+  } catch {
+    return null;
+  }
+  const env = parseEnvFile(stackEnvPathFromStackDir(stackDir));
+  const expected = env.OP_RELEASE_VERSION ?? env.OP_IMAGE_TAG ?? "";
+  if (!expected || expected === actual) return null;
+  return { expected, actual };
 }
 
 export function deriveLocalStackState(
