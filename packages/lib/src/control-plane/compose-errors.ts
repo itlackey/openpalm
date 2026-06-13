@@ -138,14 +138,15 @@ export function mapDockerError(stderr: string): DockerErrorMapping {
     /health check|is unhealthy|unhealthy|failed to start/i.test(failure.reason)
   );
 
-  if (/cannot connect to the docker daemon|docker daemon is not running|error during connect|is the docker daemon running/i.test(stderr)) {
+  if (/cannot connect to the docker daemon|docker daemon is not running|error during connect|is the docker daemon running|connection refused/i.test(stderr)) {
     return {
       code: "docker_unavailable",
       message: "Docker appears to be stopped or unreachable. Start Docker, then retry.",
     };
   }
 
-  const portMatch = /(?:bind: address already in use|port is already allocated|listen tcp .*?:)(\d+)/i.exec(stderr)
+  const portMatch = /(?:bind: address already in use|port is already allocated).*?([0-9]{2,5})\b/i.exec(stderr)
+    ?? /listen tcp[^:]*:([0-9]{2,5})\b/i.exec(stderr)
     ?? /Ports are not available: .*?:([0-9]+)\b/i.exec(stderr);
   if (portMatch) {
     return {

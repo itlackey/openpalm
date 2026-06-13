@@ -393,4 +393,46 @@ describe("checkAndUpdateUiBuild", () => {
     expect(result.error).toBeUndefined();
     expect(tarballFetched).toBe(false);
   });
+
+  // ── Regression: prerelease versions must use the `next` npm dist-tag channel ──
+  // This test ensures that prerelease app versions (containing '-') correctly
+  // query the npm `next` channel for UI updates, not `latest`. The `latest`
+  // channel excludes prereleases, so a prerelease app would incorrectly see
+  // "no update available" if it queried `latest`.
+
+  it('checkAndUpdateUiBuild uses `next` channel for prerelease app versions', async () => {
+    makeBuild(dataUi, '0.11.0');
+
+    let requestedChannel: string | null = null;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('registry.npmjs.org/@openpalm/ui/')) {
+        requestedChannel = url.split('/@openpalm/ui/')[1];
+        return manifestResponse('0.12.0-rc.1');
+      }
+      return new Response('', { status: 200 });
+    };
+
+    // Call with a prerelease version — should query the `next` channel
+    await checkAndUpdateUiBuild('0.12.0-rc.1', join(opHome, 'data'));
+    expect(requestedChannel).toBe('next');
+  });
+
+  it('checkAndUpdateUiBuild uses `latest` channel for stable app versions', async () => {
+    makeBuild(dataUi, '0.11.0');
+
+    let requestedChannel: string | null = null;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('registry.npmjs.org/@openpalm/ui/')) {
+        requestedChannel = url.split('/@openpalm/ui/')[1];
+        return manifestResponse('0.12.0');
+      }
+      return new Response('', { status: 200 });
+    };
+
+    // Call with a stable version — should query the `latest` channel
+    await checkAndUpdateUiBuild('0.12.0', join(opHome, 'data'));
+    expect(requestedChannel).toBe('latest');
+  });
 });
