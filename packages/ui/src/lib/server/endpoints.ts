@@ -214,7 +214,6 @@ function writeFile(data: EndpointsFile): void {
 
 function defaultEndpoint(): ActiveEndpoint {
   const url =
-    wizardOpencodeUrl ??
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
     `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;

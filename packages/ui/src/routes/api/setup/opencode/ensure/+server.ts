@@ -10,7 +10,6 @@
  */
 import { spawn } from 'node:child_process';
 import { json } from '@sveltejs/kit';
-import { setWizardOpencodeUrl } from '$lib/server/endpoints.js';
 import type { RequestHandler } from './$types';
 
 // Module-level singleton — persists for the lifetime of the wizard server process.
@@ -30,7 +29,6 @@ function killWizardOpencode(): void {
   }
   _proc = null;
   _url = null;
-  setWizardOpencodeUrl(null);
 }
 if (!(globalThis as Record<string, unknown>).__opWizardOpencodeReaper) {
   (globalThis as Record<string, unknown>).__opWizardOpencodeReaper = true;
@@ -95,7 +93,6 @@ function spawnOpencodeServer(): Promise<string> {
       if (_proc === proc) {
         _proc = null;
         _url = null;
-        setWizardOpencodeUrl(null);
       }
       if (!resolved && code !== 0) reject(new Error(`OpenCode exited (code ${code}). Output: ${out.slice(0, 300)}`));
     });
@@ -105,7 +102,6 @@ function spawnOpencodeServer(): Promise<string> {
       if (_proc === proc) {
         _proc = null;
         _url = null;
-        setWizardOpencodeUrl(null);
       }
       reject(err);
     });
@@ -146,7 +142,6 @@ export const POST: RequestHandler = async () => {
       await stopWizardOpencode(_proc);
       const url = await spawnOpencodeServer();
       _url = url;
-      setWizardOpencodeUrl(url);
       return { url, started: true };
     })();
     const { url, started } = await _inFlight;
@@ -157,7 +152,6 @@ export const POST: RequestHandler = async () => {
     _inFlight = null;
     _proc = null;
     _url = null;
-    setWizardOpencodeUrl(null);
     return json({
       ok: false,
       error: err instanceof Error ? err.message : 'Failed to start OpenCode',

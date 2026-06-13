@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 
-const setWizardOpencodeUrl = vi.fn();
 const spawnMock = vi.fn();
 
 vi.mock('$lib/server/endpoints.js', () => ({
-  setWizardOpencodeUrl,
 }));
 
 vi.mock('node:child_process', () => ({
@@ -72,7 +70,6 @@ describe('POST /api/setup/opencode/ensure', () => {
     expect(firstBody).toEqual({ ok: true, url: 'http://127.0.0.1:40123', started: true });
     expect(secondBody).toEqual({ ok: true, url: 'http://127.0.0.1:40123', started: true });
     expect(process.env.OP_OPENCODE_URL).toBe('http://127.0.0.1:3800');
-    expect(setWizardOpencodeUrl).toHaveBeenLastCalledWith('http://127.0.0.1:40123');
   });
 
   test('exit after resolve clears wizard state and a later call respawns', async () => {
@@ -92,7 +89,6 @@ describe('POST /api/setup/opencode/ensure', () => {
 
     firstProc.exitCode = 1;
     firstProc.emit('exit', 1);
-    expect(setWizardOpencodeUrl).toHaveBeenLastCalledWith(null);
 
     const secondCall = mod.POST({} as Parameters<typeof mod.POST>[0]);
     setTimeout(() => {
