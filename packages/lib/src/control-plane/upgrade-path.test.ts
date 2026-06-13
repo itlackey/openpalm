@@ -24,7 +24,7 @@ const moduleUrls = {
   configPersistence: new URL('./config-persistence.js', import.meta.url).href,
   coreAssets: new URL('./core-assets.js', import.meta.url).href,
   installLock: new URL('./install-lock.js', import.meta.url).href,
-  registry: new URL('./registry.js', import.meta.url).href,
+  registry: new URL('./addons.js', import.meta.url).href,
 };
 const harnessDir = fileURLToPath(new URL('../../', import.meta.url));
 

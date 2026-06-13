@@ -30,28 +30,13 @@ const BUILTIN_ADDONS = ['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 
 const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
   api: `# API Gateway channel configuration
 # ---
-
-# HMAC secret for the API channel. Auto-generated during setup if left blank;
-# stored as knowledge/secrets/channel_api_secret.
-# @required @sensitive
-CHANNEL_API_SECRET=
 `,
   chat: `# Web Chat channel configuration
 # ---
-
-# HMAC secret for the chat channel. Auto-generated during setup if left blank;
-# stored as knowledge/secrets/channel_chat_secret.
-# @required @sensitive
-CHANNEL_CHAT_SECRET=
 `,
   discord: `# Discord bot configuration
 # ---
 
-# HMAC secret for the Discord channel. Auto-generated during setup if left blank.
-# @required @sensitive
-CHANNEL_DISCORD_SECRET=
-
-# ---
 # Discord credentials
 # ---
 
@@ -96,11 +81,6 @@ DISCORD_FORWARD_TIMEOUT_MS=0
   slack: `# Slack bot configuration
 # ---
 
-# HMAC secret for the Slack channel. Auto-generated during setup if left blank.
-# @required @sensitive
-CHANNEL_SLACK_SECRET=
-
-# ---
 # Slack credentials
 # ---
 

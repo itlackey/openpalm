@@ -13,7 +13,7 @@ import { parseEnvContent, parseEnvFile, mergeEnvContent, expandEnvVars } from '.
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { listEnabledAddonIds } from "./registry.js";
+import { listEnabledAddonIds } from "./addons.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
@@ -65,7 +65,7 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   }
 
   // Preserve the existing OP_SETUP_COMPLETE flag as-is.
-  // Only the wizard completion path (buildSystemSecretsFromSetup) writes "true".
+  // Only the wizard completion path (startDeploy, after health check) writes "true".
   // Defaulting to "false" here ensures a fresh install always shows the wizard.
   const parsed = parseEnvFile(systemEnvPath);
   const adminManaged: Record<string, string> = {

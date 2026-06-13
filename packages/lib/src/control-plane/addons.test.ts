@@ -18,7 +18,7 @@ import {
   setAddonEnabled,
   setAddonProfileSelection,
   uninstallAutomation,
-} from './registry.js';
+} from './addons.js';
 import { readSecret } from './secrets-files.js';
 
 let tempDir = '';

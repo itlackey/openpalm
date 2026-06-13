@@ -58,7 +58,7 @@ export type {
   AddonProfile,
   AddonProfileAvailability,
   RegistryAddonConfig,
-} from "./control-plane/registry.js";
+} from "./control-plane/addons.js";
 export {
   getRegistryAutomation,
   getRegistryAddonConfig,
@@ -73,7 +73,7 @@ export {
   setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
-} from "./control-plane/registry.js";
+} from "./control-plane/addons.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {
@@ -201,6 +201,7 @@ export type {
 
 export {
   runDeploy,
+  writeJournal,
   readDeployJournal,
   resolveDeployJournalPath,
   markSetupComplete,
@@ -262,7 +263,11 @@ export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets,
+  refreshCoreAssetsFromSource,
   seedAssistantPersonaFiles,
+  GUARDIAN_MANAGED_ASSETS,
+  SHIPPED_DEFAULT_HASHES,
+  isUnmodifiedDefault,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────
@@ -442,6 +447,9 @@ export {
 
 export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
+
+// ── Bind Address Startup Warning ─────────────────────────────────────────────
+export { collectBindAddressWarnings } from "./control-plane/bind-warning.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
 export type { UiBuildUpdateResult } from "./control-plane/ui-assets.js";

@@ -259,6 +259,69 @@ function seedPerImageTagVars(ctx: MigrationCtx): void {
   ctx.log(`seeded per-image tag vars from OP_IMAGE_TAG=${imageTag}`);
 }
 
+// ── Release migration v0.12.0: copy non-sensitive addon config from secret files → stack.env ─
+
+/**
+ * Keys that are sensitive and must stay as compose secret files.
+ * Matches the @sensitive annotation in BUILTIN_ADDON_ENV_SCHEMAS.
+ */
+const ADDON_SENSITIVE_KEY_RE = /(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$/i;
+
+/**
+ * Non-sensitive addon config keys that pre-C4 code wrote to knowledge/secrets/.
+ * These should live in stack.env so they are visible to `docker compose config`.
+ * The key filename in secrets/ is the lowercase key name; we read it and copy to
+ * stack.env only if the key is not already present there.
+ * Source files are NEVER deleted (user data).
+ */
+function migrateAddonConfigToStackEnv(ctx: MigrationCtx): void {
+  const envPath = stackEnvFile(ctx.stashDir);
+  if (!existsSync(envPath)) return;
+
+  const secretsDir = join(ctx.homeDir, 'knowledge', 'secrets');
+  if (!existsSync(secretsDir)) return;
+
+  const stackContent = readFileSync(envPath, 'utf-8');
+  const additions: Record<string, string> = {};
+
+  for (const filename of readdirSync(secretsDir)) {
+    // Only process simple env-key files (no dots, no sub-paths).
+    if (filename.includes('.') || filename.includes('/')) continue;
+
+    const envKey = filename.toUpperCase();
+    // Skip sensitive keys — they belong as secret files (compose secrets).
+    if (ADDON_SENSITIVE_KEY_RE.test(envKey)) continue;
+    // Skip if already present in stack.env.
+    if (new RegExp(`^${envKey}=`, 'm').test(stackContent)) {
+      ctx.log(`skip (exists in stack.env): ${envKey}`);
+      continue;
+    }
+
+    const filePath = join(secretsDir, filename);
+    try {
+      const value = readFileSync(filePath, 'utf-8').replace(/[\r\n]+$/, '');
+      if (value.length === 0) continue; // skip empty values
+      additions[envKey] = value;
+      ctx.log(`copy non-sensitive addon config: knowledge/secrets/${filename} -> stack.env ${envKey}`);
+    } catch {
+      ctx.log(`skip (unreadable): knowledge/secrets/${filename}`);
+    }
+  }
+
+  if (Object.keys(additions).length === 0) return;
+
+  if (ctx.dryRun) {
+    ctx.log(`[dry-run] would add ${Object.keys(additions).length} non-sensitive key(s) to stack.env`);
+    return;
+  }
+
+  let next = stackContent;
+  for (const [key, value] of Object.entries(additions)) {
+    next = upsertEnvValue(next, key, value);
+  }
+  writeFile600(ctx, envPath, next);
+}
+
 // ── Migration 0 → 1: 0.10.x `vault/` layout → 0.11.0 knowledge/ layout ────────
 
 const SECRET_KEY_RE = /(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$/;
@@ -466,6 +529,19 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
           throw new Error(`post-migration check failed: ${key} is missing`);
         }
       }
+    },
+  },
+  {
+    // Pinned to v0.12.0: the C4 slice moved non-sensitive addon config from
+    // knowledge/secrets/<KEY> files into stack.env. This migration copies any
+    // pre-existing non-sensitive secret files into stack.env (skip-if-present,
+    // never delete the source — source files are user data).
+    version: 'v0.12.0-rc.1',
+    describe: 'copy non-sensitive addon config from knowledge/secrets/ into stack.env',
+    apply: migrateAddonConfigToStackEnv,
+    verify(ctx) {
+      // Nothing to assert here beyond what apply() logs — it is copy-only and
+      // idempotent; a dry-run pass suffices.
     },
   },
 ];

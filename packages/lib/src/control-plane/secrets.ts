@@ -36,6 +36,15 @@ export function isSecretLikeStackEnvKey(key: string): boolean {
   return isSecretLikeKey(key);
 }
 
+/**
+ * Guard that prevents secret-like keys from being written to stack.env.
+ *
+ * The credentials route (addons/[name]/credentials/+server.ts) splits writes
+ * by `@sensitive` schema annotation: sensitive fields go to compose secret files
+ * via writeStackSecretEnv; non-sensitive fields go to stack.env via
+ * patchSecretsEnvFile. This guard is the last-resort catch for any code path
+ * that calls patchSecretsEnvFile (or writeSystemEnv) with a secret-like key.
+ */
 export function assertNoSecretLikeStackEnvKeys(updates: Record<string, string>): void {
   for (const key of Object.keys(updates)) {
     if (isSecretLikeStackEnvKey(key)) {

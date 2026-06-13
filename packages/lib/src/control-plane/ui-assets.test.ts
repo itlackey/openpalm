@@ -109,6 +109,14 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     // Local skeleton source at OPENPALM_REPO_ROOT/.openpalm (candidate 1).
     mkdirSync(join(repoRoot, ".openpalm", "config", "stack"), { recursive: true });
     writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "x.txt"), "seed\n");
+    // refreshCoreAssetsFromSource reads all MANAGED_ASSETS from the source; populate stubs.
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "core.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "services.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "channels.compose.yml"), "services: {}\n");
+    // SEEDED_ASSETS are also read from source when the target is absent.
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "custom.compose.yml"), "services: {}\n");
+    mkdirSync(join(repoRoot, ".openpalm", "config", "assistant"), { recursive: true });
+    writeFileSync(join(repoRoot, ".openpalm", "config", "assistant", "opencode.jsonc"), "{}\n");
     mkdirSync(opHome, { recursive: true });
   });
 

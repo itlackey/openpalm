@@ -343,3 +343,106 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(report.notes.join(' ')).toContain('Skipped OP_RELEASE_VERSION stamp');
   });
 });
+
+describe('C4 release migration v0.12.0-rc.1: non-sensitive addon config → stack.env', () => {
+  it('copies non-sensitive secret files into stack.env (skip-if-present)', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+    // Non-sensitive key (DISCORD_ALLOWED_GUILDS has no _TOKEN/_SECRET/_PASSWORD/_API_KEY suffix)
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_allowed_guilds'), '12345,67890\n');
+    // Sensitive key (DISCORD_BOT_TOKEN) — must NOT be copied to stack.env
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'), 'Bot.MySecretToken\n');
+    // Non-sensitive voice config
+    writeFileSync(join(home, 'knowledge', 'secrets', 'op_voice_whisper_model'), 'large\n');
+    // A file with a dot in the name should be skipped (not a simple env key)
+    writeFileSync(join(home, 'knowledge', 'secrets', 'auth.json'), '{}\n');
+
+    const report = ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    expect(report.migrated).toBe(true);
+    expect(report.applied).toContain('v0.12.0-rc.1');
+
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    // Non-sensitive keys copied
+    expect(stackEnv).toContain('DISCORD_ALLOWED_GUILDS=12345,67890');
+    expect(stackEnv).toContain('OP_VOICE_WHISPER_MODEL=large');
+    // Sensitive key NOT copied
+    expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN');
+    // auth.json skipped (has a dot)
+    expect(stackEnv).not.toContain('AUTH.JSON');
+
+    // Source files untouched (never deleted)
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'discord_allowed_guilds'))).toBe(true);
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'))).toBe(true);
+  });
+
+  it('skips keys already present in stack.env (idempotent)', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\nDISCORD_ALLOWED_GUILDS=existing\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_allowed_guilds'), 'new-value\n');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    // Existing stack.env value must not be overwritten
+    expect(stackEnv).toContain('DISCORD_ALLOWED_GUILDS=existing');
+    expect(stackEnv).not.toContain('DISCORD_ALLOWED_GUILDS=new-value');
+  });
+
+  it('is idempotent — a second run does not duplicate or alter keys', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_allowed_guilds'), '123\n');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    // Call again to verify idempotency of the apply function.
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    const afterSecond = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    // stack.env should only contain one occurrence of the key
+    const count = (afterSecond.match(/^DISCORD_ALLOWED_GUILDS=/mg) ?? []).length;
+    expect(count).toBe(1);
+  });
+
+  it('is copy-only — no source secret file is deleted', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+    const files = ['discord_allowed_guilds', 'op_voice_whisper_model', 'slack_allowed_channels'];
+    for (const f of files) {
+      writeFileSync(join(home, 'knowledge', 'secrets', f), 'somevalue\n');
+    }
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+
+    for (const f of files) {
+      expect(existsSync(join(home, 'knowledge', 'secrets', f))).toBe(true);
+    }
+  });
+
+  it('skips non-sensitive migration when secrets dir does not exist', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+    // No knowledge/secrets/ dir at all
+    const report = ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    expect(report.migrated).toBe(true);
+    expect(report.applied).toContain('v0.12.0-rc.1');
+  });
+
+  it('does not apply migration when target version predates v0.12.0-rc.1', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.11.0\nOP_RELEASE_VERSION=v0.11.0\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_allowed_guilds'), '123\n');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.11.9' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    expect(stackEnv).not.toContain('DISCORD_ALLOWED_GUILDS');
+  });
+});

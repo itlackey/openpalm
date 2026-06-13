@@ -30,7 +30,7 @@ import { createState, initializeStateSecrets } from "./lifecycle.js";
 import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./registry.js";
+import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -75,10 +75,9 @@ export type SetupSpec = {
 
 /**
  * Build the non-secret stack.env update payload from a setup spec.
- * Provider API keys and channel credentials are written as file-based secrets.
+ * Extracts owner name/email into OP_OWNER_* env vars.
  */
-export function buildSecretsFromSetup(
-  connections: SetupConnection[],
+export function buildOwnerEnvFromSetup(
   owner?: { name?: string; email?: string },
 ): Record<string, string> {
   const updates: Record<string, string> = {};
@@ -86,7 +85,6 @@ export function buildSecretsFromSetup(
   const ownerEmail = (owner?.email?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   if (ownerName) updates.OP_OWNER_NAME = ownerName;
   if (ownerEmail) updates.OP_OWNER_EMAIL = ownerEmail;
-  void connections;
   return updates;
 }
 
@@ -108,26 +106,6 @@ export function buildAuthJsonFromSetup(
     if (key) keys[cap.provider] = key;
   }
   return keys;
-}
-
-/**
- * Build the system-secret update for the wizard / CLI install path.
- *
- * Phase 4 of the auth/proxy refactor collapsed the legacy
- * `OP_UI_TOKEN` / `OP_ASSISTANT_TOKEN` pair into a single operator login
- * secret (`OP_UI_LOGIN_PASSWORD`). The browser stores the cookie value =
- * password; `requireAdmin()` compares the cookie against
- * `process.env.OP_UI_LOGIN_PASSWORD` via the existing `safeTokenCompare`.
- *
-  * `OP_OPENCODE_PASSWORD` may be supplied explicitly as a file-based secret in
-  * `knowledge/secrets/op_opencode_password` when OpenCode auth is enabled.
- */
-export function buildSystemSecretsFromSetup(
-  uiLoginPassword: string,
-): Record<string, string> {
-  return {
-    OP_UI_LOGIN_PASSWORD: uiLoginPassword,
-  };
 }
 
 // ── Channel Credential Env Var Mapping ───────────────────────────────────
@@ -192,7 +170,7 @@ export async function performSetup(
   }
 
   logger.info("performing setup", { connectionCount: connections.length });
-  const updates = buildSecretsFromSetup(connections, owner);
+  const updates = buildOwnerEnvFromSetup(owner);
   const providerKeys = buildAuthJsonFromSetup(connections);
 
   // Wrap all persistence work in try/finally so the lock is ALWAYS released.
@@ -210,7 +188,7 @@ export async function performSetup(
       }
       updateSecretsEnv(state, updates);
       updateSecretsEnv(state, channelSecretUpdates);
-      patchSecretsEnvFile(state.stackDir, buildSystemSecretsFromSetup(security.uiLoginPassword));
+      patchSecretsEnvFile(state.stackDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);

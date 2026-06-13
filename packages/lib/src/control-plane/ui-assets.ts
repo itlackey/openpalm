@@ -22,6 +22,7 @@ import { x as tarExtract } from 'tar';
 import { resolveBackupsDir, resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
 import { compareComparableVersions, isSameMajorVersion } from './versioning.js';
+import { refreshCoreAssetsFromSource } from './core-assets.js';
 
 const logger = createLogger('lib:ui-assets');
 
@@ -113,33 +114,6 @@ export function resolveLocalOpenpalmDir(): string | null {
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
 
 /**
- * SYSTEM-managed stack assets (relative to OP_HOME) that must be REFRESHED to the
- * shipped version on every install — NOT seed-if-missing. An OP_HOME carried over
- * from an older version otherwise keeps deploying stale compose structure (#472).
- * These are system-owned per core-principles; user-owned files (custom.compose.yml,
- * config/, secrets, stack.env) are deliberately excluded and stay seed-if-missing.
- */
-export const MANAGED_STACK_ASSETS = [
-  'config/stack/core.compose.yml',
-  'config/stack/services.compose.yml',
-  'config/stack/channels.compose.yml',
-] as const;
-
-/** Overwrite the system-managed stack assets from `srcOpenpalm` into `homeDir`. */
-export function refreshManagedStackAssets(srcOpenpalm: string, homeDir: string): string[] {
-  const refreshed: string[] = [];
-  for (const rel of MANAGED_STACK_ASSETS) {
-    const src = join(srcOpenpalm, rel);
-    if (!existsSync(src)) continue;
-    const dest = join(homeDir, rel);
-    mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(src, dest);
-    refreshed.push(rel);
-  }
-  return refreshed;
-}
-
-/**
  * Seed the bundled `.openpalm/` skeleton into OP_HOME — ONCE PER VERSION.
  *
  * Electron calls this on every launch; without a guard it re-copied the entire
@@ -173,7 +147,7 @@ export async function seedOpenPalmDir(
     // re-install over an existing OP_HOME picks up the current compose files
     // even when the skeleton stamp already matches (#472). User-owned files stay
     // seed-if-missing via the copyTree below.
-    const refreshed = refreshManagedStackAssets(local, homeDir);
+    const { updated: refreshed } = refreshCoreAssetsFromSource(local, homeDir);
     if (refreshed.length) logger.debug('refreshed managed stack assets', { refreshed });
     if (alreadySeeded) {
       logger.debug('skeleton already seeded for this version — managed assets refreshed, skipping full seed', { repoRef });
@@ -211,7 +185,7 @@ export async function seedOpenPalmDir(
     const srcOpenpalm = join(tmpDir, '.openpalm');
     if (!existsSync(srcOpenpalm)) throw new Error('.openpalm/ not found in tarball');
     // Refresh system-managed stack assets (overwrite), then seed the rest.
-    refreshManagedStackAssets(srcOpenpalm, homeDir);
+    refreshCoreAssetsFromSource(srcOpenpalm, homeDir);
     copyTree(srcOpenpalm, homeDir, { skipExisting: true });
     stamp();
   } finally {

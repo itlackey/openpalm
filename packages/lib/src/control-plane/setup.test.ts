@@ -4,9 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   validateSetupSpec,
-  buildSecretsFromSetup,
+  buildOwnerEnvFromSetup,
   buildAuthJsonFromSetup,
-  buildSystemSecretsFromSetup,
   performSetup,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
@@ -196,54 +195,44 @@ describe("validateSetupSpec", () => {
 
 });
 
-// ── Tests: buildSecretsFromSetup ─────────────────────────────────────────
+// ── Tests: buildOwnerEnvFromSetup ─────────────────────────────────────────
 
-describe("buildSecretsFromSetup", () => {
-  it("does not include UI login password in user secrets", () => {
+describe("buildOwnerEnvFromSetup", () => {
+  it("does not include UI login password", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OP_UI_LOGIN_PASSWORD).toBeUndefined();
-    expect(secrets.OP_UI_TOKEN).toBeUndefined();
+    const env = buildOwnerEnvFromSetup(spec.owner);
+    expect(env.OP_UI_LOGIN_PASSWORD).toBeUndefined();
+    expect(env.OP_UI_TOKEN).toBeUndefined();
   });
 
-  it("does not include SYSTEM_LLM_* in user secrets", () => {
+  it("does not include SYSTEM_LLM_* vars", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
-    expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
-    expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
+    const env = buildOwnerEnvFromSetup(spec.owner);
+    expect(env.SYSTEM_LLM_PROVIDER).toBeUndefined();
+    expect(env.SYSTEM_LLM_MODEL).toBeUndefined();
+    expect(env.SYSTEM_LLM_BASE_URL).toBeUndefined();
   });
 
   it("sets owner info when provided", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OP_OWNER_NAME).toBe("Test User");
-    expect(secrets.OP_OWNER_EMAIL).toBe("test@example.com");
+    const env = buildOwnerEnvFromSetup(spec.owner);
+    expect(env.OP_OWNER_NAME).toBe("Test User");
+    expect(env.OP_OWNER_EMAIL).toBe("test@example.com");
   });
 
   it("omits owner info when empty", () => {
-    const spec = makeValidSpec({ owner: { name: "", email: "" } });
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OP_OWNER_NAME).toBeUndefined();
-    expect(secrets.OP_OWNER_EMAIL).toBeUndefined();
+    const env = buildOwnerEnvFromSetup({ name: "", email: "" });
+    expect(env.OP_OWNER_NAME).toBeUndefined();
+    expect(env.OP_OWNER_EMAIL).toBeUndefined();
   });
 
-  it("does NOT include provider API keys in stack.env updates", () => {
-    // Provider API keys now live in OpenCode's auth.json — buildSecretsFromSetup
+  it("does NOT include provider API keys", () => {
+    // Provider API keys now live in OpenCode's auth.json — buildOwnerEnvFromSetup
     // returns only non-credential vars. See buildAuthJsonFromSetup for the key flow.
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
-    expect(secrets.OPENAI_API_KEY).toBeUndefined();
-    expect(secrets.ANTHROPIC_API_KEY).toBeUndefined();
-  });
-
-  it("does not include Ollama base URL in stack.env secrets", () => {
-    const caps: SetupConnection[] = [
-      { id: "ollama-1", name: "Ollama", provider: "ollama", baseUrl: "http://localhost:11434", apiKey: "" },
-    ];
-    const secrets = buildSecretsFromSetup(caps);
-    expect(secrets.SYSTEM_LLM_BASE_URL).toBeUndefined();
-    expect(secrets.OLLAMA_BASE_URL).toBeUndefined();
+    const env = buildOwnerEnvFromSetup(spec.owner);
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 });
 
@@ -303,14 +292,6 @@ describe("buildAuthJsonFromSetup", () => {
   });
 });
 
-describe("buildSystemSecretsFromSetup", () => {
-  it("returns the file-based UI login password update", () => {
-    const secrets = buildSystemSecretsFromSetup("test-admin-token-12345");
-    expect(secrets.OP_UI_LOGIN_PASSWORD).toBe("test-admin-token-12345");
-    expect(secrets.OP_UI_TOKEN).toBeUndefined();
-    expect(secrets.OP_ASSISTANT_TOKEN).toBeUndefined();
-  });
-});
 
 // ── Tests: performSetup ──────────────────────────────────────────────────
 

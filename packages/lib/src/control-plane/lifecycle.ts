@@ -12,7 +12,7 @@ import {
   resolveDataDir,
   resolveStackDir,
 } from "./home.js";
-import { ensureSecrets, readStackSecretEnv } from "./secrets.js";
+import { ensureSecrets } from "./secrets.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
@@ -27,7 +27,7 @@ import { checkDocker, composePreflight, composePull, composeUp, composeConfigSer
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
-import { getAddonServiceNames, listEnabledAddonIds } from "./registry.js";
+import { getAddonServiceNames, listEnabledAddonIds } from "./addons.js";
 import { compareComparableVersions, isComparableSemver, isSameMajorVersion } from "./versioning.js";
 import {
   buildPinnedImageTagEnv,
@@ -79,7 +79,6 @@ export function createState(): ControlPlaneState {
 
 export function initializeStateSecrets(state: ControlPlaneState): void {
   ensureSecrets(state);
-  Object.assign(process.env, readStackSecretEnv(state.stackDir));
 }
 
 
@@ -198,18 +197,50 @@ type DockerTagsResponse = { results?: unknown };
 
 const DOCKER_REGISTRY_TIMEOUT_MS = 10_000;
 
-function resolveNewestDockerTag(payload: unknown): string | null {
+/**
+ * Resolve the best Docker image tag from a registry tags payload.
+ *
+ * Constraints (both optional):
+ * - `sameMajorAs`  — only consider tags whose major component matches this tag.
+ * - `atOrBelow`    — only consider tags whose version is <= this tag.
+ *
+ * With no constraints: returns the first semver tag found, or the first
+ * non-"latest" tag as a fallback (mirrors the original resolveNewestDockerTag).
+ * With constraints: returns the highest semver tag satisfying all constraints.
+ */
+function resolveNewestDockerTag(
+  payload: unknown,
+  constraints: { sameMajorAs?: string; atOrBelow?: string } = {},
+): string | null {
   const results = (payload as DockerTagsResponse)?.results;
   if (!Array.isArray(results)) return null;
 
-  let fallback: string | null = null;
+  const { sameMajorAs, atOrBelow } = constraints;
+  const constrained = sameMajorAs !== undefined || atOrBelow !== undefined;
+
+  // Unconstrained path: return the first semver tag seen (payload is ordered
+  // by last_updated), with a non-semver/non-latest fallback.
+  if (!constrained) {
+    let fallback: string | null = null;
+    for (const entry of results as DockerTagEntry[]) {
+      const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+      if (!name || name === "latest") continue;
+      if (SEMVER_TAG_RE.test(name)) return name;
+      if (!fallback) fallback = name;
+    }
+    return fallback;
+  }
+
+  // Constrained path: collect all satisfying tags and return the maximum.
+  let best: string | null = null;
   for (const entry of results as DockerTagEntry[]) {
     const name = typeof entry?.name === "string" ? entry.name.trim() : "";
-    if (!name || name === "latest") continue;
-    if (SEMVER_TAG_RE.test(name)) return name;
-    if (!fallback) fallback = name;
+    if (!isComparableSemver(name)) continue;
+    if (sameMajorAs !== undefined && !isSameMajorVersion(name, sameMajorAs)) continue;
+    if (atOrBelow !== undefined && compareComparableVersions(name, atOrBelow) > 0) continue;
+    if (!best || compareComparableVersions(name, best) > 0) best = name;
   }
-  return fallback;
+  return best;
 }
 
 function resolvePlatformVersionPolicyBaseTag(state: ControlPlaneState): string {
@@ -220,18 +251,6 @@ function resolvePlatformVersionPolicyBaseTag(state: ControlPlaneState): string {
   return `v${libPkg.version}`;
 }
 
-function resolveNewestDockerTagForCurrentMajor(payload: unknown, currentTag: string): string | null {
-  const results = (payload as DockerTagsResponse)?.results;
-  if (!Array.isArray(results)) return null;
-
-  let best: string | null = null;
-  for (const entry of results as DockerTagEntry[]) {
-    const name = typeof entry?.name === "string" ? entry.name.trim() : "";
-    if (!isComparableSemver(name) || !isSameMajorVersion(name, currentTag)) continue;
-    if (!best || compareComparableVersions(name, best) > 0) best = name;
-  }
-  return best;
-}
 
 function resolveImageNamespace(state: ControlPlaneState): string {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
@@ -289,20 +308,6 @@ async function fetchDockerTagsPayload(namespace: string, imageName: string): Pro
   return response.json();
 }
 
-/** Newest comparable semver tag for an image that is <= ceilingTag in the same major. */
-function resolveNewestDockerTagAtOrBelow(payload: unknown, ceilingTag: string): string | null {
-  const results = (payload as DockerTagsResponse)?.results;
-  if (!Array.isArray(results)) return null;
-
-  let best: string | null = null;
-  for (const entry of results as DockerTagEntry[]) {
-    const name = typeof entry?.name === "string" ? entry.name.trim() : "";
-    if (!isComparableSemver(name) || !isSameMajorVersion(name, ceilingTag)) continue;
-    if (compareComparableVersions(name, ceilingTag) > 0) continue;
-    if (!best || compareComparableVersions(name, best) > 0) best = name;
-  }
-  return best;
-}
 
 /**
  * Resolve the per-image tag env for a target platform tag (#477).
@@ -336,9 +341,9 @@ async function resolvePlatformImageTags(
     if (pinnedImages.includes(imageName)) continue;
     if (await isDockerImageTagPublished(namespace, imageName, platformTag)) continue;
 
-    const fallbackTag = resolveNewestDockerTagAtOrBelow(
+    const fallbackTag = resolveNewestDockerTag(
       await fetchDockerTagsPayload(namespace, imageName),
-      platformTag,
+      { sameMajorAs: platformTag, atOrBelow: platformTag },
     );
     if (fallbackTag) {
       perImage[`OP_${imageName.toUpperCase()}_IMAGE_TAG` as PlatformImageTagKey] = fallbackTag;
@@ -396,7 +401,7 @@ function collectPinnedImageWarnings(
  * (GitHub has no asset tree at a `latest` ref).
  */
 export async function resolveLatestPlatformTag(namespace: string): Promise<string> {
-  const latestTag = resolveNewestDockerTag(await fetchDockerTagsPayload(namespace, 'assistant'));
+  const latestTag = resolveNewestDockerTag(await fetchDockerTagsPayload(namespace, 'assistant'), {});
   if (!latestTag) {
     throw new Error("No usable Docker image tag found");
   }
@@ -407,9 +412,9 @@ export async function resolveLatestPlatformTagForCurrentMajor(
   namespace: string,
   currentTag: string,
 ): Promise<string> {
-  const latestTag = resolveNewestDockerTagForCurrentMajor(
+  const latestTag = resolveNewestDockerTag(
     await fetchDockerTagsPayload(namespace, 'assistant'),
-    currentTag,
+    { sameMajorAs: currentTag },
   );
   if (!latestTag) {
     throw new Error(`No usable Docker image tag found in major ${currentTag.replace(/^v/, '').split('.')[0]}`);

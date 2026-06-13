@@ -65,7 +65,7 @@ function updateProgress(current: DeployProgress, patch: Partial<DeployProgress>)
   return cloneProgress({ ...current, ...patch });
 }
 
-function writeJournal(path: string, state: DeployProgress): void {
+export function writeJournal(path: string, state: DeployProgress): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileAtomic(path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
 }

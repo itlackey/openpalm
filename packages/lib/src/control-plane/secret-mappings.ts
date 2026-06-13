@@ -28,7 +28,7 @@ type CoreSecretMapping = {
   scope: SecretScope;
 };
 
-const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
+export const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
   // Core authentication
   { secretKey: 'openpalm/ui-login-password', envKey: 'OP_UI_LOGIN_PASSWORD', scope: 'system' },
   { secretKey: 'openpalm/opencode/server-password', envKey: 'OP_OPENCODE_PASSWORD', scope: 'system' },
@@ -101,32 +101,12 @@ export function classifySecretScope(key: string): SecretScope {
   return 'system';
 }
 
-export function getCoreSecretMappings(systemEnv: Record<string, string>): CoreSecretMapping[] {
-  const dynamicMappings: CoreSecretMapping[] = [];
-  for (const envKey of Object.keys(systemEnv)) {
-    const match = envKey.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
-    if (!match?.[1]) continue;
-    dynamicMappings.push({
-      secretKey: `openpalm/channel/${match[1].toLowerCase()}/secret`,
-      envKey,
-      scope: 'system',
-    });
-  }
-  return [...STATIC_CORE_MAPPINGS, ...dynamicMappings];
+export function findCoreSecretByKey(key: string): CoreSecretMapping | null {
+  return STATIC_CORE_MAPPINGS.find((entry) => entry.secretKey === key) ?? null;
 }
 
-export function findCoreSecretByKey(
-  key: string,
-  systemEnv: Record<string, string>,
-): CoreSecretMapping | null {
-  return getCoreSecretMappings(systemEnv).find((entry) => entry.secretKey === key) ?? null;
-}
-
-export function findCoreSecretByEnvKey(
-  envKey: string,
-  systemEnv: Record<string, string>,
-): CoreSecretMapping | null {
-  return getCoreSecretMappings(systemEnv).find((entry) => entry.envKey === envKey) ?? null;
+export function findCoreSecretByEnvKey(envKey: string): CoreSecretMapping | null {
+  return STATIC_CORE_MAPPINGS.find((entry) => entry.envKey === envKey) ?? null;
 }
 
 export function readPlaintextSecretIndex(state: ControlPlaneState): SecretIndexFile {
