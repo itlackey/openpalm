@@ -37,6 +37,16 @@ migrations — see **Migration** below.
   independently of the platform tag. (#477)
 - **`OP_BIND_ADDRESS` global** collapses the per-service port/bind-address pairs
   into one opt-in LAN switch (loopback by default). (#395)
+- **mDNS discovery now uses OpenCode's native in-process responder** instead of
+  avahi `apk add` sidecars. The `mdns-guardian` / `mdns-assistant` compose
+  services (and the `addon.mdns` / `addon.mdns.assistant` profiles) are removed.
+  mDNS is configured via `server.mdns` / `server.mdnsDomain` in the assistant
+  and guardian `opencode.jsonc` files and ships **off** (LAN-first). The
+  assistant can advertise `<name>.local` once LAN-exposed (Linux host +
+  `network_mode: host`); the loopback-only guardian moderator never advertises.
+  Note: the service-instance label is OpenCode's hardcoded `opencode-<port>` —
+  only the resolved `.local` hostname carries the custom name. See
+  `docs/technical/network-partitioning-d5a.md`.
 
 ### Added
 
@@ -67,9 +77,13 @@ migrations — see **Migration** below.
   `kind` is migrated `channel` → `portal`, and `portals.compose.yml` is
   re-materialized (the stale `channels.compose.yml` is inert — the control plane
   loads an explicit overlay list, not a glob).
-- **Manual step:** a user-authored `custom.compose.yml` overlay referencing the
-  `channel_lan` network is **not** auto-migrated. Update it to `portal_net`
-  (it still validates in 0.12.0 via the deprecated bridge, but breaks in 0.13.0).
+- A user-authored `custom.compose.yml` overlay referencing the `channel_lan`
+  network is **auto-migrated**: the upgrade rewrites `channel_lan` → `portal_net`
+  in place (backing the original up to `custom.compose.yml.pre-portal-rename.bak`
+  first; idempotent). It still validates in 0.12.0 via the deprecated bridge and
+  now keeps working past the 0.13.0 removal with no manual edit. If your overlay
+  *defines* its own external `channel_lan` network, review the rewrite against the
+  `.pre-portal-rename.bak` copy.
 
 ## [0.11.1] - 2026-06-08
 
