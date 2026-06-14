@@ -22,7 +22,7 @@ services:
       dockerfile: containers/guardian/Dockerfile
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
     # Guardian is intentionally NOT host-published. It is reachable only on
-    # the channel_lan / assistant_net networks as `http://guardian:8080`.
+    # the portal_net / assistant_net networks as `http://guardian:8080`.
     # Manual smoke tests that previously hit a host-published port must
     # either run inside the network or use `docker exec openpalm-guardian-1`.
 

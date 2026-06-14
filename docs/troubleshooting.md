@@ -94,7 +94,7 @@ running.
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
   --env-file ../../knowledge/env/stack.env \
   up -d
@@ -207,7 +207,7 @@ the compose files under `~/.openpalm/config/stack/`, non-secret `stack.env`, and
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
   --env-file ../../knowledge/env/stack.env \
   down -v

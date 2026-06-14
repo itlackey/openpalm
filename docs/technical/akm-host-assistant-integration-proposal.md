@@ -633,7 +633,7 @@ mutate the user's global config.
 
 **I-7. Guardian ships akm-cli but has no akm mounts/env.** `containers/guardian/Dockerfile:34`
 installs `akm-cli@next` "for shared stash, env, secret, skill management," but
-`channels.compose.yml` mounts the guardian only `config/guardian:/etc/opencode` +
+`portals.compose.yml` mounts the guardian only `config/guardian:/etc/opencode` +
 `auth.json:ro` — **no `AKM_*` env, no stash/config/cache/data volumes**. akm inside the
 guardian would fall back to an ephemeral default stash under `HOME=/opt/openpalm/guardian`.
 **Decide:** either (a) remove akm-cli from the guardian image and fix the comment, or

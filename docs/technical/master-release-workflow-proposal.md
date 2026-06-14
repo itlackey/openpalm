@@ -53,7 +53,7 @@ Current version drift snapshot (proves the tracks really do drift): all 7 platfo
   - `AKM_CLI_VERSION=0.8.0` in `containers/assistant/Dockerfile:18` (ci.yml validates; guardian no longer installs akm-cli).
   - `BUN_VERSION` lockstep across assistant/guardian/portal (ci.yml "Validate BUN_VERSION sync").
 - **Image tag resolution at runtime.** `config-persistence.ts:27` `DEFAULT_IMAGE_TAG = "latest"`; `stack.env` carries `OP_IMAGE_TAG=latest`. Voice resolves `${OP_VOICE_IMAGE_TAG:-latest-<variant>}` (registry.ts `voiceImageRef`). So Docker images are consumed by **moving `latest` tags**, not by `v<version>` — meaning a stable platform release MUST produce `latest`/`latest-*` tags or fresh installs break (documented as an outstanding 0.11.0 risk in release-management.md:351-357).
-- **`PORTAL_PACKAGE`** in `.openpalm/config/stack/channels.compose.yml` selects baked portal adapters in the shared `openpalm/portal` image.
+- **`PORTAL_PACKAGE`** in `.openpalm/config/stack/portals.compose.yml` selects baked portal adapters in the shared `openpalm/portal` image.
 
 ### 1.4 Where the current design risks half-published releases
 
@@ -214,7 +214,7 @@ Today `prepare-tag` creates and pushes the tag **before** any publish (release.y
 - **Voice missing:** dispatch `publish-voice.yml` with `version=<v>` (and `publish-voice-models.yml` first if the model pin changed).
 - **CLI / Electron asset missing from GitHub release:** re-run `build-*-artifacts` + `github-release` (delete-then-recreate handles asset replacement).
 - **Tag points at wrong commit:** `git push origin :refs/tags/v<version>` to delete, fix, re-dispatch (the move-guard refuses to silently move it).
-- **`CHANNEL_PACKAGE` still `@next` after stable:** edit the 4 lines in `.openpalm/config/stack/channels.compose.yml` and ship a patch (post-publish step §2.2 automates the verify).
+- **`PORTAL_PACKAGE` still `@next` after stable:** edit the 4 lines in `.openpalm/config/stack/portals.compose.yml` and ship a patch (post-publish step §2.2 automates the verify).
 
 ---
 

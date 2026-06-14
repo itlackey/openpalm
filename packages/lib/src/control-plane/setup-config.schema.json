@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/itlackey/openpalm/main/packages/lib/src/control-plane/setup-config.schema.json",
   "title": "OpenPalm SetupConfig",
-  "description": "Structured configuration for the OpenPalm setup wizard. Defines connections, model assignments, channels, services, and security settings needed for first-time installation or reconfiguration.",
+  "description": "Structured configuration for the OpenPalm setup wizard. Defines connections, model assignments, portals, services, and security settings needed for first-time installation or reconfiguration.",
   "type": "object",
   "required": ["version", "security", "capabilities", "assignments"],
   "additionalProperties": false,
@@ -51,14 +51,14 @@
     "assignments": {
       "$ref": "#/$defs/SetupConfigAssignments"
     },
-    "channels": {
+    "portals": {
       "type": "object",
-      "description": "Optional channel configurations. Keys are channel identifiers (e.g. 'chat', 'discord', 'api'). Values can be a boolean to enable (true) or skip (false) installation, or a credential object.",
+      "description": "Optional portal configurations. Keys are portal identifiers (e.g. 'chat', 'discord', 'api'). Values can be a boolean to enable (true) or skip (false) installation, or a credential object.",
       "additionalProperties": {
         "oneOf": [
           {
             "type": "boolean",
-            "description": "Enable (true) or disable (false) this channel with default settings."
+            "description": "Enable (true) or disable (false) this portal with default settings."
           },
           {
             "$ref": "#/$defs/ChannelCredentials"
@@ -229,11 +229,11 @@
     },
     "ChannelCredentials": {
       "type": "object",
-      "description": "Channel configuration with optional credentials. Supports Discord, Slack, and custom channel fields.",
+      "description": "Portal configuration with optional credentials. Supports Discord, Slack, and custom portal fields.",
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Whether this channel is enabled. Defaults to true if the channel entry exists."
+          "description": "Whether this portal is enabled. Defaults to true if the portal entry exists."
         },
         "botToken": {
           "type": "string",

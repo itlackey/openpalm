@@ -1,7 +1,7 @@
 # OpenPalm custom services and overlays.
 #
 # This file is intentionally empty by default. Operators can edit it directly
-# to add custom containers or patch core/services/channels without using the
+# to add custom containers or patch core/services/portals without using the
 # OpenPalm catalog.
 
 services: {}

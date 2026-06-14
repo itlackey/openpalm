@@ -54,7 +54,7 @@ docker compose \
   --project-name openpalm \
   --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.discord \
   up -d
 ```

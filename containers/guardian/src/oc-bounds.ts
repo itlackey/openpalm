@@ -48,7 +48,7 @@ export const OC_EVENT_RECONNECT_WINDOW_MS = Number(
  * principal-scoped (it already carries every owned session), so a well-behaved
  * portal needs only ONE — but a principal can legitimately be served by several
  * concurrent streams (multiple portal processes, a brief open/close overlap
- * between turns, a user active across channels). We keep this LOOSE so streaming
+ * between turns, a user active across portals). We keep this LOOSE so streaming
  * is never rejected in normal use; it exists only to bound a true runaway leak.
  * Set to 0 to disable the concurrent-stream cap entirely.
  */

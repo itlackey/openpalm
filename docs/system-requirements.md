@@ -68,7 +68,7 @@ These are rough expectations, not hard limits:
 | `assistant` | ~240 MB | OpenCode runtime + scheduler co-process |
 | `guardian` | ~30 MB | Request verification and routing |
 | Admin (host process) | minimal | SvelteKit UI/API served by `openpalm` |
-| each channel addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
+| each portal addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
 
 ---
 

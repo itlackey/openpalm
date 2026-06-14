@@ -23,7 +23,7 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ```text
 ~/.openpalm/
 ├── config/          user-editable config (assistant/, akm/, guardian/)
-│   └── stack/       live compose assembly (core.compose.yml, services.compose.yml, channels.compose.yml, custom.compose.yml) — no secrets, no env
+│   └── stack/       live compose assembly (core.compose.yml, services.compose.yml, portals.compose.yml, custom.compose.yml) — no secrets, no env
 ├── knowledge/           AKM knowledge base (env/, secrets/, tasks/, skills/)
 │   ├── env/         user.env (env:user) + stack.env (env:stack, Compose --env-file)
 │   └── secrets/     system-managed service secrets + auth.json (akm secret — Compose grants)
@@ -55,8 +55,8 @@ The standard startup path uses:
 | Network | Purpose | Core members |
 |---|---|---|
 | `assistant_net` | Core internal mesh | `assistant` (which also hosts the scheduler co-process), `guardian` |
-| `channel_lan` | Legacy compatibility bridge for portal ingress | `guardian` and compatible user overlays |
-| `channel_public` | Reserved for internet-facing portal ingress | `guardian` and public-facing portal-style overlays. Access semantics and membership rules are under design. |
+| `portal_net` | Default portal ingress network | `guardian` and compatible user overlays |
+| `portal_public` | Reserved for internet-facing portal ingress | `guardian` and public-facing portal-style overlays. Access semantics and membership rules are under design. |
 
 ---
 
@@ -119,7 +119,7 @@ SSH (optional, gated by `OPENCODE_ENABLE_SSH=1`):
 
 Secret redaction (in-process logger):
 
-- The shared logger in `@openpalm/lib` (`createLogger`) walks every structured `extra` payload and replaces values whose keys match the sensitive-key pattern (`(^|_)(TOKEN|SECRET|KEY|PASSWORD|HMAC)(_|$)`, case-insensitive) with `***REDACTED***` before the line is written to stdout/stderr. This applies to all services that use the shared logger (admin, guardian, channels, scheduler, CLI).
+- The shared logger in `@openpalm/lib` (`createLogger`) walks every structured `extra` payload and replaces values whose keys match the sensitive-key pattern (`(^|_)(TOKEN|SECRET|KEY|PASSWORD|HMAC)(_|$)`, case-insensitive) with `***REDACTED***` before the line is written to stdout/stderr. This applies to all services that use the shared logger (admin, guardian, portals, scheduler, CLI).
 - Operators who want stronger guarantees should keep cloud secrets out of the assistant container by setting only the keys their selected provider needs; the assistant entrypoint already strips unused provider keys based on `SYSTEM_LLM_PROVIDER`.
 
 ### Guardian
@@ -142,7 +142,7 @@ Key env:
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OPENCODE_TIMEOUT_MS=0`
 - `GUARDIAN_AUDIT_PATH=/opt/openpalm/logs/guardian-audit.log`
-- `CHANNEL_<n>_SECRET_FILE`
+- `PORTAL_<n>_SECRET_FILE`
 - `OPENCODE_CONFIG_DIR=/etc/opencode` (moderator config from `config/guardian`)
 - `GUARDIAN_CONTENT_VALIDATION` (off by default), `GUARDIAN_MODERATION_URL`, `GUARDIAN_MODERATION_PORT`, `GUARDIAN_MODERATION_THRESHOLD`, `GUARDIAN_MODERATION_TIMEOUT_MS` — opt-in content validation (see § Content validation)
 
@@ -158,7 +158,7 @@ Ports and network:
 
 - host: `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` and `127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}`
 - container: `8080`
-- networks: `portal_net`, `channel_lan`, `assistant_net`
+- networks: `portal_net`, `assistant_net`
 
 Additional env:
 
@@ -171,7 +171,7 @@ Portal request metadata fields:
 Rate limits (fixed-window):
 
 - Per-user: 120 requests/minute
-- Per-channel: 200 requests/minute
+- Per-portal: 200 requests/minute
 
 Payload limits:
 
@@ -280,7 +280,7 @@ UI-first principle: the admin UI is the primary operator interface. CLI commands
 Shipped portal-style addons follow the same basic pattern:
 
 - receive their principal secret via a Compose secret file grant from `knowledge/secrets/` and a matching `PRINCIPAL_SECRET_FILE` environment variable
-- join `portal_net` by default (`channel_lan` remains as a compatibility bridge for legacy/custom overlays)
+- join `portal_net` by default
 - depend on `guardian`
 - send Basic-authenticated traffic to guardian, not directly to assistant
 

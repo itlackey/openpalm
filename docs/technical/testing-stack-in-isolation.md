@@ -25,7 +25,7 @@ Tests read port configuration in this priority order:
 |---|---|
 | Admin UI | Host process (`bun run ui:dev` or `openpalm ui serve`) |
 | Assistant (OpenCode) | Docker container — host port `OP_ASSISTANT_PORT` → container port 4096 |
-| Guardian | Docker container — network-only, reached by channels on `channel_lan` |
+| Guardian | Docker container — network-only, reached by portals on `portal_net` |
 
 > The admin UI is **not** a container. It is a SvelteKit app run as a host process. `OP_HOST_UI_PORT` in `stack.env` (default `3880`; dev `9100`) is its listen port.
 

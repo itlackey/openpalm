@@ -1,12 +1,12 @@
 # OpenPalm — Core Services
 #
 # This file defines the core infrastructure. Optional first-party services are
-# defined in services.compose.yml and channels.compose.yml, then activated with
+# defined in services.compose.yml and portals.compose.yml, then activated with
 # Compose profiles. User customizations live in custom.compose.yml.
 #
 # Docker Compose reads variable values via --env-file for stack config:
 #   knowledge/env/stack.env   — system config (ports, image tags), akm `env:stack`
-# Channel and bot secrets are mounted per service via Compose secrets in
+# Portal and bot secrets are mounted per service via Compose secrets in
 # addon overlays and exposed to containers as *_FILE variables.
 #
 # User-managed env config lives in the akm `env:user` file at
@@ -17,7 +17,7 @@
 #
 # Directory model:
 #   ~/.openpalm/config/       — user-editable + system config (akm/)
-#   ~/.openpalm/config/stack/ — compose assembly only (core/services/channels/custom
+#   ~/.openpalm/config/stack/ — compose assembly only (core/services/portals/custom
 #                               compose files) — no secrets, no env
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
 #   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents);

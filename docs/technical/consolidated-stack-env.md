@@ -50,7 +50,7 @@ release manifest can source it truthfully.
 
 ```ini
 # ── platform composition + versions (authoritative) ──
-OP_IMAGE_TAG=0.11.0            # selects assistant/guardian/channel/voice images
+OP_IMAGE_TAG=0.11.0            # selects assistant/guardian/portal/voice images
 OP_LAYOUT_VERSION=1           # on-disk home layout schema (migration-harness gate)
 OP_UI_VERSION=0.11.0          # host UI build (npm), independent of OP_IMAGE_TAG
 OP_ENABLED_ADDONS=voice,discord  # was stack.yml addons[] → compose --profile addon.<name>

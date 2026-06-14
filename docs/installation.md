@@ -88,7 +88,7 @@ preferences and addon-specific values.
 
 ## Addons
 
-First-party addons are defined in `services.compose.yml` and `channels.compose.yml`
+First-party addons are defined in `services.compose.yml` and `portals.compose.yml`
 under `~/.openpalm/config/stack/`. They become active when their names are recorded
 in `OP_ENABLED_ADDONS` inside `~/.openpalm/knowledge/env/stack.env`; OpenPalm converts those names to Compose
 `--profile` arguments at launch time. Custom services and overlays go in
@@ -96,10 +96,10 @@ in `OP_ENABLED_ADDONS` inside `~/.openpalm/knowledge/env/stack.env`; OpenPalm co
 
 | Addon | Compose file | Profile |
 |---|---|---|
-| `chat` | `channels.compose.yml` | `addon.chat` |
-| `api` | `channels.compose.yml` | `addon.api` |
-| `discord` | `channels.compose.yml` | `addon.discord` |
-| `slack` | `channels.compose.yml` | `addon.slack` |
+| `chat` | `portals.compose.yml` | `addon.chat` |
+| `api` | `portals.compose.yml` | `addon.api` |
+| `discord` | `portals.compose.yml` | `addon.discord` |
+| `slack` | `portals.compose.yml` | `addon.slack` |
 | `voice` | `services.compose.yml` | `addon.voice` |
 | `ollama` | `services.compose.yml` | `addon.ollama` |
 

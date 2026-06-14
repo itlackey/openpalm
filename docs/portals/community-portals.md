@@ -1,4 +1,4 @@
-# Community Channels
+# Community Portals
 
 OpenPalm's current ingress model is guardian `/oc/*` traffic authenticated with a principal id and shared secret file. First-party adapters are baked into the shared `portal` image.
 
@@ -9,27 +9,27 @@ For custom community integrations, the deployment model remains compose-first: c
 1. Build a small Bun service that accepts the external protocol you care about.
 2. Read `PRINCIPAL_ID` and `PRINCIPAL_SECRET_FILE` from the environment.
 3. Call guardian `/oc/*` using Basic auth plus `x-openpalm-user`.
-4. Write a custom runtime service in `~/.openpalm/config/stack/custom.compose.yml`, or use one of the first-party portal services in `channels.compose.yml`.
+4. Write a custom runtime service in `~/.openpalm/config/stack/custom.compose.yml`, or use one of the first-party portal services in `portals.compose.yml`.
 5. Rerun the OpenPalm compose command.
 
 Example overlay:
 
 ```yaml
 services:
-  my-channel:
+  my-portal:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
     environment:
       PORT: '8187'
-      PRINCIPAL_ID: my-channel
-      PRINCIPAL_SECRET_FILE: /run/secrets/channel_my_channel_secret
+      PRINCIPAL_ID: my-portal
+      PRINCIPAL_SECRET_FILE: /run/secrets/portal_my_portal_secret
     secrets:
-      - channel_my_channel_secret
+      - portal_my_portal_secret
     networks: [portal_net]
 
 secrets:
-  channel_my_channel_secret:
-    file: ${OP_HOME}/knowledge/secrets/channel_my_channel_secret
+  portal_my_portal_secret:
+    file: ${OP_HOME}/knowledge/secrets/portal_my_portal_secret
 ```
 
 > First-party portal adapters are baked into the portal image. Custom community

@@ -285,7 +285,7 @@ install to keep the layer small.
 
 ## 9. Compose addon overlay
 
-`.openpalm/config/stack/channels.compose.yml`:
+`.openpalm/config/stack/portals.compose.yml`:
 
 ```yaml
 # Addon: voice — bundled Kokoro TTS + Whisper STT in one container.
@@ -326,7 +326,7 @@ assistant talk on the internal net.
 
 ### GPU passthrough (optional second overlay file)
 
-`.openpalm/config/stack/channels.compose.yml referenced inline; not a separate addoncompose.yml`:
+`.openpalm/config/stack/portals.compose.yml referenced inline; not a separate addoncompose.yml`:
 
 ```yaml
 # Addon overlay: voice-gpu (file in addons/voice/) — layered on top of voice.

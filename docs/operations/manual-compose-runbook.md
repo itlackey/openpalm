@@ -29,7 +29,7 @@ variable). The relevant files for running the stack are:
 |---|---|
 | `~/.openpalm/config/stack/core.compose.yml` | Core assistant runtime services; assistant also runs the scheduler co-process |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services, profile-gated |
-| `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels, profile-gated |
+| `~/.openpalm/config/stack/portals.compose.yml` | First-party optional portals, profile-gated |
 | `~/.openpalm/config/stack/custom.compose.yml` | User custom services and overlays |
 | `~/.openpalm/knowledge/env/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
@@ -74,7 +74,7 @@ op() {
     --env-file "$OP_HOME/knowledge/env/stack.env" \
     -f "$OP_HOME/config/stack/core.compose.yml" \
     -f "$OP_HOME/config/stack/services.compose.yml" \
-    -f "$OP_HOME/config/stack/channels.compose.yml" \
+    -f "$OP_HOME/config/stack/portals.compose.yml" \
     -f "$OP_HOME/config/stack/custom.compose.yml" \
     "$@"
 }
@@ -99,7 +99,7 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   <command>
@@ -121,7 +121,7 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   config --quiet
@@ -132,7 +132,7 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   config --services
@@ -147,7 +147,7 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile "$OP_VOICE_PROFILE" \
   --profile "$OP_OLLAMA_PROFILE" \

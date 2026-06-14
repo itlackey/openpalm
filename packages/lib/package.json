@@ -3,7 +3,7 @@
   "version": "0.12.0-rc.1",
   "license": "MPL-2.0",
   "type": "module",
-  "description": "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, channels, connections, scheduler",
+  "description": "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, portals, connections, scheduler",
   "engines": {
     "bun": ">=1.0.0"
   },

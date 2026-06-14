@@ -142,7 +142,7 @@ jobs:
       - name: Type check CLI
         run: cd packages/cli && bun run typecheck
 
-      - name: Test (sdk + guardian + channels)
+      - name: Test (sdk + guardian + portals)
         run: |
           set -euo pipefail
           for attempt in 1 2; do
@@ -229,11 +229,11 @@ jobs:
             echo "AKM_CLI_VERSION matches across assistant + guardian: $ASSISTANT_VERSION"
           fi
 
-      - name: Validate BUN_VERSION sync between assistant and guardian/channel Dockerfiles
+      - name: Validate BUN_VERSION sync between assistant and guardian/portal Dockerfiles
         run: |
           set -euo pipefail
           # Assistant sets BUN_VERSION (e.g. bun-v1.3.10) explicitly. Guardian
-          # and channel use the official oven/bun:<MAJOR.MINOR>-slim image
+          # and portal use the official oven/bun:<MAJOR.MINOR>-slim image
           # tag — keep the major.minor in lockstep across all three.
           ASSISTANT_BUN=$(grep -oP '^ARG BUN_VERSION=\K\S+' containers/assistant/Dockerfile || true)
           if [ -z "$ASSISTANT_BUN" ]; then
@@ -263,14 +263,14 @@ jobs:
           if [ "$errors" -gt 0 ]; then
             exit 1
           fi
-          echo "BUN_VERSION major.minor matches across assistant + guardian + channel: $ASSISTANT_MM"
+          echo "BUN_VERSION major.minor matches across assistant + guardian + portal: $ASSISTANT_MM"
 
       - name: Validate per-unit version sync
         run: |
           set -euo pipefail
           # Releases are by deployment UNIT (release-package-groups.json -> units).
           # Each unit's manifests must share ONE version; units may drift from each
-          # other (a host-only or channels-only release is legitimate). The host
+          # other (a host-only or portals-only release is legitimate). The host
           # unit lists package.json (root) first, so the host base == root version,
           # and the setup-script versions are anchored to root.
           ROOT_VERSION=$(jq -r .version package.json)

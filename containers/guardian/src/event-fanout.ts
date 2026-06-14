@@ -219,7 +219,7 @@ function dropSubscriber(sub: Subscriber): void {
 
 /**
  * Broadcast a synthetic upstream-reset to EVERY open principal stream (§3.2): on
- * an assistant /event drop, channels must tear down orphaned interactive controls
+ * an assistant /event drop, portals must tear down orphaned interactive controls
  * (permission buttons whose requestID is now invalid).
  *
  * The frame MUST carry a `sessionID` the portal owns — the portal-side
@@ -346,7 +346,7 @@ async function runUpstream(): Promise<void> {
     upstreamAbort = null;
     // Assistant restart mid-stream: tell every open portal BEFORE resubscribe
     // so they tear down orphaned interactive controls (permission buttons whose
-    // requestID is now invalid). A bare synthetic frame; channels surface it.
+    // requestID is now invalid). A bare synthetic frame; portals surface it.
     if (subscribers.size > 0) {
       broadcastUpstreamReset({ name: "GuardianUpstreamReset", message: "assistant event stream reset" });
       // Brief backoff before re-establishing the single upstream subscription.

@@ -19,9 +19,9 @@
 
   <!-- ── Network zone backgrounds ── -->
 
-  <!-- channel_lan zone (extends to guardian overlap) -->
+  <!-- portal_net zone (extends to guardian overlap) -->
   <rect x="135" y="55" width="240" height="225" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
-  <text x="148" y="74" font-size="10" fill="#86efac" font-weight="600">channel_lan</text>
+  <text x="148" y="74" font-size="10" fill="#86efac" font-weight="600">portal_net</text>
 
   <!-- assistant_net zone (starts at guardian overlap) -->
   <rect x="350" y="55" width="495" height="225" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>

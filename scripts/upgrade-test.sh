@@ -17,7 +17,7 @@
 #      - The wizard will pull remaining images and start all services
 #
 #   3. Seed some user state:
-#      - Install a channel
+#      - Install a portal
 #      - Note the operator password in knowledge/secrets/op_ui_login_password
 #
 #   4. Upgrade to the target version:

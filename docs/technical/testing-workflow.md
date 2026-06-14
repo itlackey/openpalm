@@ -109,7 +109,7 @@ Rebuilds and recreates the entire compose stack, then runs integration Playwrigh
 **What it validates:**
 - OpenCode web UI accessible
 - OpenCode API session management
-- Guardian security pipeline (HMAC, replay, rate-limit, content validation) via channel→guardian→assistant
+- Guardian security pipeline (HMAC, replay, rate-limit, content validation) via portal→guardian→assistant
 - Scheduler automations API
 
 ---

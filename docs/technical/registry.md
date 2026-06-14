@@ -5,7 +5,7 @@ OpenPalm no longer uses a runtime registry catalog for first-party addons or aut
 First-party optional services are defined in the fixed compose files under `config/stack/`:
 
 - `services.compose.yml`
-- `channels.compose.yml`
+- `portals.compose.yml`
 
 Activation is recorded in `knowledge/env/stack.env` as `OP_ENABLED_ADDONS`. OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit Docker Compose `--profile addon.<name>` arguments remain valid for manual runs. OpenPalm does not generate `addons.compose.yml` and does not write `enabled-addons.json`.
 

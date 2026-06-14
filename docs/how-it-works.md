@@ -136,7 +136,7 @@ openpalm install   ->   writes files into ~/.openpalm/
                                v
                     You / CLI enable addons via OP_ENABLED_ADDONS:
                         core.compose.yml (always)
-                        + channels.compose.yml / services.compose.yml
+                        + portals.compose.yml / services.compose.yml
                         + --profile addon.<name> per enabled addon
                         + custom.compose.yml for custom services
                               |
@@ -163,7 +163,7 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ```
 ~/.openpalm/config/stack/core.compose.yml     -> core assistant runtime compose definition
 ~/.openpalm/config/stack/services.compose.yml -> first-party optional services
-~/.openpalm/config/stack/channels.compose.yml -> first-party optional channels and guardian
+~/.openpalm/config/stack/portals.compose.yml -> first-party optional portals and guardian
 ~/.openpalm/config/stack/custom.compose.yml   -> custom services and overlays
 ~/.openpalm/knowledge/env/stack.env            -> non-secret values passed via --env-file
 ~/.openpalm/knowledge/secrets/             -> system-managed Compose secret files
@@ -207,7 +207,7 @@ Anything not on the list is rejected with `400 invalid_service` or
 
 **First-party portal (chat, api, discord, slack):**
 1. Add the addon name to `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` through the CLI or admin UI.
-2. OpenPalm resolves the name to a `--profile addon.<name>` argument against `channels.compose.yml`.
+2. OpenPalm resolves the name to a `--profile addon.<name>` argument against `portals.compose.yml`.
 3. Rerun the OpenPalm compose command (or use the admin UI restart action).
 4. If admin tooling is involved, it may also ensure/generate the required principal secret files first.
 

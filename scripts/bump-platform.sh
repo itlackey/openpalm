@@ -47,7 +47,7 @@ for manifest in ${MANIFESTS}; do
 
   # Single source of truth for how a version is stamped (and how the internal
   # @openpalm/lib floor range is kept in lockstep): scripts/set-version.mjs.
-  # Independent dependency refs (channel adapters etc.), workspace:* and exact
+  # Independent dependency refs (portal adapters etc.), workspace:* and exact
   # refs are left untouched.
   node "${ROOT}/scripts/set-version.mjs" "${file}" "${VERSION}"
 done

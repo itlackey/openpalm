@@ -44,7 +44,7 @@ if (-not (Test-Path $core)) {
 
 # Compose overlays, in the same order the control plane assembles them.
 $files = @('-f', $core)
-foreach ($name in 'services', 'channels', 'custom') {
+foreach ($name in 'services', 'portals', 'custom') {
   $overlay = Join-Path $StackDir "$name.compose.yml"
   if (Test-Path $overlay) { $files += @('-f', $overlay) }
 }

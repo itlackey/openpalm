@@ -3,7 +3,7 @@
  *
  * This is ~95% a byte-for-byte transparent reverse proxy (the UI proxy pattern:
  * stream `upstream.body` untouched, never buffer), PLUS the fail-closed gates from
- * the rich-UX design (docs/technical/channel-rich-ux-design.md §2–§3). Stage 1
+ * the rich-UX design (docs/technical/portal-rich-ux-design.md §2–§3). Stage 1
  * implements:
  *
  *   1. Per-call Basic auth + user identity binding.

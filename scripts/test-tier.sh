@@ -8,7 +8,7 @@
 #
 # Tiers:
 #   1 — Type check (svelte-check + SDK unit tests)
-#   2 — Non-UI unit tests (lib, cli, guardian, channels, scheduler)
+#   2 — Non-UI unit tests (lib, cli, guardian, portals, scheduler)
 #   3 — UI unit tests (vitest)
 #   4 — Mocked browser E2E (Playwright, no stack needed)
 #   5 — Integration E2E (needs running stack — rebuilds containers)
@@ -24,7 +24,7 @@ Usage: ./scripts/test-tier.sh <tier>
 
 Tiers:
   1  Type check (svelte-check + SDK unit tests)
-  2  Non-UI unit tests (lib, cli, guardian, channels, scheduler)
+  2  Non-UI unit tests (lib, cli, guardian, portals, scheduler)
   3  UI unit tests (vitest)
   4  Mocked browser E2E (Playwright, no stack needed)
   5  Integration E2E (rebuilds and starts stack)

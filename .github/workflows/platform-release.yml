@@ -6,13 +6,13 @@ name: Platform release (orchestrator)
 #   host      = @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + CLI native
 #               binaries + Electron installers + git tag + GitHub release.
 #   web ui    = @openpalm/ui (npm) only.
-#   channels  = guardian image + portal image, with the baked runtime manifests
+#   portals   = guardian image + portal image, with the baked runtime manifests
 #               versioned in-repo but not published to npm.
 #   assistant = assistant image only.
 #   voice     = voice images (cpu / cu121). Stable only; always explicit.
 #
-# Select units with the release_* booleans. Leaving host/web_ui/channels/assistant
-# ALL unchecked = a FULL coordinated release of host + channels + assistant (voice
+# Select units with the release_* booleans. Leaving host/web_ui/portals/assistant
+# ALL unchecked = a FULL coordinated release of host + portals + assistant (voice
 # is never part of a full release — check release_voice explicitly to include it).
 #
 # VERSIONING: a unit release stamps ONLY that unit's manifests to `version`; units
@@ -21,8 +21,8 @@ name: Platform release (orchestrator)
 # the "platform version" tracks the host/CLI line.
 #
 # TAG-LAST: the git tag + GitHub release are created LAST and only for host/full
-# ("tag exists => fully published"). channels/assistant/voice are registry-only
-# (Docker only for portals/channels), no git tag.
+# ("tag exists => fully published"). portals/assistant/voice are registry-only
+# (Docker only for portals), no git tag.
 #
 # DISPATCH-FROM-MAIN: GitHub only dispatches workflows whose file lives on the
 # default branch. This file must be on `main`; supply `ref` to release a release
@@ -56,8 +56,8 @@ on:
         required: false
         type: boolean
         default: false
-      release_channels:
-        description: 'Release the CHANNELS unit (guardian + portal images; baked runtime manifests are versioned in-repo only).'
+      release_portals:
+        description: 'Release the PORTALS unit (guardian + portal images; baked runtime manifests are versioned in-repo only).'
         required: false
         type: boolean
         default: false
@@ -88,8 +88,8 @@ concurrency:
 
 jobs:
   # ── Resolve which units are in scope and emit gating flags, the manifest set to
-  # stamp/guard, and the Docker image matrix. Leaving host/web_ui/channels/
-  # assistant all off = full (host + channels + assistant). Voice is independent:
+  # stamp/guard, and the Docker image matrix. Leaving host/web_ui/portals/
+  # assistant all off = full (host + portals + assistant). Voice is independent:
   # only when release_voice is on.
   plan:
     name: Plan units
@@ -99,7 +99,7 @@ jobs:
       full: ${{ steps.p.outputs.full }}
       do_host: ${{ steps.p.outputs.do_host }}
       do_ui: ${{ steps.p.outputs.do_ui }}
-      do_channels: ${{ steps.p.outputs.do_channels }}
+      do_portals: ${{ steps.p.outputs.do_portals }}
       do_assistant: ${{ steps.p.outputs.do_assistant }}
       do_voice: ${{ steps.p.outputs.do_voice }}
       do_tag: ${{ steps.p.outputs.do_tag }}
@@ -117,7 +117,7 @@ jobs:
         env:
           REL_HOST: ${{ inputs.release_host }}
           REL_UI: ${{ inputs.release_web_ui }}
-          REL_CHANNELS: ${{ inputs.release_channels }}
+          REL_PORTALS: ${{ inputs.release_portals }}
           REL_ASSISTANT: ${{ inputs.release_assistant }}
           REL_VOICE: ${{ inputs.release_voice }}
           VERSION: ${{ inputs.version }}
@@ -338,13 +338,13 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
-  # ── Image layer (channels: guardian+portal; assistant: assistant). Matrix is
+  # ── Image layer (portals: guardian+portal; assistant: assistant). Matrix is
   # computed by the plan job. Builds happen even on dry_run (push gated off,
   # amd64-only) to validate the Dockerfiles. ────────────────────────────────────
   images:
     name: Docker image (${{ matrix.image }})
     needs: [plan, bump]
-    if: ${{ always() && needs.bump.result == 'success' && !contains(needs.*.result, 'failure') && (needs.plan.outputs.do_channels == 'true' || needs.plan.outputs.do_assistant == 'true') }}
+    if: ${{ always() && needs.bump.result == 'success' && !contains(needs.*.result, 'failure') && (needs.plan.outputs.do_portals == 'true' || needs.plan.outputs.do_assistant == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -554,7 +554,7 @@ jobs:
       - cli
       - electron
       - voice
-    # Host + full only (channels/assistant/voice are registry-only — no git tag),
+    # Host + full only (portals/assistant/voice are registry-only — no git tag),
     # real run, and only if nothing in scope failed/cancelled (skipped optional
     # jobs are fine).
     if: ${{ needs.plan.outputs.do_tag == 'true' && !inputs.dry_run && always() && needs.bump.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}

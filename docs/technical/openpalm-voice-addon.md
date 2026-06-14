@@ -73,7 +73,7 @@ one), and each piece is replaceable.
 
 ## 2. Existing voice addon state
 
-`/home/founder3/code/github/itlackey/openpalm/.openpalm/config/stack/channels.compose.yml`
+`/home/founder3/code/github/itlackey/openpalm/.openpalm/config/stack/portals.compose.yml`
 already exists and is functional, but for a **different purpose** than this
 proposal:
 
@@ -102,7 +102,7 @@ orthogonal addons.
 ### Directory layout
 
 ```
-.openpalm/config/stack/channels.compose.yml
+.openpalm/config/stack/portals.compose.yml
 ├── compose.yml
 ├── .env.schema
 └── README.md
@@ -411,7 +411,7 @@ The base addon is CPU-only. A future enhancement would:
 The cleanest shape is a per-addon `variants.yml`:
 
 ```yaml
-# .openpalm/config/stack/channels.compose.yml
+# .openpalm/config/stack/portals.compose.yml
 default: cpu
 variants:
   cpu:

@@ -12,7 +12,7 @@
   "independentNpmPackages": [
     "packages/ui"
   ],
-  "_comment_coordinatedManifests": "Everything a coordinated major/minor platform release stamps to ONE version: the platform manifests plus the independently-versioned npm packages (each as <dir>/package.json). The platform-release orchestrator stamps these together. NOTE: coordinatedManifests == units.host ∪ units.channels.",
+  "_comment_coordinatedManifests": "Everything a coordinated major/minor platform release stamps to ONE version: the platform manifests plus the independently-versioned npm packages (each as <dir>/package.json). The platform-release orchestrator stamps these together. NOTE: coordinatedManifests == units.host ∪ units.portals.",
   "coordinatedManifests": [
     "package.json",
     "packages/lib/package.json",
@@ -24,7 +24,7 @@
     "packages/electron/admin-tools/package.json",
     "packages/ui/package.json"
   ],
-  "_comment_units": "Release units (deployment bundles). The platform-release orchestrator releases by unit; each unit's manifests are stamped to ONE version and may drift independently of other units (CI version-sync enforces intra-unit consistency, not cross-unit). 'host' MUST list package.json (root) first — CI anchors the host unit + the setup-script versions to root. assistant + voice are image-only (no npm manifest to stamp; their version is the Docker tag). The channels unit now represents guardian + portal image inputs and baked first-party portal adapters. full release == units.host ∪ units.channels (== coordinatedManifests).",
+  "_comment_units": "Release units (deployment bundles). The platform-release orchestrator releases by unit; each unit's manifests are stamped to ONE version and may drift independently of other units (CI version-sync enforces intra-unit consistency, not cross-unit). 'host' MUST list package.json (root) first — CI anchors the host unit + the setup-script versions to root. assistant + voice are image-only (no npm manifest to stamp; their version is the Docker tag). The portals unit now represents guardian + portal image inputs and baked first-party portal adapters. full release == units.host ∪ units.portals (== coordinatedManifests).",
   "units": {
     "host": [
       "package.json",
@@ -37,7 +37,7 @@
     "ui": [
       "packages/ui/package.json"
     ],
-    "channels": [
+    "portals": [
       "portals/discord/package.json",
       "portals/slack/package.json",
       "containers/guardian/package.json"

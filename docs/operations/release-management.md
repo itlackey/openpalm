@@ -193,7 +193,7 @@ Portal runtime changes ship through the coordinated platform release flow:
    recreate the affected services.
 
 The `openpalm/portal` image selects its baked adapter via `PORTAL_PACKAGE` in
-[`channels.compose.yml`](../../.openpalm/config/stack/channels.compose.yml).
+[`portals.compose.yml`](../../.openpalm/config/stack/portals.compose.yml).
 
 ---
 
@@ -256,12 +256,12 @@ The orchestrator releases by **deployment unit** (see
 | Unit | `release_*` | What it ships | Versioned manifests | Tag + GitHub release? |
 |---|---|---|---|---|
 | **host** | `release_host` | `@openpalm/lib` + `openpalm` (CLI) + `@openpalm/ui` (npm) + CLI native binaries + Electron installers | root, lib, cli, ui, electron, admin-tools (+ setup scripts) | **yes** (carries the binaries/installers) |
-| **channels** | `release_channels` | guardian image + portal image | portal-runtime, guardian, baked portal adapters | no (registry-only) |
+| **portals** | `release_portals` | guardian image + portal image | portal-runtime, guardian, baked portal adapters | no (registry-only) |
 | **assistant** | `release_assistant` | assistant image | (image-only) | no (registry-only) |
 | **voice** | `release_voice` | voice `cpu`/`cu121` images | (image-only) | no (registry-only) |
 
 - **Full coordinated release:** dispatch `platform-release.yml` with `version` +
-  `ref` and **leave all `release_*` unchecked** — it releases host + channels +
+  `ref` and **leave all `release_*` unchecked** — it releases host + portals +
   assistant together (voice is never part of a full release; check `release_voice`
   to add it). This bumps the whole platform to one version and tags it.
 - **Per-unit release** (e.g. a UI/CLI patch, an adapter + guardian refresh, an
@@ -295,7 +295,7 @@ When promoting a `0.X.Y-beta.N` line to a stable `0.X.Y`:
       portal adapters and guardian-hosted OpenAI-compatible API are available
       under stable image tags.
 - [ ] **Flip `PORTAL_PACKAGE` and image tags to the stable line** in
-      [`.openpalm/config/stack/channels.compose.yml`](../../.openpalm/config/stack/channels.compose.yml)
+      [`.openpalm/config/stack/portals.compose.yml`](../../.openpalm/config/stack/portals.compose.yml)
       when cutting stable from a prerelease branch.
 - [ ] Verify `scripts/setup.sh` / `scripts/setup.ps1` `SCRIPT_VERSION` equals the
       stable version (the tag-push guard enforces this).
@@ -328,7 +328,7 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 - [ ] **Publish the stable portal and guardian images** so the baked portal
       adapters and guardian-hosted API move onto the stable image tags.
 - [ ] **Then flip `PORTAL_PACKAGE` / image pins from prerelease to stable** in
-      `.openpalm/config/stack/channels.compose.yml` where applicable.
+      `.openpalm/config/stack/portals.compose.yml` where applicable.
 - [ ] **Verify the first stable publishes the moving Docker tags** — `latest`,
       and especially `openpalm/voice:latest-cpu` / `latest-cu121`, which have
       **never existed** (gated off for prereleases). Confirm `push-voice-images`
@@ -385,5 +385,5 @@ cutting stable `0.11.0` (captured 2026-06-02 at `beta.15`):
 | `.github/workflows/platform-release.yml` | Platform release pipeline and single npm trusted-publisher entry point |
 | `.github/workflows/publish-npm-package.yml` | Reusable npm publish child used by the platform release workflow |
 | `containers/portal/README.md` | Portal runtime architecture (image bundles baked adapters) |
-| `docs/channels/community-channels.md` | Channel adapter authoring guide |
+| `docs/portals/community-portals.md` | Portal adapter authoring guide |
 | `docs/technical/package-management.md` | Single-lockfile policy and cross-package reference rules |

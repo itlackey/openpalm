@@ -7,7 +7,7 @@ Primary sources:
 
 - `.openpalm/config/stack/core.compose.yml`
 - `.openpalm/config/stack/services.compose.yml`
-- `.openpalm/config/stack/channels.compose.yml`
+- `.openpalm/config/stack/portals.compose.yml`
 - `.openpalm/config/stack/custom.compose.yml`
 - `containers/*/entrypoint.sh` and service source where runtime defaults matter
 
@@ -22,7 +22,7 @@ OpenPalm stores runtime state under `OP_HOME`, which defaults to `~/.openpalm`.
 | Host path | Purpose |
 |---|---|
 | `~/.openpalm/config/` | User-editable, non-secret config |
-| `~/.openpalm/config/stack/` | Live compose assembly; `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and `custom.compose.yml` |
+| `~/.openpalm/config/stack/` | Live compose assembly; `core.compose.yml`, `services.compose.yml`, `portals.compose.yml`, and `custom.compose.yml` |
 | `~/.openpalm/knowledge/` | AKM knowledge base (user-managed: `env/`, `secrets/`, `tasks/`) |
 | `~/.openpalm/knowledge/env/` | User-managed env config (`user.env`, AKM env backing store) |
 | `~/.openpalm/knowledge/secrets/` | System-managed file secrets (akm secret — Compose grants) |
@@ -140,7 +140,7 @@ Ports and networks:
 |---|---|
 | Container port | `8080` |
 | Host bind | `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` plus `127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}` |
-| Networks | `portal_net`, `channel_lan`, `assistant_net` |
+| Networks | `portal_net`, `assistant_net` |
 
 Key env:
 
@@ -152,7 +152,7 @@ Key env:
 | `OPENCODE_TIMEOUT_MS` | `0` | Guardian-side timeout override |
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Moderator OpenCode config dir (from `config/guardian`) |
 | `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
-| `CHANNEL_<NAME>_SECRET_FILE` | `/run/secrets/channel_<name>_secret` | Channel principal seed secret file |
+| `PORTAL_<NAME>_SECRET_FILE` | `/run/secrets/portal_<name>_secret` | Portal principal seed secret file |
 | `GUARDIAN_CONTENT_VALIDATION` | `0` | Enable opt-in, fail-closed content validation of inbound messages |
 | `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local OpenCode moderator endpoint |
 | `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
@@ -209,7 +209,7 @@ Key env (host process, not container):
 |---|---|---:|---|---|
 | `chat` | `${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}` | `8182` | `portal_net` | Guardian image OpenAI-compatible edge (chat profile alias) |
 | `api` | `${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}` | `8182` | `portal_net` | Guardian image OpenAI/Anthropic-compatible edge |
-| `voice` | `${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}` | `8880` | `channel_lan` | Voice interface |
+| `voice` | `${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}` | `8880` | `portal_net` | Voice interface |
 | `discord` | none | service-specific | `portal_net` | No host port exposure |
 | `slack` | none | service-specific | `portal_net` | No host port exposure |
 | `ollama` | none (internal only) | `11434` | `assistant_net` | Mounts `$OP_HOME/data/ollama:/home/ollama/.ollama`; no host port exposed |
@@ -223,8 +223,8 @@ Portal services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` where they write h
 | Network | Connected services | Purpose |
 |---|---|---|
 | `assistant_net` | `assistant` (also hosts the scheduler co-process), `guardian` | Core internal service mesh |
-| `channel_lan` | `guardian` and LAN-facing channel/addon edges | Default channel ingress network |
-| `channel_public` | `guardian` only in core; public-facing overlays can join it intentionally | Public ingress isolation |
+| `portal_net` | `guardian` and LAN-facing portal/addon edges | Default portal ingress network |
+| `portal_public` | `guardian` only in core; public-facing overlays can join it intentionally | Public ingress isolation |
 
 ---
 

@@ -7,22 +7,21 @@
 
 ## Network Partitioning Audit
 
-Audited `.openpalm/config/stack/{core,services,channels}.compose.yml` as of 2026-06-13.
+Audited `.openpalm/config/stack/{core,services,portals}.compose.yml` as of 2026-06-13.
 
 ### Networks defined
 
 | Network | Purpose |
 |---------|---------|
 | `assistant_net` | Internal backbone: assistant ↔ guardian ↔ internal AI services |
-| `portal_net` | External channel ingress: guardian ↔ portal adapters |
-| `channel_lan` | Legacy (kept one release so custom overlays validate; guardian only) |
+| `portal_net` | External portal ingress: guardian ↔ portal adapters |
 
 ### `assistant_net` membership
 
 | Service | File | Justification |
 |---------|------|---------------|
 | `assistant` | core.compose.yml | The runtime being protected |
-| `guardian` | channels.compose.yml | The sole authorized ingress broker |
+| `guardian` | portals.compose.yml | The sole authorized ingress broker |
 | `ollama` / `ollama-cuda` / `ollama-rocm` | services.compose.yml | Internal AI inference (assistant calls these; no portal_net membership) |
 | `voice` / `voice-cuda` / `voice-rocm` | services.compose.yml | Internal TTS/STT (assistant calls these; no portal_net membership) |
 

@@ -38,7 +38,7 @@ cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
   --env-file ../../knowledge/env/stack.env \
   down
@@ -84,7 +84,7 @@ This is especially important when moving between machines or users.
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
   --env-file ../../knowledge/env/stack.env \
   up -d
@@ -120,7 +120,7 @@ the current model.
 | `~/.openpalm/knowledge/secrets/` | System-managed service secret files |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |
-| `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels and guardian |
+| `~/.openpalm/config/stack/portals.compose.yml` | First-party optional portals and guardian |
 | `~/.openpalm/config/stack/custom.compose.yml` | Custom services and overlays |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/knowledge/tasks/` | Active AKM automation task files (YAML, `*.yml`) |

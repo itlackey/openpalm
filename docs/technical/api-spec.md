@@ -74,10 +74,10 @@ Response:
   "rate_limits": {
     "user_window_ms": 60000,
     "user_max_requests": 120,
-    "channel_window_ms": 60000,
-    "channel_max_requests": 200,
+    "portal_window_ms": 60000,
+    "portal_max_requests": 200,
     "active_user_limiters": 5,
-    "active_channel_limiters": 2
+    "active_portal_limiters": 2
   },
   "oc_proxy": {
     "enabled": true,

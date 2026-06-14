@@ -9,7 +9,7 @@
 #   2. Admin host process health (HTTP 200)
 #   3. Setup wizard API (GET status, POST complete, deploy-status polling)
 #   4. Core-service health checks (assistant, guardian)
-#   5. Chat channel message round-trip (if installed)
+#   5. Chat portal message round-trip (if installed)
 #   6. Cleanup (or --keep to leave stack running)
 #
 # This script is CI-friendly: structured output, deterministic exit codes,
@@ -619,7 +619,7 @@ CHAT_CONTAINER=$(docker ps --format '{{.Names}}' | grep "openpalm-guardian-api" 
 if [ -n "$CHAT_CONTAINER" ]; then
   pass "Guardian-hosted chat/api edge is running: $CHAT_CONTAINER"
 
-  # Check chat channel health
+  # Check chat portal health
   CHAT_HEALTH=$(docker inspect --format '{{.State.Health.Status}}' "$CHAT_CONTAINER" 2>/dev/null || echo "no-healthcheck")
   if [ "$CHAT_HEALTH" = "healthy" ]; then
     pass "Guardian-hosted chat/api edge is healthy"

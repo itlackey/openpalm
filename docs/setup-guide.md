@@ -86,7 +86,7 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 - `~/.openpalm/config/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/config/stack/core.compose.yml`.
-- First-party addons are defined in `services.compose.yml` and `channels.compose.yml`, then enabled by name through `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env`.
+- First-party addons are defined in `services.compose.yml` and `portals.compose.yml`, then enabled by name through `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env`.
 - Custom services and overlays live in `~/.openpalm/config/stack/custom.compose.yml`.
 - OpenPalm resolves enabled addon names to Compose profiles; the fixed compose files remain deployment truth.
 
@@ -166,7 +166,7 @@ Re-check the exact compose file list in your command. Docker Compose only deploy
 
 ### An addon fails to start
 
-Inspect `~/.openpalm/config/stack/services.compose.yml`, `channels.compose.yml`, and logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
+Inspect `~/.openpalm/config/stack/services.compose.yml`, `portals.compose.yml`, and logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 ### Start over
 

@@ -17,9 +17,9 @@ Repo layout convention:
 | [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
-| [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
-| [discord-setup.md](channels/discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
-| [slack-setup.md](channels/slack-setup.md) | Slack bot setup — create app, install channel, configure Socket Mode |
+| [managing-openpalm.md](managing-openpalm.md) | Configuration, portals, secrets, access control, automations |
+| [discord-setup.md](portals/discord-setup.md) | Discord bot setup — create app, install portal addon, invite bot |
+| [slack-setup.md](portals/slack-setup.md) | Slack bot setup — create app, install portal addon, configure Socket Mode |
 
 ## Upgrade & migration
 
@@ -66,4 +66,4 @@ Repo layout convention:
 | [backup-restore.md](backup-restore.md) | Backup, restore, and migration procedures |
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
-| [community-channels.md](channels/community-channels.md) | Guardian `/oc/*` contract for custom adapters |
+| [community-portals.md](portals/community-portals.md) | Guardian `/oc/*` contract for custom portal adapters |
