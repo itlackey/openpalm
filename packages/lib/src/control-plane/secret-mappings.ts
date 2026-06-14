@@ -45,7 +45,7 @@ export const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
   { secretKey: 'openpalm/mcp/api-key', envKey: 'MCP_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/embedding/api-key', envKey: 'EMBEDDING_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/lmstudio/api-key', envKey: 'LMSTUDIO_API_KEY', scope: 'user' },
-  // Channel-specific credentials
+  // Portal-specific credentials
   { secretKey: 'openpalm/discord/bot-token', envKey: 'DISCORD_BOT_TOKEN', scope: 'user' },
   { secretKey: 'openpalm/slack/bot-token', envKey: 'SLACK_BOT_TOKEN', scope: 'user' },
   { secretKey: 'openpalm/slack/app-token', envKey: 'SLACK_APP_TOKEN', scope: 'user' },

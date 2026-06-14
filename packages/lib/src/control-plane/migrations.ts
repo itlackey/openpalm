@@ -21,7 +21,7 @@
  */
 import {
   existsSync, mkdirSync, readFileSync, writeFileSync,
-  readdirSync, statSync, chmodSync, cpSync, copyFileSync,
+  readdirSync, statSync, chmodSync, cpSync, copyFileSync, renameSync,
 } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
@@ -322,6 +322,37 @@ function migrateAddonConfigToStackEnv(ctx: MigrationCtx): void {
   writeFile600(ctx, envPath, next);
 }
 
+/**
+ * Portal rename (0.12.0): the "channels" concept became "portals". The
+ * materialized compose file moved channels.compose.yml → portals.compose.yml
+ * (re-seeded by the normal asset refresh) and the per-portal verification
+ * secrets moved channel_<name>_secret → portal_<name>_secret. The new
+ * portals.compose.yml references `portal_<name>_secret` files, so existing
+ * installs whose secrets are still named `channel_<name>_secret` would fail
+ * Compose's secret `file:` lookup. Rename each to its portal_-named sibling
+ * (the value is preserved — a rename loses no data; skip if the portal_ name
+ * already exists). The stale channels.compose.yml is inert because
+ * discoverStackOverlays() loads an explicit name list, not a glob.
+ */
+function migratePortalSecretNames(ctx: MigrationCtx): void {
+  const secretsDir = join(ctx.homeDir, 'knowledge', 'secrets');
+  if (!existsSync(secretsDir)) return;
+
+  for (const filename of readdirSync(secretsDir)) {
+    const m = filename.match(/^channel_(.+)_secret$/);
+    if (!m) continue;
+    const dest = join(secretsDir, `portal_${m[1]}_secret`);
+    if (existsSync(dest)) { ctx.log(`skip (exists): knowledge/secrets/portal_${m[1]}_secret`); continue; }
+    if (ctx.dryRun) {
+      ctx.log(`[dry-run] rename secret: channel_${m[1]}_secret -> portal_${m[1]}_secret`);
+      continue;
+    }
+    renameSync(join(secretsDir, filename), dest);
+    try { chmodSync(dest, 0o600); } catch { /* best-effort */ }
+    ctx.log(`portal secret: channel_${m[1]}_secret -> portal_${m[1]}_secret`);
+  }
+}
+
 // ── Migration 0 → 1: 0.10.x `vault/` layout → 0.11.0 knowledge/ layout ────────
 
 const SECRET_KEY_RE = /(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$/;
@@ -542,6 +573,17 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
     verify(ctx) {
       // Nothing to assert here beyond what apply() logs — it is copy-only and
       // idempotent; a dry-run pass suffices.
+    },
+  },
+  {
+    // 0.12.0 channels → portals rename: per-portal verification secrets moved
+    // channel_<name>_secret → portal_<name>_secret (portals.compose.yml now
+    // references the portal_-named files). Copy-only + idempotent.
+    version: 'v0.12.0-rc.1',
+    describe: 'copy per-portal verification secrets channel_<name>_secret -> portal_<name>_secret',
+    apply: migratePortalSecretNames,
+    verify(ctx) {
+      // Copy-only + skip-if-present; apply()'s logs suffice.
     },
   },
 ];

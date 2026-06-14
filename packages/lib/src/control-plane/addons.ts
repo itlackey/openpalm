@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
-import { ensureChannelSecret, ensureComposeVolumeTargets } from './config-persistence.js';
+import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
 import { readBundledStackAsset } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
@@ -28,10 +28,10 @@ const BUILTIN_ADDONS = ['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 
 // The file-based registry was removed from the skeleton, so these live in-code.
 // `ssh` is compose/profile-only (no configurable env) and is intentionally absent.
 const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
-  api: `# API Gateway channel configuration
+  api: `# API Gateway portal configuration
 # ---
 `,
-  chat: `# Web Chat channel configuration
+  chat: `# Web Chat portal configuration
 # ---
 `,
   discord: `# Discord bot configuration
@@ -214,7 +214,7 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "config", "stack", "channels.compose.yml"),
+    join(homeDir, "config", "stack", "portals.compose.yml"),
     join(homeDir, "config", "stack", "services.compose.yml"),
     join(homeDir, "config", "stack", "custom.compose.yml"),
   ];
@@ -224,7 +224,7 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
     if (services.length > 0) return services;
   }
 
-  for (const assetName of ["channels.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+  for (const assetName of ["portals.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
     const services = readAddonServiceNamesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`, name);
     if (services.length > 0) return services;
   }
@@ -539,14 +539,14 @@ export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] 
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "config", "stack", "channels.compose.yml"),
+    join(homeDir, "config", "stack", "portals.compose.yml"),
     join(homeDir, "config", "stack", "services.compose.yml"),
     join(homeDir, "config", "stack", "custom.compose.yml"),
   ];
 
 	const localOpenpalmDir = resolveLocalOpenpalmDir();
 	if (localOpenpalmDir) {
-		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'channels.compose.yml'));
+		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'portals.compose.yml'));
 		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'services.compose.yml'));
 		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'custom.compose.yml'));
 	}
@@ -556,7 +556,7 @@ export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] 
     if (profiles.length > 0) return profiles;
   }
 
-  for (const assetName of ["channels.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+  for (const assetName of ["portals.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
     const profiles = readAddonProfilesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`)
       .filter((profile) => profile.id.startsWith(`addon.${name}`));
     if (profiles.length > 0) return profiles;
@@ -639,8 +639,8 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
 
   if (enabled) {
     if (['api', 'chat', 'discord', 'slack'].includes(name)) {
-      for (const channel of ['api', 'chat', 'discord', 'slack']) {
-        ensureChannelSecret(stackDir, channel);
+      for (const portal of ['api', 'chat', 'discord', 'slack']) {
+        ensurePortalSecret(stackDir, portal);
       }
     }
 

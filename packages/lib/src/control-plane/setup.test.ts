@@ -585,7 +585,7 @@ describe("performSetup", () => {
 
   it("splits channel credentials between secret files and stack.env", async () => {
     const input = makeValidSpec({
-      channelCredentials: {
+      portalCredentials: {
         discord: {
           botToken: "discord-bot-token-xyz",
           applicationId: "discord-app-id-123",

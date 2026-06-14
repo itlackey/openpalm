@@ -1,4 +1,4 @@
-# OpenPalm first-party channel services.
+# OpenPalm first-party portal services.
 # Services are gated by Compose profiles (addon.chat, addon.api,
 # addon.discord, addon.slack). Enable profiles through the OpenPalm CLI/UI or
 # by passing --profile manually.
@@ -17,8 +17,8 @@ services:
       GUARDIAN_URL: http://guardian:8080
       OPENCODE_BASE_URL: ${API_OPENCODE_BASE_URL:-http://guardian:8080/oc}
       PRINCIPAL_ID: ${API_PRINCIPAL_ID:-api}
-      PRINCIPAL_SECRET_FILE: ${API_PRINCIPAL_SECRET_FILE:-/run/secrets/channel_api_secret}
-    secrets: [channel_api_secret]
+      PRINCIPAL_SECRET_FILE: ${API_PRINCIPAL_SECRET_FILE:-/run/secrets/portal_api_secret}
+    secrets: [portal_api_secret]
     networks: [portal_net]
     depends_on:
       guardian:
@@ -37,7 +37,7 @@ services:
       PORTAL_NAME: "Discord Bot"
       OPENCODE_BASE_URL: ${DISCORD_OPENCODE_BASE_URL:-http://guardian:8080/oc}
       PRINCIPAL_ID: ${DISCORD_PRINCIPAL_ID:-discord}
-      PRINCIPAL_SECRET_FILE: ${DISCORD_PRINCIPAL_SECRET_FILE:-/run/secrets/channel_discord_secret}
+      PRINCIPAL_SECRET_FILE: ${DISCORD_PRINCIPAL_SECRET_FILE:-/run/secrets/portal_discord_secret}
       PORTAL_PACKAGE: "@openpalm/discord-portal"
       # Rich-UX streaming (live tokens + tool reactions + interactive prompts via
       # the guardian /oc proxy) is ON by default. Set DISCORD_STREAMING=false to
@@ -52,7 +52,7 @@ services:
       DISCORD_REGISTER_COMMANDS: ${DISCORD_REGISTER_COMMANDS:-}
       DISCORD_THREAD_TTL_HOURS: ${DISCORD_THREAD_TTL_HOURS:-}
       DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
-    secrets: [channel_discord_secret, discord_bot_token]
+    secrets: [portal_discord_secret, discord_bot_token]
     networks: [portal_net]
     depends_on:
       guardian:
@@ -71,7 +71,7 @@ services:
       PORTAL_NAME: "Slack Bot"
       OPENCODE_BASE_URL: ${SLACK_OPENCODE_BASE_URL:-http://guardian:8080/oc}
       PRINCIPAL_ID: ${SLACK_PRINCIPAL_ID:-slack}
-      PRINCIPAL_SECRET_FILE: ${SLACK_PRINCIPAL_SECRET_FILE:-/run/secrets/channel_slack_secret}
+      PRINCIPAL_SECRET_FILE: ${SLACK_PRINCIPAL_SECRET_FILE:-/run/secrets/portal_slack_secret}
       PORTAL_PACKAGE: "@openpalm/slack-portal"
       # Rich-UX streaming is ON by default. Set SLACK_STREAMING=false to fall
       # back to the buffered single-response path.
@@ -81,7 +81,7 @@ services:
       SLACK_ALLOWED_CHANNELS: ${SLACK_ALLOWED_CHANNELS:-}
       SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
-    secrets: [channel_slack_secret, slack_bot_token, slack_app_token]
+    secrets: [portal_slack_secret, slack_bot_token, slack_app_token]
     networks: [portal_net]
     depends_on:
       guardian:
@@ -115,15 +115,15 @@ services:
       GUARDIAN_MODERATION_TIMEOUT_MS: ${GUARDIAN_MODERATION_TIMEOUT_MS:-4000}
       GUARDIAN_MODERATION_THRESHOLD: ${GUARDIAN_MODERATION_THRESHOLD:-3}
       GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
-      GUARDIAN_REQUIRE_CHANNEL_SECRETS: "true"
+      GUARDIAN_REQUIRE_PORTAL_SECRETS: "true"
       GUARDIAN_DIRECT_INGRESS: ${GUARDIAN_DIRECT_INGRESS:-false}
       GUARDIAN_MCP: ${GUARDIAN_MCP:-false}
       GUARDIAN_ADMIN_TOKEN_FILE: /run/secrets/op_guardian_admin_token
       GUARDIAN_MCP_TOKEN_FILE: /run/secrets/op_guardian_mcp_token
-      CHANNEL_CHAT_SECRET_FILE: /run/secrets/channel_chat_secret
-      CHANNEL_API_SECRET_FILE: /run/secrets/channel_api_secret
-      CHANNEL_DISCORD_SECRET_FILE: /run/secrets/channel_discord_secret
-      CHANNEL_SLACK_SECRET_FILE: /run/secrets/channel_slack_secret
+      PORTAL_CHAT_SECRET_FILE: /run/secrets/portal_chat_secret
+      PORTAL_API_SECRET_FILE: /run/secrets/portal_api_secret
+      PORTAL_DISCORD_SECRET_FILE: /run/secrets/portal_discord_secret
+      PORTAL_SLACK_SECRET_FILE: /run/secrets/portal_slack_secret
     ports:
       - "${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830"
       - "127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}:3831"
@@ -139,13 +139,13 @@ services:
       # resolves auth.json under $HOME/.local/share/opencode/.
       - ${OP_HOME}/knowledge/secrets/auth.json:/opt/openpalm/guardian/.local/share/opencode/auth.json:ro
     secrets:
-      - channel_chat_secret
-      - channel_api_secret
-      - channel_discord_secret
-      - channel_slack_secret
+      - portal_chat_secret
+      - portal_api_secret
+      - portal_discord_secret
+      - portal_slack_secret
       - op_guardian_admin_token
       - op_guardian_mcp_token
-    networks: [portal_net, channel_lan, assistant_net]
+    networks: [portal_net, assistant_net]
     depends_on:
       assistant:
         condition: service_healthy
@@ -157,16 +157,16 @@ services:
       start_period: 10s
 
 secrets:
-  channel_chat_secret:
-    file: ${OP_HOME}/knowledge/secrets/channel_chat_secret
-  channel_api_secret:
-    file: ${OP_HOME}/knowledge/secrets/channel_api_secret
-  channel_discord_secret:
-    file: ${OP_HOME}/knowledge/secrets/channel_discord_secret
+  portal_chat_secret:
+    file: ${OP_HOME}/knowledge/secrets/portal_chat_secret
+  portal_api_secret:
+    file: ${OP_HOME}/knowledge/secrets/portal_api_secret
+  portal_discord_secret:
+    file: ${OP_HOME}/knowledge/secrets/portal_discord_secret
   discord_bot_token:
     file: ${OP_HOME}/knowledge/secrets/discord_bot_token
-  channel_slack_secret:
-    file: ${OP_HOME}/knowledge/secrets/channel_slack_secret
+  portal_slack_secret:
+    file: ${OP_HOME}/knowledge/secrets/portal_slack_secret
   slack_bot_token:
     file: ${OP_HOME}/knowledge/secrets/slack_bot_token
   slack_app_token:

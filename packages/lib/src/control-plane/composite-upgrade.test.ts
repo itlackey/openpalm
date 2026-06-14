@@ -2,7 +2,7 @@
  * Composite 0.11.5 → 0.12.0 upgrade EXIT GATE test.
  *
  * Builds a fully populated 0.11.5 fixture OP_HOME (channels enabled, custom
- * service in custom.compose.yml attached to channel_lan, a non-default
+ * service in custom.compose.yml attached to portal_net, a non-default
  * per-service bind var, and addon non-secret config as a secret file), then
  * runs the full upgrade sequence (ensureMigrated + ensureReleaseMigrated) TWICE
  * and asserts:
@@ -41,7 +41,7 @@ import {
  *   - knowledge/secrets/discord_bot_token (sensitive — must stay as secret)
  *   - knowledge/secrets/discord_allowed_guilds (non-sensitive — C4 copies to stack.env)
  *   - knowledge/secrets/auth.json (must be skipped by C4: has a dot)
- *   - config/stack/custom.compose.yml with a custom service on channel_lan
+ *   - config/stack/custom.compose.yml with a custom service on portal_net
  *   - OP_CHAT_BIND_ADDRESS=0.0.0.0 in stack.env (per-service bind override)
  *   - OP_LAYOUT_VERSION already stamped (this is a 0.11 install)
  */
@@ -92,7 +92,7 @@ function seed0115(h: string): void {
     '{"openai":{"type":"api"}}\n',
   );
 
-  // custom.compose.yml — user-written custom service attached to channel_lan
+  // custom.compose.yml — user-written custom service attached to portal_net
   writeFileSync(
     join(h, "config", "stack", "custom.compose.yml"),
     [
@@ -100,9 +100,9 @@ function seed0115(h: string): void {
       "  my-custom-bot:",
       "    image: myorg/my-bot:latest",
       "    networks:",
-      "      - channel_lan",
+      "      - portal_net",
       "networks:",
-      "  channel_lan:",
+      "  portal_net:",
       "    external: true",
       "",
     ].join("\n"),

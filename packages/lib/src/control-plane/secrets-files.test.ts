@@ -15,13 +15,13 @@ describe('file-based control-plane secrets', () => {
   it('creates the secrets directory and files with private permissions', () => {
     const stackDir = tempStackDir();
 
-    writeSecret(stackDir, 'channel_chat_secret', 'value');
+    writeSecret(stackDir, 'portal_chat_secret', 'value');
 
     expect(resolveSecretsDir(stackDir)).toBe(join(stackDir, 'knowledge', 'secrets'));
     expect(statSync(resolveSecretsDir(stackDir)).mode & 0o777).toBe(0o700);
-    expect(statSync(secretPath(stackDir, 'channel_chat_secret')).mode & 0o777).toBe(0o600);
-    expect(readSecret(stackDir, 'channel_chat_secret')).toBe('value');
-    expect(listSecretNames(stackDir)).toEqual(['channel_chat_secret']);
+    expect(statSync(secretPath(stackDir, 'portal_chat_secret')).mode & 0o777).toBe(0o600);
+    expect(readSecret(stackDir, 'portal_chat_secret')).toBe('value');
+    expect(listSecretNames(stackDir)).toEqual(['portal_chat_secret']);
   });
 
   it('rejects invalid secret names', () => {
@@ -42,7 +42,7 @@ describe('file-based control-plane secrets', () => {
     const stackEnv = join(stashDir, 'env', 'stack.env');
     mkdirSync(join(stashDir, 'env'), { recursive: true });
     writeFileSync(stackEnv, 'OP_HOME=/tmp/openpalm\n');
-    writeSecret(stackDir, 'channel_chat_secret', 'value');
+    writeSecret(stackDir, 'portal_chat_secret', 'value');
     const state = { stackDir, stashDir } as ControlPlaneState;
 
     expect(buildEnvFiles(state)).toEqual([stackEnv]);
@@ -62,12 +62,12 @@ describe('file-based control-plane secrets', () => {
 describe('secrets-dir file browser API (admin Secrets tab)', () => {
   it('lists ALL files incl. dotted names like auth.json, with sizes', () => {
     const stackDir = tempStackDir();
-    writeSecret(stackDir, 'channel_api_secret', 'abc');           // regex-valid secret
+    writeSecret(stackDir, 'portal_api_secret', 'abc');           // regex-valid secret
     writeFileSync(join(resolveSecretsDir(stackDir), 'auth.json'), '{"k":1}'); // dotted file
     const files = listSecretFiles(stackDir);
     const names = files.map((f) => f.name);
     expect(names).toContain('auth.json');           // included (strict listSecretNames would exclude it)
-    expect(names).toContain('channel_api_secret');
+    expect(names).toContain('portal_api_secret');
     expect(files.find((f) => f.name === 'auth.json')!.size).toBe('{"k":1}'.length);
     // strict API still excludes the dotted file
     expect(listSecretNames(stackDir)).not.toContain('auth.json');

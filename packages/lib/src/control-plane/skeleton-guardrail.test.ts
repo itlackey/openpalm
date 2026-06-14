@@ -60,7 +60,7 @@ describe("skeleton: .openpalm/config/ structure", () => {
   test("config/stack/ exists with fixed compose files (no stack.yml)", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "core.compose.yml"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "services.compose.yml"))).toBe(true);
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "channels.compose.yml"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "stack", "portals.compose.yml"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "custom.compose.yml"))).toBe(true);
     // stack.yml removed in 0.11.0 — addon enablement lives in stack.env.
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "stack.yml"))).toBe(false);
@@ -88,7 +88,7 @@ describe("skeleton: .openpalm/config/ structure", () => {
 
   test('stack compose assets use per-service image tags with OP_IMAGE_TAG fallback', () => {
     const coreCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'core.compose.yml'), 'utf-8');
-    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'channels.compose.yml'), 'utf-8');
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'portals.compose.yml'), 'utf-8');
 
     expect(coreCompose).toContain('assistant:${OP_ASSISTANT_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
     expect(channelsCompose).toContain('portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
@@ -96,7 +96,7 @@ describe("skeleton: .openpalm/config/ structure", () => {
   });
 
   test('host-published optional listeners use OP_BIND_ADDRESS nested defaults', () => {
-    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'channels.compose.yml'), 'utf-8');
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'portals.compose.yml'), 'utf-8');
     const servicesCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'services.compose.yml'), 'utf-8');
     const coreCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'core.compose.yml'), 'utf-8');
 
@@ -108,7 +108,7 @@ describe("skeleton: .openpalm/config/ structure", () => {
   });
 
   test('compose assets keep only consumed openpalm.profile labels', () => {
-    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'channels.compose.yml'), 'utf-8');
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'portals.compose.yml'), 'utf-8');
     const servicesCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'services.compose.yml'), 'utf-8');
 
     expect(channelsCompose).not.toContain('openpalm.name:');

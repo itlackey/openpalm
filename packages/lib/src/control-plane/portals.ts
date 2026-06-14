@@ -9,19 +9,19 @@ import { CORE_SERVICES } from "./types.js";
 
 // ── Portal Name Validation ────────────────────────────────────────────
 
-/** Strict channel name: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
-const CHANNEL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+/** Strict portal name: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
+const PORTAL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 const PORTAL_MARKER_KEYS = ['PORTAL_NAME', 'CHANNEL_NAME'] as const;
 
 function isValidPortalName(name: string): boolean {
-  return CHANNEL_NAME_RE.test(name);
+  return PORTAL_NAME_RE.test(name);
 }
 
 function addonComposePaths(homeDir: string): string[] {
   const paths: string[] = [];
 
-  for (const name of ['channels.compose.yml', 'services.compose.yml', 'custom.compose.yml']) {
+  for (const name of ['portals.compose.yml', 'services.compose.yml', 'custom.compose.yml']) {
     const composePath = `${homeDir}/config/stack/${name}`;
     if (existsSync(composePath)) paths.push(composePath);
   }
@@ -95,7 +95,7 @@ export function isPortalAddon(composePath: string): boolean {
  * A portal addon is identified by compose-derived truth: its compose.yml
  * defines services with a PORTAL_NAME environment variable (or the legacy CHANNEL_NAME during migration).
  *
- * Non-channel addons (admin, ollama, etc.) are excluded.
+ * Non-portal addons (admin, ollama, etc.) are excluded.
  *
  * @param configDir - The config directory (~/.openpalm/config). The stack
  *   directory is derived from the parent (homeDir).

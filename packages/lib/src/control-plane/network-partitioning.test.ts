@@ -50,7 +50,7 @@ function getServiceNetworks(service: ComposeDoc["services"][string]): string[] {
 
 const core = loadCompose("core.compose.yml") as ComposeDoc;
 const services = loadCompose("services.compose.yml") as ComposeDoc;
-const channels = loadCompose("channels.compose.yml") as ComposeDoc;
+const channels = loadCompose("portals.compose.yml") as ComposeDoc;
 
 // Collect all services across files with their declared networks.
 const allServices: Record<string, { networks: string[]; profiles?: string[]; ports?: string[]; command?: string }> = {};

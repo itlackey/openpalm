@@ -200,7 +200,7 @@ export function updateSecretsEnv(
  *
  * This file is bind-mounted into both the assistant and guardian containers
  * so every OpenCode instance picks up new credentials on its next restart —
- * see core.compose.yml (assistant) and channels.compose.yml (guardian).
+ * see core.compose.yml (assistant) and portals.compose.yml (guardian).
  *
  * Existing entries (OAuth tokens, other providers) are preserved.
  * Empty values DELETE the corresponding entry.

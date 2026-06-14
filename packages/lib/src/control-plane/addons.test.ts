@@ -96,7 +96,7 @@ describe('addon runtime state', () => {
     expect(enabled.changed).toBe(true);
     expect(enabled.services).toEqual(expect.arrayContaining(['guardian-api']));
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
-    expect(readSecret(stackDir, 'channel_chat_secret')).toBeTruthy();
+    expect(readSecret(stackDir, 'portal_chat_secret')).toBeTruthy();
 
     const disabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false);
     expect(disabled.ok).toBe(true);

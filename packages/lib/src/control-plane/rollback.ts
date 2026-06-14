@@ -16,7 +16,7 @@ import { resolveRollbackDir } from "./home.js";
 const SNAPSHOT_FILES = [
   "knowledge/env/stack.env",
   "config/stack/services.compose.yml",
-  "config/stack/channels.compose.yml",
+  "config/stack/portals.compose.yml",
   "config/stack/custom.compose.yml",
   "knowledge/secrets/auth.json",
 ];

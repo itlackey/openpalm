@@ -170,7 +170,7 @@ describe("scenario: stale managed compose asset in an existing OP_HOME", () => {
     mkdirSync(join(srcOpenpalm, "config", "assistant"), { recursive: true });
     writeFileSync(join(srcOpenpalm, "config", "stack", "core.compose.yml"), "services:\n  assistant: {}  # current\n");
     writeFileSync(join(srcOpenpalm, "config", "stack", "services.compose.yml"), "services: {}\n");
-    writeFileSync(join(srcOpenpalm, "config", "stack", "channels.compose.yml"), "services: {}\n");
+    writeFileSync(join(srcOpenpalm, "config", "stack", "portals.compose.yml"), "services: {}\n");
     // Seeded assets (written only if missing in target — target already has custom.compose.yml so that is skipped)
     writeFileSync(join(srcOpenpalm, "config", "stack", "custom.compose.yml"), "services: {}\n");
     writeFileSync(join(srcOpenpalm, "config", "assistant", "opencode.jsonc"), "{}\n");

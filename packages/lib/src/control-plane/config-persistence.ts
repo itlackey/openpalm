@@ -51,7 +51,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * Write system-managed values to knowledge/env/stack.env.
  *
  * Secret-like keys are NOT written here — they belong in knowledge/secrets/.
- * Use ensureChannelSecret() for channel secrets.
+ * Use ensurePortalSecret() for portal secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
@@ -153,9 +153,9 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
 
 /**
  * Discover active compose overlays.
- * Returns the fixed compose stack: core, services, channels, and custom.
+ * Returns the fixed compose stack: core, services, portals, and custom.
  * First-party services are profile-gated inside services.compose.yml and
- * channels.compose.yml.
+ * portals.compose.yml.
  *
  * Host AKM sharing is NOT a compose overlay: the assistant always mounts
  * `/host-stash` (core.compose.yml, with an empty-dir fallback), and "sharing"
@@ -168,7 +168,7 @@ export function discoverStackOverlays(stackDir: string): string[] {
   const coreYml = `${stackDir}/core.compose.yml`;
   if (existsSync(coreYml)) files.push(coreYml);
 
-  for (const name of ['services.compose.yml', 'channels.compose.yml', 'custom.compose.yml']) {
+  for (const name of ['services.compose.yml', 'portals.compose.yml', 'custom.compose.yml']) {
     const composePath = `${stackDir}/${name}`;
     if (existsSync(composePath)) files.push(composePath);
   }
@@ -200,14 +200,14 @@ export function buildRuntimeFileMeta(artifacts: {
   }));
 }
 
-// ── Channel Secrets ────────────────────────────────────────────────────
+// ── Portal Secrets ────────────────────────────────────────────────────
 
-export function channelSecretName(addon: string): string {
-  return `channel_${addon.replace(/-/g, '_')}_secret`;
+export function portalSecretName(addon: string): string {
+  return `portal_${addon.replace(/-/g, '_')}_secret`;
 }
 
-export function ensureChannelSecret(stackDir: string, addon: string): string {
-  return ensureSecret(stackDir, channelSecretName(addon), () => randomHex(16));
+export function ensurePortalSecret(stackDir: string, addon: string): string {
+  return ensureSecret(stackDir, portalSecretName(addon), () => randomHex(16));
 }
 
 // ── Volume Mount Targets ───────────────────────────────────────────────
@@ -322,7 +322,7 @@ export function writeRuntimeFiles(
   }
   const composePath = `${state.stackDir}/core.compose.yml`;
   if (!existsSync(composePath)) writeFileSync(composePath, state.artifacts.compose);
-  for (const name of ['services.compose.yml', 'channels.compose.yml']) {
+  for (const name of ['services.compose.yml', 'portals.compose.yml']) {
     const path = `${state.stackDir}/${name}`;
     if (!existsSync(path)) writeFileSync(path, readBundledStackAsset(name));
   }
@@ -331,8 +331,8 @@ export function writeRuntimeFiles(
 
   for (const addon of listEnabledAddonIds(state.homeDir)) {
     if (['api', 'chat', 'discord', 'slack'].includes(addon)) {
-      for (const channel of ['api', 'chat', 'discord', 'slack']) {
-        ensureChannelSecret(state.stackDir, channel);
+      for (const portal of ['api', 'chat', 'discord', 'slack']) {
+        ensurePortalSecret(state.stackDir, portal);
       }
       break;
     }

@@ -139,7 +139,7 @@ function normalizeAssetRef(version: string): string {
 export const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
   { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/config/stack/core.compose.yml" },
   { relPath: "config/stack/services.compose.yml", githubFilename: ".openpalm/config/stack/services.compose.yml" },
-  { relPath: "config/stack/channels.compose.yml", githubFilename: ".openpalm/config/stack/channels.compose.yml" },
+  { relPath: "config/stack/portals.compose.yml", githubFilename: ".openpalm/config/stack/portals.compose.yml" },
 ];
 
 // Seeded once — written only when the file does not exist yet.

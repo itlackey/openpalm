@@ -1,9 +1,9 @@
 {
   // Guardian OpenCode global config. Bind-mounted at /etc/opencode
-  // (OPENCODE_CONFIG_DIR) — see .openpalm/config/stack/channels.compose.yml.
+  // (OPENCODE_CONFIG_DIR) — see .openpalm/config/stack/portals.compose.yml.
   //
   // This OpenCode instance is the guardian's *content moderator*: it classifies
-  // untrusted inbound channel messages for prompt-injection / jailbreak /
+  // untrusted inbound portal messages for prompt-injection / jailbreak /
   // exfiltration. It is started on loopback (127.0.0.1:4097) by the guardian
   // entrypoint and is only reached from inside the guardian container.
   //

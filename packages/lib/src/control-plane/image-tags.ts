@@ -61,7 +61,7 @@ export function buildPinnedImageTagEnv(
  * Build the stack.env image-tag entries for a platform release.
  *
  * `tag` is the platform version-of-record (the assistant tag). Per-image
- * overrides let guardian/channel ride an older published tag when a release
+ * overrides let guardian/portal ride an older published tag when a release
  * shipped only a subset of images (#477). OP_IMAGE_TAG stays as the compose
  * fallback for pre-per-image installs.
  */

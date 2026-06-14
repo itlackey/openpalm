@@ -63,7 +63,7 @@ export type SetupSpec = {
   security: { uiLoginPassword: string };
   owner?: { name?: string; email?: string };
   connections: SetupConnection[];
-  channelCredentials?: Record<string, Record<string, string>>;
+  portalCredentials?: Record<string, Record<string, string>>;
   addons?: Record<string, boolean>;
   voiceProfile?: string;
   ollamaProfile?: string;
@@ -108,9 +108,9 @@ export function buildAuthJsonFromSetup(
   return keys;
 }
 
-// ── Channel Credential Env Var Mapping ───────────────────────────────────
+// ── Portal Credential Env Var Mapping ───────────────────────────────────
 
-const CHANNEL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
+const PORTAL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
   discord: {
     botToken: "DISCORD_BOT_TOKEN",
     applicationId: "DISCORD_APPLICATION_ID",
@@ -129,12 +129,12 @@ const CHANNEL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
   },
 };
 
-function buildChannelCredentialEnvVars(
-  channelCredentials: Record<string, Record<string, string>>
+function buildPortalCredentialEnvVars(
+  portalCredentials: Record<string, Record<string, string>>
 ): Record<string, string> {
   const envVars: Record<string, string> = {};
-  for (const [channelId, creds] of Object.entries(channelCredentials)) {
-    const mapping = CHANNEL_CREDENTIAL_ENV_MAP[channelId];
+  for (const [portalId, creds] of Object.entries(portalCredentials)) {
+    const mapping = PORTAL_CREDENTIAL_ENV_MAP[portalId];
     if (!mapping) continue;
     for (const [field, envKey] of Object.entries(mapping)) {
       const val = creds[field];
@@ -153,7 +153,7 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
+  const { llm, embedding, tts, stt, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
   const state = opts?.state ?? createState();
   initializeStateSecrets(state);
 
@@ -179,15 +179,15 @@ export async function performSetup(
     try {
       ensureHomeDirs();
       ensureSecrets(state);
-      const channelSecretUpdates = channelCredentials ? buildChannelCredentialEnvVars(channelCredentials) : {};
-      // Pick up channel credential env vars not already provided in the spec
-      for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
+      const portalSecretUpdates = portalCredentials ? buildPortalCredentialEnvVars(portalCredentials) : {};
+      // Pick up portal credential env vars not already provided in the spec
+      for (const mapping of Object.values(PORTAL_CREDENTIAL_ENV_MAP)) {
         for (const envKey of Object.values(mapping)) {
-          if (!channelSecretUpdates[envKey] && process.env[envKey]) channelSecretUpdates[envKey] = process.env[envKey];
+          if (!portalSecretUpdates[envKey] && process.env[envKey]) portalSecretUpdates[envKey] = process.env[envKey];
         }
       }
       updateSecretsEnv(state, updates);
-      updateSecretsEnv(state, channelSecretUpdates);
+      updateSecretsEnv(state, portalSecretUpdates);
       patchSecretsEnvFile(state.stackDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
@@ -301,8 +301,8 @@ export async function performSetup(
         writeVoiceVars({ tts, stt }, state.stackDir);
       }
 
-      // Enable requested addons (channels like discord, slack, etc.)
-      // setAddonEnabled records explicit activation state and ensures channel secret files.
+      // Enable requested addons (portals like discord, slack, etc.)
+      // setAddonEnabled records explicit activation state and ensures portal secret files.
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
           if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true, state);

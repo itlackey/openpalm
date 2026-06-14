@@ -446,3 +446,41 @@ describe('C4 release migration v0.12.0-rc.1: non-sensitive addon config → stac
     expect(stackEnv).not.toContain('DISCORD_ALLOWED_GUILDS');
   });
 });
+
+describe('release migration v0.12.0-rc.1: channel_*_secret → portal_*_secret', () => {
+  it('renames per-portal verification secrets to the portal_ prefix', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'channel_discord_secret'), 'disc-abc\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'channel_slack_secret'), 'slack-xyz\n');
+    // A non-portal secret must be left untouched.
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'), 'Bot.token\n');
+
+    const report = ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    expect(report.migrated).toBe(true);
+    expect(report.applied).toContain('v0.12.0-rc.1');
+
+    // Renamed (value preserved), originals gone.
+    expect(readFileSync(join(home, 'knowledge', 'secrets', 'portal_discord_secret'), 'utf-8').trim()).toBe('disc-abc');
+    expect(readFileSync(join(home, 'knowledge', 'secrets', 'portal_slack_secret'), 'utf-8').trim()).toBe('slack-xyz');
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'channel_discord_secret'))).toBe(false);
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'channel_slack_secret'))).toBe(false);
+    // Non-portal secret untouched.
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'))).toBe(true);
+  });
+
+  it('skips when the portal_ name already exists (idempotent, no clobber)', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'channel_discord_secret'), 'old\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'portal_discord_secret'), 'already-here\n');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    // Existing portal_ value is preserved (not clobbered by the channel_ copy).
+    expect(readFileSync(join(home, 'knowledge', 'secrets', 'portal_discord_secret'), 'utf-8').trim()).toBe('already-here');
+  });
+});

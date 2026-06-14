@@ -52,11 +52,11 @@ export function createState(): ControlPlaneState {
   const dataDir = resolveDataDir();
   const stackDir = resolveStackDir();
 
-  const withGuardian = hasEnabledChannel(listEnabledAddonIds(homeDir));
+  const withGuardian = hasEnabledPortal(listEnabledAddonIds(homeDir));
   const services: Record<string, "running" | "stopped"> = {};
   for (const name of CORE_SERVICES) {
-    // Guardian is only an expected service when a channel addon is enabled —
-    // matches its deploy gating, so a no-channel install does not report it as
+    // Guardian is only an expected service when a portal addon is enabled —
+    // matches its deploy gating, so a no-portal install does not report it as
     // a perpetually-stopped service in the Overview/Containers status.
     if (name === "guardian" && !withGuardian) continue;
     services[name] = "stopped";
@@ -87,7 +87,7 @@ async function reconcileCore(
   opts: { activateServices?: boolean; deactivateServices?: boolean; skipSnapshot?: boolean },
 ): Promise<string[]> {
   if (opts.activateServices) {
-    const withGuardian = hasEnabledChannel(listEnabledAddonIds(state.homeDir));
+    const withGuardian = hasEnabledPortal(listEnabledAddonIds(state.homeDir));
     for (const s of CORE_SERVICES) {
       if (s === "guardian" && !withGuardian) continue;
       state.services[s] = "running";
@@ -265,7 +265,7 @@ function resolveImageNamespace(state: ControlPlaneState): string {
 
 function resolveRequiredPlatformImages(state: ControlPlaneState): string[] {
   const required = new Set<string>(['assistant']);
-  if (hasEnabledChannel(listEnabledAddonIds(state.homeDir))) {
+  if (hasEnabledPortal(listEnabledAddonIds(state.homeDir))) {
     required.add('guardian');
     required.add('portal');
   }
@@ -355,7 +355,7 @@ async function resolvePlatformImageTags(
         `at or below ${platformTag}. This release is incomplete for the enabled services; stack.env was left unchanged.`
       );
     }
-    // Image is not deployed (no channel addon enabled) — leave it at the
+    // Image is not deployed (no portal addon enabled) — leave it at the
     // platform tag; nothing will pull it.
   }
   return buildPlatformImageTagEnv(platformTag, perImage, pinnedImages);
@@ -393,7 +393,7 @@ function collectPinnedImageWarnings(
  * Resolve the newest published platform tag from the Docker registry.
  *
  * `assistant` is the version-of-record image: its newest tag is the canonical
- * platform version. Guardian/channel may lag behind it when a release shipped
+ * platform version. Guardian/portal may lag behind it when a release shipped
  * only a subset of images — see resolvePlatformImageTags.
  *
  * Used both to auto-detect during "Update now" and to resolve a requested
@@ -535,7 +535,7 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     }
 
     // 3. Recreate containers (includes profiles for voice addon).
-    // forceRecreate is REQUIRED so channel containers restart onto the newly
+    // forceRecreate is REQUIRED so portal containers restart onto the newly
     // pulled baked image even when the managed compose config is unchanged.
     const services = await buildManagedServices(state);
     const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
@@ -607,53 +607,53 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
   return discoverStackOverlays(state.stackDir);
 }
 
-// Channel addons that require the guardian ingress. Mirrors the profile gate on
-// the guardian service in channels.compose.yml (profiles: addon.{chat,api,
-// discord,slack}) and the built-in channel id list used in registry.ts /
+// Portal addons that require the guardian ingress. Mirrors the profile gate on
+// the guardian service in portals.compose.yml (profiles: addon.{chat,api,
+// discord,slack}) and the built-in portal id list used in registry.ts /
 // config-persistence.ts. Guardian is shared infra for these, not an addon
 // service of its own (getAddonServiceNames deliberately excludes it).
 //
 // Deploy dependency contract (one place to read it):
 //   • assistant — ALWAYS deployed; depends on nothing.
-//   • guardian  — channel ingress; deployed ONLY when ≥1 channel addon is
+//   • guardian  — portal ingress; deployed ONLY when ≥1 portal addon is
 //                 enabled; depends on assistant.
-//   • channels  — each depends on guardian (compose `depends_on`), so they are
+//   • portals  — each depends on guardian (compose `depends_on`), so they are
 //                 never deployed without it.
-// A zero-channel install therefore deploys assistant alone and must NOT
+// A zero-portal install therefore deploys assistant alone and must NOT
 // include or health-wait on guardian. The integration test in
 // guardian-gating.test.ts pins this.
-const CHANNEL_ADDON_IDS = ["api", "chat", "discord", "slack", "gateway"];
+const PORTAL_ADDON_IDS = ["api", "chat", "discord", "slack", "gateway"];
 
 /**
- * Guardian is channel ingress: it is both DEPLOYED and treated as an EXPECTED
- * service only when ≥1 channel addon is enabled. Single predicate so the deploy
+ * Guardian is portal ingress: it is both DEPLOYED and treated as an EXPECTED
+ * service only when ≥1 portal addon is enabled. Single predicate so the deploy
  * set (buildManagedServices), the expected-service seed (createState), and the
  * activation loop (reconcileCore) all gate guardian identically — otherwise the
  * Overview/Containers status reports "Guardian not running" forever on a
- * no-channel install (it is never deployed). Takes the resolved addon list so
+ * no-portal install (it is never deployed). Takes the resolved addon list so
  * callers that already have it don't re-read stack.env.
  */
-function hasEnabledChannel(enabledAddons: string[]): boolean {
-  return enabledAddons.some((a) => CHANNEL_ADDON_IDS.includes(a));
+function hasEnabledPortal(enabledAddons: string[]): boolean {
+  return enabledAddons.some((a) => PORTAL_ADDON_IDS.includes(a));
 }
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
   const composeOpts = buildComposeOptions(state);
 
-  // The assistant is the only ALWAYS-on core service. The guardian is channel
-  // ingress — profile-gated to the channel addons in channels.compose.yml, so
-  // with zero channels enabled it is never deployed. Seeding it unconditionally
+  // The assistant is the only ALWAYS-on core service. The guardian is portal
+  // ingress — profile-gated to the portal addons in portals.compose.yml, so
+  // with zero portals enabled it is never deployed. Seeding it unconditionally
   // made the installer health-wait on a guardian that never starts (a ~5-minute
-  // hang when no channel is selected). Add it back ONLY when a channel is
+  // hang when no portal is selected). Add it back ONLY when a portal is
   // enabled; that also preserves the #450 need to force-recreate guardian on
-  // upgrade when channel profiles ARE active (it is excluded from
+  // upgrade when portal profiles ARE active (it is excluded from
   // getAddonServiceNames, so the fallback below would otherwise drop it).
   const enabledAddons = listEnabledAddonIds(state.homeDir);
   const services = new Set<string>(["assistant"]);
-  if (hasEnabledChannel(enabledAddons)) services.add("guardian");
+  if (hasEnabledPortal(enabledAddons)) services.add("guardian");
 
   // Prefer compose-derived service list when Docker is available. Resolved with
-  // the active profiles, this already includes guardian iff a channel profile
+  // the active profiles, this already includes guardian iff a portal profile
   // is active — the explicit add above just guarantees it for the fallback.
   if (composeOpts.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const result = await composeConfigServices(composeOpts);
@@ -663,7 +663,7 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
     }
   }
 
-  // Fallback: static inference from assistant (+ guardian when channels) +
+  // Fallback: static inference from assistant (+ guardian when portals) +
   // active addon overlays.
   for (const addon of enabledAddons) {
     for (const s of getAddonServiceNames(state.homeDir, addon)) services.add(s);

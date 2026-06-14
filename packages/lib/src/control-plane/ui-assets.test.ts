@@ -112,7 +112,7 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     // refreshCoreAssetsFromSource reads all MANAGED_ASSETS from the source; populate stubs.
     writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "core.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "services.compose.yml"), "services: {}\n");
-    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "channels.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "portals.compose.yml"), "services: {}\n");
     // SEEDED_ASSETS are also read from source when the target is absent.
     writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "custom.compose.yml"), "services: {}\n");
     mkdirSync(join(repoRoot, ".openpalm", "config", "assistant"), { recursive: true });

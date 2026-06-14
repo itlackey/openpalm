@@ -61,7 +61,7 @@ export const akmCacheDir           = (s: ControlPlaneState): string => `${s.data
 export const rollbackDir           = (s: ControlPlaneState): string => `${s.dataDir}/rollback`;
 export const logsDir               = (s: ControlPlaneState): string => `${s.dataDir}/logs`;
 /**
- * Guardian's own audit log of channel ingress (HMAC verify, replay, rate
+ * Guardian's own audit log of portal ingress (HMAC verify, replay, rate
  * limit). Phase 6 of the auth/proxy refactor removed the OpenPalm-side
  * `admin-audit.jsonl` — OpenCode session logs are the audit trail for
  * chat + tool activity.
@@ -92,5 +92,5 @@ export const passStoreDir          = (s: ControlPlaneState): string => `${s.data
 
 export const coreComposePath       = (s: ControlPlaneState): string => `${s.stackDir}/core.compose.yml`;
 export const servicesComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/services.compose.yml`;
-export const channelsComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/channels.compose.yml`;
+export const portalsComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/portals.compose.yml`;
 export const customComposePath     = (s: ControlPlaneState): string => `${s.stackDir}/custom.compose.yml`;

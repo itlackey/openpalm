@@ -46,7 +46,7 @@ function seedEnvFiles(files: { stack?: boolean } = {}): void {
 function seedAddon(name: string): void {
   const stackDir = join(tempDir, "config", "stack");
   mkdirSync(stackDir, { recursive: true });
-  writeFileSync(join(stackDir, "channels.compose.yml"), `services:\n  ${name}:\n    profiles: [\"addon.${name}\"]\n    image: test\n`);
+  writeFileSync(join(stackDir, "portals.compose.yml"), `services:\n  ${name}:\n    profiles: [\"addon.${name}\"]\n    image: test\n`);
   const envDir = join(tempDir, "knowledge", "env");
   mkdirSync(envDir, { recursive: true });
   writeFileSync(join(envDir, "stack.env"), `OP_ENABLED_ADDONS=${name}\n`);
@@ -79,7 +79,7 @@ describe("buildComposeOptions", () => {
     const state = makeState();
     const opts = buildComposeOptions(state);
     expect(opts.files).toHaveLength(2);
-    expect(opts.files[1]).toContain("channels.compose.yml");
+    expect(opts.files[1]).toContain("portals.compose.yml");
     expect(opts.profiles).toContain("addon.chat");
   });
 
@@ -218,6 +218,6 @@ describe("buildComposeCliArgs", () => {
       return acc;
     }, []);
     expect(fFlags).toHaveLength(2);
-    expect(fFlags[1]).toContain("channels.compose.yml");
+    expect(fFlags[1]).toContain("portals.compose.yml");
   });
 });

@@ -160,10 +160,8 @@ services:
       "
 
 # Portal-style ingress services join portal_net to reach the guardian.
-# channel_lan remains defined for one release so custom overlays keep validating.
 networks:
   portal_net:
-  channel_lan:
   assistant_net:
 
 volumes:

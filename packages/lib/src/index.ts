@@ -280,8 +280,8 @@ export {
   resolveRuntimeFiles,
   buildRuntimeFileMeta,
   writeRuntimeFiles,
-  channelSecretName,
-  ensureChannelSecret,
+  portalSecretName,
+  ensurePortalSecret,
   ensureComposeVolumeTargets,
 } from "./control-plane/config-persistence.js";
 

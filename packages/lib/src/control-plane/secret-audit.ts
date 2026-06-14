@@ -90,30 +90,29 @@ function normalizedSecretName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
-function isChannelService(name: string, service: ComposeService): boolean {
+function isPortalService(name: string, service: ComposeService): boolean {
   const normalized = normalizedSecretName(name);
-  if (normalized.startsWith('channel_')) return true;
+  if (normalized.startsWith('portal_')) return true;
   const image = typeof service.image === 'string' ? service.image.toLowerCase() : '';
   if (image.includes('/portal') || image.endsWith(':portal') || image.includes('openpalm/portal')) return true;
-  if (image.includes('/channel') || image.endsWith(':channel') || image.includes('openpalm/channel')) return true;
-  return serviceNetworks(service.networks).includes('channel_lan') && name !== 'guardian';
+  return serviceNetworks(service.networks).includes('portal_net') && name !== 'guardian';
 }
 
 function allowedSecretForService(serviceName: string, service: ComposeService, secretName: string): boolean {
-  const serviceId = normalizedSecretName(serviceName.replace(/^channel[-_]/i, ''));
+  const serviceId = normalizedSecretName(serviceName.replace(/^portal[-_]/i, ''));
   const secretId = normalizedSecretName(secretName);
 
   if (serviceName === 'assistant') {
     return /^(assistant|opencode|provider|llm|embedding|akm|user)_/.test(secretId);
   }
   if (serviceName === 'guardian') {
-    return secretId.startsWith('guardian_') || secretId.startsWith('channel_');
+    return secretId.startsWith('guardian_') || secretId.startsWith('portal_');
   }
   if (serviceName === 'admin') {
     return /^(admin|ui|openpalm)_/.test(secretId);
   }
-  if (isChannelService(serviceName, service)) {
-    return secretId.startsWith(`channel_${serviceId}_`) || secretId.startsWith(`${serviceId}_`);
+  if (isPortalService(serviceName, service)) {
+    return secretId.startsWith(`portal_${serviceId}_`) || secretId.startsWith(`${serviceId}_`);
   }
   return secretId.startsWith(`${serviceId}_`);
 }
