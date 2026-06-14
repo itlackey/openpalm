@@ -423,15 +423,21 @@
     <!-- "Install without a usable AI" escape hatch.
          Keyed on the actual chat model, not on whether *some* provider is
          "connected" — a verified provider with no usable model would otherwise
-         leave the user stuck (Continue disabled, no escape). -->
+         leave the user stuck (Continue disabled, no escape). This is also the
+         path for a client-only install: skip AI here and point the app at an
+         assistant running on another computer. -->
     {#if !llmModel && !allowEmptyInstall}
       <div class="s1-empty-install-row">
+        <p class="s1-empty-install-hint">
+          No AI here? You can still continue — connect this app to an assistant
+          running on another computer, or add a provider later from your dashboard.
+        </p>
         <button
           type="button"
           class="s1-btn-empty-install"
           onclick={() => onallowemptyinstallchange?.(true)}
         >
-          I'll connect one later
+          I'll set this up later
         </button>
       </div>
     {/if}
@@ -737,6 +743,14 @@
   .s1-empty-install-row {
     margin-top: 12px;
     text-align: center;
+  }
+
+  .s1-empty-install-hint {
+    margin: 0 auto 4px;
+    max-width: 46ch;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-tertiary);
   }
 
   .s1-btn-empty-install {

@@ -127,8 +127,9 @@
 <!-- Step title/lede come from the wizard shell header; no duplicate heading here. -->
 
 {#if verifiedProviders.length === 0}
-  <div class="review-warning" role="alert">
-    ⚠ No AI provider connected — your assistant won't be able to chat until you add one from the dashboard.
+  <div class="review-note">
+    No AI set up here yet — that's fine. After install you can connect this app to an
+    assistant running on another computer, or add a provider, anytime from your dashboard.
   </div>
 {/if}
 
@@ -313,6 +314,17 @@
     border-radius: var(--radius-lg);
     font-size: var(--text-sm, 0.875rem);
     color: var(--color-danger);
+  }
+
+  /* ── Informational note (no-AI is a valid client-only choice) ──── */
+  .review-note {
+    margin: 12px 0;
+    padding: 10px 14px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm, 0.875rem);
+    line-height: 1.5;
+    color: var(--color-text-secondary);
   }
 
   /* ── Password block (tinted surface, rounded, no border) ──────── */

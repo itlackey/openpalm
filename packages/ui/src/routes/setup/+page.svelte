@@ -1143,7 +1143,7 @@
     const payloadHasLlm = !!(payload as { llm?: unknown }).llm;
     if (!payloadHasLlm && !isRerun && !emptyAiAck) {
       const ok = window.confirm(
-        'No AI provider is configured. Your assistant won’t be able to chat until you add one from the dashboard.\n\nInstall anyway?',
+        'No AI is set up here. You can connect this app to an assistant running on another computer, or add a provider later from your dashboard.\n\nInstall now?',
       );
       if (!ok) return;
       emptyAiAck = true;
