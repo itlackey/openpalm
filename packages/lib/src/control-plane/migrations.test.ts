@@ -484,3 +484,56 @@ describe('release migration v0.12.0-rc.1: channel_*_secret → portal_*_secret',
     expect(readFileSync(join(home, 'knowledge', 'secrets', 'portal_discord_secret'), 'utf-8').trim()).toBe('already-here');
   });
 });
+
+describe('release migration v0.12.0-rc.1: channel_lan → portal_net in custom.compose.yml', () => {
+  function seedRelease(): void {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'config', 'stack'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+  }
+
+  it('rewrites channel_lan references and backs up the original overlay', () => {
+    seedRelease();
+    const customPath = join(home, 'config', 'stack', 'custom.compose.yml');
+    const original =
+      'services:\n  myapp:\n    image: me/app\n    networks: [channel_lan]\nnetworks:\n  channel_lan:\n';
+    writeFileSync(customPath, original);
+
+    const report = ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    expect(report.applied).toContain('v0.12.0-rc.1');
+
+    const rewritten = readFileSync(customPath, 'utf-8');
+    expect(rewritten).not.toContain('channel_lan');
+    expect(rewritten).toContain('networks: [portal_net]');
+    expect(rewritten).toContain('  portal_net:');
+
+    // Original preserved as a backup sibling.
+    expect(readFileSync(`${customPath}.pre-portal-rename.bak`, 'utf-8')).toBe(original);
+  });
+
+  it('is a no-op when the overlay does not reference channel_lan (no backup written)', () => {
+    seedRelease();
+    const customPath = join(home, 'config', 'stack', 'custom.compose.yml');
+    const original = 'services: {}\n';
+    writeFileSync(customPath, original);
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+
+    expect(readFileSync(customPath, 'utf-8')).toBe(original);
+    expect(existsSync(`${customPath}.pre-portal-rename.bak`)).toBe(false);
+  });
+
+  it('does not clobber an existing backup on a second run', () => {
+    seedRelease();
+    const customPath = join(home, 'config', 'stack', 'custom.compose.yml');
+    writeFileSync(customPath, 'networks:\n  channel_lan:\n');
+    writeFileSync(`${customPath}.pre-portal-rename.bak`, 'PRIOR-BACKUP\n');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+
+    // Rewrite still happens, but the pre-existing backup is preserved.
+    expect(readFileSync(customPath, 'utf-8')).not.toContain('channel_lan');
+    expect(readFileSync(`${customPath}.pre-portal-rename.bak`, 'utf-8')).toBe('PRIOR-BACKUP\n');
+  });
+});

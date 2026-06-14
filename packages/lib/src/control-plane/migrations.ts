@@ -353,6 +353,58 @@ function migratePortalSecretNames(ctx: MigrationCtx): void {
   }
 }
 
+/**
+ * Portal rename (0.12.0) — user custom overlay network reference.
+ * A user-authored config/stack/custom.compose.yml may reference the `channel_lan`
+ * network, which was renamed to `portal_net` in 0.12.0. `channel_lan` survives as
+ * a deprecated empty bridge for this one release but is REMOVED in 0.13.0 — at
+ * which point an overlay still referencing it fails Compose validation. Rewrite
+ * `channel_lan` → `portal_net` in the user's overlay so it keeps working past
+ * 0.13.0 with no manual step.
+ *
+ * Non-destructive: the original is copied to custom.compose.yml.pre-portal-rename.bak
+ * first (skip if that backup already exists), and the rewrite is idempotent (a
+ * second run finds no `channel_lan` token and does nothing). The token is specific
+ * enough that a word-boundary replace is safe; the rare case of an overlay that
+ * *defines* its own external `channel_lan` network is covered by the .bak copy.
+ */
+function migrateCustomComposeChannelLan(ctx: MigrationCtx): void {
+  const customPath = join(ctx.stackDir, 'custom.compose.yml');
+  if (!existsSync(customPath)) return;
+
+  let content: string;
+  try {
+    content = readFileSync(customPath, 'utf-8');
+  } catch {
+    ctx.log('skip (unreadable): config/stack/custom.compose.yml');
+    return;
+  }
+
+  if (!/\bchannel_lan\b/.test(content)) return; // idempotent: nothing to migrate
+
+  const next = content.replace(/\bchannel_lan\b/g, 'portal_net');
+  if (next === content) return;
+
+  if (ctx.dryRun) {
+    ctx.log('[dry-run] rewrite channel_lan -> portal_net in config/stack/custom.compose.yml');
+    return;
+  }
+
+  // Back up the user's original overlay before editing (skip if a backup exists).
+  const backupPath = `${customPath}.pre-portal-rename.bak`;
+  if (!existsSync(backupPath)) {
+    writeFileSync(backupPath, content);
+    try { chmodSync(backupPath, 0o600); } catch { /* best-effort */ }
+    ctx.log('backed up config/stack/custom.compose.yml -> custom.compose.yml.pre-portal-rename.bak');
+  }
+
+  writeFileSync(customPath, next);
+  ctx.log('rewrote channel_lan -> portal_net in config/stack/custom.compose.yml');
+  ctx.notes.push(
+    'Your config/stack/custom.compose.yml referenced the deprecated `channel_lan` network; it was rewritten to `portal_net` (the original was saved as custom.compose.yml.pre-portal-rename.bak). `channel_lan` is removed in 0.13.0.',
+  );
+}
+
 // ── Migration 0 → 1: 0.10.x `vault/` layout → 0.11.0 knowledge/ layout ────────
 
 const SECRET_KEY_RE = /(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$/;
@@ -584,6 +636,18 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
     apply: migratePortalSecretNames,
     verify(ctx) {
       // Copy-only + skip-if-present; apply()'s logs suffice.
+    },
+  },
+  {
+    // 0.12.0 channels → portals rename: a user-authored custom.compose.yml may
+    // still reference the `channel_lan` network (renamed to `portal_net`).
+    // Rewrite it so the overlay keeps validating after channel_lan is removed in
+    // 0.13.0. Backup-first + idempotent (skip when no channel_lan token remains).
+    version: 'v0.12.0-rc.1',
+    describe: 'rewrite channel_lan -> portal_net in user custom.compose.yml overlay',
+    apply: migrateCustomComposeChannelLan,
+    verify(ctx) {
+      // Backup-first + idempotent token rewrite; apply()'s logs suffice.
     },
   },
 ];
