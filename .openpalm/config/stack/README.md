@@ -1,6 +1,6 @@
 # config/stack/
 
-This directory contains the runtime stack composition and configuration. OpenPalm runs from the fixed compose file set: `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and `custom.compose.yml`.
+This directory contains the runtime stack composition and configuration. OpenPalm runs from the fixed compose file set: `core.compose.yml`, `services.compose.yml`, `portals.compose.yml`, and `custom.compose.yml`.
 
 ## Quick start
 
@@ -12,7 +12,7 @@ docker compose \
   --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   -f custom.compose.yml \
   up -d
 
@@ -22,7 +22,7 @@ docker compose \
   --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   -f custom.compose.yml \
   --profile addon.chat \
   up -d
@@ -41,7 +41,7 @@ status, logs, and all other operations.
 ## Addons
 
 Built-in optional services are defined in `services.compose.yml` and
-`channels.compose.yml`, then enabled with `addon.*` Compose profiles.
+`portals.compose.yml`, then enabled with `addon.*` Compose profiles.
 `custom.compose.yml` is the operator-owned place for extra containers or manual
 overlays.
 
@@ -68,7 +68,7 @@ overlays.
 |------|---------|-------|
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
 | `services.compose.yml` | Optional first-party services | System (managed via CLI/admin) |
-| `channels.compose.yml` | Optional first-party channels | System (managed via CLI/admin) |
+| `portals.compose.yml` | Optional first-party portals | System (managed via CLI/admin) |
 | `custom.compose.yml` | User custom services and overlays | User |
 
 This directory holds compose assembly only — **no secrets and no env files**.

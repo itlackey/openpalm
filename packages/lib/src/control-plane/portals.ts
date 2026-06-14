@@ -61,7 +61,7 @@ function portalNamesFromCompose(composePath: string): string[] {
  * Check if a compose file defines a portal service (has PORTAL_NAME or legacy CHANNEL_NAME).
  * Compose-derived: we parse the actual compose content rather than rely on
  * filename or directory naming conventions. (GUARDIAN_URL used to be a
- * fallback signal — it's been removed since channels-sdk now hardcodes the
+ * fallback signal — it's been removed since the portal adapters now hardcode the
  * in-network guardian URL.)
  */
 export function isPortalAddon(composePath: string): boolean {

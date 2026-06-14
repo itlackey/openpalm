@@ -16,7 +16,7 @@ It normally runs via the `addon.slack` Compose profile and connects outbound to 
 
 ## Deployment model
 
-- Shipped service definition: `.openpalm/config/stack/channels.compose.yml`, profile `addon.slack`
+- Shipped service definition: `.openpalm/config/stack/portals.compose.yml`, profile `addon.slack`
 - Non-secret values: `~/.openpalm/knowledge/env/stack.env`
 - Secret values: files under `~/.openpalm/knowledge/secrets/`
 
@@ -29,7 +29,7 @@ docker compose \
   --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   -f custom.compose.yml \
   --profile addon.slack \
   up -d

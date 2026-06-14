@@ -26,7 +26,7 @@ describe('portal image bake contract', () => {
   });
 
   test('managed portal compose uses baked package names, not dist-tags', () => {
-    const compose = readRelative('.openpalm/config/stack/channels.compose.yml');
+    const compose = readRelative('.openpalm/config/stack/portals.compose.yml');
 
     expect(compose).not.toContain('@latest');
     expect(compose).toContain('PORTAL_PACKAGE: "@openpalm/discord-portal"');

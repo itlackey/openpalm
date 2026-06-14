@@ -11,7 +11,7 @@
  *     signed `reply` relayed through the OcClient;
  *   - the Stop registry is likewise identity-gated.
  *
- * The native-OpenCode event interpretation itself is the SHARED channels-sdk
+ * The native-OpenCode event interpretation itself is the SHARED portal stream-render
  * logic (oc-events.test.ts) — not retested here.
  */
 import { describe, test, expect } from "bun:test";

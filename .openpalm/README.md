@@ -14,7 +14,7 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     stack/             Stack configuration and composition
       core.compose.yml Core services (always used)
       services.compose.yml Optional first-party services (profile-gated)
-      channels.compose.yml Optional first-party channels (profile-gated)
+      portals.compose.yml Optional first-party portals (profile-gated)
       custom.compose.yml User custom services/overlays
     assistant/         OpenCode user tools, plugins, skills, commands
     guardian/          Guardian OpenCode global config (mounted at /etc/opencode)
@@ -58,7 +58,7 @@ This repo directory contains source assets embedded by the CLI during build. The
     stack/               Seed files for runtime config/stack/
       core.compose.yml   Core Compose file copied to OP_HOME
       services.compose.yml Optional services Compose file
-      channels.compose.yml Optional channels Compose file
+      portals.compose.yml Optional portals Compose file
       custom.compose.yml User-editable custom Compose stub
     assistant/           Seed files for config/assistant/ (OpenCode config)
     guardian/            Guardian OpenCode global config (opencode.jsonc → /etc/opencode)
@@ -87,7 +87,7 @@ docker compose \
   --env-file ~/.openpalm/knowledge/env/stack.env \
   -f ~/.openpalm/config/stack/core.compose.yml \
   -f ~/.openpalm/config/stack/services.compose.yml \
-  -f ~/.openpalm/config/stack/channels.compose.yml \
+  -f ~/.openpalm/config/stack/portals.compose.yml \
   -f ~/.openpalm/config/stack/custom.compose.yml \
   --profile addon.chat \
   up -d

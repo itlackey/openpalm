@@ -13,7 +13,7 @@ It runs behind guardian and is normally enabled via the `addon.discord` Compose 
 
 ## Deployment model
 
-- Shipped service definition: `.openpalm/config/stack/channels.compose.yml`, profile `addon.discord`
+- Shipped service definition: `.openpalm/config/stack/portals.compose.yml`, profile `addon.discord`
 - Non-secret values: `~/.openpalm/knowledge/env/stack.env`
 - Secret values: files under `~/.openpalm/knowledge/secrets/`
 
@@ -26,7 +26,7 @@ docker compose \
   --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   -f custom.compose.yml \
   --profile addon.discord \
   up -d

@@ -22,12 +22,12 @@ RUN HOME=/usr/local curl -fsSL https://opencode.ai/install \
 ENV PATH="/usr/local/.opencode/bin:$PATH"
 
 # OpenCode reads its operator-managed global config from /etc/opencode, which
-# is bind-mounted from OP_HOME/config/guardian (see channels.compose.yml).
+# is bind-mounted from OP_HOME/config/guardian (see portals.compose.yml).
 ENV OPENCODE_CONFIG_DIR=/etc/opencode
 
 # NOTE: akm-cli is intentionally NOT installed here. The guardian's OpenCode is
 # a pure content moderator (opencode.jsonc denies bash/edit/webfetch and uses no
-# akm-opencode plugin) and channels.compose.yml mounts NO stash/config/cache/data
+# akm-opencode plugin) and portals.compose.yml mounts NO stash/config/cache/data
 # or AKM_* env into the guardian — so an installed akm would only ever operate on
 # an ephemeral default stash under $HOME, never the managed one. Removed to avoid
 # an unmanaged third akm instance and unjustified image weight (proposal I-7). If

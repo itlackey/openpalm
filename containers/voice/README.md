@@ -44,7 +44,7 @@ docker run --rm -p 8880:8880 -v /tmp/voice-models:/models openpalm/voice:v0.11.0
 # Watch /health flip from {"status":"loading"} to {"status":"ok"}.
 ```
 
-The addon overlay (under `.openpalm/config/stack/channels.compose.yml`)
+The addon overlay (under `.openpalm/config/stack/portals.compose.yml`)
 handles the compose wiring — bind-mounts `${OP_HOME}/data/voice/models`
 into `/models`, joins `assistant_net`, no host port binding.
 
