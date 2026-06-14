@@ -484,6 +484,7 @@
     text-decoration: underline;
     text-underline-offset: 2px;
     padding: 4px 0;
+    min-height: 24px; /* WCAG 2.5.8 target size */
     flex-shrink: 0;
     cursor: pointer;
     transition: color 150ms;
@@ -506,6 +507,7 @@
     text-decoration: underline;
     text-underline-offset: 2px;
     padding: 4px 0;
+    min-height: 24px; /* WCAG 2.5.8 target size */
     cursor: pointer;
     transition: color 150ms;
   }
