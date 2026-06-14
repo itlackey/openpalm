@@ -1,7 +1,9 @@
 # D5a — Network Partitioning Verification + mDNS (0.12.0)
 
 **Issue:** #436 Part 2 — secure partitioning verification + mDNS
-**Disposition:** NO DEFECT found. mDNS scaffolded (default-off, daemon wiring needs review).
+**Disposition:** NO DEFECT found. mDNS is now published by OpenCode's native
+in-process responder (default-off, LAN-first). The avahi `apk add` sidecars have
+been removed.
 
 ---
 
@@ -38,54 +40,94 @@ The `ollama`/`voice` presence on `assistant_net` is intentional and correct: the
 
 ---
 
-## mDNS Implementation
+## mDNS Implementation (native OpenCode responder)
 
-**Status:** Scaffolded (compose profiles + env knobs). Daemon wiring needs review before enabling in production.
+**Status:** Shipped via OpenCode's built-in mDNS responder. Default **OFF**
+(LAN-first). The previous avahi `apk add` sidecars (`mdns-guardian`,
+`mdns-assistant`) have been **removed** — they used the boot-install
+anti-pattern and `network_mode: host`, and bridge-network multicast never
+reached the LAN anyway.
 
-### Design
+### How native OpenCode mDNS works
 
-Two profile-gated sidecars added to `core.compose.yml`:
+OpenCode publishes its own `.local` record in-process when `server.mdns: true`
+**and** the server hostname is not loopback. The publish call advertises:
 
-| Service | Profile | Advertises |
-|---------|---------|-----------|
-| `mdns-guardian` | `addon.mdns` | `<OP_ASSISTANT_NAME>-guardian.local` |
-| `mdns-assistant` | `addon.mdns.assistant` | `<OP_ASSISTANT_NAME>.local` |
+| Field | Value |
+|-------|-------|
+| Service type | `_http._tcp.local` (fixed) |
+| Instance label | `opencode-<port>` (e.g. `opencode-4096`) — **HARDCODED, not configurable** |
+| SRV / A host target | `server.mdnsDomain` (the resolvable `.local` name), default `opencode.local` |
+| Port | `server.port` |
+| TXT | `{path:"/"}` |
 
-### Env knobs
+The responder binds every non-internal host interface address it enumerates.
+There is a hard loopback gate: if `hostname` is `127.0.0.1` / `localhost` /
+`::1`, publish is skipped with `"mDNS enabled but hostname is loopback;
+skipping mDNS publish"`.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `OP_ASSISTANT_NAME` | `openpalm` | Base name used in mDNS hostnames |
-| `OP_MDNS_ENABLED` | (use profiles) | Gate — enable `addon.mdns` in `OP_ENABLED_ADDONS` |
+### Configuration
 
-### Naming scheme
+mDNS is configured directly in the OpenCode config files (file-assembly — the
+whole file is written; `mdnsDomain` cannot be templated by OpenCode itself, so
+install/upgrade writes the operator's chosen `.local` name):
 
-- Guardian LAN exposure: `${OP_ASSISTANT_NAME}-guardian.local` (e.g. `openpalm-guardian.local`)
-- Assistant LAN access: `${OP_ASSISTANT_NAME}.local` (e.g. `openpalm.local`)
+| Config file | hostname | mdns | mdnsDomain | Behaviour |
+|-------------|----------|------|------------|-----------|
+| `.openpalm/config/assistant/opencode.jsonc` | `0.0.0.0` | `false` (ship default) | `openpalm.local` | Passes the loopback gate; flip `mdns:true` to advertise host `openpalm.local` |
+| `.openpalm/config/guardian/opencode.jsonc` | `127.0.0.1` | `false` | — | Loopback-internal moderator; never advertises (would self-skip even if on) |
 
-### Caveats / daemon wiring review needed
+### Achievable names — and the gap
 
-1. **Linux only.** On macOS (OrbStack / Docker Desktop) mDNS is handled by the host OS; the avahi sidecar has no effect and should not be enabled.
-2. **`network_mode: host` required.** avahi must see the real LAN interface. This means the container shares the host network namespace — it is not isolated. Only enable when LAN exposure is intentional.
-3. **dbus startup ordering.** The command override starts `dbus-daemon` then `avahi-daemon` then `avahi-publish`. This works on most Linux distros but may need adjustment if the host dbus socket is not available in the container.
-4. **Not gated on `OP_BIND_ADDRESS` automatically.** The operator must ensure LAN exposure is also enabled (i.e. `OP_BIND_ADDRESS=0.0.0.0` or a LAN IP) before enabling `addon.mdns`. Enabling mDNS while the port is loopback-only is harmless but misleading.
-5. **avahi-publish exits** when its record is withdrawn. The `wait` command in the entrypoint ensures the container does not exit, but a more robust approach (avahi `.service` XML file) should be adopted before this is declared production-ready.
+- The resolvable `.local` **HOSTNAME** is fully configurable via `mdnsDomain`,
+  so the assistant can advertise `openpalm.local` (or any `<name>.local`).
+- **GAP:** the Bonjour service **instance label** is hardcoded `opencode-<port>`
+  (e.g. `opencode-4096`). A device doing a `_http._tcp.local` discovery sweep
+  sees an instance literally named `opencode-4096`, not a friendly
+  `openpalm-assistant`. Only the resolved hostname carries the custom name.
+  This is a regression from the avahi sidecars, which set both the service
+  label and the hostname. There is no OpenCode config to change it.
+- **GUARDIAN:** native OpenCode mDNS **cannot** advertise
+  `<name>-guardian.local`. The guardian's moderation OpenCode is loopback-bound
+  by design (security invariant: only reached inside the guardian container),
+  and the loopback gate means it never publishes. The LAN-facing
+  `<name>-guardian.local` name belongs to the guardian's **HTTP front door**
+  (the Bun server terminating portal `/oc/*` ingress), which must be advertised
+  by the host OS / the operator's LAN setup — not by an OpenCode process.
 
-### Enabling
+### LAN reachability caveats
 
-```bash
-# In knowledge/env/stack.env:
-OP_ASSISTANT_NAME=myassistant        # optional, defaults to openpalm
-OP_ENABLED_ADDONS=...,addon.mdns     # enables mdns-guardian
-# OP_ENABLED_ADDONS=...,addon.mdns.assistant  # also advertise assistant.local
-```
+1. **Bridge network does not reach the LAN.** Native mDNS publishes from inside
+   the container's network namespace. On the default Docker bridge, the
+   multicast (UDP 5353 / 224.0.0.251) stays inside the bridge and does not reach
+   the physical LAN segment. Published unicast TCP ports do not help — multicast
+   is not forwarded.
+2. **Linux host win requires `network_mode: host`.** To actually reach the LAN
+   on a Linux host, the assistant container must run with `network_mode: host`
+   so the responder binds the real LAN interface. This is LAN-gated and only
+   appropriate once LAN exposure is intentional.
+3. **macOS is inert.** On Docker Desktop / OrbStack, `network_mode: host` is the
+   Linux VM, not the Mac's LAN, so native container mDNS does not advertise on
+   the Mac LAN. macOS LAN advertisement must come from the host OS.
+4. **LAN-first default.** Both config files ship `mdns: false`. Even left on,
+   the guardian self-skips (loopback) and the assistant only publishes once its
+   server binds a non-loopback, LAN-reachable interface.
+
+### Enabling (assistant, Linux host)
+
+1. Edit `.openpalm/config/assistant/opencode.jsonc`: set `"mdns": true` and
+   `"mdnsDomain": "<name>.local"`.
+2. Ensure the assistant container reaches the LAN (e.g. `network_mode: host`
+   via a `custom.compose.yml` overlay) — bridge mode keeps mDNS container-local.
+3. Restart the assistant container (OpenCode caches config at startup).
 
 ---
 
 ## Test Coverage
 
-`packages/lib/src/control-plane/network-partitioning.test.ts` — pure YAML parsing, no Docker required:
+`packages/lib/src/control-plane/network-partitioning.test.ts` — pure YAML/JSONC
+parsing, no Docker required:
 - Asserts `assistant_net` contains only the expected services (guardian + assistant + internal AI services).
 - Asserts no portal adapter service is on `assistant_net`.
-- Asserts mDNS service names follow `<name>-guardian.local` / `<name>.local` convention.
-- Asserts mDNS services are profile-gated (not always-on).
+- Asserts the avahi `mdns-guardian` / `mdns-assistant` sidecars are removed and no service does `apk add avahi`.
+- Asserts the assistant ships `mdns: false` with a `.local` `mdnsDomain`, and the guardian moderator keeps `mdns: false` while staying loopback-bound.

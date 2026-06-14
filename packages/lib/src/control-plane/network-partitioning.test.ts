@@ -7,8 +7,10 @@
  * Invariants checked:
  * 1. assistant_net contains only authorised services (guardian + assistant + internal AI).
  * 2. No portal adapter (discord, slack, guardian-api) is on assistant_net.
- * 3. mDNS services follow the <name>-guardian.local / <name>.local naming convention.
- * 4. mDNS services are profile-gated (not always-on).
+ * 3. mDNS is published in-process by OpenCode (native server.mdns/mdnsDomain),
+ *    NOT by avahi sidecars — the mdns-guardian/mdns-assistant services are gone.
+ * 4. The assistant ships mDNS OFF by default (LAN-first); the guardian moderator
+ *    stays loopback-bound with mDNS off.
  * 5. The assistant host port defaults to loopback (127.0.0.1).
  */
 import { describe, test, expect } from "bun:test";
@@ -153,60 +155,69 @@ describe("network partitioning — assistant host port defaults", () => {
   });
 });
 
-describe("mDNS — naming convention and profile gating", () => {
-  test("mdns-guardian service exists in core.compose.yml", () => {
-    expect(core.services?.["mdns-guardian"]).toBeDefined();
+describe("mDNS — native OpenCode responder (no avahi sidecars)", () => {
+  // mDNS is now published in-process by OpenCode (server.mdns / server.mdnsDomain
+  // in the assistant + guardian opencode.jsonc files). The avahi `apk add`
+  // sidecars (mdns-guardian / mdns-assistant) have been removed entirely.
+  //
+  // JSONC config files carry comments, so strip line comments before parsing.
+  function loadJsonc(relPath: string): Record<string, unknown> {
+    const raw = readFileSync(join(REPO_ROOT, relPath), "utf8");
+    const stripped = raw
+      .split("\n")
+      .map((line) => {
+        // Remove // comments that are not inside a string. Our config files only
+        // use whole-line or trailing comments with no `//` inside string values,
+        // so a conservative split on `//` outside quotes is safe here.
+        const idx = line.indexOf("//");
+        if (idx === -1) return line;
+        // Bail if there is a quote before the comment marker on this line —
+        // keep the line as-is to avoid corrupting a URL/value. None of the
+        // server.* lines we assert on contain `//`, so this is sufficient.
+        const before = line.slice(0, idx);
+        const quotes = (before.match(/"/g) ?? []).length;
+        if (quotes % 2 !== 0) return line; // inside a string — leave it
+        return before;
+      })
+      .join("\n");
+    return JSON.parse(stripped) as Record<string, unknown>;
+  }
+
+  const assistantConfig = loadJsonc(".openpalm/config/assistant/opencode.jsonc");
+  const guardianConfig = loadJsonc(".openpalm/config/guardian/opencode.jsonc");
+
+  type ServerCfg = { server?: { mdns?: boolean; mdnsDomain?: string; hostname?: string } };
+
+  test("avahi sidecar services are removed from core.compose.yml", () => {
+    expect(core.services?.["mdns-guardian"]).toBeUndefined();
+    expect(core.services?.["mdns-assistant"]).toBeUndefined();
   });
 
-  test("mdns-assistant service exists in core.compose.yml", () => {
-    expect(core.services?.["mdns-assistant"]).toBeDefined();
-  });
-
-  test("mdns-guardian is profile-gated (not always-on)", () => {
-    const profiles = allServices["mdns-guardian"]?.profiles ?? [];
-    expect(profiles.length).toBeGreaterThan(0);
-  });
-
-  test("mdns-assistant is profile-gated (not always-on)", () => {
-    const profiles = allServices["mdns-assistant"]?.profiles ?? [];
-    expect(profiles.length).toBeGreaterThan(0);
-  });
-
-  test("mdns-guardian profile is addon.mdns", () => {
-    const profiles = allServices["mdns-guardian"]?.profiles ?? [];
-    expect(profiles).toContain("addon.mdns");
-  });
-
-  test("mdns-assistant profile is addon.mdns.assistant", () => {
-    const profiles = allServices["mdns-assistant"]?.profiles ?? [];
-    expect(profiles).toContain("addon.mdns.assistant");
-  });
-
-  test("mdns-guardian command references <name>-guardian naming scheme", () => {
-    const cmd = allServices["mdns-guardian"]?.command ?? "";
-    // The command must include the -guardian suffix pattern.
-    expect(cmd).toMatch(/-guardian/);
-  });
-
-  test("mdns-guardian and mdns-assistant are NOT on assistant_net", () => {
-    // mDNS sidecars use network_mode:host, so they should not appear in assistant_net
-    const onAssistantNet = servicesOnNetwork("assistant_net");
-    expect(onAssistantNet).not.toContain("mdns-guardian");
-    expect(onAssistantNet).not.toContain("mdns-assistant");
-  });
-
-  test("OP_ASSISTANT_NAME env knob is present on mdns-guardian", () => {
-    const svc = core.services?.["mdns-guardian"];
-    const env = svc?.environment;
-    if (Array.isArray(env)) {
-      expect(env.some((e: string) => e.startsWith("OP_ASSISTANT_NAME"))).toBe(true);
-    } else if (env && typeof env === "object") {
-      expect("OP_ASSISTANT_NAME" in env).toBe(true);
-    } else {
-      // environment block may use compose variable substitution in the command;
-      // check the command string instead
-      const cmd = allServices["mdns-guardian"]?.command ?? "";
-      expect(cmd).toMatch(/OP_ASSISTANT_NAME/);
+  test("no compose service installs avahi via apk add", () => {
+    const allCommands = Object.values(core.services ?? {})
+      .map((s) => (s as { command?: unknown }).command)
+      .filter((c): c is string => typeof c === "string");
+    for (const cmd of allCommands) {
+      expect(cmd).not.toMatch(/avahi/);
+      expect(cmd).not.toMatch(/apk add/);
     }
+  });
+
+  test("assistant ships mDNS OFF by default (LAN-first)", () => {
+    const server = (assistantConfig as ServerCfg).server;
+    expect(server?.mdns).toBe(false);
+  });
+
+  test("assistant declares an mdnsDomain (.local host name) for native publish", () => {
+    const server = (assistantConfig as ServerCfg).server;
+    expect(typeof server?.mdnsDomain).toBe("string");
+    expect(server?.mdnsDomain).toMatch(/\.local$/);
+  });
+
+  test("guardian moderator keeps mDNS OFF and stays loopback-bound", () => {
+    const server = (guardianConfig as ServerCfg).server;
+    expect(server?.mdns).toBe(false);
+    // Loopback hostname is the security invariant — native mDNS self-skips here.
+    expect(server?.hostname).toBe("127.0.0.1");
   });
 });
