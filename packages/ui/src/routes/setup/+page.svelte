@@ -171,6 +171,11 @@
     return ids.filter((id) => providerState[id]?.verified).length;
   });
 
+  // True only when a usable chat model is actually selected — drives the
+  // step-1 "we found an AI" vs "pick one" copy. (verifiedCount can be >0 with
+  // no usable/selected model, e.g. providers detected but no model resolved.)
+  const hasUsableAI = $derived(!!modelSelection.llm?.model);
+
   const verifiedProviders = $derived.by(() => {
     if (opencodeAvailable) {
       const fromOpenCode = opencodeProviders
@@ -221,8 +226,12 @@
   // opt-in only governs the no-provider case. Expressed as a derived predicate
   // (not a state-mutating $effect that flipped `allowEmptyInstall` off on every
   // background verification — that silently moved the checkbox under the user).
+  // Can finish when an actual chat model is selected, OR the user explicitly
+  // opted to skip AI for now. (Don't require a model just because *some*
+  // provider is "connected" — it may have no usable models, which would
+  // otherwise leave the user stuck with Continue disabled and no escape.)
   const canComplete = $derived(
-    hasVerifiedProvider ? !!modelSelection.llm?.model : allowEmptyInstall,
+    !!modelSelection.llm?.model || allowEmptyInstall,
   );
 
   // Chat-model options across all verified providers — drives the model picker
@@ -1732,7 +1741,7 @@
           </h1>
           <p class="wiz-lede">
             {#if currentStep === 1}
-              {#if verifiedCount > 0}We found an AI service already set up. Just continue, or choose something different.
+              {#if hasUsableAI}We found an AI service already set up. Just continue, or choose something different.
               {:else}Your assistant needs a source of intelligence. Pick one and you're set — you can add more later.
               {/if}
             {:else if currentStep === 2}All optional — turn on only what you want now. You can add or remove anything later from your dashboard.
@@ -1910,7 +1919,7 @@
           <div>
             <b class="wiz-greet-name">
               {#if currentStep === 1}
-                {#if verifiedCount > 0}You're almost done!
+                {#if hasUsableAI}You're almost done!
                 {:else if modelMode === 'local' || ollamaEnabled || detectedHostProviders.length > 0}Great choice.
                 {:else}Pick what works for you.
                 {/if}
@@ -1929,7 +1938,7 @@
 
         <p class="wiz-guide-lede">
           {#if currentStep === 1}
-            {#if verifiedCount > 0}We found an AI account on this computer. Just hit <strong>Continue</strong> and your assistant will use it automatically.
+            {#if hasUsableAI}We found an AI account on this computer. Just hit <strong>Continue</strong> and your assistant will use it automatically.
             {:else if modelMode === 'local' || ollamaEnabled || detectedHostProviders.length > 0}Running AI locally means your conversations never leave your machine. Perfect for privacy.
             {:else}Sign in once and you're set. A browser tab will open for you to log in — come back here when you're done, it connects automatically.
             {/if}
@@ -1940,7 +1949,7 @@
 
         <div class="wiz-guide-bullets">
           {#if currentStep === 1}
-            {#if verifiedCount > 0}
+            {#if hasUsableAI}
               <div class="wiz-bullet">
                 <div class="wiz-bullet-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>

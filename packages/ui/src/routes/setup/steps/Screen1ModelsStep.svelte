@@ -420,8 +420,11 @@
 
     </div><!-- /.s1-choice-list -->
 
-    <!-- "Install without a provider" escape hatch -->
-    {#if !canProceed && !allowEmptyInstall}
+    <!-- "Install without a usable AI" escape hatch.
+         Keyed on the actual chat model, not on whether *some* provider is
+         "connected" — a verified provider with no usable model would otherwise
+         leave the user stuck (Continue disabled, no escape). -->
+    {#if !llmModel && !allowEmptyInstall}
       <div class="s1-empty-install-row">
         <button
           type="button"
