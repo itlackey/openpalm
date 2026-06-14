@@ -45,7 +45,7 @@ export interface DetectedProvider {
   available: boolean;
 }
 
-export interface ChannelCredential {
+export interface PortalCredential {
   key: string;
   label: string;
   placeholder?: string;
@@ -53,16 +53,16 @@ export interface ChannelCredential {
   secret?: boolean;
 }
 
-export interface Channel {
+export interface Portal {
   id: string;
   name: string;
   icon: string;
   desc: string;
   locked?: boolean;
-  credentials?: ChannelCredential[];
+  credentials?: PortalCredential[];
 }
 
-export interface ChannelState {
+export interface PortalState {
   enabled: boolean;
   [key: string]: string | boolean;
 }

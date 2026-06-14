@@ -111,9 +111,9 @@ export const GET: RequestHandler = async (event) => {
     if (secretEnv[envKey]) slack[field] = meta(envKey);
   }
 
-  const channelCredentials: Record<string, Record<string, { envKey: string; present: boolean }>> = {};
-  if (Object.keys(discord).length > 0) channelCredentials.discord = discord;
-  if (Object.keys(slack).length > 0) channelCredentials.slack = slack;
+  const portalCredentials: Record<string, Record<string, { envKey: string; present: boolean }>> = {};
+  if (Object.keys(discord).length > 0) portalCredentials.discord = discord;
+  if (Object.keys(slack).length > 0) portalCredentials.slack = slack;
 
   return json({
     ok: true,
@@ -154,7 +154,7 @@ export const GET: RequestHandler = async (event) => {
       selectedProfile: selectedOllamaProfile,
     },
     enabledAddons: listEnabledAddonIds(state.homeDir),
-    channelCredentials,
+    portalCredentials,
     importedModelPreferences: importedModelPreferences ?? null,
   });
 };

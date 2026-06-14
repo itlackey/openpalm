@@ -44,7 +44,7 @@ export const POST: RequestHandler = async (event) => {
       intended: result.restarted,
     });
 
-    // Re-apply compose with updated artifacts (include all channel overlays).
+    // Re-apply compose with updated artifacts (include all portal overlays).
     const dockerCheck = await checkDocker();
     const intendedServices = await buildManagedServices(state);
     let restarted: string[] = [];

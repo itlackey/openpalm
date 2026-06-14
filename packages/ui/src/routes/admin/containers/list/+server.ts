@@ -56,7 +56,7 @@ export const GET: RequestHandler = async (event) => {
   // from the compose model with the active profiles (or static addon inference
   // when Docker is down). This is what the UI reports on — NOT the optimistic
   // state.services seed, which can list a service the stack never deploys (e.g.
-  // guardian on a no-channel install) and so render it as a perpetually-stopped
+  // guardian on a no-portal install) and so render it as a perpetually-stopped
   // container that does not exist in Docker.
   let managedServices: string[];
   try {

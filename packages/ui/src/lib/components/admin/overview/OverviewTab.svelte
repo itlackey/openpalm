@@ -23,7 +23,7 @@
     /**
      * Services this stack actually deploys (compose model resolved with active
      * profiles). Health is measured against THIS set so a service the stack
-     * never deploys (e.g. guardian on a no-channel install) is never counted as
+     * never deploys (e.g. guardian on a no-portal install) is never counted as
      * a failed container. Falls back to the merged container keys when empty.
      */
     managedServices: string[];

@@ -47,10 +47,10 @@ export async function performAddonToggle(
   if (!mutation.ok) return mutation;
 
   // The shared state singleton seeds its expected-service set (CORE_SERVICES,
-  // gated on whether a channel addon is enabled) ONCE at creation. setAddonEnabled
+  // gated on whether a portal addon is enabled) ONCE at creation. setAddonEnabled
   // only rewrites OP_ENABLED_ADDONS on disk — it does NOT touch state.services —
-  // so toggling a channel leaves the in-memory expected set stale until the host
-  // process restarts. Most visibly: disabling the last channel left guardian in
+  // so toggling a portal leaves the in-memory expected set stale until the host
+  // process restarts. Most visibly: disabling the last portal left guardian in
   // state.services as a phantom "stopped" service that no longer belongs to the
   // stack. Bust the singleton so the next getState() re-derives the gated set
   // from the updated OP_ENABLED_ADDONS.

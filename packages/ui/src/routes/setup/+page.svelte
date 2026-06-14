@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    PROVIDERS, LOCAL_PROVIDERS, CHANNELS, OLLAMA_DEFAULT_CHAT_MODEL,
+    PROVIDERS, LOCAL_PROVIDERS, PORTALS, OLLAMA_DEFAULT_CHAT_MODEL,
   } from '$lib/client/constants.js';
   import { buildModelOptions, selectAddonProfileId, resolveVoiceSide } from '$lib/client/helpers.js';
   import type {
-    ProviderState, ModelSelection, DetectedProvider, ChannelState,
+    ProviderState, ModelSelection, DetectedProvider, PortalState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
   } from '$lib/client/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
@@ -122,7 +122,7 @@
   let importedSmallModel = $state<string | undefined>(undefined);
 
   // ── Step 4: Options ───────────────────────────────────────────────────────
-  let channelSelection = $state<Record<string, boolean | ChannelState>>({
+  let portalSelection = $state<Record<string, boolean | PortalState>>({
     discord: { enabled: false, botToken: '', applicationId: '' },
     slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
   });
@@ -306,10 +306,10 @@
       addons.voice = true;
     }
 
-    const channelCredentials: Record<string, Record<string, string>> = {};
-    const channelsConfig = buildChannelsConfig();
-    for (const chId of Object.keys(channelsConfig)) {
-      const chVal = channelsConfig[chId];
+    const portalCredentials: Record<string, Record<string, string>> = {};
+    const portalsConfig = buildPortalsConfig();
+    for (const chId of Object.keys(portalsConfig)) {
+      const chVal = portalsConfig[chId];
       if (chVal === true) {
         addons[chId] = true;
       } else if (typeof chVal === 'object' && chVal !== null) {
@@ -320,7 +320,7 @@
             creds[key] = String(chVal[key]);
           }
         }
-        if (Object.keys(creds).length > 0) channelCredentials[chId] = creds;
+        if (Object.keys(creds).length > 0) portalCredentials[chId] = creds;
       }
     }
 
@@ -369,8 +369,8 @@
       result.ollamaProfile = selectedOllamaProfile;
     }
 
-    if (Object.keys(channelCredentials).length > 0) {
-      result.channelCredentials = channelCredentials;
+    if (Object.keys(portalCredentials).length > 0) {
+      result.portalCredentials = portalCredentials;
     }
 
     if (imageTag.trim()) result.imageTag = imageTag.trim();
@@ -387,10 +387,10 @@
     return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  function buildChannelsConfig(): Record<string, boolean | Record<string, string | boolean>> {
+  function buildPortalsConfig(): Record<string, boolean | Record<string, string | boolean>> {
     const result: Record<string, boolean | Record<string, string | boolean>> = {};
-    for (const ch of CHANNELS) {
-      const sel = channelSelection[ch.id];
+    for (const ch of PORTALS) {
+      const sel = portalSelection[ch.id];
       if (ch.locked) {
         result[ch.id] = true;
       } else if (typeof sel === 'object' && sel !== null) {
@@ -730,9 +730,9 @@
 
   function validateStep4(): boolean {
     const errors: string[] = [];
-    for (const ch of CHANNELS) {
+    for (const ch of PORTALS) {
       if (!ch.credentials) continue;
-      const sel = channelSelection[ch.id];
+      const sel = portalSelection[ch.id];
       if (typeof sel !== 'object' || sel === null) continue;
       if (!sel.enabled) continue;
       for (const cred of ch.credentials) {
@@ -1328,17 +1328,17 @@
     if (st) st.ollamaMode = mode;
   }
 
-  function handleChannelToggle(id: string): void {
-    const sel = channelSelection[id];
+  function handlePortalToggle(id: string): void {
+    const sel = portalSelection[id];
     if (typeof sel === 'object' && sel !== null) {
       sel.enabled = !sel.enabled;
     } else {
-      channelSelection[id] = !sel;
+      portalSelection[id] = !sel;
     }
   }
 
   function handleCredentialChange(chId: string, credKey: string, value: string): void {
-    const sel = channelSelection[chId];
+    const sel = portalSelection[chId];
     if (typeof sel === 'object' && sel !== null) {
       sel[credKey] = value;
     }
@@ -1589,7 +1589,7 @@
           if (imp?.model) importedLlmModel = imp.model;
           if (imp?.small_model) importedSmallModel = imp.small_model;
 
-          // Enabled addons + channel credentials
+          // Enabled addons + portal credentials
           const enabled: string[] = Array.isArray(data.enabledAddons) ? data.enabledAddons : [];
           if (enabled.includes('ollama')) ollamaEnabled = true;
           // The restored value is authoritative — don't let the Options-step
@@ -1598,9 +1598,9 @@
           if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
             selectedOllamaProfile = data.ollama.selectedProfile;
           }
-          const creds = data.channelCredentials ?? {};
+          const creds = data.portalCredentials ?? {};
           for (const chId of ['discord', 'slack']) {
-            const sel = channelSelection[chId];
+            const sel = portalSelection[chId];
             if (typeof sel === 'object' && sel !== null) {
               if (enabled.includes(chId)) sel.enabled = true;
               const c = creds[chId];
@@ -1811,7 +1811,7 @@
                 {hasOpenAI}
                 voiceProfiles={voiceProfiles}
                 {selectedVoiceProfile}
-                {channelSelection}
+                portalSelection={portalSelection}
                 onvoiceenabledchange={(v) => {
                   voiceEnabled = v;
                   handleEnableVoiceChange(v);
@@ -1825,7 +1825,7 @@
                   voiceEngineUnknownStt = false;
                 }}
                 onvoiceprofilechange={(id) => { selectedVoiceProfile = id; }}
-                onchanneltoggle={handleChannelToggle}
+                onportaltoggle={handlePortalToggle}
                 oncredentialchange={handleCredentialChange}
                 onnext={() => goToStep(3)}
               />
@@ -1841,7 +1841,7 @@
                 activeStt={voiceEnabled ? displayedVoiceStt.engine : ''}
                 voiceProfileLabel={selectedVoiceProfileLabel}
                 ollamaProfileLabel={selectedOllamaProfileLabel}
-                {channelSelection}
+                portalSelection={portalSelection}
                 {ollamaEnabled}
                 cloudOnly={modelMode === 'cloud' && !ollamaEnabled && detectedHostProviders.length === 0}
                 hostProviderLabel={detectedHostProviders.length > 0 ? (detectedHostProviders[0].provider) : ''}
@@ -2006,7 +2006,7 @@
               <div class="wiz-bullet-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
               </div>
-              <div>Everything can be changed from the dashboard after install — providers, voice, channels, and more.</div>
+              <div>Everything can be changed from the dashboard after install — providers, voice, portals, and more.</div>
             </div>
           {/if}
         </div>

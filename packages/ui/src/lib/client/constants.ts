@@ -1,4 +1,4 @@
-import type { Provider, ProviderGroup, TtsOption, SttOption, Channel, OpenCodeProvider, VoiceEngineConfig } from './types.js';
+import type { Provider, ProviderGroup, TtsOption, SttOption, Portal, OpenCodeProvider, VoiceEngineConfig } from './types.js';
 import { OLLAMA_DEFAULT_CHAT_MODEL } from '@openpalm/lib/provider-constants';
 
 export { OLLAMA_DEFAULT_CHAT_MODEL };
@@ -135,7 +135,7 @@ export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
   },
 };
 
-export const CHANNELS: Channel[] = [
+export const PORTALS: Portal[] = [
   { id: 'api', name: 'API', icon: '🔌', desc: 'OpenAI-compatible REST API endpoint', locked: true },
   {
     id: 'discord', name: 'Discord', icon: '🎮', desc: 'Connect to a Discord server',

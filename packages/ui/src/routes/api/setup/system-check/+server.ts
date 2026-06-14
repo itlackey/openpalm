@@ -65,7 +65,7 @@ async function checkPortAvailable(port: number, timeoutMs = 1000): Promise<boole
 // UI should disable Continue until the user frees it.
 //
 // Guardian is intentionally NOT in this list: it has no host port mapping —
-// channels reach it via Docker DNS (http://guardian:8080) and the host
+// portals reach it via Docker DNS (http://guardian:8080) and the host
 // admin-tools health-check uses `docker container inspect` instead of HTTP.
 //
 // Env-name resolution prefers the canonical OP_HOST_* names. The UI port reads

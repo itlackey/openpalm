@@ -1,4 +1,4 @@
-import type { ChannelState, Provider, ProviderState, VoiceEngineValue } from './types.js';
+import type { PortalState, Provider, ProviderState, VoiceEngineValue } from './types.js';
 import { addonProfileId, KNOWN_EMBEDDING_MODEL_DIMS } from '@openpalm/lib/provider-constants';
 
 // ── Shared GPU-aware addon hardware-profile selection ────────────────────────
@@ -136,15 +136,15 @@ export function resolveVoiceSide(side: VoiceEngineValue, enableVoice: boolean, f
   return { engine: fallbackEngine };
 }
 
-export function isChannelEnabled(channelSelection: Record<string, boolean | ChannelState>, chId: string, locked?: boolean): boolean {
+export function isPortalEnabled(portalSelection: Record<string, boolean | PortalState>, chId: string, locked?: boolean): boolean {
   if (locked) return true;
-  const sel = channelSelection[chId];
+  const sel = portalSelection[chId];
   if (typeof sel === 'object' && sel !== null) return sel.enabled;
   return !!sel;
 }
 
-export function getCredValue(channelSelection: Record<string, boolean | ChannelState>, chId: string, key: string): string {
-  const sel = channelSelection[chId];
+export function getCredValue(portalSelection: Record<string, boolean | PortalState>, chId: string, key: string): string {
+  const sel = portalSelection[chId];
   if (typeof sel === 'object' && sel !== null) return String(sel[key] ?? '');
   return '';
 }

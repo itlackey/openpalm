@@ -148,7 +148,7 @@ describe("refreshCoreAssets", () => {
       if (url.includes("services.compose.yml")) {
         return new Response("services: {}\n", { status: 200 });
       }
-      if (url.includes("channels.compose.yml")) {
+      if (url.includes("portals.compose.yml")) {
         return new Response("services: {}\n", { status: 200 });
       }
       if (url.includes("custom.compose.yml")) {
@@ -179,7 +179,7 @@ describe("refreshCoreAssets", () => {
     // Fixed stack compose files are managed (overwritten on change)
     expect(result.updated).toContain("config/stack/core.compose.yml");
     expect(result.updated).toContain("config/stack/services.compose.yml");
-    expect(result.updated).toContain("config/stack/channels.compose.yml");
+    expect(result.updated).toContain("config/stack/portals.compose.yml");
     // custom.compose.yml is seeded-only.
     expect(result.updated).toContain("config/stack/custom.compose.yml");
     // opencode.jsonc is seeded-only: written when missing, never overwritten
@@ -197,7 +197,7 @@ describe("refreshCoreAssets", () => {
 
     expect(existsSync(join(homeDir, "config/stack/core.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "config/stack/services.compose.yml"))).toBe(true);
-    expect(existsSync(join(homeDir, "config/stack/channels.compose.yml"))).toBe(true);
+    expect(existsSync(join(homeDir, "config/stack/portals.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "config/stack/custom.compose.yml"))).toBe(true);
     expect(existsSync(join(homeDir, "config/assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(homeDir, "vault/user/user.env.schema"))).toBe(false);
@@ -209,7 +209,7 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(homeDir, "config/stack"), { recursive: true });
     writeFileSync(join(homeDir, "config/stack/core.compose.yml"), "old-compose-content");
     writeFileSync(join(homeDir, "config/stack/services.compose.yml"), "old-services-content");
-    writeFileSync(join(homeDir, "config/stack/channels.compose.yml"), "old-channels-content");
+    writeFileSync(join(homeDir, "config/stack/portals.compose.yml"), "old-portals-content");
     writeFileSync(join(homeDir, "config/stack/custom.compose.yml"), "user-custom-compose");
     mkdirSync(join(homeDir, "config/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), "user-customized-opencode");
@@ -219,7 +219,7 @@ describe("refreshCoreAssets", () => {
     // core.compose.yml is managed — backed up and overwritten
     expect(result.updated).toContain("config/stack/core.compose.yml");
     expect(result.updated).toContain("config/stack/services.compose.yml");
-    expect(result.updated).toContain("config/stack/channels.compose.yml");
+    expect(result.updated).toContain("config/stack/portals.compose.yml");
     expect(result.backupDir).not.toBeNull();
     const backupCompose = readFileSync(join(result.backupDir!, "config/stack/core.compose.yml"), "utf-8");
     expect(backupCompose).toBe("old-compose-content");
@@ -238,7 +238,7 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(homeDir, "config/stack"), { recursive: true });
     writeFileSync(join(homeDir, "config/stack/core.compose.yml"), content);
     writeFileSync(join(homeDir, "config/stack/services.compose.yml"), content);
-    writeFileSync(join(homeDir, "config/stack/channels.compose.yml"), content);
+    writeFileSync(join(homeDir, "config/stack/portals.compose.yml"), content);
     writeFileSync(join(homeDir, "config/stack/custom.compose.yml"), content);
     mkdirSync(join(homeDir, "config/assistant"), { recursive: true });
     writeFileSync(join(homeDir, "config/assistant/opencode.jsonc"), content);

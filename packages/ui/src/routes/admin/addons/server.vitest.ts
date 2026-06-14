@@ -41,7 +41,7 @@ function makePostEvent(body: Record<string, unknown>, token = 'admin-token'): Pa
 function seedRegistryAddon(homeDir: string, name: string): void {
   const stackDir = join(homeDir, 'config', 'stack');
   mkdirSync(stackDir, { recursive: true });
-  writeFileSync(join(stackDir, 'channels.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
+  writeFileSync(join(stackDir, 'portals.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
 }
 
 function enableAddon(homeDir: string, name: string): void {

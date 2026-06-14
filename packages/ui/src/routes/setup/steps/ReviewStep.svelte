@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { CHANNELS, PROVIDERS } from '$lib/client/constants.js';
-  import type { Provider, ModelSelection, ChannelState } from '$lib/client/types.js';
-  import { isChannelEnabled as _isChannelEnabled } from '$lib/client/helpers.js';
+  import { PORTALS, PROVIDERS } from '$lib/client/constants.js';
+  import type { Provider, ModelSelection, PortalState } from '$lib/client/types.js';
+  import { isPortalEnabled as _isPortalEnabled } from '$lib/client/helpers.js';
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
   import { friendlyError } from '$lib/client/error-messages.js';
 
@@ -13,7 +13,7 @@
     activeStt: string;
     voiceProfileLabel?: string;
     ollamaProfileLabel?: string;
-    channelSelection: Record<string, boolean | ChannelState>;
+    portalSelection: Record<string, boolean | PortalState>;
     ollamaEnabled: boolean;
     /** When true and no host provider running, hide the Infrastructure card entirely. */
     cloudOnly?: boolean;
@@ -36,7 +36,7 @@
     modelSelection,
     activeTts,
     activeStt,
-    channelSelection,
+    portalSelection,
     ollamaEnabled,
     hostProviderLabel = '',
     payload,
@@ -65,8 +65,8 @@
     return found?.name ?? connId;
   }
 
-  function isChannelEnabled(chId: string, locked?: boolean): boolean {
-    return _isChannelEnabled(channelSelection, chId, locked);
+  function isPortalEnabled(chId: string, locked?: boolean): boolean {
+    return _isPortalEnabled(portalSelection, chId, locked);
   }
 
   // Friendly AI label: resolved from the chat model's provider connId
@@ -82,9 +82,9 @@
     !!(activeStt && !activeStt.startsWith('skip-'))
   );
 
-  // Active non-locked channels
-  const activeChannels = $derived(
-    CHANNELS.filter((ch) => !ch.locked && isChannelEnabled(ch.id, ch.locked))
+  // Active non-locked portals
+  const activePortals = $derived(
+    PORTALS.filter((ch) => !ch.locked && isPortalEnabled(ch.id, ch.locked))
   );
 
   // Password reveal/copy state
@@ -268,8 +268,8 @@
     </div>
   {/if}
 
-  <!-- Channels (only those enabled) -->
-  {#each activeChannels as ch (ch.id)}
+  <!-- Portals (only those enabled) -->
+  {#each activePortals as ch (ch.id)}
     <div class="summary-row">
       <span class="summary-icon" aria-hidden="true">{ch.icon}</span>
       <div class="summary-body">

@@ -17,20 +17,20 @@
    *   hasOpenAI               — true if OpenAI is a verified provider (affects voice default)
    *   voiceProfiles           — available voice addon hardware profiles
    *   selectedVoiceProfile    — currently selected voice profile id
-   *   channelSelection        — current channel enable + credential state
+   *   portalSelection         — current portal enable + credential state
    *   onvoiceenabledchange    — called when voice toggle flips
    *   onchangetts             — called when TTS engine/config changes
    *   onchangestt             — called when STT engine/config changes
    *   onvoiceprofilechange    — called when voice hardware profile changes
-   *   onchanneltoggle         — called when a channel toggle flips
-   *   oncredentialchange      — called when a channel credential field changes
+   *   onportaltoggle          — called when a portal toggle flips
+   *   oncredentialchange      — called when a portal credential field changes
    *   onnext                  — proceed to Screen 3 (always enabled)
    */
 
-  import type { VoiceEngineValue, ChannelState } from '$lib/client/types.js';
+  import type { VoiceEngineValue, PortalState } from '$lib/client/types.js';
   import type { VoiceAddonProfile } from '$lib/api.js';
-  import { CHANNELS } from '$lib/client/constants.js';
-  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
+  import { PORTALS } from '$lib/client/constants.js';
+  import { isPortalEnabled as _isPortalEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
 
   type ModelMode = 'cloud' | 'local' | 'both';
 
@@ -54,14 +54,14 @@
     voiceProfiles?: VoiceAddonProfile[];
     /** Currently selected voice profile id. */
     selectedVoiceProfile?: string;
-    /** Channel enable + credential state (discord, slack). */
-    channelSelection?: Record<string, boolean | ChannelState>;
+    /** Portal enable + credential state (discord, slack). */
+    portalSelection?: Record<string, boolean | PortalState>;
 
     onvoiceenabledchange: (enabled: boolean) => void;
     onchangetts: (v: VoiceEngineValue) => void;
     onchangestt: (v: VoiceEngineValue) => void;
     onvoiceprofilechange?: (id: string) => void;
-    onchanneltoggle: (id: string) => void;
+    onportaltoggle: (id: string) => void;
     oncredentialchange: (chId: string, credKey: string, value: string) => void;
     onnext: () => void;
   }
@@ -72,11 +72,11 @@
     voiceTts,
     voiceStt,
     hasOpenAI = false,
-    channelSelection = {},
+    portalSelection = {},
     onvoiceenabledchange,
     onchangetts,
     onchangestt,
-    onchanneltoggle,
+    onportaltoggle,
     oncredentialchange,
     onnext: _onnext,
   }: Props = $props();
@@ -118,22 +118,22 @@
     }
   }
 
-  function isChannelEnabled(chId: string, locked?: boolean): boolean {
-    return _isChannelEnabled(channelSelection, chId, locked);
+  function isPortalEnabled(chId: string, locked?: boolean): boolean {
+    return _isPortalEnabled(portalSelection, chId, locked);
   }
 
   function getCredValue(chId: string, key: string): string {
-    return _getCredValue(channelSelection, chId, key);
+    return _getCredValue(portalSelection, chId, key);
   }
 
-  // Non-API, non-locked channels only
-  const configurableChannels = $derived(CHANNELS.filter((ch) => !ch.locked));
+  // Non-API, non-locked portals only
+  const configurablePortals = $derived(PORTALS.filter((ch) => !ch.locked));
 
-  // Discord and Slack channel definitions (looked up from CHANNELS constant)
-  const discordCh = $derived(configurableChannels.find((ch) => ch.id === 'discord'));
-  const slackCh = $derived(configurableChannels.find((ch) => ch.id === 'slack'));
-  const discordOn = $derived(isChannelEnabled('discord'));
-  const slackOn = $derived(isChannelEnabled('slack'));
+  // Discord and Slack portal definitions (looked up from PORTALS constant)
+  const discordCh = $derived(configurablePortals.find((ch) => ch.id === 'discord'));
+  const slackCh = $derived(configurablePortals.find((ch) => ch.id === 'slack'));
+  const discordOn = $derived(isPortalEnabled('discord'));
+  const slackOn = $derived(isPortalEnabled('slack'));
 </script>
 
 <div data-testid="step-extras" class="addon-list" role="list">
@@ -193,7 +193,7 @@
             <input
               type="checkbox"
               checked={discordOn}
-              onchange={() => onchanneltoggle('discord')}
+              onchange={() => onportaltoggle('discord')}
             />
             <div class="toggle-track"></div>
             <div class="toggle-thumb"></div>
@@ -266,7 +266,7 @@
             <input
               type="checkbox"
               checked={slackOn}
-              onchange={() => onchanneltoggle('slack')}
+              onchange={() => onportaltoggle('slack')}
             />
             <div class="toggle-track"></div>
             <div class="toggle-thumb"></div>

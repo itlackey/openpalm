@@ -42,7 +42,7 @@ describe("discoverPortals", () => {
   });
 
   test("discovers portal services (those with PORTAL_NAME)", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
+    writeStackCompose(homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
     const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
@@ -51,7 +51,7 @@ describe("discoverPortals", () => {
   });
 
   test("discovers multiple portals", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n  discord:\n    environment:\n      PORTAL_NAME: Discord\n  api:\n    environment:\n      PORTAL_NAME: API\n");
+    writeStackCompose(homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n  discord:\n    environment:\n      PORTAL_NAME: Discord\n  api:\n    environment:\n      PORTAL_NAME: API\n");
 
     const result = discoverPortals(configDir);
     expect(result).toHaveLength(3);
@@ -60,7 +60,7 @@ describe("discoverPortals", () => {
   });
 
   test("excludes non-portal addons (no PORTAL_NAME)", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  admin:\n    image: admin:latest\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
+    writeStackCompose(homeDir, "portals.compose.yml", "services:\n  admin:\n    image: admin:latest\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
     const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
@@ -68,7 +68,7 @@ describe("discoverPortals", () => {
   });
 
   test("filters out invalid portal names", () => {
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  UPPER:\n    environment:\n      PORTAL_NAME: X\n  -leading-hyphen:\n    environment:\n      PORTAL_NAME: X\n  valid-name:\n    environment:\n      PORTAL_NAME: Valid\n");
+    writeStackCompose(homeDir, "portals.compose.yml", "services:\n  UPPER:\n    environment:\n      PORTAL_NAME: X\n  -leading-hyphen:\n    environment:\n      PORTAL_NAME: X\n  valid-name:\n    environment:\n      PORTAL_NAME: Valid\n");
 
     const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
@@ -77,7 +77,7 @@ describe("discoverPortals", () => {
 
   test("ignores fixed compose files without portals", () => {
     writeStackCompose(homeDir, "services.compose.yml", "services:\n  ollama:\n    image: ollama/ollama\n");
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
+    writeStackCompose(homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
 
     const result = discoverPortals(configDir);
     expect(result).toHaveLength(1);
@@ -111,7 +111,7 @@ describe("isAllowedService", () => {
     const homeDir = trackDir(makeTempDir());
     const configDir = join(homeDir, "config");
     mkdirSync(configDir, { recursive: true });
-    writeStackCompose(homeDir, "channels.compose.yml", "services:\n  chat:\n    image: chat:latest\n");
+    writeStackCompose(homeDir, "portals.compose.yml", "services:\n  chat:\n    image: chat:latest\n");
 
     // Service name found in compose content
     expect(isAllowedService("chat", configDir)).toBe(true);

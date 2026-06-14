@@ -43,7 +43,7 @@ function makePostEvent(name: string, body: Record<string, unknown>, token = 'adm
 function seedFixedAddon(homeDir: string, name: string): void {
   const stackDir = join(homeDir, 'config', 'stack');
   mkdirSync(stackDir, { recursive: true });
-  writeFileSync(join(stackDir, 'channels.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
+  writeFileSync(join(stackDir, 'portals.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
 }
 
 function seedEnabledAddons(homeDir: string, csv: string): void {
@@ -94,7 +94,7 @@ describe('/admin/addons/:name route', () => {
     expect(body.config.schemaPath).toBe(''); // built-in (in-code) schema, no materialized file
     expect(body.config.userEnvPath).toBe('knowledge/env/stack.env');
     // chat schema is a header-only stub (no HMAC secret rows after D4 removal).
-    expect(body.config.envSchema).toContain('Web Chat channel configuration');
+    expect(body.config.envSchema).toContain('Web Chat portal configuration');
   });
 
   test('returns 404 for unknown addons', async () => {

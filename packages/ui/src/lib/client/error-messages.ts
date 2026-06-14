@@ -22,7 +22,7 @@ export type FriendlyErrorContext =
   | "deploy"
   | "deploy-poll"
   | "system-check"
-  | "channel"
+  | "portal"
   | "port-conflict"
   | "generic";
 
@@ -140,9 +140,9 @@ export function friendlyError(raw: unknown, context: FriendlyErrorContext = "gen
         hint: "Resolve the failing check above, then click Retry.",
         raw: text,
       };
-    case "channel":
+    case "portal":
       return {
-        title: "Channel credential issue",
+        title: "Portal credential issue",
         body: text || "A required field is missing or invalid.",
         hint: "Confirm the bot token and other required fields are correct.",
         raw: text,
