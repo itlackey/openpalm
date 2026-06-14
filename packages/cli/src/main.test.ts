@@ -159,7 +159,7 @@ describe('cli main', () => {
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(base, 'data', 'assistant'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'services.compose.yml'))).toBe(true);
-      expect(existsSync(join(base, 'config', 'stack', 'channels.compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'portals.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'knowledge', 'tasks', 'akm-improve.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'guardian.env'))).toBe(false);
@@ -306,7 +306,7 @@ describe('cli main', () => {
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
     mkdirSync(join(base, 'data'), { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(base, 'config', 'stack', 'channels.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      PORTAL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
+    writeFileSync(join(base, 'config', 'stack', 'portals.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      PORTAL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
 
     process.env.OP_HOME = base;
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -317,7 +317,7 @@ describe('cli main', () => {
     try {
       await main(['addon', 'enable', 'chat']);
       expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_ENABLED_ADDONS=chat');
-      expect(readSecret(join(base, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
+      expect(readSecret(join(base, 'config', 'stack'), 'portal_chat_secret')).toBeTruthy();
 
       await main(['addon', 'disable', 'chat']);
       expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).not.toContain('chat');
