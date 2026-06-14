@@ -165,13 +165,13 @@
     width: 36px;
     height: 20px;
     border-radius: 10px;
-    background: var(--wizard-toggle-off, #8b9198);
+    background: var(--toggle-bg-off);
     position: relative;
     transition: background 0.2s;
   }
 
   .setting-toggle-track.on {
-    background: var(--color-primary-hover);
+    background: var(--toggle-bg-on);
   }
 
   .setting-toggle-track.locked {
