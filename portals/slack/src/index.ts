@@ -81,10 +81,10 @@ export default class SlackChannel {
   private forwardTimeoutMs = parseForwardTimeoutMs(Bun.env.SLACK_FORWARD_TIMEOUT_MS);
 
   /**
-   * Opt-in rich-UX streaming (design Stage 5). When false (default), the
-   * buffered /channel/inbound path is used — byte-for-byte the legacy behavior
-   * (§7). When true, thread turns render live via the guardian /oc/* proxy with
-   * Block Kit tool status + interactive permission prompts.
+   * Opt-in rich-UX streaming. When false (default), turns are buffered and the
+   * full assistant reply is posted once complete. When true, thread turns render
+   * live via the guardian /oc/* proxy with Block Kit tool status + interactive
+   * permission prompts.
    */
   private streamingEnabled = Bun.env.SLACK_STREAMING === "true";
 

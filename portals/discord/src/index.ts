@@ -76,10 +76,10 @@ export default class DiscordChannel {
   private forwardTimeoutMs = Number(Bun.env.DISCORD_FORWARD_TIMEOUT_MS) || 0;
 
   /**
-   * Opt-in rich-UX streaming (design Stage 4). When false (default), the
-   * buffered /channel/inbound path is used — byte-for-byte the legacy behavior
-   * (§7). When true, thread turns render live via the guardian /oc/* proxy with
-   * tool embeds + interactive permission prompts.
+   * Opt-in rich-UX streaming. When false (default), turns are buffered and the
+   * full assistant reply is posted once complete. When true, thread turns render
+   * live via the guardian /oc/* proxy with tool embeds + interactive permission
+   * prompts.
    */
   private streamingEnabled = Bun.env.DISCORD_STREAMING === "true";
 
