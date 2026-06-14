@@ -174,7 +174,7 @@ describe("runDriftCheck — reconnect re-assertion is not boot-only (D2a item 5)
 // ── Integration: drifted /doc disables the proxy only ─────────────────────
 
 const TEST_SECRET = "drift-secret-value-9876";
-const TEST_CHANNEL = "test";
+const TEST_PORTAL = "test";
 
 let guardianProc: Subprocess;
 let mockAssistant: ReturnType<typeof Bun.serve>;
@@ -247,7 +247,7 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(directPort),
       GUARDIAN_ADMIN_PORT: String(adminPort),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
-      CHANNEL_TEST_SECRET_FILE: secretPath,
+      PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
     },
@@ -298,7 +298,7 @@ describe("drift guard — proxy fail-closed (§5, Stage 7)", () => {
     const resp = await fetch(`${guardianUrl}/oc/session`, {
       method: "POST",
       headers: {
-        authorization: `Basic ${Buffer.from(`${TEST_CHANNEL}:${TEST_SECRET}`, "utf-8").toString("base64")}`,
+        authorization: `Basic ${Buffer.from(`${TEST_PORTAL}:${TEST_SECRET}`, "utf-8").toString("base64")}`,
         "content-type": "application/json",
         "x-openpalm-user": "drift-u",
       },

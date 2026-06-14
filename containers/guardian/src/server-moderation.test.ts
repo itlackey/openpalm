@@ -85,7 +85,7 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(directPort),
       GUARDIAN_ADMIN_PORT: String(adminPort),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, 'state.db'),
-      CHANNEL_TEST_SECRET_FILE: secretPath,
+      PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
       GUARDIAN_CONTENT_VALIDATION: '1',

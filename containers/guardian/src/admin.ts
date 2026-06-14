@@ -44,7 +44,7 @@ export async function handleAdminRequest(req: Request, requestId: string): Promi
   if (url.pathname === '/admin/principals' && req.method === 'POST') {
     const body = await readBody(req);
     const id = typeof body.id === 'string' ? body.id.trim().toLowerCase() : '';
-    const kind = body.kind === 'direct' ? 'direct' : 'channel';
+    const kind = body.kind === 'direct' ? 'direct' : 'portal';
     const token = typeof body.token === 'string' ? body.token : '';
     const label = typeof body.label === 'string' ? body.label : id;
     if (!id || !token) return json(400, { error: 'id_and_token_required', requestId });

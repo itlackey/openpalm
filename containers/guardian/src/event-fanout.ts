@@ -17,7 +17,7 @@
  *   - HARD DROP RULE (§3.2 F2a): forward the RAW UNMODIFIED frame ONLY when
  *     sessionID is a non-empty string owned by the principal; otherwise DROP.
  *     Do NOT rely on Map.has(undefined). Global events (server.*, installation.*)
- *     carry no sessionID and thus never reach a channel.
+ *     carry no sessionID and thus never reach a portal.
  *   - On permission.asked, record requestID→principal (ownership.ts) so a later
  *     POST /permission/{requestID}/reply can be authorized (§3.4).
  *   - Assistant restart mid-stream (§3.2, medium): if the upstream /event drops,
@@ -49,7 +49,7 @@ const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 
 interface Subscriber {
   principal: Principal;
-  /** SSE bytes are pushed here; the proxy hands the readable side to the channel. */
+  /** SSE bytes are pushed here; the proxy hands the readable side to the portal. */
   controller: ReadableStreamDefaultController<Uint8Array>;
   closed: boolean;
 }
@@ -67,7 +67,7 @@ function isDirectGlobalFrame(frameJson: string): boolean {
 }
 
 // Keepalive: the guardian drops upstream server.heartbeat frames (no sessionID,
-// §3.2), so a turn whose model is quiet would send NO bytes to the channel for a
+// §3.2), so a turn whose model is quiet would send NO bytes to the portal for a
 // long time. Emit an SSE comment (`: ping`) to every subscriber periodically so
 // the held-open connection stays alive across intermediaries and half-open
 // sockets are detected. Comments are ignored by SSE parsers (no event dispatched).
@@ -133,8 +133,8 @@ function framePermissionRequestId(frameJson: string): string | undefined {
 
 /**
  * Pure: does this frame signal turn-end for its session? Uses the SAME idle
- * definition the channels use (isTurnEnd / TURN_IDLE_STATUSES from the portal runtime) so
- * the guardian's turn accounting and the channel's render agree on "turn over".
+ * definition the portals use (isTurnEnd / TURN_IDLE_STATUSES from the portal runtime) so
+ * the guardian's turn accounting and the portal's render agree on "turn over".
  */
 function frameIsTurnEnd(frameJson: string): boolean {
   try {
@@ -155,7 +155,7 @@ function frameIsTurnEnd(frameJson: string): boolean {
  * Route ONE parsed SSE frame (raw JSON text) to the subscribers that own its
  * sessionID. Exported for unit tests (no upstream needed).
  *
- * - sessionID absent/null/empty → drop (global events never reach a channel).
+ * - sessionID absent/null/empty → drop (global events never reach a portal).
  * - For each owning subscriber, write the RAW UNMODIFIED frame.
  * - On permission.asked, record requestID→principal for each owner so the reply
  *   gate can authorize it.
@@ -222,7 +222,7 @@ function dropSubscriber(sub: Subscriber): void {
  * an assistant /event drop, channels must tear down orphaned interactive controls
  * (permission buttons whose requestID is now invalid).
  *
- * The frame MUST carry a `sessionID` the channel owns — the channel-side
+ * The frame MUST carry a `sessionID` the portal owns — the portal-side
  * `isSessionError(e, sessionId)` filters by `properties.sessionID`, so a
  * no-sessionID frame would be silently dropped and the teardown signal lost. We
  * therefore emit one session.error PER session each subscriber owns. A subscriber
@@ -344,7 +344,7 @@ async function runUpstream(): Promise<void> {
   } finally {
     upstreamActive = false;
     upstreamAbort = null;
-    // Assistant restart mid-stream: tell every open channel BEFORE resubscribe
+    // Assistant restart mid-stream: tell every open portal BEFORE resubscribe
     // so they tear down orphaned interactive controls (permission buttons whose
     // requestID is now invalid). A bare synthetic frame; channels surface it.
     if (subscribers.size > 0) {
@@ -368,7 +368,7 @@ async function runUpstream(): Promise<void> {
  * ReadableStream of `data: <frame>\n\n` lines — only frames for sessions the
  * principal owns. The single upstream subscription is started on first open.
  *
- * The client abort signal (channel disconnect) tears down this subscriber; when
+ * The client abort signal (portal disconnect) tears down this subscriber; when
  * the last subscriber leaves, the upstream subscription is aborted.
  */
 export function openEventStream(principal: Principal, clientSignal: AbortSignal): Response {
@@ -377,7 +377,7 @@ export function openEventStream(principal: Principal, clientSignal: AbortSignal)
     start(controller) {
       sub = { principal, controller, closed: false };
       subscribers.add(sub);
-      // Flush headers immediately with an SSE comment so the channel sees an
+      // Flush headers immediately with an SSE comment so the portal sees an
       // open 200 stream without waiting for the first owned frame (an empty
       // event-stream otherwise buffers headers until first byte).
       try {

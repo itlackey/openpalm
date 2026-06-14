@@ -14,14 +14,14 @@
  *      adversary must not be able to churn reconnections without bound.
  *   2. Concurrent /event streams per principal (§3.6): at most
  *      OC_EVENT_MAX_CONCURRENT_STREAMS open at once; a second open is rejected
- *      429 — the channel must close the first. Prevents unbounded held-open
+ *      429 — the portal must close the first. Prevents unbounded held-open
  *      streams from one principal.
  *   3. In-flight turns per principal (§3.6): at most OC_MAX_INFLIGHT_TURNS
  *      concurrent prompt turns; the (OC_MAX_INFLIGHT_TURNS + 1)th is rejected
  *      429. Each turn carries a per-turn wall-clock cap (OC_TURN_WALL_CLOCK_MS);
  *      a sweep aborts (POST /session/{id}/abort) any turn that breaches it.
  *
- * The discrete per-user / per-channel CALL rate limits (≈120/min, ≈200/min) are
+ * The discrete per-user / per-portal CALL rate limits (≈120/min, ≈200/min) are
  * applied on the proxy path by reusing the existing rate-limit.ts `allow()` —
  * see proxy.ts. This module owns only the proxy-SPECIFIC bounds above.
  */
@@ -31,9 +31,9 @@ import { type Principal, principalKey } from "./ownership";
 // ── Named constants (with rationale) ───────────────────────────────────────
 
 /**
- * Max /event opens per principal per window. Loose by default: a healthy channel
+ * Max /event opens per principal per window. Loose by default: a healthy portal
  * holds ONE shared subscription (OcEventHub), but reconnects (gateway flaps,
- * idle-close/reopen between turns, multiple channel processes) legitimately
+ * idle-close/reopen between turns, multiple portal processes) legitimately
  * reopen, and we do NOT want stream opens 429'd in normal use. The nonce store
  * keeps its own hard cap, so this is the only thing this bounds. Set to 0 to
  * disable the reconnect cap entirely.
@@ -46,8 +46,8 @@ export const OC_EVENT_RECONNECT_WINDOW_MS = Number(
 /**
  * Max concurrently-open /event streams per principal. The /event stream is
  * principal-scoped (it already carries every owned session), so a well-behaved
- * channel needs only ONE — but a principal can legitimately be served by several
- * concurrent streams (multiple channel processes, a brief open/close overlap
+ * portal needs only ONE — but a principal can legitimately be served by several
+ * concurrent streams (multiple portal processes, a brief open/close overlap
  * between turns, a user active across channels). We keep this LOOSE so streaming
  * is never rejected in normal use; it exists only to bound a true runaway leak.
  * Set to 0 to disable the concurrent-stream cap entirely.
@@ -58,7 +58,7 @@ export const OC_EVENT_MAX_CONCURRENT_STREAMS = Number(
 
 /**
  * Max concurrent in-flight prompt turns per principal. A turn is a
- * prompt_async/message POST that has not yet completed (the channel resolves it
+ * prompt_async/message POST that has not yet completed (the portal resolves it
  * at session-idle). Bounds how much assistant compute one principal can hold.
  */
 export const OC_MAX_INFLIGHT_TURNS = Number(Bun.env.GUARDIAN_OC_MAX_INFLIGHT_TURNS ?? 4);

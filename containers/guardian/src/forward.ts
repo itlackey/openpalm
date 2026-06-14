@@ -65,7 +65,7 @@ export type SessionTarget = {
 
 // ── Public API ──────────────────────────────────────────────────────────
 
-export function resolveSessionTarget(userId: string, channel: string, metadata: unknown): SessionTarget {
+export function resolveSessionTarget(userId: string, portalId: string, metadata: unknown): SessionTarget {
   const meta = asRecord(metadata);
   const metadataSessionKey = typeof meta?.sessionKey === "string"
     ? meta.sessionKey.trim()
@@ -75,9 +75,9 @@ export function resolveSessionTarget(userId: string, channel: string, metadata: 
     : userId;
 
   return {
-    cacheKey: `${channel}:${sessionKey}`,
+    cacheKey: `${portalId}:${sessionKey}`,
     sessionKey,
-    title: `${channel}/${sessionKey}`,
+    title: `${portalId}/${sessionKey}`,
   };
 }
 

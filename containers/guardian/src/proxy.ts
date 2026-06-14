@@ -24,7 +24,7 @@
  *      stream cap (1/principal), and an in-flight-turn cap with a per-turn
  *      wall-clock abort — all in guardian-local oc-bounds.ts.
  *
- * The legacy buffered /channel/inbound transport has been removed; /oc/* is the
+ * The legacy buffered /portal/inbound transport has been removed; /oc/* is the
  * single assistant ingress path.
  */
 
@@ -48,8 +48,8 @@ import {
   allow,
   USER_RATE_LIMIT,
   USER_RATE_WINDOW_MS,
-  CHANNEL_RATE_LIMIT,
-  CHANNEL_RATE_WINDOW_MS,
+  PORTAL_RATE_LIMIT,
+  PORTAL_RATE_WINDOW_MS,
 } from "./rate-limit";
 import {
   allowEventReconnect,
@@ -94,7 +94,7 @@ function json(status: number, data: unknown): Response {
 
 /**
  * Build a FRESH minimal header set for the upstream call — never forward the
- * channel's incoming headers wholesale (host/content-length/connection corrupt
+ * portal's incoming headers wholesale (host/content-length/connection corrupt
  * the stream; inbound auth headers must not leak to the assistant). Mirrors
  * the UI proxy's buildForwardHeaders.
  */
@@ -139,7 +139,7 @@ function buildResponseHeaders(upstream: Response, rid: string): Headers {
 export async function handleProxy(
   req: Request,
   rid: string,
-  expectedKind?: 'channel' | 'direct',
+  expectedKind?: 'portal' | 'direct',
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -168,18 +168,18 @@ export async function handleProxy(
     return deny(rid, 401, 'unauthorized', {});
   }
 
-  // ── Gate 1c: per-user / per-channel rate limit (§3.6) — counts discrete ──
+  // ── Gate 1c: per-user / per-portal rate limit (§3.6) — counts discrete ──
   // signed calls (a GET /event open counts as one). BEFORE the nonce check (H3
   // discipline: a rate-limited flood must not burn nonce-store capacity).
   if (
     !allow(`oc:${authenticated.kind}:${authenticated.id}:${authenticated.userId}`, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) ||
-    !allow(`oc:${authenticated.kind}:${authenticated.id}`, CHANNEL_RATE_LIMIT, CHANNEL_RATE_WINDOW_MS)
+    !allow(`oc:${authenticated.kind}:${authenticated.id}`, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS)
   ) {
     return deny(rid, 429, "rate_limited", { principalId: authenticated.id, userId: authenticated.userId });
   }
 
   // ── Gate 2: endpoint allowlist, default-deny, hardened matching ──────────
-  const match = authenticated.kind === 'channel'
+  const match = authenticated.kind === 'portal'
     ? matchAllowlist(method, rawPath)
     : allowDirect(method, rawPath);
   if (!match.allowed) {
@@ -367,7 +367,7 @@ async function routeAllowed(
     if (!reserveEventStream(principal)) {
       return deny(rid, 429, "too_many_event_streams", { principalId: principal.id, userId: principal.userId });
     }
-      audit({ requestId: rid, action: "oc_event_open", status: "ok", channel: principal.id, userId: principal.userId });
+      audit({ requestId: rid, action: "oc_event_open", status: "ok", portal: principal.id, userId: principal.userId });
       const resp = openEventStream(principal, req.signal);
     // Release the concurrency slot once the client disconnects. openEventStream
     // wires the same signal to drop the subscriber; we mirror it for the slot so
@@ -429,7 +429,7 @@ async function screenPromptBody(
   if (moderation.verdict === "flag") {
     logger.warn("oc_content_flagged", {
       requestId: rid,
-      channel: principal.id,
+      portal: principal.id,
       userId: principal.userId,
       template,
       reason: moderation.reason,
@@ -485,14 +485,14 @@ function extractPromptText(body: string): string {
   return texts.join("\n");
 }
 
-// ── Durable session reuse (idempotent POST /session per (channel, sessionKey)) ─
+// ── Durable session reuse (idempotent POST /session per (portal, sessionKey)) ─
 //
 // ROOT-CAUSE FIX: the /oc path used to create a BRAND-NEW OpenCode session on
-// every POST /session, so a single channel thread accumulated multiple sessions
-// (the channel's in-memory map was a fragile band-aid lost on restart). This
-// guardian-local cache makes create idempotent per (channel, sessionKey) —
+// every POST /session, so a single portal thread accumulated multiple sessions
+// (the portal's in-memory map was a fragile band-aid lost on restart). This
+// guardian-local cache makes create idempotent per (portal, sessionKey) —
 // mirroring the buffered path's forward.ts sessionCache. A per-key lock prevents
-// concurrent first turns from each creating a session. Survives channel restarts
+// concurrent first turns from each creating a session. Survives portal restarts
 // (the durable component is the guardian); a guardian restart re-creates once
 // then reuses. Evicted on DELETE /session. Title unified to the buffered `/`
 // form so the two paths are consistent.
@@ -533,8 +533,8 @@ async function forwardSessionCreate(
   rawPath: string,
   search: string,
 ): Promise<Response> {
-  // sessionKey rides as a header so multi-thread channels keep their grouping;
-  // absent → falls back to userId inside resolveSessionTarget. The channel can
+  // sessionKey rides as a header so multi-thread portals keep their grouping;
+  // absent → falls back to userId inside resolveSessionTarget. The portal can
   // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
   const sessionKeyHeader = req.headers.get(H_SESSION_KEY) ?? undefined;
   const directSessionKeyHeader = req.headers.get(H_SESSION_KEY) ?? undefined;
@@ -572,13 +572,13 @@ async function forwardSessionCreate(
   try {
     sessionId = await inflight;
   } catch (err) {
-    logger.warn("oc_session_create_failed", { requestId: rid, channel: principal.id, userId: principal.userId, error: String(err) });
+    logger.warn("oc_session_create_failed", { requestId: rid, portal: principal.id, userId: principal.userId, error: String(err) });
     return deny(rid, 502, "oc_session_create_failed", { principalId: principal.id, userId: principal.userId });
   }
 
   recordSessionOwner(sessionId, principal);
-  audit({ requestId: rid, action: "oc_session_create", status: "ok", channel: principal.id, userId: principal.userId, sessionId });
-  // Synthesize the create response the channel reads (it only needs id/title).
+  audit({ requestId: rid, action: "oc_session_create", status: "ok", portal: principal.id, userId: principal.userId, sessionId });
+  // Synthesize the create response the portal reads (it only needs id/title).
   return Response.json({ id: sessionId, title });
 }
 
@@ -610,7 +610,7 @@ async function forwardSessionList(
       });
     }
   } catch {
-    logger.warn("oc_session_list_unparsable", { requestId: rid, channel: principal.id, userId: principal.userId });
+    logger.warn("oc_session_list_unparsable", { requestId: rid, portal: principal.id, userId: principal.userId });
     filtered = [];
   }
   return json(upstream.status, filtered);

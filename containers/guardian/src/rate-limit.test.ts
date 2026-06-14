@@ -10,8 +10,8 @@ import {
   activeRateLimiters,
   USER_RATE_LIMIT,
   USER_RATE_WINDOW_MS,
-  CHANNEL_RATE_LIMIT,
-  CHANNEL_RATE_WINDOW_MS,
+  PORTAL_RATE_LIMIT,
+  PORTAL_RATE_WINDOW_MS,
 } from "./rate-limit";
 
 function uniqueKey(prefix = "user"): string {
@@ -52,8 +52,8 @@ describe("Rate limiting (allow)", () => {
   it("exports the expected constants", () => {
     expect(USER_RATE_LIMIT).toBe(120);
     expect(USER_RATE_WINDOW_MS).toBe(60_000);
-    expect(CHANNEL_RATE_LIMIT).toBe(200);
-    expect(CHANNEL_RATE_WINDOW_MS).toBe(60_000);
+    expect(PORTAL_RATE_LIMIT).toBe(200);
+    expect(PORTAL_RATE_WINDOW_MS).toBe(60_000);
   });
 });
 
@@ -66,11 +66,11 @@ describe("activeRateLimiters", () => {
     const before = activeRateLimiters();
 
     allow(userKey, USER_RATE_LIMIT, USER_RATE_WINDOW_MS);
-    allow(channelKey, CHANNEL_RATE_LIMIT, CHANNEL_RATE_WINDOW_MS);
+    allow(channelKey, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS);
 
     const after = activeRateLimiters();
 
     expect(after.activeUserLimiters).toBe(before.activeUserLimiters + 1);
-    expect(after.activeChannelLimiters).toBe(before.activeChannelLimiters + 1);
+    expect(after.activePortalLimiters).toBe(before.activePortalLimiters + 1);
   });
 });

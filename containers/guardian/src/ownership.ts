@@ -1,7 +1,7 @@
 /**
  * Guardian-LOCAL session/permission ownership maps for the /oc/* proxy.
  *
- * A principal is (channel, userId). When a principal creates a session through
+ * A principal is (portal, userId). When a principal creates a session through
  * the proxy, the guardian records `sessionId → principal` synchronously on the
  * create response (closing the /event creation race, §3.2 F2b). Later calls on
  * that session (GET/DELETE, message, prompt_async, abort) are authorized
@@ -21,7 +21,7 @@
 /** The identity that owns a session/permission request. */
 export interface Principal {
   id: string;
-  kind: 'channel' | 'direct';
+  kind: 'portal' | 'direct';
   userId: string;
 }
 

@@ -32,8 +32,8 @@ import {
 } from "./ownership";
 import { beginTurn, inflightTurnCount, _resetBoundsForTest } from "./oc-bounds";
 
-const A: Principal = { channel: "test", userId: "alice" };
-const B: Principal = { channel: "test", userId: "bob" };
+const A: Principal = { id: "test", kind: "portal", userId: "alice" };
+const B: Principal = { id: "test", kind: "portal", userId: "bob" };
 
 /**
  * A test subscriber that collects every SSE chunk written to its controller.

@@ -2,7 +2,7 @@
  * Fixed-window rate limiting.
  *
  * Tracks per-key request counts in fixed time windows. Supports both
- * per-user and per-channel limits. Periodically prunes expired entries
+ * per-user and per-portal limits. Periodically prunes expired entries
  * and enforces a hard cap of 10,000 buckets.
  *
  * NOTE: This is a fixed-window rate limiter. A client can send `limit` requests
@@ -13,18 +13,18 @@
 
 export const USER_RATE_LIMIT = 120;
 export const USER_RATE_WINDOW_MS = 60_000;
-export const CHANNEL_RATE_LIMIT = 200;
-export const CHANNEL_RATE_WINDOW_MS = 60_000;
+export const PORTAL_RATE_LIMIT = 200;
+export const PORTAL_RATE_WINDOW_MS = 60_000;
 
 const buckets = new Map<string, { count: number; start: number }>();
 
 /** Maximum number of rate-limit buckets before hard-cap eviction. */
 const MAX_BUCKETS = 10_000;
 
-/** Prune expired buckets. Uses the larger window (channel) as the expiry threshold. */
+/** Prune expired buckets. Uses the larger window (portal) as the expiry threshold. */
 function pruneRateLimitBuckets(): void {
   const now = Date.now();
-  const maxWindow = Math.max(USER_RATE_WINDOW_MS, CHANNEL_RATE_WINDOW_MS);
+  const maxWindow = Math.max(USER_RATE_WINDOW_MS, PORTAL_RATE_WINDOW_MS);
   for (const [k, b] of buckets) {
     if (now - b.start > maxWindow) buckets.delete(k);
   }
@@ -60,19 +60,19 @@ export function allow(key: string, limit: number, windowMs: number): boolean {
   return true;
 }
 
-/** Returns counts of active user and channel rate limiters for /stats. */
-export function activeRateLimiters(): { activeUserLimiters: number; activeChannelLimiters: number } {
+/** Returns counts of active user and portal rate limiters for /stats. */
+export function activeRateLimiters(): { activeUserLimiters: number; activePortalLimiters: number } {
   const now = Date.now();
   let activeUserLimiters = 0;
-  let activeChannelLimiters = 0;
+  let activePortalLimiters = 0;
   for (const [key, b] of buckets) {
-    const windowMs = key.startsWith("ch:") ? CHANNEL_RATE_WINDOW_MS : USER_RATE_WINDOW_MS;
+    const windowMs = key.startsWith("ch:") ? PORTAL_RATE_WINDOW_MS : USER_RATE_WINDOW_MS;
     if (now - b.start > windowMs) continue; // expired
     if (key.startsWith("ch:")) {
-      activeChannelLimiters++;
+      activePortalLimiters++;
     } else {
       activeUserLimiters++;
     }
   }
-  return { activeUserLimiters, activeChannelLimiters };
+  return { activeUserLimiters, activePortalLimiters };
 }

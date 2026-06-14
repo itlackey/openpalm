@@ -123,7 +123,7 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(directPort),
       GUARDIAN_ADMIN_PORT: String(adminPort),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, 'state.db'),
-      CHANNEL_TEST_SECRET_FILE: secretPath,
+      PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
     },
@@ -237,8 +237,8 @@ describe('Guardian server integration', () => {
   });
 });
 
-describe('Guardian channel secret startup contract', () => {
-  it('ignores the legacy GUARDIAN_REQUIRE_CHANNEL_SECRETS flag under principal seeding', async () => {
+describe('Guardian portal secret startup contract', () => {
+  it('ignores the legacy GUARDIAN_REQUIRE_PORTAL_SECRETS flag under principal seeding', async () => {
     const port = await getAvailablePort();
     const direct = await getAvailablePort();
     const admin = await getAvailablePort();
@@ -253,7 +253,7 @@ describe('Guardian channel secret startup contract', () => {
         GUARDIAN_STATE_DB_PATH: join(localTmpDir, 'state.db'),
         OP_ASSISTANT_URL: 'http://127.0.0.1:1',
         GUARDIAN_AUDIT_PATH: join(localTmpDir, 'audit.log'),
-        GUARDIAN_REQUIRE_CHANNEL_SECRETS: 'true',
+        GUARDIAN_REQUIRE_PORTAL_SECRETS: 'true',
       },
       stdout: 'pipe',
       stderr: 'pipe',
@@ -282,7 +282,7 @@ describe('Guardian channel secret startup contract', () => {
     }
   });
 
-  it('allows zero channel grants for a core-only no-channel stack', async () => {
+  it('allows zero portal grants for a core-only no-portal stack', async () => {
     const port = await getAvailablePort();
     const direct = await getAvailablePort();
     const admin = await getAvailablePort();

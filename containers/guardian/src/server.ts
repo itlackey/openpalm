@@ -15,9 +15,9 @@ import {
   reconnectBucketCount,
 } from './oc-bounds';
 import { handleProxy, OC_PREFIX } from './proxy';
-import { allow, activeRateLimiters, CHANNEL_RATE_LIMIT, CHANNEL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
+import { allow, activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
 import { runDriftCheck, isProxyEnabled } from './drift';
-import { initializePrincipalStore, listPrincipals, seedChannelPrincipalsFromEnv } from './state-db';
+import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 
 const logger = createLogger('guardian');
 
@@ -43,7 +43,7 @@ function json(status: number, data: unknown): Response {
 }
 
 function statsResponse(): Response {
-  const { activeUserLimiters, activeChannelLimiters } = activeRateLimiters();
+  const { activeUserLimiters, activePortalLimiters } = activeRateLimiters();
   return json(200, {
     uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
     principals: listPrincipals().map(({ tokenHash, ...rest }) => rest),
@@ -52,10 +52,10 @@ function statsResponse(): Response {
     rate_limits: {
       user_window_ms: USER_RATE_WINDOW_MS,
       user_max_requests: USER_RATE_LIMIT,
-      channel_window_ms: CHANNEL_RATE_WINDOW_MS,
-      channel_max_requests: CHANNEL_RATE_LIMIT,
+      portal_window_ms: PORTAL_RATE_WINDOW_MS,
+      portal_max_requests: PORTAL_RATE_LIMIT,
       active_user_limiters: activeUserLimiters,
-      active_channel_limiters: activeChannelLimiters,
+      active_portal_limiters: activePortalLimiters,
     },
     oc_proxy: {
       enabled: isProxyEnabled(),
@@ -83,7 +83,7 @@ async function handleHealth(requestId: string): Promise<Response> {
   return json(200, { ok: true, service: 'guardian', requestId, time: new Date().toISOString() });
 }
 
-async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'channel' | 'direct'): Promise<Response> {
+async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct'): Promise<Response> {
   if (!isProxyEnabled()) {
     countRequest('oc:503');
     return json(503, { error: 'oc_proxy_disabled', requestId });
@@ -100,7 +100,7 @@ async function handleInternalRequest(req: Request): Promise<Response> {
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
   if (url.pathname === '/stats' && req.method === 'GET') return statsResponse();
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    return handleOcRequest(req, requestId, 'channel');
+    return handleOcRequest(req, requestId, 'portal');
   }
   return json(404, { error: 'not_found', requestId });
 }
@@ -132,7 +132,7 @@ async function handleAdminListenerRequest(req: Request): Promise<Response> {
 }
 
 initializePrincipalStore();
-seedChannelPrincipalsFromEnv();
+seedPortalPrincipalsFromEnv();
 if (MCP_ENABLED) seedMcpPrincipalFromToken();
 
 void runDriftCheck().catch((err) => {

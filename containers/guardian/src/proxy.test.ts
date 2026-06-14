@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { OC_DOC_FIXTURE } from "./oc-doc-fixture";
 
 const TEST_SECRET = "test-secret-value-1234";
-const TEST_CHANNEL = "test";
+const TEST_PORTAL = "test";
 
 let guardianProc: Subprocess;
 let mockAssistant: ReturnType<typeof Bun.serve>;
@@ -60,7 +60,7 @@ function ocCall(
 ): Promise<Response> {
   const userId = opts.userId ?? "user-a";
   const body = opts.body ?? "";
-  const principalId = opts.principalId ?? TEST_CHANNEL;
+  const principalId = opts.principalId ?? TEST_PORTAL;
   const secret = opts.secret ?? TEST_SECRET;
   const headers = new Headers({
     authorization: `Basic ${Buffer.from(`${principalId}:${secret}`, "utf-8").toString("base64")}`,
@@ -166,7 +166,7 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(await getAvailablePort()),
       GUARDIAN_ADMIN_PORT: String(await getAvailablePort()),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
-      CHANNEL_TEST_SECRET_FILE: secretPath,
+      PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: auditPath,
       // Force a cap of 1 so the concurrent-stream mechanism test is deterministic.
@@ -253,7 +253,7 @@ describe("/oc proxy — authentication", () => {
     const resp = await fetch(`${guardianUrl}/oc/session`, {
       method: "GET",
       headers: {
-        authorization: `Basic ${Buffer.from(`${TEST_CHANNEL}:${TEST_SECRET}`, "utf-8").toString("base64")}`,
+        authorization: `Basic ${Buffer.from(`${TEST_PORTAL}:${TEST_SECRET}`, "utf-8").toString("base64")}`,
       },
     });
     expect(resp.status).toBe(200);
@@ -316,7 +316,7 @@ describe("/oc proxy — session-ownership authz (§3.4)", () => {
   it("create-body is REWRITTEN: client title discarded, guardian title used", async () => {
     await createSessionFor("owner-rewrite", "thread-xyz");
     const title = (lastCreateBody as { title?: string }).title;
-    expect(title).toBe(`${TEST_CHANNEL}/thread-xyz`); // unified to the buffered `/` form
+    expect(title).toBe(`${TEST_PORTAL}/thread-xyz`); // unified to the buffered `/` form
     expect(title).not.toBe("CLIENT-CHOSEN");
   });
 
