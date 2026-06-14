@@ -35,7 +35,6 @@ describe("PROVIDER_LABELS", () => {
   test("label values are human-readable (not raw slugs)", () => {
     // Spot-check a few known labels
     expect(PROVIDER_LABELS['openai']).toBe('OpenAI');
-    expect(PROVIDER_LABELS['anthropic']).toBe('Anthropic');
     expect(PROVIDER_LABELS['model-runner']).toBe('Docker Model Runner');
     expect(PROVIDER_LABELS['lmstudio']).toBe('LM Studio');
   });
@@ -104,10 +103,6 @@ describe("PROVIDER_KEY_MAP", () => {
     expect(PROVIDER_KEY_MAP['openai']).toBe('OPENAI_API_KEY');
   });
 
-  test("maps anthropic to ANTHROPIC_API_KEY", () => {
-    expect(PROVIDER_KEY_MAP['anthropic']).toBe('ANTHROPIC_API_KEY');
-  });
-
   test('maps additional supported providers', () => {
     expect(PROVIDER_KEY_MAP.deepseek).toBe('DEEPSEEK_API_KEY');
     expect(PROVIDER_KEY_MAP.together).toBe('TOGETHER_API_KEY');
@@ -154,7 +149,6 @@ describe("LLM_PROVIDERS", () => {
   test("includes both cloud and local providers", () => {
     // Cloud
     expect(LLM_PROVIDERS).toContain('openai');
-    expect(LLM_PROVIDERS).toContain('anthropic');
     // Local
     expect(LLM_PROVIDERS).toContain('model-runner');
     expect(LLM_PROVIDERS).toContain('ollama');

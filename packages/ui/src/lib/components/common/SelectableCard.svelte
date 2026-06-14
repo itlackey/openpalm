@@ -11,6 +11,15 @@
     status?: 'verifying' | 'error' | null;
     ariaLabel?: string;
     dataId?: string;
+    /**
+     * Opt-in ARIA role for the card header.
+     * - 'button' (default): standard toggle/expander behaviour — announces as button,
+     *   uses aria-expanded for expand/collapse state.
+     * - 'radio': for cards inside a radiogroup (e.g. the mode-selection cards in
+     *   Screen1ModelsStep). Announces as radio, uses aria-checked for selection state.
+     *   Does NOT emit aria-expanded.
+     */
+    selectionRole?: 'button' | 'radio';
     onToggle: () => void;
     titleSuffix?: Snippet;
     children?: Snippet;
@@ -26,12 +35,13 @@
     status = null,
     ariaLabel,
     dataId,
+    selectionRole = 'button',
     onToggle,
     titleSuffix,
     children,
   }: Props = $props();
 
-  let headerEl: HTMLDivElement | null = null;
+  let headerEl: HTMLDivElement | null = $state(null);
 
   const FOCUSABLE =
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -50,41 +60,66 @@
 </script>
 
 <div class:selected class:verified class:wide={expanded} class="selectable-card" data-provider={dataId}>
-  <div
-    bind:this={headerEl}
-    class="selectable-card-header"
-    role="button"
-    tabindex="0"
-    aria-expanded={expanded}
-    aria-label={ariaLabel ?? title}
-    onclick={onToggle}
-    onkeydown={(event) => {
-      if (event.key === 'Enter' || event.key === ' ') onToggle();
-    }}
-  >
-    {#if icon}
-      <div class="selectable-card-icon">{icon}</div>
-    {/if}
-    <div class="selectable-card-info">
-      <div class="selectable-card-name">
-        {title}
-        {#if titleSuffix}
-          {@render titleSuffix()}
-        {/if}
-        {#if verified}
-          <span class="verification-status verification-status--ok">✓</span>
-        {:else if status === 'verifying'}
-          <span class="verification-status verification-status--wait">⟳</span>
-        {:else if status === 'error'}
-          <span class="verification-status verification-status--error">✗</span>
-        {/if}
+  <!--
+    Two static-role branches avoid Svelte's dynamic-role a11y false-positive.
+    'radio': inside a radiogroup — aria-checked tracks selection; no aria-expanded.
+    'button' (default): standalone toggle/expander — aria-expanded tracks open state.
+  -->
+  {#if selectionRole === 'radio'}
+    <div
+      bind:this={headerEl}
+      class="selectable-card-header"
+      role="radio"
+      tabindex="0"
+      aria-checked={selected || verified}
+      aria-label={ariaLabel ?? title}
+      onclick={onToggle}
+      onkeydown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') onToggle();
+      }}
+    >
+      {#if icon}<div class="selectable-card-icon">{icon}</div>{/if}
+      <div class="selectable-card-info">
+        <div class="selectable-card-name">
+          {title}
+          {#if titleSuffix}{@render titleSuffix()}{/if}
+          {#if verified}<span class="verification-status verification-status--ok">✓</span>
+          {:else if status === 'verifying'}<span class="verification-status verification-status--wait">⟳</span>
+          {:else if status === 'error'}<span class="verification-status verification-status--error">✗</span>
+          {/if}
+        </div>
+        {#if description}<div class="selectable-card-desc">{description}</div>{/if}
       </div>
-      {#if description}
-        <div class="selectable-card-desc">{description}</div>
-      {/if}
+      <div class="selectable-card-radio" class:checked={selected || verified} aria-hidden="true"></div>
     </div>
-    <div class="selectable-card-check" aria-hidden="true">{selected || verified ? '✓' : ''}</div>
-  </div>
+  {:else}
+    <div
+      bind:this={headerEl}
+      class="selectable-card-header"
+      role="button"
+      tabindex="0"
+      aria-expanded={expanded}
+      aria-label={ariaLabel ?? title}
+      onclick={onToggle}
+      onkeydown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') onToggle();
+      }}
+    >
+      {#if icon}<div class="selectable-card-icon">{icon}</div>{/if}
+      <div class="selectable-card-info">
+        <div class="selectable-card-name">
+          {title}
+          {#if titleSuffix}{@render titleSuffix()}{/if}
+          {#if verified}<span class="verification-status verification-status--ok">✓</span>
+          {:else if status === 'verifying'}<span class="verification-status verification-status--wait">⟳</span>
+          {:else if status === 'error'}<span class="verification-status verification-status--error">✗</span>
+          {/if}
+        </div>
+        {#if description}<div class="selectable-card-desc">{description}</div>{/if}
+      </div>
+      <div class="selectable-card-check" aria-hidden="true">{selected || verified ? '✓' : ''}</div>
+    </div>
+  {/if}
 
   {#if expanded && children}
     <div class="selectable-card-panel" {@attach manageExpandedFocus}>
@@ -196,6 +231,30 @@
   .selectable-card.verified .selectable-card-check {
     background: var(--color-success);
     border-color: var(--color-success);
+  }
+
+  /* Radio-variant indicator (circle) for single-choice cards */
+  .selectable-card-radio {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--color-border);
+    flex-shrink: 0;
+    position: relative;
+    background: var(--color-bg);
+    transition: border-color 0.15s;
+  }
+
+  .selectable-card-radio.checked {
+    border-color: var(--color-primary);
+  }
+
+  .selectable-card-radio.checked::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--color-primary);
   }
 
   .verification-status {

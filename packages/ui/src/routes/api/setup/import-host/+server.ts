@@ -46,6 +46,8 @@ async function pushAuthToOpenCode(authPath: string): Promise<PushResult> {
   const pushed: string[] = [];
   const errors: { provider: string; error: string }[] = [];
   for (const [providerId, value] of Object.entries(raw as Record<string, unknown>)) {
+    // Belt-and-suspenders: never push anthropic credentials to the assistant stack.
+    if (providerId === 'anthropic') continue;
     try {
       await opencodeFetch(`/auth/${encodeURIComponent(providerId)}`, {
         method: 'PUT',

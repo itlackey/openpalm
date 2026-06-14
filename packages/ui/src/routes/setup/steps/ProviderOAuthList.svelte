@@ -1,0 +1,246 @@
+<script lang="ts">
+  /**
+   * ProviderOAuthList — OAuth provider list for CloudAttachPanel.
+   *
+   * Renders a compact vertical list of OAuth-capable providers,
+   * filtered through WIZARD_EXCLUDED_PROVIDERS (no Anthropic).
+   *
+   * Props:
+   *   opencodeProviders  — full list from /api/setup/recommend
+   *   opencodeAuth       — auth methods per provider id
+   *   providerState      — current verification state per provider id
+   *   onoauthstart       — called when the user clicks "Sign in" for a provider
+   *   onoauthcancel      — called when OAuth poll should be aborted
+   */
+
+  import { WIZARD_EXCLUDED_PROVIDERS } from '$lib/client/constants.js';
+  import type { OpenCodeProvider, AuthMethod, ProviderState } from '$lib/client/types.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
+
+  interface Props {
+    opencodeProviders: OpenCodeProvider[];
+    opencodeAuth: Record<string, AuthMethod[]>;
+    providerState: Record<string, ProviderState>;
+    onoauthstart: (id: string, methodIndex: number) => void;
+    onoauthcancel: (id: string) => void;
+  }
+
+  let {
+    opencodeProviders,
+    opencodeAuth,
+    providerState,
+    onoauthstart,
+    onoauthcancel,
+  }: Props = $props();
+
+  // Order recognizable consumer providers first; obscure ones fall to the end.
+  const RECOGNIZABLE_FIRST = ['openai', 'google', 'github-copilot', 'groq', 'mistral', 'huggingface'];
+
+  // Providers you can ADD here: OAuth-capable, not excluded, and NOT already
+  // connected (connected ones live in the service picker above). Familiar names
+  // lead; the long tail of obscure providers is collapsed behind "show all".
+  const filteredProviders = $derived(
+    opencodeProviders
+      .filter((p) => {
+        if (WIZARD_EXCLUDED_PROVIDERS.has(p.id)) return false;
+        if (providerState[p.id]?.verified) return false;
+        const methods = opencodeAuth[p.id] ?? [];
+        return methods.some((m) => m.type === 'oauth');
+      })
+      .sort((a, b) => {
+        const ia = RECOGNIZABLE_FIRST.indexOf(a.id);
+        const ib = RECOGNIZABLE_FIRST.indexOf(b.id);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      })
+  );
+  const OAUTH_CAP = 4;
+  let showAllOauth = $state(false);
+  const visibleOauth = $derived(showAllOauth ? filteredProviders : filteredProviders.slice(0, OAUTH_CAP));
+  const hiddenOauthCount = $derived(Math.max(0, filteredProviders.length - OAUTH_CAP));
+
+  function getState(id: string): ProviderState {
+    return providerState[id] ?? {
+      selected: false, verified: false, verifying: false,
+      error: false, apiKey: '', baseUrl: '', models: [], ollamaMode: null,
+    };
+  }
+
+  function oauthMethod(id: string): AuthMethod | undefined {
+    return (opencodeAuth[id] ?? []).find((m) => m.type === 'oauth');
+  }
+
+  function oauthMethodIndex(id: string): number {
+    return (opencodeAuth[id] ?? []).findIndex((m) => m.type === 'oauth');
+  }
+</script>
+
+<div class="oauth-list" role="list">
+  {#if filteredProviders.length === 0}
+    <p class="oauth-empty">Nothing more to add — you're all connected.</p>
+  {:else}
+    {#each visibleOauth as provider (provider.id)}
+      {@const st = getState(provider.id)}
+      {@const method = oauthMethod(provider.id)}
+      {@const methodIdx = oauthMethodIndex(provider.id)}
+      <div class="oauth-row" role="listitem" data-provider={provider.id}>
+        <span class="oauth-name">{provider.name}</span>
+
+        {#if st.verified}
+          <span class="oauth-status oauth-status--ok" aria-label="{provider.name} connected">Connected ✓</span>
+        {:else if st.oauthPolling}
+          <div class="oauth-polling">
+            {#if st.oauthUrl}
+              <a href={st.oauthUrl} target="_blank" rel="noopener" class="oauth-open-link">
+                Open authorization page →
+              </a>
+            {/if}
+            {#if st.oauthInstructions}
+              <p class="oauth-instructions">{st.oauthInstructions}</p>
+            {/if}
+            <div class="oauth-waiting">
+              <Spinner /> Waiting for authorization…
+            </div>
+            <button
+              type="button"
+              class="btn-oauth-cancel"
+              onclick={() => onoauthcancel(provider.id)}
+            >
+              Cancel
+            </button>
+          </div>
+        {:else}
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            disabled={st.verifying}
+            onclick={() => onoauthstart(provider.id, methodIdx)}
+          >
+            {st.verifying ? 'Signing in…' : 'Sign in'}
+          </button>
+        {/if}
+
+        {#if st.error && !st.oauthPolling}
+          <span class="oauth-error" role="alert">{st.errorMessage ?? 'Authorization failed'}</span>
+        {/if}
+      </div>
+    {/each}
+    {#if hiddenOauthCount > 0}
+      <button type="button" class="oauth-more" onclick={() => { showAllOauth = !showAllOauth; }}>
+        {showAllOauth ? 'Show fewer' : `Show ${hiddenOauthCount} more services`}
+      </button>
+    {/if}
+  {/if}
+</div>
+
+<style>
+  .oauth-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .oauth-empty {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary);
+    margin: 0;
+    padding: 8px 0;
+  }
+
+  .oauth-more {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 8px 2px;
+    border-radius: var(--radius-sm);
+  }
+  .oauth-more:hover { color: var(--color-text); }
+  .oauth-more:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+  .oauth-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-secondary);
+    flex-wrap: wrap;
+  }
+
+  .oauth-name {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: var(--font-medium, 500);
+    color: var(--color-text);
+  }
+
+  .oauth-status--ok {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-success-text);
+    font-weight: var(--font-medium, 500);
+    white-space: nowrap;
+  }
+
+  /* Layout only — appearance comes from the design-system .btn classes. */
+  .oauth-row :global(.btn) {
+    flex-shrink: 0;
+  }
+
+  .oauth-polling {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .oauth-open-link {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-primary);
+    text-underline-offset: 2px;
+  }
+
+  .oauth-instructions {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+    margin: 0;
+  }
+
+  .oauth-waiting {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-secondary);
+  }
+
+  .btn-oauth-cancel {
+    padding: 4px 10px;
+    background: none;
+    border: 1px solid var(--color-border-hover);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    align-self: flex-start;
+    min-height: 28px;
+  }
+
+  .btn-oauth-cancel:hover {
+    border-color: var(--color-text-tertiary);
+    color: var(--color-text);
+  }
+
+  .oauth-error {
+    width: 100%;
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-danger);
+    margin-top: 2px;
+  }
+</style>

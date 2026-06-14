@@ -125,11 +125,13 @@ export interface VoiceEngineValue {
   model?: string;
   voice?: string;
   language?: string;
+  /** Provider API key (e.g. ElevenLabs). Stored in the tts/stt payload block. */
+  apiKey?: string;
 }
 
 /** A single configurable field for a voice engine. */
 export interface VoiceEngineField {
-  key: 'baseURL' | 'model' | 'voice' | 'language';
+  key: 'baseURL' | 'model' | 'voice' | 'language' | 'apiKey';
   label: string;
   /** When provided, render as a select. When omitted, render as a text input. */
   options?: string[];

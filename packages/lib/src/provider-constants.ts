@@ -7,7 +7,7 @@
 
 /** Supported LLM providers. */
 export const LLM_PROVIDERS = [
-  "openai", "anthropic", "ollama", "groq", "together",
+  "openai", "ollama", "groq", "together",
   "mistral", "deepseek", "xai", "lmstudio", "model-runner",
   "google", "huggingface", "openai-compatible",
 ] as const;
@@ -30,7 +30,6 @@ export const PROVIDER_DEFAULT_URLS: Record<string, string> = {
 /** Map provider name → env var for the API key. */
 export const PROVIDER_KEY_MAP: Record<string, string> = {
   openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
   groq: "GROQ_API_KEY",
   mistral: "MISTRAL_API_KEY",
   google: "GOOGLE_API_KEY",
@@ -84,7 +83,6 @@ export function lookupEmbeddingDims(provider: string, model: string): number {
 /** Provider display labels for UI. */
 export const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
-  anthropic: "Anthropic",
   ollama: "Ollama",
   groq: "Groq",
   together: "Together AI",

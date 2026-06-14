@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { CHANNELS, TTS_OPTIONS, STT_OPTIONS, PROVIDERS } from '$lib/client/constants.js';
+  import { CHANNELS, PROVIDERS } from '$lib/client/constants.js';
   import type { Provider, ModelSelection, ChannelState } from '$lib/client/types.js';
-  import { isChannelEnabled as _isChannelEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
+  import { isChannelEnabled as _isChannelEnabled } from '$lib/client/helpers.js';
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
   import { friendlyError } from '$lib/client/error-messages.js';
-  import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface Props {
     uiLoginPassword: string;
@@ -16,13 +15,19 @@
     ollamaProfileLabel?: string;
     channelSelection: Record<string, boolean | ChannelState>;
     ollamaEnabled: boolean;
+    /** When true and no host provider running, hide the Infrastructure card entirely. */
+    cloudOnly?: boolean;
+    /** Label for the running host provider (e.g. "Ollama"). Shown when ollamaEnabled is false. */
+    hostProviderLabel?: string;
     payload: unknown;
     installError: string;
     installing: boolean;
     isRerun?: boolean;
+    systemCheckPassed?: boolean;
     onback: () => void;
     oninstall: () => void;
-    ongostepedit: (step: number) => void;
+    oneditmodels: () => void;
+    oneditextras: () => void;
   }
 
   let {
@@ -31,53 +36,62 @@
     modelSelection,
     activeTts,
     activeStt,
-    voiceProfileLabel = '',
-    ollamaProfileLabel = '',
     channelSelection,
     ollamaEnabled,
+    hostProviderLabel = '',
     payload,
     installError,
     installing,
     isRerun = false,
-    onback,
-    oninstall,
-    ongostepedit,
+    systemCheckPassed = true,
+    onback: _onback,
+    oninstall: _oninstall,
+    oneditmodels,
+    oneditextras,
   }: Props = $props();
 
-  function maskSecret(value: string): string {
-    if (!value || value.length < 8) return '(not set)';
-    return value.slice(0, 4) + '...' + value.slice(-4);
+  // ── Local provider ids (for friendly name lookup) ────────────────────
+  const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner']);
+
+  function friendlyProviderName(connId: string): string {
+    if (!connId) return '';
+    if (connId === 'openai') return 'ChatGPT (OpenAI)';
+    if (connId === 'google') return 'Gemini (Google)';
+    if (connId === 'github-copilot') return 'GitHub Copilot';
+    if (connId === 'groq') return 'Groq';
+    if (LOCAL_PROVIDER_IDS.has(connId)) return 'Runs on this computer';
+    // Fall back to the static PROVIDERS list display name
+    const found = PROVIDERS.find((p) => p.id === connId);
+    return found?.name ?? connId;
   }
 
   function isChannelEnabled(chId: string, locked?: boolean): boolean {
     return _isChannelEnabled(channelSelection, chId, locked);
   }
 
-  function getCredValue(chId: string, key: string): string {
-    return _getCredValue(channelSelection, chId, key);
-  }
+  // Friendly AI label: resolved from the chat model's provider connId
+  const aiLabel = $derived.by(() => {
+    const connId = modelSelection.llm?.connId;
+    if (!connId) return '';
+    return friendlyProviderName(connId);
+  });
 
-  const ttsOpt = $derived(TTS_OPTIONS.find((o) => o.id === activeTts));
-  const sttOpt = $derived(STT_OPTIONS.find((o) => o.id === activeStt));
-  const activeChannels = $derived(CHANNELS.filter((ch) => isChannelEnabled(ch.id, ch.locked)));
+  // Voice is active when either side has an actual engine (not skip/empty)
+  const voiceActive = $derived(
+    !!(activeTts && !activeTts.startsWith('skip-')) ||
+    !!(activeStt && !activeStt.startsWith('skip-'))
+  );
 
-  function findProvider(connId: string): Provider | undefined {
-    return PROVIDERS.find((p) => p.id === connId);
-  }
+  // Active non-locked channels
+  const activeChannels = $derived(
+    CHANNELS.filter((ch) => !ch.locked && isChannelEnabled(ch.id, ch.locked))
+  );
 
+  // Password reveal/copy state
+  let passwordVisible = $state(false);
   let passwordCopied = $state(false);
   let copyFallback = $state(false);
   let passwordInputEl: HTMLInputElement | null = $state(null);
-
-  function saveConfig(config: unknown): void {
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'openpalm-setup.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   async function copyPassword(): Promise<void> {
     try {
@@ -96,10 +110,21 @@
       }
     }
   }
+
+  function saveConfig(config: unknown): void {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'openpalm-setup.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const canInstall = $derived(!installing && systemCheckPassed);
 </script>
 
-<h2>Review &amp; Install</h2>
-<p class="step-description">Confirm your settings, then install.</p>
+<!-- Step title/lede come from the wizard shell header; no duplicate heading here. -->
 
 {#if verifiedProviders.length === 0}
   <div class="review-warning" role="alert">
@@ -107,244 +132,373 @@
   </div>
 {/if}
 
-<div id="review-summary">
-  <!-- Account -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Account</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(1)}>Edit</button>
-    </div>
-    {#if !isRerun}
-      <div class="review-row review-row--alert">
-        <span class="review-row-label">UI Login Password</span>
-        <span class="review-row-value">
-          {#if copyFallback}
-            <input
-              bind:this={passwordInputEl}
-              class="token-save-input"
-              type="password"
-              readonly
-              value={uiLoginPassword}
-              onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-            />
-          {:else}
-            <span class="token-save-box">{uiLoginPassword.substring(0,2)}*********</span>
-          {/if}
-        </span>
-      </div>
-      <div class="review-row review-row--alert">
-        <span class="review-row-label">  <span class="token-save-hint">You'll need this to sign in. Also saved in <code>stack.env</code>.</span>
-        </span>
-        <span class="review-row-value"> 
-       
-          <button type="button" class="btn btn-secondary btn-sm" onclick={() => void copyPassword()}>
-            {passwordCopied ? 'Copied!' : 'Copy password'}
-          </button>
-        </span>
-      </div>
-    {:else}
-      <div class="review-row">
-        <span class="review-row-label">UI Login Password</span>
-        <span class="review-row-value">{maskSecret(uiLoginPassword)}</span>
-      </div>
-    {/if}
-  </div>
-
-  <!-- Models -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Models</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(3)}>Edit</button>
-    </div>
-    {#if modelSelection.llm}
-      {@const llmProv = findProvider(modelSelection.llm.connId)}
-      <div class="review-row">
-        <span class="review-row-label">Chat Model</span>
-        <span class="review-row-value">{modelSelection.llm.model}{llmProv ? ' (' + llmProv.name + ')' : ''}</span>
-      </div>
-    {/if}
-    {#if modelSelection.small?.model}
-      {@const smallProv = findProvider(modelSelection.small.connId)}
-      <div class="review-row">
-        <span class="review-row-label">Small Model</span>
-        <span class="review-row-value">{modelSelection.small.model}{smallProv ? ' (' + smallProv.name + ')' : ''}</span>
-      </div>
-    {/if}
-    {#if modelSelection.embedding}
-      {@const embProv = findProvider(modelSelection.embedding.connId)}
-      <div class="review-row">
-        <span class="review-row-label">Memory Model</span>
-        <span class="review-row-value">{modelSelection.embedding.model}{embProv ? ' (' + embProv.name + ')' : ''}</span>     
-     
-      </div>
-       <div class="review-row" style="padding:4px 0">
-        <span class="review-row-label">Embedding Dims</span>
-        <span class="review-row-value">{modelSelection.embedding.dims ?? 1536}</span>
-      </div>
-    {/if}
-  </div>
-
-
-  <!-- Channels -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Channels</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(5)}>Edit</button>
-    </div>
-    {#if activeChannels.length === 0}
-      <div class="review-row"><span class="review-row-label review-row-label--muted">None enabled</span></div>
-    {:else}
-      {#each activeChannels as ch}
-        <div class="review-row">
-          <span class="review-row-label">{ch.icon} {ch.name}</span>
-          <span class="review-row-value review-row-value-ok">Enabled ✓</span>
-        </div>
-        {#if ch.credentials}
-          {@const sel = channelSelection[ch.id]}
-          {#if typeof sel === 'object' && sel !== null && sel.enabled}
-            {#each ch.credentials as cred}
-              {@const val = getCredValue(ch.id, cred.key)}
-              {#if val}
-                <div class="review-row">
-                  <span class="review-row-label" style="padding-left:24px">{cred.label}</span>
-                  <span class="review-row-value">{maskSecret(val)}</span>
-                </div>
-              {/if}
-            {/each}
-          {/if}
-        {/if}
-      {/each}
-    {/if}
-  </div>
-
-  <!-- Voice -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Voice</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(4)}>Edit</button>
-    </div>
-    <div class="review-row">
-      <span class="review-row-label">Text-to-Speech</span>
-      <span class="review-row-value">{ttsOpt ? ttsOpt.name : 'Disabled'}</span>
-    </div>
-    <div class="review-row">
-      <span class="review-row-label">Speech-to-Text</span>
-      <span class="review-row-value">{sttOpt ? sttOpt.name : 'Disabled'}</span>
-    </div>
-    {#if voiceProfileLabel && (activeTts === 'openpalm-voice' || activeStt === 'openpalm-voice')}
-      <div class="review-row">
-        <span class="review-row-label">Voice Container</span>
-        <span class="review-row-value">{voiceProfileLabel}</span>
-      </div>
-    {/if}
-  </div>
-
-
-  <!-- Options -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Options</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(5)}>Edit</button>
-    </div>
-    {#if ollamaEnabled}
-      <div class="review-row">
-        <span class="review-row-label">Ollama In-Stack</span>
-        <span class="review-row-value">Enabled</span>
-      </div>
-      {#if ollamaProfileLabel}
-        <div class="review-row">
-          <span class="review-row-label">Ollama Profile</span>
-          <span class="review-row-value">{ollamaProfileLabel}</span>
-        </div>
+<!-- ── Password block (tinted surface, no border) ──────────────── -->
+{#if !isRerun}
+  <div class="password-block">
+    <p class="password-label">Sign-in password</p>
+    <div class="password-row">
+      {#if copyFallback}
+        <input
+          bind:this={passwordInputEl}
+          class="password-value password-value--mono"
+          type={passwordVisible ? 'text' : 'password'}
+          readonly
+          value={uiLoginPassword}
+          onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+        />
+      {:else if passwordVisible}
+        <span class="password-value password-value--mono" aria-label="Sign-in password">{uiLoginPassword}</span>
+      {:else}
+        <span class="password-value password-value--dots" aria-label="Sign-in password">••••••••••••••••</span>
       {/if}
-    {:else}
-      <div class="review-row"><span class="review-row-label review-row-label--muted">None enabled</span></div>
-    {/if}
-  </div>
-
-  <!-- Providers -->
-  <div class="review-card">
-    <div class="review-card-title">
-      <span>Providers</span>
-      <button class="review-edit-btn" type="button" onclick={() => ongostepedit(2)}>Edit</button>
-    </div>
-    {#each verifiedProviders as p}
-      <div class="review-row">
-        <span class="review-row-label">{p.icon} {p.name}</span>
-        <span class="review-row-value review-row-value-ok">Connected ✓</span>
+      <div class="password-actions">
+        <!-- Reveal/hide toggle -->
+        <button
+          type="button"
+          class="btn-icon"
+          aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+          onclick={() => { passwordVisible = !passwordVisible; }}
+          title={passwordVisible ? 'Hide' : 'Show'}
+        >
+          {#if passwordVisible}
+            <!-- Eye-off icon -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 2l12 12"/>
+              <path d="M6.7 6.8A3 3 0 009.3 9.2M4 4.5C2.5 5.7 1.5 7 1 8c1 2.5 3.8 5 7 5a8.4 8.4 0 003-.6M7 3.1A8.4 8.4 0 018 3c3.2 0 6 2.5 7 5-.4 1-.9 1.9-1.7 2.7"/>
+            </svg>
+          {:else}
+            <!-- Eye icon -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+              <circle cx="8" cy="8" r="2"/>
+            </svg>
+          {/if}
+        </button>
+        <!-- Copy button -->
+        <button
+          type="button"
+          class="btn-icon"
+          class:btn-icon--copied={passwordCopied}
+          aria-label={passwordCopied ? 'Copied!' : 'Copy password'}
+          onclick={() => void copyPassword()}
+          title="Copy"
+        >
+          {#if passwordCopied}
+            <!-- Check icon -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 8l4 4 8-8"/>
+            </svg>
+          {:else}
+            <!-- Copy icon -->
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5" y="5" width="8" height="8" rx="1.5"/>
+              <path d="M3 11V3h8"/>
+            </svg>
+          {/if}
+        </button>
       </div>
-    {/each}
+    </div>
+    <p class="password-note">Already saved on this computer — keep a copy somewhere safe just in case.</p>
   </div>
+{:else}
+  <div class="password-block">
+    <p class="password-label">Sign-in password</p>
+    <div class="password-row">
+      <span class="password-value password-value--dots" aria-label="Sign-in password">••••••••</span>
+      <div class="password-actions">
+        <span class="rerun-note">Previously set — not changed.</span>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ── What's being set up: hairline-divider summary rows ─────── -->
+<div class="summary-list" aria-label="What's set up">
+  <p class="summary-section-label">What's being set up</p>
+
+  <!-- AI (always shown) -->
+  {#if aiLabel}
+    <div class="summary-row">
+      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <div class="summary-body">
+        <div class="summary-key">AI</div>
+        <div class="summary-val">{aiLabel}</div>
+      </div>
+      <button type="button" class="btn-change" onclick={oneditmodels}>Change</button>
+    </div>
+  {:else if verifiedProviders.length > 0}
+    <div class="summary-row">
+      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <div class="summary-body">
+        <div class="summary-key">AI</div>
+        <div class="summary-val">{friendlyProviderName(verifiedProviders[0].id)}</div>
+      </div>
+      <button type="button" class="btn-change" onclick={oneditmodels}>Change</button>
+    </div>
+  {:else if ollamaEnabled}
+    <div class="summary-row">
+      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <div class="summary-body">
+        <div class="summary-key">AI</div>
+        <div class="summary-val">Runs on this computer</div>
+      </div>
+      <button type="button" class="btn-change" onclick={oneditmodels}>Change</button>
+    </div>
+  {:else if hostProviderLabel}
+    <div class="summary-row">
+      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <div class="summary-body">
+        <div class="summary-key">AI</div>
+        <div class="summary-val">{friendlyProviderName(hostProviderLabel)}</div>
+      </div>
+      <button type="button" class="btn-change" onclick={oneditmodels}>Change</button>
+    </div>
+  {/if}
+
+  <!-- Voice (only if active) -->
+  {#if voiceActive}
+    <div class="summary-row">
+      <span class="summary-icon" aria-hidden="true">🎙</span>
+      <div class="summary-body">
+        <div class="summary-key">Voice</div>
+        <div class="summary-val">On — built-in voice</div>
+      </div>
+      <button type="button" class="btn-change" onclick={oneditextras}>Change</button>
+    </div>
+  {/if}
+
+  <!-- Channels (only those enabled) -->
+  {#each activeChannels as ch (ch.id)}
+    <div class="summary-row">
+      <span class="summary-icon" aria-hidden="true">{ch.icon}</span>
+      <div class="summary-body">
+        <div class="summary-key">Chat app</div>
+        <div class="summary-val">{ch.name}</div>
+      </div>
+      <button type="button" class="btn-change" onclick={oneditextras}>Change</button>
+    </div>
+  {/each}
+
 </div>
+
 {#if installError}
   <FriendlyError error={friendlyError(installError, 'setup-complete')} />
 {/if}
 
-<div class="step-actions" id="review-actions">
-  <!-- Tertiary action: .btn-outline is the defined token-system variant
-       (.btn-info does not exist and fell through to a UA-gray fill). -->
-  <button type="button" class="btn btn-outline" onclick={() => saveConfig(payload)}>
+{#if !systemCheckPassed}
+  <div class="review-warning" role="alert">
+    ⚠ System check has not passed yet — Install is disabled until Docker is confirmed available.
+  </div>
+{/if}
+
+<!-- Save configuration utility: quiet link, no primary prominence -->
+<div class="review-save-row">
+  <button
+    type="button"
+    class="btn-save"
+    onclick={() => saveConfig(payload)}
+    aria-label="Save configuration as JSON file"
+  >
     Save configuration
-  </button>
-  <button class="btn btn-secondary" onclick={onback}>Back</button>
-  <button class="btn btn-primary" id="btn-install" onclick={oninstall} disabled={installing}>
-    {#if installing}<Spinner /> Installing...{:else}Install{/if}
   </button>
 </div>
 
 <style>
+  /* ── Warning banner ────────────────────────────────────────────── */
   .review-warning {
     margin: 12px 0;
     padding: 10px 14px;
-    background: var(--color-warning-bg);
-    border: 1px solid var(--color-warning-border);
-    border-radius: 8px;
+    background: rgba(242, 92, 92, 0.12);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-lg);
     font-size: var(--text-sm, 0.875rem);
-    color: var(--color-caution);
+    color: var(--color-danger);
   }
 
-  .review-row--alert {
-    align-items: flex-start;
+  /* ── Password block (tinted surface, rounded, no border) ──────── */
+  .password-block {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 18px 20px;
+    margin-bottom: 8px;
   }
-  .token-save-box {
-    font-family: monospace;
-    font-size: var(--text-sm, 0.875rem);
-    background: var(--color-bg);
-    color: var(--color-text);
-    border: 1px solid var(--color-border, #e2e8f0);
-    border-radius: 6px;
-    padding: 4px 8px;
+
+  .password-label {
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+    margin-bottom: 10px;
+  }
+
+  .password-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .password-value {
+    flex: 1;
     word-break: break-all;
-    user-select: all;
-    display: inline-block;
   }
-  .token-save-input {
-    font-family: monospace;
-    font-size: var(--text-sm, 0.875rem);
-    background: var(--color-bg);
+
+  .password-value--mono {
+    font-family: "Courier New", Courier, monospace;
+    font-size: var(--text-lg, 1rem);
+    font-weight: 600;
     color: var(--color-text);
-    border: 1px solid var(--color-border, #e2e8f0);
-    border-radius: 6px;
-    padding: 4px 8px;
+    letter-spacing: 0.04em;
+    background: none;
+    border: none;
+    padding: 0;
     width: 100%;
   }
-  .token-save-hint {
+
+  .password-value--dots {
+    font-family: inherit;
+    letter-spacing: 0.18em;
+    font-size: var(--text-base, 0.875rem);
+    color: var(--color-text-secondary);
+  }
+
+  .password-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .rerun-note {
     font-size: var(--text-xs, 0.75rem);
-    /* --color-text-tertiary (~#9ca3af) fails WCAG AA contrast on white.
-       Use --color-text-secondary (~#6b7280) which passes ≥4.5:1. */
-    color: var(--color-text-secondary, #6b7280);
-    margin-left: 8px;
-  }
-  .token-save-hint code {
-    font-family: monospace;
-    background: var(--color-bg-secondary, #f1f5f9);
-    /* Ensure the code text color passes contrast on its background. */
-    color: var(--color-text, #1e293b);
-    padding: 1px 5px;
-    border-radius: 4px;
-  }
-  .review-row-label--muted {
-    color: var(--color-text-secondary, #64748b);
+    color: var(--color-text-tertiary);
     font-style: italic;
+  }
+
+  /* ── Icon buttons (reveal/copy) ────────────────────────────────── */
+  .btn-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid var(--color-border-hover);
+    background: var(--color-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: border-color 150ms, color 150ms, background 150ms;
+    flex-shrink: 0;
+  }
+
+  .btn-icon:hover {
+    border-color: var(--color-text-secondary);
+    color: var(--color-text);
+    background: var(--color-bg-secondary);
+  }
+
+  .btn-icon--copied {
+    border-color: var(--color-success-border);
+    color: var(--color-success-text);
+    background: var(--color-success-bg);
+  }
+
+  .password-note {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-tertiary);
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+
+  /* ── Summary list: hairline dividers, no bordered cards ──────── */
+  .summary-list {
+    display: flex;
+    flex-direction: column;
+    margin-top: 24px;
+  }
+
+  .summary-section-label {
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+    margin-bottom: 6px;
+  }
+
+  .summary-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 4px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .summary-row:last-child {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .summary-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    width: 24px;
+    text-align: center;
+  }
+
+  .summary-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .summary-key {
+    font-size: var(--text-sm, 0.8125rem);
+    color: var(--color-text-tertiary);
+    font-weight: 500;
+  }
+
+  .summary-val {
+    font-size: var(--text-base, 0.875rem);
+    font-weight: 500;
+    color: var(--color-text);
+    margin-top: 1px;
+  }
+
+  .btn-change {
+    background: none;
+    border: none;
+    font-size: var(--text-sm, 0.8125rem);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    padding: 4px 0;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: color 150ms;
+  }
+
+  .btn-change:hover {
+    color: var(--color-text-secondary);
+  }
+
+  /* ── Save configuration quiet link ─────────────────────────────── */
+  .review-save-row {
+    margin: 16px 0 4px;
+  }
+
+  .btn-save {
+    background: none;
+    border: none;
+    font-size: var(--text-sm, 0.8125rem);
+    color: var(--color-text-tertiary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    padding: 4px 0;
+    cursor: pointer;
+    transition: color 150ms;
+  }
+
+  .btn-save:hover {
+    color: var(--color-text-secondary);
   }
 </style>

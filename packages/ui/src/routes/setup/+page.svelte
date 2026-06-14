@@ -12,13 +12,9 @@
   import type { SetupRecommendation } from '@openpalm/lib';
   import { addonProfileId } from '@openpalm/lib/provider-constants';
   import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
-  import ProgressBar from './ProgressBar.svelte';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
-  import WelcomeStep from './steps/WelcomeStep.svelte';
-  import ProvidersStep from './steps/ProvidersStep.svelte';
-  import ModelsStep from './steps/ModelsStep.svelte';
-  import VoiceStep from './steps/VoiceStep.svelte';
-  import OptionsStep from './steps/OptionsStep.svelte';
+  import Screen1ModelsStep from './steps/Screen1ModelsStep.svelte';
+  import Screen2ExtrasStep from './steps/Screen2ExtrasStep.svelte';
   import ReviewStep from './steps/ReviewStep.svelte';
   import DeployStep from './steps/DeployStep.svelte';
 
@@ -34,6 +30,16 @@
   let maxVisitedStep = $state(0);
   let showDeploy = $state(false);
   let systemCheckPassed = $state(false);
+
+  // ── Model mode + explicit voice toggle (new 3-screen flow) ───────────────
+  // modelMode: which high-level option the user chose on Screen 1.
+  // Pre-set to 'cloud'; detection may update it before Screen 1 renders.
+  type ModelMode = 'cloud' | 'local' | 'both';
+  let modelMode = $state<ModelMode>('cloud');
+  // voiceEnabled: explicit toggle state — OFF by default, always.
+  // Separate from the `enableVoice` derived (which drives the payload).
+  // Screen2ExtrasStep reads this and only sets engine values when true.
+  let voiceEnabled = $state(false);
 
   // ── Step 0: Welcome ───────────────────────────────────────────────────────
   // Operator UI login password — replaces the legacy "admin token" UI
@@ -78,6 +84,11 @@
   let recommendation = $state<SetupRecommendation | null>(null);
   let recommendationAlert = $state('');
   let recommendationApplied = $state(false);
+  // Raw detection data from /api/setup/recommend (stored separately for Screen1 props)
+  let detectedGpuVramMb = $state(0);
+  let detectedGpuVendor = $state('');
+  let detectedGpuName = $state('');
+  let detectedCloudProviders = $state<string[]>([]);
   let voiceEngineUnknownTts = $state(false);
   let voiceEngineUnknownStt = $state(false);
   /** Generation counter per provider — discard stale verify results */
@@ -214,6 +225,10 @@
     hasVerifiedProvider ? !!modelSelection.llm?.model : allowEmptyInstall,
   );
 
+  // Chat-model options across all verified providers — drives the model picker
+  // on the Connect step so the user can choose which model to use.
+  const llmModelOptions = $derived(buildModelOptions('llm', verifiedProviders, providerState));
+
   const hasOpenAI = $derived(
     PROVIDERS.some((p) => p.id === 'openai' && providerState[p.id]?.verified)
   );
@@ -327,6 +342,7 @@
       if (v.model) out.model = v.model;
       if (v.voice) out.voice = v.voice;
       if (v.language) out.language = v.language;
+      if (v.apiKey) out.apiKey = v.apiKey;
       return out;
     };
     const ttsCap = voicePayload(persistedVoiceTts);
@@ -484,6 +500,37 @@
       ?? addonProfileId('ollama', variant ?? (gpuDetected ? 'cuda' : 'cpu'));
   }
 
+  // ── Connect-step row selection: cloud ↔ local actually switches the model ──
+  const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner']);
+  let savedCloudLlm = $state<ModelSelection | undefined>(undefined);
+  // Stable "detected cloud service" connId — captured once so the cloud row stays
+  // visible even after the user switches to local (lets them switch back).
+  let detectedCloudConn = $state('');
+  $effect(() => {
+    if (!detectedCloudConn && modelSelection.llm && !LOCAL_PROVIDER_IDS.has(modelSelection.llm.connId)) {
+      detectedCloudConn = modelSelection.llm.connId;
+    }
+  });
+
+  function handleConnectModeChange(mode: 'cloud' | 'local' | 'both'): void {
+    modelMode = mode;
+    if (mode === 'local') {
+      // Remember the cloud model so switching back restores it.
+      if (modelSelection.llm && !LOCAL_PROVIDER_IDS.has(modelSelection.llm.connId)) {
+        savedCloudLlm = modelSelection.llm;
+      }
+      // Use a detected host runtime if present; otherwise enable in-stack Ollama.
+      if (!hostLocalLlmRunning) enableRecommendedOllama();
+      // Point the chat model at the local runtime so the install + button reflect it.
+      const localOpt = getModelOptionsForRole('llm').find((o) => LOCAL_PROVIDER_IDS.has(o.connId));
+      modelSelection.llm = localOpt
+        ? { connId: localOpt.connId, model: localOpt.id, dims: localOpt.dims }
+        : { connId: 'ollama', model: OLLAMA_DEFAULT_CHAT_MODEL, dims: 0 };
+    } else if (mode === 'cloud') {
+      if (savedCloudLlm) modelSelection.llm = savedCloudLlm;
+    }
+  }
+
   // True once the recommendation fetch (display-only) has settled, regardless of
   // outcome — drives the Welcome step's "Checking your system…" neutral state.
   let recommendationFetched = $state(false);
@@ -498,9 +545,21 @@
     try {
       const res = await fetch('/api/setup/recommend');
       if (res.ok) {
-        const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation; hostProviders?: { provider: string; url: string }[] };
+        const data = await res.json() as {
+          ok?: boolean;
+          recommendation?: SetupRecommendation;
+          hostProviders?: { provider: string; url: string }[];
+          gpu?: { vramMb?: number; vendor?: string; name?: string } | null;
+          cloudProviders?: string[];
+        };
         if (data.ok && data.recommendation) recommendation = data.recommendation;
         if (data.ok && Array.isArray(data.hostProviders)) detectedHostProviders = data.hostProviders;
+        if (data.ok && data.gpu) {
+          detectedGpuVramMb = data.gpu.vramMb ?? 0;
+          detectedGpuVendor = data.gpu.vendor ?? '';
+          detectedGpuName = data.gpu.name ?? '';
+        }
+        if (data.ok && Array.isArray(data.cloudProviders)) detectedCloudProviders = data.cloudProviders;
       }
     } catch {
       // non-critical — user can configure manually
@@ -522,9 +581,22 @@
       try {
         const res = await fetch('/api/setup/recommend');
         if (!res.ok) return;
-        const data = await res.json() as { ok?: boolean; recommendation?: SetupRecommendation };
+        const data = await res.json() as {
+          ok?: boolean;
+          recommendation?: SetupRecommendation;
+          hostProviders?: { provider: string; url: string }[];
+          gpu?: { vramMb?: number; vendor?: string; name?: string } | null;
+          cloudProviders?: string[];
+        };
         if (!data.ok || !data.recommendation) return;
         rec = data.recommendation;
+        if (Array.isArray(data.hostProviders)) detectedHostProviders = data.hostProviders;
+        if (data.gpu) {
+          detectedGpuVramMb = data.gpu.vramMb ?? 0;
+          detectedGpuVendor = data.gpu.vendor ?? '';
+          detectedGpuName = data.gpu.name ?? '';
+        }
+        if (Array.isArray(data.cloudProviders)) detectedCloudProviders = data.cloudProviders;
       } catch {
         return; // non-critical — user can configure manually
       }
@@ -561,14 +633,12 @@
     }
   }
 
-  // Apply imported prefs + auto-select, then route: the recommended fast-path
-  // skips the Models step, so the "a chat model is required" gate never runs
-  // there — enforce it here. Route to Models (3) when no chat model could be
-  // picked (and the user hasn't opted into an empty install), else Options (5).
+  // Apply imported prefs + auto-select, then advance to Screen 1.
+  // In the new 3-screen flow everything is on Screen 1 (step 1).
   function applyDefaultsAndRoute(): void {
     applyImportedModelPreferences();
     autoSelectModels();
-    goToStep(!modelSelection.llm?.model && !allowEmptyInstall ? 3 : 5);
+    goToStep(1);
   }
 
   async function handleUseDefaults(): Promise<void> {
@@ -586,9 +656,8 @@
     autoModeImporting = false;
 
     if (recommendation?.action === 'connect-manually') {
-      // No provider and no capable GPU — refuse to silently install empty.
-      // Send the user to the Providers step with the alert visible.
-      goToStep(2);
+      // No provider and no capable GPU — keep user on Screen 1 with alert.
+      goToStep(1);
       return;
     }
 
@@ -679,41 +748,19 @@
   }
 
   function goToStep(n: number): void {
-    if (n < 0 || n > 6) return;
+    if (n < 0 || n > 3) return;
     // Block forward navigation past System Check until it has passed.
     // Allow backwards navigation freely so users can revisit the check.
     if (n > 0 && !systemCheckPassed) return;
     currentStep = n;
     if (n > maxVisitedStep) maxVisitedStep = n;
     showDeploy = false;
-    // On Get Started (index 1), fetch the recommendation for DISPLAY only so the
-    // operator sees what was detected + what "Use recommended defaults" will do
-    // before committing. No apply happens here. Skip on rerun — the user picks
-    // where to start and an install already exists.
+    // On Screen 1 (index 1), fetch the recommendation for display + apply.
+    // Also auto-select model defaults.
     if (n === 1 && !isRerun) {
-      void fetchRecommendation();
-    }
-    // Auto-select model defaults when entering Models step (index 3)
-    if (n === 3) {
+      void fetchAndApplyRecommendation();
       applyImportedModelPreferences();
       autoSelectModels();
-    }
-    // Sync ollamaEnabled from ollamaMode the FIRST time the Options step is
-    // entered. The init guard stops a back/forward navigation (or a rerun where
-    // ollamaEnabled was restored from config) from being overwritten by stale
-    // detection state.
-    if (n === 5 && hasOllamaVerified && !ollamaEnabledInitialized) {
-      ollamaEnabled = providerState.ollama?.ollamaMode === 'instack';
-      ollamaEnabledInitialized = true;
-    }
-    // On first Providers visit (index 2), apply the GPU/provider-aware
-    // recommendation. It supersedes the old ad-hoc host-import trigger:
-    //  - use-host-providers imports host providers + advances to Models
-    //  - enable-ollama enables in-stack Ollama
-    //  - connect-manually keeps the user here with the alert visible
-    // On rerun we don't auto-apply — the user picks where to start.
-    if (n === 2 && !isRerun) {
-      void fetchAndApplyRecommendation();
     }
   }
 
@@ -1328,8 +1375,8 @@
     deployPollErrors = 0;
     lastDeployData = null;
     showDeploy = false;
-    // Return to Review step (index 6)
-    currentStep = 6;
+    // Return to Review step (index 3)
+    currentStep = 3;
   }
 
   // ── Host import ───────────────────────────────────────────────────────────
@@ -1345,7 +1392,12 @@
         const data = (await res.json()) as { providerCount: number; credentialCount?: number; modelPreferences?: { model?: string; small_model?: string }; imageTag?: string; hostAkmAvailable?: boolean; warning?: string };
         hostProviderCount = Math.max(data.providerCount ?? 0, data.credentialCount ?? 0);
         if (data.imageTag && !imageTag) imageTag = data.imageTag;
-        if (typeof data.hostAkmAvailable === 'boolean') hostAkmAvailable = data.hostAkmAvailable;
+        if (typeof data.hostAkmAvailable === 'boolean') {
+          hostAkmAvailable = data.hostAkmAvailable;
+          // Owner Decision 3: auto-default hostAkmEnabled = hostAkmAvailable.
+          // No wizard UI for this — it's set automatically from detection.
+          if (!isRerun) hostAkmEnabled = data.hostAkmAvailable;
+        }
         hostStatusWarning = data.warning ?? null;
         // Eagerly store host model preferences so applyImportedModelPreferences()
         // works even on the fast path (providers already verified, no import needed).
@@ -1353,7 +1405,7 @@
         if (data.modelPreferences?.small_model) importedSmallModel = data.modelPreferences.small_model;
         // Auto-import if already on Providers step (index 2), or always on rerun
         // so models/settings have verified providers to attach to.
-        if (hostProviderCount > 0 && !hostImportTriggered && (currentStep === 2 || isRerun)) {
+        if (hostProviderCount > 0 && !hostImportTriggered && (currentStep === 1 || isRerun)) {
           hostImportTriggered = true;
           void handleHostImport();
         }
@@ -1439,9 +1491,9 @@
       autoSelectModels();
 
       hostImporting = false;
-      // After host import, advance to Models step (index 3). Skip the
-      // auto-advance on rerun — the user picks where to start.
-      if (!isRerun) goToStep(3);
+      // After host import, ensure we stay on Screen 1 (index 1).
+      // goToStep(1) is a no-op if already there.
+      if (!isRerun) goToStep(1);
     } catch (e) {
       hostImporting = false;
       hostStatusWarning = `Couldn't import providers from host OpenCode: ${e instanceof Error ? e.message : 'network error'}. Configure providers manually below.`;
@@ -1461,7 +1513,7 @@
       // Rerun mode: the install is already working, so unlock navigation
       // immediately and pre-fill every step from current config.
       systemCheckPassed = true;
-      maxVisitedStep = 6;
+      maxVisitedStep = 3;
       uiLoginPassword = generatePassword(); // fallback; replaced if API returns existing
 
       fetch('/api/setup/current-config')
@@ -1590,203 +1642,374 @@
 </svelte:head>
 
 <main class="setup-page" aria-label="Setup wizard">
-  <div class="wizard-card">
 
-    {#if isRerun}
-      <div class="rerun-banner">
-        <span>Updating existing installation</span>
-        <a href="/" class="rerun-back-link">← Back to Admin</a>
+  {#if isRerun}
+    <div class="rerun-banner">
+      <span>Updating existing installation</span>
+      <a href="/" class="rerun-back-link">← Back to Admin</a>
+    </div>
+  {/if}
+
+  <!-- SystemCheck: hidden step 0, mounted but invisible -->
+  {#if currentStep === 0 && !showDeploy}
+    <div style="display:none" aria-hidden="true">
+      <section class="step-content step-content--hidden" id="step-0" data-testid="step-system-check">
+        <SystemCheckStep
+          {isRerun}
+          onpass={() => { systemCheckPassed = true; goToStep(1); }}
+          onnext={() => { systemCheckPassed = true; goToStep(1); }}
+          ongpudetected={(_gpu) => {
+            gpuDetected = true;
+            if (voiceProfiles.length > 0 && selectedVoiceProfile !== addonProfileId('voice', 'cuda')) {
+              const cuda = voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cuda') && p.available !== false);
+              if (cuda) selectedVoiceProfile = cuda.id;
+            }
+          }}
+        />
+      </section>
+    </div>
+  {/if}
+
+  {#if showDeploy}
+    <!-- Deploy: full width, no header chrome -->
+    <div style="flex:1; padding: 32px; overflow-y: auto;">
+      <DeployStep
+        {deployData}
+        {deployDone}
+        {deployHasWarnings}
+        {deployError}
+        onback={handleDeployBack}
+        onretry={handleDeployRetry}
+      />
+    </div>
+  {:else if currentStep >= 1}
+    <!-- Topbar -->
+    <header class="wiz-topbar">
+      <div class="wiz-wordmark">
+        <img src="/logo-128.png" alt="OpenPalm" />
+        <b>OpenPalm</b><span>setup</span>
       </div>
-    {/if}
+      <nav class="wiz-ticker" aria-label="Setup steps">
+        {#each [
+          { n: 1, label: 'Connect' },
+          { n: 2, label: 'Add-ons' },
+          { n: 3, label: 'Finish' },
+        ] as tick}
+          <div
+            class="wiz-tick"
+            class:wiz-tick--active={currentStep === tick.n}
+            class:wiz-tick--done={currentStep > tick.n}
+            aria-current={currentStep === tick.n ? 'step' : undefined}
+          >
+            {#if currentStep > tick.n}
+              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" aria-hidden="true"><path d="M2 6l3 3 5-5"/></svg>
+            {:else}
+              <span class="wiz-tick-num">{tick.n}</span>
+            {/if}
+            {tick.label}
+          </div>
+        {/each}
+      </nav>
+    </header>
 
-    <div class="wizard-header">
-      <div class="hdr-logo">OP</div>
-      <h1>OpenPalm <span class="hdr-suffix">{isRerun ? 'Update Settings' : 'Setup'}</span></h1>
-    </div>
+    <!-- Stage: content + aside -->
+    <div class="wiz-stage">
+      <!-- Left: content -->
+      <div class="wiz-content">
+        <div class="wiz-content-scroll">
+          <!-- Step header -->
+          <div class="wiz-eyebrow">
+            {#if currentStep === 1}STEP 1 · Connect
+            {:else if currentStep === 2}STEP 2 · Add-ons
+            {:else if currentStep === 3}STEP 3 · Finish
+            {/if}
+          </div>
+          <h1 class="wiz-title">
+            {#if currentStep === 1}Connect your <span class="accent">AI brain</span>
+            {:else if currentStep === 2}Optional <span class="accent">extras</span>
+            {:else if currentStep === 3}You're all <span class="accent">set</span>
+            {/if}
+          </h1>
+          <p class="wiz-lede">
+            {#if currentStep === 1}
+              {#if verifiedCount > 0}We found an AI service already set up. Just continue, or choose something different.
+              {:else}Your assistant needs a source of intelligence. Pick one and you're set — you can add more later.
+              {/if}
+            {:else if currentStep === 2}All optional — turn on only what you want now. You can add or remove anything later from your dashboard.
+            {:else if currentStep === 3}OpenPalm is ready to install. Save the password you'll use to sign in.
+            {/if}
+          </p>
 
-    <div class="wizard-body">
-
-      {#if !showDeploy}
-        <ProgressBar
-          {currentStep}
-          {maxVisitedStep}
-          onnavigate={goToStep}
-          {canNavigateTo}
-        />
-      {/if}
-
-      {#if !showDeploy && recommendationAlert && (currentStep === 2 || currentStep === 3)}
-        <div class="feedback feedback--warning" role="alert" data-testid="recommendation-alert"><span>{recommendationAlert}</span></div>
-      {/if}
-
-      {#if showDeploy}
-        <DeployStep
-          {deployData}
-          {deployDone}
-          {deployHasWarnings}
-          {deployError}
-          onback={handleDeployBack}
-          onretry={handleDeployRetry}
-        />
-      {:else if currentStep === 0}
-        <section class="step-content" id="step-0" data-testid="step-system-check">
-          <SystemCheckStep
-            {isRerun}
-            onpass={() => { systemCheckPassed = true; }}
-            onnext={() => { systemCheckPassed = true; goToStep(1); }}
-            ongpudetected={(_gpu) => {
-              gpuDetected = true;
-              // If profiles already loaded, upgrade to CUDA now
-              if (voiceProfiles.length > 0 && selectedVoiceProfile !== addonProfileId('voice', 'cuda')) {
-                const cuda = voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cuda') && p.available !== false);
-                if (cuda) selectedVoiceProfile = cuda.id;
-              }
-            }}
-          />
-        </section>
-      {:else if currentStep === 1}
-        <section class="step-content" id="step-1" data-testid="step-welcome">
-          <WelcomeStep
-            errorMessage={step0Error}
-            {detectionReady}
-            {autoModeImporting}
-            {recommendation}
-            {recommendationFetched}
-            onnext={() => { if (validateStep0()) goToStep(2); }}
-            onusedefaults={() => { if (validateStep0()) void handleUseDefaults(); }}
-          />
-        </section>
-      {:else if currentStep === 2}
-        <section class="step-content" id="step-2" data-testid="step-capabilities">
-          <ProvidersStep
-            {hostImporting}
-            {opencodeAvailable}
-            {opencodeProviders}
-            {opencodeAuth}
-            {providerState}
-            {expandedProvider}
-            {detectedProviders}
-            {detecting}
-            {ocFilterQuery}
-            {verifiedCount}
-            {hostProviderCount}
-            {hostStatusWarning}
-            {allowEmptyInstall}
-            canProceed={hasVerifiedProvider || allowEmptyInstall}
-            onback={() => goToStep(1)}
-            onnext={() => goToStep(3)}
-            ontogglefallback={handleToggleFallback}
-            ontoggleopencode={handleToggleOpenCode}
-            onverify={handleVerify}
-            onapikey={handleApiKey}
-            onbaseurl={handleBaseUrl}
-            onollamamode={handleOllamaMode}
-            onoauthstart={startOpenCodeOAuth}
-            onoauthcancel={(id) => {
-              const ac = oauthAbortControllers[id];
-              if (ac) { ac.abort(); delete oauthAbortControllers[id]; }
-              const st = providerState[id];
-              if (st) { st.oauthPolling = false; st.verifying = false; }
-            }}
-            onmarkready={handleMarkReady}
-            ondeselect={handleDeselect}
-            onfilterchange={(q) => ocFilterQuery = q}
-            onhostimport={() => void handleHostImport()}
-            onallowemptyinstallchange={(v) => allowEmptyInstall = v}
-          />
-        </section>
-      {:else if currentStep === 3}
-        <section class="step-content" id="step-3" data-testid="step-models">
-          {#if step2EmbDimWarning}
-            <div class="feedback feedback--warning" role="alert"><span>{step2EmbDimWarning}</span></div>
+          <!-- Recommendation alert (step 1 only) -->
+          {#if recommendationAlert && currentStep === 1}
+            <div class="feedback feedback--warning" role="alert" data-testid="recommendation-alert">
+              <span>{recommendationAlert}</span>
+            </div>
           {/if}
-          <ModelsStep
-            {verifiedProviders}
-            {providerState}
-            {modelSelection}
-            {allowEmptyInstall}
-            {canComplete}
-            errorMessage={step2Error}
-            onback={() => goToStep(2)}
-            onnext={() => { if (validateStep2()) goToStep(4); }}
-            onselect={handleSelectModel}
-            onselectnone={handleSelectNone}
-          />
-        </section>
-      {:else if currentStep === 4}
-        <section class="step-content" id="step-4" data-testid="step-voice">
-          <VoiceStep
-            tts={displayedVoiceTts}
-            stt={displayedVoiceStt}
-            {hasOpenAI}
-            unknownTts={voiceEngineUnknownTts}
-            unknownStt={voiceEngineUnknownStt}
-            profiles={voiceProfiles}
-            {selectedVoiceProfile}
-            onback={() => goToStep(3)}
-            onnext={() => goToStep(5)}
-            onchangetts={(v) => {
-              voiceTts = v;
-              voiceEngineUnknownTts = false;
-              // enableVoice is derived from the engines — no manual sync needed.
-            }}
-            onchangestt={(v) => {
-              voiceStt = v;
-              voiceEngineUnknownStt = false;
-            }}
-            onprofilechange={(id) => { selectedVoiceProfile = id; }}
-          />
-        </section>
-      {:else if currentStep === 5}
-        <section class="step-content" id="step-5" data-testid="step-options">
-          <OptionsStep
-            {channelSelection}
-            {imageTag}
-            {hostAkmEnabled}
-            {hostAkmAvailable}
-            {enableVoice}
-            {voiceProfiles}
-            {selectedVoiceProfile}
-            {ollamaEnabled}
-            {ollamaProfiles}
-            {selectedOllamaProfile}
-            hostLocalRunning={hostLocalLlmRunning}
-            errorMessage={step4Error}
-            onback={() => goToStep(4)}
-            onnext={() => { if (validateStep4()) goToStep(6); }}
-            onchanneltoggle={handleChannelToggle}
-            oncredentialchange={handleCredentialChange}
-            onimagtagchange={(v) => imageTag = v}
-            onhostakmchange={(v) => hostAkmEnabled = v}
-            onenablevoicechange={handleEnableVoiceChange}
-            onvoiceprofilechange={(id) => { selectedVoiceProfile = id; }}
-            onollamachange={handleOptionsOllamaChange}
-            onollamaprofilechange={(id) => { selectedOllamaProfile = id; }}
-          />
-        </section>
-      {:else if currentStep === 6}
-        <section class="step-content" id="step-6" data-testid="step-review">
-          <ReviewStep
-            {uiLoginPassword}
-            {verifiedProviders}
-            {modelSelection}
-            activeTts={displayedVoiceTts.engine}
-            activeStt={displayedVoiceStt.engine}
-            voiceProfileLabel={selectedVoiceProfileLabel}
-            ollamaProfileLabel={selectedOllamaProfileLabel}
-            {channelSelection}
-            {ollamaEnabled}
-            {payload}
-            {installError}
-            {installing}
-            {isRerun}
-            onback={() => goToStep(5)}
-            oninstall={handleInstall}
-            ongostepedit={goToStep}
-          />
-        </section>
-      {/if}
 
-    </div>
-  </div>
+          <!-- Step body -->
+          {#if currentStep === 1}
+            <section class="step-content" id="step-1">
+              <Screen1ModelsStep
+                {modelMode}
+                detectionLoading={autoModeImporting}
+                systemCheckError={systemCheckPassed ? '' : (step0Error || '')}
+                hostProviders={detectedHostProviders}
+                credentialCount={hostProviderCount}
+                cloudProviders={detectedCloudProviders}
+                {opencodeProviders}
+                {opencodeAuth}
+                {providerState}
+                {ollamaEnabled}
+                {selectedOllamaProfile}
+                {hostImporting}
+                {verifiedCount}
+                {allowEmptyInstall}
+                llmModel={modelSelection.llm?.model ?? ''}
+                llmProvider={modelSelection.llm?.connId ?? ''}
+                {llmModelOptions}
+                {detectedCloudConn}
+                onselectmodel={(connId, model, dims) => handleSelectModel('llm', connId, model, dims)}
+                gpuVramMb={detectedGpuVramMb}
+                gpuVendor={detectedGpuVendor}
+                gpuName={detectedGpuName}
+                onmodelmodechange={handleConnectModeChange}
+                onhostimport={() => void handleHostImport()}
+                onoauthstart={startOpenCodeOAuth}
+                onoauthcancel={(id) => {
+                  const ac = oauthAbortControllers[id];
+                  if (ac) { ac.abort(); delete oauthAbortControllers[id]; }
+                  const st = providerState[id];
+                  if (st) { st.oauthPolling = false; st.verifying = false; }
+                }}
+                onbaseurl={handleBaseUrl}
+                onapikey={handleApiKey}
+                onverify={handleVerify}
+                onrecheck={() => void fetchAndApplyRecommendation()}
+                onsystemcheckretry={() => { goToStep(0); }}
+                onallowemptyinstallchange={(v) => { allowEmptyInstall = v; }}
+                onnext={() => goToStep(2)}
+              />
+            </section>
+
+          {:else if currentStep === 2}
+            <section class="step-content" id="step-2">
+              <Screen2ExtrasStep
+                {modelMode}
+                {voiceEnabled}
+                voiceTts={displayedVoiceTts}
+                voiceStt={displayedVoiceStt}
+                {hasOpenAI}
+                voiceProfiles={voiceProfiles}
+                {selectedVoiceProfile}
+                {channelSelection}
+                onvoiceenabledchange={(v) => {
+                  voiceEnabled = v;
+                  handleEnableVoiceChange(v);
+                }}
+                onchangetts={(v) => {
+                  voiceTts = v;
+                  voiceEngineUnknownTts = false;
+                }}
+                onchangestt={(v) => {
+                  voiceStt = v;
+                  voiceEngineUnknownStt = false;
+                }}
+                onvoiceprofilechange={(id) => { selectedVoiceProfile = id; }}
+                onchanneltoggle={handleChannelToggle}
+                oncredentialchange={handleCredentialChange}
+                onnext={() => goToStep(3)}
+              />
+            </section>
+
+          {:else if currentStep === 3}
+            <section class="step-content" id="step-3" data-testid="step-review">
+              <ReviewStep
+                {uiLoginPassword}
+                {verifiedProviders}
+                {modelSelection}
+                activeTts={voiceEnabled ? displayedVoiceTts.engine : ''}
+                activeStt={voiceEnabled ? displayedVoiceStt.engine : ''}
+                voiceProfileLabel={selectedVoiceProfileLabel}
+                ollamaProfileLabel={selectedOllamaProfileLabel}
+                {channelSelection}
+                {ollamaEnabled}
+                cloudOnly={modelMode === 'cloud' && !ollamaEnabled && detectedHostProviders.length === 0}
+                hostProviderLabel={detectedHostProviders.length > 0 ? (detectedHostProviders[0].provider) : ''}
+                {payload}
+                {installError}
+                {installing}
+                {isRerun}
+                {systemCheckPassed}
+                onback={() => goToStep(2)}
+                oninstall={handleInstall}
+                oneditmodels={() => goToStep(1)}
+                oneditextras={() => goToStep(2)}
+              />
+            </section>
+          {/if}
+        </div><!-- /wiz-content-scroll -->
+
+        <!-- Footer: Back + Continue/Install -->
+        <footer class="wiz-footer">
+          <div class="wiz-footer-left">
+            {#if currentStep > 1}
+              <button
+                class="btn btn-secondary"
+                onclick={() => goToStep(currentStep - 1)}
+                aria-label="Back"
+              >
+                Back
+              </button>
+            {:else}
+              <div></div>
+            {/if}
+          </div>
+          <div class="wiz-footer-right">
+            {#if currentStep === 1}
+              <button
+                class="btn btn-primary"
+                id="btn-screen1-next"
+                onclick={() => goToStep(2)}
+                disabled={!canComplete}
+              >
+                {#if modelSelection.llm?.connId && !(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner'].includes(modelSelection.llm.connId))}
+                  Use {modelSelection.llm.connId === 'openai' ? 'ChatGPT' : modelSelection.llm.connId === 'google' ? 'Gemini' : modelSelection.llm.connId === 'github-copilot' ? 'GitHub Copilot' : modelSelection.llm.connId === 'groq' ? 'Groq' : (opencodeProviders.find((p) => p.id === modelSelection.llm!.connId)?.name ?? modelSelection.llm.connId)} — Continue
+                {:else if ollamaEnabled || detectedHostProviders.length > 0 || (modelSelection.llm?.connId && ['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner'].includes(modelSelection.llm.connId))}
+                  Use local AI — Continue
+                {:else}
+                  Continue
+                {/if}
+              </button>
+            {:else if currentStep === 2}
+              <button
+                class="btn btn-primary"
+                id="btn-screen2-next"
+                onclick={() => goToStep(3)}
+              >
+                Continue
+              </button>
+            {:else if currentStep === 3}
+              <button
+                class="btn btn-primary"
+                id="btn-install"
+                onclick={handleInstall}
+                disabled={!canComplete || installing}
+              >
+                {#if installing}Installing...{:else}{isRerun ? 'Update' : 'Install'}{/if}
+              </button>
+            {/if}
+          </div>
+        </footer>
+      </div><!-- /wiz-content -->
+
+      <!-- Right: guide aside -->
+      <aside class="wiz-aside" aria-label="Setup guide">
+        <div class="wiz-aside-top">
+          <img class="wiz-mascot" src="/wizard-128.png" alt="OpenPalm setup guide" />
+          <div>
+            <b class="wiz-greet-name">
+              {#if currentStep === 1}
+                {#if verifiedCount > 0}You're almost done!
+                {:else if modelMode === 'local' || ollamaEnabled || detectedHostProviders.length > 0}Great choice.
+                {:else}Pick what works for you.
+                {/if}
+              {:else if currentStep === 2}While you're here…
+              {:else if currentStep === 3}You're ready.
+              {/if}
+            </b>
+            <span class="wiz-greet-sub">
+              {#if currentStep === 1}Your setup guide
+              {:else if currentStep === 2}A few optional extras
+              {:else if currentStep === 3}Everything's in order
+              {/if}
+            </span>
+          </div>
+        </div>
+
+        <p class="wiz-guide-lede">
+          {#if currentStep === 1}
+            {#if verifiedCount > 0}We found an AI account on this computer. Just hit <strong>Continue</strong> and your assistant will use it automatically.
+            {:else if modelMode === 'local' || ollamaEnabled || detectedHostProviders.length > 0}Running AI locally means your conversations never leave your machine. Perfect for privacy.
+            {:else}Sign in once and you're set. A browser tab will open for you to log in — come back here when you're done, it connects automatically.
+            {/if}
+          {:else if currentStep === 2}All of this is optional. Skip this whole step if you want — your assistant works fine without any of these. You can turn them on whenever you're ready from the dashboard.
+          {:else if currentStep === 3}You're ready. Click <strong>Install OpenPalm</strong> and it'll start up in the background. The first launch pulls a few files — this takes a minute or two. When it's done, open your browser, sign in with that password, and you're good to go. Everything can be changed later from the dashboard.
+          {/if}
+        </p>
+
+        <div class="wiz-guide-bullets">
+          {#if currentStep === 1}
+            {#if verifiedCount > 0}
+              <div class="wiz-bullet">
+                <div class="wiz-bullet-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+                </div>
+                <div>Your existing connection is ready to use. No extra setup needed — just continue to the next step.</div>
+              </div>
+              <div class="wiz-bullet">
+                <div class="wiz-bullet-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l1.5 4.5H18l-3.75 2.7 1.5 4.5L12 12l-3.75 2.7 1.5-4.5L6 7.5h4.5z"/></svg>
+                </div>
+                <div>Want to use something different? Select another option from the list — you can switch any time from the dashboard.</div>
+              </div>
+            {:else}
+              <div class="wiz-bullet">
+                <div class="wiz-bullet-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                </div>
+                <div><strong>Cloud services</strong> like ChatGPT are fast and easy — you just sign in.</div>
+              </div>
+              <div class="wiz-bullet">
+                <div class="wiz-bullet-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                </div>
+                <div><strong>Running locally</strong> keeps everything on your computer — private, free, no internet needed.</div>
+              </div>
+            {/if}
+          {:else if currentStep === 2}
+            <div class="wiz-bullet">
+              <div class="wiz-bullet-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+              </div>
+              <div>Voice runs locally — free, no internet needed. A small model downloads the first time you use it.</div>
+            </div>
+            <div class="wiz-bullet">
+              <div class="wiz-bullet-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>
+              </div>
+              <div>Setup help: <a href="https://discord.com/developers/docs/quick-start/getting-started" target="_blank" rel="noopener">How to set up a Discord bot →</a></div>
+            </div>
+            <div class="wiz-bullet">
+              <div class="wiz-bullet-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+              </div>
+              <div><a href="https://api.slack.com/quickstart" target="_blank" rel="noopener">How to set up a Slack app →</a></div>
+            </div>
+          {:else if currentStep === 3}
+            <div class="wiz-bullet">
+              <div class="wiz-bullet-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+              </div>
+              <div>Your sign-in password is already saved on this computer — keep a copy somewhere safe just in case.</div>
+            </div>
+            <div class="wiz-bullet">
+              <div class="wiz-bullet-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+              </div>
+              <div>Everything can be changed from the dashboard after install — providers, voice, channels, and more.</div>
+            </div>
+          {/if}
+        </div>
+
+        <div class="wiz-guide-privacy">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M8 1.5L2 4v4c0 3.3 2.5 5.8 6 6.5 3.5-.7 6-3.2 6-6.5V4L8 1.5z"/>
+          </svg>
+          <span>It's your own assistant, running right here on your computer.</span>
+        </div>
+      </aside>
+    </div><!-- /wiz-stage -->
+  {/if}
+
 </main>

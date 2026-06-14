@@ -5,14 +5,12 @@ describe('wizard UX audit coverage (#457)', () => {
   test('captures every deep wizard step needed by the gate', () => {
     const stateIds = config.states.map((state) => state.id);
     expect(stateIds).toEqual([
-      'wizard-1-system-check',
-      'wizard-2-get-started',
-      'wizard-3-providers-recommended',
-      'wizard-4-providers-manual',
-      'wizard-5-models',
-      'wizard-6-voice',
-      'wizard-7-options',
-      'wizard-8-review',
+      'wizard-0-system-check',
+      'wizard-1-models',
+      'wizard-1-models-empty-install',
+      'wizard-2-extras',
+      'wizard-3-review',
+      'wizard-3-review-password-saved',
     ]);
   });
 
@@ -24,14 +22,12 @@ describe('wizard UX audit coverage (#457)', () => {
     const waits = Object.fromEntries(config.states.map((state) => [state.id, state.waitFor]));
 
     expect(waits).toEqual({
-      'wizard-1-system-check': '.step-content',
-      'wizard-2-get-started': '.step-content',
-      'wizard-3-providers-recommended': '.step-content',
-      'wizard-4-providers-manual': '.step-content',
-      'wizard-5-models': '[data-testid="step-models"]',
-      'wizard-6-voice': '[data-testid="step-voice"]',
-      'wizard-7-options': '[data-testid="step-options"]',
-      'wizard-8-review': '#review-summary',
+      'wizard-0-system-check': '.step-content',
+      'wizard-1-models': '[data-testid="step-models"]',
+      'wizard-1-models-empty-install': '[data-testid="step-models"]',
+      'wizard-2-extras': '[data-testid="step-extras"]',
+      'wizard-3-review': '#review-summary',
+      'wizard-3-review-password-saved': '#review-summary',
     });
   });
 });

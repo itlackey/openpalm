@@ -25,21 +25,25 @@ export const PROVIDERS: Provider[] = [
   { id: 'openai-compatible', name: 'Custom API server', kind: 'cloud', group: 'advanced', order: 3, icon: '🔧', desc: 'Connect any AI server that uses the standard OpenAI API format.', needsKey: false, needsUrl: true, optionalKey: true, placeholder: 'API key (optional)', baseUrl: '', llmModel: '', embModel: '', embDims: 0 },
 ];
 
-export const STEP_LABELS = ['System Check', 'Get Started', 'Providers', 'Models', 'Voice', 'Options', 'Review'];
+export const STEP_LABELS = ['Models', 'Extras', 'Review'];
+
+/** Provider IDs excluded from the setup wizard's OAuth provider list. */
+export const WIZARD_EXCLUDED_PROVIDERS = new Set(['anthropic']);
 export const MAX_VISIBLE_MODELS = 6;
 
 export const TTS_OPTIONS: TtsOption[] = [
-  { id: 'openpalm-voice', name: 'OpenPalm Voice', type: 'local', recommended: true, desc: 'Bundled Kokoro TTS + Whisper STT — runs locally, no cloud. First install downloads ~2.4 GB.' },
-  { id: 'openai-tts', name: 'OpenAI TTS', type: 'cloud', desc: 'Cloud voices. Uses your OpenAI API key' },
-  { id: 'browser-tts', name: 'Browser Built-in', type: 'builtin', desc: 'Native speech synthesis. No setup needed' },
-  { id: 'skip-tts', name: 'Skip — text only', type: 'skip', desc: 'Add TTS later from the dashboard' },
+  { id: 'openpalm-voice', name: 'Built-in voice', type: 'local', recommended: true, desc: 'Free — runs on this computer. Downloads once when you turn it on.' },
+  { id: 'openai-tts', name: 'OpenAI voices', type: 'cloud', desc: 'Uses your OpenAI account.' },
+  { id: 'elevenlabs-tts', name: 'ElevenLabs', type: 'cloud', desc: 'High-quality voices. Needs an ElevenLabs account.' },
+  { id: 'browser-tts', name: 'Your web browser', type: 'builtin', desc: 'Free, no setup needed.' },
+  { id: 'skip-tts', name: 'Skip for now', type: 'skip', desc: 'Add voice later from the dashboard.' },
 ];
 
 export const STT_OPTIONS: SttOption[] = [
-  { id: 'openpalm-voice', name: 'OpenPalm Voice', type: 'local', recommended: true, desc: 'Bundled Kokoro TTS + Whisper STT — runs locally, no cloud. First install downloads ~2.4 GB.' },
-  { id: 'openai-stt', name: 'OpenAI Whisper', type: 'cloud', desc: 'Cloud Whisper API. Uses OpenAI key' },
-  { id: 'browser-stt', name: 'Browser Built-in', type: 'builtin', desc: 'Web Speech API. No setup' },
-  { id: 'skip-stt', name: 'Skip — text only', type: 'skip', desc: 'Add STT later from the dashboard' },
+  { id: 'openpalm-voice', name: 'Built-in voice', type: 'local', recommended: true, desc: 'Free — runs on this computer. Downloads once when you turn it on.' },
+  { id: 'openai-stt', name: 'OpenAI', type: 'cloud', desc: 'Uses your OpenAI account.' },
+  { id: 'browser-stt', name: 'Your web browser', type: 'builtin', desc: 'Free, no setup needed.' },
+  { id: 'skip-stt', name: 'Skip for now', type: 'skip', desc: 'Add later from the dashboard.' },
 ];
 
 /**
@@ -77,6 +81,15 @@ export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
       ),
       { key: 'model', label: 'Model', options: ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'] },
       { key: 'voice', label: 'Voice', options: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] },
+    ],
+  },
+  'elevenlabs-tts': {
+    id: 'elevenlabs-tts',
+    provider: 'elevenlabs',
+    fields: [
+      { key: 'apiKey', label: 'API Key', placeholder: 'sk_...', hint: 'Your ElevenLabs API key from elevenlabs.io.' },
+      { key: 'voice', label: 'Voice ID', placeholder: 'EXAVITQu4vr4xnSDxMaL', hint: 'ElevenLabs voice ID (from your Voice Library).' },
+      { key: 'model', label: 'Model', options: ['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5'] },
     ],
   },
   'browser-tts': {
@@ -123,7 +136,7 @@ export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
 };
 
 export const CHANNELS: Channel[] = [
-  { id: 'api', name: 'API', icon: '🔌', desc: 'OpenAI-compatible REST API endpoint' },
+  { id: 'api', name: 'API', icon: '🔌', desc: 'OpenAI-compatible REST API endpoint', locked: true },
   {
     id: 'discord', name: 'Discord', icon: '🎮', desc: 'Connect to a Discord server',
     credentials: [

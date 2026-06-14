@@ -227,11 +227,13 @@ export function importHostOpenCode(
     mkdirSync(dirname(destPath), { recursive: true, mode: 0o700 });
 
     if (existsSync(destPath) && !overwriteConflicts) {
-      // Merge: copy only keys that do not already exist in OP_HOME auth.json
+      // Merge: copy only keys that do not already exist in OP_HOME auth.json.
+      // Belt-and-suspenders: never write anthropic credentials into OP_HOME.
       const hostAuth = readJsonFileSafe(status.authPath) ?? {};
       const existingAuth = readJsonFileSafe(destPath) ?? {};
       const merged: Record<string, unknown> = { ...existingAuth };
       for (const [id, value] of Object.entries(hostAuth)) {
+        if (id === 'anthropic') continue;
         if (!Object.prototype.hasOwnProperty.call(existingAuth, id)) {
           merged[id] = value;
           importedCredentials++;
@@ -239,9 +241,16 @@ export function importHostOpenCode(
       }
       writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n");
     } else {
-      // No existing file or overwrite requested — byte-copy
-      copyFileSync(status.authPath, destPath);
-      importedCredentials = status.credentialCount;
+      // No existing file or overwrite requested — parse, filter, then write.
+      // Belt-and-suspenders: never write anthropic credentials into OP_HOME.
+      const hostAuth = readJsonFileSafe(status.authPath) ?? {};
+      const filtered: Record<string, unknown> = {};
+      for (const [id, value] of Object.entries(hostAuth)) {
+        if (id === 'anthropic') continue;
+        filtered[id] = value;
+        importedCredentials++;
+      }
+      writeFileSync(destPath, JSON.stringify(filtered, null, 2) + "\n");
     }
 
     try {

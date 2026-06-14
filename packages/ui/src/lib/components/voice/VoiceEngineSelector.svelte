@@ -69,11 +69,12 @@
 			...(allowed.has('model') && value.model ? { model: value.model } : {}),
 			...(allowed.has('voice') && value.voice ? { voice: value.voice } : {}),
 			...(allowed.has('language') && value.language ? { language: value.language } : {}),
+			...(allowed.has('apiKey') && value.apiKey ? { apiKey: value.apiKey } : {}),
 		};
 		onchange(next);
 	}
 
-	function updateField(key: 'baseURL' | 'model' | 'voice' | 'language', val: string) {
+	function updateField(key: 'baseURL' | 'model' | 'voice' | 'language' | 'apiKey', val: string) {
 		const next: VoiceEngineValue = { ...value };
 		if (val) next[key] = val;
 		else delete next[key];
@@ -134,7 +135,7 @@
 						{:else}
 							<input
 								id="voice-{kind}-{field.key}"
-								type={field.key === 'baseURL' ? 'url' : 'text'}
+								type={field.key === 'baseURL' ? 'url' : field.key === 'apiKey' ? 'password' : 'text'}
 								class="form-input"
 								value={value[field.key] ?? ''}
 								placeholder={field.placeholder ?? ''}
