@@ -577,8 +577,8 @@ jobs:
         if: ${{ !inputs.dry_run }}
         uses: docker/build-push-action@v6
         with:
-          context: core/voice
-          file: core/voice/Dockerfile
+          context: containers/voice
+          file: containers/voice/Dockerfile
           platforms: ${{ matrix.platforms }}
           push: true
           build-args: |
@@ -621,7 +621,7 @@ jobs:
         run: |
           mkdir -p dist
           tar -czf "dist/openpalm-${{ inputs.version }}-deploy-bundle.tar.gz" \
-            .openpalm core packages scripts README.md
+            .openpalm containers packages portals scripts README.md
       - name: Download CLI artifacts
         uses: actions/download-artifact@v8
         with:
