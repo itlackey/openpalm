@@ -163,6 +163,11 @@ services:
 networks:
   portal_net:
   assistant_net:
+  # DEPRECATED (renamed to portal_net in 0.12.0). Retained as an empty bridge for
+  # ONE release so existing custom.compose.yml overlays that still reference
+  # `channel_lan` keep validating on upgrade. No first-party service joins it.
+  # REMOVED in 0.13.0 — migrate custom overlays to `portal_net` before upgrading.
+  channel_lan:
 
 volumes:
   assistant-persistent:

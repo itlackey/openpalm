@@ -5,6 +5,72 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - Unreleased
+
+The "channels" subsystem is renamed to **portals**, the guardian gains a
+moderated front door for direct OpenCode/MCP clients, and setup/release
+plumbing is hardened. The portal rename ships with automatic upgrade
+migrations — see **Migration** below.
+
+### Changed
+
+- **BREAKING — "channels" → "portals" across the stack.** The platform/adapter
+  ingress concept (Discord, Slack, chat, API) is now called a **portal**. This
+  touches user-visible and runtime surfaces:
+  - Compose: `channels.compose.yml` → `portals.compose.yml`; the per-portal
+    verification secrets `knowledge/secrets/channel_<name>_secret` →
+    `portal_<name>_secret`; guardian env `CHANNEL_<NAME>_SECRET_FILE` →
+    `PORTAL_<NAME>_SECRET_FILE` and `GUARDIAN_REQUIRE_CHANNEL_SECRETS` →
+    `GUARDIAN_REQUIRE_PORTAL_SECRETS`.
+  - Networking: the adapters↔guardian network is `portal_net` (was `channel_lan`).
+  - Guardian: principal `kind` `channel` → `portal`; `/stats` fields
+    `channel_window_ms`/`channel_max_requests`/`active_channel_limiters` →
+    `portal_*`.
+  - Release: the `release_channels` workflow input → `release_portals`; the
+    `channels` release unit → `portals`.
+  - Docs moved: `docs/channels/` → `docs/portals/`.
+- **Guardian: opt-in moderated front door for direct OpenCode + MCP clients.**
+  A transparent OpenCode reverse-proxy (`/oc`) and an in-process MCP server
+  (`/mcp`, `ask_assistant`) sit behind the same moderation → ownership → bounds
+  pipeline; both are off by default. (#429, #343, #432)
+- **Per-image release pinning.** Each image (`OP_*_IMAGE_TAG`) can be pinned
+  independently of the platform tag. (#477)
+- **`OP_BIND_ADDRESS` global** collapses the per-service port/bind-address pairs
+  into one opt-in LAN switch (loopback by default). (#395)
+
+### Added
+
+- **Connections tab for CLI agent tools** (Codex, Claude Code, Copilot, Pi) with
+  shared provider-key handling. (#479, #480)
+- **Launch routing**: first-run `/splash`, hooks-based routing, and a CLI
+  `openpalm status` command, all from one shared launch-status helper. (#440)
+- **Setup resilience**: deploy journal / restart-resume, centralized Docker
+  error mapping, managed-asset refresh on every apply, and reconcile-on-install.
+  (#465)
+
+### Deprecated
+
+- **`channel_lan` Docker network.** Renamed to `portal_net`. `channel_lan` is
+  retained as an empty bridge for this release so existing
+  `custom.compose.yml` overlays that still reference it keep validating on
+  upgrade. **It is removed in 0.13.0** — update any custom overlay to
+  `portal_net` before upgrading past 0.12.0.
+- **`CHANNEL_NAME` compose marker.** `PORTAL_NAME` is canonical; the legacy
+  `CHANNEL_NAME` marker is still recognized for migration safety and **removed
+  in 0.13.0**.
+
+### Migration
+
+- Upgrading from 0.11.x is automatic and non-destructive for these surfaces: the
+  per-portal secrets `knowledge/secrets/channel_<name>_secret` are renamed to
+  `portal_<name>_secret` (value preserved), the guardian's SQLite principal
+  `kind` is migrated `channel` → `portal`, and `portals.compose.yml` is
+  re-materialized (the stale `channels.compose.yml` is inert — the control plane
+  loads an explicit overlay list, not a glob).
+- **Manual step:** a user-authored `custom.compose.yml` overlay referencing the
+  `channel_lan` network is **not** auto-migrated. Update it to `portal_net`
+  (it still validates in 0.12.0 via the deprecated bridge, but breaks in 0.13.0).
+
 ## [0.11.1] - 2026-06-08
 
 A macOS + setup-experience stabilization patch. No migration needed from 0.11.0.
