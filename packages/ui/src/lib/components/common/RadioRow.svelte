@@ -142,7 +142,7 @@
   }
 
   .radio-row-badge.auto {
-    background: var(--color-blue-soft, #eff6ff);
-    color: var(--color-blue, #2563eb);
+    background: var(--color-blue-soft);
+    color: var(--color-blue);
   }
 </style>

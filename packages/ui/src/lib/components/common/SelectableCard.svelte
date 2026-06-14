@@ -130,23 +130,23 @@
 
 <style>
   .selectable-card {
-    background: var(--color-bg);
-    border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: 14px;
+    border-top: 1px solid var(--color-border);
+    padding: 12px 0;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background 0.1s;
     overflow: hidden;
     min-width: 0;
   }
 
+  .selectable-card:last-child {
+    border-bottom: 1px solid var(--color-border);
+  }
+
   .selectable-card:hover {
-    border-color: var(--color-border-hover);
-    box-shadow: var(--shadow-sm);
+    background: var(--color-bg-secondary);
   }
 
   .selectable-card.selected {
-    border-color: var(--color-primary-hover);
     background: var(--color-primary-subtle);
   }
 
@@ -155,7 +155,6 @@
   }
 
   .selectable-card.verified {
-    border-color: var(--color-success);
     background: var(--color-success-bg);
   }
 
@@ -180,7 +179,6 @@
     height: 36px;
     border-radius: var(--radius-md);
     background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
     display: grid;
     place-items: center;
     font-size: 18px;
