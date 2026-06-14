@@ -229,6 +229,29 @@ jobs:
             echo "AKM_CLI_VERSION matches across assistant + guardian: $ASSISTANT_VERSION"
           fi
 
+      - name: Validate OPENCODE_VERSION sync between assistant and guardian Dockerfiles
+        run: |
+          set -euo pipefail
+          # Both the assistant and guardian images install the OpenCode binary and
+          # MUST pin the same version (the guardian moderates traffic to the
+          # assistant's OpenCode; a one-sided bump risks protocol drift). Keep the
+          # ARG OPENCODE_VERSION in lockstep across both Dockerfiles.
+          ASSISTANT_OC=$(grep -oP '^ARG OPENCODE_VERSION=\K\S+' containers/assistant/Dockerfile || true)
+          GUARDIAN_OC=$(grep -oP '^ARG OPENCODE_VERSION=\K\S+' containers/guardian/Dockerfile || true)
+          if [ -z "$ASSISTANT_OC" ]; then
+            echo "::error file=containers/assistant/Dockerfile::Could not extract OPENCODE_VERSION ARG"
+            exit 1
+          fi
+          if [ -z "$GUARDIAN_OC" ]; then
+            echo "::error file=containers/guardian/Dockerfile::Could not extract OPENCODE_VERSION ARG"
+            exit 1
+          fi
+          if [ "$ASSISTANT_OC" != "$GUARDIAN_OC" ]; then
+            echo "::error::OPENCODE_VERSION mismatch: assistant=$ASSISTANT_OC guardian=$GUARDIAN_OC — bump both together"
+            exit 1
+          fi
+          echo "OPENCODE_VERSION matches across assistant + guardian: $ASSISTANT_OC"
+
       - name: Validate BUN_VERSION sync between assistant and guardian/portal Dockerfiles
         run: |
           set -euo pipefail
