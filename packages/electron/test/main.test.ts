@@ -47,6 +47,7 @@ const { mockBrowserWindow, ipcMainOnHandlers, ipcMainHandleHandlers, notificatio
     hide: vi.fn(),
     close: vi.fn(),
     setTitle: vi.fn(),
+    setSize: vi.fn(),
     isDestroyed: vi.fn(() => false),
     getAllWindows: vi.fn(() => []),
   },
@@ -137,6 +138,9 @@ vi.mock('@openpalm/lib', () => ({
   checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
+  PLATFORM_VERSION: 'v0.11.0',
+  checkDocker: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
+  checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
 }));
 
 vi.mock('../src/local-opencode.js', () => ({
@@ -146,6 +150,7 @@ vi.mock('../src/local-opencode.js', () => ({
 
 import {
   buildUIServerEnv,
+  ensureDockerReady,
   getLaunchOnLoginStatus,
   resolveAssistantUrl,
   setLaunchOnLogin,
@@ -153,8 +158,9 @@ import {
   supportsLaunchOnLogin,
   waitForReady,
 } from '../src/main.js';
-import { app, Notification } from 'electron';
+import { app, Notification, shell } from 'electron';
 import * as lib from '@openpalm/lib';
+import { HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT } from '../src/harness-contract.js';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
 
@@ -181,6 +187,53 @@ describe('buildUIServerEnv', () => {
   it('sets OP_OPENCODE_URL so the UI proxy can reach the assistant', () => {
     const env = buildUIServerEnv('/home/user/.openpalm', 3880);
     expect(env.OP_OPENCODE_URL).toBe('http://127.0.0.1:3800');
+  });
+
+  it('emits the harness contract version so the control plane can feature-detect', () => {
+    const env = buildUIServerEnv('/home/user/.openpalm', 3880);
+    expect(env.OP_HARNESS_CONTRACT_VERSION).toBe(String(HARNESS_CONTRACT_VERSION));
+  });
+});
+
+// ── harness contract surface (design §5.1) ──────────────────────────────────
+// Snapshot the contract surface so any change to the native boundary forces a
+// deliberate HARNESS_CONTRACT_VERSION bump (design §6.6 / §8.8).
+
+describe('harness contract', () => {
+  it('is at the expected version', () => {
+    expect(HARNESS_CONTRACT_VERSION).toBe(1);
+    expect(HARNESS_CONTRACT.version).toBe(HARNESS_CONTRACT_VERSION);
+  });
+
+  it('enumerates the v1 native surface (bump the version when this changes)', () => {
+    expect(HARNESS_CONTRACT.ipc.sync).toEqual(['updateStatus']);
+    expect(HARNESS_CONTRACT.ipc.send).toEqual(['notify']);
+    expect(HARNESS_CONTRACT.ipc.invoke).toEqual([
+      'restart',
+      'launchOnLoginStatus',
+      'setLaunchOnLogin',
+      'setTrayMicRecording',
+      'requestMicPermission',
+    ]);
+    expect(HARNESS_CONTRACT.ipc.push).toEqual([
+      { channel: 'global-mic-toggle', subscribe: 'onGlobalMicToggle' },
+    ]);
+    expect(HARNESS_CONTRACT.env.required).toEqual([
+      'OP_HOME',
+      'HOST',
+      'PORT',
+      'ORIGIN',
+      'OP_INSIDE_ELECTRON',
+      'OP_ELECTRON_VERSION',
+      'OP_HARNESS_CONTRACT_VERSION',
+      'OP_OPENCODE_URL',
+      'ELECTRON_RUN_AS_NODE',
+    ]);
+    expect(HARNESS_CONTRACT.env.optional).toEqual([
+      'OPENPALM_SKELETON_DIR',
+      'OP_ELECTRON_LATEST_VERSION',
+      'OP_ELECTRON_LATEST_URL',
+    ]);
   });
 });
 
@@ -383,6 +436,66 @@ describe('lib integration', () => {
     const homeDir = lib.resolveOpenPalmHome();
     const env = buildUIServerEnv(homeDir, 3880);
     expect(env.OP_HOME).toBe('/home/user/.openpalm');
+  });
+});
+
+// ── Docker preflight (deployment-review P0 #493) ────────────────────────────
+// The harness must fail early and legibly when Docker isn't running, reusing
+// lib's checkDocker / checkDockerCompose (the CLI's requireDocker probes) rather
+// than duplicating the logic. ensureDockerReady() returns immediately when
+// Docker is available and otherwise blocks on the install/retry screen.
+
+describe('Docker preflight', () => {
+  beforeEach(() => {
+    vi.mocked(lib.checkDocker).mockReset();
+    vi.mocked(lib.checkDockerCompose).mockReset();
+  });
+
+  it('reuses lib.checkDocker / lib.checkDockerCompose (no duplicated logic)', () => {
+    expect(vi.isMockFunction(lib.checkDocker)).toBe(true);
+    expect(vi.isMockFunction(lib.checkDockerCompose)).toBe(true);
+  });
+
+  it('resolves immediately when Docker and Compose v2 are available', async () => {
+    vi.mocked(lib.checkDocker).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+    vi.mocked(lib.checkDockerCompose).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+
+    await expect(ensureDockerReady()).resolves.toBeUndefined();
+    expect(lib.checkDocker).toHaveBeenCalledTimes(1);
+    expect(lib.checkDockerCompose).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks on the install/retry screen until Docker becomes available', async () => {
+    // First probe: Docker down. After the user clicks retry, Docker is up.
+    vi.mocked(lib.checkDocker)
+      .mockResolvedValueOnce({ ok: false, stdout: '', stderr: '', code: 1 })
+      .mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+    vi.mocked(lib.checkDockerCompose).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+
+    let resolved = false;
+    const pending = ensureDockerReady().then(() => { resolved = true; });
+
+    // Let the first (failing) preflight + screen render settle.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(resolved).toBe(false);
+
+    // Simulate the renderer's "I've installed it — retry" click.
+    const retry = ipcMainOnHandlers.get('retry-docker-preflight');
+    expect(retry, 'retry-docker-preflight handler must be registered').toBeDefined();
+    retry!();
+
+    await pending;
+    expect(resolved).toBe(true);
+    // checkDocker ran twice (initial failure + post-retry success).
+    expect(vi.mocked(lib.checkDocker).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('registers an open-docker-install handler that opens the install page', () => {
+    const open = ipcMainOnHandlers.get('open-docker-install');
+    expect(open, 'open-docker-install handler must be registered').toBeDefined();
+    vi.mocked(shell.openExternal).mockClear();
+    open!();
+    expect(shell.openExternal).toHaveBeenCalledWith('https://docs.docker.com/get-docker/');
   });
 });
 
