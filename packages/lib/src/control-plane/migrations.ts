@@ -28,7 +28,7 @@ import { parse as yamlParse } from "yaml";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { backupOpenPalmHome, timestampDirName, checkBackupFreeSpace, describeBackupSpaceShortfall } from "./backup.js";
 import { upsertEnvValue } from "./env.js";
-import { nonSensitiveAddonEnvKeys } from "./addons.js";
+import { nonSensitiveAddonEnvKeys } from "./addon-env-schemas.js";
 import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
 import { compareComparableVersions, isComparableSemver } from './versioning.js';
 
