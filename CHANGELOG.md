@@ -5,7 +5,7 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.12.0] - Unreleased
+## [0.12.0] - 2026-06-15
 
 The "channels" subsystem is renamed to **portals**, the guardian gains a
 moderated front door for direct OpenCode/MCP clients, and setup/release
