@@ -231,6 +231,141 @@ describe("scenario: 0.10.x vault install → 0.12.0", () => {
   });
 });
 
+// ── Scenario 2a: 0.10.x vault/ "hellscape" → 0.12.0 (layout 0 → 1 → 2) ───────────
+//
+// A deliberately MESSY 0.10.x vault home: env with a login password + secrets and
+// a capability key that must be quarantined, per-service secret files, guardian
+// CHANNEL_*_SECRET entries, credential files/dirs, a legacy stack.yml driving
+// addons, inert pre-0.12 compose files, and assorted junk inside vault/. After
+// upgrade everything must be organized: data extracted into knowledge/ (and the
+// channel_*→portal_* 0.12 rename applied), inert system files removed, vault/
+// fully retained as a recovery copy, and user data/logs/backups untouched.
+//
+// NOTE: every secret below is SYNTHETIC (no real credentials in fixtures).
+describe("scenario: 0.10.x vault hellscape → 0.12.0", () => {
+  function seed010Hellscape(): void {
+    seed({
+      // vault/user — preferences + credential file + credential dir + junk
+      "vault/user/user.env": "MY_PREF=hello\nEDITOR=vim\n",
+      "vault/user/apprise.yaml": "urls: []\n",
+      "vault/user/.gcloud/credentials.json": '{"fake":true}\n', // SYNTHETIC credential dir
+      "vault/user/notes.txt": "my private notes - keep\n",       // junk: retained in vault/, not extracted
+      // vault/stack/stack.env — ports renamed/dropped, password + secrets quarantined
+      "vault/stack/stack.env": [
+        "OP_ADMIN_PORT=8100",          // → renamed OP_HOST_UI_PORT
+        "OP_GUARDIAN_PORT=8180",       // → dropped (removed var)
+        "OP_UI_LOGIN_PASSWORD=hunter2", // → extracted to knowledge/secrets/ (SYNTHETIC)
+        "GROQ_API_KEY=gsk-FAKE",       // → quarantined to .removed-secrets.bak (SYNTHETIC)
+        "OP_CAP_LLM=openai",           // → quarantined (capability key)
+        "OP_ASSISTANT_PORT=3800",      // → kept
+        "TTS_VOICE=bf_isabella",       // → renamed OP_TTS_VOICE
+        "",
+      ].join("\n"),
+      // vault/stack — guardian channel secrets, auth, per-service secret, junk
+      "vault/stack/guardian.env": "CHANNEL_DISCORD_SECRET=disc-abc\nCHANNEL_SLACK_SECRET=slack-xyz\n", // SYNTHETIC
+      "vault/stack/auth.json": "{}\n",
+      "vault/stack/services/memory_db_key": "svc-secret-FAKE\n", // SYNTHETIC per-service secret
+      "vault/stack/.DS_Store": "junk\n",                          // junk: retained in vault/, not extracted
+      // legacy stack.yml drives addons (consumed for OP_ENABLED_ADDONS, then removed by v2)
+      "config/stack/stack.yml": "version: 1\naddons:\n  - discord\n  - slack\n",
+      "config/stack/channels.compose.yml": "services: {}\n", // inert → removed by v2
+      "config/stack/core.compose.yml": "services:\n  guardian: {}\n", // managed → kept
+      "config/assistant/persona.md": "you are helpful\n",     // user config → untouched
+      // user data / service data / logs / old backups — must be UNTOUCHED
+      "data/assistant/.keep": "",
+      "data/stash/memory.db": "sqlite\n",
+      "logs/assistant.log": "boot ok\n",
+      "backups/old.tgz": "tar\n",
+    });
+  }
+
+  it("organizes the 0.10.x vault home into the v2 layout and retains vault/", () => {
+    seed010Hellscape();
+    const { layout } = runUpgrade("v0.12.0-rc.5");
+
+    expect(layout.from).toBe(0);
+    expect(layout.to).toBe(CURRENT_LAYOUT_VERSION); // 0 → 1 → 2
+    expect(layout.backupDir).toBeTruthy();
+    expect(existsSync(layout.backupDir!)).toBe(true);
+
+    // EXACT resulting file set: data extracted to knowledge/ (channel→portal
+    // renamed), inert files removed, vault/ fully retained, data/logs/backups
+    // untouched. Nothing deleted.
+    expect(fileSet()).toEqual([
+      "backups/old.tgz",                                  // old top-level backups — UNTOUCHED
+      "config/assistant/persona.md",                      // user config — UNTOUCHED
+      "config/stack/core.compose.yml",                    // managed compose — kept
+      // config/stack/{stack.yml,channels.compose.yml} GONE (inert, removed by v2)
+      "data/assistant/.keep",                             // service data — UNTOUCHED
+      "data/backups/",
+      "data/stash/memory.db",
+      "knowledge/env/stack.env",                          // extracted into the new knowledge/ layout
+      "knowledge/env/stack.env.removed-secrets.bak",
+      "knowledge/env/user.env",
+      "knowledge/secrets/.gcloud/credentials.json",       // credential dir copied (recursive)
+      "knowledge/secrets/apprise.yaml",
+      "knowledge/secrets/auth.json",
+      "knowledge/secrets/memory_db_key",                  // per-service secret
+      "knowledge/secrets/op_ui_login_password",
+      "knowledge/secrets/portal_discord_secret",          // channel_→portal_ (0.12 rename)
+      "knowledge/secrets/portal_slack_secret",
+      "logs/assistant.log",                               // logs — UNTOUCHED
+      "vault/README.md",                                  // vault/ RETAINED as a recovery copy
+      "vault/stack/.DS_Store",
+      "vault/stack/auth.json",
+      "vault/stack/guardian.env",
+      "vault/stack/services/memory_db_key",
+      "vault/stack/stack.env",
+      "vault/user/.gcloud/credentials.json",
+      "vault/user/apprise.yaml",
+      "vault/user/notes.txt",
+      "vault/user/user.env",
+    ]);
+
+    const env = readEnv();
+    expect(env).toContain("OP_HOST_UI_PORT=8100");      // OP_ADMIN_PORT renamed
+    expect(env).not.toContain("OP_GUARDIAN_PORT");      // removed var dropped
+    expect(env).toContain("OP_ASSISTANT_PORT=3800");    // unknown key kept
+    expect(env).toContain("OP_TTS_VOICE=bf_isabella");  // TTS_ prefixed
+    expect(env).toContain("OP_ENABLED_ADDONS=discord,slack"); // from legacy stack.yml
+    expect(env).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+    // Secrets NEVER land in the non-secret stack.env.
+    expect(env).not.toContain("OP_UI_LOGIN_PASSWORD");
+    expect(env).not.toContain("GROQ_API_KEY");
+    expect(env).not.toContain("OP_CAP_LLM");
+    expect(env).not.toContain("hunter2");
+
+    // Login password extracted; provider + capability keys quarantined to the .bak.
+    expect(readFileSync(join(home, "knowledge", "secrets", "op_ui_login_password"), "utf-8").trim()).toBe("hunter2");
+    const removed = readFileSync(join(home, "knowledge", "env", "stack.env.removed-secrets.bak"), "utf-8");
+    expect(removed).toContain("GROQ_API_KEY=gsk-FAKE");
+    expect(removed).toContain("OP_CAP_LLM=openai");
+
+    // Channel secret value preserved through the 0.12 portal rename.
+    expect(readFileSync(join(home, "knowledge", "secrets", "portal_discord_secret"), "utf-8").trim()).toBe("disc-abc");
+    // Credential dir copied into the new layout (recursive).
+    expect(readFileSync(join(home, "knowledge", "secrets", ".gcloud", "credentials.json"), "utf-8")).toContain("fake");
+
+    // vault/ retained with a safe-removal README; originals recoverable from backup.
+    expect(existsSync(join(home, "vault", "README.md"))).toBe(true);
+    expect(existsSync(join(layout.backupDir!, "vault", "stack", "stack.env"))).toBe(true);
+  });
+
+  it("is idempotent — a second upgrade run changes nothing", () => {
+    seed010Hellscape();
+    runUpgrade("v0.12.0-rc.5");
+    const after1 = snapshot();
+    delete after1["data/backups/"];
+
+    const second = runUpgrade("v0.12.0-rc.5");
+    expect(second.layout.migrated).toBe(false);
+
+    const after2 = snapshot();
+    delete after2["data/backups/"];
+    expect(after2).toEqual(after1);
+  });
+});
+
 // ── Scenario 2b: 0.9.x config/ "hellscape" → 0.12.0 (pre-vault, layout 0 → 1 → 2) ─
 //
 // A deliberately MESSY 0.9.x home: the old config/ env files (with a login
