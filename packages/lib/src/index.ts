@@ -53,6 +53,7 @@ export {
   ensureReleaseMigrated,
   MigrationError,
   BackupSpaceError,
+  UnrecognizedLayoutError,
   CURRENT_LAYOUT_VERSION,
   LAYOUT_VERSION_KEY,
 } from "./control-plane/migrations.js";

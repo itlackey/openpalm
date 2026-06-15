@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import {
   ensureMigrated, ensureReleaseMigrated, CURRENT_LAYOUT_VERSION,
-  selectPendingLayoutMigrations, releaseMigrationVersions,
+  selectPendingLayoutMigrations, releaseMigrationVersions, UnrecognizedLayoutError,
 } from "./migrations.js";
 import { isComparableSemver } from "./versioning.js";
 
@@ -274,6 +274,165 @@ describe("forward-compat: migration engine handles any version jump", () => {
     for (const v of versions) {
       expect(isComparableSemver(v)).toBe(true);
     }
+  });
+});
+
+// ── Invariant harness: run MANY messy homes through one battery of properties ───
+//
+// De-brittles the engine empirically: instead of hand-checking each fixture, every
+// generated home must satisfy the SAME invariants — reaches current, backs up,
+// leaks no secret into stack.env, is idempotent, and loses NO user data (every
+// seeded file is either still present, relocated verbatim, or — for intentionally
+// removed inert system files — recoverable from the backup). Adding a layout =
+// add a case and inherit the whole battery. All secrets here are SYNTHETIC.
+describe("invariant harness: messy homes satisfy migration properties", () => {
+  const TARGET = "v0.12.0-rc.6";
+  // Every synthetic secret value used below — none may appear in the non-secret stack.env.
+  const SECRETS = [
+    "hunter2", "gsk-FAKE", "sk-FAKE-NOT-REAL", "svc-secret-FAKE",
+    "disc-abc", "slack-xyz", "disc-sec", "Bot.SECRET", "ghp_REDACTED",
+  ];
+
+  interface HomeCase {
+    name: string;
+    seed: Record<string, string>;
+    recognized: boolean;            // reaches the current layout stamp
+    intentionallyRemoved?: string[]; // inert SYSTEM files removed (recoverable from backup only)
+  }
+
+  const CASES: HomeCase[] = [
+    {
+      name: "0.9.x minimal (system.env + user.env only)",
+      recognized: true,
+      seed: {
+        "config/system.env": "OP_ADMIN_PORT=8100\nOP_UI_LOGIN_PASSWORD=hunter2\nGROQ_API_KEY=gsk-FAKE\n",
+        "config/user.env": "MY_PREF=hi\n",
+      },
+    },
+    {
+      name: "0.9.x automations + components only",
+      recognized: true,
+      seed: {
+        "config/system.env": "OP_KEEP=1\n",
+        "config/automations/a.yml": "id: a\n",
+        "config/automations/b.yml": "id: b\n",
+        "config/components/channel-discord.yml": "services: {}\n",
+        "config/components/junk.bin": "\x00\x01\n",
+      },
+    },
+    {
+      name: "0.10.x minimal vault (stack.env only)",
+      recognized: true,
+      seed: {
+        "vault/stack/stack.env": "OP_ADMIN_PORT=9000\nOP_UI_LOGIN_PASSWORD=hunter2\n",
+      },
+    },
+    {
+      name: "0.10.x vault with services + credential dir",
+      recognized: true,
+      seed: {
+        "vault/user/user.env": "X=1\n",
+        "vault/stack/stack.env": "SOME_API_KEY=sk-FAKE-NOT-REAL\nOP_KEEP=1\n",
+        "vault/stack/guardian.env": "CHANNEL_DISCORD_SECRET=disc-abc\n",
+        "vault/stack/services/svc_key": "svc-secret-FAKE\n",
+        "vault/user/.gcloud/creds.json": '{"k":"v"}\n',
+      },
+    },
+    {
+      name: "0.11.x channels (channel_* secrets + addon config) — inert files removed",
+      recognized: true,
+      intentionallyRemoved: ["config/stack/channels.compose.yml", "config/stack/stack.yml"],
+      seed: {
+        "knowledge/env/stack.env": "OP_LAYOUT_VERSION=1\nOP_IMAGE_TAG=v0.11.5\nOP_RELEASE_VERSION=v0.11.5\n",
+        "knowledge/secrets/channel_discord_secret": "disc-sec\n",
+        "knowledge/secrets/discord_bot_token": "Bot.SECRET\n",
+        "knowledge/secrets/discord_application_id": "12345\n",
+        "knowledge/secrets/github-itlackey": "ghp_REDACTED\n",
+        "config/stack/channels.compose.yml": "services: {}\n",
+        "config/stack/stack.yml": "version: 2\n",
+        "config/stack/core.compose.yml": "services: {}\n",
+      },
+    },
+    {
+      name: "0.11.x pre-stamp (stack.env, no OP_LAYOUT_VERSION)",
+      recognized: true,
+      seed: {
+        "knowledge/env/stack.env": "OP_IMAGE_TAG=v0.11.0\nOP_KEEP=1\n",
+        "config/stack/core.compose.yml": "services: {}\n",
+      },
+    },
+  ];
+
+  function liveContentSet(): Set<string> {
+    const set = new Set<string>();
+    for (const [rel, content] of Object.entries(snapshot())) {
+      if (rel === "data/backups/") continue;
+      set.add(content);
+    }
+    return set;
+  }
+
+  for (const c of CASES) {
+    it(`${c.name}: reaches current, no leak, idempotent, no data loss`, () => {
+      seed(c.seed);
+      const { layout } = runUpgrade(TARGET);
+
+      // Reaches the current layout, backed up first.
+      if (c.recognized) expect(readEnv()).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+      if (layout.migrated) {
+        expect(layout.backupDir).toBeTruthy();
+        expect(existsSync(layout.backupDir!)).toBe(true);
+      }
+
+      // No synthetic secret ever lands in the non-secret stack.env.
+      const env = readEnv();
+      for (const s of SECRETS) expect(env.includes(s)).toBe(false);
+
+      // No data loss: each seeded file is present, relocated verbatim, or (inert)
+      // intentionally removed but recoverable from the backup.
+      const live = liveContentSet();
+      for (const [rel, content] of Object.entries(c.seed)) {
+        if (c.intentionallyRemoved?.includes(rel)) {
+          expect(existsSync(join(home, rel))).toBe(false);                  // gone from live tree
+          expect(existsSync(join(layout.backupDir!, rel))).toBe(true);      // recoverable from backup
+          continue;
+        }
+        const stillThere = existsSync(join(home, rel)); // untouched or amended in place
+        const relocated = live.has(content);            // copied/relocated verbatim elsewhere
+        expect(stillThere || relocated).toBe(true);
+      }
+
+      // Idempotent: a second upgrade run changes nothing.
+      const after1 = snapshot(); delete after1["data/backups/"];
+      const second = runUpgrade(TARGET);
+      expect(second.layout.migrated).toBe(false);
+      const after2 = snapshot(); delete after2["data/backups/"];
+      expect(after2).toEqual(after1);
+    });
+  }
+});
+
+// ── Fail-loud detection: an unrecognized home must REFUSE, not silently pass ─────
+describe("fail-loud: unrecognized layout is refused without modifying anything", () => {
+  it("throws UnrecognizedLayoutError on a content home matching no known layout", () => {
+    // Content present (config/ + data/) but no stamp, no vault/, no config/system.env,
+    // no knowledge/env/stack.env — exactly the shape the silent 'assume current'
+    // catch-all used to mislabel (this is what hid the 0.9.x gap).
+    seed({
+      "config/some-future-thing.yml": "version: 99\n",
+      "data/assistant/state.db": "blob\n",
+    });
+    const before = snapshot();
+
+    expect(() => ensureMigrated()).toThrow(UnrecognizedLayoutError);
+
+    // NOTHING was modified — detection refuses before taking the lock/backup.
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("does NOT throw on a fresh, empty home (treats it as current)", () => {
+    // No content at all → fresh install → current layout, no error.
+    expect(() => ensureMigrated()).not.toThrow();
   });
 });
 

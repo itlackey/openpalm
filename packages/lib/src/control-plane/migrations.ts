@@ -82,6 +82,30 @@ export class BackupSpaceError extends MigrationError {
   }
 }
 
+/**
+ * Thrown when a home directory has data but matches NO known layout — no
+ * OP_LAYOUT_VERSION stamp, no vault/ (0.10.x), no config/system.env (0.9.x), and
+ * no knowledge/env/stack.env (0.11+). Rather than silently declaring it "already
+ * current" (which skips all migrations and permanently mislabels it — the failure
+ * mode that hid the 0.9.x gap for a release), detection refuses BEFORE touching
+ * anything. Surfaced as a MigrationError so existing CLI/UI handlers present the
+ * guidance and exit cleanly. Nothing has been modified when this throws.
+ */
+export class UnrecognizedLayoutError extends MigrationError {
+  constructor(readonly homeDir: string) {
+    super(
+      `Unrecognized OpenPalm home layout at ${homeDir}: it contains data but matches no known version ` +
+      `(no OP_LAYOUT_VERSION stamp, no vault/, no config/system.env, no knowledge/env/stack.env).`,
+      "No changes were made to your home. This directory may be from an unsupported or newer version of " +
+      "OpenPalm. Make a manual backup, then either upgrade through the version that created it, or — if you " +
+      "know the layout — set OP_LAYOUT_VERSION in knowledge/env/stack.env to force detection. If this is " +
+      "unexpected, open an issue with a listing of the directory.",
+      null,
+    );
+    this.name = "UnrecognizedLayoutError";
+  }
+}
+
 interface MigrationCtx {
   homeDir: string;
   dataDir: string;
@@ -163,27 +187,55 @@ function readStackEnvValue(stashDir: string, key: string): string | null {
   return null;
 }
 
+/** OpenPalm-shaped directories whose content marks a home as "an install of SOME
+ *  version" (vs. an empty/fresh home or a directory full of unrelated junk). */
+const OPENPALM_CONTENT_DIRS = ["config", "data", "knowledge", "logs", "backups"];
+
+/** True if `dir` exists and contains at least one regular file (recursively). */
+function dirHasAnyFile(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile()) return true;
+    if (entry.isDirectory() && dirHasAnyFile(join(dir, entry.name))) return true;
+  }
+  return false;
+}
+
+/** True if the home holds any OpenPalm-shaped content (i.e. is not fresh/empty). */
+function hasOpenPalmContent(homeDir: string): boolean {
+  return OPENPALM_CONTENT_DIRS.some((d) => dirHasAnyFile(join(homeDir, d)));
+}
+
 /**
- * Resolve the current on-disk layout version.
- *   - explicit OP_LAYOUT_VERSION in knowledge/env/stack.env wins
- *   - else a top-level `vault/` directory ⇒ 0.10.x layout (version 0)
- *   - else a `config/system.env` file ⇒ 0.9.x layout (pre-vault; also version 0 —
- *     the 0→1 migration relocates both old shapes into the knowledge/ layout)
- *   - else assume the current layout (a pre-marker 0.11 install) — caller stamps it
+ * Resolve the current on-disk layout version. Ordered so that an AUTHORITATIVE
+ * stamp wins, legacy markers handle both old installs and crash-recovery, and an
+ * unrecognized home fails LOUD instead of being silently declared current:
+ *   1. explicit OP_LAYOUT_VERSION in knowledge/env/stack.env ⇒ that version
+ *      (a completed migration is stamped, so this short-circuits everything below)
+ *   2. a top-level `vault/` directory ⇒ 0.10.x layout (version 0). Checked before
+ *      the pre-stamp shortcut so a crash mid-migration (knowledge/ written, not yet
+ *      stamped, vault/ still present) re-runs the idempotent 0→1 migration.
+ *   3. a `config/system.env` file ⇒ 0.9.x layout (pre-vault; also version 0)
+ *   4. a `knowledge/env/stack.env` with no stamp ⇒ current layout (a 0.11.0 install
+ *      made before OP_LAYOUT_VERSION existed) — caller stamps it
+ *   5. no OpenPalm-shaped content ⇒ a fresh install ⇒ current
+ *   6. otherwise: data present but no known layout ⇒ throw UnrecognizedLayoutError
+ *      (refuse rather than silently skip migrations and mislabel the home)
  */
 function readLayoutVersion(ctx: { homeDir: string; stashDir: string }): number {
   const envPath = stackEnvFile(ctx.stashDir);
-  if (existsSync(envPath)) {
+  const envExists = existsSync(envPath);
+  if (envExists) {
     for (const line of readFileSync(envPath, "utf-8").split("\n")) {
       const m = line.match(/^OP_LAYOUT_VERSION=(\d+)\s*$/);
-      if (m) return Number(m[1]);
+      if (m) return Number(m[1]); // (1) authoritative stamp
     }
   }
-  if (existsSync(join(ctx.homeDir, "vault"))) return 0;
-  // 0.9.x predates both the OP_LAYOUT_VERSION stamp and vault/: it kept env under
-  // config/system.env. A 0.10.x vault home or any 0.11+ home never has that file.
-  if (existsSync(join(ctx.homeDir, "config", "system.env"))) return 0;
-  return CURRENT_LAYOUT_VERSION;
+  if (existsSync(join(ctx.homeDir, "vault"))) return 0;            // (2) 0.10.x / crash-recovery
+  if (existsSync(join(ctx.homeDir, "config", "system.env"))) return 0; // (3) 0.9.x
+  if (envExists) return CURRENT_LAYOUT_VERSION;                    // (4) 0.11.0 pre-stamp
+  if (!hasOpenPalmContent(ctx.homeDir)) return CURRENT_LAYOUT_VERSION; // (5) fresh install
+  throw new UnrecognizedLayoutError(ctx.homeDir);                  // (6) fail loud
 }
 
 function readStampedLayoutVersion(stashDir: string): number | null {
