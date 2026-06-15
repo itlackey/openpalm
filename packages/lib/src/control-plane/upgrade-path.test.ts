@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { resolveLatestPlatformTag, resolveLatestPlatformTagForCurrentMajor, applyTagChange } from './lifecycle.js';
+import { resolveLatestPlatformTag, resolveLatestPlatformTagForCurrentMajor, applyTagChange, DowngradeConfirmationRequired } from './lifecycle.js';
 import type { ControlPlaneState } from './types.js';
 
 const realFetch = globalThis.fetch;
@@ -311,6 +311,46 @@ describe('applyTagChange latest resolution (#449)', () => {
     await expect(applyTagChange(state, 'v99.0.0')).rejects.toThrow(
       /newer than the OpenPalm control plane you're running/,
     );
+  });
+
+  // #501: a target OLDER than the running version is a downgrade — require an
+  // explicit confirmation before writing anything.
+  test('applyTagChange requires confirmation for a downgrade (#501)', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-upgrade-test-'));
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.12.0\n');
+    const state: ControlPlaneState = {
+      homeDir: home, configDir: join(home, 'config'), stashDir: join(home, 'knowledge'),
+      workspaceDir: join(home, 'workspace'), dataDir: join(home, 'data'),
+      stackDir: join(home, 'config', 'stack'), services: {}, artifacts: { compose: '' }, artifactMeta: [],
+    };
+    let threw: unknown;
+    try {
+      await applyTagChange(state, 'v0.11.0');
+    } catch (e) { threw = e; }
+    expect(threw).toBeInstanceOf(DowngradeConfirmationRequired);
+    expect((threw as DowngradeConfirmationRequired).code).toBe('downgrade_confirmation_required');
+    expect((threw as DowngradeConfirmationRequired).targetVersion).toBe('v0.11.0');
+    expect((threw as DowngradeConfirmationRequired).currentVersion).toBe('v0.12.0');
+  });
+
+  test('applyTagChange does NOT throw the downgrade signal when confirmed (#501)', async () => {
+    // Network is down, so the downstream resolution fails — but the point is the
+    // confirmed call gets PAST the downgrade gate (different error than the signal).
+    globalThis.fetch = (async () => { throw new Error('network down'); }) as typeof fetch;
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-upgrade-test-'));
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.12.0\n');
+    const state: ControlPlaneState = {
+      homeDir: home, configDir: join(home, 'config'), stashDir: join(home, 'knowledge'),
+      workspaceDir: join(home, 'workspace'), dataDir: join(home, 'data'),
+      stackDir: join(home, 'config', 'stack'), services: {}, artifacts: { compose: '' }, artifactMeta: [],
+    };
+    let threw: unknown;
+    try {
+      await applyTagChange(state, 'v0.11.0', { confirmDowngrade: true });
+    } catch (e) { threw = e; }
+    expect(threw).not.toBeInstanceOf(DowngradeConfirmationRequired);
   });
 });
 

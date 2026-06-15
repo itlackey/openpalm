@@ -273,7 +273,7 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
   const lock = acquireInstallLock(state.dataDir);
   if (!lock) {
     progress.deploying = false;
-    progress.deployError = 'install_in_progress: A deploy is already running. Wait for it to finish.';
+    progress.deployError = "install_in_progress: A deploy is already running. Wait for it to finish (the lock clears itself automatically after 30 minutes). If you're sure nothing is running, run 'openpalm unlock' to clear a stale lock.";
     emitProgress(options, progress);
     return progress;
   }

@@ -165,7 +165,7 @@ export async function performSetup(
     return {
       ok: false,
       error:
-        "install_in_progress: Another install is in progress. Wait for it to finish, or remove state/.install.lock if you're sure no install is running.",
+        "install_in_progress: Another install is in progress. Wait for it to finish (the lock clears itself automatically after 30 minutes). If you're sure nothing is running, run 'openpalm unlock' to clear a stale lock.",
     };
   }
 

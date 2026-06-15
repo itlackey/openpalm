@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureMigrated, ensureReleaseMigrated, MigrationError, CURRENT_LAYOUT_VERSION } from "./migrations.js";
+import { ensureMigrated, ensureReleaseMigrated, MigrationError, BackupSpaceError, CURRENT_LAYOUT_VERSION } from "./migrations.js";
 
 // The harness resolves all paths from OP_HOME; point it at a synthetic 0.10 home.
 let home: string;
@@ -178,6 +178,22 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     seed010(home);
     ensureMigrated({ dryRun: true });
     expect(existsSync(join(home, "vault", "README.md"))).toBe(false);
+  });
+
+  it("#499 does not block a normal migration when free space is ample", () => {
+    seed010(home);
+    // No confirmLowSpace passed — a real temp disk has plenty of free space,
+    // so the pre-backup guard must not trip.
+    const report = ensureMigrated();
+    expect(report.migrated).toBe(true);
+    expect(report.backupDir).toBeTruthy();
+  });
+
+  it("#499 BackupSpaceError is a MigrationError (so existing handlers catch it)", () => {
+    const err = new BackupSpaceError("low space", "guidance", 10, 5);
+    expect(err).toBeInstanceOf(MigrationError);
+    expect(err.estimatedBytes).toBe(10);
+    expect(err.freeBytes).toBe(5);
   });
 
   it("does not clobber a pre-existing vault/README.md", () => {

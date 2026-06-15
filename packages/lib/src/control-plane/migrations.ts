@@ -26,7 +26,7 @@ import {
 import { join, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
-import { backupOpenPalmHome, timestampDirName } from "./backup.js";
+import { backupOpenPalmHome, timestampDirName, checkBackupFreeSpace, describeBackupSpaceShortfall } from "./backup.js";
 import { upsertEnvValue } from "./env.js";
 import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
 import { compareComparableVersions, isComparableSemver } from './versioning.js';
@@ -57,6 +57,24 @@ export class MigrationError extends Error {
   ) {
     super(message);
     this.name = "MigrationError";
+  }
+}
+
+/**
+ * Thrown when the pre-backup free-space check estimates the safety backup would
+ * exceed a safe fraction of free disk. Surfaced so callers (CLI/UI) can present
+ * a plain-language warning and re-run with explicit confirmation. NOTHING is
+ * deleted — the migration aborts cleanly with no changes made.
+ */
+export class BackupSpaceError extends MigrationError {
+  constructor(
+    message: string,
+    guidance: string,
+    readonly estimatedBytes: number,
+    readonly freeBytes: number,
+  ) {
+    super(message, guidance, null);
+    this.name = "BackupSpaceError";
   }
 }
 
@@ -656,7 +674,8 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
 
 const RECOVERY_GUIDANCE =
   "Your original files were left untouched and a full backup was taken first. " +
-  "To recover, restore the backup (see docs/operations/backup-restore.md) or run " +
+  "If something went wrong, run `openpalm rollback` to restore your previous state, " +
+  "or restore the backup manually (see docs/operations/backup-restore.md). You can also run " +
   "`openpalm migrate --dry-run` to preview the current copy-only migration. " +
   "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
 
@@ -700,13 +719,14 @@ function runReleaseMigrations(
  * the top of any upgrade/install entry point. Resolves its own paths (must run
  * before createState, which assumes the current layout).
  */
-export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?: (m: string) => void } = {}): MigrationReport {
+export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; confirmLowSpace?: boolean; log?: (m: string) => void } = {}): MigrationReport {
   const homeDir = opts.homeDir
     ? resolvePath(opts.homeDir)
     : process.env.OP_HOME
       ? resolvePath(process.env.OP_HOME)
       : resolvePath(process.env.HOME ?? '', '.openpalm');
   const dryRun = opts.dryRun ?? false;
+  const confirmLowSpace = opts.confirmLowSpace ?? false;
   const log = opts.log ?? (() => {});
   const ctxBase = {
     ...resolveMigrationPaths(homeDir),
@@ -760,6 +780,19 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; log?:
       lock = acquireInstallLock(ctxBase.dataDir);
       if (!lock) {
         throw new MigrationError("Another install/upgrade is in progress.", RECOVERY_GUIDANCE, null);
+      }
+      // Pre-backup free-space guard: a full-home copy includes data/ (AKM dbs,
+      // logs, caches) and can be gigabytes. Refuse to silently fill the disk —
+      // require explicit confirmation when the estimate exceeds the safe
+      // fraction of free space. This never deletes anything (owner-forbidden).
+      const spaceCheck = checkBackupFreeSpace(homeDir);
+      if (spaceCheck.insufficient && !confirmLowSpace) {
+        throw new BackupSpaceError(
+          describeBackupSpaceShortfall(spaceCheck),
+          RECOVERY_GUIDANCE,
+          spaceCheck.estimatedBytes,
+          spaceCheck.freeBytes,
+        );
       }
       log("Taking a full backup before migrating…");
       try {

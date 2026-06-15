@@ -40,13 +40,19 @@ export {
   backupOpenPalmHome,
   listBackupDirs,
   pruneBackupDirs,
+  estimateHomeBackupBytes,
+  checkBackupFreeSpace,
+  describeBackupSpaceShortfall,
+  summarizeBackups,
 } from "./control-plane/backup.js";
+export type { BackupSpaceCheck, BackupSummary, BackupEntry } from "./control-plane/backup.js";
 
 // ── Layout migration harness ────────────────────────────────────────────────
 export {
   ensureMigrated,
   ensureReleaseMigrated,
   MigrationError,
+  BackupSpaceError,
   CURRENT_LAYOUT_VERSION,
   LAYOUT_VERSION_KEY,
 } from "./control-plane/migrations.js";
@@ -283,6 +289,9 @@ export {
   portalSecretName,
   ensurePortalSecret,
   ensureComposeVolumeTargets,
+  readSecretStripNotice,
+  dismissSecretStripNotice,
+  secretStripNoticePath,
 } from "./control-plane/config-persistence.js";
 
 export {
@@ -313,6 +322,8 @@ export {
 export {
   applyTagChange,
   resolveLatestPlatformTag,
+  resolveDefaultMigrateTarget,
+  DowngradeConfirmationRequired,
   buildComposeFileList,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
@@ -415,10 +426,17 @@ export {
 } from "./control-plane/setup.js";
 
 // ── Install Lock (shared between performSetup and startDeploy) ───────────
-export type { InstallLockHandle } from "./control-plane/install-lock.js";
+export type {
+  InstallLockHandle,
+  InstallLockStatus,
+  UnlockResult,
+} from "./control-plane/install-lock.js";
 export {
   acquireInstallLock,
   releaseInstallLock,
+  inspectInstallLock,
+  unlockInstallLock,
+  INSTALL_LOCK_STALE_AFTER_MS,
 } from "./control-plane/install-lock.js";
 
 // ── Host OpenCode Import ─────────────────────────────────────────────────

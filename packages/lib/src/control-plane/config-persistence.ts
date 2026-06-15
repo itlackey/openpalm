@@ -5,7 +5,7 @@
  * Files are validated in-place before writing; rollback is handled by
  * the rollback module (snapshot to OP_HOME/data/rollback/).
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync, rmSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { createLogger } from "../logger.js";
@@ -88,7 +88,19 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   // for all volume mounts. Without this, Docker Compose defaults to blank.
   if (!parsed.OP_HOME) adminManaged.OP_HOME = state.homeDir;
 
-  base = stripSecretLikeEnvKeys(base);
+  const { content: strippedBase, removed } = stripSecretLikeEnvKeys(base);
+  base = strippedBase;
+  if (removed.length > 0) {
+    // Correct per the secret-boundary contract (secrets belong in
+    // knowledge/secrets/, not stack.env) — but never do it silently. Log a
+    // structured note and drop a one-time notice the UI surfaces so the user
+    // knows where their value went and how to re-add it.
+    logger.warn("Removed secret-looking keys from stack.env (they belong in Connections/secrets)", {
+      removedKeys: removed,
+      stackEnvPath: systemEnvPath,
+    });
+    recordSecretStripNotice(state, removed);
+  }
   assertNoSecretLikeStackEnvKeys(parseEnvContent(base));
   assertNoSecretLikeStackEnvKeys(adminManaged);
 
@@ -100,17 +112,84 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   chmodSync(systemEnvPath, 0o600);
 }
 
-function stripSecretLikeEnvKeys(content: string): string {
-  return content
+function stripSecretLikeEnvKeys(content: string): { content: string; removed: string[] } {
+  const removed: string[] = [];
+  const kept = content
     .split('\n')
     .filter((line) => {
       let trimmed = line.trim();
       if (trimmed.startsWith('export ')) trimmed = trimmed.slice(7).trimStart();
       const eq = trimmed.indexOf('=');
       if (eq <= 0) return true;
-      return !isSecretLikeStackEnvKey(trimmed.slice(0, eq).trim());
+      const key = trimmed.slice(0, eq).trim();
+      if (isSecretLikeStackEnvKey(key)) {
+        removed.push(key);
+        return false;
+      }
+      return true;
     })
     .join('\n');
+  return { content: kept, removed };
+}
+
+/**
+ * Path of the one-time "secret-looking values were removed from stack.env"
+ * notice the UI reads and dismisses.
+ */
+export function secretStripNoticePath(state: ControlPlaneState): string {
+  return `${state.dataDir}/secret-strip-notice.json`;
+}
+
+interface SecretStripNotice {
+  keys: string[];
+  at: string;
+}
+
+function recordSecretStripNotice(state: ControlPlaneState, newlyRemoved: string[]): void {
+  const path = secretStripNoticePath(state);
+  let keys = new Set(newlyRemoved);
+  if (existsSync(path)) {
+    try {
+      const prior = JSON.parse(readFileSync(path, "utf-8")) as Partial<SecretStripNotice>;
+      if (Array.isArray(prior.keys)) keys = new Set([...prior.keys, ...newlyRemoved]);
+    } catch {
+      /* corrupt notice — overwrite with the fresh set */
+    }
+  }
+  const notice: SecretStripNotice = { keys: [...keys].sort(), at: new Date().toISOString() };
+  try {
+    mkdirSync(state.dataDir, { recursive: true });
+    writeFileSync(path, JSON.stringify(notice, null, 2));
+  } catch (e) {
+    logger.warn("Could not persist secret-strip notice", { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+/** Read the pending secret-strip notice, or null when there is none. */
+export function readSecretStripNotice(state: ControlPlaneState): { keys: string[]; at: string } | null {
+  const path = secretStripNoticePath(state);
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as Partial<SecretStripNotice>;
+    if (Array.isArray(parsed.keys) && parsed.keys.length > 0 && typeof parsed.at === "string") {
+      return { keys: parsed.keys, at: parsed.at };
+    }
+  } catch {
+    /* corrupt — treat as no notice */
+  }
+  return null;
+}
+
+/** Dismiss (delete) the pending secret-strip notice. */
+export function dismissSecretStripNotice(state: ControlPlaneState): void {
+  const path = secretStripNoticePath(state);
+  if (existsSync(path)) {
+    try {
+      rmSync(path);
+    } catch (e) {
+      logger.warn("Could not dismiss secret-strip notice", { error: e instanceof Error ? e.message : String(e) });
+    }
+  }
 }
 
 function generateFallbackSystemEnv(state: ControlPlaneState): string {

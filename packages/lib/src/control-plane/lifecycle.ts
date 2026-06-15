@@ -275,6 +275,50 @@ function resolvePlatformVersionPolicyBaseTag(state: ControlPlaneState): string {
  * Non-semver targets (a moving `latest`/`dev` tag) are not comparable and are
  * left to the resolver paths that turn them into a concrete release first.
  */
+/**
+ * Downgrade-needs-confirmation signal (#501).
+ *
+ * Release migrations are forward-only (copy-only, additive); they do NOT run
+ * backward. Pointing the stack at an OLDER tag than the one currently running is
+ * therefore a data-safety event, not a routine version change: the older images
+ * may not understand files the newer release already migrated. We don't block it
+ * (a user may legitimately need to roll back), but we require an explicit
+ * confirmation so it can't happen by a stray dropdown selection. The UI catches
+ * this by `code` and shows a plain warning + confirm; the CLI surfaces the
+ * message and a `--confirm`/`--yes` path.
+ */
+export class DowngradeConfirmationRequired extends Error {
+  readonly code = "downgrade_confirmation_required";
+  readonly currentVersion: string;
+  readonly targetVersion: string;
+  constructor(currentVersion: string, targetVersion: string) {
+    super(
+      `Version ${formatForDisplay(targetVersion)} is older than the version you're running ` +
+        `(${formatForDisplay(currentVersion)}). This is a downgrade. Release migrations don't run ` +
+        `backward; your data may not be compatible — restore from backup if needed. ` +
+        `Re-run with confirmation to proceed. Nothing was changed.`,
+    );
+    this.name = "DowngradeConfirmationRequired";
+    this.currentVersion = currentVersion;
+    this.targetVersion = targetVersion;
+  }
+}
+
+/**
+ * Throw {@link DowngradeConfirmationRequired} when `targetTag` is strictly older
+ * than the version currently configured in stack.env, unless the caller passed
+ * an explicit confirmation. Non-semver tags (a moving `latest`/`dev` ref, or a
+ * first install with no current tag) are not comparable and pass through — the
+ * resolver paths turn `latest` into a concrete release before this runs.
+ */
+function assertNotUnconfirmedDowngrade(state: ControlPlaneState, targetTag: string, confirmDowngrade: boolean): void {
+  if (confirmDowngrade) return;
+  const currentTag = resolvePlatformVersionPolicyBaseTag(state);
+  if (!isComparableSemver(targetTag) || !isComparableSemver(currentTag)) return;
+  if (compareComparableVersions(targetTag, currentTag) >= 0) return;
+  throw new DowngradeConfirmationRequired(currentTag, targetTag);
+}
+
 function assertTargetNotNewerThanPlatform(targetTag: string): void {
   if (!isComparableSemver(targetTag) || !isComparableSemver(PLATFORM_VERSION)) return;
   if (compareComparableVersions(targetTag, PLATFORM_VERSION) <= 0) return;
@@ -441,6 +485,24 @@ export async function resolveLatestPlatformTag(namespace: string): Promise<strin
   return latestTag;
 }
 
+/**
+ * Resolve the default target version for `openpalm migrate --dry-run`: the
+ * newest published platform tag in the current major. Mirrors the resolver the
+ * upgrade path uses (same namespace, same base tag, same prerelease policy) so a
+ * dry-run preview reflects the exact version `openpalm update` would move to.
+ */
+export async function resolveDefaultMigrateTarget(
+  state: ControlPlaneState,
+  opts: { allowPrerelease?: boolean } = {},
+): Promise<string> {
+  const namespace = resolveImageNamespace(state);
+  return resolveLatestPlatformTagForCurrentMajor(
+    namespace,
+    resolvePlatformVersionPolicyBaseTag(state),
+    { allowPrerelease: opts.allowPrerelease },
+  );
+}
+
 export async function resolveLatestPlatformTagForCurrentMajor(
   namespace: string,
   currentTag: string,
@@ -605,7 +667,11 @@ export async function performUpgrade(
  * Set a specific image tag in stack.env then pull images and restart containers.
  * Used by the admin "set version" action — skips the auto-detect step in performUpgrade.
  */
-export async function applyTagChange(state: ControlPlaneState, tag: string): Promise<UpgradeResult> {
+export async function applyTagChange(
+  state: ControlPlaneState,
+  tag: string,
+  opts: { confirmDowngrade?: boolean } = {},
+): Promise<UpgradeResult> {
   return withStackEnvRollback(state, async () => {
     const namespace = resolveImageNamespace(state);
 
@@ -633,6 +699,11 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
     // gets the actionable "update the app first" message, not a confusing
     // "tag is not published".
     assertTargetNotNewerThanPlatform(resolvedTag);
+
+    // #501: a tag OLDER than the running version is a downgrade. Forward-only
+    // release migrations don't run backward, so require explicit confirmation
+    // before writing anything.
+    assertNotUnconfirmedDowngrade(state, resolvedTag, opts.confirmDowngrade ?? false);
 
     const stackEnvPath = `${state.stashDir}/env/stack.env`;
     const currentEnv = parseEnvFile(stackEnvPath);
