@@ -19,7 +19,7 @@
   ],
   "main": "src/index.ts",
   "dependencies": {
-    "@opencode-ai/sdk": "1.15.13",
+    "@opencode-ai/sdk": "1.17.7",
     "@slack/bolt": "^4.1.0"
   }
 }
