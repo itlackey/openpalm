@@ -812,6 +812,47 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
+/**
+ * Select the layout migrations to run, by WALKING the chain from `from` up to
+ * CURRENT_LAYOUT_VERSION — correct-by-construction for multi-version jumps and a
+ * loud guard against a broken chain (the forward-compat footgun). A plain
+ * `filter(m.from in [from, ceiling))` would silently skip a missing step or run a
+ * migration whose precondition isn't met; here a gap throws immediately so the
+ * mistake surfaces at the structural test, never on a user's disk.
+ *
+ * Forward-only: a home at or beyond the current layout (e.g. ran on a newer app,
+ * then downgraded) returns [] — there are no backward migrations.
+ */
+export function selectPendingLayoutMigrations(from: number): Migration[] {
+  if (from >= CURRENT_LAYOUT_VERSION) return [];
+  const chain: Migration[] = [];
+  let cursor = from;
+  while (cursor < CURRENT_LAYOUT_VERSION) {
+    const next = MIGRATIONS.find((m) => m.from === cursor);
+    if (!next) {
+      throw new Error(
+        `Layout migration chain is broken: no migration with from:${cursor} ` +
+        `(home is at layout ${from}, target is ${CURRENT_LAYOUT_VERSION}). ` +
+        `Add a Migration { from:${cursor}, to:${cursor + 1}, … } to MIGRATIONS.`,
+      );
+    }
+    chain.push(next);
+    cursor = next.to;
+  }
+  if (cursor !== CURRENT_LAYOUT_VERSION) {
+    throw new Error(
+      `Layout migration chain overshoots the target: reached ${cursor}, expected ` +
+      `${CURRENT_LAYOUT_VERSION}. Migrations must advance one layout step at a time.`,
+    );
+  }
+  return chain;
+}
+
+/** The pinned versions of every release migration (for forward-compat assertions). */
+export function releaseMigrationVersions(): string[] {
+  return RELEASE_MIGRATIONS.map((m) => m.version);
+}
+
 const RELEASE_MIGRATIONS: ReleaseMigration[] = [
   {
     // Pinned to the release that INTRODUCED per-image tags, not the lib
@@ -958,12 +999,10 @@ export function ensureMigrated(opts: { homeDir?: string; dryRun?: boolean; confi
     releaseApplied: [],
   };
 
-  // Upper-bound on the SOURCE version: a migration whose `from` is below the
-  // current layout ceiling must run. Bounding on `m.to` instead would silently
-  // drop a newly added migration if CURRENT_LAYOUT_VERSION lagged behind it.
-  const pending = MIGRATIONS
-    .filter((m) => m.from >= from && m.from < CURRENT_LAYOUT_VERSION)
-    .sort((a, b) => a.from - b.from);
+  // Walk the layout chain from the detected version to the current ceiling. This
+  // applies every intermediate migration for a multi-version jump and throws on a
+  // broken/incomplete chain rather than silently skipping a step.
+  const pending = selectPendingLayoutMigrations(from);
   const pendingRelease = comparableReleaseTarget ? selectPendingReleaseMigrations(releaseFrom, comparableReleaseTarget) : [];
   if (pending.length === 0 && pendingRelease.length === 0 && !needsLayoutStamp && !needsReleaseStamp) {
     return { ...empty, to: CURRENT_LAYOUT_VERSION };

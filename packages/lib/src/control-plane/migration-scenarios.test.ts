@@ -15,7 +15,11 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { ensureMigrated, ensureReleaseMigrated, CURRENT_LAYOUT_VERSION } from "./migrations.js";
+import {
+  ensureMigrated, ensureReleaseMigrated, CURRENT_LAYOUT_VERSION,
+  selectPendingLayoutMigrations, releaseMigrationVersions,
+} from "./migrations.js";
+import { isComparableSemver } from "./versioning.js";
 
 let home: string;
 let prevOpHome: string | undefined;
@@ -228,6 +232,48 @@ describe("scenario: 0.10.x vault install → 0.12.0", () => {
     // The legacy vault/ is RETAINED (user data — never auto-deleted) with a README.
     expect(existsSync(join(home, "vault", "stack", "stack.env"))).toBe(true);
     expect(existsSync(join(home, "vault", "README.md"))).toBe(true);
+  });
+});
+
+// ── Forward-compatibility invariants: the engine must keep handling multi-version
+//    jumps as new migrations are added. These FAIL at CI the moment a future
+//    migration breaks the chain — long before it could reach a user's disk. ─────
+describe("forward-compat: migration engine handles any version jump", () => {
+  it("layout migrations form an unbroken chain from 0 to CURRENT_LAYOUT_VERSION", () => {
+    // selectPendingLayoutMigrations throws on a gap; reaching here means it walked
+    // 0 → … → CURRENT contiguously. Assert each step advances and lands exactly.
+    const chain = selectPendingLayoutMigrations(0);
+    let cursor = 0;
+    for (const m of chain) {
+      expect(m.from).toBe(cursor); // no gap, no out-of-order step
+      cursor = m.to;
+    }
+    expect(cursor).toBe(CURRENT_LAYOUT_VERSION); // ends exactly at the ceiling
+  });
+
+  it("every intermediate start version chains all the way to current", () => {
+    // A home at ANY past layout version must reach CURRENT — this is what makes a
+    // multi-version jump apply all intermediate migrations.
+    for (let from = 0; from <= CURRENT_LAYOUT_VERSION; from++) {
+      const chain = selectPendingLayoutMigrations(from);
+      const reached = chain.reduce((cur, m) => (expect(m.from).toBe(cur), m.to), from);
+      expect(reached).toBe(CURRENT_LAYOUT_VERSION);
+    }
+  });
+
+  it("is a forward-only no-op at or beyond the current layout", () => {
+    expect(selectPendingLayoutMigrations(CURRENT_LAYOUT_VERSION)).toEqual([]);
+    expect(selectPendingLayoutMigrations(CURRENT_LAYOUT_VERSION + 5)).toEqual([]);
+  });
+
+  it("every release migration is pinned to a comparable semver version", () => {
+    // A typo'd / non-comparable version string makes selectPendingReleaseMigrations
+    // silently skip that migration forever — catch it here instead.
+    const versions = releaseMigrationVersions();
+    expect(versions.length).toBeGreaterThan(0);
+    for (const v of versions) {
+      expect(isComparableSemver(v)).toBe(true);
+    }
   });
 });
 
