@@ -452,7 +452,7 @@ export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 export { collectBindAddressWarnings } from "./control-plane/bind-warning.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
-export type { UiBuildUpdateResult } from "./control-plane/ui-assets.js";
+export type { UiBuildUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
 export {
   resolveLocalOpenpalmDir,
   seedOpenPalmDir,
@@ -461,4 +461,19 @@ export {
   seedUiBuild,
   checkAndUpdateUiBuild,
   uiUpdateChannel,
+  declaredUiChannel,
 } from "./control-plane/ui-assets.js";
+
+// ── Canonical version vocabulary (Docker `v`-tag / npm version / dist-tag) ───
+export {
+  PLATFORM_VERSION,
+  isComparableSemver,
+  compareComparableVersions,
+  majorVersionOf,
+  isSameMajorVersion,
+  normalizeVersion,
+  formatForDocker,
+  formatForDisplay,
+  isPrerelease,
+  distTagForVersion,
+} from "./control-plane/versioning.js";

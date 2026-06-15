@@ -25,8 +25,22 @@ const moduleUrls = {
   coreAssets: new URL('./core-assets.js', import.meta.url).href,
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./addons.js', import.meta.url).href,
+  versioning: new URL('./versioning.js', import.meta.url).href,
 };
 const harnessDir = fileURLToPath(new URL('../../', import.meta.url));
+
+// Pin PLATFORM_VERSION high in the subprocess so the #492 host-vs-target guard
+// doesn't block these upgrade-mechanics scenarios (they target a stable v0.12.0
+// while the running lib version is an rc). The guard has its own dedicated tests.
+const PIN_PLATFORM_VERSION_SNIPPET = `
+{
+  const realVersioning = await import(${JSON.stringify(new URL('./versioning.js', import.meta.url).href)});
+  mock.module(${JSON.stringify(new URL('./versioning.js', import.meta.url).href)}, () => ({
+    ...realVersioning,
+    PLATFORM_VERSION: 'v99.0.0',
+  }));
+}
+`;
 
 afterEach(() => {
   globalThis.fetch = realFetch;
@@ -115,6 +129,7 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => scenario.enabledAddons ?? [],
 }));
+${PIN_PLATFORM_VERSION_SNIPPET}
 
 globalThis.fetch = async (input) => {
   const url = String(input);
@@ -198,6 +213,35 @@ describe('resolveLatestPlatformTag (#449)', () => {
     expect(tag).toBe('v0.12.1');
   });
 
+  // #494: a STABLE base must not auto-jump onto a prerelease.
+  test('skips prerelease tags when the base is a stable release (#494)', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.12.0-rc.2', 'v0.12.0-rc.1', 'v0.11.5', 'latest'])) as typeof fetch;
+
+    const tag = await resolveLatestPlatformTagForCurrentMajor('openpalm', 'v0.11.5');
+    expect(tag).toBe('v0.11.5');
+  });
+
+  // #494: a PRERELEASE base stays on the prerelease channel (already opted in).
+  test('keeps prerelease tags when the base is itself a prerelease (#494)', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.12.0-rc.2', 'v0.12.0-rc.1', 'v0.11.5', 'latest'])) as typeof fetch;
+
+    const tag = await resolveLatestPlatformTagForCurrentMajor('openpalm', 'v0.12.0-rc.1');
+    expect(tag).toBe('v0.12.0-rc.2');
+  });
+
+  // #494: `--pre` opt-in lets a stable base reach a prerelease deliberately.
+  test('allowPrerelease lets a stable base reach a prerelease (#494)', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.12.0-rc.2', 'v0.11.5', 'latest'])) as typeof fetch;
+
+    const tag = await resolveLatestPlatformTagForCurrentMajor('openpalm', 'v0.11.5', {
+      allowPrerelease: true,
+    });
+    expect(tag).toBe('v0.12.0-rc.2');
+  });
+
   test('times out hung Docker tag queries with a friendly error', async () => {
     const originalTimeout = AbortSignal.timeout;
     Object.defineProperty(AbortSignal, 'timeout', {
@@ -257,6 +301,15 @@ describe('applyTagChange latest resolution (#449)', () => {
     const state = makeState();
     await expect(applyTagChange(state, '   ')).rejects.toThrow(
       /Cannot resolve "latest" to a concrete release/,
+    );
+  });
+
+  // #492: never deploy a tag newer than the running control plane (PLATFORM_VERSION).
+  // A target far above any real release (v99.0.0) must hard-block before any write.
+  test('applyTagChange blocks a target newer than the running control plane (#492)', async () => {
+    const state = makeState();
+    await expect(applyTagChange(state, 'v99.0.0')).rejects.toThrow(
+      /newer than the OpenPalm control plane you're running/,
     );
   });
 });

@@ -24,7 +24,21 @@ const moduleUrls = {
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./addons.js', import.meta.url).href,
   rollback: new URL('./rollback.js', import.meta.url).href,
+  versioning: new URL('./versioning.js', import.meta.url).href,
 };
+
+// Shared harness snippet: pin PLATFORM_VERSION high so the #492 host-vs-target
+// guard never blocks these rollback-mechanics scenarios (they target a stable
+// v0.12.0 while the running lib is an rc). The guard has dedicated tests.
+const PIN_PLATFORM_VERSION_SNIPPET = `
+{
+  const realVersioning = await import(${JSON.stringify(new URL('./versioning.js', import.meta.url).href)});
+  mock.module(${JSON.stringify(new URL('./versioning.js', import.meta.url).href)}, () => ({
+    ...realVersioning,
+    PLATFORM_VERSION: 'v99.0.0',
+  }));
+}
+`;
 const rollbackHarnessDir = fileURLToPath(new URL('../../', import.meta.url));
 
 function runRollbackScenario(scenario: RollbackScenario): { stdout: string; stderr: string; exitCode: number } {
@@ -112,6 +126,7 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
 }));
+${PIN_PLATFORM_VERSION_SNIPPET}
 
 async function main() {
   try {

@@ -1,5 +1,6 @@
 import { parse as dotenvParse } from 'dotenv';
 import { readFileSync, existsSync, copyFileSync } from 'node:fs';
+import { formatForDocker } from './versioning.js';
 
 export function parseEnvContent(content: string): Record<string, string> {
   return dotenvParse(content);
@@ -107,7 +108,7 @@ export function resolveRequestedImageTag(repoRef: string): string | null {
   const trimmed = repoRef.trim();
   if (!trimmed || trimmed === 'main') return null;
   if (!RELEASE_TAG_REGEX.test(trimmed)) return null;
-  return trimmed.startsWith('v') ? trimmed : `v${trimmed}`;
+  return formatForDocker(trimmed);
 }
 
 /**

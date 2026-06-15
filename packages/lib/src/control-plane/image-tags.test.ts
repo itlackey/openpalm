@@ -130,6 +130,7 @@ const moduleUrls = {
   coreAssets: new URL('./core-assets.js', import.meta.url).href,
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./addons.js', import.meta.url).href,
+  versioning: new URL('./versioning.js', import.meta.url).href,
 };
 const harnessDir = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -207,6 +208,17 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => scenario.enabledAddons,
 }));
+// These scenarios exercise pin/upgrade MECHANICS, not the #492 host-vs-target
+// guard. The guard keys on PLATFORM_VERSION (= this lib's package version, an
+// rc), which would otherwise block upgrading to a stable v0.12.0 target. Pin
+// PLATFORM_VERSION high here so the mechanics run; the guard has its own tests.
+{
+  const realVersioning = await import(${JSON.stringify(moduleUrls.versioning)});
+  mock.module(${JSON.stringify(moduleUrls.versioning)}, () => ({
+    ...realVersioning,
+    PLATFORM_VERSION: 'v99.0.0',
+  }));
+}
 
 const publishedSet = new Set(scenario.publishedTags);
 const tagListResponse = JSON.stringify({

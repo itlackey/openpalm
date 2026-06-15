@@ -1,6 +1,5 @@
 /** Lifecycle helpers — state factory, apply transitions, compose file list. */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import libPkg from "../../package.json" with { type: "json" };
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
@@ -28,7 +27,7 @@ import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./addons.js";
-import { compareComparableVersions, isComparableSemver, isSameMajorVersion } from "./versioning.js";
+import { compareComparableVersions, isComparableSemver, isSameMajorVersion, majorVersionOf, PLATFORM_VERSION, formatForDisplay, isPrerelease } from "./versioning.js";
 import {
   buildPinnedImageTagEnv,
   buildPlatformImageTagEnv,
@@ -200,9 +199,12 @@ const DOCKER_REGISTRY_TIMEOUT_MS = 10_000;
 /**
  * Resolve the best Docker image tag from a registry tags payload.
  *
- * Constraints (both optional):
- * - `sameMajorAs`  — only consider tags whose major component matches this tag.
- * - `atOrBelow`    — only consider tags whose version is <= this tag.
+ * Constraints (all optional):
+ * - `sameMajorAs`    — only consider tags whose major component matches this tag.
+ * - `atOrBelow`      — only consider tags whose version is <= this tag.
+ * - `skipPrerelease` — ignore prerelease tags (`-rc`, `-beta`, …). Used so a
+ *                      STABLE base never auto-jumps onto a prerelease (#494),
+ *                      mirroring the UI card's channel gate.
  *
  * With no constraints: returns the first semver tag found, or the first
  * non-"latest" tag as a fallback (mirrors the original resolveNewestDockerTag).
@@ -210,13 +212,13 @@ const DOCKER_REGISTRY_TIMEOUT_MS = 10_000;
  */
 function resolveNewestDockerTag(
   payload: unknown,
-  constraints: { sameMajorAs?: string; atOrBelow?: string } = {},
+  constraints: { sameMajorAs?: string; atOrBelow?: string; skipPrerelease?: boolean } = {},
 ): string | null {
   const results = (payload as DockerTagsResponse)?.results;
   if (!Array.isArray(results)) return null;
 
-  const { sameMajorAs, atOrBelow } = constraints;
-  const constrained = sameMajorAs !== undefined || atOrBelow !== undefined;
+  const { sameMajorAs, atOrBelow, skipPrerelease } = constraints;
+  const constrained = sameMajorAs !== undefined || atOrBelow !== undefined || skipPrerelease === true;
 
   // Unconstrained path: return the first semver tag seen (payload is ordered
   // by last_updated), with a non-semver/non-latest fallback.
@@ -236,6 +238,7 @@ function resolveNewestDockerTag(
   for (const entry of results as DockerTagEntry[]) {
     const name = typeof entry?.name === "string" ? entry.name.trim() : "";
     if (!isComparableSemver(name)) continue;
+    if (skipPrerelease && isPrerelease(name)) continue;
     if (sameMajorAs !== undefined && !isSameMajorVersion(name, sameMajorAs)) continue;
     if (atOrBelow !== undefined && compareComparableVersions(name, atOrBelow) > 0) continue;
     if (!best || compareComparableVersions(name, best) > 0) best = name;
@@ -248,9 +251,39 @@ function resolvePlatformVersionPolicyBaseTag(state: ControlPlaneState): string {
   const parsed = parseEnvFile(systemEnvPath);
   const configured = parsed.OP_IMAGE_TAG?.trim();
   if (isComparableSemver(configured)) return configured;
-  return `v${libPkg.version}`;
+  return PLATFORM_VERSION;
 }
 
+
+/**
+ * Host-vs-target guard (#492), keyed on the RUNNING control-plane version.
+ *
+ * The migrations a release needs live inside the @openpalm/lib that is actually
+ * executing — i.e. PLATFORM_VERSION (the version of the running data/ui build, or
+ * the compiled-in CLI lib). If a user points the stack at a tag NEWER than the
+ * control plane they're running, `ensureReleaseMigrated` runs an OLD migration
+ * array that doesn't contain that release's migrations → the new images come up
+ * against half-migrated files. There is no safe recovery, so this is a HARD block
+ * (not a warning): nothing is written before it throws.
+ *
+ * The thin-harness design (§6.5) makes this satisfiable: the supervisor self-
+ * updates data/ui to the current platform BEFORE the UI serves the upgrade
+ * request, so "target ≤ running platform" only fails when the user genuinely
+ * picks a tag the running control plane cannot migrate to — at which point the
+ * fix is to update the app / control plane first, not to proceed.
+ *
+ * Non-semver targets (a moving `latest`/`dev` tag) are not comparable and are
+ * left to the resolver paths that turn them into a concrete release first.
+ */
+function assertTargetNotNewerThanPlatform(targetTag: string): void {
+  if (!isComparableSemver(targetTag) || !isComparableSemver(PLATFORM_VERSION)) return;
+  if (compareComparableVersions(targetTag, PLATFORM_VERSION) <= 0) return;
+  throw new Error(
+    `Version ${formatForDisplay(targetTag)} is newer than the OpenPalm control plane ` +
+    `you're running (${formatForDisplay(PLATFORM_VERSION)}). Update the OpenPalm app / ` +
+    `control plane first, then update the stack. Nothing was changed.`,
+  );
+}
 
 function resolveImageNamespace(state: ControlPlaneState): string {
   const systemEnvPath = `${state.stashDir}/env/stack.env`;
@@ -411,13 +444,18 @@ export async function resolveLatestPlatformTag(namespace: string): Promise<strin
 export async function resolveLatestPlatformTagForCurrentMajor(
   namespace: string,
   currentTag: string,
+  opts: { allowPrerelease?: boolean } = {},
 ): Promise<string> {
+  // #494: a STABLE base must NOT auto-jump onto a prerelease (rc/beta). A
+  // prerelease is always a deliberate opt-in (`openpalm update --pre`). If the
+  // base is itself a prerelease, the user is already on that channel — keep it.
+  const skipPrerelease = !opts.allowPrerelease && !isPrerelease(currentTag);
   const latestTag = resolveNewestDockerTag(
     await fetchDockerTagsPayload(namespace, 'assistant'),
-    { sameMajorAs: currentTag },
+    { sameMajorAs: currentTag, skipPrerelease },
   );
   if (!latestTag) {
-    throw new Error(`No usable Docker image tag found in major ${currentTag.replace(/^v/, '').split('.')[0]}`);
+    throw new Error(`No usable Docker image tag found in major ${majorVersionOf(currentTag) ?? currentTag}`);
   }
   return latestTag;
 }
@@ -509,7 +547,10 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
  *
  * Callers handle their own audit logging and admin self-recreation.
  */
-export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeResult> {
+export async function performUpgrade(
+  state: ControlPlaneState,
+  opts: { allowPrerelease?: boolean } = {},
+): Promise<UpgradeResult> {
   return withStackEnvRollback(state, async () => {
     const composeOpts = buildComposeOptions(state);
 
@@ -520,7 +561,13 @@ export async function performUpgrade(state: ControlPlaneState): Promise<UpgradeR
     // 1. Update image tag + refresh core assets. Per-image publication checks
     // and fallback resolution happen inside updateStackEnvToLatestImageTag.
     const namespace = resolveImageNamespace(state);
-    const imageTag = await resolveLatestPlatformTagForCurrentMajor(namespace, resolvePlatformVersionPolicyBaseTag(state));
+    const imageTag = await resolveLatestPlatformTagForCurrentMajor(
+      namespace,
+      resolvePlatformVersionPolicyBaseTag(state),
+      { allowPrerelease: opts.allowPrerelease },
+    );
+    // #492: never deploy a tag newer than the control plane running the migrations.
+    assertTargetNotNewerThanPlatform(imageTag);
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: imageTag });
     const tagResult = await updateStackEnvToLatestImageTag(state, imageTag);
     const { tag: confirmedImageTag, warnings } = tagResult;
@@ -580,6 +627,12 @@ export async function applyTagChange(state: ControlPlaneState, tag: string): Pro
         );
       }
     }
+
+    // #492: never deploy a tag newer than the control plane running the
+    // migrations. Check BEFORE the publication probe / asset fetch so the user
+    // gets the actionable "update the app first" message, not a confusing
+    // "tag is not published".
+    assertTargetNotNewerThanPlatform(resolvedTag);
 
     const stackEnvPath = `${state.stashDir}/env/stack.env`;
     const currentEnv = parseEnvFile(stackEnvPath);
