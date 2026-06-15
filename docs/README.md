@@ -13,7 +13,6 @@ Repo layout convention:
 | [CONTRIBUTING.md](../.github/CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
 | [system-requirements.md](system-requirements.md) | CPU, RAM, disk, network — minimum and recommended specs |
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
-| [setup-walkthrough.md](setup-walkthrough.md) | Visual walkthrough of every setup wizard screen |
 | [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
