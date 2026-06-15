@@ -182,7 +182,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   } catch (err) {
     if (err instanceof MigrationError) {
       console.error(`\nAutomatic migration aborted: ${err.message}\n${err.guidance}`);
-      if (err.backupDir) console.error(`Backup: ${err.backupDir}`);
+      if (err.backupDir) {
+        console.error(`If something went wrong, your previous state is backed up at ${err.backupDir} — run \`openpalm rollback\`.`);
+      }
       process.exit(1);
     }
     throw err;
