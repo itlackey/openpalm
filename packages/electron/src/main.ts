@@ -26,6 +26,7 @@ import {
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
+import { loadSettings, saveSettings } from './settings.js';
 import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
 
 export type LaunchOnLoginStatus = {
@@ -135,6 +136,9 @@ let trayIcon: NativeImage | null = null;
 let trayRecordingIcons: NativeImage[] = [];
 let trayAnimationTimer: ReturnType<typeof setInterval> | null = null;
 let trayAnimationFrame = 0;
+// Whether the GitHub update check should surface prereleases (#504). Loaded from
+// desktop settings at boot; toggled live from the tray. Notify-only.
+let checkPrereleaseUpdates = false;
 
 // ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
 const STDERR_RING_SIZE = 200;
@@ -380,9 +384,15 @@ async function startUIServer(): Promise<void> {
   const appVersion = app.getVersion();
   const platformVersion = PLATFORM_VERSION;
 
+  // Load the desktop-local prerelease opt-in (#504) so the update check below
+  // knows whether to surface rc's. Notify-only — never changes install behaviour.
+  checkPrereleaseUpdates = loadSettings(dataDir).checkPrerelease;
+
   // Check for a newer Electron app version on GitHub. Non-fatal; result is
   // surfaced to the UI as an env var so the in-app banner can offer a download.
-  const appUpdate = await checkForElectronUpdate(appVersion);
+  // When the user has opted into prereleases, this polls the full releases list
+  // and filters to the newest matching their channel.
+  const appUpdate = await checkForElectronUpdate(appVersion, checkPrereleaseUpdates);
   if (appUpdate.updateAvailable) {
     console.log(`App update available: v${appUpdate.latestVersion}`);
   } else if (appUpdate.error) {
@@ -984,6 +994,36 @@ export function setLaunchOnLogin(enabled: boolean, platform = process.platform):
   return getLaunchOnLoginStatus(platform);
 }
 
+// ── Prerelease update opt-in (#504) ───────────────────────────────────────────
+// Toggle the desktop-local "check for prerelease versions" setting, persist it,
+// re-run the GitHub update check in the new mode, rebuild the tray (so the menu
+// reflects the new state and an update-available label can appear), and notify
+// the user if a newer prerelease is now visible. Notify-only — no auto-install.
+async function setCheckPrerelease(enabled: boolean): Promise<void> {
+  checkPrereleaseUpdates = enabled;
+  const dataDir = resolveDataDir();
+  saveSettings(dataDir, { checkPrerelease: enabled });
+
+  try {
+    const appVersion = app.getVersion();
+    const update = await checkForElectronUpdate(appVersion, enabled);
+    // Rebuild the tray menu so the checkbox state (and any update label) refresh.
+    rebuildTrayMenu();
+    if (enabled && update.updateAvailable && update.latestVersion) {
+      const kind = update.isPrerelease ? 'prerelease' : 'version';
+      showNotification(
+        `OpenPalm ${kind} available`,
+        `OpenPalm ${update.latestVersion} is available to download.`,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      'Prerelease update re-check failed (non-fatal):',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 // ── Tray ─────────────────────────────────────────────────────────────────────
 
 function createTray(): void {
@@ -1002,8 +1042,25 @@ function createTray(): void {
     trayIcon.setTemplateImage(true);
   }
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon as NativeImage, alpha));
-  tray = new Tray(trayIcon);
+  // Reuse an existing Tray (e.g. a menu rebuild after a settings toggle) so we
+  // never leak a duplicate menu-bar icon or reset the recording animation.
+  if (!tray) {
+    tray = new Tray(trayIcon);
+  }
 
+  rebuildTrayMenu();
+
+  tray.setToolTip('OpenPalm');
+  // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
+  // NOT open/restore the window.  The window is always accessible via the
+  // "Open OpenPalm" item in the context menu (right-click or left-click the
+  // tray icon to see it, depending on the OS).  Removing the click handler
+  // prevents the surprise "tray icon pops my window" behavior reported in #427.
+}
+
+/** (Re)build the tray context menu from current settings/state. */
+function rebuildTrayMenu(): void {
+  if (!tray) return;
   const loginSettings = getLaunchOnLoginStatus();
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open OpenPalm', click: showWindow },
@@ -1021,6 +1078,18 @@ function createTray(): void {
         setLaunchOnLogin(menuItem.checked);
       },
     },
+    {
+      // "Check for prerelease versions" opt-in (#504). When on, the GitHub
+      // update check surfaces rc's matching the user's channel. Notify-only —
+      // it never auto-installs. Persisted to desktop settings and re-checked
+      // immediately so the user gets feedback without restarting.
+      label: 'Check for prerelease versions',
+      type: 'checkbox',
+      checked: checkPrereleaseUpdates,
+      click: (menuItem) => {
+        void setCheckPrerelease(menuItem.checked);
+      },
+    },
     { type: 'separator' },
     {
       label: 'Quit',
@@ -1035,13 +1104,7 @@ function createTray(): void {
     },
   ]);
 
-  tray.setToolTip('OpenPalm');
   tray.setContextMenu(contextMenu);
-  // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
-  // NOT open/restore the window.  The window is always accessible via the
-  // "Open OpenPalm" item in the context menu (right-click or left-click the
-  // tray icon to see it, depending on the OS).  Removing the click handler
-  // prevents the surprise "tray icon pops my window" behavior reported in #427.
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────

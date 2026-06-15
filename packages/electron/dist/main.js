@@ -7294,8 +7294,8 @@ var require_main = __commonJS((exports, module) => {
 
 // src/main.ts
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences } from "electron";
-import { join as join4, dirname as dirname3 } from "node:path";
-import { existsSync as existsSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync4, rmSync as rmSync2, mkdirSync as mkdirSync5, createWriteStream } from "node:fs";
+import { join as join5, dirname as dirname4 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync6, writeFileSync as writeFileSync5, rmSync as rmSync2, mkdirSync as mkdirSync6, createWriteStream } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { spawn as spawn3 } from "node:child_process";
 
@@ -7557,7 +7557,7 @@ var PINNABLE_PLATFORM_IMAGES = ["guardian", "portal"];
 var PINNABLE_PLATFORM_IMAGE_SET = new Set(PINNABLE_PLATFORM_IMAGES);
 
 // ../lib/src/control-plane/migrations.ts
-var RECOVERY_GUIDANCE = "Your original files were left untouched and a full backup was taken first. " + "To recover, restore the backup (see docs/operations/backup-restore.md) or run " + "`openpalm migrate --dry-run` to preview the current copy-only migration. " + "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
+var RECOVERY_GUIDANCE = "Your original files were left untouched and a full backup was taken first. " + "If something went wrong, run `openpalm rollback` to restore your previous state, " + "or restore the backup manually (see docs/operations/backup-restore.md). You can also run " + "`openpalm migrate --dry-run` to preview the current copy-only migration. " + "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
 // ../lib/src/control-plane/ui-assets.ts
 import {
   existsSync as existsSync3,
@@ -11367,111 +11367,177 @@ var REPO_NAME2 = "openpalm";
 var TIMEOUT_MS = 5000;
 var CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 var STALE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-var cached = null;
-function parseVersion(v2) {
-  return v2.replace(/^v/, "").split(/[.\-+]/).map((s3) => {
-    const n = parseInt(s3, 10);
-    return Number.isFinite(n) ? n : 0;
+var cachedStable = null;
+var cachedPrerelease = null;
+function isNewerVersion(current, latest) {
+  const a = normalizeVersion(current);
+  const b2 = normalizeVersion(latest);
+  if (!isComparableSemver(a) || !isComparableSemver(b2))
+    return false;
+  return compareComparableVersions(b2, a) > 0;
+}
+function selectPrereleaseCandidate(currentVersion, releases) {
+  const currentIsPre = isPrerelease(currentVersion);
+  let best = null;
+  for (const rel of releases) {
+    if (rel.draft)
+      continue;
+    const tag = (rel.tag_name ?? "").trim();
+    const bare = normalizeVersion(tag);
+    if (!isComparableSemver(bare))
+      continue;
+    if (!currentIsPre && isPrerelease(bare))
+      continue;
+    if (!isNewerVersion(currentVersion, bare))
+      continue;
+    if (best && compareComparableVersions(bare, normalizeVersion(best.tag)) <= 0)
+      continue;
+    best = { tag, url: rel.html_url ?? null, prerelease: isPrerelease(bare) };
+  }
+  return best;
+}
+function cacheSlot(includePrereleases) {
+  return includePrereleases ? cachedPrerelease : cachedStable;
+}
+function setCacheSlot(includePrereleases, info) {
+  if (includePrereleases)
+    cachedPrerelease = info;
+  else
+    cachedStable = info;
+  return info;
+}
+function suppressOrError(includePrereleases, currentVersion, reason) {
+  const prior = cacheSlot(includePrereleases);
+  if (prior && Date.now() - prior.fetchedAt >= STALE_CACHE_TTL_MS) {
+    console.debug(`[update-check] Cached result is older than 7 days and fresh check failed (${reason}); suppressing stale update claim`);
+    return setCacheSlot(includePrereleases, {
+      currentVersion,
+      latestVersion: null,
+      latestUrl: null,
+      updateAvailable: false,
+      isPrerelease: false,
+      error: `${reason} (stale cache suppressed)`,
+      fetchedAt: Date.now()
+    });
+  }
+  return setCacheSlot(includePrereleases, {
+    currentVersion,
+    latestVersion: null,
+    latestUrl: null,
+    updateAvailable: false,
+    isPrerelease: false,
+    error: reason,
+    fetchedAt: Date.now()
   });
 }
-function isNewerVersion(current, latest) {
-  const a = parseVersion(current);
-  const b2 = parseVersion(latest);
-  const len = Math.max(a.length, b2.length);
-  for (let i = 0;i < len; i++) {
-    const ai2 = a[i] ?? 0;
-    const bi2 = b2[i] ?? 0;
-    if (bi2 > ai2)
-      return true;
-    if (bi2 < ai2)
-      return false;
-  }
-  return false;
-}
-async function checkForElectronUpdate(currentVersion) {
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS)
-    return cached;
-  const url = `https://api.github.com/repos/${REPO_OWNER2}/${REPO_NAME2}/releases/latest`;
+async function checkForElectronUpdate(currentVersion, includePrereleases = false) {
+  const prior = cacheSlot(includePrereleases);
+  if (prior && Date.now() - prior.fetchedAt < CACHE_TTL_MS)
+    return prior;
+  const url = includePrereleases ? `https://api.github.com/repos/${REPO_OWNER2}/${REPO_NAME2}/releases?per_page=30` : `https://api.github.com/repos/${REPO_OWNER2}/${REPO_NAME2}/releases/latest`;
   try {
     const res = await fetch(url, {
       headers: { Accept: "application/vnd.github+json" },
       signal: AbortSignal.timeout(TIMEOUT_MS)
     });
     if (!res.ok) {
-      if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
-        console.debug("[update-check] Cached result is older than 7 days and fresh check failed (HTTP " + res.status + "); suppressing stale update claim");
-        cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `HTTP ${res.status} (stale cache suppressed)`, fetchedAt: Date.now() };
-        return cached;
-      }
-      cached = {
+      return suppressOrError(includePrereleases, currentVersion, `HTTP ${res.status}`);
+    }
+    if (includePrereleases) {
+      const releases = await res.json();
+      const candidate = Array.isArray(releases) ? selectPrereleaseCandidate(currentVersion, releases) : null;
+      return setCacheSlot(includePrereleases, {
         currentVersion,
-        latestVersion: null,
-        latestUrl: null,
-        updateAvailable: false,
-        error: `HTTP ${res.status}`,
+        latestVersion: candidate ? normalizeVersion(candidate.tag) : null,
+        latestUrl: candidate?.url ?? null,
+        updateAvailable: !!candidate,
+        isPrerelease: candidate?.prerelease ?? false,
         fetchedAt: Date.now()
-      };
-      return cached;
+      });
     }
     const data = await res.json();
     const tag = data.tag_name ?? "";
-    const latestVersion = tag.replace(/^v/, "");
+    const latestVersion = normalizeVersion(tag);
     const updateAvailable = latestVersion ? isNewerVersion(currentVersion, latestVersion) : false;
-    cached = {
+    return setCacheSlot(includePrereleases, {
       currentVersion,
       latestVersion: latestVersion || null,
       latestUrl: data.html_url ?? null,
       updateAvailable,
+      isPrerelease: false,
       fetchedAt: Date.now()
-    };
-    return cached;
+    });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
-      console.debug("[update-check] Cached result is older than 7 days and fresh check failed (" + errMsg + "); suppressing stale update claim");
-      cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `${errMsg} (stale cache suppressed)`, fetchedAt: Date.now() };
-      return cached;
-    }
-    cached = {
-      currentVersion,
-      latestVersion: null,
-      latestUrl: null,
-      updateAvailable: false,
-      error: errMsg,
-      fetchedAt: Date.now()
-    };
-    return cached;
+    return suppressOrError(includePrereleases, currentVersion, errMsg);
   }
 }
 function getCachedUpdateInfo() {
-  return cached;
+  if (cachedStable && cachedPrerelease) {
+    return cachedPrerelease.fetchedAt >= cachedStable.fetchedAt ? cachedPrerelease : cachedStable;
+  }
+  return cachedPrerelease ?? cachedStable;
+}
+
+// src/settings.ts
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "node:fs";
+import { join as join3, dirname as dirname3 } from "node:path";
+var DEFAULT_SETTINGS = {
+  checkPrerelease: false
+};
+var SETTINGS_FILENAME = "electron-settings.json";
+function settingsPath(dataDir) {
+  return join3(dataDir, SETTINGS_FILENAME);
+}
+function loadSettings(dataDir) {
+  try {
+    const raw = readFileSync4(settingsPath(dataDir), "utf-8");
+    const parsed = JSON.parse(raw);
+    return {
+      checkPrerelease: typeof parsed.checkPrerelease === "boolean" ? parsed.checkPrerelease : DEFAULT_SETTINGS.checkPrerelease
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+function saveSettings(dataDir, patch) {
+  const next = { ...loadSettings(dataDir), ...patch };
+  try {
+    const file = settingsPath(dataDir);
+    mkdirSync4(dirname3(file), { recursive: true });
+    writeFileSync3(file, JSON.stringify(next, null, 2) + `
+`, "utf-8");
+  } catch (err) {
+    console.warn("Failed to persist desktop settings (non-fatal):", err instanceof Error ? err.message : String(err));
+  }
+  return next;
 }
 
 // src/local-opencode.ts
 import {
-  mkdirSync as mkdirSync4,
-  writeFileSync as writeFileSync3,
-  readFileSync as readFileSync4,
+  mkdirSync as mkdirSync5,
+  writeFileSync as writeFileSync4,
+  readFileSync as readFileSync5,
   existsSync as existsSync4,
   unlinkSync,
   chmodSync
 } from "node:fs";
-import { join as join3 } from "node:path";
+import { join as join4 } from "node:path";
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { spawn as spawn2, spawnSync } from "node:child_process";
 var USERNAME = "openpalm";
 var STOP_GRACE_MS = 5000;
 function runtimePath(dataDir) {
-  return join3(dataDir, "local-opencode.runtime.json");
+  return join4(dataDir, "local-opencode.runtime.json");
 }
 function pidfilePath(dataDir) {
-  return join3(dataDir, "local-opencode.pid");
+  return join4(dataDir, "local-opencode.pid");
 }
 function unavailableSentinelPath(dataDir) {
-  return join3(dataDir, "local-opencode.unavailable");
+  return join4(dataDir, "local-opencode.unavailable");
 }
 function adminOpencodeHome(dataDir) {
-  return join3(dataDir, "admin-opencode-home");
+  return join4(dataDir, "admin-opencode-home");
 }
 function generatePassword() {
   return randomBytes2(32).toString("base64url");
@@ -11500,15 +11566,15 @@ function isPidAlive(pid) {
 }
 function stageAdminHome(dataDir, pluginPath) {
   const home = adminOpencodeHome(dataDir);
-  const configDir = join3(home, ".config", "opencode");
-  const shareDir = join3(home, ".local", "share", "opencode");
-  const ocStateDir = join3(home, ".local", "state", "opencode");
-  mkdirSync4(configDir, { recursive: true });
-  mkdirSync4(shareDir, { recursive: true });
-  mkdirSync4(ocStateDir, { recursive: true });
-  const configPath = join3(configDir, "opencode.json");
+  const configDir = join4(home, ".config", "opencode");
+  const shareDir = join4(home, ".local", "share", "opencode");
+  const ocStateDir = join4(home, ".local", "state", "opencode");
+  mkdirSync5(configDir, { recursive: true });
+  mkdirSync5(shareDir, { recursive: true });
+  mkdirSync5(ocStateDir, { recursive: true });
+  const configPath = join4(configDir, "opencode.json");
   if (!existsSync4(configPath)) {
-    writeFileSync3(configPath, JSON.stringify({
+    writeFileSync4(configPath, JSON.stringify({
       $schema: "https://opencode.ai/config.json",
       plugin: [pluginPath]
     }, null, 2), { encoding: "utf-8" });
@@ -11517,16 +11583,16 @@ function stageAdminHome(dataDir, pluginPath) {
 }
 function writeRuntimeFile(dataDir, data) {
   const path = runtimePath(dataDir);
-  mkdirSync4(dataDir, { recursive: true });
-  writeFileSync3(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
+  mkdirSync5(dataDir, { recursive: true });
+  writeFileSync4(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
   } catch {}
 }
 function writePidFile(dataDir, pid) {
   const path = pidfilePath(dataDir);
-  mkdirSync4(dataDir, { recursive: true });
-  writeFileSync3(path, `${pid}
+  mkdirSync5(dataDir, { recursive: true });
+  writeFileSync4(path, `${pid}
 `, { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
@@ -11537,7 +11603,7 @@ function readPidFile(dataDir) {
   if (!existsSync4(path))
     return null;
   try {
-    const raw = readFileSync4(path, "utf-8").trim();
+    const raw = readFileSync5(path, "utf-8").trim();
     const pid = Number.parseInt(raw, 10);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
@@ -11587,13 +11653,13 @@ function failUnavailable(dataDir, err) {
   const reason = looksMissing ? "opencode binary not on PATH" : `opencode spawn failed: ${msg}`;
   console.warn(`[local-opencode] ${reason}. Local admin OpenCode unavailable; remote endpoints still work.`);
   try {
-    writeFileSync3(unavailableSentinelPath(dataDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
+    writeFileSync4(unavailableSentinelPath(dataDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
   } catch {}
   return null;
 }
 async function startLocalOpenCode(opts) {
   const { dataDir, pluginPath } = opts;
-  mkdirSync4(dataDir, { recursive: true });
+  mkdirSync5(dataDir, { recursive: true });
   sweepStalePid(dataDir);
   const password = generatePassword();
   const { home } = stageAdminHome(dataDir, pluginPath);
@@ -11686,7 +11752,7 @@ if (!globalThis.Bun) {
   globalThis.Bun = { env: process.env };
 }
 var __filename2 = fileURLToPath2(import.meta.url);
-var __dirname2 = dirname3(__filename2);
+var __dirname2 = dirname4(__filename2);
 function augmentPathForGuiLaunch() {
   if (process.platform !== "darwin")
     return;
@@ -11695,7 +11761,7 @@ function augmentPathForGuiLaunch() {
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
     "/usr/local/bin",
-    home ? join4(home, ".nvm", "current", "bin") : ""
+    home ? join5(home, ".nvm", "current", "bin") : ""
   ].filter(Boolean);
   const current = (process.env.PATH ?? "").split(":").filter(Boolean);
   const missing = candidates.filter((dir) => !current.includes(dir));
@@ -11706,14 +11772,14 @@ function augmentPathForGuiLaunch() {
 augmentPathForGuiLaunch();
 var logStream = null;
 function logFilePath() {
-  return join4(app.getPath("logs"), "main.log");
+  return join5(app.getPath("logs"), "main.log");
 }
 function initFileLogger() {
   if (logStream)
     return;
   try {
     const logsDir = app.getPath("logs");
-    mkdirSync5(logsDir, { recursive: true });
+    mkdirSync6(logsDir, { recursive: true });
     logStream = createWriteStream(logFilePath(), { flags: "a" });
     const tee = (orig, level) => {
       return (...args) => {
@@ -11736,10 +11802,10 @@ function writeChildLog(text) {
   } catch {}
 }
 function resolveAdminToolsPluginPath() {
-  const packed = join4(process.resourcesPath ?? "", "admin-tools", "index.js");
+  const packed = join5(process.resourcesPath ?? "", "admin-tools", "index.js");
   if (existsSync5(packed))
     return packed;
-  const dev = join4(__dirname2, "..", "admin-tools", "dist", "index.js");
+  const dev = join5(__dirname2, "..", "admin-tools", "dist", "index.js");
   if (existsSync5(dev))
     return dev;
   return "@openpalm/admin-tools-plugin";
@@ -11759,6 +11825,7 @@ var trayIcon = null;
 var trayRecordingIcons = [];
 var trayAnimationTimer = null;
 var trayAnimationFrame = 0;
+var checkPrereleaseUpdates = false;
 var STDERR_RING_SIZE = 200;
 var stderrRing = [];
 function appendStderrLine(line) {
@@ -11774,13 +11841,13 @@ function resolveAssistantUrl(homeDir) {
   const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
   if (userOverride)
     return userOverride;
-  const stackEnv = parseEnvFile(join4(homeDir, "knowledge", "env", "stack.env"));
+  const stackEnv = parseEnvFile(join5(homeDir, "knowledge", "env", "stack.env"));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || "127.0.0.1";
   const port = stackEnv.OP_ASSISTANT_PORT || "3800";
   return `http://${bind}:${port}`;
 }
 function buildUIServerEnv(homeDir, port, update) {
-  const stackEnv = parseEnvFile(join4(homeDir, "knowledge", "env", "stack.env"));
+  const stackEnv = parseEnvFile(join5(homeDir, "knowledge", "env", "stack.env"));
   const stackForUi = {};
   const skippedKeys = new Set([
     "OP_HOME",
@@ -11806,7 +11873,7 @@ function buildUIServerEnv(homeDir, port, update) {
     OP_HARNESS_CONTRACT_VERSION: String(HARNESS_CONTRACT_VERSION),
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
-  const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");
+  const skeletonDir = join5(process.resourcesPath ?? "", "openpalm-skeleton");
   if (existsSync5(skeletonDir)) {
     env.OPENPALM_SKELETON_DIR = skeletonDir;
   }
@@ -11818,7 +11885,7 @@ function buildUIServerEnv(homeDir, port, update) {
   return env;
 }
 function resolveAssetPath(fileName) {
-  const assetPath = join4(__dirname2, "..", "assets", fileName);
+  const assetPath = join5(__dirname2, "..", "assets", fileName);
   return existsSync5(assetPath) ? assetPath : null;
 }
 function createTrayIconVariant(icon, alpha = 1) {
@@ -11876,7 +11943,7 @@ function setTrayMicRecording(recording) {
 async function killStaleUIServer(pidFile) {
   let pid = null;
   try {
-    const raw = readFileSync5(pidFile, "utf-8").trim();
+    const raw = readFileSync6(pidFile, "utf-8").trim();
     const n = Number.parseInt(raw, 10);
     if (Number.isFinite(n) && n > 0)
       pid = n;
@@ -11914,7 +11981,7 @@ async function startUIServer() {
   const dataDir = resolveDataDir();
   resolveConfigDir();
   ensureHomeDirs();
-  const skeletonDir = join4(process.resourcesPath ?? "", "openpalm-skeleton");
+  const skeletonDir = join5(process.resourcesPath ?? "", "openpalm-skeleton");
   if (existsSync5(skeletonDir)) {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
     try {
@@ -11925,7 +11992,8 @@ async function startUIServer() {
   }
   const appVersion = app.getVersion();
   const platformVersion = PLATFORM_VERSION;
-  const appUpdate = await checkForElectronUpdate(appVersion);
+  checkPrereleaseUpdates = loadSettings(dataDir).checkPrerelease;
+  const appUpdate = await checkForElectronUpdate(appVersion, checkPrereleaseUpdates);
   if (appUpdate.updateAvailable) {
     console.log(`App update available: v${appUpdate.latestVersion}`);
   } else if (appUpdate.error) {
@@ -11940,7 +12008,7 @@ async function startUIServer() {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
   let uiBuildDir = resolveUiBuildDir();
-  if (!existsSync5(join4(uiBuildDir, "index.js"))) {
+  if (!existsSync5(join5(uiBuildDir, "index.js"))) {
     console.log("UI build not found — seeding @openpalm/ui from npm...");
     try {
       await seedUiBuild(uiUpdateChannel(platformVersion), dataDir);
@@ -11951,7 +12019,7 @@ async function startUIServer() {
       return;
     }
   }
-  const uiPidFile = join4(dataDir, ".ui-server.pid");
+  const uiPidFile = join5(dataDir, ".ui-server.pid");
   await killStaleUIServer(uiPidFile);
   spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate);
   const ready = await waitForReady(UI_PORT);
@@ -11974,7 +12042,7 @@ ${logFilePath()}`
   }
 }
 function spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate) {
-  uiProcess = spawn3(process.execPath, [join4(uiBuildDir, "index.js")], {
+  uiProcess = spawn3(process.execPath, [join5(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
     env: {
       ...buildUIServerEnv(homeDir, UI_PORT, appUpdate),
@@ -11986,7 +12054,7 @@ function spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate) {
   });
   if (uiProcess.pid) {
     try {
-      writeFileSync4(uiPidFile, String(uiProcess.pid));
+      writeFileSync5(uiPidFile, String(uiProcess.pid));
     } catch {}
   }
   uiProcess.stdout?.on("data", (chunk) => {
@@ -12037,7 +12105,7 @@ async function restartUIServer() {
   try {
     const homeDir = resolveOpenPalmHome();
     const dataDir = resolveDataDir();
-    const uiPidFile = join4(dataDir, ".ui-server.pid");
+    const uiPidFile = join5(dataDir, ".ui-server.pid");
     const prev = uiProcess;
     uiProcess = null;
     if (prev?.pid) {
@@ -12046,7 +12114,7 @@ async function restartUIServer() {
       killProcessTree(prev.pid, "SIGKILL");
     }
     const uiBuildDir = resolveUiBuildDir();
-    if (!existsSync5(join4(uiBuildDir, "index.js"))) {
+    if (!existsSync5(join5(uiBuildDir, "index.js"))) {
       console.error("UI restart aborted: build not found at", uiBuildDir);
       return false;
     }
@@ -12075,7 +12143,7 @@ function stopUIServer() {
     killProcessTree(pid, "SIGKILL");
   }
   try {
-    rmSync2(join4(resolveDataDir(), ".ui-server.pid"), { force: true });
+    rmSync2(join5(resolveDataDir(), ".ui-server.pid"), { force: true });
   } catch {}
 }
 function createSplashWindow() {
@@ -12153,7 +12221,7 @@ function showDockerErrorScreen(result) {
       show: true,
       icon,
       backgroundColor: "#0f172a",
-      webPreferences: { nodeIntegration: false, contextIsolation: true, preload: join4(__dirname2, "preload.cjs") }
+      webPreferences: { nodeIntegration: false, contextIsolation: true, preload: join5(__dirname2, "preload.cjs") }
     });
     splashWindow.on("closed", () => {
       splashWindow = null;
@@ -12227,7 +12295,7 @@ async function createWindow() {
     show: false,
     icon,
     webPreferences: {
-      preload: join4(__dirname2, "preload.cjs"),
+      preload: join5(__dirname2, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false
@@ -12343,6 +12411,22 @@ function setLaunchOnLogin(enabled, platform = process.platform) {
   app.setLoginItemSettings({ openAtLogin: enabled });
   return getLaunchOnLoginStatus(platform);
 }
+async function setCheckPrerelease(enabled) {
+  checkPrereleaseUpdates = enabled;
+  const dataDir = resolveDataDir();
+  saveSettings(dataDir, { checkPrerelease: enabled });
+  try {
+    const appVersion = app.getVersion();
+    const update = await checkForElectronUpdate(appVersion, enabled);
+    rebuildTrayMenu();
+    if (enabled && update.updateAvailable && update.latestVersion) {
+      const kind = update.isPrerelease ? "prerelease" : "version";
+      showNotification(`OpenPalm ${kind} available`, `OpenPalm ${update.latestVersion} is available to download.`);
+    }
+  } catch (err) {
+    console.warn("Prerelease update re-check failed (non-fatal):", err instanceof Error ? err.message : String(err));
+  }
+}
 function createTray() {
   const iconPath = resolveAssetPath("tray-icon.png");
   if (!iconPath) {
@@ -12353,7 +12437,15 @@ function createTray() {
     trayIcon.setTemplateImage(true);
   }
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon, alpha));
-  tray = new Tray(trayIcon);
+  if (!tray) {
+    tray = new Tray(trayIcon);
+  }
+  rebuildTrayMenu();
+  tray.setToolTip("OpenPalm");
+}
+function rebuildTrayMenu() {
+  if (!tray)
+    return;
   const loginSettings = getLaunchOnLoginStatus();
   const contextMenu = Menu.buildFromTemplate([
     { label: "Open OpenPalm", click: showWindow },
@@ -12370,6 +12462,14 @@ function createTray() {
         setLaunchOnLogin(menuItem.checked);
       }
     },
+    {
+      label: "Check for prerelease versions",
+      type: "checkbox",
+      checked: checkPrereleaseUpdates,
+      click: (menuItem) => {
+        setCheckPrerelease(menuItem.checked);
+      }
+    },
     { type: "separator" },
     {
       label: "Quit",
@@ -12379,7 +12479,6 @@ function createTray() {
       }
     }
   ]);
-  tray.setToolTip("OpenPalm");
   tray.setContextMenu(contextMenu);
 }
 app.whenReady().then(async () => {
