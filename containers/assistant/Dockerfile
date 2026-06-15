@@ -9,6 +9,23 @@
 # between this file and containers/guardian/Dockerfile in lockstep.
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ── embedder model bundle ──
+# akm's default local embedder (Xenova/bge-small-en-v1.5, 384-dim) ships
+# pre-baked from the prebuilt `openpalm/assistant-models` image
+# (containers/assistant/Dockerfile.models, published out-of-band by
+# publish-assistant-models.yml) — NOT downloaded here. This means an assistant
+# build never touches HuggingFace for the model (no transformers.js `get_files`
+# network flakes — see issue #505) and the ~128 MB download happens once per
+# model bump instead of on every assistant build. The model is platform-agnostic
+# data, so we pull the bundle for the BUILD host arch (`--platform=$BUILDPLATFORM`,
+# amd64 on CI) and COPY --from it into the runtime image.
+#
+# Bumping the model: publish a new openpalm/assistant-models tag (see
+# Dockerfile.models) and update this default. Operators/CI can override via
+# --build-arg.
+ARG ASSISTANT_MODELS_IMAGE=openpalm/assistant-models:v1
+FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
+
 FROM node:22-trixie-slim
 
 ARG OPENCODE_VERSION=1.17.3
@@ -87,13 +104,25 @@ ENV BUN_INSTALL=
 # the box with NO embedding configuration and NO runtime network. When
 # config/akm/config.json has no embedding endpoint (the default), akm self-embeds
 # in-process via @huggingface/transformers (default model Xenova/bge-small-en-v1.5,
-# 384-dim) — see akm-cli dist/llm/embedders/local.js. transformers.js caches into
-# its package-local .cache (an image path, NOT the bind-mounted akm cache), so the
-# model ships baked into the image. Running one real inference here also FAILS THE
-# BUILD if the optional @huggingface/transformers / onnxruntime native binary
-# can't load on this arch — guaranteeing no silent fallback to keyword-only search.
+# 384-dim) — see akm-cli dist/llm/embedders/local.js. transformers.js reads from its
+# package-local .cache (an image path, NOT the bind-mounted akm cache), so the model
+# ships baked into the image.
+#
+# The model artifacts are COPY'd from the prebuilt openpalm/assistant-models bundle
+# (see modelfetch stage) into the EXACT path transformers.js reads — the package's
+# .cache dir — instead of being downloaded here. This removes the flaky HuggingFace
+# `get_files` network call that broke 2/2 releases (issue #505). The bundle already
+# fails its own build if the cache is empty, so no silent empty bundle reaches here.
+#
+# We STILL run one real inference at assistant-build time, but now OFFLINE against
+# the copied cache (env.allowRemoteModels=false — transformers.js v4 does NOT honor
+# HF_HUB_OFFLINE). This preserves the fail-closed guarantee: the build FAILS if the
+# @huggingface/transformers / onnxruntime native binary can't load on this arch or
+# the copied cache is incomplete — no silent fallback to keyword-only search, and
+# no network access.
+COPY --from=modelfetch /opt/embedder-cache/ /usr/local/install/global/node_modules/@huggingface/transformers/.cache/
 RUN cd /usr/local/install/global \
-    && node --input-type=module -e "import { pipeline } from '@huggingface/transformers'; const embed = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5'); const out = await embed('warmup', { pooling: 'mean', normalize: true }); if (!out?.data?.length) { console.error('local embedder produced no vector'); process.exit(1); } console.log('akm local embedder OK (' + out.data.length + ' dims)');" \
+    && node --input-type=module -e "import { env, pipeline } from '@huggingface/transformers'; env.allowRemoteModels = false; const embed = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5'); const out = await embed('warmup', { pooling: 'mean', normalize: true }); if (!out?.data?.length) { console.error('local embedder produced no vector'); process.exit(1); } console.log('akm local embedder OK offline (' + out.data.length + ' dims)');" \
     && chmod -R a+rX /usr/local/install/global/node_modules/@huggingface/transformers/.cache
 
 # Rename the base "node" user (UID 1000) to "opencode" for clarity.

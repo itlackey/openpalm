@@ -341,6 +341,15 @@ jobs:
   # ── Image layer (portals: guardian+portal; assistant: assistant). Matrix is
   # computed by the plan job. Builds happen even on dry_run (push gated off,
   # amd64-only) to validate the Dockerfiles. ────────────────────────────────────
+  #
+  # BOOTSTRAP: the assistant build COPY --from's its baked embedder model from
+  # `openpalm/assistant-models:v1` (default in containers/assistant/Dockerfile,
+  # built out-of-band by publish-assistant-models.yml — same pattern as
+  # openpalm/voice-models). That bundle must be PUBLISHED ONCE before the first
+  # assistant build so the COPY --from can pull it; the assistant build itself
+  # passes NO model build-arg and never fetches the model from HuggingFace (issue
+  # #505). Bumping the model = publish a new assistant-models tag, then update the
+  # ASSISTANT_MODELS_IMAGE default in the Dockerfile.
   images:
     name: Docker image (${{ matrix.image }})
     needs: [plan, bump]
