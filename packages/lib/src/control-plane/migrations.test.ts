@@ -582,3 +582,55 @@ describe('release migration v0.12.0-rc.1: channel_lan → portal_net in custom.c
     expect(readFileSync(`${customPath}.pre-portal-rename.bak`, 'utf-8')).toBe('PRIOR-BACKUP\n');
   });
 });
+
+describe('layout migration 1 → 2: drop inert pre-0.12.0 system files', () => {
+  function seedV1(): void {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    mkdirSync(join(home, 'config', 'stack'), { recursive: true });
+    mkdirSync(join(home, 'data'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_LAYOUT_VERSION=1\nOP_IMAGE_TAG=v0.11.5\n');
+    // Inert SYSTEM files — must be removed.
+    writeFileSync(join(home, 'config', 'stack', 'channels.compose.yml'), 'services: {}\n');
+    writeFileSync(join(home, 'config', 'stack', 'stack.yml'), 'version: 2\n');
+    // Managed + user files — must be KEPT.
+    writeFileSync(join(home, 'config', 'stack', 'core.compose.yml'), 'services:\n  guardian: {}\n');
+    writeFileSync(join(home, 'config', 'stack', 'custom.compose.yml'), 'services: {}\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'ssh-key-mine'), 'PRIVATE\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'), 'tok\n');
+  }
+
+  it('removes inert system files BACKUP-FIRST, keeps managed + user data, stamps v2', () => {
+    seedV1();
+    const report = ensureMigrated();
+
+    expect(report.migrated).toBe(true);
+    expect(report.from).toBe(1);
+    expect(report.to).toBe(2);
+    // A FULL OP_HOME backup is taken before anything is removed.
+    expect(report.backupDir).toBeTruthy();
+    expect(existsSync(report.backupDir!)).toBe(true);
+    // ...and the removed file is recoverable from that backup.
+    expect(existsSync(join(report.backupDir!, 'config', 'stack', 'channels.compose.yml'))).toBe(true);
+
+    // Inert system files are gone.
+    expect(existsSync(join(home, 'config', 'stack', 'channels.compose.yml'))).toBe(false);
+    expect(existsSync(join(home, 'config', 'stack', 'stack.yml'))).toBe(false);
+    // Managed + user data preserved — never deleted.
+    expect(existsSync(join(home, 'config', 'stack', 'core.compose.yml'))).toBe(true);
+    expect(existsSync(join(home, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'ssh-key-mine'))).toBe(true);
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'))).toBe(true);
+    // Layout version committed.
+    expect(readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_LAYOUT_VERSION=2');
+  });
+
+  it('is a no-op when already at layout v2 (idempotent)', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'config', 'stack'), { recursive: true });
+    mkdirSync(join(home, 'data'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_LAYOUT_VERSION=2\nOP_RELEASE_VERSION=v0.12.0-rc.4\n');
+    const report = ensureMigrated();
+    expect(report.migrated).toBe(false);
+  });
+});

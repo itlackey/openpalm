@@ -12,8 +12,11 @@
  *   - Otherwise: acquire the install lock, take a FULL-HOME backup first, and
  *     abort the whole upgrade if the backup fails (never migrate without a
  *     verified safety copy).
- *   - Migrations are COPY-ONLY / additive (never delete the old layout), so a
- *     mid-run failure leaves the home fully recoverable.
+ *   - Migrations are additive for USER data (never delete/overwrite user files;
+ *     relocate, don't drop). They MAY remove SYSTEM-managed inert files (e.g. a
+ *     compose overlay the control plane no longer loads) via an explicit
+ *     allowlist — but only because the FULL-HOME backup above runs first, so the
+ *     home stays fully recoverable. Never a heuristic sweep, never user data.
  *   - The OP_LAYOUT_VERSION bump is the LAST step (the commit point); a crash
  *     before it just re-runs next time (idempotent).
  *   - On failure, throw MigrationError carrying the backup path + recovery
@@ -21,7 +24,7 @@
  */
 import {
   existsSync, mkdirSync, readFileSync, writeFileSync,
-  readdirSync, statSync, chmodSync, cpSync, copyFileSync, renameSync,
+  readdirSync, statSync, chmodSync, cpSync, copyFileSync, renameSync, rmSync,
 } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
@@ -34,7 +37,7 @@ import { compareComparableVersions, isComparableSemver } from './versioning.js';
 
 export const LAYOUT_VERSION_KEY = "OP_LAYOUT_VERSION";
 /** Bump when the on-disk layout changes and add a Migration to MIGRATIONS. */
-export const CURRENT_LAYOUT_VERSION = 1;
+export const CURRENT_LAYOUT_VERSION = 2;
 
 const ADDON_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
@@ -601,6 +604,36 @@ function readLegacyStackYmlAddons(ctx: MigrationCtx): string[] {
   return [];
 }
 
+// ── Migration 1 → 2: drop inert pre-0.12.0 SYSTEM files ───────────────────────
+
+/**
+ * SYSTEM-managed files the 0.12.0 control plane no longer materializes or reads.
+ * Removed so OP_HOME holds only the current managed asset set. This is an explicit
+ * ALLOWLIST of system files — NEVER user data, NEVER a heuristic sweep:
+ *   - config/stack/channels.compose.yml — renamed to portals.compose.yml in 0.12.0;
+ *     the control plane loads an explicit overlay list (not a glob), so it is inert.
+ *   - config/stack/stack.yml — the StackSpec was removed in 0.11.0 (addons live in
+ *     OP_ENABLED_ADDONS; the 0→1 migration already extracts any legacy addons[]).
+ * Removal is safe because the layout-migration path takes a FULL OP_HOME backup
+ * first and aborts if it fails (see ensureMigrated), so a stamped layout bump is
+ * always recoverable. User data is never removed; if a future inert path actually
+ * holds user data it must be MOVED to its proper location here, not deleted.
+ */
+const INERT_LAYOUT_V2_FILES: string[] = [
+  join("config", "stack", "channels.compose.yml"),
+  join("config", "stack", "stack.yml"),
+];
+
+function migrate1to2(ctx: MigrationCtx): void {
+  for (const rel of INERT_LAYOUT_V2_FILES) {
+    const full = join(ctx.homeDir, rel);
+    if (!existsSync(full)) continue;
+    if (ctx.dryRun) { ctx.log(`[dry-run] remove inert system file: ${rel}`); continue; }
+    rmSync(full, { force: true });
+    ctx.log(`removed inert pre-0.12.0 system file: ${rel}`);
+  }
+}
+
 const MIGRATIONS: Migration[] = [
   {
     from: 0,
@@ -613,6 +646,22 @@ const MIGRATIONS: Migration[] = [
       if (ctx.dryRun) return;
       if (!existsSync(stackEnvFile(ctx.stashDir))) {
         throw new Error("post-migration check failed: knowledge/env/stack.env is missing");
+      }
+    },
+  },
+  {
+    from: 1,
+    to: 2,
+    describe: "drop inert pre-0.12.0 system files (channels.compose.yml, stack.yml)",
+    apply: migrate1to2,
+    verify(ctx) {
+      // Backup-first removal (the layout path backed up the whole home); the inert
+      // system files must be gone after a real run.
+      if (ctx.dryRun) return;
+      for (const rel of INERT_LAYOUT_V2_FILES) {
+        if (existsSync(join(ctx.homeDir, rel))) {
+          throw new Error(`post-migration check failed: inert ${rel} still present`);
+        }
       }
     },
   },
