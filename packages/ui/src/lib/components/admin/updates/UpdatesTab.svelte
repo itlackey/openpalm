@@ -31,8 +31,15 @@
     selectedUiTag: string;
     uiDownloadLoading: boolean;
     uiDownloadReady: boolean;
+    /** Supervisor is respawning the UI server against the new build; the page
+     *  will auto-reload once it's back up (design §6.2). */
+    uiDownloadRestarting: boolean;
     releases: ReleaseEntry[];
     releasesLoading: boolean;
+    /** Running control-plane version (PLATFORM_VERSION). The dropdown is already
+     *  filtered to tags ≤ this server-side (#492); used to label "you are on X"
+     *  and to keep the version picker from offering an unreachable newer tag. */
+    platformVersion?: string;
     onSetImageTag: (tag: string) => void;
     onSelectedImageTagChange: (tag: string) => void;
     onUpgradeStack: () => void;
@@ -59,8 +66,10 @@
     selectedUiTag,
     uiDownloadLoading,
     uiDownloadReady,
+    uiDownloadRestarting,
     releases,
     releasesLoading,
+    platformVersion = '',
     onSetImageTag,
     onSelectedImageTagChange,
     onUpgradeStack,
@@ -269,7 +278,11 @@
             {/if}
           </span>
           {#if uiStatus === 'update'}
-            {#if uiDownloadReady}
+            {#if uiDownloadRestarting}
+              <span class="version-action-note" role="status">
+                <Spinner /> Admin interface updated — reconnecting…
+              </span>
+            {:else if uiDownloadReady}
               <span class="version-action-note">
                 Downloaded.
                 {#if inElectron}
@@ -300,6 +313,12 @@
 
         <div class="version-section">
           <label class="version-label" for="stack-version-select">Install a specific version</label>
+          {#if platformVersion}
+            <p class="version-running-note">
+              You're running OpenPalm {platformVersion}. Newer versions appear here
+              only after you update the app.
+            </p>
+          {/if}
           <div class="version-input-row">
             {#if releasesLoading}
               <div class="version-select-skeleton"></div>
@@ -390,7 +409,11 @@
                 {/if}
               </button>
             </div>
-            {#if uiDownloadReady}
+            {#if uiDownloadRestarting}
+              <div class="version-restart-prompt" role="status">
+                <Spinner /> Admin interface updated — reconnecting…
+              </div>
+            {:else if uiDownloadReady}
               <div class="version-restart-prompt">
                 Admin interface updated.
                 <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart app</button>

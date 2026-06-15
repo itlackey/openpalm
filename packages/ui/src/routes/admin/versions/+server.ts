@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { json } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import { requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
-import { parseEnvFile } from "@openpalm/lib";
+import { parseEnvFile, PLATFORM_VERSION, formatForDisplay } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = (event) => {
@@ -26,6 +26,18 @@ export const GET: RequestHandler = (event) => {
   const electronLatestVersion = process.env.OP_ELECTRON_LATEST_VERSION ?? null;
   const electronLatestUrl = process.env.OP_ELECTRON_LATEST_URL ?? null;
 
+  // Two INDEPENDENT version lines (design §5.2 / §6.6):
+  //   • harnessVersion  — the native shell. A bump here is the ONLY thing that
+  //     forces an app re-download; surfaced via OP_HARNESS_CONTRACT_VERSION.
+  //   • platformVersion — the running control plane (@openpalm/lib, which travels
+  //     with the data/ui build). It self-updates over npm with NO re-download.
+  // Reporting them separately lets the UI tell the user "platform updated
+  // automatically; an app re-download is needed only for the harness."
+  const harnessContractVersion = process.env.OP_HARNESS_CONTRACT_VERSION
+    ? Number(process.env.OP_HARNESS_CONTRACT_VERSION)
+    : null;
+  const platformVersion = formatForDisplay(PLATFORM_VERSION);
+
   return json({
     imageTag,
     inElectron,
@@ -33,5 +45,11 @@ export const GET: RequestHandler = (event) => {
     electronLatestVersion,
     electronLatestUrl,
     electronUpdateAvailable: !!electronLatestVersion,
+    // Native harness line (re-download gate). Independent of platformVersion.
+    harnessVersion: electronVersion,
+    harnessContractVersion,
+    harnessUpdateAvailable: !!electronLatestVersion,
+    // Control-plane line (self-updates in place).
+    platformVersion,
   });
 };

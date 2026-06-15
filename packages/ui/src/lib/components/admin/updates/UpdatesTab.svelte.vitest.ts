@@ -23,6 +23,7 @@ const defaultProps = {
   selectedUiTag: '',
   uiDownloadLoading: false,
   uiDownloadReady: false,
+  uiDownloadRestarting: false,
   releases: [],
   releasesLoading: false,
   onSetImageTag: vi.fn(),

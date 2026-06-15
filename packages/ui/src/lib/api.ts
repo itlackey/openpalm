@@ -178,11 +178,11 @@ export interface ReleaseEntry {
   publishedAt: string;
 }
 
-export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; error?: string }> {
+export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; platformVersion?: string; error?: string }> {
   try {
     const res = await request('GET', '/admin/versions/releases');
     if (!res.ok) return { releases: [] };
-    return (await res.json()) as { releases: ReleaseEntry[]; error?: string };
+    return (await res.json()) as { releases: ReleaseEntry[]; platformVersion?: string; error?: string };
   } catch {
     return { releases: [] };
   }
@@ -215,9 +215,9 @@ export async function setStackVersion(tag: string): Promise<{ ok: boolean; image
   return (await res.json()) as { ok: boolean; imageTag: string; restarted: string[] };
 }
 
-export async function downloadUiVersion(tag: string): Promise<{ ok: boolean; tag: string }> {
+export async function downloadUiVersion(tag: string): Promise<{ ok: boolean; tag: string; restarting: boolean }> {
   const res = await requireOk(await request('POST', '/admin/ui-version', { tag }));
-  return (await res.json()) as { ok: boolean; tag: string };
+  return (await res.json()) as { ok: boolean; tag: string; restarting: boolean };
 }
 
 // ── Automations ─────────────────────────────────────────────────────────

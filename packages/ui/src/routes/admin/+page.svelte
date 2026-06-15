@@ -75,10 +75,15 @@
   let tagChangeLoading = $state(false);
   let uiDownloadLoading = $state(false);
   let uiDownloadReady = $state(false);
+  let uiDownloadRestarting = $state(false);
   let selectedImageTag = $state('latest');
   let selectedUiTag = $state('');
   let releases = $state<ReleaseEntry[]>([]);
   let releasesLoading = $state(false);
+  // Running control-plane version (PLATFORM_VERSION) reported by the releases
+  // endpoint. The stack-version dropdown is already filtered to tags ≤ this
+  // server-side (#492); the label tells the user which version they're on.
+  let platformVersion = $state('');
   // @openpalm/ui npm versions — the UI is independently versioned, so its
   // installable builds come from npm, not GitHub platform releases.
   let uiVersions = $state<UiVersionEntry[]>([]);
@@ -246,6 +251,7 @@
     try {
       const [releaseData, uiData] = await Promise.all([fetchReleases(), fetchUiVersions()]);
       releases = releaseData.releases;
+      if (releaseData.platformVersion) platformVersion = releaseData.platformVersion;
       uiVersions = uiData.versions;
       // Default the UI-build selection to the version on this app's channel
       // (next/latest dist-tag), falling back to the newest published version.
@@ -342,16 +348,47 @@
     if (uiDownloadLoading) return;
     uiDownloadLoading = true;
     uiDownloadReady = false;
+    uiDownloadRestarting = false;
     try {
-      await downloadUiVersion(tag);
+      const result = await downloadUiVersion(tag);
       selectedUiTag = tag;
       uiDownloadReady = true;
+      if (result.restarting) {
+        // The supervisor (CLI `ui serve` / Electron harness) is respawning the
+        // UI server against the new build. It comes back up on the same port —
+        // poll /health and reload once it's ready so the user lands on the new UI.
+        uiDownloadRestarting = true;
+        void waitForUiServerAndReload();
+      }
     } catch (e) {
       const err = e as { message?: string };
       operationResult = `Failed to download UI version: ${err.message ?? e}`;
       operationResultType = 'error';
     }
     uiDownloadLoading = false;
+  }
+
+  // Poll the UI server's /health while the supervisor restarts it, then reload
+  // the page so the freshly downloaded control plane serves it (design §6.2).
+  async function waitForUiServerAndReload(): Promise<void> {
+    const deadline = Date.now() + 30_000;
+    // Give the supervisor a moment to tear the old child down first, so we don't
+    // immediately see the still-up old server and reload onto it.
+    await new Promise((r) => setTimeout(r, 1500));
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch('/health', { signal: AbortSignal.timeout(1000) });
+        if (res.ok || res.status === 401) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // server is mid-restart; keep polling
+      }
+      await new Promise((r) => setTimeout(r, 750));
+    }
+    // Restart took too long — fall back to the manual prompt.
+    uiDownloadRestarting = false;
   }
 
   function handleRestartApp(): void {
@@ -484,8 +521,10 @@
         {selectedUiTag}
         {uiDownloadLoading}
         {uiDownloadReady}
+        {uiDownloadRestarting}
         {releases}
         {releasesLoading}
+        {platformVersion}
         onSetImageTag={handleSetImageTag}
         onSelectedImageTagChange={(t) => { selectedImageTag = t; }}
         onUpgradeStack={handleUpgradeStack}
