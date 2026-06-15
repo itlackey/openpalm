@@ -7,9 +7,16 @@ export default defineCommand({
     name: 'update',
     description: 'Refresh stack assets, pull latest images, and recreate containers',
   },
-  async run() {
+  args: {
+    pre: {
+      type: 'boolean',
+      description: 'Opt in to prerelease (rc/beta) versions. By default a stable install stays on stable.',
+      default: false,
+    },
+  },
+  async run({ args }) {
     try {
-      await runUpgradeAction();
+      await runUpgradeAction({ allowPrerelease: !!args.pre });
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -17,7 +24,7 @@ export default defineCommand({
   },
 });
 
-export async function runUpgradeAction(): Promise<void> {
+export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {}): Promise<void> {
   // Auto-migrate the on-disk layout BEFORE validating state — createState()
   // assumes the current layout, so a 0.10.x home must be migrated first. This
   // backs up first and fails safe (no-ops on an already-current install).
@@ -38,8 +45,8 @@ export async function runUpgradeAction(): Promise<void> {
 
   const state = ensureValidState();
 
-  console.log('Upgrading stack...');
-  const result = await performUpgrade(state);
+  console.log(`Upgrading stack${opts.allowPrerelease ? ' (including prereleases)' : ''}...`);
+  const result = await performUpgrade(state, { allowPrerelease: opts.allowPrerelease });
   console.log(`Image tag: ${result.namespace}/*:${result.imageTag}`);
   if (result.assetsUpdated.length > 0) {
     console.log(`Assets updated: ${result.assetsUpdated.join(', ')}`);

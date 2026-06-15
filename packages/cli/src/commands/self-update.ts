@@ -3,12 +3,9 @@ import { chmod, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { defineCommand } from 'citty';
+import { formatForDocker } from '@openpalm/lib';
 
 const REPO = 'itlackey/openpalm';
-
-function normalizeVersion(version: string): string {
-  return version.startsWith('v') ? version : `v${version}`;
-}
 
 async function resolveLatestVersion(): Promise<string> {
   try {
@@ -130,7 +127,7 @@ export default defineCommand({
       throw new Error('Self-update requires the compiled OpenPalm binary. Reinstall with setup.sh --cli-only instead.');
     }
 
-    const version = args.version ? normalizeVersion(args.version) : await resolveLatestVersion();
+    const version = args.version ? formatForDocker(args.version) : await resolveLatestVersion();
     const artifact = resolveCliArtifactName();
     const executablePath = process.execPath;
     const tempBinary = await downloadVerifiedBinary(version, artifact);
