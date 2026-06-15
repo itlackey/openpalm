@@ -48,7 +48,7 @@ See [`docs/operations/release-management.md`](../operations/release-management.m
 
 Docker builds install dependencies without `--frozen-lockfile`:
 
-- **Guardian** and **channel** Dockerfiles use `bun install --production` after copying only the source files they need. They don't mount the root lock file because they only install a small subset of workspace dependencies.
+- **Guardian** and **portal** Dockerfiles use `bun install --production` after copying only the source files they need. They don't mount the root lock file because they only install a small subset of workspace dependencies.
 - **UI** is a host process (no Docker build). The SvelteKit app is built on the host via `bun run ui:build`; the `openpalm ui serve` command serves it.
 
 This is intentional. The lock file guards the development workflow (ensuring reproducible local installs and CI checks). Docker builds produce immutable images and are tested by CI's `docker compose config` validation.

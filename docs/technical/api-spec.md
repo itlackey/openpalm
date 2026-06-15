@@ -398,7 +398,7 @@ Automation task files live under `~/.openpalm/knowledge/tasks/` and are owned by
 
 ### `GET /admin/automations/catalog`
 
-Lists available automation tasks from `~/.openpalm/knowledge/tasks/`. Channel addons
+Lists available automation tasks from `~/.openpalm/knowledge/tasks/`. Portal addons
 are managed via `/admin/addons` and Compose profiles.
 
 Response:
@@ -417,7 +417,7 @@ when using build-time bundled stack assets.
 
 ### `POST /admin/automations/catalog/install`
 
-Install a registry automation. Channel addons are managed via
+Install a registry automation. Portal addons are managed via
 `POST /admin/addons/:name`.
 
 Body:
@@ -459,7 +459,7 @@ Error responses:
 
 ### `POST /admin/automations/catalog/uninstall`
 
-Uninstall a registry automation. Channel addons are managed via
+Uninstall a registry automation. Portal addons are managed via
 `POST /admin/addons/:name`.
 
 Body:

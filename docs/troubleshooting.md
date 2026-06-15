@@ -108,7 +108,7 @@ explicitly.
 
 ## 5. Assistant not responding
 
-**Symptoms:** channels accept requests, but no reply comes back.
+**Symptoms:** portals accept requests, but no reply comes back.
 
 **Fix:**
 

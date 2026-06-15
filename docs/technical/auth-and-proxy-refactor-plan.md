@@ -58,7 +58,7 @@ directly." We reversed that in v2. The load-bearing correction:
 
 4. **OpenCode upstream's "password in browser localStorage" pattern is not
    guidance for OpenPalm.** Upstream is a single-user desktop tool with no
-   server in the request path. OpenPalm is a multi-user, multi-host, channel-fronted
+   server in the request path. OpenPalm is a multi-user, multi-host, portal-fronted
    self-hosted platform with a SvelteKit server already on every request path.
    The broker is free here; it costs a lot upstream. Different threat model,
    different decision.
@@ -343,7 +343,7 @@ automations expect (`OP_ASSISTANT_PASSWORD`, fully scoped). Document the change.
 |---|---|
 | Chat conversations + tool invocations on the assistant container | `${OP_HOME}/data/assistant/.local/state/opencode/` (OpenCode native) |
 | Admin operations (compose, secrets, etc.) via local-OpenCode tools | `${OP_HOME}/data/admin-opencode/log/` (OpenCode native) |
-| Channel ingress (HMAC verify, replay detection, rate limit) | `${OP_HOME}/data/logs/guardian-audit.log` (preserved — guardian's own audit) |
+| Portal ingress (HMAC verify, replay detection, rate limit) | `${OP_HOME}/data/logs/guardian-audit.log` (preserved — guardian's own audit) |
 | UI login events (`op_session` issuance, logout) | Application stderr via `createLogger('admin.auth')` → captured by the host process logger (Electron's stderr pipe, journald in container mode). Not a separate jsonl. |
 | Endpoint CRUD, setup writes | Same — operator-initiated UI actions logged at `info` via `createLogger`. |
 
@@ -366,7 +366,7 @@ automations expect (`OP_ASSISTANT_PASSWORD`, fully scoped). Document the change.
 - The audit-related unit tests
 
 **For incident response:** operators consult OpenCode session logs (chat +
-tools), guardian-audit.log (channel ingress), and application stderr (login
+tools), guardian-audit.log (portal ingress), and application stderr (login
 events). Three sources, all with clear ownership. The previous "two
 parallel audits" (`admin-audit.jsonl` + OpenCode session logs) is gone.
 
@@ -676,7 +676,7 @@ OpenCode logs)**.
    (login, endpoint CRUD, setup writes) are user-initiated UI actions where
    the operator IS the actor — application-level stderr logging via the
    existing `createLogger` is sufficient. Guardian retains its own separate
-   `guardian-audit.log` for channel ingress — untouched.
+   `guardian-audit.log` for portal ingress — untouched.
 
 9. **CLI users (non-Electron) have no local OpenCode** — by design. Document it
    in the connection-switcher UI: "Local OpenCode is only available in the

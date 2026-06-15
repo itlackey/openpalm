@@ -37,7 +37,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM markdown task files in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
 - **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
 - **Portal adapters** (`portals/discord/`, `portals/slack/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
-- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains core, services, channels, and custom compose files. Enabled first-party addons are tracked in `~/.openpalm/knowledge/env/stack.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
+- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains core, services, portals, and custom compose files. Enabled first-party addons are tracked in `~/.openpalm/knowledge/env/stack.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
 
 ---
 
@@ -122,7 +122,7 @@ bun run dev:build
 # Dev stack (pull images)
 bun run dev:stack
 
-# Manual equivalent with channel overlay:
+# Manual equivalent with portal overlay:
 docker compose --project-directory . \
   -f .openpalm/config/stack/core.compose.yml \
   -f compose.dev.yml \
@@ -154,7 +154,7 @@ Read these before making significant changes. They are the authoritative sources
 ### Language & Runtime
 
 - **TypeScript** everywhere (`"strict": true`, no `any` for untrusted data)
-- **Bun** for guardian, channels, and the scheduler co-process; **Node/Vite** for admin (SvelteKit + `adapter-node`)
+- **Bun** for guardian, portals, and the scheduler co-process; **Node/Vite** for admin (SvelteKit + `adapter-node`)
 - All packages use `"type": "module"` (ES modules only)
 
 ### Imports
@@ -231,7 +231,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **Guardian-only ingress.** All portal traffic must enter through the guardian (`/oc/*` proxy, ownership checks, rate limiting).
 - **Assistant isolation.** Assistant has no Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
-- **Add a channel** by enabling its first-party addon name in `~/.openpalm/knowledge/env/stack.env` or adding a service block to `custom.compose.yml` (for custom channels) — no code changes.
+- **Add a portal** by enabling its first-party addon name in `~/.openpalm/knowledge/env/stack.env` or adding a service block to `custom.compose.yml` (for custom portals) — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
 - **Docker dependency resolution pattern.** Guardian and portal Dockerfiles install each service's own deps directly. UI is a host binary — no Docker build needed.
 
@@ -266,7 +266,7 @@ Before submitting any change:
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
 - [ ] No secrets leak through client bundles or logs
-- [ ] Docker builds follow the dependency resolution pattern (no symlink-based node_modules, channels-sdk deps installed after COPY)
+- [ ] Docker builds follow the dependency resolution pattern (no symlink-based node_modules, portal deps installed after COPY)
 - [ ] Control-plane logic lives in `packages/lib/`, not duplicated in CLI or UI
 
 ---

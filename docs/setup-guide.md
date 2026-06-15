@@ -42,7 +42,7 @@ Open the app. The setup wizard will:
 3. **Providers** — choose your AI provider (OpenAI, Anthropic, Ollama, LM Studio, etc.).
 4. **Models** — pick chat, embedding, and (optional) small model.
 5. **Voice** — TTS/STT settings.
-6. **Options** — channels (Discord, Slack), addons, image tag.
+6. **Options** — portals (Discord, Slack), addons, image tag.
 7. **Review & Install** — confirm and deploy.
 
 When the install completes, the same window navigates to the chat page. That's it.
@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 
 This downloads the CLI binary, seeds `~/.openpalm/`, opens the wizard in your default browser at `http://localhost:3880/setup`, and starts the stack on completion. The wizard is identical to the desktop version.
 
-To re-run the wizard later (e.g. to add a channel or change providers), run `openpalm` and click **Update Settings** in the admin overview, or open `http://localhost:3880/setup?rerun=1`.
+To re-run the wizard later (e.g. to add a portal or change providers), run `openpalm` and click **Update Settings** in the admin overview, or open `http://localhost:3880/setup?rerun=1`.
 
 ---
 

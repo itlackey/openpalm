@@ -1,6 +1,6 @@
 # Managing OpenPalm — TLDR
 
-This document covers day-to-day administration: configuration, channels, secrets,
+This document covers day-to-day administration: configuration, portals, secrets,
 access control, and extensions. For architecture rationale see
 [core-principles.md](./technical/core-principles.md).
 
@@ -96,7 +96,7 @@ via the AKM tab in the admin UI -- no manual file editing required.
 
 ---
 
-## Addons (Channels, Services, Integrations)
+## Addons (Portals, Services, Integrations)
 
 An addon has two states:
 - available as a built-in service in `services.compose.yml` or `portals.compose.yml`
@@ -104,13 +104,13 @@ An addon has two states:
 
 OpenPalm resolves enabled first-party addon names to Compose profiles. Custom or multi-instance services belong in `config/stack/custom.compose.yml`.
 
-Channels, services, and integrations are all addons.
+Portals, services, and integrations are all addons.
 
 Current shipped network model:
 
 - first-party portals join `portal_net` by default; `portal_net` is the primary ingress network for portal adapters
 - guardian bridges addon ingress to `assistant_net`
-- public exposure only happens when an overlay intentionally joins `channel_public` or changes its host bind policy
+- public exposure only happens when you change the host bind policy (e.g. a non-loopback `OP_BIND_ADDRESS`) or a user overlay publishes ports beyond loopback
 
 ### Enable/disable an addon
 
@@ -179,7 +179,7 @@ from the Registry tab in the admin console:
 | File | What it does |
 |---|---|
 | `health-check.md` | Check admin health every 5 minutes |
-| `prompt-assistant.md` | Send a daily prompt to the assistant via the chat channel |
+| `prompt-assistant.md` | Send a daily prompt to the assistant via the chat portal |
 | `cleanup-logs.yml` | Weekly trim audit logs to prevent unbounded disk growth |
 | `update-containers.md` | Weekly pull latest images and recreate containers |
 

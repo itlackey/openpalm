@@ -126,7 +126,7 @@ Same as T5 but additionally enables LLM tests and enforces no-skip policy. Every
 
 **Additional validation over T5:**
 - Full assistant message pipeline (send message → LLM inference → response)
-- Channel→Guardian→Assistant→LLM full chain with real inference
+- Portal→Guardian→Assistant→LLM full chain with real inference
 
 **Model prerequisites:** Ollama with:
 - `qwen2.5-coder:3b` or equivalent (system LLM)

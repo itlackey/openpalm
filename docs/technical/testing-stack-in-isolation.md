@@ -115,7 +115,7 @@ Expected results (with assistant running):
 - `Connections Tab — Providers` — tests pass (`available:true`)
 - `OpenCode Web UI` — tests pass
 - `Automation Scheduler` — tests pass
-- `Channel -> Guardian -> Assistant Pipeline` — **skipped or partially failing** in dev (see below)
+- `Portal -> Guardian -> Assistant Pipeline` — **skipped or partially failing** in dev (see below)
 
 ## Verifying the Health Endpoint Manually
 
@@ -150,7 +150,7 @@ bun run ui:test:e2e
 ## Known Dev Gaps
 
 ### Guardian is network-only
-The guardian is intentionally not host-published in either core or dev compose. Channel pipeline tests must run through a channel container or use `docker exec <guardian-container> curl localhost:8080/health` for diagnostics.
+The guardian is intentionally not host-published in either core or dev compose. Portal pipeline tests must run through a portal container or use `docker exec <guardian-container> curl localhost:8080/health` for diagnostics.
 
 ### OpenCode port vs admin default
 The admin UI's `http.ts` defaults to reading `OP_ASSISTANT_PORT` from `process.env`, which is promoted from `stack.env` during startup. When running the admin as a host process in dev, set `OP_OPENCODE_URL=http://localhost:3800` (or 4800 for test stacks) to reach the assistant through its host-side port mapping.

@@ -24,7 +24,7 @@ These are hard constraints for implementation quality:
 
 ---
 
-## Bun quality contract (guardian + channel services)
+## Bun quality contract (guardian + portal services)
 
 ### 1) Runtime and module discipline
 
@@ -71,6 +71,6 @@ These are hard constraints for implementation quality:
 ## Delivery and review checklist
 
 * **Type correctness:** `npm run check` passes for UI code.
-* **Behavior correctness:** `bun test` covers security-critical branches in guardian/channel code.
+* **Behavior correctness:** `bun test` covers security-critical branches in guardian/portal code.
 * **Contract correctness:** filesystem, guardian ingress, and assistant-isolation rules from `docs/technical/core-principles.md` remain intact.
 * **Change clarity:** each PR explains intent, risk, and rollback approach in plain language.

@@ -32,7 +32,7 @@ docker compose \
   up -d
 ```
 
-See `docs/channels/discord-setup.md` for the full walkthrough.
+See `docs/portals/discord-setup.md` for the full walkthrough.
 
 The service definition uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 

@@ -426,7 +426,7 @@ covered by `OP_LOCAL_AI_ALLOW_MODEL_DOWNLOADS=true` + a mounted `/data/models`.
 Keep the original test list (start, `/health` 200, `/capabilities`, `/models`
 aliases, embeddings dims, STT/TTS round-trip, agent if enabled, manifest hashes,
 non-root `/data` write, stdout logs). Run them in `publish-local-ai.yml` **before
-push** (a gate), mirroring the structure of the existing channel/UI publish gates.
+push** (a gate), mirroring the structure of the existing portal/UI publish gates.
 Embedding-dimension tests are required on every variant.
 
 ---

@@ -89,7 +89,7 @@ Environment variables (all optional, defaults in parens):
 - **LAN-only.** No auth, no API key. The addon overlay binds the service
   to `assistant_net` with no host port, so only other containers on that
   network can reach it. If you need to publish it publicly, route it
-  through a channel adapter / reverse proxy.
+  through a portal adapter / reverse proxy.
 - **All default models are pre-baked.** Kokoro lives at `/opt/kokoro/`
   (~340 MB — model + all 54 voices). The default faster-whisper model
   (`Systran/faster-whisper-base.en`, ~145 MB) lives at `/opt/whisper/`

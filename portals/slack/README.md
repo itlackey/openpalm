@@ -39,7 +39,7 @@ The service definition uses explicit non-secret environment entries and Docker s
 
 The Slack portal container uses `PRINCIPAL_ID` + `PRINCIPAL_SECRET_FILE` to authenticate guardian `/oc/*` calls.
 
-See `docs/channels/slack-setup.md` for the full setup guide.
+See `docs/portals/slack-setup.md` for the full setup guide.
 
 ## Environment variables
 

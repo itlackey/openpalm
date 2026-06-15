@@ -70,7 +70,7 @@ npm dominates the GitHub-asset approach on every axis that actually bit us.
 
 ## 3. Recommended distribution design (hybrid: npm registry, package-manager-free desktop fetch)
 
-The one trap to avoid: **do not run `bun add`/`npm i` inside the Electron app at launch.** It works for channels because the channel *container* ships Bun; the desktop AppImage/dmg does not guarantee a package manager, and shelling out to one at startup is fragile (offline, corporate proxies, registry auth, PATH). Instead, treat npm as a **versioned artifact registry with an HTTPS tarball API**:
+The one trap to avoid: **do not run `bun add`/`npm i` inside the Electron app at launch.** It works for portals because the portal *container* ships Bun; the desktop AppImage/dmg does not guarantee a package manager, and shelling out to one at startup is fragile (offline, corporate proxies, registry auth, PATH). Instead, treat npm as a **versioned artifact registry with an HTTPS tarball API**:
 
 - **Resolve the channel:** `GET https://registry.npmjs.org/@openpalm/ui` → read `dist-tags.latest` (or `.next` for prerelease builds). This replaces the `releases/latest` call and is prerelease-aware.
 - **Get the tarball + integrity:** from the version's `dist.tarball` (`https://registry.npmjs.org/@openpalm/ui/-/ui-<version>.tgz`) and `dist.integrity` (sha512).
@@ -126,4 +126,4 @@ An independent UI version is only safe if it declares what it needs. **The UI se
 ## 7. Verdict
 
 - **Independent UI versioning: recommended and low-cost** — the version field, stamp, and "independently-versioned package" precedent already exist; the work is mostly removing a lockstep coupling and repointing the updater.
-- **npm as the distribution transport: recommended** — it's the same proven pattern as channel adapters, and it directly closes three of the gap-analysis findings (G2 integrity, the prerelease-channel bug behind G3/rc.2, and the GitHub re-cut asset fragility) at near-zero new infrastructure. The only firm constraints: **fetch the registry tarball over HTTPS rather than running a package manager in the desktop app**, and **ship the compatibility manifest with it** — because OpenPalm's UI server bundles control-plane logic and is therefore not a free-floating renderer.
+- **npm as the distribution transport: recommended** — it's the same proven pattern as portal adapters, and it directly closes three of the gap-analysis findings (G2 integrity, the prerelease-channel bug behind G3/rc.2, and the GitHub re-cut asset fragility) at near-zero new infrastructure. The only firm constraints: **fetch the registry tarball over HTTPS rather than running a package manager in the desktop app**, and **ship the compatibility manifest with it** — because OpenPalm's UI server bundles control-plane logic and is therefore not a free-floating renderer.

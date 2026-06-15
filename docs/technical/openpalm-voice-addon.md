@@ -13,7 +13,7 @@ OpenPalm Voice is a bundled local-container addon that gives users one-click
 TTS + STT without any external setup. The user clicks **"Enable OpenPalm Voice"**
 in the Voice tab; the admin server enables an addon overlay, brings the
 container(s) up, probes readiness, writes `TTS_BASE_URL` / `STT_BASE_URL` into
-`stack.env`, and the existing `voice` channel browser app picks them up on its
+`stack.env`, and the existing voice browser app picks them up on its
 next `GET /config/defaults` load. Nothing new is invented — the design composes
 on top of the existing registry + addon + `writeVoiceVars` plumbing.
 
@@ -120,7 +120,7 @@ the browser. See §4 for the URL story.
 # Addon: voice — local CPU-friendly TTS + STT
 # Serves OpenAI-compatible /v1/audio/speech (TTS) and
 # /v1/audio/transcriptions (STT) on host loopback ports.
-# The voice channel browser UI reads these URLs from /config/defaults.
+# The voice browser UI reads these URLs from /config/defaults.
 services:
   voice-tts:
     image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
@@ -189,7 +189,7 @@ Notes:
 - `start_period` is generous on STT because first-run model download (base.en
   ~145 MB) happens lazily on the first transcription request, but the server
   itself responds to `/health` immediately. We err on the side of slow.
-- No `depends_on: guardian` because these aren't channels — they don't talk
+- No `depends_on: guardian` because these aren't portals — they don't talk
   to the guardian, they're called by the browser.
 - `data/voice/` host directory must be pre-created on enable (see §4) so
   Docker doesn't auto-create it as root.
@@ -217,7 +217,7 @@ OP_VOICE_STT_PORT=8881
 OP_VOICE_STT_MODEL=Systran/faster-whisper-base.en
 ```
 
-No `@sensitive` fields. No HMAC secret — this is not a channel.
+No `@sensitive` fields. No HMAC secret — this is not a portal.
 
 ---
 
@@ -549,7 +549,7 @@ These need maintainer decisions before phase A starts.
 
 - [x] **File-drop modularity.** Pure addon under `data/registry/addons/`. No code changes to `containers/`.
 - [x] **No template rendering.** Compose substitution only; whole-file copy of overlay; no string interpolation of YAML.
-- [x] **Guardian-only ingress.** N/A — this addon does not enter through the channel/guardian path. TTS/STT are tools called by the browser, not channels.
+- [x] **Guardian-only ingress.** N/A — this addon does not enter through the portal/guardian path. TTS/STT are tools called by the browser, not portals.
 - [x] **Assistant isolation.** Assistant has no special access to these containers. They live on `assistant_net` so the assistant CAN call them too (future "speak this back" tool), but ingress is unchanged.
 - [x] **LAN-first.** Both services bind to `127.0.0.1` by default.
 - [x] **No new dependencies.** No new packages added to `package.json`. No new lock-file churn.
