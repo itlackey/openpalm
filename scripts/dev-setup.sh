@@ -268,7 +268,7 @@ fi
 secrets_dir="$STASH_DIR/secrets"
 mkdir -p "$secrets_dir"
 chmod 700 "$secrets_dir"
-for secret_name in channel_chat_secret channel_api_secret channel_discord_secret channel_slack_secret; do
+for secret_name in portal_chat_secret portal_api_secret portal_discord_secret portal_slack_secret; do
 	if [[ ! -f "$secrets_dir/$secret_name" || $force -eq 1 ]]; then
 		openssl rand -hex 16 >"$secrets_dir/$secret_name"
 		chmod 600 "$secrets_dir/$secret_name"

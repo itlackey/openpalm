@@ -26,8 +26,8 @@ import {
 } from "./oc-bounds";
 import type { Principal } from "./ownership";
 
-const A: Principal = { channel: "test", userId: "alice" };
-const B: Principal = { channel: "test", userId: "bob" };
+const A: Principal = { id: "test", kind: "portal", userId: "alice" };
+const B: Principal = { id: "test", kind: "portal", userId: "bob" };
 
 beforeEach(() => _resetBoundsForTest());
 

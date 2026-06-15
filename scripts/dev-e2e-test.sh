@@ -130,10 +130,10 @@ EOF
 chmod 600 "${OP_E2E_HOME}/knowledge/env/stack.env"
 
 printf '%s\n' "e2e-test-password-$(date +%s)" > "${OP_E2E_HOME}/knowledge/secrets/op_ui_login_password"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/channel_chat_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/channel_api_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/channel_discord_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/channel_slack_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_chat_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_api_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_discord_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_slack_secret"
 chmod 700 "${OP_E2E_HOME}/knowledge/secrets"
 chmod 600 "${OP_E2E_HOME}/knowledge/secrets/"*
 

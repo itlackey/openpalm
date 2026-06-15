@@ -236,10 +236,10 @@ chmod 600 "${STACK_ENV}"
 
 # Seed file-based system secrets
 printf '%s\n' "${OP_UI_LOGIN_PASSWORD}" >"${SECRETS_DIR}/op_ui_login_password"
-openssl rand -hex 16 >"${SECRETS_DIR}/channel_chat_secret"
-openssl rand -hex 16 >"${SECRETS_DIR}/channel_api_secret"
-openssl rand -hex 16 >"${SECRETS_DIR}/channel_discord_secret"
-openssl rand -hex 16 >"${SECRETS_DIR}/channel_slack_secret"
+openssl rand -hex 16 >"${SECRETS_DIR}/portal_chat_secret"
+openssl rand -hex 16 >"${SECRETS_DIR}/portal_api_secret"
+openssl rand -hex 16 >"${SECRETS_DIR}/portal_discord_secret"
+openssl rand -hex 16 >"${SECRETS_DIR}/portal_slack_secret"
 chmod 700 "${SECRETS_DIR}"
 chmod 600 "${SECRETS_DIR}/"*
 
