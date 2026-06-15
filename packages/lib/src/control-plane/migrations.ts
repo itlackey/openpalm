@@ -167,6 +167,8 @@ function readStackEnvValue(stashDir: string, key: string): string | null {
  * Resolve the current on-disk layout version.
  *   - explicit OP_LAYOUT_VERSION in knowledge/env/stack.env wins
  *   - else a top-level `vault/` directory ⇒ 0.10.x layout (version 0)
+ *   - else a `config/system.env` file ⇒ 0.9.x layout (pre-vault; also version 0 —
+ *     the 0→1 migration relocates both old shapes into the knowledge/ layout)
  *   - else assume the current layout (a pre-marker 0.11 install) — caller stamps it
  */
 function readLayoutVersion(ctx: { homeDir: string; stashDir: string }): number {
@@ -178,6 +180,9 @@ function readLayoutVersion(ctx: { homeDir: string; stashDir: string }): number {
     }
   }
   if (existsSync(join(ctx.homeDir, "vault"))) return 0;
+  // 0.9.x predates both the OP_LAYOUT_VERSION stamp and vault/: it kept env under
+  // config/system.env. A 0.10.x vault home or any 0.11+ home never has that file.
+  if (existsSync(join(ctx.homeDir, "config", "system.env"))) return 0;
   return CURRENT_LAYOUT_VERSION;
 }
 
@@ -440,6 +445,59 @@ function migrateCustomComposeChannelLan(ctx: MigrationCtx): void {
 const SECRET_KEY_RE = /(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$/;
 const CONFIG_KEY_RE = /^(OP_CAP_|SYSTEM_LLM_|EMBEDDING_)/;
 
+/**
+ * Transform a legacy flat env file (0.10.x vault/stack/stack.env OR 0.9.x
+ * config/system.env — identical KEY=val shape) into the 0.11+
+ * knowledge/env/stack.env:
+ *   - extract OP_UI_LOGIN_PASSWORD into knowledge/secrets/op_ui_login_password
+ *   - rename OP_ADMIN_PORT → OP_HOST_UI_PORT and TTS_/STT_ → OP_TTS_/OP_STT_
+ *   - drop removed vars (OP_ADMIN_OPENCODE_PORT, OP_GUARDIAN_PORT)
+ *   - quarantine secret/capability keys into a .removed-secrets.bak (NEVER copied
+ *     back into the non-secret stack.env)
+ * Skip-if-present: never overwrites an existing destStack (idempotent).
+ */
+function transformLegacyStackEnv(
+  ctx: MigrationCtx,
+  srcStack: string,
+  destStack: string,
+  newEnv: string,
+  newSecrets: string,
+): void {
+  if (!existsSync(srcStack) || existsSync(destStack)) return;
+  const kept: string[] = [];
+  const removed: string[] = [];
+  for (const line of readFileSync(srcStack, "utf-8").split("\n")) {
+    if (line === "" || line.startsWith("#")) { kept.push(line); continue; }
+    const eq = line.indexOf("=");
+    const key = eq >= 0 ? line.slice(0, eq) : line;
+    const val = eq >= 0 ? line.slice(eq + 1) : "";
+    if (key === "OP_UI_LOGIN_PASSWORD") {
+      writeFile600(ctx, join(newSecrets, "op_ui_login_password"), val + "\n");
+      ctx.log("extracted OP_UI_LOGIN_PASSWORD -> knowledge/secrets/op_ui_login_password");
+    } else if (key === "OP_ADMIN_PORT") {
+      kept.push(`OP_HOST_UI_PORT=${val}`);
+      ctx.log("renamed OP_ADMIN_PORT -> OP_HOST_UI_PORT");
+    } else if (key === "OP_ADMIN_OPENCODE_PORT" || key === "OP_GUARDIAN_PORT") {
+      ctx.log(`dropped removed var: ${key}`);
+    } else if (key.startsWith("TTS_") || key.startsWith("STT_")) {
+      kept.push(`OP_${key}=${val}`);
+      ctx.log(`renamed ${key} -> OP_${key}`);
+    } else if (CONFIG_KEY_RE.test(key) || SECRET_KEY_RE.test(key)) {
+      removed.push(line);
+      ctx.log(`quarantined: ${key}`);
+    } else {
+      kept.push(line);
+    }
+  }
+  writeFile600(ctx, destStack, kept.join("\n") + "\n");
+  if (removed.length > 0) {
+    writeFile600(ctx, join(newEnv, "stack.env.removed-secrets.bak"), removed.join("\n") + "\n");
+    ctx.notes.push(
+      "Secret/capability keys were removed from stack.env (saved to knowledge/env/stack.env.removed-secrets.bak) — re-enter provider keys via the Connections tab and LLM config via config/akm/config.json; do not put them back in stack.env.",
+    );
+  }
+}
+
 function migrate010to011(ctx: MigrationCtx): void {
   const vault = join(ctx.homeDir, "vault");
   const newEnv = join(ctx.stashDir, "env");
@@ -451,42 +509,7 @@ function migrate010to011(ctx: MigrationCtx): void {
   copyIfAbsent(ctx, join(vault, "user", "user.env"), join(newEnv, "user.env"));
 
   // stack.env transform → knowledge/env/stack.env
-  const srcStack = join(vault, "stack", "stack.env");
-  const destStack = join(newEnv, "stack.env");
-  if (existsSync(srcStack) && !existsSync(destStack)) {
-    const kept: string[] = [];
-    const removed: string[] = [];
-    for (const line of readFileSync(srcStack, "utf-8").split("\n")) {
-      if (line === "" || line.startsWith("#")) { kept.push(line); continue; }
-      const eq = line.indexOf("=");
-      const key = eq >= 0 ? line.slice(0, eq) : line;
-      const val = eq >= 0 ? line.slice(eq + 1) : "";
-      if (key === "OP_UI_LOGIN_PASSWORD") {
-        writeFile600(ctx, join(newSecrets, "op_ui_login_password"), val + "\n");
-        ctx.log("extracted OP_UI_LOGIN_PASSWORD -> knowledge/secrets/op_ui_login_password");
-      } else if (key === "OP_ADMIN_PORT") {
-        kept.push(`OP_HOST_UI_PORT=${val}`);
-        ctx.log("renamed OP_ADMIN_PORT -> OP_HOST_UI_PORT");
-      } else if (key === "OP_ADMIN_OPENCODE_PORT" || key === "OP_GUARDIAN_PORT") {
-        ctx.log(`dropped removed var: ${key}`);
-      } else if (key.startsWith("TTS_") || key.startsWith("STT_")) {
-        kept.push(`OP_${key}=${val}`);
-        ctx.log(`renamed ${key} -> OP_${key}`);
-      } else if (CONFIG_KEY_RE.test(key) || SECRET_KEY_RE.test(key)) {
-        removed.push(line);
-        ctx.log(`quarantined: ${key}`);
-      } else {
-        kept.push(line);
-      }
-    }
-    writeFile600(ctx, destStack, kept.join("\n") + "\n");
-    if (removed.length > 0) {
-      writeFile600(ctx, join(newEnv, "stack.env.removed-secrets.bak"), removed.join("\n") + "\n");
-      ctx.notes.push(
-        "Secret/capability keys were removed from stack.env (saved to knowledge/env/stack.env.removed-secrets.bak) — re-enter provider keys via the Connections tab and LLM config via config/akm/config.json; do not put them back in stack.env.",
-      );
-    }
-  }
+  transformLegacyStackEnv(ctx, join(vault, "stack", "stack.env"), join(newEnv, "stack.env"), newEnv, newSecrets);
 
   // provider creds (best-effort) + service secrets
   if (copyIfAbsent(ctx, join(vault, "stack", "auth.json"), join(newSecrets, "auth.json"))) {
@@ -581,8 +604,9 @@ If anything looks wrong, do NOT delete this directory — restore from it or fro
 \`data/backups/\`. Full guide: docs/operations/upgrade-0.10-to-0.11.md
 `;
 
-/** Drop a safe-removal README into the retained legacy vault/ (skip if present). */
+/** Drop a safe-removal README into the retained legacy vault/ (skip if absent/present). */
 function writeVaultReadme(ctx: MigrationCtx, vault: string): void {
+  if (!existsSync(vault)) return; // 0.9.x home has no vault/ — nothing to annotate
   const dest = join(vault, "README.md");
   if (existsSync(dest)) { ctx.log("skip (exists): vault/README.md"); return; }
   if (ctx.dryRun) { ctx.log("[dry-run] write vault/README.md (safe-removal guide)"); return; }
@@ -602,6 +626,122 @@ function readLegacyStackYmlAddons(ctx: MigrationCtx): string[] {
     } catch { /* ignore unparseable */ }
   }
   return [];
+}
+
+// ── 0.9.x config/ layout (pre-vault) → 0.11+ knowledge/ layout ────────────────
+
+/**
+ * The recognized 0.9.x entries under config/. Their DATA is relocated to its 0.11+
+ * home (env/secrets/tasks); the originals — plus the no-longer-read system files
+ * (schemas, components, openpalm.yml, ov.conf) — are then moved wholesale into
+ * config/legacy-0.9/ so config/ holds only the current layout. Moving is
+ * relocation, never deletion; the full-home backup already ran.
+ */
+const LEGACY_09_CONFIG_ENTRIES = [
+  "automations", "components",
+  "user.env", "user.env.schema",
+  "system.env", "system.env.schema",
+  "openpalm.yml", "ov.conf",
+];
+
+const LEGACY_09_README = `# This \`config/legacy-0.9/\` directory is from OpenPalm 0.9.x — a RECOVERY COPY
+
+OpenPalm 0.11+ uses a different on-disk layout. The upgrade **extracted** your
+data out of the old 0.9.x \`config/\` files into the new locations and moved the
+originals here, untouched, as a safety net:
+
+- \`config/user.env\`        → \`knowledge/env/user.env\`
+- \`config/system.env\`      → \`knowledge/env/stack.env\` (transformed; secrets
+                              extracted to \`knowledge/secrets/\`)
+- \`config/automations/*\`   → \`knowledge/tasks/\`
+- old \`components/*\`       → inert (compose components were replaced by the fixed
+                              overlay set + OP_ENABLED_ADDONS); kept for reference
+- \`config/openpalm.yml\`, \`ov.conf\`, \`*.schema\` → no longer read; kept for reference
+
+A full backup of your home was also taken under \`data/backups/\` before migrating.
+
+Nothing in 0.11+ reads this directory anymore. You can delete it once you have
+confirmed the new version works (UI signs in, stack starts, channels work). If
+\`knowledge/env/stack.env.removed-secrets.bak\` exists, re-enter those provider keys
+via the Connections tab and LLM config via \`config/akm/config.json\` first — do not
+put secrets back into stack.env. Prefer your OS trash (reversible) when removing.
+`;
+
+/** Enabled 0.9.x channels were compose "components": config/components/channel-<name>.yml. */
+function readLegacy09ChannelAddons(ctx: MigrationCtx): string[] {
+  const comps = join(ctx.configDir, "components");
+  if (!existsSync(comps)) return [];
+  const addons = new Set<string>();
+  for (const name of readdirSync(comps)) {
+    const m = name.match(/^channel-([a-z0-9-]+)\.ya?ml$/);
+    if (m && ADDON_NAME_RE.test(m[1])) addons.add(m[1]);
+  }
+  return [...addons].sort();
+}
+
+function migrate09xToKnowledge(ctx: MigrationCtx): void {
+  const sysEnv = join(ctx.configDir, "system.env");
+  // 0.9.x marker. A 0.10.x vault home or any 0.11+ home never has config/system.env,
+  // so this is a no-op for every other source layout (the two paths are exclusive).
+  if (!existsSync(sysEnv)) return;
+
+  const newEnv = join(ctx.stashDir, "env");
+  const newSecrets = join(ctx.stashDir, "secrets");
+  const newTasks = join(ctx.stashDir, "tasks");
+  ensureDir(ctx, newEnv);
+  ensureDir(ctx, newSecrets);
+
+  // config/user.env → knowledge/env/user.env
+  copyIfAbsent(ctx, join(ctx.configDir, "user.env"), join(newEnv, "user.env"));
+
+  // config/system.env transform → knowledge/env/stack.env (+ secret quarantine)
+  transformLegacyStackEnv(ctx, sysEnv, join(newEnv, "stack.env"), newEnv, newSecrets);
+
+  // config/automations/*.yml → knowledge/tasks/
+  const autos = join(ctx.configDir, "automations");
+  if (existsSync(autos)) {
+    ensureDir(ctx, newTasks);
+    for (const name of readdirSync(autos)) {
+      copyIfAbsent(ctx, join(autos, name), join(newTasks, name));
+    }
+  }
+
+  // config/components/channel-<name>.yml → OP_ENABLED_ADDONS (filename-derived).
+  const addons = readLegacy09ChannelAddons(ctx);
+  if (addons.length > 0) {
+    const envPath = stackEnvFile(ctx.stashDir);
+    if (ctx.dryRun) {
+      ctx.log(`[dry-run] set OP_ENABLED_ADDONS=${addons.join(",")}`);
+    } else if (existsSync(envPath)) {
+      writeFile600(ctx, envPath, upsertEnvValue(readFileSync(envPath, "utf-8"), "OP_ENABLED_ADDONS", addons.join(",")));
+      ctx.log(`set OP_ENABLED_ADDONS=${addons.join(",")}`);
+    }
+  }
+
+  // Relocate every recognized 0.9.x config entry (consumed originals + inert
+  // system files) into config/legacy-0.9/ so config/ holds only the current
+  // layout. Move = relocation (never deletion); skip anything already moved.
+  const legacyDir = join(ctx.configDir, "legacy-0.9");
+  for (const name of LEGACY_09_CONFIG_ENTRIES) {
+    const src = join(ctx.configDir, name);
+    if (!existsSync(src)) continue;
+    ensureDir(ctx, legacyDir);
+    const dest = join(legacyDir, name);
+    if (existsSync(dest)) { ctx.log(`skip (exists): config/legacy-0.9/${name}`); continue; }
+    if (ctx.dryRun) { ctx.log(`[dry-run] relocate config/${name} -> config/legacy-0.9/${name}`); continue; }
+    renameSync(src, dest);
+    ctx.log(`relocated config/${name} -> config/legacy-0.9/${name}`);
+  }
+
+  // Safe-removal guide in the retained legacy dir (skip if present).
+  const readmePath = join(legacyDir, "README.md");
+  if (existsSync(legacyDir) && !existsSync(readmePath)) {
+    if (ctx.dryRun) { ctx.log("[dry-run] write config/legacy-0.9/README.md (safe-removal guide)"); }
+    else { writeFileSync(readmePath, LEGACY_09_README); ctx.log("wrote config/legacy-0.9/README.md (safe-removal guide)"); }
+  }
+  ctx.notes.push(
+    "Upgraded a 0.9.x install: your config/ data moved to knowledge/ and the old 0.9.x files were retained under config/legacy-0.9/ (see its README). Verify the stack, then remove that directory via your OS trash.",
+  );
 }
 
 // ── Migration 1 → 2: drop inert pre-0.12.0 SYSTEM files ───────────────────────
@@ -638,8 +778,13 @@ const MIGRATIONS: Migration[] = [
   {
     from: 0,
     to: 1,
-    describe: "0.10.x vault/ layout → 0.11.0 knowledge/ layout",
-    apply: migrate010to011,
+    describe: "pre-knowledge (0.9.x config/ or 0.10.x vault/) → 0.11.0 knowledge/ layout",
+    apply(ctx) {
+      // The two source layouts are mutually exclusive (vault/ vs config/system.env);
+      // each function no-ops when its source is absent, so calling both is safe.
+      migrate010to011(ctx);
+      migrate09xToKnowledge(ctx);
+    },
     verify(ctx) {
       // The migration must have produced a usable 0.11 stack.env (unless a
       // dry-run, where nothing was written).

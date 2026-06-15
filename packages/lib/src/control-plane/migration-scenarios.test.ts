@@ -231,6 +231,132 @@ describe("scenario: 0.10.x vault install → 0.12.0", () => {
   });
 });
 
+// ── Scenario 2b: 0.9.x config/ "hellscape" → 0.12.0 (pre-vault, layout 0 → 1 → 2) ─
+//
+// A deliberately MESSY 0.9.x home: the old config/ env files (with a login
+// password + a real-looking provider key that must be quarantined), automations,
+// compose "components" (including channel-slack.yml → slack addon), schemas, and
+// assorted junk scattered around. After upgrade everything must be organized:
+// data extracted into knowledge/, the old 0.9.x files retained under
+// config/legacy-0.9/ (never deleted), and user data/logs/backups untouched.
+//
+// NOTE: every secret below is SYNTHETIC (no real credentials in fixtures).
+describe("scenario: 0.9.x config/ hellscape → 0.12.0", () => {
+  function seed09Hellscape(): void {
+    seed({
+      // 0.9.x env files (flat KEY=val under config/)
+      "config/system.env": [
+        "OP_ADMIN_PORT=8100",          // → renamed OP_HOST_UI_PORT
+        "OP_GUARDIAN_PORT=8180",       // → dropped (removed var)
+        "OP_UI_LOGIN_PASSWORD=hunter2", // → extracted to knowledge/secrets/ (SYNTHETIC)
+        "OPENAI_API_KEY=sk-FAKE-NOT-REAL", // → quarantined to .removed-secrets.bak (SYNTHETIC)
+        "TTS_VOICE=bf_isabella",       // → renamed OP_TTS_VOICE
+        "OP_KEEP_ME=1",                // → kept verbatim
+        "",
+      ].join("\n"),
+      "config/system.env.schema": "OP_ADMIN_PORT=number\n",
+      "config/user.env": "MY_PREF=hello\nMY_SYNTHETIC_TOKEN=abc123-FAKE\n",
+      "config/user.env.schema": "MY_PREF=string\n",
+      "config/openpalm.yml": "version: 1\naddons: []\n",
+      "config/ov.conf": "# old overrides\nfoo=bar\n",
+      // 0.9.x compose "components" — channel-slack.yml ⇒ slack addon
+      "config/components/core.yml": "services:\n  guardian: {}\n",
+      "config/components/admin.yml": "services:\n  admin: {}\n",
+      "config/components/channel-slack.yml": "services:\n  slack: {}\n",
+      "config/components/junk.txt": "stray file inside components\n",
+      // 0.9.x automations → knowledge/tasks/
+      "config/automations/digest.yml": "id: digest\ncron: '0 9 * * *'\n",
+      "config/automations/.DS_Store": "macos junk\n",
+      // user data / service data / logs / old backups — must be UNTOUCHED
+      "data/assistant/.keep": "",
+      "data/stash/memory.db": "sqlite\n",
+      "logs/assistant.log": "boot ok\n",
+      "backups/old-0.9-backup.tgz": "tarball\n",
+    });
+  }
+
+  it("organizes the 0.9.x home into the v2 layout and retains the originals", () => {
+    seed09Hellscape();
+    const { layout } = runUpgrade("v0.12.0-rc.5");
+
+    // Reached the current layout via the 0 → 1 → 2 chain, backed up first.
+    expect(layout.from).toBe(0);
+    expect(layout.to).toBe(CURRENT_LAYOUT_VERSION);
+    expect(layout.backupDir).toBeTruthy();
+    expect(existsSync(layout.backupDir!)).toBe(true);
+
+    // EXACT resulting file set: data extracted to knowledge/, 0.9.x files relocated
+    // under config/legacy-0.9/, user data/logs/backups untouched, nothing deleted.
+    // Sorted alphabetically: old 0.9 backups (untouched) + relocated 0.9.x
+    // originals under config/legacy-0.9/ + extracted knowledge/ layout + untouched
+    // data/logs. Nothing deleted.
+    expect(fileSet()).toEqual([
+      "backups/old-0.9-backup.tgz",                       // old top-level backups — UNTOUCHED
+      "config/legacy-0.9/README.md",                      // retained 0.9.x originals (recovery copy)
+      "config/legacy-0.9/automations/.DS_Store",
+      "config/legacy-0.9/automations/digest.yml",
+      "config/legacy-0.9/components/admin.yml",
+      "config/legacy-0.9/components/channel-slack.yml",
+      "config/legacy-0.9/components/core.yml",
+      "config/legacy-0.9/components/junk.txt",
+      "config/legacy-0.9/openpalm.yml",
+      "config/legacy-0.9/ov.conf",
+      "config/legacy-0.9/system.env",
+      "config/legacy-0.9/system.env.schema",
+      "config/legacy-0.9/user.env",
+      "config/legacy-0.9/user.env.schema",
+      "data/assistant/.keep",                             // service data — UNTOUCHED
+      "data/backups/",
+      "data/stash/memory.db",
+      "knowledge/env/stack.env",                          // extracted into the new knowledge/ layout
+      "knowledge/env/stack.env.removed-secrets.bak",
+      "knowledge/env/user.env",
+      "knowledge/secrets/op_ui_login_password",
+      "knowledge/tasks/.DS_Store",
+      "knowledge/tasks/digest.yml",
+      "logs/assistant.log",                               // logs — UNTOUCHED
+    ]);
+
+    // stack.env transformed correctly.
+    const env = readEnv();
+    expect(env).toContain("OP_HOST_UI_PORT=8100");      // OP_ADMIN_PORT renamed
+    expect(env).not.toContain("OP_GUARDIAN_PORT");      // removed var dropped
+    expect(env).toContain("OP_TTS_VOICE=bf_isabella");  // TTS_ prefixed
+    expect(env).toContain("OP_KEEP_ME=1");              // unknown key kept
+    expect(env).toContain("OP_ENABLED_ADDONS=slack");   // from channel-slack.yml
+    expect(env).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+    // Secrets NEVER land in the non-secret stack.env.
+    expect(env).not.toContain("OP_UI_LOGIN_PASSWORD");
+    expect(env).not.toContain("OPENAI_API_KEY");
+    expect(env).not.toContain("sk-FAKE");
+    expect(env).not.toContain("hunter2");
+
+    // Login password extracted to its own secret file (value preserved).
+    expect(readFileSync(join(home, "knowledge", "secrets", "op_ui_login_password"), "utf-8").trim()).toBe("hunter2");
+    // Provider key quarantined to the .bak (not lost, not in stack.env).
+    expect(readFileSync(join(home, "knowledge", "env", "stack.env.removed-secrets.bak"), "utf-8"))
+      .toContain("OPENAI_API_KEY=sk-FAKE-NOT-REAL");
+    // user.env relocated verbatim.
+    expect(readFileSync(join(home, "knowledge", "env", "user.env"), "utf-8")).toContain("MY_PREF=hello");
+    // Originals recoverable from the full-home backup.
+    expect(existsSync(join(layout.backupDir!, "config", "system.env"))).toBe(true);
+  });
+
+  it("is idempotent — a second upgrade run changes nothing", () => {
+    seed09Hellscape();
+    runUpgrade("v0.12.0-rc.5");
+    const after1 = snapshot();
+    delete after1["data/backups/"];
+
+    const second = runUpgrade("v0.12.0-rc.5");
+    expect(second.layout.migrated).toBe(false);
+
+    const after2 = snapshot();
+    delete after2["data/backups/"];
+    expect(after2).toEqual(after1);
+  });
+});
+
 // ── Scenario 3: minimal/fresh v1 install → clean stamp to current ───────────────
 describe("scenario: minimal v1 install", () => {
   it("stamps to the current layout and removes nothing it shouldn't", () => {
