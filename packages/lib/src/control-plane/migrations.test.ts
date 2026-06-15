@@ -393,6 +393,35 @@ describe('C4 release migration v0.12.0-rc.1: non-sensitive addon config → stac
     expect(existsSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'))).toBe(true);
   });
 
+  it('NEVER copies non-addon credential files (ssh keys, github/oauth creds) into stack.env', () => {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_IMAGE_TAG=v0.12.0\nOP_RELEASE_VERSION=v0.11.5\n');
+    // Real-world general-secret-store files that have NO sensitive suffix but are
+    // NOT addon config — must stay out of the non-secret stack.env (allowlist gate).
+    writeFileSync(join(home, 'knowledge', 'secrets', 'ssh-key-openpalm-2026-06-10'), '-----BEGIN OPENSSH PRIVATE KEY-----\nXXXX\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'github-itlackey'), 'ghp_REDACTED_TOKEN\n');
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_custom_commands'), 'a,b,c\n'); // not in the schema
+    // A legit addon key still gets promoted.
+    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_allowed_guilds'), '12345\n');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.0-rc.1' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+
+    // The credential / non-schema files must NOT leak into stack.env.
+    expect(stackEnv).not.toContain('BEGIN OPENSSH');
+    expect(stackEnv).not.toContain('ghp_REDACTED_TOKEN');
+    expect(stackEnv).not.toContain('SSH-KEY');
+    expect(stackEnv).not.toContain('GITHUB-ITLACKEY');
+    expect(stackEnv).not.toContain('DISCORD_CUSTOM_COMMANDS');
+    // The declared addon key is still promoted.
+    expect(stackEnv).toContain('DISCORD_ALLOWED_GUILDS=12345');
+    // Source credential files are left exactly where they were.
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'ssh-key-openpalm-2026-06-10'))).toBe(true);
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'github-itlackey'))).toBe(true);
+  });
+
   it('skips keys already present in stack.env (idempotent)', () => {
     mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
     mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });

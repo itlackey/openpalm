@@ -28,6 +28,7 @@ import { parse as yamlParse } from "yaml";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { backupOpenPalmHome, timestampDirName, checkBackupFreeSpace, describeBackupSpaceShortfall } from "./backup.js";
 import { upsertEnvValue } from "./env.js";
+import { nonSensitiveAddonEnvKeys } from "./addons.js";
 import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
 import { compareComparableVersions, isComparableSemver } from './versioning.js';
 
@@ -301,13 +302,21 @@ function migrateAddonConfigToStackEnv(ctx: MigrationCtx): void {
 
   const stackContent = readFileSync(envPath, 'utf-8');
   const additions: Record<string, string> = {};
+  // ALLOWLIST: only ever promote KNOWN, declared, non-sensitive addon-config keys.
+  // knowledge/secrets/ is a GENERAL secret store (ssh keys, github/OAuth creds, akm
+  // secrets, per-portal verification secrets) — copying a file into the non-secret
+  // stack.env merely because its name lacks a `_TOKEN/_SECRET/...` suffix would leak
+  // credentials. The suffix check below is now just belt-and-suspenders.
+  const allowedKeys = nonSensitiveAddonEnvKeys();
 
   for (const filename of readdirSync(secretsDir)) {
     // Only process simple env-key files (no dots, no sub-paths).
     if (filename.includes('.') || filename.includes('/')) continue;
 
     const envKey = filename.toUpperCase();
-    // Skip sensitive keys — they belong as secret files (compose secrets).
+    // Only promote a file whose key is a declared non-sensitive addon-config key.
+    if (!allowedKeys.has(envKey)) continue;
+    // Defense in depth: skip anything that still looks sensitive by suffix.
     if (ADDON_SENSITIVE_KEY_RE.test(envKey)) continue;
     // Skip if already present in stack.env.
     if (new RegExp(`^${envKey}=`, 'm').test(stackContent)) {

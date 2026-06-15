@@ -125,6 +125,32 @@ OP_VOICE_LOG_LEVEL=info
 `,
 };
 
+/**
+ * The set of NON-sensitive addon env keys declared in BUILTIN_ADDON_ENV_SCHEMAS
+ * — a `KEY=` line whose annotation comment block does NOT carry `@sensitive`.
+ *
+ * This is the ALLOWLIST for the C4 `knowledge/secrets/` → `stack.env` migration:
+ * it must only ever promote real, declared, non-sensitive addon config. The
+ * secrets dir is a GENERAL secret store (ssh keys, github/OAuth creds, akm
+ * secrets, per-portal verification secrets) — a file must never be copied to the
+ * non-secret stack.env just because its name lacks a `_TOKEN/_SECRET/...` suffix.
+ */
+export function nonSensitiveAddonEnvKeys(): Set<string> {
+  const keys = new Set<string>();
+  const KEY_RE = /^([A-Z][A-Z0-9_]*)=/;
+  for (const schema of Object.values(BUILTIN_ADDON_ENV_SCHEMAS)) {
+    let sensitive = false;
+    for (const raw of schema.split('\n')) {
+      const trimmed = raw.trim();
+      if (trimmed.startsWith('#')) { if (/@sensitive\b/.test(trimmed)) sensitive = true; continue; }
+      const m = raw.match(KEY_RE);
+      if (m) { if (!sensitive) keys.add(m[1]); sensitive = false; continue; }
+      if (trimmed === '') sensitive = false;
+    }
+  }
+  return keys;
+}
+
 export type RegistryAddonConfig = {
   schemaPath: string;
   userEnvPath: string;
