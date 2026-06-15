@@ -1,7 +1,11 @@
 # Electron Thin-Harness Design
 
 > Tracking issue: [#495](https://github.com/itlackey/openpalm/issues/495)
-> Status: design (no code changed by this document)
+> Status: **implemented in 0.12.0** (§6.1–§6.7 landed; CI guard
+> `scripts/validate-thin-harness-boundary.sh` pins the boundary). Companion
+> deployment fixes #492 (host-vs-target guard) and #494 (prerelease auto-jump)
+> shipped alongside. The §5.1 contract surface is enumerated in
+> `packages/electron/src/harness-contract.ts` at `HARNESS_CONTRACT_VERSION = 1`.
 > **Audit note (orchestrator, 2026-06-15):** Produced by a 5-agent analysis, then independently verified.
 > The load-bearing root-cause evidence was re-confirmed against compiled output: `packages/electron/dist/main.js`
 > has **0** migration references; `packages/ui/build/server/chunks/*` contain them; `vite.config.ts:59` inlines

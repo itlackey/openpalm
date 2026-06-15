@@ -211,6 +211,23 @@ All portable control-plane logic — lifecycle management, addon operations, sec
 
 ---
 
+## Thin-harness boundary (Electron) and harness-contract discipline
+
+The Electron desktop app is a **thin native harness**, not a copy of the control plane. Re-downloading the app is required **only when the native harness surface itself changes** — `BrowserWindow` / `Tray` / IPC channels / preload bridge / native modules / entitlements / PATH shims. Everything else self-updates in place over npm (`@openpalm/ui` → `data/ui`) and `compose pull` (stack images) with **no app re-download**: the admin UI build, the `@openpalm/lib` control plane (including `RELEASE_MIGRATIONS` and the lifecycle deploy path), and the CLI's view of the served UI.
+
+**Hard rules:**
+
+- **The frozen harness bundle runs no migrations.** `packages/electron/dist/main.js` (inlined into the asar) MUST contain **zero** mutating control-plane symbols (`ensureReleaseMigrated`, `RELEASE_MIGRATIONS`, `performUpgrade`, `applyTagChange`). Every state-mutating operation runs in the spawned `data/ui` control plane, which carries its own inlined `@openpalm/lib`. The CI guard `scripts/validate-thin-harness-boundary.sh` enforces this (and that the UI build *does* carry those symbols).
+- **`main.ts` imports only the bootstrap allowlist from `@openpalm/lib`** — path resolvers, `ensureHomeDirs`, `seedOpenPalmDir`, `seedUiBuild`, `checkAndUpdateUiBuild`, `uiUpdateChannel`, `parseEnvFile`, `PLATFORM_VERSION`, and the Docker preflight probes (`checkDocker`/`checkDockerCompose`). Adding any mutating control-plane symbol to that import set fails CI. This is the mechanical expression of "the harness is bootstrap-only."
+- **`data/ui` is the steady-state executor.** Supervisors (the Electron harness and `openpalm ui serve`) call `checkAndUpdateUiBuild` before resolving + spawning, so a strictly-newer `data/ui` always wins. A de-route back to the frozen bundled lib (missing/stale stamp) MUST be logged, never silent (`resolveUiBuildDir`).
+- **Two independent version lines.** `PLATFORM_VERSION` (in `@openpalm/lib`, travels with `data/ui`) bumps on every control-plane/migration/UI release and **never** forces a re-download. `HARNESS_CONTRACT_VERSION` (a single integer in `packages/electron/src/harness-contract.ts`) bumps **only** when the §5.1 contract surface — renderer IPC bridge, spawn-env keys, or FS/spawn conventions — changes name/argument/return/required-key, and **does** force a re-download. Never feed `app.getVersion()` into control-plane inputs.
+- **Self-update-vs-redownload gate.** A published `@openpalm/ui` build declares `minHarnessContract`. The harness self-updates only when `minHarnessContract ≤ HARNESS_CONTRACT_VERSION`; otherwise it refuses the pull and prompts a re-download (running newer-UI-on-older-harness fails at runtime).
+- **Harness-contract discipline.** When you change anything in the §5.1 surface (see `harness-contract.ts`), bump `HARNESS_CONTRACT_VERSION` **and** update the `HARNESS_CONTRACT` description in the same change. A snapshot test fails CI until the bump is intentional — it enforces that a change was *noticed*, not that the bump is semantically right; that judgement is the contributor's.
+
+Full rationale and the file-level history live in [`electron-thin-harness-design.md`](./electron-thin-harness-design.md) and the deployment/upgrade UX findings in [`deployment-upgrade-ux-review.md`](./deployment-upgrade-ux-review.md).
+
+---
+
 ## Service port assignments
 
 Host-exposed OpenPalm services default to a small localhost-friendly port set. Core services use the `38xx` range and addon edges map their internal ports onto nearby host ports for manual use.

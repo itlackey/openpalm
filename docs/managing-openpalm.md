@@ -268,6 +268,22 @@ write to the same config files.
 
 ---
 
+## Updating OpenPalm (two version lines)
+
+OpenPalm separates **the app you installed** from **the control plane that runs your stack**, so most updates need no reinstall.
+
+- **Control plane / platform** (`PLATFORM_VERSION`) — the admin UI build, the migration/lifecycle engine, and the Docker stack images. This **self-updates in place**:
+  - **Desktop app:** updates `data/ui` from npm at launch and on demand; click **Update now** in the admin UI to pull newer stack images and run migrations. No app re-download.
+  - **`openpalm ui serve`:** self-updates `data/ui` before serving, same as the desktop app.
+  - **`openpalm update`:** refreshes stack assets, pulls images, and recreates containers for the CLI command path. By default a **stable** install stays on stable — pass `--pre` to opt into rc/beta versions.
+- **Native app / CLI binary** — the macOS/Linux/Windows desktop shell and the compiled `openpalm` binary. These change rarely:
+  - The **desktop app** only needs a re-download when its native surface changes (a `HARNESS_CONTRACT_VERSION` bump); the admin UI tells you when. Otherwise the platform updates underneath it automatically.
+  - The **CLI binary** carries its own copy of the migration engine for its own `update`/`migrate` commands; refresh it with `openpalm self-update`. The UI it *serves* still floats with `data/ui`, so a CLI user gets platform updates for the served admin UI without re-downloading the binary.
+
+> Stable users get stable everywhere (CLI, the admin "Update now" card, and the desktop update check now agree). Reaching a prerelease is always a deliberate choice (`openpalm update --pre`).
+
+---
+
 ## Compose-driven updates
 
 The running stack is whatever compose file set you launch. To change it:

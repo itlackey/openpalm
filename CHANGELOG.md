@@ -57,6 +57,52 @@ migrations — see **Migration** below.
 - **Setup resilience**: deploy journal / restart-resume, centralized Docker
   error mapping, managed-asset refresh on every apply, and reconcile-on-install.
   (#465)
+- **Self-updating control plane (thin Electron harness).** The desktop app is now
+  a thin native harness: the admin UI build, the `@openpalm/lib` control plane
+  (including `RELEASE_MIGRATIONS`), and the Docker stack images self-update in
+  place over npm / `compose pull` with **no app re-download**. A re-download is
+  required only when the native harness surface (IPC / preload / spawn-env / FS
+  conventions) changes — tracked by a single `HARNESS_CONTRACT_VERSION` (starts at
+  `1`) that is independent of the control-plane `PLATFORM_VERSION`. Both
+  supervisors (the Electron harness and `openpalm ui serve`) self-update `data/ui`
+  before spawning and can hot-restart the UI child in place after a UI-build
+  update. A published `@openpalm/ui` build declares `minHarnessContract`; the
+  harness refuses to self-update onto a build its native surface can't satisfy and
+  prompts a re-download instead of failing at runtime. A CI guard
+  (`scripts/validate-thin-harness-boundary.sh`) pins the boundary: the frozen
+  harness bundle carries zero migration symbols; the UI build carries them.
+  (#495, #496)
+- **`openpalm update --pre`** opt-in for prerelease (rc/beta) stack versions.
+  (#494)
+- **Desktop Docker preflight.** The Electron app runs the CLI's Docker probes at
+  launch and shows a legible install/retry screen instead of an opaque
+  `503 docker_unavailable` ~60s into the splash. (#493)
+
+### Changed
+
+- **Version / release-semantics reconciliation.** `PLATFORM_VERSION` in
+  `@openpalm/lib` is now the single source of truth for the control-plane version
+  (replacing the implicit `v${libPkg.version}` scattered through lifecycle /
+  migrations). Canonical helpers (`normalizeVersion`, `formatForDocker`,
+  `formatForDisplay`, `isPrerelease`, `distTagForVersion`) are the one place that
+  reconciles the Docker-tag (`v`-prefixed), npm (bare), and dist-tag
+  (`latest`/`next`) vocabularies. The UI build update channel is decoupled from
+  `app.getVersion()` (declared platform channel via `OP_UI_CHANNEL`). (#495)
+
+### Fixed
+
+- **Prerelease / cross-version bootstrap trap (#492).** A host running an older
+  control plane could point the *stack* at a newer tag through the version picker,
+  running the new release's migrations against the old `@openpalm/lib` and coming
+  up half-migrated. `applyTagChange` / `performUpgrade` now hard-block (with a
+  plain-language message) when the target tag is newer than the running
+  `PLATFORM_VERSION`, and the UI version dropdown is filtered server-side to tags
+  ≤ the running platform so the trap is unreachable.
+- **`openpalm update` no longer auto-jumps a stable install onto a prerelease
+  (#494).** `resolveNewestDockerTag` skips prerelease tags when the base is
+  stable; a prerelease base stays on its channel, and `--pre` is the explicit
+  opt-in. This aligns the CLI, the UI "Update now" card, and the desktop update
+  check on one definition of "latest."
 
 ### Deprecated
 
