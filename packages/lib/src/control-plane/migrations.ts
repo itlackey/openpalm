@@ -153,13 +153,26 @@ function resolveMigrationPaths(homeDir: string): Pick<MigrationCtx, 'homeDir' | 
   };
 }
 
-function selectPendingReleaseMigrations(
+/**
+ * Pick the release migrations to run for an upgrade to `targetVersion`: every
+ * migration pinned to a version in the half-open range (releaseFrom, targetVersion]
+ * — i.e. NEWER than the home's recorded version, up to and INCLUDING the target.
+ * `releaseFrom === null` (no recorded version) runs them all (they are idempotent).
+ *
+ * This is what makes adding a release migration a one-line, version-local change:
+ * a developer pins their migration to the release that introduced it and the range
+ * selector includes it for every older home automatically — they never touch, or
+ * even read, the migrations for prior releases. `migrations` is injectable so the
+ * forward-compat property can be proven against a hypothetical future set.
+ */
+export function selectPendingReleaseMigrations(
   releaseFrom: string | null,
   targetVersion: string,
+  migrations: ReleaseMigration[] = RELEASE_MIGRATIONS,
 ): ReleaseMigration[] {
   if (!isComparableSemver(targetVersion)) return [];
 
-  return RELEASE_MIGRATIONS
+  return migrations
     .filter((migration) => {
       if (!isComparableSemver(migration.version)) return false;
       if (compareComparableVersions(migration.version, targetVersion) > 0) return false;
@@ -875,26 +888,30 @@ const MIGRATIONS: Migration[] = [
  * Forward-only: a home at or beyond the current layout (e.g. ran on a newer app,
  * then downgraded) returns [] — there are no backward migrations.
  */
-export function selectPendingLayoutMigrations(from: number): Migration[] {
-  if (from >= CURRENT_LAYOUT_VERSION) return [];
+export function selectPendingLayoutMigrations(
+  from: number,
+  migrations: Migration[] = MIGRATIONS,
+  ceiling: number = CURRENT_LAYOUT_VERSION,
+): Migration[] {
+  if (from >= ceiling) return [];
   const chain: Migration[] = [];
   let cursor = from;
-  while (cursor < CURRENT_LAYOUT_VERSION) {
-    const next = MIGRATIONS.find((m) => m.from === cursor);
+  while (cursor < ceiling) {
+    const next = migrations.find((m) => m.from === cursor);
     if (!next) {
       throw new Error(
         `Layout migration chain is broken: no migration with from:${cursor} ` +
-        `(home is at layout ${from}, target is ${CURRENT_LAYOUT_VERSION}). ` +
+        `(home is at layout ${from}, target is ${ceiling}). ` +
         `Add a Migration { from:${cursor}, to:${cursor + 1}, … } to MIGRATIONS.`,
       );
     }
     chain.push(next);
     cursor = next.to;
   }
-  if (cursor !== CURRENT_LAYOUT_VERSION) {
+  if (cursor !== ceiling) {
     throw new Error(
       `Layout migration chain overshoots the target: reached ${cursor}, expected ` +
-      `${CURRENT_LAYOUT_VERSION}. Migrations must advance one layout step at a time.`,
+      `${ceiling}. Migrations must advance one layout step at a time.`,
     );
   }
   return chain;

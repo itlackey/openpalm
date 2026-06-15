@@ -17,7 +17,8 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import {
   ensureMigrated, ensureReleaseMigrated, CURRENT_LAYOUT_VERSION,
-  selectPendingLayoutMigrations, releaseMigrationVersions, UnrecognizedLayoutError,
+  selectPendingLayoutMigrations, selectPendingReleaseMigrations,
+  releaseMigrationVersions, UnrecognizedLayoutError,
 } from "./migrations.js";
 import { isComparableSemver } from "./versioning.js";
 
@@ -274,6 +275,71 @@ describe("forward-compat: migration engine handles any version jump", () => {
     for (const v of versions) {
       expect(isComparableSemver(v)).toBe(true);
     }
+  });
+});
+
+// ── Forward-compat ERGONOMICS: a new release only adds the single previous→current
+//    step. Simulates the NEXT release adding one migration and proves a home at ANY
+//    older version still chains all the way up — the developer never reasons about,
+//    or even reads, the migrations for releases before the immediately-previous one.
+describe("forward-compat: a new release only authors the previous→current step", () => {
+  // The selectors read only from/to (layout) and version (release); apply/verify are
+  // never invoked during selection, so minimal stubs suffice.
+  const layoutStep = (from: number, to: number) =>
+    ({ from, to, describe: "", apply: () => {}, verify: () => {} });
+  const releaseStep = (version: string) =>
+    ({ version, describe: "", apply: () => {}, verify: () => {} });
+
+  it("LAYOUT: adding {from:N,to:N+1} + bumping the ceiling chains every older home", () => {
+    // Today's real chain is 0→1→2. Simulate the NEXT release: the developer adds
+    // exactly ONE entry (2→3) and bumps the ceiling to 3 — nothing else changes.
+    const TODAY = [layoutStep(0, 1), layoutStep(1, 2)];
+    const NEXT = [...TODAY, layoutStep(2, 3)]; // the only authored change
+    const CEIL = 3;
+
+    // A home at ANY older version reaches the new ceiling, applying every step.
+    for (let from = 0; from <= CEIL; from++) {
+      const chain = selectPendingLayoutMigrations(from, NEXT, CEIL);
+      const reached = chain.reduce((cur, m) => (expect(m.from).toBe(cur), m.to), from);
+      expect(reached).toBe(CEIL);
+    }
+    // A previous-release (layout-2) home runs ONLY the newly authored step.
+    expect(selectPendingLayoutMigrations(2, NEXT, CEIL).map((m) => `${m.from}->${m.to}`))
+      .toEqual(["2->3"]);
+    // A 0.9.x-era (layout-0) home still gets all three — unchanged history first.
+    expect(selectPendingLayoutMigrations(0, NEXT, CEIL).map((m) => `${m.from}->${m.to}`))
+      .toEqual(["0->1", "1->2", "2->3"]);
+  });
+
+  it("RELEASE: adding a vNext entry applies it for every older recorded version", () => {
+    // Today's pinned versions + ONE new entry the developer adds for the next release.
+    const TODAY = ["v0.11.5-rc.1", "v0.12.0-rc.1"].map(releaseStep);
+    const NEXT = [...TODAY, releaseStep("v0.13.0")]; // the only authored change
+    const picked = (rel: string | null, target: string) =>
+      selectPendingReleaseMigrations(rel, target, NEXT).map((m) => m.version);
+
+    // A home recorded at the PREVIOUS release runs only the newly added step.
+    expect(picked("v0.12.0", "v0.13.0")).toEqual(["v0.13.0"]);
+    // An older home gets every intermediate migration up to the target, in order
+    // (v0.11.5-rc.1 < v0.11.5, so a v0.11.5 home runs the 0.12 + 0.13 steps).
+    expect(picked("v0.11.5", "v0.13.0")).toEqual(["v0.12.0-rc.1", "v0.13.0"]);
+    // An even older / no recorded version runs them all (they are idempotent).
+    expect(picked("v0.11.0", "v0.13.0")).toEqual(["v0.11.5-rc.1", "v0.12.0-rc.1", "v0.13.0"]);
+    expect(picked(null, "v0.13.0")).toEqual(["v0.11.5-rc.1", "v0.12.0-rc.1", "v0.13.0"]);
+    // The migration pinned to the target runs when upgrading TO it (inclusive bound).
+    expect(picked("v0.12.5", "v0.13.0")).toContain("v0.13.0");
+  });
+
+  it("DETECTION is frozen: a previous-release home is stamped, so no new marker is needed", () => {
+    // The reason a developer never touches OLD layouts: a home from the
+    // immediately-previous release carries an authoritative OP_LAYOUT_VERSION
+    // stamp, so detection returns it directly. The heuristic legacy markers
+    // (vault/, config/system.env) are consulted ONLY for pre-stamp homes — a
+    // closed historical set that never grows with new releases.
+    seed({ "knowledge/env/stack.env": `OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}\n` });
+    const report = ensureMigrated();
+    expect(report.from).toBe(CURRENT_LAYOUT_VERSION); // read straight from the stamp
+    expect(report.migrated).toBe(false);
   });
 });
 
