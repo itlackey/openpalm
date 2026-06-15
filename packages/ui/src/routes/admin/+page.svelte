@@ -32,10 +32,13 @@
     fetchUiVersions,
     setStackVersion,
     downloadUiVersion,
+    previewMigration,
+    DowngradeConfirmationRequiredError,
     type ReleaseEntry,
     type UiVersionEntry,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
+  import { latestForChannel, updateStatus, formatVersionForDisplay } from '$lib/version-compare.js';
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders for
   // an authenticated admin. A session that expires mid-operation surfaces as a
@@ -73,6 +76,13 @@
   let electronLatestVersion = $state<string | null>(null);
   let electronLatestUrl = $state<string | null>(null);
   let tagChangeLoading = $state(false);
+  // #497 migrate preview: the [dry-run] lines an upgrade to the selected tag
+  // would run, fetched on demand from /admin/migrate-preview.
+  let migratePreviewLoading = $state(false);
+  let migratePreview = $state<{ targetVersion: string; applied: string[]; lines: string[]; notes: string[] } | null>(null);
+  // #501 downgrade confirmation: set when the server returns 409; the UI shows a
+  // plain warning + confirm, then re-applies with confirmDowngrade.
+  let downgradePrompt = $state<{ tag: string; currentVersion: string; targetVersion: string; message: string } | null>(null);
   let uiDownloadLoading = $state(false);
   let uiDownloadReady = $state(false);
   let uiDownloadRestarting = $state(false);
@@ -88,6 +98,15 @@
   // installable builds come from npm, not GitHub platform releases.
   let uiVersions = $state<UiVersionEntry[]>([]);
   let uiVersionsLoading = $state(false);
+
+  // #498: one global "an update is available" signal for the whole shell.
+  // Computed once here from the data the Updates tab already loads, on the
+  // platform (assistant image) channel — so it respects #494 (stable installs
+  // are never nudged onto an rc). Drives the persistent banner below the nav.
+  const platformLatest = $derived(
+    latestForChannel(currentImageTag, releases.map((r) => ({ version: r.tag, prerelease: r.prerelease }))),
+  );
+  const updateAvailable = $derived(updateStatus(currentImageTag, platformLatest) === 'update');
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -327,21 +346,54 @@
     upgradeLoading = false;
   }
 
-  async function handleSetImageTag(tag: string): Promise<void> {
+  async function handleSetImageTag(tag: string, confirmDowngrade = false): Promise<void> {
     if (tagChangeLoading) return;
     tagChangeLoading = true;
     try {
-      const result = await setStackVersion(tag);
+      const result = await setStackVersion(tag, { confirmDowngrade });
       currentImageTag = result.imageTag;
       selectedImageTag = result.imageTag;
       operationResult = `Image tag set to ${result.imageTag}. Restarted: ${result.restarted.join(', ') || 'none'}.`;
       operationResultType = 'success';
+      downgradePrompt = null;
+      migratePreview = null;
     } catch (e) {
-      const err = e as { message?: string };
-      operationResult = `Failed to apply image tag: ${err.message ?? e}`;
-      operationResultType = 'error';
+      if (e instanceof DowngradeConfirmationRequiredError) {
+        // Not an error — show the plain warning + confirm, then re-apply.
+        downgradePrompt = { tag, currentVersion: e.currentVersion, targetVersion: e.targetVersion, message: e.message };
+      } else {
+        const err = e as { message?: string };
+        operationResult = `Failed to apply image tag: ${err.message ?? e}`;
+        operationResultType = 'error';
+      }
     }
     tagChangeLoading = false;
+  }
+
+  // #497: preview the copy-only release migrations an upgrade to the selected
+  // tag would run, before applying.
+  async function handlePreviewMigration(tag: string): Promise<void> {
+    if (migratePreviewLoading) return;
+    migratePreviewLoading = true;
+    migratePreview = null;
+    try {
+      const result = await previewMigration(tag);
+      migratePreview = { targetVersion: result.targetVersion, applied: result.applied, lines: result.lines, notes: result.notes };
+    } catch (e) {
+      const err = e as { message?: string };
+      operationResult = `Failed to preview changes: ${err.message ?? e}`;
+      operationResultType = 'error';
+    }
+    migratePreviewLoading = false;
+  }
+
+  function handleConfirmDowngrade(): void {
+    if (!downgradePrompt) return;
+    void handleSetImageTag(downgradePrompt.tag, true);
+  }
+
+  function handleCancelDowngrade(): void {
+    downgradePrompt = null;
   }
 
   async function handleDownloadUiVersion(tag: string): Promise<void> {
@@ -483,6 +535,20 @@
 
 <Navbar />
 
+{#if updateAvailable && activeTab !== 'updates'}
+  <!-- #498: persistent, dismissable-by-acting update signal. One sentence, one
+       obvious action (go to Check-up). Shown everywhere except the Check-up tab
+       itself, where the same status is already front and centre. -->
+  <div class="update-banner" role="status">
+    <span class="update-banner-text">
+      An update is ready{platformLatest ? ` — OpenPalm ${formatVersionForDisplay(platformLatest)}` : ''}.
+    </span>
+    <button class="update-banner-action" onclick={() => handleTabSelect('updates')}>
+      Review it
+    </button>
+  </div>
+{/if}
+
 <TabBar active={activeTab} onSelect={handleTabSelect} />
 
 <main>
@@ -525,8 +591,14 @@
         {releases}
         {releasesLoading}
         {platformVersion}
-        onSetImageTag={handleSetImageTag}
-        onSelectedImageTagChange={(t) => { selectedImageTag = t; }}
+        {migratePreviewLoading}
+        {migratePreview}
+        {downgradePrompt}
+        onSetImageTag={(t) => handleSetImageTag(t)}
+        onPreviewMigration={handlePreviewMigration}
+        onConfirmDowngrade={handleConfirmDowngrade}
+        onCancelDowngrade={handleCancelDowngrade}
+        onSelectedImageTagChange={(t) => { selectedImageTag = t; migratePreview = null; downgradePrompt = null; }}
         onUpgradeStack={handleUpgradeStack}
         onSelectedUiTagChange={(t) => { selectedUiTag = t; }}
         onDownloadUiVersion={handleDownloadUiVersion}
@@ -600,5 +672,38 @@
     }
   }
 
-
+  /* #498 global update banner — a thin, persistent strip under the navbar. */
+  .update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background: var(--color-warning-bg, var(--color-bg-secondary));
+    border-bottom: 1px solid var(--color-warning, var(--color-border));
+    color: var(--color-warning-text, var(--color-text));
+    font-size: var(--text-sm);
+  }
+  .update-banner-text {
+    font-weight: var(--font-medium);
+  }
+  .update-banner-action {
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: inherit;
+    cursor: pointer;
+  }
+  .update-banner-action:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  .update-banner-action:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 </style>

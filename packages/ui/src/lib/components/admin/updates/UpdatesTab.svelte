@@ -1,6 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { ReleaseEntry, UiVersionEntry } from '$lib/api.js';
+  import type { ReleaseEntry, UiVersionEntry, BackupSummaryView } from '$lib/api.js';
+  import {
+    fetchBackups,
+    pruneBackups,
+    fetchSecretStripNotice,
+    dismissSecretStripNotice as apiDismissSecretStripNotice,
+    fetchInstallLockStatus,
+    clearInstallLock,
+    type InstallLockStatusView,
+  } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import {
     desktopNotifyEnabled,
@@ -8,7 +17,7 @@
     setDesktopNotifyEnabled,
     setDesktopReplyPreviewEnabled,
   } from '$lib/desktop-notifications.js';
-  import { updateStatus, latestForChannel, type UpdateStatus } from '$lib/version-compare.js';
+  import { updateStatus, latestForChannel, formatVersionForDisplay, channelOf, type UpdateStatus } from '$lib/version-compare.js';
 
   interface Props {
     currentImageTag: string;
@@ -40,7 +49,15 @@
      *  filtered to tags ≤ this server-side (#492); used to label "you are on X"
      *  and to keep the version picker from offering an unreachable newer tag. */
     platformVersion?: string;
+    /** #497: preview the release migrations the selected tag would run. */
+    migratePreviewLoading?: boolean;
+    migratePreview?: { targetVersion: string; applied: string[]; lines: string[]; notes: string[] } | null;
+    /** #501: set when the selected tag is a downgrade and needs confirmation. */
+    downgradePrompt?: { tag: string; currentVersion: string; targetVersion: string; message: string } | null;
     onSetImageTag: (tag: string) => void;
+    onPreviewMigration?: (tag: string) => void;
+    onConfirmDowngrade?: () => void;
+    onCancelDowngrade?: () => void;
     onSelectedImageTagChange: (tag: string) => void;
     onUpgradeStack: () => void;
     onSelectedUiTagChange: (tag: string) => void;
@@ -70,7 +87,13 @@
     releases,
     releasesLoading,
     platformVersion = '',
+    migratePreviewLoading = false,
+    migratePreview = null,
+    downgradePrompt = null,
     onSetImageTag,
+    onPreviewMigration,
+    onConfirmDowngrade,
+    onCancelDowngrade,
     onSelectedImageTagChange,
     onUpgradeStack,
     onSelectedUiTagChange,
@@ -114,17 +137,135 @@
   // npm dist-tag channel that matches this build's stability.
   const uiLatest = $derived(latestForChannel(uiVersion, uiCandidates));
   const uiStatus = $derived<UpdateStatus>(updateStatus(uiVersion, uiLatest));
+
+  // #503: one active-channel line for the whole tab. The assistant image tag is
+  // the platform install the user is actually running, so its channel is THE
+  // channel. 'unknown' (moving tag / no data) shows nothing.
+  const activeChannel = $derived(channelOf(currentImageTag));
   let notificationsEnabled = $state(false);
   let replyPreviewEnabled = $state(false);
   let launchOnLoginSupported = $state(false);
   let launchOnLoginEnabled = $state(false);
   let launchOnLoginSaving = $state(false);
 
+  // #499 backup visibility (self-contained — fetched on mount).
+  let backups = $state<BackupSummaryView | null>(null);
+  let backupsLoading = $state(false);
+  let backupsError = $state('');
+  let prunePromptKeep = $state<number | null>(null);
+  let pruning = $state(false);
+
+  // #502 one-time secret-strip notice.
+  let secretNotice = $state<{ keys: string[]; at: string } | null>(null);
+
+  // #500 stuck-operation recovery — only shown when a STALE lock is detected.
+  let installLock = $state<InstallLockStatusView | null>(null);
+  let unlocking = $state(false);
+  let unlockError = $state('');
+  let unlockCleared = $state(false);
+
   onMount(() => {
     notificationsEnabled = desktopNotifyEnabled();
     replyPreviewEnabled = desktopReplyPreviewEnabled();
     void hydrateLaunchOnLogin();
+    void loadBackups();
+    void loadSecretNotice();
+    void loadInstallLock();
   });
+
+  async function loadInstallLock(): Promise<void> {
+    try {
+      installLock = await fetchInstallLockStatus();
+    } catch {
+      installLock = null;
+    }
+  }
+
+  async function onClearLock(): Promise<void> {
+    unlocking = true;
+    unlockError = '';
+    try {
+      const res = await clearInstallLock();
+      unlockCleared = res.removed;
+      await loadInstallLock();
+    } catch (e) {
+      // 409 (live lock) surfaces the server's plain-language message here.
+      unlockError = e instanceof Error ? e.message : String(e);
+      await loadInstallLock();
+    } finally {
+      unlocking = false;
+    }
+  }
+
+  async function loadBackups(): Promise<void> {
+    backupsLoading = true;
+    backupsError = '';
+    try {
+      backups = await fetchBackups();
+    } catch (e) {
+      backupsError = e instanceof Error ? e.message : String(e);
+    } finally {
+      backupsLoading = false;
+    }
+  }
+
+  async function loadSecretNotice(): Promise<void> {
+    try {
+      const res = await fetchSecretStripNotice();
+      secretNotice = res.notice;
+    } catch {
+      secretNotice = null;
+    }
+  }
+
+  async function onDismissSecretNotice(): Promise<void> {
+    secretNotice = null;
+    try {
+      await apiDismissSecretStripNotice();
+    } catch {
+      /* best-effort; UI already hidden */
+    }
+  }
+
+  // Prune keeps the newest N; the modal IS the confirmation gate (#499 never
+  // auto-prunes). We default the prompt to keep all-but-the-oldest so a single
+  // confirm removes exactly one, and the user can lower it deliberately.
+  function openPrunePrompt(): void {
+    prunePromptKeep = backups && backups.count > 1 ? backups.count - 1 : 0;
+  }
+  function cancelPrune(): void {
+    prunePromptKeep = null;
+  }
+  async function confirmPrune(): Promise<void> {
+    if (prunePromptKeep === null) return;
+    pruning = true;
+    try {
+      await pruneBackups(prunePromptKeep);
+      prunePromptKeep = null;
+      await loadBackups();
+    } catch (e) {
+      backupsError = e instanceof Error ? e.message : String(e);
+    } finally {
+      pruning = false;
+    }
+  }
+
+  function formatBytes(bytes: number): string {
+    if (!Number.isFinite(bytes)) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let i = 0;
+    while (value >= 1024 && i < units.length - 1) {
+      value /= 1024;
+      i += 1;
+    }
+    return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+  function formatDate(iso: string | null): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+  }
 
   async function hydrateLaunchOnLogin(): Promise<void> {
     const status = await window.openpalm?.launchOnLoginStatus?.();
@@ -177,6 +318,16 @@
     <div>
       <h2>Check-up</h2>
       <p class="panel-subtitle">Keep OpenPalm up to date. An update backs up your settings first, then briefly restarts your assistant.</p>
+      {#if activeChannel !== 'unknown'}
+        <p class="channel-indicator">
+          You're on the <strong>{activeChannel === 'prerelease' ? 'prerelease' : 'stable'}</strong> channel.
+          {#if activeChannel === 'prerelease'}
+            Prereleases get new features early and may be less stable.
+          {:else}
+            You'll only be offered stable releases.
+          {/if}
+        </p>
+      {/if}
     </div>
     <button
       class="btn btn-sm btn-secondary refresh-releases"
@@ -199,6 +350,51 @@
 
   <!-- Polite status region: announces in-flight operations to assistive tech. -->
   <p class="status-live" role="status" aria-live="polite">{statusText}</p>
+
+  {#if secretNotice}
+    <!-- #502: secret-looking keys were removed from stack.env. The strip is
+         correct (secrets belong in Connections), but never silent. -->
+    <div class="secret-notice" role="status">
+      <div class="secret-notice-text">
+        <p class="secret-notice-title">Secret-looking values were removed from stack.env</p>
+        <p>
+          {secretNotice.keys.join(', ')} {secretNotice.keys.length === 1 ? 'was' : 'were'} removed
+          because secrets don't belong in stack.env. Re-add {secretNotice.keys.length === 1 ? 'it' : 'them'}
+          via the <strong>Connections</strong> tab (or as a secret) so your provider keeps working.
+        </p>
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick={onDismissSecretNotice}>Dismiss</button>
+    </div>
+  {/if}
+
+  {#if installLock?.present && installLock.stale}
+    <!-- #500: a previous install/upgrade left a stale lock (its process is gone
+         or it's older than 30 minutes). Offer a one-click clear. The server
+         re-validates staleness and refuses to clear a live lock. -->
+    <div class="stuck-notice" role="status">
+      <div class="stuck-notice-text">
+        <p class="stuck-notice-title">An operation seems stuck</p>
+        <p>
+          A previous install or update didn't finish cleanly and left a lock behind. It would
+          clear itself automatically after 30 minutes — or you can clear it now to run another
+          update. Nothing else is changed.
+        </p>
+        {#if unlockError}
+          <p class="stuck-notice-error" role="alert">{unlockError}</p>
+        {/if}
+      </div>
+      <button class="btn btn-sm btn-primary" onclick={onClearLock} disabled={unlocking} aria-busy={unlocking}>
+        {#if unlocking}<Spinner /> Clearing…{:else}Clear it{/if}
+      </button>
+    </div>
+  {:else if unlockCleared}
+    <div class="stuck-notice stuck-notice-ok" role="status">
+      <div class="stuck-notice-text">
+        <p class="stuck-notice-title">Cleared</p>
+        <p>The stuck operation was cleared. You can run an update again.</p>
+      </div>
+    </div>
+  {/if}
 
   <div class="panel-body">
 
@@ -233,7 +429,7 @@
         <dt>OpenPalm Assistant</dt>
         <dd>
           <span class="version-cell">
-            <code class="version-value status-{assistantStatus}">{currentImageTag || '—'}</code>
+            <code class="version-value status-{assistantStatus}">{formatVersionForDisplay(currentImageTag) || '—'}</code>
             {#if statusEmoji(assistantStatus)}
               <span class="status-emoji" role="img" aria-label={statusTitle(assistantStatus)} title={statusTitle(assistantStatus)}>{statusEmoji(assistantStatus)}</span>
             {/if}
@@ -245,7 +441,7 @@
               disabled={anyDangerousLoading || !tokenStored}
               aria-busy={upgradeLoading}
             >
-              {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {assistantLatest}{/if}
+              {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {formatVersionForDisplay(assistantLatest)}{/if}
             </button>
           {/if}
         </dd>
@@ -255,14 +451,14 @@
         <dt>OpenPalm App</dt>
         <dd>
           <span class="version-cell">
-            <code class="version-value status-{appStatus}">{electronVersion || '—'}</code>
+            <code class="version-value status-{appStatus}">{formatVersionForDisplay(electronVersion) || '—'}</code>
             {#if statusEmoji(appStatus)}
               <span class="status-emoji" role="img" aria-label={statusTitle(appStatus)} title={statusTitle(appStatus)}>{statusEmoji(appStatus)}</span>
             {/if}
           </span>
           {#if appStatus === 'update'}
             <a class="btn btn-sm btn-secondary version-action" href={appDownloadUrl} target="_blank" rel="noopener noreferrer">
-              Download {appLatest}
+              Download {formatVersionForDisplay(appLatest)}
             </a>
           {/if}
         </dd>
@@ -272,7 +468,7 @@
         <dt>OpenPalm UI</dt>
         <dd>
           <span class="version-cell">
-            <code class="version-value status-{uiStatus}">{uiVersion || '—'}</code>
+            <code class="version-value status-{uiStatus}">{formatVersionForDisplay(uiVersion) || '—'}</code>
             {#if statusEmoji(uiStatus)}
               <span class="status-emoji" role="img" aria-label={statusTitle(uiStatus)} title={statusTitle(uiStatus)}>{statusEmoji(uiStatus)}</span>
             {/if}
@@ -298,13 +494,76 @@
                 disabled={uiDownloadLoading || !uiLatest}
                 aria-busy={uiDownloadLoading}
               >
-                {#if uiDownloadLoading}<Spinner /> Downloading…{:else}Download {uiLatest}{/if}
+                {#if uiDownloadLoading}<Spinner /> Downloading…{:else}Download {formatVersionForDisplay(uiLatest)}{/if}
               </button>
             {/if}
           {/if}
         </dd>
       </div>
     </dl>
+
+    <!-- #499: backup visibility — the safety net that an update creates. -->
+    <section class="backups-section" aria-labelledby="backups-title">
+      <div class="backups-header">
+        <h3 id="backups-title" class="backups-title">Backups</h3>
+        {#if backups && backups.count > 0}
+          <button
+            class="btn btn-sm btn-secondary"
+            onclick={openPrunePrompt}
+            disabled={pruning || backupsLoading}
+          >Prune…</button>
+        {/if}
+      </div>
+      <p class="backups-desc">
+        Each update copies your settings here first. To restore one, point OpenPalm at
+        the snapshot directory below (or run <code>openpalm rollback</code> for the last update).
+        Nothing is ever deleted automatically.
+      </p>
+      {#if backupsLoading}
+        <p class="backups-empty"><Spinner /> Loading backups…</p>
+      {:else if backupsError}
+        <p class="backups-error" role="alert">Couldn't load backups: {backupsError}</p>
+      {:else if !backups || backups.count === 0}
+        <p class="backups-empty">No backups yet — one is created the first time you update.</p>
+      {:else}
+        <p class="backups-summary">
+          {backups.count} {backups.count === 1 ? 'backup' : 'backups'} ·
+          {formatBytes(backups.totalBytes)} total · last {formatDate(backups.lastBackupAt)}
+        </p>
+        <ul class="backups-list">
+          {#each backups.backups as b (b.path)}
+            <li class="backups-item">
+              <span class="backups-item-name" title={b.path}>{b.name}</span>
+              <span class="backups-item-meta">{formatBytes(b.sizeBytes)} · {formatDate(b.createdAt)}</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      {#if prunePromptKeep !== null}
+        <div class="prune-prompt" role="alertdialog" aria-label="Confirm prune backups">
+          <p class="prune-prompt-title">Delete older backups?</p>
+          <p>
+            Keep the newest
+            <input
+              class="prune-keep-input"
+              type="number"
+              min="0"
+              max={backups?.count ?? 0}
+              bind:value={prunePromptKeep}
+              aria-label="Number of newest backups to keep"
+            />
+            and permanently delete the rest. This cannot be undone.
+          </p>
+          <div class="prune-actions">
+            <button class="btn btn-sm btn-danger" onclick={confirmPrune} disabled={pruning}>
+              {#if pruning}<Spinner /> Deleting…{:else}Delete older backups{/if}
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick={cancelPrune} disabled={pruning}>Cancel</button>
+          </div>
+        </div>
+      {/if}
+    </section>
 
     <!-- Advanced: pin a specific version (rollback / troubleshooting). -->
     <details class="advanced">
@@ -349,6 +608,18 @@
               />
             {/if}
             <button
+              class="btn btn-sm btn-secondary version-preview-btn"
+              onclick={() => { if (selectedImageTag.trim()) onPreviewMigration?.(selectedImageTag.trim()); }}
+              disabled={!selectedImageTag.trim() || migratePreviewLoading || tagChangeLoading || anyDangerousLoading}
+              aria-busy={migratePreviewLoading}
+            >
+              {#if migratePreviewLoading}
+                <Spinner /> Checking…
+              {:else}
+                Preview changes
+              {/if}
+            </button>
+            <button
               class="btn btn-sm btn-secondary"
               onclick={() => { if (selectedImageTag.trim()) onSetImageTag(selectedImageTag.trim()); }}
               disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
@@ -362,6 +633,59 @@
             </button>
           </div>
           <p class="version-hint">For rollback or troubleshooting. Installs the chosen version and restarts services (about a minute offline).</p>
+
+          {#if migratePreview}
+            <div class="migrate-preview" role="status">
+              <p class="migrate-preview-title">
+                What an update to {migratePreview.targetVersion} would change to your files:
+              </p>
+              {#if migratePreview.applied.length === 0}
+                <p class="migrate-preview-empty">Nothing — your files are already compatible. Only the images and version are updated.</p>
+              {:else}
+                <ul class="migrate-preview-list">
+                  {#each migratePreview.lines as line, i (i)}
+                    <li>{line}</li>
+                  {/each}
+                </ul>
+                <p class="version-hint">These are copy-only, backup-first changes. Nothing is deleted. Your settings are backed up before anything is written.</p>
+              {/if}
+              {#each migratePreview.notes as note, i (i)}
+                <p class="migrate-preview-note">Note: {note}</p>
+              {/each}
+            </div>
+          {/if}
+
+          {#if downgradePrompt}
+            <div class="downgrade-warning" role="alertdialog" aria-label="Confirm downgrade">
+              <p class="downgrade-warning-title">This is a downgrade.</p>
+              <p>
+                You're moving from {downgradePrompt.currentVersion} back to {downgradePrompt.targetVersion}.
+                Release migrations don't run backward; your data may not be compatible with the older
+                version — restore from a backup if needed.
+              </p>
+              <div class="downgrade-actions">
+                <button
+                  class="btn btn-sm btn-secondary"
+                  onclick={() => onCancelDowngrade?.()}
+                  disabled={tagChangeLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  class="btn btn-sm btn-danger"
+                  onclick={() => onConfirmDowngrade?.()}
+                  disabled={tagChangeLoading}
+                  aria-busy={tagChangeLoading}
+                >
+                  {#if tagChangeLoading}
+                    <Spinner /> Downgrading…
+                  {:else}
+                    Downgrade anyway
+                  {/if}
+                </button>
+              </div>
+            </div>
+          {/if}
         </div>
 
         {#if inElectron}
@@ -502,6 +826,16 @@
     color: var(--color-text-secondary);
     margin: var(--space-1) 0 0;
     max-width: 60ch;
+  }
+
+  .channel-indicator {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin: var(--space-2) 0 0;
+    max-width: 60ch;
+  }
+  .channel-indicator strong {
+    color: var(--color-text);
   }
 
   .refresh-releases {
@@ -683,6 +1017,55 @@
     margin-top: var(--space-4);
   }
 
+  .migrate-preview {
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2, var(--color-surface));
+  }
+  .migrate-preview-title {
+    margin: 0 0 var(--space-2) 0;
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+  }
+  .migrate-preview-empty {
+    margin: 0;
+    color: var(--color-text-secondary);
+  }
+  .migrate-preview-list {
+    margin: 0 0 var(--space-2) 0;
+    padding-left: var(--space-4);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+  .migrate-preview-note {
+    margin: var(--space-1) 0 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+
+  .downgrade-warning {
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--color-danger, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-danger-bg, var(--color-surface));
+  }
+  .downgrade-warning-title {
+    margin: 0 0 var(--space-1) 0;
+    font-weight: var(--font-semibold, var(--font-medium));
+    color: var(--color-danger-text, var(--color-text));
+  }
+  .downgrade-warning p {
+    margin: 0 0 var(--space-2) 0;
+    color: var(--color-text);
+  }
+  .downgrade-actions {
+    display: flex;
+    gap: var(--space-2);
+  }
+
   .version-section {
     display: flex;
     flex-direction: column;
@@ -782,4 +1165,129 @@
   @media (prefers-reduced-motion: reduce) {
     .version-select-skeleton { animation: none; }
   }
+
+  /* #502 secret-strip notice */
+  .secret-notice {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: 0 var(--space-4) var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-warning, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-warning-bg, var(--color-surface));
+  }
+  .secret-notice-text { min-width: 0; }
+  .secret-notice-title {
+    margin: 0 0 var(--space-1) 0;
+    font-weight: var(--font-semibold, var(--font-medium));
+    color: var(--color-warning-text, var(--color-text));
+  }
+  .secret-notice p { margin: 0; color: var(--color-text); font-size: var(--text-sm); }
+
+  /* #500 stuck-operation recovery */
+  .stuck-notice {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: 0 var(--space-4) var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-warning, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-warning-bg, var(--color-surface));
+  }
+  .stuck-notice-ok {
+    border-color: var(--color-success, var(--color-border));
+    background: var(--color-success-bg, var(--color-surface));
+  }
+  .stuck-notice-text { min-width: 0; }
+  .stuck-notice-title {
+    margin: 0 0 var(--space-1) 0;
+    font-weight: var(--font-semibold, var(--font-medium));
+    color: var(--color-warning-text, var(--color-text));
+  }
+  .stuck-notice-ok .stuck-notice-title { color: var(--color-success-text, var(--color-text)); }
+  .stuck-notice p { margin: 0; color: var(--color-text); font-size: var(--text-sm); }
+  .stuck-notice-error { margin-top: var(--space-1) !important; color: var(--color-danger-text, var(--color-text)); }
+
+  /* #499 backups */
+  .backups-section {
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+  }
+  .backups-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .backups-title { margin: 0; font-size: var(--text-base); }
+  .backups-desc {
+    margin: var(--space-1) 0 var(--space-2) 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .backups-summary {
+    margin: 0 0 var(--space-2) 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+  }
+  .backups-empty, .backups-error {
+    margin: var(--space-1) 0 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .backups-error { color: var(--color-danger-text, var(--color-text)); }
+  .backups-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .backups-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+  }
+  .backups-item-name {
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .backups-item-meta { color: var(--color-text-secondary); white-space: nowrap; }
+
+  .prune-prompt {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-danger, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-danger-bg, var(--color-surface));
+  }
+  .prune-prompt-title {
+    margin: 0 0 var(--space-1) 0;
+    font-weight: var(--font-semibold, var(--font-medium));
+    color: var(--color-danger-text, var(--color-text));
+  }
+  .prune-prompt p { margin: 0 0 var(--space-2) 0; color: var(--color-text); font-size: var(--text-sm); }
+  .prune-keep-input {
+    width: 4rem;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm, var(--radius-md));
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+  }
+  .prune-actions { display: flex; gap: var(--space-2); }
 </style>

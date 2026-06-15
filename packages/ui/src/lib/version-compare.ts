@@ -21,6 +21,26 @@ function isPrerelease(v: string): boolean {
   return v.replace(/^v/, '').split('+')[0].includes('-');
 }
 
+/**
+ * Client-safe mirror of @openpalm/lib's `formatForDisplay` (#503): one canonical
+ * user-facing spelling regardless of whether the value arrived as a Docker tag
+ * (`v0.12.0`) or an npm version (`0.12.0`). Drops a single leading `v`; leaves
+ * a moving tag like `latest`/`dev` untouched. The lib helper is server-only
+ * (its module imports package.json), so this stays a tiny dependency-free copy
+ * used everywhere the browser renders a version label.
+ */
+export function formatVersionForDisplay(v: string | null | undefined): string {
+  return (v ?? '').trim().replace(/^v/, '');
+}
+
+/** Active release channel for `current`: pre-release installs ride the
+ *  prerelease channel, everything else the stable channel. Non-semver (a moving
+ *  `latest` tag, or no data) → 'unknown' so the UI shows nothing misleading. */
+export function channelOf(current: string | null | undefined): 'stable' | 'prerelease' | 'unknown' {
+  if (!isSemver(current)) return 'unknown';
+  return isPrerelease(current!) ? 'prerelease' : 'stable';
+}
+
 /** Returns 1 if a > b, -1 if a < b, 0 if equal. Strips a leading `v`. */
 export function compareVersions(a: string, b: string): number {
   const parse = (v: string): [number, number, number, string | null] => {
