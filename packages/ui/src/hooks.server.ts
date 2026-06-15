@@ -201,7 +201,7 @@ export const handle: Handle = async ({ event, resolve }) => {
       : launch.recommendedRoute === 'chat'
         ? '/chat'
         : '/splash';
-    if (path === '/' || (path !== desiredPath && !path.startsWith('/api/') && !path.startsWith('/login') && !path.startsWith('/health') && !path.startsWith('/guardian/health') && !path.startsWith('/admin') && !path.startsWith('/chat') && !path.startsWith('/splash') && !path.startsWith('/advanced'))) {
+    if (path === '/' || (path !== desiredPath && !path.startsWith('/api/') && !path.startsWith('/proxy/') && !path.startsWith('/login') && !path.startsWith('/health') && !path.startsWith('/guardian/health') && !path.startsWith('/admin') && !path.startsWith('/chat') && !path.startsWith('/splash') && !path.startsWith('/advanced'))) {
       redirect(302, desiredPath);
     }
   }

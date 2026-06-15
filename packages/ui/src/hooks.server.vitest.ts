@@ -97,4 +97,14 @@ describe('hooks.server — sliding renewal', () => {
 
     await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
   });
+
+  test('proxy data requests are NOT launch-redirected (chat SSE/session must reach the route)', async () => {
+    // Regression: the launch-routing guard must exempt /proxy/* like /api/ and
+    // /admin/. Otherwise the chat's /proxy/assistant/event SSE (and session POST)
+    // get 302'd to an HTML page, the EventSource can't parse it, and it enters a
+    // reconnect loop ("Failed to start session: Unexpected token '<', <!doctype").
+    const event = makeEvent('/proxy/assistant/event', null, 'text/event-stream');
+    const response = await handle({ event, resolve });
+    expect(response.status).toBe(200); // reached the route, not redirected to HTML
+  });
 });
