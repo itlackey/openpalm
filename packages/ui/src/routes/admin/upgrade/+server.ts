@@ -15,6 +15,8 @@ import {
   ensureMigrated,
   MigrationError,
   checkDocker,
+  isPrerelease,
+  PLATFORM_VERSION,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -56,7 +58,12 @@ export const POST: RequestHandler = async (event) => {
 
   let result;
   try {
-    result = await performUpgrade(state);
+    // The channel is driven by the CONTROL PLANE (PLATFORM_VERSION), not the
+    // stack image tag. A user on an rc control plane opted into prereleases, so
+    // the stack must be allowed to move onto rc images; a stable control plane
+    // stays on stable. Without this, performUpgrade's #494 prerelease filter
+    // refuses to move a stable-tagged stack onto the rc the user is running.
+    result = await performUpgrade(state, { allowPrerelease: isPrerelease(PLATFORM_VERSION) });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     logger.error("upgrade failed", { requestId, error: msg });

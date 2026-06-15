@@ -36,9 +36,10 @@
     DowngradeConfirmationRequiredError,
     type ReleaseEntry,
     type UiVersionEntry,
+    type StackServiceVersion,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
-  import { latestForChannel, updateStatus, formatVersionForDisplay } from '$lib/version-compare.js';
+  import { formatVersionForDisplay, compareVersions, isSemver } from '$lib/version-compare.js';
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders for
   // an authenticated admin. A session that expires mid-operation surfaces as a
@@ -71,10 +72,17 @@
 
   // ── Version management ──────────────────────────────────────────────────────
   let currentImageTag = $state('');
+  // Every configured stack piece (assistant, guardian, chat portal, voice,
+  // ollama as applicable) + the tag it actually runs. The Updates tab flags
+  // any whose version is behind the control plane.
+  let services = $state<StackServiceVersion[]>([]);
   let inElectron = $state(false);
   let electronVersion = $state<string | null>(null);
   let electronLatestVersion = $state<string | null>(null);
   let electronLatestUrl = $state<string | null>(null);
+  // Native harness re-download gate (independent of the self-updating control
+  // plane): true ⇒ the app itself must be re-downloaded.
+  let harnessUpdateAvailable = $state(false);
   let tagChangeLoading = $state(false);
   // #497 migrate preview: the [dry-run] lines an upgrade to the selected tag
   // would run, fetched on demand from /admin/migrate-preview.
@@ -100,13 +108,16 @@
   let uiVersionsLoading = $state(false);
 
   // #498: one global "an update is available" signal for the whole shell.
-  // Computed once here from the data the Updates tab already loads, on the
-  // platform (assistant image) channel — so it respects #494 (stable installs
-  // are never nudged onto an rc). Drives the persistent banner below the nav.
-  const platformLatest = $derived(
-    latestForChannel(currentImageTag, releases.map((r) => ({ version: r.tag, prerelease: r.prerelease }))),
+  // The CONTROL PLANE (platformVersion) is what the user opted into — it is the
+  // version of OpenPalm they're running. The stack/services follow it, so an
+  // update is "available" whenever any configured service is BEHIND the control
+  // plane (version < platformVersion). Keying off the control plane (not the
+  // stack image tag) is the whole point of this redesign: a user on rc.4 with a
+  // 0.11.5 stack must be told an update is ready.
+  const updateAvailable = $derived(
+    isSemver(platformVersion) &&
+      services.some((s) => isSemver(s.version) && compareVersions(s.version, platformVersion) < 0),
   );
-  const updateAvailable = $derived(updateStatus(currentImageTag, platformLatest) === 'update');
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -254,10 +265,17 @@
     try {
       const data = await fetchVersions();
       currentImageTag = data.imageTag;
+      services = data.services;
       inElectron = data.inElectron;
       electronVersion = data.electronVersion;
       electronLatestVersion = data.electronLatestVersion;
       electronLatestUrl = data.electronLatestUrl;
+      harnessUpdateAvailable = data.harnessUpdateAvailable;
+      // The control plane (PLATFORM_VERSION) is reported here authoritatively —
+      // it is the version of OpenPalm actually running and drives the channel +
+      // every "behind" check. loadReleases also sets it from the releases probe,
+      // but that can fail offline; this is the reliable source.
+      platformVersion = data.platformVersion;
       // Do not reset selectedImageTag/selectedUiTag here — loadReleases initializes them
     } catch {
       // Non-fatal — version info is supplementary
@@ -541,7 +559,7 @@
        itself, where the same status is already front and centre. -->
   <div class="update-banner" role="status">
     <span class="update-banner-text">
-      An update is ready{platformLatest ? ` — OpenPalm ${formatVersionForDisplay(platformLatest)}` : ''}.
+      An update is ready{platformVersion ? ` — OpenPalm ${formatVersionForDisplay(platformVersion)}` : ''}.
     </span>
     <button class="update-banner-action" onclick={() => handleTabSelect('updates')}>
       Review it
@@ -572,6 +590,7 @@
     {:else if activeTab === 'updates'}
       <UpdatesTab
         {currentImageTag}
+        {services}
         {selectedImageTag}
         {tagChangeLoading}
         {anyDangerousLoading}
@@ -581,6 +600,7 @@
         {electronVersion}
         {electronLatestVersion}
         {electronLatestUrl}
+        {harnessUpdateAvailable}
         {uiVersion}
         {uiVersions}
         {uiVersionsLoading}

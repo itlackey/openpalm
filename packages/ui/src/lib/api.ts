@@ -155,8 +155,19 @@ export async function upgradeStack(): Promise<UpgradeStackResult> {
 
 // ── Version management ───────────────────────────────────────────────────
 
+/** One configured stack piece + the image tag it actually runs (#503). The
+ *  Updates tab flags any whose version is behind the control plane. */
+export interface StackServiceVersion {
+  id: string;
+  label: string;
+  version: string;
+}
+
 export interface VersionsResponse {
   imageTag: string;
+  /** Every configured stack piece (assistant, guardian, chat portal, voice,
+   *  ollama as applicable) with the tag it actually runs. */
+  services: StackServiceVersion[];
   inElectron: boolean;
   /** Desktop (Electron) app version — null when not running in Electron. */
   electronVersion: string | null;
@@ -165,6 +176,13 @@ export interface VersionsResponse {
   /** Download URL for the newer desktop release. */
   electronLatestUrl: string | null;
   electronUpdateAvailable: boolean;
+  /** Native harness version (re-download gate, independent of the platform). */
+  harnessVersion: string | null;
+  /** True when an app re-download is required (harness moved). */
+  harnessUpdateAvailable: boolean;
+  /** Running control-plane version (PLATFORM_VERSION) — "what version of
+   *  OpenPalm you're running". Drives the active channel + behind checks. */
+  platformVersion: string;
 }
 
 export async function fetchVersions(): Promise<VersionsResponse> {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { ReleaseEntry, UiVersionEntry, BackupSummaryView } from '$lib/api.js';
+  import type { ReleaseEntry, UiVersionEntry, BackupSummaryView, StackServiceVersion } from '$lib/api.js';
   import {
     fetchBackups,
     pruneBackups,
@@ -17,10 +17,14 @@
     setDesktopNotifyEnabled,
     setDesktopReplyPreviewEnabled,
   } from '$lib/desktop-notifications.js';
-  import { updateStatus, latestForChannel, formatVersionForDisplay, channelOf, type UpdateStatus } from '$lib/version-compare.js';
+  import { updateStatus, latestForChannel, formatVersionForDisplay, channelOf, compareVersions, isSemver, type UpdateStatus } from '$lib/version-compare.js';
 
   interface Props {
     currentImageTag: string;
+    /** Every configured stack piece (assistant, guardian, chat portal, voice,
+     *  ollama as applicable) + the tag it actually runs. Each is compared
+     *  against the control plane (platformVersion) to decide "behind". */
+    services?: StackServiceVersion[];
     selectedImageTag: string;
     tagChangeLoading: boolean;
     anyDangerousLoading: boolean;
@@ -33,6 +37,9 @@
     electronLatestVersion: string | null;
     /** Download URL for the newer desktop release. */
     electronLatestUrl: string | null;
+    /** True when the native harness moved and the app must be RE-DOWNLOADED
+     *  (the control plane self-updates; the harness does not). */
+    harnessUpdateAvailable?: boolean;
     /** Running @openpalm/ui version (the build currently serving this page). */
     uiVersion: string;
     uiVersions: UiVersionEntry[];
@@ -68,6 +75,7 @@
 
   let {
     currentImageTag,
+    services = [],
     selectedImageTag,
     tagChangeLoading,
     anyDangerousLoading,
@@ -77,6 +85,7 @@
     electronVersion,
     electronLatestVersion,
     electronLatestUrl,
+    harnessUpdateAvailable = false,
     uiVersion,
     uiVersions,
     uiVersionsLoading,
@@ -119,10 +128,22 @@
   const releaseCandidates = $derived(releases.map((r) => ({ version: r.tag, prerelease: r.prerelease })));
   const uiCandidates = $derived(uiVersions.map((v) => ({ version: v.version, prerelease: v.prerelease })));
 
-  // Assistant = the platform image line (OP_IMAGE_TAG); latest = newest GitHub
-  // platform release on this channel.
-  const assistantLatest = $derived(latestForChannel(currentImageTag, releaseCandidates));
-  const assistantStatus = $derived<UpdateStatus>(updateStatus(currentImageTag, assistantLatest));
+  // ── Services vs the control plane ──────────────────────────────────────────
+  // The control plane (platformVersion) is the version of OpenPalm the user
+  // opted into; the stack services follow it. A service is "behind" when its
+  // version < platformVersion (compared as semver). We NEVER show a green ✅ for
+  // a service that's behind the platform — that was the misleading bug.
+  function serviceStatus(version: string): UpdateStatus {
+    if (!isSemver(version) || !isSemver(platformVersion)) return 'unknown';
+    return compareVersions(version, platformVersion) < 0 ? 'update' : 'current';
+  }
+  const serviceRows = $derived(
+    services.map((s) => ({ ...s, status: serviceStatus(s.version) })),
+  );
+  // The single stack version-of-record we show against the control plane: the
+  // assistant is the platform image, so its tag is the headline stack version.
+  const stackVersion = $derived(serviceRows.find((s) => s.id === 'assistant')?.version ?? currentImageTag);
+  const servicesBehind = $derived(serviceRows.some((s) => s.status === 'update'));
 
   // App = the desktop (Electron) installer, shipped with each GitHub release.
   // Prefer the app's own update-check result; fall back to the newest release on
@@ -138,10 +159,11 @@
   const uiLatest = $derived(latestForChannel(uiVersion, uiCandidates));
   const uiStatus = $derived<UpdateStatus>(updateStatus(uiVersion, uiLatest));
 
-  // #503: one active-channel line for the whole tab. The assistant image tag is
-  // the platform install the user is actually running, so its channel is THE
-  // channel. 'unknown' (moving tag / no data) shows nothing.
-  const activeChannel = $derived(channelOf(currentImageTag));
+  // #503: one active-channel line for the whole tab. The channel is whatever the
+  // CONTROL PLANE (platformVersion) is on — that is what the user opted into. An
+  // rc control plane ⇒ prerelease channel, even if the stack image tag is still
+  // a stable tag. 'unknown' (moving tag / no data) shows nothing.
+  const activeChannel = $derived(channelOf(platformVersion));
   let notificationsEnabled = $state(false);
   let replyPreviewEnabled = $state(false);
   let launchOnLoginSupported = $state(false);
@@ -398,14 +420,34 @@
 
   <div class="panel-body">
 
-    <!-- Recommended one-click update (safe path: backs up config first). -->
-    <section class="update-card" aria-labelledby="update-primary-title">
+    <!-- Primary action: reflects reality against the CONTROL PLANE. When any
+         service is behind the platform, this is the one-click "update the stack
+         to match" action (resolves correctly now that /admin/upgrade passes
+         allowPrerelease from the control-plane channel). When everything matches,
+         it reads "up to date". -->
+    <section class="update-card" aria-labelledby="update-primary-title" class:update-card-ok={!servicesBehind}>
       <div class="update-card-text">
-        <h3 id="update-primary-title" class="update-title">Update to the latest version</h3>
-        <p class="update-desc">
-          Downloads and installs the newest OpenPalm release. Your settings are backed up first,
-          then your assistant restarts — it will be offline for about a minute. Your data is kept.
-        </p>
+        {#if servicesBehind}
+          <h3 id="update-primary-title" class="update-title">
+            Your services are on {formatVersionForDisplay(stackVersion) || '—'} — update to {formatVersionForDisplay(platformVersion) || 'the latest version'}
+          </h3>
+          <p class="update-desc">
+            Brings every stack service up to the version of OpenPalm you're running. Your settings
+            are backed up first, then your assistant restarts — offline for about a minute. Your data is kept.
+          </p>
+        {:else}
+          <h3 id="update-primary-title" class="update-title">You're up to date</h3>
+          <p class="update-desc">
+            Every service matches OpenPalm {formatVersionForDisplay(platformVersion) || 'the current version'}.
+            An update backs up your settings first, then briefly restarts your assistant.
+          </p>
+        {/if}
+        {#if harnessUpdateAvailable}
+          <p class="update-harness-note" role="status">
+            A new version of the OpenPalm app is available — this one updates by <strong>re-downloading the app</strong>,
+            not in place. {#if inElectron && electronLatestUrl}<a href={electronLatestUrl} target="_blank" rel="noopener noreferrer">Download it</a>.{:else}Download the latest release to update.{/if}
+          </p>
+        {/if}
       </div>
       <button
         class="btn btn-primary update-go"
@@ -415,38 +457,51 @@
       >
         {#if upgradeLoading}
           <Spinner /> Updating…
-        {:else}
+        {:else if servicesBehind}
           Update now
+        {:else}
+          Check &amp; update
         {/if}
       </button>
     </section>
 
-    <!-- Current versions + per-unit update status. The version chip's border
-         colour + the emoji beside it signal up-to-date vs update-available; the
-         inline action downloads/installs the newest build on this channel. -->
-    <dl class="versions">
-      <div class="versions-row">
-        <dt>OpenPalm Assistant</dt>
-        <dd>
-          <span class="version-cell">
-            <code class="version-value status-{assistantStatus}">{formatVersionForDisplay(currentImageTag) || '—'}</code>
-            {#if statusEmoji(assistantStatus)}
-              <span class="status-emoji" role="img" aria-label={statusTitle(assistantStatus)} title={statusTitle(assistantStatus)}>{statusEmoji(assistantStatus)}</span>
-            {/if}
-          </span>
-          {#if assistantStatus === 'update'}
-            <button
-              class="btn btn-sm btn-secondary version-action"
-              onclick={onUpgradeStack}
-              disabled={anyDangerousLoading || !tokenStored}
-              aria-busy={upgradeLoading}
-            >
-              {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {formatVersionForDisplay(assistantLatest)}{/if}
-            </button>
-          {/if}
-        </dd>
-      </div>
+    <!-- Current versions, grouped by version line (design §5.2): the control
+         plane header, the Services group (each compared to the control plane —
+         never a green ✅ when behind), then the App + Admin-interface lines. -->
+    <div class="versions-group" aria-labelledby="versions-platform-title">
+      <h3 id="versions-platform-title" class="versions-group-title">
+        OpenPalm {formatVersionForDisplay(platformVersion) || '—'}
+        <span class="versions-group-sub">control plane</span>
+      </h3>
+    </div>
 
+    <dl class="versions">
+      <div class="versions-subhead"><dt>Services</dt><dd></dd></div>
+      {#each serviceRows as s (s.id)}
+        <div class="versions-row">
+          <dt>{s.label}</dt>
+          <dd>
+            <span class="version-cell">
+              <code class="version-value status-{s.status}">{formatVersionForDisplay(s.version) || '—'}</code>
+              {#if statusEmoji(s.status)}
+                <span class="status-emoji" role="img" aria-label={statusTitle(s.status)} title={statusTitle(s.status)}>{statusEmoji(s.status)}</span>
+              {/if}
+            </span>
+            {#if s.status === 'update'}
+              <button
+                class="btn btn-sm btn-secondary version-action"
+                onclick={onUpgradeStack}
+                disabled={anyDangerousLoading || !tokenStored}
+                aria-busy={upgradeLoading}
+              >
+                {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {formatVersionForDisplay(platformVersion)}{/if}
+              </button>
+            {/if}
+          </dd>
+        </div>
+      {/each}
+
+      <div class="versions-subhead"><dt>App</dt><dd></dd></div>
       <div class="versions-row">
         <dt>OpenPalm App</dt>
         <dd>
@@ -465,7 +520,7 @@
       </div>
 
       <div class="versions-row">
-        <dt>OpenPalm UI</dt>
+        <dt>Admin interface</dt>
         <dd>
           <span class="version-cell">
             <code class="version-value status-{uiStatus}">{formatVersionForDisplay(uiVersion) || '—'}</code>
@@ -572,12 +627,11 @@
 
         <div class="version-section">
           <label class="version-label" for="stack-version-select">Install a specific version</label>
-          {#if platformVersion}
-            <p class="version-running-note">
-              You're running OpenPalm {platformVersion}. Newer versions appear here
-              only after you update the app.
-            </p>
-          {/if}
+          <p class="version-running-note">
+            Install an exact version — e.g. to roll back, or to pin to a specific tested release.
+            The list shows versions up to your current control plane
+            {#if platformVersion}(OpenPalm {formatVersionForDisplay(platformVersion)}){/if}.
+          </p>
           <div class="version-input-row">
             {#if releasesLoading}
               <div class="version-select-skeleton"></div>
@@ -632,7 +686,7 @@
               {/if}
             </button>
           </div>
-          <p class="version-hint">For rollback or troubleshooting. Installs the chosen version and restarts services (about a minute offline).</p>
+          <p class="version-hint">Explicit version control: installs the chosen version and restarts services (about a minute offline). Use this to roll back or pin a release.</p>
 
           {#if migratePreview}
             <div class="migrate-preview" role="status">
@@ -904,12 +958,62 @@
     gap: var(--space-2);
   }
 
+  /* When everything matches the control plane the primary card is a calm
+     "up to date" state rather than an action prompt. */
+  .update-card-ok {
+    background: var(--color-success-bg, var(--color-bg-secondary));
+    border-color: var(--color-success, var(--color-border));
+  }
+  .update-harness-note {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    max-width: 60ch;
+  }
+  .update-harness-note strong { color: var(--color-text); }
+
   /* ── Current versions ── */
+  .versions-group {
+    margin: var(--space-5) 0 0;
+  }
+  .versions-group-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+  .versions-group-sub {
+    font-size: var(--text-xs);
+    font-weight: var(--font-normal, 400);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   .versions {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    margin: var(--space-5) 0 0;
+    margin: var(--space-3) 0 0;
+  }
+
+  /* Group label inside the version list (Services / App). */
+  .versions-subhead dt {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+    margin-top: var(--space-2);
+  }
+  .versions-subhead {
+    display: flex;
+    justify-content: space-between;
   }
 
   .desktop-toggle {
