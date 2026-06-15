@@ -193,6 +193,10 @@
               {#if phase.name === 'applying'}<span class="spinner" aria-hidden="true"></span>Updating…{:else}Update now{/if}
             </button>
           </div>
+          <p class="splash-reassure">
+            This usually takes a few seconds. Your settings, secrets, and saved data are copied to a
+            timestamped backup folder first, so you can always restore your previous state.
+          </p>
         {/if}
 
       {:else}
@@ -276,7 +280,8 @@
      severity signal). */
   .splash-panel .wiz-eyebrow {
     font-size: 12px;
-    color: var(--color-text-secondary);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -317,7 +322,17 @@
     animation: splash-spin 0.7s linear infinite;
   }
   @keyframes splash-spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .spinner { display: none; } }
+
+  /* Reassurance note below the migration CTA — adds calm context (and vertical
+     weight) without competing with the primary action. */
+  .splash-reassure {
+    margin: var(--space-5) 0 0;
+    max-width: 30rem;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-text-tertiary);
+  }
 
   .splash-summary {
     list-style: none;
