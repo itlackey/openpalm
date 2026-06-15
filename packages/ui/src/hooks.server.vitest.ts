@@ -12,7 +12,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { resetState } from '$lib/server/test-helpers.js';
 import { createSession } from '$lib/server/session-store.js';
 import { SESSION_COOKIE_NAME } from '$lib/server/session-cookie.js';
-import { handle } from './hooks.server.js';
+import { handle, _resetLaunchCache } from './hooks.server.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +95,23 @@ describe('hooks.server — sliding renewal', () => {
 
     const event = makeEvent('/', null, 'text/html');
 
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
+  });
+
+  test('a pending migration forces /chat to /splash (migration outranks stack health)', async () => {
+    // Seed a layout-v1 home with an inert channels.compose.yml → a real pending
+    // 1→2 migration. Even if the stack were healthy (chat would normally be the
+    // destination), the migration gate must route /chat → /splash.
+    const state = resetState('test-admin-pw');
+    const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+    mkdirSync(kvDir, { recursive: true });
+    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\nOP_LAYOUT_VERSION=1\n');
+    mkdirSync(state.stackDir, { recursive: true });
+    writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
+    writeFileSync(join(state.stackDir, 'channels.compose.yml'), 'services: {}\n');
+    _resetLaunchCache(); // resolve fresh against THIS home (the 5s cache is module-level)
+
+    const event = makeEvent('/chat', null, 'text/html');
     await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
   });
 
