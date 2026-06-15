@@ -16,7 +16,7 @@ OpenPalm is two things: a **harness** and a **stack**.
 - Environment variable files (system config, principal secret files, user API keys)
 - OpenCode configuration (model, providers, persona)
 - AKM configuration (memory, embeddings, knowledge stash)
-- Voice and channel configuration
+- Voice and portal configuration
 
 The harness job is unglamorous: download Docker images, place the right content in the right files, and start `docker compose up`. That's the entire control plane. If you prefer, you can skip the harness entirely and manage those files by hand.
 
@@ -36,11 +36,9 @@ No proprietary orchestration layer, no magic runtime, no lock-in. Just container
 
 ## Where things stand
 
-**0.11.0** is a refactor and simplification release. The architecture is stable — assistant, guardian, portal/direct ingress, and the AKM memory/skills layer all work and are in daily use. This release consolidates the stack layout, removes a lot of incidental complexity, and ships the revised setup wizard.
+**0.12.0** is the stabilization and hardening release. It builds on the 0.11.0 architecture — assistant, guardian, portal/direct ingress, and the AKM memory/skills layer, all in daily use — and focuses on install/upgrade lifecycle robustness, safer migrations, better error recovery, and a self-updating control plane that avoids unnecessary desktop-app re-downloads. It also completes the channels → portals rename.
 
-**0.12.x** will focus on stabilization and hardening: install/upgrade lifecycle robustness, better error recovery, and closing the remaining rough edges before v1.
-
-If you're running OpenPalm today, 0.11.0 is the release to be on. If you need production stability guarantees, watch for 0.12.x.
+If you're running OpenPalm today, 0.12.0 is the release to be on.
 
 
 ## What you get
@@ -115,7 +113,7 @@ For the full walkthrough, see [How It Works](docs/how-it-works.md). For security
 | [How It Works](docs/how-it-works.md) | Architecture and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Config, addons, secrets, automations |
 | [Core Principles](docs/technical/core-principles.md) | Security invariants and design rules |
-| [Community Channels](docs/channels/community-channels.md) | Build your own guardian-facing portal adapter |
+| [Community Portals](docs/portals/community-portals.md) | Build your own guardian-facing portal adapter |
 | [Full docs index](docs/README.md) | Everything else |
 
 ## Contributing
