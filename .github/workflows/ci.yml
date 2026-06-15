@@ -367,6 +367,16 @@ jobs:
       - name: Build UI (catch Vite/SSR failures before release)
         run: bun run ui:build
 
+      - name: Bundle Electron harness (refresh dist/main.js from source)
+        run: bun run --cwd packages/electron bundle
+
+      - name: Validate thin-harness boundary (design §6.1/§6.6)
+        # Asserts dist/main.js carries ZERO migration symbols, the UI build DOES,
+        # and main.ts imports only the @openpalm/lib bootstrap allowlist. The UI
+        # build is already present from the step above; dist/main.js was just
+        # rebundled from source.
+        run: ./scripts/validate-thin-harness-boundary.sh
+
   electron-tests:
     name: Electron unit tests (Vitest)
     runs-on: ubuntu-latest
