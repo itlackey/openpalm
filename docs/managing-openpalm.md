@@ -282,6 +282,50 @@ OpenPalm separates **the app you installed** from **the control plane that runs 
 
 > Stable users get stable everywhere (CLI, the admin "Update now" card, and the desktop update check now agree). Reaching a prerelease is always a deliberate choice (`openpalm update --pre`).
 
+**Knowing an update exists.** `openpalm status` ends with a one-line advisory
+(on stderr, so the JSON on stdout stays script-clean) when a newer release is
+published on your channel — e.g. *"An update is available: OpenPalm 0.12.0
+(you're on 0.11.5). Run `openpalm update`."* The admin UI shows the same signal
+as a persistent banner ("An update is ready — review it") that jumps to the
+**Updates** tab. The desktop app's **"Check for prerelease versions"** tray
+toggle (off by default) makes the desktop notify on newer rc/beta builds for
+users piloting a prerelease.
+
+**Previewing what an update will change.** Before committing, you can see the
+exact copy-only file operations an upgrade would run:
+
+```bash
+# Preview the release migrations for the newest published tag (current major)
+openpalm migrate --dry-run --to latest
+
+# Preview a specific target version
+openpalm migrate --dry-run --to 0.12.0
+```
+
+`--to` requires `--dry-run` — it never applies anything. The admin UI's
+**Advanced options** has the same **"Preview changes"** button. Migrations are
+copy-only, backup-first, and idempotent; nothing is deleted.
+
+**Downgrades.** Selecting a version older than the one you're running is a
+downgrade: release migrations are **forward-only**, so the picker requires an
+explicit confirmation and points you at **restore from backup** if your data
+isn't compatible with the older release. Prefer restoring a backup over
+downgrading in place.
+
+**If an operation seems stuck.** Install/update hold a short-lived lock that
+auto-heals after 30 minutes. If you're certain nothing is running, clear a
+**stale** lock with:
+
+```bash
+openpalm unlock
+```
+
+`openpalm unlock` validates staleness (a dead process, or a lock older than 30
+minutes) before clearing and **refuses to clear a live lock**. The admin UI
+shows an "An operation seems stuck — clear it?" action only when a stale lock is
+detected. Whenever an install/update/migrate aborts, the message points at the
+backup it just took and `openpalm rollback`.
+
 ---
 
 ## Compose-driven updates
@@ -310,6 +354,23 @@ tar xzf openpalm-backup.tar.gz -C /
 ```
 
 After restoring, start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+
+### Lifecycle backups
+
+Every layout migration (run automatically on upgrade) first copies your home
+into `~/.openpalm/data/backups/<timestamp>/` and arms `openpalm rollback`. Before
+that copy runs, OpenPalm checks free disk space and **stops with a plain message
+if the backup would exceed a safe fraction (~80%) of free space** rather than
+silently filling the disk — it never deletes anything to make room.
+
+The admin UI's **Updates** tab surfaces your backups (count, total size, last
+time, per-backup list) plus restore guidance. Old snapshots are **never pruned
+automatically**. To reclaim space, use the explicit, confirm-gated command (or
+the matching "Prune…" button in the UI), which keeps the newest *N*:
+
+```bash
+openpalm backups prune --keep 3
+```
 
 ---
 

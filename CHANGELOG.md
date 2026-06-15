@@ -77,6 +77,30 @@ migrations — see **Migration** below.
 - **Desktop Docker preflight.** The Electron app runs the CLI's Docker probes at
   launch and shows a legible install/retry screen instead of an opaque
   `503 docker_unavailable` ~60s into the splash. (#493)
+- **Upgrade preview.** `openpalm migrate --dry-run --to <version>` previews the
+  exact copy-only release migrations an upgrade *would* run (read from the target
+  version, not the current `stack.env`; defaults to the newest published tag for
+  the current major). The UI's Advanced options gains a matching "Preview changes"
+  button that lists the operations before you apply. (#497)
+- **"An update is available" signal.** `openpalm status` prints a one-line,
+  channel-correct advisory to stderr (stdout JSON stays clean for scripts) when a
+  newer release is published, and the web UI shows a persistent "An update is
+  ready — review it" banner in the shell that jumps to the Updates tab. (#498)
+- **Backup safety and visibility.** A pre-backup free-space check blocks a
+  full-home layout backup that would exceed a safe fraction of free disk (with a
+  plain-language message; nothing is deleted — proceed by confirming) instead of
+  silently filling the disk. The UI surfaces backups (count, total size, last
+  time, per-backup list, restore guidance) and a confirm-gated "Prune…" that
+  drives the *existing* `openpalm backups prune` — there is no automatic
+  deletion. (#499)
+- **Stuck-operation recovery.** A new `openpalm unlock` command (and a UI "An
+  operation seems stuck — clear it?" affordance) clears a **stale** install lock
+  after validating staleness (dead PID or older than 30 minutes); a live lock is
+  refused with the auto-heal note. Install/update/migrate abort paths now point at
+  the backup that was just made and `openpalm rollback`. (#500)
+- **Electron prerelease opt-in.** A "Check for prerelease versions" tray toggle
+  switches the desktop update check to the full releases list and notifies on
+  newer prereleases for users piloting an rc — notify-only, default off. (#504)
 
 ### Changed
 
@@ -88,6 +112,11 @@ migrations — see **Migration** below.
   reconciles the Docker-tag (`v`-prefixed), npm (bare), and dist-tag
   (`latest`/`next`) vocabularies. The UI build update channel is decoupled from
   `app.getVersion()` (declared platform channel via `OP_UI_CHANNEL`). (#495)
+- **Unified version display.** Every version label the user reads (Assistant /
+  App / UI rows and the update action buttons) is normalized to one canonical
+  no-`v` spelling, and the Updates tab shows a one-line active-channel indicator
+  ("You're on the **stable** / **prerelease** channel."). Internal tag formats are
+  unchanged; only what the user reads is unified. (#503)
 
 ### Fixed
 
@@ -103,6 +132,17 @@ migrations — see **Migration** below.
   stable; a prerelease base stays on its channel, and `--pre` is the explicit
   opt-in. This aligns the CLI, the UI "Update now" card, and the desktop update
   check on one definition of "latest."
+- **Downgrades via the version picker now require confirmation (#501).**
+  Selecting a tag older than the running version is detected in `applyTagChange`
+  as a downgrade and blocked with a typed signal; the UI shows a plain
+  forward-only-migrations / restore-from-backup warning and re-submits with an
+  explicit `confirmDowngrade` only after the user agrees. (The CLI `migrate --to`
+  path is preview-only.)
+- **Secret-like keys removed from `stack.env` are no longer stripped silently
+  (#502).** `writeSystemEnv` still removes `*_API_KEY` / `*_TOKEN` / `*_SECRET` /
+  `*_PASSWORD` keys per the secret-boundary contract, but now logs a structured
+  warning and surfaces a one-time, dismissible UI notice naming the removed keys
+  and pointing the user at the Connections tab to re-add them.
 
 ### Deprecated
 
