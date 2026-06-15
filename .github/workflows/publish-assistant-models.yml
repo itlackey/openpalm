@@ -1,0 +1,83 @@
+name: Publish openpalm/assistant-models
+# Builds the prebuilt assistant EMBEDDER MODEL BUNDLE (Xenova/bge-small-en-v1.5,
+# 384-dim, in transformers.js cache layout) and pushes it to Docker Hub. The
+# assistant image build (containers/assistant/Dockerfile) pulls this instead of
+# downloading the model, so the heavy/flaky HuggingFace download happens ONCE here
+# per model bump — not on every assistant build (issue #505).
+#
+# Single-arch (amd64): the artifacts are platform-agnostic data and the assistant
+# build pulls this via `--platform=$BUILDPLATFORM`, then COPY --from's the files
+# into the runtime image.
+#
+# Run this BEFORE the assistant build (platform-release.yml) whenever the model
+# pin or the @huggingface/transformers major changes:
+#   1. bump the ARGs / tag here (and the ASSISTANT_MODELS_IMAGE default in
+#      containers/assistant/Dockerfile),
+#   2. dispatch this workflow with the new `tag`,
+#   3. then run the assistant build.
+#
+# NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
+# (main). Dispatching with --ref <branch> runs that branch's copy.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to publish (e.g. v1). Also tagged `latest`.'
+        required: false
+        default: 'v1'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-assistant-models
+  cancel-in-progress: false
+
+jobs:
+  build-models:
+    name: Build and push openpalm/assistant-models
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: openpalm/assistant-models
+          tags: |
+            type=raw,value=${{ inputs.tag || 'v1' }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: containers/assistant
+          file: containers/assistant/Dockerfile.models
+          # Platform-agnostic data — amd64 only; the assistant build pulls it via
+          # --platform=$BUILDPLATFORM and COPY --from's into the runtime image.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Optional: an authenticated HuggingFace token sidesteps the anonymous
+          # per-IP 429 rate limit on the model download. Add a read-only HF_TOKEN
+          # repo secret to enable it; without it the build falls back to anonymous +
+          # retry (which can flake under load).
+          secrets: |
+            hf_token=${{ secrets.HF_TOKEN }}
+          cache-from: type=gha,scope=openpalm/assistant-models
+          cache-to: type=gha,scope=openpalm/assistant-models,mode=max
