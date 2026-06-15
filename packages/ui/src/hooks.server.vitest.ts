@@ -5,14 +5,32 @@
  * fresh-TTL token, not recycle the old token value. With stateless HMAC tokens
  * the old token has an immutable expiry — only a new token extends the window.
  */
-import { beforeEach, afterEach, describe, test, expect } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { beforeEach, afterEach, describe, test, expect, vi } from 'vitest';
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { RequestEvent } from '@sveltejs/kit';
 import { resetState } from '$lib/server/test-helpers.js';
 import { createSession } from '$lib/server/session-store.js';
 import { SESSION_COOKIE_NAME } from '$lib/server/session-cookie.js';
+
+// Make launch routing DETERMINISTIC: stub the three host probes so the tests don't
+// depend on whether docker / an assistant happens to be running on the dev machine
+// (a reachable assistant on :3800 used to flip the not_installed case to /chat).
+// Everything else from these modules stays real (migration detection, secret/config
+// startup, the pure routing derivations).
+vi.mock('$lib/server/endpoints.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/server/endpoints.js')>()),
+  listRemoteStatuses: vi.fn(async () => []),
+}));
+vi.mock('@openpalm/lib', async (orig) => ({
+  ...(await orig<typeof import('@openpalm/lib')>()),
+  composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '' })),
+  detectRuntime: vi.fn(async () => ({ dockerPresent: false, composeAvailable: false })),
+}));
+
 import { handle, _resetLaunchCache } from './hooks.server.js';
+import { listRemoteStatuses } from '$lib/server/endpoints.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,14 +67,26 @@ const resolve = () => Promise.resolve(new Response('ok', { status: 200 }));
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('hooks.server — sliding renewal', () => {
+  let home = '';
+  let prevHome: string | undefined;
+
   beforeEach(() => {
     process.env.PORT = '3880';
+    // Isolate each test in its own OP_HOME so seeded files (e.g. core.compose.yml)
+    // can't leak into the next test and flip its install classification.
+    prevHome = process.env.OP_HOME;
+    home = mkdtempSync(join(tmpdir(), 'op-hooks-'));
+    process.env.OP_HOME = home;
+    _resetLaunchCache(); // the 5s launch cache is module-level — resolve fresh per test
+    vi.mocked(listRemoteStatuses).mockResolvedValue([]);
     const state = resetState('test-admin-pw');
     seedSetupComplete(state.stackDir);
   });
 
   afterEach(() => {
     delete process.env.PORT;
+    if (prevHome === undefined) delete process.env.OP_HOME; else process.env.OP_HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
   });
 
   test('admin request gets a NEW op_session cookie (sliding window extends TTL)', async () => {
@@ -109,10 +139,24 @@ describe('hooks.server — sliding renewal', () => {
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
     writeFileSync(join(state.stackDir, 'channels.compose.yml'), 'services: {}\n');
-    _resetLaunchCache(); // resolve fresh against THIS home (the 5s cache is module-level)
 
     const event = makeEvent('/chat', null, 'text/html');
     await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
+  });
+
+  test('not_installed + an accessible remote (no migration) skips splash → /chat', async () => {
+    // Fresh home, nothing installed, but a reachable remote assistant is configured:
+    // the user should land in chat, not on the splash.
+    const state = resetState('test-admin-pw');
+    const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+    mkdirSync(kvDir, { recursive: true });
+    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
+    vi.mocked(listRemoteStatuses).mockResolvedValue([
+      { id: 'r1', name: 'Remote', url: 'http://example/', state: 'accessible' },
+    ]);
+
+    const event = makeEvent('/', null, 'text/html');
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/chat' });
   });
 
   test('proxy data requests are NOT launch-redirected (chat SSE/session must reach the route)', async () => {
