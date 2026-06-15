@@ -15,13 +15,19 @@ if (!portalPackage) {
 }
 
 const versionAt = portalPackage.lastIndexOf('@');
-const importTarget = versionAt > 0 ? portalPackage.slice(0, versionAt) : portalPackage;
+const name = versionAt > 0 ? portalPackage.slice(0, versionAt) : portalPackage;
+
+// Each adapter is baked at <root>/<short> with its own node_modules in place, so
+// import it BY PATH ("@openpalm/discord-portal" -> <root>/discord). A bare
+// specifier would need a linked package; the bake installs deps in place instead.
+const portalsRoot = Bun.env.PORTALS_ROOT ?? '/app/portals';
+const importTarget = `${portalsRoot}/${name.replace(/^@openpalm\//, '').replace(/-portal$/, '')}`;
 
 let mod: Record<string, unknown>;
 try {
   mod = await import(importTarget);
 } catch (err) {
-  logError(`Failed to import portal "${importTarget}": ${err instanceof Error ? err.message : String(err)}`);
+  logError(`Failed to import portal "${name}" from ${importTarget}: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
 

@@ -22,7 +22,12 @@ describe('portal image bake contract', () => {
     expect(dockerfile).toContain('COPY portals/discord /app/portals/discord');
     expect(dockerfile).toContain('COPY portals/slack /app/portals/slack');
     expect(dockerfile).toContain('COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts');
-    expect(dockerfile).toContain('RUN bun install --production');
+    // Each adapter installs its OWN deps in place — no workspace root, no symlinked
+    // package, no generated manifest (those left @openpalm/* unresolvable at runtime).
+    expect(dockerfile).toContain('cd /app/portals/discord && bun install --production');
+    expect(dockerfile).toContain('cd /app/portals/slack && bun install --production');
+    expect(dockerfile).not.toContain('printf');
+    expect(dockerfile).not.toContain('workspaces');
   });
 
   test('managed portal compose uses baked package names, not dist-tags', () => {

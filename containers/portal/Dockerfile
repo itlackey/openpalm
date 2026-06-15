@@ -9,18 +9,17 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Build against a minimal workspace root so the baked portals resolve as local workspaces.
-RUN mkdir -p /app/portals/discord /app/portals/slack
-COPY portals/discord/package.json /app/portals/discord/package.json
-COPY portals/slack/package.json /app/portals/slack/package.json
-RUN printf '%s\n' '{' '  "name": "openpalm-portal-image",' '  "private": true,' '  "workspaces": [' '    "portals/discord",' '    "portals/slack"' '  ]' '}' > /app/package.json
-
-# Bake the first-party portal adapters into the image from the workspace.
+# Bake each first-party portal adapter and install its own dependencies in place
+# (deps installed AFTER the COPY, into the package's own node_modules — no
+# workspace, no symlinked package, no generated manifest). The entrypoint imports
+# the selected adapter by path, so each one is fully self-contained.
 COPY portals/discord /app/portals/discord
-COPY portals/slack /app/portals/slack
-COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts
+RUN cd /app/portals/discord && bun install --production
 
-RUN bun install --production
+COPY portals/slack /app/portals/slack
+RUN cd /app/portals/slack && bun install --production
+
+COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts
 
 # Startup script validates PORTAL_PACKAGE then runs the entrypoint.
 COPY containers/portal/start.sh /app/start.sh
