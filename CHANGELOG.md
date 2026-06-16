@@ -5,6 +5,19 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-06-16
+
+### Fixed
+
+- **Advanced no longer throws "Session not found" when switching Chat↔Advanced.**
+  The embedded OpenCode deep link hardcoded a workspace path, and OpenCode scopes
+  its session list by directory — so a session that lived in a different directory
+  (or on a different endpoint entirely) couldn't be found and the embedded app
+  errored. Advanced now resolves the requested session against the **active**
+  endpoint (via the same-origin proxy), deep-links using the session's **real
+  directory**, and falls back to the endpoint's default view when the session
+  doesn't exist there instead of rendering a broken frame.
+
 ## [0.12.1] - 2026-06-16
 
 ### Fixed
