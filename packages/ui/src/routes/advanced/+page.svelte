@@ -9,36 +9,56 @@
   // when the visitor is already an authenticated admin.
 
   const active = $derived(endpointsService.active);
+  const requestedSessionId = $derived(page.url.searchParams.get('session'));
 
-  // The OpenCode web UI URL = the active endpoint's URL (honours
-  // OP_OPENCODE_URL / custom port). Falls back to the host default (3800, the
-  // host-mapped port; 4096 is container-internal).
-  const openCodeUrl = $derived.by(() => {
-    const baseUrl = active?.url ?? 'http://127.0.0.1:3800';
-    const sessionId = page.url.searchParams.get('session');
-    return buildAdvancedIframeUrl(baseUrl, sessionId);
-  });
+  // The resolved OpenCode web-UI URL. Set by resolve() once we've confirmed the
+  // active endpoint is reachable and (if a session was requested) that the
+  // session exists there — with its REAL directory. Empty until first resolve.
+  let frameUrl = $state('');
 
   // The embedded OpenCode UI loads cross-origin, so the parent can't observe a
-  // 401 / dead-session failure (no error event, opaque contentDocument). Instead
-  // we pre-flight probe the active endpoint through the same-origin proxy (which
-  // targets the same active endpoint server-side). If it's reachable, render the
-  // frame; if not, show an inline Reconnect affordance instead of a broken frame.
+  // 401 / dead-session / session-not-found failure (no error event, opaque
+  // contentDocument). Instead we pre-flight through the same-origin proxy (which
+  // targets the active endpoint server-side): if reachable, render the frame; if
+  // not, show an inline Reconnect affordance instead of a broken frame.
   type Probe = 'checking' | 'ready' | 'dead';
   let probeState = $state<Probe>('checking');
   let reconnecting = $state(false);
   let reloadNonce = $state(0);
   let probeToken = 0; // discard stale async probe results
 
-  async function probe(): Promise<void> {
+  async function resolve(): Promise<void> {
     const token = ++probeToken;
     probeState = 'checking';
+    const base = active?.url ?? 'http://127.0.0.1:3800';
     try {
-      // Root of the OpenCode web server via the proxy → 200 when reachable,
-      // 503 (endpoint_unreachable) / non-OK when the session is dead.
-      const res = await fetch('/proxy/assistant/', { headers: { accept: 'text/html' } });
-      if (token !== probeToken) return; // a newer probe superseded this one
-      probeState = res.ok ? 'ready' : 'dead';
+      // 1. Reachability: root of the OpenCode web server via the proxy → 200
+      //    when reachable, 503 (endpoint_unreachable) / non-OK when dead.
+      const root = await fetch('/proxy/assistant/', { headers: { accept: 'text/html' } });
+      if (token !== probeToken) return; // a newer resolve superseded this one
+      if (!root.ok) { probeState = 'dead'; return; }
+
+      // 2. Resolve the requested session ON THE ACTIVE ENDPOINT. OpenCode scopes
+      //    its session list by directory, so deep-linking needs the session's
+      //    real `directory`; and a session created on a DIFFERENT endpoint (or
+      //    since deleted) 404s here. In both bad cases fall back to the base URL
+      //    (OpenCode opens its default view) rather than a "Session not found".
+      let url = base;
+      if (requestedSessionId) {
+        const res = await fetch(
+          `/proxy/assistant/session/${encodeURIComponent(requestedSessionId)}`,
+          { headers: { accept: 'application/json' } },
+        );
+        if (token !== probeToken) return;
+        if (res.ok) {
+          const session = await res.json().catch(() => null);
+          if (token !== probeToken) return;
+          url = buildAdvancedIframeUrl(base, requestedSessionId, session?.directory);
+        }
+        // non-ok → leave url = base (no broken deep link)
+      }
+      frameUrl = url;
+      probeState = 'ready';
     } catch {
       if (token !== probeToken) return;
       probeState = 'dead';
@@ -52,17 +72,21 @@
       // Re-read the endpoint list first — a restarted admin OpenCode advertises a
       // new ephemeral URL in its runtime file, so the cached frame URL may be stale.
       await endpointsService.load(true);
-      await probe();
+      await resolve();
       if (probeState === 'ready') reloadNonce++; // force a fresh iframe load
     } finally {
       reconnecting = false;
     }
   }
 
-  // Re-probe whenever the active endpoint changes (initial mount + switching
-  // assistants in the navbar). Genuine side-effect on a dependency, not state sync.
+  // Re-resolve whenever the active endpoint OR requested session changes (initial
+  // mount, switching assistants, switching Chat↔Advanced with a different
+  // session). Genuine side-effect on dependencies, not state sync.
   $effect(() => {
-    if (active?.id) void probe();
+    if (active?.id) {
+      requestedSessionId; // track so a session change re-resolves
+      void resolve();
+    }
   });
 
   onMount(() => {
@@ -90,7 +114,7 @@
     {#key reloadNonce}
       <iframe
         class="opencode-frame"
-        src={openCodeUrl}
+        src={frameUrl}
         title="OpenCode — Advanced Chat"
         allow="clipboard-read; clipboard-write; microphone"
       ></iframe>
