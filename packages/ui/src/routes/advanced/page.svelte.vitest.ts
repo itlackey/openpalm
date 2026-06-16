@@ -22,6 +22,20 @@ vi.mock('$lib/endpoints-state.svelte.js', () => ({
   },
 }));
 
+/** Stub the endpoint-reachability probe. By default the active endpoint is
+ *  reachable (200) so the iframe renders; tests can override `probeOk`. */
+let probeOk = true;
+function installFetchStub(): void {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+    if (url.includes('/proxy/assistant/')) {
+      return new Response(probeOk ? 'ok' : 'unreachable', { status: probeOk ? 200 : 503 });
+    }
+    // Benign default for any other fetch the navbar makes during render.
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  }));
+}
+
 vi.mock('$lib/chat/chat-state.svelte.js', () => ({
   chat: {
     sending: false,
@@ -56,10 +70,13 @@ describe('/advanced/+page.svelte', () => {
   beforeEach(() => {
     resetThemeForTests();
     themeService.init();
+    probeOk = true;
+    installFetchStub();
   });
 
   afterEach(() => {
     resetThemeForTests();
+    vi.unstubAllGlobals();
   });
 
   test('opens the settings drawer above the OpenCode iframe', async () => {
@@ -86,5 +103,21 @@ describe('/advanced/+page.svelte', () => {
 
     expect(drawerPosition).toBe('fixed');
     expect(Number.parseInt(drawerZIndex, 10)).toBeGreaterThan(Number.parseInt(iframeZIndex, 10) || 0);
+  });
+
+  test('shows an inline Reconnect affordance when the endpoint is unreachable', async () => {
+    probeOk = false; // the probe to /proxy/assistant/ returns 503
+    render(AdvancedPage);
+
+    // No broken iframe — a clear status + Reconnect instead.
+    await expect.element(page.getByRole('heading', { name: /Can.t reach/ })).toBeVisible();
+    const reconnect = page.getByRole('button', { name: 'Reconnect' });
+    await expect.element(reconnect).toBeVisible();
+    expect(document.querySelector('iframe[title="OpenCode — Advanced Chat"]')).toBeNull();
+
+    // Recovering: the endpoint comes back, Reconnect re-probes and the frame loads.
+    probeOk = true;
+    await reconnect.click();
+    await expect.element(page.getByTitle('OpenCode — Advanced Chat')).toBeVisible();
   });
 });
