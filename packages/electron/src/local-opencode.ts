@@ -3,7 +3,6 @@
  * refactor — see docs/technical/auth-and-proxy-refactor-plan.md).
  *
  * Lifecycle:
- *   - Generate a per-launch random 32-byte password (base64url).
  *   - Stage a controlled $HOME at ${dataDir}/admin-opencode-home/ with an
  *     opencode.json that loads @openpalm/admin-tools-plugin.
  *   - Spawn `opencode serve` directly (detached, own process group), bound to
@@ -12,9 +11,11 @@
  *     child pid (the SDK hides it) — that pid drives the pidfile, stop(), and
  *     the next-launch stale sweep, so opencode and its descendants are reliably
  *     reaped instead of orphaned.
- *   - Set OPENCODE_SERVER_USERNAME=openpalm and OPENCODE_SERVER_PASSWORD=<rand>
- *     in spawn env. Never written to disk anywhere except the 0600
- *     local-opencode.runtime.json that the broker reads.
+ *   - Spawn with OPENCODE_AUTH=false (no Basic auth), mirroring the assistant.
+ *     The admin OpenCode is loopback-only; an authed instance 401s the
+ *     cross-origin Advanced-mode iframe (which cannot pass credentials), so it is
+ *     served without auth — the same posture as the no-auth local assistant — and
+ *     a local process already has Docker socket access regardless.
  *   - On Electron quit: terminate the process (SIGTERM, 5s grace, SIGKILL),
  *     unlink the runtime.json + pidfile.
  *
@@ -23,9 +24,9 @@
  * `data/local-opencode.unavailable`, and continue. Electron must not crash.
  *
  * Routing: the broker (packages/ui/src/lib/server/endpoints.ts) reads
- * local-opencode.runtime.json each request to pick up the per-launch URL +
- * password. The local entry is synthetic — it is NEVER persisted to
- * config/endpoints.json and CANNOT be deleted or edited from the UI.
+ * local-opencode.runtime.json each request to pick up the per-launch URL. The
+ * local entry is synthetic — it is NEVER persisted to config/endpoints.json and
+ * CANNOT be deleted or edited from the UI.
  */
 import {
   mkdirSync,
@@ -36,13 +37,11 @@ import {
   chmodSync,
 } from "node:fs";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
 import { spawn, spawnSync, type ChildProcess, type SpawnOptions } from "node:child_process";
 
 export type LocalOpencodeRuntime = {
   url: string;
   username: string;
-  password: string;
   pid: number;
   startedAt: string;
 };
@@ -50,7 +49,6 @@ export type LocalOpencodeRuntime = {
 export type LocalOpencodeHandle = {
   url: string;
   username: string;
-  password: string;
   pid: number;
   stop: () => Promise<void>;
 };
@@ -78,20 +76,14 @@ export function adminOpencodeHome(dataDir: string): string {
 
 // ── Pure helpers (exported for tests) ───────────────────────────────────────
 
-export function generatePassword(): string {
-  return randomBytes(32).toString("base64url");
-}
-
 export function buildRuntimeJson(
   url: string,
-  password: string,
   pid: number,
   startedAt: Date = new Date(),
 ): LocalOpencodeRuntime {
   return {
     url,
     username: USERNAME,
-    password,
     pid,
     startedAt: startedAt.toISOString(),
   };
@@ -292,17 +284,17 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
   // pidfile + runtime.json may be lingering.
   sweepStalePid(dataDir);
 
-  const password = generatePassword();
   const { home } = stageAdminHome(dataDir, pluginPath);
 
-  // Env is passed straight to the child — no process.env mutation, so the
-  // password never leaks into the rest of the Electron main process.
+  // No Basic auth — mirror the assistant (OPENCODE_AUTH=false), bound to 127.0.0.1
+  // only. The admin OpenCode is loopback-only; a local process already has Docker
+  // socket access, so a per-origin password adds little, and an authed instance
+  // 401s the cross-origin Advanced-mode iframe (which can't pass credentials). This
+  // makes Advanced work consistently for both the assistant and the admin endpoint.
   const env: NodeJS.ProcessEnv = {
     ...(opts.envOverride ?? process.env),
     HOME: home,
-    OPENCODE_SERVER_USERNAME: USERNAME,
-    OPENCODE_SERVER_PASSWORD: password,
-    OPENCODE_AUTH: "true",
+    OPENCODE_AUTH: "false",
   };
 
   let proc: ChildProcess;
@@ -348,7 +340,7 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
   }
 
   const pid = proc.pid ?? -1;
-  const runtime = buildRuntimeJson(url, password, pid);
+  const runtime = buildRuntimeJson(url, pid);
   writeRuntimeFile(dataDir, runtime);
   writePidFile(dataDir, pid);
   unlinkSafely(unavailableSentinelPath(dataDir));
@@ -357,7 +349,6 @@ export async function startLocalOpenCode(opts: StartOptions): Promise<LocalOpenc
   return {
     url,
     username: USERNAME,
-    password,
     pid,
     async stop() {
       if (stopped) return;

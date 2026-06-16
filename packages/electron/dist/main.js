@@ -7294,7 +7294,7 @@ var require_main = __commonJS((exports, module) => {
 
 // src/main.ts
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences } from "electron";
-import { join as join5, dirname as dirname4 } from "node:path";
+import { join as join6, dirname as dirname4 } from "node:path";
 import { existsSync as existsSync5, readFileSync as readFileSync6, writeFileSync as writeFileSync5, rmSync as rmSync2, mkdirSync as mkdirSync6, createWriteStream } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { spawn as spawn3 } from "node:child_process";
@@ -7363,6 +7363,9 @@ function createLogger(service) {
     debug: (msg, extra) => log("debug", msg, extra)
   };
 }
+// ../lib/src/control-plane/migrations.ts
+import { join, resolve as resolvePath } from "node:path";
+
 // ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/index.js
 var composer = require_composer();
 var Document = require_Document();
@@ -7419,7 +7422,7 @@ import { readFileSync, existsSync, copyFileSync } from "node:fs";
 // ../lib/package.json
 var package_default = {
   name: "@openpalm/lib",
-  version: "0.12.0-rc.1",
+  version: "0.12.0",
   license: "MPL-2.0",
   type: "module",
   description: "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, portals, connections, scheduler",
@@ -7557,6 +7560,10 @@ var PINNABLE_PLATFORM_IMAGES = ["guardian", "portal"];
 var PINNABLE_PLATFORM_IMAGE_SET = new Set(PINNABLE_PLATFORM_IMAGES);
 
 // ../lib/src/control-plane/migrations.ts
+var INERT_LAYOUT_V2_FILES = [
+  join("config", "stack", "channels.compose.yml"),
+  join("config", "stack", "stack.yml")
+];
 var RECOVERY_GUIDANCE = "Your original files were left untouched and a full backup was taken first. " + "If something went wrong, run `openpalm rollback` to restore your previous state, " + "or restore the backup manually (see docs/operations/backup-restore.md). You can also run " + "`openpalm migrate --dry-run` to preview the current copy-only migration. " + "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
 // ../lib/src/control-plane/ui-assets.ts
 import {
@@ -7570,7 +7577,7 @@ import {
   realpathSync,
   renameSync
 } from "node:fs";
-import { join as join2, dirname as dirname2, relative } from "node:path";
+import { join as join3, dirname as dirname2, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash as createHash2 } from "node:crypto";
 
@@ -10746,7 +10753,7 @@ var yo = (s3) => {
 // ../lib/src/control-plane/home.ts
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { resolve as resolvePath } from "node:path";
+import { resolve as resolvePath2 } from "node:path";
 function resolveHome() {
   const home = homedir();
   if (home)
@@ -10756,7 +10763,7 @@ function resolveHome() {
 function resolveOpenPalmHome() {
   const raw = process.env.OP_HOME;
   if (raw)
-    return resolvePath(raw);
+    return resolvePath2(raw);
   return `${resolveHome()}/.openpalm`;
 }
 function resolveConfigDir() {
@@ -10801,7 +10808,7 @@ function ensureHomeDirs() {
 
 // ../lib/src/control-plane/core-assets.ts
 import { mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync2, existsSync as existsSync2, copyFileSync as copyFileSync2 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join as join2 } from "node:path";
 
 // ../lib/src/control-plane/crypto.ts
 import { createHash, randomBytes } from "node:crypto";
@@ -10841,11 +10848,11 @@ var SEEDED_ASSETS = [
 function ensureBackupDir(backupDir, suffix = "") {
   if (backupDir)
     return backupDir;
-  return join(resolveBackupsDir(), `${new Date().toISOString().replace(/[:.]/g, "-")}${suffix}`);
+  return join2(resolveBackupsDir(), `${new Date().toISOString().replace(/[:.]/g, "-")}${suffix}`);
 }
 function backupExistingFile(targetPath, assetRelPath, backupDir, suffix = "") {
   const resolvedBackupDir = ensureBackupDir(backupDir, suffix);
-  const backupPath = join(resolvedBackupDir, assetRelPath);
+  const backupPath = join2(resolvedBackupDir, assetRelPath);
   mkdirSync2(dirname(backupPath), { recursive: true });
   copyFileSync2(targetPath, backupPath);
   return resolvedBackupDir;
@@ -10855,8 +10862,8 @@ function refreshCoreAssetsFromSource(sourceRoot, homeDir = resolveOpenPalmHome()
   const kept = [];
   let backupDir = null;
   for (const asset of MANAGED_ASSETS) {
-    const sourcePath = join(sourceRoot, asset.relPath);
-    const targetPath = join(homeDir, asset.relPath);
+    const sourcePath = join2(sourceRoot, asset.relPath);
+    const targetPath = join2(homeDir, asset.relPath);
     const freshContent = readFileSync2(sourcePath, "utf-8");
     if (existsSync2(targetPath)) {
       const currentContent = readFileSync2(targetPath, "utf-8");
@@ -10869,8 +10876,8 @@ function refreshCoreAssetsFromSource(sourceRoot, homeDir = resolveOpenPalmHome()
     updated.push(asset.relPath);
   }
   for (const asset of GUARDIAN_MANAGED_ASSETS) {
-    const sourcePath = join(sourceRoot, asset.relPath);
-    const targetPath = join(homeDir, asset.relPath);
+    const sourcePath = join2(sourceRoot, asset.relPath);
+    const targetPath = join2(homeDir, asset.relPath);
     if (!existsSync2(sourcePath))
       continue;
     const freshContent = readFileSync2(sourcePath, "utf-8");
@@ -10892,8 +10899,8 @@ function refreshCoreAssetsFromSource(sourceRoot, homeDir = resolveOpenPalmHome()
     updated.push(asset.relPath);
   }
   for (const asset of SEEDED_ASSETS) {
-    const sourcePath = join(sourceRoot, asset.relPath);
-    const targetPath = join(homeDir, asset.relPath);
+    const sourcePath = join2(sourceRoot, asset.relPath);
+    const targetPath = join2(homeDir, asset.relPath);
     if (existsSync2(targetPath))
       continue;
     mkdirSync2(dirname(targetPath), { recursive: true });
@@ -10931,9 +10938,9 @@ function copyTree(src, dest, opts) {
     if (!entry.isFile())
       continue;
     const parentDir = entry.parentPath ?? entry.path;
-    const srcFile = join2(parentDir, entry.name);
+    const srcFile = join3(parentDir, entry.name);
     const rel = relative(src, srcFile);
-    const destFile = join2(dest, rel);
+    const destFile = join3(dest, rel);
     if (opts?.skipExisting && existsSync3(destFile))
       continue;
     mkdirSync3(dirname2(destFile), { recursive: true });
@@ -10951,16 +10958,16 @@ function resolveLocalCandidate(...strategies) {
   return null;
 }
 function resolveLocalOpenpalmDir() {
-  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join2(process.env.OPENPALM_REPO_ROOT, ".openpalm") : null, () => process.env.OPENPALM_SKELETON_DIR ?? null, () => {
+  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join3(process.env.OPENPALM_REPO_ROOT, ".openpalm") : null, () => process.env.OPENPALM_SKELETON_DIR ?? null, () => {
     const meta = fileURLToPath(import.meta.url);
     if (meta.startsWith("/$bunfs/"))
       return null;
-    return join2(dirname2(meta), "..", "..", "..", "..", ".openpalm");
-  }, () => join2(dirname2(realpathSync(process.execPath)), "..", "..", "..", ".openpalm"));
+    return join3(dirname2(meta), "..", "..", "..", "..", ".openpalm");
+  }, () => join3(dirname2(realpathSync(process.execPath)), "..", "..", "..", ".openpalm"));
 }
 var SKELETON_VERSION_STAMP = ".skeleton-version";
 async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
-  const stampPath = join2(homeDir, SKELETON_VERSION_STAMP);
+  const stampPath = join3(homeDir, SKELETON_VERSION_STAMP);
   let alreadySeeded = false;
   if (existsSync3(stampPath)) {
     try {
@@ -10993,8 +11000,8 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
   }
   const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
   logger3.debug("downloading .openpalm skeleton", { url: tarballUrl });
-  const tmpDir = join2(homeDir, ".seed-tmp");
-  const tmpTar = join2(tmpDir, "repo.tar.gz");
+  const tmpDir = join3(homeDir, ".seed-tmp");
+  const tmpTar = join3(tmpDir, "repo.tar.gz");
   mkdirSync3(tmpDir, { recursive: true });
   try {
     const res = await fetchWithRetry(tarballUrl);
@@ -11002,7 +11009,7 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
       throw new Error(`Failed to download tarball (HTTP ${res.status})`);
     writeFileSync2(tmpTar, new Uint8Array(await res.arrayBuffer()));
     await fo({ file: tmpTar, cwd: tmpDir, strip: 1 });
-    const srcOpenpalm = join2(tmpDir, ".openpalm");
+    const srcOpenpalm = join3(tmpDir, ".openpalm");
     if (!existsSync3(srcOpenpalm))
       throw new Error(".openpalm/ not found in tarball");
     refreshCoreAssetsFromSource(srcOpenpalm, homeDir);
@@ -11013,37 +11020,37 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
   }
 }
 function resolveLocalUiBuild() {
-  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join2(process.env.OPENPALM_REPO_ROOT, "packages", "ui", "build") : null, () => {
+  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join3(process.env.OPENPALM_REPO_ROOT, "packages", "ui", "build") : null, () => {
     const rp = process.resourcesPath;
     if (!rp)
       return null;
-    return join2(rp, "ui-build");
+    return join3(rp, "ui-build");
   }, () => {
     const meta = fileURLToPath(import.meta.url);
     if (meta.startsWith("/$bunfs/"))
       return null;
-    const candidate = join2(dirname2(meta), "..", "..", "..", "..", "packages", "ui", "build");
-    return existsSync3(join2(candidate, "index.js")) ? candidate : null;
+    const candidate = join3(dirname2(meta), "..", "..", "..", "..", "packages", "ui", "build");
+    return existsSync3(join3(candidate, "index.js")) ? candidate : null;
   }, () => {
     const binDir = dirname2(realpathSync(process.execPath));
-    const candidate = join2(binDir, "..", "..", "..", "packages", "ui", "build");
-    return existsSync3(join2(candidate, "index.js")) ? candidate : null;
+    const candidate = join3(binDir, "..", "..", "..", "packages", "ui", "build");
+    return existsSync3(join3(candidate, "index.js")) ? candidate : null;
   });
 }
 var UI_VERSION_STAMP = ".openpalm-ui-version";
 function readUiBuildVersion(dir) {
   try {
-    const v2 = readFileSync3(join2(dir, UI_VERSION_STAMP), "utf-8").trim();
+    const v2 = readFileSync3(join3(dir, UI_VERSION_STAMP), "utf-8").trim();
     return v2 || null;
   } catch {
     return null;
   }
 }
 function resolveUiBuildDir() {
-  const dataBuild = join2(resolveDataDir(), "ui");
-  const hasData = existsSync3(join2(dataBuild, "index.js"));
+  const dataBuild = join3(resolveDataDir(), "ui");
+  const hasData = existsSync3(join3(dataBuild, "index.js"));
   const bundledRaw = resolveLocalUiBuild();
-  const bundled = bundledRaw && existsSync3(join2(bundledRaw, "index.js")) ? bundledRaw : null;
+  const bundled = bundledRaw && existsSync3(join3(bundledRaw, "index.js")) ? bundledRaw : null;
   if (hasData && bundled) {
     const dataVer = readUiBuildVersion(dataBuild);
     const bundledVer = readUiBuildVersion(bundled);
@@ -11115,8 +11122,8 @@ async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
   }
   verifyNpmIntegrity(data, manifest.integrity);
   logger3.debug("UI bundle integrity verified", { version: manifest.version });
-  const tmpTar = join2(dataDir, ".ui-build.tgz.tmp");
-  const staging = join2(dataDir, ".ui-build.staging");
+  const tmpTar = join3(dataDir, ".ui-build.tgz.tmp");
+  const staging = join3(dataDir, ".ui-build.staging");
   try {
     rmSync(staging, { recursive: true, force: true });
     mkdirSync3(staging, { recursive: true });
@@ -11127,7 +11134,7 @@ async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
       strip: 2,
       filter: (p2) => p2.startsWith("package/build/")
     });
-    if (!existsSync3(join2(staging, "index.js"))) {
+    if (!existsSync3(join3(staging, "index.js"))) {
       throw new Error("downloaded UI bundle is missing build/index.js");
     }
     rmSync(uiDir, { recursive: true, force: true });
@@ -11138,7 +11145,7 @@ async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
   }
 }
 async function seedUiBuild(repoRef, dataDir, options) {
-  const uiDir = join2(dataDir, "ui");
+  const uiDir = join3(dataDir, "ui");
   mkdirSync3(uiDir, { recursive: true });
   const local = options?.forceRemote ? null : resolveLocalUiBuild();
   if (local) {
@@ -11190,9 +11197,9 @@ async function checkAndUpdateUiBuild(appVersion, dataDir, channelOverride, harne
     if (!currentUiVersion) {
       logger3.debug("UI build is unstamped — refreshing from npm to re-establish a known version", { latest: latestVersion, channel });
     }
-    const uiDir = join2(dataDir, "ui");
-    if (existsSync3(join2(uiDir, "index.js"))) {
-      const backupDir = join2(resolveBackupsDir(), `ui-${Date.now()}`);
+    const uiDir = join3(dataDir, "ui");
+    if (existsSync3(join3(uiDir, "index.js"))) {
+      const backupDir = join3(resolveBackupsDir(), `ui-${Date.now()}`);
       mkdirSync3(resolveBackupsDir(), { recursive: true });
       renameSync(uiDir, backupDir);
       logger3.debug("backed up UI build before update", { backup: backupDir });
@@ -11481,13 +11488,13 @@ function getCachedUpdateInfo() {
 
 // src/settings.ts
 import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "node:fs";
-import { join as join3, dirname as dirname3 } from "node:path";
+import { join as join4, dirname as dirname3 } from "node:path";
 var DEFAULT_SETTINGS = {
   checkPrerelease: false
 };
 var SETTINGS_FILENAME = "electron-settings.json";
 function settingsPath(dataDir) {
-  return join3(dataDir, SETTINGS_FILENAME);
+  return join4(dataDir, SETTINGS_FILENAME);
 }
 function loadSettings(dataDir) {
   try {
@@ -11522,31 +11529,26 @@ import {
   unlinkSync,
   chmodSync
 } from "node:fs";
-import { join as join4 } from "node:path";
-import { randomBytes as randomBytes2 } from "node:crypto";
+import { join as join5 } from "node:path";
 import { spawn as spawn2, spawnSync } from "node:child_process";
 var USERNAME = "openpalm";
 var STOP_GRACE_MS = 5000;
 function runtimePath(dataDir) {
-  return join4(dataDir, "local-opencode.runtime.json");
+  return join5(dataDir, "local-opencode.runtime.json");
 }
 function pidfilePath(dataDir) {
-  return join4(dataDir, "local-opencode.pid");
+  return join5(dataDir, "local-opencode.pid");
 }
 function unavailableSentinelPath(dataDir) {
-  return join4(dataDir, "local-opencode.unavailable");
+  return join5(dataDir, "local-opencode.unavailable");
 }
 function adminOpencodeHome(dataDir) {
-  return join4(dataDir, "admin-opencode-home");
+  return join5(dataDir, "admin-opencode-home");
 }
-function generatePassword() {
-  return randomBytes2(32).toString("base64url");
-}
-function buildRuntimeJson(url, password, pid, startedAt = new Date) {
+function buildRuntimeJson(url, pid, startedAt = new Date) {
   return {
     url,
     username: USERNAME,
-    password,
     pid,
     startedAt: startedAt.toISOString()
   };
@@ -11566,13 +11568,13 @@ function isPidAlive(pid) {
 }
 function stageAdminHome(dataDir, pluginPath) {
   const home = adminOpencodeHome(dataDir);
-  const configDir = join4(home, ".config", "opencode");
-  const shareDir = join4(home, ".local", "share", "opencode");
-  const ocStateDir = join4(home, ".local", "state", "opencode");
+  const configDir = join5(home, ".config", "opencode");
+  const shareDir = join5(home, ".local", "share", "opencode");
+  const ocStateDir = join5(home, ".local", "state", "opencode");
   mkdirSync5(configDir, { recursive: true });
   mkdirSync5(shareDir, { recursive: true });
   mkdirSync5(ocStateDir, { recursive: true });
-  const configPath = join4(configDir, "opencode.json");
+  const configPath = join5(configDir, "opencode.json");
   if (!existsSync4(configPath)) {
     writeFileSync4(configPath, JSON.stringify({
       $schema: "https://opencode.ai/config.json",
@@ -11661,14 +11663,11 @@ async function startLocalOpenCode(opts) {
   const { dataDir, pluginPath } = opts;
   mkdirSync5(dataDir, { recursive: true });
   sweepStalePid(dataDir);
-  const password = generatePassword();
   const { home } = stageAdminHome(dataDir, pluginPath);
   const env = {
     ...opts.envOverride ?? process.env,
     HOME: home,
-    OPENCODE_SERVER_USERNAME: USERNAME,
-    OPENCODE_SERVER_PASSWORD: password,
-    OPENCODE_AUTH: "true"
+    OPENCODE_AUTH: "false"
   };
   let proc;
   try {
@@ -11718,7 +11717,7 @@ ${out}` : ""}`));
     return failUnavailable(dataDir, err);
   }
   const pid = proc.pid ?? -1;
-  const runtime = buildRuntimeJson(url, password, pid);
+  const runtime = buildRuntimeJson(url, pid);
   writeRuntimeFile(dataDir, runtime);
   writePidFile(dataDir, pid);
   unlinkSafely(unavailableSentinelPath(dataDir));
@@ -11726,7 +11725,6 @@ ${out}` : ""}`));
   return {
     url,
     username: USERNAME,
-    password,
     pid,
     async stop() {
       if (stopped)
@@ -11761,7 +11759,7 @@ function augmentPathForGuiLaunch() {
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
     "/usr/local/bin",
-    home ? join5(home, ".nvm", "current", "bin") : ""
+    home ? join6(home, ".nvm", "current", "bin") : ""
   ].filter(Boolean);
   const current = (process.env.PATH ?? "").split(":").filter(Boolean);
   const missing = candidates.filter((dir) => !current.includes(dir));
@@ -11772,7 +11770,7 @@ function augmentPathForGuiLaunch() {
 augmentPathForGuiLaunch();
 var logStream = null;
 function logFilePath() {
-  return join5(app.getPath("logs"), "main.log");
+  return join6(app.getPath("logs"), "main.log");
 }
 function initFileLogger() {
   if (logStream)
@@ -11802,10 +11800,10 @@ function writeChildLog(text) {
   } catch {}
 }
 function resolveAdminToolsPluginPath() {
-  const packed = join5(process.resourcesPath ?? "", "admin-tools", "index.js");
+  const packed = join6(process.resourcesPath ?? "", "admin-tools", "index.js");
   if (existsSync5(packed))
     return packed;
-  const dev = join5(__dirname2, "..", "admin-tools", "dist", "index.js");
+  const dev = join6(__dirname2, "..", "admin-tools", "dist", "index.js");
   if (existsSync5(dev))
     return dev;
   return "@openpalm/admin-tools-plugin";
@@ -11841,13 +11839,13 @@ function resolveAssistantUrl(homeDir) {
   const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
   if (userOverride)
     return userOverride;
-  const stackEnv = parseEnvFile(join5(homeDir, "knowledge", "env", "stack.env"));
+  const stackEnv = parseEnvFile(join6(homeDir, "knowledge", "env", "stack.env"));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || "127.0.0.1";
   const port = stackEnv.OP_ASSISTANT_PORT || "3800";
   return `http://${bind}:${port}`;
 }
 function buildUIServerEnv(homeDir, port, update) {
-  const stackEnv = parseEnvFile(join5(homeDir, "knowledge", "env", "stack.env"));
+  const stackEnv = parseEnvFile(join6(homeDir, "knowledge", "env", "stack.env"));
   const stackForUi = {};
   const skippedKeys = new Set([
     "OP_HOME",
@@ -11873,7 +11871,7 @@ function buildUIServerEnv(homeDir, port, update) {
     OP_HARNESS_CONTRACT_VERSION: String(HARNESS_CONTRACT_VERSION),
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
-  const skeletonDir = join5(process.resourcesPath ?? "", "openpalm-skeleton");
+  const skeletonDir = join6(process.resourcesPath ?? "", "openpalm-skeleton");
   if (existsSync5(skeletonDir)) {
     env.OPENPALM_SKELETON_DIR = skeletonDir;
   }
@@ -11885,7 +11883,7 @@ function buildUIServerEnv(homeDir, port, update) {
   return env;
 }
 function resolveAssetPath(fileName) {
-  const assetPath = join5(__dirname2, "..", "assets", fileName);
+  const assetPath = join6(__dirname2, "..", "assets", fileName);
   return existsSync5(assetPath) ? assetPath : null;
 }
 function createTrayIconVariant(icon, alpha = 1) {
@@ -11981,7 +11979,7 @@ async function startUIServer() {
   const dataDir = resolveDataDir();
   resolveConfigDir();
   ensureHomeDirs();
-  const skeletonDir = join5(process.resourcesPath ?? "", "openpalm-skeleton");
+  const skeletonDir = join6(process.resourcesPath ?? "", "openpalm-skeleton");
   if (existsSync5(skeletonDir)) {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
     try {
@@ -12008,7 +12006,7 @@ async function startUIServer() {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
   let uiBuildDir = resolveUiBuildDir();
-  if (!existsSync5(join5(uiBuildDir, "index.js"))) {
+  if (!existsSync5(join6(uiBuildDir, "index.js"))) {
     console.log("UI build not found — seeding @openpalm/ui from npm...");
     try {
       await seedUiBuild(uiUpdateChannel(platformVersion), dataDir);
@@ -12019,7 +12017,7 @@ async function startUIServer() {
       return;
     }
   }
-  const uiPidFile = join5(dataDir, ".ui-server.pid");
+  const uiPidFile = join6(dataDir, ".ui-server.pid");
   await killStaleUIServer(uiPidFile);
   spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate);
   const ready = await waitForReady(UI_PORT);
@@ -12042,7 +12040,7 @@ ${logFilePath()}`
   }
 }
 function spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate) {
-  uiProcess = spawn3(process.execPath, [join5(uiBuildDir, "index.js")], {
+  uiProcess = spawn3(process.execPath, [join6(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
     env: {
       ...buildUIServerEnv(homeDir, UI_PORT, appUpdate),
@@ -12105,7 +12103,7 @@ async function restartUIServer() {
   try {
     const homeDir = resolveOpenPalmHome();
     const dataDir = resolveDataDir();
-    const uiPidFile = join5(dataDir, ".ui-server.pid");
+    const uiPidFile = join6(dataDir, ".ui-server.pid");
     const prev = uiProcess;
     uiProcess = null;
     if (prev?.pid) {
@@ -12114,7 +12112,7 @@ async function restartUIServer() {
       killProcessTree(prev.pid, "SIGKILL");
     }
     const uiBuildDir = resolveUiBuildDir();
-    if (!existsSync5(join5(uiBuildDir, "index.js"))) {
+    if (!existsSync5(join6(uiBuildDir, "index.js"))) {
       console.error("UI restart aborted: build not found at", uiBuildDir);
       return false;
     }
@@ -12143,7 +12141,7 @@ function stopUIServer() {
     killProcessTree(pid, "SIGKILL");
   }
   try {
-    rmSync2(join5(resolveDataDir(), ".ui-server.pid"), { force: true });
+    rmSync2(join6(resolveDataDir(), ".ui-server.pid"), { force: true });
   } catch {}
 }
 function createSplashWindow() {
@@ -12221,7 +12219,7 @@ function showDockerErrorScreen(result) {
       show: true,
       icon,
       backgroundColor: "#0f172a",
-      webPreferences: { nodeIntegration: false, contextIsolation: true, preload: join5(__dirname2, "preload.cjs") }
+      webPreferences: { nodeIntegration: false, contextIsolation: true, preload: join6(__dirname2, "preload.cjs") }
     });
     splashWindow.on("closed", () => {
       splashWindow = null;
@@ -12295,7 +12293,7 @@ async function createWindow() {
     show: false,
     icon,
     webPreferences: {
-      preload: join5(__dirname2, "preload.cjs"),
+      preload: join6(__dirname2, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false
