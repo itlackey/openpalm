@@ -17,6 +17,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   active endpoint and, when it is unreachable, shows an inline Reconnect
   affordance (which re-reads the endpoint URL and reloads the frame) instead of a
   silent broken iframe. (#507)
+- **Discord & Slack portals deliver messages again.** The 0.12.0 `@opencode-ai/sdk`
+  bump (1.15.13 → 1.17.7) changed `session.*` calls to resolve to a `{ data, error }`
+  envelope; the adapters read the session off the envelope directly, so the session
+  id was `undefined` and prompts were sent to the un-substituted path
+  `/session/{id}/message` — which the guardian denied as `no_route`. Both adapters
+  now read the session from `.data` (and surface prompt errors). A portal-secret
+  contract test plus adapter regression tests guard against recurrence.
 
 ## [0.12.0] - 2026-06-15
 
