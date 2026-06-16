@@ -42,18 +42,30 @@ export class OcClient {
   }
 
   async createSession(userId: string, sessionKey?: string): Promise<OcSession> {
-    return await this.client.session.create({
+    // The @opencode-ai/sdk client resolves to a { data, error } envelope
+    // (ThrowOnError defaults to false). The session lives in `.data` — reading
+    // the envelope directly yields an undefined id, which then renders the
+    // prompt path as the literal `/session/{id}/message`, and the guardian
+    // denies it with no_route. Always pull the session out of `.data`.
+    const { data, error } = await this.client.session.create({
       body: {},
       headers: this.headers(userId, sessionKey ? { [H_SESSION_KEY]: sessionKey } : undefined),
-    }) as OcSession;
+    });
+    if (error || !data?.id) {
+      throw new Error(`createSession failed: ${error ? JSON.stringify(error) : 'no session id in response'}`);
+    }
+    return data as OcSession;
   }
 
   async prompt(userId: string, sessionId: string, text: string): Promise<void> {
-    await this.client.session.prompt({
+    // ThrowOnError is false, so a denied/failed prompt surfaces as `.error`
+    // rather than a throw — check it so failures aren't silently swallowed.
+    const { error } = await this.client.session.prompt({
       path: { id: sessionId },
       body: { parts: [{ type: 'text', text }] },
       headers: this.headers(userId),
     });
+    if (error) throw new Error(`prompt failed: ${JSON.stringify(error)}`);
   }
 
   async replyPermission(userId: string, requestID: string, reply: 'once' | 'always' | 'reject', message?: string): Promise<boolean> {
