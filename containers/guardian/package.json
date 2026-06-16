@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/guardian",
   "description": "Basic-auth message gateway with ownership, moderation, and rate limiting",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
