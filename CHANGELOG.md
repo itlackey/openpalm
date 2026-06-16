@@ -5,6 +5,19 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-06-16
+
+### Fixed
+
+- **Advanced mode works with the local admin assistant.** The Electron-spawned
+  admin OpenCode is now served without Basic auth (loopback-only, mirroring the
+  assistant), so the cross-origin Advanced iframe no longer 401s when the
+  "OpenPalm Admin" connection is selected. (#507)
+- **Advanced recovers from a dead/stale session.** Advanced pre-flight-probes the
+  active endpoint and, when it is unreachable, shows an inline Reconnect
+  affordance (which re-reads the endpoint URL and reloads the frame) instead of a
+  silent broken iframe. (#507)
+
 ## [0.12.0] - 2026-06-15
 
 The "channels" subsystem is renamed to **portals**, the guardian gains a
