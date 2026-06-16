@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import {
   resolveUiBuildDir, readUiBuildVersion, UI_VERSION_STAMP,
   seedOpenPalmDir, SKELETON_VERSION_STAMP,
-  uiUpdateChannel, checkAndUpdateUiBuild,
+  uiUpdateChannel, checkAndUpdateUiBuild, declaredUiChannel,
 } from "./ui-assets.js";
 
 let root = "";
@@ -31,6 +31,8 @@ beforeEach(() => {
   bundledUi = join(repoRoot, "packages", "ui", "build"); // resolveLocalUiBuild() candidate 1
   saved.OP_HOME = process.env.OP_HOME;
   saved.OPENPALM_REPO_ROOT = process.env.OPENPALM_REPO_ROOT;
+  saved.OP_UI_CHANNEL = process.env.OP_UI_CHANNEL;
+  delete process.env.OP_UI_CHANNEL;
   process.env.OP_HOME = opHome;
   // Pin the bundled candidate to a controlled location so the resolver never
   // discovers the real packages/ui/build via its source-relative fallback.
@@ -41,7 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const k of ["OP_HOME", "OPENPALM_REPO_ROOT"] as const) {
+  for (const k of ["OP_HOME", "OPENPALM_REPO_ROOT", "OP_UI_CHANNEL"] as const) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
   }
@@ -101,6 +103,50 @@ describe("resolveUiBuildDir — version-aware selection", () => {
   });
 });
 
+describe("resolveUiBuildDir — de-route visibility (§6.1 / Risk #1)", () => {
+  it("WARNS that the downloaded control plane is NOT executing when data/ui is present but UNSTAMPED", () => {
+    makeBuild(dataUi, null);          // present, runnable, but no version stamp
+    makeBuild(bundledUi, "0.11.0");
+    process.env.OPENPALM_REPO_ROOT = repoRoot;
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(resolveUiBuildDir()).toBe(bundledUi); // de-routes to frozen bundled
+      const logged = errSpy.mock.calls.map(c => String(c[0])).join("\n");
+      expect(logged).toContain("UNSTAMPED");
+      expect(logged).toContain("NOT executing");
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it("WARNS (not-newer variant) when data/ui is stamped but not strictly newer", () => {
+    makeBuild(dataUi, "0.11.0");
+    makeBuild(bundledUi, "0.11.0");   // equal → bundled wins, data/ui de-routed
+    process.env.OPENPALM_REPO_ROOT = repoRoot;
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(resolveUiBuildDir()).toBe(bundledUi);
+      const logged = errSpy.mock.calls.map(c => String(c[0])).join("\n");
+      expect(logged).toContain("not strictly newer");
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it("does NOT warn when data/ui legitimately wins", () => {
+    makeBuild(dataUi, "0.12.0");
+    makeBuild(bundledUi, "0.11.0");
+    process.env.OPENPALM_REPO_ROOT = repoRoot;
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(resolveUiBuildDir()).toBe(dataUi);
+      expect(errSpy).not.toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+});
+
 describe("seedOpenPalmDir — version guard (P2)", () => {
   const seededFile = () => join(opHome, "config", "stack", "x.txt");
   const stamp = () => join(opHome, SKELETON_VERSION_STAMP);
@@ -109,6 +155,14 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     // Local skeleton source at OPENPALM_REPO_ROOT/.openpalm (candidate 1).
     mkdirSync(join(repoRoot, ".openpalm", "config", "stack"), { recursive: true });
     writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "x.txt"), "seed\n");
+    // refreshCoreAssetsFromSource reads all MANAGED_ASSETS from the source; populate stubs.
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "core.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "services.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "portals.compose.yml"), "services: {}\n");
+    // SEEDED_ASSETS are also read from source when the target is absent.
+    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "custom.compose.yml"), "services: {}\n");
+    mkdirSync(join(repoRoot, ".openpalm", "config", "assistant"), { recursive: true });
+    writeFileSync(join(repoRoot, ".openpalm", "config", "assistant", "opencode.jsonc"), "{}\n");
     mkdirSync(opHome, { recursive: true });
   });
 
@@ -169,6 +223,54 @@ describe("uiUpdateChannel", () => {
     expect(uiUpdateChannel("0.11.0-rc.2")).toBe("next");
     expect(uiUpdateChannel("0.11.0-beta.5")).toBe("next");
     expect(uiUpdateChannel("1.0.0-alpha.1")).toBe("next");
+  });
+
+  it("an explicit channel ARGUMENT overrides the version-derived default", () => {
+    // A stable host opts into 'next' without faking its version.
+    expect(uiUpdateChannel("0.11.0", "next")).toBe("next");
+    // A prerelease host pins to 'latest'.
+    expect(uiUpdateChannel("0.11.0-rc.2", "latest")).toBe("latest");
+  });
+
+  it("OP_UI_CHANNEL overrides the version-derived default (declared channel)", () => {
+    process.env.OP_UI_CHANNEL = "next";
+    expect(uiUpdateChannel("0.11.0")).toBe("next");   // stable version, declared next
+    process.env.OP_UI_CHANNEL = "latest";
+    expect(uiUpdateChannel("0.11.0-rc.2")).toBe("latest");
+  });
+
+  it("a passed channel argument wins over OP_UI_CHANNEL", () => {
+    process.env.OP_UI_CHANNEL = "next";
+    expect(uiUpdateChannel("0.11.0", "latest")).toBe("latest");
+  });
+
+  it("an invalid/blank OP_UI_CHANNEL is ignored (falls back to version)", () => {
+    process.env.OP_UI_CHANNEL = "bogus";
+    expect(uiUpdateChannel("0.11.0")).toBe("latest");
+    expect(uiUpdateChannel("0.11.0-rc.2")).toBe("next");
+    process.env.OP_UI_CHANNEL = "  ";
+    expect(uiUpdateChannel("0.11.0-rc.2")).toBe("next");
+  });
+});
+
+describe("declaredUiChannel", () => {
+  let saved: string | undefined;
+  beforeEach(() => { saved = process.env.OP_UI_CHANNEL; });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.OP_UI_CHANNEL;
+    else process.env.OP_UI_CHANNEL = saved;
+  });
+  it("returns the declared channel, case-insensitively", () => {
+    process.env.OP_UI_CHANNEL = "NEXT";
+    expect(declaredUiChannel()).toBe("next");
+    process.env.OP_UI_CHANNEL = "Latest";
+    expect(declaredUiChannel()).toBe("latest");
+  });
+  it("returns null when unset or invalid", () => {
+    delete process.env.OP_UI_CHANNEL;
+    expect(declaredUiChannel()).toBeNull();
+    process.env.OP_UI_CHANNEL = "beta";
+    expect(declaredUiChannel()).toBeNull();
   });
 });
 
@@ -261,10 +363,11 @@ describe("checkAndUpdateUiBuild", () => {
   });
 
   /** Make a minimal npm manifest response for a given version. */
-  function manifestResponse(version: string, integrity?: string) {
+  function manifestResponse(version: string, integrity?: string, minHarnessContract?: number) {
     return new Response(
       JSON.stringify({
         version,
+        ...(minHarnessContract !== undefined ? { minHarnessContract } : {}),
         dist: {
           tarball: "https://registry.npmjs.org/tarball.tgz",
           ...(integrity !== undefined ? { integrity } : {}),
@@ -392,5 +495,117 @@ describe("checkAndUpdateUiBuild", () => {
     expect(result.latestVersion).toBe('1.0.0');
     expect(result.error).toBeUndefined();
     expect(tarballFetched).toBe(false);
+  });
+
+  // ── Regression: prerelease versions must use the `next` npm dist-tag channel ──
+  // This test ensures that prerelease app versions (containing '-') correctly
+  // query the npm `next` channel for UI updates, not `latest`. The `latest`
+  // channel excludes prereleases, so a prerelease app would incorrectly see
+  // "no update available" if it queried `latest`.
+
+  it('checkAndUpdateUiBuild uses `next` channel for prerelease app versions', async () => {
+    makeBuild(dataUi, '0.11.0');
+
+    let requestedChannel: string | null = null;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('registry.npmjs.org/@openpalm/ui/')) {
+        requestedChannel = url.split('/@openpalm/ui/')[1];
+        return manifestResponse('0.12.0-rc.1');
+      }
+      return new Response('', { status: 200 });
+    };
+
+    // Call with a prerelease version — should query the `next` channel
+    await checkAndUpdateUiBuild('0.12.0-rc.1', join(opHome, 'data'));
+    expect(requestedChannel).toBe('next');
+  });
+
+  it('checkAndUpdateUiBuild uses `latest` channel for stable app versions', async () => {
+    makeBuild(dataUi, '0.11.0');
+
+    let requestedChannel: string | null = null;
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('registry.npmjs.org/@openpalm/ui/')) {
+        requestedChannel = url.split('/@openpalm/ui/')[1];
+        return manifestResponse('0.12.0');
+      }
+      return new Response('', { status: 200 });
+    };
+
+    // Call with a stable version — should query the `latest` channel
+    await checkAndUpdateUiBuild('0.12.0', join(opHome, 'data'));
+    expect(requestedChannel).toBe('latest');
+  });
+
+  // ── §5.3 / §6.6 self-update-vs-redownload decision ──────────────────────────
+  // When a newer UI build declares minHarnessContract > the harness contract the
+  // running app provides, the control plane must NOT be pulled (running
+  // newer-UI-on-older-harness fails at runtime: undefined IPC → TypeError, missing
+  // env → 503). The caller is told to re-download the app instead.
+  describe('harness-contract self-update gate (§5.3)', () => {
+    it('refuses to self-update when the newer UI needs a harness contract this app does not provide', async () => {
+      makeBuild(dataUi, '0.12.0');
+
+      let tarballFetched = false;
+      globalThis.fetch = async (_url: string | URL | Request) => {
+        const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+        if (url.includes('registry.npmjs.org')) {
+          return manifestResponse('0.13.0', undefined, 2); // needs harness contract 2
+        }
+        tarballFetched = true;
+        return new Response('', { status: 200 });
+      };
+
+      // Running harness provides contract 1; the build needs 2 → re-download.
+      const result = await checkAndUpdateUiBuild('0.12.0', join(opHome, 'data'), undefined, 1);
+      expect(result.updated).toBe(false);
+      expect(result.redownloadRequired).toBe(true);
+      expect(result.requiredHarnessContract).toBe(2);
+      expect(result.latestVersion).toBe('0.13.0');
+      expect(tarballFetched).toBe(false); // never even attempted the download
+    });
+
+    it('self-updates when the newer UI fits the harness contract (minHarnessContract <= provided)', async () => {
+      makeBuild(dataUi, '0.12.0');
+
+      let manifestFetched = false;
+      globalThis.fetch = async (_url: string | URL | Request) => {
+        const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+        if (url.includes('registry.npmjs.org')) {
+          manifestFetched = true;
+          return manifestResponse('0.12.5', undefined, 1); // needs contract 1, no integrity → non-fatal
+        }
+        return new Response('', { status: 200 });
+      };
+
+      // Harness provides contract 1; build needs 1 → gate passes, proceeds to download
+      // (which fails non-fatally on the missing integrity hash — proving the gate let it through).
+      const result = await checkAndUpdateUiBuild('0.12.0', join(opHome, 'data'), undefined, 1);
+      expect(manifestFetched).toBe(true);
+      expect(result.redownloadRequired).toBeUndefined();
+      expect(result.error).toMatch(/no integrity hash/i);
+    });
+
+    it('skips the gate entirely on non-Electron supervisors (no harness contract supplied)', async () => {
+      makeBuild(dataUi, '0.12.0');
+
+      let manifestFetched = false;
+      globalThis.fetch = async (_url: string | URL | Request) => {
+        const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+        if (url.includes('registry.npmjs.org')) {
+          manifestFetched = true;
+          return manifestResponse('0.12.5', undefined, 99); // huge contract requirement
+        }
+        return new Response('', { status: 200 });
+      };
+
+      // CLI passes no harnessContract → gate is skipped even though minHarnessContract is huge.
+      const result = await checkAndUpdateUiBuild('0.12.0', join(opHome, 'data'));
+      expect(manifestFetched).toBe(true);
+      expect(result.redownloadRequired).toBeUndefined();
+      expect(result.error).toMatch(/no integrity hash/i); // proceeded past the gate to the download
+    });
   });
 });

@@ -6,7 +6,7 @@ containers today.
 Primary runtime sources:
 
 - `.openpalm/config/stack/core.compose.yml`
-- `core/assistant/entrypoint.sh`
+- `containers/assistant/entrypoint.sh`
 
 ---
 
@@ -57,6 +57,8 @@ Primary runtime sources:
 - The assistant has no Docker socket mount.
 - Memory + skills are served via the bind-mounted akm stash; there is no separate memory service.
 - The entrypoint normalizes permissions, optionally enables SSH, then drops privileges to `OP_UID:OP_GID`.
+- The assistant can consume external MCP servers via the top-level `mcp` block in `config/assistant/opencode.jsonc`; this is consume-only. OpenCode does not expose its own MCP server.
+- Treat MCP config edits like any other OpenCode startup config change: restart the assistant container after changing `opencode.jsonc` so the new server list is loaded.
 
 ## Guardian Runtime Wiring
 

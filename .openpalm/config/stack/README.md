@@ -1,6 +1,6 @@
 # config/stack/
 
-This directory contains the runtime stack composition and configuration. OpenPalm runs from the fixed compose file set: `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and `custom.compose.yml`.
+This directory contains the runtime stack composition and configuration. OpenPalm runs from the fixed compose file set: `core.compose.yml`, `services.compose.yml`, `portals.compose.yml`, and `custom.compose.yml`.
 
 ## Quick start
 
@@ -12,7 +12,7 @@ docker compose \
   --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   -f custom.compose.yml \
   up -d
 
@@ -22,7 +22,7 @@ docker compose \
   --env-file ../../knowledge/env/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   -f custom.compose.yml \
   --profile addon.chat \
   up -d
@@ -36,19 +36,19 @@ status, logs, and all other operations.
 | Service | Host port | Purpose |
 |---------|-----------|---------|
 | `assistant` | `3800 -> 4096` | OpenCode runtime without Docker socket; also hosts the automation scheduler co-process (no port) |
-| `guardian` | none (`8080` internal) | Signed ingress and channel traffic gateway |
+| `guardian` | `3830 -> 3830` and `3831 -> 3831` (localhost by default) | Principal-authenticated ingress, direct listener, and admin listener |
 
 ## Addons
 
 Built-in optional services are defined in `services.compose.yml` and
-`channels.compose.yml`, then enabled with `addon.*` Compose profiles.
+`portals.compose.yml`, then enabled with `addon.*` Compose profiles.
 `custom.compose.yml` is the operator-owned place for extra containers or manual
 overlays.
 
 | Addon | Host port | Purpose |
 |-------|-----------|---------|
-| `api` | `3821 -> 8182` | OpenAI/Anthropic-compatible API facade |
-| `chat` | `3820 -> 8181` | OpenAI-compatible chat edge |
+| `api` | `3821 -> 8182` | Guardian-hosted OpenAI/Anthropic-compatible API facade |
+| `chat` | `3820 -> 8182` | Guardian-hosted OpenAI-compatible chat edge |
 | `discord` | none | Discord bot adapter |
 | `ollama` | `11434` | Local LLM inference server |
 | `slack` | none | Slack bot adapter |
@@ -58,17 +58,17 @@ overlays.
 
 | Network | Purpose |
 |---------|---------|
-| `channel_lan` | Internal/LAN-facing channel traffic |
+| `portal_net` | First-party portal adapter network |
+| `channel_lan` | Compatibility bridge for legacy/custom overlays |
 | `assistant_net` | Internal core-service communication |
 
 ## Files in this directory
 
 | File | Purpose | Owner |
 |------|---------|-------|
-| `stack.yml` | Stack schema version marker + enabled addon names | User, explicit admin actions |
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
 | `services.compose.yml` | Optional first-party services | System (managed via CLI/admin) |
-| `channels.compose.yml` | Optional first-party channels | System (managed via CLI/admin) |
+| `portals.compose.yml` | Optional first-party portals | System (managed via CLI/admin) |
 | `custom.compose.yml` | User custom services and overlays | User |
 
 This directory holds compose assembly only — **no secrets and no env files**.

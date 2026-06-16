@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { compareVersions, isSemver, updateStatus, latestForChannel } from './version-compare.js';
+import { compareVersions, isSemver, updateStatus, latestForChannel, formatVersionForDisplay, channelOf } from './version-compare.js';
 
 describe('compareVersions', () => {
   test('orders patch/minor/major', () => {
@@ -71,5 +71,37 @@ describe('latestForChannel', () => {
 
   test('returns null when no candidate qualifies', () => {
     expect(latestForChannel('0.11.2', [])).toBe(null);
+  });
+});
+
+describe('formatVersionForDisplay (#503)', () => {
+  test('drops a single leading v', () => {
+    expect(formatVersionForDisplay('v0.12.0')).toBe('0.12.0');
+    expect(formatVersionForDisplay('v0.12.0-rc.1')).toBe('0.12.0-rc.1');
+  });
+  test('passes through an already-bare version', () => {
+    expect(formatVersionForDisplay('0.12.0')).toBe('0.12.0');
+  });
+  test('leaves a moving tag untouched and handles null/empty', () => {
+    expect(formatVersionForDisplay('latest')).toBe('latest');
+    expect(formatVersionForDisplay(null)).toBe('');
+    expect(formatVersionForDisplay(undefined)).toBe('');
+    expect(formatVersionForDisplay('  v0.12.0  ')).toBe('0.12.0');
+  });
+});
+
+describe('channelOf (#503)', () => {
+  test('stable for a plain release', () => {
+    expect(channelOf('0.12.0')).toBe('stable');
+    expect(channelOf('v0.11.5')).toBe('stable');
+  });
+  test('prerelease for an rc/beta', () => {
+    expect(channelOf('0.12.0-rc.1')).toBe('prerelease');
+    expect(channelOf('v0.12.0-beta.3')).toBe('prerelease');
+  });
+  test('unknown for a moving tag or no data', () => {
+    expect(channelOf('latest')).toBe('unknown');
+    expect(channelOf(null)).toBe('unknown');
+    expect(channelOf('')).toBe('unknown');
   });
 });

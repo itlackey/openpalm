@@ -1,9 +1,9 @@
 {
   // Guardian OpenCode global config. Bind-mounted at /etc/opencode
-  // (OPENCODE_CONFIG_DIR) — see .openpalm/config/stack/channels.compose.yml.
+  // (OPENCODE_CONFIG_DIR) — see .openpalm/config/stack/portals.compose.yml.
   //
   // This OpenCode instance is the guardian's *content moderator*: it classifies
-  // untrusted inbound channel messages for prompt-injection / jailbreak /
+  // untrusted inbound portal messages for prompt-injection / jailbreak /
   // exfiltration. It is started on loopback (127.0.0.1:4097) by the guardian
   // entrypoint and is only reached from inside the guardian container.
   //
@@ -25,6 +25,18 @@
   "model": "opencode/big-pickle",
 
   // Loopback server. The guardian's moderation client calls 127.0.0.1:4097.
+  //
+  // mDNS is intentionally OFF here. This OpenCode instance is the internal
+  // content moderator — it binds 127.0.0.1 and is only reached from inside the
+  // guardian container. OpenCode's native mDNS responder self-skips on a
+  // loopback hostname anyway ("mDNS enabled but hostname is loopback; skipping
+  // mDNS publish"), so even mdns:true would be a no-op while hostname stays
+  // 127.0.0.1 — and we must NOT move it off loopback just to advertise.
+  //
+  // The LAN-facing <name>-guardian.local name belongs to the guardian's HTTP
+  // front door (the Bun server that terminates portal /oc/* ingress), NOT to
+  // this moderator OpenCode. That front door is advertised by the host OS / the
+  // operator's LAN setup, not from this process.
   "server": {
     "port": 4097,
     "hostname": "127.0.0.1",

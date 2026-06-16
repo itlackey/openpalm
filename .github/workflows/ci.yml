@@ -15,6 +15,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  stack-hygiene:
+    name: Stack hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Gate legacy stack.yml readers
+        run: |
+          set -euo pipefail
+          matches=$(grep -RInE \
+            --exclude-dir=node_modules \
+            --exclude-dir=dist \
+            --exclude-dir=build \
+            --exclude-dir=.svelte-kit \
+            --include='*.ts' \
+            --include='*.js' \
+            --include='*.sh' \
+            --include='*.ps1' \
+            --include='*.yml' \
+            '["'"'"']stack\.yml["'"'"']' \
+            packages core scripts .openpalm/config/stack || true)
+
+          if [ -z "$matches" ]; then
+            echo "::error::Expected the legacy stack.yml migration reader in migrations.ts"
+            exit 1
+          fi
+
+          filtered=$(printf '%s\n' "$matches" \
+            | grep -v 'packages/lib/src/control-plane/migrations.ts:' \
+            | grep -vE '\.test\.ts:|\.vitest\.ts:|scripts/migrate-0\.10-to-0\.11\.(sh|ps1):' || true)
+          if [ -n "$filtered" ]; then
+            echo "::error::Legacy stack.yml references are only allowed in migrations.ts"
+            printf '%s\n' "$filtered"
+            exit 1
+          fi
+
+          echo "Only migrations.ts references legacy stack.yml."
+
+      - name: Gate host bind safety defaults
+        run: |
+          set -euo pipefail
+          published=$(grep -nE '^[[:space:]]+- ".*\$\{OP_[A-Z0-9_]+PORT.*:[0-9]+"' .openpalm/config/stack/*.yml || true)
+
+          if [ -z "$published" ]; then
+            echo "::error::No published port bindings found to validate"
+            exit 1
+          fi
+
+          violations=$(printf '%s\n' "$published" | grep -vE '127\.0\.0\.1:|:-127\.0\.0\.1\}|:-\$\{OP_BIND_ADDRESS:-127\.0\.0\.1\}' || true)
+          if [ -n "$violations" ]; then
+            echo "::error::Host port bindings must keep a loopback literal or an innermost :-127.0.0.1 default"
+            printf '%s\n' "$violations"
+            exit 1
+          fi
+
+          echo "All published host binds keep the required loopback defaults."
+
   quality-gates:
     name: Quality gates
     runs-on: ubuntu-latest
@@ -79,7 +139,10 @@ jobs:
       - name: Type check admin UI
         run: cd packages/ui && bun run check
 
-      - name: Test (sdk + guardian + channels)
+      - name: Type check CLI
+        run: cd packages/cli && bun run typecheck
+
+      - name: Test (sdk + guardian + portals)
         run: |
           set -euo pipefail
           for attempt in 1 2; do
@@ -111,6 +174,12 @@ jobs:
             echo "::error file=.openpalm/stack/start.sh::.openpalm/stack/start.sh must not exist — deleted in P1-5 cleanup"
             exit 1
           fi
+          for path in scripts/migrate-0.10-to-0.11.sh scripts/migrate-0.10-to-0.11.ps1; do
+            if [ -f "$path" ]; then
+              echo "::error file=$path::$path must not exist — use 'openpalm migrate' instead"
+              exit 1
+            fi
+          done
           echo "Deleted script assertion passed"
 
       - name: Validate shipped addon catalog and automations
@@ -144,10 +213,10 @@ jobs:
           # is a pure content moderator — no akm plugin, tools denied), so it has no
           # AKM_CLI_VERSION. Validate the assistant pin; only require a lockstep match
           # if the guardian Dockerfile ever reintroduces an AKM_CLI_VERSION pin.
-          ASSISTANT_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' core/assistant/Dockerfile || true)
-          GUARDIAN_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' core/guardian/Dockerfile || true)
+          ASSISTANT_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' containers/assistant/Dockerfile || true)
+          GUARDIAN_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' containers/guardian/Dockerfile || true)
           if [ -z "$ASSISTANT_VERSION" ]; then
-            echo "::error file=core/assistant/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
+            echo "::error file=containers/assistant/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
             exit 1
           fi
           if [ -n "$GUARDIAN_VERSION" ] && [ "$ASSISTANT_VERSION" != "$GUARDIAN_VERSION" ]; then
@@ -160,15 +229,38 @@ jobs:
             echo "AKM_CLI_VERSION matches across assistant + guardian: $ASSISTANT_VERSION"
           fi
 
-      - name: Validate BUN_VERSION sync between assistant and guardian/channel Dockerfiles
+      - name: Validate OPENCODE_VERSION sync between assistant and guardian Dockerfiles
+        run: |
+          set -euo pipefail
+          # Both the assistant and guardian images install the OpenCode binary and
+          # MUST pin the same version (the guardian moderates traffic to the
+          # assistant's OpenCode; a one-sided bump risks protocol drift). Keep the
+          # ARG OPENCODE_VERSION in lockstep across both Dockerfiles.
+          ASSISTANT_OC=$(grep -oP '^ARG OPENCODE_VERSION=\K\S+' containers/assistant/Dockerfile || true)
+          GUARDIAN_OC=$(grep -oP '^ARG OPENCODE_VERSION=\K\S+' containers/guardian/Dockerfile || true)
+          if [ -z "$ASSISTANT_OC" ]; then
+            echo "::error file=containers/assistant/Dockerfile::Could not extract OPENCODE_VERSION ARG"
+            exit 1
+          fi
+          if [ -z "$GUARDIAN_OC" ]; then
+            echo "::error file=containers/guardian/Dockerfile::Could not extract OPENCODE_VERSION ARG"
+            exit 1
+          fi
+          if [ "$ASSISTANT_OC" != "$GUARDIAN_OC" ]; then
+            echo "::error::OPENCODE_VERSION mismatch: assistant=$ASSISTANT_OC guardian=$GUARDIAN_OC — bump both together"
+            exit 1
+          fi
+          echo "OPENCODE_VERSION matches across assistant + guardian: $ASSISTANT_OC"
+
+      - name: Validate BUN_VERSION sync between assistant and guardian/portal Dockerfiles
         run: |
           set -euo pipefail
           # Assistant sets BUN_VERSION (e.g. bun-v1.3.10) explicitly. Guardian
-          # and channel use the official oven/bun:<MAJOR.MINOR>-slim image
+          # and portal use the official oven/bun:<MAJOR.MINOR>-slim image
           # tag — keep the major.minor in lockstep across all three.
-          ASSISTANT_BUN=$(grep -oP '^ARG BUN_VERSION=\K\S+' core/assistant/Dockerfile || true)
+          ASSISTANT_BUN=$(grep -oP '^ARG BUN_VERSION=\K\S+' containers/assistant/Dockerfile || true)
           if [ -z "$ASSISTANT_BUN" ]; then
-            echo "::error file=core/assistant/Dockerfile::Could not extract BUN_VERSION ARG"
+            echo "::error file=containers/assistant/Dockerfile::Could not extract BUN_VERSION ARG"
             exit 1
           fi
           # bun-v1.3.10 → 1.3
@@ -178,7 +270,7 @@ jobs:
             exit 1
           fi
           errors=0
-          for df in core/guardian/Dockerfile core/channel/Dockerfile; do
+          for df in containers/guardian/Dockerfile containers/portal/Dockerfile; do
             TAG=$(grep -oP '^FROM oven/bun:\K[^ ]+' "$df" || true)
             if [ -z "$TAG" ]; then
               echo "::error file=$df::Could not extract oven/bun image tag"
@@ -194,14 +286,14 @@ jobs:
           if [ "$errors" -gt 0 ]; then
             exit 1
           fi
-          echo "BUN_VERSION major.minor matches across assistant + guardian + channel: $ASSISTANT_MM"
+          echo "BUN_VERSION major.minor matches across assistant + guardian + portal: $ASSISTANT_MM"
 
       - name: Validate per-unit version sync
         run: |
           set -euo pipefail
           # Releases are by deployment UNIT (release-package-groups.json -> units).
           # Each unit's manifests must share ONE version; units may drift from each
-          # other (a host-only or channels-only release is legitimate). The host
+          # other (a host-only or portals-only release is legitimate). The host
           # unit lists package.json (root) first, so the host base == root version,
           # and the setup-script versions are anchored to root.
           ROOT_VERSION=$(jq -r .version package.json)
@@ -274,6 +366,16 @@ jobs:
 
       - name: Build UI (catch Vite/SSR failures before release)
         run: bun run ui:build
+
+      - name: Bundle Electron harness (refresh dist/main.js from source)
+        run: bun run --cwd packages/electron bundle
+
+      - name: Validate thin-harness boundary (design §6.1/§6.6)
+        # Asserts dist/main.js carries ZERO migration symbols, the UI build DOES,
+        # and main.ts imports only the @openpalm/lib bootstrap allowlist. The UI
+        # build is already present from the step above; dist/main.js was just
+        # rebundled from source.
+        run: ./scripts/validate-thin-harness-boundary.sh
 
   electron-tests:
     name: Electron unit tests (Vitest)

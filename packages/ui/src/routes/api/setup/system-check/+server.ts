@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { checkDocker, checkDockerCompose, detectGpu, detectLocalProviders } from "@openpalm/lib";
+import { checkDocker, checkDockerCompose, detectGpu, detectLocalProviders, detectRuntime } from "@openpalm/lib";
 import { createServer } from "node:net";
 import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
@@ -8,28 +8,35 @@ import type { RequestHandler } from "./$types";
  * Returns true when the named port is published by an openpalm-managed
  * docker container — i.e. it's "in use" but the wizard's install will
  * either recreate or no-op on the same container, so flagging it as a
- * conflict is a false positive. Best-effort: returns false on any
- * docker error.
+ * conflict is a false positive. Returns `unreachable` when Docker itself
+ * cannot be queried, so the caller can degrade this from blocking to warning.
  */
-async function portHeldByOurContainer(port: number): Promise<boolean> {
+async function portHeldByOurContainer(port: number): Promise<"held" | "free" | "unreachable"> {
   return new Promise((resolve) => {
-    execFile(
-      "docker",
-      ["ps", "--format", "{{.Names}}\t{{.Ports}}"],
-      { timeout: 5_000 },
-      (err, stdout) => {
-        if (err) return resolve(false);
-        const lines = stdout.toString().split("\n").map((l) => l.trim()).filter(Boolean);
-        for (const line of lines) {
-          const [name, ports] = line.split("\t");
-          if (!name || !name.startsWith("openpalm-")) continue;
-          if (ports && ports.includes(`:${port}->`)) {
-            return resolve(true);
+    const run = (attempt: number) => {
+      execFile(
+        "docker",
+        ["ps", "--format", "{{.Names}}\t{{.Ports}}"],
+        { timeout: 5_000 },
+        (err, stdout) => {
+          if (err) {
+            if (attempt === 0) return run(1);
+            return resolve("unreachable");
           }
-        }
-        resolve(false);
-      },
-    );
+          const lines = stdout.toString().split("\n").map((l) => l.trim()).filter(Boolean);
+          for (const line of lines) {
+            const [name, ports] = line.split("\t");
+            if (!name || !name.startsWith("openpalm-")) continue;
+            if (ports && ports.includes(`:${port}->`)) {
+              return resolve("held");
+            }
+          }
+          resolve("free");
+        },
+      );
+    };
+
+    run(0);
   });
 }
 
@@ -58,7 +65,7 @@ async function checkPortAvailable(port: number, timeoutMs = 1000): Promise<boole
 // UI should disable Continue until the user frees it.
 //
 // Guardian is intentionally NOT in this list: it has no host port mapping —
-// channels reach it via Docker DNS (http://guardian:8080) and the host
+// portals reach it via Docker DNS (http://guardian:8080) and the host
 // admin-tools health-check uses `docker container inspect` instead of HTTP.
 //
 // Env-name resolution prefers the canonical OP_HOST_* names. The UI port reads
@@ -88,18 +95,30 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
 const SERVER_PORT = Number(process.env.PORT ?? process.env.OP_HOST_UI_PORT ?? 3880);
 
 export const GET: RequestHandler = async () => {
-  const [docker, compose, gpu, localProviders] = await Promise.all([checkDocker(), checkDockerCompose(), detectGpu(), detectLocalProviders()]);
+  const [docker, compose, gpu, localProviders, runtime] = await Promise.all([
+    checkDocker(),
+    checkDockerCompose(),
+    detectGpu(),
+    detectLocalProviders(),
+    detectRuntime(),
+  ]);
 
   const targets = resolvePortsToCheck();
+  let portCheckReliable = docker.ok;
   const ports = await Promise.all(
     targets.map(async (t) => {
       // Port is held by this process — not a conflict.
       if (t.port === SERVER_PORT) return { ...t, available: true };
       if (await checkPortAvailable(t.port)) return { ...t, available: true };
-      // Port is in use — but if it's one of our own containers, the
-      // install will recreate it, not collide. Don't flag as blocking.
-      if (await portHeldByOurContainer(t.port)) return { ...t, available: true };
-      return { ...t, available: false };
+
+      const held = await portHeldByOurContainer(t.port);
+      if (held === "held") return { ...t, available: true };
+      if (held === "unreachable") {
+        portCheckReliable = false;
+        return { ...t, available: false, blocking: false };
+      }
+
+      return { ...t, available: false, blocking: portCheckReliable ? t.blocking : false };
     }),
   );
 
@@ -118,9 +137,10 @@ export const GET: RequestHandler = async () => {
     // portCheckReliable is false when Docker is unreachable — port checks
     // still run (TCP bind) but we can't confirm whether our own containers
     // hold them, so conflicts may be false positives.
-    portCheckReliable: docker.ok,
+    portCheckReliable,
     ports,
     platform: process.platform,
+    runtime,
     // Back-compat: `gpu` is the display name string (SystemCheckStep reads it).
     // `gpuInfo` carries the full VRAM-aware detection.
     gpu: gpu?.name ?? undefined,

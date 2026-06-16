@@ -32,10 +32,14 @@
     fetchUiVersions,
     setStackVersion,
     downloadUiVersion,
+    previewMigration,
+    DowngradeConfirmationRequiredError,
     type ReleaseEntry,
     type UiVersionEntry,
+    type StackServiceVersion,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
+  import { formatVersionForDisplay, compareVersions, isSemver } from '$lib/version-compare.js';
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders for
   // an authenticated admin. A session that expires mid-operation surfaces as a
@@ -68,21 +72,52 @@
 
   // ── Version management ──────────────────────────────────────────────────────
   let currentImageTag = $state('');
+  // Every configured stack piece (assistant, guardian, chat portal, voice,
+  // ollama as applicable) + the tag it actually runs. The Updates tab flags
+  // any whose version is behind the control plane.
+  let services = $state<StackServiceVersion[]>([]);
   let inElectron = $state(false);
   let electronVersion = $state<string | null>(null);
   let electronLatestVersion = $state<string | null>(null);
   let electronLatestUrl = $state<string | null>(null);
+  // Native harness re-download gate (independent of the self-updating control
+  // plane): true ⇒ the app itself must be re-downloaded.
+  let harnessUpdateAvailable = $state(false);
   let tagChangeLoading = $state(false);
+  // #497 migrate preview: the [dry-run] lines an upgrade to the selected tag
+  // would run, fetched on demand from /admin/migrate-preview.
+  let migratePreviewLoading = $state(false);
+  let migratePreview = $state<{ targetVersion: string; applied: string[]; lines: string[]; notes: string[] } | null>(null);
+  // #501 downgrade confirmation: set when the server returns 409; the UI shows a
+  // plain warning + confirm, then re-applies with confirmDowngrade.
+  let downgradePrompt = $state<{ tag: string; currentVersion: string; targetVersion: string; message: string } | null>(null);
   let uiDownloadLoading = $state(false);
   let uiDownloadReady = $state(false);
+  let uiDownloadRestarting = $state(false);
   let selectedImageTag = $state('latest');
   let selectedUiTag = $state('');
   let releases = $state<ReleaseEntry[]>([]);
   let releasesLoading = $state(false);
+  // Running control-plane version (PLATFORM_VERSION) reported by the releases
+  // endpoint. The stack-version dropdown is already filtered to tags ≤ this
+  // server-side (#492); the label tells the user which version they're on.
+  let platformVersion = $state('');
   // @openpalm/ui npm versions — the UI is independently versioned, so its
   // installable builds come from npm, not GitHub platform releases.
   let uiVersions = $state<UiVersionEntry[]>([]);
   let uiVersionsLoading = $state(false);
+
+  // #498: one global "an update is available" signal for the whole shell.
+  // The CONTROL PLANE (platformVersion) is what the user opted into — it is the
+  // version of OpenPalm they're running. The stack/services follow it, so an
+  // update is "available" whenever any configured service is BEHIND the control
+  // plane (version < platformVersion). Keying off the control plane (not the
+  // stack image tag) is the whole point of this redesign: a user on rc.4 with a
+  // 0.11.5 stack must be told an update is ready.
+  const updateAvailable = $derived(
+    isSemver(platformVersion) &&
+      services.some((s) => isSemver(s.version) && compareVersions(s.version, platformVersion) < 0),
+  );
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -230,10 +265,17 @@
     try {
       const data = await fetchVersions();
       currentImageTag = data.imageTag;
+      services = data.services;
       inElectron = data.inElectron;
       electronVersion = data.electronVersion;
       electronLatestVersion = data.electronLatestVersion;
       electronLatestUrl = data.electronLatestUrl;
+      harnessUpdateAvailable = data.harnessUpdateAvailable;
+      // The control plane (PLATFORM_VERSION) is reported here authoritatively —
+      // it is the version of OpenPalm actually running and drives the channel +
+      // every "behind" check. loadReleases also sets it from the releases probe,
+      // but that can fail offline; this is the reliable source.
+      platformVersion = data.platformVersion;
       // Do not reset selectedImageTag/selectedUiTag here — loadReleases initializes them
     } catch {
       // Non-fatal — version info is supplementary
@@ -246,6 +288,7 @@
     try {
       const [releaseData, uiData] = await Promise.all([fetchReleases(), fetchUiVersions()]);
       releases = releaseData.releases;
+      if (releaseData.platformVersion) platformVersion = releaseData.platformVersion;
       uiVersions = uiData.versions;
       // Default the UI-build selection to the version on this app's channel
       // (next/latest dist-tag), falling back to the newest published version.
@@ -321,37 +364,101 @@
     upgradeLoading = false;
   }
 
-  async function handleSetImageTag(tag: string): Promise<void> {
+  async function handleSetImageTag(tag: string, confirmDowngrade = false): Promise<void> {
     if (tagChangeLoading) return;
     tagChangeLoading = true;
     try {
-      const result = await setStackVersion(tag);
+      const result = await setStackVersion(tag, { confirmDowngrade });
       currentImageTag = result.imageTag;
       selectedImageTag = result.imageTag;
       operationResult = `Image tag set to ${result.imageTag}. Restarted: ${result.restarted.join(', ') || 'none'}.`;
       operationResultType = 'success';
+      downgradePrompt = null;
+      migratePreview = null;
     } catch (e) {
-      const err = e as { message?: string };
-      operationResult = `Failed to apply image tag: ${err.message ?? e}`;
-      operationResultType = 'error';
+      if (e instanceof DowngradeConfirmationRequiredError) {
+        // Not an error — show the plain warning + confirm, then re-apply.
+        downgradePrompt = { tag, currentVersion: e.currentVersion, targetVersion: e.targetVersion, message: e.message };
+      } else {
+        const err = e as { message?: string };
+        operationResult = `Failed to apply image tag: ${err.message ?? e}`;
+        operationResultType = 'error';
+      }
     }
     tagChangeLoading = false;
+  }
+
+  // #497: preview the copy-only release migrations an upgrade to the selected
+  // tag would run, before applying.
+  async function handlePreviewMigration(tag: string): Promise<void> {
+    if (migratePreviewLoading) return;
+    migratePreviewLoading = true;
+    migratePreview = null;
+    try {
+      const result = await previewMigration(tag);
+      migratePreview = { targetVersion: result.targetVersion, applied: result.applied, lines: result.lines, notes: result.notes };
+    } catch (e) {
+      const err = e as { message?: string };
+      operationResult = `Failed to preview changes: ${err.message ?? e}`;
+      operationResultType = 'error';
+    }
+    migratePreviewLoading = false;
+  }
+
+  function handleConfirmDowngrade(): void {
+    if (!downgradePrompt) return;
+    void handleSetImageTag(downgradePrompt.tag, true);
+  }
+
+  function handleCancelDowngrade(): void {
+    downgradePrompt = null;
   }
 
   async function handleDownloadUiVersion(tag: string): Promise<void> {
     if (uiDownloadLoading) return;
     uiDownloadLoading = true;
     uiDownloadReady = false;
+    uiDownloadRestarting = false;
     try {
-      await downloadUiVersion(tag);
+      const result = await downloadUiVersion(tag);
       selectedUiTag = tag;
       uiDownloadReady = true;
+      if (result.restarting) {
+        // The supervisor (CLI `ui serve` / Electron harness) is respawning the
+        // UI server against the new build. It comes back up on the same port —
+        // poll /health and reload once it's ready so the user lands on the new UI.
+        uiDownloadRestarting = true;
+        void waitForUiServerAndReload();
+      }
     } catch (e) {
       const err = e as { message?: string };
       operationResult = `Failed to download UI version: ${err.message ?? e}`;
       operationResultType = 'error';
     }
     uiDownloadLoading = false;
+  }
+
+  // Poll the UI server's /health while the supervisor restarts it, then reload
+  // the page so the freshly downloaded control plane serves it (design §6.2).
+  async function waitForUiServerAndReload(): Promise<void> {
+    const deadline = Date.now() + 30_000;
+    // Give the supervisor a moment to tear the old child down first, so we don't
+    // immediately see the still-up old server and reload onto it.
+    await new Promise((r) => setTimeout(r, 1500));
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch('/health', { signal: AbortSignal.timeout(1000) });
+        if (res.ok || res.status === 401) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // server is mid-restart; keep polling
+      }
+      await new Promise((r) => setTimeout(r, 750));
+    }
+    // Restart took too long — fall back to the manual prompt.
+    uiDownloadRestarting = false;
   }
 
   function handleRestartApp(): void {
@@ -446,6 +553,20 @@
 
 <Navbar />
 
+{#if updateAvailable && activeTab !== 'updates'}
+  <!-- #498: persistent, dismissable-by-acting update signal. One sentence, one
+       obvious action (go to Check-up). Shown everywhere except the Check-up tab
+       itself, where the same status is already front and centre. -->
+  <div class="update-banner" role="status">
+    <span class="update-banner-text">
+      An update is ready{platformVersion ? ` — OpenPalm ${formatVersionForDisplay(platformVersion)}` : ''}.
+    </span>
+    <button class="update-banner-action" onclick={() => handleTabSelect('updates')}>
+      Review it
+    </button>
+  </div>
+{/if}
+
 <TabBar active={activeTab} onSelect={handleTabSelect} />
 
 <main>
@@ -469,6 +590,7 @@
     {:else if activeTab === 'updates'}
       <UpdatesTab
         {currentImageTag}
+        {services}
         {selectedImageTag}
         {tagChangeLoading}
         {anyDangerousLoading}
@@ -478,16 +600,25 @@
         {electronVersion}
         {electronLatestVersion}
         {electronLatestUrl}
+        {harnessUpdateAvailable}
         {uiVersion}
         {uiVersions}
         {uiVersionsLoading}
         {selectedUiTag}
         {uiDownloadLoading}
         {uiDownloadReady}
+        {uiDownloadRestarting}
         {releases}
         {releasesLoading}
-        onSetImageTag={handleSetImageTag}
-        onSelectedImageTagChange={(t) => { selectedImageTag = t; }}
+        {platformVersion}
+        {migratePreviewLoading}
+        {migratePreview}
+        {downgradePrompt}
+        onSetImageTag={(t) => handleSetImageTag(t)}
+        onPreviewMigration={handlePreviewMigration}
+        onConfirmDowngrade={handleConfirmDowngrade}
+        onCancelDowngrade={handleCancelDowngrade}
+        onSelectedImageTagChange={(t) => { selectedImageTag = t; migratePreview = null; downgradePrompt = null; }}
         onUpgradeStack={handleUpgradeStack}
         onSelectedUiTagChange={(t) => { selectedUiTag = t; }}
         onDownloadUiVersion={handleDownloadUiVersion}
@@ -561,5 +692,38 @@
     }
   }
 
-
+  /* #498 global update banner — a thin, persistent strip under the navbar. */
+  .update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background: var(--color-warning-bg, var(--color-bg-secondary));
+    border-bottom: 1px solid var(--color-warning, var(--color-border));
+    color: var(--color-warning-text, var(--color-text));
+    font-size: var(--text-sm);
+  }
+  .update-banner-text {
+    font-weight: var(--font-medium);
+  }
+  .update-banner-action {
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: inherit;
+    cursor: pointer;
+  }
+  .update-banner-action:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  .update-banner-action:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 </style>

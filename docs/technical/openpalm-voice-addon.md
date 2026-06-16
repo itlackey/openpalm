@@ -5,7 +5,7 @@
 > as written. In particular, `data/registry/`, `enabled-addons.json`, and the
 > `setAddonEnabled` flow referencing those paths do not exist in the current
 > codebase. The shipped voice addon uses Compose profiles (`--profile addon.voice`)
-> and `stack.yml` addon state instead of a registry catalog.
+> and `OP_ENABLED_ADDONS` in `knowledge/env/stack.env` instead of a registry catalog.
 > Authoritative rules in [`core-principles.md`](./core-principles.md) take
 > precedence over anything here.
 
@@ -13,7 +13,7 @@ OpenPalm Voice is a bundled local-container addon that gives users one-click
 TTS + STT without any external setup. The user clicks **"Enable OpenPalm Voice"**
 in the Voice tab; the admin server enables an addon overlay, brings the
 container(s) up, probes readiness, writes `TTS_BASE_URL` / `STT_BASE_URL` into
-`stack.env`, and the existing `voice` channel browser app picks them up on its
+`stack.env`, and the existing voice browser app picks them up on its
 next `GET /config/defaults` load. Nothing new is invented — the design composes
 on top of the existing registry + addon + `writeVoiceVars` plumbing.
 
@@ -73,17 +73,17 @@ one), and each piece is replaceable.
 
 ## 2. Existing voice addon state
 
-`/home/founder3/code/github/itlackey/openpalm/.openpalm/config/stack/channels.compose.yml`
+`/home/founder3/code/github/itlackey/openpalm/.openpalm/config/stack/portals.compose.yml`
 already exists and is functional, but for a **different purpose** than this
 proposal:
 
-- `compose.yml` — Defines the `voice` service using the `openpalm/channel`
-  image. It runs `@openpalm/channel-voice`, which is a Bun.serve static
+- `compose.yml` — Defines the `voice` service using the `openpalm/voice`
+  image. It runs the built-in voice runtime/static interface stack,
   file host that serves the browser voice UI on `:3810` (`8186` inside the
   container). It does NOT do TTS or STT itself; it serves the HTML/JS that
   calls TTS/STT URLs from the browser.
 - `.env.schema` — declares `STT_*` / `TTS_*` vars. These are written by
-  `writeVoiceVars` and consumed by the `channel-voice` Bun process via
+  `writeVoiceVars` and consumed by the voice runtime via
   `GET /config/defaults`.
 
 **Conclusion: keep `voice/` exactly as-is.** It is the browser UI shell. The
@@ -102,7 +102,7 @@ orthogonal addons.
 ### Directory layout
 
 ```
-.openpalm/config/stack/channels.compose.yml
+.openpalm/config/stack/portals.compose.yml
 ├── compose.yml
 ├── .env.schema
 └── README.md
@@ -120,7 +120,7 @@ the browser. See §4 for the URL story.
 # Addon: voice — local CPU-friendly TTS + STT
 # Serves OpenAI-compatible /v1/audio/speech (TTS) and
 # /v1/audio/transcriptions (STT) on host loopback ports.
-# The voice channel browser UI reads these URLs from /config/defaults.
+# The voice browser UI reads these URLs from /config/defaults.
 services:
   voice-tts:
     image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
@@ -189,7 +189,7 @@ Notes:
 - `start_period` is generous on STT because first-run model download (base.en
   ~145 MB) happens lazily on the first transcription request, but the server
   itself responds to `/health` immediately. We err on the side of slow.
-- No `depends_on: guardian` because these aren't channels — they don't talk
+- No `depends_on: guardian` because these aren't portals — they don't talk
   to the guardian, they're called by the browser.
 - `data/voice/` host directory must be pre-created on enable (see §4) so
   Docker doesn't auto-create it as root.
@@ -217,7 +217,7 @@ OP_VOICE_STT_PORT=8881
 OP_VOICE_STT_MODEL=Systran/faster-whisper-base.en
 ```
 
-No `@sensitive` fields. No HMAC secret — this is not a channel.
+No `@sensitive` fields. No HMAC secret — this is not a portal.
 
 ---
 
@@ -256,8 +256,8 @@ End-to-end on click of **"Enable OpenPalm Voice"** in the Voice tab:
 
 `TTS_BASE_URL=http://localhost:8880/v1` (and `STT_BASE_URL=http://localhost:8881/v1`).
 
-The browser calls these. The voice UI is served by the `channel-voice`
-container, which proxies the URLs into the browser through
+The browser calls these. The voice UI is served by the voice addon runtime,
+which proxies the URLs into the browser through
 `/config/defaults`. Inside the docker network the addresses would be
 `http://voice-tts:8880` / `http://voice-stt:8000`, but those names are
 opaque to the user's browser. Loopback works because both ports are
@@ -411,7 +411,7 @@ The base addon is CPU-only. A future enhancement would:
 The cleanest shape is a per-addon `variants.yml`:
 
 ```yaml
-# .openpalm/config/stack/channels.compose.yml
+# .openpalm/config/stack/portals.compose.yml
 default: cpu
 variants:
   cpu:
@@ -517,7 +517,7 @@ These need maintainer decisions before phase A starts.
    third-party image, not first-party from OpenPalm. We could (a) pin a
    SHA-256 digest and accept upstream provenance, (b) mirror to
    `ghcr.io/itlackey/openpalm-voice-tts` with a periodic re-tag CI job, or
-   (c) build our own minimal Kokoro server in `core/voice-tts/` so the
+   (c) build our own minimal Kokoro server in `containers/voice-tts/` so the
    image is first-party. (a) is fastest; (c) costs an extra service to
    maintain. **Recommend (a) for v1**, revisit if the upstream is
    unmaintained.
@@ -541,15 +541,15 @@ These need maintainer decisions before phase A starts.
    latter** — the voice channel already serves `/config/defaults` per
    request, so it can substitute the inbound `Host` header into the URL
    on the fly. That keeps `stack.env` machine-independent. This requires a
-   small change in `packages/channel-voice/src/index.ts`.
+    small change in the voice addon runtime.
 
 ---
 
 ## Compliance checklist (per `core-principles.md`)
 
-- [x] **File-drop modularity.** Pure addon under `data/registry/addons/`. No code changes to `core/`.
+- [x] **File-drop modularity.** Pure addon under `data/registry/addons/`. No code changes to `containers/`.
 - [x] **No template rendering.** Compose substitution only; whole-file copy of overlay; no string interpolation of YAML.
-- [x] **Guardian-only ingress.** N/A — this addon does not enter through the channel/guardian path. TTS/STT are tools called by the browser, not channels.
+- [x] **Guardian-only ingress.** N/A — this addon does not enter through the portal/guardian path. TTS/STT are tools called by the browser, not portals.
 - [x] **Assistant isolation.** Assistant has no special access to these containers. They live on `assistant_net` so the assistant CAN call them too (future "speak this back" tool), but ingress is unchanged.
 - [x] **LAN-first.** Both services bind to `127.0.0.1` by default.
 - [x] **No new dependencies.** No new packages added to `package.json`. No new lock-file churn.

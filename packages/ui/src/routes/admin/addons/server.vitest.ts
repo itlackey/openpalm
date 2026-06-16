@@ -41,7 +41,7 @@ function makePostEvent(body: Record<string, unknown>, token = 'admin-token'): Pa
 function seedRegistryAddon(homeDir: string, name: string): void {
   const stackDir = join(homeDir, 'config', 'stack');
   mkdirSync(stackDir, { recursive: true });
-  writeFileSync(join(stackDir, 'channels.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
+  writeFileSync(join(stackDir, 'portals.compose.yml'), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
 }
 
 function enableAddon(homeDir: string, name: string): void {
@@ -79,7 +79,7 @@ describe('GET /admin/addons', () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = await res.json() as { addons: unknown[] };
-    expect(body.addons).toHaveLength(7);
+    expect(body.addons).toHaveLength(8);
   });
 
   test('lists available addons with enabled status', async () => {
@@ -90,7 +90,7 @@ describe('GET /admin/addons', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json() as { addons: Array<{ name: string; enabled: boolean; available: boolean }> };
-    expect(body.addons).toHaveLength(7);
+    expect(body.addons).toHaveLength(8);
 
     const chat = body.addons.find((a) => a.name === 'chat');
     const discord = body.addons.find((a) => a.name === 'discord');

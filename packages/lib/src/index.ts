@@ -27,7 +27,7 @@ export {
 export type {
   ControlPlaneState,
   CoreServiceName,
-  ChannelInfo,
+  PortalInfo,
   CallerType,
   ArtifactMeta,
 } from "./control-plane/types.js";
@@ -38,13 +38,22 @@ export {
 // ── Backups ───────────────────────────────────────────────────────────────
 export {
   backupOpenPalmHome,
+  listBackupDirs,
+  pruneBackupDirs,
+  estimateHomeBackupBytes,
+  checkBackupFreeSpace,
+  describeBackupSpaceShortfall,
+  summarizeBackups,
 } from "./control-plane/backup.js";
+export type { BackupSpaceCheck, BackupSummary, BackupEntry } from "./control-plane/backup.js";
 
 // ── Layout migration harness ────────────────────────────────────────────────
 export {
   ensureMigrated,
   ensureReleaseMigrated,
   MigrationError,
+  BackupSpaceError,
+  UnrecognizedLayoutError,
   CURRENT_LAYOUT_VERSION,
   LAYOUT_VERSION_KEY,
 } from "./control-plane/migrations.js";
@@ -55,17 +64,9 @@ export type {
   AddonMutationResult,
   AddonProfile,
   AddonProfileAvailability,
-  RegistryAutomationEntry,
-  RegistryComponentEntry,
   RegistryAddonConfig,
-  RegistryCatalogVerification,
-} from "./control-plane/registry.js";
+} from "./control-plane/addons.js";
 export {
-  materializeRegistryCatalog,
-  refreshRegistryCatalog,
-  verifyRegistryCatalog,
-  discoverRegistryComponents,
-  discoverRegistryAutomations,
   getRegistryAutomation,
   getRegistryAddonConfig,
   getAddonServiceNames,
@@ -79,7 +80,7 @@ export {
   setAddonEnabled,
   installAutomationFromRegistry,
   uninstallAutomation,
-} from "./control-plane/registry.js";
+} from "./control-plane/addons.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {
@@ -108,6 +109,24 @@ export {
   reconcileStackEnvImageTag,
   RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
+export {
+  buildPinnedImageTagEnv,
+  buildPinnedImagesValue,
+  parsePinnedImages,
+  platformImageTagKeyFor,
+  resolveEffectivePlatformImageTag,
+} from './control-plane/image-tags.js';
+export type { PinnablePlatformImage } from './control-plane/image-tags.js';
+
+export type {
+  AssistantCliToolId,
+  AssistantCliProviderMapping,
+  AssistantCliToolStatus,
+} from './control-plane/assistant-cli-tools.js';
+export {
+  listAssistantCliTools,
+  useExistingProviderForAssistantCli,
+} from './control-plane/assistant-cli-tools.js';
 
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
@@ -173,24 +192,41 @@ export {
 export {
   deriveLaunchStatus,
   classifyLocalInstall,
+  deriveLocalStackState,
   detectRuntime,
 } from "./control-plane/launch-status.js";
 export type {
   LaunchStatus,
   LocalStatus,
   LocalStackState,
+  ComposeServiceStatus,
   RemoteStatus,
   RemoteReachability,
   RuntimeInfo,
   ActiveAssistant,
 } from "./control-plane/launch-status.js";
 
-// ── Channels ────────────────────────────────────────────────────────────
 export {
-  discoverChannels,
+  runDeploy,
+  writeJournal,
+  readDeployJournal,
+  resolveDeployJournalPath,
+  markSetupComplete,
+  backupSetupInputs,
+} from './control-plane/deploy.js';
+export type {
+  DeployEntry,
+  DeployPhase,
+  DeployJournal,
+  DeployProgress,
+} from './control-plane/deploy.js';
+
+// ── Portals ─────────────────────────────────────────────────────────────
+export {
+  discoverPortals,
   isAllowedService,
-  isValidChannel,
-} from "./control-plane/channels.js";
+  isValidPortal,
+} from "./control-plane/portals.js";
 
 // ── Provider Model Discovery ────────────────────────────────────────────
 export type {
@@ -234,7 +270,11 @@ export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets,
+  refreshCoreAssetsFromSource,
   seedAssistantPersonaFiles,
+  GUARDIAN_MANAGED_ASSETS,
+  SHIPPED_DEFAULT_HASHES,
+  isUnmodifiedDefault,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────
@@ -242,15 +282,30 @@ export {
   sha256,
   randomHex,
   buildEnvFiles,
+  writeSystemEnv,
   discoverStackOverlays,
   resolveRuntimeFiles,
   buildRuntimeFileMeta,
   writeRuntimeFiles,
-  writeSystemEnv,
-  channelSecretName,
-  ensureChannelSecret,
+  portalSecretName,
+  ensurePortalSecret,
   ensureComposeVolumeTargets,
+  readSecretStripNotice,
+  dismissSecretStripNotice,
+  secretStripNoticePath,
 } from "./control-plane/config-persistence.js";
+
+export {
+  createState,
+  initializeStateSecrets,
+  applyInstall,
+  applyUpdate,
+  applyUninstall,
+  applyUpgrade,
+  buildManagedServices,
+  performUpgrade,
+  updateStackEnvToLatestImageTag,
+} from './control-plane/lifecycle.js';
 
 // ── Rollback ─────────────────────────────────────────────────────────────
 export {
@@ -266,17 +321,11 @@ export {
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
-  createState,
-  applyInstall,
-  applyUpdate,
-  applyUninstall,
-  applyUpgrade,
-  performUpgrade,
   applyTagChange,
   resolveLatestPlatformTag,
-  updateStackEnvToLatestImageTag,
+  resolveDefaultMigrateTarget,
+  DowngradeConfirmationRequired,
   buildComposeFileList,
-  buildManagedServices,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
 
@@ -349,15 +398,16 @@ export {
 // ── Compose Error Parsing ────────────────────────────────────────────────
 export type { ComposeServiceFailure } from "./control-plane/compose-errors.js";
 export {
+  mapDockerError,
   parseComposeStderr,
   summarizeComposeStderr,
 } from "./control-plane/compose-errors.js";
 
-// ── Spec-to-Env Derivation ──────────────────────────────────────────────
-export type { VoiceVarsConfig } from "./control-plane/spec-to-env.js";
+// ── Voice Env ───────────────────────────────────────────────────────────
+export type { VoiceVarsConfig } from "./control-plane/voice-env.js";
 export {
   writeVoiceVars,
-} from "./control-plane/spec-to-env.js";
+} from "./control-plane/voice-env.js";
 
 // ── Operator UID/GID Detection ──────────────────────────────────────────
 export type { OperatorIds } from "./control-plane/operator-ids.js";
@@ -377,10 +427,17 @@ export {
 } from "./control-plane/setup.js";
 
 // ── Install Lock (shared between performSetup and startDeploy) ───────────
-export type { InstallLockHandle } from "./control-plane/install-lock.js";
+export type {
+  InstallLockHandle,
+  InstallLockStatus,
+  UnlockResult,
+} from "./control-plane/install-lock.js";
 export {
   acquireInstallLock,
   releaseInstallLock,
+  inspectInstallLock,
+  unlockInstallLock,
+  INSTALL_LOCK_STALE_AFTER_MS,
 } from "./control-plane/install-lock.js";
 
 // ── Host OpenCode Import ─────────────────────────────────────────────────
@@ -410,8 +467,11 @@ export {
 export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
+// ── Bind Address Startup Warning ─────────────────────────────────────────────
+export { collectBindAddressWarnings } from "./control-plane/bind-warning.js";
+
 // ── UI asset seeding and resolution ─────────────────────────────────────────
-export type { UiBuildUpdateResult } from "./control-plane/ui-assets.js";
+export type { UiBuildUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
 export {
   resolveLocalOpenpalmDir,
   seedOpenPalmDir,
@@ -420,4 +480,19 @@ export {
   seedUiBuild,
   checkAndUpdateUiBuild,
   uiUpdateChannel,
+  declaredUiChannel,
 } from "./control-plane/ui-assets.js";
+
+// ── Canonical version vocabulary (Docker `v`-tag / npm version / dist-tag) ───
+export {
+  PLATFORM_VERSION,
+  isComparableSemver,
+  compareComparableVersions,
+  majorVersionOf,
+  isSameMajorVersion,
+  normalizeVersion,
+  formatForDocker,
+  formatForDisplay,
+  isPrerelease,
+  distTagForVersion,
+} from "./control-plane/versioning.js";

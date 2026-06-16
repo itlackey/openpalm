@@ -1,0 +1,73 @@
+import type { PrincipalKind, PrincipalRecord } from './state-db';
+import { createHash } from 'node:crypto';
+import { getPrincipalRecord } from './state-db';
+
+export type AuthenticatedPrincipal = {
+  id: string;
+  kind: PrincipalKind;
+  label: string;
+  userId: string;
+};
+
+const principalCache = new Map<string, PrincipalRecord | null>();
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  const max = Math.max(aBytes.length, bBytes.length);
+  let diff = aBytes.length === bBytes.length ? 0 : 1;
+  for (let i = 0; i < max; i++) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return diff === 0;
+}
+
+function readCachedPrincipal(id: string): PrincipalRecord | null {
+  if (principalCache.has(id)) return principalCache.get(id) ?? null;
+  const record = getPrincipalRecord(id);
+  principalCache.set(id, record);
+  return record;
+}
+
+export function invalidatePrincipalCache(id?: string): void {
+  if (id) principalCache.delete(id);
+  else principalCache.clear();
+}
+
+function parseBasicAuth(header: string): { id: string; secret: string } | null {
+  if (!header.startsWith('Basic ')) return null;
+  let decoded = '';
+  try {
+    decoded = Buffer.from(header.slice(6).trim(), 'base64').toString('utf-8');
+  } catch {
+    return null;
+  }
+  const splitAt = decoded.indexOf(':');
+  if (splitAt <= 0) return null;
+  return {
+    id: decoded.slice(0, splitAt).trim().toLowerCase(),
+    secret: decoded.slice(splitAt + 1),
+  };
+}
+
+export function authenticate(req: Request, expectedKind?: PrincipalKind): AuthenticatedPrincipal | null {
+  const authHeader = req.headers.get('authorization') ?? '';
+  const basic = parseBasicAuth(authHeader);
+  if (!basic) return null;
+
+  const record = readCachedPrincipal(basic.id);
+  if (!record || !record.enabled) return null;
+
+  const tokenHash = createHash('sha256').update(basic.secret).digest('hex');
+  if (!constantTimeEqual(record.tokenHash, tokenHash)) return null;
+
+  const userId = req.headers.get('x-openpalm-user')?.trim() || basic.id;
+  if (expectedKind && record.kind !== expectedKind) return null;
+
+  return {
+    id: record.id,
+    kind: record.kind,
+    label: record.label,
+    userId,
+  };
+}

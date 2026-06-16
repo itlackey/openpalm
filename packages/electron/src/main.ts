@@ -20,8 +20,13 @@ import {
   checkAndUpdateUiBuild,
   uiUpdateChannel,
   parseEnvFile,
+  PLATFORM_VERSION,
+  checkDocker,
+  checkDockerCompose,
 } from '@openpalm/lib';
+import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
+import { loadSettings, saveSettings } from './settings.js';
 import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
 
 export type LaunchOnLoginStatus = {
@@ -131,6 +136,9 @@ let trayIcon: NativeImage | null = null;
 let trayRecordingIcons: NativeImage[] = [];
 let trayAnimationTimer: ReturnType<typeof setInterval> | null = null;
 let trayAnimationFrame = 0;
+// Whether the GitHub update check should surface prereleases (#504). Loaded from
+// desktop settings at boot; toggled live from the tray. Notify-only.
+let checkPrereleaseUpdates = false;
 
 // ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
 const STDERR_RING_SIZE = 200;
@@ -190,7 +198,7 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     'OP_IMAGE_TAG',
     'OP_ASSISTANT_IMAGE_TAG',
     'OP_GUARDIAN_IMAGE_TAG',
-    'OP_CHANNEL_IMAGE_TAG',
+    'OP_PORTAL_IMAGE_TAG',
   ]);
   for (const [k, v] of Object.entries(stackEnv)) {
     if (skippedKeys.has(k)) continue;
@@ -205,6 +213,12 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
+    // The native contract version this harness provides. The control plane
+    // feature-detects against it (design §5.3): UI code introduced after
+    // contract N guards on this value and falls back otherwise. This is a
+    // genuinely harness-scoped value (it describes the native shell, not the
+    // platform/control-plane version).
+    OP_HARNESS_CONTRACT_VERSION: String(HARNESS_CONTRACT_VERSION),
     // Do NOT set OP_IMAGE_TAG here. Docker precedence is shell-env >
     // --env-file, so any value injected into the UI server's process.env
     // overrides the authoritative OP_IMAGE_TAG written to stack.env (e.g.
@@ -351,28 +365,59 @@ async function startUIServer(): Promise<void> {
   if (existsSync(skeletonDir)) {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
     try {
-      await seedOpenPalmDir(`v${app.getVersion()}`, homeDir, resolveConfigDir(), dataDir);
+      // Stamp the skeleton with the PLATFORM (control-plane) version, not the
+      // harness's marketing version. The skeleton + control plane travel with
+      // @openpalm/lib (PLATFORM_VERSION), so a platform release must re-seed
+      // without looking like it needs a new app (design §5.2).
+      await seedOpenPalmDir(PLATFORM_VERSION, homeDir, resolveConfigDir(), dataDir);
     } catch (err) {
       console.warn('Skeleton seed failed (non-fatal):', err instanceof Error ? err.message : String(err));
     }
   }
 
-  const version = app.getVersion();
+  // app.getVersion() is the HARNESS marketing version — use it ONLY for the
+  // genuinely harness-scoped Electron self-update check (which polls GitHub
+  // releases for a new app binary). The control-plane / UI channel must key on
+  // the PLATFORM version that travels with @openpalm/lib (design §5.2), so a
+  // platform release on the `next` channel pulls a `next` UI without the harness
+  // marketing version having to be a prerelease.
+  const appVersion = app.getVersion();
+  const platformVersion = PLATFORM_VERSION;
+
+  // Load the desktop-local prerelease opt-in (#504) so the update check below
+  // knows whether to surface rc's. Notify-only — never changes install behaviour.
+  checkPrereleaseUpdates = loadSettings(dataDir).checkPrerelease;
 
   // Check for a newer Electron app version on GitHub. Non-fatal; result is
   // surfaced to the UI as an env var so the in-app banner can offer a download.
-  const appUpdate = await checkForElectronUpdate(version);
+  // When the user has opted into prereleases, this polls the full releases list
+  // and filters to the newest matching their channel.
+  const appUpdate = await checkForElectronUpdate(appVersion, checkPrereleaseUpdates);
   if (appUpdate.updateAvailable) {
     console.log(`App update available: v${appUpdate.latestVersion}`);
   } else if (appUpdate.error) {
     console.log(`App update check skipped: ${appUpdate.error}`);
   }
 
-  // Check for a newer UI build on GitHub before starting.
-  // Non-fatal: if the check or download fails, we continue with what's on disk.
-  const updateResult = await checkAndUpdateUiBuild(version, dataDir);
+  // Check for a newer UI build on npm before starting. Non-fatal: if the check
+  // or download fails, we continue with what's on disk. Pass this harness's
+  // native contract version so a UI build that needs a newer harness is NOT
+  // silently installed (§5.3) — instead we keep the current build and the app's
+  // GitHub update check surfaces the "re-download required" prompt.
+  const updateResult = await checkAndUpdateUiBuild(
+    platformVersion,
+    dataDir,
+    undefined,
+    HARNESS_CONTRACT_VERSION,
+  );
   if (updateResult.updated) {
     console.log(`UI updated to v${updateResult.latestVersion}`);
+  } else if (updateResult.redownloadRequired) {
+    console.log(
+      `UI build v${updateResult.latestVersion} needs OpenPalm app harness ` +
+      `v${updateResult.requiredHarnessContract} (this app provides v${HARNESS_CONTRACT_VERSION}) — ` +
+      `keeping the current UI; re-download the app to update.`,
+    );
   } else if (updateResult.error) {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
@@ -383,8 +428,8 @@ async function startUIServer(): Promise<void> {
     console.log('UI build not found — seeding @openpalm/ui from npm...');
     try {
       // @openpalm/ui is independently versioned — seed the channel (latest/next)
-      // for this app's release stream, not the app version.
-      await seedUiBuild(uiUpdateChannel(version), dataDir);
+      // for the PLATFORM release stream, not the harness marketing version.
+      await seedUiBuild(uiUpdateChannel(platformVersion), dataDir);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error('Failed to seed UI build:', err instanceof Error ? err.message : String(err));
@@ -396,6 +441,39 @@ async function startUIServer(): Promise<void> {
   const uiPidFile = join(dataDir, '.ui-server.pid');
   await killStaleUIServer(uiPidFile);
 
+  spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate);
+
+  const ready = await waitForReady(UI_PORT);
+  if (!ready) {
+    const recentLogs = getRecentStderr(40);
+    const detail = [
+      `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
+      '',
+      recentLogs
+        ? `Last output from UI server:\n${recentLogs}`
+        : '(No UI server output was captured.)',
+      '',
+      `See the log file for full logs:\n${logFilePath()}`,
+    ].join('\n');
+    console.error('UI server did not become ready in time');
+    closeSplashWindow();
+    dialog.showErrorBox('OpenPalm failed to start', detail);
+    app.quit();
+  }
+}
+
+/**
+ * Spawn the UI Node child against a resolved build dir. Factored out of
+ * startUIServer so the supervisor can respawn it after a UI-build update
+ * (design §6.2) without re-running the GitHub update checks.
+ */
+function spawnUIServer(
+  uiBuildDir: string,
+  homeDir: string,
+  dataDir: string,
+  uiPidFile: string,
+  appUpdate?: UpdateInfo | null,
+): void {
   // Spawn the UI Node server with Electron's OWN bundled Node (process.execPath
   // + ELECTRON_RUN_AS_NODE) rather than a bare `node` on PATH. Finder-launched
   // macOS apps don't get Homebrew/nvm on PATH, so `spawn('node', …)` failed
@@ -403,7 +481,14 @@ async function startUIServer(): Promise<void> {
   // runtime removes the system-Node dependency entirely.
   uiProcess = spawn(process.execPath, [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
-    env: { ...buildUIServerEnv(homeDir, UI_PORT, appUpdate), ELECTRON_RUN_AS_NODE: '1' },
+    env: {
+      ...buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+      ELECTRON_RUN_AS_NODE: '1',
+      // Tell the UI child it has a supervisor that can respawn it on demand
+      // (design §6.2). The admin "install UI version" route signals the
+      // supervisor (this main process) after seeding a newer data/ui.
+      OP_UI_SUPERVISOR: 'electron',
+    },
     // Own process group so shutdown can group-kill the UI server AND any
     // children it spawns (e.g. the wizard's `opencode serve` subprocess),
     // which a bare kill of the node pid would orphan.
@@ -456,28 +541,62 @@ async function startUIServer(): Promise<void> {
   });
 
   uiProcess.on('exit', (code) => {
+    // During a supervisor-driven UI restart we intentionally kill + respawn the
+    // child; don't null out the handle the restart path just reassigned.
+    if (uiServerRestarting) return;
     if (code !== 0 && code !== null) {
       console.error(`UI server exited with code ${code}`);
     }
     uiProcess = null;
   });
+}
 
-  const ready = await waitForReady(UI_PORT);
-  if (!ready) {
-    const recentLogs = getRecentStderr(40);
-    const detail = [
-      `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
-      '',
-      recentLogs
-        ? `Last output from UI server:\n${recentLogs}`
-        : '(No UI server output was captured.)',
-      '',
-      `See the log file for full logs:\n${logFilePath()}`,
-    ].join('\n');
-    console.error('UI server did not become ready in time');
-    closeSplashWindow();
-    dialog.showErrorBox('OpenPalm failed to start', detail);
-    app.quit();
+// ── UI server restart (post UI-build update) ──────────────────────────────────
+// The admin "install UI version" route seeds a newer data/ui, then signals this
+// supervisor to respawn the UI child so the new @openpalm/lib (and its
+// RELEASE_MIGRATIONS) loads without a full app relaunch (design §6.2). The
+// downloaded build does nothing until the Node child is respawned.
+let uiServerRestarting = false;
+
+async function restartUIServer(): Promise<boolean> {
+  if (uiServerRestarting) return false;
+  uiServerRestarting = true;
+  console.log('UI update detected — restarting UI server...');
+  try {
+    const homeDir = resolveOpenPalmHome();
+    const dataDir = resolveDataDir();
+    const uiPidFile = join(dataDir, '.ui-server.pid');
+
+    // Kill the current child (group-kill: it runs detached and may have its own
+    // children). Then re-resolve data/ui so a freshly seeded, strictly-newer
+    // build wins, and respawn.
+    const prev = uiProcess;
+    uiProcess = null;
+    if (prev?.pid) {
+      killProcessTree(prev.pid, 'SIGTERM');
+      await new Promise(r => setTimeout(r, 1500));
+      killProcessTree(prev.pid, 'SIGKILL');
+    }
+
+    const uiBuildDir = resolveUiBuildDir();
+    if (!existsSync(join(uiBuildDir, 'index.js'))) {
+      console.error('UI restart aborted: build not found at', uiBuildDir);
+      return false;
+    }
+    spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
+
+    const ready = await waitForReady(UI_PORT);
+    if (!ready) {
+      console.error('UI server did not become ready after restart.');
+      return false;
+    }
+    console.log('UI server restarted.');
+    return true;
+  } catch (err) {
+    console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
+    return false;
+  } finally {
+    uiServerRestarting = false;
   }
 }
 
@@ -536,6 +655,126 @@ function closeSplashWindow(): void {
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.close();
     splashWindow = null;
+  }
+}
+
+// ── Docker preflight ──────────────────────────────────────────────────────────
+// The desktop app drives the assistant via Docker Compose (the UI server's admin
+// routes shell out to `docker compose`). Without a running Docker daemon the
+// first thing a brand-new user would otherwise hit is an opaque `503
+// docker_unavailable` ~60s into the splash spinner (deployment-review P0 #493).
+// Run the SAME checks the CLI's requireDocker() uses (lib's checkDocker /
+// checkDockerCompose — never duplicate the logic) BEFORE starting the UI, and
+// replace the spinner with a friendly, actionable screen if Docker is absent.
+
+const GET_DOCKER_URL = 'https://docs.docker.com/get-docker/';
+
+type DockerPreflightResult = { ok: true } | { ok: false; title: string; message: string };
+
+/**
+ * Mirror the CLI's `requireDocker()` (install.ts:135-138) using lib's shared
+ * Docker probes. Returns a friendly title/message on failure so the harness can
+ * render it; never throws.
+ */
+async function dockerPreflight(): Promise<DockerPreflightResult> {
+  const docker = await checkDocker();
+  if (!docker.ok) {
+    return {
+      ok: false,
+      title: 'OpenPalm needs Docker Desktop',
+      message:
+        'OpenPalm runs your assistant in Docker, but Docker isn’t running. ' +
+        'Install Docker Desktop (or start it if it’s already installed), then retry.',
+    };
+  }
+  const compose = await checkDockerCompose();
+  if (!compose.ok) {
+    return {
+      ok: false,
+      title: 'Docker Compose v2 is required',
+      message:
+        'Docker is running, but Docker Compose v2 isn’t available. ' +
+        'Update Docker Desktop (it bundles Compose v2), then retry.',
+    };
+  }
+  return { ok: true };
+}
+
+let dockerRetryResolve: (() => void) | null = null;
+
+/**
+ * Replace the splash spinner with a friendly Docker-missing screen. The screen
+ * offers an "Install Docker" button (opens the official install page in the
+ * system browser) and an "I've installed it — retry" button that re-runs the
+ * preflight. Resolves when the user clicks retry.
+ */
+function showDockerErrorScreen(result: { title: string; message: string }): Promise<void> {
+  // Reuse the splash window if it's still open; otherwise create one. Either
+  // way we replace its contents with the Docker-error UI (no spinner).
+  if (!splashWindow || splashWindow.isDestroyed()) {
+    const icon = resolveAssetPath('icon.png') ?? undefined;
+    splashWindow = new BrowserWindow({
+      width: 460,
+      height: 320,
+      frame: false,
+      resizable: false,
+      movable: true,
+      alwaysOnTop: true,
+      show: true,
+      icon,
+      backgroundColor: '#0f172a',
+      webPreferences: { nodeIntegration: false, contextIsolation: true, preload: join(__dirname, 'preload.cjs') },
+    });
+    splashWindow.on('closed', () => { splashWindow = null; });
+  } else {
+    splashWindow.setSize(460, 320);
+  }
+
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{height:100%;margin:0;background:#0f172a;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;box-sizing:border-box;text-align:center}
+    .title{font-size:18px;font-weight:600}
+    .msg{font-size:13px;line-height:1.5;color:#cbd5e1;max-width:380px}
+    .row{display:flex;gap:10px;margin-top:6px}
+    button{font:inherit;font-size:13px;padding:9px 16px;border-radius:8px;border:1px solid #334155;cursor:pointer}
+    .primary{background:#2563eb;border-color:#2563eb;color:#fff}
+    .secondary{background:#1e293b;color:#e2e8f0}
+    button:hover{filter:brightness(1.1)}
+  </style></head><body>
+    <div class="title">${esc(result.title)}</div>
+    <div class="msg">${esc(result.message)}</div>
+    <div class="row">
+      <button class="primary" id="install">Install Docker</button>
+      <button class="secondary" id="retry">I’ve installed it — retry</button>
+    </div>
+    <script>
+      const op = window.openpalm;
+      document.getElementById('install').addEventListener('click', function(){ op && op.openDockerInstall(); });
+      document.getElementById('retry').addEventListener('click', function(){
+        var b=document.getElementById('retry'); b.textContent='Checking…'; b.disabled=true;
+        op && op.retryDockerPreflight();
+      });
+    </script>
+  </body></html>`;
+  void splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+
+  return new Promise<void>((resolve) => { dockerRetryResolve = resolve; });
+}
+
+/**
+ * Block until Docker is available, showing the friendly install/retry screen
+ * whenever the preflight fails. Returns once Docker (and Compose v2) are ready.
+ */
+export async function ensureDockerReady(): Promise<void> {
+  // eslint-disable-next-line no-constant-condition
+  for (;;) {
+    const result = await dockerPreflight();
+    if (result.ok) return;
+    console.warn(`Docker preflight failed: ${result.message}`);
+    await showDockerErrorScreen(result);
+    // loop: user clicked retry — re-run the preflight.
   }
 }
 
@@ -755,6 +994,36 @@ export function setLaunchOnLogin(enabled: boolean, platform = process.platform):
   return getLaunchOnLoginStatus(platform);
 }
 
+// ── Prerelease update opt-in (#504) ───────────────────────────────────────────
+// Toggle the desktop-local "check for prerelease versions" setting, persist it,
+// re-run the GitHub update check in the new mode, rebuild the tray (so the menu
+// reflects the new state and an update-available label can appear), and notify
+// the user if a newer prerelease is now visible. Notify-only — no auto-install.
+async function setCheckPrerelease(enabled: boolean): Promise<void> {
+  checkPrereleaseUpdates = enabled;
+  const dataDir = resolveDataDir();
+  saveSettings(dataDir, { checkPrerelease: enabled });
+
+  try {
+    const appVersion = app.getVersion();
+    const update = await checkForElectronUpdate(appVersion, enabled);
+    // Rebuild the tray menu so the checkbox state (and any update label) refresh.
+    rebuildTrayMenu();
+    if (enabled && update.updateAvailable && update.latestVersion) {
+      const kind = update.isPrerelease ? 'prerelease' : 'version';
+      showNotification(
+        `OpenPalm ${kind} available`,
+        `OpenPalm ${update.latestVersion} is available to download.`,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      'Prerelease update re-check failed (non-fatal):',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 // ── Tray ─────────────────────────────────────────────────────────────────────
 
 function createTray(): void {
@@ -773,8 +1042,25 @@ function createTray(): void {
     trayIcon.setTemplateImage(true);
   }
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon as NativeImage, alpha));
-  tray = new Tray(trayIcon);
+  // Reuse an existing Tray (e.g. a menu rebuild after a settings toggle) so we
+  // never leak a duplicate menu-bar icon or reset the recording animation.
+  if (!tray) {
+    tray = new Tray(trayIcon);
+  }
 
+  rebuildTrayMenu();
+
+  tray.setToolTip('OpenPalm');
+  // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
+  // NOT open/restore the window.  The window is always accessible via the
+  // "Open OpenPalm" item in the context menu (right-click or left-click the
+  // tray icon to see it, depending on the OS).  Removing the click handler
+  // prevents the surprise "tray icon pops my window" behavior reported in #427.
+}
+
+/** (Re)build the tray context menu from current settings/state. */
+function rebuildTrayMenu(): void {
+  if (!tray) return;
   const loginSettings = getLaunchOnLoginStatus();
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open OpenPalm', click: showWindow },
@@ -792,6 +1078,18 @@ function createTray(): void {
         setLaunchOnLogin(menuItem.checked);
       },
     },
+    {
+      // "Check for prerelease versions" opt-in (#504). When on, the GitHub
+      // update check surfaces rc's matching the user's channel. Notify-only —
+      // it never auto-installs. Persisted to desktop settings and re-checked
+      // immediately so the user gets feedback without restarting.
+      label: 'Check for prerelease versions',
+      type: 'checkbox',
+      checked: checkPrereleaseUpdates,
+      click: (menuItem) => {
+        void setCheckPrerelease(menuItem.checked);
+      },
+    },
     { type: 'separator' },
     {
       label: 'Quit',
@@ -806,13 +1104,7 @@ function createTray(): void {
     },
   ]);
 
-  tray.setToolTip('OpenPalm');
   tray.setContextMenu(contextMenu);
-  // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
-  // NOT open/restore the window.  The window is always accessible via the
-  // "Open OpenPalm" item in the context menu (right-click or left-click the
-  // tray icon to see it, depending on the OS).  Removing the click handler
-  // prevents the surprise "tray icon pops my window" behavior reported in #427.
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
@@ -822,6 +1114,10 @@ app.whenReady().then(async () => {
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   console.log(`OpenPalm starting (v${app.getVersion?.() ?? '?'}); logs at ${logFilePath()}`);
   createSplashWindow();
+  // Fail early and legibly if Docker isn't running (deployment-review P0 #493).
+  // Blocks (showing a friendly install/retry screen) until Docker + Compose v2
+  // are available, so the user never hits the opaque 60s `503 docker_unavailable`.
+  await ensureDockerReady();
   try {
     await startUIServer();
   } catch (err) {
@@ -866,6 +1162,31 @@ app.on('window-all-closed', () => {
 ipcMain.handle('restart-app', () => {
   app.relaunch();
   app.quit();
+});
+
+// Restart only the UI server child (NOT the whole app) after a UI-build update
+// (design §6.2). Respawns against the freshly seeded data/ui so the new
+// control-plane lib loads. Returns true once the new child is ready.
+ipcMain.handle('restart-ui-server', async (): Promise<boolean> => {
+  return restartUIServer();
+});
+
+// The UI child (admin "install UI version" route) sends SIGHUP to this parent
+// after seeding a newer data/ui. Same effect as the IPC path: respawn the UI
+// server child so the new lib loads (design §6.2).
+process.on('SIGHUP', () => { void restartUIServer(); });
+
+// Open the official Docker install page (Docker-missing preflight screen).
+ipcMain.on('open-docker-install', () => {
+  void shell.openExternal(GET_DOCKER_URL);
+});
+
+// The Docker-missing screen's "retry" button resolves the pending preflight
+// promise so ensureDockerReady() re-runs checkDocker/checkDockerCompose.
+ipcMain.on('retry-docker-preflight', () => {
+  const resolve = dockerRetryResolve;
+  dockerRetryResolve = null;
+  resolve?.();
 });
 
 ipcMain.handle('launch-on-login-status', (): LaunchOnLoginStatus => {

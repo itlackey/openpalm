@@ -24,7 +24,7 @@ describe('isSecretLikeKey', () => {
   it('detects secret-like keys but allows file indirection keys', () => {
     expect(isSecretLikeKey('OPENAI_API_KEY')).toBe(true);
     expect(isSecretLikeKey('OP_UI_LOGIN_PASSWORD')).toBe(true);
-    expect(isSecretLikeKey('CHANNEL_CHAT_SECRET')).toBe(true);
+    expect(isSecretLikeKey('PORTAL_CHAT_SECRET')).toBe(true);
     expect(isSecretLikeKey('OPENAI_API_KEY_FILE')).toBe(false);
     expect(isSecretLikeKey('OP_IMAGE_TAG')).toBe(false);
   });
@@ -83,12 +83,12 @@ services:
           secrets: ['provider_openai_api_key'],
         },
         guardian: {
-          environment: ['GUARDIAN_CHANNEL_SECRET_FILE=/run/secrets/guardian_channel_secret'],
-          secrets: [{ source: 'guardian_channel_secret' }, { source: 'channel_chat_hmac' }],
+          environment: ['GUARDIAN_PORTAL_SECRET_FILE=/run/secrets/guardian_portal_secret'],
+          secrets: [{ source: 'guardian_portal_secret' }, { source: 'portal_chat_hmac' }],
         },
         chat: {
-          image: 'openpalm/channel:latest',
-          secrets: ['channel_chat_hmac'],
+          image: 'openpalm/portal:latest',
+          secrets: ['portal_chat_hmac'],
         },
       },
     });
@@ -99,8 +99,8 @@ services:
   it('rejects cross-boundary secret grants', () => {
     const issues = auditComposeSecrets({
       services: {
-        assistant: { secrets: ['guardian_channel_secret'] },
-        chat: { image: 'openpalm/channel:latest', secrets: ['channel_slack_hmac'] },
+        assistant: { secrets: ['guardian_portal_secret'] },
+        chat: { image: 'openpalm/portal:latest', secrets: ['portal_slack_hmac'] },
         guardian: { secrets: ['admin_session_key'] },
       },
     });

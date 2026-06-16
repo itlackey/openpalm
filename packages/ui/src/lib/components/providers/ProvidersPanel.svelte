@@ -10,7 +10,7 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import { buildHeaders } from '$lib/api.js';
-	import type { ProviderPageState, ProviderView } from '$lib/types/providers.js';
+	import type { AssistantCliToolStatus, ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import AddProviderSheet from './AddProviderSheet.svelte';
 	import ConnectSheet from './ConnectSheet.svelte';
 	import CustomProviderForm from './CustomProviderForm.svelte';
@@ -26,6 +26,10 @@
 	});
 	let loading = $state(true);
 	let actionError = $state<string | null>(null);
+	let activeSubtab = $state<'opencode' | 'codex' | 'claude' | 'copilot' | 'pi'>('opencode');
+	let assistantCliTools = $state<AssistantCliToolStatus[]>([]);
+	let assistantCliLoading = $state(true);
+	let assistantCliWriting = $state<string | null>(null);
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -47,6 +51,21 @@
 	}
 
 	onMount(() => { void load(); });
+
+	async function loadAssistantCliTools(): Promise<void> {
+		assistantCliLoading = true;
+		try {
+			const res = await fetch('/admin/providers/assistant-clis', { headers: buildHeaders() });
+			if (res.ok) {
+				const body = await res.json() as { tools?: AssistantCliToolStatus[] };
+				assistantCliTools = body.tools ?? [];
+			}
+		} catch {
+			assistantCliTools = [];
+		} finally {
+			assistantCliLoading = false;
+		}
+	}
 
 	const connected = $derived(pageState.providers.filter((p) => p.connected));
 	const unconnected = $derived(pageState.providers.filter((p) => !p.connected));
@@ -107,6 +126,7 @@
 		connectProvider = null;
 		showCustomForm = false;
 		void load();
+		void loadAssistantCliTools();
 	}
 
 	async function disconnect(p: ProviderView) {
@@ -123,6 +143,7 @@
 				actionError = body.message ?? `Disconnect failed (${res.status})`;
 			} else {
 				void load();
+				void loadAssistantCliTools();
 			}
 		} catch (err) {
 			actionError = err instanceof Error ? err.message : 'Request failed.';
@@ -152,11 +173,47 @@
 	}
 
 	onMount(() => { void loadHostStatus(); });
+	onMount(() => { void loadAssistantCliTools(); });
 
 	function handleImportDone() {
 		showImportSheet = false;
 		void load();
 		void loadHostStatus();
+		void loadAssistantCliTools();
+	}
+
+	const assistantCliTabs = [
+		{ id: 'codex', label: 'Codex' },
+		{ id: 'claude', label: 'Claude Code' },
+		{ id: 'copilot', label: 'Copilot' },
+		{ id: 'pi', label: 'Pi' },
+	] as const;
+
+	const activeAssistantCliTool = $derived(
+		assistantCliTools.find((tool) => tool.id === activeSubtab)
+	);
+
+	async function useExistingProvider(toolId: AssistantCliToolStatus['id'], providerId: string): Promise<void> {
+		if (assistantCliWriting) return;
+		assistantCliWriting = `${toolId}:${providerId}`;
+		actionError = null;
+		try {
+			const res = await fetch(`/admin/providers/assistant-clis/${encodeURIComponent(toolId)}/use-provider`, {
+				method: 'POST',
+				headers: { ...buildHeaders(), 'content-type': 'application/json' },
+				body: JSON.stringify({ providerId }),
+			});
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { message?: string };
+				actionError = body.message ?? `Write failed (${res.status})`;
+			} else {
+				await loadAssistantCliTools();
+			}
+		} catch (err) {
+			actionError = err instanceof Error ? err.message : 'Request failed.';
+		} finally {
+			assistantCliWriting = null;
+		}
 	}
 </script>
 
@@ -187,7 +244,7 @@
 			>
 				Add provider
 			</button>
-			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading}>
+			<button class="btn btn-secondary btn-sm" onclick={() => { void load(); void loadAssistantCliTools(); }} disabled={loading || assistantCliLoading}>
 				{#if loading}<Spinner />{/if}
 				Refresh
 			</button>
@@ -202,6 +259,26 @@
 	{/if}
 
 	<div class="panel-body panel-body--flush">
+		<div class="connections-subtabs">
+			<button
+				type="button"
+				class:active={activeSubtab === 'opencode'}
+				onclick={() => { activeSubtab = 'opencode'; }}
+			>
+				OpenCode
+			</button>
+			{#each assistantCliTabs as tab (tab.id)}
+				<button
+					type="button"
+					class:active={activeSubtab === tab.id}
+					onclick={() => { activeSubtab = tab.id; }}
+				>
+					{tab.label}
+				</button>
+			{/each}
+		</div>
+
+		{#if activeSubtab === 'opencode'}
 		{#if !pageState.available && !loading}
 			<EmptyState>
 				{#snippet icon()}
@@ -292,6 +369,54 @@
 				</div>
 			{/each}
 		{/if}
+		{:else if assistantCliLoading}
+			<div class="loading-state cli-loading-state">
+				<Spinner />
+				<span>Loading assistant CLI status…</span>
+			</div>
+		{:else if activeAssistantCliTool}
+			<div class="assistant-cli-panel">
+				<div class="assistant-cli-header">
+					<div>
+						<h3>{activeAssistantCliTool.name}</h3>
+						<p>
+							{activeAssistantCliTool.configured ? 'Detected existing config under the assistant home bind mount.' : 'No config file detected under the assistant home bind mount yet.'}
+						</p>
+					</div>
+					<span class:configured={activeAssistantCliTool.configured} class="assistant-cli-status">
+						{activeAssistantCliTool.configured ? 'Configured' : 'Not configured'}
+					</span>
+				</div>
+
+				<div class="assistant-cli-paths">
+					{#each activeAssistantCliTool.configPaths as path (path)}
+						<code>{path}</code>
+					{/each}
+				</div>
+
+				{#if activeAssistantCliTool.availableProviderMappings.length > 0}
+					<p class="assistant-cli-copy">
+						Use an existing OpenCode provider key to seed this CLI's local credential file.
+					</p>
+					<div class="assistant-cli-actions">
+						{#each activeAssistantCliTool.availableProviderMappings as mapping (mapping.providerId)}
+							<button
+								type="button"
+								class="btn btn-secondary btn-sm"
+								disabled={assistantCliWriting !== null}
+								onclick={() => void useExistingProvider(activeAssistantCliTool.id, mapping.providerId)}
+							>
+								{assistantCliWriting === `${activeAssistantCliTool.id}:${mapping.providerId}` ? 'Writing…' : `Use existing ${mapping.label}`}
+							</button>
+						{/each}
+					</div>
+				{:else}
+					<p class="assistant-cli-copy assistant-cli-copy-muted">
+						No direct OpenCode-provider file mapping is available for this tool yet.
+					</p>
+				{/if}
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -334,6 +459,88 @@
 	.feedback.inline {
 		margin: var(--space-3) var(--space-5);
 		justify-content: space-between;
+	}
+
+	.connections-subtabs {
+		display: flex;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-5);
+		border-bottom: 1px solid var(--color-border);
+		overflow-x: auto;
+	}
+
+	.connections-subtabs button {
+		border: 1px solid var(--color-border);
+		background: var(--color-bg-secondary);
+		color: var(--color-text-secondary);
+		border-radius: var(--radius-pill);
+		padding: 0.45rem 0.8rem;
+		white-space: nowrap;
+	}
+
+	.connections-subtabs button.active {
+		background: var(--color-accent-soft);
+		border-color: var(--color-accent);
+		color: var(--color-text);
+	}
+
+	.cli-loading-state {
+		padding: var(--space-5);
+	}
+
+	.assistant-cli-panel {
+		padding: var(--space-5);
+		display: grid;
+		gap: var(--space-4);
+	}
+
+	.assistant-cli-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: var(--space-3);
+	}
+
+	.assistant-cli-header h3,
+	.assistant-cli-header p,
+	.assistant-cli-copy {
+		margin: 0;
+	}
+
+	.assistant-cli-status {
+		border-radius: var(--radius-pill);
+		padding: 0.2rem 0.6rem;
+		background: var(--color-bg-secondary);
+		color: var(--color-text-secondary);
+		font-size: var(--text-xs);
+	}
+
+	.assistant-cli-status.configured {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+	}
+
+	.assistant-cli-paths {
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.assistant-cli-paths code {
+		display: block;
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+		background: var(--color-bg-secondary);
+		overflow-wrap: anywhere;
+	}
+
+	.assistant-cli-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.assistant-cli-copy-muted {
+		color: var(--color-text-tertiary);
 	}
 
 	.provider-row {
@@ -382,6 +589,14 @@
 
 	.empty-hint {
 		color: var(--color-text-tertiary);
+	}
+
+	@media (max-width: 720px) {
+		.model-defaults,
+		.assistant-cli-header {
+			grid-template-columns: 1fr;
+			display: grid;
+		}
 	}
 
 </style>

@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.11.5",
+  "version": "0.12.1",
   "type": "module",
   "license": "MPL-2.0",
   "description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",
@@ -20,6 +20,7 @@
   "scripts": {
     "start": "bun run src/main.ts",
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
     "test:e2e": "npx playwright test",
     "wizard:local": "bun run src/main.ts install --no-start --force",
     "build": "bun build src/main.ts --compile --outfile dist/openpalm-cli",
@@ -34,8 +35,12 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "@openpalm/lib": ">=0.11.5 <1.0.0",
+    "@openpalm/lib": ">=0.12.1 <1.0.0",
     "citty": "^0.2.1",
     "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3"
   }
 }

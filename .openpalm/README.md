@@ -14,10 +14,8 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
     stack/             Stack configuration and composition
       core.compose.yml Core services (always used)
       services.compose.yml Optional first-party services (profile-gated)
-      channels.compose.yml Optional first-party channels (profile-gated)
+      portals.compose.yml Optional first-party portals (profile-gated)
       custom.compose.yml User custom services/overlays
-      stack.yml        Stack schema marker and enabled first-party addons
-      stack.env        System-managed non-secret env vars (written by CLI/admin)
     assistant/         OpenCode user tools, plugins, skills, commands
     guardian/          Guardian OpenCode global config (mounted at /etc/opencode)
     akm/               AKM config directory
@@ -30,7 +28,6 @@ At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.ope
 
   data/
     assistant/         Assistant home and local runtime state
-    admin/             Admin runtime home
     ui/                Operator UI build (@openpalm/ui), seeded/updated from npm
     guardian/          Guardian nonce and rate-limit state
     akm/cache/         AKM cache and task logs
@@ -61,9 +58,8 @@ This repo directory contains source assets embedded by the CLI during build. The
     stack/               Seed files for runtime config/stack/
       core.compose.yml   Core Compose file copied to OP_HOME
       services.compose.yml Optional services Compose file
-      channels.compose.yml Optional channels Compose file
+      portals.compose.yml Optional portals Compose file
       custom.compose.yml User-editable custom Compose stub
-      stack.yml          Template stack spec (copied at install)
     assistant/           Seed files for config/assistant/ (OpenCode config)
     guardian/            Guardian OpenCode global config (opencode.jsonc → /etc/opencode)
   knowledge/             Built-in AKM stash assets (skills, tasks, env, secrets)
@@ -91,7 +87,7 @@ docker compose \
   --env-file ~/.openpalm/knowledge/env/stack.env \
   -f ~/.openpalm/config/stack/core.compose.yml \
   -f ~/.openpalm/config/stack/services.compose.yml \
-  -f ~/.openpalm/config/stack/channels.compose.yml \
+  -f ~/.openpalm/config/stack/portals.compose.yml \
   -f ~/.openpalm/config/stack/custom.compose.yml \
   --profile addon.chat \
   up -d
@@ -107,8 +103,8 @@ services and overlays belong in `custom.compose.yml`.
 
 | Directory | Owner | Who writes |
 |---|---|---|
-| `config/` | User | User edits, explicit admin actions, assistant via authenticated admin API |
-| `config/stack/` | System/User | CLI/admin manage fixed runtime assets and `stack.env`; users edit `custom.compose.yml` |
+| `config/` | User | User edits and explicit admin actions |
+| `config/stack/` | System/User | CLI/admin manage fixed runtime assets; users edit `custom.compose.yml` |
 | `knowledge/env/` | User | User edits `user.env` directly or via admin UI user-env updates |
 | `knowledge/secrets/` | System | Stack-managed file secrets (Compose grants); written by CLI/admin |
 | `knowledge/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |

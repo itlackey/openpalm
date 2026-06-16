@@ -4,7 +4,7 @@ Documentation index for OpenPalm.
 
 Repo layout convention:
 - `packages/*` contains app/package source code.
-- `core/*` contains container/runtime assembly assets and Docker build contexts.
+- `containers/*` contains container/runtime assembly assets and Docker build contexts.
 
 ## Getting started
 
@@ -13,13 +13,12 @@ Repo layout convention:
 | [CONTRIBUTING.md](../.github/CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
 | [system-requirements.md](system-requirements.md) | CPU, RAM, disk, network — minimum and recommended specs |
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
-| [setup-walkthrough.md](setup-walkthrough.md) | Visual walkthrough of every setup wizard screen |
 | [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
-| [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
-| [discord-setup.md](channels/discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
-| [slack-setup.md](channels/slack-setup.md) | Slack bot setup — create app, install channel, configure Socket Mode |
+| [managing-openpalm.md](managing-openpalm.md) | Configuration, portals, secrets, access control, automations |
+| [discord-setup.md](portals/discord-setup.md) | Discord bot setup — create app, install portal addon, invite bot |
+| [slack-setup.md](portals/slack-setup.md) | Slack bot setup — create app, install portal addon, configure Socket Mode |
 
 ## Upgrade & migration
 
@@ -32,7 +31,7 @@ Repo layout convention:
 
 | Document | Description |
 |---|---|
-| [release-management.md](operations/release-management.md) | Authoritative release guide: platform release vs independent channel-adapter publishes, dist-tags, beta→stable cutover |
+| [release-management.md](operations/release-management.md) | Authoritative release guide: platform release boundaries, image/package versioning, and beta→stable cutover |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [diagnostic-playbook.md](operations/diagnostic-playbook.md) | Layer-by-layer debugging workflow for UI, admin API, OpenCode, and container/config issues |
 | [persistent-assistant-tools.md](operations/persistent-assistant-tools.md) | How to keep assistant-installed tools across recreates and upgrades |
@@ -49,7 +48,7 @@ Repo layout convention:
 | Document | Applies to |
 |---|---|
 | [code-quality-principles.md](technical/code-quality-principles.md) | All code |
-| [bunjs-rules.md](technical/bunjs-rules.md) | Guardian, channels, channels-sdk |
+| [bunjs-rules.md](technical/bunjs-rules.md) | Guardian and portal-side Bun services |
 | [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
 
 ## Release notes
@@ -66,4 +65,4 @@ Repo layout convention:
 | [backup-restore.md](backup-restore.md) | Backup, restore, and migration procedures |
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
-| [community-channels.md](channels/community-channels.md) | BaseChannel SDK for custom adapters |
+| [community-portals.md](portals/community-portals.md) | Guardian `/oc/*` contract for custom portal adapters |

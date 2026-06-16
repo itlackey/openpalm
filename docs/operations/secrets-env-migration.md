@@ -21,7 +21,7 @@ recreate the stack.
 
 After migrating, `config/stack/` contains only the compose assembly
 (`core.compose.yml`, `services.compose.yml`, `channels.compose.yml`,
-`custom.compose.yml`, `stack.yml`) — no `stack.env`, no `auth.json`, no secrets.
+`custom.compose.yml`) — no `stack.env`, no `auth.json`, no secrets.
 
 ## Steps
 

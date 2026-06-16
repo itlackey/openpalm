@@ -26,11 +26,11 @@ import {
   ensureOpenCodeConfig,
   writeAuthJsonProviderKeys,
 } from "./secrets.js";
-import { createState } from "./lifecycle.js";
-import { writeVoiceVars } from "./spec-to-env.js";
+import { createState, initializeStateSecrets } from "./lifecycle.js";
+import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./registry.js";
+import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -63,7 +63,7 @@ export type SetupSpec = {
   security: { uiLoginPassword: string };
   owner?: { name?: string; email?: string };
   connections: SetupConnection[];
-  channelCredentials?: Record<string, Record<string, string>>;
+  portalCredentials?: Record<string, Record<string, string>>;
   addons?: Record<string, boolean>;
   voiceProfile?: string;
   ollamaProfile?: string;
@@ -75,10 +75,9 @@ export type SetupSpec = {
 
 /**
  * Build the non-secret stack.env update payload from a setup spec.
- * Provider API keys and channel credentials are written as file-based secrets.
+ * Extracts owner name/email into OP_OWNER_* env vars.
  */
-export function buildSecretsFromSetup(
-  connections: SetupConnection[],
+export function buildOwnerEnvFromSetup(
   owner?: { name?: string; email?: string },
 ): Record<string, string> {
   const updates: Record<string, string> = {};
@@ -86,7 +85,6 @@ export function buildSecretsFromSetup(
   const ownerEmail = (owner?.email?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   if (ownerName) updates.OP_OWNER_NAME = ownerName;
   if (ownerEmail) updates.OP_OWNER_EMAIL = ownerEmail;
-  void connections;
   return updates;
 }
 
@@ -110,29 +108,9 @@ export function buildAuthJsonFromSetup(
   return keys;
 }
 
-/**
- * Build the system-secret update for the wizard / CLI install path.
- *
- * Phase 4 of the auth/proxy refactor collapsed the legacy
- * `OP_UI_TOKEN` / `OP_ASSISTANT_TOKEN` pair into a single operator login
- * secret (`OP_UI_LOGIN_PASSWORD`). The browser stores the cookie value =
- * password; `requireAdmin()` compares the cookie against
- * `process.env.OP_UI_LOGIN_PASSWORD` via the existing `safeTokenCompare`.
- *
-  * `OP_OPENCODE_PASSWORD` may be supplied explicitly as a file-based secret in
-  * `knowledge/secrets/op_opencode_password` when OpenCode auth is enabled.
- */
-export function buildSystemSecretsFromSetup(
-  uiLoginPassword: string,
-): Record<string, string> {
-  return {
-    OP_UI_LOGIN_PASSWORD: uiLoginPassword,
-  };
-}
+// ── Portal Credential Env Var Mapping ───────────────────────────────────
 
-// ── Channel Credential Env Var Mapping ───────────────────────────────────
-
-const CHANNEL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
+const PORTAL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
   discord: {
     botToken: "DISCORD_BOT_TOKEN",
     applicationId: "DISCORD_APPLICATION_ID",
@@ -151,12 +129,12 @@ const CHANNEL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
   },
 };
 
-function buildChannelCredentialEnvVars(
-  channelCredentials: Record<string, Record<string, string>>
+function buildPortalCredentialEnvVars(
+  portalCredentials: Record<string, Record<string, string>>
 ): Record<string, string> {
   const envVars: Record<string, string> = {};
-  for (const [channelId, creds] of Object.entries(channelCredentials)) {
-    const mapping = CHANNEL_CREDENTIAL_ENV_MAP[channelId];
+  for (const [portalId, creds] of Object.entries(portalCredentials)) {
+    const mapping = PORTAL_CREDENTIAL_ENV_MAP[portalId];
     if (!mapping) continue;
     for (const [field, envKey] of Object.entries(mapping)) {
       const val = creds[field];
@@ -175,8 +153,9 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { llm, embedding, tts, stt, security, owner, connections, channelCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
+  const { llm, embedding, tts, stt, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
   const state = opts?.state ?? createState();
+  initializeStateSecrets(state);
 
   // Acquire install lock to prevent two concurrent setup runs from racing on
   // the same config directory. The lock lives in dataDir so it is co-located
@@ -186,12 +165,12 @@ export async function performSetup(
     return {
       ok: false,
       error:
-        "install_in_progress: Another install is in progress. Wait for it to finish, or remove state/.install.lock if you're sure no install is running.",
+        "install_in_progress: Another install is in progress. Wait for it to finish (the lock clears itself automatically after 30 minutes). If you're sure nothing is running, run 'openpalm unlock' to clear a stale lock.",
     };
   }
 
   logger.info("performing setup", { connectionCount: connections.length });
-  const updates = buildSecretsFromSetup(connections, owner);
+  const updates = buildOwnerEnvFromSetup(owner);
   const providerKeys = buildAuthJsonFromSetup(connections);
 
   // Wrap all persistence work in try/finally so the lock is ALWAYS released.
@@ -200,16 +179,16 @@ export async function performSetup(
     try {
       ensureHomeDirs();
       ensureSecrets(state);
-      const channelSecretUpdates = channelCredentials ? buildChannelCredentialEnvVars(channelCredentials) : {};
-      // Pick up channel credential env vars not already provided in the spec
-      for (const mapping of Object.values(CHANNEL_CREDENTIAL_ENV_MAP)) {
+      const portalSecretUpdates = portalCredentials ? buildPortalCredentialEnvVars(portalCredentials) : {};
+      // Pick up portal credential env vars not already provided in the spec
+      for (const mapping of Object.values(PORTAL_CREDENTIAL_ENV_MAP)) {
         for (const envKey of Object.values(mapping)) {
-          if (!channelSecretUpdates[envKey] && process.env[envKey]) channelSecretUpdates[envKey] = process.env[envKey];
+          if (!portalSecretUpdates[envKey] && process.env[envKey]) portalSecretUpdates[envKey] = process.env[envKey];
         }
       }
       updateSecretsEnv(state, updates);
-      updateSecretsEnv(state, channelSecretUpdates);
-      patchSecretsEnvFile(state.stackDir, buildSystemSecretsFromSetup(security.uiLoginPassword));
+      updateSecretsEnv(state, portalSecretUpdates);
+      patchSecretsEnvFile(state.stackDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);
@@ -322,8 +301,8 @@ export async function performSetup(
         writeVoiceVars({ tts, stt }, state.stackDir);
       }
 
-      // Enable requested addons (channels like discord, slack, etc.)
-      // setAddonEnabled records explicit activation state and ensures channel secret files.
+      // Enable requested addons (portals like discord, slack, etc.)
+      // setAddonEnabled records explicit activation state and ensures portal secret files.
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
           if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true, state);
@@ -332,11 +311,11 @@ export async function performSetup(
 
 
       if (voiceProfile?.trim()) {
-        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim(), state);
+        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim());
       }
 
       if (ollamaProfile?.trim()) {
-        setAddonProfileSelection(state.stackDir, 'ollama', ollamaProfile.trim(), state);
+        setAddonProfileSelection(state.stackDir, 'ollama', ollamaProfile.trim());
       }
 
       ensureOpenCodeConfig();

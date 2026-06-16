@@ -36,6 +36,14 @@ function writeStackCompose(homeDir: string, filename: string, yml: string): void
   writeFileSync(join(stackDir, filename), yml);
 }
 
+function seedManagedSource(homeDir: string, files: Record<string, string>): void {
+  for (const [relPath, content] of Object.entries(files)) {
+    const path = join(homeDir, '.openpalm', relPath);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, content);
+  }
+}
+
 registerCleanup();
 
 // ── Pure Utility Functions ──────────────────────────────────────────────
@@ -120,14 +128,14 @@ describe("discoverStackOverlays", () => {
   test("discovers fixed compose overlay files", () => {
     writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
     writeFileSync(join(stackDir, "services.compose.yml"), "services: {}");
-    writeFileSync(join(stackDir, "channels.compose.yml"), "services: {}");
+    writeFileSync(join(stackDir, "portals.compose.yml"), "services: {}");
     writeFileSync(join(stackDir, "custom.compose.yml"), "services: {}");
 
     const result = discoverStackOverlays(stackDir);
     expect(result).toHaveLength(4);
     expect(result[0]).toMatch(/core\.compose\.yml$/);
     expect(result.some((f) => f.endsWith("services.compose.yml"))).toBe(true);
-    expect(result.some((f) => f.endsWith("channels.compose.yml"))).toBe(true);
+    expect(result.some((f) => f.endsWith("portals.compose.yml"))).toBe(true);
     expect(result.some((f) => f.endsWith("custom.compose.yml"))).toBe(true);
   });
 
@@ -218,18 +226,35 @@ describe("writeRuntimeFiles", () => {
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
   });
 
-  test("generates file-based channel secrets for discovered channels", () => {
-    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+  test('refreshes managed compose assets on rerun but preserves custom.compose.yml', () => {
+    seedManagedSource(state.homeDir, {
+      'config/stack/core.compose.yml': 'services:\n  assistant:\n    image: current\n',
+      'config/stack/services.compose.yml': 'services:\n  ollama: {}\n',
+      'config/stack/portals.compose.yml': 'services:\n  chat: {}\n',
+      'config/stack/custom.compose.yml': 'services:\n  seeded: {}\n',
+      'config/assistant/opencode.jsonc': '{}\n',
+    });
+    writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services:\n  assistant:\n    image: stale\n');
+    writeFileSync(join(state.stackDir, 'custom.compose.yml'), 'services:\n  mine: {}\n');
+
+    writeRuntimeFiles(state);
+
+    expect(readFileSync(join(state.stackDir, 'core.compose.yml'), 'utf-8')).toContain('image: current');
+    expect(readFileSync(join(state.stackDir, 'custom.compose.yml'), 'utf-8')).toContain('mine');
+  });
+
+  test("generates file-based portal secrets for discovered portals", () => {
+    writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
     enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);
 
     expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
-    expect(readSecret(state.stackDir, "channel_chat_secret")).toBeTruthy();
+    expect(readSecret(state.stackDir, "portal_chat_secret")).toBeTruthy();
 
-    // Channel secrets must NOT be in stack.env
+    // Portal secrets must NOT be in stack.env
     const stackContent = readFileSync(stackEnvFor(state.stackDir), "utf-8");
-    expect(stackContent).not.toContain("CHANNEL_CHAT_SECRET=");
+    expect(stackContent).not.toContain("PORTAL_CHAT_SECRET=");
   });
 
   test("writes stack.env with runtime configuration", () => {
@@ -242,7 +267,7 @@ describe("writeRuntimeFiles", () => {
     expect(content).toContain(`OP_IMAGE_TAG=`);
     expect(content).toContain('OP_ASSISTANT_IMAGE_TAG=');
     expect(content).toContain('OP_GUARDIAN_IMAGE_TAG=');
-    expect(content).toContain('OP_CHANNEL_IMAGE_TAG=');
+    expect(content).toContain('OP_PORTAL_IMAGE_TAG=');
   });
 
   test("stack.env does NOT leak user-managed secrets", () => {
@@ -254,31 +279,31 @@ describe("writeRuntimeFiles", () => {
     expect(lines.some((l) => /^OP_UI_LOGIN_PASSWORD=/.test(l))).toBe(false);
   });
 
-  test("preserves existing file-based channel secrets (does not regenerate)", () => {
-    writeSecret(state.stackDir, "channel_chat_secret", "pre-existing-secret-value");
+  test("preserves existing file-based portal secrets (does not regenerate)", () => {
+    writeSecret(state.stackDir, "portal_chat_secret", "pre-existing-secret-value");
 
-    writeStackCompose(state.homeDir, "channels.compose.yml", "services:\n  chat:\n    environment:\n      CHANNEL_NAME: Chat\n");
+    writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
     enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);
 
-    expect(readSecret(state.stackDir, "channel_chat_secret")).toBe("pre-existing-secret-value");
+    expect(readSecret(state.stackDir, "portal_chat_secret")).toBe("pre-existing-secret-value");
   });
 
 });
 
-// ── Channel Secret Files ─────────────────────────────────────────────────
+// ── Portal Secret Files ─────────────────────────────────────────────────
 
-describe("channel secret files", () => {
+describe("portal secret files", () => {
   test("reads from knowledge/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeSecret(state.stackDir, "channel_chat_secret", "abc123");
-    writeSecret(state.stackDir, "channel_api_secret", "def456");
+    writeSecret(state.stackDir, "portal_chat_secret", "abc123");
+    writeSecret(state.stackDir, "portal_api_secret", "def456");
 
-    expect(readSecret(state.stackDir, "channel_chat_secret")).toBe("abc123");
-    expect(readSecret(state.stackDir, "channel_api_secret")).toBe("def456");
+    expect(readSecret(state.stackDir, "portal_chat_secret")).toBe("abc123");
+    expect(readSecret(state.stackDir, "portal_api_secret")).toBe("def456");
   });
 
   test("returns null when no secret file exists", () => {
@@ -286,18 +311,18 @@ describe("channel secret files", () => {
     trackDir(state.homeDir);
     mkdirSync(state.stackDir, { recursive: true });
 
-    expect(readSecret(state.stackDir, "channel_chat_secret")).toBeNull();
+    expect(readSecret(state.stackDir, "portal_chat_secret")).toBeNull();
   });
 
   test("writes secrets to knowledge/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeSecret(state.stackDir, "channel_chat_secret", "abc");
-    writeSecret(state.stackDir, "channel_api_secret", "def");
+    writeSecret(state.stackDir, "portal_chat_secret", "abc");
+    writeSecret(state.stackDir, "portal_api_secret", "def");
 
-    expect(readFileSync(secretPath(state.stackDir, "channel_chat_secret"), "utf-8")).toBe("abc");
-    expect(readFileSync(secretPath(state.stackDir, "channel_api_secret"), "utf-8")).toBe("def");
+    expect(readFileSync(secretPath(state.stackDir, "portal_chat_secret"), "utf-8")).toBe("abc");
+    expect(readFileSync(secretPath(state.stackDir, "portal_api_secret"), "utf-8")).toBe("def");
     expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
   });
 });

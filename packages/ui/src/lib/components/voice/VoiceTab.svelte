@@ -28,7 +28,7 @@
 		TtsOption,
 		VoiceEngineConfig,
 		VoiceEngineValue,
-	} from '$lib/wizard/types.js';
+	} from '$lib/client/types.js';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();

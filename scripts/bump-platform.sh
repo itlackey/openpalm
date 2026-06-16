@@ -2,8 +2,8 @@
 # Bump the "version" field in platform package.json files only.
 # Platform package manifests are sourced from
 # .github/release-package-groups.json -> platformManifests.
-# Channel adapters (packages/channel-*) are independently versioned and
-# published by their own workflows.
+# Portal adapters and guardian runtime inputs are platform-coupled and are
+# versioned here with the rest of the coordinated release surface.
 #
 # Usage: ./scripts/bump-platform.sh 0.8.0
 set -euo pipefail
@@ -47,7 +47,7 @@ for manifest in ${MANIFESTS}; do
 
   # Single source of truth for how a version is stamped (and how the internal
   # @openpalm/lib floor range is kept in lockstep): scripts/set-version.mjs.
-  # Independent dependency refs (channel adapters etc.), workspace:* and exact
+  # Independent dependency refs (portal adapters etc.), workspace:* and exact
   # refs are left untouched.
   node "${ROOT}/scripts/set-version.mjs" "${file}" "${VERSION}"
 done

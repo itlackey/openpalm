@@ -1,0 +1,17 @@
+{
+  "name": "@openpalm/guardian",
+  "description": "Basic-auth message gateway with ownership, moderation, and rate limiting",
+  "version": "0.12.1",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "start:openai-api": "bun run src/openai-api-server.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2"
+  }
+}

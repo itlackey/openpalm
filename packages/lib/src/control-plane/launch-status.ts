@@ -17,11 +17,13 @@
  *   local install always gets the user's attention instead of being silently
  *   routed around.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
 import { stackEnvPathFromStackDir } from "./paths.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
+import { SKELETON_VERSION_STAMP } from "./ui-assets.js";
 
 export type LocalStackState =
   | "not_installed"     // nothing installed — offer install / add remote
@@ -39,6 +41,24 @@ export interface RuntimeInfo {
   dockerVersion?: string;
   /** `docker compose` (or equivalent) is usable. */
   composeAvailable: boolean;
+  /** Human-facing runtime flavor when detectable. */
+  runtimeName?: "Docker" | "OrbStack" | "Podman";
+}
+
+export function detectRuntimeName(versionOutput: string): RuntimeInfo["runtimeName"] {
+  if (/orbstack/i.test(versionOutput)) return "OrbStack";
+  if (/podman/i.test(versionOutput)) return "Podman";
+  if (versionOutput.trim().length > 0) return "Docker";
+  return undefined;
+}
+
+async function readRuntimeIdentity(): Promise<string> {
+  return new Promise((resolve) => {
+    execFile("docker", ["version"], { timeout: 10_000 }, (error, stdout, stderr) => {
+      if (error && !stdout && !stderr) return resolve("");
+      resolve(`${stdout?.toString() ?? ""}\n${stderr?.toString() ?? ""}`.trim());
+    });
+  });
 }
 
 export interface RemoteStatus {
@@ -54,7 +74,15 @@ export interface LocalStatus {
   detail?: Record<string, unknown>;
   /** Present (and meaningful) when nothing is installed: can the user install? */
   runtime?: RuntimeInfo;
+  /** Skeleton version mismatch alert (when OP_HOME was seeded from a different release). */
+  skeletonMismatch?: { expected: string; actual: string };
 }
+
+export type ComposeServiceStatus = {
+  service: string;
+  state: string;
+  health: string;
+};
 
 export type ActiveAssistant = { kind: "local" } | { kind: "remote"; id: string } | null;
 
@@ -145,13 +173,49 @@ export function classifyLocalInstall(stackDir: string): "not_installed" | "setup
   return "setup_incomplete";
 }
 
+/** Check if the OP_HOME skeleton was seeded from a different release. */
+export function checkSkeletonMismatch(stackDir: string): { expected: string; actual: string } | null {
+  const homeDir = join(stackDir, "..", "..");
+  const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
+  if (!existsSync(stampPath)) return null;
+  let actual: string;
+  try {
+    actual = readFileSync(stampPath, "utf-8").trim();
+  } catch {
+    return null;
+  }
+  const env = parseEnvFile(stackEnvPathFromStackDir(stackDir));
+  const expected = env.OP_RELEASE_VERSION ?? env.OP_IMAGE_TAG ?? "";
+  if (!expected || expected === actual) return null;
+  return { expected, actual };
+}
+
+export function deriveLocalStackState(
+  installState: 'not_installed' | 'setup_incomplete' | 'installed',
+  services: ComposeServiceStatus[],
+): LocalStackState {
+  if (installState === 'not_installed') return 'not_installed';
+  if (services.length === 0) return installState === 'setup_incomplete' ? 'setup_incomplete' : 'installed_offline';
+  const anyRunning = services.some((service) => service.state === 'running');
+  const anyBroken = services.some((service) => service.state === 'exited' || service.state === 'dead' || service.health === 'unhealthy');
+  const anyStarting = services.some((service) => service.health === 'starting');
+  if (installState === 'setup_incomplete') {
+    return anyRunning || anyStarting ? 'running' : 'setup_incomplete';
+  }
+  if (anyBroken) return 'installed_broken';
+  if (anyRunning) return 'running';
+  return 'installed_offline';
+}
+
 /** Detect the host container runtime — meaningful for the not_installed splash. */
 export async function detectRuntime(): Promise<RuntimeInfo> {
   const [docker, compose] = await Promise.all([checkDocker(), checkDockerCompose()]);
   const version = docker.ok ? docker.stdout.trim() : "";
+  const identity = docker.ok ? await readRuntimeIdentity() : "";
   return {
     dockerPresent: docker.ok,
     dockerVersion: version.length > 0 ? version : undefined,
     composeAvailable: compose.ok,
+    runtimeName: detectRuntimeName(identity),
   };
 }

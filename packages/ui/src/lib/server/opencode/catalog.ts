@@ -130,6 +130,59 @@ export async function loadProviderPage(): Promise<ProviderPageState> {
 	}
 }
 
+export type SetupProviderPageState =
+  | { available: false; providers: []; }
+  | {
+      available: true;
+      providers: RawProviderCatalogEntry[];
+      auth: Record<string, RawAuthMethod[]>;
+      connected: string[];
+      selectedModels: { llm?: string; small?: string };
+    };
+
+export async function loadSetupProviderPage(): Promise<SetupProviderPageState> {
+  try {
+    const [catalog, auth] = await Promise.all([
+      opencodeFetch<RawProviderCatalog>('/provider'),
+      opencodeFetch<Record<string, RawAuthMethod[]>>('/provider/auth'),
+    ]);
+    return {
+      available: true,
+      providers: Array.isArray(catalog.all) ? catalog.all : [],
+      auth,
+      connected: Array.from(new Set([...(catalog.connected ?? []), ...readConnectedProviderIdsFromAuthJson()])),
+      selectedModels: readSelectedModels(),
+    };
+  } catch {
+    return { available: false, providers: [] };
+  }
+}
+
+function readSelectedModels(): { llm?: string; small?: string } {
+  try {
+    const path = `${getState().configDir}/assistant/opencode.json`;
+    if (!existsSync(path)) return {};
+    const data = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+    return {
+      ...(typeof data.model === 'string' && data.model ? { llm: data.model } : {}),
+      ...(typeof data.small_model === 'string' && data.small_model ? { small: data.small_model } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function readConnectedProviderIdsFromAuthJson(): string[] {
+  try {
+    const path = authJsonPath(getState());
+    if (!existsSync(path)) return [];
+    const data = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+    return Object.keys(data ?? {});
+  } catch {
+    return [];
+  }
+}
+
 function extractAndSortModels(
 	...sources: Array<unknown>
 ): Array<{ id: string; name: string }> {

@@ -8,7 +8,7 @@ import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import FriendlyError from './FriendlyError.svelte';
-import type { FriendlyErrorView } from '$lib/wizard/error-messages.js';
+import type { FriendlyErrorView } from '$lib/client/error-messages.js';
 
 const base: FriendlyErrorView = {
   title: 'Something went wrong',

@@ -171,8 +171,8 @@ describe("importHostOpenCode", () => {
     mkdirSync(hostDataDir, { recursive: true });
 
     writeFileSync(join(hostConfigDir, "opencode.json"), JSON.stringify({
-      provider: { anthropic: { name: "Anthropic" }, groq: {} },
-      model: "anthropic/claude-3-5-sonnet",
+      provider: { openai: { name: "OpenAI" }, groq: {} },
+      model: "openai/gpt-4o",
       small_model: "openai/gpt-4o-mini",
       disabled_providers: ["groq"],
       // These should be stripped:
@@ -180,7 +180,7 @@ describe("importHostOpenCode", () => {
       mcp: { server: {} },
     }));
     writeFileSync(join(hostDataDir, "auth.json"), JSON.stringify({
-      anthropic: { token: "sk-ant-token" },
+      openai: { token: "sk-openai-token" },
     }));
 
     const state = makeState(opHome);
@@ -194,8 +194,8 @@ describe("importHostOpenCode", () => {
 
     // Verify opencode.json was written and plugin key was stripped
     const destConfig = JSON.parse(readFileSync(join(opHome, "config", "assistant", "opencode.json"), "utf-8"));
-    expect(destConfig.provider).toEqual({ anthropic: { name: "Anthropic" }, groq: {} });
-    expect(destConfig.model).toBe("anthropic/claude-3-5-sonnet");
+    expect(destConfig.provider).toEqual({ openai: { name: "OpenAI" }, groq: {} });
+    expect(destConfig.model).toBe("openai/gpt-4o");
     expect(destConfig.small_model).toBe("openai/gpt-4o-mini");
     expect(destConfig.disabled_providers).toEqual(["groq"]);
     expect(destConfig.plugin).toBeUndefined();
@@ -208,6 +208,68 @@ describe("importHostOpenCode", () => {
     const authStat = statSync(join(opHome, "knowledge", "secrets", "auth.json"));
     // On Linux, mode & 0o777 extracts permission bits
     expect(authStat.mode & 0o777).toBe(0o600);
+  });
+
+  it("filters anthropic credentials from auth.json on fresh import", () => {
+    const hostConfigDir = join(xdgRoot, "config", "opencode");
+    const hostDataDir = join(xdgRoot, "data", "opencode");
+    mkdirSync(hostConfigDir, { recursive: true });
+    mkdirSync(hostDataDir, { recursive: true });
+
+    writeFileSync(join(hostConfigDir, "opencode.json"), JSON.stringify({
+      provider: { openai: { name: "OpenAI" } },
+    }));
+    // Host has both anthropic and openai credentials — only openai should land in OP_HOME.
+    writeFileSync(join(hostDataDir, "auth.json"), JSON.stringify({
+      anthropic: { token: "sk-ant-secret" },
+      openai: { token: "sk-openai-token" },
+    }));
+
+    const state = makeState(opHome);
+
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      const result = importHostOpenCode(state);
+      // anthropic is filtered out; only openai counts
+      expect(result.imported.credentials).toBe(1);
+    });
+
+    const destAuth = JSON.parse(readFileSync(join(opHome, "knowledge", "secrets", "auth.json"), "utf-8"));
+    expect(destAuth.anthropic).toBeUndefined();
+    expect(destAuth.openai).toBeDefined();
+  });
+
+  it("filters anthropic credentials from auth.json on merge import", () => {
+    const hostConfigDir = join(xdgRoot, "config", "opencode");
+    const hostDataDir = join(xdgRoot, "data", "opencode");
+    mkdirSync(hostConfigDir, { recursive: true });
+    mkdirSync(hostDataDir, { recursive: true });
+
+    writeFileSync(join(hostConfigDir, "opencode.json"), JSON.stringify({
+      provider: { openai: { name: "OpenAI" } },
+    }));
+    writeFileSync(join(hostDataDir, "auth.json"), JSON.stringify({
+      anthropic: { token: "sk-ant-secret" },
+      openai: { token: "sk-openai-token" },
+    }));
+
+    const state = makeState(opHome);
+    // Pre-create an existing auth.json so the merge path is taken
+    const destSecretsDir = join(opHome, "knowledge", "secrets");
+    mkdirSync(destSecretsDir, { recursive: true });
+    writeFileSync(join(destSecretsDir, "auth.json"), JSON.stringify({
+      groq: { token: "gsk-existing" },
+    }));
+
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      const result = importHostOpenCode(state, { overwriteConflicts: false });
+      // Only openai is new and non-anthropic
+      expect(result.imported.credentials).toBe(1);
+    });
+
+    const destAuth = JSON.parse(readFileSync(join(destSecretsDir, "auth.json"), "utf-8"));
+    expect(destAuth.anthropic).toBeUndefined();
+    expect(destAuth.openai).toBeDefined();
+    expect(destAuth.groq).toBeDefined(); // pre-existing preserved
   });
 
   it("preserves existing providers on conflict when overwriteConflicts is false", () => {

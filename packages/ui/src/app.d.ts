@@ -12,15 +12,20 @@ declare global {
 
   interface Window {
     openpalm?: {
+      /** Native harness contract version (design §5.1). Feature-detect new
+       *  IPC/env members against this; absent ⇒ pre-contract harness. */
+      harnessContractVersion?: number;
       updateStatus?: () => {
         inElectron: boolean;
         currentVersion: string | null;
         latestVersion: string | null;
         latestUrl: string | null;
         updateAvailable: boolean;
+        harnessContractVersion?: number;
       };
       notify?: (title: string, body: string) => void;
       restart?: () => Promise<void>;
+      restartUiServer?: () => Promise<boolean>;
       launchOnLoginStatus?: () => Promise<{
         supported: boolean;
         enabled: boolean;

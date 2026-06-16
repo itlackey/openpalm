@@ -23,7 +23,7 @@ All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpa
 ```text
 ~/.openpalm/
 ├── config/          user-editable config (assistant/, akm/, guardian/)
-│   └── stack/       live compose assembly (core.compose.yml, stack.yml, addons/) — no secrets, no env
+│   └── stack/       live compose assembly (core.compose.yml, services.compose.yml, portals.compose.yml, custom.compose.yml) — no secrets, no env
 ├── knowledge/           AKM knowledge base (env/, secrets/, tasks/, skills/)
 │   ├── env/         user.env (env:user) + stack.env (env:stack, Compose --env-file)
 │   └── secrets/     system-managed service secrets + auth.json (akm secret — Compose grants)
@@ -46,7 +46,7 @@ The standard startup path uses:
 - The host CLI and host admin process access the Docker socket directly on the host. No container mounts the Docker socket.
 - The host admin process reads and writes `$OP_HOME` directly as a host process. No container mounts the full `$OP_HOME`.
 - `assistant` has no `/etc/vault/` mount — user secrets are read via `akm env:user` from the `knowledge/` bind mount.
-- `guardian` is the only path from channel ingress networks to the assistant.
+- `guardian` is the only path from portal ingress networks to the assistant.
 
 ---
 
@@ -55,8 +55,8 @@ The standard startup path uses:
 | Network | Purpose | Core members |
 |---|---|---|
 | `assistant_net` | Core internal mesh | `assistant` (which also hosts the scheduler co-process), `guardian` |
-| `channel_lan` | Default channel ingress (LAN-restricted) | `guardian` and LAN-facing channel addons |
-| `channel_public` | Reserved for internet-facing channel ingress | `guardian` and public-facing channel addons. Access semantics and membership rules are under design. |
+| `portal_net` | Default portal ingress network | `guardian` and compatible user overlays |
+| `portal_public` | Reserved for internet-facing portal ingress | `guardian` and public-facing portal-style overlays. Access semantics and membership rules are under design. |
 
 ---
 
@@ -69,7 +69,7 @@ Role:
 - OpenCode runtime
 - user-facing AI interaction
 - memory, skills, and knowledge access via the akm CLI (shared akm stash)
-- admin API client when admin is present
+- no admin API path; stack operations remain host-only
 
 Env sources:
 
@@ -119,22 +119,22 @@ SSH (optional, gated by `OPENCODE_ENABLE_SSH=1`):
 
 Secret redaction (in-process logger):
 
-- The shared logger in `@openpalm/lib` (`createLogger`) walks every structured `extra` payload and replaces values whose keys match the sensitive-key pattern (`(^|_)(TOKEN|SECRET|KEY|PASSWORD|HMAC)(_|$)`, case-insensitive) with `***REDACTED***` before the line is written to stdout/stderr. This applies to all services that use the shared logger (admin, guardian, channels, scheduler, CLI).
+- The shared logger in `@openpalm/lib` (`createLogger`) walks every structured `extra` payload and replaces values whose keys match the sensitive-key pattern (`(^|_)(TOKEN|SECRET|KEY|PASSWORD|HMAC)(_|$)`, case-insensitive) with `***REDACTED***` before the line is written to stdout/stderr. This applies to all services that use the shared logger (admin, guardian, portals, scheduler, CLI).
 - Operators who want stronger guarantees should keep cloud secrets out of the assistant container by setting only the keys their selected provider needs; the assistant entrypoint already strips unused provider keys based on `SYSTEM_LLM_PROVIDER`.
 
 ### Guardian
 
 Role:
 
-- HMAC verification
-- replay protection
-- rate limiting
-- channel-to-assistant ingress gateway
+- principal authentication
+- ownership enforcement
+- rate and resource limiting
+- portal/direct-to-assistant ingress gateway
 
 Env sources:
 
 - direct compose `environment:` block (non-secret config via ${VAR} substitution)
-- channel HMAC secret files granted through Compose `secrets:` from `knowledge/secrets/`
+- principal secret files granted through Compose `secrets:` from `knowledge/secrets/`
 
 Key env:
 
@@ -142,7 +142,7 @@ Key env:
 - `OP_ASSISTANT_URL=http://assistant:4096`
 - `OPENCODE_TIMEOUT_MS=0`
 - `GUARDIAN_AUDIT_PATH=/opt/openpalm/logs/guardian-audit.log`
-- `CHANNEL_<n>_SECRET_FILE`
+- `PORTAL_<n>_SECRET_FILE`
 - `OPENCODE_CONFIG_DIR=/etc/opencode` (moderator config from `config/guardian`)
 - `GUARDIAN_CONTENT_VALIDATION` (off by default), `GUARDIAN_MODERATION_URL`, `GUARDIAN_MODERATION_PORT`, `GUARDIAN_MODERATION_THRESHOLD`, `GUARDIAN_MODERATION_TIMEOUT_MS` — opt-in content validation (see § Content validation)
 
@@ -152,27 +152,26 @@ Mounts:
 - `$OP_HOME/config/guardian -> /etc/opencode` (guardian OpenCode global config, `OPENCODE_CONFIG_DIR`)
 - `$OP_HOME/knowledge/secrets/auth.json -> /opt/openpalm/guardian/.local/share/opencode/auth.json` (ro; shared OpenCode provider credentials, same file the assistant mounts)
 - `$OP_HOME/data/logs -> /opt/openpalm/logs`
-- Compose secret mounts under `/run/secrets/<name>` for guardian/channel HMAC verification
+- Compose secret mounts under `/run/secrets/<name>` for guardian principal seeding and portal authentication
 
 Ports and network:
 
-- host: none
+- host: `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` and `127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}`
 - container: `8080`
-- networks: `channel_lan`, `channel_public`, `assistant_net`
+- networks: `portal_net`, `assistant_net`
 
 Additional env:
 
 - `GUARDIAN_SESSION_TTL_MS` -- Session TTL in milliseconds (default `900000` / 15 minutes). Sessions idle longer than this are evicted from the cache.
 
-Channel payload metadata fields:
+Portal request metadata fields:
 
-- `metadata.sessionKey` -- When present in the inbound message metadata, overrides the default per-user session key (`userId`). This allows channels to maintain multiple independent sessions per user.
-- `metadata.clearSession: true` -- When set, clears all assistant sessions matching the resolved session target instead of sending a message. Returns `{ cleared: true }`.
+- `x-openpalm-session-key` -- When present on the inbound request, overrides the default per-user session grouping key and allows portals to maintain multiple independent sessions per user.
 
 Rate limits (fixed-window):
 
 - Per-user: 120 requests/minute
-- Per-channel: 200 requests/minute
+- Per-portal: 200 requests/minute
 
 Payload limits:
 
@@ -182,12 +181,12 @@ Payload limits:
 - `nonce`: 128 chars max
 - `text`: 10,000 chars max
 
-Field length validation is enforced in `packages/channels-sdk/src/channel.ts` (shared between guardian and channel adapters).
+Field length validation is enforced by the active guardian and portal runtime request validators.
 
 Content validation (opt-in, off by default):
 
-- The limits above are *structural* — they confirm a message is well-formed and signed, not that it is safe. When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian adds a semantic stage before forwarding (`core/guardian/src/moderation.ts`).
-- A deterministic heuristic pre-screen (`@openpalm/channels-sdk/content-screen`) scores prompt-injection / jailbreak / exfiltration / obfuscation signals. Clean traffic (score 0) forwards without touching a model.
+- The limits above are *structural* — they confirm a message is well-formed and signed, not that it is safe. When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian adds a semantic stage before forwarding (`containers/guardian/src/moderation.ts`).
+- A deterministic heuristic pre-screen (`containers/guardian/src/content-screen.ts`) scores prompt-injection / jailbreak / exfiltration / obfuscation signals. Clean traffic (score 0) forwards without touching a model.
 - Messages over `GUARDIAN_MODERATION_THRESHOLD` escalate to the guardian's local OpenCode moderator (loopback `:4097`, started by the guardian entrypoint, small model pinned in `config/guardian/opencode.jsonc`, shared `auth.json` provider creds), which returns an allow/flag/block JSON verdict.
 - **Fail-closed:** an escalated message the moderator cannot classify (down, timeout, unparseable) is blocked (`403 content_blocked`). The taxonomy + output contract live in `config/guardian/instructions/moderation.md`.
 
@@ -198,17 +197,17 @@ HTTP error responses (`{ error: "<code>", requestId: "<uuid>" }`):
 | `invalid_json` | 400 | Body is not parseable JSON |
 | `invalid_payload` | 400 | Missing/wrong-type field or out-of-bounds length |
 | `payload_too_large` | 413 | Body exceeds 100 KB |
-| `invalid_signature` | 403 | HMAC mismatch, unknown channel, or missing signature |
-| `replay_detected` | 409 | Nonce already seen in the 5-minute window |
-| `rate_limited` | 429 | Per-user (120 req/min) or per-channel (200 req/min) exceeded |
+| `unauthorized` | 401 | Principal auth failed or secret mismatch |
+| `forbidden_endpoint` | 403 | Principal is not allowed to call the requested route |
+| `rate_limited` | 429 | Per-user or per-principal limit exceeded |
 | `content_blocked` | 403 | Blocked by content-validation stage (opt-in, fail-closed) |
 | `assistant_unavailable` | 502 | Could not reach or get a response from the assistant |
 | `not_found` | 404 | Unrecognised endpoint |
 
 Notes:
 
-- Guardian is internal-only from the host perspective.
-- It is the only bridge between addon ingress networks and `assistant_net`.
+- Guardian exposes only localhost-bound direct/admin listeners by default.
+- It is the only bridge between portal ingress networks and `assistant_net`.
 
 ### Scheduler co-process
 
@@ -219,7 +218,7 @@ Role:
 - assistant client (calls the co-resident OpenCode runtime over `localhost`)
 
 The scheduler is a Bun co-process that runs **inside the assistant
-container** (started by `core/assistant/entrypoint.sh`). It has no
+container** (started by `containers/assistant/entrypoint.sh`). It has no
 network port and no Docker socket.
 
 Control plane:
@@ -278,18 +277,18 @@ UI-first principle: the admin UI is the primary operator interface. CLI commands
 
 ## Addon Edge Pattern
 
-Shipped channel-style addons follow the same basic pattern:
+Shipped portal-style addons follow the same basic pattern:
 
-- receive their channel HMAC secret via a Compose secret file grant from `knowledge/secrets/` and a matching `*_FILE` environment variable
-- join `channel_lan` by default (or `channel_public` for internet-facing channels once that network's access semantics are finalized)
+- receive their principal secret via a Compose secret file grant from `knowledge/secrets/` and a matching `PRINCIPAL_SECRET_FILE` environment variable
+- join `portal_net` by default
 - depend on `guardian`
-- send signed traffic to guardian, not directly to assistant
+- send Basic-authenticated traffic to guardian, not directly to assistant
 
-Channel secret distribution: when a channel addon is installed, a shared HMAC secret is generated as a `0600` file under `knowledge/secrets/`. Compose grants that file only to the matching channel service and the guardian. The channel SDK uses this secret to sign outbound requests; the guardian uses it to verify inbound requests.
+Principal secret distribution: when a portal-style addon is installed, a shared principal secret is generated as a `0600` file under `knowledge/secrets/`. Compose grants that file only to the matching portal service and the guardian. The portal adapter uses this secret for Basic auth; the guardian uses the matching secret to seed and authenticate the principal.
 
 Default host binds for shipped HTTP-ish edges:
 
-- `chat`: `127.0.0.1:3820 -> 8181`
+- `chat`: `127.0.0.1:3820 -> 8182`
 - `api`: `127.0.0.1:3821 -> 8182`
 - `voice`: `127.0.0.1:3810 -> 8186`
 
@@ -305,7 +304,7 @@ Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata
 - `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
 - `openpalm.healthcheck` (optional) — internal health check URL
 
-The admin UI reads first-party addon metadata from the fixed compose files under `config/stack/` and active first-party state from `config/stack/stack.yml`; runtime Compose uses those fixed files plus profiles derived from addon state, not Docker labels alone.
+The admin UI reads first-party addon metadata from the fixed compose files under `config/stack/` and active first-party state from `knowledge/env/stack.env` (`OP_ENABLED_ADDONS`); runtime Compose uses those fixed files plus profiles derived from addon state, not Docker labels alone.
 
 ---
 

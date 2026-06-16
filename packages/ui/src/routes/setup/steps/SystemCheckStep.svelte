@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
-  import { friendlyError, type FriendlyErrorView } from '$lib/wizard/error-messages.js';
+  import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
 
   interface CheckResult {
@@ -14,6 +14,13 @@
 
   interface HostProvider { provider: string; url: string; }
 
+  interface RuntimeInfo {
+    dockerPresent: boolean;
+    dockerVersion?: string;
+    composeAvailable: boolean;
+    runtimeName?: 'Docker' | 'OrbStack' | 'Podman';
+  }
+
   interface SystemCheckResponse {
     ok: boolean;
     docker: CheckResult;
@@ -21,6 +28,7 @@
     portCheckReliable: boolean;
     ports: PortResult[];
     platform: string;
+    runtime?: RuntimeInfo;
     gpu?: string;
     hostProviders?: HostProvider[];
   }
@@ -117,11 +125,11 @@
         </svg>
       {/if}
     </div>
-    <div class="syscheck-body">
-      <div class="syscheck-title">Docker is installed and running</div>
-      {#if result?.docker.ok && result.docker.version}
-        <div class="syscheck-meta">Docker server {result.docker.version}</div>
-      {:else if result && !result.docker.ok}
+      <div class="syscheck-body">
+        <div class="syscheck-title">Docker is installed and running</div>
+        {#if result?.docker.ok && result.docker.version}
+          <div class="syscheck-meta">{result.runtime?.runtimeName ?? 'Docker'} server {result.docker.version}</div>
+        {:else if result && !result.docker.ok}
         <div class="syscheck-hint">
           {result.docker.error?.includes('not found') || result.docker.error?.includes('ENOENT')
             ? 'Docker isn\'t installed yet.'

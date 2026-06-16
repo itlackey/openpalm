@@ -29,11 +29,10 @@ variable). The relevant files for running the stack are:
 |---|---|
 | `~/.openpalm/config/stack/core.compose.yml` | Core assistant runtime services; assistant also runs the scheduler co-process |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services, profile-gated |
-| `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels, profile-gated |
+| `~/.openpalm/config/stack/portals.compose.yml` | First-party optional portals, profile-gated |
 | `~/.openpalm/config/stack/custom.compose.yml` | User custom services and overlays |
 | `~/.openpalm/knowledge/env/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
-| `~/.openpalm/config/stack/stack.yml` | Stack schema marker and enabled first-party addon names |
 
 The project name defaults to `openpalm` and can be overridden with the
 `OP_PROJECT_NAME` environment variable.
@@ -41,7 +40,7 @@ The project name defaults to `openpalm` and can be overridden with the
 To see which first-party addons are enabled:
 
 ```bash
-sed -n '/^addons:/,$p' ~/.openpalm/config/stack/stack.yml
+grep '^OP_ENABLED_ADDONS=' ~/.openpalm/knowledge/env/stack.env
 ```
 
 ---
@@ -75,7 +74,7 @@ op() {
     --env-file "$OP_HOME/knowledge/env/stack.env" \
     -f "$OP_HOME/config/stack/core.compose.yml" \
     -f "$OP_HOME/config/stack/services.compose.yml" \
-    -f "$OP_HOME/config/stack/channels.compose.yml" \
+    -f "$OP_HOME/config/stack/portals.compose.yml" \
     -f "$OP_HOME/config/stack/custom.compose.yml" \
     "$@"
 }
@@ -85,7 +84,7 @@ Pass manual profile flags before the compose subcommand when needed, for example
 
 The generated `run.sh` remains the primary operator-facing entrypoint for
 starting/restarting the stack. It records the fixed compose file list and the
-profile selection derived from `stack.yml` in one place.
+profile selection derived from `OP_ENABLED_ADDONS` in one place.
 
 ### Manual command (without the helper)
 
@@ -100,13 +99,13 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   <command>
 ```
 
-Use the same fixed `-f` file list every time. OpenPalm-managed built-ins are tracked in `stack.yml`; for manual Docker Compose commands, pass the corresponding `--profile addon.<name>` arguments directly. Put custom services and overlays in `custom.compose.yml`.
+Use the same fixed `-f` file list every time. OpenPalm-managed built-ins are tracked in `OP_ENABLED_ADDONS`; for manual Docker Compose commands, pass the corresponding `--profile addon.<name>` arguments directly. Put custom services and overlays in `custom.compose.yml`.
 
 ---
 
@@ -122,7 +121,7 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   config --quiet
@@ -133,7 +132,7 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   config --services
@@ -148,7 +147,7 @@ docker compose \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
   -f "$OP_HOME/config/stack/core.compose.yml" \
   -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/channels.compose.yml" \
+  -f "$OP_HOME/config/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile "$OP_VOICE_PROFILE" \
   --profile "$OP_OLLAMA_PROFILE" \
@@ -234,7 +233,7 @@ op pull
 
 ### Disabling a built-in optional service
 
-1. Remove the built-in addon name from `stack.yml`:
+1. Remove the built-in addon name from `OP_ENABLED_ADDONS`:
    ```bash
    openpalm addon disable <name>
    ```

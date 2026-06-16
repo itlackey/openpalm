@@ -23,12 +23,12 @@
     <span class="shortcut-desc">Speech-to-text &amp; text-to-speech</span>
   </button>
   <button class="shortcut" onclick={() => onNavigate('addons')}>
-    <span class="shortcut-name">Channels &amp; add-ons</span>
+    <span class="shortcut-name">Portals &amp; add-ons</span>
     <span class="shortcut-desc">Discord, Slack, API &amp; more</span>
   </button>
   <button class="shortcut" onclick={() => onNavigate('secrets')}>
     <span class="shortcut-name">Secrets</span>
-    <span class="shortcut-desc">Stack &amp; channel credentials</span>
+    <span class="shortcut-desc">Stack &amp; portal credentials</span>
   </button>
   <a class="shortcut" href="/setup?rerun=1">
     <span class="shortcut-name">Re-run setup</span>

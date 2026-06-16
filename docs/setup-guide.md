@@ -42,7 +42,7 @@ Open the app. The setup wizard will:
 3. **Providers** — choose your AI provider (OpenAI, Anthropic, Ollama, LM Studio, etc.).
 4. **Models** — pick chat, embedding, and (optional) small model.
 5. **Voice** — TTS/STT settings.
-6. **Options** — channels (Discord, Slack), addons, image tag.
+6. **Options** — portals (Discord, Slack), addons, image tag.
 7. **Review & Install** — confirm and deploy.
 
 When the install completes, the same window navigates to the chat page. That's it.
@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 
 This downloads the CLI binary, seeds `~/.openpalm/`, opens the wizard in your default browser at `http://localhost:3880/setup`, and starts the stack on completion. The wizard is identical to the desktop version.
 
-To re-run the wizard later (e.g. to add a channel or change providers), run `openpalm` and click **Update Settings** in the admin overview, or open `http://localhost:3880/setup?rerun=1`.
+To re-run the wizard later (e.g. to add a portal or change providers), run `openpalm` and click **Update Settings** in the admin overview, or open `http://localhost:3880/setup?rerun=1`.
 
 ---
 
@@ -86,7 +86,7 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 - `~/.openpalm/config/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/config/stack/core.compose.yml`.
-- First-party addons are defined in `services.compose.yml` and `channels.compose.yml`, then enabled by name in `~/.openpalm/config/stack/stack.yml`.
+- First-party addons are defined in `services.compose.yml` and `portals.compose.yml`, then enabled by name through `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env`.
 - Custom services and overlays live in `~/.openpalm/config/stack/custom.compose.yml`.
 - OpenPalm resolves enabled addon names to Compose profiles; the fixed compose files remain deployment truth.
 
@@ -115,7 +115,7 @@ op logs -f      # follow all logs
 
 Repo setup scripts can still help bootstrap files on a fresh machine, but they should be understood as convenience tooling that prepares the same `~/.openpalm/` layout. They do not replace the compose-first model.
 
-If you use helper tooling that reads `config/stack/stack.yml`, treat that file as OpenPalm addon state - not as a Compose file.
+If you use helper tooling around addon activation, treat `OP_ENABLED_ADDONS` in `knowledge/env/stack.env` as the live OpenPalm addon state - not any extra Compose file.
 
 ---
 
@@ -160,13 +160,13 @@ docker info
 
 Re-check the exact compose file list in your command. Docker Compose only deploys the files you pass.
 
-### `config/stack/stack.yml` had no effect
+### `OP_ENABLED_ADDONS` had no effect
 
-That file is OpenPalm addon state. Regenerate or rerun the OpenPalm compose command so the selected addon names become `--profile` arguments.
+`OP_ENABLED_ADDONS` is OpenPalm addon state. Regenerate or rerun the OpenPalm compose command so the selected addon names become `--profile` arguments.
 
 ### An addon fails to start
 
-Inspect `~/.openpalm/config/stack/services.compose.yml`, `channels.compose.yml`, and logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
+Inspect `~/.openpalm/config/stack/services.compose.yml`, `portals.compose.yml`, and logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
 
 ### Start over
 

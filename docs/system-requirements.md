@@ -68,7 +68,7 @@ These are rough expectations, not hard limits:
 | `assistant` | ~240 MB | OpenCode runtime + scheduler co-process |
 | `guardian` | ~30 MB | Request verification and routing |
 | Admin (host process) | minimal | SvelteKit UI/API served by `openpalm` |
-| each channel addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
+| each portal addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
 
 ---
 
@@ -114,18 +114,19 @@ unless you intentionally change bind addresses in `knowledge/env/stack.env`.
 | Host port | Service | Variable |
 |---|---|---|
 | `3800` | Assistant | `OP_ASSISTANT_PORT` |
-| `3810` | Voice addon | `OP_VOICE_PORT` |
+| `8880` | Voice addon | `OP_VOICE_PORT_HOST` |
 | `3820` | Chat addon | `OP_CHAT_PORT` |
-| `3821` | API addon | `OP_API_PORT` |
+| `3821` | Guardian OpenAI API addon | `OP_API_PORT` |
 | `3880` | Admin UI (host process) | `OP_HOST_UI_PORT` |
 | `2222` | Assistant SSH (optional) | `OP_ASSISTANT_SSH_PORT` |
 
-`guardian` stays internal to Docker networks by default.
+`guardian` exposes only localhost-bound direct/admin listeners by default.
 
 ---
 
 ## Operational note
 
 The compose file set under `~/.openpalm/config/stack/` is the live deployment truth.
-`~/.openpalm/config/stack.yml` is optional metadata for tooling and does not
-change Docker's requirements on its own.
+OpenPalm derives first-party addon profiles from `OP_ENABLED_ADDONS` in
+`~/.openpalm/knowledge/env/stack.env`, but Docker itself still only sees the
+compose files and explicit `--profile` arguments.

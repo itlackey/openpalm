@@ -2,6 +2,9 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parseEnvContent, parseEnvFile } from './env.js';
+import { isSecretLikeKey } from './secrets.js';
+
+export { isSecretLikeKey };
 
 export type SecretAuditSeverity = 'error' | 'warning';
 
@@ -39,43 +42,8 @@ type ComposeConfig = {
 const SECRET_FILE_MODE = 0o600;
 const SECRET_DIR_MODE = 0o700;
 
-const NON_SECRET_STACK_KEYS = new Set([
-  'COMPOSE_PROJECT_NAME',
-  'OP_PROJECT_NAME',
-  'OP_HOME',
-  'OP_UID',
-  'OP_GID',
-  'OP_IMAGE_NAMESPACE',
-  'OP_IMAGE_TAG',
-  'OP_SETUP_COMPLETE',
-  'OP_ASSISTANT_BIND_ADDRESS',
-  'OP_ASSISTANT_PORT',
-  'OP_ASSISTANT_SSH_BIND_ADDRESS',
-  'OP_ASSISTANT_SSH_PORT',
-  'OPENCODE_ENABLE_SSH',
-  'OP_CHAT_BIND_ADDRESS',
-  'OP_CHAT_PORT',
-  'OP_API_BIND_ADDRESS',
-  'OP_API_PORT',
-  'OP_VOICE_BIND_ADDRESS',
-  'OP_VOICE_PORT',
-  'OP_OLLAMA_BIND_ADDRESS',
-  'OP_VOICE_PROFILE',
-  'OP_OLLAMA_PROFILE',
-  'OP_HOST_UI_PORT',
-  'OP_OWNER_NAME',
-  'OP_OWNER_EMAIL',
-  'OPENAI_BASE_URL',
-]);
-
 function issue(code: string, message: string, path?: string): SecretAuditIssue {
   return { severity: 'error', code, message, path };
-}
-
-export function isSecretLikeKey(key: string): boolean {
-  const normalized = key.toUpperCase();
-  if (normalized.endsWith('_FILE')) return false;
-  return /(^|_)(SECRET|TOKEN|PASSWORD|PASS|API_KEY|PRIVATE_KEY|CREDENTIAL|CREDENTIALS)(_|$)/.test(normalized);
 }
 
 function parseComposeConfig(input: string | unknown): ComposeConfig {
@@ -122,29 +90,29 @@ function normalizedSecretName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
-function isChannelService(name: string, service: ComposeService): boolean {
+function isPortalService(name: string, service: ComposeService): boolean {
   const normalized = normalizedSecretName(name);
-  if (normalized.startsWith('channel_')) return true;
+  if (normalized.startsWith('portal_')) return true;
   const image = typeof service.image === 'string' ? service.image.toLowerCase() : '';
-  if (image.includes('/channel') || image.endsWith(':channel') || image.includes('openpalm/channel')) return true;
-  return serviceNetworks(service.networks).includes('channel_lan') && name !== 'guardian';
+  if (image.includes('/portal') || image.endsWith(':portal') || image.includes('openpalm/portal')) return true;
+  return serviceNetworks(service.networks).includes('portal_net') && name !== 'guardian';
 }
 
 function allowedSecretForService(serviceName: string, service: ComposeService, secretName: string): boolean {
-  const serviceId = normalizedSecretName(serviceName.replace(/^channel[-_]/i, ''));
+  const serviceId = normalizedSecretName(serviceName.replace(/^portal[-_]/i, ''));
   const secretId = normalizedSecretName(secretName);
 
   if (serviceName === 'assistant') {
     return /^(assistant|opencode|provider|llm|embedding|akm|user)_/.test(secretId);
   }
   if (serviceName === 'guardian') {
-    return secretId.startsWith('guardian_') || secretId.startsWith('channel_');
+    return secretId.startsWith('guardian_') || secretId.startsWith('portal_');
   }
   if (serviceName === 'admin') {
     return /^(admin|ui|openpalm)_/.test(secretId);
   }
-  if (isChannelService(serviceName, service)) {
-    return secretId.startsWith(`channel_${serviceId}_`) || secretId.startsWith(`${serviceId}_`);
+  if (isPortalService(serviceName, service)) {
+    return secretId.startsWith(`portal_${serviceId}_`) || secretId.startsWith(`${serviceId}_`);
   }
   return secretId.startsWith(`${serviceId}_`);
 }
@@ -152,7 +120,6 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
 export function auditStackEnv(env: Record<string, string>, label = 'stack.env'): SecretAuditIssue[] {
   const issues: SecretAuditIssue[] = [];
   for (const key of Object.keys(env)) {
-    if (NON_SECRET_STACK_KEYS.has(key)) continue;
     if (isSecretLikeKey(key)) {
       issues.push(issue(
         'stack-env-secret-key',

@@ -45,7 +45,7 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
 
   // config/stack/ — seed fixed compose files
   mkdirSync(stackDir, { recursive: true });
-  for (const name of ['core.compose.yml', 'services.compose.yml', 'channels.compose.yml', 'custom.compose.yml']) {
+  for (const name of ['core.compose.yml', 'services.compose.yml', 'portals.compose.yml', 'custom.compose.yml']) {
     Bun.spawnSync(['cp', join(OPENPALM_SRC, 'config', 'stack', name), join(stackDir, name)]);
   }
 
@@ -187,7 +187,7 @@ describe('install flow — tier 1 (file validation)', () => {
     // ── Validate compose files exist ─────────────────────────────────
     expect(existsSync(join(homeDir, 'config/stack/core.compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/services.compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'config/stack/channels.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'config/stack/portals.compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/custom.compose.yml'))).toBe(true);
 
     // ── Validate env/secret files are regular files (not directories) ─
@@ -215,7 +215,7 @@ describe('install flow — tier 1 (file validation)', () => {
     const allComposeFiles = [
       join(homeDir, 'config/stack/core.compose.yml'),
       join(homeDir, 'config/stack/services.compose.yml'),
-      join(homeDir, 'config/stack/channels.compose.yml'),
+      join(homeDir, 'config/stack/portals.compose.yml'),
       join(homeDir, 'config/stack/custom.compose.yml'),
     ];
     const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
@@ -290,7 +290,7 @@ describe('install flow — tier 1 (file validation)', () => {
     const composeFiles = [
       join(homeDir, 'config/stack/core.compose.yml'),
       join(homeDir, 'config/stack/services.compose.yml'),
-      join(homeDir, 'config/stack/channels.compose.yml'),
+      join(homeDir, 'config/stack/portals.compose.yml'),
       join(homeDir, 'config/stack/custom.compose.yml'),
     ];
     const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');

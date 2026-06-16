@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { STEP_LABELS } from '$lib/wizard/constants.js';
+  import { STEP_LABELS } from '$lib/client/constants.js';
 
   interface Props {
     currentStep: number;

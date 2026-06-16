@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import {
   deriveLaunchStatus,
   classifyLocalInstall,
+  deriveLocalStackState,
+  detectRuntimeName,
   type LocalStackState,
   type RemoteStatus,
 } from "./launch-status.js";
@@ -113,5 +115,29 @@ describe("classifyLocalInstall (disk markers)", () => {
     const sd = stackDir();
     writeStackEnv("OP_SETUP_COMPLETE=true\n");
     expect(classifyLocalInstall(sd)).toBe("installed");
+  });
+});
+
+describe('deriveLocalStackState', () => {
+  it('treats a setup-incomplete but already-running stack as running', () => {
+    expect(deriveLocalStackState('setup_incomplete', [{ service: 'assistant', state: 'running', health: 'healthy' }])).toBe('running');
+  });
+
+  it('treats exited installed services as installed_broken', () => {
+    expect(deriveLocalStackState('installed', [{ service: 'assistant', state: 'exited', health: '' }])).toBe('installed_broken');
+  });
+});
+
+describe("detectRuntimeName", () => {
+  it("detects OrbStack", () => {
+    expect(detectRuntimeName("Server: OrbStack\n Engine: Docker Desktop")).toBe("OrbStack");
+  });
+
+  it("detects Podman", () => {
+    expect(detectRuntimeName("Emulate Docker CLI using podman\nServer: Podman Engine")).toBe("Podman");
+  });
+
+  it("falls back to Docker", () => {
+    expect(detectRuntimeName("Client: Docker Engine\nServer: Docker Engine")).toBe("Docker");
   });
 });

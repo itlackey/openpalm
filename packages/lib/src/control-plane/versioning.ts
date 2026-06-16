@@ -1,4 +1,25 @@
+import libPkg from "../../package.json" with { type: "json" };
+
 const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
+
+/**
+ * The canonical control-plane / platform version.
+ *
+ * This is the ONE source of truth for "which @openpalm/lib (and therefore which
+ * RELEASE_MIGRATIONS + lifecycle) is running." It travels with the data/ui
+ * build (the published @openpalm/ui inlines this lib), so it self-updates in
+ * place — it is NOT the Electron harness version (see
+ * packages/electron/src/harness-contract.ts: HARNESS_CONTRACT_VERSION).
+ *
+ * Stored Docker-canonical (`v`-prefixed) because every consumer that stamps a
+ * version into stack.env / a skeleton / a migration target wants the Docker tag
+ * form. Use `formatForDisplay` for user-facing strings and `normalizeVersion`
+ * for npm-style (no-`v`) comparisons.
+ *
+ * Replaces the former implicit `v${libPkg.version}` scattered through lifecycle
+ * / migrations so the platform version has a single, named home.
+ */
+export const PLATFORM_VERSION: string = formatForDocker(libPkg.version);
 
 type ParsedVersion = {
   major: number;
@@ -12,7 +33,7 @@ export function isComparableSemver(version: string | null | undefined): boolean 
 }
 
 function parseComparableVersion(version: string): ParsedVersion {
-  const clean = version.trim().replace(/^v/, '').split('+')[0];
+  const clean = normalizeVersion(version).split('+')[0];
   const dashIdx = clean.indexOf('-');
   const main = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
   const prerelease = dashIdx === -1 ? null : clean.slice(dashIdx + 1);
@@ -63,4 +84,55 @@ export function isSameMajorVersion(a: string | null | undefined, b: string | nul
   const aMajor = majorVersionOf(a);
   const bMajor = majorVersionOf(b);
   return aMajor !== null && bMajor !== null && aMajor === bMajor;
+}
+
+// ── Canonical normalization across the three version vocabularies ─────────────
+// Docker tags are `v`-prefixed (`v0.12.0`), npm versions are not (`0.12.0`), and
+// npm dist-tags route stable → `latest` / prerelease → `next`. These helpers are
+// the ONE place that reconciles those forms; route ad-hoc `replace(/^v/, '')` and
+// `version.includes('-')` checks through them instead of re-deriving inline.
+
+/**
+ * npm/display form: strip a single leading `v` and trim. `v0.12.0` → `0.12.0`.
+ * Pass-through for an already-bare version. Empty/whitespace → ''.
+ */
+export function normalizeVersion(version: string | null | undefined): string {
+  return (version ?? '').trim().replace(/^v/, '');
+}
+
+/**
+ * Docker-tag form: ensure exactly one leading `v`. `0.12.0` → `v0.12.0`,
+ * `v0.12.0` → `v0.12.0`. Empty/whitespace → '' (callers gate on RELEASE_TAG_REGEX
+ * before treating a value as a real tag).
+ */
+export function formatForDocker(version: string | null | undefined): string {
+  const bare = normalizeVersion(version);
+  return bare ? `v${bare}` : '';
+}
+
+/**
+ * True when `version` carries a semver pre-release segment (`0.12.0-rc.1`).
+ * Build metadata (`+build.5`) is NOT a pre-release. Non-semver → false.
+ */
+export function isPrerelease(version: string | null | undefined): boolean {
+  if (!isComparableSemver(version)) return false;
+  return parseComparableVersion(version!).prerelease !== null;
+}
+
+/**
+ * The npm dist-tag channel a release stream tracks: prereleases ride `next`,
+ * stable rides `latest`. Canonical home for the prerelease→channel mapping.
+ */
+export function distTagForVersion(version: string | null | undefined): 'latest' | 'next' {
+  return isPrerelease(version) ? 'next' : 'latest';
+}
+
+/**
+ * User-facing presentation form: drop the leading `v` so the UI shows one
+ * canonical spelling regardless of whether the value arrived as a Docker tag or
+ * an npm version. Non-semver values are returned trimmed but otherwise untouched
+ * (e.g. a moving `latest`/`dev` tag).
+ */
+export function formatForDisplay(version: string | null | undefined): string {
+  return normalizeVersion(version);
 }

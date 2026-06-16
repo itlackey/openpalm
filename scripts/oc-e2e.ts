@@ -1,17 +1,16 @@
 /**
- * Live E2E of the guardian /oc/* proxy path using the REAL channels-sdk OcClient,
- * run inside a throwaway container on the channel_lan network (the guardian has no
+ * Live E2E of the guardian /oc/* proxy path using the baked OpenCode client,
+ * run inside a throwaway container with direct access to the guardian (no
  * host port). Drives exactly what the Discord/Slack/API renderers do:
  *   create session -> open filtered /event -> prompt_async -> stream deltas to
- *   turn-end -> abort/delete. Proves signing, allowlist, ownership, /event
+ *   turn-end -> abort/delete. Proves Basic auth, allowlist, ownership, /event
  *   ownership-filter + fan-out, sessionID correlation, and turn-end — end to end
  *   against the live assistant. NO Discord required.
  *
  * Env: OC_CHANNEL, OC_SECRET, OC_USER, OC_PROMPT, OC_EXPECT_TOOL ("1" to wait for
  * permission.asked and reply). Exits non-zero on failure.
  */
-import { OcClient } from "/app/packages/channels-sdk/src/oc-client.ts";
-import { asRaw, partSnapshotType, extractTextDelta, extractToolUpdate, extractPermissionAsk, isTurnEnd, isSessionError } from "/app/packages/channels-sdk/src/oc-events.ts";
+import { OcClient, asRaw, partSnapshotType, extractTextDelta, extractToolUpdate, extractPermissionAsk, isTurnEnd, isSessionError } from '/app/portals/discord/src/runtime.ts';
 
 const channel = Bun.env.OC_CHANNEL ?? "discord";
 const secret = Bun.env.OC_SECRET ?? "";

@@ -25,8 +25,8 @@ export function validateSetupSpec(input: unknown): { valid: boolean; errors: str
   validateConnectionsArray(body.connections, errors);
   validateLlm(body, errors);
   validateEmbedding(body, errors);
-  if (body.channelCredentials !== undefined && (typeof body.channelCredentials !== "object" || body.channelCredentials === null)) {
-    errors.push("channelCredentials must be an object if provided");
+  if (body.portalCredentials !== undefined && (typeof body.portalCredentials !== "object" || body.portalCredentials === null)) {
+    errors.push("portalCredentials must be an object if provided");
   }
   return { valid: errors.length === 0, errors };
 }

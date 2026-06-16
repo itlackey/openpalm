@@ -6,7 +6,7 @@
  *
  * The opencode binary is NEVER invoked: we replace the spawner with a fake
  * child (EventEmitter) that emits a listening URL on stdout. Tests cover:
- *   - Pure helpers (path resolution, password generation shape, runtime JSON)
+ *   - Pure helpers (path resolution, runtime JSON)
  *   - Pidfile read/write + sweep semantics
  *   - Lifecycle: spawn writes runtime + pidfile (0600), stop unlinks both
  *   - Failure mode: spawn throws → sentinel written, no crash
@@ -22,7 +22,6 @@ import {
   _resetSpawn,
   adminOpencodeHome,
   buildRuntimeJson,
-  generatePassword,
   normalizeLoopbackUrl,
   isPidAlive,
   pidfilePath,
@@ -108,32 +107,17 @@ describe('normalizeLoopbackUrl', () => {
   });
 });
 
-describe('generatePassword', () => {
-  it('returns a base64url string with no padding', () => {
-    const pw = generatePassword();
-    // 32 random bytes → 43-char base64url (no padding).
-    expect(pw).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(pw).toHaveLength(43);
-  });
-
-  it('produces unique values across calls', () => {
-    const a = generatePassword();
-    const b = generatePassword();
-    expect(a).not.toBe(b);
-  });
-});
-
 describe('buildRuntimeJson', () => {
-  it('packs the expected shape', () => {
+  it('packs the expected shape (no auth — no password)', () => {
     const when = new Date('2026-01-01T00:00:00.000Z');
-    const r = buildRuntimeJson('http://127.0.0.1:12345', 'pw', 99, when);
+    const r = buildRuntimeJson('http://127.0.0.1:12345', 99, when);
     expect(r).toEqual({
       url: 'http://127.0.0.1:12345',
       username: 'openpalm',
-      password: 'pw',
       pid: 99,
       startedAt: '2026-01-01T00:00:00.000Z',
     });
+    expect('password' in r).toBe(false);
   });
 });
 
@@ -172,7 +156,7 @@ describe('stageAdminHome', () => {
 
 describe('writeRuntimeFile + writePidFile', () => {
   it('writes runtime.json with 0600 permissions', () => {
-    writeRuntimeFile(dataDir, buildRuntimeJson('http://x', 'pw', 1));
+    writeRuntimeFile(dataDir, buildRuntimeJson('http://x', 1));
     const path = runtimePath(dataDir);
     const mode = statSync(path).mode & 0o777;
     expect(mode).toBe(0o600);
@@ -207,7 +191,7 @@ describe('sweepStalePid', () => {
 
   it('returns swept=false when the pid is dead and unlinks the file', () => {
     writePidFile(dataDir, 2_147_483_640); // almost certainly dead
-    writeRuntimeFile(dataDir, buildRuntimeJson('http://x', 'pw', 2_147_483_640));
+    writeRuntimeFile(dataDir, buildRuntimeJson('http://x', 2_147_483_640));
     const r = sweepStalePid(dataDir);
     expect(r.swept).toBe(false);
     expect(r.pid).toBe(2_147_483_640);
@@ -219,14 +203,22 @@ describe('sweepStalePid', () => {
 // ── Lifecycle (SDK stubbed) ──────────────────────────────────────────────────
 
 describe('startLocalOpenCode (SDK stubbed)', () => {
-  it('spawns, writes runtime.json + pidfile, and stop() cleans them up', async () => {
-    _setSpawn(() => makeFakeChild({ listenUrl: 'http://127.0.0.1:54321' }) as never);
+  it('spawns with OPENCODE_AUTH=false (no auth), writes runtime.json + pidfile, and stop() cleans them up', async () => {
+    let spawnEnv: NodeJS.ProcessEnv | undefined;
+    _setSpawn((_cmd, _args, opts) => {
+      spawnEnv = opts.env;
+      return makeFakeChild({ listenUrl: 'http://127.0.0.1:54321' }) as never;
+    });
 
     const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();
     expect(handle!.url).toBe('http://127.0.0.1:54321');
     expect(handle!.username).toBe('openpalm');
-    expect(handle!.password).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    // No Basic auth — admin OpenCode mirrors the no-auth assistant so the
+    // cross-origin Advanced iframe can load it.
+    expect(spawnEnv?.OPENCODE_AUTH).toBe('false');
+    expect(spawnEnv?.OPENCODE_SERVER_PASSWORD).toBeUndefined();
+    expect((handle as Record<string, unknown>).password).toBeUndefined();
 
     // Runtime + pidfile written.
     expect(existsSync(runtimePath(dataDir))).toBe(true);
@@ -237,15 +229,10 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     expect(statSync(runtimePath(dataDir)).mode & 0o777).toBe(0o600);
     expect(statSync(pidfilePath(dataDir)).mode & 0o777).toBe(0o600);
 
-    // Runtime.json carries the URL + password we generated.
+    // Runtime.json carries the URL and no password.
     const rt = JSON.parse(readFileSync(runtimePath(dataDir), 'utf-8'));
     expect(rt.url).toBe('http://127.0.0.1:54321');
-    expect(rt.password).toBe(handle!.password);
-
-    // Process env is restored after spawn — the password should not leak
-    // into the rest of the Electron main.
-    expect(process.env.OPENCODE_SERVER_PASSWORD).toBeUndefined();
-    expect(process.env.OPENCODE_SERVER_USERNAME).toBeUndefined();
+    expect('password' in rt).toBe(false);
 
     await handle!.stop();
     expect(existsSync(runtimePath(dataDir))).toBe(false);
@@ -263,15 +250,12 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     // No runtime.json / pidfile on failure.
     expect(existsSync(runtimePath(dataDir))).toBe(false);
     expect(existsSync(pidfilePath(dataDir))).toBe(false);
-
-    // Env is restored even after failure.
-    expect(process.env.OPENCODE_SERVER_PASSWORD).toBeUndefined();
   });
 
   it('sweeps stale state from a previous run before spawning', async () => {
     // Pre-populate stale state from a crashed prior launch.
     writePidFile(dataDir, 2_147_483_640);
-    writeRuntimeFile(dataDir, buildRuntimeJson('http://stale', 'stale-pw', 1));
+    writeRuntimeFile(dataDir, buildRuntimeJson('http://stale', 1));
     writeFileSync(unavailableSentinelPath(dataDir), '{"reason":"old"}', { mode: 0o600 });
 
     _setSpawn(() => makeFakeChild({ listenUrl: 'http://127.0.0.1:9999' }) as never);
@@ -280,7 +264,6 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     expect(handle).not.toBeNull();
     const rt = JSON.parse(readFileSync(runtimePath(dataDir), 'utf-8'));
     expect(rt.url).toBe('http://127.0.0.1:9999');
-    expect(rt.password).not.toBe('stale-pw');
     expect(existsSync(unavailableSentinelPath(dataDir))).toBe(false);
 
     await handle!.stop();

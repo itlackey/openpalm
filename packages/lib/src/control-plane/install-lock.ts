@@ -144,6 +144,93 @@ export function acquireInstallLock(dataDir: string): InstallLockHandle | null {
   return null;
 }
 
+export const INSTALL_LOCK_STALE_AFTER_MS = STALE_AFTER_MS;
+
+export type InstallLockStatus =
+  | { present: false; path: string }
+  | {
+      present: true;
+      path: string;
+      pid: number | null;
+      timestamp: number | null;
+      ageMs: number | null;
+      stale: boolean;
+    };
+
+/**
+ * Inspect the install lock under `dataDir` without modifying it. Used by the
+ * `openpalm unlock` command and the UI "operation stuck?" affordance to decide
+ * whether a removal is safe.
+ */
+export function inspectInstallLock(dataDir: string): InstallLockStatus {
+  const path = join(dataDir, ".install.lock");
+  let content: string;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { present: false, path };
+    }
+    // Present but unreadable — report it as present + stale-by-mtime if we can.
+    let ageMs: number | null = null;
+    try {
+      ageMs = Date.now() - statSync(path).mtimeMs;
+    } catch {
+      /* best-effort */
+    }
+    return {
+      present: true,
+      path,
+      pid: null,
+      timestamp: null,
+      ageMs,
+      stale: isStale(path),
+    };
+  }
+  const { pid, timestamp } = parseLockContent(content);
+  const ageMs = timestamp !== null ? Date.now() - timestamp : null;
+  return {
+    present: true,
+    path,
+    pid,
+    timestamp,
+    ageMs,
+    stale: isStale(path),
+  };
+}
+
+export type UnlockResult =
+  | { ok: true; removed: boolean; status: InstallLockStatus }
+  | { ok: false; reason: "live"; status: InstallLockStatus };
+
+/**
+ * Remove the install lock ONLY if it is stale (dead holder PID or older than
+ * the 30-minute staleness window). Never blind-removes a lock held by a live,
+ * recent install. Returns `{ ok: false, reason: "live" }` when the lock is
+ * still active so the caller can surface a clear message instead of forcing.
+ */
+export function unlockInstallLock(dataDir: string): UnlockResult {
+  const status = inspectInstallLock(dataDir);
+  if (!status.present) {
+    // Nothing to remove — treat as success (idempotent).
+    return { ok: true, removed: false, status };
+  }
+  if (!status.stale) {
+    return { ok: false, reason: "live", status };
+  }
+  try {
+    rmSync(status.path, { force: true });
+    logger.info("removed stale install lock via unlock", { path: status.path });
+  } catch (err) {
+    logger.warn("failed to remove stale install lock during unlock", {
+      path: status.path,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+  return { ok: true, removed: true, status };
+}
+
 export function releaseInstallLock(handle: InstallLockHandle | null): void {
   if (!handle) return;
   try {

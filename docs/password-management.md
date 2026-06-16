@@ -20,7 +20,7 @@ is non-secret runtime configuration only.
 - `knowledge/env/user.env` is the AKM env backing file for user-managed secrets.
 - `knowledge/env/stack.env` is system-managed non-secret runtime env.
 - `knowledge/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
-- Compose is run with `--env-file ../knowledge/env/stack.env` for non-secret substitution only.
+- Compose is run with `--env-file ../../knowledge/env/stack.env` from `config/stack/` for non-secret substitution only.
 
 ---
 

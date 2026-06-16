@@ -44,7 +44,7 @@ Rules:
 - **Default to `$HOME`-based installers when one exists** (`bun install -g`, `pipx`, `uv tool install`). They persist for free via the home bind mount and need no extra flags.
 - **For anything that installs to a prefix, use `$HOME/.local`**. The whole assistant home is a persistent bind mount and `$HOME/.local/bin` is already first on `$PATH`.
 - **Use `/opt/persistent` only when `$HOME/.local` does not work.** It is a named-volume escape hatch for installers that require a global-style prefix or cannot run from the home directory. Put binaries in `/opt/persistent/bin`.
-- **Avoid `apt install` for anything you'll want next week.** It writes to the container's ephemeral writable layer and disappears at the next `docker compose up --force-recreate` or image upgrade. If the user needs a distro package long-term, tell them it belongs in `core/assistant/Dockerfile` (a repo change) — don't pretend `apt install` persists.
+- **Avoid `apt install` for anything you'll want next week.** It writes to the container's ephemeral writable layer and disappears at the next `docker compose up --force-recreate` or image upgrade. If the user needs a distro package long-term, tell them it belongs in `containers/assistant/Dockerfile` (a repo change) — don't pretend `apt install` persists.
 - **Never write to `/usr`, `/etc`, or `/var` for persistence.** Those are also in the ephemeral layer.
 
 Quick verification after installing:

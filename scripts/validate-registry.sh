@@ -111,7 +111,7 @@ for addon_dir in "$ADDONS_DIR"/*/; do
 	fi
 
 	# Stack network membership
-	if ! grep -qE 'channel_lan|channel_public|assistant_net' "$compose_file"; then
+	if ! grep -qE 'portal_net|assistant_net' "$compose_file"; then
 		echo "  FAIL: compose.yml must join at least one stack network"
 		errors=$((errors + 1))
 	fi

@@ -36,11 +36,11 @@ If the assistant needs to install Debian packages (`apt install`) and have them 
 
 ### When to use Pattern 2
 
-- The assistant routinely runs `apt install <pkg>` for new tools and you don't want to bake them into `core/assistant/Dockerfile` each time.
+- The assistant routinely runs `apt install <pkg>` for new tools and you don't want to bake them into `containers/assistant/Dockerfile` each time.
 - The tool you need has no upstream binary release and is only available via apt (otherwise prefer Pattern 1).
 - You're comfortable with the assistant container taking 5–30 extra seconds on first start of each upgrade cycle while apt re-fetches.
 
-For most use cases, **prefer adding packages to `core/assistant/Dockerfile`** — it's faster, more reproducible, and travels with the image.
+For most use cases, **prefer adding packages to `containers/assistant/Dockerfile`** — it's faster, more reproducible, and travels with the image.
 
 ### Implementation
 
@@ -61,7 +61,7 @@ volumes:
   assistant-apt-lib:
 ```
 
-**2. Add a manifest reader to the entrypoint.** Edit `core/assistant/entrypoint.sh` to add a new function and call it from the startup sequence:
+**2. Add a manifest reader to the entrypoint.** Edit `containers/assistant/entrypoint.sh` to add a new function and call it from the startup sequence:
 
 ```bash
 maybe_install_extra_packages() {
@@ -83,7 +83,7 @@ maybe_install_extra_packages() {
 Call it after `ensure_home_layout` and before `start_opencode`. Rebuild the assistant image:
 
 ```bash
-docker build -t openpalm/assistant:dev -f core/assistant/Dockerfile .
+docker build -t openpalm/assistant:dev -f containers/assistant/Dockerfile .
 docker compose up -d --force-recreate assistant
 ```
 
@@ -102,13 +102,13 @@ On the next recreate, the entrypoint sees `ripgrep` in the manifest and re-insta
 
 - **Missing package upstream**: if a package in the manifest no longer exists, `apt-get install` returns non-zero. The entrypoint logs a warning and continues. Audit the manifest periodically.
 - **First start is slow**: the apt cache volume is empty on first creation. Expect 10–60 seconds for the initial `apt-get update && install` depending on package count.
-- **Manifest grows unbounded**: a long manifest slows every start. Prune ruthlessly; move "permanent" packages into `core/assistant/Dockerfile`.
+- **Manifest grows unbounded**: a long manifest slows every start. Prune ruthlessly; move "permanent" packages into `containers/assistant/Dockerfile`.
 
 ---
 
 ## Pattern 3 — bake into the Dockerfile (the right answer for "every install")
 
-For anything that should be present on **every** OpenPalm install (e.g. `ripgrep`, `htop`, language runtimes), add it to the `apt-get install` line in `core/assistant/Dockerfile`. This is the cleanest, most reproducible, fastest-startup option. It just requires a release / image rebuild to roll out.
+For anything that should be present on **every** OpenPalm install (e.g. `ripgrep`, `htop`, language runtimes), add it to the `apt-get install` line in `containers/assistant/Dockerfile`. This is the cleanest, most reproducible, fastest-startup option. It just requires a release / image rebuild to roll out.
 
 ---
 

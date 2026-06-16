@@ -21,7 +21,8 @@ import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
 import { resolveBackupsDir, resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
-import { compareComparableVersions, isSameMajorVersion } from './versioning.js';
+import { compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
+import { refreshCoreAssetsFromSource } from './core-assets.js';
 
 const logger = createLogger('lib:ui-assets');
 
@@ -113,33 +114,6 @@ export function resolveLocalOpenpalmDir(): string | null {
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
 
 /**
- * SYSTEM-managed stack assets (relative to OP_HOME) that must be REFRESHED to the
- * shipped version on every install — NOT seed-if-missing. An OP_HOME carried over
- * from an older version otherwise keeps deploying stale compose structure (#472).
- * These are system-owned per core-principles; user-owned files (custom.compose.yml,
- * config/, secrets, stack.env) are deliberately excluded and stay seed-if-missing.
- */
-export const MANAGED_STACK_ASSETS = [
-  'config/stack/core.compose.yml',
-  'config/stack/services.compose.yml',
-  'config/stack/channels.compose.yml',
-] as const;
-
-/** Overwrite the system-managed stack assets from `srcOpenpalm` into `homeDir`. */
-export function refreshManagedStackAssets(srcOpenpalm: string, homeDir: string): string[] {
-  const refreshed: string[] = [];
-  for (const rel of MANAGED_STACK_ASSETS) {
-    const src = join(srcOpenpalm, rel);
-    if (!existsSync(src)) continue;
-    const dest = join(homeDir, rel);
-    mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(src, dest);
-    refreshed.push(rel);
-  }
-  return refreshed;
-}
-
-/**
  * Seed the bundled `.openpalm/` skeleton into OP_HOME — ONCE PER VERSION.
  *
  * Electron calls this on every launch; without a guard it re-copied the entire
@@ -173,7 +147,7 @@ export async function seedOpenPalmDir(
     // re-install over an existing OP_HOME picks up the current compose files
     // even when the skeleton stamp already matches (#472). User-owned files stay
     // seed-if-missing via the copyTree below.
-    const refreshed = refreshManagedStackAssets(local, homeDir);
+    const { updated: refreshed } = refreshCoreAssetsFromSource(local, homeDir);
     if (refreshed.length) logger.debug('refreshed managed stack assets', { refreshed });
     if (alreadySeeded) {
       logger.debug('skeleton already seeded for this version — managed assets refreshed, skipping full seed', { repoRef });
@@ -211,7 +185,7 @@ export async function seedOpenPalmDir(
     const srcOpenpalm = join(tmpDir, '.openpalm');
     if (!existsSync(srcOpenpalm)) throw new Error('.openpalm/ not found in tarball');
     // Refresh system-managed stack assets (overwrite), then seed the rest.
-    refreshManagedStackAssets(srcOpenpalm, homeDir);
+    refreshCoreAssetsFromSource(srcOpenpalm, homeDir);
     copyTree(srcOpenpalm, homeDir, { skipExisting: true });
     stamp();
   } finally {
@@ -305,6 +279,22 @@ export function resolveUiBuildDir(): string {
     const bundledVer = readUiBuildVersion(bundled);
     // data/ui wins only when we can prove it's strictly newer.
     if (dataVer && bundledVer && compareComparableVersions(dataVer, bundledVer) > 0) return dataBuild;
+    // data/ui IS present but is being IGNORED — execution de-routes to the frozen
+    // bundled lib (the asar copy). This is exactly the "stale control plane runs
+    // silently" failure the thin-harness design (§6.1, Risk #1) calls out: a
+    // de-routed install must be VISIBLE, never silent. Emit a structured warning
+    // distinguishing the missing/unparseable-stamp case (the dangerous one — a
+    // freshly downloaded but unstamped data/ui can never win) from the simply
+    // not-newer case.
+    if (!dataVer) {
+      logger.warn('data/ui present but UNSTAMPED — ignoring it and running the frozen bundled UI build; the downloaded control plane is NOT executing', {
+        dataBuild, bundled, bundledVersion: bundledVer ?? '(unstamped)',
+      });
+    } else {
+      logger.warn('data/ui present but not strictly newer than the bundled build — running the frozen bundled UI build', {
+        dataBuild, dataVersion: dataVer, bundled, bundledVersion: bundledVer ?? '(unstamped)',
+      });
+    }
     return bundled;
   }
   if (hasData) return dataBuild;
@@ -331,11 +321,33 @@ interface NpmUiManifest {
   tarball: string;
   /** Subresource-integrity string ("sha512-<base64>"); null if the registry omitted it. */
   integrity: string | null;
+  /**
+   * Minimum native harness contract this UI build requires (design §5.3). A
+   * `@openpalm/ui` build that uses an IPC method / env key introduced at
+   * contract N declares `minHarnessContract: N` in its package.json. The harness
+   * refuses to self-update onto a build whose minHarnessContract exceeds the
+   * contract it provides (it prompts a re-download instead of failing at
+   * runtime). Absent ⇒ 0 (pre-contract / no native dependency).
+   */
+  minHarnessContract: number;
 }
 
-/** Strip a single leading 'v' so a release ref (v1.2.3) becomes an npm version (1.2.3). */
-function toNpmVersion(repoRef: string): string {
-  return repoRef.replace(/^v/, '');
+/** A declared platform update channel — the two npm dist-tags the UI publishes on. */
+export type UiUpdateChannel = 'latest' | 'next';
+
+/**
+ * Read an explicitly DECLARED platform channel from the environment, if any.
+ *
+ * This decouples the channel from the harness/app version (§6.4 of the
+ * thin-harness design): a *stable* host can opt into a `next` control plane for
+ * testing by setting `OP_UI_CHANNEL=next` WITHOUT faking its app version, and
+ * the choice survives the harness↔platform version split. Returns null when
+ * unset/blank or not one of the two valid dist-tags (caller falls back to
+ * deriving the channel from the version).
+ */
+export function declaredUiChannel(): UiUpdateChannel | null {
+  const raw = (process.env.OP_UI_CHANNEL ?? '').trim().toLowerCase();
+  return raw === 'latest' || raw === 'next' ? raw : null;
 }
 
 /**
@@ -345,9 +357,14 @@ function toNpmVersion(repoRef: string): string {
  * desktop/host updaters can't compare a UI version against the app version —
  * they pick the CHANNEL from the app's release stream and then resolve the
  * newest UI on that channel.
+ *
+ * An EXPLICITLY declared channel (`OP_UI_CHANNEL` or the `channel` argument)
+ * always wins over the version-derived default, so a stable host can opt into a
+ * `next` control plane without faking its version. Falls back to
+ * `distTagForVersion` (the canonical prerelease→channel mapping from Stage 1).
  */
-export function uiUpdateChannel(appVersion: string): 'latest' | 'next' {
-  return appVersion.includes('-') ? 'next' : 'latest';
+export function uiUpdateChannel(appVersion: string, channel?: UiUpdateChannel): UiUpdateChannel {
+  return channel ?? declaredUiChannel() ?? distTagForVersion(appVersion);
 }
 
 /**
@@ -359,11 +376,13 @@ async function fetchNpmUiManifest(versionOrTag: string): Promise<NpmUiManifest> 
   const url = `${NPM_REGISTRY}/${UI_PACKAGE}/${versionOrTag}`;
   const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error(`npm registry returned HTTP ${res.status} for ${UI_PACKAGE}@${versionOrTag}`);
-  const m = await res.json() as { version?: string; dist?: { tarball?: string; integrity?: string } };
+  const m = await res.json() as { version?: string; dist?: { tarball?: string; integrity?: string }; minHarnessContract?: unknown };
   if (!m.version || !m.dist?.tarball) {
     throw new Error(`npm manifest for ${UI_PACKAGE}@${versionOrTag} is missing version/dist.tarball`);
   }
-  return { version: m.version, tarball: m.dist.tarball, integrity: m.dist.integrity ?? null };
+  const rawMin = typeof m.minHarnessContract === 'number' ? m.minHarnessContract : Number(m.minHarnessContract);
+  const minHarnessContract = Number.isFinite(rawMin) && rawMin > 0 ? rawMin : 0;
+  return { version: m.version, tarball: m.dist.tarball, integrity: m.dist.integrity ?? null, minHarnessContract };
 }
 
 /**
@@ -460,7 +479,9 @@ export async function seedUiBuild(repoRef: string, dataDir: string, options?: { 
     return;
   }
 
-  const manifest = await fetchNpmUiManifest(toNpmVersion(repoRef));
+  // normalizeVersion strips a leading 'v' so a release ref (v1.2.3) becomes the
+  // npm version (1.2.3) the registry manifest endpoint expects.
+  const manifest = await fetchNpmUiManifest(normalizeVersion(repoRef));
   logger.debug('downloading UI build from npm', { version: manifest.version });
   await downloadNpmUiBundle(manifest, uiDir, dataDir);
 }
@@ -471,6 +492,15 @@ export interface UiBuildUpdateResult {
   updated: boolean;
   latestVersion: string | null;
   error?: string;
+  /**
+   * Set when a newer UI build EXISTS but its `minHarnessContract` exceeds the
+   * native harness contract this host provides (design §5.3). The control plane
+   * is NOT self-updated (running newer-UI-on-older-harness would fail at runtime);
+   * the caller should surface "a new OpenPalm app is required" and link the
+   * re-download. Carries the contract the build needs so the message can be exact.
+   */
+  redownloadRequired?: boolean;
+  requiredHarnessContract?: number;
 }
 
 /**
@@ -493,11 +523,45 @@ export interface UiBuildUpdateResult {
 export async function checkAndUpdateUiBuild(
   appVersion: string,
   dataDir: string,
+  channelOverride?: UiUpdateChannel,
+  /**
+   * The native harness contract version this supervisor provides (design §5.3).
+   * When the newest UI build declares `minHarnessContract` greater than this, the
+   * build is NOT pulled — the function returns `redownloadRequired` instead of
+   * silently installing a UI the harness can't satisfy. Omitted / null on
+   * non-Electron supervisors (CLI), where every UI build is by definition runnable
+   * (the served UI floats with data/ui; there is no native bridge to outgrow), so
+   * the gate is skipped.
+   */
+  harnessContract?: number | null,
 ): Promise<UiBuildUpdateResult> {
   try {
-    const channel  = uiUpdateChannel(appVersion);
+    const channel  = uiUpdateChannel(appVersion, channelOverride);
     const manifest = await fetchNpmUiManifest(channel);
     const latestVersion = manifest.version;
+
+    // §5.3 self-update-vs-redownload gate. Only meaningful when a native harness
+    // contract is supplied (Electron). If the newer build needs a contract this
+    // harness does not provide, refuse the pull and ask the user to re-download
+    // the app — never run newer-UI-on-older-harness (undefined IPC → TypeError;
+    // missing env → 503).
+    if (
+      typeof harnessContract === 'number' &&
+      manifest.minHarnessContract > harnessContract
+    ) {
+      logger.warn('UI build requires a newer harness — re-download required', {
+        latest: latestVersion,
+        minHarnessContract: manifest.minHarnessContract,
+        harnessContract,
+        channel,
+      });
+      return {
+        updated: false,
+        latestVersion,
+        redownloadRequired: true,
+        requiredHarnessContract: manifest.minHarnessContract,
+      };
+    }
 
     // Compare against the UI build currently on disk, NOT the app version — the
     // UI floats on its own version line, so the platform/app version is not

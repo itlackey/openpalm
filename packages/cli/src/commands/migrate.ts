@@ -1,5 +1,12 @@
 import { defineCommand } from 'citty';
-import { ensureMigrated, MigrationError } from '@openpalm/lib';
+import {
+  ensureMigrated,
+  ensureReleaseMigrated,
+  resolveDefaultMigrateTarget,
+  formatForDisplay,
+  MigrationError,
+} from '@openpalm/lib';
+import { ensureValidState } from '../lib/cli-state.ts';
 
 export default defineCommand({
   meta: {
@@ -12,9 +19,58 @@ export default defineCommand({
       description: 'Show what would change without writing anything',
       default: false,
     },
+    to: {
+      type: 'string',
+      description:
+        'Preview the release migrations an upgrade to <version> would run (defaults to the newest published version in the current major). Requires --dry-run.',
+    },
   },
   async run({ args }) {
     const dryRun = Boolean(args['dry-run']);
+    const toArg = typeof args.to === 'string' ? args.to.trim() : '';
+    const hasTo = toArg.length > 0 || 'to' in args;
+
+    // #497: `--to <version>` previews the RELEASE migrations an upgrade WOULD
+    // run, read from the target version rather than the current stack.env. This
+    // is a preview only — actually applying forward release migrations against a
+    // not-yet-upgraded stack is `openpalm update`'s job, so require --dry-run.
+    if (hasTo) {
+      if (!dryRun) {
+        console.error('`--to` previews an upgrade and only runs with --dry-run. To apply an upgrade, run `openpalm update`.');
+        process.exit(1);
+      }
+      try {
+        const state = ensureValidState();
+        let targetVersion = toArg;
+        if (!targetVersion) {
+          console.log('Resolving the newest published version for the current major...');
+          targetVersion = await resolveDefaultMigrateTarget(state);
+        }
+        console.log(`\n[dry-run] Release migrations that an upgrade to ${formatForDisplay(targetVersion)} would run:`);
+        const report = ensureReleaseMigrated({
+          homeDir: state.homeDir,
+          targetVersion,
+          dryRun: true,
+          log: (m) => console.log(`  ${m}`),
+        });
+        if (report.applied.length === 0) {
+          console.log(`  (none — your files are already compatible with ${formatForDisplay(report.to)}.)`);
+        } else {
+          console.log(`\n[dry-run] Would apply ${report.applied.length} release migration(s): ${report.applied.join(', ')}. No changes written.`);
+        }
+        for (const note of report.notes) console.log(`  NOTE: ${note}`);
+        console.log('\nTo apply, run `openpalm update`.');
+        return;
+      } catch (err) {
+        if (err instanceof MigrationError) {
+          console.error(`\nMigration preview failed: ${err.message}\n${err.guidance}`);
+          process.exit(1);
+        }
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    }
+
     try {
       const report = ensureMigrated({ dryRun, log: (m) => console.log(`  ${m}`) });
       if (!report.migrated && report.from >= report.to) {
@@ -32,7 +88,9 @@ export default defineCommand({
     } catch (err) {
       if (err instanceof MigrationError) {
         console.error(`\nMigration aborted: ${err.message}\n${err.guidance}`);
-        if (err.backupDir) console.error(`Backup: ${err.backupDir}`);
+        if (err.backupDir) {
+          console.error(`If something went wrong, your previous state is backed up at ${err.backupDir} — run \`openpalm rollback\`.`);
+        }
         process.exit(1);
       }
       console.error(err instanceof Error ? err.message : String(err));

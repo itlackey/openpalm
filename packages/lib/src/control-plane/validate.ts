@@ -9,7 +9,7 @@
  */
 import { existsSync } from "node:fs";
 import { readStackRuntimeEnv } from "./secrets.js";
-import { getCoreSecretMappings } from "./secret-mappings.js";
+import { STATIC_CORE_MAPPINGS } from "./secret-mappings.js";
 import type { ControlPlaneState } from "./types.js";
 
 // Stack-scoped env keys that must always exist and carry a non-empty value
@@ -23,7 +23,7 @@ const REQUIRED_SECRET_KEYS = ["OP_UI_LOGIN_PASSWORD"] as const;
  * Checks:
  * 1. knowledge/env/stack.env exists and carries every required key with a
  *    non-empty value.
- * 2. Every secret env key in getCoreSecretMappings() is present (key only
+ * 2. Every secret env key in STATIC_CORE_MAPPINGS is present (key only
  *    — blank values are warned about, never erred on, because operators
  *    may opt out of providers they don't use).
  *
@@ -57,7 +57,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   // Every canonical secret should at least appear as a key somewhere in
   // the env files so the operator sees the slot. Missing slots warn (not
   // error) since not every provider is in use on every install.
-  for (const mapping of getCoreSecretMappings(runtimeEnv)) {
+  for (const mapping of STATIC_CORE_MAPPINGS) {
     const inRuntime = Object.prototype.hasOwnProperty.call(runtimeEnv, mapping.envKey);
     if (!inRuntime) {
       warnings.push(

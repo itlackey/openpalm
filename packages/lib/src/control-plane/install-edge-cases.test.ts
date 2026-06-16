@@ -21,7 +21,7 @@ import { ensureSecrets, readStackEnv } from "./secrets.js";
 import { isSetupComplete } from "./setup-status.js";
 import {
   performSetup,
-  buildSecretsFromSetup,
+  buildOwnerEnvFromSetup,
   buildAuthJsonFromSetup,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
@@ -566,21 +566,21 @@ describe("Setup Input Variations", () => {
     expect(keys["github-copilot"]).toBeUndefined();
   });
 
-  // Scenario 22: buildSecretsFromSetup writes non-credential vars only;
+  // Scenario 22: buildOwnerEnvFromSetup writes non-credential vars only;
   // API keys flow into auth.json via buildAuthJsonFromSetup.
-  it("buildSecretsFromSetup does not write API keys; buildAuthJsonFromSetup does", () => {
+  it("buildOwnerEnvFromSetup does not write API keys; buildAuthJsonFromSetup does", () => {
     const spec = makeValidSpec();
-    const secrets = buildSecretsFromSetup(spec.connections, spec.owner);
+    const ownerEnv = buildOwnerEnvFromSetup(spec.owner);
     const keys = buildAuthJsonFromSetup(spec.connections);
 
     // API keys go to auth.json, not stack.env
-    expect(secrets.OPENAI_API_KEY).toBeUndefined();
+    expect(ownerEnv.OPENAI_API_KEY).toBeUndefined();
     expect(keys.openai).toBe("sk-test-key-123");
     // Config vars (capability resolution) are not in stack.env user-secrets either
-    expect(secrets.SYSTEM_LLM_PROVIDER).toBeUndefined();
-    expect(secrets.SYSTEM_LLM_MODEL).toBeUndefined();
-    expect(secrets.EMBEDDING_MODEL).toBeUndefined();
-    expect(secrets.EMBEDDING_DIMS).toBeUndefined();
+    expect(ownerEnv.SYSTEM_LLM_PROVIDER).toBeUndefined();
+    expect(ownerEnv.SYSTEM_LLM_MODEL).toBeUndefined();
+    expect(ownerEnv.EMBEDDING_MODEL).toBeUndefined();
+    expect(ownerEnv.EMBEDDING_DIMS).toBeUndefined();
   });
 });
 

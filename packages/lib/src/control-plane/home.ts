@@ -56,18 +56,6 @@ export function resolveBackupsDir(): string {
   return `${resolveDataDir()}/backups`;
 }
 
-export function resolveRegistryDir(): string {
-  return `${resolveDataDir()}/registry`;
-}
-
-export function resolveRegistryAddonsDir(): string {
-  return `${resolveRegistryDir()}/addons`;
-}
-
-export function resolveRegistryAutomationsDir(): string {
-  return `${resolveRegistryDir()}/automations`;
-}
-
 export function resolveRollbackDir(): string {
   return `${resolveDataDir()}/rollback`;
 }

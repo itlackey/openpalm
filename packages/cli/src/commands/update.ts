@@ -7,17 +7,25 @@ export default defineCommand({
     name: 'update',
     description: 'Refresh stack assets, pull latest images, and recreate containers',
   },
-  async run() {
+  args: {
+    pre: {
+      type: 'boolean',
+      description: 'Opt in to prerelease (rc/beta) versions. By default a stable install stays on stable.',
+      default: false,
+    },
+  },
+  async run({ args }) {
     try {
-      await runUpgradeAction();
+      await runUpgradeAction({ allowPrerelease: !!args.pre });
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
+      console.error('If something went wrong, your previous state was backed up before this update — run `openpalm rollback` to restore it.');
       process.exit(1);
     }
   },
 });
 
-export async function runUpgradeAction(): Promise<void> {
+export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {}): Promise<void> {
   // Auto-migrate the on-disk layout BEFORE validating state — createState()
   // assumes the current layout, so a 0.10.x home must be migrated first. This
   // backs up first and fails safe (no-ops on an already-current install).
@@ -30,7 +38,9 @@ export async function runUpgradeAction(): Promise<void> {
   } catch (err) {
     if (err instanceof MigrationError) {
       console.error(`\nAutomatic migration aborted: ${err.message}\n${err.guidance}`);
-      if (err.backupDir) console.error(`Backup: ${err.backupDir}`);
+      if (err.backupDir) {
+        console.error(`If something went wrong, your previous state is backed up at ${err.backupDir} — run \`openpalm rollback\`.`);
+      }
       process.exit(1);
     }
     throw err;
@@ -38,8 +48,8 @@ export async function runUpgradeAction(): Promise<void> {
 
   const state = ensureValidState();
 
-  console.log('Upgrading stack...');
-  const result = await performUpgrade(state);
+  console.log(`Upgrading stack${opts.allowPrerelease ? ' (including prereleases)' : ''}...`);
+  const result = await performUpgrade(state, { allowPrerelease: opts.allowPrerelease });
   console.log(`Image tag: ${result.namespace}/*:${result.imageTag}`);
   if (result.assetsUpdated.length > 0) {
     console.log(`Assets updated: ${result.assetsUpdated.join(', ')}`);
@@ -50,7 +60,7 @@ export async function runUpgradeAction(): Promise<void> {
   // release (including the one just upgraded to) triggers a download.
   // Existing data/ui/ is backed up to data/backups/ui-{timestamp}/ before
   // replacement. Non-fatal — existing build remains on any error.
-  const currentVersion = state.imageTag ?? '0.0.0';
+  const currentVersion = result.imageTag;
   console.log('Checking for UI build update...');
   const uiResult = await checkAndUpdateUiBuild(currentVersion, state.dataDir);
   if (uiResult.updated) {

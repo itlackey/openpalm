@@ -53,10 +53,10 @@ Docker `restart` does NOT re-read compose config changes (env_file paths, mount 
 **Time:** ~10s | **Prerequisites:** None
 
 ```bash
-bun run check    # svelte-check + TypeScript + sdk tests
+bun run check    # svelte-check + TypeScript
 ```
 
-Validates type correctness across all SvelteKit admin code and channels-sdk.
+Validates type correctness across all SvelteKit admin code.
 
 ---
 
@@ -68,7 +68,7 @@ Validates type correctness across all SvelteKit admin code and channels-sdk.
 bun run test
 ```
 
-Runs all non-admin unit tests: lib, cli, guardian, channels-sdk, channel adapters, scheduler, assistant-tools.
+Runs all non-admin unit tests: lib, cli, guardian, portal adapters, scheduler-related helpers, and admin-tools.
 
 ---
 
@@ -109,7 +109,7 @@ Rebuilds and recreates the entire compose stack, then runs integration Playwrigh
 **What it validates:**
 - OpenCode web UI accessible
 - OpenCode API session management
-- Guardian security pipeline (HMAC, replay, rate-limit, content validation) via channel→guardian→assistant
+- Guardian security pipeline (HMAC, replay, rate-limit, content validation) via portal→guardian→assistant
 - Scheduler automations API
 
 ---
@@ -126,7 +126,7 @@ Same as T5 but additionally enables LLM tests and enforces no-skip policy. Every
 
 **Additional validation over T5:**
 - Full assistant message pipeline (send message → LLM inference → response)
-- Channel→Guardian→Assistant→LLM full chain with real inference
+- Portal→Guardian→Assistant→LLM full chain with real inference
 
 **Model prerequisites:** Ollama with:
 - `qwen2.5-coder:3b` or equivalent (system LLM)

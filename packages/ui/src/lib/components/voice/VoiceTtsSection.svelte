@@ -14,7 +14,7 @@
 		TtsOption,
 		VoiceEngineConfig,
 		VoiceEngineValue,
-	} from '$lib/wizard/types.js';
+	} from '$lib/client/types.js';
 
 	let {
 		value,

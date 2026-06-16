@@ -6,7 +6,7 @@ When in doubt, inspect the exact compose file set you started from
 `~/.openpalm/config/stack/` and rerun that same file set explicitly.
 
 > **Upgrading from 0.10.x?** Many post-upgrade issues (missing secrets, wrong UI
-> port, `stack.yml` errors) come from the changed file layout. See the
+> port, stale addon state, wrong env paths) come from the changed file layout. See the
 > [0.10.x → 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md).
 
 ---
@@ -94,13 +94,13 @@ running.
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   up -d
 ```
 
-The enabled addon names in `~/.openpalm/config/stack/stack.yml` are used by OpenPalm
+The enabled addon names in `OP_ENABLED_ADDONS` inside `~/.openpalm/knowledge/env/stack.env` are used by OpenPalm
 tooling to build the `--profile` arguments. Manual invocations must pass them
 explicitly.
 
@@ -108,7 +108,7 @@ explicitly.
 
 ## 5. Assistant not responding
 
-**Symptoms:** channels accept requests, but no reply comes back.
+**Symptoms:** portals accept requests, but no reply comes back.
 
 **Fix:**
 
@@ -127,7 +127,7 @@ grep -E 'BASE_URL' ~/.openpalm/knowledge/env/stack.env
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  --env-file stack.env \
+  --env-file ../../knowledge/env/stack.env \
   logs assistant
 ```
 
@@ -149,15 +149,15 @@ Then recreate any services that depend on that value.
 
 ---
 
-## 7. Channel HMAC or auth errors
+## 7. Portal auth or guardian ingress errors
 
-**Symptoms:** channel containers return `401`, `403`, or guardian verification errors.
+**Symptoms:** portal containers return `401`, `403`, or guardian authorization errors.
 
 **Fix:**
 
-- verify the channel addon is part of the compose file set you started
-- check `~/.openpalm/knowledge/secrets/` for the relevant channel HMAC secret file and verify the service has a matching `*_FILE` grant
-- recreate the affected channel and guardian services after changing secrets
+- verify the portal addon is part of the compose file set you started
+- check `~/.openpalm/knowledge/secrets/` for the relevant principal secret file and verify the service has a matching `PRINCIPAL_SECRET_FILE` grant
+- recreate the affected portal and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the
 live non-secret values come straight from `knowledge/env/stack.env`; service secrets come from `knowledge/secrets/`.
@@ -207,9 +207,9 @@ the compose files under `~/.openpalm/config/stack/`, non-secret `stack.env`, and
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   down -v
 
 rm -rf "$HOME/.openpalm"

@@ -1,12 +1,12 @@
 # OpenPalm — Core Services
 #
 # This file defines the core infrastructure. Optional first-party services are
-# defined in services.compose.yml and channels.compose.yml, then activated with
+# defined in services.compose.yml and portals.compose.yml, then activated with
 # Compose profiles. User customizations live in custom.compose.yml.
 #
 # Docker Compose reads variable values via --env-file for stack config:
 #   knowledge/env/stack.env   — system config (ports, image tags), akm `env:stack`
-# Channel and bot secrets are mounted per service via Compose secrets in
+# Portal and bot secrets are mounted per service via Compose secrets in
 # addon overlays and exposed to containers as *_FILE variables.
 #
 # User-managed env config lives in the akm `env:user` file at
@@ -17,8 +17,8 @@
 #
 # Directory model:
 #   ~/.openpalm/config/       — user-editable + system config (akm/)
-#   ~/.openpalm/config/stack/ — compose assembly only (core/services/channels/custom
-#                               compose files, stack.yml) — no secrets, no env
+#   ~/.openpalm/config/stack/ — compose assembly only (core/services/portals/custom
+#                               compose files) — no secrets, no env
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
 #   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents);
 #                               env:user, env:stack, and auth.json live here
@@ -42,9 +42,9 @@ services:
       # the assistant over assistant_net without credentials, and the
       # scheduler now runs as a co-process inside this container so it
       # reaches OpenCode via http://localhost:4096.
-      # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, you MUST set
-      # op_opencode_password in knowledge/secrets/
-      # and set OPENCODE_AUTH to "true".
+      # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, the assistant is
+      # no longer loopback-only. Guardian-side upstream auth plumbing has been
+      # removed, so enabling assistant auth is not a supported hardening path.
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
@@ -67,7 +67,7 @@ services:
       # SSH remains loopback-bound. The port is always declared so enabling
       # SSH only needs OPENCODE_ENABLE_SSH=1 in stack.env; sshd is not started
       # when that flag is 0.
-      - "${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}:22"
+      - "127.0.0.1:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
       - ${OP_HOME}/config/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
@@ -98,11 +98,24 @@ services:
       retries: 5
       start_period: 30s
 
-# Channel networks: services join channel_lan (LAN-restricted) to reach
-# the guardian. Public exposure is opt-in per-service via host port bindings.
+  # ── mDNS service discovery ───────────────────────────────────────────
+  # mDNS is no longer published by avahi sidecars. OpenCode advertises its own
+  # `.local` name in-process via its native mDNS responder (server.mdns /
+  # server.mdnsDomain in the assistant + guardian opencode.jsonc files). See
+  # those config files and docs/technical/network-partitioning-d5a.md for the
+  # native approach and its limitations (LAN reachability requires the OpenCode
+  # process to bind a LAN-facing interface; the guardian moderator stays
+  # loopback-only by design and does NOT advertise).
+
+# Portal-style ingress services join portal_net to reach the guardian.
 networks:
-  channel_lan:
+  portal_net:
   assistant_net:
+  # DEPRECATED (renamed to portal_net in 0.12.0). Retained as an empty bridge for
+  # ONE release so existing custom.compose.yml overlays that still reference
+  # `channel_lan` keep validating on upgrade. No first-party service joins it.
+  # REMOVED in 0.13.0 — migrate custom overlays to `portal_net` before upgrading.
+  channel_lan:
 
 volumes:
   assistant-persistent:

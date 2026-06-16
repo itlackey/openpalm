@@ -11,16 +11,16 @@
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose and OpenCode. It manages a stack of containers orchestrated by the host CLI or an optional admin web UI.
 
-Two core containers: **guardian** (HMAC ingress + optional content validation) and **assistant** (OpenCode runtime — also hosts the scheduler co-process and uses the akm CLI for memory/skills/lessons via a shared akm stash). Channels (chat, API, Discord, Slack, voice) and services (Ollama, etc.) are added as addon compose overlays.
+Two core containers: **guardian** (principal-authenticated ingress + optional content validation) and **assistant** (OpenCode runtime — also hosts the scheduler co-process and uses the akm CLI for memory/skills/lessons via a shared akm stash). Portal-style ingress addons (chat/api, Discord, Slack) and services (Ollama, etc.) are added as compose overlays.
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces
-- `core/*` — container/runtime assembly assets and image build contexts
+- `containers/*` — container/runtime assembly assets and image build contexts
 
 ```
 CLI (host)            ->  Docker Compose (lifecycle)    <- primary orchestrator
 Admin UI / Assistant  ->  Admin API  ->  Docker Compose  <- optional web orchestrator
-External clients      ->  Channel    ->  Guardian (HMAC/validate)  ->  Assistant
+External clients      ->  Portal     ->  Guardian (/oc proxy)      ->  Assistant
 ```
 
 See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for the filesystem/volume-mount contract.
@@ -29,16 +29,15 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 
 ## Architecture
 
-- **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, channels, connections, scheduler logic. Both CLI and UI import from this package.
+- **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, portal discovery, connections, scheduler logic. Both CLI and UI import from this package.
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without UI.
 - **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
-- **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic. Also ships OpenCode (config from `config/guardian`) for opt-in, fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
-- **Assistant** (`core/assistant/`) — OpenCode runtime with tools/skills. No Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
+- **Guardian** (`containers/guardian/`) — Bun HTTP server: principal auth, allowlisted `/oc/*` proxying, ownership checks, rate limiting, and opt-in fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
+- **Assistant** (`containers/assistant/`) — OpenCode runtime with tools/skills. No Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
 - **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM markdown task files in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
-- **Channel runtime** (`core/channel/`) — Unified `channel` image build and startup entrypoint.
-- **Channel adapters** (`packages/channel-api/`, `packages/channel-discord/`, `packages/channel-slack/`, `packages/channel-voice/`) — Translate external protocols into signed guardian messages.
-- **Channels SDK** (`packages/channels-sdk/`) — Shared SDK for channel adapters: signing, assistant client, base classes.
-- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains core, services, channels, and custom compose files. Enabled first-party addons are tracked in `~/.openpalm/config/stack/stack.yml` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
+- **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
+- **Portal adapters** (`portals/discord/`, `portals/slack/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
+- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains core, services, portals, and custom compose files. Enabled first-party addons are tracked in `~/.openpalm/knowledge/env/stack.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
 
 ---
 
@@ -53,17 +52,16 @@ npm run build                                       # Production build
 npm run check                                       # svelte-check + TypeScript
 
 # Guardian (Bun)
-cd core/guardian && bun install && bun run src/server.ts
+cd containers/guardian && bun install && bun run src/server.ts
 
 # Root shortcuts
 bun run ui:dev     # Runs UI dev from root
 bun run ui:build   # Builds UI from root
 bun run ui:check   # svelte-check + TypeScript for UI
 bun run guardian:dev     # Runs guardian server
-bun run channel:api:dev     # Runs api channel dev server
-bun run channel:discord:dev # Runs discord channel dev server
-bun run channel:slack:dev   # Runs slack channel dev server
-bun run channel:voice:dev   # Runs voice channel dev server
+bun run guardian:api:dev    # Runs guardian OpenAI-compatible API server
+bun run portal:discord:dev # Runs discord portal dev server
+bun run portal:slack:dev   # Runs slack portal dev server
 
 # Dev environment setup
 ./scripts/dev-setup.sh --seed-env       # Creates .dev/ dirs, seeds configs
@@ -77,7 +75,7 @@ bun run wizard:dev                      # Runs install --no-start --force with O
 ```bash
 cd packages/ui && npm run check
 # or from root:
-bun run check            # Runs ui:check + sdk:test
+bun run check            # Runs ui:check
 ```
 
 ### Tests
@@ -86,9 +84,8 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 
 | Runner | Command | Scope |
 |--------|---------|-------|
-| `bun test` (root) | `bun run test` | channels-sdk, guardian, cli, all channel packages (excludes ui) |
-| `bun test` (sdk) | `bun run sdk:test` | packages/channels-sdk unit tests |
-| `bun test` (guardian) | `bun run guardian:test` | core/guardian security tests |
+| `bun test` (root) | `bun run test` | guardian, cli, all portal packages (excludes ui) |
+| `bun test` (guardian) | `bun run guardian:test` | containers/guardian security tests |
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
 | Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
 | Playwright (UI integration) | `bun run ui:test:e2e` | packages/ui integration tests (no browser route mocks) |
@@ -99,10 +96,10 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 
 ```bash
 # Run guardian tests
-cd core/guardian && bun test
+cd containers/guardian && bun test
 
 # Run a single test file
-cd core/guardian && bun test src/server.test.ts
+cd containers/guardian && bun test src/server.test.ts
 
 # Run UI unit tests (Vitest, CI-friendly)
 bun run ui:test:unit
@@ -125,7 +122,7 @@ bun run dev:build
 # Dev stack (pull images)
 bun run dev:stack
 
-# Manual equivalent with channel overlay:
+# Manual equivalent with portal overlay:
 docker compose --project-directory . \
   -f .openpalm/config/stack/core.compose.yml \
   -f compose.dev.yml \
@@ -157,7 +154,7 @@ Read these before making significant changes. They are the authoritative sources
 ### Language & Runtime
 
 - **TypeScript** everywhere (`"strict": true`, no `any` for untrusted data)
-- **Bun** for guardian, channels, and the scheduler co-process; **Node/Vite** for admin (SvelteKit + `adapter-node`)
+- **Bun** for guardian, portals, and the scheduler co-process; **Node/Vite** for admin (SvelteKit + `adapter-node`)
 - All packages use `"type": "module"` (ES modules only)
 
 ### Imports
@@ -231,12 +228,12 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **Secret boundary.** `knowledge/env/stack.env` is non-secret runtime configuration only. Secret values live as files under `knowledge/secrets/` and are granted per service through Compose `secrets:`. `knowledge/env/user.env` is AKM env backing state, not a Compose env file.
 - **Host CLI or UI is the orchestrator.** CLI manages Docker Compose directly on the host. UI provides a web UI as a host process (no container, no docker-socket-proxy).
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI and UI both import from this package. Never duplicate control-plane logic in a consumer.
-- **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
-- **Assistant isolation.** Assistant has no Docker socket. When UI is present, it calls the admin API for stack operations. When UI is absent, only the akm-backed memory/knowledge tools are available.
+- **Guardian-only ingress.** All portal traffic must enter through the guardian (`/oc/*` proxy, ownership checks, rate limiting).
+- **Assistant isolation.** Assistant has no Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
-- **Add a channel** by enabling its name in `~/.openpalm/config/stack/stack.yml` (for first-party channels) or adding a service block to `custom.compose.yml` (for custom channels) — no code changes.
+- **Add a portal** by enabling its first-party addon name in `~/.openpalm/knowledge/env/stack.env` or adding a service block to `custom.compose.yml` (for custom portals) — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
-- **Docker dependency resolution pattern.** Guardian and channel Dockerfiles install `packages/channels-sdk` deps with `bun install --production` after copying sdk source. UI is a host binary — no Docker build needed.
+- **Docker dependency resolution pattern.** Guardian and portal Dockerfiles install each service's own deps directly. UI is a host binary — no Docker build needed.
 
 ---
 
@@ -246,9 +243,9 @@ All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
-| `config/` | User | Non-secret config: `stack.yml` addon state (version marker + enabled addon names), assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`) |
+| `config/` | User | Non-secret config: assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`) |
 | `knowledge/env/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
-| `config/stack/` | Admin | System-managed: `stack.env` (paths, ports), `auth.json` (shared OpenCode provider creds), `secrets/` file secrets, compose files |
+| `config/stack/` | Admin | System-managed compose files and runtime assembly |
 | `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/tasks/` holds scheduled automation task files |
 | `data/` | Services/System | Persistent data: assistant, guardian, akm, logs, backups, rollback |
 | `data/akm/cache/` | Services/System | AKM cache and task logs |
@@ -264,12 +261,12 @@ Dev mode uses `.dev/` with the same subdirectory structure.
 Before submitting any change:
 
 - [ ] `cd packages/ui && npm run check` passes (UI type correctness)
-- [ ] `cd core/guardian && bun test` passes (security-critical branches covered)
+- [ ] `cd containers/guardian && bun test` passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
 - [ ] No secrets leak through client bundles or logs
-- [ ] Docker builds follow the dependency resolution pattern (no symlink-based node_modules, channels-sdk deps installed after COPY)
+- [ ] Docker builds follow the dependency resolution pattern (no symlink-based node_modules, portal deps installed after COPY)
 - [ ] Control-plane logic lives in `packages/lib/`, not duplicated in CLI or UI
 
 ---
@@ -293,8 +290,8 @@ Before submitting any change:
 | `packages/ui/src/lib/api.ts` | API call functions |
 | `packages/cli/src/lib/cli-state.ts` | CLI state helpers (ensureValidState) |
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |
-| `core/guardian/src/server.ts` | HMAC-signed message guardian |
-| `packages/channels-sdk/src/logger.ts` | Shared logger (createLogger factory) |
+| `containers/guardian/src/server.ts` | HMAC-signed message guardian |
+| `containers/guardian/src/logger.ts` | Guardian-local logger (createLogger factory) |
 | `.openpalm/config/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
 | `.openpalm/config/stack/` | Fixed stack compose files and enabled-addon state |
 | `.opencode/opencode.json` | OpenCode project configuration |

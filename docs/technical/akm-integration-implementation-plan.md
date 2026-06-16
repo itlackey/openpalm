@@ -34,7 +34,7 @@ Verified against **akm 0.8.0-rc.13** (bumped from rc.12 mid-investigation).
 
 **Tests:** 343 lib (bun) + 8 UI endpoint (vitest) pass; UI svelte-check 0 errors/0 warnings.
 
-**New/changed files:** `core/assistant/entrypoint.sh`, `.openpalm/config/stack/core.compose.yml`,
+**New/changed files:** `containers/assistant/entrypoint.sh`, `.openpalm/config/stack/core.compose.yml`,
 `.openpalm/config/stack/host-akm.compose.yml` (new), `packages/lib/src/control-plane/{fs-atomic,akm-sources,host-akm-sharing}.ts` (new) + tests,
 `packages/lib/src/control-plane/{setup,config-persistence}.ts`, `packages/lib/src/index.ts`,
 `packages/ui/src/routes/admin/akm/host-sharing/+server.ts` (new) + test,
@@ -112,7 +112,7 @@ a hard prerequisite for ever mounting `/host-stash`.
 
 ### 2.1 Entrypoint chown fix (I-1)
 
-**File:** `core/assistant/entrypoint.sh:46`
+**File:** `containers/assistant/entrypoint.sh:46`
 
 Current:
 ```sh
@@ -135,7 +135,7 @@ container-private). `/work` and `/stash` are host-owned bind mounts created by i
 the host user — the container running as that UID needs no chown of them.
 
 **Tests:**
-- New `core/assistant/entrypoint.bats` (or shell test harness if bats unavailable):
+- New `containers/assistant/entrypoint.bats` (or shell test harness if bats unavailable):
   assert the chown line names only `/home/opencode /opt/akm/cache /opt/akm/data` and does
   NOT name `/stash` or `/host-stash`. (Static grep-based assertion is acceptable — the
   shell can't be unit-run easily; a CI grep guard is the cheap durable check.)
@@ -439,8 +439,8 @@ as known, accepted behavior.)
 |---|---|---|
 | **I-5** config clobber | admin/akm PATCH now writes via the shared atomic `writeFileAtomic` (tmp+rename); new source writes use it too; no OpenPalm path shells `akm config set`/`akm add` against the shared config. | `admin/akm/+server.ts`, `fs-atomic.ts` |
 | **I-6** four-env audit | Audited all `akm` spawn sites (only `scheduler.ts`, which takes `buildAkmEnv`). Added `assertAkmEnvComplete` guard (checks the four keys on the passed env, not inherited `process.env`) + called it in `executeAutomation`/`syncAutomations` + unit tests. | `akm-user-env.ts`, `scheduler.ts` |
-| **I-7** guardian akm | **Removed** the unused `akm-cli` install from the guardian image (its OpenCode is a pure moderator: no akm plugin, bash/edit/read denied, no AKM mounts/env). Comment explains the read-only-reader path if ever needed. | `core/guardian/Dockerfile` |
-| **I-8** version pin | Deferred to 0.11.0 stable cutover (tracked in [[project_0110_stable_cutover_todo]]); not part of this work. | `core/assistant/Dockerfile`, `core/guardian/Dockerfile` |
+| **I-7** guardian akm | **Removed** the unused `akm-cli` install from the guardian image (its OpenCode is a pure moderator: no akm plugin, bash/edit/read denied, no AKM mounts/env). Comment explains the read-only-reader path if ever needed. | `containers/guardian/Dockerfile` |
+| **I-8** version pin | Deferred to 0.11.0 stable cutover (tracked in [[project_0110_stable_cutover_todo]]); not part of this work. | `containers/assistant/Dockerfile`, `containers/guardian/Dockerfile` |
 | **I-9** stale docs | Replaced the 3 `packages/assistant-tools` references with current reality (`akm-opencode` plugin in `.openpalm/config/assistant/opencode.jsonc`; persona in `.openpalm/config/assistant/`). | `CLAUDE.md` |
 | **I-10** dead code | Removed `seedStashAssets` + its barrel export + its (only-block) test file; pruned now-orphaned imports. | `core-assets.ts`, `index.ts`, deleted `core-assets.test.ts` |
 | **I-12** network FS | Documented (above + proposal §1.2/§4). Detect-and-warn left as optional future polish. | docs |

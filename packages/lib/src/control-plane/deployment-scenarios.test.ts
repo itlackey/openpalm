@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureMigrated, CURRENT_LAYOUT_VERSION } from "./migrations.js";
 import { reconcileStackEnvImageTag } from "./env.js";
-import { refreshManagedStackAssets } from "./ui-assets.js";
+import { refreshCoreAssetsFromSource } from "./core-assets.js";
 import { buildManagedServices } from "./lifecycle.js";
 import { isProjectOurs } from "./docker.js";
 import { classifyLocalInstall, deriveLaunchStatus } from "./launch-status.js";
@@ -164,13 +164,19 @@ describe("scenario: stale managed compose asset in an existing OP_HOME", () => {
     // A user-owned overlay must NOT be touched.
     writeFileSync(join(active.stackDir, "custom.compose.yml"), "services:\n  mine: {}\n");
 
-    // Build a minimal source .openpalm tree with the CURRENT managed asset.
+    // Build a minimal source .openpalm tree with the CURRENT managed assets.
     const srcOpenpalm = mkdtempSync(join(tmpdir(), "op-src-"));
     mkdirSync(join(srcOpenpalm, "config", "stack"), { recursive: true });
+    mkdirSync(join(srcOpenpalm, "config", "assistant"), { recursive: true });
     writeFileSync(join(srcOpenpalm, "config", "stack", "core.compose.yml"), "services:\n  assistant: {}  # current\n");
+    writeFileSync(join(srcOpenpalm, "config", "stack", "services.compose.yml"), "services: {}\n");
+    writeFileSync(join(srcOpenpalm, "config", "stack", "portals.compose.yml"), "services: {}\n");
+    // Seeded assets (written only if missing in target — target already has custom.compose.yml so that is skipped)
+    writeFileSync(join(srcOpenpalm, "config", "stack", "custom.compose.yml"), "services: {}\n");
+    writeFileSync(join(srcOpenpalm, "config", "assistant", "opencode.jsonc"), "{}\n");
 
     try {
-      const refreshed = refreshManagedStackAssets(srcOpenpalm, active.homeDir);
+      const { updated: refreshed } = refreshCoreAssetsFromSource(srcOpenpalm, active.homeDir);
       expect(refreshed).toContain("config/stack/core.compose.yml");
       expect(readFileSync(join(active.stackDir, "core.compose.yml"), "utf-8")).toContain("# current");
       expect(readFileSync(join(active.stackDir, "core.compose.yml"), "utf-8")).not.toContain("stale");

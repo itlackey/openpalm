@@ -15,9 +15,9 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 
 | Path | Contains | Back up? |
 |---|---|---|
-| `~/.openpalm/config/stack/` | live compose files + `stack.yml` (compose assembly only) | Yes |
+| `~/.openpalm/config/stack/` | live compose files (compose assembly only) | Yes |
 | `~/.openpalm/knowledge/env/` | `stack.env` (system, non-secret) + `user.env` (user-managed) | Yes |
-| `~/.openpalm/config/` | assistant config, enabled automations, `stack.yml` addon state | Yes |
+| `~/.openpalm/config/` | assistant config and enabled automations | Yes |
 | `~/.openpalm/data/` | durable service data | Yes |
 | `~/.openpalm/knowledge/` | AKM stash (memory, skills, env, secrets) | Yes |
 | `~/.openpalm/workspace/` | shared workspace | Yes |
@@ -38,9 +38,9 @@ cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   down
 ```
 
@@ -84,9 +84,9 @@ This is especially important when moving between machines or users.
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  -f channels.compose.yml \
+  -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../knowledge/env/stack.env \
+  --env-file ../../knowledge/env/stack.env \
   up -d
 ```
 
@@ -120,9 +120,8 @@ the current model.
 | `~/.openpalm/knowledge/secrets/` | System-managed service secret files |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |
-| `~/.openpalm/config/stack/channels.compose.yml` | First-party optional channels and guardian |
+| `~/.openpalm/config/stack/portals.compose.yml` | First-party optional portals and guardian |
 | `~/.openpalm/config/stack/custom.compose.yml` | Custom services and overlays |
-| `~/.openpalm/config/stack/stack.yml` | Stack schema marker and enabled first-party addons |
 | `~/.openpalm/config/assistant/` | User OpenCode config |
 | `~/.openpalm/knowledge/tasks/` | Active AKM automation task files (YAML, `*.yml`) |
 | `~/.openpalm/knowledge/` | Shared akm stash (assistant + admin memory and knowledge) |

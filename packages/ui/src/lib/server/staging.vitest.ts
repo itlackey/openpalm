@@ -5,7 +5,7 @@
  * 1. Stack compose overlays live in config/stack/ (not config/components/)
  * 2. Compose file list uses config/stack/ paths
  * 3. User env config lives in knowledge/env/user.env; stack secrets live in knowledge/secrets/
- * 4. Runtime validation checks fixed compose files for channels
+ * 4. Runtime validation checks fixed compose files for portals
  * 5. Configuration persistence is idempotent
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
@@ -23,8 +23,7 @@ import { join } from "node:path";
 // ── Import real functions from @openpalm/lib ────────────────────────────
 import type { ControlPlaneState } from "@openpalm/lib";
 import {
-  discoverChannels,
-  isValidChannel,
+  isValidPortal,
   discoverStackOverlays,
   writeSystemEnv,
 } from "@openpalm/lib";
@@ -119,17 +118,17 @@ describe("User extensions in knowledge/env/user.env (akm env:user)", () => {
 });
 
 describe("Runtime validation uses fixed compose overlays", () => {
-  test("isValidChannel checks channel services from fixed compose files", () => {
+  test("isValidPortal checks portal services from fixed compose files", () => {
     const state = makeState(baseDir);
-    writeStackCompose(state.homeDir, "custom.compose.yml", "services:\n  custom:\n    environment:\n      CHANNEL_NAME: Custom\n");
+    writeStackCompose(state.homeDir, "custom.compose.yml", "services:\n  custom:\n    environment:\n      PORTAL_NAME: Custom\n");
 
-    expect(isValidChannel("custom", state.configDir)).toBe(true);
+    expect(isValidPortal("custom", state.configDir)).toBe(true);
 
     // Should NOT find an uninstalled channel
-    expect(isValidChannel("nonexistent", state.configDir)).toBe(false);
+    expect(isValidPortal("nonexistent", state.configDir)).toBe(false);
   });
 
-  test("source-only channel (not in fixed compose files) is not valid at runtime", () => {
+  test("source-only portal (not in fixed compose files) is not valid at runtime", () => {
     const state = makeState(baseDir);
     // Write to old channels/ dir, not fixed compose files.
     const channelsDir = join(state.configDir, "channels");
@@ -137,6 +136,6 @@ describe("Runtime validation uses fixed compose overlays", () => {
     writeFileSync(join(channelsDir, "unstaged.yml"), "services:\n  channel-unstaged:\n    image: unstaged:latest\n");
 
     // NOT in fixed compose files — so runtime validation should reject
-    expect(isValidChannel("unstaged", state.configDir)).toBe(false);
+    expect(isValidPortal("unstaged", state.configDir)).toBe(false);
   });
 });

@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSy
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getState } from './state.js';
+import type { RemoteStatus } from '@openpalm/lib';
 
 export type EndpointEntry = {
   id: string;
@@ -53,6 +54,21 @@ type EndpointsFile = {
 
 const DEFAULT_ID = 'default';
 const LOCAL_ELECTRON_ID = 'local-electron';
+let wizardOpencodeUrl: string | null = null;
+let remoteStatusCache: { expiresAt: number; value: RemoteStatus[] } | null = null;
+
+/** Reset the in-memory probe cache. Exposed for tests only — do not call from production code. */
+export function _resetRemoteStatusCache(): void {
+  remoteStatusCache = null;
+}
+
+export function setWizardOpencodeUrl(url: string | null): void {
+  wizardOpencodeUrl = url ? normalizeBrowserFacingUrl(url) : null;
+}
+
+export function getWizardOpencodeUrl(): string | null {
+  return wizardOpencodeUrl;
+}
 
 function endpointsPath(): string {
   return `${getState().configDir}/endpoints.json`;
@@ -419,4 +435,44 @@ export function deleteEndpoint(id: string): void {
   data.endpoints.splice(idx, 1);
   if (data.activeId === id) data.activeId = null;
   writeFile(data);
+}
+
+async function probeEndpoint(endpoint: ActiveEndpoint): Promise<RemoteStatus> {
+  const headers = new Headers();
+  if (endpoint.password) {
+    const username = endpoint.username ?? 'openpalm';
+    headers.set('authorization', `Basic ${Buffer.from(`${username}:${endpoint.password}`).toString('base64')}`);
+  }
+  try {
+    const response = await fetch(endpoint.url, {
+      method: 'GET',
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(2_000),
+    });
+    if (response.status === 401 || response.status === 403) {
+      return { id: endpoint.id, name: endpoint.label, url: endpoint.url, state: 'unauthorized', detail: `HTTP ${response.status}` };
+    }
+    if (response.ok || (response.status >= 300 && response.status < 400)) {
+      return { id: endpoint.id, name: endpoint.label, url: endpoint.url, state: 'accessible' };
+    }
+    return { id: endpoint.id, name: endpoint.label, url: endpoint.url, state: 'unreachable', detail: `HTTP ${response.status}` };
+  } catch (error) {
+    return {
+      id: endpoint.id,
+      name: endpoint.label,
+      url: endpoint.url,
+      state: 'unreachable',
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function listRemoteStatuses(): Promise<RemoteStatus[]> {
+  if (remoteStatusCache && remoteStatusCache.expiresAt > Date.now()) {
+    return remoteStatusCache.value.map((status) => ({ ...status }));
+  }
+  const statuses = await Promise.all(listEndpoints().map((endpoint) => probeEndpoint(endpoint)));
+  remoteStatusCache = { value: statuses, expiresAt: Date.now() + 5_000 };
+  return statuses.map((status) => ({ ...status }));
 }

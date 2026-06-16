@@ -1,7 +1,7 @@
 name: Publish openpalm/voice images
 # The voice (TTS/STT) Docker images are heavy (PyTorch / onnxruntime wheels) and
 # rarely change, so they are built OUT OF BAND — not on every platform release.
-# This mirrors the channel-adapter / @openpalm/ui model: the voice images are
+# This mirrors the portal-adapter / @openpalm/ui model: the voice images are
 # versioned and published on their own cadence.
 #
 # Tags pushed:
@@ -84,8 +84,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: core/voice
-          file: core/voice/Dockerfile
+          context: containers/voice
+          file: containers/voice/Dockerfile
           platforms: ${{ matrix.platforms }}
           push: true
           build-args: |

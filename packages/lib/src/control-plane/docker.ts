@@ -166,10 +166,17 @@ export async function checkDockerCompose(): Promise<DockerResult> {
   });
 }
 
-/** Build common prefix: compose -f ... --project-name ... --env-file ... --profile ... */
-function buildComposeArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
-  const envOverrides = collectEnvOverrides(options.envFiles);
-  const args = ["compose", ...options.files.flatMap((f) => ["-f", f]), "--project-name", resolveComposeProjectName(envOverrides)];
+/** Merge all env files into a single overrides object for process env. */
+export function collectComposeEnvOverrides(envFiles?: string[]): Record<string, string> {
+  const overrides: Record<string, string> = {};
+  for (const ef of envFiles ?? []) Object.assign(overrides, parseEnvFile(ef));
+  return overrides;
+}
+
+/** Build common docker compose args: -f ... --project-name ... --env-file ... --profile ... */
+export function buildComposeCommandArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
+  const envOverrides = collectComposeEnvOverrides(options.envFiles);
+  const args = ["--project-name", resolveComposeProjectName(envOverrides), ...options.files.flatMap((f) => ["-f", f])];
   for (const ef of options.envFiles ?? []) {
     if (existsSync(ef)) args.push("--env-file", ef);
   }
@@ -177,11 +184,9 @@ function buildComposeArgs(options: { files: string[]; envFiles?: string[]; profi
   return args;
 }
 
-/** Merge all env files into a single overrides object for process env. */
-function collectEnvOverrides(envFiles?: string[]): Record<string, string> {
-  const overrides: Record<string, string> = {};
-  for (const ef of envFiles ?? []) Object.assign(overrides, parseEnvFile(ef));
-  return overrides;
+/** Build common prefix: compose -f ... --project-name ... --env-file ... --profile ... */
+function buildComposeArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
+  return ["compose", ...buildComposeCommandArgs(options)];
 }
 
 /**
@@ -193,7 +198,7 @@ export async function composePreflight(
 ): Promise<DockerResult> {
   const args = buildComposeArgs(options);
   args.push("config", "--quiet");
-  return run(args, undefined, 30_000, collectEnvOverrides(options.envFiles));
+  return run(args, undefined, 30_000, collectComposeEnvOverrides(options.envFiles));
 }
 
 /**
@@ -204,7 +209,7 @@ async function runPreflight(options: { files: string[]; envFiles?: string[]; pro
   if (options.files.length === 0 || process.env.OP_SKIP_COMPOSE_PREFLIGHT) return;
   const result = await composePreflight(options);
   if (!result.ok) {
-    const project = resolveComposeProjectName(collectEnvOverrides(options.envFiles));
+    const project = resolveComposeProjectName(collectComposeEnvOverrides(options.envFiles));
     const fileArgs = options.files.map((f) => `-f ${f}`).join(" ");
     const envArgs = (options.envFiles ?? []).map((f) => `--env-file ${f}`).join(" ");
     const profileArgs = (options.profiles ?? []).map((p) => `--profile ${p}`).join(" ");
@@ -220,7 +225,7 @@ export async function composeConfigServices(
 ): Promise<{ ok: boolean; services: string[] }> {
   const args = buildComposeArgs(options);
   args.push("config", "--services");
-  const result = await run(args, undefined, 30_000, collectEnvOverrides(options.envFiles));
+  const result = await run(args, undefined, 30_000, collectComposeEnvOverrides(options.envFiles));
   if (!result.ok) return { ok: false, services: [] };
   const services = result.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
   return { ok: true, services };
@@ -249,7 +254,7 @@ export async function composeUp(
   if (options.forceRecreate) args.push("--force-recreate");
   if (options.removeOrphans) args.push("--remove-orphans");
   if (options.services?.length) args.push(...options.services);
-  return run(args, undefined, composeUpTimeoutMs(), collectEnvOverrides(options.envFiles));
+  return run(args, undefined, composeUpTimeoutMs(), collectComposeEnvOverrides(options.envFiles));
 }
 
 /**
@@ -414,7 +419,7 @@ export async function composePullService(
   await runPreflight(options);
   const args = buildComposeArgs(options);
   args.push("pull", service);
-  return run(args, undefined, PULL_TIMEOUT_MS, collectEnvOverrides(options.envFiles));
+  return run(args, undefined, PULL_TIMEOUT_MS, collectComposeEnvOverrides(options.envFiles));
 }
 
 export async function composePull(
@@ -423,7 +428,7 @@ export async function composePull(
   await runPreflight(options);
   const args = buildComposeArgs(options);
   args.push("pull");
-  return run(args, undefined, PULL_TIMEOUT_MS, collectEnvOverrides(options.envFiles));
+  return run(args, undefined, PULL_TIMEOUT_MS, collectComposeEnvOverrides(options.envFiles));
 }
 
 /**

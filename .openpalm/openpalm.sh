@@ -35,7 +35,7 @@ fi
 
 # Compose overlays, in the same order the control plane assembles them.
 files=(-f "$STACK_DIR/core.compose.yml")
-for name in services channels custom; do
+for name in services portals custom; do
   [ -f "$STACK_DIR/$name.compose.yml" ] && files+=(-f "$STACK_DIR/$name.compose.yml")
 done
 

@@ -16,6 +16,9 @@ import {
   PROVIDER_LABELS,
   LOCAL_PROVIDER_HELP,
   EMBEDDING_DIMS,
+  KNOWN_EMBEDDING_MODEL_DIMS,
+  OLLAMA_DEFAULT_CHAT_MODEL,
+  addonProfileId,
 } from '@openpalm/lib/provider-constants';
 
 // ── PROVIDER_LABELS coverage ──────────────────────────────────────────────
@@ -32,7 +35,6 @@ describe("PROVIDER_LABELS", () => {
   test("label values are human-readable (not raw slugs)", () => {
     // Spot-check a few known labels
     expect(PROVIDER_LABELS['openai']).toBe('OpenAI');
-    expect(PROVIDER_LABELS['anthropic']).toBe('Anthropic');
     expect(PROVIDER_LABELS['model-runner']).toBe('Docker Model Runner');
     expect(PROVIDER_LABELS['lmstudio']).toBe('LM Studio');
   });
@@ -101,10 +103,6 @@ describe("PROVIDER_KEY_MAP", () => {
     expect(PROVIDER_KEY_MAP['openai']).toBe('OPENAI_API_KEY');
   });
 
-  test("maps anthropic to ANTHROPIC_API_KEY", () => {
-    expect(PROVIDER_KEY_MAP['anthropic']).toBe('ANTHROPIC_API_KEY');
-  });
-
   test('maps additional supported providers', () => {
     expect(PROVIDER_KEY_MAP.deepseek).toBe('DEEPSEEK_API_KEY');
     expect(PROVIDER_KEY_MAP.together).toBe('TOGETHER_API_KEY');
@@ -133,6 +131,11 @@ describe("EMBEDDING_DIMS", () => {
     expect(EMBEDDING_DIMS['openai/text-embedding-3-large']).toBe(3072);
     expect(EMBEDDING_DIMS['google/text-embedding-004']).toBe(768);
   });
+
+  test('exposes bare model-name dimensions for browser helpers', () => {
+    expect(KNOWN_EMBEDDING_MODEL_DIMS['text-embedding-3-small']).toBe(1536);
+    expect(KNOWN_EMBEDDING_MODEL_DIMS['nomic-embed-text']).toBe(768);
+  });
 });
 
 // ── LLM_PROVIDERS array ──────────────────────────────────────────────────
@@ -146,7 +149,6 @@ describe("LLM_PROVIDERS", () => {
   test("includes both cloud and local providers", () => {
     // Cloud
     expect(LLM_PROVIDERS).toContain('openai');
-    expect(LLM_PROVIDERS).toContain('anthropic');
     // Local
     expect(LLM_PROVIDERS).toContain('model-runner');
     expect(LLM_PROVIDERS).toContain('ollama');
@@ -159,5 +161,10 @@ describe("LLM_PROVIDERS", () => {
   test("has no duplicate entries", () => {
     const unique = new Set(LLM_PROVIDERS);
     expect(unique.size).toBe(LLM_PROVIDERS.length);
+  });
+
+  test('exports wizard-safe helpers', () => {
+    expect(OLLAMA_DEFAULT_CHAT_MODEL).toBe('llama3.2:latest');
+    expect(addonProfileId('voice', 'cuda')).toBe('addon.voice.cuda');
   });
 });

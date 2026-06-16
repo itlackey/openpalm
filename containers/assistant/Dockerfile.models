@@ -1,0 +1,67 @@
+# ── Assistant embedder model bundle: openpalm/assistant-models ──────────────────
+# A tiny, build-time-only image that carries ONLY the pre-downloaded akm local
+# embedder model artifacts (Xenova/bge-small-en-v1.5, 384-dim) in the EXACT
+# transformers.js (transformers.js v4) on-disk cache layout. The assistant image
+# build (containers/assistant/Dockerfile) does `FROM openpalm/assistant-models:<tag>
+# AS modelfetch` and COPY --from's this cache, so the heavy/flaky HuggingFace
+# download happens ONCE here — not on every assistant build (and never against
+# HuggingFace during an assistant release, killing the transformers.js
+# `get_files` network flakes that broke 2/2 releases — see issue #505).
+#
+# NODE-based on purpose: the akm local embedder loads via @huggingface/transformers
+# (transformers.js), which caches into a transformers.js-SPECIFIC layout under the
+# package's `.cache/` dir. The ONLY reliable way to produce that exact layout is to
+# run the same `pipeline('feature-extraction', ...)` call once and capture `.cache`.
+# A python huggingface-hub snapshot_download (as used by voice-models) produces a
+# DIFFERENT layout that transformers.js will NOT read — so this is deliberately a
+# separate image from the python-based openpalm/voice-models. They could be
+# consolidated later into a single multi-stage "models" image if desired.
+#
+# Published OUT OF BAND by .github/workflows/publish-assistant-models.yml. The
+# artifacts are platform-AGNOSTIC data (onnx weights + tokenizer/config JSON), so
+# this is built single-arch (amd64) and the consuming build pulls it via
+# `--platform=$BUILDPLATFORM`.
+#
+# Bumping the model: change the ARGs below, publish a NEW tag (e.g. v2), and update
+# the ASSISTANT_MODELS_IMAGE default in containers/assistant/Dockerfile to match.
+# Keep the model + @huggingface/transformers major in lockstep with akm-cli's
+# dependency (akm-cli 0.8.14 → @huggingface/transformers ^4.2.0).
+# ──────────────────────────────────────────────────────────────────────────────
+FROM node:22-trixie-slim AS fetch
+
+# Same major as akm-cli's @huggingface/transformers dependency (^4.2.0). If akm-cli
+# bumps the transformers.js major, bump this together and publish a new tag.
+ARG TRANSFORMERS_VERSION=^4.2.0
+# akm's default local embedding model (akm-cli dist/llm/embedders/local.js).
+ARG EMBEDDER_MODEL=Xenova/bge-small-en-v1.5
+
+WORKDIR /build
+RUN npm init -y >/dev/null 2>&1 \
+    && npm install --no-audit --no-fund "@huggingface/transformers@${TRANSFORMERS_VERSION}"
+
+# Run ONE real feature-extraction inference to populate the transformers.js cache
+# at node_modules/@huggingface/transformers/.cache/<model>/... in the exact layout
+# the assistant runtime reads. transformers.js v4 does NOT honor HF_HUB_OFFLINE, so
+# the download is unconditional here — we retry with backoff (mirrors voice-models'
+# retry loop). HuggingFace anonymously rate-limits (429) by IP, which CI runners
+# share, so an optional authenticated `hf_token` build secret (mounted, never baked)
+# raises the limit. A final check fails the build if the cache is still empty (no
+# silent empty bundle).
+RUN --mount=type=secret,id=hf_token \
+    export HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" \
+    && for i in 1 2 3 4 5 6 7 8; do \
+         node --input-type=module -e "import { pipeline } from '@huggingface/transformers'; const embed = await pipeline('feature-extraction', '${EMBEDDER_MODEL}'); const out = await embed('warmup', { pooling: 'mean', normalize: true }); if (!out?.data?.length) { console.error('embedder produced no vector'); process.exit(1); } console.log('embedder cache populated (' + out.data.length + ' dims)');" \
+           && break; \
+         echo "embedder download attempt $i failed; retrying in $((i*8))s..." >&2; \
+         sleep $((i*8)); \
+       done \
+    && mkdir -p /opt/embedder-cache \
+    && cp -a /build/node_modules/@huggingface/transformers/.cache/. /opt/embedder-cache/ \
+    && chmod -R a+rX /opt/embedder-cache \
+    && test -n "$(find /opt/embedder-cache -type f -name '*.onnx' -print -quit)" \
+         || { echo "embedder cache missing onnx weights after retries" >&2; exit 1; }
+
+# Final image = just the data. `scratch` keeps the pull tiny (no node base): the
+# consuming build only ever COPY --from's /opt/embedder-cache.
+FROM scratch
+COPY --from=fetch /opt/embedder-cache /opt/embedder-cache

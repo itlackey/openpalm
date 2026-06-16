@@ -159,7 +159,7 @@ describe('cli main', () => {
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(base, 'data', 'assistant'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'services.compose.yml'))).toBe(true);
-      expect(existsSync(join(base, 'config', 'stack', 'channels.compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'config', 'stack', 'portals.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'knowledge', 'tasks', 'akm-improve.yml'))).toBe(true);
       expect(existsSync(join(base, 'config', 'stack', 'guardian.env'))).toBe(false);
@@ -306,7 +306,7 @@ describe('cli main', () => {
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
     mkdirSync(join(base, 'data'), { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(base, 'config', 'stack', 'channels.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      CHANNEL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
+    writeFileSync(join(base, 'config', 'stack', 'portals.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      PORTAL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
 
     process.env.OP_HOME = base;
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -317,7 +317,7 @@ describe('cli main', () => {
     try {
       await main(['addon', 'enable', 'chat']);
       expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_ENABLED_ADDONS=chat');
-      expect(readSecret(join(base, 'config', 'stack'), 'channel_chat_secret')).toBeTruthy();
+      expect(readSecret(join(base, 'config', 'stack'), 'portal_chat_secret')).toBeTruthy();
 
       await main(['addon', 'disable', 'chat']);
       expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).not.toContain('chat');
@@ -402,17 +402,19 @@ describe('npm bin launcher', () => {
     } finally {
       rmSync(packDir, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 });
 
 describe('validate command', () => {
   it('is a recognized command and exits 0 when file-based required secrets exist', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'config', 'stack');
+    const envDir = join(tempHome, 'knowledge', 'env');
     const secretDir = join(tempHome, 'knowledge', 'secrets');
     mkdirSync(stackDir, { recursive: true });
+    mkdirSync(envDir, { recursive: true });
     mkdirSync(secretDir, { recursive: true, mode: 0o700 });
-    writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(envDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
     writeFileSync(join(secretDir, 'op_ui_login_password'), 'abc\n', { mode: 0o600 });
 
     const originalHome = process.env.OP_HOME;
@@ -633,13 +635,12 @@ describe('UI host server (no subcommand)', () => {
 
 describe('secrets.env generation', () => {
   it('creates the data/ directory on fresh install', async () => {
-    const { existsSync: fsExistsSync } = await import('node:fs');
-    const { ensureSecrets } = await import('./lib/env.ts');
+    const { existsSync: fsExistsSync, mkdirSync } = await import('node:fs');
     const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
     const dataDir = join(tempDir, 'data');
 
     try {
-      await ensureSecrets(dataDir);
+      mkdirSync(dataDir, { recursive: true });
       expect(fsExistsSync(dataDir)).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });

@@ -4,30 +4,24 @@ import { createInterface } from 'node:readline';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { ensureDirectoryTree, seedOpenPalmDir, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
-import { openBrowser } from '../lib/browser.ts';
-import { runDockerCompose } from '../lib/docker.ts';
 import {
   backupOpenPalmHome,
-  buildComposeCliArgs,
   buildComposeOptions,
   composeDown,
-  detectExistingProject,
-  resolveComposeProjectName,
-  parseEnvFile,
+  initializeStateSecrets,
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig,
   performSetup,
-  applyInstall,
-  buildManagedServices,
   createState,
   createLogger,
   resolveRequestedImageTag,
   ensureAkmUserEnv,
   ensureMigrated,
   MigrationError,
+  runDeploy,
+  writeSystemEnv,
+  collectBindAddressWarnings,
   type SetupSpec,
-  type ControlPlaneState,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
@@ -144,44 +138,12 @@ async function requireDocker(): Promise<void> {
   await requireCmd(['docker', 'compose', 'version'], 'Docker Compose v2 is required. Install it: https://docs.docker.com/compose/install/');
 }
 
-/** Compose project name for a state, resolved from its stack.env. */
-function projectNameForState(state: ControlPlaneState): string {
-  return resolveComposeProjectName(parseEnvFile(`${state.stashDir}/env/stack.env`));
-}
-
 async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = ensureValidState();
-
-  // #461: detect an already-running compose project that shares our name.
-  // If it belongs to a DIFFERENT OpenPalm install (foreign working_dir),
-  // refuse with a clear message instead of letting `compose up` emit a raw
-  // "project already running"/port-bind error. If it's OURS, the
-  // --force-recreate below reconciles it idempotently.
-  const existing = await detectExistingProject({
-    projectName: projectNameForState(state),
-    // Compose records the project working_dir as the first compose file's dir
-    // (OP_HOME/config/stack === state.stackDir), not OP_HOME — so compare
-    // against state.stackDir or our own re-install looks "foreign" and refuses.
-    expectedWorkingDir: state.stackDir,
-  });
-  if (existing.exists && !existing.isOurs) {
-    throw new Error(
-      `Another OpenPalm stack is already running from ${existing.workingDir || 'a different OP_HOME'} ` +
-      `under the docker project "${projectNameForState(state)}". Stop it first, or set OP_PROJECT_NAME ` +
-      `to a distinct value in knowledge/env/stack.env before installing here.`,
-    );
-  }
-
-  await applyInstall(state);
-  const managedServices = await buildManagedServices(state);
-  const composeArgs = buildComposeCliArgs(state);
-  if (pull) await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => console.warn('Warning: image pull failed.'));
-  // force-recreate + remove-orphans: idempotent reconcile (matches performUpgrade
-  // and the UI deploy path). Recreates containers over an existing OURS stack and
-  // prunes services dropped from the compose set. (#461)
-  await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate', '--remove-orphans', ...managedServices]);
-  console.log(JSON.stringify({ ok: true, mode, services: managedServices }, null, 2));
-  return managedServices;
+  const result = await runDeploy(state);
+  if (result.deployError) throw new Error(result.deployError);
+  console.log(JSON.stringify({ ok: true, mode, services: result.deployStatus.map((entry) => entry.service), pull }, null, 2));
+  return result.deployStatus.map((entry) => entry.service);
 }
 
 async function parseConfigFile(filePath: string, raw: string): Promise<Record<string, unknown>> {
@@ -196,6 +158,12 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 }
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
+  // Warn early if any bind address is non-loopback so the operator sees it
+  // before services start.
+  for (const line of collectBindAddressWarnings(process.env as Record<string, string>)) {
+    logger.warn(line);
+  }
+
   const homeDir = resolveOpenPalmHome();
   const configDir = resolveConfigDir();
   const dataDir = `${homeDir}/data`;
@@ -214,7 +182,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   } catch (err) {
     if (err instanceof MigrationError) {
       console.error(`\nAutomatic migration aborted: ${err.message}\n${err.guidance}`);
-      if (err.backupDir) console.error(`Backup: ${err.backupDir}`);
+      if (err.backupDir) {
+        console.error(`If something went wrong, your previous state is backed up at ${err.backupDir} — run \`openpalm rollback\`.`);
+      }
       process.exit(1);
     }
     throw err;
@@ -228,7 +198,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   }
 
   if (alreadyInstalled && options.force) {
-    // Use the helper's own backup-path convention so the prompt is honest about
     // Match backupOpenPalmHome()'s convention so the prompt is honest.
     const plannedBackup = `${homeDir}/data/backups/<timestamp>`;
 
@@ -238,15 +207,15 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const interactive = process.stdin.isTTY && process.stdout.isTTY;
     if (!options.assumeYes && interactive) {
       const proceed = await promptYesNo(
-        `--force will move the existing OpenPalm install at ${homeDir} to ${plannedBackup}. Continue? [y/N]`,
+        `--force will back up (copy) the existing OpenPalm install at ${homeDir} to ${plannedBackup}. Continue? [y/N]`,
       );
       if (!proceed) {
         console.log('Install aborted. Re-run with --yes (or -y) to skip this confirmation in non-interactive use.');
         return;
       }
     }
-    // #461: stop the currently-running stack BEFORE moving OP_HOME aside.
-    // Moving the home dir while the old stack is up leaves orphaned containers
+    // #461: stop the currently-running stack BEFORE backing up OP_HOME.
+    // Backing up the home dir while the old stack is up leaves orphaned containers
     // holding the project name + host ports, so the fresh install collides on
     // `compose up`. Volumes are preserved (no -v). Best-effort: a Docker-down
     // host or a never-started install simply has nothing to bring down.
@@ -321,15 +290,12 @@ async function prepareInstallFiles(
   }
 
   console.log('Configuring secrets...');
-  await ensureSecrets(dataDir);
-  await ensureStackEnv(homeDir, configDir, workDir, version, resolveRequestedImageTag(version) ?? undefined);
-
-  if (!(await Bun.file(join(configDir, 'stack', 'auth.json')).exists())) {
-    await Bun.write(join(configDir, 'stack', 'auth.json'), '{}\n');
-  }
+  const bootstrapState = createState();
+  initializeStateSecrets(bootstrapState);
+  writeSystemEnv(bootstrapState);
   // Ensure the akm env:user file exists (empty 0600) so the assistant can
   // source it. Owned and edited directly by OpenPalm — see akm-user-env.ts.
-  ensureAkmUserEnv(createState());
+  ensureAkmUserEnv(bootstrapState);
 
   try { ensureOpenCodeConfig(); ensureOpenCodeSystemConfig(); } catch (err) { logger.debug('failed to ensure OpenCode config', { error: String(err) }); }
 }

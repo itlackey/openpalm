@@ -4,7 +4,7 @@
 
 The foundation of the OpenPalm stack is simply a set of conventions used to manage Docker compose overlay files, .env files, and configuration files related to specific services in the stack. That is it. That is what the entire stack is built upon.
 
-There are two core containers, the guardian and the assistant. These containers are designed to do one thing each. Both are OpenCode-based services. The assistant uses the akm CLI (with the host `knowledge/` directory bind-mounted at `/stash`) for persistent memory, skills, lessons, and knowledge — there is no separate memory service. The guardian verifies and forwards channel traffic; its bundled OpenCode runtime additionally powers optional, fail-closed **content validation** of inbound messages (off by default — see § Guardian-only ingress). Both OpenCode runtimes share one provider-credential file (`knowledge/secrets/auth.json`). Automation scheduling runs as a Bun co-process inside the assistant container (no separate service, no network port).
+There are two core containers, the guardian and the assistant. These containers are designed to do one thing each. Both are OpenCode-based services. The assistant uses the akm CLI (with the host `knowledge/` directory bind-mounted at `/stash`) for persistent memory, skills, lessons, and knowledge — there is no separate memory service. The guardian verifies and forwards portal traffic; its bundled OpenCode runtime additionally powers optional, fail-closed **content validation** of inbound messages (off by default — see § Guardian-only ingress). Both OpenCode runtimes share one provider-credential file (`knowledge/secrets/auth.json`). Automation scheduling runs as a Bun co-process inside the assistant container (no separate service, no network port).
 
 The stack allows for three primary extension points.
 
@@ -12,7 +12,7 @@ The stack allows for three primary extension points.
 2. **Assistant extensions** are standard OpenCode resources that are mounted into the assistant container.
 3. **Automations** that run on the scheduler co-process inside the assistant container and have direct in-container access to the assistant to execute workflows on a recurring basis.
 
-The stack defines a special type of addon, referred to as a channel. These are services that use the openpalm/channel docker image with a known entry point that uses the openpalm/channels-sdk. These containers are meant to be the entry point to the stack, and provide services like Discord/Slack/Telegram bots and MCP/API servers. Addons that provide services/tools to the rest of the stack can also be added — these can be any container you have access to pull (ollama for example, or the `channel-voice` static file server which serves a voice chat UI directly from the browser without a guardian pipeline).
+The stack defines a special type of addon, referred to as a portal-style ingress addon. These services use the `openpalm/portal` docker image for baked protocol adapters such as Discord and Slack, while guardian-hosted ingress surfaces such as the OpenAI-compatible API and MCP gateway run from the `openpalm/guardian` image. These are the entry points to the stack for external protocols. Addons that provide services/tools to the rest of the stack can also be added — these can be any container you have access to pull (ollama for example, or the voice static file server which serves a browser UI without a guardian pipeline).
 
 ## File System
 
@@ -56,9 +56,9 @@ All of this functionality exists to simplify managing files under the OP_HOME di
 These are hard constraints that must never be violated during development. See also the Security boundaries summary in `foundations.md`, which provides a condensed version of these rules for quick reference.
 
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin UI is a host process (a Bun.serve server started by `openpalm`) that serves the `@openpalm/ui` SvelteKit build (resolved from `OP_HOME/data/ui`, seeded on install/update from the npm registry) and manages Docker Compose via the host Docker socket. There is no admin container. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any container.
-2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces structural payload validation, HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant. Channel secrets are distributed during addon install (see § Addon secret lifecycle below). When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian additionally runs a **content-validation** stage before forwarding: a deterministic heuristic pre-screen escalates suspicious messages to a local OpenCode moderator (loopback, small model, shared provider creds) that returns an allow/flag/block verdict. The policy is **fail-closed** — an escalated message the moderator cannot classify is blocked — so the stage is opt-in and off by default.
+2. **Guardian-only ingress.** All portal traffic enters through the guardian, which enforces principal authentication, endpoint allowlisting, ownership checks, rate limiting, and optional content validation. No portal may communicate directly with the assistant. Principal secrets are distributed during addon install (see § Addon secret lifecycle below). When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian additionally runs a **content-validation** stage before forwarding: a deterministic heuristic pre-screen escalates suspicious messages to a local OpenCode moderator (loopback, small model, shared provider creds) that returns an allow/flag/block verdict. The policy is **fail-closed** — an escalated message the moderator cannot classify is blocked — so the stage is opt-in and off by default.
 3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `config/assistant/ -> /etc/opencode`, `config/akm/ -> /etc/akm`, `knowledge/secrets/auth.json -> /home/opencode/.local/share/opencode/auth.json`, `data/assistant/ -> /home/opencode`, `knowledge/ -> /stash` (shared akm knowledge), `data/akm/cache/ -> /opt/akm/cache`, `data/akm/data/ -> /opt/akm/data`, `workspace/ -> /work`, and the `assistant-persistent` named volume at `/opt/persistent`. There is no `/etc/vault/` mount; user secrets are read via `akm env:user`. The assistant has no network path to the host admin process (which binds to `127.0.0.1` only) and no admin tools — it cannot perform stack operations. Stack operations are handled exclusively by the host CLI and admin UI.
-4. **Host only by default.** Admin interfaces, dashboards, and channels are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI uses an `httpOnly` `SameSite=Strict` session cookie (no `localStorage` token). A `Host` header allowlist on every handler closes DNS rebinding. The admin process binds to `127.0.0.1` only and is never publicly exposed. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, they must provide the OpenCode password as a file-based secret and enable `OPENCODE_AUTH` — the compose comments document this requirement.
+4. **Host only by default.** Admin interfaces, dashboards, and portals are host-restricted by default. Nothing is exposed to the network or internet without explicit user opt-in. The admin UI uses an `httpOnly` `SameSite=Strict` session cookie (no `localStorage` token). A `Host` header allowlist on every handler closes DNS rebinding. The admin process binds to `127.0.0.1` only and is never publicly exposed. **OpenCode auth (`OPENCODE_AUTH`) is disabled by default** because all host port bindings default to `127.0.0.1` (loopback-only) and the guardian communicates with the assistant over Docker's `assistant_net` network without credentials. If a user changes `OP_ASSISTANT_BIND_ADDRESS` to `0.0.0.0`, that is outside the supported hardening path for 0.12.0's guardian-managed ingress; the assistant no longer has guardian-side upstream auth plumbing to pair with `OPENCODE_AUTH`.
 5. **Scheduler access is scoped to automation needs.** The scheduler co-process inherits the assistant container's mounts and environment and shares `knowledge/tasks/`, `data/akm/cache/`, and `data/akm/data/`. It calls `http://localhost:4096` for `assistant`-type actions only. Stack-level cron jobs run via host OS cron using the CLI (`openpalm` commands), not via an in-container admin API call.
 6. **Admin is host-only.** Admin binds exclusively to `127.0.0.1` and is never reachable from the Docker bridge network or any container. Containers cannot reach admin under any configuration. The admin process manages Docker Compose directly on the host via the host Docker socket — there is no docker-socket-proxy container.
 
@@ -82,24 +82,23 @@ Subtrees:
 - `akm/` — AKM configuration (LLM, embedding, and related settings in `config.json`)
 - `endpoints.json` — OpenCode connection list (URL, label, optional password per endpoint) used by the admin UI's connection switcher; mode 0600. Survives `data/` wipes by design.
 
-**Rule:** allowed writers are: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or making targeted updates.
+**Rule:** allowed writers are: user direct edits and explicit admin UI/API config actions. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or make targeted updates.
+
+**Guardian config refresh (skip-if-user-modified):** Files under `config/guardian/` that ship with sensible defaults (currently `instructions/moderation.md`) are _managed_ but operator-editable. On a managed-asset refresh (install, upgrade, or explicit refresh), such a file is only overwritten when its on-disk content is byte-identical to one of the previously shipped defaults recorded in `SHIPPED_DEFAULT_HASHES` in `packages/lib/src/control-plane/core-assets.ts`. If the operator has edited the file, the refresh keeps the existing content and surfaces a structured log notice: _"guardian managed asset kept (user-modified); new default available"_. The list of kept paths is also returned as `kept[]` by `refreshCoreAssetsFromSource` / `refreshCoreAssets` so callers can display the notice to the operator. When a new shipped default is released, its sha256 hash must be appended to the corresponding `SHIPPED_DEFAULT_HASHES` entry so older unmodified installs can still be upgraded.
 
 ### 1b) Stack (system-managed runtime assembly)
 
 **Location:** `~/.openpalm/config/stack/`
-**Purpose:** live Docker Compose assembly and stack configuration used to run the stack.
+**Purpose:** live Docker Compose assembly used to run the stack.
 
 Subtrees:
 
-- `stack.yml` — stack schema marker and enabled first-party addon names (`version: 2`, optional `addons: []`)
-- `stack.env` — system-managed non-secret environment variables written by CLI/admin (paths, ports, image tags, hardware profile selections, feature flags)
-- `auth.json` — OpenCode provider credentials (API keys / OAuth tokens), mode 0600. The single shared credential store, bind-mounted into the assistant (read-write) and the guardian (read-only) so both OpenCode runtimes use the same providers.
 - `core.compose.yml` — base compose definition for core assistant runtime services
 - `services.compose.yml` — system-managed first-party optional services, profile-gated
-- `channels.compose.yml` — system-managed first-party optional channels, profile-gated
+- `portals.compose.yml` — system-managed first-party optional portals, profile-gated
 - `custom.compose.yml` — user-editable custom services and overlays, seeded once and never overwritten automatically
 
-First-party optional services are enabled by adding their addon names to `stack.yml`; OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit manual `--profile` arguments remain valid for ad hoc Docker Compose use. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
+First-party optional services are enabled by updating `OP_ENABLED_ADDONS` in `knowledge/env/stack.env`; OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit manual `--profile` arguments remain valid for ad hoc Docker Compose use. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
 
 ### 2) Knowledge / Vaults (user-managed secrets and knowledge)
 
@@ -111,11 +110,11 @@ Subtrees:
 - `env/user.env` — AKM env backing file for user-managed secrets. It is not a Compose `--env-file`; secrets are accessible inside the assistant container via `akm env:user`.
 - `tasks/` — AKM YAML task files for scheduled automations. AKM owns task enablement state.
 
-System-managed runtime files live in `config/stack/`:
+System-managed runtime configuration and secrets live under `knowledge/`:
 - `knowledge/env/stack.env` — system-managed non-secret configuration: paths, ports, image tags, profiles, and feature flags. Written by CLI/admin. Advanced users may edit directly with understanding of the compose substitution model.
 - `knowledge/secrets/` — system-managed file secrets. Compose grants each service only the files it needs; containers receive secret paths through `*_FILE` variables.
 
-**Rule:** the assistant reads user secrets via `akm env:user` from its knowledge bind mount (host `knowledge/` at `/stash`). There is no separate `/etc/vault/` container mount. Guardian, channels, assistant, and any admin-adjacent service receive system secrets only as Compose secret files, never as broad env files or raw secret environment variables. The scheduler co-process inherits the assistant container's mounts and environment.
+**Rule:** the assistant reads user secrets via `akm env:user` from its knowledge bind mount (host `knowledge/` at `/stash`). There is no separate `/etc/vault/` container mount. Guardian, portals, assistant, and any admin-adjacent service receive system secrets only as Compose secret files, never as broad env files or raw secret environment variables. The scheduler co-process inherits the assistant container's mounts and environment.
 
 ### 3) Data (service-managed, durable)
 
@@ -137,7 +136,7 @@ The shared work area lives in `workspace/`.
 **Location:** `~/.openpalm/data/logs/`
 **Purpose:** consolidated log output from all services.
 
-Files: `guardian-audit.log` (channel ingress — guardian's own audit), plus
+Files: `guardian-audit.log` (portal ingress — guardian's own audit), plus
 OpenCode session and tool-invocation logs under
 `data/assistant/.local/state/opencode/` and `data/admin-opencode/log/`.
 
@@ -168,7 +167,7 @@ Ephemeral system cache, when needed, belongs under `~/.cache/openpalm/`, not in 
 ### A) Compose: modular by native multi-file composition
 
 The stack is defined by combining the fixed Compose file set with Compose's native multi-file merge rules. ([Docker Documentation][3])
-**Implication:** the default file list is `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and `custom.compose.yml`. First-party optional services are activated with Compose profiles. Custom containers and overlays belong in `custom.compose.yml`; rerunning Docker Compose with the same fixed file list and updated profiles applies changes.
+**Implication:** the default file list is `core.compose.yml`, `services.compose.yml`, `portals.compose.yml`, and `custom.compose.yml`. First-party optional services are activated with Compose profiles. Custom containers and overlays belong in `custom.compose.yml`; rerunning Docker Compose with the same fixed file list and updated profiles applies changes.
 
 ### B) OpenCode: core precedence via baked-in `/etc/opencode`
 
@@ -181,8 +180,8 @@ The stack is defined by combining the fixed Compose file set with Compose's nati
 
 To guarantee lifecycle operations never clobber user configuration:
 
-- **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits, CLI/admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested.
-- **`config/stack/` is the live runtime assembly and system-managed configuration.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, `channels.compose.yml`, and non-secret `stack.env`. `custom.compose.yml` is seeded once and user edits always win.
+- **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits and CLI/admin UI/API config actions — may create/update/remove files as requested. A **layout migration** is the one automatic path permitted to *remove* files, and only SYSTEM-managed inert ones (e.g. a renamed/retired compose overlay the control plane no longer loads) via an explicit allowlist in `migrations.ts` — never user data, never a heuristic sweep, and only because the layout-migration path takes a full OP_HOME backup first (abort-if-fails), so a stamped layout bump is always recoverable. An inert file that *holds* user data is relocated, not dropped.
+- **`config/stack/` is the live runtime assembly.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, and `portals.compose.yml`. `custom.compose.yml` is seeded once and user edits always win. Non-secret runtime configuration lives in `knowledge/env/stack.env`.
 - **`knowledge/env/` has strict access rules.** The assistant accesses user secrets via `akm env:user` from its `/stash` stash mount. There is no separate `/etc/vault/` mount. No container mounts `knowledge/env/` directly. Lifecycle operations never overwrite `knowledge/env/user.env`; they may update non-secret `knowledge/env/stack.env` and system-managed secret files in `knowledge/secrets/`.
 - **`data/` is service-writable within ownership boundaries.** Each container owns its designated data subdirectories. No container may access another service's data directories. Stack-wide data operations require the admin API.
 - **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies (in `/tmp/openpalm`) before writing to live paths (`$OP_HOME/config/stack`). A snapshot of the current stack configuration is saved to `$OP_HOME/data/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored. See § Rollback scope below for what is included in the snapshot.
@@ -212,6 +211,23 @@ All portable control-plane logic — lifecycle management, addon operations, sec
 
 ---
 
+## Thin-harness boundary (Electron) and harness-contract discipline
+
+The Electron desktop app is a **thin native harness**, not a copy of the control plane. Re-downloading the app is required **only when the native harness surface itself changes** — `BrowserWindow` / `Tray` / IPC channels / preload bridge / native modules / entitlements / PATH shims. Everything else self-updates in place over npm (`@openpalm/ui` → `data/ui`) and `compose pull` (stack images) with **no app re-download**: the admin UI build, the `@openpalm/lib` control plane (including `RELEASE_MIGRATIONS` and the lifecycle deploy path), and the CLI's view of the served UI.
+
+**Hard rules:**
+
+- **The frozen harness bundle runs no migrations.** `packages/electron/dist/main.js` (inlined into the asar) MUST contain **zero** mutating control-plane symbols (`ensureReleaseMigrated`, `RELEASE_MIGRATIONS`, `performUpgrade`, `applyTagChange`). Every state-mutating operation runs in the spawned `data/ui` control plane, which carries its own inlined `@openpalm/lib`. The CI guard `scripts/validate-thin-harness-boundary.sh` enforces this (and that the UI build *does* carry those symbols).
+- **`main.ts` imports only the bootstrap allowlist from `@openpalm/lib`** — path resolvers, `ensureHomeDirs`, `seedOpenPalmDir`, `seedUiBuild`, `checkAndUpdateUiBuild`, `uiUpdateChannel`, `parseEnvFile`, `PLATFORM_VERSION`, and the Docker preflight probes (`checkDocker`/`checkDockerCompose`). Adding any mutating control-plane symbol to that import set fails CI. This is the mechanical expression of "the harness is bootstrap-only."
+- **`data/ui` is the steady-state executor.** Supervisors (the Electron harness and `openpalm ui serve`) call `checkAndUpdateUiBuild` before resolving + spawning, so a strictly-newer `data/ui` always wins. A de-route back to the frozen bundled lib (missing/stale stamp) MUST be logged, never silent (`resolveUiBuildDir`).
+- **Two independent version lines.** `PLATFORM_VERSION` (in `@openpalm/lib`, travels with `data/ui`) bumps on every control-plane/migration/UI release and **never** forces a re-download. `HARNESS_CONTRACT_VERSION` (a single integer in `packages/electron/src/harness-contract.ts`) bumps **only** when the §5.1 contract surface — renderer IPC bridge, spawn-env keys, or FS/spawn conventions — changes name/argument/return/required-key, and **does** force a re-download. Never feed `app.getVersion()` into control-plane inputs.
+- **Self-update-vs-redownload gate.** A published `@openpalm/ui` build declares `minHarnessContract`. The harness self-updates only when `minHarnessContract ≤ HARNESS_CONTRACT_VERSION`; otherwise it refuses the pull and prompts a re-download (running newer-UI-on-older-harness fails at runtime).
+- **Harness-contract discipline.** When you change anything in the §5.1 surface (see `harness-contract.ts`), bump `HARNESS_CONTRACT_VERSION` **and** update the `HARNESS_CONTRACT` description in the same change. A snapshot test fails CI until the bump is intentional — it enforces that a change was *noticed*, not that the bump is semantically right; that judgement is the contributor's.
+
+Full rationale and the file-level history live in [`electron-thin-harness-design.md`](./electron-thin-harness-design.md) and the deployment/upgrade UX findings in [`deployment-upgrade-ux-review.md`](./deployment-upgrade-ux-review.md).
+
+---
+
 ## Service port assignments
 
 Host-exposed OpenPalm services default to a small localhost-friendly port set. Core services use the `38xx` range and addon edges map their internal ports onto nearby host ports for manual use.
@@ -219,9 +235,9 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | Service | Internal Port | Default Host Bind | Purpose |
 |---------|--------------|-------------------|---------|
 | **Assistant** (OpenCode) | 4096 | `127.0.0.1:3800` | OpenCode web UI + API |
-| **Voice addon** | 8186 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
+| **Voice addon** | 8186 | `127.0.0.1:8880` | Voice interface (TTS/STT) |
 | **Admin** | 8100 | `127.0.0.1:3880` | Admin UI + API |
-| **Guardian** | 8080 | (internal only) | HMAC verification, rate limiting, optional content validation |
+| **Guardian** | 8080 | (internal only) | Principal auth, `/oc/*` proxy, rate limiting, optional content validation |
 | **Guardian moderator** (OpenCode) | 4097 | (loopback only) | Local content-moderation model (when content validation is enabled) |
 | **Chat addon** | 8181 | `127.0.0.1:3820` | OpenAI-compatible chat edge |
 | **API addon** | 8182 | `127.0.0.1:3821` | OpenAI/Anthropic-compatible API edge |
@@ -236,36 +252,32 @@ Docker builds run outside the Bun workspace — the monorepo's hoisted `node_mod
 
 Admin is a host binary (not a Docker service). The `@openpalm/ui` SvelteKit app is **independently versioned and published to npm** (it lives in `independentNpmPackages` in `.github/release-package-groups.json`, not in `platformManifests`). The CLI seeds it into `OP_HOME/data/ui` on install/update by fetching the npm registry tarball, verifying the `dist.integrity` sha512 hash fail-closed, and atomically swapping the build into place. The Electron desktop app additionally bundles a copy of the UI build at compile time via `extraResources` and auto-updates it from npm at launch via `checkAndUpdateUiBuild`.
 
-### Guardian + Channels (Bun runtime)
+### Guardian + Portals (Bun runtime)
 
-These Dockerfiles copy `packages/channels-sdk` source into `/app/node_modules/@openpalm/channels-sdk` and install sdk dependencies afterward:
+These Dockerfiles install each service's own dependencies directly inside the image:
 
-```dockerfile
-RUN cd /app/node_modules/@openpalm/channels-sdk && bun install --production
-```
-
-This ensures sdk transitive dependencies are available at runtime.
+This ensures each service's local runtime dependencies are available at runtime.
 
 **Rules:**
 
-- Every Dockerfile that copies `packages/channels-sdk` must run `bun install --production` inside the copied sdk directory.
-- If `packages/channels-sdk/package.json` gains new dependencies, all service Dockerfiles automatically pick them up — no per-service changes needed.
-- The assistant **and the guardian** images install the OpenCode binary (the guardian uses it for content validation). Keep `OPENCODE_VERSION` in lockstep between `core/assistant/Dockerfile` and `core/guardian/Dockerfile`.
+- Every Dockerfile that bakes a service from the workspace must install that service's declared runtime dependencies during the image build.
+- Guardian-local helpers stay in `containers/guardian/src/`; adapter-local helpers stay inside the adapter package that uses them.
+- The assistant **and the guardian** images install the OpenCode binary (the guardian uses it for content validation). Keep `OPENCODE_VERSION` in lockstep between `containers/assistant/Dockerfile` and `containers/guardian/Dockerfile`.
 
 ---
 
 ## Addon secret lifecycle
 
-When a channel addon is installed, the following secret distribution flow occurs:
+When a portal addon is installed, the following secret distribution flow occurs:
 
-1. **Generation:** a shared HMAC secret is generated by the CLI or admin during addon install.
-2. **Guardian side:** the secret is written as a `0600` file under `knowledge/secrets/` and granted only to the guardian through Compose `secrets:`. Guardian receives the path through a `*_FILE` environment variable.
-3. **Channel side:** the same secret is granted only to the matching channel service through Compose `secrets:`. The channel receives the path through a `*_FILE` environment variable so the channels-sdk can sign outbound requests.
-4. **Verification:** on every inbound request, guardian verifies the HMAC signature using the channel's secret, rejects replayed nonces, and enforces rate limits — and, when content validation is enabled, screens the message content — before forwarding to the assistant.
+1. **Generation:** a per-principal shared secret is generated by the CLI or admin during addon install.
+2. **Guardian side:** the secret is written as a `0600` file under `knowledge/secrets/` and granted only to the guardian through Compose `secrets:`. Guardian uses those files to seed principal records at boot.
+3. **Portal side:** the same secret is granted only to the matching portal service through Compose `secrets:`. The portal receives the path through `PRINCIPAL_SECRET_FILE` and authenticates every `/oc/*` call with Basic auth.
+4. **Verification:** on every inbound request, guardian authenticates the principal, enforces allowlist/ownership/rate-limit checks, and, when content validation is enabled, screens prompt-bearing traffic before forwarding to the assistant.
 
-Secret grants are intentionally narrow: assistant services may receive assistant/provider/user secret files, guardian may receive guardian and channel verification secret files, channel services may receive only their own channel secret files, and admin host processes read required secrets directly from the host filesystem. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths.
+Secret grants are intentionally narrow: assistant services may receive assistant/provider/user secret files, guardian may receive guardian and portal verification secret files, portal services may receive only their own portal secret files, and admin host processes read required secrets directly from the host filesystem. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths.
 
-Both sides must have the same secret value. Rotating a channel secret requires updating both the guardian's secret store and the channel's env, then restarting the channel (guardian picks up the change via hot-reload if using `GUARDIAN_SECRETS_PATH`).
+Both sides must have the same secret value. Rotating a portal principal secret requires updating both secret files, then recreating the guardian and affected portal services so both read the new value.
 
 ---
 
@@ -281,7 +293,7 @@ Addon overlays may extend core services by injecting environment variables or vo
 
 When the CLI or admin performs an apply operation, a snapshot is saved to `$OP_HOME/data/rollback/` before any writes. The snapshot includes:
 
-- `config/stack/` — the full live compose assembly, non-secret runtime env, file-based system secrets, and compose files (`core.compose.yml`, `channels.compose.yml`, `services.compose.yml`, `custom.compose.yml`, `stack.env`, `secrets/`)
+- `config/stack/` — the full live compose assembly, non-secret runtime env, file-based system secrets, and compose files (`core.compose.yml`, `portals.compose.yml`, `services.compose.yml`, `custom.compose.yml`, `stack.env`, `secrets/`)
 
 The snapshot does **not** include `config/` user files outside `config/stack/` (non-destructive for user edits), `knowledge/env/user.env` (never overwritten by lifecycle operations), or `data/` (service-owned runtime data).
 
@@ -291,7 +303,7 @@ On health check failure after deploy, the snapshot is automatically restored and
 
 ## Operational behavior
 
-- **Add an addon:** enable its name in `~/.openpalm/config/stack/stack.yml` (for first-party addons) or add a service block to `custom.compose.yml` (for custom services), then rerun the compose command with the appropriate `--profile addon.<name>` arguments. ([Docker Documentation][3])
+- **Add an addon:** update `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` (for first-party addons) or add a service block to `custom.compose.yml` (for custom services), then rerun the compose command with the appropriate `--profile addon.<name>` arguments. ([Docker Documentation][3])
 - **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode's directory structure. ([OpenCode][1])
 - **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
 - **Apply changes:** the CLI or admin validates proposed changes (compose config and secret-audit rules) before writing anything. If validation passes, a snapshot of current live files is saved to `$OP_HOME/data/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution for non-secret values. Compose is normally invoked with non-secret `knowledge/env/stack.env`; service secrets live under `knowledge/secrets/` and are granted via Compose `secrets:`. `knowledge/env/user.env` is not a Compose env-file. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` user files and `knowledge/env/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `config/stack/`.

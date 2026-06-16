@@ -392,7 +392,7 @@ OpenPalm-instance-private and are never repointed at the personal akm's dirs.
 
 ### 8.4 Entrypoint change (P0 — mandatory)
 
-`core/assistant/entrypoint.sh:46` currently does
+`containers/assistant/entrypoint.sh:46` currently does
 `chown -R … /home/opencode /work /opt/akm /stash`. With `/host-stash` added this would
 recursively rewrite ownership of the user's **personal** stash on every boot. The fix:
 the container already runs as `OP_UID:OP_GID` (the host owner, via gosu), so it can
@@ -556,7 +556,7 @@ All issues found while mapping the integration, with evidence and disposition. S
 ### P0 — data-loss / safety
 
 **I-1. Entrypoint recursively chowns bind-mounted host stashes on every boot.**
-`core/assistant/entrypoint.sh:46` runs `chown -R … /stash` (and would hit `/host-stash`).
+`containers/assistant/entrypoint.sh:46` runs `chown -R … /stash` (and would hit `/host-stash`).
 `/stash` is the host's `OP_HOME/knowledge`; `/host-stash` is the user's personal `~/akm`.
 With a host UID ≠ 1000, or with host-akm sharing on, this silently rewrites ownership of
 the user's files every start. **Fix:** §8.4 — chown only container-private paths; never a
@@ -631,17 +631,17 @@ mutate the user's global config.
 
 ### P2 — cleanup / docs / follow-up
 
-**I-7. Guardian ships akm-cli but has no akm mounts/env.** `core/guardian/Dockerfile:34`
+**I-7. Guardian ships akm-cli but has no akm mounts/env.** `containers/guardian/Dockerfile:34`
 installs `akm-cli@next` "for shared stash, env, secret, skill management," but
-`channels.compose.yml` mounts the guardian only `config/guardian:/etc/opencode` +
+`portals.compose.yml` mounts the guardian only `config/guardian:/etc/opencode` +
 `auth.json:ro` — **no `AKM_*` env, no stash/config/cache/data volumes**. akm inside the
 guardian would fall back to an ephemeral default stash under `HOME=/opt/openpalm/guardian`.
 **Decide:** either (a) remove akm-cli from the guardian image and fix the comment, or
 (b) wire the guardian into the same safety model as a **third reader** (read-only stash
 mount, own data/cache) — it must not become an unmanaged third *writer*.
 
-**I-8. `AKM_CLI_VERSION=next` pinned to a moving prerelease** in both `core/assistant/
-Dockerfile:19` and `core/guardian/Dockerfile:34`. A `next` republish can change akm
+**I-8. `AKM_CLI_VERSION=next` pinned to a moving prerelease** in both `containers/assistant/
+Dockerfile:19` and `containers/guardian/Dockerfile:34`. A `next` republish can change akm
 behavior under a fixed OpenPalm image — and this feature depends on multi-source/sync
 semantics. **Fix:** pin to an exact version before 0.11.0 stable (existing TODO at
 assistant Dockerfile:18). Tracked in [[project_0110_stable_cutover_todo]].

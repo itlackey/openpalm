@@ -6978,7 +6978,7 @@ var require_main = __commonJS((exports, module) => {
   var fs = __require("fs");
   var path = __require("path");
   var os = __require("os");
-  var crypto = __require("crypto");
+  var crypto2 = __require("crypto");
   var TIPS = [
     "◈ encrypted .env [www.dotenvx.com]",
     "◈ secrets for agents [www.dotenvx.com]",
@@ -7224,7 +7224,7 @@ var require_main = __commonJS((exports, module) => {
     const authTag = ciphertext.subarray(-16);
     ciphertext = ciphertext.subarray(12, -16);
     try {
-      const aesgcm = crypto.createDecipheriv("aes-256-gcm", key, nonce);
+      const aesgcm = crypto2.createDecipheriv("aes-256-gcm", key, nonce);
       aesgcm.setAuthTag(authTag);
       return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
     } catch (error) {
@@ -7294,10 +7294,33 @@ var require_main = __commonJS((exports, module) => {
 
 // src/main.ts
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences } from "electron";
-import { join as join3, dirname as dirname2 } from "node:path";
-import { existsSync as existsSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync as rmSync2, mkdirSync as mkdirSync4, createWriteStream } from "node:fs";
+import { join as join6, dirname as dirname4 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync6, writeFileSync as writeFileSync5, rmSync as rmSync2, mkdirSync as mkdirSync6, createWriteStream } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { spawn as spawn2 } from "node:child_process";
+import { spawn as spawn3 } from "node:child_process";
+
+// ../lib/src/provider-constants.ts
+var EMBEDDING_DIMS = {
+  "openai/text-embedding-3-small": 1536,
+  "openai/text-embedding-3-large": 3072,
+  "openai/text-embedding-ada-002": 1536,
+  "ollama/nomic-embed-text": 768,
+  "ollama/mxbai-embed-large": 1024,
+  "ollama/mxbai-embed-large-v1": 1024,
+  "ollama/all-minilm": 384,
+  "ollama/snowflake-arctic-embed": 1024,
+  "model-runner/ai/mxbai-embed-large-v1": 1024,
+  "mistral/mistral-embed": 1024,
+  "google/text-embedding-004": 768,
+  "huggingface/sentence-transformers/all-MiniLM-L6-v2": 384,
+  "huggingface/intfloat/multilingual-e5-large": 1024
+};
+var KNOWN_EMBEDDING_MODEL_DIMS = Object.fromEntries(Object.entries(EMBEDDING_DIMS).map(([key, dims]) => [key.slice(key.indexOf("/") + 1), dims]));
+var OLLAMA_DEFAULT_MODELS = {
+  chat: "llama3.2:latest",
+  embedding: "nomic-embed-text"
+};
+var OLLAMA_DEFAULT_CHAT_MODEL = OLLAMA_DEFAULT_MODELS.chat;
 // ../lib/src/logger.ts
 var REDACT_PATTERN = /(?:^|_)(?:TOKEN|SECRET|KEY|PASSWORD|HMAC)(?:_|$)/i;
 function isSensitiveEnvKey(key) {
@@ -7340,6 +7363,9 @@ function createLogger(service) {
     debug: (msg, extra) => log("debug", msg, extra)
   };
 }
+// ../lib/src/control-plane/migrations.ts
+import { join, resolve as resolvePath } from "node:path";
+
 // ../../node_modules/.bun/yaml@2.9.0/node_modules/yaml/dist/index.js
 var composer = require_composer();
 var Document = require_Document();
@@ -7386,62 +7412,6 @@ var $stringify = publicApi.stringify;
 var $visit = visit.visit;
 var $visitAsync = visit.visitAsync;
 
-// ../lib/src/control-plane/home.ts
-import { mkdirSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { resolve as resolvePath } from "node:path";
-function resolveHome() {
-  const home = homedir();
-  if (home)
-    return home;
-  return tmpdir();
-}
-function resolveOpenPalmHome() {
-  const raw = process.env.OP_HOME;
-  if (raw)
-    return resolvePath(raw);
-  return `${resolveHome()}/.openpalm`;
-}
-function resolveConfigDir() {
-  return `${resolveOpenPalmHome()}/config`;
-}
-function resolveDataDir() {
-  return `${resolveOpenPalmHome()}/data`;
-}
-function resolveBackupsDir() {
-  return `${resolveDataDir()}/backups`;
-}
-function ensureHomeDirs() {
-  const home = resolveOpenPalmHome();
-  for (const dir of [
-    `${home}/config`,
-    `${home}/config/assistant`,
-    `${home}/config/guardian`,
-    `${home}/config/akm`,
-    `${home}/data`,
-    `${home}/data/assistant`,
-    `${home}/data/assistant/.cache`,
-    `${home}/data/assistant/.local/bin`,
-    `${home}/data/assistant/.local/share/opencode`,
-    `${home}/data/assistant/.local/state/opencode`,
-    `${home}/data/guardian`,
-    `${home}/data/akm/cache`,
-    `${home}/data/akm/data`,
-    `${home}/data/akm/empty-host-stash`,
-    `${home}/data/logs`,
-    `${home}/data/backups`,
-    `${home}/data/rollback`,
-    `${home}/knowledge`,
-    `${home}/knowledge/env`,
-    `${home}/knowledge/secrets`,
-    `${home}/knowledge/tasks`,
-    `${home}/workspace`,
-    `${home}/config/stack`
-  ]) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
 // ../lib/src/control-plane/install-lock.ts
 var logger = createLogger("install-lock");
 var STALE_AFTER_MS = 30 * 60 * 1000;
@@ -7449,6 +7419,129 @@ var STALE_AFTER_MS = 30 * 60 * 1000;
 // ../lib/src/control-plane/env.ts
 var import_dotenv = __toESM(require_main(), 1);
 import { readFileSync, existsSync, copyFileSync } from "node:fs";
+// ../lib/package.json
+var package_default = {
+  name: "@openpalm/lib",
+  version: "0.12.0",
+  license: "MPL-2.0",
+  type: "module",
+  description: "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, portals, connections, scheduler",
+  engines: {
+    bun: ">=1.0.0"
+  },
+  scripts: {
+    test: "bun test"
+  },
+  types: "./src/index.ts",
+  exports: {
+    ".": "./src/index.ts",
+    "./provider-constants": "./src/provider-constants.ts",
+    "./shared/logger": "./src/logger.ts",
+    "./control-plane/*": "./src/control-plane/*.ts"
+  },
+  files: [
+    "src",
+    "assets"
+  ],
+  repository: {
+    type: "git",
+    url: "https://github.com/itlackey/openpalm",
+    directory: "packages/lib"
+  },
+  dependencies: {
+    dotenv: "^17.4.2",
+    tar: "^7.5.15",
+    yaml: "^2.8.0"
+  },
+  devDependencies: {
+    "@types/tar": "^7.0.87",
+    "bun-types": "^1.3.14"
+  }
+};
+
+// ../lib/src/control-plane/versioning.ts
+var SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
+var PLATFORM_VERSION = formatForDocker(package_default.version);
+function isComparableSemver(version) {
+  return !!version && SEMVER_RE.test(version.trim());
+}
+function parseComparableVersion(version) {
+  const clean = normalizeVersion(version).split("+")[0];
+  const dashIdx = clean.indexOf("-");
+  const main = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
+  const prerelease = dashIdx === -1 ? null : clean.slice(dashIdx + 1);
+  const [major = 0, minor = 0, patch = 0] = main.split(".").map(Number);
+  return { major, minor, patch, prerelease };
+}
+function comparePrerelease(a, b) {
+  const aParts = a.split(".");
+  const bParts = b.split(".");
+  for (let i = 0;i < Math.max(aParts.length, bParts.length); i++) {
+    if (i >= aParts.length)
+      return -1;
+    if (i >= bParts.length)
+      return 1;
+    const aNum = Number(aParts[i]);
+    const bNum = Number(bParts[i]);
+    const aIsNum = !Number.isNaN(aNum);
+    const bIsNum = !Number.isNaN(bNum);
+    if (aIsNum && bIsNum) {
+      if (aNum !== bNum)
+        return aNum > bNum ? 1 : -1;
+      continue;
+    }
+    if (aIsNum !== bIsNum)
+      return aIsNum ? -1 : 1;
+    if (aParts[i] !== bParts[i])
+      return aParts[i] > bParts[i] ? 1 : -1;
+  }
+  return 0;
+}
+function compareComparableVersions(a, b) {
+  const aParsed = parseComparableVersion(a);
+  const bParsed = parseComparableVersion(b);
+  if (aParsed.major !== bParsed.major)
+    return aParsed.major > bParsed.major ? 1 : -1;
+  if (aParsed.minor !== bParsed.minor)
+    return aParsed.minor > bParsed.minor ? 1 : -1;
+  if (aParsed.patch !== bParsed.patch)
+    return aParsed.patch > bParsed.patch ? 1 : -1;
+  if (aParsed.prerelease === null && bParsed.prerelease !== null)
+    return 1;
+  if (aParsed.prerelease !== null && bParsed.prerelease === null)
+    return -1;
+  if (aParsed.prerelease !== null && bParsed.prerelease !== null) {
+    return comparePrerelease(aParsed.prerelease, bParsed.prerelease);
+  }
+  return 0;
+}
+function majorVersionOf(version) {
+  if (!isComparableSemver(version))
+    return null;
+  return parseComparableVersion(version).major;
+}
+function isSameMajorVersion(a, b) {
+  const aMajor = majorVersionOf(a);
+  const bMajor = majorVersionOf(b);
+  return aMajor !== null && bMajor !== null && aMajor === bMajor;
+}
+function normalizeVersion(version) {
+  return (version ?? "").trim().replace(/^v/, "");
+}
+function formatForDocker(version) {
+  const bare = normalizeVersion(version);
+  return bare ? `v${bare}` : "";
+}
+function isPrerelease(version) {
+  if (!isComparableSemver(version))
+    return false;
+  return parseComparableVersion(version).prerelease !== null;
+}
+function distTagForVersion(version) {
+  return isPrerelease(version) ? "next" : "latest";
+}
+
+// ../lib/src/control-plane/env.ts
 function parseEnvFile(filePath) {
   if (!existsSync(filePath))
     return {};
@@ -7462,23 +7555,31 @@ function parseEnvFile(filePath) {
   }
 }
 
+// ../lib/src/control-plane/image-tags.ts
+var PINNABLE_PLATFORM_IMAGES = ["guardian", "portal"];
+var PINNABLE_PLATFORM_IMAGE_SET = new Set(PINNABLE_PLATFORM_IMAGES);
+
 // ../lib/src/control-plane/migrations.ts
-var RECOVERY_GUIDANCE = "Your original files were left untouched and a full backup was taken first. " + "To recover, restore the backup (see docs/operations/backup-restore.md) or run " + "the standalone migrator with --dry-run (scripts/migrate-0.10-to-0.11.sh / .ps1). " + "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
+var INERT_LAYOUT_V2_FILES = [
+  join("config", "stack", "channels.compose.yml"),
+  join("config", "stack", "stack.yml")
+];
+var RECOVERY_GUIDANCE = "Your original files were left untouched and a full backup was taken first. " + "If something went wrong, run `openpalm rollback` to restore your previous state, " + "or restore the backup manually (see docs/operations/backup-restore.md). You can also run " + "`openpalm migrate --dry-run` to preview the current copy-only migration. " + "Full guide: docs/operations/upgrade-0.10-to-0.11.md";
 // ../lib/src/control-plane/ui-assets.ts
 import {
-  existsSync as existsSync2,
-  mkdirSync as mkdirSync2,
+  existsSync as existsSync3,
+  mkdirSync as mkdirSync3,
   readdirSync,
-  copyFileSync as copyFileSync2,
-  writeFileSync,
-  readFileSync as readFileSync2,
+  copyFileSync as copyFileSync3,
+  writeFileSync as writeFileSync2,
+  readFileSync as readFileSync3,
   rmSync,
   realpathSync,
   renameSync
 } from "node:fs";
-import { join, dirname, relative } from "node:path";
+import { join as join3, dirname as dirname2, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 
 // ../../node_modules/.bun/tar@7.5.15/node_modules/tar/dist/esm/index.min.js
 import Vr from "events";
@@ -10649,8 +10750,168 @@ var yo = (s3) => {
   s3.mtimeCache || (s3.mtimeCache = new Map), s3.filter = t ? (e, i) => t(e, i) && !((s3.mtimeCache?.get(e) ?? i.mtime ?? 0) > (i.mtime ?? 0)) : (e, i) => !((s3.mtimeCache?.get(e) ?? i.mtime ?? 0) > (i.mtime ?? 0));
 };
 
+// ../lib/src/control-plane/home.ts
+import { mkdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { resolve as resolvePath2 } from "node:path";
+function resolveHome() {
+  const home = homedir();
+  if (home)
+    return home;
+  return tmpdir();
+}
+function resolveOpenPalmHome() {
+  const raw = process.env.OP_HOME;
+  if (raw)
+    return resolvePath2(raw);
+  return `${resolveHome()}/.openpalm`;
+}
+function resolveConfigDir() {
+  return `${resolveOpenPalmHome()}/config`;
+}
+function resolveDataDir() {
+  return `${resolveOpenPalmHome()}/data`;
+}
+function resolveBackupsDir() {
+  return `${resolveDataDir()}/backups`;
+}
+function ensureHomeDirs() {
+  const home = resolveOpenPalmHome();
+  for (const dir of [
+    `${home}/config`,
+    `${home}/config/assistant`,
+    `${home}/config/guardian`,
+    `${home}/config/akm`,
+    `${home}/data`,
+    `${home}/data/assistant`,
+    `${home}/data/assistant/.cache`,
+    `${home}/data/assistant/.local/bin`,
+    `${home}/data/assistant/.local/share/opencode`,
+    `${home}/data/assistant/.local/state/opencode`,
+    `${home}/data/guardian`,
+    `${home}/data/akm/cache`,
+    `${home}/data/akm/data`,
+    `${home}/data/akm/empty-host-stash`,
+    `${home}/data/logs`,
+    `${home}/data/backups`,
+    `${home}/data/rollback`,
+    `${home}/knowledge`,
+    `${home}/knowledge/env`,
+    `${home}/knowledge/secrets`,
+    `${home}/knowledge/tasks`,
+    `${home}/workspace`,
+    `${home}/config/stack`
+  ]) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+// ../lib/src/control-plane/core-assets.ts
+import { mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync2, existsSync as existsSync2, copyFileSync as copyFileSync2 } from "node:fs";
+import { dirname, join as join2 } from "node:path";
+
+// ../lib/src/control-plane/crypto.ts
+import { createHash, randomBytes } from "node:crypto";
+function sha256(content) {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+// ../lib/src/control-plane/core-assets.ts
+var logger2 = createLogger("core-assets");
+var SHIPPED_DEFAULT_HASHES = {
+  "config/guardian/instructions/moderation.md": [
+    "dfa770d433bef9954e58e29cfb337679eb27ed3c9de61ddd2c4106d3add9a628"
+  ]
+};
+var GUARDIAN_MANAGED_ASSETS = [
+  {
+    relPath: "config/guardian/instructions/moderation.md",
+    githubFilename: ".openpalm/config/guardian/instructions/moderation.md"
+  }
+];
+function isUnmodifiedDefault(relPath, currentContent) {
+  const known = SHIPPED_DEFAULT_HASHES[relPath];
+  if (!known || known.length === 0)
+    return false;
+  const h = sha256(currentContent);
+  return known.includes(h);
+}
+var MANAGED_ASSETS = [
+  { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/config/stack/core.compose.yml" },
+  { relPath: "config/stack/services.compose.yml", githubFilename: ".openpalm/config/stack/services.compose.yml" },
+  { relPath: "config/stack/portals.compose.yml", githubFilename: ".openpalm/config/stack/portals.compose.yml" }
+];
+var SEEDED_ASSETS = [
+  { relPath: "config/assistant/opencode.jsonc", githubFilename: ".openpalm/config/assistant/opencode.jsonc" },
+  { relPath: "config/stack/custom.compose.yml", githubFilename: ".openpalm/config/stack/custom.compose.yml" }
+];
+function ensureBackupDir(backupDir, suffix = "") {
+  if (backupDir)
+    return backupDir;
+  return join2(resolveBackupsDir(), `${new Date().toISOString().replace(/[:.]/g, "-")}${suffix}`);
+}
+function backupExistingFile(targetPath, assetRelPath, backupDir, suffix = "") {
+  const resolvedBackupDir = ensureBackupDir(backupDir, suffix);
+  const backupPath = join2(resolvedBackupDir, assetRelPath);
+  mkdirSync2(dirname(backupPath), { recursive: true });
+  copyFileSync2(targetPath, backupPath);
+  return resolvedBackupDir;
+}
+function refreshCoreAssetsFromSource(sourceRoot, homeDir = resolveOpenPalmHome()) {
+  const updated = [];
+  const kept = [];
+  let backupDir = null;
+  for (const asset of MANAGED_ASSETS) {
+    const sourcePath = join2(sourceRoot, asset.relPath);
+    const targetPath = join2(homeDir, asset.relPath);
+    const freshContent = readFileSync2(sourcePath, "utf-8");
+    if (existsSync2(targetPath)) {
+      const currentContent = readFileSync2(targetPath, "utf-8");
+      if (sha256(currentContent) === sha256(freshContent))
+        continue;
+      backupDir = backupExistingFile(targetPath, asset.relPath, backupDir);
+    }
+    mkdirSync2(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, freshContent);
+    updated.push(asset.relPath);
+  }
+  for (const asset of GUARDIAN_MANAGED_ASSETS) {
+    const sourcePath = join2(sourceRoot, asset.relPath);
+    const targetPath = join2(homeDir, asset.relPath);
+    if (!existsSync2(sourcePath))
+      continue;
+    const freshContent = readFileSync2(sourcePath, "utf-8");
+    if (existsSync2(targetPath)) {
+      const currentContent = readFileSync2(targetPath, "utf-8");
+      if (sha256(currentContent) === sha256(freshContent))
+        continue;
+      if (!isUnmodifiedDefault(asset.relPath, currentContent)) {
+        logger2.info("guardian managed asset kept (user-modified); new default available", {
+          path: asset.relPath,
+          hint: "Remove the file or restore the shipped default to pick up the new version on the next refresh."
+        });
+        kept.push(asset.relPath);
+        continue;
+      }
+    }
+    mkdirSync2(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, freshContent);
+    updated.push(asset.relPath);
+  }
+  for (const asset of SEEDED_ASSETS) {
+    const sourcePath = join2(sourceRoot, asset.relPath);
+    const targetPath = join2(homeDir, asset.relPath);
+    if (existsSync2(targetPath))
+      continue;
+    mkdirSync2(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, readFileSync2(sourcePath, "utf-8"));
+    updated.push(asset.relPath);
+  }
+  return { backupDir, updated, kept };
+}
+
 // ../lib/src/control-plane/ui-assets.ts
-var logger2 = createLogger("lib:ui-assets");
+var logger3 = createLogger("lib:ui-assets");
 var REPO_OWNER = "itlackey";
 var REPO_NAME = "openpalm";
 async function fetchWithRetry(url, retries = 3) {
@@ -10670,106 +10931,88 @@ async function fetchWithRetry(url, retries = 3) {
   throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
 }
 function copyTree(src, dest, opts) {
-  if (!existsSync2(src))
+  if (!existsSync3(src))
     return;
   const entries = readdirSync(src, { recursive: true, withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isFile())
       continue;
     const parentDir = entry.parentPath ?? entry.path;
-    const srcFile = join(parentDir, entry.name);
+    const srcFile = join3(parentDir, entry.name);
     const rel = relative(src, srcFile);
-    const destFile = join(dest, rel);
-    if (opts?.skipExisting && existsSync2(destFile))
+    const destFile = join3(dest, rel);
+    if (opts?.skipExisting && existsSync3(destFile))
       continue;
-    mkdirSync2(dirname(destFile), { recursive: true });
-    copyFileSync2(srcFile, destFile);
+    mkdirSync3(dirname2(destFile), { recursive: true });
+    copyFileSync3(srcFile, destFile);
   }
 }
 function resolveLocalCandidate(...strategies) {
   for (const strategy of strategies) {
     try {
       const p2 = strategy();
-      if (p2 && existsSync2(p2))
+      if (p2 && existsSync3(p2))
         return p2;
     } catch {}
   }
   return null;
 }
 function resolveLocalOpenpalmDir() {
-  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join(process.env.OPENPALM_REPO_ROOT, ".openpalm") : null, () => process.env.OPENPALM_SKELETON_DIR ?? null, () => {
+  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join3(process.env.OPENPALM_REPO_ROOT, ".openpalm") : null, () => process.env.OPENPALM_SKELETON_DIR ?? null, () => {
     const meta = fileURLToPath(import.meta.url);
     if (meta.startsWith("/$bunfs/"))
       return null;
-    return join(dirname(meta), "..", "..", "..", "..", ".openpalm");
-  }, () => join(dirname(realpathSync(process.execPath)), "..", "..", "..", ".openpalm"));
+    return join3(dirname2(meta), "..", "..", "..", "..", ".openpalm");
+  }, () => join3(dirname2(realpathSync(process.execPath)), "..", "..", "..", ".openpalm"));
 }
 var SKELETON_VERSION_STAMP = ".skeleton-version";
-var MANAGED_STACK_ASSETS = [
-  "config/stack/core.compose.yml",
-  "config/stack/services.compose.yml",
-  "config/stack/channels.compose.yml"
-];
-function refreshManagedStackAssets(srcOpenpalm, homeDir) {
-  const refreshed = [];
-  for (const rel of MANAGED_STACK_ASSETS) {
-    const src = join(srcOpenpalm, rel);
-    if (!existsSync2(src))
-      continue;
-    const dest = join(homeDir, rel);
-    mkdirSync2(dirname(dest), { recursive: true });
-    copyFileSync2(src, dest);
-    refreshed.push(rel);
-  }
-  return refreshed;
-}
 async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
-  const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
+  const stampPath = join3(homeDir, SKELETON_VERSION_STAMP);
   let alreadySeeded = false;
-  if (existsSync2(stampPath)) {
+  if (existsSync3(stampPath)) {
     try {
-      alreadySeeded = readFileSync2(stampPath, "utf-8").trim() === repoRef.trim();
+      alreadySeeded = readFileSync3(stampPath, "utf-8").trim() === repoRef.trim();
     } catch {}
   }
   const stamp = () => {
     try {
-      writeFileSync(stampPath, `${repoRef}
+      writeFileSync2(stampPath, `${repoRef}
 `);
     } catch {}
   };
   const local = resolveLocalOpenpalmDir();
   if (local) {
-    const refreshed = refreshManagedStackAssets(local, homeDir);
+    const { updated: refreshed } = refreshCoreAssetsFromSource(local, homeDir);
     if (refreshed.length)
-      logger2.debug("refreshed managed stack assets", { refreshed });
+      logger3.debug("refreshed managed stack assets", { refreshed });
     if (alreadySeeded) {
-      logger2.debug("skeleton already seeded for this version — managed assets refreshed, skipping full seed", { repoRef });
+      logger3.debug("skeleton already seeded for this version — managed assets refreshed, skipping full seed", { repoRef });
       return;
     }
-    logger2.debug("seeding .openpalm from local source", { src: local, repoRef });
+    logger3.debug("seeding .openpalm from local source", { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
     stamp();
     return;
   }
   if (alreadySeeded) {
-    logger2.debug("skeleton already seeded and no local source to refresh from — skipping", { repoRef });
+    logger3.debug("skeleton already seeded and no local source to refresh from — skipping", { repoRef });
     return;
   }
   const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
-  logger2.debug("downloading .openpalm skeleton", { url: tarballUrl });
-  const tmpDir = join(homeDir, ".seed-tmp");
-  const tmpTar = join(tmpDir, "repo.tar.gz");
-  mkdirSync2(tmpDir, { recursive: true });
+  logger3.debug("downloading .openpalm skeleton", { url: tarballUrl });
+  const tmpDir = join3(homeDir, ".seed-tmp");
+  const tmpTar = join3(tmpDir, "repo.tar.gz");
+  mkdirSync3(tmpDir, { recursive: true });
   try {
     const res = await fetchWithRetry(tarballUrl);
     if (!res.ok)
       throw new Error(`Failed to download tarball (HTTP ${res.status})`);
-    writeFileSync(tmpTar, new Uint8Array(await res.arrayBuffer()));
+    writeFileSync2(tmpTar, new Uint8Array(await res.arrayBuffer()));
     await fo({ file: tmpTar, cwd: tmpDir, strip: 1 });
-    const srcOpenpalm = join(tmpDir, ".openpalm");
-    if (!existsSync2(srcOpenpalm))
+    const srcOpenpalm = join3(tmpDir, ".openpalm");
+    if (!existsSync3(srcOpenpalm))
       throw new Error(".openpalm/ not found in tarball");
-    refreshManagedStackAssets(srcOpenpalm, homeDir);
+    refreshCoreAssetsFromSource(srcOpenpalm, homeDir);
     copyTree(srcOpenpalm, homeDir, { skipExisting: true });
     stamp();
   } finally {
@@ -10777,42 +11020,56 @@ async function seedOpenPalmDir(repoRef, homeDir, _configDir, _dataDir) {
   }
 }
 function resolveLocalUiBuild() {
-  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join(process.env.OPENPALM_REPO_ROOT, "packages", "ui", "build") : null, () => {
+  return resolveLocalCandidate(() => process.env.OPENPALM_REPO_ROOT ? join3(process.env.OPENPALM_REPO_ROOT, "packages", "ui", "build") : null, () => {
     const rp = process.resourcesPath;
     if (!rp)
       return null;
-    return join(rp, "ui-build");
+    return join3(rp, "ui-build");
   }, () => {
     const meta = fileURLToPath(import.meta.url);
     if (meta.startsWith("/$bunfs/"))
       return null;
-    const candidate = join(dirname(meta), "..", "..", "..", "..", "packages", "ui", "build");
-    return existsSync2(join(candidate, "index.js")) ? candidate : null;
+    const candidate = join3(dirname2(meta), "..", "..", "..", "..", "packages", "ui", "build");
+    return existsSync3(join3(candidate, "index.js")) ? candidate : null;
   }, () => {
-    const binDir = dirname(realpathSync(process.execPath));
-    const candidate = join(binDir, "..", "..", "..", "packages", "ui", "build");
-    return existsSync2(join(candidate, "index.js")) ? candidate : null;
+    const binDir = dirname2(realpathSync(process.execPath));
+    const candidate = join3(binDir, "..", "..", "..", "packages", "ui", "build");
+    return existsSync3(join3(candidate, "index.js")) ? candidate : null;
   });
 }
 var UI_VERSION_STAMP = ".openpalm-ui-version";
 function readUiBuildVersion(dir) {
   try {
-    const v2 = readFileSync2(join(dir, UI_VERSION_STAMP), "utf-8").trim();
+    const v2 = readFileSync3(join3(dir, UI_VERSION_STAMP), "utf-8").trim();
     return v2 || null;
   } catch {
     return null;
   }
 }
 function resolveUiBuildDir() {
-  const dataBuild = join(resolveDataDir(), "ui");
-  const hasData = existsSync2(join(dataBuild, "index.js"));
+  const dataBuild = join3(resolveDataDir(), "ui");
+  const hasData = existsSync3(join3(dataBuild, "index.js"));
   const bundledRaw = resolveLocalUiBuild();
-  const bundled = bundledRaw && existsSync2(join(bundledRaw, "index.js")) ? bundledRaw : null;
+  const bundled = bundledRaw && existsSync3(join3(bundledRaw, "index.js")) ? bundledRaw : null;
   if (hasData && bundled) {
     const dataVer = readUiBuildVersion(dataBuild);
     const bundledVer = readUiBuildVersion(bundled);
-    if (dataVer && bundledVer && compareVersionTags(dataVer, bundledVer) > 0)
+    if (dataVer && bundledVer && compareComparableVersions(dataVer, bundledVer) > 0)
       return dataBuild;
+    if (!dataVer) {
+      logger3.warn("data/ui present but UNSTAMPED — ignoring it and running the frozen bundled UI build; the downloaded control plane is NOT executing", {
+        dataBuild,
+        bundled,
+        bundledVersion: bundledVer ?? "(unstamped)"
+      });
+    } else {
+      logger3.warn("data/ui present but not strictly newer than the bundled build — running the frozen bundled UI build", {
+        dataBuild,
+        dataVersion: dataVer,
+        bundled,
+        bundledVersion: bundledVer ?? "(unstamped)"
+      });
+    }
     return bundled;
   }
   if (hasData)
@@ -10823,11 +11080,12 @@ function resolveUiBuildDir() {
 }
 var NPM_REGISTRY = "https://registry.npmjs.org";
 var UI_PACKAGE = "@openpalm/ui";
-function toNpmVersion(repoRef) {
-  return repoRef.replace(/^v/, "");
+function declaredUiChannel() {
+  const raw = (process.env.OP_UI_CHANNEL ?? "").trim().toLowerCase();
+  return raw === "latest" || raw === "next" ? raw : null;
 }
-function uiUpdateChannel(appVersion) {
-  return appVersion.includes("-") ? "next" : "latest";
+function uiUpdateChannel(appVersion, channel) {
+  return channel ?? declaredUiChannel() ?? distTagForVersion(appVersion);
 }
 async function fetchNpmUiManifest(versionOrTag) {
   const url = `${NPM_REGISTRY}/${UI_PACKAGE}/${versionOrTag}`;
@@ -10838,7 +11096,9 @@ async function fetchNpmUiManifest(versionOrTag) {
   if (!m2.version || !m2.dist?.tarball) {
     throw new Error(`npm manifest for ${UI_PACKAGE}@${versionOrTag} is missing version/dist.tarball`);
   }
-  return { version: m2.version, tarball: m2.dist.tarball, integrity: m2.dist.integrity ?? null };
+  const rawMin = typeof m2.minHarnessContract === "number" ? m2.minHarnessContract : Number(m2.minHarnessContract);
+  const minHarnessContract = Number.isFinite(rawMin) && rawMin > 0 ? rawMin : 0;
+  return { version: m2.version, tarball: m2.dist.tarball, integrity: m2.dist.integrity ?? null, minHarnessContract };
 }
 function verifyNpmIntegrity(data, integrity) {
   const entries = integrity.trim().split(/\s+/);
@@ -10848,7 +11108,7 @@ function verifyNpmIntegrity(data, integrity) {
   const dash = entry.indexOf("-");
   const algo = entry.slice(0, dash);
   const expected = entry.slice(dash + 1);
-  const actual = createHash(algo).update(data).digest("base64");
+  const actual = createHash2(algo).update(data).digest("base64");
   if (actual !== expected)
     throw new Error(`UI bundle integrity mismatch (${algo})`);
 }
@@ -10861,20 +11121,20 @@ async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
     throw new Error(`npm manifest for ${UI_PACKAGE}@${manifest.version} has no integrity hash — refusing to install unverified`);
   }
   verifyNpmIntegrity(data, manifest.integrity);
-  logger2.debug("UI bundle integrity verified", { version: manifest.version });
-  const tmpTar = join(dataDir, ".ui-build.tgz.tmp");
-  const staging = join(dataDir, ".ui-build.staging");
+  logger3.debug("UI bundle integrity verified", { version: manifest.version });
+  const tmpTar = join3(dataDir, ".ui-build.tgz.tmp");
+  const staging = join3(dataDir, ".ui-build.staging");
   try {
     rmSync(staging, { recursive: true, force: true });
-    mkdirSync2(staging, { recursive: true });
-    writeFileSync(tmpTar, data);
+    mkdirSync3(staging, { recursive: true });
+    writeFileSync2(tmpTar, data);
     await fo({
       file: tmpTar,
       cwd: staging,
       strip: 2,
       filter: (p2) => p2.startsWith("package/build/")
     });
-    if (!existsSync2(join(staging, "index.js"))) {
+    if (!existsSync3(join3(staging, "index.js"))) {
       throw new Error("downloaded UI bundle is missing build/index.js");
     }
     rmSync(uiDir, { recursive: true, force: true });
@@ -10885,96 +11145,71 @@ async function downloadNpmUiBundle(manifest, uiDir, dataDir) {
   }
 }
 async function seedUiBuild(repoRef, dataDir, options) {
-  const uiDir = join(dataDir, "ui");
-  mkdirSync2(uiDir, { recursive: true });
+  const uiDir = join3(dataDir, "ui");
+  mkdirSync3(uiDir, { recursive: true });
   const local = options?.forceRemote ? null : resolveLocalUiBuild();
   if (local) {
-    logger2.debug("seeding UI build from local source", { src: local });
+    logger3.debug("seeding UI build from local source", { src: local });
     copyTree(local, uiDir);
     if (!readUiBuildVersion(uiDir)) {
-      logger2.warn("seeded UI build has no version stamp — auto-update comparison will be unreliable", { src: local });
+      logger3.warn("seeded UI build has no version stamp — auto-update comparison will be unreliable", { src: local });
     }
     return;
   }
-  const manifest = await fetchNpmUiManifest(toNpmVersion(repoRef));
-  logger2.debug("downloading UI build from npm", { version: manifest.version });
+  const manifest = await fetchNpmUiManifest(normalizeVersion(repoRef));
+  logger3.debug("downloading UI build from npm", { version: manifest.version });
   await downloadNpmUiBundle(manifest, uiDir, dataDir);
 }
-function compareVersionTags(a, b2) {
-  const parse = (v2) => {
-    const clean = v2.replace(/^v/, "");
-    const dashIdx = clean.indexOf("-");
-    const main = dashIdx === -1 ? clean : clean.slice(0, dashIdx);
-    const pre = dashIdx === -1 ? null : clean.slice(dashIdx + 1);
-    const parts = main.split(".").map(Number);
-    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0, pre];
-  };
-  const comparePre = (x, y2) => {
-    const xp = x.split(".");
-    const yp = y2.split(".");
-    for (let i = 0;i < Math.max(xp.length, yp.length); i++) {
-      if (i >= xp.length)
-        return -1;
-      if (i >= yp.length)
-        return 1;
-      const xn2 = Number(xp[i]);
-      const yn2 = Number(yp[i]);
-      const xIsNum = !isNaN(xn2);
-      const yIsNum = !isNaN(yn2);
-      if (xIsNum && yIsNum) {
-        if (xn2 !== yn2)
-          return xn2 > yn2 ? 1 : -1;
-      } else if (xIsNum !== yIsNum) {
-        return xIsNum ? -1 : 1;
-      } else {
-        if (xp[i] !== yp[i])
-          return xp[i] > yp[i] ? 1 : -1;
-      }
-    }
-    return 0;
-  };
-  const [aM, am, ap, aPre] = parse(a);
-  const [bM, bm, bp, bPre] = parse(b2);
-  if (aM !== bM)
-    return aM > bM ? 1 : -1;
-  if (am !== bm)
-    return am > bm ? 1 : -1;
-  if (ap !== bp)
-    return ap > bp ? 1 : -1;
-  if (aPre === null && bPre !== null)
-    return 1;
-  if (aPre !== null && bPre === null)
-    return -1;
-  if (aPre !== null && bPre !== null)
-    return comparePre(aPre, bPre);
-  return 0;
-}
-async function checkAndUpdateUiBuild(appVersion, dataDir) {
+async function checkAndUpdateUiBuild(appVersion, dataDir, channelOverride, harnessContract) {
   try {
-    const channel = uiUpdateChannel(appVersion);
+    const channel = uiUpdateChannel(appVersion, channelOverride);
     const manifest = await fetchNpmUiManifest(channel);
     const latestVersion = manifest.version;
+    if (typeof harnessContract === "number" && manifest.minHarnessContract > harnessContract) {
+      logger3.warn("UI build requires a newer harness — re-download required", {
+        latest: latestVersion,
+        minHarnessContract: manifest.minHarnessContract,
+        harnessContract,
+        channel
+      });
+      return {
+        updated: false,
+        latestVersion,
+        redownloadRequired: true,
+        requiredHarnessContract: manifest.minHarnessContract
+      };
+    }
     const currentUiVersion = readUiBuildVersion(resolveUiBuildDir());
-    if (currentUiVersion && compareVersionTags(latestVersion, currentUiVersion) <= 0) {
-      logger2.debug("UI build is up to date", { currentUi: currentUiVersion, latest: latestVersion, channel });
+    const currentVersionForPolicy = currentUiVersion ?? appVersion;
+    if (!isSameMajorVersion(latestVersion, currentVersionForPolicy)) {
+      logger3.debug("UI build update blocked by major-version policy", {
+        currentUi: currentUiVersion ?? "(unstamped)",
+        policyBase: currentVersionForPolicy,
+        latest: latestVersion,
+        channel
+      });
+      return { updated: false, latestVersion };
+    }
+    if (currentUiVersion && compareComparableVersions(latestVersion, currentUiVersion) <= 0) {
+      logger3.debug("UI build is up to date", { currentUi: currentUiVersion, latest: latestVersion, channel });
       return { updated: false, latestVersion };
     }
     if (!currentUiVersion) {
-      logger2.debug("UI build is unstamped — refreshing from npm to re-establish a known version", { latest: latestVersion, channel });
+      logger3.debug("UI build is unstamped — refreshing from npm to re-establish a known version", { latest: latestVersion, channel });
     }
-    const uiDir = join(dataDir, "ui");
-    if (existsSync2(join(uiDir, "index.js"))) {
-      const backupDir = join(resolveBackupsDir(), `ui-${Date.now()}`);
-      mkdirSync2(resolveBackupsDir(), { recursive: true });
+    const uiDir = join3(dataDir, "ui");
+    if (existsSync3(join3(uiDir, "index.js"))) {
+      const backupDir = join3(resolveBackupsDir(), `ui-${Date.now()}`);
+      mkdirSync3(resolveBackupsDir(), { recursive: true });
       renameSync(uiDir, backupDir);
-      logger2.debug("backed up UI build before update", { backup: backupDir });
+      logger3.debug("backed up UI build before update", { backup: backupDir });
     }
     await downloadNpmUiBundle(manifest, uiDir, dataDir);
-    logger2.debug("UI build updated", { from: currentUiVersion ?? "(unstamped)", to: latestVersion });
+    logger3.debug("UI build updated", { from: currentUiVersion ?? "(unstamped)", to: latestVersion });
     return { updated: true, latestVersion };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    logger2.debug("UI build update check failed (non-fatal)", { error });
+    logger3.debug("UI build update check failed (non-fatal)", { error });
     return { updated: false, latestVersion: null, error };
   }
 }
@@ -10982,56 +11217,49 @@ async function checkAndUpdateUiBuild(appVersion, dataDir) {
 // ../lib/src/control-plane/secrets.ts
 var OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + `
 `;
-var logger3 = createLogger("secrets");
+var logger4 = createLogger("secrets");
 var PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
   "OP_OWNER_NAME",
   "OP_OWNER_EMAIL"
 ]);
-var NON_SECRET_STACK_ENV_KEY_ALLOWLIST = new Set;
-
-// ../lib/src/control-plane/core-assets.ts
-var logger4 = createLogger("core-assets");
 // ../lib/src/control-plane/config-persistence.ts
 var logger5 = createLogger("config-persistence");
 
-// ../lib/src/control-plane/registry.ts
+// ../lib/src/control-plane/addons.ts
 var logger6 = createLogger("registry");
 var availabilityCache = new Map;
-// ../lib/src/control-plane/secret-audit.ts
-var NON_SECRET_STACK_KEYS = new Set([
-  "COMPOSE_PROJECT_NAME",
-  "OP_PROJECT_NAME",
-  "OP_HOME",
-  "OP_UID",
-  "OP_GID",
-  "OP_IMAGE_NAMESPACE",
-  "OP_IMAGE_TAG",
-  "OP_SETUP_COMPLETE",
-  "OP_ASSISTANT_BIND_ADDRESS",
-  "OP_ASSISTANT_PORT",
-  "OP_ASSISTANT_SSH_BIND_ADDRESS",
-  "OP_ASSISTANT_SSH_PORT",
-  "OPENCODE_ENABLE_SSH",
-  "OP_CHAT_BIND_ADDRESS",
-  "OP_CHAT_PORT",
-  "OP_API_BIND_ADDRESS",
-  "OP_API_PORT",
-  "OP_VOICE_BIND_ADDRESS",
-  "OP_VOICE_PORT",
-  "OP_OLLAMA_BIND_ADDRESS",
-  "OP_VOICE_PROFILE",
-  "OP_OLLAMA_PROFILE",
-  "OP_HOST_UI_PORT",
-  "OP_OWNER_NAME",
-  "OP_OWNER_EMAIL",
-  "OPENAI_BASE_URL"
-]);
 // ../lib/src/control-plane/docker.ts
+import { execFile } from "node:child_process";
 var logger7 = createLogger("lib:docker");
+async function checkDocker() {
+  return new Promise((resolve) => {
+    execFile("docker", ["info", "--format", "{{.ServerVersion}}"], (error, stdout, stderr) => {
+      const stdoutStr = stdout?.toString().trim() ?? "";
+      const stderrStr = stderr?.toString() ?? "";
+      const available = stdoutStr.length > 0 || !error;
+      resolve({
+        ok: available,
+        stdout: stdoutStr,
+        stderr: stderrStr,
+        code: error?.code ? Number(error.code) : 0
+      });
+    });
+  });
+}
+async function checkDockerCompose() {
+  return new Promise((resolve) => {
+    execFile("docker", ["compose", "version"], (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        stdout: stdout?.toString() ?? "",
+        stderr: stderr?.toString() ?? "",
+        code: error?.code ? Number(error.code) : 0
+      });
+    });
+  });
+}
 var PULL_TIMEOUT_MS = 60 * 60000;
-// ../lib/src/control-plane/host-akm-sharing.ts
-var logger8 = createLogger("host-akm-sharing");
 // ../lib/src/control-plane/lifecycle.ts
 var VALID_CALLERS = new Set([
   "assistant",
@@ -11040,6 +11268,23 @@ var VALID_CALLERS = new Set([
   "system",
   "test"
 ]);
+// ../lib/src/control-plane/akm-endpoints.ts
+var AKM_OPENAI_STYLE_PROVIDERS = new Set([
+  "deepseek",
+  "google",
+  "groq",
+  "huggingface",
+  "lmstudio",
+  "mistral",
+  "model-runner",
+  "ollama",
+  "openai",
+  "openai-compatible",
+  "together",
+  "xai"
+]);
+// ../lib/src/control-plane/host-akm-sharing.ts
+var logger8 = createLogger("host-akm-sharing");
 // ../lib/src/control-plane/markdown-task.ts
 var logger9 = createLogger("task-file");
 
@@ -11120,126 +11365,190 @@ var MIN_LOCAL_GPU_VRAM_MB = 8 * 1024;
 var logger13 = createLogger("setup");
 // ../lib/src/control-plane/host-opencode.ts
 var ALLOWED_CONFIG_KEYS = new Set(["$schema", "provider", "model", "small_model", "disabled_providers"]);
+// src/harness-contract.ts
+var HARNESS_CONTRACT_VERSION = 1;
+
 // src/update-check.ts
 var REPO_OWNER2 = "itlackey";
 var REPO_NAME2 = "openpalm";
 var TIMEOUT_MS = 5000;
 var CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 var STALE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-var cached = null;
-function parseVersion(v2) {
-  return v2.replace(/^v/, "").split(/[.\-+]/).map((s3) => {
-    const n = parseInt(s3, 10);
-    return Number.isFinite(n) ? n : 0;
+var cachedStable = null;
+var cachedPrerelease = null;
+function isNewerVersion(current, latest) {
+  const a = normalizeVersion(current);
+  const b2 = normalizeVersion(latest);
+  if (!isComparableSemver(a) || !isComparableSemver(b2))
+    return false;
+  return compareComparableVersions(b2, a) > 0;
+}
+function selectPrereleaseCandidate(currentVersion, releases) {
+  const currentIsPre = isPrerelease(currentVersion);
+  let best = null;
+  for (const rel of releases) {
+    if (rel.draft)
+      continue;
+    const tag = (rel.tag_name ?? "").trim();
+    const bare = normalizeVersion(tag);
+    if (!isComparableSemver(bare))
+      continue;
+    if (!currentIsPre && isPrerelease(bare))
+      continue;
+    if (!isNewerVersion(currentVersion, bare))
+      continue;
+    if (best && compareComparableVersions(bare, normalizeVersion(best.tag)) <= 0)
+      continue;
+    best = { tag, url: rel.html_url ?? null, prerelease: isPrerelease(bare) };
+  }
+  return best;
+}
+function cacheSlot(includePrereleases) {
+  return includePrereleases ? cachedPrerelease : cachedStable;
+}
+function setCacheSlot(includePrereleases, info) {
+  if (includePrereleases)
+    cachedPrerelease = info;
+  else
+    cachedStable = info;
+  return info;
+}
+function suppressOrError(includePrereleases, currentVersion, reason) {
+  const prior = cacheSlot(includePrereleases);
+  if (prior && Date.now() - prior.fetchedAt >= STALE_CACHE_TTL_MS) {
+    console.debug(`[update-check] Cached result is older than 7 days and fresh check failed (${reason}); suppressing stale update claim`);
+    return setCacheSlot(includePrereleases, {
+      currentVersion,
+      latestVersion: null,
+      latestUrl: null,
+      updateAvailable: false,
+      isPrerelease: false,
+      error: `${reason} (stale cache suppressed)`,
+      fetchedAt: Date.now()
+    });
+  }
+  return setCacheSlot(includePrereleases, {
+    currentVersion,
+    latestVersion: null,
+    latestUrl: null,
+    updateAvailable: false,
+    isPrerelease: false,
+    error: reason,
+    fetchedAt: Date.now()
   });
 }
-function isNewerVersion(current, latest) {
-  const a = parseVersion(current);
-  const b2 = parseVersion(latest);
-  const len = Math.max(a.length, b2.length);
-  for (let i = 0;i < len; i++) {
-    const ai2 = a[i] ?? 0;
-    const bi2 = b2[i] ?? 0;
-    if (bi2 > ai2)
-      return true;
-    if (bi2 < ai2)
-      return false;
-  }
-  return false;
-}
-async function checkForElectronUpdate(currentVersion) {
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS)
-    return cached;
-  const url = `https://api.github.com/repos/${REPO_OWNER2}/${REPO_NAME2}/releases/latest`;
+async function checkForElectronUpdate(currentVersion, includePrereleases = false) {
+  const prior = cacheSlot(includePrereleases);
+  if (prior && Date.now() - prior.fetchedAt < CACHE_TTL_MS)
+    return prior;
+  const url = includePrereleases ? `https://api.github.com/repos/${REPO_OWNER2}/${REPO_NAME2}/releases?per_page=30` : `https://api.github.com/repos/${REPO_OWNER2}/${REPO_NAME2}/releases/latest`;
   try {
     const res = await fetch(url, {
       headers: { Accept: "application/vnd.github+json" },
       signal: AbortSignal.timeout(TIMEOUT_MS)
     });
     if (!res.ok) {
-      if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
-        console.debug("[update-check] Cached result is older than 7 days and fresh check failed (HTTP " + res.status + "); suppressing stale update claim");
-        cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `HTTP ${res.status} (stale cache suppressed)`, fetchedAt: Date.now() };
-        return cached;
-      }
-      cached = {
+      return suppressOrError(includePrereleases, currentVersion, `HTTP ${res.status}`);
+    }
+    if (includePrereleases) {
+      const releases = await res.json();
+      const candidate = Array.isArray(releases) ? selectPrereleaseCandidate(currentVersion, releases) : null;
+      return setCacheSlot(includePrereleases, {
         currentVersion,
-        latestVersion: null,
-        latestUrl: null,
-        updateAvailable: false,
-        error: `HTTP ${res.status}`,
+        latestVersion: candidate ? normalizeVersion(candidate.tag) : null,
+        latestUrl: candidate?.url ?? null,
+        updateAvailable: !!candidate,
+        isPrerelease: candidate?.prerelease ?? false,
         fetchedAt: Date.now()
-      };
-      return cached;
+      });
     }
     const data = await res.json();
     const tag = data.tag_name ?? "";
-    const latestVersion = tag.replace(/^v/, "");
+    const latestVersion = normalizeVersion(tag);
     const updateAvailable = latestVersion ? isNewerVersion(currentVersion, latestVersion) : false;
-    cached = {
+    return setCacheSlot(includePrereleases, {
       currentVersion,
       latestVersion: latestVersion || null,
       latestUrl: data.html_url ?? null,
       updateAvailable,
+      isPrerelease: false,
       fetchedAt: Date.now()
-    };
-    return cached;
+    });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    if (cached && Date.now() - cached.fetchedAt >= STALE_CACHE_TTL_MS) {
-      console.debug("[update-check] Cached result is older than 7 days and fresh check failed (" + errMsg + "); suppressing stale update claim");
-      cached = { currentVersion, latestVersion: null, latestUrl: null, updateAvailable: false, error: `${errMsg} (stale cache suppressed)`, fetchedAt: Date.now() };
-      return cached;
-    }
-    cached = {
-      currentVersion,
-      latestVersion: null,
-      latestUrl: null,
-      updateAvailable: false,
-      error: errMsg,
-      fetchedAt: Date.now()
-    };
-    return cached;
+    return suppressOrError(includePrereleases, currentVersion, errMsg);
   }
 }
 function getCachedUpdateInfo() {
-  return cached;
+  if (cachedStable && cachedPrerelease) {
+    return cachedPrerelease.fetchedAt >= cachedStable.fetchedAt ? cachedPrerelease : cachedStable;
+  }
+  return cachedPrerelease ?? cachedStable;
+}
+
+// src/settings.ts
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "node:fs";
+import { join as join4, dirname as dirname3 } from "node:path";
+var DEFAULT_SETTINGS = {
+  checkPrerelease: false
+};
+var SETTINGS_FILENAME = "electron-settings.json";
+function settingsPath(dataDir) {
+  return join4(dataDir, SETTINGS_FILENAME);
+}
+function loadSettings(dataDir) {
+  try {
+    const raw = readFileSync4(settingsPath(dataDir), "utf-8");
+    const parsed = JSON.parse(raw);
+    return {
+      checkPrerelease: typeof parsed.checkPrerelease === "boolean" ? parsed.checkPrerelease : DEFAULT_SETTINGS.checkPrerelease
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+function saveSettings(dataDir, patch) {
+  const next = { ...loadSettings(dataDir), ...patch };
+  try {
+    const file = settingsPath(dataDir);
+    mkdirSync4(dirname3(file), { recursive: true });
+    writeFileSync3(file, JSON.stringify(next, null, 2) + `
+`, "utf-8");
+  } catch (err) {
+    console.warn("Failed to persist desktop settings (non-fatal):", err instanceof Error ? err.message : String(err));
+  }
+  return next;
 }
 
 // src/local-opencode.ts
 import {
-  mkdirSync as mkdirSync3,
-  writeFileSync as writeFileSync2,
-  readFileSync as readFileSync3,
-  existsSync as existsSync3,
+  mkdirSync as mkdirSync5,
+  writeFileSync as writeFileSync4,
+  readFileSync as readFileSync5,
+  existsSync as existsSync4,
   unlinkSync,
   chmodSync
 } from "node:fs";
-import { join as join2 } from "node:path";
-import { randomBytes } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { join as join5 } from "node:path";
+import { spawn as spawn2, spawnSync } from "node:child_process";
 var USERNAME = "openpalm";
 var STOP_GRACE_MS = 5000;
 function runtimePath(dataDir) {
-  return join2(dataDir, "local-opencode.runtime.json");
+  return join5(dataDir, "local-opencode.runtime.json");
 }
 function pidfilePath(dataDir) {
-  return join2(dataDir, "local-opencode.pid");
+  return join5(dataDir, "local-opencode.pid");
 }
 function unavailableSentinelPath(dataDir) {
-  return join2(dataDir, "local-opencode.unavailable");
+  return join5(dataDir, "local-opencode.unavailable");
 }
 function adminOpencodeHome(dataDir) {
-  return join2(dataDir, "admin-opencode-home");
+  return join5(dataDir, "admin-opencode-home");
 }
-function generatePassword() {
-  return randomBytes(32).toString("base64url");
-}
-function buildRuntimeJson(url, password, pid, startedAt = new Date) {
+function buildRuntimeJson(url, pid, startedAt = new Date) {
   return {
     url,
     username: USERNAME,
-    password,
     pid,
     startedAt: startedAt.toISOString()
   };
@@ -11259,15 +11568,15 @@ function isPidAlive(pid) {
 }
 function stageAdminHome(dataDir, pluginPath) {
   const home = adminOpencodeHome(dataDir);
-  const configDir = join2(home, ".config", "opencode");
-  const shareDir = join2(home, ".local", "share", "opencode");
-  const ocStateDir = join2(home, ".local", "state", "opencode");
-  mkdirSync3(configDir, { recursive: true });
-  mkdirSync3(shareDir, { recursive: true });
-  mkdirSync3(ocStateDir, { recursive: true });
-  const configPath = join2(configDir, "opencode.json");
-  if (!existsSync3(configPath)) {
-    writeFileSync2(configPath, JSON.stringify({
+  const configDir = join5(home, ".config", "opencode");
+  const shareDir = join5(home, ".local", "share", "opencode");
+  const ocStateDir = join5(home, ".local", "state", "opencode");
+  mkdirSync5(configDir, { recursive: true });
+  mkdirSync5(shareDir, { recursive: true });
+  mkdirSync5(ocStateDir, { recursive: true });
+  const configPath = join5(configDir, "opencode.json");
+  if (!existsSync4(configPath)) {
+    writeFileSync4(configPath, JSON.stringify({
       $schema: "https://opencode.ai/config.json",
       plugin: [pluginPath]
     }, null, 2), { encoding: "utf-8" });
@@ -11276,16 +11585,16 @@ function stageAdminHome(dataDir, pluginPath) {
 }
 function writeRuntimeFile(dataDir, data) {
   const path = runtimePath(dataDir);
-  mkdirSync3(dataDir, { recursive: true });
-  writeFileSync2(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
+  mkdirSync5(dataDir, { recursive: true });
+  writeFileSync4(path, JSON.stringify(data, null, 2), { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
   } catch {}
 }
 function writePidFile(dataDir, pid) {
   const path = pidfilePath(dataDir);
-  mkdirSync3(dataDir, { recursive: true });
-  writeFileSync2(path, `${pid}
+  mkdirSync5(dataDir, { recursive: true });
+  writeFileSync4(path, `${pid}
 `, { encoding: "utf-8", mode: 384 });
   try {
     chmodSync(path, 384);
@@ -11293,10 +11602,10 @@ function writePidFile(dataDir, pid) {
 }
 function readPidFile(dataDir) {
   const path = pidfilePath(dataDir);
-  if (!existsSync3(path))
+  if (!existsSync4(path))
     return null;
   try {
-    const raw = readFileSync3(path, "utf-8").trim();
+    const raw = readFileSync5(path, "utf-8").trim();
     const pid = Number.parseInt(raw, 10);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
@@ -11305,7 +11614,7 @@ function readPidFile(dataDir) {
 }
 function unlinkSafely(path) {
   try {
-    if (existsSync3(path))
+    if (existsSync4(path))
       unlinkSync(path);
   } catch {}
 }
@@ -11339,29 +11648,26 @@ function killProcessTree(pid, signal) {
     process.kill(pid, signal);
   } catch {}
 }
-var _spawn = spawn;
+var _spawn = spawn2;
 function failUnavailable(dataDir, err) {
   const msg = err instanceof Error ? err.message : String(err);
   const looksMissing = /ENOENT/i.test(msg) || /opencode/i.test(msg) && /not found|no such file/i.test(msg);
   const reason = looksMissing ? "opencode binary not on PATH" : `opencode spawn failed: ${msg}`;
   console.warn(`[local-opencode] ${reason}. Local admin OpenCode unavailable; remote endpoints still work.`);
   try {
-    writeFileSync2(unavailableSentinelPath(dataDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
+    writeFileSync4(unavailableSentinelPath(dataDir), JSON.stringify({ reason, at: new Date().toISOString() }, null, 2), { encoding: "utf-8", mode: 384 });
   } catch {}
   return null;
 }
 async function startLocalOpenCode(opts) {
   const { dataDir, pluginPath } = opts;
-  mkdirSync3(dataDir, { recursive: true });
+  mkdirSync5(dataDir, { recursive: true });
   sweepStalePid(dataDir);
-  const password = generatePassword();
   const { home } = stageAdminHome(dataDir, pluginPath);
   const env = {
     ...opts.envOverride ?? process.env,
     HOME: home,
-    OPENCODE_SERVER_USERNAME: USERNAME,
-    OPENCODE_SERVER_PASSWORD: password,
-    OPENCODE_AUTH: "true"
+    OPENCODE_AUTH: "false"
   };
   let proc;
   try {
@@ -11411,7 +11717,7 @@ ${out}` : ""}`));
     return failUnavailable(dataDir, err);
   }
   const pid = proc.pid ?? -1;
-  const runtime = buildRuntimeJson(url, password, pid);
+  const runtime = buildRuntimeJson(url, pid);
   writeRuntimeFile(dataDir, runtime);
   writePidFile(dataDir, pid);
   unlinkSafely(unavailableSentinelPath(dataDir));
@@ -11419,7 +11725,6 @@ ${out}` : ""}`));
   return {
     url,
     username: USERNAME,
-    password,
     pid,
     async stop() {
       if (stopped)
@@ -11445,7 +11750,7 @@ if (!globalThis.Bun) {
   globalThis.Bun = { env: process.env };
 }
 var __filename2 = fileURLToPath2(import.meta.url);
-var __dirname2 = dirname2(__filename2);
+var __dirname2 = dirname4(__filename2);
 function augmentPathForGuiLaunch() {
   if (process.platform !== "darwin")
     return;
@@ -11454,7 +11759,7 @@ function augmentPathForGuiLaunch() {
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
     "/usr/local/bin",
-    home ? join3(home, ".nvm", "current", "bin") : ""
+    home ? join6(home, ".nvm", "current", "bin") : ""
   ].filter(Boolean);
   const current = (process.env.PATH ?? "").split(":").filter(Boolean);
   const missing = candidates.filter((dir) => !current.includes(dir));
@@ -11465,14 +11770,14 @@ function augmentPathForGuiLaunch() {
 augmentPathForGuiLaunch();
 var logStream = null;
 function logFilePath() {
-  return join3(app.getPath("logs"), "main.log");
+  return join6(app.getPath("logs"), "main.log");
 }
 function initFileLogger() {
   if (logStream)
     return;
   try {
     const logsDir = app.getPath("logs");
-    mkdirSync4(logsDir, { recursive: true });
+    mkdirSync6(logsDir, { recursive: true });
     logStream = createWriteStream(logFilePath(), { flags: "a" });
     const tee = (orig, level) => {
       return (...args) => {
@@ -11495,11 +11800,11 @@ function writeChildLog(text) {
   } catch {}
 }
 function resolveAdminToolsPluginPath() {
-  const packed = join3(process.resourcesPath ?? "", "admin-tools", "index.js");
-  if (existsSync4(packed))
+  const packed = join6(process.resourcesPath ?? "", "admin-tools", "index.js");
+  if (existsSync5(packed))
     return packed;
-  const dev = join3(__dirname2, "..", "admin-tools", "dist", "index.js");
-  if (existsSync4(dev))
+  const dev = join6(__dirname2, "..", "admin-tools", "dist", "index.js");
+  if (existsSync5(dev))
     return dev;
   return "@openpalm/admin-tools-plugin";
 }
@@ -11507,6 +11812,7 @@ var UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 var READY_TIMEOUT_MS = 60000;
 var MIC_SHORTCUT = "CommandOrControl+Shift+M";
 var TRAY_ICON_SIZE = 18;
+var APP_USER_MODEL_ID = "com.openpalm.app";
 var mainWindow = null;
 var splashWindow = null;
 var tray = null;
@@ -11517,6 +11823,7 @@ var trayIcon = null;
 var trayRecordingIcons = [];
 var trayAnimationTimer = null;
 var trayAnimationFrame = 0;
+var checkPrereleaseUpdates = false;
 var STDERR_RING_SIZE = 200;
 var stderrRing = [];
 function appendStderrLine(line) {
@@ -11532,16 +11839,23 @@ function resolveAssistantUrl(homeDir) {
   const userOverride = process.env.OP_OPENCODE_URL ?? process.env.OP_ASSISTANT_URL;
   if (userOverride)
     return userOverride;
-  const stackEnv = parseEnvFile(join3(homeDir, "knowledge", "env", "stack.env"));
+  const stackEnv = parseEnvFile(join6(homeDir, "knowledge", "env", "stack.env"));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || "127.0.0.1";
   const port = stackEnv.OP_ASSISTANT_PORT || "3800";
   return `http://${bind}:${port}`;
 }
 function buildUIServerEnv(homeDir, port, update) {
-  const stackEnv = parseEnvFile(join3(homeDir, "knowledge", "env", "stack.env"));
+  const stackEnv = parseEnvFile(join6(homeDir, "knowledge", "env", "stack.env"));
   const stackForUi = {};
+  const skippedKeys = new Set([
+    "OP_HOME",
+    "OP_IMAGE_TAG",
+    "OP_ASSISTANT_IMAGE_TAG",
+    "OP_GUARDIAN_IMAGE_TAG",
+    "OP_PORTAL_IMAGE_TAG"
+  ]);
   for (const [k2, v2] of Object.entries(stackEnv)) {
-    if (k2 === "OP_IMAGE_TAG" || k2 === "OP_HOME")
+    if (skippedKeys.has(k2))
       continue;
     stackForUi[k2] = v2;
   }
@@ -11554,10 +11868,11 @@ function buildUIServerEnv(homeDir, port, update) {
     ORIGIN: `http://127.0.0.1:${port}`,
     OP_INSIDE_ELECTRON: "1",
     OP_ELECTRON_VERSION: app.getVersion?.() ?? "",
+    OP_HARNESS_CONTRACT_VERSION: String(HARNESS_CONTRACT_VERSION),
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir)
   };
-  const skeletonDir = join3(process.resourcesPath ?? "", "openpalm-skeleton");
-  if (existsSync4(skeletonDir)) {
+  const skeletonDir = join6(process.resourcesPath ?? "", "openpalm-skeleton");
+  if (existsSync5(skeletonDir)) {
     env.OPENPALM_SKELETON_DIR = skeletonDir;
   }
   if (update?.updateAvailable && update.latestVersion) {
@@ -11568,8 +11883,8 @@ function buildUIServerEnv(homeDir, port, update) {
   return env;
 }
 function resolveAssetPath(fileName) {
-  const assetPath = join3(__dirname2, "..", "assets", fileName);
-  return existsSync4(assetPath) ? assetPath : null;
+  const assetPath = join6(__dirname2, "..", "assets", fileName);
+  return existsSync5(assetPath) ? assetPath : null;
 }
 function createTrayIconVariant(icon, alpha = 1) {
   const base = icon.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
@@ -11626,7 +11941,7 @@ function setTrayMicRecording(recording) {
 async function killStaleUIServer(pidFile) {
   let pid = null;
   try {
-    const raw = readFileSync4(pidFile, "utf-8").trim();
+    const raw = readFileSync6(pidFile, "utf-8").trim();
     const n = Number.parseInt(raw, 10);
     if (Number.isFinite(n) && n > 0)
       pid = n;
@@ -11664,33 +11979,37 @@ async function startUIServer() {
   const dataDir = resolveDataDir();
   resolveConfigDir();
   ensureHomeDirs();
-  const skeletonDir = join3(process.resourcesPath ?? "", "openpalm-skeleton");
-  if (existsSync4(skeletonDir)) {
+  const skeletonDir = join6(process.resourcesPath ?? "", "openpalm-skeleton");
+  if (existsSync5(skeletonDir)) {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
     try {
-      await seedOpenPalmDir(`v${app.getVersion()}`, homeDir, resolveConfigDir(), dataDir);
+      await seedOpenPalmDir(PLATFORM_VERSION, homeDir, resolveConfigDir(), dataDir);
     } catch (err) {
       console.warn("Skeleton seed failed (non-fatal):", err instanceof Error ? err.message : String(err));
     }
   }
-  const version = app.getVersion();
-  const appUpdate = await checkForElectronUpdate(version);
+  const appVersion = app.getVersion();
+  const platformVersion = PLATFORM_VERSION;
+  checkPrereleaseUpdates = loadSettings(dataDir).checkPrerelease;
+  const appUpdate = await checkForElectronUpdate(appVersion, checkPrereleaseUpdates);
   if (appUpdate.updateAvailable) {
     console.log(`App update available: v${appUpdate.latestVersion}`);
   } else if (appUpdate.error) {
     console.log(`App update check skipped: ${appUpdate.error}`);
   }
-  const updateResult = await checkAndUpdateUiBuild(version, dataDir);
+  const updateResult = await checkAndUpdateUiBuild(platformVersion, dataDir, undefined, HARNESS_CONTRACT_VERSION);
   if (updateResult.updated) {
     console.log(`UI updated to v${updateResult.latestVersion}`);
+  } else if (updateResult.redownloadRequired) {
+    console.log(`UI build v${updateResult.latestVersion} needs OpenPalm app harness ` + `v${updateResult.requiredHarnessContract} (this app provides v${HARNESS_CONTRACT_VERSION}) — ` + `keeping the current UI; re-download the app to update.`);
   } else if (updateResult.error) {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
   let uiBuildDir = resolveUiBuildDir();
-  if (!existsSync4(join3(uiBuildDir, "index.js"))) {
+  if (!existsSync5(join6(uiBuildDir, "index.js"))) {
     console.log("UI build not found — seeding @openpalm/ui from npm...");
     try {
-      await seedUiBuild(uiUpdateChannel(version), dataDir);
+      await seedUiBuild(uiUpdateChannel(platformVersion), dataDir);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error("Failed to seed UI build:", err instanceof Error ? err.message : String(err));
@@ -11698,17 +12017,42 @@ async function startUIServer() {
       return;
     }
   }
-  const uiPidFile = join3(dataDir, ".ui-server.pid");
+  const uiPidFile = join6(dataDir, ".ui-server.pid");
   await killStaleUIServer(uiPidFile);
-  uiProcess = spawn2(process.execPath, [join3(uiBuildDir, "index.js")], {
+  spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate);
+  const ready = await waitForReady(UI_PORT);
+  if (!ready) {
+    const recentLogs = getRecentStderr(40);
+    const detail = [
+      `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
+      "",
+      recentLogs ? `Last output from UI server:
+${recentLogs}` : "(No UI server output was captured.)",
+      "",
+      `See the log file for full logs:
+${logFilePath()}`
+    ].join(`
+`);
+    console.error("UI server did not become ready in time");
+    closeSplashWindow();
+    dialog.showErrorBox("OpenPalm failed to start", detail);
+    app.quit();
+  }
+}
+function spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate) {
+  uiProcess = spawn3(process.execPath, [join6(uiBuildDir, "index.js")], {
     cwd: uiBuildDir,
-    env: { ...buildUIServerEnv(homeDir, UI_PORT, appUpdate), ELECTRON_RUN_AS_NODE: "1" },
+    env: {
+      ...buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+      ELECTRON_RUN_AS_NODE: "1",
+      OP_UI_SUPERVISOR: "electron"
+    },
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"]
   });
   if (uiProcess.pid) {
     try {
-      writeFileSync3(uiPidFile, String(uiProcess.pid));
+      writeFileSync5(uiPidFile, String(uiProcess.pid));
     } catch {}
   }
   uiProcess.stdout?.on("data", (chunk) => {
@@ -11742,28 +12086,49 @@ ${logFilePath()}`
     app.quit();
   });
   uiProcess.on("exit", (code) => {
+    if (uiServerRestarting)
+      return;
     if (code !== 0 && code !== null) {
       console.error(`UI server exited with code ${code}`);
     }
     uiProcess = null;
   });
-  const ready = await waitForReady(UI_PORT);
-  if (!ready) {
-    const recentLogs = getRecentStderr(40);
-    const detail = [
-      `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
-      "",
-      recentLogs ? `Last output from UI server:
-${recentLogs}` : "(No UI server output was captured.)",
-      "",
-      `See the log file for full logs:
-${logFilePath()}`
-    ].join(`
-`);
-    console.error("UI server did not become ready in time");
-    closeSplashWindow();
-    dialog.showErrorBox("OpenPalm failed to start", detail);
-    app.quit();
+}
+var uiServerRestarting = false;
+async function restartUIServer() {
+  if (uiServerRestarting)
+    return false;
+  uiServerRestarting = true;
+  console.log("UI update detected — restarting UI server...");
+  try {
+    const homeDir = resolveOpenPalmHome();
+    const dataDir = resolveDataDir();
+    const uiPidFile = join6(dataDir, ".ui-server.pid");
+    const prev = uiProcess;
+    uiProcess = null;
+    if (prev?.pid) {
+      killProcessTree(prev.pid, "SIGTERM");
+      await new Promise((r) => setTimeout(r, 1500));
+      killProcessTree(prev.pid, "SIGKILL");
+    }
+    const uiBuildDir = resolveUiBuildDir();
+    if (!existsSync5(join6(uiBuildDir, "index.js"))) {
+      console.error("UI restart aborted: build not found at", uiBuildDir);
+      return false;
+    }
+    spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
+    const ready = await waitForReady(UI_PORT);
+    if (!ready) {
+      console.error("UI server did not become ready after restart.");
+      return false;
+    }
+    console.log("UI server restarted.");
+    return true;
+  } catch (err) {
+    console.error("UI server restart failed:", err instanceof Error ? err.message : String(err));
+    return false;
+  } finally {
+    uiServerRestarting = false;
   }
 }
 function stopUIServer() {
@@ -11776,7 +12141,7 @@ function stopUIServer() {
     killProcessTree(pid, "SIGKILL");
   }
   try {
-    rmSync2(join3(resolveDataDir(), ".ui-server.pid"), { force: true });
+    rmSync2(join6(resolveDataDir(), ".ui-server.pid"), { force: true });
   } catch {}
 }
 function createSplashWindow() {
@@ -11820,6 +12185,89 @@ function closeSplashWindow() {
     splashWindow = null;
   }
 }
+var GET_DOCKER_URL = "https://docs.docker.com/get-docker/";
+async function dockerPreflight() {
+  const docker = await checkDocker();
+  if (!docker.ok) {
+    return {
+      ok: false,
+      title: "OpenPalm needs Docker Desktop",
+      message: "OpenPalm runs your assistant in Docker, but Docker isn’t running. " + "Install Docker Desktop (or start it if it’s already installed), then retry."
+    };
+  }
+  const compose = await checkDockerCompose();
+  if (!compose.ok) {
+    return {
+      ok: false,
+      title: "Docker Compose v2 is required",
+      message: "Docker is running, but Docker Compose v2 isn’t available. " + "Update Docker Desktop (it bundles Compose v2), then retry."
+    };
+  }
+  return { ok: true };
+}
+var dockerRetryResolve = null;
+function showDockerErrorScreen(result) {
+  if (!splashWindow || splashWindow.isDestroyed()) {
+    const icon = resolveAssetPath("icon.png") ?? undefined;
+    splashWindow = new BrowserWindow({
+      width: 460,
+      height: 320,
+      frame: false,
+      resizable: false,
+      movable: true,
+      alwaysOnTop: true,
+      show: true,
+      icon,
+      backgroundColor: "#0f172a",
+      webPreferences: { nodeIntegration: false, contextIsolation: true, preload: join6(__dirname2, "preload.cjs") }
+    });
+    splashWindow.on("closed", () => {
+      splashWindow = null;
+    });
+  } else {
+    splashWindow.setSize(460, 320);
+  }
+  const esc = (s3) => s3.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{height:100%;margin:0;background:#0f172a;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;box-sizing:border-box;text-align:center}
+    .title{font-size:18px;font-weight:600}
+    .msg{font-size:13px;line-height:1.5;color:#cbd5e1;max-width:380px}
+    .row{display:flex;gap:10px;margin-top:6px}
+    button{font:inherit;font-size:13px;padding:9px 16px;border-radius:8px;border:1px solid #334155;cursor:pointer}
+    .primary{background:#2563eb;border-color:#2563eb;color:#fff}
+    .secondary{background:#1e293b;color:#e2e8f0}
+    button:hover{filter:brightness(1.1)}
+  </style></head><body>
+    <div class="title">${esc(result.title)}</div>
+    <div class="msg">${esc(result.message)}</div>
+    <div class="row">
+      <button class="primary" id="install">Install Docker</button>
+      <button class="secondary" id="retry">I’ve installed it — retry</button>
+    </div>
+    <script>
+      const op = window.openpalm;
+      document.getElementById('install').addEventListener('click', function(){ op && op.openDockerInstall(); });
+      document.getElementById('retry').addEventListener('click', function(){
+        var b=document.getElementById('retry'); b.textContent='Checking…'; b.disabled=true;
+        op && op.retryDockerPreflight();
+      });
+    </script>
+  </body></html>`;
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  return new Promise((resolve) => {
+    dockerRetryResolve = resolve;
+  });
+}
+async function ensureDockerReady() {
+  for (;; ) {
+    const result = await dockerPreflight();
+    if (result.ok)
+      return;
+    console.warn(`Docker preflight failed: ${result.message}`);
+    await showDockerErrorScreen(result);
+  }
+}
 async function resolveInitialUrl() {
   try {
     const res = await fetch(`http://127.0.0.1:${UI_PORT}/api/setup/status`, {
@@ -11845,7 +12293,7 @@ async function createWindow() {
     show: false,
     icon,
     webPreferences: {
-      preload: join3(__dirname2, "preload.cjs"),
+      preload: join6(__dirname2, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false
@@ -11942,6 +12390,41 @@ function showNotification(title, body) {
   const n = new Notification({ title, body: body ?? "" });
   n.show();
 }
+function supportsLaunchOnLogin(platform = process.platform) {
+  return platform === "darwin" || platform === "win32";
+}
+function getLaunchOnLoginStatus(platform = process.platform) {
+  if (!supportsLaunchOnLogin(platform)) {
+    return { supported: false, enabled: false };
+  }
+  return {
+    supported: true,
+    enabled: !!app.getLoginItemSettings().openAtLogin
+  };
+}
+function setLaunchOnLogin(enabled, platform = process.platform) {
+  if (!supportsLaunchOnLogin(platform)) {
+    return { supported: false, enabled: false };
+  }
+  app.setLoginItemSettings({ openAtLogin: enabled });
+  return getLaunchOnLoginStatus(platform);
+}
+async function setCheckPrerelease(enabled) {
+  checkPrereleaseUpdates = enabled;
+  const dataDir = resolveDataDir();
+  saveSettings(dataDir, { checkPrerelease: enabled });
+  try {
+    const appVersion = app.getVersion();
+    const update = await checkForElectronUpdate(appVersion, enabled);
+    rebuildTrayMenu();
+    if (enabled && update.updateAvailable && update.latestVersion) {
+      const kind = update.isPrerelease ? "prerelease" : "version";
+      showNotification(`OpenPalm ${kind} available`, `OpenPalm ${update.latestVersion} is available to download.`);
+    }
+  } catch (err) {
+    console.warn("Prerelease update re-check failed (non-fatal):", err instanceof Error ? err.message : String(err));
+  }
+}
 function createTray() {
   const iconPath = resolveAssetPath("tray-icon.png");
   if (!iconPath) {
@@ -11952,8 +12435,16 @@ function createTray() {
     trayIcon.setTemplateImage(true);
   }
   trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon, alpha));
-  tray = new Tray(trayIcon);
-  const loginSettings = app.getLoginItemSettings();
+  if (!tray) {
+    tray = new Tray(trayIcon);
+  }
+  rebuildTrayMenu();
+  tray.setToolTip("OpenPalm");
+}
+function rebuildTrayMenu() {
+  if (!tray)
+    return;
+  const loginSettings = getLaunchOnLoginStatus();
   const contextMenu = Menu.buildFromTemplate([
     { label: "Open OpenPalm", click: showWindow },
     { label: "Show Logs", click: () => {
@@ -11963,9 +12454,18 @@ function createTray() {
     {
       label: "Start at Login",
       type: "checkbox",
-      checked: loginSettings.openAtLogin,
+      checked: loginSettings.enabled,
+      enabled: loginSettings.supported,
       click: (menuItem) => {
-        app.setLoginItemSettings({ openAtLogin: menuItem.checked });
+        setLaunchOnLogin(menuItem.checked);
+      }
+    },
+    {
+      label: "Check for prerelease versions",
+      type: "checkbox",
+      checked: checkPrereleaseUpdates,
+      click: (menuItem) => {
+        setCheckPrerelease(menuItem.checked);
       }
     },
     { type: "separator" },
@@ -11977,13 +12477,14 @@ function createTray() {
       }
     }
   ]);
-  tray.setToolTip("OpenPalm");
   tray.setContextMenu(contextMenu);
 }
 app.whenReady().then(async () => {
   initFileLogger();
+  app.setAppUserModelId?.(APP_USER_MODEL_ID);
   console.log(`OpenPalm starting (v${app.getVersion?.() ?? "?"}); logs at ${logFilePath()}`);
   createSplashWindow();
+  await ensureDockerReady();
   try {
     await startUIServer();
   } catch (err) {
@@ -12016,6 +12517,37 @@ app.on("window-all-closed", () => {});
 ipcMain.handle("restart-app", () => {
   app.relaunch();
   app.quit();
+});
+ipcMain.handle("restart-ui-server", async () => {
+  return restartUIServer();
+});
+process.on("SIGHUP", () => {
+  restartUIServer();
+});
+ipcMain.on("open-docker-install", () => {
+  shell.openExternal(GET_DOCKER_URL);
+});
+ipcMain.on("retry-docker-preflight", () => {
+  const resolve = dockerRetryResolve;
+  dockerRetryResolve = null;
+  resolve?.();
+});
+ipcMain.handle("launch-on-login-status", () => {
+  return getLaunchOnLoginStatus();
+});
+ipcMain.handle("set-launch-on-login", (_event, enabled) => {
+  return setLaunchOnLogin(!!enabled);
+});
+ipcMain.on("notify", (_event, payload) => {
+  const focusedWindow = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+  if (focusedWindow?.isFocused())
+    return;
+  const title = payload?.title?.trim();
+  if (!title)
+    return;
+  const notification = new Notification({ title, body: payload?.body ?? "" });
+  notification.on("click", showWindow);
+  notification.show();
 });
 ipcMain.handle("set-tray-mic-recording", (_event, recording) => {
   setTrayMicRecording(recording);
@@ -12050,8 +12582,12 @@ app.on("before-quit", (event) => {
 });
 export {
   waitForReady,
+  supportsLaunchOnLogin,
   showNotification,
+  setLaunchOnLogin,
   resolveAssistantUrl,
   getRecentStderr,
+  getLaunchOnLoginStatus,
+  ensureDockerReady,
   buildUIServerEnv
 };

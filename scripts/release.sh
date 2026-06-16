@@ -1,21 +1,33 @@
 #!/usr/bin/env bash
-# Bump platform versions, commit, push the CURRENT branch, and tag a release.
-# Platform packages (defined in .github/release-package-groups.json plus Docker
-# images) share a single coordinated version. Channel adapters
-# (packages/channel-*) are versioned independently via their own publish
-# workflows and are NOT touched here.
+# Thin wrapper that dispatches the platform release workflow.
 #
-# The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
+# The orchestrator (.github/workflows/platform-release.yml) owns the ENTIRE
+# release: it bumps versions, stamps setup scripts, runs the test/regression
+# gates, builds + pushes Docker images, publishes the npm DAG, builds the CLI +
+# desktop archives, and tags + creates the GitHub release — all on the ref you
+# pass. This script just validates the version and dispatches that workflow, so
+# there is one source of truth for the release process.
+#
+# For fine-grained unit selection (host / web_ui / portals / assistant / voice),
+# call the workflow directly, e.g.:
+#   gh workflow run platform-release.yml --ref main \
+#     -f version=0.12.0 -f ref=release/0.12.0 -f release_voice=true -f dry_run=true
+#
+# Usage:
+#   ./scripts/release.sh <version> [ref]
+#   DRY_RUN=1 ./scripts/release.sh 0.12.0           # validate-only workflow run
+#
+# Examples:
+#   ./scripts/release.sh 0.12.0                      # release current branch
+#   ./scripts/release.sh 0.12.0 release/0.12.0       # release a specific ref
+#
 # See docs/operations/release-management.md for the full process.
-#
-# Usage: ./scripts/release.sh 0.7.2
-#        ./scripts/release.sh 0.8.0-rc1
 set -euo pipefail
 
-VERSION="${1:?Usage: release.sh <version>}"
-TAG="v${VERSION}"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "${ROOT}"
+VERSION="${1:?Usage: release.sh <version> [ref]}"
+REF="${2:-$(git rev-parse --abbrev-ref HEAD)}"
+DRY_RUN_INPUT="false"
+[[ "${DRY_RUN:-}" == "1" ]] && DRY_RUN_INPUT="true"
 
 # --- Validate semver ---
 if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
@@ -23,23 +35,17 @@ if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9
   exit 1
 fi
 
-# --- Preflight checks ---
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "Error: working tree is dirty. Commit or stash changes first." >&2
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: the gh CLI is required to dispatch platform-release.yml" >&2
   exit 1
 fi
 
-if git rev-parse "${TAG}" >/dev/null 2>&1; then
-  echo "Error: tag ${TAG} already exists." >&2
-  exit 1
-fi
-
-CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-echo ""
-echo "This will commit the release prep and push directly to '${CURRENT_BRANCH}'," >&2
-echo "then create and push tag '${TAG}' (which triggers the Release workflow)." >&2
-echo "Ensure branch protection allows direct pushes for your account." >&2
-echo ""
+echo "" >&2
+echo "Dispatching platform-release.yml:" >&2
+echo "  version: ${VERSION}" >&2
+echo "  ref:     ${REF}     (the workflow bumps, tests, builds, and tags this ref)" >&2
+echo "  dry_run: ${DRY_RUN_INPUT}" >&2
+echo "" >&2
 # Skip the prompt in non-interactive shells (CI) or when RELEASE_YES=1.
 if [[ -t 0 && "${RELEASE_YES:-}" != "1" ]]; then
   read -r -p "Continue? [y/N] " confirm
@@ -49,44 +55,13 @@ if [[ -t 0 && "${RELEASE_YES:-}" != "1" ]]; then
   fi
 fi
 
-# --- Bump platform versions ---
-echo "Bumping platform packages to ${VERSION}..."
-./scripts/bump-platform.sh "${VERSION}"
-
-# --- Stamp install-script versions ---
-# The Release workflow's tag-push path VERIFIES (does not bump) that the setup
-# scripts carry SCRIPT_VERSION == release version, and bump-platform.sh only
-# touches package.json manifests. Stamp them here so the tag created below
-# passes that guard. Keep these patterns in lockstep with release.yml.
-echo "Stamping setup scripts to ${VERSION}..."
-sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
-sed -i "s/^\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
-
-# --- Update lockfile ---
-echo "Updating lockfile..."
-bun install
-
-# --- Run tests ---
-echo "Running tests..."
-bun run test
-bun run ui:check
-
-# --- Commit ---
-echo "Committing..."
-git add -A
-git commit -m "chore: release ${VERSION}"
-
-# --- Push ---
-echo "Pushing to ${CURRENT_BRANCH}..."
-git push origin "${CURRENT_BRANCH}"
-
-# --- Tag and push (triggers Release workflow) ---
-echo "Tagging ${TAG} and pushing..."
-git tag "${TAG}"
-git push origin "${TAG}"
+gh workflow run "platform-release.yml" \
+  --ref main \
+  -f version="${VERSION}" \
+  -f ref="${REF}" \
+  -f dry_run="${DRY_RUN_INPUT}"
 
 echo ""
-echo "Release ${VERSION} initiated."
-echo "  Docker + CLI:   triggered by tag ${TAG}"
-echo "  npm packages:   platform packages (lib, channels-sdk, openpalm CLI) via the release workflow; channel adapters publish independently via publish-channel-*.yml"
-echo "  Monitor:        gh run list --limit 10"
+echo "Release ${VERSION} dispatched for ref '${REF}' (dry_run=${DRY_RUN_INPUT})."
+echo "  Monitor: gh run list --workflow platform-release.yml --limit 5"
+echo "  Watch:   gh run watch \$(gh run list --workflow platform-release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"

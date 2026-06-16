@@ -13,6 +13,21 @@ export type ComposeServiceFailure = {
   reason: string;
 };
 
+export type DockerErrorMapping = {
+  code:
+    | "docker_unavailable"
+    | "port_in_use"
+    | "missing_file"
+    | "permission_denied"
+    | "no_space"
+    | "platform_mismatch"
+    | "image_auth"
+    | "out_of_memory"
+    | "healthcheck_failed"
+    | "docker_error";
+  message: string;
+};
+
 /**
  * Lines we recognise as per-service failure indicators. The compose CLI
  * has rendered these in a few different shapes across versions:
@@ -114,4 +129,90 @@ export function summarizeComposeStderr(stderr: string, maxLen = 500): string {
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? "";
   return first.length > maxLen ? first.slice(0, maxLen - 1) + "…" : first;
+}
+
+export function mapDockerError(stderr: string): DockerErrorMapping {
+  const summary = summarizeComposeStderr(stderr) || "Docker reported an unknown error.";
+  const failures = parseComposeStderr(stderr);
+  const healthFailure = failures.find((failure) =>
+    /health check|is unhealthy|unhealthy|failed to start/i.test(failure.reason)
+  );
+
+  if (/cannot connect to the docker daemon|docker daemon is not running|error during connect|is the docker daemon running|connection refused/i.test(stderr)) {
+    return {
+      code: "docker_unavailable",
+      message: "Docker appears to be stopped or unreachable. Start Docker, then retry.",
+    };
+  }
+
+  const portMatch = /(?:bind: address already in use|port is already allocated).*?([0-9]{2,5})\b/i.exec(stderr)
+    ?? /listen tcp[^:]*:([0-9]{2,5})\b/i.exec(stderr)
+    ?? /Ports are not available: .*?:([0-9]+)\b/i.exec(stderr);
+  if (portMatch) {
+    return {
+      code: "port_in_use",
+      message: `Port ${portMatch[1]} is already in use by another program. Free it, then retry.`,
+    };
+  }
+
+  if (/cannot find specified .* file|no such file or directory|ENOTDIR|EISDIR/i.test(stderr)) {
+    return {
+      code: "missing_file",
+      message: "A required OpenPalm file or path is missing. Re-run setup or repair the install path, then retry.",
+    };
+  }
+
+  if (/permission denied|EACCES|EPERM/i.test(stderr)) {
+    return {
+      code: "permission_denied",
+      message: "Permission denied. Check that OpenPalm and Docker can read and write the required files.",
+    };
+  }
+
+  if (/no space left on device|ENOSPC/i.test(stderr)) {
+    return {
+      code: "no_space",
+      message: "Your disk is full. Free up space, then retry.",
+    };
+  }
+
+  if (/no matching manifest for|platform .* does not match the detected host platform|requested image's platform/i.test(stderr)) {
+    return {
+      code: "platform_mismatch",
+      message: "The requested image does not support this machine's platform. Check the selected image tag or runtime architecture.",
+    };
+  }
+
+  if (/pull access denied|unauthorized|authentication required|requested access to the resource is denied|denied: requested access/i.test(stderr)) {
+    return {
+      code: "image_auth",
+      message: "Docker could not pull one or more images because the image is private, missing, or requires authentication.",
+    };
+  }
+
+  if (/out of memory|cannot allocate memory|ENOMEM|oom killed|oomkilled/i.test(stderr)) {
+    return {
+      code: "out_of_memory",
+      message: "Docker ran out of memory while starting containers. Free memory or lower the workload, then retry.",
+    };
+  }
+
+  if (healthFailure) {
+    return {
+      code: "healthcheck_failed",
+      message: `The ${healthFailure.service} container failed its health check. Check its logs, then retry.`,
+    };
+  }
+
+  if (/health check|is unhealthy|unhealthy|failed to start/i.test(summary)) {
+    return {
+      code: "healthcheck_failed",
+      message: "A container failed its health check. Check the container logs, then retry.",
+    };
+  }
+
+  return {
+    code: "docker_error",
+    message: summary,
+  };
 }

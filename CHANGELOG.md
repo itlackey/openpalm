@@ -5,6 +5,205 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-06-16
+
+### Fixed
+
+- **Advanced no longer throws "Session not found" when switching Chat↔Advanced.**
+  The embedded OpenCode deep link hardcoded a workspace path, and OpenCode scopes
+  its session list by directory — so a session that lived in a different directory
+  (or on a different endpoint entirely) couldn't be found and the embedded app
+  errored. Advanced now resolves the requested session against the **active**
+  endpoint (via the same-origin proxy), deep-links using the session's **real
+  directory**, and falls back to the endpoint's default view when the session
+  doesn't exist there instead of rendering a broken frame.
+
+## [0.12.1] - 2026-06-16
+
+### Fixed
+
+- **Advanced mode works with the local admin assistant.** The Electron-spawned
+  admin OpenCode is now served without Basic auth (loopback-only, mirroring the
+  assistant), so the cross-origin Advanced iframe no longer 401s when the
+  "OpenPalm Admin" connection is selected. (#507)
+- **Advanced recovers from a dead/stale session.** Advanced pre-flight-probes the
+  active endpoint and, when it is unreachable, shows an inline Reconnect
+  affordance (which re-reads the endpoint URL and reloads the frame) instead of a
+  silent broken iframe. (#507)
+- **Discord & Slack portals deliver messages again.** The 0.12.0 `@opencode-ai/sdk`
+  bump (1.15.13 → 1.17.7) changed `session.*` calls to resolve to a `{ data, error }`
+  envelope; the adapters read the session off the envelope directly, so the session
+  id was `undefined` and prompts were sent to the un-substituted path
+  `/session/{id}/message` — which the guardian denied as `no_route`. Both adapters
+  now read the session from `.data` (and surface prompt errors). A portal-secret
+  contract test plus adapter regression tests guard against recurrence.
+
+## [0.12.0] - 2026-06-15
+
+The "channels" subsystem is renamed to **portals**, the guardian gains a
+moderated front door for direct OpenCode/MCP clients, and setup/release
+plumbing is hardened. The portal rename ships with automatic upgrade
+migrations — see **Migration** below.
+
+### Changed
+
+- **BREAKING — "channels" → "portals" across the stack.** The platform/adapter
+  ingress concept (Discord, Slack, chat, API) is now called a **portal**. This
+  touches user-visible and runtime surfaces:
+  - Compose: `channels.compose.yml` → `portals.compose.yml`; the per-portal
+    verification secrets `knowledge/secrets/channel_<name>_secret` →
+    `portal_<name>_secret`; guardian env `CHANNEL_<NAME>_SECRET_FILE` →
+    `PORTAL_<NAME>_SECRET_FILE` and `GUARDIAN_REQUIRE_CHANNEL_SECRETS` →
+    `GUARDIAN_REQUIRE_PORTAL_SECRETS`.
+  - Networking: the adapters↔guardian network is `portal_net` (was `channel_lan`).
+  - Guardian: principal `kind` `channel` → `portal`; `/stats` fields
+    `channel_window_ms`/`channel_max_requests`/`active_channel_limiters` →
+    `portal_*`.
+  - Release: the `release_channels` workflow input → `release_portals`; the
+    `channels` release unit → `portals`.
+  - Docs moved: `docs/channels/` → `docs/portals/`.
+- **Guardian: opt-in moderated front door for direct OpenCode + MCP clients.**
+  A transparent OpenCode reverse-proxy (`/oc`) and an in-process MCP server
+  (`/mcp`, `ask_assistant`) sit behind the same moderation → ownership → bounds
+  pipeline; both are off by default. (#429, #343, #432)
+- **Per-image release pinning.** Each image (`OP_*_IMAGE_TAG`) can be pinned
+  independently of the platform tag. (#477)
+- **`OP_BIND_ADDRESS` global** collapses the per-service port/bind-address pairs
+  into one opt-in LAN switch (loopback by default). (#395)
+- **mDNS discovery now uses OpenCode's native in-process responder** instead of
+  avahi `apk add` sidecars. The `mdns-guardian` / `mdns-assistant` compose
+  services (and the `addon.mdns` / `addon.mdns.assistant` profiles) are removed.
+  mDNS is configured via `server.mdns` / `server.mdnsDomain` in the assistant
+  and guardian `opencode.jsonc` files and ships **off** (LAN-first). The
+  assistant can advertise `<name>.local` once LAN-exposed (Linux host +
+  `network_mode: host`); the loopback-only guardian moderator never advertises.
+  Note: the service-instance label is OpenCode's hardcoded `opencode-<port>` —
+  only the resolved `.local` hostname carries the custom name. See
+  `docs/technical/network-partitioning-d5a.md`.
+
+### Added
+
+- **Connections tab for CLI agent tools** (Codex, Claude Code, Copilot, Pi) with
+  shared provider-key handling. (#479, #480)
+- **Launch routing**: first-run `/splash`, hooks-based routing, and a CLI
+  `openpalm status` command, all from one shared launch-status helper. (#440)
+- **Setup resilience**: deploy journal / restart-resume, centralized Docker
+  error mapping, managed-asset refresh on every apply, and reconcile-on-install.
+  (#465)
+- **Self-updating control plane (thin Electron harness).** The desktop app is now
+  a thin native harness: the admin UI build, the `@openpalm/lib` control plane
+  (including `RELEASE_MIGRATIONS`), and the Docker stack images self-update in
+  place over npm / `compose pull` with **no app re-download**. A re-download is
+  required only when the native harness surface (IPC / preload / spawn-env / FS
+  conventions) changes — tracked by a single `HARNESS_CONTRACT_VERSION` (starts at
+  `1`) that is independent of the control-plane `PLATFORM_VERSION`. Both
+  supervisors (the Electron harness and `openpalm ui serve`) self-update `data/ui`
+  before spawning and can hot-restart the UI child in place after a UI-build
+  update. A published `@openpalm/ui` build declares `minHarnessContract`; the
+  harness refuses to self-update onto a build its native surface can't satisfy and
+  prompts a re-download instead of failing at runtime. A CI guard
+  (`scripts/validate-thin-harness-boundary.sh`) pins the boundary: the frozen
+  harness bundle carries zero migration symbols; the UI build carries them.
+  (#495, #496)
+- **`openpalm update --pre`** opt-in for prerelease (rc/beta) stack versions.
+  (#494)
+- **Desktop Docker preflight.** The Electron app runs the CLI's Docker probes at
+  launch and shows a legible install/retry screen instead of an opaque
+  `503 docker_unavailable` ~60s into the splash. (#493)
+- **Upgrade preview.** `openpalm migrate --dry-run --to <version>` previews the
+  exact copy-only release migrations an upgrade *would* run (read from the target
+  version, not the current `stack.env`; defaults to the newest published tag for
+  the current major). The UI's Advanced options gains a matching "Preview changes"
+  button that lists the operations before you apply. (#497)
+- **"An update is available" signal.** `openpalm status` prints a one-line,
+  channel-correct advisory to stderr (stdout JSON stays clean for scripts) when a
+  newer release is published, and the web UI shows a persistent "An update is
+  ready — review it" banner in the shell that jumps to the Updates tab. (#498)
+- **Backup safety and visibility.** A pre-backup free-space check blocks a
+  full-home layout backup that would exceed a safe fraction of free disk (with a
+  plain-language message; nothing is deleted — proceed by confirming) instead of
+  silently filling the disk. The UI surfaces backups (count, total size, last
+  time, per-backup list, restore guidance) and a confirm-gated "Prune…" that
+  drives the *existing* `openpalm backups prune` — there is no automatic
+  deletion. (#499)
+- **Stuck-operation recovery.** A new `openpalm unlock` command (and a UI "An
+  operation seems stuck — clear it?" affordance) clears a **stale** install lock
+  after validating staleness (dead PID or older than 30 minutes); a live lock is
+  refused with the auto-heal note. Install/update/migrate abort paths now point at
+  the backup that was just made and `openpalm rollback`. (#500)
+- **Electron prerelease opt-in.** A "Check for prerelease versions" tray toggle
+  switches the desktop update check to the full releases list and notifies on
+  newer prereleases for users piloting an rc — notify-only, default off. (#504)
+
+### Changed
+
+- **Version / release-semantics reconciliation.** `PLATFORM_VERSION` in
+  `@openpalm/lib` is now the single source of truth for the control-plane version
+  (replacing the implicit `v${libPkg.version}` scattered through lifecycle /
+  migrations). Canonical helpers (`normalizeVersion`, `formatForDocker`,
+  `formatForDisplay`, `isPrerelease`, `distTagForVersion`) are the one place that
+  reconciles the Docker-tag (`v`-prefixed), npm (bare), and dist-tag
+  (`latest`/`next`) vocabularies. The UI build update channel is decoupled from
+  `app.getVersion()` (declared platform channel via `OP_UI_CHANNEL`). (#495)
+- **Unified version display.** Every version label the user reads (Assistant /
+  App / UI rows and the update action buttons) is normalized to one canonical
+  no-`v` spelling, and the Updates tab shows a one-line active-channel indicator
+  ("You're on the **stable** / **prerelease** channel."). Internal tag formats are
+  unchanged; only what the user reads is unified. (#503)
+
+### Fixed
+
+- **Prerelease / cross-version bootstrap trap (#492).** A host running an older
+  control plane could point the *stack* at a newer tag through the version picker,
+  running the new release's migrations against the old `@openpalm/lib` and coming
+  up half-migrated. `applyTagChange` / `performUpgrade` now hard-block (with a
+  plain-language message) when the target tag is newer than the running
+  `PLATFORM_VERSION`, and the UI version dropdown is filtered server-side to tags
+  ≤ the running platform so the trap is unreachable.
+- **`openpalm update` no longer auto-jumps a stable install onto a prerelease
+  (#494).** `resolveNewestDockerTag` skips prerelease tags when the base is
+  stable; a prerelease base stays on its channel, and `--pre` is the explicit
+  opt-in. This aligns the CLI, the UI "Update now" card, and the desktop update
+  check on one definition of "latest."
+- **Downgrades via the version picker now require confirmation (#501).**
+  Selecting a tag older than the running version is detected in `applyTagChange`
+  as a downgrade and blocked with a typed signal; the UI shows a plain
+  forward-only-migrations / restore-from-backup warning and re-submits with an
+  explicit `confirmDowngrade` only after the user agrees. (The CLI `migrate --to`
+  path is preview-only.)
+- **Secret-like keys removed from `stack.env` are no longer stripped silently
+  (#502).** `writeSystemEnv` still removes `*_API_KEY` / `*_TOKEN` / `*_SECRET` /
+  `*_PASSWORD` keys per the secret-boundary contract, but now logs a structured
+  warning and surfaces a one-time, dismissible UI notice naming the removed keys
+  and pointing the user at the Connections tab to re-add them.
+
+### Deprecated
+
+- **`channel_lan` Docker network.** Renamed to `portal_net`. `channel_lan` is
+  retained as an empty bridge for this release so existing
+  `custom.compose.yml` overlays that still reference it keep validating on
+  upgrade. **It is removed in 0.13.0** — update any custom overlay to
+  `portal_net` before upgrading past 0.12.0.
+- **`CHANNEL_NAME` compose marker.** `PORTAL_NAME` is canonical; the legacy
+  `CHANNEL_NAME` marker is still recognized for migration safety and **removed
+  in 0.13.0**.
+
+### Migration
+
+- Upgrading from 0.11.x is automatic and non-destructive for these surfaces: the
+  per-portal secrets `knowledge/secrets/channel_<name>_secret` are renamed to
+  `portal_<name>_secret` (value preserved), the guardian's SQLite principal
+  `kind` is migrated `channel` → `portal`, and `portals.compose.yml` is
+  re-materialized (the stale `channels.compose.yml` is inert — the control plane
+  loads an explicit overlay list, not a glob).
+- A user-authored `custom.compose.yml` overlay referencing the `channel_lan`
+  network is **auto-migrated**: the upgrade rewrites `channel_lan` → `portal_net`
+  in place (backing the original up to `custom.compose.yml.pre-portal-rename.bak`
+  first; idempotent). It still validates in 0.12.0 via the deprecated bridge and
+  now keeps working past the 0.13.0 removal with no manual edit. If your overlay
+  *defines* its own external `channel_lan` network, review the rewrite against the
+  `.pre-portal-rename.bak` copy.
+
 ## [0.11.1] - 2026-06-08
 
 A macOS + setup-experience stabilization patch. No migration needed from 0.11.0.
@@ -141,9 +340,8 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 ### Changed
 
 - **OpenCode runtime bumped to 1.15.13** (assistant + admin tools).
-- **Channel adapters are runtime npm installs** (`CHANNEL_PACKAGE`), with
-  `@openpalm/channels-sdk` as an optional peer — adapter updates ship
-  independently of the platform release.
+- **Portal adapters are baked into the portal image**, and the OpenAI-compatible
+  API is served by the guardian image.
 - **Runtime env vars are `OP_`-prefixed** (e.g. `OP_TTS_*`, `OP_STT_*`,
   `OP_VOICE_*`) to avoid host-environment collisions.
 - **Release pipeline consolidated** into a single coordinated, manually-dispatched
@@ -386,7 +584,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
   and shared with the host-side UI process.
 - **Scheduler co-process inside the assistant container** — the standalone
   `scheduler` compose service has been removed. The scheduler now runs as a
-  lightweight co-process inside `core/assistant/entrypoint.sh`.
+  lightweight co-process inside `containers/assistant/entrypoint.sh`.
 - **Seeds in the akm stash** — built-in skills, commands, and agents are seeded
   into `OP_HOME/stash/` on first install via the CLI embedded assets.
 - **Periodic `akm improve` automation** — a catalog automation that runs
@@ -462,7 +660,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 
 ### Removed
 
-- **`core/assistant/opencode/`** — legacy assistant config location. Now lives
+- **`containers/assistant/opencode/`** — legacy assistant config location. Now lives
   solely at `.openpalm/config/assistant/`.
 - **`ControlPlaneState.setupToken`** — field, generator, all test fixtures,
   and the `state.vitest.ts` "generates setupToken on each reset" test.
@@ -484,7 +682,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 - **`admin`/`ui` subcommand** — folded into the bare `openpalm` command.
   Use `openpalm --no-open` for headless invocation (systemd, scripts).
 - **Shared `openpalm-base` Docker image** — inlined into
-  `core/assistant/Dockerfile` since it was the only consumer.
+  `containers/assistant/Dockerfile` since it was the only consumer.
 - **Memory service** (`packages/memory`) — the Bun-based memory service and all
   OpenMemory integration deleted. Memory and knowledge recall now live in the
   shared akm stash.
@@ -518,7 +716,7 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 - **Channel adapters** — web chat (`channel-chat`), OpenAI-compatible API
   (`channel-api`), and Discord (`channel-discord`) channels, each running as a
   standalone Docker container.
-- **Guardian** (`core/guardian/`) — Bun HTTP server enforcing HMAC verification,
+- **Guardian** (`containers/guardian/`) — Bun HTTP server enforcing HMAC verification,
   timestamp skew rejection, replay detection, and rate limiting on all channel
   ingress traffic.
 - **Automation scheduler** — in-process Croner-based scheduler on the admin

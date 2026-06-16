@@ -58,7 +58,7 @@ directly." We reversed that in v2. The load-bearing correction:
 
 4. **OpenCode upstream's "password in browser localStorage" pattern is not
    guidance for OpenPalm.** Upstream is a single-user desktop tool with no
-   server in the request path. OpenPalm is a multi-user, multi-host, channel-fronted
+   server in the request path. OpenPalm is a multi-user, multi-host, portal-fronted
    self-hosted platform with a SvelteKit server already on every request path.
    The broker is free here; it costs a lot upstream. Different threat model,
    different decision.
@@ -326,7 +326,7 @@ to the in-container OpenCode (which is the assistant) via
 automations that exist in the wild (Report 2 confirms none in our bundled set
 but user automations are out of our control). The OpenCode password is already
 the right credential for this — the cron preamble in
-`core/assistant/entrypoint.sh:123` is the only consumer and is easy to retarget.
+`containers/assistant/entrypoint.sh:123` is the only consumer and is easy to retarget.
 
 **Migration:** `entrypoint.sh:123` changes from exporting `OP_ASSISTANT_TOKEN`
 to exporting `OPENCODE_SERVER_PASSWORD` (already in env) under the name
@@ -343,7 +343,7 @@ automations expect (`OP_ASSISTANT_PASSWORD`, fully scoped). Document the change.
 |---|---|
 | Chat conversations + tool invocations on the assistant container | `${OP_HOME}/data/assistant/.local/state/opencode/` (OpenCode native) |
 | Admin operations (compose, secrets, etc.) via local-OpenCode tools | `${OP_HOME}/data/admin-opencode/log/` (OpenCode native) |
-| Channel ingress (HMAC verify, replay detection, rate limit) | `${OP_HOME}/data/logs/guardian-audit.log` (preserved — guardian's own audit) |
+| Portal ingress (HMAC verify, replay detection, rate limit) | `${OP_HOME}/data/logs/guardian-audit.log` (preserved — guardian's own audit) |
 | UI login events (`op_session` issuance, logout) | Application stderr via `createLogger('admin.auth')` → captured by the host process logger (Electron's stderr pipe, journald in container mode). Not a separate jsonl. |
 | Endpoint CRUD, setup writes | Same — operator-initiated UI actions logged at `info` via `createLogger`. |
 
@@ -366,7 +366,7 @@ automations expect (`OP_ASSISTANT_PASSWORD`, fully scoped). Document the change.
 - The audit-related unit tests
 
 **For incident response:** operators consult OpenCode session logs (chat +
-tools), guardian-audit.log (channel ingress), and application stderr (login
+tools), guardian-audit.log (portal ingress), and application stderr (login
 events). Three sources, all with clear ownership. The previous "two
 parallel audits" (`admin-audit.jsonl` + OpenCode session logs) is gone.
 
@@ -459,7 +459,7 @@ phase until the previous one is green on main.**
 
 - Add `OPENCODE_SERVER_PASSWORD` and `OPENCODE_SERVER_USERNAME` plumbing to the
   guardian env block in `.openpalm/config/stack/core.compose.yml:120-127`. Today
-  guardian reads these in `core/guardian/src/forward.ts:25-30` but the compose
+  guardian reads these in `containers/guardian/src/forward.ts:25-30` but the compose
   block doesn't set them. (Report 2 finding.)
 - Add migration log path constant `data/logs/migration-0.11.0.log`.
 - Add `config/endpoints.json` to the file-permissions test suite (mode 0600).
@@ -521,7 +521,7 @@ phase until the previous one is green on main.**
   - `packages/lib/src/control-plane/types.ts` (`adminToken`, `assistantToken` fields)
   - `packages/lib/src/control-plane/lifecycle.ts:37-83`
   - `.openpalm/config/stack/core.compose.yml:66`
-  - `core/assistant/entrypoint.sh:123` (replace with `OPENCODE_SERVER_PASSWORD`)
+  - `containers/assistant/entrypoint.sh:123` (replace with `OPENCODE_SERVER_PASSWORD`)
   - wizard token-display UI (`packages/ui/src/routes/setup/+page.svelte` token block)
 - Delete `packages/ui/src/lib/components/AuthGate.svelte` (~120 LOC) — the
   admin/non-admin toggle is gone. Connection switcher replaces it.
@@ -568,7 +568,7 @@ LOC are approximate (from Report 2 plus my read-through).
 | `packages/lib/src/control-plane/config-persistence.ts` (token writers) | ~30 | Persisted token blocks in stack.env. |
 | `packages/ui/src/routes/setup/+page.svelte` (wizard token UI block) | ~40 | Wizard no longer displays admin token. |
 | Per-route `requireAdmin` token-fallback branches | ~80 | ~38 routes; just the `else if (token)` branch in each. |
-| `core/assistant/entrypoint.sh:123` `OP_ASSISTANT_TOKEN` export | ~10 | Replaced by `OPENCODE_SERVER_PASSWORD` export. |
+| `containers/assistant/entrypoint.sh:123` `OP_ASSISTANT_TOKEN` export | ~10 | Replaced by `OPENCODE_SERVER_PASSWORD` export. |
 | `packages/ui/src/routes/admin/audit/+server.ts` | ~60 | Audit API route. OpenCode session logs replace it. |
 | `packages/ui/src/lib/components/AuditTab.svelte` | ~150 | Audit tab UI. Operator reads OpenCode session logs directly. |
 | `appendAudit` call sites across `/admin/*` routes (~25 routes) | ~75 | One call per route after auth check. |
@@ -676,7 +676,7 @@ OpenCode logs)**.
    (login, endpoint CRUD, setup writes) are user-initiated UI actions where
    the operator IS the actor — application-level stderr logging via the
    existing `createLogger` is sufficient. Guardian retains its own separate
-   `guardian-audit.log` for channel ingress — untouched.
+   `guardian-audit.log` for portal ingress — untouched.
 
 9. **CLI users (non-Electron) have no local OpenCode** — by design. Document it
    in the connection-switcher UI: "Local OpenCode is only available in the

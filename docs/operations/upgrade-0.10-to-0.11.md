@@ -43,7 +43,7 @@ breaks if you skip a step.
 | Addon enablement | `stack.yml addons[]` | `OP_ENABLED_ADDONS` in `stack.env` (no `stack.yml`) |
 | Host UI port var | `OP_ADMIN_PORT` | `OP_HOST_UI_PORT` (default `3880`) |
 | Voice / runtime env vars | unprefixed (`TTS_*`, `STT_*`) | `OP_`-prefixed (`OP_TTS_*`, `OP_STT_*`, `OP_VOICE_*`) |
-| Channel adapters | baked into the image | **runtime npm installs** (`CHANNEL_PACKAGE`) |
+| Portal adapters | baked into the image | baked into the image (`PORTAL_PACKAGE` selects the baked adapter) |
 | OpenCode runtime | 1.3.x | **1.15.13** |
 
 All of this is handled for you by `openpalm update` — including the env/secret
@@ -106,26 +106,14 @@ docker version && docker compose version
 > uses the same logic as the scripts below; the scripts remain the manual /
 > no-CLI fallback.
 
-> **Shortcut — the helper script does steps 4–6 for you.** From a checkout (or
-> `curl` it from the release tag):
->
-> ```bash
-> # Linux / macOS
-> scripts/migrate-0.10-to-0.11.sh --dry-run   # preview, writes nothing
-> scripts/migrate-0.10-to-0.11.sh             # backs up first, then migrates
-> ```
->
-> ```powershell
-> # Windows (PowerShell 7+)
-> ./scripts/migrate-0.10-to-0.11.ps1 -DryRun
-> ./scripts/migrate-0.10-to-0.11.ps1
-> ```
->
-> It takes a full backup first, then **copies** (never deletes) your `vault/`
-> files into the new layout, transforms `stack.env`, splits channel secrets, and
-> sets `OP_ENABLED_ADDONS`/version keys in `stack.env`. It does **not** run `openpalm update` or
-> migrate provider credentials — do those manually (below + step 7). Prefer the
-> manual walkthrough if you want to understand each change.
+> **CLI path only:** use `openpalm migrate --dry-run` to preview and
+> `openpalm migrate` to apply. The built-in migration harness takes a full
+> backup first, then **copies** (never deletes) your `vault/` files into the
+> new layout, transforms `stack.env`, splits channel secrets, and sets
+> `OP_ENABLED_ADDONS`/version keys in `stack.env`. It does **not** run
+> `openpalm update` or migrate provider credentials — do those manually
+> (below + step 7). Prefer the manual walkthrough if you want to understand
+> each change.
 
 If you'd rather migrate by hand (or have no CLI), the mapping below is exactly
 what the automatic harness does. The cleanest manual approach mixes a file move
@@ -254,14 +242,11 @@ Then confirm it actually works:
 
 ---
 
-## Channel adapters
+## Portal adapters
 
-Channel adapters are now **runtime npm installs** (`CHANNEL_PACKAGE`), not baked
-into the image, with `@openpalm/channels-sdk` as an optional peer. After
-upgrading, recreate channel containers so they pull the current adapter. While
-0.11.0 is in prerelease, adapters track the npm `@next` dist-tag; the stable
-line moves to `@latest`. See
-[release-management.md](release-management.md) for the dist-tag details.
+Portal adapters are now baked into the portal image, and the OpenAI-compatible
+API runs from the guardian image. After upgrading, recreate the affected
+services so they pick up the new image tag.
 
 ---
 

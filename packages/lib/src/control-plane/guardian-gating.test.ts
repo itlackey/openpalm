@@ -47,7 +47,7 @@ function seedChannelsCompose(): void {
   mkdirSync(stackDir, { recursive: true });
   // guardian + a channel service, both gated to the channel profile.
   writeFileSync(
-    join(stackDir, "channels.compose.yml"),
+    join(stackDir, "portals.compose.yml"),
     [
       "services:",
       "  guardian:",
