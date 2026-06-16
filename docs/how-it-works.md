@@ -85,7 +85,7 @@ The runtime image for registry-backed adapters is the unified
 `portal`, built from `containers/portal/Dockerfile`.
 
 ### Supporting services
-- **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM markdown task files in `~/.openpalm/knowledge/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
+- **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM YAML task files (`*.yml`) in `~/.openpalm/knowledge/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
 - **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/knowledge/`, mounted at `/stash` in the assistant. Skills, commands, memories, and knowledge files all live here. There is no separate memory service.
 
 ---

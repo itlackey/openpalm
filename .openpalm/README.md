@@ -117,4 +117,4 @@ services and overlays belong in `custom.compose.yml`.
 - Service secrets live under `knowledge/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
 - The assistant workspace is `workspace/`, mounted at `/work`.
 - The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm` — no container is needed.
-- Scheduled automations are stored as markdown task files in `knowledge/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.
+- Scheduled automations are stored as AKM YAML task files (`*.yml`) in `knowledge/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.

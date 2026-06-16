@@ -178,10 +178,10 @@ from the Registry tab in the admin console:
 
 | File | What it does |
 |---|---|
-| `health-check.md` | Check admin health every 5 minutes |
-| `prompt-assistant.md` | Send a daily prompt to the assistant via the chat portal |
+| `health-check.yml` | Check admin health every 5 minutes |
+| `prompt-assistant.yml` | Send a daily prompt to the assistant via the chat portal |
 | `cleanup-logs.yml` | Weekly trim audit logs to prevent unbounded disk growth |
-| `update-containers.md` | Weekly pull latest images and recreate containers |
+| `update-containers.yml` | Weekly pull latest images and recreate containers |
 
 ### Automation YAML format
 
