@@ -62,7 +62,7 @@
 	<div class="report-header">
 		<div>
 			<h3>AKM Health Report</h3>
-			<p class="section-note">Build and view a live HTML report from the current stack's <code>akm health</code> output. The default window is 72 hours.</p>
+			<p class="section-note">Build and view a live HTML report from the running assistant's <code>akm health</code> output. The default window is 72 hours.</p>
 		</div>
 		<div class="report-controls">
 			<label class="control-field" for="akm-report-window">

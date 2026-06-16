@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import {
   buildAkmEndpoint,
   detectLocalProviders,
@@ -30,12 +29,6 @@ const PREFERRED_EMBEDDING_MODELS: Record<string, string[]> = {
   ],
 };
 
-export type AkmCommandResult = {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-};
-
 export type EmbeddingProbeInput = {
   endpoint: string;
   model: string;
@@ -61,36 +54,6 @@ export type EmbeddingDetectionResult =
       ok: false;
       message: string;
     };
-
-export function createAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    AKM_STASH_DIR: state.stashDir,
-    AKM_DATA_DIR: `${state.dataDir}/akm/data`,
-    AKM_CONFIG_DIR: `${state.configDir}/akm`,
-  };
-}
-
-export function runAkmCommand(
-  state: ControlPlaneState,
-  args: string[],
-  timeoutMs: number,
-): Promise<AkmCommandResult> {
-  return new Promise((resolve) => {
-    execFile(
-      'akm',
-      args,
-      { timeout: timeoutMs, env: createAkmEnv(state), maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        resolve({
-          ok: !error,
-          stdout: stdout?.toString() ?? '',
-          stderr: stderr?.toString() ?? '',
-        });
-      },
-    );
-  });
-}
 
 export function safeParseJsonObject(s: string): Record<string, unknown> | null {
   try {

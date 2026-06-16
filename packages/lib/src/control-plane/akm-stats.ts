@@ -1,17 +1,7 @@
-import { execFile } from 'node:child_process';
-import type { ExecFileException } from 'node:child_process';
 import type { ControlPlaneState } from './types.js';
-import { assertAkmEnvComplete, buildAkmEnv } from './akm-user-env.js';
+import { runAssistantAkmCommand } from './assistant-akm.js';
 
 type Json = Record<string, unknown>;
-
-type AkmCommandResult = {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  errorCode: string | null;
-};
 
 export type AkmStats =
   | {
@@ -93,30 +83,8 @@ function runAkmJsonCommand(
   args: string[],
   timeoutMs: number,
   options: { allowExitCodes?: number[] } = {},
-): Promise<AkmCommandResult> {
-  const akmEnv = buildAkmEnv(state);
-  assertAkmEnvComplete(akmEnv);
-
-  return new Promise((resolve) => {
-    execFile(
-      'akm',
-      [...args, '--format', 'json', '--quiet'],
-      { env: { ...process.env, ...akmEnv }, timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        const execError = error as ExecFileException | null;
-        const exitCode = typeof execError?.code === 'number' ? execError.code : null;
-        const errorCode = typeof execError?.code === 'string' ? execError.code : null;
-        const allowed = exitCode !== null && (options.allowExitCodes ?? []).includes(exitCode);
-        resolve({
-          ok: !error || allowed,
-          stdout: stdout?.toString() ?? '',
-          stderr: stderr?.toString() ?? '',
-          exitCode,
-          errorCode,
-        });
-      },
-    );
-  });
+) {
+  return runAssistantAkmCommand(state, [...args, '--format', 'json', '--quiet'], timeoutMs, options);
 }
 
 function readAssetCount(info: Json | null, type: string): number | null {
@@ -221,8 +189,8 @@ export async function getAkmStats(state: ControlPlaneState): Promise<AkmStats> {
     runAkmJsonCommand(state, ['proposal', 'list', '--status', 'pending'], 12_000),
   ]);
 
-  if (healthResult.errorCode === 'ENOENT' || infoResult.errorCode === 'ENOENT') {
-    return { available: false, reason: 'The akm CLI is not installed on this host.' };
+  if (healthResult.missing || infoResult.missing) {
+    return { available: false, reason: 'The assistant AKM CLI is not available.' };
   }
 
   return parseAkmStats(healthResult.stdout, infoResult.stdout, proposalsResult.stdout);

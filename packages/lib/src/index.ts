@@ -347,6 +347,7 @@ export {
   composePullService,
   composePull,
   composeStats,
+  composeExec,
   getDockerEvents,
   inspectContainerStatus,
 } from "./control-plane/docker.js";
@@ -463,6 +464,9 @@ export {
   readUserEnvSync,
   userEnvPathSync,
 } from "./control-plane/akm-user-env.js";
+
+export type { AssistantAkmCommandResult } from './control-plane/assistant-akm.js';
+export { runAssistantAkmCommand } from './control-plane/assistant-akm.js';
 
 export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';

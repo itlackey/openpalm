@@ -102,25 +102,40 @@ describe('parseAkmStats', () => {
 
 describe('getAkmStats', () => {
   test('treats akm health exit code 4 as success and still parses stdout', async () => {
-    const execFileMock = mock((
-      _file: string,
+    const runAssistantAkmCommandMock = mock((
+      _state: ControlPlaneState,
       args: string[],
-      _options: unknown,
-      callback: (error: Error | null, stdout: string, stderr: string) => void,
+      _timeoutMs: number,
+      _options?: { allowExitCodes?: number[] },
     ) => {
       if (args[0] === 'health') {
-        const error = Object.assign(new Error('warn'), { code: 4 });
-        callback(error, JSON.stringify({ status: 'warn', advisories: [], improve: {} }), '');
-        return;
+        return Promise.resolve({
+          ok: true,
+          stdout: JSON.stringify({ status: 'warn', advisories: [], improve: {} }),
+          stderr: '',
+          exitCode: 4,
+          missing: false,
+        });
       }
       if (args[0] === 'info') {
-        callback(null, JSON.stringify({ version: '0.8.7', indexStats: { entryCount: 12 } }), '');
-        return;
+        return Promise.resolve({
+          ok: true,
+          stdout: JSON.stringify({ version: '0.8.7', indexStats: { entryCount: 12 } }),
+          stderr: '',
+          exitCode: 0,
+          missing: false,
+        });
       }
-      callback(null, JSON.stringify({ proposals: [] }), '');
+      return Promise.resolve({
+        ok: true,
+        stdout: JSON.stringify({ proposals: [] }),
+        stderr: '',
+        exitCode: 0,
+        missing: false,
+      });
     });
 
-    mock.module('node:child_process', () => ({ execFile: execFileMock }));
+    mock.module('./assistant-akm.js', () => ({ runAssistantAkmCommand: runAssistantAkmCommandMock }));
     const { getAkmStats: getStats } = await import(`./akm-stats.js?warn=${Math.random()}`);
     const result = await getStats(state);
 
@@ -132,21 +147,19 @@ describe('getAkmStats', () => {
   });
 
   test('fails soft when akm is missing from PATH', async () => {
-    const execFileMock = mock((
-      _file: string,
-      _args: string[],
-      _options: unknown,
-      callback: (error: Error | null, stdout: string, stderr: string) => void,
-    ) => {
-      const error = Object.assign(new Error('spawn akm ENOENT'), { code: 'ENOENT' });
-      callback(error, '', '');
-    });
+    const runAssistantAkmCommandMock = mock(() => Promise.resolve({
+      ok: false,
+      stdout: '',
+      stderr: 'exec: "akm": executable file not found in $PATH',
+      exitCode: 127,
+      missing: true,
+    }));
 
-    mock.module('node:child_process', () => ({ execFile: execFileMock }));
+    mock.module('./assistant-akm.js', () => ({ runAssistantAkmCommand: runAssistantAkmCommandMock }));
     const { getAkmStats: getStats } = await import(`./akm-stats.js?enoent=${Math.random()}`);
     await expect(getStats(state)).resolves.toEqual({
       available: false,
-      reason: 'The akm CLI is not installed on this host.',
+      reason: 'The assistant AKM CLI is not available.',
     });
   });
 });

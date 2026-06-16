@@ -110,14 +110,14 @@ describe('GET /admin/akm/stats', () => {
   test('fails soft when akm stats are unavailable', async () => {
     vi.mocked(getAkmStats).mockResolvedValue({
       available: false,
-      reason: 'The akm CLI is not installed on this host.',
+      reason: 'The assistant AKM CLI is not available.',
     });
 
     const res = await GET(makeEvent());
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({
       available: false,
-      reason: 'The akm CLI is not installed on this host.',
+      reason: 'The assistant AKM CLI is not available.',
     });
   });
 

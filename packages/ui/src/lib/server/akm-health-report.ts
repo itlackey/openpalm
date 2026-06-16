@@ -1,5 +1,6 @@
 import type { ControlPlaneState } from '@openpalm/lib';
-import { runAkmCommand, safeParseJsonObject } from './akm.js';
+import { runAssistantAkmCommand } from '@openpalm/lib';
+import { safeParseJsonObject } from './akm.js';
 
 export const AKM_HEALTH_REPORT_WINDOWS = ['24h', '72h', '7d', '14d', '30d'] as const;
 
@@ -423,7 +424,7 @@ function renderHtml(window: AkmHealthReportWindow, health: Json, proposals: Prop
         <div>
           <div class="eyebrow">AKM Health Report</div>
           <h1 class="title">Knowledge Health for ${escapeHtml(window)}</h1>
-          <p class="subtitle">Generated from live <code>akm health</code> data in the current stack stash. This mirrors the existing AKM report shape with KPI cards, ECharts trends, advisories, and queue visibility.</p>
+          <p class="subtitle">Generated from live <code>akm health</code> data inside the running assistant container. This mirrors the existing AKM report shape with KPI cards, ECharts trends, advisories, and queue visibility.</p>
         </div>
         <div class="status ${escapeHtml(statusClass(status))}">${escapeHtml(status)}</div>
       </div>
@@ -588,8 +589,8 @@ export async function buildAkmHealthReport(
 ): Promise<{ html: string; window: AkmHealthReportWindow }> {
   const window = clampWindow(requestedWindow);
   const [healthResult, proposalsResult] = await Promise.all([
-    runAkmCommand(state, ['health', `--since=${window}`, '--group-by', 'run', `--window-compare=${window}`, '--format', 'json'], 20_000),
-    runAkmCommand(state, ['proposal', 'list', '--format', 'json'], 12_000),
+    runAssistantAkmCommand(state, ['health', `--since=${window}`, '--group-by', 'run', `--window-compare=${window}`, '--format', 'json'], 20_000),
+    runAssistantAkmCommand(state, ['proposal', 'list', '--format', 'json'], 12_000),
   ]);
 
   const health = safeParseJsonObject(healthResult.stdout);

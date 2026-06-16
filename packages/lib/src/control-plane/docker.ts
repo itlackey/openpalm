@@ -444,6 +444,25 @@ export async function composeStats(
 }
 
 /**
+ * Execute a command inside a running compose service without allocating a TTY.
+ */
+export async function composeExec(
+  service: string,
+  command: string[],
+  options: { files: string[]; envFiles?: string[]; profiles?: string[]; timeoutMs?: number },
+): Promise<DockerResult> {
+  await runPreflight(options);
+  const primaryFile = options.files[0];
+  if (!existsSync(primaryFile)) {
+    return { ok: false, stdout: '', stderr: 'Compose file not found', code: 1 };
+  }
+
+  const args = buildComposeArgs(options);
+  args.push('exec', '-T', service, ...command);
+  return run(args, undefined, options.timeoutMs ?? 120_000, collectComposeEnvOverrides(options.envFiles));
+}
+
+/**
  * Get recent Docker events for the compose project.
  */
 export async function getDockerEvents(

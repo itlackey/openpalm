@@ -1,15 +1,16 @@
 /**
  * GET /admin/akm/health — AKM runtime health + index stats for the dashboard.
  *
- * Runs the `akm` CLI (health + info) against the STACK's stash/state by pointing
- * AKM_* env at this OP_HOME, NOT the operator's personal ~/akm. Fails soft:
- * if the CLI is missing or errors, returns { available: false } so the dashboard
- * can show an "unavailable" state instead of breaking.
+ * Runs `akm` inside the live assistant container so the UI shows the same AKM
+ * world the assistant actually sees. Fails soft: if the assistant runtime is
+ * unavailable or errors, returns { available: false } so the dashboard can show
+ * an "unavailable" state instead of breaking.
  */
 import type { RequestHandler } from './$types';
+import { runAssistantAkmCommand } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { getRequestId, jsonResponse, requireAdmin } from '$lib/server/helpers.js';
-import { runAkmCommand, safeParseJsonObject } from '$lib/server/akm.js';
+import { safeParseJsonObject } from '$lib/server/akm.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -19,15 +20,15 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
 
   const [health, info] = await Promise.all([
-    runAkmCommand(state, ['health', '--json', '--quiet'], 8000),
-    runAkmCommand(state, ['info', '--json', '--quiet'], 8000),
+    runAssistantAkmCommand(state, ['health', '--json', '--quiet'], 8000),
+    runAssistantAkmCommand(state, ['info', '--json', '--quiet'], 8000),
   ]);
 
   const parsedHealth = safeParseJsonObject(health.stdout);
   const parsedInfo = safeParseJsonObject(info.stdout);
 
   if (!parsedHealth && !parsedInfo) {
-    return jsonResponse(200, { available: false, reason: 'akm CLI unavailable' }, requestId);
+    return jsonResponse(200, { available: false, reason: 'assistant AKM unavailable' }, requestId);
   }
 
   // Summarise the hard checks into pass/warn/fail counts.

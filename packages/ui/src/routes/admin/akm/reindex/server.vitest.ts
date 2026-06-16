@@ -5,12 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/akm.js', () => ({
-	runAkmCommand: vi.fn(),
-}));
+vi.mock('@openpalm/lib', async (importOriginal) => {
+	const original = await importOriginal<typeof import('@openpalm/lib')>();
+	return {
+		...original,
+		runAssistantAkmCommand: vi.fn(),
+	};
+});
 
 import { POST } from './+server.js';
-import { runAkmCommand } from '$lib/server/akm.js';
+import { runAssistantAkmCommand } from '@openpalm/lib';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -53,11 +57,11 @@ describe('POST /admin/akm/reindex', () => {
 	});
 
 	test('runs akm index --full and returns success', async () => {
-		vi.mocked(runAkmCommand).mockResolvedValue({ ok: true, stdout: 'reindexed', stderr: '' });
+		vi.mocked(runAssistantAkmCommand).mockResolvedValue({ ok: true, stdout: 'reindexed', stderr: '', exitCode: 0, missing: false });
 
 		const res = await POST(makeEvent());
 		expect(res.status).toBe(200);
-		expect(runAkmCommand).toHaveBeenCalledWith(expect.anything(), ['index', '--full'], 15 * 60_000);
+		expect(runAssistantAkmCommand).toHaveBeenCalledWith(expect.anything(), ['index', '--full'], 15 * 60_000);
 		const body = await res.json() as Record<string, unknown>;
 		expect(body.ok).toBe(true);
 	});

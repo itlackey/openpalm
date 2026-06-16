@@ -5,8 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resetState } from '$lib/server/test-helpers.js';
 
+vi.mock('@openpalm/lib', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@openpalm/lib')>();
+  return {
+    ...original,
+    runAssistantAkmCommand: vi.fn(),
+  };
+});
+
 vi.mock('$lib/server/akm.js', () => ({
-  runAkmCommand: vi.fn(),
   safeParseJsonObject: (value: string) => {
     try {
       return JSON.parse(value) as Record<string, unknown>;
@@ -17,7 +24,7 @@ vi.mock('$lib/server/akm.js', () => ({
 }));
 
 import { GET } from './+server.js';
-import { runAkmCommand } from '$lib/server/akm.js';
+import { runAssistantAkmCommand } from '@openpalm/lib';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -58,7 +65,7 @@ describe('GET /admin/akm/health-report', () => {
   });
 
   test('renders html from live akm commands', async () => {
-    vi.mocked(runAkmCommand)
+    vi.mocked(runAssistantAkmCommand)
       .mockResolvedValueOnce({
         ok: true,
         stdout: JSON.stringify({
@@ -76,6 +83,8 @@ describe('GET /admin/akm/health-report', () => {
           ],
         }),
         stderr: '',
+        exitCode: 0,
+        missing: false,
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -83,18 +92,20 @@ describe('GET /admin/akm/health-report', () => {
           proposals: [{ id: 'p1', ref: 'knowledge:test', source: 'improve', createdAt: '2026-06-10T00:00:00.000Z' }],
         }),
         stderr: '',
+        exitCode: 0,
+        missing: false,
       });
 
     const res = await GET(makeEvent());
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
-    expect(runAkmCommand).toHaveBeenNthCalledWith(
+    expect(runAssistantAkmCommand).toHaveBeenNthCalledWith(
       1,
       expect.anything(),
       ['health', '--since=72h', '--group-by', 'run', '--window-compare=72h', '--format', 'json'],
       20_000,
     );
-    expect(runAkmCommand).toHaveBeenNthCalledWith(
+    expect(runAssistantAkmCommand).toHaveBeenNthCalledWith(
       2,
       expect.anything(),
       ['proposal', 'list', '--format', 'json'],
@@ -109,16 +120,18 @@ describe('GET /admin/akm/health-report', () => {
   });
 
   test('falls back to the default 72h window for invalid values', async () => {
-    vi.mocked(runAkmCommand)
+    vi.mocked(runAssistantAkmCommand)
       .mockResolvedValueOnce({
         ok: true,
         stdout: JSON.stringify({ status: 'ok', since: '2026-06-07T00:00:00.000Z', improve: {}, windows: [], advisories: [], hardChecks: [], runs: [] }),
         stderr: '',
+        exitCode: 0,
+        missing: false,
       })
-      .mockResolvedValueOnce({ ok: true, stdout: JSON.stringify({ proposals: [] }), stderr: '' });
+      .mockResolvedValueOnce({ ok: true, stdout: JSON.stringify({ proposals: [] }), stderr: '', exitCode: 0, missing: false });
 
     await GET(makeEvent('/admin/akm/health-report?since=999h'));
-    expect(runAkmCommand).toHaveBeenNthCalledWith(
+    expect(runAssistantAkmCommand).toHaveBeenNthCalledWith(
       1,
       expect.anything(),
       ['health', '--since=72h', '--group-by', 'run', '--window-compare=72h', '--format', 'json'],
