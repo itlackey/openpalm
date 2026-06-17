@@ -5,6 +5,30 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.7] - 2026-06-17
+
+### Fixed
+
+- **Tool activity icons no longer render as pills.** The tool-use bubbles in
+  chat now appear as bare emoji inline with the message — no background fill,
+  no border, no fixed-size circles.
+- **Send button uses standard styling.** The chat send button now inherits the
+  global `btn-primary` shape, eliminating the visual misalignment with the rest
+  of the app.
+- **Settings drawer replaced with a 3-state theme toggle.** The theme button
+  cycles system → light → dark and is visible across chat, advanced, and admin
+  pages. The now-empty settings drawer has been removed.
+- **Persona editor targets the correct file.** The assistant persona editor
+  (Admin → Assistant) now reads and writes `config/assistant/persona.md`
+  (previously pointed at the wrong filename).
+- **Stale addon IDs purged on upgrade.** A new migration removes addon names
+  from `OP_ENABLED_ADDONS` that are no longer part of the known addon set,
+  preventing phantom entries after addon renames or removals.
+- **Automations surface run errors in the UI.** When a manual automation run
+  fails the error detail is now shown in the notification instead of a generic
+  failure message. The success message no longer incorrectly says "in a few
+  seconds" for synchronous runs.
+
 ## [0.12.2] - 2026-06-16
 
 ### Fixed
