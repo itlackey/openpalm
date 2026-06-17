@@ -552,6 +552,13 @@ async function forwardSessionCreate(
         cached.lastUsed = Date.now();
         return cached.sessionId;
       }
+
+      const existing = await findExistingOcSessionId(req, title);
+      if (existing) {
+        ocSessionByKey.set(cacheKey, { sessionId: existing, lastUsed: Date.now() });
+        return existing;
+      }
+
       const rewritten = JSON.stringify({ title });
       const upstream = await fetchUpstream(req, rawPath, search, rewritten);
       const text = await upstream.text();
@@ -580,6 +587,29 @@ async function forwardSessionCreate(
   audit({ requestId: rid, action: "oc_session_create", status: "ok", portal: principal.id, userId: principal.userId, sessionId });
   // Synthesize the create response the portal reads (it only needs id/title).
   return Response.json({ id: sessionId, title });
+}
+
+async function findExistingOcSessionId(req: Request, title: string): Promise<string | null> {
+  const upstream = await fetch(`${ASSISTANT_URL}/session`, {
+    method: 'GET',
+    headers: buildUpstreamHeaders(req, false),
+    signal: req.signal,
+  });
+  if (!upstream.ok) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = await upstream.json();
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+
+  const match = parsed.find((session) => {
+    if (!session || typeof session !== 'object') return false;
+    return (session as { title?: unknown }).title === title;
+  }) as { id?: unknown } | undefined;
+  return typeof match?.id === 'string' && match.id ? match.id : null;
 }
 
 /**

@@ -95,7 +95,7 @@
     justify-content: center;
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--color-border);
-    background: var(--color-bg);
+    background: var(--color-bg-secondary);
   }
 
   .input-area {
@@ -105,6 +105,11 @@
     width: 100%;
     /* Match the centered message column width (see .messages-area). */
     max-width: var(--chat-column);
+    padding: var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
   }
 
   textarea {
@@ -113,8 +118,8 @@
     max-height: 160px;
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
+    border-radius: calc(var(--radius-xl) - 4px);
+    background: var(--color-surface);
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: var(--text-base);
@@ -139,6 +144,7 @@
     min-width: 92px;
     flex-shrink: 0;
     padding-inline: var(--space-4);
+    border-radius: calc(var(--radius-xl) - 4px);
   }
 
 </style>

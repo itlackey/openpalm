@@ -3,20 +3,23 @@
   import Spinner from '$lib/components/common/Spinner.svelte';
   import EmptyState from '$lib/components/common/EmptyState.svelte';
   import Panel from '$lib/components/common/Panel.svelte';
-  import { fetchServiceLogs } from '$lib/api.js';
+  import { fetchServiceLogs, fetchAutomationLog } from '$lib/api.js';
 
   interface Props {
     tokenStored: boolean;
     services: string[];
+    automations: string[];
   }
 
-  let { tokenStored, services }: Props = $props();
+  let { tokenStored, services, automations }: Props = $props();
 
   let logs = $state('');
   let logsLoaded = $state(false);
   let loading = $state(false);
   let error = $state('');
+  let source = $state<'services' | 'routines'>('services');
   let selectedService = $state('');
+  let selectedAutomation = $state('');
   let tailLines = $state(100);
   let autoScroll = $state(true);
   let copied = $state(false);
@@ -27,20 +30,34 @@
     loading = true;
     error = '';
     try {
-      const result = await fetchServiceLogs({
-        service: selectedService || undefined,
-        tail: tailLines,
-      });
-      if (result.ok) {
-        logs = result.logs;
-        logsLoaded = true;
-        if (autoScroll && logContainer) {
-          requestAnimationFrame(() => {
-            if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-          });
+      if (source === 'services') {
+        const result = await fetchServiceLogs({
+          service: selectedService || undefined,
+          tail: tailLines,
+        });
+        if (result.ok) {
+          logs = result.logs;
+          logsLoaded = true;
+          if (autoScroll && logContainer) {
+            requestAnimationFrame(() => {
+              if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
+            });
+          }
+        } else {
+          error = result.error ?? 'Failed to fetch logs.';
         }
       } else {
-        error = result.error ?? 'Failed to fetch logs.';
+        if (!selectedAutomation && automations.length > 0) {
+          selectedAutomation = automations[0] ?? '';
+        }
+        if (!selectedAutomation) {
+          logs = '';
+          logsLoaded = true;
+          return;
+        }
+        const result = await fetchAutomationLog(selectedAutomation, tailLines);
+        logs = result.lines.join('\n');
+        logsLoaded = true;
       }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to fetch logs.';
@@ -59,9 +76,26 @@
   onMount(() => {
     if (tokenStored) void loadLogs();
   });
+
+  $effect(() => {
+    if (source === 'routines' && !selectedAutomation && automations.length > 0) {
+      selectedAutomation = automations[0] ?? '';
+    }
+  });
+
+  function switchSource(next: 'services' | 'routines'): void {
+    source = next;
+    error = '';
+    logs = '';
+    logsLoaded = false;
+    if (next === 'routines' && !selectedAutomation) {
+      selectedAutomation = automations[0] ?? '';
+    }
+    void loadLogs();
+  }
 </script>
 
-<Panel title="Service Logs" role="tabpanel">
+<Panel title="Journal" role="tabpanel">
   {#snippet actions()}
     <button class="btn btn-secondary btn-sm" onclick={() => void copyLogs()} disabled={!logs}>
       {copied ? 'Copied!' : 'Copy'}
@@ -75,6 +109,29 @@
   {/snippet}
 
   <div class="controls">
+    <div class="control-group control-group--source">
+      <span class="control-label">Source</span>
+      <div class="source-switch" role="tablist" aria-label="Journal source">
+        <button
+          class="source-pill"
+          class:source-pill--active={source === 'services'}
+          type="button"
+          role="tab"
+          aria-selected={source === 'services'}
+          onclick={() => switchSource('services')}
+        >Service logs</button>
+        <button
+          class="source-pill"
+          class:source-pill--active={source === 'routines'}
+          type="button"
+          role="tab"
+          aria-selected={source === 'routines'}
+          onclick={() => switchSource('routines')}
+        >Routine logs</button>
+      </div>
+    </div>
+
+    {#if source === 'services'}
     <div class="control-group">
       <label for="log-service" class="control-label">Service</label>
       <select id="log-service" class="control-input" bind:value={selectedService} onchange={() => void loadLogs()}>
@@ -84,9 +141,23 @@
         {/each}
       </select>
     </div>
+    {:else}
+    <div class="control-group">
+      <label for="log-automation" class="control-label">Routine</label>
+      <select id="log-automation" class="control-input" bind:value={selectedAutomation} onchange={() => void loadLogs()}>
+        {#if automations.length === 0}
+          <option value="">No routines yet</option>
+        {:else}
+          {#each automations as automation}
+            <option value={automation}>{automation}</option>
+          {/each}
+        {/if}
+      </select>
+    </div>
+    {/if}
 
     <div class="control-group">
-      <label for="log-tail" class="control-label">Lines</label>
+      <label for="log-tail" class="control-label">Recent lines</label>
       <select id="log-tail" class="control-input" bind:value={tailLines} onchange={() => void loadLogs()}>
         <option value={50}>50</option>
         <option value={100}>100</option>
@@ -96,18 +167,20 @@
       </select>
     </div>
 
-    <div class="control-group control-group--toggle">
-      <label class="toggle-label">
-        <input type="checkbox" bind:checked={autoScroll} />
-        <span>Auto-scroll</span>
-      </label>
-    </div>
+    {#if source === 'services'}
+      <div class="control-group control-group--toggle">
+        <label class="toggle-label">
+          <input type="checkbox" bind:checked={autoScroll} />
+          <span>Auto-scroll</span>
+        </label>
+      </div>
+    {/if}
 
     <button class="btn btn-primary btn-sm" onclick={() => void loadLogs()} disabled={loading || !tokenStored}>
       {#if loading}
         <Spinner />
       {/if}
-      Load Logs
+      {source === 'services' ? 'Load service logs' : 'Load routine log'}
     </button>
   </div>
 
@@ -131,9 +204,17 @@
           </svg>
         {/snippet}
         {#if logsLoaded}
-          <p>No log output — the container may not be running or has no recent output.</p>
+          {#if source === 'services'}
+            <p>No log output — the container may not be running or has no recent output.</p>
+          {:else}
+            <p>No routine output yet.</p>
+          {/if}
         {:else}
-          <p>Select a service and click "Load Logs" to view container output.</p>
+          {#if source === 'services'}
+            <p>Select a service and click "Load service logs" to view container output.</p>
+          {:else}
+            <p>Select a routine and click "Load routine log" to view its latest output.</p>
+          {/if}
         {/if}
       </EmptyState>
     {/if}
@@ -163,6 +244,10 @@
     justify-content: flex-end;
   }
 
+  .control-group--source {
+    min-width: 16rem;
+  }
+
   .control-label {
     font-size: var(--text-xs);
     font-weight: var(--font-medium);
@@ -186,6 +271,40 @@
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px var(--color-primary-subtle);
+  }
+
+  .source-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    background: var(--color-bg);
+  }
+
+  .source-pill {
+    min-height: 36px;
+    padding: 0 var(--space-3);
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+  }
+
+  .source-pill:hover {
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+  }
+
+  .source-pill--active {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text);
+    box-shadow: inset 0 0 0 1px var(--color-border);
   }
 
   .toggle-label {
@@ -238,6 +357,14 @@
     .control-input {
       min-width: unset;
       width: 100%;
+    }
+
+    .source-switch {
+      width: 100%;
+    }
+
+    .source-pill {
+      flex: 1;
     }
 
     .log-output {

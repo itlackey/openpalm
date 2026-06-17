@@ -158,13 +158,10 @@
   /* User bubble: charcoal, right-aligned with a tucked corner. Keeps brand
      orange reserved for primary actions. */
   .message-user .message-bubble {
-    background: #2c3748;
-    color: #f3f4f6;
+    background: var(--color-chat-user-bubble);
+    color: var(--color-chat-user-text);
+    border: 1px solid color-mix(in srgb, var(--color-chat-user-bubble) 88%, #fff 12%);
     border-bottom-right-radius: var(--radius-sm);
-  }
-  :global([data-theme='dark']) .message-user .message-bubble {
-    background: #3d4f66;
-    color: #f3f4f6;
   }
 
   /* Assistant bubble: neutral surface, left-aligned with a tucked corner. */

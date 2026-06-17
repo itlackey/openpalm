@@ -13,6 +13,7 @@ import LogsTab from './LogsTab.svelte';
 
 vi.mock('$lib/api.js', () => ({
   fetchServiceLogs: vi.fn(),
+  fetchAutomationLog: vi.fn(),
 }));
 
 import { fetchServiceLogs } from '$lib/api.js';
@@ -20,6 +21,7 @@ import { fetchServiceLogs } from '$lib/api.js';
 const defaultProps = {
   tokenStored: true,
   services: ['assistant', 'guardian'],
+  automations: ['daily-summary'],
 };
 
 describe('LogsTab — initial state', () => {
@@ -35,7 +37,7 @@ describe('LogsTab — after successful load', () => {
     vi.mocked(fetchServiceLogs).mockResolvedValue({ ok: true, logs: '' });
 
     const { getByRole } = render(LogsTab, { props: defaultProps });
-    await getByRole('button', { name: /load logs/i }).click();
+    await getByRole('button', { name: /load service logs/i }).click();
 
     await expect.element(page.getByText(/no log output/i)).toBeVisible();
     await expect.element(page.getByText(/select a service/i)).not.toBeInTheDocument();
@@ -45,7 +47,7 @@ describe('LogsTab — after successful load', () => {
     vi.mocked(fetchServiceLogs).mockResolvedValue({ ok: true, logs: 'INFO: server started\nINFO: listening on :4096' });
 
     render(LogsTab, { props: defaultProps });
-    await page.getByRole('button', { name: /load logs/i }).click();
+    await page.getByRole('button', { name: /load service logs/i }).click();
 
     await expect.element(page.getByText(/INFO: server started/)).toBeVisible();
     await expect.element(page.getByText(/select a service/i)).not.toBeInTheDocument();
@@ -56,7 +58,7 @@ describe('LogsTab — after successful load', () => {
     vi.mocked(fetchServiceLogs).mockResolvedValue({ ok: false, logs: '', error: 'service not found' });
 
     render(LogsTab, { props: defaultProps });
-    await page.getByRole('button', { name: /load logs/i }).click();
+    await page.getByRole('button', { name: /load service logs/i }).click();
 
     await expect.element(page.getByText(/service not found/i)).toBeVisible();
   });

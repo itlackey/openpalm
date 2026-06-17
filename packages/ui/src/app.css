@@ -9,10 +9,10 @@
 
 :root {
   /* ── Brand Colors ─────────────────────────────────────────────────── */
-  --color-primary: #ff9d00;
-  --color-primary-hover: #e68a00;
-  --color-primary-subtle: rgba(255, 157, 0, 0.08);
-  --color-primary-border: rgba(255, 157, 0, 0.28);
+  --color-primary: #f59e0b;
+  --color-primary-hover: #d97706;
+  --color-primary-subtle: rgba(245, 158, 11, 0.1);
+  --color-primary-border: rgba(245, 158, 11, 0.3);
   --color-accent: var(--color-primary);
   /* Text-safe accent: --color-primary (#ff9d00) is ~2:1 on light surfaces and
      fails WCAG AA for text. Use this token whenever the brand orange is TEXT
@@ -54,25 +54,25 @@
   --color-badge-neutral-fg: #4b5563;
 
   /* ── Surface Colors (warm-tinted neutrals — design refresh 0.12.0) ──── */
-  --color-bg: #faf9f5;
-  --color-bg-secondary: #f3f1ea;
-  --color-bg-tertiary: #ece9e1;
-  --color-surface: #fffefbfa;
-  --color-surface-hover: #f3f1ea;
-  --color-surface-alt: #f1efe8;
-  --color-navbar-bg: rgba(250, 249, 245, 0.85);
+  --color-bg: #f7f4f3;
+  --color-bg-secondary: #efebea;
+  --color-bg-tertiary: #e3dedd;
+  --color-surface: rgba(255, 252, 251, 0.96);
+  --color-surface-hover: #f1edec;
+  --color-surface-alt: #ebe6e5;
+  --color-navbar-bg: rgba(247, 244, 243, 0.88);
 
   /* ── Border Colors ────────────────────────────────────────────────── */
-  --color-border: #e7e3da;
-  --color-border-hover: #d6d1c5;
+  --color-border: #d5cfce;
+  --color-border-hover: #beb6b5;
   --color-border-focus: var(--color-primary);
 
   /* ── Text Colors ──────────────────────────────────────────────────── */
-  --color-text: #2a2620;
-  --color-text-secondary: #716c62;
+  --color-text: #211e1e;
+  --color-text-secondary: #656363;
   /* Darkened from #9d978c (2.8:1) to meet WCAG AA (4.5:1) on light surfaces —
      tertiary is used for real label/note text (wizard eyebrow, review notes). */
-  --color-text-tertiary: #6f6a5f;
+  --color-text-tertiary: #817878;
   --color-text-muted: var(--color-text-secondary);
   --color-text-primary: var(--color-text);
   --color-text-inverse: #ffffff;
@@ -148,6 +148,8 @@
   --color-surface-base: var(--color-bg);
   --color-surface-card: var(--color-surface);
   --color-surface-elevated: var(--color-bg-secondary);
+  --color-chat-user-bubble: #3a3434;
+  --color-chat-user-text: #f1ecec;
 
   /* ── Toggle Switch ─────────────────────────────────────────────── */
   --toggle-width: 36px;
@@ -158,10 +160,10 @@
 }
 
 :root[data-theme='dark'] {
-  --color-primary: #ff9d00;
-  --color-primary-hover: #ffb84d;
-  --color-primary-subtle: rgba(255, 157, 0, 0.16);
-  --color-primary-border: rgba(255, 157, 0, 0.34);
+  --color-primary: #f59e0b;
+  --color-primary-hover: #fbbf24;
+  --color-primary-subtle: rgba(245, 158, 11, 0.18);
+  --color-primary-border: rgba(245, 158, 11, 0.34);
   /* Bright orange already clears AA as text on the dark surface. */
   --color-accent-text: #ff9d00;
 
@@ -196,21 +198,21 @@
   --color-error-border: var(--color-danger-border);
 
   /* Warm-tinted dark neutrals (design refresh 0.12.0) — match the warm light palette */
-  --color-bg: #14120f;
-  --color-bg-secondary: #1c1a15;
-  --color-bg-tertiary: #25221b;
-  --color-surface: rgba(28, 26, 21, 0.98);
-  --color-surface-hover: #221f19;
-  --color-surface-alt: #201d17;
-  --color-navbar-bg: rgba(24, 22, 17, 0.88);
+  --color-bg: #161313;
+  --color-bg-secondary: #211e1e;
+  --color-bg-tertiary: #2b2727;
+  --color-surface: rgba(29, 26, 26, 0.98);
+  --color-surface-hover: #262222;
+  --color-surface-alt: #242020;
+  --color-navbar-bg: rgba(22, 19, 19, 0.9);
 
-  --color-border: #332f26;
-  --color-border-hover: #454033;
+  --color-border: #413b3b;
+  --color-border-hover: #585151;
   --color-border-focus: var(--color-primary);
 
-  --color-text: #f2efe8;
-  --color-text-secondary: #c6c0b4;
-  --color-text-tertiary: #978d7d;
+  --color-text: #f1ecec;
+  --color-text-secondary: #b7b1b1;
+  --color-text-tertiary: #928989;
   --color-text-muted: var(--color-text-secondary);
   --color-text-primary: var(--color-text);
   --color-text-inverse: #0f1419;
@@ -227,6 +229,8 @@
   --color-surface-base: var(--color-bg);
   --color-surface-card: var(--color-surface);
   --color-surface-elevated: var(--color-bg-secondary);
+  --color-chat-user-bubble: #4b4646;
+  --color-chat-user-text: #f1ecec;
 }
 
 /* ── Reset & Base ──────────────────────────────────────────────────── */

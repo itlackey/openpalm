@@ -109,7 +109,8 @@
   /* Active row: an inset primary bar instead of a background tint, so secondary
      metadata keeps full contrast against the panel/drawer surface. */
   .list-item.active {
-    box-shadow: inset 3px 0 0 var(--color-primary);
+    background: var(--color-bg-secondary);
+    box-shadow: inset 3px 0 0 var(--color-nav-active-indicator);
   }
   .list-item.active .item-label {
     font-weight: 600;

@@ -34,6 +34,65 @@ let lastCreateBody: unknown = null;
 let eventFrames: string[] = [];
 let eventStop = false;
 
+async function waitForGuardianReady(): Promise<void> {
+  let ready = false;
+  for (let i = 0; i < 50; i++) {
+    if (guardianProc.exitCode !== null) {
+      throw new Error(`guardian exited before ready with code ${guardianProc.exitCode}`);
+    }
+    try {
+      const resp = await fetch(`${guardianUrl}/health`);
+      if (resp.ok) {
+        ready = true;
+        break;
+      }
+    } catch {
+      // not ready
+    }
+    await Bun.sleep(100);
+  }
+  if (!ready) throw new Error(`guardian did not become ready on ${guardianUrl}`);
+
+  let proxyOn = false;
+  for (let i = 0; i < 50; i++) {
+    const r = await fetch(`${guardianUrl}/stats`);
+    if (r.ok && (await r.json()).oc_proxy?.enabled === true) {
+      proxyOn = true;
+      break;
+    }
+    await Bun.sleep(100);
+  }
+  if (!proxyOn) throw new Error('guardian /oc proxy did not enable (drift guard)');
+}
+
+function spawnGuardian(): Subprocess {
+  return Bun.spawn(["bun", "run", "src/server.ts"], {
+    cwd: join(import.meta.dir, ".."),
+    env: {
+      ...process.env,
+      PORT: String(guardianPort),
+      GUARDIAN_DIRECT_PORT: String(Bun.env.GUARDIAN_DIRECT_PORT ?? "0"),
+      GUARDIAN_ADMIN_PORT: String(Bun.env.GUARDIAN_ADMIN_PORT ?? "0"),
+      GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
+      PORTAL_TEST_SECRET_FILE: secretPath,
+      OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
+      GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
+      GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS: "1",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+}
+
+async function restartGuardian(): Promise<void> {
+  guardianProc.kill();
+  for (let i = 0; i < 50 && guardianProc.exitCode === null; i++) {
+    await Bun.sleep(20);
+  }
+  guardianProc = spawnGuardian();
+  await waitForGuardianReady();
+}
+
 function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -81,6 +140,10 @@ function ocCall(
 beforeAll(async () => {
   assistantPort = await getAvailablePort();
   guardianPort = await getAvailablePort();
+  const directPort = await getAvailablePort();
+  const adminPort = await getAvailablePort();
+  Bun.env.GUARDIAN_DIRECT_PORT = String(directPort);
+  Bun.env.GUARDIAN_ADMIN_PORT = String(adminPort);
 
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-proxy-test-"));
   secretPath = join(tmpDir, "test-secret");
@@ -158,53 +221,10 @@ beforeAll(async () => {
     },
   });
 
-  guardianProc = Bun.spawn(["bun", "run", "src/server.ts"], {
-    cwd: join(import.meta.dir, ".."),
-    env: {
-      ...process.env,
-      PORT: String(guardianPort),
-      GUARDIAN_DIRECT_PORT: String(await getAvailablePort()),
-      GUARDIAN_ADMIN_PORT: String(await getAvailablePort()),
-      GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
-      PORTAL_TEST_SECRET_FILE: secretPath,
-      OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
-      GUARDIAN_AUDIT_PATH: auditPath,
-      // Force a cap of 1 so the concurrent-stream mechanism test is deterministic.
-      // The SHIPPED default is loose (64) — channels share one stream via the hub.
-      GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS: "1",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  guardianProc = spawnGuardian();
 
   guardianUrl = `http://127.0.0.1:${guardianPort}`;
-  let ready = false;
-  for (let i = 0; i < 50; i++) {
-    if (guardianProc.exitCode !== null) {
-      throw new Error(`guardian exited before ready with code ${guardianProc.exitCode}`);
-    }
-    try {
-      const resp = await fetch(`${guardianUrl}/health`);
-      if (resp.ok) {
-        ready = true;
-        break;
-      }
-    } catch {
-      // not ready
-    }
-    await Bun.sleep(100);
-  }
-  if (!ready) throw new Error(`guardian did not become ready on ${guardianUrl}`);
-
-  // The drift guard (§5, Stage 7) runs at boot and ENABLES the /oc/* proxy only
-  // after the assistant /doc passes. Wait for it before exercising /oc/* routes.
-  let proxyOn = false;
-  for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`);
-    if (r.ok && (await r.json()).oc_proxy?.enabled === true) { proxyOn = true; break; }
-    await Bun.sleep(100);
-  }
-  if (!proxyOn) throw new Error("guardian /oc proxy did not enable (drift guard)");
+  await waitForGuardianReady();
 });
 
 afterAll(() => {
@@ -470,6 +490,18 @@ describe("/oc proxy — session reuse is idempotent per (channel, sessionKey) (r
     expect(id1).toBe(id2);                 // same session reused
     expect(created).toBe(1);               // first call created
     expect(sessionSeq - before).toBe(1);   // second call did NOT create another
+  });
+
+  it("re-attaches by title after a guardian restart so thread replies keep the same session", async () => {
+    const before = sessionSeq;
+    const id1 = await createSessionFor("restart-u", "thread-after-restart");
+    expect(sessionSeq - before).toBe(1);
+
+    await restartGuardian();
+
+    const id2 = await createSessionFor("restart-u", "thread-after-restart");
+    expect(id2).toBe(id1);
+    expect(sessionSeq - before).toBe(1);
   });
 });
 

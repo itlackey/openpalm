@@ -674,6 +674,7 @@
       <LogsTab
         tokenStored={true}
         services={serviceNames}
+        automations={automationsData?.automations.map((automation) => automation.name) ?? []}
       />
     {/if}
   </main>

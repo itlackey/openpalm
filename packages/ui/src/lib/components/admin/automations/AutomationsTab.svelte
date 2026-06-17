@@ -2,8 +2,9 @@
   import type { AutomationsResponse } from '$lib/types.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import EmptyState from '$lib/components/common/EmptyState.svelte';
+  import Drawer from '$lib/components/common/Drawer.svelte';
   import TaskDrawer from './TaskDrawer.svelte';
-  import { fetchTaskFile, saveTaskFile, deleteTaskFile } from '$lib/api.js';
+  import { fetchTaskFile, saveTaskFile, deleteTaskFile, runAutomation, fetchAutomationLog } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import {
     yamlToFormData,
@@ -31,6 +32,14 @@
   let drawerDraft = $state<TaskFormData | null>(null);
   let drawerSaving = $state(false);
   let drawerError = $state('');
+  let runningTaskName = $state('');
+
+  let logDrawerOpen = $state(false);
+  let logTaskName = $state('');
+  let logLines = $state<string[]>([]);
+  let logLoading = $state(false);
+  let logError = $state('');
+  const LOG_LINE_LIMIT = 200;
 
   function openNewTask(): void {
     const form = newFormData();
@@ -89,6 +98,52 @@
     }
   }
 
+  async function handleRunNow(name: string): Promise<void> {
+    if (runningTaskName || drawerSaving || !tokenStored) return;
+    runningTaskName = name;
+    try {
+      const result = await runAutomation(name);
+      notifications.push(
+        result.ok ? 'success' : 'error',
+        result.ok
+          ? `Started "${name}". Open the latest log in a few seconds to watch progress.`
+          : `Couldn't start "${name}".`,
+      );
+    } catch (e) {
+      notifications.push('error', e instanceof Error ? e.message : 'Failed to start the routine.');
+    } finally {
+      runningTaskName = '';
+    }
+  }
+
+  async function loadLog(name: string): Promise<void> {
+    logLoading = true;
+    logError = '';
+    logTaskName = name;
+    try {
+      const result = await fetchAutomationLog(name, LOG_LINE_LIMIT);
+      logLines = result.lines;
+    } catch (e) {
+      logLines = [];
+      logError = e instanceof Error ? e.message : 'Failed to load the latest routine log.';
+    } finally {
+      logLoading = false;
+    }
+  }
+
+  async function openLogDrawer(name: string): Promise<void> {
+    logDrawerOpen = true;
+    await loadLog(name);
+  }
+
+  function closeLogDrawer(): void {
+    logDrawerOpen = false;
+    logTaskName = '';
+    logLines = [];
+    logLoading = false;
+    logError = '';
+  }
+
   /** Map a cron expression to a friendly display string. */
   function formatSchedule(cron: string): string {
     const preset = cronToPresetId(cron);
@@ -115,13 +170,30 @@
       default: return cron;
     }
   }
+
+  function describeAction(automation: NonNullable<AutomationsResponse['automations']>[number]): string {
+    switch (automation.action.type) {
+      case 'assistant':
+        return automation.action.content?.trim() ? 'Assistant prompt' : 'Assistant task';
+      case 'shell':
+        return automation.action.content?.trim() ? automation.action.content.trim() : 'Shell command';
+      case 'api':
+        return automation.action.path
+          ? `${automation.action.method ?? 'Call'} ${automation.action.path}`
+          : 'API request';
+      case 'http':
+        return automation.action.url ? `${automation.action.method ?? 'Request'} ${automation.action.url}` : 'HTTP request';
+      default:
+        return automation.action.type;
+    }
+  }
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <div>
-      <h2>Automations</h2>
-      <p class="panel-subtitle">Scheduled tasks from <code>~/.openpalm/knowledge/tasks/</code>.</p>
+      <h2>Routines</h2>
+      <p class="panel-subtitle">Scheduled tasks from <code>~/.openpalm/knowledge/tasks/</code>. Run them now, edit them, or inspect the latest output.</p>
     </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={openNewTask} disabled={drawerSaving || !tokenStored}>New task</button>
@@ -154,11 +226,29 @@
               </div>
               <div class="automation-meta">
                 <span class="meta-item">{formatSchedule(automation.schedule)}</span>
+                <span class="meta-item meta-item-action">{describeAction(automation)}</span>
               </div>
             </div>
             <div class="automation-footer">
               <span class="automation-file">{automation.fileName}</span>
               <div class="automation-actions">
+                <button
+                  class="btn btn-secondary btn-sm"
+                  onclick={() => void handleRunNow(automation.name)}
+                  disabled={!!runningTaskName || drawerSaving || !tokenStored}
+                >
+                  {#if runningTaskName === automation.name}
+                    <Spinner />
+                    Running...
+                  {:else}
+                    Run now
+                  {/if}
+                </button>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onclick={() => void openLogDrawer(automation.name)}
+                  disabled={logLoading || !tokenStored}
+                >View latest log</button>
                 <button
                   class="btn btn-ghost btn-sm"
                   onclick={() => void openEditTask(automation.fileName)}
@@ -206,6 +296,57 @@
   onClose={closeDrawer}
   onSave={(fileName, yaml) => void handleSave(fileName, yaml)}
 />
+
+<Drawer
+  open={logDrawerOpen}
+  title={logTaskName ? `Latest log — ${logTaskName}` : 'Latest log'}
+  onClose={closeLogDrawer}
+  width="42rem"
+>
+  <div class="log-drawer-body">
+    <p class="log-drawer-copy">
+      Showing the most recent routine output available for <strong>{logTaskName || 'this task'}</strong>.
+    </p>
+
+    <div class="log-drawer-actions">
+      <button class="btn btn-secondary btn-sm" onclick={() => void loadLog(logTaskName)} disabled={logLoading || !logTaskName}>
+        {#if logLoading}
+          <Spinner />
+        {/if}
+        Refresh log
+      </button>
+      <span class="log-drawer-hint">Up to {LOG_LINE_LIMIT} recent lines</span>
+    </div>
+
+    {#if logError}
+      <div class="feedback feedback--error" role="alert">
+        <span>{logError}</span>
+      </div>
+    {/if}
+
+    {#if logLoading && logLines.length === 0}
+      <div class="loading-state">
+        <Spinner />
+        <span>Loading the latest output…</span>
+      </div>
+    {:else if logLines.length > 0}
+      <pre class="log-output">{logLines.join('\n')}</pre>
+    {:else if !logError}
+      <EmptyState>
+        {#snippet icon()}
+          <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+        {/snippet}
+        <p>No recent output yet.</p>
+        <p class="empty-state-hint">Run the routine, then refresh this drawer after a few seconds.</p>
+      </EmptyState>
+    {/if}
+  </div>
+</Drawer>
 
 <style>
   .automation-list {
@@ -263,6 +404,11 @@
     font-weight: var(--font-medium);
   }
 
+  .meta-item-action {
+    max-width: 28ch;
+    text-align: right;
+  }
+
   .badge-type {
     background: var(--color-bg-tertiary);
     color: var(--color-text-secondary);
@@ -278,7 +424,12 @@
     background: var(--color-bg-tertiary);
   }
 
-  .automation-actions { display: flex; gap: var(--space-1); }
+  .automation-actions {
+    display: flex;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 
   .automation-file {
     font-size: var(--text-xs);
@@ -308,6 +459,47 @@
     color: var(--color-danger);
   }
 
+  .log-drawer-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .log-drawer-copy {
+    max-width: 62ch;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+
+  .log-drawer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .log-drawer-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+
+  .log-output {
+    margin: 0;
+    max-height: min(60dvh, 42rem);
+    overflow: auto;
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   @media (max-width: 768px) {
     .automation-row {
       flex-direction: column;
@@ -317,6 +509,21 @@
       align-items: flex-start;
       flex-direction: row;
       gap: var(--space-3);
+    }
+
+    .meta-item-action {
+      text-align: left;
+      max-width: none;
+    }
+
+    .automation-footer {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .automation-actions {
+      width: 100%;
+      justify-content: flex-start;
     }
   }
 </style>

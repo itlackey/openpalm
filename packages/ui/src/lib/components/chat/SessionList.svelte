@@ -132,7 +132,8 @@
   /* Active row: an inset primary bar instead of a background tint, so the
      timestamp keeps full contrast against the panel/drawer surface. */
   .list-item.active {
-    box-shadow: inset 3px 0 0 var(--color-primary);
+    background: var(--color-bg-secondary);
+    box-shadow: inset 3px 0 0 var(--color-nav-active-indicator);
   }
   .list-item.active .item-label {
     font-weight: 600;
@@ -142,24 +143,25 @@
      it reads as a pressable CTA distinct from the flat list rows below, matching
      the app's primary-fill convention. Orange is never used as text. */
   .new-btn {
-    background: var(--color-primary);
-    color: #000;
+    background: var(--color-bg);
+    color: var(--color-text);
     font-weight: 600;
     border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
     justify-content: center;
     margin: 0 var(--space-1) var(--space-3);
   }
   .new-btn:hover:not(:disabled) {
-    background: var(--color-primary-hover);
+    background: var(--color-surface-hover);
   }
   .new-btn:focus-visible {
-    background: var(--color-primary);
-    outline: 2px solid var(--color-text);
+    background: var(--color-bg);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
   .new-btn .check,
   .new-btn .item-label {
-    color: #000;
+    color: inherit;
   }
 
   /* The "+" on the filled New session button. */

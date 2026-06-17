@@ -30,6 +30,11 @@
   const sessionsLoading = $derived(
     chat.byEndpoint.get(chat.activeEndpointId)?.sessionsLoading ?? false
   );
+  const activeEndpointLabel = $derived(endpointsService.active?.label ?? 'Assistant');
+  const activeSessionLabel = $derived.by(() => {
+    const session = chat.byEndpoint.get(chat.activeEndpointId)?.sessions.find((item) => item.id === chat.activeSessionId);
+    return session?.title?.trim() || 'New session';
+  });
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -215,6 +220,17 @@
   <div class="chat-layout">
     <!-- Message history -->
     <section class="messages-area" aria-label="Chat history">
+      <header class="chat-intro" aria-label="Chat overview">
+        <div class="chat-intro-copy">
+          <div class="chat-intro-eyebrow">OpenPalm chat</div>
+          <h1>Talk to your assistant</h1>
+          <p>
+            You're chatting with <strong>{activeEndpointLabel}</strong> in <strong>{activeSessionLabel}</strong>.
+            Ask for help in plain language and review the live output below.
+          </p>
+        </div>
+      </header>
+
       {#if sessionsLoading || entriesLoading}
         <div class="session-loading" aria-live="polite">
           <Spinner />
@@ -417,13 +433,27 @@
   <!-- Right-side panel (≥1024px): assistant chooser + session list. Replaces the
        navbar drawer triggers at this width. -->
   <aside class="chat-side" aria-label="Assistant and sessions">
-    <section class="side-section">
-      <h2 class="side-heading">Assistant</h2>
-      <EndpointList />
+    <section class="panel side-panel">
+      <div class="panel-header side-panel-header">
+        <div>
+          <div class="chat-side-eyebrow">Connection</div>
+          <h2>Assistant</h2>
+        </div>
+      </div>
+      <div class="panel-body side-panel-body">
+        <EndpointList />
+      </div>
     </section>
-    <section class="side-section side-sessions">
-      <h2 class="side-heading">Sessions</h2>
-      <SessionList />
+    <section class="panel side-panel side-sessions">
+      <div class="panel-header side-panel-header">
+        <div>
+          <div class="chat-side-eyebrow">History</div>
+          <h2>Sessions</h2>
+        </div>
+      </div>
+      <div class="panel-body side-panel-body side-panel-body--sessions">
+        <SessionList />
+      </div>
     </section>
   </aside>
 </div>
@@ -440,6 +470,7 @@
     display: flex;
     height: calc(100dvh - var(--nav-height));
     margin: 0;
+    background: var(--color-bg-secondary);
   }
 
   .chat-layout {
@@ -461,34 +492,46 @@
       width: 20rem;
       flex-shrink: 0;
       height: 100%;
+      padding: var(--space-4);
+      gap: var(--space-4);
       border-left: 1px solid var(--color-border);
-      background: var(--color-bg);
+      background: var(--color-bg-secondary);
       overflow: hidden;
     }
   }
 
-  .side-section {
-    padding: var(--space-4) var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+  .side-panel {
     min-height: 0;
   }
+
   /* Sessions section fills the remaining height and scrolls internally. */
   .side-sessions {
     flex: 1;
     display: flex;
     flex-direction: column;
-    border-bottom: none;
-    overflow-y: auto;
   }
 
-  .side-heading {
-    margin: 0 0 var(--space-2);
-    padding: 0 var(--space-3);
+  .side-panel-header {
+    position: static;
+  }
+
+  .chat-side-eyebrow {
+    margin-bottom: var(--space-1);
     font-size: var(--text-xs);
     font-weight: var(--font-semibold);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--color-text-secondary);
+    color: var(--color-text-tertiary);
+  }
+
+  .side-panel-body {
+    padding: var(--space-3);
+  }
+
+  .side-panel-body--sessions {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .messages-area {
@@ -501,6 +544,45 @@
     scroll-behavior: smooth;
     /* Center a contained reading column so turns never fly to the screen edges. */
     align-items: center;
+  }
+
+  .chat-intro {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-bg) 100%);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .chat-intro-copy {
+    max-width: 60ch;
+  }
+
+  .chat-intro-eyebrow {
+    margin-bottom: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+  }
+
+  .chat-intro h1 {
+    margin-bottom: var(--space-2);
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 1.1rem + 1vw, 2rem);
+    line-height: 1.05;
+    color: var(--color-text);
+  }
+
+  .chat-intro p {
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--color-text-secondary);
   }
 
   .messages-area > :global(*) {
@@ -605,6 +687,7 @@
     border-radius: var(--radius-md);
     background: var(--color-bg);
     border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
   }
 
   .live-card-header {
@@ -698,8 +781,8 @@
   }
 
   .question-option.selected-option {
-    border-color: var(--color-primary);
-    background: var(--color-primary-subtle);
+    border-color: var(--color-nav-active-indicator);
+    background: var(--color-bg-secondary);
     color: var(--color-text);
   }
 
@@ -714,7 +797,7 @@
     padding: 0 var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background: var(--color-bg);
+    background: var(--color-surface);
     color: var(--color-text);
     font: inherit;
   }
@@ -796,6 +879,10 @@
   @media (max-width: 768px) {
     .messages-area {
       padding: var(--space-3) var(--space-4);
+    }
+
+    .chat-intro {
+      padding: var(--space-4);
     }
   }
 </style>

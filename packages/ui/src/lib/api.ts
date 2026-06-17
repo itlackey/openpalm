@@ -354,6 +354,19 @@ export async function fetchAutomations(): Promise<AutomationsResponse> {
   return (await res.json()) as AutomationsResponse;
 }
 
+export async function runAutomation(name: string): Promise<{ ok: boolean; name: string; status: string }> {
+  const res = await requireOk(await request('POST', `/admin/automations/${encodeURIComponent(name)}/run`));
+  return (await res.json()) as { ok: boolean; name: string; status: string };
+}
+
+export async function fetchAutomationLog(name: string, limit = 200): Promise<{ name: string; lines: string[] }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const res = await requireOk(
+    await request('GET', `/admin/automations/${encodeURIComponent(name)}/log?${params.toString()}`)
+  );
+  return (await res.json()) as { name: string; lines: string[] };
+}
+
 // ── Service Logs ────────────────────────────────────────────────
 
 export async function fetchServiceLogs(

@@ -46,6 +46,7 @@ ENV OPENCODE_VERSION=${OPENCODE_VERSION} \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini curl git ca-certificates bash gosu unzip \
+        libglib2.0-0 \
         openssh-server sudo cron python3 jq \
         sqlite3 postgresql-client \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
