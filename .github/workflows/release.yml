@@ -648,9 +648,6 @@ jobs:
               create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}"
             done
             create_release "v${VERSION}" "OpenPalm v${VERSION} (major)"
-          elif [ "${UNIT}" = 'platform' ]; then
-            create_release "platform-${VERSION}" "OpenPalm platform ${VERSION}"
-            create_release "v${VERSION}" "OpenPalm v${VERSION}"
           else
             create_release "${UNIT}-${VERSION}" "OpenPalm ${UNIT} ${VERSION}"
           fi

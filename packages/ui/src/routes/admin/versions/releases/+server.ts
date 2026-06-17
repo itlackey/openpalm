@@ -45,11 +45,16 @@ export const GET: RequestHandler = async (event) => {
     // the app update badge must not fire for those versions.
     const electronAssetPattern = /\.(exe|dmg|AppImage|deb|rpm|pkg)$/i;
     const platformVersion = formatForDisplay(PLATFORM_VERSION);
+
+    // Prefer platform-X.Y.Z entries over legacy vX.Y.Z entries when both exist
+    // for the same version (platform releases now create both tags). Deduplicate
+    // by semver so {#each r.tag} keys are always unique.
+    const seen = new Set<string>();
     const releases: ReleaseEntry[] = raw
       .map((r) => {
         const raw_tag = r.tag_name;
         const hasElectronBuild = r.assets.some((a) => electronAssetPattern.test(a.name));
-        // New-style unit-prefixed tag: platform-X.Y.Z
+        // New-style unit-prefixed tag: platform-X.Y.Z — prefer these
         const unitMatch = raw_tag.match(/^platform-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/);
         if (unitMatch) {
           return { tag: unitMatch[1], prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild };
@@ -61,7 +66,8 @@ export const GET: RequestHandler = async (event) => {
         // Non-platform tags (portals-*, assistant-*, guardian-*) — skip
         return null;
       })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .filter((r) => { if (seen.has(r.tag)) return false; seen.add(r.tag); return true; });
 
     return json({ releases, platformVersion });
   } catch (err) {
