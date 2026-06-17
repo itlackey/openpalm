@@ -240,11 +240,19 @@ jobs:
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
           if git diff --quiet; then
             echo "Already at ${VERSION}; nothing to commit."
-          else
-            git add -A
-            git commit -m "chore(release): stamp ${UNIT} to ${VERSION}"
-            git push origin "HEAD:${{ github.ref_name }}"
+            exit 0
           fi
+          git add -A
+          git commit -m "chore(release): stamp ${UNIT} to ${VERSION}"
+          # Retry with rebase to handle concurrent pushes to the same branch
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin "${{ github.ref_name }}" && \
+              git push origin "HEAD:${{ github.ref_name }}" && exit 0
+            echo "Push attempt $i failed, retrying in $((i * 2))s..."
+            sleep $((i * 2))
+          done
+          echo "::error::Failed to push after 5 attempts"
+          exit 1
 
   # ── npm layer: lib → cli → ui (platform + major only) ────────────────────────
   npm-lib:
