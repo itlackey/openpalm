@@ -53,7 +53,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ inputs.unit }}-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
