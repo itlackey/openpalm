@@ -56,6 +56,9 @@
      *  filtered to tags ≤ this server-side (#492); used to label "you are on X"
      *  and to keep the version picker from offering an unreachable newer tag. */
     platformVersion?: string;
+    /** Latest published platform version from Docker Hub (bare semver, no v-prefix).
+     *  Used for "update to X" labels so they reflect what the button actually does. */
+    latestImageTag?: string | null;
     /** #497: preview the release migrations the selected tag would run. */
     migratePreviewLoading?: boolean;
     migratePreview?: { targetVersion: string; applied: string[]; lines: string[]; notes: string[] } | null;
@@ -96,6 +99,7 @@
     releases,
     releasesLoading,
     platformVersion = '',
+    latestImageTag = null,
     migratePreviewLoading = false,
     migratePreview = null,
     downgradePrompt = null,
@@ -436,7 +440,7 @@
       <div class="update-card-text">
         {#if servicesBehind}
           <h3 id="update-primary-title" class="update-title">
-            Your services are on {formatVersionForDisplay(stackVersion) || '—'} — update to {formatVersionForDisplay(platformVersion) || 'the latest version'}
+            Your services are on {formatVersionForDisplay(stackVersion) || '—'} — update to {formatVersionForDisplay(latestImageTag ?? platformVersion) || 'the latest version'}
           </h3>
           <p class="update-desc">
             Brings every stack service up to the version of OpenPalm you're running. Your settings
@@ -501,7 +505,7 @@
                 disabled={anyDangerousLoading || !tokenStored}
                 aria-busy={upgradeLoading}
               >
-                {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {formatVersionForDisplay(platformVersion)}{/if}
+                {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {formatVersionForDisplay(latestImageTag ?? platformVersion)}{/if}
               </button>
             {/if}
           </dd>

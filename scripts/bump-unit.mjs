@@ -14,7 +14,7 @@
 // Used by .github/workflows/release.yml.
 // Preview locally: UNIT=platform BUMP=patch STAMP=false node scripts/bump-unit.mjs
 
-import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
 import { setVersion } from './set-version.mjs';
 
 function bumpVersion(current, type) {
@@ -40,6 +40,7 @@ function readFileVersion(file) {
 
 function stampJsonFiles(files, version) {
   for (const f of files) {
+    if (!existsSync(f)) throw new Error(`Cannot stamp: file not found: ${f}`);
     setVersion(f, version);
     console.log(`  ${f} → ${version}`);
   }
@@ -58,11 +59,23 @@ function stampSetupScripts(version) {
 }
 
 function stampVersionFile(file, version) {
+  if (!existsSync(file)) throw new Error(`Cannot stamp: file not found: ${file}`);
   writeFileSync(file, version + '\n');
   console.log(`  ${file} → ${version}`);
 }
 
 // Unit definitions: anchor file (for reading current version) and files to stamp.
+//
+// IMPORTANT — version anchor semantics:
+// Each unit's anchorFn reads that unit's OWN last independent release version,
+// NOT the current platform version. It is normal for assistant/guardian/portals
+// anchors to lag behind the platform version (e.g. platform=0.12.6, assistant=0.12.5)
+// when those units have not had an independent release since the last platform cut.
+// DO NOT stamp assistant/guardian/portals anchors during platform CI runs — that
+// would couple independent units and generate noisy no-op commits.
+// Docker push tags in release.yml come from OP_IMAGE_TAG / v${PLATFORM_VERSION},
+// not from these anchors. Anchors are only read here to compute the NEXT version
+// for an independent unit release.
 const UNITS = {
   platform: {
     anchorFn: () => readJsonVersion('package.json'),

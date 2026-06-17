@@ -27,7 +27,7 @@ import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./addons.js";
-import { compareComparableVersions, isComparableSemver, isSameMajorVersion, majorVersionOf, PLATFORM_VERSION, formatForDisplay, formatForDocker, isPrerelease } from "./versioning.js";
+import { compareComparableVersions, isComparableSemver, isSameMajorVersion, majorVersionOf, PLATFORM_VERSION, formatForDisplay, formatForDocker, isPrerelease, normalizeVersion } from "./versioning.js";
 import {
   buildPinnedImageTagEnv,
   buildPlatformImageTagEnv,
@@ -328,7 +328,7 @@ function assertNotUnconfirmedDowngrade(state: ControlPlaneState, targetTag: stri
  * resolve the correct Docker image tag from a GitHub release tag.
  */
 function extractDockerTagFromReleaseTag(tag: string): string {
-  const unitPrefixMatch = tag.match(/^[a-z]+-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/);
+  const unitPrefixMatch = tag.match(/^(?:platform|portals|assistant|guardian)-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/);
   if (unitPrefixMatch) return formatForDocker(unitPrefixMatch[1]);
   return formatForDocker(tag); // handles vX.Y.Z and bare X.Y.Z
 }
@@ -635,9 +635,9 @@ export async function performUpgrade(
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: imageTag });
     const tagResult = await updateStackEnvToLatestImageTag(state, imageTag);
     const { tag: confirmedImageTag, warnings } = tagResult;
-    // The resolved platform tag IS the version whose stack assets we fetch —
-    // keeps compose files and images in lockstep.
-    const upgradeResult = await applyUpgrade(state, confirmedImageTag);
+    // Convert the Docker image tag (v0.12.6) to the canonical git release tag
+    // (platform-0.12.6) so refreshCoreAssets resolves the raw.githubusercontent URL.
+    const upgradeResult = await applyUpgrade(state, 'platform-' + normalizeVersion(confirmedImageTag));
 
     // 2. Pull all images (core + addons, including profile-gated voice)
     const pullResult = await composePull(composeOpts);

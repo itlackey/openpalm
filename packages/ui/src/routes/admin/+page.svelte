@@ -287,7 +287,6 @@
     try {
       const [releaseData, uiData] = await Promise.all([fetchReleases(), fetchUiVersions()]);
       releases = releaseData.releases;
-      if (releaseData.platformVersion) platformVersion = releaseData.platformVersion;
       uiVersions = uiData.versions;
       // Default the UI-build selection to the version on this app's channel
       // (next/latest dist-tag), falling back to the newest published version.
@@ -610,6 +609,7 @@
         {releases}
         {releasesLoading}
         {platformVersion}
+        {latestImageTag}
         {migratePreviewLoading}
         {migratePreview}
         {downgradePrompt}

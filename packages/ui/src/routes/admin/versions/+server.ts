@@ -66,9 +66,9 @@ export const GET: RequestHandler = async (event) => {
     const namespace = (envVars.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
     const currentDockerTag = envVars.OP_ASSISTANT_IMAGE_TAG ?? imageTag;
     if (isComparableSemver(currentDockerTag)) {
-      latestImageTag = await resolveLatestPlatformTagForCurrentMajor(namespace, currentDockerTag);
+      latestImageTag = formatForDisplay(await resolveLatestPlatformTagForCurrentMajor(namespace, currentDockerTag));
     } else {
-      latestImageTag = await resolveLatestPlatformTag(namespace);
+      latestImageTag = formatForDisplay(await resolveLatestPlatformTag(namespace));
     }
   } catch {
     // Non-fatal: latestImageTag stays null; UI falls back to no update banner.

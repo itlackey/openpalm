@@ -201,11 +201,11 @@ export interface ReleaseEntry {
   hasElectronBuild: boolean;
 }
 
-export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; platformVersion?: string; error?: string }> {
+export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; error?: string }> {
   try {
     const res = await request('GET', '/admin/versions/releases');
     if (!res.ok) return { releases: [] };
-    return (await res.json()) as { releases: ReleaseEntry[]; platformVersion?: string; error?: string };
+    return (await res.json()) as { releases: ReleaseEntry[]; error?: string };
   } catch {
     return { releases: [] };
   }

@@ -316,6 +316,20 @@ describe('applyTagChange latest resolution (#449)', () => {
     );
   });
 
+  // extractDockerTagFromReleaseTag: unit-prefixed git release tags must map to Docker image tags.
+  // Verify all four unit prefixes and a bare v* tag are handled correctly.
+  test.each([
+    ['platform-0.12.6', 'v99.0.0', /assistant:v0\.12\.6.*not published/],
+    ['portals-0.12.6',  'v99.0.0', /assistant:v0\.12\.6.*not published/],
+    ['assistant-0.12.6','v99.0.0', /assistant:v0\.12\.6.*not published/],
+    ['guardian-0.12.6', 'v99.0.0', /assistant:v0\.12\.6.*not published/],
+  ])('unit-prefixed release tag %s resolves to Docker image tag v0.12.6 and is probed', async (releaseTag) => {
+    const state = makeState();
+    await expect(applyTagChange(state, releaseTag)).rejects.toThrow(
+      /assistant:v0\.12\.6.*not published/,
+    );
+  });
+
   // #501: a target OLDER than the running version is a downgrade — require an
   // explicit confirmation before writing anything.
   test('applyTagChange requires confirmation for a downgrade (#501)', async () => {

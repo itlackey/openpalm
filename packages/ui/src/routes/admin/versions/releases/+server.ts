@@ -1,6 +1,5 @@
 import { json } from "@sveltejs/kit";
 import { requireAdmin, getRequestId } from "$lib/server/helpers.js";
-import { PLATFORM_VERSION, formatForDisplay } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export interface ReleaseEntry {
@@ -43,10 +42,9 @@ export const GET: RequestHandler = async (event) => {
     // hasElectronBuild is true only when the release includes installer assets.
     // Patch platform releases skip Electron builds (include_electron=false), so
     // the app update badge must not fire for those versions.
-    // Match Electron installer assets only. Deliberately excludes .exe — the
-    // CLI ships openpalm-cli-windows-x64.exe which is not an Electron installer.
-    const electronAssetPattern = /\.(dmg|AppImage|deb|rpm|pkg)$/i;
-    const platformVersion = formatForDisplay(PLATFORM_VERSION);
+    // Match Electron installer assets only. Anchored to ^OpenPalm- to exclude
+    // deploy bundles and CLI binaries. Includes .zip for the Windows installer.
+    const electronAssetPattern = /^OpenPalm-.*\.(dmg|AppImage|zip|deb|rpm|pkg)$/i;
 
     // Prefer platform-X.Y.Z entries over legacy vX.Y.Z entries when both exist
     // for the same version (platform releases now create both tags). Deduplicate
@@ -71,7 +69,7 @@ export const GET: RequestHandler = async (event) => {
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .filter((r) => { if (seen.has(r.tag)) return false; seen.add(r.tag); return true; });
 
-    return json({ releases, platformVersion });
+    return json({ releases });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return json({ releases: [], error: message });

@@ -150,18 +150,17 @@ export const SEEDED_ASSETS: { relPath: string; githubFilename: string }[] = [
 ];
 
 async function downloadAsset(filename: string, version: string): Promise<string> {
-  const releaseUrl = `https://github.com/${REPO}/releases/download/${version}/${filename}`;
+  // Compose assets are repo paths (with slashes), never flat GitHub release assets.
+  // The raw.githubusercontent.com URL is the only one that can work; it requires
+  // a valid git ref (platform-X.Y.Z). See versioning-audit.md HIGH-1.
   const rawUrl = `https://raw.githubusercontent.com/${REPO}/${version}/${filename}`;
-
-  for (const url of [releaseUrl, rawUrl]) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(GITHUB_ASSET_TIMEOUT_MS) });
-      if (res.ok) return await res.text();
-    } catch {
-      // try next URL
-    }
+  try {
+    const res = await fetch(rawUrl, { signal: AbortSignal.timeout(GITHUB_ASSET_TIMEOUT_MS) });
+    if (res.ok) return await res.text();
+  } catch {
+    // fall through to error
   }
-  throw new Error(`Failed to download ${filename} from GitHub (tried release and raw URLs for version "${version}")`);
+  throw new Error(`Failed to download ${filename} from GitHub (ref "${version}" not found or network error)`);
 }
 
 function ensureBackupDir(backupDir: string | null, suffix = ''): string {

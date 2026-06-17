@@ -319,6 +319,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Guard — fail if image tag already exists
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if docker manifest inspect openpalm/portal:v${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
+            echo "ERROR: openpalm/portal:v${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+            exit 1
+          fi
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -357,6 +364,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Guard — fail if image tag already exists
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if docker manifest inspect openpalm/guardian:v${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
+            echo "ERROR: openpalm/guardian:v${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+            exit 1
+          fi
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -395,6 +409,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Guard — fail if image tag already exists
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if docker manifest inspect openpalm/assistant:v${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
+            echo "ERROR: openpalm/assistant:v${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+            exit 1
+          fi
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
