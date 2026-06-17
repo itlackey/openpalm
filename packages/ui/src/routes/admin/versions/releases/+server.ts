@@ -43,7 +43,9 @@ export const GET: RequestHandler = async (event) => {
     // hasElectronBuild is true only when the release includes installer assets.
     // Patch platform releases skip Electron builds (include_electron=false), so
     // the app update badge must not fire for those versions.
-    const electronAssetPattern = /\.(exe|dmg|AppImage|deb|rpm|pkg)$/i;
+    // Match Electron installer assets only. Deliberately excludes .exe — the
+    // CLI ships openpalm-cli-windows-x64.exe which is not an Electron installer.
+    const electronAssetPattern = /\.(dmg|AppImage|deb|rpm|pkg)$/i;
     const platformVersion = formatForDisplay(PLATFORM_VERSION);
 
     // Prefer platform-X.Y.Z entries over legacy vX.Y.Z entries when both exist
