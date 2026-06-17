@@ -36,7 +36,10 @@ const doUi = doHost || relUi;
 const doPortals = full || relPortals;
 const doAssistant = full || relAssistant;
 const doVoice = relVoice && !isPre; // stable only, always explicit
-const doTag = full || doHost; // tag + GitHub release for host + full only
+// Tag whenever the assistant (the version-of-record image) is released, not just
+// on full/host releases. Any release that publishes the assistant image should be
+// tagged so the upgrade path can reference a known git ref for stack asset downloads.
+const doTag = full || doHost || doAssistant;
 
 if (relVoice && isPre) {
   console.log("::notice::voice is stable-only — skipping voice for prerelease " + version);

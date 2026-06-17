@@ -20,9 +20,9 @@ name: Platform release (orchestrator)
 # cross-unit). The host unit owns root package.json + the setup-script versions, so
 # the "platform version" tracks the host/CLI line.
 #
-# TAG-LAST: the git tag + GitHub release are created LAST and only for host/full
-# ("tag exists => fully published"). portals/assistant/voice are registry-only
-# (Docker only for portals), no git tag.
+# TAG-LAST: the git tag + GitHub release are created LAST for host/full/assistant
+# ("tag exists => fully published"). The assistant image is the version-of-record,
+# so any release that publishes it also creates a tag for stack asset downloads.
 #
 # DISPATCH-FROM-MAIN: GitHub only dispatches workflows whose file lives on the
 # default branch. This file must be on `main`; supply `ref` to release a release
@@ -563,9 +563,8 @@ jobs:
       - cli
       - electron
       - voice
-    # Host + full only (portals/assistant/voice are registry-only — no git tag),
-    # real run, and only if nothing in scope failed/cancelled (skipped optional
-    # jobs are fine).
+    # Host, full, or assistant release; real run; nothing in scope failed/cancelled
+    # (skipped optional jobs are fine).
     if: ${{ needs.plan.outputs.do_tag == 'true' && !inputs.dry_run && always() && needs.bump.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
