@@ -33,23 +33,27 @@ export const GET: RequestHandler = async (event) => {
       published_at: string;
     }>;
 
-    // #492: the stack version picker drives applyTagChange, whose migrations come
-    // from the RUNNING control plane (PLATFORM_VERSION). Filter out any tag newer
-    // than the running platform so the host-vs-target trap is not even reachable
-    // from the dropdown. The running version is labelled separately so the UI can
-    // show "you are on X". Non-semver tags are kept (they can't be over-the-line).
+    // Extract semver from unit-prefixed release tags (platform-X.Y.Z → X.Y.Z)
+    // and filter to platform releases only. With independently versioned units,
+    // portals-*/assistant-*/guardian-* tags do not carry stack assets for the
+    // version picker — only platform-* (and legacy v*) releases do.
     const platformVersion = formatForDisplay(PLATFORM_VERSION);
     const releases: ReleaseEntry[] = raw
-      .map((r) => ({
-        tag: r.tag_name.replace(/^v/, ""),
-        prerelease: r.prerelease,
-        publishedAt: r.published_at,
-      }))
-      .filter(
-        (r) =>
-          !isComparableSemver(r.tag) ||
-          compareComparableVersions(r.tag, PLATFORM_VERSION) <= 0,
-      );
+      .map((r) => {
+        const raw_tag = r.tag_name;
+        // New-style unit-prefixed tag: platform-X.Y.Z
+        const unitMatch = raw_tag.match(/^platform-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/);
+        if (unitMatch) {
+          return { tag: unitMatch[1], prerelease: r.prerelease, publishedAt: r.published_at };
+        }
+        // Legacy style: vX.Y.Z (strip v)
+        if (/^v\d/.test(raw_tag)) {
+          return { tag: raw_tag.replace(/^v/, ""), prerelease: r.prerelease, publishedAt: r.published_at };
+        }
+        // Non-platform tags (portals-*, assistant-*, guardian-*) — skip
+        return null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
 
     return json({ releases, platformVersion });
   } catch (err) {

@@ -183,6 +183,10 @@ export interface VersionsResponse {
   /** Running control-plane version (PLATFORM_VERSION) — "what version of
    *  OpenPalm you're running". Drives the active channel + behind checks. */
   platformVersion: string;
+  /** Latest available Docker image tag on Docker Hub for the current major
+   *  (best-effort — null when the check fails or is skipped). Used to detect
+   *  when a newer image is available independently of the platform version. */
+  latestImageTag: string | null;
 }
 
 export async function fetchVersions(): Promise<VersionsResponse> {

@@ -304,12 +304,15 @@ describe('applyTagChange latest resolution (#449)', () => {
     );
   });
 
-  // #492: never deploy a tag newer than the running control plane (PLATFORM_VERSION).
-  // A target far above any real release (v99.0.0) must hard-block before any write.
-  test('applyTagChange blocks a target newer than the running control plane (#492)', async () => {
+  // With independently versioned units, the "target must not exceed control
+  // plane" guard has been removed — Docker images can be at a higher version
+  // than the npm platform unit without blocking. A v99.0.0 tag is still
+  // rejected, but because it is not published on Docker Hub, not because of a
+  // version comparison against PLATFORM_VERSION.
+  test('applyTagChange with unpublished tag fails at publication probe (not version guard)', async () => {
     const state = makeState();
     await expect(applyTagChange(state, 'v99.0.0')).rejects.toThrow(
-      /newer than the OpenPalm control plane you're running/,
+      /Refusing to update to openpalm\/assistant:v99\.0\.0: tag is not published/,
     );
   });
 

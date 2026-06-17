@@ -323,6 +323,7 @@ export {
 export {
   applyTagChange,
   resolveLatestPlatformTag,
+  resolveLatestPlatformTagForCurrentMajor,
   resolveDefaultMigrateTarget,
   DowngradeConfirmationRequired,
   buildComposeFileList,

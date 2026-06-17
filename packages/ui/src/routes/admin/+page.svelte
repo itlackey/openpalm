@@ -98,25 +98,23 @@
   let selectedUiTag = $state('');
   let releases = $state<ReleaseEntry[]>([]);
   let releasesLoading = $state(false);
-  // Running control-plane version (PLATFORM_VERSION) reported by the releases
-  // endpoint. The stack-version dropdown is already filtered to tags ≤ this
-  // server-side (#492); the label tells the user which version they're on.
+  // Running control-plane version (PLATFORM_VERSION) — for display only.
   let platformVersion = $state('');
+  // Latest available Docker image tag on Docker Hub (null = check failed / not yet loaded).
+  let latestImageTag = $state<string | null>(null);
   // @openpalm/ui npm versions — the UI is independently versioned, so its
   // installable builds come from npm, not GitHub platform releases.
   let uiVersions = $state<UiVersionEntry[]>([]);
   let uiVersionsLoading = $state(false);
 
-  // #498: one global "an update is available" signal for the whole shell.
-  // The CONTROL PLANE (platformVersion) is what the user opted into — it is the
-  // version of OpenPalm they're running. The stack/services follow it, so an
-  // update is "available" whenever any configured service is BEHIND the control
-  // plane (version < platformVersion). Keying off the control plane (not the
-  // stack image tag) is the whole point of this redesign: a user on rc.4 with a
-  // 0.11.5 stack must be told an update is ready.
+  // An update is available when any running service image is behind the latest
+  // published tag on Docker Hub. With independently versioned units, Docker Hub
+  // is the authoritative source — not the control-plane (PLATFORM_VERSION), which
+  // only tracks the platform npm line.
   const updateAvailable = $derived(
-    isSemver(platformVersion) &&
-      services.some((s) => isSemver(s.version) && compareVersions(s.version, platformVersion) < 0),
+    latestImageTag !== null &&
+      isSemver(latestImageTag) &&
+      services.some((s) => isSemver(s.version) && compareVersions(s.version, latestImageTag!) < 0),
   );
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -276,6 +274,7 @@
       // every "behind" check. loadReleases also sets it from the releases probe,
       // but that can fail offline; this is the reliable source.
       platformVersion = data.platformVersion;
+      latestImageTag = data.latestImageTag ?? null;
       // Do not reset selectedImageTag/selectedUiTag here — loadReleases initializes them
     } catch {
       // Non-fatal — version info is supplementary

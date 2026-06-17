@@ -27,7 +27,7 @@ import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./addons.js";
-import { compareComparableVersions, isComparableSemver, isSameMajorVersion, majorVersionOf, PLATFORM_VERSION, formatForDisplay, isPrerelease } from "./versioning.js";
+import { compareComparableVersions, isComparableSemver, isSameMajorVersion, majorVersionOf, PLATFORM_VERSION, formatForDisplay, formatForDocker, isPrerelease } from "./versioning.js";
 import {
   buildPinnedImageTagEnv,
   buildPlatformImageTagEnv,
@@ -319,14 +319,18 @@ function assertNotUnconfirmedDowngrade(state: ControlPlaneState, targetTag: stri
   throw new DowngradeConfirmationRequired(currentTag, targetTag);
 }
 
-function assertTargetNotNewerThanPlatform(targetTag: string): void {
-  if (!isComparableSemver(targetTag) || !isComparableSemver(PLATFORM_VERSION)) return;
-  if (compareComparableVersions(targetTag, PLATFORM_VERSION) <= 0) return;
-  throw new Error(
-    `Version ${formatForDisplay(targetTag)} is newer than the OpenPalm control plane ` +
-    `you're running (${formatForDisplay(PLATFORM_VERSION)}). Update the OpenPalm app / ` +
-    `control plane first, then update the stack. Nothing was changed.`,
-  );
+/**
+ * Convert a release git tag to a Docker image tag.
+ *
+ * The new per-unit release scheme uses prefixed git tags (platform-X.Y.Z,
+ * portals-X.Y.Z, etc.) while Docker images always use the v-prefixed form
+ * (v0.12.5). This function strips the unit prefix so applyTagChange can
+ * resolve the correct Docker image tag from a GitHub release tag.
+ */
+function extractDockerTagFromReleaseTag(tag: string): string {
+  const unitPrefixMatch = tag.match(/^[a-z]+-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/);
+  if (unitPrefixMatch) return formatForDocker(unitPrefixMatch[1]);
+  return formatForDocker(tag); // handles vX.Y.Z and bare X.Y.Z
 }
 
 function resolveImageNamespace(state: ControlPlaneState): string {
@@ -628,8 +632,6 @@ export async function performUpgrade(
       resolvePlatformVersionPolicyBaseTag(state),
       { allowPrerelease: opts.allowPrerelease },
     );
-    // #492: never deploy a tag newer than the control plane running the migrations.
-    assertTargetNotNewerThanPlatform(imageTag);
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: imageTag });
     const tagResult = await updateStackEnvToLatestImageTag(state, imageTag);
     const { tag: confirmedImageTag, warnings } = tagResult;
@@ -694,30 +696,30 @@ export async function applyTagChange(
       }
     }
 
-    // #492: never deploy a tag newer than the control plane running the
-    // migrations. Check BEFORE the publication probe / asset fetch so the user
-    // gets the actionable "update the app first" message, not a confusing
-    // "tag is not published".
-    assertTargetNotNewerThanPlatform(resolvedTag);
-
     // #501: a tag OLDER than the running version is a downgrade. Forward-only
     // release migrations don't run backward, so require explicit confirmation
     // before writing anything.
     assertNotUnconfirmedDowngrade(state, resolvedTag, opts.confirmDowngrade ?? false);
 
+    // With independently versioned units, the release git tag may carry a unit
+    // prefix (platform-X.Y.Z). The Docker image tag is always v-prefixed (vX.Y.Z).
+    const dockerTag = extractDockerTagFromReleaseTag(resolvedTag);
+
     const stackEnvPath = `${state.stashDir}/env/stack.env`;
     const currentEnv = parseEnvFile(stackEnvPath);
     const pinnedImages = parsePinnedImages(currentEnv.OP_PINNED_IMAGES);
-    const imageTagEnv = await resolvePlatformImageTags(state, namespace, resolvedTag, pinnedImages);
+    const imageTagEnv = await resolvePlatformImageTags(state, namespace, dockerTag, pinnedImages);
     const pinnedImageEnv = buildPinnedImageTagEnv(currentEnv, pinnedImages);
-    const warnings = collectPinnedImageWarnings(currentEnv, pinnedImages, resolvedTag);
+    const warnings = collectPinnedImageWarnings(currentEnv, pinnedImages, dockerTag);
     ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: resolvedTag });
 
     const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
     writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { ...pinnedImageEnv, ...imageTagEnv }));
+    // Stack assets (compose files) are downloaded using the full release tag so
+    // the raw.githubusercontent fallback resolves the platform-X.Y.Z git ref.
     const upgradeResult = await applyUpgrade(state, resolvedTag);
     return {
-      imageTag: resolvedTag,
+      imageTag: dockerTag,
       namespace,
       backupDir: upgradeResult.backupDir,
       assetsUpdated: upgradeResult.updated,
