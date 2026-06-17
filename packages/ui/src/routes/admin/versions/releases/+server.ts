@@ -1,12 +1,13 @@
 import { json } from "@sveltejs/kit";
 import { requireAdmin, getRequestId } from "$lib/server/helpers.js";
-import { PLATFORM_VERSION, isComparableSemver, compareComparableVersions, formatForDisplay } from "@openpalm/lib";
+import { PLATFORM_VERSION, formatForDisplay } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export interface ReleaseEntry {
   tag: string;
   prerelease: boolean;
   publishedAt: string;
+  hasElectronBuild: boolean;
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -31,24 +32,31 @@ export const GET: RequestHandler = async (event) => {
       tag_name: string;
       prerelease: boolean;
       published_at: string;
+      assets: Array<{ name: string }>;
     }>;
 
     // Extract semver from unit-prefixed release tags (platform-X.Y.Z → X.Y.Z)
     // and filter to platform releases only. With independently versioned units,
     // portals-*/assistant-*/guardian-* tags do not carry stack assets for the
     // version picker — only platform-* (and legacy v*) releases do.
+    //
+    // hasElectronBuild is true only when the release includes installer assets.
+    // Patch platform releases skip Electron builds (include_electron=false), so
+    // the app update badge must not fire for those versions.
+    const electronAssetPattern = /\.(exe|dmg|AppImage|deb|rpm|pkg)$/i;
     const platformVersion = formatForDisplay(PLATFORM_VERSION);
     const releases: ReleaseEntry[] = raw
       .map((r) => {
         const raw_tag = r.tag_name;
+        const hasElectronBuild = r.assets.some((a) => electronAssetPattern.test(a.name));
         // New-style unit-prefixed tag: platform-X.Y.Z
         const unitMatch = raw_tag.match(/^platform-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/);
         if (unitMatch) {
-          return { tag: unitMatch[1], prerelease: r.prerelease, publishedAt: r.published_at };
+          return { tag: unitMatch[1], prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild };
         }
         // Legacy style: vX.Y.Z (strip v)
         if (/^v\d/.test(raw_tag)) {
-          return { tag: raw_tag.replace(/^v/, ""), prerelease: r.prerelease, publishedAt: r.published_at };
+          return { tag: raw_tag.replace(/^v/, ""), prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild };
         }
         // Non-platform tags (portals-*, assistant-*, guardian-*) — skip
         return null;

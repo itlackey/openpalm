@@ -125,7 +125,13 @@
   // compares against the newest version on ITS channel (a pre-release install
   // sees pre-releases; a stable one only sees stable), so the indicator can't
   // falsely read "up to date" the way a fixed text label did.
-  const releaseCandidates = $derived(releases.map((r) => ({ version: r.tag, prerelease: r.prerelease })));
+  // Only releases that actually include an Electron installer drive the app
+  // update badge. Patch platform releases skip electron builds (include_electron=false).
+  const releaseCandidates = $derived(
+    releases
+      .filter((r) => r.hasElectronBuild)
+      .map((r) => ({ version: r.tag, prerelease: r.prerelease }))
+  );
   const uiCandidates = $derived(uiVersions.map((v) => ({ version: v.version, prerelease: v.prerelease })));
 
   // ── Services vs the control plane ──────────────────────────────────────────

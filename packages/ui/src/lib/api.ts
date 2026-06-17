@@ -198,6 +198,7 @@ export interface ReleaseEntry {
   tag: string;
   prerelease: boolean;
   publishedAt: string;
+  hasElectronBuild: boolean;
 }
 
 export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; platformVersion?: string; error?: string }> {
