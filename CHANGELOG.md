@@ -5,6 +5,15 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.9] - 2026-06-17
+
+### Fixed
+
+- **Upgrades no longer abort when Docker-owned data directories are unreadable.**
+  The safety backup silently skips directories it cannot read (e.g. `data/guardian`,
+  which is written as root by the Docker container) instead of throwing `EACCES` and
+  refusing to proceed. User-owned config and knowledge are still fully backed up.
+
 ## [0.12.8] - 2026-06-17
 
 ### Fixed
