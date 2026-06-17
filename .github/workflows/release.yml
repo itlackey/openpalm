@@ -613,6 +613,10 @@ jobs:
               create_tag "${PREFIX}-${VERSION}" "Release ${PREFIX} ${VERSION}"
             done
             create_tag "v${VERSION}" "Major release v${VERSION}"
+          elif [ "${UNIT}" = 'platform' ]; then
+            # Platform releases also create vX.Y.Z — asset download URLs use this tag
+            create_tag "platform-${VERSION}" "Release platform ${VERSION}"
+            create_tag "v${VERSION}" "Platform release v${VERSION}"
           else
             create_tag "${UNIT}-${VERSION}" "Release ${UNIT} ${VERSION}"
           fi
@@ -644,6 +648,9 @@ jobs:
               create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}"
             done
             create_release "v${VERSION}" "OpenPalm v${VERSION} (major)"
+          elif [ "${UNIT}" = 'platform' ]; then
+            create_release "platform-${VERSION}" "OpenPalm platform ${VERSION}"
+            create_release "v${VERSION}" "OpenPalm v${VERSION}"
           else
             create_release "${UNIT}-${VERSION}" "OpenPalm ${UNIT} ${VERSION}"
           fi
