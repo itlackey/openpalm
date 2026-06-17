@@ -558,7 +558,7 @@
        itself, where the same status is already front and centre. -->
   <div class="update-banner" role="status">
     <span class="update-banner-text">
-      An update is ready{platformVersion ? ` — OpenPalm ${formatVersionForDisplay(platformVersion)}` : ''}.
+      OpenPalm {formatVersionForDisplay(latestImageTag ?? '')} is available.
     </span>
     <button class="update-banner-action" onclick={() => handleTabSelect('updates')}>
       Review it

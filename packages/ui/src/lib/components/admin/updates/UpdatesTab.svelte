@@ -156,9 +156,10 @@
   // this channel. Only meaningful when actually running inside the desktop app.
   const appLatest = $derived(electronLatestVersion ?? latestForChannel(electronVersion, releaseCandidates));
   const appStatus = $derived<UpdateStatus>(inElectron ? updateStatus(electronVersion, appLatest) : 'unknown');
-  const appDownloadUrl = $derived(
-    electronLatestUrl ?? (appLatest ? `${RELEASES_URL}/tag/v${appLatest}` : RELEASES_URL),
-  );
+  // Use the URL Electron provides (most precise), or fall back to the main
+  // releases page. Never construct /tag/vX.Y.Z ourselves — releases now use
+  // platform-X.Y.Z tags, so a hand-built v* URL would 404.
+  const appDownloadUrl = $derived(electronLatestUrl ?? RELEASES_URL);
 
   // UI = the @openpalm/ui npm build serving this page; latest = newest on the
   // npm dist-tag channel that matches this build's stability.
