@@ -113,7 +113,7 @@ describe('UpdatesTab launch-on-login', () => {
     launchOnLoginStatus.mockResolvedValue({ supported: true, enabled: true });
 
     render(UpdatesTab, { props: defaultProps });
-    await page.getByText(/advanced options/i).click();
+    await page.getByRole('group').getByText(/^version control$/i).click();
 
     const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
     await expect.element(toggle).toBeChecked();
@@ -124,7 +124,7 @@ describe('UpdatesTab launch-on-login', () => {
     launchOnLoginStatus.mockResolvedValue({ supported: false, enabled: false });
 
     render(UpdatesTab, { props: defaultProps });
-    await page.getByText(/advanced options/i).click();
+    await page.getByRole('group').getByText(/^version control$/i).click();
 
     const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
     await expect.element(toggle).toBeDisabled();
@@ -136,7 +136,7 @@ describe('UpdatesTab launch-on-login', () => {
     setLaunchOnLogin.mockResolvedValue({ supported: true, enabled: true });
 
     render(UpdatesTab, { props: defaultProps });
-    await page.getByText(/advanced options/i).click();
+    await page.getByRole('group').getByText(/^version control$/i).click();
 
     const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
     await toggle.click();

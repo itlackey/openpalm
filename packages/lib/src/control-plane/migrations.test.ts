@@ -634,3 +634,84 @@ describe('layout migration 1 → 2: drop inert pre-0.12.0 system files', () => {
     expect(report.migrated).toBe(false);
   });
 });
+
+describe('release migration v0.12.3-rc.1: purge stale addon IDs from OP_ENABLED_ADDONS', () => {
+  function seedEnv(addonLine: string): void {
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(
+      join(home, 'knowledge', 'env', 'stack.env'),
+      `OP_IMAGE_TAG=v0.12.2\nOP_RELEASE_VERSION=v0.12.2\n${addonLine}\n`,
+    );
+  }
+
+  it('removes stale addon IDs while preserving valid ones', () => {
+    seedEnv('OP_ENABLED_ADDONS=discord,oldaddon,voice,legacychannel');
+
+    const report = ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1' });
+    expect(report.migrated).toBe(true);
+    expect(report.applied).toContain('v0.12.3-rc.1');
+
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain('OP_ENABLED_ADDONS=discord,voice');
+    expect(stackEnv).not.toContain('oldaddon');
+    expect(stackEnv).not.toContain('legacychannel');
+  });
+
+  it('is a no-op when all addon IDs are valid (already clean)', () => {
+    seedEnv('OP_ENABLED_ADDONS=discord,voice');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain('OP_ENABLED_ADDONS=discord,voice');
+  });
+
+  it('is a no-op when OP_ENABLED_ADDONS is absent', () => {
+    seedEnv('OP_HOST_UI_PORT=8100');
+
+    const before = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1' });
+    const after = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    expect(after).not.toContain('OP_ENABLED_ADDONS');
+    expect(after).toContain('OP_RELEASE_VERSION=v0.12.3-rc.1');
+  });
+
+  it('sets OP_ENABLED_ADDONS to empty string when all IDs are stale', () => {
+    seedEnv('OP_ENABLED_ADDONS=oldchannel,removedaddon');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain('OP_ENABLED_ADDONS=');
+    expect(stackEnv).not.toContain('oldchannel');
+    expect(stackEnv).not.toContain('removedaddon');
+  });
+
+  it('is idempotent — a second run does not alter the result', () => {
+    seedEnv('OP_ENABLED_ADDONS=discord,stale,voice');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1' });
+    ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    const count = (stackEnv.match(/^OP_ENABLED_ADDONS=/mg) ?? []).length;
+    expect(count).toBe(1);
+    expect(stackEnv).toContain('OP_ENABLED_ADDONS=discord,voice');
+  });
+
+  it('dry-run reports stale IDs without writing', () => {
+    seedEnv('OP_ENABLED_ADDONS=discord,phantom,voice');
+    const before = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1', dryRun: true });
+    const after = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    // dry-run must not write anything
+    expect(after).toBe(before);
+  });
+
+  it('does not apply when target version predates v0.12.3-rc.1', () => {
+    seedEnv('OP_ENABLED_ADDONS=discord,stale,voice');
+
+    ensureReleaseMigrated({ targetVersion: 'v0.12.2' });
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    // stale ID still present — migration was not run
+    expect(stackEnv).toContain('OP_ENABLED_ADDONS=discord,stale,voice');
+  });
+});

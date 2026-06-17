@@ -45,7 +45,7 @@ export type ServiceEntry = {
 };
 
 export type AutomationActionInfo = {
-  type: 'api' | 'http' | 'shell' | 'assistant';
+  type: 'api' | 'http' | 'shell' | 'assistant' | 'workflow';
   method?: string;
   path?: string;
   url?: string;

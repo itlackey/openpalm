@@ -33,7 +33,7 @@
 {:else if entry.type === 'tool-group'}
   <!-- Orphan tool activity (no following assistant text in the same turn) -->
   <div class="message message-assistant message-tool-group">
-    <div class="tool-message-bubble">
+    <div class="tool-strip-inline">
       <ToolStrip items={entry.toolStates} ariaLabel="Assistant tool activity" />
     </div>
     <span class="message-meta">Assistant · {formatTime(entry.timestamp)}</span>
@@ -172,13 +172,9 @@
     border-bottom-left-radius: var(--radius-sm);
   }
 
-  .tool-message-bubble {
+  .tool-strip-inline {
     max-width: 85%;
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-bg-tertiary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    border-bottom-left-radius: var(--radius-sm);
+    padding: var(--space-1) 0;
   }
 
   .message-text {

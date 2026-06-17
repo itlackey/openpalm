@@ -62,7 +62,7 @@ describe('GET /admin/assistant', () => {
   test('returns default project name and persona content', async () => {
     const personaDir = join(rootDir, 'config', 'assistant');
     mkdirSync(personaDir, { recursive: true });
-    const personaPath = join(personaDir, 'openpalm.md');
+    const personaPath = join(personaDir, 'persona.md');
     const content = '# Persona\n';
     writeFileSync(personaPath, content);
 
@@ -72,7 +72,7 @@ describe('GET /admin/assistant', () => {
     expect(body.projectName).toBe('openpalm');
     expect(body.lanExposureEnabled).toBe(false);
     expect(body.personaContent).toBe(content);
-    expect(body.personaPath).toBe('config/assistant/openpalm.md');
+    expect(body.personaPath).toBe('config/assistant/persona.md');
   });
 
   test('returns enabled LAN exposure when stack.env binds assistant to all interfaces', async () => {
@@ -105,7 +105,7 @@ describe('PUT /admin/assistant', () => {
     expect(stackEnv).toContain('OP_PROJECT_NAME=openpalm-dev');
     expect(stackEnv).toContain('OP_ASSISTANT_BIND_ADDRESS=0.0.0.0');
 
-    const personaPath = join(rootDir, 'config', 'assistant', 'openpalm.md');
+    const personaPath = join(rootDir, 'config', 'assistant', 'persona.md');
     expect(readFileSync(personaPath, 'utf-8')).toBe('# Updated persona\n');
   });
 

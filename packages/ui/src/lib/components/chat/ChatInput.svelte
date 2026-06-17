@@ -143,8 +143,6 @@
   .send-btn {
     min-width: 92px;
     flex-shrink: 0;
-    padding-inline: var(--space-4);
-    border-radius: calc(var(--radius-xl) - 4px);
   }
 
 </style>

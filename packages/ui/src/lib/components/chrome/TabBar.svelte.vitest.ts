@@ -22,7 +22,7 @@ describe('TabBar', () => {
     const subtabLabels = Array.from(
       subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(subtabLabels).toEqual(['Overview', 'Activity', 'Systems', 'Journal', 'Check-up']);
+    expect(subtabLabels).toEqual(['Overview', 'Activity', 'Systems', 'Journal', 'Check-up', 'Recovery']);
   });
 
   it('shows Knowledge subtabs (Memory, Assistant, Secrets, Sharing) when active is "akm"', async () => {

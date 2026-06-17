@@ -103,12 +103,12 @@
     runningTaskName = name;
     try {
       const result = await runAutomation(name);
-      notifications.push(
-        result.ok ? 'success' : 'error',
-        result.ok
-          ? `Started "${name}". Open the latest log in a few seconds to watch progress.`
-          : `Couldn't start "${name}".`,
-      );
+      if (result.ok) {
+        notifications.push('success', `"${name}" completed. Open the log to view output.`);
+      } else {
+        const detail = result.error ? `: ${result.error}` : '';
+        notifications.push('error', `"${name}" failed${detail}`);
+      }
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to start the routine.');
     } finally {
@@ -183,6 +183,8 @@
           : 'API request';
       case 'http':
         return automation.action.url ? `${automation.action.method ?? 'Request'} ${automation.action.url}` : 'HTTP request';
+      case 'workflow':
+        return 'Workflow';
       default:
         return automation.action.type;
     }
@@ -342,7 +344,7 @@
           </svg>
         {/snippet}
         <p>No recent output yet.</p>
-        <p class="empty-state-hint">Run the routine, then refresh this drawer after a few seconds.</p>
+        <p class="empty-state-hint">Run the routine first, then open this drawer to see the output.</p>
       </EmptyState>
     {/if}
   </div>

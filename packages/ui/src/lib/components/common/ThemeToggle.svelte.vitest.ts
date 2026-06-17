@@ -15,15 +15,22 @@ describe('ThemeToggle', () => {
     resetThemeForTests();
   });
 
-  test('is keyboard operable', async () => {
+  test('cycles system → light → dark and is keyboard operable', async () => {
     render(ThemeToggle);
 
-    const toggle = page.getByRole('button', { name: /switch to dark mode/i });
+    const toggle = page.getByRole('button', { name: /theme:/i });
     await expect.element(toggle).toBeVisible();
     await userEvent.keyboard('{Tab}');
     await expect.element(toggle).toHaveFocus();
-    await userEvent.keyboard('{Enter}');
 
+    // system → light
+    await userEvent.keyboard('{Enter}');
+    expect(themeService.preference).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    // light → dark
+    await userEvent.keyboard('{Enter}');
+    expect(themeService.preference).toBe('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 });

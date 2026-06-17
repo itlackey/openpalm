@@ -17,7 +17,7 @@ const LAN_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
 const PROJECT_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 function personaPath(configDir: string): string {
-  return join(configDir, 'assistant', 'openpalm.md');
+  return join(configDir, 'assistant', 'persona.md');
 }
 
 function readPersona(configDir: string): string {
@@ -51,7 +51,7 @@ export const GET: RequestHandler = async (event) => {
       projectName: env.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME,
       lanExposureEnabled: (env.OP_ASSISTANT_BIND_ADDRESS?.trim() || DEFAULT_ASSISTANT_BIND_ADDRESS) === LAN_ASSISTANT_BIND_ADDRESS,
       stackEnvPath: 'knowledge/env/stack.env',
-      personaPath: 'config/assistant/openpalm.md',
+      personaPath: 'config/assistant/persona.md',
       personaContent: readPersona(state.configDir),
     },
     requestId,
@@ -99,7 +99,7 @@ export const PUT: RequestHandler = async (event) =>
         projectName,
         lanExposureEnabled: body.lanExposureEnabled,
         stackEnvPath: 'knowledge/env/stack.env',
-        personaPath: 'config/assistant/openpalm.md',
+        personaPath: 'config/assistant/persona.md',
         personaContent,
       },
       requestId,

@@ -12,7 +12,7 @@
   let error = $state('');
   let projectName = $state('openpalm');
   let lanExposureEnabled = $state(false);
-  let personaPath = $state('config/assistant/openpalm.md');
+  let personaPath = $state('config/assistant/persona.md');
   let stackEnvPath = $state('knowledge/env/stack.env');
   let personaContent = $state('');
   // Snapshot of last-saved persona content for dirty detection.

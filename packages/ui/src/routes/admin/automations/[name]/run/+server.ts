@@ -42,5 +42,5 @@ export const POST: RequestHandler = async (event) => {
 
   const result = await executeAutomation(taskId, buildAkmEnv(state));
 
-  return jsonResponse(202, { ok: result.ok, name: taskId, status: result.status }, requestId);
+  return jsonResponse(202, { ok: result.ok, name: taskId, status: result.status, error: result.error ?? null }, requestId);
 };

@@ -90,30 +90,15 @@ describe('/advanced/+page.svelte', () => {
     vi.unstubAllGlobals();
   });
 
-  test('opens the settings drawer above the OpenCode iframe', async () => {
+  test('renders the OpenCode iframe and exposes the theme toggle in the navbar', async () => {
     render(AdvancedPage);
 
     const iframe = page.getByTitle('OpenCode — Advanced Chat');
     await expect.element(iframe).toBeVisible();
 
-    await page.getByRole('button', { name: 'Settings' }).click();
-
-    const dialog = page.getByRole('dialog', { name: 'Settings' });
-    await expect.element(dialog).toBeVisible();
-    await expect.element(page.getByRole('link', { name: 'Manage this assistant...' })).toBeVisible();
-
-    const drawerElement = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Settings"]');
-    const iframeElement = document.querySelector<HTMLIFrameElement>('iframe[title="OpenCode — Advanced Chat"]');
-
-    expect(drawerElement).not.toBeNull();
-    expect(iframeElement).not.toBeNull();
-
-    const drawerPosition = drawerElement ? getComputedStyle(drawerElement).position : '';
-    const drawerZIndex = drawerElement ? getComputedStyle(drawerElement).zIndex : '0';
-    const iframeZIndex = iframeElement ? getComputedStyle(iframeElement).zIndex : '0';
-
-    expect(drawerPosition).toBe('fixed');
-    expect(Number.parseInt(drawerZIndex, 10)).toBeGreaterThan(Number.parseInt(iframeZIndex, 10) || 0);
+    // Settings drawer was replaced with a 3-state theme toggle button in the Navbar.
+    const themeBtn = page.getByRole('button', { name: /theme:/i });
+    await expect.element(themeBtn).toBeVisible();
   });
 
   test('shows an inline Reconnect affordance when the endpoint is unreachable', async () => {

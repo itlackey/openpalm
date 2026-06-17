@@ -30,7 +30,7 @@ import { join, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { backupOpenPalmHome, timestampDirName, checkBackupFreeSpace, describeBackupSpaceShortfall } from "./backup.js";
-import { upsertEnvValue } from "./env.js";
+import { upsertEnvValue, parseEnabledAddons } from "./env.js";
 import { nonSensitiveAddonEnvKeys } from "./addon-env-schemas.js";
 import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
 import { compareComparableVersions, isComparableSemver } from './versioning.js';
@@ -922,6 +922,48 @@ export function releaseMigrationVersions(): string[] {
   return RELEASE_MIGRATIONS.map((m) => m.version);
 }
 
+// ── Release migration v0.12.3: remove stale addon IDs from OP_ENABLED_ADDONS ───
+
+/**
+ * The hardcoded builtin addon IDs from addons.ts. Inlined here to avoid an
+ * import cycle (addons.ts → config-persistence.ts → … which itself may call
+ * migrations). These must stay in sync with BUILTIN_ADDONS in addons.ts.
+ */
+const KNOWN_ADDON_IDS = new Set(['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice']);
+
+/**
+ * Strip any addon IDs from OP_ENABLED_ADDONS that are not in the current
+ * builtin addon set. Stale IDs accumulate when an addon is removed from the
+ * codebase or renamed — they cause the Capabilities/Add-ons tab to show
+ * phantom "enabled" entries that can never be managed.
+ *
+ * Idempotent: no-op when every recorded ID is still valid.
+ * Non-destructive: only writes when there are stale IDs to remove.
+ */
+function purgeStaleEnabledAddons(ctx: MigrationCtx): void {
+  const envPath = stackEnvFile(ctx.stashDir);
+  if (!existsSync(envPath)) return;
+
+  const content = readFileSync(envPath, 'utf-8');
+  const match = content.match(/^OP_ENABLED_ADDONS=(.*)$/m);
+  if (!match) return; // not set — nothing to clean
+
+  const current = parseEnabledAddons(match[1]);
+  const cleaned = current.filter((id) => KNOWN_ADDON_IDS.has(id));
+  const stale = current.filter((id) => !KNOWN_ADDON_IDS.has(id));
+
+  if (stale.length === 0) return; // already clean — no-op
+
+  ctx.log(`purging stale addon IDs from OP_ENABLED_ADDONS: ${stale.join(', ')}`);
+  if (ctx.dryRun) {
+    ctx.log(`[dry-run] would set OP_ENABLED_ADDONS=${cleaned.join(',')}`);
+    return;
+  }
+
+  writeFile600(ctx, envPath, upsertEnvValue(content, 'OP_ENABLED_ADDONS', cleaned.join(',')));
+  ctx.log(`set OP_ENABLED_ADDONS=${cleaned.join(',')}`);
+}
+
 const RELEASE_MIGRATIONS: ReleaseMigration[] = [
   {
     // Pinned to the release that INTRODUCED per-image tags, not the lib
@@ -979,6 +1021,29 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
     apply: migrateCustomComposeChannelLan,
     verify(ctx) {
       // Backup-first + idempotent token rewrite; apply()'s logs suffice.
+    },
+  },
+  {
+    // Pinned to v0.12.3: strip any addon IDs in OP_ENABLED_ADDONS that are no
+    // longer in the built-in addon set. Stale IDs cause the Add-ons tab to show
+    // phantom "enabled" entries that can never be managed (no compose overlay
+    // exists for them). No-op when OP_ENABLED_ADDONS is absent or already clean.
+    version: 'v0.12.3-rc.1',
+    describe: 'purge stale addon IDs from OP_ENABLED_ADDONS',
+    apply: purgeStaleEnabledAddons,
+    verify(ctx) {
+      if (ctx.dryRun) return;
+      const envPath = stackEnvFile(ctx.stashDir);
+      if (!existsSync(envPath)) return;
+      const content = readFileSync(envPath, 'utf-8');
+      const match = content.match(/^OP_ENABLED_ADDONS=(.*)$/m);
+      if (!match) return;
+      const remaining = parseEnabledAddons(match[1]);
+      for (const id of remaining) {
+        if (!KNOWN_ADDON_IDS.has(id)) {
+          throw new Error(`post-migration check failed: stale addon ID '${id}' still in OP_ENABLED_ADDONS`);
+        }
+      }
     },
   },
 ];

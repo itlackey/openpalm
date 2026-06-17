@@ -3,14 +3,12 @@
   import { page } from '$app/state';
   import IconButton from '$lib/components/common/IconButton.svelte';
   import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
-  import SettingsDrawer from '$lib/components/chrome/SettingsDrawer.svelte';
+  import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
   import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
   import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
-  import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
-  import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
   // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
   // usable everywhere:
@@ -35,12 +33,6 @@
     pathname.startsWith('/advanced/')
   );
   const onConversationSurface = $derived(onChatSurface || onAdvancedSurface);
-  // Only the local assistant should show the direct admin link. The drawer
-  // itself stays global so theme and endpoint-management remain available even
-  // while connected to a remote assistant.
-  const isLocalAssistant = $derived.by(() => {
-    return isLocalAssistantUrl(endpointsService.active?.url);
-  });
 
   const preferredChatHref = $derived.by(() => {
     const sessionId = page.url.searchParams.get('session') ?? currentChatSessionId();
@@ -70,9 +62,8 @@
     <div class="navbar-actions">
       {#if onAdmin}
         <IconButton href={preferredChatHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
-      {:else if onConversationSurface}
-        <SettingsDrawer showManageAssistant={isLocalAssistant} />
       {/if}
+      <ThemeToggle />
       {#if onConversationSurface}
         <!-- Hidden ≥1024px: the chat side panel hosts these selectors there. -->
         <span class="chat-selectors">

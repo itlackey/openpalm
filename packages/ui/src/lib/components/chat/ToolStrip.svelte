@@ -260,21 +260,17 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: 999px;
-    background: var(--color-bg);
+    padding: 2px 4px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
     color: inherit;
     cursor: pointer;
-    transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    transition: opacity 120ms ease;
   }
 
   .tool-emoji-btn:hover {
-    transform: translateY(-1px);
-    border-color: var(--color-text-secondary);
-    background: var(--color-bg-secondary);
+    opacity: 0.7;
   }
 
   .tool-emoji-btn:focus-visible {
@@ -283,8 +279,9 @@
   }
 
   .tool-emoji-btn.selected {
-    border-color: var(--color-primary);
-    background: var(--color-primary-subtle);
+    text-decoration: underline;
+    text-decoration-color: var(--color-primary);
+    text-underline-offset: 3px;
   }
 
   .tool-modal-scrim {

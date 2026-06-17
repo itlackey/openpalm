@@ -94,10 +94,11 @@ describe('POST /admin/automations/:name/run', () => {
     const res = await POST(makeRunEvent('health-check'));
     expect(res.status).toBe(202);
 
-    const body = (await res.json()) as { ok: boolean; name: string; status: string };
+    const body = (await res.json()) as { ok: boolean; name: string; status: string; error: string | null };
     expect(body.ok).toBe(true);
     expect(body.name).toBe('health-check');
     expect(body.status).toBe('completed');
+    expect(body.error).toBeNull();
   });
 
   test('accepts a bare base name without .yml', async () => {

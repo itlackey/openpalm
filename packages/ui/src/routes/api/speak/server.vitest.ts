@@ -58,7 +58,7 @@ afterEach(() => {
 describe('POST /api/speak speech prep', () => {
   test('uses the small model plus persona to generate a working-on-it acknowledgement', async () => {
     mkdirSync(join(getState().configDir, 'assistant'), { recursive: true });
-    writeFileSync(join(getState().configDir, 'assistant', 'openpalm.md'), 'Be warm and relaxed.\n');
+    writeFileSync(join(getState().configDir, 'assistant', 'persona.md'), 'Be warm and relaxed.\n');
     writeFileSync(
       join(getState().configDir, 'assistant', 'opencode.json'),
       JSON.stringify({ small_model: 'openai/gpt-4.1-mini', model: 'openai/gpt-4.1' }) + '\n',
@@ -116,7 +116,7 @@ describe('POST /api/speak speech prep', () => {
 
   test('falls back to the main chat model for final reply summaries', async () => {
     mkdirSync(join(getState().configDir, 'assistant'), { recursive: true });
-    writeFileSync(join(getState().configDir, 'assistant', 'openpalm.md'), 'Be crisp and friendly.\n');
+    writeFileSync(join(getState().configDir, 'assistant', 'persona.md'), 'Be crisp and friendly.\n');
     writeFileSync(
       join(getState().configDir, 'assistant', 'opencode.json'),
       JSON.stringify({ model: 'openai/gpt-4.1' }) + '\n',

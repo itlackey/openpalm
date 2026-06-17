@@ -359,9 +359,9 @@ export async function fetchAutomations(): Promise<AutomationsResponse> {
   return (await res.json()) as AutomationsResponse;
 }
 
-export async function runAutomation(name: string): Promise<{ ok: boolean; name: string; status: string }> {
+export async function runAutomation(name: string): Promise<{ ok: boolean; name: string; status: string; error: string | null }> {
   const res = await requireOk(await request('POST', `/admin/automations/${encodeURIComponent(name)}/run`));
-  return (await res.json()) as { ok: boolean; name: string; status: string };
+  return (await res.json()) as { ok: boolean; name: string; status: string; error: string | null };
 }
 
 export async function fetchAutomationLog(name: string, limit = 200): Promise<{ name: string; lines: string[] }> {

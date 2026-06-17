@@ -11,7 +11,7 @@ type OpenCodeMessagePart = { type?: string; text?: string };
 type OpenCodeMessageResponse = { parts?: OpenCodeMessagePart[] };
 
 function personaPath(): string {
-  return join(getState().configDir, 'assistant', 'openpalm.md');
+  return join(getState().configDir, 'assistant', 'persona.md');
 }
 
 function readPersona(): string {
