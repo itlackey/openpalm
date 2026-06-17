@@ -8,6 +8,7 @@ services:
     profiles: ["addon.chat", "addon.api"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     ports:
       - "${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182"
       - "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182"
@@ -95,6 +96,7 @@ services:
     profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack", "addon.gateway"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       HOME: /opt/openpalm/guardian
       PORT: "8080"

@@ -111,9 +111,7 @@ export function describeBackupSpaceShortfall(check: BackupSpaceCheck): string {
  * Create a durable backup snapshot of the current OP_HOME contents.
  *
  * The backup is written under OP_HOME/data/backups/<timestamp>/ and excludes
- * existing backups to avoid recursive copies. Entries that cannot be read
- * (e.g. Docker-owned directories written as root) are skipped rather than
- * aborting the backup.
+ * existing backups to avoid recursive copies.
  */
 export function backupOpenPalmHome(homeDir: string): string | null {
   if (!existsSync(homeDir)) return null;
@@ -127,31 +125,17 @@ export function backupOpenPalmHome(homeDir: string): string | null {
     if (entry.name === "data") {
       const dataTarget = join(backupDir, entry.name);
       mkdirSync(dataTarget, { recursive: true });
-      let dataEntries;
-      try {
-        dataEntries = readdirSync(sourcePath, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const dataEntry of dataEntries) {
+      for (const dataEntry of readdirSync(sourcePath, { withFileTypes: true })) {
         if (dataEntry.name === "backups") continue;
-        try {
-          cpSync(join(sourcePath, dataEntry.name), join(dataTarget, dataEntry.name), { recursive: true });
-          copiedAny = true;
-        } catch {
-          // Skip inaccessible entries (e.g. Docker-owned directories written as root).
-        }
+        cpSync(join(sourcePath, dataEntry.name), join(dataTarget, dataEntry.name), { recursive: true });
+        copiedAny = true;
       }
       continue;
     }
 
-    try {
-      const targetPath = join(backupDir, entry.name);
-      cpSync(sourcePath, targetPath, { recursive: true });
-      copiedAny = true;
-    } catch {
-      // Skip inaccessible entries.
-    }
+    const targetPath = join(backupDir, entry.name);
+    cpSync(sourcePath, targetPath, { recursive: true });
+    copiedAny = true;
   }
 
   return copiedAny ? backupDir : null;
