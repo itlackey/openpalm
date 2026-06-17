@@ -5,6 +5,18 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.10] - 2026-06-17
+
+### Fixed
+
+- **Guardian no longer creates root-owned files under OP_HOME.**
+  The `guardian` and `guardian-api` services were missing the `user: "${OP_UID:-1000}:${OP_GID:-1000}"`
+  directive that every other service in the stack already carries. Files written
+  into `data/guardian` and `data/logs` were owned by root, causing backups (and
+  other host-process operations) to fail with `EACCES`. The fix is a one-line
+  compose change — the same pattern already used by assistant (via gosu), ollama,
+  and voice.
+
 ## [0.12.9] - 2026-06-17
 
 ### Fixed
