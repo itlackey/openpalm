@@ -1,15 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { ReleaseEntry, UiVersionEntry, BackupSummaryView, StackServiceVersion } from '$lib/api.js';
-  import {
-    fetchBackups,
-    pruneBackups,
-    fetchSecretStripNotice,
-    dismissSecretStripNotice as apiDismissSecretStripNotice,
-    fetchInstallLockStatus,
-    clearInstallLock,
-    type InstallLockStatusView,
-  } from '$lib/api.js';
+  import type { ReleaseEntry, UiVersionEntry, StackServiceVersion } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import {
     desktopNotifyEnabled,
@@ -144,8 +135,9 @@
   // version < platformVersion (compared as semver). We NEVER show a green ✅ for
   // a service that's behind the platform — that was the misleading bug.
   function serviceStatus(version: string): UpdateStatus {
-    if (!isSemver(version) || !isSemver(platformVersion)) return 'unknown';
-    return compareVersions(version, platformVersion) < 0 ? 'update' : 'current';
+    const target = latestImageTag ?? platformVersion;
+    if (!isSemver(version) || !isSemver(target)) return 'unknown';
+    return compareVersions(version, target) < 0 ? 'update' : 'current';
   }
   const serviceRows = $derived(
     services.map((s) => ({ ...s, status: serviceStatus(s.version) })),
@@ -181,124 +173,11 @@
   let launchOnLoginEnabled = $state(false);
   let launchOnLoginSaving = $state(false);
 
-  // #499 backup visibility (self-contained — fetched on mount).
-  let backups = $state<BackupSummaryView | null>(null);
-  let backupsLoading = $state(false);
-  let backupsError = $state('');
-  let prunePromptKeep = $state<number | null>(null);
-  let pruning = $state(false);
-
-  // #502 one-time secret-strip notice.
-  let secretNotice = $state<{ keys: string[]; at: string } | null>(null);
-
-  // #500 stuck-operation recovery — only shown when a STALE lock is detected.
-  let installLock = $state<InstallLockStatusView | null>(null);
-  let unlocking = $state(false);
-  let unlockError = $state('');
-  let unlockCleared = $state(false);
-
   onMount(() => {
     notificationsEnabled = desktopNotifyEnabled();
     replyPreviewEnabled = desktopReplyPreviewEnabled();
     void hydrateLaunchOnLogin();
-    void loadBackups();
-    void loadSecretNotice();
-    void loadInstallLock();
   });
-
-  async function loadInstallLock(): Promise<void> {
-    try {
-      installLock = await fetchInstallLockStatus();
-    } catch {
-      installLock = null;
-    }
-  }
-
-  async function onClearLock(): Promise<void> {
-    unlocking = true;
-    unlockError = '';
-    try {
-      const res = await clearInstallLock();
-      unlockCleared = res.removed;
-      await loadInstallLock();
-    } catch (e) {
-      // 409 (live lock) surfaces the server's plain-language message here.
-      unlockError = e instanceof Error ? e.message : String(e);
-      await loadInstallLock();
-    } finally {
-      unlocking = false;
-    }
-  }
-
-  async function loadBackups(): Promise<void> {
-    backupsLoading = true;
-    backupsError = '';
-    try {
-      backups = await fetchBackups();
-    } catch (e) {
-      backupsError = e instanceof Error ? e.message : String(e);
-    } finally {
-      backupsLoading = false;
-    }
-  }
-
-  async function loadSecretNotice(): Promise<void> {
-    try {
-      const res = await fetchSecretStripNotice();
-      secretNotice = res.notice;
-    } catch {
-      secretNotice = null;
-    }
-  }
-
-  async function onDismissSecretNotice(): Promise<void> {
-    secretNotice = null;
-    try {
-      await apiDismissSecretStripNotice();
-    } catch {
-      /* best-effort; UI already hidden */
-    }
-  }
-
-  // Prune keeps the newest N; the modal IS the confirmation gate (#499 never
-  // auto-prunes). We default the prompt to keep all-but-the-oldest so a single
-  // confirm removes exactly one, and the user can lower it deliberately.
-  function openPrunePrompt(): void {
-    prunePromptKeep = backups && backups.count > 1 ? backups.count - 1 : 0;
-  }
-  function cancelPrune(): void {
-    prunePromptKeep = null;
-  }
-  async function confirmPrune(): Promise<void> {
-    if (prunePromptKeep === null) return;
-    pruning = true;
-    try {
-      await pruneBackups(prunePromptKeep);
-      prunePromptKeep = null;
-      await loadBackups();
-    } catch (e) {
-      backupsError = e instanceof Error ? e.message : String(e);
-    } finally {
-      pruning = false;
-    }
-  }
-
-  function formatBytes(bytes: number): string {
-    if (!Number.isFinite(bytes)) return '—';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let value = bytes;
-    let i = 0;
-    while (value >= 1024 && i < units.length - 1) {
-      value /= 1024;
-      i += 1;
-    }
-    return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
-  }
-  function formatDate(iso: string | null): string {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
-  }
 
   async function hydrateLaunchOnLogin(): Promise<void> {
     const status = await window.openpalm?.launchOnLoginStatus?.();
@@ -384,51 +263,6 @@
   <!-- Polite status region: announces in-flight operations to assistive tech. -->
   <p class="status-live" role="status" aria-live="polite">{statusText}</p>
 
-  {#if secretNotice}
-    <!-- #502: secret-looking keys were removed from stack.env. The strip is
-         correct (secrets belong in Connections), but never silent. -->
-    <div class="secret-notice" role="status">
-      <div class="secret-notice-text">
-        <p class="secret-notice-title">Secret-looking values were removed from stack.env</p>
-        <p>
-          {secretNotice.keys.join(', ')} {secretNotice.keys.length === 1 ? 'was' : 'were'} removed
-          because secrets don't belong in stack.env. Re-add {secretNotice.keys.length === 1 ? 'it' : 'them'}
-          via the <strong>Connections</strong> tab (or as a secret) so your provider keeps working.
-        </p>
-      </div>
-      <button class="btn btn-sm btn-secondary" onclick={onDismissSecretNotice}>Dismiss</button>
-    </div>
-  {/if}
-
-  {#if installLock?.present && installLock.stale}
-    <!-- #500: a previous install/upgrade left a stale lock (its process is gone
-         or it's older than 30 minutes). Offer a one-click clear. The server
-         re-validates staleness and refuses to clear a live lock. -->
-    <div class="stuck-notice" role="status">
-      <div class="stuck-notice-text">
-        <p class="stuck-notice-title">An operation seems stuck</p>
-        <p>
-          A previous install or update didn't finish cleanly and left a lock behind. It would
-          clear itself automatically after 30 minutes — or you can clear it now to run another
-          update. Nothing else is changed.
-        </p>
-        {#if unlockError}
-          <p class="stuck-notice-error" role="alert">{unlockError}</p>
-        {/if}
-      </div>
-      <button class="btn btn-sm btn-primary" onclick={onClearLock} disabled={unlocking} aria-busy={unlocking}>
-        {#if unlocking}<Spinner /> Clearing…{:else}Clear it{/if}
-      </button>
-    </div>
-  {:else if unlockCleared}
-    <div class="stuck-notice stuck-notice-ok" role="status">
-      <div class="stuck-notice-text">
-        <p class="stuck-notice-title">Cleared</p>
-        <p>The stuck operation was cleared. You can run an update again.</p>
-      </div>
-    </div>
-  {/if}
-
   <div class="panel-body">
 
     <!-- Primary action: reflects reality against the CONTROL PLANE. When any
@@ -449,7 +283,7 @@
         {:else}
           <h3 id="update-primary-title" class="update-title">You're up to date</h3>
           <p class="update-desc">
-            Every service matches OpenPalm {formatVersionForDisplay(platformVersion) || 'the current version'}.
+            Every service matches the latest available version ({formatVersionForDisplay(latestImageTag ?? platformVersion) || 'the current version'}).
             An update backs up your settings first, then briefly restarts your assistant.
           </p>
         {/if}
@@ -568,75 +402,13 @@
       </div>
     </dl>
 
-    <!-- #499: backup visibility — the safety net that an update creates. -->
-    <section class="backups-section" aria-labelledby="backups-title">
-      <div class="backups-header">
-        <h3 id="backups-title" class="backups-title">Backups</h3>
-        {#if backups && backups.count > 0}
-          <button
-            class="btn btn-sm btn-secondary"
-            onclick={openPrunePrompt}
-            disabled={pruning || backupsLoading}
-          >Prune…</button>
-        {/if}
-      </div>
-      <p class="backups-desc">
-        Each update copies your settings here first. To restore one, point OpenPalm at
-        the snapshot directory below (or run <code>openpalm rollback</code> for the last update).
-        Nothing is ever deleted automatically.
-      </p>
-      {#if backupsLoading}
-        <p class="backups-empty"><Spinner /> Loading backups…</p>
-      {:else if backupsError}
-        <p class="backups-error" role="alert">Couldn't load backups: {backupsError}</p>
-      {:else if !backups || backups.count === 0}
-        <p class="backups-empty">No backups yet — one is created the first time you update.</p>
-      {:else}
-        <p class="backups-summary">
-          {backups.count} {backups.count === 1 ? 'backup' : 'backups'} ·
-          {formatBytes(backups.totalBytes)} total · last {formatDate(backups.lastBackupAt)}
-        </p>
-        <ul class="backups-list">
-          {#each backups.backups as b (b.path)}
-            <li class="backups-item">
-              <span class="backups-item-name" title={b.path}>{b.name}</span>
-              <span class="backups-item-meta">{formatBytes(b.sizeBytes)} · {formatDate(b.createdAt)}</span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-
-      {#if prunePromptKeep !== null}
-        <div class="prune-prompt" role="alertdialog" aria-label="Confirm prune backups">
-          <p class="prune-prompt-title">Delete older backups?</p>
-          <p>
-            Keep the newest
-            <input
-              class="prune-keep-input"
-              type="number"
-              min="0"
-              max={backups?.count ?? 0}
-              bind:value={prunePromptKeep}
-              aria-label="Number of newest backups to keep"
-            />
-            and permanently delete the rest. This cannot be undone.
-          </p>
-          <div class="prune-actions">
-            <button class="btn btn-sm btn-danger" onclick={confirmPrune} disabled={pruning}>
-              {#if pruning}<Spinner /> Deleting…{:else}Delete older backups{/if}
-            </button>
-            <button class="btn btn-sm btn-secondary" onclick={cancelPrune} disabled={pruning}>Cancel</button>
-          </div>
-        </div>
-      {/if}
-    </section>
-
-    <!-- Advanced: pin a specific version (rollback / troubleshooting). -->
+    <!-- Version control: pin a specific version (rollback / troubleshooting). -->
     <details class="advanced">
-      <summary>Advanced options</summary>
+      <summary>Version control</summary>
       <div class="advanced-body">
 
         <div class="version-section">
+          <h4 class="version-section-heading">Stack version</h4>
           <label class="version-label" for="stack-version-select">Install a specific version</label>
           <p class="version-running-note">
             Install an exact version — e.g. to roll back, or to pin to a specific tested release.
@@ -756,7 +528,8 @@
         {#if inElectron}
           <div class="version-divider"></div>
           <div class="version-section">
-            <label class="version-label" for="ui-version-select">Admin interface version</label>
+            <h4 class="version-section-heading">Admin interface version</h4>
+            <label class="version-label" for="ui-version-select">Install a specific version</label>
             <div class="version-input-row">
               {#if uiVersionsLoading}
                 <div class="version-select-skeleton"></div>
@@ -812,75 +585,80 @@
             {/if}
           </div>
 
-          <div class="version-divider"></div>
-          <div class="version-section">
-            <div class="version-label">Launch on login</div>
-            <label class="desktop-toggle">
-              <input
-                type="checkbox"
-                checked={launchOnLoginEnabled}
-                disabled={!launchOnLoginSupported || launchOnLoginSaving}
-                onchange={onLaunchOnLoginChange}
-              />
-              <span>Start OpenPalm automatically when you sign in on this device.</span>
-            </label>
-            <p class="version-hint">
-              {#if launchOnLoginSupported}
-                Uses the native desktop login-item integration for this platform.
-              {:else}
-                Not wired on this platform yet. The current desktop build only exposes this safely on macOS and Windows.
-              {/if}
-            </p>
-          </div>
-
-          <div class="version-divider"></div>
-          <div class="version-section">
-            <div class="version-label">Desktop notifications</div>
-            {#if typeof window !== 'undefined' && typeof window.openpalm?.notify === 'function'}
-              <label class="desktop-toggle">
-                <input
-                  type="checkbox"
-                  checked={notificationsEnabled}
-                  onchange={(event) => {
-                    notificationsEnabled = (event.currentTarget as HTMLInputElement).checked;
-                    setDesktopNotifyEnabled(notificationsEnabled);
-                    if (!notificationsEnabled) {
-                      replyPreviewEnabled = false;
-                      setDesktopReplyPreviewEnabled(false);
-                    }
-                  }}
-                />
-                <span>Notify when the assistant replies or errors while the app is in the background.</span>
-              </label>
-              <label class="desktop-toggle desktop-toggle--nested">
-                <input
-                  type="checkbox"
-                  checked={replyPreviewEnabled}
-                  disabled={!notificationsEnabled}
-                  onchange={(event) => {
-                    replyPreviewEnabled = (event.currentTarget as HTMLInputElement).checked;
-                    setDesktopReplyPreviewEnabled(replyPreviewEnabled);
-                  }}
-                />
-                <span>Include reply preview in the notification body.</span>
-              </label>
-              <p class="version-hint">Reply previews stay off by default because desktop notifications can persist outside the app.</p>
-            {:else}
-              <label class="desktop-toggle">
-                <input type="checkbox" disabled />
-                <span>Notify when the assistant replies or errors while the app is in the background.</span>
-              </label>
-              <label class="desktop-toggle desktop-toggle--nested">
-                <input type="checkbox" disabled />
-                <span>Include reply preview in the notification body.</span>
-              </label>
-              <p class="version-hint">Desktop notifications are available in the OpenPalm desktop app.</p>
-            {/if}
-          </div>
         {/if}
 
       </div>
     </details>
+
+    {#if inElectron}
+      <section class="desktop-settings" aria-labelledby="desktop-settings-title">
+        <h3 id="desktop-settings-title" class="desktop-settings-title">Desktop settings</h3>
+
+        <div class="desktop-setting-row">
+          <div class="version-label">Launch on login</div>
+          <label class="desktop-toggle">
+            <input
+              type="checkbox"
+              checked={launchOnLoginEnabled}
+              disabled={!launchOnLoginSupported || launchOnLoginSaving}
+              onchange={onLaunchOnLoginChange}
+            />
+            <span>Start OpenPalm automatically when you sign in on this device.</span>
+          </label>
+          <p class="version-hint">
+            {#if launchOnLoginSupported}
+              Uses the native desktop login-item integration for this platform.
+            {:else}
+              Not wired on this platform yet. The current desktop build only exposes this safely on macOS and Windows.
+            {/if}
+          </p>
+        </div>
+
+        <div class="desktop-setting-row">
+          <div class="version-label">Desktop notifications</div>
+          {#if typeof window !== 'undefined' && typeof window.openpalm?.notify === 'function'}
+            <label class="desktop-toggle">
+              <input
+                type="checkbox"
+                checked={notificationsEnabled}
+                onchange={(event) => {
+                  notificationsEnabled = (event.currentTarget as HTMLInputElement).checked;
+                  setDesktopNotifyEnabled(notificationsEnabled);
+                  if (!notificationsEnabled) {
+                    replyPreviewEnabled = false;
+                    setDesktopReplyPreviewEnabled(false);
+                  }
+                }}
+              />
+              <span>Notify when the assistant replies or errors while the app is in the background.</span>
+            </label>
+            <label class="desktop-toggle desktop-toggle--nested">
+              <input
+                type="checkbox"
+                checked={replyPreviewEnabled}
+                disabled={!notificationsEnabled}
+                onchange={(event) => {
+                  replyPreviewEnabled = (event.currentTarget as HTMLInputElement).checked;
+                  setDesktopReplyPreviewEnabled(replyPreviewEnabled);
+                }}
+              />
+              <span>Include reply preview in the notification body.</span>
+            </label>
+            <p class="version-hint">Reply previews stay off by default because desktop notifications can persist outside the app.</p>
+          {:else}
+            <label class="desktop-toggle">
+              <input type="checkbox" disabled />
+              <span>Notify when the assistant replies or errors while the app is in the background.</span>
+            </label>
+            <label class="desktop-toggle desktop-toggle--nested">
+              <input type="checkbox" disabled />
+              <span>Include reply preview in the notification body.</span>
+            </label>
+            <p class="version-hint">Desktop notifications are available in the OpenPalm desktop app.</p>
+          {/if}
+        </div>
+      </section>
+    {/if}
 
   </div>
 </div>
@@ -1196,6 +974,7 @@
   .version-input-row {
     display: flex;
     gap: var(--space-2);
+    align-items: center;
     flex-wrap: wrap;
   }
 
@@ -1281,128 +1060,36 @@
     .version-select-skeleton { animation: none; }
   }
 
-  /* #502 secret-strip notice */
-  .secret-notice {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin: 0 var(--space-4) var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--color-warning, var(--color-border));
-    border-radius: var(--radius-md);
-    background: var(--color-warning-bg, var(--color-surface));
-  }
-  .secret-notice-text { min-width: 0; }
-  .secret-notice-title {
+  /* ── Version section heading ── */
+  .version-section-heading {
     margin: 0 0 var(--space-1) 0;
-    font-weight: var(--font-semibold, var(--font-medium));
-    color: var(--color-warning-text, var(--color-text));
-  }
-  .secret-notice p { margin: 0; color: var(--color-text); font-size: var(--text-sm); }
-
-  /* #500 stuck-operation recovery */
-  .stuck-notice {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin: 0 var(--space-4) var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--color-warning, var(--color-border));
-    border-radius: var(--radius-md);
-    background: var(--color-warning-bg, var(--color-surface));
-  }
-  .stuck-notice-ok {
-    border-color: var(--color-success, var(--color-border));
-    background: var(--color-success-bg, var(--color-surface));
-  }
-  .stuck-notice-text { min-width: 0; }
-  .stuck-notice-title {
-    margin: 0 0 var(--space-1) 0;
-    font-weight: var(--font-semibold, var(--font-medium));
-    color: var(--color-warning-text, var(--color-text));
-  }
-  .stuck-notice-ok .stuck-notice-title { color: var(--color-success-text, var(--color-text)); }
-  .stuck-notice p { margin: 0; color: var(--color-text); font-size: var(--text-sm); }
-  .stuck-notice-error { margin-top: var(--space-1) !important; color: var(--color-danger-text, var(--color-text)); }
-
-  /* #499 backups */
-  .backups-section {
-    margin-top: var(--space-4);
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-  }
-  .backups-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-  .backups-title { margin: 0; font-size: var(--text-base); }
-  .backups-desc {
-    margin: var(--space-1) 0 var(--space-2) 0;
     font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: var(--space-1);
   }
-  .backups-summary {
-    margin: 0 0 var(--space-2) 0;
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
+
+  /* ── Desktop settings (Electron-only, outside the details disclosure) ── */
+  .desktop-settings {
+    margin-top: var(--space-5);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-4);
+  }
+  .desktop-settings-title {
+    margin: 0 0 var(--space-3) 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
     color: var(--color-text);
   }
-  .backups-empty, .backups-error {
-    margin: var(--space-1) 0 0 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-  }
-  .backups-error { color: var(--color-danger-text, var(--color-text)); }
-  .backups-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+  .desktop-setting-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-  }
-  .backups-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     gap: var(--space-2);
-    font-size: var(--text-sm);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border);
   }
-  .backups-item-name {
-    font-family: var(--font-mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .desktop-setting-row:last-child {
+    border-bottom: none;
   }
-  .backups-item-meta { color: var(--color-text-secondary); white-space: nowrap; }
-
-  .prune-prompt {
-    margin-top: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--color-danger, var(--color-border));
-    border-radius: var(--radius-md);
-    background: var(--color-danger-bg, var(--color-surface));
-  }
-  .prune-prompt-title {
-    margin: 0 0 var(--space-1) 0;
-    font-weight: var(--font-semibold, var(--font-medium));
-    color: var(--color-danger-text, var(--color-text));
-  }
-  .prune-prompt p { margin: 0 0 var(--space-2) 0; color: var(--color-text); font-size: var(--text-sm); }
-  .prune-keep-input {
-    width: 4rem;
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm, var(--radius-md));
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-  }
-  .prune-actions { display: flex; gap: var(--space-2); }
 </style>

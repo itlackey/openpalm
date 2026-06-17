@@ -44,9 +44,9 @@ export const GET: RequestHandler = async (event) => {
   if (enabledAddons.includes("voice")) {
     services.push({ id: "voice", label: "Voice", version: envVars.OP_VOICE_IMAGE_TAG ?? imageTag });
   }
-  if (enabledAddons.includes("ollama")) {
-    services.push({ id: "ollama", label: "Ollama", version: envVars.OP_OLLAMA_IMAGE_TAG ?? imageTag });
-  }
+  // Ollama is a third-party image (ollama/ollama) that does not participate in
+  // OpenPalm release versioning. Omit it from the version-tracking list so it
+  // never shows a spurious "update to X.Y.Z" badge.
 
   const inElectron = process.env.OP_INSIDE_ELECTRON === "1";
   const electronVersion = process.env.OP_ELECTRON_VERSION ?? null;

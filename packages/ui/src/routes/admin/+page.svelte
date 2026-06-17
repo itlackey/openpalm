@@ -7,6 +7,7 @@
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import OverviewTab from '$lib/components/admin/overview/OverviewTab.svelte';
   import UpdatesTab from '$lib/components/admin/updates/UpdatesTab.svelte';
+  import RecoveryTab from '$lib/components/admin/updates/RecoveryTab.svelte';
   import AddonsTab from '$lib/components/addons/AddonsTab.svelte';
   import ContainersTab from '$lib/components/admin/containers/ContainersTab.svelte';
   import AutomationsTab from '$lib/components/admin/automations/AutomationsTab.svelte';
@@ -624,6 +625,8 @@
         onRestartApp={handleRestartApp}
         onRefreshReleases={loadReleases}
       />
+    {:else if activeTab === 'recovery'}
+      <RecoveryTab />
     {:else if activeTab === 'addons'}
       <AddonsTab
         onAuthError={handleComponentsAuthError}

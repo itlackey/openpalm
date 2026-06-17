@@ -12,7 +12,8 @@
 		| 'activity'
 		| 'containers'
 		| 'logs'
-		| 'updates';
+		| 'updates'
+		| 'recovery';
 
 	type SectionId = 'health' | 'mind' | 'voice' | 'routines' | 'capabilities' | 'knowledge';
 
@@ -50,6 +51,7 @@
 		automations: `<circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />`,
 		secrets: `<rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />`,
 		updates: `<polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />`,
+		recovery: `<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />`,
 	};
 
 	// Entity-framed sections (configuring the assistant + its host). Section names
@@ -64,6 +66,7 @@
 				{ id: 'containers', label: 'Systems', icon: ICONS.containers },
 				{ id: 'logs', label: 'Journal', icon: ICONS.logs },
 				{ id: 'updates', label: 'Check-up', icon: ICONS.updates },
+				{ id: 'recovery', label: 'Recovery', icon: ICONS.recovery },
 			],
 		},
 		{
