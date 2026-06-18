@@ -451,7 +451,7 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    font-family: var(--font-sans);
+    font-family: var(--s-font-display);
   }
 
   /* ── Alerts ─────────────────────────────────────────────── */
@@ -478,10 +478,10 @@
 
   .s1-alert-text {
     flex: 1;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
   }
 
-  .s1-alert--error .s1-alert-text { color: var(--color-danger); }
+  .s1-alert--error .s1-alert-text { color: var(--s-seal); }
 
   .s1-alert-btn {
     padding: 4px 10px;
@@ -491,18 +491,18 @@
     font-size: 12px;
     cursor: pointer;
     min-height: 28px;
-    color: var(--color-danger);
+    color: var(--s-seal);
     font-family: inherit;
     transition: opacity 150ms;
   }
 
-  .s1-alert-btn--warn { color: var(--color-primary); }
+  .s1-alert-btn--warn { color: var(--s-seal); }
   .s1-alert-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
   .s1-dismiss {
     background: none;
     border: none;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
     cursor: pointer;
     font-size: 15px;
     min-width: 26px;
@@ -513,7 +513,7 @@
     border-radius: 4px;
     transition: color 150ms;
   }
-  .s1-dismiss:hover { color: var(--color-text-secondary); }
+  .s1-dismiss:hover { color: var(--s-ink-2); }
 
   /* ── Detection shimmer ───────────────────────────────────── */
   .s1-shimmer {
@@ -527,12 +527,12 @@
   .s1-shimmer-bar {
     display: block;
     height: 52px;
-    border-radius: var(--radius-md);
+    border-radius: 2px;
     background: linear-gradient(
       90deg,
-      var(--color-border) 25%,
-      var(--color-bg-secondary) 50%,
-      var(--color-border) 75%
+      var(--s-line) 25%,
+      var(--s-paper-deep) 50%,
+      var(--s-line) 75%
     );
     background-size: 200% 100%;
     animation: s1shimmer 1.4s infinite;
@@ -552,9 +552,9 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    background: var(--color-success-bg);
-    border: 1px solid var(--color-success-border);
-    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--s-moss) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--s-moss) 25%, transparent);
+    border-radius: 2px;
     padding: 14px 16px;
     margin-bottom: 20px;
   }
@@ -563,7 +563,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: var(--color-success-text);
+    background: var(--s-moss);
     color: #fff;
     display: flex;
     align-items: center;
@@ -578,13 +578,13 @@
   .s1-detected-title {
     font-size: 14px;
     font-weight: 600;
-    color: var(--color-success-text);
+    color: var(--s-moss);
     line-height: 1.3;
   }
 
   .s1-detected-sub {
     font-size: 13px;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
     margin-top: 2px;
   }
 
@@ -602,7 +602,7 @@
     gap: 14px;
     padding: 16px 4px;
     border: none;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: var(--s-hair) solid var(--s-line);
     background: none;
     width: 100%;
     text-align: left;
@@ -612,7 +612,7 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  .s1-choice-row:first-child { border-top: 1px solid var(--color-border); }
+  .s1-choice-row:first-child { border-top: var(--s-hair) solid var(--s-line); }
 
   /* When a local-panel or signin-panel follows a row, the panel's top
      border acts as the row's bottom divider — remove the row's own bottom. */
@@ -621,10 +621,10 @@
     border-bottom: none;
   }
 
-  .s1-choice-row:hover:not(:disabled) { background: var(--color-bg-secondary); }
+  .s1-choice-row:hover:not(:disabled) { background: var(--s-paper-deep); }
 
-  .s1-choice-row--selected { background: var(--color-primary-subtle); }
-  .s1-choice-row--selected:hover { background: var(--color-primary-subtle); }
+  .s1-choice-row--selected { background: color-mix(in srgb, var(--s-seal) 8%, transparent); }
+  .s1-choice-row--selected:hover { background: color-mix(in srgb, var(--s-seal) 8%, transparent); }
 
   .s1-choice-row--unavailable {
     cursor: default;
@@ -633,9 +633,9 @@
   .s1-choice-row--unavailable:hover { background: none; }
 
   .s1-choice-row:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-seal);
     outline-offset: -2px;
-    border-radius: var(--radius-sm);
+    border-radius: 2px;
   }
 
   /* ── Radio dot ───────────────────────────────────────────── */
@@ -643,7 +643,7 @@
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    border: 2px solid var(--color-border-hover);
+    border: 2px solid var(--s-line);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -652,14 +652,14 @@
   }
 
   .s1-choice-row--selected .s1-radio-dot {
-    border-color: var(--color-primary);
+    border-color: var(--s-seal);
   }
 
   .s1-radio-dot-inner {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--color-primary);
+    background: var(--s-seal);
     opacity: 0;
     transform: scale(0.5);
     transition: opacity 150ms, transform 150ms;
@@ -676,7 +676,7 @@
   .s1-choice-title {
     font-size: 15px;
     font-weight: 500;
-    color: var(--color-text);
+    color: var(--s-ink);
     line-height: 1.3;
   }
 
@@ -684,7 +684,7 @@
 
   .s1-choice-sub {
     font-size: 13px;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
     margin-top: 3px;
     line-height: 1.45;
   }
@@ -695,7 +695,7 @@
     font-weight: 600;
     color: #7a4800;
     background: rgba(255, 157, 0, 0.14);
-    border-radius: var(--radius-full);
+    border-radius: 9999px;
     padding: 3px 9px;
     white-space: nowrap;
     flex-shrink: 0;
@@ -725,18 +725,18 @@
 
   /* ── Local AI expansion panel ────────────────────────────── */
   .s1-local-panel {
-    border-top: 1px solid var(--color-border);
-    border-bottom: 1px solid var(--color-border);
+    border-top: var(--s-hair) solid var(--s-line);
+    border-bottom: var(--s-hair) solid var(--s-line);
     padding: 14px 4px;
-    background: var(--color-bg-secondary);
+    background: var(--s-paper-deep);
   }
 
   /* ── Sign-in panel (cloud accordion) ────────────────────── */
   .s1-signin-panel {
-    border-top: 1px solid var(--color-border);
-    border-bottom: 1px solid var(--color-border);
+    border-top: var(--s-hair) solid var(--s-line);
+    border-bottom: var(--s-hair) solid var(--s-line);
     padding: 16px 4px;
-    background: var(--color-bg-secondary);
+    background: var(--s-paper-deep);
   }
 
   /* ── Empty install escape ────────────────────────────────── */
@@ -750,7 +750,7 @@
     max-width: 46ch;
     font-size: 13px;
     line-height: 1.5;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
   }
 
   .s1-btn-empty-install {
@@ -759,7 +759,7 @@
     padding: 4px 0;
     min-height: 24px;
     font-size: 13px;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
     cursor: pointer;
     text-decoration: underline;
     text-underline-offset: 2px;
@@ -771,6 +771,6 @@
   }
 
   .s1-btn-empty-install:hover {
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
   }
 </style>

@@ -112,7 +112,10 @@
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
-    <h2>Secrets</h2>
+    <div>
+      <h2>Secrets</h2>
+      <p class="panel-subtitle">Encrypted key files under knowledge/secrets/</p>
+    </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={loading || busy || !tokenStored}>
         {#if loading}<Spinner />{/if}
@@ -120,13 +123,6 @@
       </button>
     </div>
   </div>
-
-  <p class="section-note">
-    Files in the assistant's secrets directory (<code>/stash/secrets</code> →
-    <code>knowledge/secrets</code>). These are mounted into the assistant and granted to
-    services via Docker secrets. Files are stored 0600. Editing here changes the live
-    file — restart affected services to pick up changes.
-  </p>
 
   {#if error}<div class="error-banner"><span>{error}</span></div>{/if}
 
@@ -190,8 +186,6 @@
 </div>
 
 <style>
-  .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-sp-4); }
-  .section-note { font-size: var(--s-type-deed); color: var(--s-ink-2); margin: 0 0 var(--s-sp-4); font-family: var(--s-font-display); }
   .error-banner { color: var(--s-seal); padding: var(--s-sp-2) var(--s-sp-3); border: var(--s-hair) solid var(--s-seal); border-radius: 2px; margin-bottom: var(--s-sp-4); }
   .empty-note { font-size: var(--s-type-deed); color: var(--s-ink-2); font-family: var(--s-font-display); }
   .mono { font-family: var(--s-font-mono); font-size: var(--s-type-mark); }

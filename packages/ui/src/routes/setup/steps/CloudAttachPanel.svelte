@@ -98,9 +98,9 @@
   .cloud-attach {
     margin-top: 12px;
     padding: 16px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-bg-secondary);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -109,8 +109,8 @@
 
   .lead {
     margin: 0;
-    font-size: var(--text-base, 1rem);
-    color: var(--color-text);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
 
   .connected {
@@ -118,13 +118,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--text-base, 1rem);
-    font-weight: var(--font-medium, 500);
-    color: var(--color-success-text);
+    font-size: var(--s-type-deed);
+    font-weight: 400;
+    color: var(--s-moss);
   }
 
   .check {
-    font-weight: var(--font-bold, 700);
+    font-weight: 400;
   }
 
   .connecting {
@@ -132,17 +132,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--text-base, 1rem);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
   }
 
   .btn-connect {
     padding: 10px 20px;
-    background: var(--color-primary);
+    background: var(--s-seal);
     border: none;
-    border-radius: var(--radius-lg);
-    font-size: var(--text-base, 1rem);
-    font-weight: var(--font-semibold, 600);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
+    font-weight: 400;
     /* Dark text on amber/orange clears WCAG AA/AAA (white on orange fails). */
     color: #1a0e00;
     cursor: pointer;
@@ -150,7 +150,7 @@
   }
 
   .btn-connect:hover {
-    background: var(--color-primary-hover);
+    background: var(--s-seal);
   }
 
   .account-link {
@@ -158,14 +158,14 @@
     border: none;
     padding: 4px 0;
     min-height: 24px;
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     text-decoration: underline;
     text-underline-offset: 2px;
     cursor: pointer;
   }
 
   .account-link:hover {
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
   }
 </style>

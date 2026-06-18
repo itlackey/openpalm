@@ -163,7 +163,7 @@
   <div class="panel-header">
     <div>
       <h2>Addons</h2>
-      <p class="panel-subtitle">Optional features you can enable or disable. Credentials are written to the stack config and applied when the addon container restarts.</p>
+      <p class="panel-subtitle">Optional features · capabilities</p>
     </div>
     <button class="btn btn-secondary btn-sm" onclick={() => loadAddons()} disabled={loading}>
       {#if loading}

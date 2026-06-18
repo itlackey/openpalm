@@ -269,7 +269,7 @@
   <div class="panel-header">
     <div>
       <h2>Check-up</h2>
-      <p class="panel-subtitle">Keep OpenPalm up to date. An update backs up your settings first, then briefly restarts your assistant.</p>
+      <p class="panel-subtitle">Keep OpenPalm up to date</p>
       {#if activeChannel !== 'unknown'}
         <p class="channel-indicator">
           You're on the <strong>{activeChannel === 'prerelease' ? 'prerelease' : 'stable'}</strong> channel.
@@ -687,14 +687,6 @@
 </div>
 
 <style>
-  .panel-subtitle {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-2);
-    margin: var(--s-sp-1) 0 0;
-    max-width: 60ch;
-  }
-
   .channel-indicator {
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);

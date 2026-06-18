@@ -130,7 +130,7 @@
   <div class="panel-header">
     <div>
       <h2>Recovery</h2>
-      <p class="panel-subtitle">Backups, lock recovery, and secret migration notices.</p>
+      <p class="panel-subtitle">Backups · recovery · migration</p>
     </div>
   </div>
 
@@ -266,14 +266,6 @@
 </div>
 
 <style>
-  .panel-subtitle {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-2);
-    margin: var(--s-sp-1) 0 0;
-    max-width: 60ch;
-  }
-
   /* #502 secret-strip notice */
   .secret-notice {
     display: flex;

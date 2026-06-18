@@ -68,7 +68,7 @@
 				<input id="d-llm-judgemodel" class="control-input" type="text" spellcheck="false" placeholder="gpt-4o" bind:value={draft.judgeModel} />
 			</div>
 		</div>
-		<label class="toggle-row" style="margin-top: var(--space-4)">
+		<label class="toggle-row" style="margin-top: var(--s-sp-4)">
 			<input type="checkbox" bind:checked={draft.supportsJsonSchema} />
 			<span class="toggle-label">Supports JSON schema</span>
 			<span class="toggle-hint">Use response_format: json_schema for structured output</span>
@@ -83,7 +83,7 @@
 		<span class="toggle-label">Enable thinking</span>
 		<span class="toggle-hint">Allow extended/thinking tokens for reasoning models</span>
 		</label>
-		<div class="control-group control-group--wide" style="margin-top: var(--space-4)">
+		<div class="control-group control-group--wide" style="margin-top: var(--s-sp-4)">
 		<label class="control-label" for="d-llm-extra">Extra params (JSON)</label>
 		<textarea id="d-llm-extra" class="control-input" rows="3" spellcheck="false" placeholder={'{ "top_p": 0.9 }'} bind:value={draft.extraParams}></textarea>
 		<span class="feat-hint">Merged into the provider request body. Must be a JSON object.</span>
@@ -101,36 +101,29 @@
 	.controls--grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: var(--s-sp-4); }
 	.control-group { display: flex; flex-direction: column; gap: var(--s-sp-1); }
 	.control-group--wide { grid-column: 1 / -1; }
-	.control-label { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-ink-3); }
+	.control-label { font-size: var(--s-type-deed); font-weight: 400; color: var(--s-ink-2); }
 	.control-input {
-		border: 0;
-		border-bottom: var(--s-hair) solid var(--s-line);
-		background: none;
-		font-family: var(--s-font-display);
-		font-size: var(--s-type-deed);
-		color: var(--s-ink);
-		padding: 0.5rem 0;
-		width: 100%;
+		font-size: var(--s-type-deed); color: var(--s-ink);
+		background: var(--s-paper); border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px; padding: var(--s-sp-2) var(--s-sp-3); width: 100%;
 	}
 	.control-input--narrow { max-width: 8rem; }
-	.control-input:focus { outline: none; border-bottom-color: var(--s-ink-2); }
-	.control-input:disabled { opacity: 0.4; cursor: not-allowed; }
+	.control-input:focus { outline: 2px solid var(--s-seal); outline-offset: 1px; }
+	.control-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
-	.toggle-row { display: flex; align-items: center; gap: var(--s-sp-3); cursor: pointer; }
-	.toggle-row input[type="checkbox"] {
-		width: 1rem; height: 1rem; flex-shrink: 0;
-		accent-color: var(--s-seal);
-	}
-	.toggle-label { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); }
-	.toggle-hint { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); color: var(--s-ink-3); }
-	.feat-hint { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); color: var(--s-ink-3); }
+	.toggle-row { display: flex; align-items: center; gap: var(--s-sp-3); cursor: pointer; font-size: var(--s-type-deed); }
+	.toggle-row input[type="checkbox"] { width: 1rem; height: 1rem; flex-shrink: 0; }
+	.toggle-label { font-weight: 400; color: var(--s-ink); }
+	.toggle-hint { color: var(--s-ink-2); font-size: var(--s-type-deed); }
+	.feat-hint { font-size: var(--s-type-deed); color: var(--s-ink-2); }
 
-	.drawer-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: 200; }
+	.drawer-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 200; }
 	.drawer {
 		position: fixed; top: 0; right: 0; bottom: 0;
 		width: min(640px, 92vw);
 		background: var(--s-paper);
 		border-left: var(--s-hair) solid var(--s-line);
+		box-shadow: -4px 0 32px rgba(0, 0, 0, 0.2);
 		z-index: 201;
 		display: flex; flex-direction: column;
 		animation: drawer-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -142,29 +135,14 @@
 		border-bottom: var(--s-hair) solid var(--s-line);
 		flex-shrink: 0;
 	}
-	.drawer-title {
-		font-family: var(--s-font-display);
-		font-size: var(--s-type-deed);
-		font-weight: 400;
-		color: var(--s-ink);
-		margin: 0;
-	}
+	.drawer-title { font-size: var(--s-type-deed); font-weight: 400; color: var(--s-ink); margin: 0; }
 	.drawer-close {
-		appearance: none;
-		border: var(--s-hair) solid var(--s-line);
-		background: none;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-		padding: 0.3em 0.9em;
-		border-radius: 2px;
-		cursor: pointer;
-		width: 2rem; height: 2rem;
+		width: 2rem; height: 2rem; border-radius: 2px;
+		background: transparent; border: var(--s-hair) solid var(--s-line);
+		color: var(--s-ink-2); cursor: pointer; font-size: var(--s-type-deed);
 		display: flex; align-items: center; justify-content: center;
 	}
-	.drawer-close:hover { color: var(--s-ink); border-color: var(--s-ink-2); }
+	.drawer-close:hover { background: var(--s-paper); color: var(--s-ink); }
 	.drawer-body { flex: 1; overflow-y: auto; padding: var(--s-sp-6); display: flex; flex-direction: column; gap: var(--s-sp-5); }
 	.drawer-footer {
 		display: flex; justify-content: flex-end; gap: var(--s-sp-3);

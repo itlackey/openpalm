@@ -140,8 +140,8 @@
   }
 
   .oauth-empty {
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     margin: 0;
     padding: 8px 0;
   }
@@ -152,38 +152,38 @@
     border: none;
     font: inherit;
     font-size: 13px;
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
+    font-weight: 400;
+    color: var(--s-ink-2);
     cursor: pointer;
     padding: 8px 2px;
-    border-radius: var(--radius-sm);
+    border-radius: 2px;
   }
-  .oauth-more:hover { color: var(--color-text); }
-  .oauth-more:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+  .oauth-more:hover { color: var(--s-ink); }
+  .oauth-more:focus-visible { outline: 2px solid var(--s-seal); outline-offset: 2px; }
 
   .oauth-row {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-bg-secondary);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
     flex-wrap: wrap;
   }
 
   .oauth-name {
     flex: 1;
     min-width: 0;
-    font-size: var(--text-sm, 0.875rem);
-    font-weight: var(--font-medium, 500);
-    color: var(--color-text);
+    font-size: var(--s-type-deed);
+    font-weight: 400;
+    color: var(--s-ink);
   }
 
   .oauth-status--ok {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-success-text);
-    font-weight: var(--font-medium, 500);
+    font-size: var(--s-type-deed);
+    color: var(--s-moss);
+    font-weight: 400;
     white-space: nowrap;
   }
 
@@ -200,14 +200,14 @@
   }
 
   .oauth-open-link {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-primary);
+    font-size: var(--s-type-deed);
+    color: var(--s-seal);
     text-underline-offset: 2px;
   }
 
   .oauth-instructions {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     white-space: pre-wrap;
     margin: 0;
   }
@@ -216,31 +216,31 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
   }
 
   .btn-oauth-cancel {
     padding: 4px 10px;
     background: none;
-    border: 1px solid var(--color-border-hover);
-    border-radius: var(--radius-lg);
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-secondary);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     cursor: pointer;
     align-self: flex-start;
     min-height: 28px;
   }
 
   .btn-oauth-cancel:hover {
-    border-color: var(--color-text-tertiary);
-    color: var(--color-text);
+    border-color: var(--s-ink-3);
+    color: var(--s-ink);
   }
 
   .oauth-error {
     width: 100%;
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-danger);
+    font-size: var(--s-type-deed);
+    color: var(--s-seal);
     margin-top: 2px;
   }
 </style>

@@ -271,7 +271,7 @@
         </div>
 
         {#if actionKind === 'command'}
-          <div class="field-group" style="margin-top: var(--space-3)">
+          <div class="field-group" style="margin-top: var(--s-sp-3)">
             <label class="field-label" for="tf-cmd">Shell command</label>
             <input
               id="tf-cmd"
@@ -284,7 +284,7 @@
             <span class="field-hint">Runs as: <code>sh -c "&lt;command&gt;"</code></span>
           </div>
         {:else if actionKind === 'prompt'}
-          <div class="field-group" style="margin-top: var(--space-3)">
+          <div class="field-group" style="margin-top: var(--s-sp-3)">
             <label class="field-label" for="tf-prompt">Prompt text</label>
             <textarea
               id="tf-prompt"
@@ -295,7 +295,7 @@
             ></textarea>
           </div>
         {:else}
-          <div class="field-group" style="margin-top: var(--space-3)">
+          <div class="field-group" style="margin-top: var(--s-sp-3)">
             <label class="field-label" for="tf-workflow">Workflow ref</label>
             <input
               id="tf-workflow"
@@ -351,32 +351,28 @@
   }
 
   .field-group--error .field-input {
-    border-bottom-color: var(--s-seal);
+    border-color: var(--s-seal);
   }
 
   .field-label {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
+    font-weight: 400;
+    color: var(--s-ink-2);
   }
 
   .field-input {
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink);
-    background: none;
-    border: 0;
-    border-bottom: var(--s-hair) solid var(--s-line);
-    border-radius: 0;
-    padding: 0.5rem 0;
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    padding: var(--s-sp-2) var(--s-sp-3);
     width: 100%;
   }
 
   .field-input:focus {
-    outline: none;
-    border-bottom-color: var(--s-ink-2);
+    outline: 2px solid var(--s-seal);
+    outline-offset: 1px;
   }
 
   .field-input:disabled {
@@ -389,18 +385,16 @@
   }
 
   .field-input--error {
-    border-bottom-color: var(--s-seal);
+    border-color: var(--s-seal);
   }
 
   .field-select {
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink);
-    background: none;
-    border: 0;
-    border-bottom: var(--s-hair) solid var(--s-line);
-    border-radius: 0;
-    padding: 0.5rem 0;
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    padding: var(--s-sp-2) var(--s-sp-3);
   }
 
   .field-select--narrow {
@@ -408,40 +402,33 @@
   }
 
   .field-select:focus {
-    outline: none;
-    border-bottom-color: var(--s-ink-2);
+    outline: 2px solid var(--s-seal);
+    outline-offset: 1px;
   }
 
   .field-textarea {
     resize: vertical;
     line-height: 1.5;
     min-height: 6rem;
-    border: var(--s-hair) solid var(--s-line) !important;
-    border-radius: 2px !important;
-    padding: var(--s-sp-3) !important;
   }
 
   .field-mono {
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
   }
 
   .field-hint {
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink-3);
   }
 
   .field-hint code {
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
+    font-size: var(--s-type-deed);
   }
 
   .field-error {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
+    font-size: var(--s-type-deed);
     color: var(--s-seal);
-    letter-spacing: var(--s-track-label);
   }
 
   /* Toggle row */
@@ -450,7 +437,6 @@
     align-items: center;
     gap: var(--s-sp-3);
     cursor: pointer;
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
   }
 
@@ -461,12 +447,12 @@
   }
 
   .toggle-label {
+    font-weight: 400;
     color: var(--s-ink);
   }
 
   .toggle-hint {
-    color: var(--s-ink-3);
-    font-family: var(--s-font-display);
+    color: var(--s-ink-2);
     font-size: var(--s-type-deed);
   }
 
@@ -475,7 +461,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-3);
-    border: var(--s-hair) solid var(--s-line-soft);
+    border: var(--s-hair) solid var(--s-line);
     border-radius: 2px;
     padding: var(--s-sp-4);
     margin: 0;
@@ -496,20 +482,14 @@
   }
 
   .param-label {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     white-space: nowrap;
   }
 
   .schedule-summary {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     background: var(--s-paper-deep);
     border-radius: 2px;
     padding: var(--s-sp-2) var(--s-sp-3);
@@ -521,16 +501,13 @@
   }
 
   .advanced-details {
-    border-top: var(--s-hair) solid var(--s-line-soft);
+    border-top: var(--s-hair) solid var(--s-line);
     padding-top: var(--s-sp-3);
   }
 
   .advanced-summary {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     cursor: pointer;
     user-select: none;
     list-style: none;
@@ -544,7 +521,7 @@
   .advanced-summary::before {
     content: '▶';
     font-size: 10px;
-    transition: transform var(--s-t-quick) var(--s-ease);
+    transition: transform 150ms;
   }
 
   details[open] .advanced-summary::before {
@@ -570,19 +547,15 @@
     display: flex;
     align-items: center;
     gap: var(--s-sp-2);
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
-    color: var(--s-ink);
     cursor: pointer;
   }
 
   /* Notices */
   .unknown-keys-notice {
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink-2);
     background: var(--s-paper-deep);
-    border: var(--s-hair) solid var(--s-line-soft);
     border-radius: 2px;
     padding: var(--s-sp-3);
     margin: 0;
@@ -590,14 +563,13 @@
 
   .unknown-keys-notice code {
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
   }
 
   .save-error {
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-seal);
-    border: var(--s-hair) solid var(--s-seal);
+    background: color-mix(in srgb, var(--s-seal) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--s-seal) 30%, transparent);
     border-radius: 2px;
     padding: var(--s-sp-3);
     margin: 0;

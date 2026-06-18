@@ -675,25 +675,8 @@
 		.k-tab { font-size: var(--s-type-mark-sm); padding: var(--s-sp-2); }
 	}
 
-	.panel-header {
-		display: flex; align-items: center; justify-content: space-between;
-		margin-bottom: var(--s-sp-6);
-		position: sticky; top: 0; z-index: 10;
-		background: var(--s-paper);
-		padding-top: var(--s-sp-2);
-		padding-bottom: var(--s-sp-4);
-		border-bottom: var(--s-hair) solid var(--s-line);
-	}
-	.panel-header h2 {
-		font-family: var(--s-font-display);
-		font-size: var(--s-type-voice);
-		font-weight: 400;
-		color: var(--s-ink);
-		margin: 0;
-	}
-	.panel-header-actions { display: flex; gap: var(--s-sp-2); }
-
 	.panel-body { display: flex; flex-direction: column; gap: var(--s-sp-8); }
+	.panel-header-actions { display: flex; gap: var(--s-sp-2); }
 
 	.section-note--lead {
 		font-family: var(--s-font-display);

@@ -454,7 +454,7 @@
   <div class="panel-header">
     <div>
       <h2>Activity</h2>
-      <p class="panel-subtitle">Readable operator telemetry for the active assistant endpoint: what is blocked, what is failing, which sessions are busiest, and the recent history for a selected conversation.</p>
+      <p class="panel-subtitle">Operator telemetry · live</p>
     </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={() => void loadSessions()} disabled={loading}>
@@ -684,9 +684,6 @@
 </div>
 
 <style>
-  .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-sp-4); margin-bottom: var(--s-sp-4); flex-wrap: wrap; }
-  .panel-subtitle { margin: var(--s-sp-1) 0 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-2); max-width: 75ch; }
-  .panel-header-actions { display: flex; gap: var(--s-sp-2); }
   .error-banner { color: var(--s-seal); padding: var(--s-sp-2) var(--s-sp-3); border: var(--s-hair) solid var(--s-seal); border-radius: 2px; margin-bottom: var(--s-sp-4); font-family: var(--s-font-display); font-size: var(--s-type-deed); }
   .endpoint-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--s-sp-4); padding: var(--s-sp-4); border: var(--s-hair) solid var(--s-line); background: var(--s-paper-deep); margin-bottom: var(--s-sp-4); flex-wrap: wrap; }
   .endpoint-label { font-family: var(--s-font-mono); font-size: var(--s-type-mark); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-ink-3); }

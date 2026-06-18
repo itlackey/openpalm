@@ -195,7 +195,7 @@
   <div class="panel-header">
     <div>
       <h2>Routines</h2>
-      <p class="panel-subtitle">Scheduled tasks from <code>~/.openpalm/knowledge/tasks/</code>. Run them now, edit them, or inspect the latest output.</p>
+      <p class="panel-subtitle">Scheduled tasks from knowledge/tasks/</p>
     </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={openNewTask} disabled={drawerSaving || !tokenStored}>New task</button>

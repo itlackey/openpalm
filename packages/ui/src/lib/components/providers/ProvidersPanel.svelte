@@ -221,9 +221,7 @@
 	<div class="panel-header">
 		<div>
 			<h2>Connections</h2>
-			<p class="panel-subtitle">
-				Sign in to AI providers. Credentials are stored in OpenCode's auth.json.
-			</p>
+			<p class="panel-subtitle">AI providers · model defaults</p>
 		</div>
 		<div class="panel-header-actions">
 			<button

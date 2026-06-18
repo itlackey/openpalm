@@ -265,45 +265,45 @@
   .page {
     max-width: 760px;
     margin: 0 auto;
-    padding: var(--space-6);
+    padding: var(--s-sp-6);
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--s-sp-5);
   }
   .page-header h1 {
-    margin: 0 0 var(--space-2);
+    margin: 0 0 var(--s-sp-2);
   }
   .lede {
-    color: var(--color-text-muted);
+    color: var(--s-ink-3);
     margin: 0;
   }
 
   .alert.error {
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--color-danger-bg, #fee2e2);
-    color: var(--color-danger-fg, #991b1b);
-    border: 1px solid var(--color-danger-border, #fecaca);
+    padding: var(--s-sp-3);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--s-seal) 8%, transparent);
+    color: var(--s-seal);
+    border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
   }
 
   .endpoints-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
   }
 
   .endpoint-card {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-4);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg, #fff);
+    gap: var(--s-sp-4);
+    padding: var(--s-sp-4);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
   }
   .endpoint-card.active {
-    border-color: var(--color-accent, #2563eb);
+    border-color: var(--s-seal);
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
   }
 
@@ -314,7 +314,7 @@
   .endpoint-title {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     font-weight: 500;
   }
   .endpoint-label {
@@ -323,9 +323,9 @@
     white-space: nowrap;
   }
   .endpoint-url {
-    color: var(--color-text-muted);
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
     margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -333,41 +333,41 @@
   }
 
   .badge {
-    font-size: var(--text-xs);
+    font-size: var(--s-type-deed);
     padding: 2px 8px;
-    border-radius: var(--radius-full, 999px);
+    border-radius: 9999px;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
   .badge.default {
-    background: var(--color-bg-tertiary, #f3f4f6);
-    color: var(--color-text-muted);
+    background: var(--s-paper-deep);
+    color: var(--s-ink-3);
   }
   .badge.active {
-    background: var(--color-accent, #2563eb);
+    background: var(--s-seal);
     color: white;
   }
   .badge.password {
     background: transparent;
-    color: var(--color-text-muted);
+    color: var(--s-ink-3);
     padding: 0;
   }
 
   .endpoint-actions {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     flex-shrink: 0;
   }
 
   .endpoint-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-5);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg, #fff);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-5);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
   }
   .endpoint-form h2 {
     margin: 0;
@@ -376,62 +376,62 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--s-sp-1);
   }
   .field > span {
-    font-size: var(--text-sm);
+    font-size: var(--s-type-deed);
     font-weight: 500;
   }
   .field input {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
     font: inherit;
   }
   .field small {
-    color: var(--color-text-muted);
-    font-size: var(--text-xs);
+    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
   }
   .field code {
-    font-family: var(--font-mono);
-    background: var(--color-bg-tertiary, #f3f4f6);
+    font-family: var(--s-font-mono);
+    background: var(--s-paper-deep);
     padding: 1px 4px;
     border-radius: 4px;
   }
   .rotate-hint {
-    margin-top: var(--space-2);
-    padding: var(--space-3);
-    border-left: 3px solid var(--color-accent, #2563eb);
-    background: var(--color-bg-tertiary, #f3f4f6);
-    color: var(--color-text);
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    margin-top: var(--s-sp-2);
+    padding: var(--s-sp-3);
+    border-left: 3px solid var(--s-seal);
+    background: var(--s-paper-deep);
+    color: var(--s-ink);
+    border-radius: 0 2px 2px 0;
   }
   .rotate-hint ol {
-    margin: var(--space-2) 0 0;
-    padding-left: var(--space-4);
+    margin: var(--s-sp-2) 0 0;
+    padding-left: var(--s-sp-4);
   }
   .rotate-hint strong {
     display: block;
-    margin-bottom: var(--space-1);
+    margin-bottom: var(--s-sp-1);
   }
 
   .field-inline {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .form-actions {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .btn-danger {
-    background: var(--color-danger-bg, #fee2e2);
-    color: var(--color-danger-fg, #991b1b);
-    border: 1px solid var(--color-danger-border, #fecaca);
+    background: color-mix(in srgb, var(--s-seal) 8%, transparent);
+    color: var(--s-seal);
+    border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
   }
   .btn-danger:hover:not(:disabled) {
-    background: var(--color-danger-bg-hover, #fecaca);
+    background: color-mix(in srgb, var(--s-seal) 14%, transparent);
   }
 </style>

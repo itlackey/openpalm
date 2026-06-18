@@ -137,13 +137,13 @@
       <div class="deploy-service-indicator">
         {#if svc.status === 'running'}
           <span class="deploy-check">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--s-moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </span>
         {:else if svc.status === 'error' || svc.status === 'warning'}
           <span class="deploy-warning">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--s-ink-2)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 9v4"/><path d="M12 17h.01"/>
               <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
             </svg>
@@ -196,7 +196,7 @@
 {#if deployDone}
   <div class="done-state" id="deploy-done">
     <div class="done-icon">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--s-moss)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
         <polyline points="22 4 12 14.01 9 11.01"/>
       </svg>
@@ -268,7 +268,7 @@
      bar). Uses the same amber tokens as the existing ready/stopped variants. */
   .deploy-bar-fill.warning {
     width: 72%;
-    background: var(--color-warning, #ffb020);
+    background: var(--s-ink-2);
     animation: none;
     opacity: 0.9;
   }
@@ -276,21 +276,21 @@
   .deploy-warnings-note {
     margin: 12px 0;
     padding: 10px 14px;
-    background: var(--color-warning-bg);
-    border: 1px solid var(--color-warning-border);
+    background: color-mix(in srgb, var(--s-ink) 4%, var(--s-paper));
+    border: var(--s-hair) solid var(--s-line);
     border-radius: 8px;
-    color: var(--color-caution);
-    font-size: var(--text-sm, 0.875rem);
+    color: var(--s-ink-2);
+    font-size: var(--s-type-deed);
     text-align: left;
   }
 
   .done-close-hint {
     margin: 8px 0 12px;
     padding: 8px 12px;
-    background: var(--color-success-bg);
-    border: 1px solid var(--color-success-border);
+    background: color-mix(in srgb, var(--s-moss) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--s-moss) 25%, transparent);
     border-radius: 6px;
-    color: var(--color-badge-success-fg);
-    font-size: var(--text-sm, 0.875rem);
+    color: var(--s-moss);
+    font-size: var(--s-type-deed);
   }
 </style>

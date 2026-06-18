@@ -342,19 +342,42 @@
 </div>
 
 <div class="s-corner s-corner-right">
-  <div class="s-tools">
-    <button
-      class="s-glyph-btn"
-      type="button"
-      aria-label="Advanced mode"
-      aria-pressed={advancedModeService.enabled}
-      onclick={() => void goto(buildAdvancedPath(null))}
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="3" width="18" height="18" rx="2.5"/>
-        <path d="m7.5 9 3 3-3 3"/><line x1="13" y1="15" x2="17" y2="15"/>
-      </svg>
-    </button>
+  <button
+    class="s-glyph-btn s-orb-btn"
+    type="button"
+    onclick={() => themeService.toggle()}
+    aria-label="Switch between day and night"
+  >
+    <svg class="s-toggle-orb" viewBox="0 0 30 30" aria-hidden="true">
+      <circle cx="15" cy="15" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <path
+        class="s-orb-half"
+        d="M15 7a8 8 0 0 1 0 16z"
+        class:night={themeService.resolved === 'dark'}
+      />
+    </svg>
+  </button>
+  <span class="s-glyph-label">day &amp; night</span>
+</div>
+
+<div class="s-corner s-corner-bottom-left">
+  <button
+    class="s-glyph-btn"
+    type="button"
+    aria-label="Advanced mode"
+    aria-pressed={advancedModeService.enabled}
+    onclick={() => void goto(buildAdvancedPath(null))}
+  >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2.5"/>
+      <path d="m7.5 9 3 3-3 3"/><line x1="13" y1="15" x2="17" y2="15"/>
+    </svg>
+  </button>
+  <span class="s-glyph-label">advanced</span>
+</div>
+
+{#if voiceEnabled || ttsAvailable}
+  <div class="s-corner s-corner-bottom-right">
     {#if voiceEnabled}
       <button
         class="s-glyph-btn"
@@ -370,45 +393,28 @@
         </svg>
       </button>
     {/if}
-    {#if voiceEnabled || ttsAvailable}
-      <button
-        class="s-glyph-btn"
-        type="button"
-        aria-label={ttsEnabled ? 'Turn off spoken responses' : 'Turn on spoken responses'}
-        aria-pressed={ttsEnabled}
-        onclick={toggleSpeak}
-      >
-        {#if ttsEnabled}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M11 5 6 9H2v6h4l5 4V5z"/>
-            <path d="M15.5 8.7a4.5 4.5 0 0 1 0 6.6"/><path d="M18.4 6.2a8 8 0 0 1 0 11.6"/>
-          </svg>
-        {:else}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M11 5 6 9H2v6h4l5 4V5z"/>
-            <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
-          </svg>
-        {/if}
-      </button>
-    {/if}
     <button
-      class="s-glyph-btn s-orb-btn"
+      class="s-glyph-btn"
       type="button"
-      onclick={() => themeService.toggle()}
-      aria-label="Switch between day and night"
+      aria-label={ttsEnabled ? 'Turn off spoken responses' : 'Turn on spoken responses'}
+      aria-pressed={ttsEnabled}
+      onclick={toggleSpeak}
     >
-      <svg class="s-toggle-orb" viewBox="0 0 30 30" aria-hidden="true">
-        <circle cx="15" cy="15" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
-        <path
-          class="s-orb-half"
-          d="M15 7a8 8 0 0 1 0 16z"
-          class:night={themeService.resolved === 'dark'}
-        />
-      </svg>
+      {#if ttsEnabled}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H2v6h4l5 4V5z"/>
+          <path d="M15.5 8.7a4.5 4.5 0 0 1 0 6.6"/><path d="M18.4 6.2a8 8 0 0 1 0 11.6"/>
+        </svg>
+      {:else}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H2v6h4l5 4V5z"/>
+          <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+        </svg>
+      {/if}
     </button>
+    <span class="s-glyph-label">voice</span>
   </div>
-  <span class="s-glyph-label">day &amp; night</span>
-</div>
+{/if}
 
 <!-- conversation thread -->
 <main class="s-scroll" id="s-scroll" aria-label="Chat history">
@@ -722,34 +728,16 @@
   .s-corner {
     position: fixed;
     z-index: 40;
-    top: 0;
     display: flex;
     align-items: center;
     gap: 0.6rem;
     padding: var(--s-chrome-pad);
   }
 
-  .s-corner-left { left: 0; }
-  .s-corner-right { right: 0; flex-direction: row-reverse; align-items: flex-start; }
-
-  /* Right-corner utility cluster */
-  .s-tools {
-    display: flex;
-    align-items: center;
-    gap: 0.95rem;
-  }
-
-  .s-tools .s-glyph-btn {
-    color: var(--s-ink-3);
-  }
-
-  .s-tools .s-glyph-btn:hover {
-    color: var(--s-ink);
-  }
-
-  .s-tools .s-glyph-btn[aria-pressed="true"] {
-    color: var(--s-seal);
-  }
+  .s-corner-left { top: 0; left: 0; }
+  .s-corner-right { top: 0; right: 0; flex-direction: row-reverse; align-items: flex-start; }
+  .s-corner-bottom-left { bottom: 0; left: 0; }
+  .s-corner-bottom-right { bottom: 0; right: 0; flex-direction: row-reverse; }
 
   .s-glyph-btn {
     appearance: none;
@@ -790,10 +778,14 @@
   }
 
   .s-corner-left:hover .s-glyph-label,
-  .s-corner-right:has(.s-orb-btn:hover) .s-glyph-label {
+  .s-corner-right:hover .s-glyph-label,
+  .s-corner-bottom-left:hover .s-glyph-label,
+  .s-corner-bottom-right:hover .s-glyph-label {
     opacity: 1;
     transform: none;
   }
+
+  .s-glyph-btn[aria-pressed="true"] { color: var(--s-seal); }
 
   .s-toggle-orb {
     width: 30px;
