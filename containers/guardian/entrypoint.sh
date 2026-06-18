@@ -17,9 +17,8 @@ case "${GUARDIAN_CONTENT_VALIDATION:-0}" in
   1 | true | TRUE | yes | on) enabled=1 ;;
 esac
 
-if [[ "$enabled" == "1" && "${GUARDIAN_SERVICE_MODE:-gateway}" == "gateway" ]]; then
+if [[ "$enabled" == "1" ]]; then
   port="${GUARDIAN_MODERATION_PORT:-4097}"
-  log_dir="${HOME:-/opt/openpalm/guardian}"
   echo "[guardian] starting OpenCode moderator on 127.0.0.1:${port}"
   # Loopback only, auth disabled (reachable only from inside this container),
   # config from /etc/opencode (bind-mounted config/guardian). Backgrounded so
@@ -35,8 +34,11 @@ if [[ "$enabled" == "1" && "${GUARDIAN_SERVICE_MODE:-gateway}" == "gateway" ]]; 
     --print-logs --log-level INFO 2>&1 | sed -u 's/^/[moderator] /' >&2 &
 fi
 
-if [[ "${GUARDIAN_SERVICE_MODE:-gateway}" == "openai-api" ]]; then
-  exec bun run src/openai-api-server.ts
-fi
+# Start the OpenAI-compatible API server in the background on its own port.
+# It forwards to the gateway server on localhost:${PORT} so both share the
+# same container, eliminating the separate guardian-api service.
+openai_port="${GUARDIAN_OPENAI_PORT:-8182}"
+PORT="${openai_port}" GUARDIAN_URL="http://localhost:${PORT:-8080}" \
+  bun run src/openai-api-server.ts 2>&1 | sed -u 's/^/[openai-api] /' >&2 &
 
 exec bun run src/server.ts

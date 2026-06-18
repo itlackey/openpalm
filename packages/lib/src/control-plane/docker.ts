@@ -1,8 +1,10 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
 import { execFile, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { parseEnvFile } from "./env.js";
 import { createLogger } from "../logger.js";
+import { resolveOperatorIds } from "./operator-ids.js";
 
 const logger = createLogger("lib:docker");
 
@@ -480,6 +482,54 @@ export async function getDockerEvents(
   return run(args, undefined, 15_000);
 }
 
+
+/**
+ * Fix root-owned bind-mount directories under OP_HOME by running a temporary
+ * Docker container as root to chown them back to the operator UID:GID.
+ *
+ * Needed because the guardian container historically ran as root (no `user:`
+ * directive), leaving data/guardian and data/logs owned by root on the host.
+ * The host process cannot chown root-owned files without being root itself,
+ * so we delegate to Docker — which has root access via the daemon.
+ *
+ * No-op on Windows or when no directories need fixing.
+ */
+export async function repairRootOwnedBindMounts(homeDir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+
+  const candidates = [
+    join(homeDir, 'data', 'guardian'),
+    join(homeDir, 'data', 'logs'),
+  ];
+
+  const rootOwned = candidates.filter((dir) => {
+    try {
+      return existsSync(dir) && statSync(dir).uid === 0;
+    } catch {
+      return false;
+    }
+  });
+
+  if (rootOwned.length === 0) return;
+
+  const ids = resolveOperatorIds(homeDir);
+  if (!ids) return;
+
+  const volumeArgs = rootOwned.flatMap((dir, i) => ['-v', `${dir}:/chown_target_${i}`]);
+  const targets = rootOwned.map((_, i) => `/chown_target_${i}`).join(' ');
+
+  logger.info(`Repairing root-owned bind mounts: ${rootOwned.map(d => d.split('/').slice(-2).join('/')).join(', ')}`);
+  const result = await run([
+    'run', '--rm',
+    ...volumeArgs,
+    'alpine',
+    'sh', '-c', `chown -R ${ids.uid}:${ids.gid} ${targets}`,
+  ], undefined, 30_000);
+
+  if (!result.ok) {
+    logger.warn(`Could not repair root-owned bind mounts: ${result.stderr.trim()}`);
+  }
+}
 
 /**
  * Query Docker for a container's running state by name.

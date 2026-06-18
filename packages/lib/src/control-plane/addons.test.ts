@@ -94,7 +94,7 @@ describe('addon runtime state', () => {
     expect(enabled.ok).toBe(true);
     expect(enabled.enabled).toBe(true);
     expect(enabled.changed).toBe(true);
-    expect(enabled.services).toEqual(expect.arrayContaining(['guardian-api']));
+    expect(enabled.services).toEqual(expect.arrayContaining(['guardian']));
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
     expect(readSecret(stackDir, 'portal_chat_secret')).toBeTruthy();
 
@@ -102,7 +102,7 @@ describe('addon runtime state', () => {
     expect(disabled.ok).toBe(true);
     expect(disabled.enabled).toBe(false);
     expect(disabled.changed).toBe(true);
-    expect(disabled.services).toEqual(expect.arrayContaining(['guardian-api']));
+    expect(disabled.services).toEqual(expect.arrayContaining(['guardian']));
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
   });
 

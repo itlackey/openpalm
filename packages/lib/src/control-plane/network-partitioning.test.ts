@@ -106,7 +106,7 @@ describe("network partitioning — assistant_net membership", () => {
   ]);
 
   // Portal adapters — these must NEVER be on assistant_net.
-  const PORTAL_ADAPTERS = ["discord", "slack", "guardian-api"];
+  const PORTAL_ADAPTERS = ["discord", "slack"];
 
   test("assistant is on assistant_net", () => {
     expect(allServices["assistant"]?.networks).toContain("assistant_net");
@@ -130,7 +130,7 @@ describe("network partitioning — assistant_net membership", () => {
   });
 
   test("portal adapters are on portal_net only", () => {
-    const PORTAL_ADAPTERS_IN_STACK = ["discord", "slack", "guardian-api"];
+    const PORTAL_ADAPTERS_IN_STACK = ["discord", "slack"];
     for (const adapter of PORTAL_ADAPTERS_IN_STACK) {
       const nets = allServices[adapter]?.networks ?? [];
       expect(nets).toContain("portal_net");

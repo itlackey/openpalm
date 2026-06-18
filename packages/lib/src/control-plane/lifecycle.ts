@@ -22,7 +22,7 @@ import { refreshCoreAssets } from "./core-assets.js";
 import { ensureReleaseMigrated } from './migrations.js';
 import { isSetupComplete } from "./setup-status.js";
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
-import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
+import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName, repairRootOwnedBindMounts } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
@@ -563,6 +563,11 @@ export async function applyUpgrade(
   const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
+    // Repair any root-owned bind-mount directories before the backup runs.
+    // Guardian historically ran without a `user:` directive, leaving data/guardian
+    // and data/logs owned by root. The host process can't chown them directly;
+    // we use a temporary Docker container with root access to fix ownership.
+    await repairRootOwnedBindMounts(state.homeDir);
     const { backupDir, updated } = await refreshCoreAssets(version);
     // skipSnapshot: the upgrade wrapper (withStackEnvRollback) snapshotted the
     // pre-upgrade state before the new image tags were written.

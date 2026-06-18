@@ -109,6 +109,7 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composePullRetry: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   resolveComposeProjectName: () => 'openpalm',
   isProjectOurs: (workingDir, expected) => workingDir === '' || workingDir === expected,
+  repairRootOwnedBindMounts: async () => {},
 }));
 
 mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({

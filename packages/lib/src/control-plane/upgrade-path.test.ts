@@ -111,6 +111,7 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   },
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
+  repairRootOwnedBindMounts: async () => {},
 }));
 mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   resolveRuntimeFiles: () => ({ compose: '' }),
