@@ -33,8 +33,12 @@ import {
   buildPlatformImageTagEnv,
   parsePinnedImages,
   resolveEffectivePlatformImageTag,
+  deployableUnitImageName,
+  deployableUnitImageTagKey,
+  isDeployableUnit,
   type PinnablePlatformImage,
   type PlatformImageTagKey,
+  type DeployableUnit,
 } from './image-tags.js';
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -471,6 +475,92 @@ function collectPinnedImageWarnings(
 }
 
 /**
+ * Resolve the newest published tag for a SPECIFIC image on Docker Hub.
+ *
+ * `assistant` is the version-of-record image, but with independently versioned
+ * units each image (guardian, portal, voice) has its own release line. This
+ * resolves the newest semver tag for the given image name so a per-unit update
+ * check compares against the unit's own latest, not the assistant's.
+ *
+ * Used both to auto-detect during "Update now" and to resolve a requested
+ * `latest` selection into a concrete release tag before fetching stack assets
+ * (GitHub has no asset tree at a `latest` ref).
+ */
+export async function resolveLatestImageTag(namespace: string, imageName: string): Promise<string> {
+  const latestTag = resolveNewestDockerTag(await fetchDockerTagsPayload(namespace, imageName), {});
+  if (!latestTag) {
+    throw new Error(`No usable Docker image tag found for ${namespace}/${imageName}`);
+  }
+  return latestTag;
+}
+
+/**
+ * Resolve the newest published tag for a SPECIFIC image, scoped to the current
+ * major version of `currentTag`. Mirrors {@link resolveLatestImageTag} with the
+ * same major-scoping + prerelease policy as the platform resolver.
+ */
+export async function resolveLatestImageTagForCurrentMajor(
+  namespace: string,
+  imageName: string,
+  currentTag: string,
+  opts: { allowPrerelease?: boolean } = {},
+): Promise<string> {
+  // #494: a STABLE base must NOT auto-jump onto a prerelease (rc/beta). A
+  // prerelease is always a deliberate opt-in (`openpalm update --pre`). If the
+  // base is itself a prerelease, the user is already on that channel — keep it.
+  const skipPrerelease = !opts.allowPrerelease && !isPrerelease(currentTag);
+  const latestTag = resolveNewestDockerTag(
+    await fetchDockerTagsPayload(namespace, imageName),
+    { sameMajorAs: currentTag, skipPrerelease },
+  );
+  if (!latestTag) {
+    throw new Error(`No usable Docker image tag found for ${namespace}/${imageName} in major ${majorVersionOf(currentTag) ?? currentTag}`);
+  }
+  return latestTag;
+}
+
+/**
+ * List published Docker image tags for a SPECIFIC image, filtered + sorted.
+ *
+ * Mirrors {@link resolveLatestImageTag} / {@link resolveLatestImageTagForCurrentMajor}
+ * but returns ALL matching tags (not just the newest), sorted newest (highest
+ * semver) first. Used by the admin UI's per-unit version picker dropdowns so the
+ * user can pin/rollback to any published tag — Docker Hub is the authoritative
+ * source for what's available to deploy, per unit.
+ *
+ * Constraints (all optional):
+ * - `sameMajorAs`    — only tags whose major component matches this tag.
+ * - `skipPrerelease` — ignore prerelease tags (`-rc`, `-beta`, …). Default false
+ *                      so the picker shows every tag on the line, including rcs.
+ * - `max`            — cap the returned list (default 20).
+ *
+ * Tags are returned in Docker-canonical form (`v`-prefixed, as Docker Hub returns
+ * them). The UI strips the `v` for display via `formatForDisplay`.
+ */
+export async function listDockerImageTags(
+  namespace: string,
+  imageName: string,
+  opts: { sameMajorAs?: string; skipPrerelease?: boolean; max?: number } = {},
+): Promise<string[]> {
+  const { sameMajorAs, skipPrerelease = false, max = 20 } = opts;
+  const payload = await fetchDockerTagsPayload(namespace, imageName);
+  const results = (payload as DockerTagsResponse)?.results;
+  if (!Array.isArray(results)) return [];
+
+  const tags: string[] = [];
+  for (const entry of results as DockerTagEntry[]) {
+    const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+    if (!name || name === 'latest') continue;
+    if (!isComparableSemver(name)) continue;
+    if (skipPrerelease && isPrerelease(name)) continue;
+    if (sameMajorAs !== undefined && !isSameMajorVersion(name, sameMajorAs)) continue;
+    tags.push(name);
+  }
+  tags.sort((a, b) => compareComparableVersions(b, a));
+  return tags.slice(0, max);
+}
+
+/**
  * Resolve the newest published platform tag from the Docker registry.
  *
  * `assistant` is the version-of-record image: its newest tag is the canonical
@@ -482,11 +572,7 @@ function collectPinnedImageWarnings(
  * (GitHub has no asset tree at a `latest` ref).
  */
 export async function resolveLatestPlatformTag(namespace: string): Promise<string> {
-  const latestTag = resolveNewestDockerTag(await fetchDockerTagsPayload(namespace, 'assistant'), {});
-  if (!latestTag) {
-    throw new Error("No usable Docker image tag found");
-  }
-  return latestTag;
+  return resolveLatestImageTag(namespace, 'assistant');
 }
 
 /**
@@ -512,18 +598,7 @@ export async function resolveLatestPlatformTagForCurrentMajor(
   currentTag: string,
   opts: { allowPrerelease?: boolean } = {},
 ): Promise<string> {
-  // #494: a STABLE base must NOT auto-jump onto a prerelease (rc/beta). A
-  // prerelease is always a deliberate opt-in (`openpalm update --pre`). If the
-  // base is itself a prerelease, the user is already on that channel — keep it.
-  const skipPrerelease = !opts.allowPrerelease && !isPrerelease(currentTag);
-  const latestTag = resolveNewestDockerTag(
-    await fetchDockerTagsPayload(namespace, 'assistant'),
-    { sameMajorAs: currentTag, skipPrerelease },
-  );
-  if (!latestTag) {
-    throw new Error(`No usable Docker image tag found in major ${majorVersionOf(currentTag) ?? currentTag}`);
-  }
-  return latestTag;
+  return resolveLatestImageTagForCurrentMajor(namespace, 'assistant', currentTag, opts);
 }
 
 export async function updateStackEnvToLatestImageTag(
@@ -730,6 +805,129 @@ export async function applyTagChange(
       assetsUpdated: upgradeResult.updated,
       restarted: upgradeResult.restarted,
       warnings,
+    };
+  });
+}
+
+/**
+ * Read the currently-configured image tag for a single deployable unit from
+ * stack.env. Falls back to OP_IMAGE_TAG (the compose substitution fallback) and
+ * finally PLATFORM_VERSION, mirroring the compose `${OP_*_IMAGE_TAG:-…}` chain.
+ */
+function resolveUnitCurrentTag(state: ControlPlaneState, unit: DeployableUnit): string {
+  const envVars = parseEnvFile(`${state.stashDir}/env/stack.env`);
+  const tag = envVars[deployableUnitImageTagKey(unit)]?.trim() || envVars.OP_IMAGE_TAG?.trim();
+  if (isComparableSemver(tag)) return tag;
+  return PLATFORM_VERSION;
+}
+
+/**
+ * Per-unit downgrade gate (#501). A target OLDER than the unit's CURRENT tag is
+ * a downgrade — forward-only release migrations don't run backward, so require
+ * explicit confirmation. Compared against the unit's own tag (not the platform
+ * OP_IMAGE_TAG) so pinning guardian back a patch doesn't trip on the assistant
+ * version.
+ */
+function assertNotUnconfirmedUnitDowngrade(
+  state: ControlPlaneState,
+  unit: DeployableUnit,
+  targetTag: string,
+  confirmDowngrade: boolean,
+): void {
+  if (confirmDowngrade) return;
+  const currentTag = resolveUnitCurrentTag(state, unit);
+  if (!isComparableSemver(targetTag) || !isComparableSemver(currentTag)) return;
+  if (compareComparableVersions(targetTag, currentTag) >= 0) return;
+  throw new DowngradeConfirmationRequired(currentTag, targetTag);
+}
+
+/**
+ * Pin a SINGLE deployable unit's image tag in stack.env, then pull + recreate.
+ *
+ * Unlike {@link applyTagChange} (a full platform upgrade), this writes only the
+ * one `OP_*_IMAGE_TAG` env var for the named unit and does NOT run release
+ * migrations or refresh stack compose assets — those are platform-level and run
+ * on `performUpgrade` / `applyTagChange`. Per-unit pinning is for rolling one
+ * image back to a known-good release or pinning it to a tested build without
+ * moving the rest of the stack.
+ *
+ * Non-destructive: the write uses `mergeEnvContent` so existing user keys
+ * (including commented-out ones) are preserved.
+ */
+export async function applyUnitImageTagChange(
+  state: ControlPlaneState,
+  unit: string,
+  tag: string,
+  opts: { confirmDowngrade?: boolean } = {},
+): Promise<UpgradeResult> {
+  if (!isDeployableUnit(unit)) {
+    throw new Error(`Unknown deployable unit: ${unit}`);
+  }
+  const typedUnit = unit;
+  return withStackEnvRollback(state, async () => {
+    const namespace = resolveImageNamespace(state);
+    const imageName = deployableUnitImageName(typedUnit);
+    const envKey = deployableUnitImageTagKey(typedUnit);
+
+    // "latest" (or an empty selection) resolves to the concrete newest tag for
+    // THIS unit's image before anything is written.
+    const requested = tag.trim();
+    let resolvedTag = requested;
+    if (requested === "" || requested.toLowerCase() === "latest") {
+      try {
+        resolvedTag = await resolveLatestImageTag(namespace, imageName);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(
+          `Cannot resolve "latest" to a concrete release for ${typedUnit}: ${msg}. ` +
+          "Check your network connection or select a specific version."
+        );
+      }
+    }
+
+    // #501: a tag OLDER than this unit's current tag is a downgrade.
+    assertNotUnconfirmedUnitDowngrade(state, typedUnit, resolvedTag, opts.confirmDowngrade ?? false);
+
+    const dockerTag = extractDockerTagFromReleaseTag(resolvedTag);
+
+    // Verify publication on Docker Hub (default namespace only — local/self-built
+    // images have no registry to ask). Fail closed: never write an unpublished
+    // tag, the compose pull would then fail with a cryptic error.
+    if (namespace === 'openpalm') {
+      if (!(await isDockerImageTagPublished(namespace, imageName, dockerTag))) {
+        throw new Error(
+          `Refusing to pin ${namespace}/${imageName}:${dockerTag}: tag is not published. ` +
+          'stack.env was left unchanged.'
+        );
+      }
+    }
+
+    // Non-destructive merge: write only this unit's OP_*_IMAGE_TAG. Existing
+    // user keys (and commented-out ones) are preserved by mergeEnvContent.
+    const stackEnvPath = `${state.stashDir}/env/stack.env`;
+    const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
+    writeFileSync(stackEnvPath, mergeEnvContent(currentContent, { [envKey]: dockerTag }));
+
+    // Pull + recreate. No release migrations (platform-level) and no stack-asset
+    // refresh — this is a single-image pin, not a platform upgrade.
+    const composeOpts = buildComposeOptions(state);
+    const pullResult = await composePull(composeOpts);
+    if (!pullResult.ok) {
+      throw new Error(`Failed to pull images: ${pullResult.stderr}`);
+    }
+    const services = await buildManagedServices(state);
+    const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
+    if (!upResult.ok) {
+      throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
+    }
+
+    return {
+      imageTag: dockerTag,
+      namespace,
+      backupDir: null,
+      assetsUpdated: [],
+      restarted: services,
+      warnings: [],
     };
   });
 }

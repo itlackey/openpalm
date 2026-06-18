@@ -16,7 +16,7 @@ import {
 } from './oc-bounds';
 import { handleProxy, OC_PREFIX } from './proxy';
 import { allow, activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
-import { runDriftCheck, isProxyEnabled } from './drift';
+import { runDriftCheckWithRetry, startProxyRecovery, isProxyEnabled } from './drift';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 
 const logger = createLogger('guardian');
@@ -83,6 +83,13 @@ async function handleHealth(requestId: string): Promise<Response> {
   return json(200, { ok: true, service: 'guardian', requestId, time: new Date().toISOString() });
 }
 
+async function handleHealthReady(requestId: string): Promise<Response> {
+  if (!isProxyEnabled()) {
+    return json(503, { ok: false, ready: false, requestId, reason: 'oc_proxy_disabled' });
+  }
+  return json(200, { ok: true, ready: true, requestId, time: new Date().toISOString() });
+}
+
 async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct'): Promise<Response> {
   if (!isProxyEnabled()) {
     countRequest('oc:503');
@@ -98,6 +105,7 @@ async function handleInternalRequest(req: Request): Promise<Response> {
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
+  if (url.pathname === '/health/ready' && req.method === 'GET') return handleHealthReady(requestId);
   if (url.pathname === '/stats' && req.method === 'GET') return statsResponse();
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
     return handleOcRequest(req, requestId, 'portal');
@@ -135,9 +143,14 @@ initializePrincipalStore();
 seedPortalPrincipalsFromEnv();
 if (MCP_ENABLED) seedMcpPrincipalFromToken();
 
-void runDriftCheck().catch((err) => {
-  logger.error('drift_check_error', { error: String(err) });
-});
+void runDriftCheckWithRetry()
+  .then((enabled) => {
+    if (!enabled) startProxyRecovery();
+  })
+  .catch((err) => {
+    logger.error('drift_check_error', { error: String(err) });
+    startProxyRecovery();
+  });
 
 Bun.serve({ port: INTERNAL_PORT, idleTimeout: 0, fetch: handleInternalRequest });
 Bun.serve({ port: DIRECT_PORT, idleTimeout: 0, fetch: handleDirectRequest });

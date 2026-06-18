@@ -13,11 +13,10 @@
   interface Props {
     currentImageTag: string;
     /** Every configured stack piece (assistant, guardian, chat portal, voice,
-     *  ollama as applicable) + the tag it actually runs. Each is compared
-     *  against the control plane (platformVersion) to decide "behind". */
+     *  ollama as applicable) + the tag it actually runs. Each carries its own
+     *  best-effort latest tag (latestVersion) from Docker Hub so the rows
+     *  compare per-unit, not against a single shared tag. */
     services?: StackServiceVersion[];
-    selectedImageTag: string;
-    tagChangeLoading: boolean;
     anyDangerousLoading: boolean;
     tokenStored: boolean;
     upgradeLoading: boolean;
@@ -42,24 +41,31 @@
      *  will auto-reload once it's back up (design §6.2). */
     uiDownloadRestarting: boolean;
     releases: ReleaseEntry[];
+    /** Per-unit available Docker Hub tags for the per-unit version pickers,
+     *  keyed by service id (assistant/guardian/portal/voice). Bare semver,
+     *  v-prefixed as Docker Hub returns them; the UI strips the v for display. */
+    unitTags?: Record<string, string[]>;
     releasesLoading: boolean;
     /** Running control-plane version (PLATFORM_VERSION). The dropdown is already
      *  filtered to tags ≤ this server-side (#492); used to label "you are on X"
-     *  and to keep the version picker from offering an unreachable newer tag. */
+     *  and for the active-channel indicator. */
     platformVersion?: string;
-    /** Latest published platform version from Docker Hub (bare semver, no v-prefix).
-     *  Used for "update to X" labels so they reflect what the button actually does. */
+    /** Latest published @openpalm/lib on npm — the "is the platform itself up to
+     *  date?" signal, separate from the container image latest tags. */
+    platformLatest?: string | null;
+    /** Latest published assistant image tag from Docker Hub (bare semver, no
+     *  v-prefix). Backward-compat signal; the per-unit rows use each service's
+     *  own latestVersion. */
     latestImageTag?: string | null;
-    /** #497: preview the release migrations the selected tag would run. */
-    migratePreviewLoading?: boolean;
-    migratePreview?: { targetVersion: string; applied: string[]; lines: string[]; notes: string[] } | null;
-    /** #501: set when the selected tag is a downgrade and needs confirmation. */
-    downgradePrompt?: { tag: string; currentVersion: string; targetVersion: string; message: string } | null;
-    onSetImageTag: (tag: string) => void;
-    onPreviewMigration?: (tag: string) => void;
-    onConfirmDowngrade?: () => void;
-    onCancelDowngrade?: () => void;
-    onSelectedImageTagChange: (tag: string) => void;
+    /** Per-unit image pin: the unit currently being installed (null when idle).
+     *  Any unit install disables the others so two pins can't race on stack.env. */
+    unitInstallLoading?: string | null;
+    /** #501 per-unit downgrade confirmation: set when pinning a unit to an older
+     *  tag; the UI shows a plain warning + confirm, then re-applies. */
+    unitDowngradePrompt?: { unit: string; tag: string; currentVersion: string; targetVersion: string; message: string } | null;
+    onSetUnitImageTag: (unit: string, tag: string) => void;
+    onConfirmUnitDowngrade?: () => void;
+    onCancelUnitDowngrade?: () => void;
     onUpgradeStack: () => void;
     onSelectedUiTagChange: (tag: string) => void;
     onDownloadUiVersion: (tag: string) => void;
@@ -70,8 +76,6 @@
   let {
     currentImageTag,
     services = [],
-    selectedImageTag,
-    tagChangeLoading,
     anyDangerousLoading,
     tokenStored,
     upgradeLoading,
@@ -88,17 +92,16 @@
     uiDownloadReady,
     uiDownloadRestarting,
     releases,
+    unitTags = {},
     releasesLoading,
     platformVersion = '',
+    platformLatest = null,
     latestImageTag = null,
-    migratePreviewLoading = false,
-    migratePreview = null,
-    downgradePrompt = null,
-    onSetImageTag,
-    onPreviewMigration,
-    onConfirmDowngrade,
-    onCancelDowngrade,
-    onSelectedImageTagChange,
+    unitInstallLoading = null,
+    unitDowngradePrompt = null,
+    onSetUnitImageTag,
+    onConfirmUnitDowngrade,
+    onCancelUnitDowngrade,
     onUpgradeStack,
     onSelectedUiTagChange,
     onDownloadUiVersion,
@@ -129,23 +132,60 @@
   );
   const uiCandidates = $derived(uiVersions.map((v) => ({ version: v.version, prerelease: v.prerelease })));
 
-  // ── Services vs the control plane ──────────────────────────────────────────
-  // The control plane (platformVersion) is the version of OpenPalm the user
-  // opted into; the stack services follow it. A service is "behind" when its
-  // version < platformVersion (compared as semver). We NEVER show a green ✅ for
-  // a service that's behind the platform — that was the misleading bug.
-  function serviceStatus(version: string): UpdateStatus {
-    const target = latestImageTag ?? platformVersion;
+  // ── Services vs their own latest tag ────────────────────────────────────────
+  // With independent release units, each image (assistant/guardian/portal/voice)
+  // has its own release line on Docker Hub. A service is "behind" when its
+  // version < its OWN latestVersion (resolved per image by the versions server).
+  // Falls back to latestImageTag (assistant's latest) then platformVersion only
+  // when the per-unit tag is absent (e.g. Docker Hub unreachable) — never
+  // compares a unit against a different unit's tag.
+  function serviceStatus(version: string, latestVersion?: string | null): UpdateStatus {
+    const target = latestVersion ?? latestImageTag ?? platformVersion;
     if (!isSemver(version) || !isSemver(target)) return 'unknown';
     return compareVersions(version, target) < 0 ? 'update' : 'current';
   }
   const serviceRows = $derived(
-    services.map((s) => ({ ...s, status: serviceStatus(s.version) })),
+    services.map((s) => ({ ...s, status: serviceStatus(s.version, s.latestVersion) })),
   );
   // The single stack version-of-record we show against the control plane: the
   // assistant is the platform image, so its tag is the headline stack version.
   const stackVersion = $derived(serviceRows.find((s) => s.id === 'assistant')?.version ?? currentImageTag);
   const servicesBehind = $derived(serviceRows.some((s) => s.status === 'update'));
+
+  // ── Per-unit version pickers (Stack images) ─────────────────────────────────
+  // Each present service maps to a deployable unit. The `portal` service id maps
+  // to the `portals` release unit (the git-tag prefix); the others match.
+  const SERVICE_ID_TO_UNIT: Record<string, string> = {
+    assistant: 'assistant',
+    guardian: 'guardian',
+    portal: 'portals',
+    voice: 'voice',
+  };
+
+  // Per-unit selected tag for the version picker. Defaults to 'latest' until the
+  // user picks a concrete version. Svelte 5 $state objects are deeply reactive,
+  // so mutating a key triggers the derived recompute.
+  let selectedUnitTags = $state<Record<string, string>>({});
+
+  function unitSelectedTag(unit: string): string {
+    return selectedUnitTags[unit] ?? 'latest';
+  }
+  function setUnitSelectedTag(unit: string, tag: string): void {
+    selectedUnitTags[unit] = tag;
+  }
+
+  function unitTagList(serviceId: string): string[] {
+    return unitTags[serviceId] ?? [];
+  }
+
+  // One row per present service, resolved to its unit + available Docker Hub
+  // tags. Derives from serviceRows so each row carries its computed update status.
+  const unitRows = $derived(
+    serviceRows.map((s) => {
+      const unit = SERVICE_ID_TO_UNIT[s.id] ?? s.id;
+      return { service: s, unit, tags: unitTagList(s.id) };
+    }),
+  );
 
   // App = the desktop (Electron) installer, shipped with each GitHub release.
   // Prefer the app's own update-check result; fall back to the newest release on
@@ -215,7 +255,7 @@
   const statusText = $derived(
     upgradeLoading
       ? 'Updating OpenPalm to the latest version…'
-      : tagChangeLoading
+      : unitInstallLoading !== null
         ? 'Installing the selected version and restarting…'
         : uiDownloadLoading
           ? 'Downloading the admin interface…'
@@ -246,7 +286,7 @@
       onclick={onRefreshReleases}
       disabled={releasesLoading || uiVersionsLoading}
       aria-busy={releasesLoading || uiVersionsLoading}
-      title="Check GitHub for newer versions"
+      title="Check for newer versions"
     >
       {#if releasesLoading || uiVersionsLoading}
         <Spinner /> Checking…
@@ -339,7 +379,7 @@
                 disabled={anyDangerousLoading || !tokenStored}
                 aria-busy={upgradeLoading}
               >
-                {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {formatVersionForDisplay(latestImageTag ?? platformVersion)}{/if}
+                {#if upgradeLoading}<Spinner /> Updating…{:else}Update to {formatVersionForDisplay(s.latestVersion ?? latestImageTag ?? platformVersion)}{/if}
               </button>
             {/if}
           </dd>
@@ -402,128 +442,106 @@
       </div>
     </dl>
 
-    <!-- Stack images: pin a specific version (rollback / troubleshooting). -->
+    <!-- Stack images: pin a specific version per unit (rollback / troubleshooting).
+         Each deployable unit has its own independent release line, so the picker
+         is one row per unit — pinning one image never moves the others. -->
     <section class="version-pin-section" aria-labelledby="stack-pin-title">
       <div class="version-pin-header">
         <h3 id="stack-pin-title" class="version-pin-title">Stack images</h3>
         <p class="version-pin-subtitle">
-          Install a specific version — roll back to a known-good release or pin to a tested build.
-          The list shows versions up to your current control plane
-          {#if platformVersion}(OpenPalm {formatVersionForDisplay(platformVersion)}){/if}.
+          Install a specific version per unit — roll a single image back to a known-good release or pin it to a tested build.
+          Each unit is released independently.
         </p>
       </div>
 
-      <div class="version-section">
-        <label class="version-label" for="stack-version-select">Version</label>
-        <div class="version-input-row">
-          {#if releasesLoading}
-            <div class="version-select-skeleton"></div>
-          {:else if releases.length > 0}
-            <select
-              id="stack-version-select"
-              class="version-select"
-              aria-label="OpenPalm version to install"
-              value={selectedImageTag}
-              onchange={(e) => onSelectedImageTagChange((e.currentTarget as HTMLSelectElement).value)}
-              disabled={tagChangeLoading || anyDangerousLoading}
-            >
-              <option value="latest">latest</option>
-              {#each releases as r (r.tag)}
-                <option value={r.tag}>{r.tag}{r.prerelease ? ' (pre-release)' : ''}</option>
-              {/each}
-            </select>
-          {:else}
-            <input
-              id="stack-version-select"
-              class="version-input"
-              type="text"
-              aria-label="OpenPalm version to install"
-              placeholder="e.g. 0.11.0 or latest"
-              value={selectedImageTag}
-              oninput={(e) => onSelectedImageTagChange((e.currentTarget as HTMLInputElement).value)}
-              disabled={tagChangeLoading || anyDangerousLoading}
-            />
-          {/if}
-          <button
-            class="btn btn-sm btn-secondary version-preview-btn"
-            onclick={() => { if (selectedImageTag.trim()) onPreviewMigration?.(selectedImageTag.trim()); }}
-            disabled={!selectedImageTag.trim() || migratePreviewLoading || tagChangeLoading || anyDangerousLoading}
-            aria-busy={migratePreviewLoading}
-          >
-            {#if migratePreviewLoading}
-              <Spinner /> Checking…
-            {:else}
-              Preview changes
-            {/if}
-          </button>
-          <button
-            class="btn btn-sm btn-secondary"
-            onclick={() => { if (selectedImageTag.trim()) onSetImageTag(selectedImageTag.trim()); }}
-            disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
-            aria-busy={tagChangeLoading}
-          >
-            {#if tagChangeLoading}
-              <Spinner /> Installing…
-            {:else}
-              Install &amp; restart
-            {/if}
-          </button>
-        </div>
-        <p class="version-hint">Installs the chosen version and restarts services (about a minute offline).</p>
-
-        {#if migratePreview}
-          <div class="migrate-preview" role="status">
-            <p class="migrate-preview-title">
-              What an update to {migratePreview.targetVersion} would change to your files:
-            </p>
-            {#if migratePreview.applied.length === 0}
-              <p class="migrate-preview-empty">Nothing — your files are already compatible. Only the images and version are updated.</p>
-            {:else}
-              <ul class="migrate-preview-list">
-                {#each migratePreview.lines as line, i (i)}
-                  <li>{line}</li>
+      {#each unitRows as row (row.unit)}
+        <div class="version-section version-unit-row">
+          <div class="version-unit-head">
+            <label class="version-label" for="unit-version-select-{row.unit}">{row.service.label}</label>
+            <span class="version-cell">
+              <code class="version-value status-{row.service.status}">{formatVersionForDisplay(row.service.version) || '—'}</code>
+              {#if statusEmoji(row.service.status)}
+                <span class="status-emoji" role="img" aria-label={statusTitle(row.service.status)} title={statusTitle(row.service.status)}>{statusEmoji(row.service.status)}</span>
+              {/if}
+            </span>
+          </div>
+          <div class="version-input-row">
+            {#if releasesLoading}
+              <div class="version-select-skeleton"></div>
+            {:else if row.tags.length > 0}
+              <select
+                id="unit-version-select-{row.unit}"
+                class="version-select"
+                aria-label="{row.service.label} version to install"
+                value={unitSelectedTag(row.unit)}
+                onchange={(e) => setUnitSelectedTag(row.unit, (e.currentTarget as HTMLSelectElement).value)}
+                disabled={unitInstallLoading !== null || anyDangerousLoading}
+              >
+                <option value="latest">latest</option>
+                {#each row.tags as tag (tag)}
+                  <option value={tag}>{tag}</option>
                 {/each}
-              </ul>
-              <p class="version-hint">These are copy-only, backup-first changes. Nothing is deleted. Your settings are backed up before anything is written.</p>
+              </select>
+            {:else}
+              <input
+                id="unit-version-select-{row.unit}"
+                class="version-input"
+                type="text"
+                aria-label="{row.service.label} version to install"
+                placeholder="e.g. 0.12.5 or latest"
+                value={unitSelectedTag(row.unit)}
+                oninput={(e) => setUnitSelectedTag(row.unit, (e.currentTarget as HTMLInputElement).value)}
+                disabled={unitInstallLoading !== null || anyDangerousLoading}
+              />
             {/if}
-            {#each migratePreview.notes as note, i (i)}
-              <p class="migrate-preview-note">Note: {note}</p>
-            {/each}
+            <button
+              class="btn btn-sm btn-secondary"
+              onclick={() => { const t = unitSelectedTag(row.unit).trim(); if (t) onSetUnitImageTag(row.unit, t); }}
+              disabled={!unitSelectedTag(row.unit).trim() || unitInstallLoading !== null || anyDangerousLoading}
+              aria-busy={unitInstallLoading === row.unit}
+            >
+              {#if unitInstallLoading === row.unit}
+                <Spinner /> Installing…
+              {:else}
+                Install &amp; restart
+              {/if}
+            </button>
           </div>
-        {/if}
+          <p class="version-hint">Pins the {row.service.label.toLowerCase()} image and restarts services (about a minute offline).</p>
 
-        {#if downgradePrompt}
-          <div class="downgrade-warning" role="alertdialog" aria-label="Confirm downgrade">
-            <p class="downgrade-warning-title">This is a downgrade.</p>
-            <p>
-              You're moving from {downgradePrompt.currentVersion} back to {downgradePrompt.targetVersion}.
-              Release migrations don't run backward; your data may not be compatible with the older
-              version — restore from a backup if needed.
-            </p>
-            <div class="downgrade-actions">
-              <button
-                class="btn btn-sm btn-secondary"
-                onclick={() => onCancelDowngrade?.()}
-                disabled={tagChangeLoading}
-              >
-                Cancel
-              </button>
-              <button
-                class="btn btn-sm btn-danger"
-                onclick={() => onConfirmDowngrade?.()}
-                disabled={tagChangeLoading}
-                aria-busy={tagChangeLoading}
-              >
-                {#if tagChangeLoading}
-                  <Spinner /> Downgrading…
-                {:else}
-                  Downgrade anyway
-                {/if}
-              </button>
+          {#if unitDowngradePrompt && unitDowngradePrompt.unit === row.unit}
+            <div class="downgrade-warning" role="alertdialog" aria-label="Confirm downgrade">
+              <p class="downgrade-warning-title">This is a downgrade.</p>
+              <p>
+                You're moving {row.service.label} from {unitDowngradePrompt.currentVersion} back to {unitDowngradePrompt.targetVersion}.
+                Release migrations don't run backward; your data may not be compatible with the older
+                version — restore from a backup if needed.
+              </p>
+              <div class="downgrade-actions">
+                <button
+                  class="btn btn-sm btn-secondary"
+                  onclick={() => onCancelUnitDowngrade?.()}
+                  disabled={unitInstallLoading !== null}
+                >
+                  Cancel
+                </button>
+                <button
+                  class="btn btn-sm btn-danger"
+                  onclick={() => onConfirmUnitDowngrade?.()}
+                  disabled={unitInstallLoading !== null}
+                  aria-busy={unitInstallLoading === row.unit}
+                >
+                  {#if unitInstallLoading === row.unit}
+                    <Spinner /> Downgrading…
+                  {:else}
+                    Downgrade anyway
+                  {/if}
+                </button>
+              </div>
             </div>
-          </div>
-        {/if}
-      </div>
+          {/if}
+        </div>
+      {/each}
     </section>
 
     {#if inElectron}
@@ -915,34 +933,6 @@
     line-height: 1.5;
   }
 
-  .migrate-preview {
-    margin-top: var(--space-2);
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2, var(--color-surface));
-  }
-  .migrate-preview-title {
-    margin: 0 0 var(--space-2) 0;
-    font-weight: var(--font-medium);
-    color: var(--color-text);
-  }
-  .migrate-preview-empty {
-    margin: 0;
-    color: var(--color-text-secondary);
-  }
-  .migrate-preview-list {
-    margin: 0 0 var(--space-2) 0;
-    padding-left: var(--space-4);
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
-  }
-  .migrate-preview-note {
-    margin: var(--space-1) 0 0 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-  }
-
   .downgrade-warning {
     margin-top: var(--space-2);
     padding: var(--space-3);
@@ -968,6 +958,23 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+  }
+
+  /* Per-unit row: label + current version on one line, picker below. */
+  .version-unit-row {
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .version-unit-row:last-child {
+    border-bottom: none;
+  }
+  .version-unit-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
   }
 
   .version-label {

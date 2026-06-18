@@ -250,6 +250,7 @@ beforeAll(async () => {
       PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
+      GUARDIAN_DRIFT_RETRY_MAX_ATTEMPTS: "1",
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -313,5 +314,232 @@ describe("drift guard — proxy fail-closed (§5, Stage 7)", () => {
     expect(resp.status).toBe(200);
     const data = await resp.json();
     expect(data.ok).toBe(true);
+  });
+
+  it("/health/ready returns 503 when the proxy is disabled (readiness)", async () => {
+    const resp = await fetch(`${guardianUrl}/health/ready`);
+    expect(resp.status).toBe(503);
+    const data = await resp.json();
+    expect(data.ready).toBe(false);
+    expect(data.reason).toBe("oc_proxy_disabled");
+  });
+});
+
+// ── Integration: boot-time retry recovers from transient /doc failure ──────
+
+describe("drift guard — boot-time retry recovers from transient /doc failure", () => {
+  let guardianProc: Subprocess;
+  let mockAssistant: ReturnType<typeof Bun.serve>;
+  let guardianUrl: string;
+  let tmpDir: string;
+
+  beforeAll(async () => {
+    const assistantPort = await getAvailablePort();
+    const guardianPort = await getAvailablePort();
+    const directPort = await getAvailablePort();
+    const adminPort = await getAvailablePort();
+
+    tmpDir = mkdtempSync(join(tmpdir(), "guardian-retry-"));
+    const secretPath = join(tmpDir, "secret");
+    writeFileSync(secretPath, `${TEST_SECRET}\n`);
+
+    const goodDoc = JSON.parse(JSON.stringify(OC_DOC_FIXTURE));
+    let docRequestCount = 0;
+    const TRANSIENT_FAILURES = 2;
+
+    mockAssistant = Bun.serve({
+      port: assistantPort,
+      hostname: "127.0.0.1",
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/doc" && req.method === "GET") {
+          docRequestCount += 1;
+          if (docRequestCount <= TRANSIENT_FAILURES) {
+            return new Response("service unavailable", { status: 503 });
+          }
+          return Response.json(goodDoc);
+        }
+        if (url.pathname === "/session" && req.method === "POST") {
+          await req.json().catch(() => null);
+          return Response.json({ id: "ses_retry_1" });
+        }
+        if (url.pathname === "/session" && req.method === "GET") {
+          return Response.json([]);
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    guardianProc = Bun.spawn(["bun", "run", "src/server.ts"], {
+      cwd: join(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        PORT: String(guardianPort),
+        GUARDIAN_DIRECT_PORT: String(directPort),
+        GUARDIAN_ADMIN_PORT: String(adminPort),
+        GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
+        PORTAL_TEST_SECRET_FILE: secretPath,
+        OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
+        GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
+        GUARDIAN_DRIFT_RETRY_MAX_ATTEMPTS: "10",
+        GUARDIAN_DRIFT_RETRY_INITIAL_MS: "50",
+        GUARDIAN_DRIFT_RETRY_MAX_MS: "200",
+        GUARDIAN_DRIFT_RECOVERY_INTERVAL_MS: "500",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    guardianUrl = `http://127.0.0.1:${guardianPort}`;
+    let ready = false;
+    for (let i = 0; i < 50; i++) {
+      if (guardianProc.exitCode !== null) throw new Error(`guardian exited: ${guardianProc.exitCode}`);
+      try {
+        const r = await fetch(`${guardianUrl}/health`);
+        if (r.ok) { ready = true; break; }
+      } catch { /* not ready */ }
+      await Bun.sleep(100);
+    }
+    if (!ready) throw new Error("guardian not ready");
+  });
+
+  afterAll(() => {
+    guardianProc?.kill();
+    mockAssistant?.stop();
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  it("proxy eventually enables despite transient /doc failures at boot", async () => {
+    let enabled = false;
+    for (let i = 0; i < 100; i++) {
+      const resp = await fetch(`${guardianUrl}/stats`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.oc_proxy?.enabled === true) { enabled = true; break; }
+      }
+      await Bun.sleep(100);
+    }
+    expect(enabled).toBe(true);
+  });
+
+  it("/health/ready returns 200 once the proxy is enabled", async () => {
+    let readyOk = false;
+    for (let i = 0; i < 50; i++) {
+      const resp = await fetch(`${guardianUrl}/health/ready`);
+      if (resp.status === 200) { readyOk = true; break; }
+      await Bun.sleep(100);
+    }
+    expect(readyOk).toBe(true);
+  });
+});
+
+// ── Integration: periodic recovery re-enables proxy after boot retry exhausts
+
+describe("drift guard — periodic recovery re-enables proxy", () => {
+  let guardianProc: Subprocess;
+  let mockAssistant: ReturnType<typeof Bun.serve> | null = null;
+  let guardianUrl: string;
+  let tmpDir: string;
+  let assistantPort: number;
+
+  beforeAll(async () => {
+    assistantPort = await getAvailablePort();
+    const guardianPort = await getAvailablePort();
+    const directPort = await getAvailablePort();
+    const adminPort = await getAvailablePort();
+
+    tmpDir = mkdtempSync(join(tmpdir(), "guardian-recovery-"));
+    const secretPath = join(tmpDir, "secret");
+    writeFileSync(secretPath, `${TEST_SECRET}\n`);
+
+    // Assistant is NOT started yet — the guardian's boot retry exhausts after 1
+    // attempt (connection refused), then startProxyRecovery() begins periodic
+    // re-checks on a fast interval.
+    guardianProc = Bun.spawn(["bun", "run", "src/server.ts"], {
+      cwd: join(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        PORT: String(guardianPort),
+        GUARDIAN_DIRECT_PORT: String(directPort),
+        GUARDIAN_ADMIN_PORT: String(adminPort),
+        GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
+        PORTAL_TEST_SECRET_FILE: secretPath,
+        OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
+        GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
+        GUARDIAN_DRIFT_RETRY_MAX_ATTEMPTS: "1",
+        GUARDIAN_DRIFT_RECOVERY_INTERVAL_MS: "300",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    guardianUrl = `http://127.0.0.1:${guardianPort}`;
+    let ready = false;
+    for (let i = 0; i < 50; i++) {
+      if (guardianProc.exitCode !== null) throw new Error(`guardian exited: ${guardianProc.exitCode}`);
+      try {
+        const r = await fetch(`${guardianUrl}/health`);
+        if (r.ok) { ready = true; break; }
+      } catch { /* not ready */ }
+      await Bun.sleep(100);
+    }
+    if (!ready) throw new Error("guardian not ready");
+  });
+
+  afterAll(() => {
+    guardianProc?.kill();
+    mockAssistant?.stop();
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  it("proxy is disabled after boot retry exhausts (assistant unreachable)", async () => {
+    let disabled = false;
+    for (let i = 0; i < 30; i++) {
+      const resp = await fetch(`${guardianUrl}/stats`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.oc_proxy?.enabled === false) { disabled = true; break; }
+      }
+      await Bun.sleep(100);
+    }
+    expect(disabled).toBe(true);
+  });
+
+  it("/health/ready returns 503 while the proxy is disabled", async () => {
+    const resp = await fetch(`${guardianUrl}/health/ready`);
+    expect(resp.status).toBe(503);
+  });
+
+  it("proxy re-enables via periodic recovery once the assistant comes up", async () => {
+    const goodDoc = JSON.parse(JSON.stringify(OC_DOC_FIXTURE));
+    mockAssistant = Bun.serve({
+      port: assistantPort,
+      hostname: "127.0.0.1",
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/doc" && req.method === "GET") {
+          return Response.json(goodDoc);
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    let enabled = false;
+    for (let i = 0; i < 100; i++) {
+      const resp = await fetch(`${guardianUrl}/stats`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.oc_proxy?.enabled === true) { enabled = true; break; }
+      }
+      await Bun.sleep(100);
+    }
+    expect(enabled).toBe(true);
+  });
+
+  it("/health/ready returns 200 after recovery enables the proxy", async () => {
+    const resp = await fetch(`${guardianUrl}/health/ready`);
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    expect(data.ready).toBe(true);
   });
 });

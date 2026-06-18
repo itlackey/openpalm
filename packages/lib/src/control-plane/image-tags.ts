@@ -57,6 +57,44 @@ export function buildPinnedImageTagEnv(
   return updates;
 }
 
+// ── Deployable units (independent release units with their own Docker image) ──
+//
+// Each unit has its own Docker image tagged independently (v-prefixed semver).
+// The `portals` unit publishes the `openpalm/portal` image (singular), so the
+// unit name and image name diverge there. Voice is a separate image only when
+// the voice addon is enabled. The platform unit is npm-only — no Docker image —
+// so it is intentionally absent from this list.
+
+export const DEPLOYABLE_UNITS = ['assistant', 'guardian', 'portals', 'voice'] as const;
+
+export type DeployableUnit = (typeof DEPLOYABLE_UNITS)[number];
+
+const DEPLOYABLE_UNIT_IMAGE_NAMES: Record<DeployableUnit, string> = {
+  assistant: 'assistant',
+  guardian: 'guardian',
+  portals: 'portal',
+  voice: 'voice',
+};
+
+const DEPLOYABLE_UNIT_IMAGE_TAG_KEYS: Record<DeployableUnit, string> = {
+  assistant: 'OP_ASSISTANT_IMAGE_TAG',
+  guardian: 'OP_GUARDIAN_IMAGE_TAG',
+  portals: 'OP_PORTAL_IMAGE_TAG',
+  voice: 'OP_VOICE_IMAGE_TAG',
+};
+
+export function isDeployableUnit(value: string): value is DeployableUnit {
+  return (DEPLOYABLE_UNITS as readonly string[]).includes(value);
+}
+
+export function deployableUnitImageName(unit: DeployableUnit): string {
+  return DEPLOYABLE_UNIT_IMAGE_NAMES[unit];
+}
+
+export function deployableUnitImageTagKey(unit: DeployableUnit): string {
+  return DEPLOYABLE_UNIT_IMAGE_TAG_KEYS[unit];
+}
+
 /**
  * Build the stack.env image-tag entries for a platform release.
  *

@@ -30,6 +30,10 @@ const logger = createLogger("guardian:drift");
 
 const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 const DRIFT_DOC_TIMEOUT_MS = Number(Bun.env.GUARDIAN_DRIFT_DOC_TIMEOUT_MS ?? 5_000);
+const DRIFT_RETRY_MAX_ATTEMPTS = Number(Bun.env.GUARDIAN_DRIFT_RETRY_MAX_ATTEMPTS ?? 5);
+const DRIFT_RETRY_INITIAL_MS = Number(Bun.env.GUARDIAN_DRIFT_RETRY_INITIAL_MS ?? 2_000);
+const DRIFT_RETRY_MAX_MS = Number(Bun.env.GUARDIAN_DRIFT_RETRY_MAX_MS ?? 15_000);
+const DRIFT_RECOVERY_INTERVAL_MS = Number(Bun.env.GUARDIAN_DRIFT_RECOVERY_INTERVAL_MS ?? 30_000);
 
 // ── Runtime state: is the proxy enabled? ───────────────────────────────────
 //
@@ -212,4 +216,86 @@ export async function runDriftCheck(): Promise<boolean> {
   proxyEnabled = true;
   logger.info("oc_proxy_enabled", {});
   return true;
+}
+
+// ── Boot-time retry: backoff loop around runDriftCheck ─────────────────────
+
+/**
+ * Boot-time drift check with bounded retry + exponential backoff. Transient
+ * fetch failures at boot (assistant briefly unreachable, Docker DNS not yet
+ * resolved, /doc not yet served) no longer permanently disable the proxy.
+ *
+ * Retries up to DRIFT_RETRY_MAX_ATTEMPTS times with exponential backoff
+ * (DRIFT_RETRY_INITIAL_MS doubling, capped at DRIFT_RETRY_MAX_MS). On first
+ * success the proxy is enabled and the loop exits. On exhaustion the proxy
+ * stays disabled — the caller should invoke startProxyRecovery() for ongoing
+ * periodic recovery.
+ *
+ * Does NOT block the HTTP server from starting — the caller invokes this
+ * fire-and-forget (void). /health remains always-200 regardless of outcome.
+ *
+ * The fail-closed property is preserved: a genuinely incompatible /doc (real
+ * API drift) fails every assertion on every retry — the proxy stays disabled.
+ * The retry only helps with transient fetch failures, not with drift.
+ */
+export async function runDriftCheckWithRetry(): Promise<boolean> {
+  let delay = DRIFT_RETRY_INITIAL_MS;
+  for (let attempt = 1; attempt <= DRIFT_RETRY_MAX_ATTEMPTS; attempt++) {
+    const enabled = await runDriftCheck();
+    if (enabled) return true;
+    if (attempt >= DRIFT_RETRY_MAX_ATTEMPTS) {
+      logger.error("oc_proxy_retry_exhausted", { attempts: attempt });
+      return false;
+    }
+    logger.warn("oc_proxy_retry", { attempt, nextDelayMs: delay });
+    await Bun.sleep(delay);
+    delay = Math.min(delay * 2, DRIFT_RETRY_MAX_MS);
+  }
+  return false;
+}
+
+// ── Periodic recovery: re-check when the proxy is disabled ─────────────────
+
+let recoveryTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start a periodic recovery check that re-runs runDriftCheck() while the proxy
+ * remains disabled. This breaks the event-fanout retry deadlock: when the
+ * proxy is disabled, /oc/event returns 503, so no event subscription can be
+ * established and the event-fanout reconnect retry never fires. This interval
+ * is independent of event subscribers and re-enables the proxy once the
+ * assistant /doc is reachable and compatible.
+ *
+ * Idempotent: a no-op if the proxy is already enabled or a recovery timer is
+ * already running. The interval is unref'd so it does not keep the process
+ * alive. Cleared automatically on success or via stopProxyRecovery().
+ */
+export function startProxyRecovery(): void {
+  if (recoveryTimer !== null) return;
+  if (isProxyEnabled()) return;
+  recoveryTimer = setInterval(() => {
+    if (isProxyEnabled()) {
+      stopProxyRecovery();
+      return;
+    }
+    void runDriftCheck().then((enabled) => {
+      if (enabled) stopProxyRecovery();
+    });
+  }, DRIFT_RECOVERY_INTERVAL_MS);
+  recoveryTimer.unref();
+  logger.info("oc_proxy_recovery_started", { intervalMs: DRIFT_RECOVERY_INTERVAL_MS });
+}
+
+/** Stop the periodic recovery check if one is running. */
+export function stopProxyRecovery(): void {
+  if (recoveryTimer !== null) {
+    clearInterval(recoveryTimer);
+    recoveryTimer = null;
+    logger.info("oc_proxy_recovery_stopped", {});
+  }
+}
+
+/** Test-only: stop recovery and reset state between test cases. */
+export function _stopProxyRecoveryForTest(): void {
+  stopProxyRecovery();
 }

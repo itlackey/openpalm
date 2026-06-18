@@ -165,6 +165,13 @@ describe('Guardian server integration', () => {
     expect(data.service).toBe('guardian');
   });
 
+  it('GET /health/ready returns 200 when the proxy is enabled', async () => {
+    const resp = await fetch(`${guardianUrl}/health/ready`);
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    expect(data.ready).toBe(true);
+  });
+
   it('GET /stats reports current proxy and listener state', async () => {
     const resp = await fetch(`${guardianUrl}/stats`);
     expect(resp.status).toBe(200);

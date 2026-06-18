@@ -31,16 +31,16 @@
     fetchVersions,
     fetchReleases,
     fetchUiVersions,
-    setStackVersion,
+    invalidateVersionCache,
+    setUnitImageTag,
     downloadUiVersion,
-    previewMigration,
     DowngradeConfirmationRequiredError,
     type ReleaseEntry,
     type UiVersionEntry,
     type StackServiceVersion,
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
-  import { formatVersionForDisplay, compareVersions, isSemver } from '$lib/version-compare.js';
+  import { compareVersions, isSemver } from '$lib/version-compare.js';
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders for
   // an authenticated admin. A session that expires mid-operation surfaces as a
@@ -74,8 +74,9 @@
   // ── Version management ──────────────────────────────────────────────────────
   let currentImageTag = $state('');
   // Every configured stack piece (assistant, guardian, chat portal, voice,
-  // ollama as applicable) + the tag it actually runs. The Updates tab flags
-  // any whose version is behind the control plane.
+  // ollama as applicable) + the tag it actually runs. Each carries its own
+  // best-effort latest tag (latestVersion) from Docker Hub so the update banner
+  // and the Check-up rows compare per-unit, not against a single shared tag.
   let services = $state<StackServiceVersion[]>([]);
   let inElectron = $state(false);
   let electronVersion = $state<string | null>(null);
@@ -84,38 +85,49 @@
   // Native harness re-download gate (independent of the self-updating control
   // plane): true ⇒ the app itself must be re-downloaded.
   let harnessUpdateAvailable = $state(false);
-  let tagChangeLoading = $state(false);
-  // #497 migrate preview: the [dry-run] lines an upgrade to the selected tag
-  // would run, fetched on demand from /admin/migrate-preview.
-  let migratePreviewLoading = $state(false);
-  let migratePreview = $state<{ targetVersion: string; applied: string[]; lines: string[]; notes: string[] } | null>(null);
-  // #501 downgrade confirmation: set when the server returns 409; the UI shows a
-  // plain warning + confirm, then re-applies with confirmDowngrade.
-  let downgradePrompt = $state<{ tag: string; currentVersion: string; targetVersion: string; message: string } | null>(null);
+  // Per-unit image pin: the unit currently being installed (null when idle).
+  // Any unit install disables the others so two pins can't race on stack.env.
+  let unitInstallLoading = $state<string | null>(null);
+  // #501 per-unit downgrade confirmation: set when the server returns 409 for a
+  // unit pin; the UI shows a plain warning + confirm, then re-applies with
+  // confirmDowngrade.
+  let unitDowngradePrompt = $state<{ unit: string; tag: string; currentVersion: string; targetVersion: string; message: string } | null>(null);
   let uiDownloadLoading = $state(false);
   let uiDownloadReady = $state(false);
   let uiDownloadRestarting = $state(false);
-  let selectedImageTag = $state('latest');
   let selectedUiTag = $state('');
   let releases = $state<ReleaseEntry[]>([]);
+  // Per-unit available Docker Hub tags for the per-unit version pickers
+  // (assistant/guardian/portals/voice). Bare semver, v-prefixed as Docker Hub
+  // returns them; the UI strips the v for display. Docker Hub is the
+  // authoritative source for deployable tags — not GitHub releases.
+  let unitTags = $state<Record<string, string[]>>({});
   let releasesLoading = $state(false);
   // Running control-plane version (PLATFORM_VERSION) — for display only.
   let platformVersion = $state('');
-  // Latest available Docker image tag on Docker Hub (null = check failed / not yet loaded).
+  // Latest @openpalm/lib on npm — the "is the platform itself up to date?" signal.
+  let platformLatest = $state<string | null>(null);
+  // Latest assistant Docker image tag on Docker Hub (null = check failed / not
+  // yet loaded). Backward-compat signal; the authoritative per-unit signal is
+  // services[].latestVersion.
   let latestImageTag = $state<string | null>(null);
   // @openpalm/ui npm versions — the UI is independently versioned, so its
   // installable builds come from npm, not GitHub platform releases.
   let uiVersions = $state<UiVersionEntry[]>([]);
   let uiVersionsLoading = $state(false);
 
-  // An update is available when any running service image is behind the latest
-  // published tag on Docker Hub. With independently versioned units, Docker Hub
-  // is the authoritative source — not the control-plane (PLATFORM_VERSION), which
-  // only tracks the platform npm line.
+  // An update is available when any running service image is behind ITS OWN
+  // latest published tag on Docker Hub. With independently versioned units,
+  // each image (assistant/guardian/portal/voice) has its own release line —
+  // comparing all of them against a single tag (the assistant's) forced a
+  // perpetual "update available" banner when stale unified-era tags lingered on
+  // Docker Hub. Docker Hub is the authoritative source per unit, not the
+  // control-plane (PLATFORM_VERSION), which only tracks the platform npm line.
   const updateAvailable = $derived(
-    latestImageTag !== null &&
-      isSemver(latestImageTag) &&
-      services.some((s) => isSemver(s.version) && compareVersions(s.version, latestImageTag!) < 0),
+    services.some((s) =>
+      isSemver(s.version) && isSemver(s.latestVersion ?? null) &&
+      compareVersions(s.version, s.latestVersion!) < 0,
+    ),
   );
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -275,7 +287,9 @@
       // every "behind" check. loadReleases also sets it from the releases probe,
       // but that can fail offline; this is the reliable source.
       platformVersion = data.platformVersion;
+      platformLatest = data.platformLatest ?? null;
       latestImageTag = data.latestImageTag ?? null;
+      unitTags = data.unitTags ?? {};
       // Do not reset selectedImageTag/selectedUiTag here — loadReleases initializes them
     } catch {
       // Non-fatal — version info is supplementary
@@ -301,6 +315,17 @@
     }
     releasesLoading = false;
     uiVersionsLoading = false;
+  }
+
+  /** "Check for updates" button: invalidate server-side caches, then re-fetch
+   *  versions (Docker Hub tags + npm platform latest) + releases (GitHub app
+   *  releases) + UI versions (npm @openpalm/ui) in parallel. The invalidate
+   *  call runs first so the GETs see a cold cache and hit the upstreams once. */
+  async function handleRefreshReleases(): Promise<void> {
+    releasesLoading = true;
+    uiVersionsLoading = true;
+    await invalidateVersionCache();
+    await Promise.all([loadVersions(), loadReleases()]);
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -363,54 +388,36 @@
     upgradeLoading = false;
   }
 
-  async function handleSetImageTag(tag: string, confirmDowngrade = false): Promise<void> {
-    if (tagChangeLoading) return;
-    tagChangeLoading = true;
+  async function handleSetUnitImageTag(unit: string, tag: string, confirmDowngrade = false): Promise<void> {
+    if (unitInstallLoading !== null) return;
+    unitInstallLoading = unit;
     try {
-      const result = await setStackVersion(tag, { confirmDowngrade });
-      currentImageTag = result.imageTag;
-      selectedImageTag = result.imageTag;
-      operationResult = `Image tag set to ${result.imageTag}. Restarted: ${result.restarted.join(', ') || 'none'}.`;
+      const result = await setUnitImageTag(unit, tag, { confirmDowngrade });
+      operationResult = `${unit} image tag set to ${result.imageTag}. Restarted: ${result.restarted.join(', ') || 'none'}.`;
       operationResultType = 'success';
-      downgradePrompt = null;
-      migratePreview = null;
+      unitDowngradePrompt = null;
+      // Refresh service versions so the rows reflect the newly pinned tag.
+      await loadVersions();
     } catch (e) {
       if (e instanceof DowngradeConfirmationRequiredError) {
         // Not an error — show the plain warning + confirm, then re-apply.
-        downgradePrompt = { tag, currentVersion: e.currentVersion, targetVersion: e.targetVersion, message: e.message };
+        unitDowngradePrompt = { unit, tag, currentVersion: e.currentVersion, targetVersion: e.targetVersion, message: e.message };
       } else {
         const err = e as { message?: string };
-        operationResult = `Failed to apply image tag: ${err.message ?? e}`;
+        operationResult = `Failed to apply ${unit} image tag: ${err.message ?? e}`;
         operationResultType = 'error';
       }
     }
-    tagChangeLoading = false;
+    unitInstallLoading = null;
   }
 
-  // #497: preview the copy-only release migrations an upgrade to the selected
-  // tag would run, before applying.
-  async function handlePreviewMigration(tag: string): Promise<void> {
-    if (migratePreviewLoading) return;
-    migratePreviewLoading = true;
-    migratePreview = null;
-    try {
-      const result = await previewMigration(tag);
-      migratePreview = { targetVersion: result.targetVersion, applied: result.applied, lines: result.lines, notes: result.notes };
-    } catch (e) {
-      const err = e as { message?: string };
-      operationResult = `Failed to preview changes: ${err.message ?? e}`;
-      operationResultType = 'error';
-    }
-    migratePreviewLoading = false;
+  function handleConfirmUnitDowngrade(): void {
+    if (!unitDowngradePrompt) return;
+    void handleSetUnitImageTag(unitDowngradePrompt.unit, unitDowngradePrompt.tag, true);
   }
 
-  function handleConfirmDowngrade(): void {
-    if (!downgradePrompt) return;
-    void handleSetImageTag(downgradePrompt.tag, true);
-  }
-
-  function handleCancelDowngrade(): void {
-    downgradePrompt = null;
+  function handleCancelUnitDowngrade(): void {
+    unitDowngradePrompt = null;
   }
 
   async function handleDownloadUiVersion(tag: string): Promise<void> {
@@ -555,10 +562,12 @@
 {#if updateAvailable && activeTab !== 'updates'}
   <!-- #498: persistent, dismissable-by-acting update signal. One sentence, one
        obvious action (go to Check-up). Shown everywhere except the Check-up tab
-       itself, where the same status is already front and centre. -->
+       itself, where the same status is already front and centre. The text is
+       generic because with independent release units any one of them can be
+       behind its own latest — naming a single version would be misleading. -->
   <div class="update-banner" role="status">
     <span class="update-banner-text">
-      OpenPalm {formatVersionForDisplay(latestImageTag ?? '')} is available.
+      An OpenPalm update is available.
     </span>
     <button class="update-banner-action" onclick={() => handleTabSelect('updates')}>
       Review it
@@ -590,8 +599,6 @@
       <UpdatesTab
         {currentImageTag}
         {services}
-        {selectedImageTag}
-        {tagChangeLoading}
         {anyDangerousLoading}
         tokenStored={true}
         {upgradeLoading}
@@ -608,22 +615,21 @@
         {uiDownloadReady}
         {uiDownloadRestarting}
         {releases}
+        {unitTags}
         {releasesLoading}
         {platformVersion}
+        {platformLatest}
         {latestImageTag}
-        {migratePreviewLoading}
-        {migratePreview}
-        {downgradePrompt}
-        onSetImageTag={(t) => handleSetImageTag(t)}
-        onPreviewMigration={handlePreviewMigration}
-        onConfirmDowngrade={handleConfirmDowngrade}
-        onCancelDowngrade={handleCancelDowngrade}
-        onSelectedImageTagChange={(t) => { selectedImageTag = t; migratePreview = null; downgradePrompt = null; }}
+        {unitInstallLoading}
+        {unitDowngradePrompt}
+        onSetUnitImageTag={(unit, tag) => handleSetUnitImageTag(unit, tag)}
+        onConfirmUnitDowngrade={handleConfirmUnitDowngrade}
+        onCancelUnitDowngrade={handleCancelUnitDowngrade}
         onUpgradeStack={handleUpgradeStack}
         onSelectedUiTagChange={(t) => { selectedUiTag = t; }}
         onDownloadUiVersion={handleDownloadUiVersion}
         onRestartApp={handleRestartApp}
-        onRefreshReleases={loadReleases}
+        onRefreshReleases={handleRefreshReleases}
       />
     {:else if activeTab === 'recovery'}
       <RecoveryTab />

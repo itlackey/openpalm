@@ -115,8 +115,11 @@ export {
   parsePinnedImages,
   platformImageTagKeyFor,
   resolveEffectivePlatformImageTag,
+  isDeployableUnit,
+  deployableUnitImageName,
+  deployableUnitImageTagKey,
 } from './control-plane/image-tags.js';
-export type { PinnablePlatformImage } from './control-plane/image-tags.js';
+export type { PinnablePlatformImage, DeployableUnit } from './control-plane/image-tags.js';
 
 export type {
   AssistantCliToolId,
@@ -305,6 +308,7 @@ export {
   buildManagedServices,
   performUpgrade,
   updateStackEnvToLatestImageTag,
+  applyUnitImageTagChange,
 } from './control-plane/lifecycle.js';
 
 // ── Rollback ─────────────────────────────────────────────────────────────
@@ -324,11 +328,21 @@ export {
   applyTagChange,
   resolveLatestPlatformTag,
   resolveLatestPlatformTagForCurrentMajor,
+  resolveLatestImageTag,
+  resolveLatestImageTagForCurrentMajor,
+  listDockerImageTags,
   resolveDefaultMigrateTarget,
   DowngradeConfirmationRequired,
   buildComposeFileList,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
+
+// ── npm registry lookups (latest version + version list) ──────────────────
+export type { NpmVersionEntry } from "./control-plane/npm-registry.js";
+export {
+  resolveLatestNpmVersion,
+  listNpmVersions,
+} from "./control-plane/npm-registry.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject } from "./control-plane/docker.js";

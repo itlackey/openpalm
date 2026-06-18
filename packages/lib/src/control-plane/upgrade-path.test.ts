@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { resolveLatestPlatformTag, resolveLatestPlatformTagForCurrentMajor, applyTagChange, DowngradeConfirmationRequired } from './lifecycle.js';
+import { resolveLatestPlatformTag, resolveLatestPlatformTagForCurrentMajor, resolveLatestImageTag, resolveLatestImageTagForCurrentMajor, listDockerImageTags, applyTagChange, applyUnitImageTagChange, DowngradeConfirmationRequired } from './lifecycle.js';
 import type { ControlPlaneState } from './types.js';
 
 const realFetch = globalThis.fetch;
@@ -262,6 +262,139 @@ describe('resolveLatestPlatformTag (#449)', () => {
     } finally {
       Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: originalTimeout });
     }
+  });
+});
+
+describe('resolveLatestImageTag / resolveLatestImageTagForCurrentMajor (per-image)', () => {
+  test('resolveLatestImageTag queries the SPECIFIED image, not a hardcoded one', async () => {
+    let fetchedUrl = '';
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      fetchedUrl = String(input);
+      return dockerTagsResponse(['v0.12.7', 'latest']);
+    }) as typeof fetch;
+
+    const tag = await resolveLatestImageTag('openpalm', 'guardian');
+    expect(tag).toBe('v0.12.7');
+    expect(fetchedUrl).toContain('/guardian/tags');
+    expect(fetchedUrl).not.toContain('/assistant/tags');
+  });
+
+  test('resolveLatestImageTag throws when the registry yields no usable tag', async () => {
+    globalThis.fetch = (async () => dockerTagsResponse(['latest'])) as typeof fetch;
+    await expect(resolveLatestImageTag('openpalm', 'portal')).rejects.toThrow(
+      /No usable Docker image tag found for openpalm\/portal/,
+    );
+  });
+
+  test('resolveLatestImageTagForCurrentMajor scopes to the current major for the specified image', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v1.0.0', 'v0.12.6', 'v0.12.5', 'latest'])) as typeof fetch;
+
+    const tag = await resolveLatestImageTagForCurrentMajor('openpalm', 'portal', 'v0.12.5');
+    expect(tag).toBe('v0.12.6');
+  });
+
+  test('resolveLatestImageTagForCurrentMajor skips prereleases when base is stable', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.12.7-rc.1', 'v0.12.6', 'latest'])) as typeof fetch;
+
+    const tag = await resolveLatestImageTagForCurrentMajor('openpalm', 'guardian', 'v0.12.6');
+    expect(tag).toBe('v0.12.6');
+  });
+
+  test('resolveLatestImageTagForCurrentMajor keeps prereleases when base is itself a prerelease', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.13.0-rc.2', 'v0.13.0-rc.1', 'v0.12.6', 'latest'])) as typeof fetch;
+
+    const tag = await resolveLatestImageTagForCurrentMajor('openpalm', 'assistant', 'v0.13.0-rc.1');
+    expect(tag).toBe('v0.13.0-rc.2');
+  });
+
+  test('resolveLatestPlatformTag delegates to resolveLatestImageTag with image "assistant"', async () => {
+    let fetchedUrl = '';
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      fetchedUrl = String(input);
+      return dockerTagsResponse(['v0.12.5', 'latest']);
+    }) as typeof fetch;
+
+    const tag = await resolveLatestPlatformTag('openpalm');
+    expect(tag).toBe('v0.12.5');
+    expect(fetchedUrl).toContain('/assistant/tags');
+  });
+
+  test('resolveLatestPlatformTagForCurrentMajor delegates to resolveLatestImageTagForCurrentMajor with image "assistant"', async () => {
+    let fetchedUrl = '';
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      fetchedUrl = String(input);
+      return dockerTagsResponse(['v0.12.5', 'v0.11.5', 'latest']);
+    }) as typeof fetch;
+
+    const tag = await resolveLatestPlatformTagForCurrentMajor('openpalm', 'v0.11.5');
+    expect(tag).toBe('v0.12.5');
+    expect(fetchedUrl).toContain('/assistant/tags');
+  });
+});
+
+describe('listDockerImageTags', () => {
+  test('returns all semver tags sorted newest (highest semver) first', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['latest', 'v0.12.3', 'v0.12.1', 'v0.12.5', 'edge'])) as typeof fetch;
+
+    const tags = await listDockerImageTags('openpalm', 'assistant');
+    expect(tags).toEqual(['v0.12.5', 'v0.12.3', 'v0.12.1']);
+  });
+
+  test('scopes to the current major when sameMajorAs is set', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v1.0.0', 'v0.12.5', 'v0.12.3', 'v0.11.2', 'latest'])) as typeof fetch;
+
+    const tags = await listDockerImageTags('openpalm', 'assistant', { sameMajorAs: 'v0.12.0' });
+    // All 0.x.y tags share major 0; v1.0.0 (major 1) is excluded.
+    expect(tags).toEqual(['v0.12.5', 'v0.12.3', 'v0.11.2']);
+  });
+
+  test('skips prereleases when skipPrerelease is true', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.12.5', 'v0.12.0-rc.2', 'v0.12.0-rc.1', 'v0.11.5', 'latest'])) as typeof fetch;
+
+    const tags = await listDockerImageTags('openpalm', 'assistant', { skipPrerelease: true });
+    expect(tags).toEqual(['v0.12.5', 'v0.11.5']);
+  });
+
+  test('includes prereleases by default so the picker shows every tag on the line', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.12.5', 'v0.12.0-rc.2', 'latest'])) as typeof fetch;
+
+    const tags = await listDockerImageTags('openpalm', 'assistant');
+    expect(tags).toEqual(['v0.12.5', 'v0.12.0-rc.2']);
+  });
+
+  test('respects max option', async () => {
+    globalThis.fetch = (async () =>
+      dockerTagsResponse(['v0.12.5', 'v0.12.4', 'v0.12.3', 'v0.12.2', 'v0.12.1', 'latest'])) as typeof fetch;
+
+    const tags = await listDockerImageTags('openpalm', 'assistant', { max: 3 });
+    expect(tags).toHaveLength(3);
+    expect(tags[0]).toBe('v0.12.5');
+  });
+
+  test('returns empty array when registry yields no semver tags', async () => {
+    globalThis.fetch = (async () => dockerTagsResponse(['latest', 'edge'])) as typeof fetch;
+
+    const tags = await listDockerImageTags('openpalm', 'assistant');
+    expect(tags).toEqual([]);
+  });
+
+  test('queries the specified image, not a hardcoded one', async () => {
+    let fetchedUrl = '';
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      fetchedUrl = String(input);
+      return dockerTagsResponse(['v0.12.7', 'latest']);
+    }) as typeof fetch;
+
+    const tags = await listDockerImageTags('openpalm', 'guardian');
+    expect(tags).toEqual(['v0.12.7']);
+    expect(fetchedUrl).toContain('/guardian/tags');
   });
 });
 

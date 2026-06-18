@@ -46,8 +46,8 @@ ENV HOME=/opt/openpalm/guardian
 ENV PORT=8080
 EXPOSE 8080
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-  CMD curl -sf http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -sf http://localhost:8080/health/ready || exit 1
 
 # The entrypoint starts the local OpenCode moderator (when content validation is
 # enabled) and then launches the guardian server.

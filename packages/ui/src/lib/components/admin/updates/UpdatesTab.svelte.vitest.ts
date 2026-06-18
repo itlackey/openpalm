@@ -17,8 +17,6 @@ const defaultProps = {
     { id: 'portal', label: 'Chat (Discord/Slack)', version: '0.11.5' },
   ],
   harnessUpdateAvailable: false,
-  selectedImageTag: '0.11.5',
-  tagChangeLoading: false,
   anyDangerousLoading: false,
   tokenStored: true,
   upgradeLoading: false,
@@ -34,9 +32,12 @@ const defaultProps = {
   uiDownloadReady: false,
   uiDownloadRestarting: false,
   releases: [],
+  unitTags: {},
   releasesLoading: false,
-  onSetImageTag: vi.fn(),
-  onSelectedImageTagChange: vi.fn(),
+  unitInstallLoading: null,
+  onSetUnitImageTag: vi.fn(),
+  onConfirmUnitDowngrade: vi.fn(),
+  onCancelUnitDowngrade: vi.fn(),
   onUpgradeStack: vi.fn(),
   onSelectedUiTagChange: vi.fn(),
   onDownloadUiVersion: vi.fn(),
@@ -64,9 +65,11 @@ describe('UpdatesTab control-plane version handling', () => {
 
   test('renders every configured stack service', async () => {
     render(UpdatesTab, { props: defaultProps });
-    await expect.element(page.getByText('Assistant', { exact: true })).toBeVisible();
-    await expect.element(page.getByText('Guardian', { exact: true })).toBeVisible();
-    await expect.element(page.getByText('Chat (Discord/Slack)', { exact: true })).toBeVisible();
+    // Each service label now appears in both the versions list and the per-unit
+    // picker, so scope to the first match.
+    await expect.element(page.getByText('Assistant', { exact: true }).first()).toBeVisible();
+    await expect.element(page.getByText('Guardian', { exact: true }).first()).toBeVisible();
+    await expect.element(page.getByText('Chat (Discord/Slack)', { exact: true }).first()).toBeVisible();
   });
 
   test('a service behind the control plane shows update-available, never a green up-to-date', async () => {
@@ -96,6 +99,66 @@ describe('UpdatesTab control-plane version handling', () => {
       },
     });
     await expect.element(page.getByText(/you're up to date/i)).toBeVisible();
+  });
+
+  test('compares each service against its OWN latestVersion, not a shared tag', async () => {
+    // Independent release units: assistant latest is 0.12.5, guardian latest is
+    // 0.12.7. Both run 0.12.5. Guardian is behind ITS own latest (0.12.7) even
+    // though it matches the assistant's tag — the old single-tag comparison
+    // wrongly read guardian as "current".
+    render(UpdatesTab, {
+      props: {
+        ...defaultProps,
+        platformVersion: '0.12.5',
+        latestImageTag: '0.12.5',
+        services: [
+          { id: 'assistant', label: 'Assistant', version: '0.12.5', latestVersion: '0.12.5' },
+          { id: 'guardian', label: 'Guardian', version: '0.12.5', latestVersion: '0.12.7' },
+        ],
+      },
+    });
+    // Guardian is behind 0.12.7 → its row offers an update to 0.12.7.
+    await expect.element(page.getByText('Update to 0.12.7').first()).toBeVisible();
+    // Assistant is current at its own latest (0.12.5) → an up-to-date badge.
+    expect(document.body.querySelector('[title="Up to date"]')).not.toBeNull();
+  });
+
+  test('renders a per-unit version picker for each present service', async () => {
+    render(UpdatesTab, {
+      props: {
+        ...defaultProps,
+        unitTags: {
+          assistant: ['v0.12.5'],
+          guardian: ['v0.12.7'],
+          portal: ['v0.12.6'],
+        },
+      },
+    });
+    // Each unit picker is labelled by its service label + "version to install".
+    await expect.element(page.getByLabelText(/Assistant version to install/i)).toBeVisible();
+    await expect.element(page.getByLabelText(/Guardian version to install/i)).toBeVisible();
+    await expect.element(page.getByLabelText(/Chat \(Discord\/Slack\) version to install/i)).toBeVisible();
+  });
+
+  test('the per-unit Install button pins that unit via onSetUnitImageTag', async () => {
+    const onSetUnitImageTag = vi.fn();
+    render(UpdatesTab, {
+      props: {
+        ...defaultProps,
+        onSetUnitImageTag,
+        unitTags: {
+          assistant: ['v0.12.5'],
+          guardian: [],
+          portal: [],
+        },
+      },
+    });
+    // Rows render in service order (assistant first), so the first Install
+    // button belongs to the assistant unit. The default selection is "latest".
+    const installBtn = page.getByRole('button', { name: /install.*restart/i }).first();
+    await expect.element(installBtn).toBeVisible();
+    await installBtn.click();
+    expect(onSetUnitImageTag).toHaveBeenCalledWith('assistant', 'latest');
   });
 });
 

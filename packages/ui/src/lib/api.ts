@@ -156,11 +156,14 @@ export async function upgradeStack(): Promise<UpgradeStackResult> {
 // ── Version management ───────────────────────────────────────────────────
 
 /** One configured stack piece + the image tag it actually runs (#503). The
- *  Updates tab flags any whose version is behind the control plane. */
+ *  Updates tab flags any whose version is behind its own latest published tag.
+ *  `latestVersion` is the best-effort latest tag for THIS unit's image on Docker
+ *  Hub (null when the check failed or was skipped). */
 export interface StackServiceVersion {
   id: string;
   label: string;
   version: string;
+  latestVersion?: string | null;
 }
 
 export interface VersionsResponse {
@@ -183,14 +186,28 @@ export interface VersionsResponse {
   /** Running control-plane version (PLATFORM_VERSION) — "what version of
    *  OpenPalm you're running". Drives the active channel + behind checks. */
   platformVersion: string;
-  /** Latest available Docker image tag on Docker Hub for the current major
-   *  (best-effort — null when the check fails or is skipped). Used to detect
-   *  when a newer image is available independently of the platform version. */
+  /** Latest published @openpalm/lib version on npm (best-effort — null when the
+   *  check fails or is skipped). The control plane is npm-distributed, so this
+   *  is the authoritative "is the platform itself up to date?" signal, separate
+   *  from the container image latest tags. */
+  platformLatest?: string | null;
+  /** Latest assistant Docker image tag on Docker Hub for the current major
+   *  (best-effort — null when the check fails or is skipped). Kept for backward
+   *  compat; the per-unit `services[].latestVersion` is the authoritative signal. */
   latestImageTag: string | null;
+  /** Per-unit latest Docker image tags (best-effort, keyed by service id).
+   *  Each entry is the newest published tag for that unit's image in the current
+   *  major. Used to detect independent drift per unit. */
+  latestImageTags?: Record<string, string>;
+  /** Per-unit available Docker Hub tags (best-effort, keyed by service id).
+   *  Bare semver, v-prefixed as Docker Hub returns them; the UI strips the v for
+   *  display. Populates the per-unit version picker dropdowns. */
+  unitTags?: Record<string, string[]>;
 }
 
-export async function fetchVersions(): Promise<VersionsResponse> {
-  const res = await requireOk(await request('GET', '/admin/versions'));
+export async function fetchVersions(opts: { refresh?: boolean } = {}): Promise<VersionsResponse> {
+  const qs = opts.refresh ? '?refresh=1' : '';
+  const res = await requireOk(await request('GET', `/admin/versions${qs}`));
   return (await res.json()) as VersionsResponse;
 }
 
@@ -201,9 +218,10 @@ export interface ReleaseEntry {
   hasElectronBuild: boolean;
 }
 
-export async function fetchReleases(): Promise<{ releases: ReleaseEntry[]; error?: string }> {
+export async function fetchReleases(opts: { refresh?: boolean } = {}): Promise<{ releases: ReleaseEntry[]; error?: string }> {
   try {
-    const res = await request('GET', '/admin/versions/releases');
+    const qs = opts.refresh ? '?refresh=1' : '';
+    const res = await request('GET', `/admin/versions/releases${qs}`);
     if (!res.ok) return { releases: [] };
     return (await res.json()) as { releases: ReleaseEntry[]; error?: string };
   } catch {
@@ -223,9 +241,10 @@ export interface UiVersionEntry {
  * The UI is independently versioned and distributed via npm, so these — not
  * GitHub platform release tags — are the valid inputs to downloadUiVersion().
  */
-export async function fetchUiVersions(): Promise<{ versions: UiVersionEntry[]; error?: string }> {
+export async function fetchUiVersions(opts: { refresh?: boolean } = {}): Promise<{ versions: UiVersionEntry[]; error?: string }> {
   try {
-    const res = await request('GET', '/admin/versions/ui');
+    const qs = opts.refresh ? '?refresh=1' : '';
+    const res = await request('GET', `/admin/versions/ui${qs}`);
     if (!res.ok) return { versions: [] };
     return (await res.json()) as { versions: UiVersionEntry[]; error?: string };
   } catch {
@@ -233,9 +252,20 @@ export async function fetchUiVersions(): Promise<{ versions: UiVersionEntry[]; e
   }
 }
 
-/** Thrown by setStackVersion when the target is a downgrade and confirmation is
- *  required (#501). The caller shows a plain warning + confirm, then re-calls
- *  with `confirmDowngrade: true`. */
+/** Invalidate all server-side version caches. Called by the "Check for updates"
+ *  button before re-fetching versions + releases + UI versions. The subsequent
+ *  GETs see a cold cache and hit the upstreams once, then cache for the TTL. */
+export async function invalidateVersionCache(): Promise<void> {
+  try {
+    await requireOk(await request('POST', '/admin/versions/refresh'));
+  } catch {
+    // Non-fatal — the re-fetch will still run, it just may hit stale cache.
+  }
+}
+
+/** Thrown by setStackVersion / setUnitImageTag when the target is a downgrade
+ *  and confirmation is required (#501). The caller shows a plain warning +
+ *  confirm, then re-calls with `confirmDowngrade: true`. */
 export class DowngradeConfirmationRequiredError extends Error {
   readonly code = 'downgrade_confirmation_required';
   readonly currentVersion: string;
@@ -248,6 +278,26 @@ export class DowngradeConfirmationRequiredError extends Error {
   }
 }
 
+/** Parse a 409 downgrade-confirmation response into the typed signal, or null
+ *  when the response is not a downgrade confirmation. Shared by the stack-wide
+ *  and per-unit tag setters so the 409 contract is handled in one place. */
+async function parseDowngradeConfirmation(
+  res: Response,
+  tag: string,
+): Promise<DowngradeConfirmationRequiredError | null> {
+  if (res.status !== 409) return null;
+  let body: { error?: string; message?: string; details?: { currentVersion?: string; targetVersion?: string } } = {};
+  try { body = (await res.clone().json()) as typeof body; } catch { /* fall through */ }
+  if (body.error === 'downgrade_confirmation_required') {
+    return new DowngradeConfirmationRequiredError(
+      body.message ?? 'This is a downgrade and requires confirmation.',
+      body.details?.currentVersion ?? '',
+      body.details?.targetVersion ?? tag,
+    );
+  }
+  return null;
+}
+
 export async function setStackVersion(
   tag: string,
   opts: { confirmDowngrade?: boolean } = {},
@@ -256,17 +306,26 @@ export async function setStackVersion(
     tag,
     ...(opts.confirmDowngrade ? { confirmDowngrade: true } : {}),
   });
-  if (res.status === 409) {
-    let body: { error?: string; message?: string; details?: { currentVersion?: string; targetVersion?: string } } = {};
-    try { body = (await res.clone().json()) as typeof body; } catch { /* fall through */ }
-    if (body.error === 'downgrade_confirmation_required') {
-      throw new DowngradeConfirmationRequiredError(
-        body.message ?? 'This is a downgrade and requires confirmation.',
-        body.details?.currentVersion ?? '',
-        body.details?.targetVersion ?? tag,
-      );
-    }
-  }
+  const downgrade = await parseDowngradeConfirmation(res, tag);
+  if (downgrade) throw downgrade;
+  await requireOk(res);
+  return (await res.json()) as { ok: boolean; imageTag: string; restarted: string[] };
+}
+
+/** Pin a SINGLE deployable unit's image tag (assistant/guardian/portals/voice).
+ *  Writes only that unit's OP_*_IMAGE_TAG — the rest of the stack is untouched. */
+export async function setUnitImageTag(
+  unit: string,
+  tag: string,
+  opts: { confirmDowngrade?: boolean } = {},
+): Promise<{ ok: boolean; imageTag: string; restarted: string[] }> {
+  const res = await request('PATCH', '/admin/stack-version', {
+    unit,
+    tag,
+    ...(opts.confirmDowngrade ? { confirmDowngrade: true } : {}),
+  });
+  const downgrade = await parseDowngradeConfirmation(res, tag);
+  if (downgrade) throw downgrade;
   await requireOk(res);
   return (await res.json()) as { ok: boolean; imageTag: string; restarted: string[] };
 }
