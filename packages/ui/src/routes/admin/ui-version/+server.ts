@@ -36,7 +36,7 @@ export const POST: RequestHandler = async (event) => {
   // process is respawned (design §6.2) — the old @openpalm/lib (+ migrations)
   // is held in memory. Signal the supervisor (CLI `openpalm ui serve` or the
   // Electron harness) to kill + respawn us against the new build. The supervisor
-  // installs a SIGHUP handler that re-resolves data/ui and respawns; OP_UI_SUPERVISOR
+  // installs a SIGUSR2 handler that re-resolves data/ui and respawns; OP_UI_SUPERVISOR
   // is set by the supervisor when it spawned us. Best-effort: if there is no
   // supervisor (dev `vite preview`, direct `node index.js`), report restarting:false
   // so the client tells the user to restart manually.
@@ -44,7 +44,7 @@ export const POST: RequestHandler = async (event) => {
   let restarting = false;
   if (supervisor && process.ppid && process.ppid > 1) {
     try {
-      process.kill(process.ppid, "SIGHUP");
+      process.kill(process.ppid, "SIGUSR2");
       restarting = true;
       logger.info("ui-version restart signalled", { requestId, supervisor, ppid: process.ppid });
     } catch (e) {

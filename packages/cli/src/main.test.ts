@@ -306,7 +306,7 @@ describe('cli main', () => {
     mkdirSync(join(base, 'config', 'stack'), { recursive: true });
     mkdirSync(join(base, 'data'), { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(base, 'config', 'stack', 'portals.compose.yml'), 'services:\n  chat:\n    profiles: ["addon.chat"]\n    image: chat\n    environment:\n      PORTAL_NAME: "Chat"\n      CHANNEL_ID: "chat"\n');
+    writeFileSync(join(base, 'config', 'stack', 'portals.compose.yml'), 'services:\n  discord:\n    profiles: ["addon.discord"]\n    image: discord\n    environment:\n      PORTAL_NAME: "Discord Bot"\n');
 
     process.env.OP_HOME = base;
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -315,12 +315,12 @@ describe('cli main', () => {
     console.warn = mock((message?: unknown) => { logs.push(String(message ?? '')); }) as typeof console.warn;
 
     try {
-      await main(['addon', 'enable', 'chat']);
-      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_ENABLED_ADDONS=chat');
-      expect(readSecret(join(base, 'config', 'stack'), 'portal_chat_secret')).toBeTruthy();
+      await main(['addon', 'enable', 'discord']);
+      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_ENABLED_ADDONS=discord');
+      expect(readSecret(join(base, 'config', 'stack'), 'portal_discord_secret')).toBeTruthy();
 
-      await main(['addon', 'disable', 'chat']);
-      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).not.toContain('chat');
+      await main(['addon', 'disable', 'discord']);
+      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).not.toContain('discord');
     } finally {
       delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       rmSync(base, { recursive: true, force: true });

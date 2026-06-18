@@ -402,193 +402,198 @@
       </div>
     </dl>
 
-    <!-- Version control: pin a specific version (rollback / troubleshooting). -->
-    <details class="advanced">
-      <summary>Version control</summary>
-      <div class="advanced-body">
+    <!-- Stack images: pin a specific version (rollback / troubleshooting). -->
+    <section class="version-pin-section" aria-labelledby="stack-pin-title">
+      <div class="version-pin-header">
+        <h3 id="stack-pin-title" class="version-pin-title">Stack images</h3>
+        <p class="version-pin-subtitle">
+          Install a specific version — roll back to a known-good release or pin to a tested build.
+          The list shows versions up to your current control plane
+          {#if platformVersion}(OpenPalm {formatVersionForDisplay(platformVersion)}){/if}.
+        </p>
+      </div>
+
+      <div class="version-section">
+        <label class="version-label" for="stack-version-select">Version</label>
+        <div class="version-input-row">
+          {#if releasesLoading}
+            <div class="version-select-skeleton"></div>
+          {:else if releases.length > 0}
+            <select
+              id="stack-version-select"
+              class="version-select"
+              aria-label="OpenPalm version to install"
+              value={selectedImageTag}
+              onchange={(e) => onSelectedImageTagChange((e.currentTarget as HTMLSelectElement).value)}
+              disabled={tagChangeLoading || anyDangerousLoading}
+            >
+              <option value="latest">latest</option>
+              {#each releases as r (r.tag)}
+                <option value={r.tag}>{r.tag}{r.prerelease ? ' (pre-release)' : ''}</option>
+              {/each}
+            </select>
+          {:else}
+            <input
+              id="stack-version-select"
+              class="version-input"
+              type="text"
+              aria-label="OpenPalm version to install"
+              placeholder="e.g. 0.11.0 or latest"
+              value={selectedImageTag}
+              oninput={(e) => onSelectedImageTagChange((e.currentTarget as HTMLInputElement).value)}
+              disabled={tagChangeLoading || anyDangerousLoading}
+            />
+          {/if}
+          <button
+            class="btn btn-sm btn-secondary version-preview-btn"
+            onclick={() => { if (selectedImageTag.trim()) onPreviewMigration?.(selectedImageTag.trim()); }}
+            disabled={!selectedImageTag.trim() || migratePreviewLoading || tagChangeLoading || anyDangerousLoading}
+            aria-busy={migratePreviewLoading}
+          >
+            {#if migratePreviewLoading}
+              <Spinner /> Checking…
+            {:else}
+              Preview changes
+            {/if}
+          </button>
+          <button
+            class="btn btn-sm btn-secondary"
+            onclick={() => { if (selectedImageTag.trim()) onSetImageTag(selectedImageTag.trim()); }}
+            disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
+            aria-busy={tagChangeLoading}
+          >
+            {#if tagChangeLoading}
+              <Spinner /> Installing…
+            {:else}
+              Install &amp; restart
+            {/if}
+          </button>
+        </div>
+        <p class="version-hint">Installs the chosen version and restarts services (about a minute offline).</p>
+
+        {#if migratePreview}
+          <div class="migrate-preview" role="status">
+            <p class="migrate-preview-title">
+              What an update to {migratePreview.targetVersion} would change to your files:
+            </p>
+            {#if migratePreview.applied.length === 0}
+              <p class="migrate-preview-empty">Nothing — your files are already compatible. Only the images and version are updated.</p>
+            {:else}
+              <ul class="migrate-preview-list">
+                {#each migratePreview.lines as line, i (i)}
+                  <li>{line}</li>
+                {/each}
+              </ul>
+              <p class="version-hint">These are copy-only, backup-first changes. Nothing is deleted. Your settings are backed up before anything is written.</p>
+            {/if}
+            {#each migratePreview.notes as note, i (i)}
+              <p class="migrate-preview-note">Note: {note}</p>
+            {/each}
+          </div>
+        {/if}
+
+        {#if downgradePrompt}
+          <div class="downgrade-warning" role="alertdialog" aria-label="Confirm downgrade">
+            <p class="downgrade-warning-title">This is a downgrade.</p>
+            <p>
+              You're moving from {downgradePrompt.currentVersion} back to {downgradePrompt.targetVersion}.
+              Release migrations don't run backward; your data may not be compatible with the older
+              version — restore from a backup if needed.
+            </p>
+            <div class="downgrade-actions">
+              <button
+                class="btn btn-sm btn-secondary"
+                onclick={() => onCancelDowngrade?.()}
+                disabled={tagChangeLoading}
+              >
+                Cancel
+              </button>
+              <button
+                class="btn btn-sm btn-danger"
+                onclick={() => onConfirmDowngrade?.()}
+                disabled={tagChangeLoading}
+                aria-busy={tagChangeLoading}
+              >
+                {#if tagChangeLoading}
+                  <Spinner /> Downgrading…
+                {:else}
+                  Downgrade anyway
+                {/if}
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+    </section>
+
+    {#if inElectron}
+      <!-- Admin interface: install a specific build (Electron only). -->
+      <section class="version-pin-section" aria-labelledby="ui-pin-title">
+        <div class="version-pin-header">
+          <h3 id="ui-pin-title" class="version-pin-title">Admin interface</h3>
+          <p class="version-pin-subtitle">
+            Install a specific build of the admin interface — useful for testing a pre-release or rolling back after an update.
+          </p>
+        </div>
 
         <div class="version-section">
-          <h4 class="version-section-heading">Stack version</h4>
-          <label class="version-label" for="stack-version-select">Install a specific version</label>
-          <p class="version-running-note">
-            Install an exact version — e.g. to roll back, or to pin to a specific tested release.
-            The list shows versions up to your current control plane
-            {#if platformVersion}(OpenPalm {formatVersionForDisplay(platformVersion)}){/if}.
-          </p>
+          <label class="version-label" for="ui-version-select">Version</label>
           <div class="version-input-row">
-            {#if releasesLoading}
+            {#if uiVersionsLoading}
               <div class="version-select-skeleton"></div>
-            {:else if releases.length > 0}
+            {:else if uiVersions.length > 0}
               <select
-                id="stack-version-select"
+                id="ui-version-select"
                 class="version-select"
-                aria-label="OpenPalm version to install"
-                value={selectedImageTag}
-                onchange={(e) => onSelectedImageTagChange((e.currentTarget as HTMLSelectElement).value)}
-                disabled={tagChangeLoading || anyDangerousLoading}
+                aria-label="Admin interface version to download"
+                value={selectedUiTag}
+                onchange={(e) => onSelectedUiTagChange((e.currentTarget as HTMLSelectElement).value)}
+                disabled={uiDownloadLoading}
               >
-                <option value="latest">latest</option>
-                {#each releases as r (r.tag)}
-                  <option value={r.tag}>{r.tag}{r.prerelease ? ' (pre-release)' : ''}</option>
+                {#each uiVersions as v (v.version)}
+                  <option value={v.version}>{uiVersionLabel(v)}</option>
                 {/each}
               </select>
             {:else}
               <input
-                id="stack-version-select"
+                id="ui-version-select"
                 class="version-input"
                 type="text"
-                aria-label="OpenPalm version to install"
-                placeholder="e.g. 0.11.0 or latest"
-                value={selectedImageTag}
-                oninput={(e) => onSelectedImageTagChange((e.currentTarget as HTMLInputElement).value)}
-                disabled={tagChangeLoading || anyDangerousLoading}
+                aria-label="Admin interface version to download"
+                placeholder="e.g. 0.11.0-beta.7"
+                value={selectedUiTag}
+                oninput={(e) => onSelectedUiTagChange((e.currentTarget as HTMLInputElement).value)}
+                disabled={uiDownloadLoading}
               />
             {/if}
             <button
-              class="btn btn-sm btn-secondary version-preview-btn"
-              onclick={() => { if (selectedImageTag.trim()) onPreviewMigration?.(selectedImageTag.trim()); }}
-              disabled={!selectedImageTag.trim() || migratePreviewLoading || tagChangeLoading || anyDangerousLoading}
-              aria-busy={migratePreviewLoading}
-            >
-              {#if migratePreviewLoading}
-                <Spinner /> Checking…
-              {:else}
-                Preview changes
-              {/if}
-            </button>
-            <button
               class="btn btn-sm btn-secondary"
-              onclick={() => { if (selectedImageTag.trim()) onSetImageTag(selectedImageTag.trim()); }}
-              disabled={!selectedImageTag.trim() || tagChangeLoading || anyDangerousLoading}
-              aria-busy={tagChangeLoading}
+              onclick={() => { if (selectedUiTag.trim()) onDownloadUiVersion(selectedUiTag.trim()); }}
+              disabled={!selectedUiTag.trim() || uiDownloadLoading}
+              aria-busy={uiDownloadLoading}
             >
-              {#if tagChangeLoading}
-                <Spinner /> Installing…
+              {#if uiDownloadLoading}
+                <Spinner /> Downloading…
               {:else}
-                Install &amp; restart
+                Download
               {/if}
             </button>
           </div>
-          <p class="version-hint">Explicit version control: installs the chosen version and restarts services (about a minute offline). Use this to roll back or pin a release.</p>
-
-          {#if migratePreview}
-            <div class="migrate-preview" role="status">
-              <p class="migrate-preview-title">
-                What an update to {migratePreview.targetVersion} would change to your files:
-              </p>
-              {#if migratePreview.applied.length === 0}
-                <p class="migrate-preview-empty">Nothing — your files are already compatible. Only the images and version are updated.</p>
-              {:else}
-                <ul class="migrate-preview-list">
-                  {#each migratePreview.lines as line, i (i)}
-                    <li>{line}</li>
-                  {/each}
-                </ul>
-                <p class="version-hint">These are copy-only, backup-first changes. Nothing is deleted. Your settings are backed up before anything is written.</p>
-              {/if}
-              {#each migratePreview.notes as note, i (i)}
-                <p class="migrate-preview-note">Note: {note}</p>
-              {/each}
+          {#if uiDownloadRestarting}
+            <div class="version-restart-prompt" role="status">
+              <Spinner /> Admin interface updated — reconnecting…
             </div>
-          {/if}
-
-          {#if downgradePrompt}
-            <div class="downgrade-warning" role="alertdialog" aria-label="Confirm downgrade">
-              <p class="downgrade-warning-title">This is a downgrade.</p>
-              <p>
-                You're moving from {downgradePrompt.currentVersion} back to {downgradePrompt.targetVersion}.
-                Release migrations don't run backward; your data may not be compatible with the older
-                version — restore from a backup if needed.
-              </p>
-              <div class="downgrade-actions">
-                <button
-                  class="btn btn-sm btn-secondary"
-                  onclick={() => onCancelDowngrade?.()}
-                  disabled={tagChangeLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  class="btn btn-sm btn-danger"
-                  onclick={() => onConfirmDowngrade?.()}
-                  disabled={tagChangeLoading}
-                  aria-busy={tagChangeLoading}
-                >
-                  {#if tagChangeLoading}
-                    <Spinner /> Downgrading…
-                  {:else}
-                    Downgrade anyway
-                  {/if}
-                </button>
-              </div>
+          {:else if uiDownloadReady}
+            <div class="version-restart-prompt">
+              Admin interface updated.
+              <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart app</button>
             </div>
+          {:else}
+            <p class="version-hint">Downloads and replaces the admin interface. Takes effect after restart.</p>
           {/if}
         </div>
-
-        {#if inElectron}
-          <div class="version-divider"></div>
-          <div class="version-section">
-            <h4 class="version-section-heading">Admin interface version</h4>
-            <label class="version-label" for="ui-version-select">Install a specific version</label>
-            <div class="version-input-row">
-              {#if uiVersionsLoading}
-                <div class="version-select-skeleton"></div>
-              {:else if uiVersions.length > 0}
-                <select
-                  id="ui-version-select"
-                  class="version-select"
-                  aria-label="Admin interface version to download"
-                  value={selectedUiTag}
-                  onchange={(e) => onSelectedUiTagChange((e.currentTarget as HTMLSelectElement).value)}
-                  disabled={uiDownloadLoading}
-                >
-                  {#each uiVersions as v (v.version)}
-                    <option value={v.version}>{uiVersionLabel(v)}</option>
-                  {/each}
-                </select>
-              {:else}
-                <input
-                  id="ui-version-select"
-                  class="version-input"
-                  type="text"
-                  aria-label="Admin interface version to download"
-                  placeholder="e.g. 0.11.0-beta.7"
-                  value={selectedUiTag}
-                  oninput={(e) => onSelectedUiTagChange((e.currentTarget as HTMLInputElement).value)}
-                  disabled={uiDownloadLoading}
-                />
-              {/if}
-              <button
-                class="btn btn-sm btn-secondary"
-                onclick={() => { if (selectedUiTag.trim()) onDownloadUiVersion(selectedUiTag.trim()); }}
-                disabled={!selectedUiTag.trim() || uiDownloadLoading}
-                aria-busy={uiDownloadLoading}
-              >
-                {#if uiDownloadLoading}
-                  <Spinner /> Downloading…
-                {:else}
-                  Download
-                {/if}
-              </button>
-            </div>
-            {#if uiDownloadRestarting}
-              <div class="version-restart-prompt" role="status">
-                <Spinner /> Admin interface updated — reconnecting…
-              </div>
-            {:else if uiDownloadReady}
-              <div class="version-restart-prompt">
-                Admin interface updated.
-                <button class="btn btn-sm btn-primary" onclick={onRestartApp}>Restart app</button>
-              </div>
-            {:else}
-              <p class="version-hint">Downloads and replaces the admin interface. Takes effect after restart.</p>
-            {/if}
-          </div>
-
-        {/if}
-
-      </div>
-    </details>
+      </section>
+    {/if}
 
     {#if inElectron}
       <section class="desktop-settings" aria-labelledby="desktop-settings-title">
@@ -882,32 +887,32 @@
     color: var(--color-text-secondary);
   }
 
-  /* ── Advanced disclosure ── */
-  .advanced {
+  /* ── Version pin sections (stack images / admin interface) ── */
+  .version-pin-section {
     margin-top: var(--space-5);
     border-top: 1px solid var(--color-border);
     padding-top: var(--space-4);
-  }
-  .advanced > summary {
-    cursor: pointer;
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
-    list-style: revert;
-  }
-  .advanced > summary:hover {
-    color: var(--color-text);
-  }
-  .advanced > summary:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm);
-  }
-  .advanced-body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    margin-top: var(--space-4);
+    gap: var(--space-3);
+  }
+  .version-pin-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .version-pin-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+  .version-pin-subtitle {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    max-width: 60ch;
+    line-height: 1.5;
   }
 
   .migrate-preview {
@@ -1060,17 +1065,7 @@
     .version-select-skeleton { animation: none; }
   }
 
-  /* ── Version section heading ── */
-  .version-section-heading {
-    margin: 0 0 var(--space-1) 0;
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: var(--space-1);
-  }
-
-  /* ── Desktop settings (Electron-only, outside the details disclosure) ── */
+  /* ── Desktop settings (Electron-only) ── */
   .desktop-settings {
     margin-top: var(--space-5);
     border-top: 1px solid var(--color-border);

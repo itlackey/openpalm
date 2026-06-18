@@ -22,7 +22,7 @@ import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
-const BUILTIN_ADDONS = ['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice'] as const;
+const BUILTIN_ADDONS = ['api', 'discord', 'ollama', 'slack', 'voice'] as const;
 
 export type RegistryAddonConfig = {
   schemaPath: string;

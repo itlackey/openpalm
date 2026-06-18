@@ -72,16 +72,16 @@ afterEach(() => {
 
 describe('/admin/addons/:name route', () => {
   test('requires admin token', async () => {
-    const res = await GET(makeGetEvent('chat', 'bad-token'));
+    const res = await GET(makeGetEvent('discord', 'bad-token'));
     expect(res.status).toBe(401);
   });
 
   test('returns enabled state and schema metadata', async () => {
     const state = getState();
-    seedFixedAddon(state.homeDir, 'chat');
-    seedEnabledAddons(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'discord');
+    seedEnabledAddons(state.homeDir, 'discord');
 
-    const res = await GET(makeGetEvent('chat'));
+    const res = await GET(makeGetEvent('discord'));
     expect(res.status).toBe(200);
 
     const body = await res.json() as {
@@ -89,12 +89,11 @@ describe('/admin/addons/:name route', () => {
       enabled: boolean;
       config: { schemaPath: string; userEnvPath: string; envSchema: string };
     };
-    expect(body.name).toBe('chat');
+    expect(body.name).toBe('discord');
     expect(body.enabled).toBe(true);
     expect(body.config.schemaPath).toBe(''); // built-in (in-code) schema, no materialized file
     expect(body.config.userEnvPath).toBe('knowledge/env/stack.env');
-    // chat schema is a header-only stub (no HMAC secret rows after D4 removal).
-    expect(body.config.envSchema).toContain('Web Chat portal configuration');
+    expect(body.config.envSchema).toContain('DISCORD_BOT_TOKEN');
   });
 
   test('returns 404 for unknown addons', async () => {
@@ -104,9 +103,9 @@ describe('/admin/addons/:name route', () => {
 
   test('returns disabled when addon is in catalog but not in stack/addons', async () => {
     const state = getState();
-    seedFixedAddon(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'discord');
 
-    const res = await GET(makeGetEvent('chat'));
+    const res = await GET(makeGetEvent('discord'));
     expect(res.status).toBe(200);
     const body = await res.json() as { enabled: boolean };
     expect(body.enabled).toBe(false);
@@ -115,7 +114,7 @@ describe('/admin/addons/:name route', () => {
 
 describe('POST /admin/addons/:name', () => {
   test('requires admin token', async () => {
-    const res = await POST(makePostEvent('chat', { enabled: true }, 'bad-token'));
+    const res = await POST(makePostEvent('discord', { enabled: true }, 'bad-token'));
     expect(res.status).toBe(401);
   });
 
@@ -126,26 +125,26 @@ describe('POST /admin/addons/:name', () => {
 
   test('enables an addon by updating stack.env', async () => {
     const state = getState();
-    seedFixedAddon(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'discord');
 
-    const res = await POST(makePostEvent('chat', { enabled: true }));
+    const res = await POST(makePostEvent('discord', { enabled: true }));
     expect(res.status).toBe(200);
 
     const body = await res.json() as { ok: boolean; addon: string; enabled: boolean; changed: boolean };
     expect(body.ok).toBe(true);
-    expect(body.addon).toBe('chat');
+    expect(body.addon).toBe('discord');
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
 
-    expect(readStackEnvFile(state.homeDir)).toContain('OP_ENABLED_ADDONS=chat');
+    expect(readStackEnvFile(state.homeDir)).toContain('OP_ENABLED_ADDONS=discord');
   });
 
   test('disables an addon by updating stack.env', async () => {
     const state = getState();
-    seedFixedAddon(state.homeDir, 'chat');
-    seedEnabledAddons(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'discord');
+    seedEnabledAddons(state.homeDir, 'discord');
 
-    const res = await POST(makePostEvent('chat', { enabled: false }));
+    const res = await POST(makePostEvent('discord', { enabled: false }));
     expect(res.status).toBe(200);
 
     const body = await res.json() as { ok: boolean; enabled: boolean; changed: boolean };
@@ -153,15 +152,15 @@ describe('POST /admin/addons/:name', () => {
     expect(body.enabled).toBe(false);
     expect(body.changed).toBe(true);
 
-    expect(readStackEnvFile(state.homeDir)).not.toContain('chat');
+    expect(readStackEnvFile(state.homeDir)).not.toContain('discord');
   });
 
   test('reports changed=false when already in target state', async () => {
     const state = getState();
-    seedFixedAddon(state.homeDir, 'chat');
+    seedFixedAddon(state.homeDir, 'discord');
 
     // Already disabled, request disable again
-    const res = await POST(makePostEvent('chat', { enabled: false }));
+    const res = await POST(makePostEvent('discord', { enabled: false }));
     expect(res.status).toBe(200);
 
     const body = await res.json() as { changed: boolean };

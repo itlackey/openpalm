@@ -39,7 +39,7 @@ afterEach(() => {
 
 describe('builtin addon metadata', () => {
   it('returns static built-in addon ids', () => {
-    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice']);
+    expect(listAvailableAddonIds()).toEqual(['api', 'discord', 'ollama', 'slack', 'voice']);
   });
 
   it('returns built-in addon schemas without registry materialization', () => {
@@ -53,7 +53,7 @@ describe('builtin addon metadata', () => {
     expect(slack.envSchema).not.toContain('SLACK_THREAD_TTL_HOURS');
     expect(slack.envSchema).not.toContain('SLACK_FORWARD_TIMEOUT_MS');
     expect(ollama.envSchema).toBe('');
-    expect(getRegistryAddonConfig('ssh').envSchema).toBe('');
+    expect(getRegistryAddonConfig('ollama').envSchema).toBe('');
   });
 
   it('reads the bundled akm-improve automation', () => {
@@ -90,15 +90,15 @@ describe('addon runtime state', () => {
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
 
-    const enabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', true);
+    const enabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'discord', true);
     expect(enabled.ok).toBe(true);
     expect(enabled.enabled).toBe(true);
     expect(enabled.changed).toBe(true);
     expect(enabled.services).toEqual(expect.arrayContaining(['guardian']));
-    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['chat']);
-    expect(readSecret(stackDir, 'portal_chat_secret')).toBeTruthy();
+    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['discord']);
+    expect(readSecret(stackDir, 'portal_discord_secret')).toBeTruthy();
 
-    const disabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'chat', false);
+    const disabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'discord', false);
     expect(disabled.ok).toBe(true);
     expect(disabled.enabled).toBe(false);
     expect(disabled.changed).toBe(true);

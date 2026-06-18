@@ -1171,10 +1171,10 @@ ipcMain.handle('restart-ui-server', async (): Promise<boolean> => {
   return restartUIServer();
 });
 
-// The UI child (admin "install UI version" route) sends SIGHUP to this parent
+// The UI child (admin "install UI version" route) sends SIGUSR2 to this parent
 // after seeding a newer data/ui. Same effect as the IPC path: respawn the UI
 // server child so the new lib loads (design §6.2).
-process.on('SIGHUP', () => { void restartUIServer(); });
+process.on('SIGUSR2', () => { void restartUIServer(); });
 
 // Open the official Docker install page (Docker-missing preflight screen).
 ipcMain.on('open-docker-install', () => {

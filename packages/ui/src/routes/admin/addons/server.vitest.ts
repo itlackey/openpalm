@@ -79,29 +79,27 @@ describe('GET /admin/addons', () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = await res.json() as { addons: unknown[] };
-    expect(body.addons).toHaveLength(8);
+    expect(body.addons).toHaveLength(5);
   });
 
   test('lists available addons with enabled status', async () => {
     const state = getState();
-    enableAddon(state.homeDir, 'chat');
+    enableAddon(state.homeDir, 'discord');
 
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
 
     const body = await res.json() as { addons: Array<{ name: string; enabled: boolean; available: boolean }> };
-    expect(body.addons).toHaveLength(8);
+    expect(body.addons).toHaveLength(5);
 
-    const chat = body.addons.find((a) => a.name === 'chat');
     const discord = body.addons.find((a) => a.name === 'discord');
-    expect(chat).toEqual({ name: 'chat', enabled: true, available: true });
-    expect(discord).toEqual({ name: 'discord', enabled: false, available: true });
+    expect(discord).toEqual({ name: 'discord', enabled: true, available: true });
   });
 });
 
 describe('POST /admin/addons', () => {
   test('requires admin token', async () => {
-    const res = await POST(makePostEvent({ name: 'chat', enabled: true }, 'bad-token'));
+    const res = await POST(makePostEvent({ name: 'discord', enabled: true }, 'bad-token'));
     expect(res.status).toBe(401);
   });
 
@@ -117,31 +115,31 @@ describe('POST /admin/addons', () => {
 
   test('enables an addon', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat');
+    seedRegistryAddon(state.homeDir, 'discord');
 
-    const res = await POST(makePostEvent({ name: 'chat', enabled: true }));
+    const res = await POST(makePostEvent({ name: 'discord', enabled: true }));
     expect(res.status).toBe(200);
 
     const body = await res.json() as { ok: boolean; addon: string; enabled: boolean; changed: boolean };
     expect(body.ok).toBe(true);
-    expect(body.addon).toBe('chat');
+    expect(body.addon).toBe('discord');
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
-    expect(readEnabledAddonsEnv(state.homeDir)).toContain('OP_ENABLED_ADDONS=chat');
+    expect(readEnabledAddonsEnv(state.homeDir)).toContain('OP_ENABLED_ADDONS=discord');
   });
 
   test('disables an enabled addon', async () => {
     const state = getState();
-    seedRegistryAddon(state.homeDir, 'chat');
-    enableAddon(state.homeDir, 'chat');
+    seedRegistryAddon(state.homeDir, 'discord');
+    enableAddon(state.homeDir, 'discord');
 
-    const res = await POST(makePostEvent({ name: 'chat', enabled: false }));
+    const res = await POST(makePostEvent({ name: 'discord', enabled: false }));
     expect(res.status).toBe(200);
 
     const body = await res.json() as { ok: boolean; enabled: boolean };
     expect(body.ok).toBe(true);
     expect(body.enabled).toBe(false);
-    expect(readEnabledAddonsEnv(state.homeDir)).not.toContain('chat');
+    expect(readEnabledAddonsEnv(state.homeDir)).not.toContain('discord');
   });
 
   // Source-of-truth regression: state.services seeds guardian (channel ingress)
@@ -150,14 +148,14 @@ describe('POST /admin/addons', () => {
   // "stopped" service that no longer belongs to the stack.
   test('disabling the last channel drops guardian from the rebuilt state', async () => {
     const homeDir = getState().homeDir;
-    seedRegistryAddon(homeDir, 'chat');
-    enableAddon(homeDir, 'chat');
+    seedRegistryAddon(homeDir, 'discord');
+    enableAddon(homeDir, 'discord');
     // Rebuild the singleton from disk so it reflects the enabled channel — this
     // is the state a freshly-started host process would have.
     resetState('admin-token');
     expect(getState().services.guardian).toBeDefined();
 
-    const res = await POST(makePostEvent({ name: 'chat', enabled: false }));
+    const res = await POST(makePostEvent({ name: 'discord', enabled: false }));
     expect(res.status).toBe(200);
 
     // The toggle must have busted the singleton; the next getState() re-derives

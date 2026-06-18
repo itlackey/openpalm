@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 import { defineCommand, runCommand, runMain } from 'citty';
-import { join } from 'node:path';
 import cliPkg from '../package.json' with { type: 'json' };
-import { resolveConfigDir } from '@openpalm/lib';
+import { classifyLocalInstall, resolveStackDir } from '@openpalm/lib';
 
 // Re-export public API used by tests and external consumers
 export { detectHostInfo } from './lib/host-info.ts';
@@ -52,8 +51,7 @@ async function isAssistantHealthy(): Promise<boolean> {
  * subcommand.
  */
 async function autoRun(opts: BareRunOpts = {}): Promise<void> {
-  const stackEnv = join(resolveConfigDir(), 'stack', 'stack.env');
-  const isInstalled = await Bun.file(stackEnv).exists();
+  const isInstalled = classifyLocalInstall(resolveStackDir()) !== 'not_installed';
 
   if (!isInstalled) {
     const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts') as any;
