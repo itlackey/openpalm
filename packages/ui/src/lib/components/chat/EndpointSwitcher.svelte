@@ -47,38 +47,46 @@
   .trigger {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: 0 var(--space-3);
-    height: 40px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 8px);
-    font-size: var(--text-sm);
-    color: var(--color-text);
+    gap: var(--s-sp-2);
+    padding: 0 var(--s-sp-3);
+    height: 32px;
+    background: none;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
     cursor: pointer;
     max-width: 240px;
     overflow: hidden;
+    transition: color 120ms ease, border-color 120ms ease;
   }
   .trigger:hover:not(:disabled) {
-    background: var(--color-surface-hover);
+    color: var(--s-ink-2);
+    border-color: var(--s-line);
+  }
+  .trigger:focus-visible {
+    outline: var(--s-hair) solid var(--s-line);
+    outline-offset: 2px;
   }
   .trigger:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     cursor: progress;
   }
 
-  /* Always show the icon so the trigger stays recognizable when the label is
-     hidden at narrow widths (the drawer is the only switcher below 1024px). */
   .trigger-icon {
     flex-shrink: 0;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-3);
   }
 
+  /* Moss dot = connected/active */
   .dot {
-    width: 8px;
-    height: 8px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: var(--color-success, #16a34a);
+    background: var(--s-moss);
     flex-shrink: 0;
   }
 
@@ -90,7 +98,7 @@
   }
 
   .caret {
-    font-size: 10px;
-    opacity: 0.6;
+    font-size: 9px;
+    opacity: 0.5;
   }
 </style>

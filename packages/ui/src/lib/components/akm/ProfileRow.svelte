@@ -33,22 +33,35 @@
 
 <style>
 	.profile-row {
-		display: flex; align-items: center; gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-		background: var(--color-bg-secondary);
+		display: flex; align-items: center; gap: var(--s-sp-2);
+		padding: var(--s-sp-2) var(--s-sp-3);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
 	}
-	.profile-row-name { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.profile-row-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+	.profile-row-name {
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
+		flex: 1; min-width: 0;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.profile-row-actions { display: flex; gap: var(--s-sp-2); flex-shrink: 0; }
 
 	.badge {
-		font-size: var(--text-xs); padding: 2px var(--space-2); border-radius: var(--radius-sm);
-		background: var(--color-bg-tertiary, var(--color-bg-secondary)); color: var(--color-text-secondary);
-		border: 1px solid var(--color-border); white-space: nowrap; flex-shrink: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		padding: 1px var(--s-sp-2);
+		border-radius: 2px;
+		background: color-mix(in srgb, var(--s-ink) 4%, var(--s-paper));
+		color: var(--s-ink-3);
+		border: var(--s-hair) solid var(--s-line-soft);
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 	.badge--default {
-		background: var(--color-primary-subtle, rgba(99, 102, 241, 0.1));
-		color: var(--color-primary, #6366f1);
-		border-color: var(--color-primary-border, rgba(99, 102, 241, 0.3));
+		color: var(--s-seal);
+		border-color: var(--s-seal);
+		background: color-mix(in srgb, var(--s-seal) 6%, var(--s-paper));
 	}
 </style>

@@ -4,6 +4,43 @@ name: Publish npm package
 # Platform-coupled packages ship via release.yml.
 
 on:
+  workflow_dispatch:
+    inputs:
+      package-dir:
+        description: 'Package directory (e.g. packages/ui)'
+        required: true
+        type: string
+        default: 'packages/ui'
+      package-name:
+        description: 'npm package name (e.g. @openpalm/ui)'
+        required: true
+        type: string
+        default: '@openpalm/ui'
+      needs-build:
+        description: 'Run bun run build before packing'
+        required: false
+        type: boolean
+        default: false
+      version:
+        description: 'Explicit version or bump keyword (e.g. 0.12.14-rc.1, patch, prerelease). Empty = auto patch bump.'
+        required: false
+        type: string
+        default: ''
+      ref:
+        description: 'Branch/ref to publish from. Empty = triggering ref.'
+        required: false
+        type: string
+        default: ''
+      exact-version:
+        description: 'Publish exactly `version` with NO bump and NO commit-back.'
+        required: false
+        type: boolean
+        default: false
+      dry-run:
+        description: 'Pack + validate but do NOT npm publish or commit.'
+        required: false
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       package-dir:
@@ -179,7 +216,11 @@ jobs:
             exit 0
           fi
           TAG_ARGS=""
-          if echo "${VERSION}" | grep -qE -- '-'; then
+          if echo "${VERSION}" | grep -qE -- '-rc\.'; then
+            TAG_ARGS="--tag rc"
+          elif echo "${VERSION}" | grep -qE -- '-beta\.'; then
+            TAG_ARGS="--tag beta"
+          elif echo "${VERSION}" | grep -qE -- '-'; then
             TAG_ARGS="--tag next"
           fi
           npm publish "${TARBALL}" --provenance --access public ${TAG_ARGS} || {

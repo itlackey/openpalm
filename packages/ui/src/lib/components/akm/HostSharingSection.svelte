@@ -137,17 +137,51 @@
 </div>
 
 <style>
-  .panel-header { margin-bottom: var(--space-5); }
-  .panel-header h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); }
-  .config-section { display: flex; flex-direction: column; gap: var(--space-3); }
-  .section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; max-width: 68ch; }
-  .hs-restart { font-size: var(--text-sm); color: var(--color-badge-warning-fg); font-weight: var(--font-medium); margin: 0; }
-  .hs-loading { display: flex; align-items: center; gap: var(--space-2); color: var(--color-text-secondary); font-size: var(--text-sm); }
-  .controls--grid { display: grid; grid-template-columns: 1fr; gap: var(--space-4); }
-  .control-group { display: flex; flex-direction: column; gap: var(--space-2); }
-  .control-label { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
-  .control-label--checkbox { flex-direction: row; align-items: center; gap: var(--space-2); font-weight: var(--font-normal); }
-  .host-akm-status { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-  .host-akm-path { font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .host-akm-actions { flex-direction: row; gap: var(--space-2); flex-wrap: wrap; }
+  .panel-header { margin-bottom: var(--s-sp-5); }
+  .panel-header h2 {
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-voice);
+    font-weight: 400;
+    color: var(--s-ink);
+  }
+  .config-section { display: flex; flex-direction: column; gap: var(--s-sp-3); }
+  .section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; max-width: 68ch; }
+  .hs-restart {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-seal);
+    margin: 0;
+  }
+  .hs-loading {
+    display: flex; align-items: center; gap: var(--s-sp-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-3);
+  }
+  .controls--grid { display: grid; grid-template-columns: 1fr; gap: var(--s-sp-4); }
+  .control-group { display: flex; flex-direction: column; gap: var(--s-sp-2); }
+  .control-label {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+  }
+  .control-label--checkbox {
+    flex-direction: row; align-items: center; gap: var(--s-sp-2);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--s-ink-2);
+  }
+  .control-label--checkbox input[type="checkbox"] { accent-color: var(--s-seal); }
+  .host-akm-status { display: flex; align-items: center; gap: var(--s-sp-3); flex-wrap: wrap; }
+  .host-akm-path {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-ink-3);
+  }
+  .host-akm-actions { flex-direction: row; gap: var(--s-sp-2); flex-wrap: wrap; }
 </style>

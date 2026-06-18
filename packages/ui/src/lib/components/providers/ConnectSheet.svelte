@@ -337,53 +337,52 @@
 		padding: 0;
 		background: none;
 		border: none;
-		border-radius: var(--radius-sm);
-		color: var(--color-text-secondary);
-		font-size: var(--text-lg);
+		border-radius: 2px;
+		color: var(--s-ink-2);
+		font-size: var(--s-type-voice);
 		cursor: pointer;
 		flex-shrink: 0;
 	}
 	.connect-back:hover {
-		background: var(--color-surface-hover);
-		color: var(--color-text);
+		color: var(--s-ink);
 	}
 	.connect-back:focus-visible {
-		outline: 2px solid var(--color-primary);
+		outline: var(--s-hair) solid var(--s-seal);
 		outline-offset: 2px;
 	}
 	.auth-method-group {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-2);
+		gap: var(--s-sp-2);
 	}
 
 	.auth-method-card {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
+		gap: var(--s-sp-1);
+		padding: var(--s-sp-3) var(--s-sp-4);
+		background: none;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
 		cursor: pointer;
 		text-align: left;
 		font-family: inherit;
-		transition: border-color var(--transition-fast), background var(--transition-fast);
 	}
 
 	.auth-method-card:hover {
-		border-color: var(--color-border-hover);
-		background: var(--color-surface-hover);
+		border-color: var(--s-ink-2);
+		background: color-mix(in srgb, var(--s-ink) 4%, var(--s-paper));
 	}
 
 	.method-label {
-		font-size: var(--text-sm);
-		font-weight: var(--font-medium);
-		color: var(--color-text);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
 	}
 
 	.method-type {
-		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
 	}
 </style>

@@ -177,15 +177,18 @@
   .tile-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--space-4);
-    margin-bottom: var(--space-8);
+    gap: var(--s-sp-4);
+    margin-bottom: var(--s-sp-8);
   }
 
   /* ── Section headings ── */
   .section-heading {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    margin-bottom: var(--space-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
+    margin-bottom: var(--s-sp-3);
   }
 </style>

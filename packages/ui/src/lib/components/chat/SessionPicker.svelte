@@ -58,37 +58,49 @@
   .trigger {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: 0 var(--space-3);
-    height: 40px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 8px);
-    font-size: var(--text-sm);
-    color: var(--color-text);
+    gap: var(--s-sp-2);
+    padding: 0 var(--s-sp-3);
+    height: 32px;
+    background: none;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
     cursor: pointer;
     max-width: 240px;
     overflow: hidden;
+    transition: color 120ms ease, border-color 120ms ease;
   }
   .trigger:hover {
-    background: var(--color-surface-hover);
+    color: var(--s-ink-2);
+    border-color: var(--s-line);
+  }
+  .trigger:focus-visible {
+    outline: var(--s-hair) solid var(--s-line);
+    outline-offset: 2px;
   }
 
   .trigger-icon {
     flex-shrink: 0;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-3);
   }
 
+  /* Dot: muted when disconnected, moss when connected/live */
   .dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: var(--color-text-tertiary);
+    background: var(--s-ink-3);
     flex-shrink: 0;
     transition: background 120ms ease;
+    opacity: 0.5;
   }
   .dot.connected {
-    background: var(--color-success, #16a34a);
+    background: var(--s-moss);
+    opacity: 1;
   }
 
   .label {
@@ -99,7 +111,7 @@
   }
 
   .caret {
-    font-size: 10px;
-    opacity: 0.6;
+    font-size: 9px;
+    opacity: 0.5;
   }
 </style>

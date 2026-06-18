@@ -88,57 +88,50 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    background: var(--color-navbar-bg);
-    border-bottom: 1px solid var(--color-border);
-  }
-  .navbar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    backdrop-filter: blur(12px);
-    pointer-events: none;
+    background: var(--s-paper);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    height: 52px;
   }
 
   .navbar-inner {
     width: 100%;
-    padding: 0 var(--space-4);
-    height: var(--nav-height);
+    padding: 0 var(--s-sp-5);
+    height: 52px;
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
   }
 
   /* ── Brand ── */
   .navbar-brand {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     flex-shrink: 0;
     text-decoration: none;
-    border-radius: var(--radius-sm);
   }
   .navbar-brand:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-seal);
     outline-offset: 2px;
   }
   .brand-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
     flex-shrink: 0;
   }
   .brand-icon img {
-    max-width: 34px;
+    max-width: 28px;
     display: block;
   }
   .brand-text {
-    font-size: var(--text-lg);
-    font-weight: var(--font-bold);
-    color: var(--color-text);
-    letter-spacing: -0.01em;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
     white-space: nowrap;
   }
 
@@ -146,7 +139,7 @@
   .navbar-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     margin-left: auto;
     min-width: 0;
   }
@@ -162,7 +155,7 @@
   .chat-selectors {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
   @media (min-width: 1024px) {
     .chat-selectors {
@@ -184,8 +177,8 @@
       display: none;
     }
     .navbar-inner {
-      padding: 0 var(--space-3);
-      gap: var(--space-2);
+      padding: 0 var(--s-sp-3);
+      gap: var(--s-sp-2);
     }
     /* Drop only the caret at narrow widths so the cluster fits a 320px viewport;
        keep the status dot — it visually distinguishes the two picker triggers
@@ -199,15 +192,15 @@
      switcher padding + gutters so the cluster still fits within 320px. */
   @media (max-width: 400px) {
     .navbar-inner {
-      padding: 0 var(--space-2);
-      gap: var(--space-1);
+      padding: 0 var(--s-sp-2);
+      gap: var(--s-sp-1);
     }
     .navbar-actions {
-      gap: var(--space-1);
+      gap: var(--s-sp-1);
     }
     .navbar-actions :global(.trigger) {
-      padding-left: var(--space-2);
-      padding-right: var(--space-2);
+      padding-left: var(--s-sp-2);
+      padding-right: var(--s-sp-2);
     }
   }
 </style>

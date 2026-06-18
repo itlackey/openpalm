@@ -294,143 +294,139 @@
 	.voice-control {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--s-sp-2);
 	}
 
+	/* Interim transcript chip — mono, muted */
 	.voice-interim {
 		max-width: 200px;
-		font-size: var(--text-xs);
-		color: var(--color-text-secondary);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		padding: 2px var(--space-2);
-		background: var(--color-surface-hover);
-		border-radius: var(--radius-sm);
-		border: 1px solid var(--color-border);
+		padding: 2px var(--s-sp-2);
+		background: none;
+		border: var(--s-hair) solid var(--s-line-soft);
+		border-radius: 2px;
 		flex-shrink: 1;
 		min-width: 0;
 	}
 
-	/* Scoped "click to resume" banner — replaces the old document-wide
-	   click listener so unrelated clicks never trigger stale audio. */
+	/* Autoplay resume banner */
 	.voice-autoplay-banner {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		padding: 4px var(--space-3);
-		height: 32px;
-		background: var(--color-primary-subtle);
-		border: 1px solid var(--color-primary);
-		border-radius: var(--radius-md);
-		color: var(--color-primary);
-		font-size: var(--text-xs);
-		font-weight: var(--font-medium);
+		gap: var(--s-sp-2);
+		padding: 4px var(--s-sp-3);
+		height: 28px;
+		background: none;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
+		color: var(--s-ink-3);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
 		cursor: pointer;
 		white-space: nowrap;
-		transition: filter var(--transition-fast);
+		transition: color 120ms ease, border-color 120ms ease;
 	}
 	.voice-autoplay-banner:hover {
-		filter: brightness(1.05);
+		color: var(--s-ink-2);
+		border-color: var(--s-line);
 	}
 	.voice-autoplay-banner:focus-visible {
-		outline: 2px solid var(--color-primary);
+		outline: var(--s-hair) solid var(--s-line);
 		outline-offset: 2px;
 	}
 
+	/* Glyph buttons — flat, no border, no bg */
 	.voice-btn {
 		position: relative;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 40px;
-		height: 40px;
+		width: 36px;
+		height: 36px;
 		padding: 0;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		color: var(--color-text-secondary);
+		background: none;
+		border: 0;
+		border-radius: 0;
+		color: var(--s-ink-3);
 		cursor: pointer;
-		transition: all var(--transition-fast);
+		transition: color 120ms ease;
 		flex-shrink: 0;
 	}
 
 	.voice-btn:hover {
-		color: var(--color-text);
-		border-color: var(--color-border-hover);
-		background: var(--color-surface-hover);
+		color: var(--s-ink-2);
 	}
 
 	.voice-btn:focus-visible {
-		outline: 2px solid var(--color-primary);
-		outline-offset: -2px;
+		outline: var(--s-hair) solid var(--s-line);
+		outline-offset: 2px;
 	}
 
+	/* Mic recording — cinnabar glow (seal) */
 	.voice-btn-active {
-		color: var(--color-danger);
-		border-color: var(--color-danger);
-		background: var(--color-danger-bg);
+		color: var(--s-seal);
 	}
 
 	.voice-btn-active:hover {
-		color: var(--color-danger);
-		border-color: var(--color-danger);
+		color: var(--s-seal);
 	}
 
-	/* Speaker toggle "on" state — distinct from the mic's recording-active state. */
+	/* Speaker "on" — moss (sage) to indicate live/connected */
 	.voice-btn-on {
-		color: var(--color-primary);
-		border-color: var(--color-primary);
-		background: var(--color-primary-subtle);
+		color: var(--s-moss);
 	}
 
 	.voice-btn-on:hover {
-		color: var(--color-primary);
-		border-color: var(--color-primary);
+		color: var(--s-moss);
 	}
 
-	/* Speaker actively playing audio — slightly brighter background. */
+	/* Speaker actively playing — same moss, no shadow */
 	.voice-btn-speaking {
-		background: var(--color-primary-subtle);
-		box-shadow: 0 0 0 2px var(--color-primary-subtle);
+		color: var(--s-moss);
 	}
 
-	/* Mic mid-send: dimmed; disabled cursor is set by the [disabled] attribute. */
+	/* Mic mid-send: dimmed */
 	.voice-btn-processing {
-		color: var(--color-text-tertiary);
+		color: var(--s-ink-3);
+		opacity: 0.4;
 		cursor: not-allowed;
 	}
 
-	/* Voice unavailable: visible but clearly inert (mic-off icon). */
+	/* Voice unavailable */
 	.voice-btn-disabled,
 	.voice-btn:disabled {
-		color: var(--color-text-tertiary);
-		background: var(--color-bg);
+		color: var(--s-ink-3);
+		opacity: 0.35;
 		cursor: not-allowed;
-		opacity: 0.7;
 	}
 	.voice-btn-disabled:hover {
-		color: var(--color-text-tertiary);
-		border-color: var(--color-border);
-		background: var(--color-bg);
+		color: var(--s-ink-3);
 	}
 
+	/* Recording pulse ring — cinnabar */
 	.voice-pulse {
 		position: absolute;
 		inset: -3px;
-		border: 2px solid var(--color-danger);
-		border-radius: var(--radius-md);
+		border: 1px solid var(--s-seal);
+		border-radius: 0;
 		opacity: 0;
 		animation: voice-pulse-anim 1.5s ease-out infinite;
 		pointer-events: none;
 	}
 
-	/* Processing spinner inside the mic button. */
+	/* Processing spinner inside the mic button */
 	.voice-spinner {
 		display: inline-block;
 		width: 14px;
 		height: 14px;
-		border: 2px solid currentColor;
+		border: 1px solid currentColor;
 		border-right-color: transparent;
 		border-radius: 50%;
 		animation: voice-spinner-anim 0.7s linear infinite;
@@ -442,7 +438,7 @@
 		}
 	}
 
-	/* Speaker wave animation while speaking. */
+	/* Speaker wave animation while speaking */
 	.wave-anim {
 		animation: wave-pulse-anim 1.2s ease-in-out infinite;
 		transform-origin: 11px 12px;
@@ -464,12 +460,12 @@
 
 	@keyframes voice-pulse-anim {
 		0% {
-			opacity: 0.6;
+			opacity: 0.5;
 			transform: scale(1);
 		}
 		100% {
 			opacity: 0;
-			transform: scale(1.3);
+			transform: scale(1.35);
 		}
 	}
 
@@ -481,7 +477,7 @@
 			animation: none;
 		}
 		.voice-pulse {
-			opacity: 0.4;
+			opacity: 0.3;
 		}
 	}
 

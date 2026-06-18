@@ -40,37 +40,47 @@
   .shortcut-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
   }
   .shortcut {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: var(--space-4);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    gap: var(--s-sp-1);
+    padding: var(--s-sp-4) var(--s-sp-4);
+    appearance: none;
+    background: none;
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
     cursor: pointer;
     text-align: left;
     text-decoration: none;
-    font-family: var(--font-sans);
-    transition: border-color var(--transition-fast), background var(--transition-fast);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    transition: border-color 0.12s ease, color 0.12s ease;
   }
   .shortcut:hover {
-    border-color: var(--color-border-hover);
-    background: var(--color-surface-hover);
+    border-color: var(--s-line);
+    color: var(--s-ink-2);
   }
   .shortcut:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-seal);
     outline-offset: 2px;
   }
   .shortcut-name {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink);
   }
   .shortcut-desc {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--s-ink-2);
   }
 </style>

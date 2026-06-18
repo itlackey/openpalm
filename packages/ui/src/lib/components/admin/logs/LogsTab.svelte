@@ -227,17 +227,17 @@
   .controls {
     display: flex;
     align-items: flex-end;
-    gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
+    gap: var(--s-sp-4);
+    padding: var(--s-sp-4) var(--s-sp-6);
+    border-bottom: var(--s-hair) solid var(--s-line);
+    background: var(--s-paper-deep);
     flex-wrap: wrap;
   }
 
   .control-group {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--s-sp-1);
   }
 
   .control-group--toggle {
@@ -249,87 +249,86 @@
   }
 
   .control-label {
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
-    text-transform: none;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
   }
 
   .control-input {
     height: 32px;
-    padding: 0 var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-family: inherit;
+    padding: 0 var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
     min-width: 140px;
   }
 
   .control-input:focus {
     outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-subtle);
+    border-color: var(--s-ink-2);
   }
 
   .source-switch {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--s-sp-1);
     padding: 4px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    background: var(--color-bg);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
   }
 
   .source-pill {
-    min-height: 36px;
-    padding: 0 var(--space-3);
+    min-height: 32px;
+    padding: 0 var(--s-sp-3);
     border: none;
-    border-radius: var(--radius-full);
+    border-radius: 2px;
     background: transparent;
-    color: var(--color-text-secondary);
-    font: inherit;
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
     cursor: pointer;
   }
 
   .source-pill:hover {
-    background: var(--color-bg-secondary);
-    color: var(--color-text);
+    background: color-mix(in srgb, var(--s-ink) 4%, var(--s-paper));
+    color: var(--s-ink-2);
   }
 
   .source-pill--active {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text);
-    box-shadow: inset 0 0 0 1px var(--color-border);
+    background: color-mix(in srgb, var(--s-ink) 6%, var(--s-paper));
+    color: var(--s-ink);
+    border: var(--s-hair) solid var(--s-line);
   }
 
   .toggle-label {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    gap: var(--s-sp-2);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     cursor: pointer;
     height: 32px;
-  }
-
-  .toggle-label input {
-    accent-color: var(--color-primary);
   }
 
   /* ── Log Output ───────────────────────────────────────────────── */
 
   .log-output {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);  /* 12px — rubric minimum; was 11px */
-    line-height: 1.6;
-    color: var(--color-text);
-    background: var(--color-bg);
-    padding: var(--space-4) var(--space-5);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    line-height: 1.7;
+    color: var(--s-ink-2);
+    background: color-mix(in srgb, var(--s-ink) 3%, var(--s-paper));
+    border: var(--s-hair) solid var(--s-line-soft);
+    padding: var(--s-sp-4) var(--s-sp-6);
     margin: 0;
     white-space: pre-wrap;
     word-break: break-all;
@@ -341,11 +340,11 @@
   /* ── Error ────────────────────────────────────────────────────── */
 
   .error-banner {
-    padding: var(--space-3) var(--space-5);
-    background: var(--color-danger-bg);
-    border-bottom: 1px solid var(--color-danger-border, rgba(255, 107, 107, 0.25));
-    color: var(--color-danger);
-    font-size: var(--text-sm);
+    padding: var(--s-sp-3) var(--s-sp-6);
+    border-bottom: var(--s-hair) solid var(--s-seal);
+    color: var(--s-seal);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
   }
 
   @media (max-width: 768px) {
@@ -369,8 +368,6 @@
 
     .log-output {
       max-height: 400px;
-      font-size: var(--text-xs);  /* keep at 12px minimum even on mobile */
     }
   }
-
 </style>

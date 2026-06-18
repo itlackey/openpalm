@@ -116,11 +116,11 @@
       {#if loading}
         <Spinner size={16} />
       {:else if result?.docker.ok}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #16a34a)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--s-moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       {:else}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--s-seal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       {/if}
@@ -147,11 +147,11 @@
       {#if loading}
         <Spinner size={16} />
       {:else if result?.compose.ok}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #16a34a)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--s-moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       {:else}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--s-seal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       {/if}
@@ -174,7 +174,7 @@
   {#if result?.gpu}
     <div class="syscheck-row syscheck-row--ok">
       <div class="syscheck-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #16a34a)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--s-moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
@@ -203,7 +203,7 @@
   {#if result && portConflicts.length > 0}
     <div class="syscheck-row {hasBlockingConflict ? 'syscheck-row--fail' : 'syscheck-row--warn'}">
       <div class="syscheck-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hasBlockingConflict ? 'var(--color-danger)' : 'var(--color-warning)'} stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={hasBlockingConflict ? 'var(--s-seal)' : 'var(--s-ink-2)'} stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 9v4"/><path d="M12 17h.01"/>
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
         </svg>
@@ -243,19 +243,19 @@
     display: flex;
     gap: 12px;
     padding: 12px 14px;
-    border: 1px solid var(--color-border, #e5e7eb);
+    border: var(--s-hair) solid var(--s-line);
     border-radius: 8px;
-    background: var(--color-bg, #fff);
+    background: var(--s-paper);
   }
-  .syscheck-row--ok { background: var(--color-success-bg); border-color: var(--color-success-border); }
-  .syscheck-row--fail { background: var(--color-danger-bg); border-color: var(--color-danger-border); }
-  .syscheck-row--warn { background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+  .syscheck-row--ok { background: color-mix(in srgb, var(--s-moss) 12%, transparent); border-color: color-mix(in srgb, var(--s-moss) 25%, transparent); }
+  .syscheck-row--fail { background: color-mix(in srgb, var(--s-seal) 8%, transparent); border-color: color-mix(in srgb, var(--s-seal) 25%, transparent); }
+  .syscheck-row--warn { background: color-mix(in srgb, var(--s-ink) 4%, var(--s-paper)); border-color: var(--s-line); }
   /* Info rows: neutral blue tint — informational only, no pass/fail signal.
      Uses --color-info-bg/border tokens if present; falls back to a blue-50/blue-200
      pair that clears 4.5:1 AA contrast for --color-text on both light and dark themes. */
   .syscheck-row--info {
-    background: var(--color-info-bg, #eff6ff);
-    border-color: var(--color-info-border, #bfdbfe);
+    background: color-mix(in srgb, var(--s-moss) 8%, var(--s-paper));
+    border-color: color-mix(in srgb, var(--s-moss) 25%, transparent);
   }
   .syscheck-icon {
     flex: 0 0 24px;
@@ -269,26 +269,26 @@
     line-height: 1;
   }
   .syscheck-body { flex: 1; min-width: 0; }
-  .syscheck-title { font-weight: 600; font-size: var(--text-sm, 0.875rem); }
+  .syscheck-title { font-weight: 600; font-size: var(--s-type-deed); }
   /* meta + hint sit inside the tinted status rows (success/danger/warning bg);
      --color-text-secondary falls just under AA (4.5:1) on those light tints, so
      use the primary text token — AA on every tint in both themes. Hierarchy is
      held by the 600-weight, larger .syscheck-title above. */
   .syscheck-meta {
     margin-top: 2px;
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
   .syscheck-hint {
     margin-top: 4px;
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
   .syscheck-link {
     display: inline-block;
     margin-top: 6px;
-    color: var(--color-primary, #4f6ef7);
-    font-size: var(--text-xs, 0.75rem);
+    color: var(--s-seal);
+    font-size: var(--s-type-deed);
     text-decoration: none;
     font-weight: 500;
   }

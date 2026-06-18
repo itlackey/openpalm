@@ -332,11 +332,11 @@
   }
 
   .addon-row {
-    border-top: 1px solid var(--color-border);
+    border-top: var(--s-hair) solid var(--s-line);
   }
 
   .addon-row:last-child {
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: var(--s-hair) solid var(--s-line);
   }
 
   /* Row header: icon + text + toggle on one line */
@@ -370,15 +370,15 @@
   }
 
   .addon-title {
-    font-size: var(--text-lg, 1rem);
+    font-size: var(--s-type-whisper);
     font-weight: 500;
-    color: var(--color-text);
+    color: var(--s-ink);
     line-height: 1.3;
   }
 
   .addon-sub {
-    font-size: var(--text-sm, 0.8125rem);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     margin-top: 3px;
     line-height: 1.45;
   }
@@ -408,13 +408,13 @@
   .toggle-track {
     position: absolute;
     inset: 0;
-    border-radius: var(--radius-full, 9999px);
-    background: var(--color-border-hover);
+    border-radius: 9999px;
+    background: var(--s-line);
     transition: background 200ms;
   }
 
   .toggle input:checked + .toggle-track {
-    background: var(--color-primary);
+    background: var(--s-seal);
   }
 
   .toggle-thumb {
@@ -425,7 +425,6 @@
     height: 18px;
     border-radius: 50%;
     background: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
     transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: none;
   }
@@ -435,7 +434,7 @@
   }
 
   .toggle input:focus-visible + .toggle-track {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-seal);
     outline-offset: 2px;
   }
 
@@ -461,8 +460,8 @@
   }
 
   .panel-question {
-    font-size: var(--text-sm, 0.8125rem);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     margin-bottom: 12px;
   }
 
@@ -477,7 +476,7 @@
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    border: 2px solid var(--color-primary);
+    border: 2px solid var(--s-seal);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -489,18 +488,18 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-primary);
+    background: var(--s-seal);
   }
 
   .voice-option-text {
-    font-size: var(--text-base, 0.875rem);
-    color: var(--color-text);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
     font-weight: 500;
   }
 
   .voice-option-sub {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     margin-top: 2px;
   }
 
@@ -512,9 +511,9 @@
   }
 
   .field-label {
-    font-size: var(--text-sm, 0.8125rem);
+    font-size: var(--s-type-deed);
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--s-ink);
     display: block;
     margin-bottom: 5px;
   }
@@ -522,41 +521,40 @@
   .field-input {
     width: 100%;
     padding: 9px 12px;
-    border: 1px solid var(--color-border-hover);
-    border-radius: var(--radius-md, 8px);
-    background: var(--color-surface);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
     font-family: inherit;
-    font-size: var(--text-base, 0.875rem);
-    color: var(--color-text);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
     transition: border-color 150ms, box-shadow 150ms;
     appearance: none;
   }
 
   .field-input::placeholder {
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
   }
 
   .field-input:focus {
     outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-subtle);
+    border-color: var(--s-seal);
   }
 
   .field-help {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     margin-top: 5px;
     line-height: 1.5;
   }
 
   .field-help a {
-    color: var(--color-primary);
+    color: var(--s-seal);
     text-underline-offset: 2px;
     text-decoration: underline;
   }
 
   .field-help a:hover {
-    color: var(--color-primary-hover);
+    color: var(--s-seal);
   }
 
   /* ── Responsive ────────────────────────────────────────────────── */

@@ -130,32 +130,35 @@
 
 <style>
   .selectable-card {
-    border-top: 1px solid var(--color-border);
-    padding: 12px 0;
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
+    padding: var(--s-sp-3) var(--s-sp-4);
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background var(--s-t-quick) var(--s-ease), border-color var(--s-t-quick) var(--s-ease);
     overflow: hidden;
     min-width: 0;
   }
 
   .selectable-card:last-child {
-    border-bottom: 1px solid var(--color-border);
+    border-color: var(--s-line-soft);
   }
 
   .selectable-card:hover {
-    background: var(--color-bg-secondary);
+    background: var(--s-paper-deep);
   }
 
   .selectable-card.selected {
-    background: var(--color-primary-subtle);
+    border-color: var(--s-seal);
+    background: color-mix(in srgb, var(--s-seal) 4%, var(--s-paper));
   }
 
   .selectable-card.selected .selectable-card-desc {
-    color: var(--color-text);
+    color: var(--s-ink-2);
   }
 
   .selectable-card.verified {
-    background: var(--color-success-bg);
+    border-color: var(--s-moss);
+    background: color-mix(in srgb, var(--s-moss) 4%, var(--s-paper));
   }
 
   .selectable-card.wide {
@@ -165,20 +168,19 @@
   .selectable-card-header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--s-sp-3);
   }
 
   .selectable-card-header:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-ink-2);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
   }
 
   .selectable-card-icon {
     width: 36px;
     height: 36px;
-    border-radius: var(--radius-md);
-    background: var(--color-bg-secondary);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
     display: grid;
     place-items: center;
     font-size: 18px;
@@ -191,18 +193,20 @@
   }
 
   .selectable-card-name {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--s-sp-2);
     flex-wrap: wrap;
   }
 
   .selectable-card-desc {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    margin-top: 1px;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-ink-3);
+    margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -211,24 +215,24 @@
   .selectable-card-check {
     width: 18px;
     height: 18px;
-    border-radius: 6px;
-    border: 2px solid var(--color-border);
+    border-radius: 2px;
+    border: var(--s-hair) solid var(--s-line);
     flex-shrink: 0;
     display: grid;
     place-items: center;
     font-size: 11px;
-    color: white;
-    transition: all 0.15s;
+    color: var(--s-paper);
+    transition: background var(--s-t-quick) var(--s-ease), border-color var(--s-t-quick) var(--s-ease);
   }
 
   .selectable-card.selected .selectable-card-check {
-    background: var(--color-primary-hover);
-    border-color: var(--color-primary-hover);
+    background: var(--s-seal);
+    border-color: var(--s-seal);
   }
 
   .selectable-card.verified .selectable-card-check {
-    background: var(--color-success);
-    border-color: var(--color-success);
+    background: var(--s-moss);
+    border-color: var(--s-moss);
   }
 
   /* Radio-variant indicator (circle) for single-choice cards */
@@ -236,15 +240,15 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 2px solid var(--color-border);
+    border: 2px solid var(--s-line);
     flex-shrink: 0;
     position: relative;
-    background: var(--color-bg);
-    transition: border-color 0.15s;
+    background: var(--s-paper);
+    transition: border-color var(--s-t-quick) var(--s-ease);
   }
 
   .selectable-card-radio.checked {
-    border-color: var(--color-primary);
+    border-color: var(--s-seal);
   }
 
   .selectable-card-radio.checked::after {
@@ -252,33 +256,34 @@
     position: absolute;
     inset: 3px;
     border-radius: 50%;
-    background: var(--color-primary);
+    background: var(--s-seal);
   }
 
   .verification-status {
-    font-size: var(--text-sm);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
     flex-shrink: 0;
     margin-left: 2px;
   }
 
   .verification-status--ok {
-    color: var(--color-success);
+    color: var(--s-moss);
   }
 
   .verification-status--error {
-    color: var(--color-error);
+    color: var(--s-seal);
   }
 
   .verification-status--wait {
-    color: var(--color-primary-hover);
+    color: var(--s-ink-3);
     animation: selectable-card-blink 1.2s ease infinite;
   }
 
   .selectable-card-panel {
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--color-border);
-    animation: selectable-card-fade-in 0.2s ease;
+    margin-top: var(--s-sp-3);
+    padding-top: var(--s-sp-3);
+    border-top: var(--s-hair) solid var(--s-line-soft);
+    animation: selectable-card-fade-in 0.2s var(--s-ease);
   }
 
   @keyframes selectable-card-blink {
@@ -287,7 +292,7 @@
   }
 
   @keyframes selectable-card-fade-in {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
   }
 </style>

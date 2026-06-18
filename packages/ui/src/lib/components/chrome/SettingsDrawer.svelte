@@ -75,62 +75,70 @@
   .settings-drawer {
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
+    gap: var(--s-sp-6);
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .field-label {
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: var(--color-text);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
 
   .field-select {
     width: 100%;
     min-height: 40px;
-    padding: 0 var(--space-3);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text);
-    font: inherit;
+    padding: 0 var(--s-sp-3);
+    appearance: none;
+    background: var(--s-paper-deep);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    cursor: pointer;
   }
 
   .field-select:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-seal);
     outline-offset: 2px;
   }
 
   .settings-links {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .settings-link {
     display: block;
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text);
+    padding: var(--s-sp-3) var(--s-sp-4);
+    background: var(--s-paper-deep);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    color: var(--s-ink-2);
     text-decoration: none;
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    transition: color var(--s-t-quick) var(--s-ease), border-color var(--s-t-quick) var(--s-ease);
   }
 
   .settings-link:hover {
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-hover);
+    color: var(--s-ink);
+    border-color: var(--s-line);
   }
 
   .settings-link:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-seal);
     outline-offset: 2px;
   }
 </style>

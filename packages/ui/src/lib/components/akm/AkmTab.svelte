@@ -641,80 +641,65 @@
 	/* ── Knowledge subtab strip ─────────────────────────────────────────────── */
 	.k-tabs {
 		display: flex;
-		/* Single row: grow to fill evenly when there's room (desktop), scroll
-		   horizontally when there isn't (320px) — never wrap into an asymmetric
-		   grid that orphans the last item. */
 		flex-wrap: nowrap;
 		overflow-x: auto;
 		scrollbar-width: none;
-		gap: var(--space-1);
-		padding: var(--space-1);
-		background: var(--color-bg-secondary);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		margin-bottom: var(--space-2);
+		gap: 0;
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
+		margin-bottom: var(--s-sp-4);
 	}
 	.k-tabs::-webkit-scrollbar { display: none; }
 	.k-tab {
-		flex: 1 0 auto;
-		min-height: 2.75rem; /* 44px target */
-		padding: var(--space-2) var(--space-3);
-		font-size: var(--text-sm);
-		font-weight: var(--font-normal, 400);
-		color: var(--color-text-secondary);
-		background: transparent;
-		border: 1px solid transparent;
-		border-radius: var(--radius-sm);
+		appearance: none;
+		border: 0;
+		border-bottom: 2px solid transparent;
+		background: none;
 		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+		padding: var(--s-sp-3) var(--s-sp-4);
 		white-space: nowrap;
-		transition: background 150ms, color 150ms;
+		flex: 1 0 auto;
+		min-height: 2.75rem;
 	}
-	.k-tab:hover {
-		background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-		color: var(--color-text);
-	}
-	.k-tab:focus-visible {
-		outline: 2px solid var(--color-primary);
-		outline-offset: 1px;
-	}
+	.k-tab:hover { color: var(--s-ink-2); }
+	.k-tab:focus-visible { outline: 2px solid var(--s-seal); outline-offset: -2px; }
 	.k-tab--active {
-		background: var(--color-bg);
-		border-color: var(--color-border);
-		color: var(--color-text);
-		font-weight: var(--font-semibold);
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+		color: var(--s-ink);
+		border-bottom-color: var(--s-ink);
 	}
 	@media (max-width: 400px) {
-		.k-tab { font-size: var(--text-xs); padding: var(--space-2); }
+		.k-tab { font-size: var(--s-type-mark-sm); padding: var(--s-sp-2); }
 	}
 
-	.panel-header {
-		display: flex; align-items: center; justify-content: space-between;
-		margin-bottom: var(--space-6);
-		position: sticky; top: 0; z-index: 10;
-		background: var(--color-bg);
-		padding-top: var(--space-2);
-		padding-bottom: var(--space-4);
-		border-bottom: 1px solid var(--color-border);
-	}
-	.panel-header h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; }
-	.panel-header-actions { display: flex; gap: var(--space-2); }
-
-	.panel-body { display: flex; flex-direction: column; gap: var(--space-8); }
+	.panel-body { display: flex; flex-direction: column; gap: var(--s-sp-8); }
+	.panel-header-actions { display: flex; gap: var(--s-sp-2); }
 
 	.section-note--lead {
-		font-size: var(--text-sm); color: var(--color-text-secondary);
-		max-width: 72ch; margin: 0 0 var(--space-4);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink-3);
+		max-width: 72ch; margin: 0 0 var(--s-sp-4);
 	}
-	.section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
+	.section-note {
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink-3);
+		margin: 0;
+	}
 
 	/* Error banner */
 	.error-banner {
-		display: flex; align-items: center; gap: var(--space-2);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-error-bg, rgba(220, 38, 38, 0.08));
-		border: 1px solid var(--color-error-border, rgba(220, 38, 38, 0.25));
-		border-radius: var(--radius-md); font-size: var(--text-sm);
-		color: var(--color-error, #dc2626); margin-bottom: var(--space-4);
+		display: flex; align-items: center; gap: var(--s-sp-2);
+		padding: var(--s-sp-3) var(--s-sp-4);
+		border: var(--s-hair) solid var(--s-seal);
+		border-radius: 2px;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-seal);
+		margin-bottom: var(--s-sp-4);
 	}
 </style>

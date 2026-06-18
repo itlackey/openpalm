@@ -67,56 +67,57 @@
 <style>
 	.add-search {
 		width: 100%;
-		margin-bottom: var(--space-3);
+		margin-bottom: var(--s-sp-3);
 	}
 	/* Bleed the list to the drawer body edges (drawer body has space-5 padding). */
 	.pick-list {
-		margin: 0 calc(var(--space-5) * -1) calc(var(--space-5) * -1);
+		margin: 0 calc(var(--s-sp-5) * -1) calc(var(--s-sp-5) * -1);
 	}
 
 	.provider-pick {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
+		gap: var(--s-sp-3);
 		width: 100%;
-		padding: var(--space-3) var(--space-5);
+		padding: var(--s-sp-3) var(--s-sp-5);
 		background: none;
 		border: none;
-		border-bottom: 1px solid var(--color-bg-tertiary);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
 		cursor: pointer;
 		text-align: left;
 		font-family: inherit;
 	}
 
 	.provider-pick:hover {
-		background: var(--color-surface-hover);
+		background: color-mix(in srgb, var(--s-ink) 4%, var(--s-paper));
 	}
 
 	.provider-pick--custom {
-		border-top: 1px solid var(--color-border);
-		color: var(--color-primary);
+		border-top: var(--s-hair) solid var(--s-line);
 	}
 
 	.provider-name {
 		flex: 1;
-		font-size: var(--text-sm);
-		font-weight: var(--font-medium);
-		color: var(--color-text);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
 	}
 
 	.provider-pick--custom .provider-name {
-		color: var(--color-primary);
+		color: var(--s-seal);
 	}
 
 	.provider-meta {
-		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
 	}
 
 	.empty {
-		padding: var(--space-6) var(--space-5);
+		padding: var(--s-sp-6) var(--s-sp-5);
 		text-align: center;
-		color: var(--color-text-tertiary);
-		font-size: var(--text-sm);
+		color: var(--s-ink-3);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
 	}
 </style>

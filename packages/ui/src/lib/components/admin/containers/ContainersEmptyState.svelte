@@ -34,16 +34,17 @@
 
 <style>
   .text-danger {
-    color: var(--color-danger);
+    color: var(--s-seal);
   }
 
   .empty-state .btn {
-    margin-top: var(--space-2);
+    margin-top: var(--s-sp-2);
   }
 
   .empty-state .hint {
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     max-width: 32ch;
   }
 </style>

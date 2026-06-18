@@ -130,7 +130,7 @@
   <div class="panel-header">
     <div>
       <h2>Recovery</h2>
-      <p class="panel-subtitle">Backups, lock recovery, and secret migration notices.</p>
+      <p class="panel-subtitle">Backups · recovery · migration</p>
     </div>
   </div>
 
@@ -266,155 +266,173 @@
 </div>
 
 <style>
-  .panel-subtitle {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    margin: var(--space-1) 0 0;
-    max-width: 60ch;
-  }
-
   /* #502 secret-strip notice */
   .secret-notice {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--space-3);
-    margin-bottom: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--color-warning, var(--color-border));
-    border-radius: var(--radius-md);
-    background: var(--color-warning-bg, var(--color-surface));
+    gap: var(--s-sp-3);
+    margin-bottom: var(--s-sp-3);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
   }
   .secret-notice-text { min-width: 0; }
   .secret-notice-title {
-    margin: 0 0 var(--space-1) 0;
-    font-weight: var(--font-semibold, var(--font-medium));
-    color: var(--color-warning-text, var(--color-text));
+    margin: 0 0 var(--s-sp-1) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-seal);
   }
-  .secret-notice p { margin: 0; color: var(--color-text); font-size: var(--text-sm); }
+  .secret-notice p { margin: 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); }
 
   /* #500 stuck-operation recovery */
   .stuck-notice {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--space-3);
-    margin-bottom: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--color-warning, var(--color-border));
-    border-radius: var(--radius-md);
-    background: var(--color-warning-bg, var(--color-surface));
+    gap: var(--s-sp-3);
+    margin-bottom: var(--s-sp-3);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
   }
   .stuck-notice-ok {
-    border-color: var(--color-success, var(--color-border));
-    background: var(--color-success-bg, var(--color-surface));
+    border-color: var(--s-moss);
   }
   .stuck-notice-text { min-width: 0; }
   .stuck-notice-title {
-    margin: 0 0 var(--space-1) 0;
-    font-weight: var(--font-semibold, var(--font-medium));
-    color: var(--color-warning-text, var(--color-text));
+    margin: 0 0 var(--s-sp-1) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-seal);
   }
-  .stuck-notice-ok .stuck-notice-title { color: var(--color-success-text, var(--color-text)); }
-  .stuck-notice p { margin: 0; color: var(--color-text); font-size: var(--text-sm); }
-  .stuck-notice-error { margin-top: var(--space-1) !important; color: var(--color-danger-text, var(--color-text)); }
+  .stuck-notice-ok .stuck-notice-title { color: var(--s-moss); }
+  .stuck-notice p { margin: 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); }
+  .stuck-notice-error { margin-top: var(--s-sp-1) !important; color: var(--s-seal); }
 
   /* #499 backups */
   .backups-section {
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
   }
   .backups-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--space-2);
-    margin-bottom: var(--space-2);
+    gap: var(--s-sp-2);
+    margin-bottom: var(--s-sp-2);
   }
-  .backups-title { margin: 0; font-size: var(--text-base); font-weight: var(--font-semibold); }
+  .backups-title {
+    margin: 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+  }
   .backups-summary {
-    margin: var(--space-1) 0 0 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    margin: var(--s-sp-1) 0 0 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
   }
   .backups-desc {
-    margin: 0 0 var(--space-3) 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    margin: 0 0 var(--s-sp-3) 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
   }
   .backups-empty, .backups-error {
-    margin: var(--space-1) 0 0 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    margin: var(--s-sp-1) 0 0 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
   }
-  .backups-error { color: var(--color-danger-text, var(--color-text)); }
+  .backups-error { color: var(--s-seal); }
 
   .backups-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--text-sm);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
   }
   .backups-table th {
     text-align: left;
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    font-size: var(--text-xs);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--color-border);
+    color: var(--s-ink-3);
+    padding: var(--s-sp-1) var(--s-sp-2);
+    border-bottom: var(--s-hair) solid var(--s-line);
   }
   .backups-table td {
-    padding: var(--space-2);
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-text);
+    padding: var(--s-sp-2);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    color: var(--s-ink);
     vertical-align: middle;
   }
   .backups-table tr:last-child td {
     border-bottom: none;
   }
+  .backups-table tr:hover td {
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
+  }
   .backups-cell-name {
-    font-family: var(--font-mono);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 20rem;
+    color: var(--s-ink-2);
   }
   .backups-cell-meta {
     white-space: nowrap;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
   }
   .backups-cell-restore {
     white-space: nowrap;
   }
   .backups-restore-note {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-3);
   }
 
   .prune-prompt {
-    margin-top: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--color-danger, var(--color-border));
-    border-radius: var(--radius-md);
-    background: var(--color-danger-bg, var(--color-surface));
+    margin-top: var(--s-sp-3);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
   }
   .prune-prompt-title {
-    margin: 0 0 var(--space-1) 0;
-    font-weight: var(--font-semibold, var(--font-medium));
-    color: var(--color-danger-text, var(--color-text));
+    margin: 0 0 var(--s-sp-1) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-seal);
   }
-  .prune-prompt p { margin: 0 0 var(--space-2) 0; color: var(--color-text); font-size: var(--text-sm); }
+  .prune-prompt p { margin: 0 0 var(--s-sp-2) 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); }
   .prune-keep-input {
     width: 4rem;
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm, var(--radius-md));
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
+    padding: var(--s-sp-1) var(--s-sp-2);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
   }
-  .prune-actions { display: flex; gap: var(--space-2); }
+  .prune-actions { display: flex; gap: var(--s-sp-2); }
 </style>

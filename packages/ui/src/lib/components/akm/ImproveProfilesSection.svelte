@@ -61,21 +61,35 @@
 </section>
 
 <style>
-	.config-section { display: flex; flex-direction: column; gap: var(--space-4); }
+	.config-section { display: flex; flex-direction: column; gap: var(--s-sp-4); }
 	.section-title {
-		font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		font-weight: 400;
+		color: var(--s-ink);
 		margin: 0;
-		padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);
+		padding-bottom: var(--s-sp-2);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
 	}
 	.section-title-aka {
-		font-size: var(--text-xs); font-weight: var(--font-normal);
-		color: var(--color-text-secondary); font-family: var(--font-mono);
-		margin-left: var(--space-2);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-3);
+		margin-left: var(--s-sp-2);
 	}
-	.section-note { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
-	.empty-note { font-size: var(--text-sm); color: var(--color-text-secondary); font-style: italic; margin: 0; }
-	.profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); color: var(--color-text-secondary); }
-	.profile-empty svg { opacity: 0.45; }
-	.profile-list { display: flex; flex-direction: column; gap: var(--space-1); }
-	.profile-row-desc { font-size: var(--text-xs); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 20rem; }
+	.section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
+	.empty-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
+	.profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-sp-2); margin-bottom: var(--s-sp-2); color: var(--s-ink-3); }
+	.profile-empty svg { opacity: 0.35; }
+	.profile-list { display: flex; flex-direction: column; gap: 0; }
+	.profile-row-desc {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 20rem;
+	}
 </style>

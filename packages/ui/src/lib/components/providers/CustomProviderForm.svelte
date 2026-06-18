@@ -144,12 +144,12 @@
 	.form-stack {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: var(--s-sp-4);
 	}
 
 	.optional {
-		font-weight: var(--font-medium);
-		color: var(--color-text-tertiary);
-		font-size: var(--text-xs);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
 	}
 </style>

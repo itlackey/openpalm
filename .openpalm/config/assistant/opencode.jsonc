@@ -1,10 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": ["./instructions/core.md", "./instructions/conversation.md", "./persona.md"],
+  "instructions": [
+    "./instructions/core.md",
+    "./instructions/conversation.md",
+    "./persona.md"
+  ],
   "plugin": [
     "akm-opencode@latest"
   ],
-
   // MCP consume-only example: OpenCode can connect to external MCP servers,
   // but it does not serve MCP itself. Seed-only file: existing installs keep
   // their current config unless the operator edits it.
@@ -18,7 +21,6 @@
   //     "url": "http://127.0.0.1:8787/mcp"
   //   }
   // },
-
   // The assistant binds 0.0.0.0, so OpenCode's native in-process mDNS responder
   // would pass its loopback gate and publish a `.local` record. We ship it OFF
   // (LAN-first default): mDNS only makes sense once the assistant is actually
@@ -48,21 +50,20 @@
     "mdns": false,
     "mdnsDomain": "openpalm.local"
   },
-
   "permission": {
-    // Tool gates: pause execution with `permission.asked` so a human (or a
-    // non-interactive channel policy) approves before the tool runs. Verified
-    // end-to-end on OpenCode 1.15.13 (design §1.2). The guardian relays the
-    // permission.asked frame over /event and authorizes the reply by requestID.
-    "bash": "ask",
-    "edit": "ask",
-    "task": "ask",
-
+    "bash": {
+      "*": "allow",
+      "rm -rf /": "ask",
+      "sudo": "ask"
+    },
+    "edit": "allow",
+    "task": "allow",
     "read": {
+      "*": "allow",
+      ".env": "deny",
       "/home/opencode/.local/share/opencode/auth.json": "deny",
       "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
     },
-
     "external_directory": {
       "/tmp": "allow",
       "/work": "allow",

@@ -201,10 +201,10 @@
 	/* ── Nav shell wraps both strips and provides sticky positioning ── */
 	.nav-shell {
 		position: sticky;
-		top: var(--nav-height);
+		top: 52px;
 		z-index: 40;
-		background: var(--color-bg-secondary);
-		border-bottom: 1px solid var(--color-border);
+		background: var(--s-paper-deep);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
 		/* No bottom margin: the full-width bar sits flush under the navbar and the
 		   admin <main> supplies the gap before content via its top padding. */
 	}
@@ -215,12 +215,12 @@
 		gap: 0;
 		/* Indent the full-width strip so the first tab aligns with the page
 		   content's left padding instead of jamming against the viewport edge. */
-		padding-inline: var(--space-6);
+		padding-inline: var(--s-sp-6);
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-bg);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
+		background: var(--s-paper);
 	}
 
 	.section-strip::-webkit-scrollbar {
@@ -231,88 +231,58 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: 36px;
-		padding: var(--space-1) var(--space-4);
-		font-family: var(--font-sans);
-		font-size: var(--text-sm);
-		font-weight: var(--font-medium);
-		color: var(--color-text-muted, var(--color-text-secondary));
+		padding: var(--s-sp-1) var(--s-sp-4);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-3);
 		background: none;
 		border: none;
-		border-bottom: 3px solid transparent;
+		border-bottom: 2px solid transparent;
 		cursor: pointer;
 		white-space: nowrap;
 		flex-shrink: 0;
 		transition:
-			color var(--transition-fast),
-			background-color var(--transition-fast),
-			border-color var(--transition-fast);
+			color var(--s-t-quick) var(--s-ease),
+			background-color var(--s-t-quick) var(--s-ease),
+			border-color var(--s-t-quick) var(--s-ease);
 		margin-bottom: -1px;
 	}
 
 	.section-tab:hover {
-		color: var(--color-text);
-		background: var(--color-bg-secondary);
+		color: var(--s-ink-2);
+		background: var(--s-paper-deep);
 	}
 
 	.section-tab:focus-visible {
-		outline: 2px solid var(--color-primary);
-		outline-offset: -2px;
-		border-radius: var(--radius-sm);
+		outline: var(--s-hair) solid var(--s-seal);
+		outline-offset: 2px;
 	}
 
-	/* Active section: distinguished by a filled "connected tab" background + full
-	   text color + semibold weight (≥3 properties vs inactive). NO orange — orange
-	   stays reserved for primary-action fills. The fill matches the subtab strip
-	   below so the active section reads as connected to its subtabs. */
+	/* Active section: deep background to connect visually with the subtab strip,
+	   full ink-2 color + seal underline to mark the active state clearly. */
 	.section-tab-active {
-		color: var(--color-text);
-		font-weight: var(--font-semibold);
-		background: var(--color-bg-secondary);
-		border-top-left-radius: var(--radius-md);
-		border-top-right-radius: var(--radius-md);
+		color: var(--s-ink-2);
+		background: var(--s-paper-deep);
+		border-bottom-color: var(--s-seal);
 	}
 
-	/* ── Subtab row wraps the scrollable strip + fade affordance ── */
+	/* ── Subtab row wraps the scrollable strip ── */
 	.subtab-row {
 		position: relative;
-	}
-
-	/* Fade affordances — positioned over the scroll container, not inside it
-	   (avoids the flex-shrink conflict). Symmetric left+right so a partially
-	   scrolled tab label is softened under a gradient instead of showing as a
-	   hard mid-word fragment at either edge. */
-	.subtab-row::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		right: 0;
-		bottom: 0;
-		width: 48px;
-		background: linear-gradient(to right, transparent, var(--color-bg-secondary));
-		pointer-events: none;
-	}
-
-	.subtab-row::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		bottom: 0;
-		width: 40px;
-		background: linear-gradient(to left, transparent, var(--color-bg-secondary));
-		pointer-events: none;
-		z-index: 1;
 	}
 
 	/* ── Subtab strip (secondary level) ── */
 	.tabs {
 		display: flex;
-		gap: var(--space-1);
+		gap: var(--s-sp-1);
 		/* Align the subtab strip with the section strip + page content. */
-		padding-inline: var(--space-6);
+		padding-inline: var(--s-sp-6);
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
+		background: var(--s-paper-deep);
 		/* No border-bottom here — the nav-shell bottom border serves as the baseline. */
 	}
 
@@ -323,67 +293,63 @@
 	.tab {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--s-sp-2);
 		/* min-height 44px for touch targets per WCAG 2.5.5 */
 		min-height: 44px;
-		padding: var(--space-2) var(--space-3);
-		font-family: var(--font-sans);
-		font-size: var(--text-sm);
-		font-weight: var(--font-medium);
-		color: var(--color-text-secondary);
+		padding: var(--s-sp-2) var(--s-sp-3);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-3);
 		background: none;
 		border: none;
-		border-bottom: 3px solid transparent;
+		border-bottom: 2px solid transparent;
 		cursor: pointer;
 		white-space: nowrap;
 		flex-shrink: 0;
 		transition:
-			color var(--transition-fast),
-			border-color var(--transition-fast),
-			font-weight var(--transition-fast);
+			color var(--s-t-quick) var(--s-ease),
+			border-color var(--s-t-quick) var(--s-ease);
 		margin-bottom: -1px;
 	}
 
 	.tab:hover {
-		color: var(--color-text);
+		color: var(--s-ink-2);
 	}
 
 	.tab:focus-visible {
-		outline: 2px solid var(--color-primary);
-		outline-offset: -2px;
-		border-radius: var(--radius-sm);
+		outline: var(--s-hair) solid var(--s-seal);
+		outline-offset: 2px;
 	}
 
-	/* Active subtab: differs by ≥2 properties (rubric cat 1 + 7).
-	   border-color (neutral underline) + font-weight (semibold) + color (full text). */
+	/* Active subtab: ink underline + full ink color marks the selection clearly. */
 	.tab-active {
-		color: var(--color-text);
-		font-weight: var(--font-semibold);
-		border-bottom-color: var(--color-text);
+		color: var(--s-ink);
+		border-bottom-color: var(--s-ink);
 	}
 
 	@media (max-width: 768px) {
 		.tab {
-			padding: var(--space-2);
+			padding: var(--s-sp-2);
 		}
 		.section-tab {
-			padding: var(--space-1) var(--space-3);
+			padding: var(--s-sp-1) var(--s-sp-3);
 		}
 		.section-strip,
 		.tabs {
-			padding-inline: var(--space-4);
+			padding-inline: var(--s-sp-4);
 		}
 	}
 
 	@media (max-width: 320px) {
 		.tab {
-			padding: var(--space-1) var(--space-2);
-			font-size: var(--text-xs);
+			padding: var(--s-sp-1) var(--s-sp-2);
+			font-size: var(--s-type-mark-sm);
 		}
 		.section-tab {
-			padding: var(--space-1) var(--space-2);
-			/* Never below the 12px legibility floor (WCAG 1.4.4) — was 0.6rem/9.6px. */
-			font-size: var(--text-xs);
+			padding: var(--s-sp-1) var(--s-sp-2);
+			font-size: var(--s-type-mark-sm);
 		}
 	}
 </style>

@@ -48,7 +48,28 @@
 </section>
 
 <style>
-	.engine-section { display: flex; flex-direction: column; gap: var(--space-3); }
-	.engine-heading { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; }
-	.engine-subheading { font-size: var(--text-xs); color: var(--color-text-secondary); margin: 0; }
+	.engine-section {
+		display: flex; flex-direction: column; gap: var(--s-sp-3);
+		border: var(--s-hair) solid var(--s-line-soft);
+		border-radius: 2px;
+		padding: var(--s-sp-5);
+		background: none;
+	}
+	.engine-heading {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		font-weight: 400;
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-3);
+		margin: 0;
+		padding-bottom: var(--s-sp-3);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
+	}
+	.engine-subheading {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-2);
+		margin: 0;
+	}
 </style>

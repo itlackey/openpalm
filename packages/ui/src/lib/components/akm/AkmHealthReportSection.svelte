@@ -103,61 +103,63 @@
 	.report-section {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-4);
+		gap: var(--s-sp-4);
 	}
 
 	.report-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-end;
-		gap: var(--space-4);
+		gap: var(--s-sp-4);
 		flex-wrap: wrap;
 	}
 
 	.report-header h3 {
-		margin: 0 0 var(--space-2);
-		font-size: var(--text-lg);
-		font-weight: var(--font-semibold);
-		color: var(--color-text);
+		margin: 0 0 var(--s-sp-2);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		font-weight: 400;
+		color: var(--s-ink);
 	}
 
 	.report-controls {
 		display: flex;
 		align-items: end;
-		gap: var(--space-3);
+		gap: var(--s-sp-3);
 		flex-wrap: wrap;
 	}
 
 	.control-field {
 		display: grid;
-		gap: var(--space-1);
+		gap: var(--s-sp-1);
 		min-width: 11rem;
-		font-size: var(--text-sm);
-		color: var(--color-text-secondary);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
 	}
 
 	.control-input {
-		font-size: var(--text-sm);
-		color: var(--color-text);
-		background: var(--color-input-bg, var(--color-bg));
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		padding: var(--space-2) var(--space-3);
+		border: 0;
+		border-bottom: var(--s-hair) solid var(--s-line);
+		background: none;
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
+		padding: 0.5rem 0;
 		width: 100%;
 	}
 
-	.control-input:focus {
-		outline: 2px solid var(--color-primary);
-		outline-offset: 1px;
-	}
+	.control-input:focus { outline: none; border-bottom-color: var(--s-ink-2); }
 
 	.report-frame-wrap {
 		position: relative;
 		min-height: 70dvh;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
+		border: var(--s-hair) solid var(--s-line-soft);
+		border-radius: 2px;
 		overflow: hidden;
-		background: var(--color-bg-secondary);
+		background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
 	}
 
 	.report-loading {
@@ -165,9 +167,10 @@
 		inset: 0;
 		display: grid;
 		place-items: center;
-		font-size: var(--text-sm);
-		color: var(--color-text-secondary);
-		background: color-mix(in srgb, var(--color-bg-secondary) 88%, transparent);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
+		background: color-mix(in srgb, var(--s-paper) 88%, transparent);
 		z-index: 1;
 	}
 
@@ -176,7 +179,7 @@
 		width: 100%;
 		min-height: 70dvh;
 		border: 0;
-		background: var(--color-bg-tertiary);
+		background: var(--s-paper-deep);
 	}
 
 	.report-error {
@@ -184,30 +187,20 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: var(--space-3);
-		padding: var(--space-6);
-		color: var(--color-danger);
-		font-size: var(--text-sm);
+		gap: var(--s-sp-3);
+		padding: var(--s-sp-6);
+		color: var(--s-seal);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
 		min-height: 30dvh;
 		text-align: center;
 	}
 
-	.report-error p {
-		margin: 0;
-	}
+	.report-error p { margin: 0; }
 
 	@media (max-width: 640px) {
-		.report-controls {
-			width: 100%;
-		}
-
-		.control-field {
-			min-width: min(100%, 11rem);
-		}
-
-		.report-frame-wrap,
-		.report-frame {
-			min-height: 62dvh;
-		}
+		.report-controls { width: 100%; }
+		.control-field { min-width: min(100%, 11rem); }
+		.report-frame-wrap, .report-frame { min-height: 62dvh; }
 	}
 </style>

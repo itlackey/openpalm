@@ -20,15 +20,8 @@
 		speakText,
 	} from '$lib/voice/voice-state.svelte.js';
 	import Spinner from '$lib/components/common/Spinner.svelte';
-	import VoiceTtsSection from '$lib/components/voice/VoiceTtsSection.svelte';
-	import VoiceSttSection from '$lib/components/voice/VoiceSttSection.svelte';
 	import VoiceAddonProfileSection from '$lib/components/voice/VoiceAddonProfileSection.svelte';
-	import type {
-		SttOption,
-		TtsOption,
-		VoiceEngineConfig,
-		VoiceEngineValue,
-	} from '$lib/client/types.js';
+	import type { TtsOption, SttOption, VoiceEngineConfig } from '$lib/client/types.js';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
@@ -164,46 +157,23 @@
 	let testResult = $state<'success' | 'error' | null>(null);
 	let testError = $state('');
 
-	// Convert VoiceSection ↔ VoiceEngineValue for the shared component
-	function sectionToValue(s: VoiceSection): VoiceEngineValue {
-		return {
-			engine: s.engine,
-			...(s.baseURL ? { baseURL: s.baseURL } : {}),
-			...(s.model ? { model: s.model } : {}),
-			...(s.voice ? { voice: s.voice } : {}),
-			...(s.language ? { language: s.language } : {}),
-		};
-	}
-
-	function applyTtsChange(v: VoiceEngineValue): void {
-		tts.engine = (v.engine || '') as EngineId | '';
-		tts.baseURL = v.baseURL ?? '';
-		tts.model = v.model ?? '';
-		tts.voice = v.voice ?? '';
-	}
-
-	function applySttChange(v: VoiceEngineValue): void {
-		stt.engine = (v.engine || '') as EngineId | '';
-		stt.baseURL = v.baseURL ?? '';
-		stt.model = v.model ?? '';
-		stt.language = v.language ?? '';
-	}
-
-	// Browser STT disabled state for the shared component
-	const sttDisabledEngines = $derived.by(() => {
-		const map: Record<string, { disabled: boolean; reason?: string }> = {};
-		if (browserSttAvailable && voiceState.browserSttUnsupportedReason) {
-			map['browser'] = { disabled: true, reason: voiceState.browserSttUnsupportedReason };
-		}
-		return map;
-	});
-
-	const ttsHiddenEngines = $derived(
-		browserTtsAvailable ? undefined : new Set(['browser']),
+	// Browser STT availability — used to disable/hide browser options
+	const browserSttDisabled = $derived(
+		browserSttAvailable && !!voiceState.browserSttUnsupportedReason
 	);
-	const sttHiddenEngines = $derived(
-		!browserSttAvailable ? new Set(['browser']) : undefined,
-	);
+	const browserSttDisabledReason = $derived(voiceState.browserSttUnsupportedReason ?? '');
+
+	function updateSttField(key: string, val: string): void {
+		if (key === 'baseURL') stt.baseURL = val;
+		else if (key === 'model') stt.model = val;
+		else if (key === 'language') stt.language = val;
+	}
+
+	function updateTtsField(key: string, val: string): void {
+		if (key === 'baseURL') tts.baseURL = val;
+		else if (key === 'model') tts.model = val;
+		else if (key === 'voice') tts.voice = val;
+	}
 
 	function normalizeEngine(raw: unknown, kind: 'tts' | 'stt'): EngineId | '' {
 		if (typeof raw !== 'string') return '';
@@ -491,7 +461,10 @@
 
 <div class="panel" role="tabpanel">
 	<div class="panel-header">
-		<h2>Voice</h2>
+		<div>
+			<h2>Voice</h2>
+			<p class="panel-subtitle">Speech-to-text · text-to-speech</p>
+		</div>
 		<div class="panel-header-actions">
 			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || !tokenStored}>
 				{#if loading}<Spinner size={12} />{/if}
@@ -507,37 +480,131 @@
 	{#if error}<div class="error-banner"><span>{error}</span></div>{/if}
 
 	<div class="panel-body">
-		<p class="section-desc">
-			Configure how the assistant listens and speaks. Choose an engine for each;
-			the in-app mic uses STT and the optional auto-speak toggle uses TTS.
-		</p>
+		<div class="voice-grid">
+			<!-- ── STT (left) ───────────────────────────────────── -->
+			<div class="section-card">
+				<div class="sc-title">Speech-to-text (STT)</div>
 
-		<VoiceTtsSection
-			value={sectionToValue(tts)}
-			onchange={applyTtsChange}
-			engineOptions={ADMIN_TTS_OPTIONS}
-			engineConfigs={ADMIN_TTS_ENGINES}
-			reachable={availability.tts}
-			hiddenEngines={ttsHiddenEngines}
-			engineSelected={!!tts.engine}
-			ttsAutoEnabled={voiceState.ttsAutoEnabled}
-			onAutoEnabledChange={(checked) => setTtsAutoEnabled(checked)}
-			{testingVoice}
-			{testResult}
-			{testError}
-			onTest={() => void runVoiceTest()}
-			busy={saving || loading}
-		/>
+				<div class="field">
+					<label class="field-label" for="stt-engine">Engine</label>
+					<select
+						id="stt-engine"
+						class="field-select"
+						value={stt.engine}
+						onchange={(e) => { stt.engine = (e.currentTarget as HTMLSelectElement).value as EngineId | ''; }}
+						disabled={loading || saving || !tokenStored}
+					>
+						<option value="">— select engine —</option>
+						{#each ADMIN_STT_OPTIONS as o (o.id)}
+							{#if browserSttAvailable || o.id !== 'browser'}
+								<option value={o.id} disabled={o.id === 'browser' && browserSttDisabled}>{o.name}</option>
+							{/if}
+						{/each}
+					</select>
+					{#if stt.engine === 'remote' && availability.stt.remoteConfigured}
+						<span class="reachability" class:reachability--ok={availability.stt.remoteReachable}>
+							{availability.stt.remoteReachable ? '● Endpoint reachable' : '○ Endpoint not reachable'}
+						</span>
+					{/if}
+				</div>
 
-		<VoiceSttSection
-			value={sectionToValue(stt)}
-			onchange={applySttChange}
-			engineOptions={ADMIN_STT_OPTIONS}
-			engineConfigs={ADMIN_STT_ENGINES}
-			reachable={availability.stt}
-			disabledEngines={sttDisabledEngines}
-			hiddenEngines={sttHiddenEngines}
-		/>
+				{#if stt.engine}
+					{#each ADMIN_STT_ENGINES[stt.engine]?.fields ?? [] as field (field.key)}
+						<div class="field">
+							<label class="field-label" for="stt-{field.key}">{field.label}</label>
+							<input
+								id="stt-{field.key}"
+								type={field.key === 'baseURL' ? 'url' : 'text'}
+								class="field-input"
+								placeholder={field.placeholder ?? ''}
+								value={field.key === 'baseURL' ? stt.baseURL : field.key === 'model' ? stt.model : stt.language}
+								oninput={(e) => updateSttField(field.key, (e.currentTarget as HTMLInputElement).value)}
+								disabled={loading || saving || !tokenStored}
+								autocomplete="off"
+							/>
+							{#if field.hint}<p class="field-hint">{field.hint}</p>{/if}
+						</div>
+					{/each}
+					{#if stt.engine === 'browser' && browserSttDisabled}
+						<p class="field-hint field-hint--warn">{browserSttDisabledReason}</p>
+					{/if}
+				{/if}
+			</div>
+
+			<!-- ── TTS (right) ──────────────────────────────────── -->
+			<div class="section-card">
+				<div class="sc-title">Text-to-speech (TTS)</div>
+
+				<div class="field">
+					<label class="field-label" for="tts-engine">Engine</label>
+					<select
+						id="tts-engine"
+						class="field-select"
+						value={tts.engine}
+						onchange={(e) => { tts.engine = (e.currentTarget as HTMLSelectElement).value as EngineId | ''; }}
+						disabled={loading || saving || !tokenStored}
+					>
+						<option value="">— select engine —</option>
+						{#each ADMIN_TTS_OPTIONS as o (o.id)}
+							{#if browserTtsAvailable || o.id !== 'browser'}
+								<option value={o.id}>{o.name}</option>
+							{/if}
+						{/each}
+					</select>
+					{#if tts.engine === 'remote' && availability.tts.remoteConfigured}
+						<span class="reachability" class:reachability--ok={availability.tts.remoteReachable}>
+							{availability.tts.remoteReachable ? '● Endpoint reachable' : '○ Endpoint not reachable'}
+						</span>
+					{/if}
+				</div>
+
+				{#if tts.engine}
+					{#each ADMIN_TTS_ENGINES[tts.engine]?.fields ?? [] as field (field.key)}
+						<div class="field">
+							<label class="field-label" for="tts-{field.key}">{field.label}</label>
+							<input
+								id="tts-{field.key}"
+								type={field.key === 'baseURL' ? 'url' : 'text'}
+								class="field-input"
+								placeholder={field.placeholder ?? ''}
+								value={field.key === 'baseURL' ? tts.baseURL : field.key === 'model' ? tts.model : tts.voice}
+								oninput={(e) => updateTtsField(field.key, (e.currentTarget as HTMLInputElement).value)}
+								disabled={loading || saving || !tokenStored}
+								autocomplete="off"
+							/>
+							{#if field.hint}<p class="field-hint">{field.hint}</p>{/if}
+						</div>
+					{/each}
+				{/if}
+
+				<div class="sc-foot">
+					<div class="test-row">
+						<button
+							type="button"
+							class="btn btn-secondary btn-sm"
+							onclick={() => void runVoiceTest()}
+							disabled={testingVoice || saving || loading || !tts.engine}
+						>
+							{#if testingVoice}<Spinner size={12} />{/if}
+							Test speaker
+						</button>
+						{#if testResult === 'success'}
+							<span class="test-ok">✓ Working</span>
+						{:else if testResult === 'error'}
+							<span class="test-err">{testError || 'Failed'}</span>
+						{/if}
+					</div>
+					<label class="auto-speak-toggle">
+						<input
+							type="checkbox"
+							checked={voiceState.ttsAutoEnabled}
+							onchange={(e) => setTtsAutoEnabled((e.currentTarget as HTMLInputElement).checked)}
+						/>
+						<span>Speak replies automatically</span>
+					</label>
+				</div>
+			</div>
+		</div>
 
 		{#if wantsOpenpalmVoice && addonProfiles.length > 0}
 			<VoiceAddonProfileSection
@@ -550,24 +617,120 @@
 </div>
 
 <style>
-	.panel-header {
-		position: sticky; top: 0; z-index: 10;
-		background: var(--color-surface);
-		display: flex; align-items: center; justify-content: space-between;
-		padding: var(--space-4) var(--space-5);
-		border-bottom: 1px solid var(--color-border);
-		margin-bottom: 0;
+	.panel-body { display: flex; flex-direction: column; gap: var(--s-sp-6); }
+
+	.voice-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--s-sp-5);
 	}
-	.panel-header h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); margin: 0; }
-	.panel-header-actions { display: flex; gap: var(--space-2); }
-	.panel-body { display: flex; flex-direction: column; gap: var(--space-6); }
-	.section-desc { font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0; }
+
+	.section-card {
+		border: var(--s-hair) solid var(--s-line-soft);
+		border-radius: 2px;
+		padding: var(--s-sp-5);
+		display: flex;
+		flex-direction: column;
+		gap: var(--s-sp-4);
+	}
+
+	.sc-title {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
+		padding-bottom: var(--s-sp-3);
+	}
+
+	.field { display: flex; flex-direction: column; gap: var(--s-sp-2); }
+
+	.field-label {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+	}
+
+	.field-select, .field-input {
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
+		background: none;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-2);
+		padding: 0.4em 0.6em;
+		width: 100%;
+	}
+	.field-select:focus, .field-input:focus {
+		outline: none;
+		border-color: var(--s-seal);
+	}
+
+	.field-hint {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+		margin: 0;
+	}
+	.field-hint--warn { color: var(--s-seal); }
+
+	.reachability {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+	}
+	.reachability--ok { color: var(--s-moss); }
+
+	.sc-foot {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s-sp-3);
+		margin-top: auto;
+		padding-top: var(--s-sp-3);
+		border-top: var(--s-hair) solid var(--s-line-soft);
+	}
+
+	.test-row { display: flex; align-items: center; gap: var(--s-sp-3); flex-wrap: wrap; }
+
+	.test-ok {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-moss);
+	}
+	.test-err {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-seal);
+	}
+
+	.auto-speak-toggle {
+		display: flex; align-items: center; gap: var(--s-sp-2);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-2);
+		cursor: pointer;
+	}
+	.auto-speak-toggle input[type='checkbox'] {
+		accent-color: var(--s-seal);
+		width: 14px; height: 14px;
+	}
+
 	.error-banner {
-		display: flex; align-items: center; gap: var(--space-2);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-error-bg, rgba(220, 38, 38, 0.08));
-		border: 1px solid var(--color-error-border, rgba(220, 38, 38, 0.25));
-		border-radius: var(--radius-md); font-size: var(--text-sm);
-		color: var(--color-error, #dc2626); margin-bottom: var(--space-4);
+		display: flex; align-items: center; gap: var(--s-sp-2);
+		padding: var(--s-sp-3) var(--s-sp-4);
+		border: var(--s-hair) solid var(--s-seal);
+		border-radius: 2px;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-seal);
+	}
+
+	@media (max-width: 640px) {
+		.voice-grid { grid-template-columns: 1fr; }
 	}
 </style>

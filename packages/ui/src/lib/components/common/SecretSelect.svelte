@@ -136,22 +136,34 @@
   .secret-select {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
   .ss-row {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
   .ss-select {
     flex: 1 1 auto;
     min-width: 0;
     height: 38px;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-whisper);
+    color: var(--s-ink);
+    background: var(--s-paper);
+    border: 0;
+    border-bottom: var(--s-hair) solid var(--s-line);
+    border-radius: 0;
+    padding: 0 var(--s-sp-1);
+  }
+  .ss-select:focus {
+    outline: none;
+    border-bottom-color: var(--s-ink-2);
   }
   .ss-add-btn {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--s-sp-1);
     flex-shrink: 0;
     height: 38px;
   }
@@ -161,29 +173,35 @@
   .ss-add-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-secondary);
+    gap: var(--s-sp-2);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
   }
   .ss-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--s-sp-1);
   }
   .ss-field-label {
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
   .ss-error {
-    font-size: var(--text-xs);
-    color: var(--color-danger);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-seal);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
   }
   .ss-actions {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
   @media (max-width: 480px) {
     .ss-add-label {

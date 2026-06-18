@@ -95,18 +95,18 @@
     align-items: center;
     gap: 6px;
     padding: 8px 12px;
-    background: var(--color-surface, #f8fafc);
-    border: 1px solid var(--color-border, #e2e8f0);
-    border-radius: var(--radius-md, 6px);
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
     margin-top: 10px;
   }
 
   .model-summary-text {
     flex: 1;
     min-width: 0;
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--color-text, #1e293b);
-    font-weight: var(--font-medium, 500);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    font-weight: 400;
   }
 
   .btn-edit-model {
@@ -119,19 +119,19 @@
     padding: 0;
     background: none;
     border: none;
-    border-radius: var(--radius-md, 6px);
-    color: var(--color-text-secondary, #64748b);
+    border-radius: 2px;
+    color: var(--s-ink-2);
     cursor: pointer;
     flex-shrink: 0;
   }
 
   .btn-edit-model:hover {
-    background: var(--color-surface-hover, #f1f5f9);
-    color: var(--color-text, #1e293b);
+    background: var(--s-paper);
+    color: var(--s-ink);
   }
 
   .btn-edit-model:focus-visible {
-    outline: 2px solid var(--color-primary, #ff9d00);
+    outline: 2px solid var(--s-seal);
     outline-offset: 2px;
   }
 </style>

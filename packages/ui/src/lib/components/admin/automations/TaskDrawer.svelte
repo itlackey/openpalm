@@ -271,7 +271,7 @@
         </div>
 
         {#if actionKind === 'command'}
-          <div class="field-group" style="margin-top: var(--space-3)">
+          <div class="field-group" style="margin-top: var(--s-sp-3)">
             <label class="field-label" for="tf-cmd">Shell command</label>
             <input
               id="tf-cmd"
@@ -284,7 +284,7 @@
             <span class="field-hint">Runs as: <code>sh -c "&lt;command&gt;"</code></span>
           </div>
         {:else if actionKind === 'prompt'}
-          <div class="field-group" style="margin-top: var(--space-3)">
+          <div class="field-group" style="margin-top: var(--s-sp-3)">
             <label class="field-label" for="tf-prompt">Prompt text</label>
             <textarea
               id="tf-prompt"
@@ -295,7 +295,7 @@
             ></textarea>
           </div>
         {:else}
-          <div class="field-group" style="margin-top: var(--space-3)">
+          <div class="field-group" style="margin-top: var(--s-sp-3)">
             <label class="field-label" for="tf-workflow">Workflow ref</label>
             <input
               id="tf-workflow"
@@ -338,40 +338,40 @@
   .task-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--s-sp-5);
   }
 
   .field-group {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--s-sp-1);
     border: none;
     padding: 0;
     margin: 0;
   }
 
   .field-group--error .field-input {
-    border-color: var(--color-danger);
+    border-color: var(--s-seal);
   }
 
   .field-label {
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    font-weight: 400;
+    color: var(--s-ink-2);
   }
 
   .field-input {
-    font-size: var(--text-sm);
-    color: var(--color-text);
-    background: var(--color-input-bg, var(--color-bg));
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2) var(--space-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    padding: var(--s-sp-2) var(--s-sp-3);
     width: 100%;
   }
 
   .field-input:focus {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-seal);
     outline-offset: 1px;
   }
 
@@ -385,16 +385,16 @@
   }
 
   .field-input--error {
-    border-color: var(--color-danger);
+    border-color: var(--s-seal);
   }
 
   .field-select {
-    font-size: var(--text-sm);
-    color: var(--color-text);
-    background: var(--color-input-bg, var(--color-bg));
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2) var(--space-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    padding: var(--s-sp-2) var(--s-sp-3);
   }
 
   .field-select--narrow {
@@ -402,7 +402,7 @@
   }
 
   .field-select:focus {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-seal);
     outline-offset: 1px;
   }
 
@@ -413,31 +413,31 @@
   }
 
   .field-mono {
-    font-family: var(--font-mono);
+    font-family: var(--s-font-mono);
   }
 
   .field-hint {
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
   }
 
   .field-hint code {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
   }
 
   .field-error {
-    font-size: var(--text-xs);
-    color: var(--color-danger);
+    font-size: var(--s-type-deed);
+    color: var(--s-seal);
   }
 
   /* Toggle row */
   .toggle-row {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
     cursor: pointer;
-    font-size: var(--text-sm);
+    font-size: var(--s-type-deed);
   }
 
   .toggle-row input[type='checkbox'] {
@@ -447,23 +447,23 @@
   }
 
   .toggle-label {
-    font-weight: var(--font-medium);
-    color: var(--color-text);
+    font-weight: 400;
+    color: var(--s-ink);
   }
 
   .toggle-hint {
-    color: var(--color-text-secondary);
-    font-size: var(--text-xs);
+    color: var(--s-ink-2);
+    font-size: var(--s-type-deed);
   }
 
   /* Schedule */
   .schedule-fieldset {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-4);
+    gap: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    padding: var(--s-sp-4);
     margin: 0;
   }
 
@@ -471,49 +471,49 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
   }
 
   .schedule-params {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .param-label {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     white-space: nowrap;
   }
 
   .schedule-summary {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2) var(--space-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    background: var(--s-paper-deep);
+    border-radius: 2px;
+    padding: var(--s-sp-2) var(--s-sp-3);
     margin: 0;
   }
 
   .schedule-summary--error {
-    color: var(--color-danger);
+    color: var(--s-seal);
   }
 
   .advanced-details {
-    border-top: 1px solid var(--color-border);
-    padding-top: var(--space-3);
+    border-top: var(--s-hair) solid var(--s-line);
+    padding-top: var(--s-sp-3);
   }
 
   .advanced-summary {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     cursor: pointer;
     user-select: none;
     list-style: none;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .advanced-summary::-webkit-details-marker { display: none; }
@@ -531,47 +531,47 @@
   .advanced-body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    margin-top: var(--space-3);
+    gap: var(--s-sp-1);
+    margin-top: var(--s-sp-3);
   }
 
   /* Radio row */
   .radio-row {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-4);
-    padding-top: var(--space-2);
+    gap: var(--s-sp-4);
+    padding-top: var(--s-sp-2);
   }
 
   .radio-label {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
+    gap: var(--s-sp-2);
+    font-size: var(--s-type-deed);
     cursor: pointer;
   }
 
   /* Notices */
   .unknown-keys-notice {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-sm);
-    padding: var(--space-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    background: var(--s-paper-deep);
+    border-radius: 2px;
+    padding: var(--s-sp-3);
     margin: 0;
   }
 
   .unknown-keys-notice code {
-    font-family: var(--font-mono);
+    font-family: var(--s-font-mono);
   }
 
   .save-error {
-    font-size: var(--text-sm);
-    color: var(--color-danger);
-    background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
-    border-radius: var(--radius-sm);
-    padding: var(--space-3);
+    font-size: var(--s-type-deed);
+    color: var(--s-seal);
+    background: color-mix(in srgb, var(--s-seal) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--s-seal) 30%, transparent);
+    border-radius: 2px;
+    padding: var(--s-sp-3);
     margin: 0;
   }
 

@@ -70,21 +70,60 @@
 
 <style>
 	.profile-single {
-		font-size: var(--text-xs, 0.75rem);
-		color: var(--color-text-secondary, #64748b);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-2);
 		margin: 0;
 	}
 	.profile-desc {
-		font-size: var(--text-xs, 0.75rem);
-		color: var(--color-text-secondary, #64748b);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-2);
 		margin: 0;
 	}
 	.field-hint {
-		font-size: var(--text-xs, 0.75rem);
-		color: var(--color-text-tertiary, #94a3b8);
-		margin-top: 2px;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+		margin-top: var(--s-sp-1);
 	}
 	.field-hint--warning {
-		color: var(--color-error, #dc2626);
+		color: var(--s-seal);
+	}
+
+	/* Stillness overrides for global form utilities used inside this component */
+	:global(.engine-section .form-field) {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s-sp-1);
+	}
+	:global(.engine-section .form-label) {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		font-weight: 400;
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-3);
+	}
+	:global(.engine-section .form-input) {
+		width: 100%;
+		height: auto;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
+		padding: 0.4em 0.6em;
+		background: none;
+		color: var(--s-ink-2);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		box-shadow: none;
+	}
+	:global(.engine-section .form-input:focus) {
+		outline: none;
+		border-color: var(--s-seal);
+		box-shadow: none;
+	}
+	:global(.engine-section .form-input:focus-visible) {
+		outline: none;
+		border-color: var(--s-seal);
 	}
 </style>

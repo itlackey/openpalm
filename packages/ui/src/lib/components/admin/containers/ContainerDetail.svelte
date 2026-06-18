@@ -171,15 +171,15 @@
 
 <style>
   .container-detail {
-    padding: var(--space-4) var(--space-5) var(--space-4) calc(var(--space-5) + 28px);
-    background: var(--color-bg-secondary);
-    border-bottom: 1px solid var(--color-border);
+    padding: var(--s-sp-4) var(--s-sp-6) var(--s-sp-4) calc(var(--s-sp-6) + 28px);
+    background: var(--s-paper-deep);
+    border-bottom: var(--s-hair) solid var(--s-line);
   }
 
   .detail-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-3) var(--space-6);
+    gap: var(--s-sp-3) var(--s-sp-6);
   }
 
   .detail-item {
@@ -189,87 +189,91 @@
   }
 
   .detail-label {
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    color: var(--color-text-tertiary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--s-ink-3);
   }
 
   .detail-value {
-    font-size: var(--text-sm);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .detail-mono {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-2);
     word-break: break-all;
   }
 
   .detail-digest {
-    font-size: var(--text-xs);  /* 12px — was 0.6875rem ≈ 11px */
-    color: var(--color-text-tertiary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-3);
   }
 
   .detail-actions {
     display: flex;
-    gap: var(--space-2);
-    margin-top: var(--space-4);
+    gap: var(--s-sp-2);
+    margin-top: var(--s-sp-4);
   }
 
   .detail-not-created {
-    padding: var(--space-2) 0;
+    padding: var(--s-sp-2) 0;
   }
 
   .detail-not-created p {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
   }
 
   .action-feedback {
-    margin-top: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
+    margin-top: var(--s-sp-3);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border-radius: 2px;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
   }
 
   .action-feedback--success {
-    background: var(--color-success-bg);
-    color: var(--color-success);
-    border: 1px solid var(--color-success-border);
+    color: var(--s-moss);
+    border: var(--s-hair) solid var(--s-moss);
   }
 
   .action-feedback--error {
-    background: var(--color-danger-bg);
-    color: var(--color-danger);
-    border: 1px solid var(--color-danger);
+    color: var(--s-seal);
+    border: var(--s-hair) solid var(--s-seal);
   }
 
   .confirm-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-warning-bg);
-    border: 1px solid var(--color-warning);
-    border-radius: var(--radius-md);
+    gap: var(--s-sp-3);
+    margin-top: var(--s-sp-4);
+    padding: var(--s-sp-3) var(--s-sp-4);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
   }
 
   .confirm-text {
-    font-size: var(--text-sm);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
 
   .confirm-actions {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     flex-shrink: 0;
   }
 
@@ -279,7 +283,7 @@
     }
 
     .container-detail {
-      padding-left: var(--space-4);
+      padding-left: var(--s-sp-4);
     }
 
     .confirm-bar {

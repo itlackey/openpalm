@@ -68,30 +68,43 @@
   .update-banner {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 14px;
-    background: #eef2ff;
-    border-bottom: 1px solid #c7d2fe;
-    color: #3730a3;
-    font-size: var(--text-sm, 0.875rem);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-2) var(--s-sp-4);
+    background: color-mix(in srgb, var(--s-seal) 6%, var(--s-paper));
+    border-bottom: var(--s-hair) solid color-mix(in srgb, var(--s-seal) 20%, transparent);
+    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
   }
-  .update-banner-icon { display: inline-flex; }
+  .update-banner-icon {
+    display: inline-flex;
+    color: var(--s-seal);
+    flex-shrink: 0;
+  }
   .update-banner-text { flex: 1; }
   .update-banner-link {
-    color: #4338ca;
-    font-weight: 600;
+    color: var(--s-seal);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
     text-decoration: none;
+    border-bottom: var(--s-hair) solid var(--s-seal);
+    transition: opacity var(--s-t-quick) var(--s-ease);
   }
-  .update-banner-link:hover { text-decoration: underline; }
+  .update-banner-link:hover { opacity: 0.7; }
   .update-banner-dismiss {
-    background: transparent;
+    background: none;
     border: 0;
-    color: #3730a3;
+    color: var(--s-ink-3);
     cursor: pointer;
     font-size: 1.1rem;
     line-height: 1;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: var(--s-sp-1) var(--s-sp-2);
+    border-radius: 2px;
+    transition: color var(--s-t-quick) var(--s-ease);
   }
-  .update-banner-dismiss:hover { background: rgba(67, 56, 202, 0.08); }
+  .update-banner-dismiss:hover { color: var(--s-ink); }
 </style>

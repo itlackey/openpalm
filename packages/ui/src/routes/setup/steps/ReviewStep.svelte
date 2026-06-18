@@ -310,37 +310,37 @@
     margin: 12px 0;
     padding: 10px 14px;
     background: rgba(242, 92, 92, 0.12);
-    border: 1px solid var(--color-danger);
-    border-radius: var(--radius-lg);
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--color-danger);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
+    color: var(--s-seal);
   }
 
   /* ── Informational note (no-AI is a valid client-only choice) ──── */
   .review-note {
     margin: 12px 0;
     padding: 10px 14px;
-    background: var(--color-bg-secondary);
-    border-radius: var(--radius-lg);
-    font-size: var(--text-sm, 0.875rem);
+    background: var(--s-paper-deep);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
     line-height: 1.5;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
   }
 
   /* ── Password block (tinted surface, rounded, no border) ──────── */
   .password-block {
-    background: var(--color-bg-secondary);
-    border-radius: var(--radius-lg);
+    background: var(--s-paper-deep);
+    border-radius: 2px;
     padding: 18px 20px;
     margin-bottom: 8px;
   }
 
   .password-label {
-    font-size: var(--text-xs, 0.75rem);
+    font-size: var(--s-type-deed);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
     margin-bottom: 10px;
   }
 
@@ -357,9 +357,9 @@
 
   .password-value--mono {
     font-family: "Courier New", Courier, monospace;
-    font-size: var(--text-lg, 1rem);
+    font-size: var(--s-type-whisper);
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--s-ink);
     letter-spacing: 0.04em;
     background: none;
     border: none;
@@ -370,8 +370,8 @@
   .password-value--dots {
     font-family: inherit;
     letter-spacing: 0.18em;
-    font-size: var(--text-base, 0.875rem);
-    color: var(--color-text-secondary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
   }
 
   .password-actions {
@@ -382,8 +382,8 @@
   }
 
   .rerun-note {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     font-style: italic;
   }
 
@@ -391,33 +391,33 @@
   .btn-icon {
     width: 34px;
     height: 34px;
-    border-radius: var(--radius-md, 8px);
-    border: 1px solid var(--color-border-hover);
-    background: var(--color-surface);
+    border-radius: 2px;
+    border: var(--s-hair) solid var(--s-line);
+    background: var(--s-paper);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
     cursor: pointer;
     transition: border-color 150ms, color 150ms, background 150ms;
     flex-shrink: 0;
   }
 
   .btn-icon:hover {
-    border-color: var(--color-text-secondary);
-    color: var(--color-text);
-    background: var(--color-bg-secondary);
+    border-color: var(--s-ink-2);
+    color: var(--s-ink);
+    background: var(--s-paper-deep);
   }
 
   .btn-icon--copied {
-    border-color: var(--color-success-border);
-    color: var(--color-success-text);
-    background: var(--color-success-bg);
+    border-color: color-mix(in srgb, var(--s-moss) 25%, transparent);
+    color: var(--s-moss);
+    background: color-mix(in srgb, var(--s-moss) 12%, transparent);
   }
 
   .password-note {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     margin-top: 10px;
     line-height: 1.5;
   }
@@ -430,11 +430,11 @@
   }
 
   .summary-section-label {
-    font-size: var(--text-xs, 0.75rem);
+    font-size: var(--s-type-deed);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
     margin-bottom: 6px;
   }
 
@@ -443,11 +443,11 @@
     align-items: center;
     gap: 14px;
     padding: 14px 4px;
-    border-top: 1px solid var(--color-border);
+    border-top: var(--s-hair) solid var(--s-line);
   }
 
   .summary-row:last-child {
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: var(--s-hair) solid var(--s-line);
   }
 
   .summary-icon {
@@ -463,24 +463,24 @@
   }
 
   .summary-key {
-    font-size: var(--text-sm, 0.8125rem);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     font-weight: 500;
   }
 
   .summary-val {
-    font-size: var(--text-base, 0.875rem);
+    font-size: var(--s-type-deed);
     font-weight: 500;
-    color: var(--color-text);
+    color: var(--s-ink);
     margin-top: 1px;
   }
 
   .btn-change {
     background: none;
     border: none;
-    font-size: var(--text-sm, 0.8125rem);
+    font-size: var(--s-type-deed);
     font-weight: 600;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
     text-decoration: underline;
     text-underline-offset: 2px;
     padding: 4px 0;
@@ -491,7 +491,7 @@
   }
 
   .btn-change:hover {
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
   }
 
   /* ── Save configuration quiet link ─────────────────────────────── */
@@ -502,8 +502,8 @@
   .btn-save {
     background: none;
     border: none;
-    font-size: var(--text-sm, 0.8125rem);
-    color: var(--color-text-tertiary);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     text-decoration: underline;
     text-underline-offset: 2px;
     padding: 4px 0;
@@ -513,6 +513,6 @@
   }
 
   .btn-save:hover {
-    color: var(--color-text-secondary);
+    color: var(--s-ink-2);
   }
 </style>

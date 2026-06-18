@@ -51,39 +51,42 @@
     display: block;
     width: 100%;
     text-align: left;
-    font-family: var(--font-sans);
-    padding: var(--space-5);
-    margin-bottom: var(--space-8);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    font-family: var(--s-font-display);
+    padding: var(--s-sp-5);
+    margin-bottom: var(--s-sp-8);
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
     cursor: pointer;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    appearance: none;
+    transition: border-color 0.12s ease;
   }
   .akm-card:hover {
-    border-color: var(--color-border-hover);
-    box-shadow: var(--shadow-sm);
+    border-color: var(--s-line);
   }
   .akm-card:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-seal);
     outline-offset: 2px;
   }
   .akm-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
+    gap: var(--s-sp-3);
+    margin-bottom: var(--s-sp-4);
   }
   .akm-title {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
   .akm-metrics {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: var(--space-4);
+    gap: var(--s-sp-4);
   }
   .akm-metric {
     display: flex;
@@ -91,23 +94,29 @@
     gap: 2px;
   }
   .akm-num {
-    font-size: var(--text-xl);
-    font-weight: var(--font-bold);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-voice);
+    font-weight: 400;
+    color: var(--s-ink);
     line-height: 1.1;
   }
   .akm-num-sub {
-    font-size: var(--text-base);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-whisper);
+    font-weight: 400;
+    color: var(--s-ink-2);
   }
   .akm-cap {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
   .akm-unavailable {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     max-width: 68ch;
   }
 </style>

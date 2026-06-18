@@ -71,59 +71,63 @@
   .hero {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
+    gap: var(--s-sp-4);
     flex-wrap: wrap;
-    padding: var(--space-5);
-    border-radius: var(--radius-lg);
-    border: 1px solid transparent;
-    margin-bottom: var(--space-6);
+    padding: var(--s-sp-5);
+    border-radius: 2px;
+    border: var(--s-hair) solid var(--s-line);
+    margin-bottom: var(--s-sp-6);
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
   }
   .hero--ok {
-    background: var(--color-success-bg);
-    border-color: var(--color-success-border);
+    border-color: var(--s-moss);
   }
   .hero--warning {
-    background: var(--color-warning-bg);
-    border-color: var(--color-warning);
+    border-color: var(--s-seal);
   }
   .hero--unknown {
-    background: var(--color-bg-secondary);
-    border-color: var(--color-border);
+    border-color: var(--s-line);
   }
   .hero-icon {
     display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    border: var(--s-hair) solid var(--s-line);
   }
   .hero--ok .hero-icon {
-    color: var(--color-badge-success-fg);
+    color: var(--s-moss);
   }
   .hero--warning .hero-icon {
-    color: var(--color-badge-warning-fg);
+    color: var(--s-seal);
   }
   .hero--unknown .hero-icon {
-    color: var(--color-text-secondary);
+    color: var(--s-ink-3);
   }
   .hero-text {
     flex: 1 1 240px;
     min-width: 0;
   }
   .hero-title {
-    font-size: var(--text-lg);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-whisper);
+    font-weight: 400;
+    color: var(--s-ink);
   }
   .hero-detail {
     margin-top: 2px;
-    font-size: var(--text-sm);
-    /* Accessible on the tinted hero backgrounds (secondary is only ~3.9:1 on the
-       amber warning tint). */
-    color: var(--color-badge-neutral-fg);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     max-width: 68ch;
   }
   .hero-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     flex-wrap: wrap;
     max-width: 100%;
   }

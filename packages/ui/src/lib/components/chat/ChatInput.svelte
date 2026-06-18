@@ -1,6 +1,4 @@
 <script lang="ts">
-  import Spinner from '$lib/components/common/Spinner.svelte';
-	import NewChatButton from './NewChatButton.svelte';
   interface Props {
     sending: boolean;
     questionPending?: boolean;
@@ -13,7 +11,7 @@
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
 
   const inputDisabled = $derived(sending && !questionPending);
-  const actionLabel = $derived(questionPending ? 'Answer' : 'Send');
+  const isActive = $derived(inputText.trim().length > 0);
 
   function handleKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -27,7 +25,6 @@
     if (!text || inputDisabled) return;
     onSend(text);
     inputText = '';
-    // Reset textarea height after clearing
     if (textareaEl) {
       textareaEl.style.height = 'auto';
     }
@@ -36,113 +33,92 @@
   function handleInput(): void {
     if (!textareaEl) return;
     textareaEl.style.height = 'auto';
-    textareaEl.style.height = `${textareaEl.scrollHeight}px`;
+    textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, window.innerHeight * 0.3)}px`;
   }
 </script>
 
-<div class="chat-input-row">
-  <div class="input-area">
-    <NewChatButton />
-    <textarea
-      id="chat-input"
-      bind:this={textareaEl}
-      bind:value={inputText}
-      onkeydown={handleKeydown}
-      oninput={handleInput}
-      placeholder={questionPending
-        ? 'Answer the assistant… (Enter to send, Shift+Enter for newline)'
-        : 'Send a message… (Enter to send, Shift+Enter for newline)'}
-      rows="1"
-      disabled={inputDisabled}
-      aria-label="Message input"
-    ></textarea>
-    <button
-      class="btn btn-primary send-btn"
-      type="button"
-      disabled={inputDisabled || !inputText.trim()}
-      onclick={submit}
-      aria-label={questionPending ? 'Send answer' : 'Send message'}
-    >
-      {#if sending && !questionPending}
-        <Spinner />
-        <span>Sending...</span>
-      {:else}
-        <svg
-          aria-hidden="true"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <line x1="22" y1="2" x2="11" y2="13" />
-          <polygon points="22 2 15 22 11 13 2 9 22 2" />
-        </svg>
-        <span>{actionLabel}</span>
-      {/if}
-    </button>
-  </div>
-</div>
-<!-- backend toggle moved to VoiceControl in the Navbar so it's available
-     on every page (mic uses the same backend selection) -->
+<form
+  class="s-composer"
+  class:active={isActive}
+  class:sending
+  onsubmit={(e) => { e.preventDefault(); submit(); }}
+>
+  <textarea
+    bind:this={textareaEl}
+    bind:value={inputText}
+    onkeydown={handleKeydown}
+    oninput={handleInput}
+    placeholder={sending && !questionPending ? '' : 'Write…'}
+    rows="1"
+    disabled={inputDisabled}
+    aria-label={questionPending ? 'Answer the assistant' : 'Speak to the agent'}
+    autocomplete="off"
+    spellcheck="false"
+  ></textarea>
+  <div class="s-rule"></div>
+</form>
 
 <style>
-  .chat-input-row {
+  .s-composer {
+    width: min(40rem, 100%);
     display: flex;
-    justify-content: center;
-    padding: var(--space-3) var(--space-4);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
+    flex-direction: column;
+    align-items: center;
+    gap: 0.55rem;
   }
 
-  .input-area {
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-2);
+  .s-composer textarea {
     width: 100%;
-    /* Match the centered message column width (see .messages-area). */
-    max-width: var(--chat-column);
-    padding: var(--space-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-xl);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  textarea {
-    flex: 1;
-    min-height: 40px;
-    max-height: 160px;
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: calc(var(--radius-xl) - 4px);
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-family: var(--font-sans);
-    font-size: var(--text-base);
-    line-height: var(--leading-normal);
     resize: none;
-    overflow-y: auto;
-    transition: border-color var(--transition-fast);
+    border: 0;
+    outline: 0;
+    background: none;
+    font-family: var(--s-font-display);
+    font-weight: 400;
+    font-size: var(--s-type-compose);
+    line-height: 1.5;
+    text-align: center;
+    color: var(--s-ink);
+    overflow: hidden;
+    max-height: 30vh;
+    padding: 0.2rem 0;
+    transition: color var(--s-t-theme) var(--s-ease);
   }
 
-  textarea:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-subtle);
+  .s-composer textarea::placeholder {
+    color: var(--s-ink-3);
+    opacity: 1;
   }
 
-  textarea:disabled {
-    opacity: 0.65;
-    cursor: not-allowed;
+  .s-composer textarea:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
-  .send-btn {
-    min-width: 92px;
-    flex-shrink: 0;
+  .s-rule {
+    width: clamp(8rem, 60%, 20rem);
+    height: 1px;
+    background: var(--s-line);
+    position: relative;
+    transition: width var(--s-t-settle) var(--s-ease), background var(--s-t-quick) var(--s-ease);
   }
 
+  .s-rule::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--s-seal);
+    transform: scaleX(0);
+    transform-origin: center;
+    opacity: 0.7;
+    transition: transform var(--s-t-quick) var(--s-ease);
+  }
+
+  .s-composer.active .s-rule::after {
+    transform: scaleX(0.5);
+  }
+
+  .s-composer.sending .s-rule::after {
+    animation: s-ripple 1s var(--s-ease);
+  }
 </style>

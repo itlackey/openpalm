@@ -61,15 +61,16 @@
 
 <style>
   .ct-service-name {
-    font-weight: var(--font-medium);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink);
   }
 
   .ct-mono {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-2);
   }
 
   .ct-indicator {
@@ -80,19 +81,19 @@
   }
 
   .ct-indicator--success {
-    background: var(--color-success);
+    background: var(--s-moss);
   }
 
   .ct-indicator--danger {
-    background: var(--color-danger);
+    background: var(--s-seal);
   }
 
   .ct-indicator--warning {
-    background: var(--color-warning);
+    background: var(--s-seal);
   }
 
   .ct-indicator--idle {
-    background: var(--color-border);
+    background: var(--s-ink-3);
   }
 
   .ct-chevron-open {
@@ -100,22 +101,23 @@
   }
 
   .ct-not-created {
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
     font-style: italic;
   }
 
   .container-table-row {
     display: flex;
     align-items: center;
-    padding: var(--space-3) var(--space-5);
-    border-bottom: 1px solid var(--color-bg-tertiary);
-    font-size: var(--text-sm);
+    padding: var(--s-sp-3) var(--s-sp-6);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    font-size: var(--s-type-deed);
     width: 100%;
     background: none;
     border-left: none;
     border-right: none;
     border-top: none;
-    font-family: var(--font-sans);
+    font-family: var(--s-font-display);
+    color: var(--s-ink);
     text-align: left;
   }
 
@@ -125,23 +127,22 @@
 
   .container-table-row--clickable {
     cursor: pointer;
-    transition: background var(--transition-fast);
   }
 
   .container-table-row--clickable:hover {
-    background: var(--color-surface-hover);
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
   }
 
   .container-table-row--clickable:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-ink-2);
     outline-offset: -2px;
   }
 
   @media (max-width: 768px) {
     .container-table-row {
       flex-wrap: wrap;
-      gap: var(--space-1);
-      padding: var(--space-3) var(--space-4);
+      gap: var(--s-sp-1);
+      padding: var(--s-sp-3) var(--s-sp-4);
     }
   }
 </style>

@@ -78,31 +78,33 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     width: 40px;
     height: 40px;
-    padding: 0;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
+    padding: var(--s-sp-2);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+    color: var(--s-ink-3);
     text-decoration: none;
     cursor: pointer;
     flex-shrink: 0;
-    transition: background var(--transition-fast), color var(--transition-fast),
-      border-color var(--transition-fast);
+    transition: color var(--s-t-quick) var(--s-ease);
   }
 
   /* With a visible label the button becomes an auto-width pill. */
   .icon-btn.has-label {
     width: auto;
-    padding: 0 var(--space-3);
+    border-radius: 2px;
+    padding: 0 var(--s-sp-3);
   }
 
   .icon-btn-label {
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
     white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
   }
 
   .icon-btn :global(svg) {
@@ -110,40 +112,32 @@
   }
 
   .icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
-    color: var(--color-text);
-    background: var(--color-surface-hover);
-    border-color: var(--color-border-hover);
+    color: var(--s-ink);
+    background: none;
   }
 
   .icon-btn:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
+    outline: 2px solid var(--s-ink-2);
+    outline-offset: 2px;
   }
 
   .icon-btn:disabled,
   .icon-btn[aria-disabled='true'] {
-    opacity: 0.6;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
-  /* Selected / "on" look — primary by default, danger when tone="danger".
-     Mirrors the speaker (primary) and mic-recording (danger) treatments. */
+  /* Selected / "on" look — primary (seal) by default, danger when tone="danger". */
   .icon-btn.selected {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-    background: var(--color-primary-subtle);
+    color: var(--s-seal);
   }
   .icon-btn.selected:hover:not(:disabled):not([aria-disabled='true']) {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
+    color: var(--s-seal);
   }
   .icon-btn.selected.tone-danger {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-    background: var(--color-danger-bg);
+    color: var(--s-seal);
   }
   .icon-btn.selected.tone-danger:hover:not(:disabled):not([aria-disabled='true']) {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
+    color: var(--s-seal);
   }
 </style>

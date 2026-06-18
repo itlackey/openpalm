@@ -156,87 +156,159 @@
 	.engine-list {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-2);
+		gap: 0;
 	}
 
 	.engine-card {
 		display: flex;
 		align-items: flex-start;
-		gap: var(--space-3);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
+		gap: var(--s-sp-3);
+		padding: var(--s-sp-3) var(--s-sp-4);
+		background: none;
+		border: var(--s-hair) solid var(--s-line-soft);
+		border-top: none;
+		border-radius: 0;
 		text-align: left;
 		cursor: pointer;
-		transition: all var(--transition-fast);
+		appearance: none;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+		width: 100%;
+	}
+	.engine-card:first-child {
+		border-top: var(--s-hair) solid var(--s-line-soft);
 	}
 	.engine-card:hover:not(:disabled) {
-		border-color: var(--color-border-hover);
-		background: var(--color-surface-hover);
+		background: var(--s-paper-deep);
 	}
 	.engine-card--selected {
-		/* Selection is shown by the orange border + a 2px ring; the fill stays a
-		   neutral surface so translucent status badges (e.g. "Recommended") keep
-		   their contrast instead of compositing over an orange tint. */
-		border-color: var(--color-primary);
-		background: var(--color-surface-hover);
-		box-shadow: 0 0 0 1px var(--color-primary);
+		border-left: 2px solid var(--s-seal);
+		color: var(--s-seal);
+		background: none;
 	}
 	.engine-card--disabled {
-		opacity: 0.6;
+		opacity: 0.45;
 		cursor: not-allowed;
 	}
 
 	.engine-body {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: var(--s-sp-1);
 		flex: 1;
 		min-width: 0;
 	}
 
 	.engine-name {
-		font-size: var(--text-sm);
-		font-weight: var(--font-medium);
-		color: var(--color-text);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		font-weight: 400;
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		color: inherit;
 	}
 
 	.engine-desc {
-		font-size: var(--text-xs);
-		color: var(--color-text-secondary);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-2);
+		text-transform: none;
+		letter-spacing: 0;
 	}
 
 	.engine-subtitle {
-		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
-		font-style: italic;
-		margin-top: 2px;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+		text-transform: none;
+		letter-spacing: 0;
+		margin-top: var(--s-sp-1);
 	}
 
 	.engine-reachability {
-		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
-		margin-top: 4px;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+		text-transform: none;
+		letter-spacing: 0;
+		margin-top: var(--s-sp-1);
 	}
 	.engine-reachability--ok {
-		color: var(--color-success, #16a34a);
+		color: var(--s-moss);
 	}
 
 	.engine-config {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
-		margin: calc(-1 * var(--space-1)) 0 var(--space-2) var(--space-4);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-bg-secondary);
-		border-left: 2px solid var(--color-primary);
-		border-radius: 0 var(--radius-md) var(--radius-md) 0;
+		gap: var(--s-sp-3);
+		margin: 0 0 0 var(--s-sp-4);
+		padding: var(--s-sp-3) var(--s-sp-4);
+		background: none;
+		border-left: 2px solid var(--s-seal);
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
 	}
 
 	.field-hint {
-		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
-		margin-top: 2px;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+		margin-top: var(--s-sp-1);
+		text-transform: none;
+		letter-spacing: 0;
+	}
+
+	/* Stillness overrides for global form utilities used inside this component */
+	:global(.engine-config .form-field) {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s-sp-1);
+	}
+	:global(.engine-config .form-label) {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		font-weight: 400;
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-3);
+	}
+	:global(.engine-config .form-input) {
+		width: 100%;
+		height: auto;
+		border: none;
+		border-bottom: var(--s-hair) solid var(--s-line);
+		border-radius: 0;
+		padding: 0.5rem 0;
+		background: none;
+		color: var(--s-ink);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-whisper);
+		box-shadow: none;
+	}
+	:global(.engine-config .form-input:focus) {
+		outline: none;
+		border-bottom-color: var(--s-seal);
+		box-shadow: none;
+	}
+	:global(.engine-config .form-input:focus-visible) {
+		outline: none;
+		border-bottom-color: var(--s-seal);
+	}
+	:global(.engine-card .badge) {
+		display: inline-flex;
+		align-items: center;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		font-weight: 400;
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		padding: 0.15em 0.5em;
+		border-radius: 2px;
+		white-space: nowrap;
+		background: none;
+		border: var(--s-hair) solid var(--s-moss);
+		color: var(--s-moss);
 	}
 </style>
