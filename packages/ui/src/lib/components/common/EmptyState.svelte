@@ -27,13 +27,17 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-8) var(--space-6);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-8) var(--s-sp-6);
     text-align: center;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-whisper);
   }
 
   .empty-state :global(p) {
-    font-size: var(--text-sm);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-whisper);
+    color: var(--s-ink-3);
   }
 </style>

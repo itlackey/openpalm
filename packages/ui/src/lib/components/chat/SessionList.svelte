@@ -103,60 +103,64 @@
   .session-body {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
     min-height: 0;
   }
 
   .list-item {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     width: 100%;
-    padding: var(--space-2) var(--space-3);
-    background: transparent;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    background: none;
     border: 0;
-    border-radius: var(--radius-sm, 6px);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 0;
     cursor: pointer;
     text-align: left;
     font: inherit;
-    color: var(--color-text);
+    color: var(--s-ink-3);
+    transition: color 120ms ease;
   }
   .list-item:hover:not(:disabled),
   .list-item:focus-visible {
-    background: var(--color-bg-tertiary);
+    color: var(--s-ink-2);
+  }
+  .list-item:focus-visible {
+    outline: var(--s-hair) solid var(--s-line);
+    outline-offset: -1px;
   }
   .list-item:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     cursor: not-allowed;
   }
-  /* Active row: an inset primary bar instead of a background tint, so the
-     timestamp keeps full contrast against the panel/drawer surface. */
+  /* Active row: left seal accent hairline */
   .list-item.active {
-    background: var(--color-bg-secondary);
-    box-shadow: inset 3px 0 0 var(--color-nav-active-indicator);
-  }
-  .list-item.active .item-label {
-    font-weight: 600;
+    color: var(--s-ink-2);
+    border-left: 2px solid var(--s-seal);
+    padding-left: calc(var(--s-sp-3) - 2px);
   }
 
-  /* Primary action — a filled, rounded, inset button (orange with dark text) so
-     it reads as a pressable CTA distinct from the flat list rows below, matching
-     the app's primary-fill convention. Orange is never used as text. */
+  /* New session button — hairline bordered, mono label */
   .new-btn {
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-weight: 600;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-border);
+    background: none;
+    color: var(--s-ink-3);
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 0;
     justify-content: center;
-    margin: 0 var(--space-1) var(--space-3);
+    margin: var(--s-sp-3) var(--s-sp-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
   }
   .new-btn:hover:not(:disabled) {
-    background: var(--color-surface-hover);
+    color: var(--s-ink-2);
+    border-color: var(--s-line);
   }
   .new-btn:focus-visible {
-    background: var(--color-bg);
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-line);
     outline-offset: 2px;
   }
   .new-btn .check,
@@ -164,7 +168,6 @@
     color: inherit;
   }
 
-  /* The "+" on the filled New session button. */
   .check {
     flex-shrink: 0;
     width: 14px;
@@ -190,22 +193,29 @@
     flex: 1;
     min-width: 0;
   }
+
+  /* Session title — display font, deed size */
   .item-label {
-    font-weight: 500;
-    font-size: var(--text-sm);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    font-weight: 400;
+    color: var(--s-ink-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* Meta / timestamp — mono, small, muted */
   .item-meta {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-ink-3);
   }
 
   .divider {
-    height: 1px;
-    margin: var(--space-2) 0;
-    background: var(--color-border);
+    height: var(--s-hair);
+    margin: var(--s-sp-2) 0;
+    background: var(--s-line);
   }
 
   .session-list {
@@ -217,58 +227,62 @@
   .list-error {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    gap: var(--s-sp-2);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-ink-3);
   }
   .list-error {
-    color: var(--color-danger);
+    color: var(--s-seal);
   }
   .list-error span:first-child {
     flex: 1;
   }
+
   .retry-btn {
     padding: 2px 8px;
-    font-size: var(--text-xs);
-    border: 1px solid var(--color-danger);
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--color-danger);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
+    background: none;
+    color: var(--s-seal);
     cursor: pointer;
   }
   .retry-btn:hover {
-    background: var(--color-danger);
-    color: var(--color-text-inverse);
+    background: var(--s-seal);
+    color: var(--s-paper);
   }
 
   .notice {
-    margin: 0 0 var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-sm, 6px);
+    margin: 0 0 var(--s-sp-2);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-ink-3);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
 
   .show-all {
     width: 100%;
-    padding: var(--space-2) var(--space-3);
-    background: transparent;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    background: none;
     border: 0;
-    color: var(--color-text);
-    font: inherit;
-    font-size: var(--text-xs);
-    font-weight: 500;
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
     text-align: left;
     cursor: pointer;
-    border-radius: var(--radius-sm, 6px);
+    transition: color 120ms ease;
   }
   .show-all:hover {
-    background: var(--color-bg-tertiary);
+    color: var(--s-ink-2);
   }
   .show-all:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
+    outline: var(--s-hair) solid var(--s-line);
+    outline-offset: -1px;
   }
 </style>

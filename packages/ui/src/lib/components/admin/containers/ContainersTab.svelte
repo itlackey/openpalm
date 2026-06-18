@@ -143,18 +143,22 @@
   .container-table-header {
     display: flex;
     align-items: center;
-    padding: var(--space-2) var(--space-5);
-    background: var(--color-bg-tertiary);
-    border-bottom: 1px solid var(--color-border);
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    text-transform: none;
+    padding: var(--s-sp-2) var(--s-sp-6);
+    background: var(--s-paper-deep);
+    border-bottom: var(--s-hair) solid var(--s-line);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
   }
 
   .last-updated {
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
     white-space: nowrap;
   }
 

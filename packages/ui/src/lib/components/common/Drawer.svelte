@@ -108,7 +108,7 @@
   .drawer-scrim {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(38, 41, 43, 0.35);
     z-index: 200;
     border: none;
     padding: 0;
@@ -121,11 +121,10 @@
     width: min(var(--drawer-width, 32rem), 100vw);
     display: flex;
     flex-direction: column;
-    background: var(--color-bg);
-    border-left: 1px solid var(--color-border);
-    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.18);
+    background: var(--s-paper);
+    border-left: var(--s-hair) solid var(--s-line);
     z-index: 201;
-    animation: drawer-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    animation: drawer-in var(--s-t-quick) var(--s-ease);
   }
   @keyframes drawer-in {
     from { transform: translateX(100%); }
@@ -138,17 +137,20 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-4) var(--s-sp-5);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
     flex-shrink: 0;
   }
   .drawer-title {
     flex: 1;
     min-width: 0;
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
   .drawer-close {
     display: inline-flex;
@@ -159,30 +161,30 @@
     padding: 0;
     background: none;
     border: none;
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
+    border-radius: 50%;
+    color: var(--s-ink-3);
     cursor: pointer;
     flex-shrink: 0;
+    transition: color var(--s-t-quick) var(--s-ease);
   }
   .drawer-close:hover {
-    background: var(--color-surface-hover);
-    color: var(--color-text);
+    color: var(--s-ink);
   }
   .drawer-close:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-ink-2);
     outline-offset: 2px;
   }
   .drawer-body {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-5);
+    padding: var(--s-sp-5);
   }
   .drawer-footer {
     flex-shrink: 0;
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-4) var(--space-5);
-    border-top: 1px solid var(--color-border);
+    gap: var(--s-sp-2);
+    padding: var(--s-sp-4) var(--s-sp-5);
+    border-top: var(--s-hair) solid var(--s-line-soft);
   }
 </style>

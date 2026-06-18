@@ -26,6 +26,7 @@
     border: 2px solid currentColor;
     border-right-color: transparent;
     border-radius: 50%;
+    color: var(--s-ink-3);
     animation: op-spin 0.6s linear infinite;
     flex-shrink: 0;
     vertical-align: -2px;

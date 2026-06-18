@@ -26,34 +26,37 @@
 <style>
   /* ── Output ── */
   .output-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
     overflow: hidden;
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--s-sp-6);
   }
-  .output-section--success { border-color: var(--color-success-border); }
-  .output-section--error { border-color: var(--color-danger); }
+  .output-section--success { border-color: var(--s-moss); }
+  .output-section--error   { border-color: var(--s-seal); }
   .output-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-3) var(--space-5);
-    background: var(--color-bg-secondary);
-    border-bottom: 1px solid var(--color-border);
+    padding: var(--s-sp-3) var(--s-sp-5);
+    background: var(--s-paper-deep);
+    border-bottom: var(--s-hair) solid var(--s-line);
   }
   .output-header h3 {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
   .output-code {
     margin: 0;
-    padding: var(--space-4) var(--space-5);
+    padding: var(--s-sp-4) var(--s-sp-5);
     max-height: 320px;
     overflow: auto;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
     line-height: 1.6;
     color: #e4e8f0;
     background: #1e2330;

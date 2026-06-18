@@ -114,22 +114,22 @@
 </div>
 
 <style>
-  .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-  .panel-subtitle { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 72ch; }
-  .panel-header-actions { display: flex; gap: var(--space-2); }
-  .error-banner { background: var(--color-danger-subtle, rgba(239,68,68,0.1)); color: var(--color-danger, #ef4444); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin-bottom: var(--space-4); }
-  .settings-grid { display: grid; grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-  .settings-card { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); background: var(--color-bg-secondary); }
-  .settings-card h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); color: var(--color-text); }
-  .section-note { margin: 0 0 var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary); }
-  .field { display: grid; gap: var(--space-1); font-size: var(--text-sm); color: var(--color-text-secondary); }
-  .field-inline { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text); }
-  .control-input { font-size: var(--text-sm); color: var(--color-text); background: var(--color-input-bg, var(--color-bg)); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); width: 100%; }
-  .control-input:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
-  .mono { font-family: var(--font-mono); }
-  .field-hint { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--color-text-secondary); }
-  .path-chip { display: inline-flex; align-items: center; margin-bottom: var(--space-3); padding: var(--space-1) var(--space-2); border-radius: 999px; background: var(--color-bg-tertiary, var(--color-bg)); color: var(--color-text-secondary); font-size: var(--text-xs); font-family: var(--font-mono); }
-  .persona-editor { min-height: 26rem; resize: vertical; }
-  .unsaved-hint { font-size: var(--text-xs); color: var(--color-warning); font-weight: var(--font-medium); }
+  .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-sp-4); margin-bottom: var(--s-sp-4); flex-wrap: wrap; }
+  .panel-subtitle { margin: var(--s-sp-1) 0 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-2); max-width: 72ch; }
+  .panel-header-actions { display: flex; gap: var(--s-sp-2); align-items: center; }
+  .error-banner { color: var(--s-seal); padding: var(--s-sp-2) var(--s-sp-3); border: var(--s-hair) solid var(--s-seal); border-radius: 2px; margin-bottom: var(--s-sp-4); }
+  .settings-grid { display: grid; grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr); gap: var(--s-sp-4); align-items: start; }
+  .settings-card { border: var(--s-hair) solid var(--s-line-soft); border-radius: 2px; padding: var(--s-sp-4); background: none; }
+  .settings-card h3 { margin: 0 0 var(--s-sp-2); font-family: var(--s-font-mono); font-size: var(--s-type-mark); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-ink-3); }
+  .section-note { margin: 0 0 var(--s-sp-3); font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-2); }
+  .field { display: grid; gap: var(--s-sp-1); font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-2); }
+  .field-inline { display: flex; align-items: center; gap: var(--s-sp-2); font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); }
+  .control-input { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); background: none; border: 0; border-bottom: var(--s-hair) solid var(--s-line); border-radius: 0; padding: 0.5rem 0; width: 100%; }
+  .control-input:focus { outline: none; border-bottom-color: var(--s-ink-2); }
+  .mono { font-family: var(--s-font-mono); font-size: var(--s-type-mark); }
+  .field-hint { margin: var(--s-sp-2) 0 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); }
+  .path-chip { display: inline-flex; align-items: center; margin-bottom: var(--s-sp-3); padding: var(--s-sp-1) var(--s-sp-2); border-radius: 2px; border: var(--s-hair) solid var(--s-line-soft); background: var(--s-paper-deep); color: var(--s-ink-3); font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); }
+  .persona-editor { min-height: 26rem; resize: vertical; font-family: var(--s-font-mono) !important; font-size: var(--s-type-mark-sm) !important; background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper)) !important; border: var(--s-hair) solid var(--s-line-soft) !important; border-bottom: var(--s-hair) solid var(--s-line-soft) !important; border-radius: 2px !important; padding: var(--s-sp-3) !important; color: var(--s-ink-2) !important; }
+  .unsaved-hint { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-seal); }
   @media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr; } .persona-editor { min-height: 18rem; } }
 </style>

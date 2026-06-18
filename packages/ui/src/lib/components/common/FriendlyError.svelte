@@ -48,55 +48,62 @@
 
 <style>
   .friendly-error {
-    background: #fef3f2;
-    border: 1px solid #fecaca;
-    border-radius: 8px;
-    padding: 12px 14px;
-    color: #7f1d1d;
-    font-size: var(--text-sm, 0.875rem);
+    background: color-mix(in srgb, var(--s-seal) 6%, var(--s-paper));
+    border: var(--s-hair) solid color-mix(in srgb, var(--s-seal) 20%, transparent);
+    border-radius: 2px;
+    padding: var(--s-sp-4) var(--s-sp-4);
+    color: var(--s-seal);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
   }
   .friendly-error-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: #b91c1c;
+    gap: var(--s-sp-2);
+    color: var(--s-seal);
   }
-  .friendly-error-title { font-size: var(--text-sm, 0.875rem); }
+  .friendly-error-title {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+  }
   .friendly-error-body {
-    margin: 6px 0 0;
-    color: #7f1d1d;
+    margin: var(--s-sp-2) 0 0;
+    color: var(--s-seal);
   }
   .friendly-error-hint {
-    margin: 6px 0 0;
-    color: #525252;
-    font-size: var(--text-xs, 0.75rem);
+    margin: var(--s-sp-2) 0 0;
+    color: var(--s-ink-3);
+    font-size: var(--s-type-mark-sm);
   }
   .friendly-error-links {
-    margin-top: 8px;
+    margin-top: var(--s-sp-2);
     display: flex;
-    gap: 12px;
+    gap: var(--s-sp-4);
     flex-wrap: wrap;
   }
   .friendly-error-link {
-    color: #b91c1c;
+    color: var(--s-seal);
     text-decoration: underline;
-    font-size: var(--text-xs, 0.75rem);
-    font-weight: 500;
+    font-size: var(--s-type-mark-sm);
   }
   .friendly-error-details {
-    margin-top: 10px;
-    font-size: var(--text-xs, 0.75rem);
+    margin-top: var(--s-sp-3);
+    font-size: var(--s-type-mark-sm);
   }
   .friendly-error-details summary {
     cursor: pointer;
-    color: #525252;
+    color: var(--s-ink-3);
   }
   .friendly-error-details pre {
-    margin: 6px 0 0;
-    padding: 8px;
-    background: #fafafa;
-    border: 1px solid #e5e5e5;
-    border-radius: 4px;
+    margin: var(--s-sp-2) 0 0;
+    padding: var(--s-sp-3);
+    background: var(--s-paper-deep);
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
     /* Bound the height so a long pull/container list scrolls inside the box
        instead of growing the alert past the viewport (clipped + unreadable
        on small screens / when many images are listed). */
@@ -104,6 +111,10 @@
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-word;
-    color: #404040;
+    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    text-transform: none;
+    letter-spacing: 0;
   }
 </style>

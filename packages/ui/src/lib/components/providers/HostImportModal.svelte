@@ -126,30 +126,32 @@
 <style>
 	.result-list {
 		list-style: disc;
-		padding-left: var(--space-5);
+		padding-left: var(--s-sp-5);
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
-		margin: 0 0 var(--space-3);
+		gap: var(--s-sp-1);
+		margin: 0 0 var(--s-sp-3);
 	}
 
 	.result-list li {
-		font-size: var(--text-sm);
-		color: var(--color-text);
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
 	}
 
 	.result-list code {
-		font-family: var(--font-mono);
-		font-size: var(--text-xs);
-		color: var(--color-text-secondary);
-		background: var(--color-bg-tertiary);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-2);
+		background: var(--s-paper-deep);
 		padding: 1px 6px;
-		border-radius: var(--radius-sm);
+		border-radius: 2px;
 	}
 
 	.muted {
-		font-size: var(--text-xs);
-		color: var(--color-text-tertiary);
-		margin-left: var(--space-2);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
+		margin-left: var(--s-sp-2);
 	}
 </style>

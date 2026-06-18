@@ -51,28 +51,28 @@
   .radio-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--s-sp-3);
     min-height: 44px;
-    padding: 10px 12px;
-    border-radius: var(--radius-md);
+    padding: var(--s-sp-3) var(--s-sp-4);
+    border-radius: 2px;
     cursor: pointer;
-    transition: all 0.1s;
+    transition: background var(--s-t-quick) var(--s-ease);
     margin-bottom: 2px;
-    border: 1.5px solid transparent;
+    border: var(--s-hair) solid transparent;
   }
 
   .radio-row:hover {
-    background: var(--color-bg-secondary);
+    background: var(--s-paper-deep);
   }
 
   .radio-row:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-ink-2);
     outline-offset: 2px;
   }
 
   .radio-row.selected {
-    background: var(--color-primary-subtle);
-    border-color: var(--color-primary-border);
+    background: color-mix(in srgb, var(--s-seal) 6%, var(--s-paper));
+    border-color: color-mix(in srgb, var(--s-seal) 20%, transparent);
   }
 
   .radio-row.hidden {
@@ -83,14 +83,15 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    border: 2px solid var(--color-border);
+    border: 2px solid var(--s-line);
     flex-shrink: 0;
     display: grid;
     place-items: center;
+    transition: border-color var(--s-t-quick) var(--s-ease);
   }
 
   .radio-row.selected .radio-row-dot {
-    border-color: var(--color-primary-hover);
+    border-color: var(--s-seal);
   }
 
   .radio-row-dot-inner {
@@ -98,10 +99,11 @@
     height: 7px;
     border-radius: 50%;
     background: transparent;
+    transition: background var(--s-t-quick) var(--s-ease);
   }
 
   .radio-row.selected .radio-row-dot-inner {
-    background: var(--color-primary-hover);
+    background: var(--s-seal);
   }
 
   .radio-row-body {
@@ -110,39 +112,40 @@
   }
 
   .radio-row-title {
-    font-size: 13px;
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
   }
 
   .radio-row.selected .radio-row-title {
-    color: var(--color-text);
-    font-weight: var(--font-medium);
+    color: var(--s-ink);
   }
 
   .radio-row-meta {
-    font-size: 12px;
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-ink-3);
     margin-top: 1px;
   }
 
   .radio-row-badge {
-    font-size: 12px;
-    font-weight: var(--font-semibold);
-    padding: 2px 6px;
-    border-radius: 4px;
-    letter-spacing: 0.04em;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    padding: var(--s-sp-1) var(--s-sp-2);
+    border-radius: 2px;
+    letter-spacing: var(--s-track-label);
     text-transform: uppercase;
     margin-left: auto;
     flex-shrink: 0;
   }
 
   .radio-row-badge.top {
-    background: var(--color-primary-subtle);
-    color: var(--color-text);
+    background: color-mix(in srgb, var(--s-seal) 10%, var(--s-paper));
+    color: var(--s-ink-2);
   }
 
   .radio-row-badge.auto {
-    background: var(--color-blue-soft);
-    color: var(--color-blue);
+    background: color-mix(in srgb, var(--s-moss) 10%, var(--s-paper));
+    color: var(--s-moss);
   }
 </style>

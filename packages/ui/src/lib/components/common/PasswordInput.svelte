@@ -37,47 +37,51 @@
   .input-with-toggle {
     display: flex;
     align-items: stretch;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
-  /* Self-contained input styling (matches the akm/log form inputs) so the
-     component renders correctly wherever it's dropped. */
+  /* Self-contained input styling — Stillness underline input pattern. */
   .control-input {
-    font-size: var(--text-sm);
-    color: var(--color-text);
-    background: var(--color-input-bg, var(--color-bg));
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2) var(--space-3);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-whisper);
+    color: var(--s-ink);
+    background: none;
+    border: 0;
+    border-bottom: var(--s-hair) solid var(--s-line);
+    border-radius: 0;
+    padding: 0.5rem 0;
     flex: 1 1 auto;
     min-width: 0;
   }
   .control-input:focus {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 1px;
+    outline: none;
+    border-bottom-color: var(--s-ink-2);
+  }
+  .control-input::placeholder {
+    color: var(--s-ink-3);
   }
   .btn-icon {
     flex-shrink: 0;
-    padding: 0 var(--space-3);
+    padding: 0 var(--s-sp-2);
     min-height: 38px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
+    background: none;
+    border: 0;
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
     cursor: pointer;
-    transition: background var(--transition-fast), color var(--transition-fast);
+    transition: color var(--s-t-quick) var(--s-ease);
   }
   .btn-icon:hover:not(:disabled) {
-    background: var(--color-surface-hover);
-    color: var(--color-text);
+    color: var(--s-ink-2);
   }
   .btn-icon:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-ink-2);
     outline-offset: 2px;
   }
   .btn-icon:disabled {
-    opacity: 0.6;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 </style>

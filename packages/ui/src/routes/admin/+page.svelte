@@ -692,12 +692,16 @@
      above, outside this container) reads edge-to-edge and flush under the
      navbar. Horizontal padding keeps panels off the screen edges. */
   main {
-    padding: var(--space-6) var(--space-6) var(--space-12);
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-family: var(--s-font-display);
+    padding: var(--s-sp-6) var(--s-sp-6) var(--s-sp-8);
+    min-height: calc(100vh - 52px - 36px);
   }
 
   @media (max-width: 768px) {
     main {
-      padding: var(--space-4) var(--space-4) var(--space-8);
+      padding: var(--s-sp-4) var(--s-sp-4) var(--s-sp-6);
     }
   }
 
@@ -707,32 +711,39 @@
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
-    background: var(--color-warning-bg, var(--color-bg-secondary));
-    border-bottom: 1px solid var(--color-warning, var(--color-border));
-    color: var(--color-warning-text, var(--color-text));
-    font-size: var(--text-sm);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-2) var(--s-sp-4);
+    background: color-mix(in srgb, var(--s-seal) 8%, var(--s-paper-deep));
+    border-bottom: var(--s-hair) solid color-mix(in srgb, var(--s-seal) 30%, transparent);
+    color: var(--s-ink);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    letter-spacing: var(--s-track-label);
   }
   .update-banner-text {
-    font-weight: var(--font-medium);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-2);
   }
   .update-banner-action {
     flex-shrink: 0;
+    appearance: none;
     background: transparent;
-    border: 1px solid currentColor;
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: inherit;
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: var(--s-radius-seal);
+    padding: var(--s-sp-1) var(--s-sp-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-seal);
     cursor: pointer;
   }
   .update-banner-action:hover {
-    background: color-mix(in srgb, currentColor 12%, transparent);
+    background: color-mix(in srgb, var(--s-seal) 10%, transparent);
   }
   .update-banner-action:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-seal);
     outline-offset: 2px;
   }
 </style>

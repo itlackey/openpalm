@@ -34,40 +34,45 @@
   .tile {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    padding: var(--space-4) var(--space-5);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    gap: var(--s-sp-1);
+    padding: var(--s-sp-4) var(--s-sp-5);
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
     cursor: pointer;
     text-align: left;
-    font-family: var(--font-sans);
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    font-family: var(--s-font-display);
+    appearance: none;
+    transition: border-color 0.12s ease;
   }
   .tile:hover {
-    border-color: var(--color-border-hover);
-    box-shadow: var(--shadow-sm);
+    border-color: var(--s-line);
   }
   .tile:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-seal);
     outline-offset: 2px;
   }
   .tile-metric {
-    font-size: var(--text-2xl);
-    font-weight: var(--font-bold);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-voice);
+    font-weight: 400;
+    color: var(--s-ink);
     line-height: 1.1;
   }
   .tile-metric-sub {
-    font-size: var(--text-lg);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-whisper);
+    font-weight: 400;
+    color: var(--s-ink-2);
   }
   .tile-metric--icon {
-    color: var(--color-text-secondary);
+    color: var(--s-ink-3);
   }
   .tile-label {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
 </style>

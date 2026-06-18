@@ -304,27 +304,28 @@
     display: flex;
     flex-direction: column;
     width: 100%;
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
   }
 
   .addon-table-header {
     display: flex;
     align-items: center;
-    padding: var(--space-2) var(--space-5);
-    background: var(--color-bg-tertiary);
-    border-bottom: 1px solid var(--color-border);
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-    /* Accessible neutral on the tinted header bg (secondary drops to ~4.0:1 there). */
-    color: var(--color-badge-neutral-fg);
-    text-transform: none;
+    padding: var(--s-sp-2) var(--s-sp-5);
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
+    text-transform: uppercase;
   }
 
   .addon-row {
     display: flex;
     align-items: center;
-    padding: var(--space-3) var(--space-5);
-    border-bottom: 1px solid var(--color-bg-tertiary);
-    transition: background var(--transition-fast);
+    padding: var(--s-sp-3) var(--s-sp-5);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
 
   .addon-row:last-child {
@@ -332,13 +333,13 @@
   }
 
   .addon-row:hover {
-    background: var(--color-surface-hover);
+    background: color-mix(in srgb, var(--s-ink) 3%, var(--s-paper));
   }
 
   .addon-col {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .addon-col--name {
@@ -357,9 +358,9 @@
   }
 
   .addon-name {
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -380,10 +381,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-4) var(--space-5);
-    font-size: var(--text-sm);
-    color: var(--color-danger);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-4) var(--s-sp-5);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-seal);
   }
 
   @media (max-width: 768px) {
@@ -393,7 +395,7 @@
 
     .addon-row {
       flex-wrap: wrap;
-      gap: var(--space-2);
+      gap: var(--s-sp-2);
     }
 
     .addon-col--status {
@@ -406,72 +408,80 @@
   .creds-loading {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
+    gap: var(--s-sp-2);
+    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
   }
 
   .creds-empty,
   .creds-hint {
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-3);
     margin: 0;
   }
 
   .creds-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--s-sp-1);
   }
 
   .creds-label {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-xs);
-    color: var(--color-text);
+    gap: var(--s-sp-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
   }
 
   .creds-label code {
-    font-family: var(--font-mono);
-    background: var(--color-bg-tertiary);
+    font-family: var(--s-font-mono);
+    background: var(--s-paper-deep);
+    color: var(--s-ink-2);
     padding: 1px 6px;
-    border-radius: var(--radius-sm);
+    border-radius: 2px;
   }
 
   .creds-tag {
-    font-size: var(--text-xs);  /* 12px — rubric minimum */
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
     padding: 2px 8px;
-    border-radius: var(--radius-full);
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-tertiary);
+    border-radius: 2px;
+    border: var(--s-hair) solid var(--s-line);
+    background: none;
+    color: var(--s-ink-3);
     white-space: nowrap;
-    /* All-caps acceptable here: ≤12 chars, ≥0.05em tracking (rubric cat 3) */
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: var(--s-track-label);
   }
 
   .creds-tag--set {
-    background: var(--color-success-bg);
-    color: var(--color-success);
+    color: var(--s-moss);
+    border-color: var(--s-moss);
   }
 
   .creds-desc {
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-3);
     margin: 0;
   }
 
   .form-input {
     width: 100%;
-    height: 32px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: 0 var(--space-3);
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-family: inherit;
+    border: 0;
+    border-bottom: var(--s-hair) solid var(--s-line);
+    border-radius: 0;
+    padding: 0.5rem 0;
+    background: none;
+    color: var(--s-ink);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
   }
-  .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
+  .form-input:focus { outline: none; border-bottom-color: var(--s-seal); }
 </style>

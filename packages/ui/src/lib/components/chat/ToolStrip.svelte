@@ -238,21 +238,22 @@
   .tool-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
+    align-items: center;
   }
 
   .tool-strip-muted {
-    opacity: 0.78;
+    opacity: 0.65;
   }
 
   .tool-strip-bordered {
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border);
+    padding-top: var(--s-sp-2);
+    border-top: var(--s-hair) solid var(--s-line-soft);
   }
 
   .tool-emoji {
     display: block;
-    font-size: 1rem;
+    font-size: 0.9rem;
     text-align: center;
   }
 
@@ -260,27 +261,27 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 2px 4px;
+    padding: 2px var(--s-sp-1);
     border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: inherit;
+    border-radius: 0;
+    background: none;
+    color: var(--s-ink-3);
     cursor: pointer;
     transition: opacity 120ms ease;
   }
 
   .tool-emoji-btn:hover {
-    opacity: 0.7;
+    opacity: 0.6;
   }
 
   .tool-emoji-btn:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-line);
     outline-offset: 2px;
   }
 
   .tool-emoji-btn.selected {
     text-decoration: underline;
-    text-decoration-color: var(--color-primary);
+    text-decoration-color: var(--s-seal);
     text-underline-offset: 3px;
   }
 
@@ -288,7 +289,7 @@
     position: fixed;
     inset: 0;
     z-index: 210;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.35);
   }
 
   .tool-modal-shell {
@@ -298,7 +299,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-4);
+    padding: var(--s-sp-6);
     pointer-events: none;
   }
 
@@ -307,19 +308,18 @@
     max-height: min(80vh, 48rem);
     overflow: auto;
     pointer-events: auto;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.24);
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
   }
 
   .tool-modal-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    border-bottom: 1px solid var(--color-border);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-4);
+    border-bottom: var(--s-hair) solid var(--s-line);
   }
 
   .tool-modal-header-copy {
@@ -327,103 +327,109 @@
   }
 
   .tool-modal-kicker {
-    font-size: var(--text-xs);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-tertiary);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
 
   .tool-modal-title {
-    margin: 4px 0 0;
-    font-size: var(--text-lg);
-    color: var(--color-text);
+    margin: var(--s-sp-1) 0 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    font-weight: 400;
+    color: var(--s-ink);
   }
 
   .tool-modal-close {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 2rem;
+    height: 2rem;
     padding: 0;
     border: 0;
-    border-radius: var(--radius-md);
-    background: transparent;
-    color: var(--color-text-secondary);
+    border-radius: 0;
+    background: none;
+    color: var(--s-ink-3);
     cursor: pointer;
+    transition: color 120ms ease;
   }
 
   .tool-modal-close:hover {
-    background: var(--color-bg-secondary);
-    color: var(--color-text);
+    color: var(--s-ink);
   }
 
   .tool-modal-close:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: var(--s-hair) solid var(--s-line);
     outline-offset: 2px;
   }
 
   .tool-modal-grid {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-4);
+    gap: 0;
+    padding: var(--s-sp-4);
   }
 
   .tool-modal-row {
     display: grid;
     grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr);
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
     align-items: start;
-    padding-bottom: var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+    padding-bottom: var(--s-sp-3);
+    margin-bottom: var(--s-sp-3);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
 
   .tool-modal-row:last-child {
     padding-bottom: 0;
+    margin-bottom: 0;
     border-bottom: 0;
   }
 
   .tool-modal-label {
-    font-size: var(--text-xs);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-tertiary);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
 
   .tool-modal-value {
     min-width: 0;
-    color: var(--color-text);
-    font-size: var(--text-sm);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     line-height: 1.5;
   }
 
   .tool-inline-error {
-    color: var(--color-danger);
+    color: var(--s-seal);
   }
 
   .tool-modal-value pre {
     margin: 0;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border-left: var(--s-hair) solid var(--s-line);
+    background: none;
+    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
   }
 
   .tool-pre-error {
-    color: var(--color-danger);
+    color: var(--s-seal);
   }
 
   @media (max-width: 640px) {
     .tool-modal-row {
       grid-template-columns: 1fr;
-      gap: var(--space-1);
+      gap: var(--s-sp-1);
     }
   }
 </style>

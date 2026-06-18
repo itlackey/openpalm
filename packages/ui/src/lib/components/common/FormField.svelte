@@ -35,7 +35,11 @@
 
 <style>
   .field-error {
-    font-size: var(--text-xs);
-    color: var(--color-danger);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-seal);
+    text-transform: uppercase;
+    letter-spacing: var(--s-track-label);
+    margin-top: var(--s-sp-1);
   }
 </style>

@@ -27,159 +27,164 @@
   }
 </script>
 
-<main class="auth-gate" aria-label="Admin login gate">
-  <section class="auth-card">
-    <div class="auth-brand">
-      <span class="brand-icon">
-        <img src="/logo-128.png" alt="OpenPalm Logo">
-      </span>
-      <div>
-        <h1>OpenPalm Console</h1>
-        <p>Enter your admin password to unlock the control plane.</p>
-      </div>
-    </div>
+<main class="s-gate" aria-label="Admin login gate">
+  <div class="s-gate-inner">
+    <div class="s-gate-mark">openpalm</div>
 
-    <form class="auth-form" onsubmit={handleSubmit}>
-      <label for="admin-token">Admin Password</label>
+    <form class="s-gate-form" onsubmit={handleSubmit}>
       <input type="text" name="username" autocomplete="username" value="admin" class="sr-only" tabindex="-1" aria-hidden="true" />
-      <div class="token-input-wrapper">
+      <div class="s-gate-field">
         <input
           id="admin-token"
           name="admin-token"
+          class="s-gate-input"
           type={showToken ? 'text' : 'password'}
           bind:value={tokenInput}
           bind:this={tokenInputEl}
-          placeholder="Enter admin password"
+          placeholder="password"
           autocomplete="current-password"
         />
         <button
           type="button"
-          class="btn-toggle"
+          class="s-gate-reveal"
           onclick={() => showToken = !showToken}
-          aria-label={showToken ? 'Hide token' : 'Show token'}
+          aria-label={showToken ? 'Hide password' : 'Show password'}
         >
           {#if showToken}
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
               <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
               <line x1="1" y1="1" x2="23" y2="23" />
-              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
             </svg>
           {:else}
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
           {/if}
         </button>
       </div>
+
       {#if error}
-        <p class="auth-error" role="alert">{error}</p>
+        <p class="s-gate-error" role="alert">{error}</p>
       {/if}
-      <button class="btn btn-primary" type="submit" disabled={loading || !tokenInput.trim()}>
-        {#if loading}
-          <Spinner />
-        {/if}
-        Unlock Console
+
+      <button class="s-gate-submit" type="submit" disabled={loading || !tokenInput.trim()}>
+        {#if loading}<Spinner />{:else}enter{/if}
       </button>
     </form>
-  </section>
+  </div>
 </main>
 
 <style>
-  .auth-gate {
+  .s-gate {
     height: 100vh;
     height: 100dvh;
-    max-width: none;
-    margin: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-6);
-    overflow: hidden;
-    box-sizing: border-box;
-    background-color: var(--color-bg-secondary);
-    background-image: url('/fu.png');
-    background-size: 35%;
-    background-position: bottom -2% left -2%;
-    background-repeat: no-repeat;
+    background: var(--s-paper);
+    font-family: var(--s-font-display);
+    -webkit-font-smoothing: antialiased;
   }
 
-  .auth-card {
+  .s-gate-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.8rem;
+    width: min(22rem, calc(100vw - 3rem));
+  }
+
+  .s-gate-mark {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+  }
+
+  .s-gate-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.6rem;
     width: 100%;
-    max-width: 460px;
-    margin-bottom: 10vh;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
-    padding: var(--space-6);
-    box-sizing: border-box;
   }
 
-  .auth-brand {
+  .s-gate-field {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-5);
+    width: 100%;
+    border-bottom: var(--s-hair) solid var(--s-line);
+    transition: border-color var(--s-t-quick) var(--s-ease);
   }
 
-  .auth-brand h1 {
-    font-size: var(--text-xl);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+  .s-gate-field:focus-within {
+    border-color: var(--s-ink-2);
   }
 
-  .auth-brand p {
-    margin-top: 4px;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+  .s-gate-input {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: none;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-compose);
+    color: var(--s-ink);
+    text-align: center;
+    padding: 0.5rem 0;
+    min-width: 0;
   }
 
-  .brand-icon {
+  .s-gate-input::placeholder {
+    color: var(--s-ink-3);
+    opacity: 1;
+  }
+
+  .s-gate-reveal {
+    appearance: none;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    padding: 0.4rem;
+    color: var(--s-ink-3);
     display: flex;
     align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
+    transition: color var(--s-t-quick) var(--s-ease);
     flex-shrink: 0;
-     img{
-      max-width: 34px;
-    }
   }
 
-  .auth-form {
-    display: grid;
-    gap: var(--space-3);
-  }
+  .s-gate-reveal:hover { color: var(--s-ink-2); }
 
-  .auth-form label {
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
-  }
-
-  .auth-form input:not(.sr-only) {
-    width: 100%;
-    height: 40px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: 0 12px;
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-  }
-
-  .auth-form input:not(.sr-only):focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-subtle);
-  }
-
-  .auth-error {
+  .s-gate-error {
     margin: 0;
-    color: var(--color-danger);
-    font-size: var(--text-sm);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-seal);
+    text-align: center;
+  }
+
+  .s-gate-submit {
+    appearance: none;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    padding: 0.4rem 0;
+    transition: color var(--s-t-quick) var(--s-ease);
+  }
+
+  .s-gate-submit:hover:not(:disabled) { color: var(--s-ink); }
+
+  .s-gate-submit:disabled {
+    opacity: 0.38;
+    cursor: default;
   }
 
   .sr-only {
@@ -192,58 +197,5 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
-  }
-
-  .token-input-wrapper {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .token-input-wrapper input {
-    flex: 1;
-  }
-
-  .btn-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all var(--transition-fast);
-  }
-
-  .btn-toggle:hover {
-    color: var(--color-text);
-    border-color: var(--color-border-hover);
-    background: var(--color-surface-hover);
-  }
-
-  .btn-toggle:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
-  }
-
-  @media (max-width: 480px) {
-    .auth-gate {
-      padding: var(--space-3);
-      background-size: 45%;
-    }
-
-    .auth-card {
-      padding: var(--space-4);
-      margin-bottom: 5vh;
-    }
-
-    .auth-brand h1 {
-      font-size: var(--text-lg);
-    }
   }
 </style>

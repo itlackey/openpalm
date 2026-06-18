@@ -140,7 +140,7 @@
   .advanced-layout {
     height: calc(100dvh - var(--nav-height));
     width: 100%;
-    background: var(--color-bg);
+    background: var(--s-paper);
     display: flex;
     flex-direction: column;
   }
@@ -159,11 +159,13 @@
     align-items: center;
     justify-content: center;
     text-align: center;
-    gap: var(--space-3);
-    padding: var(--space-6);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-6);
+    font-family: var(--s-font-display);
+    color: var(--s-ink);
   }
-  .advanced-status h2 { margin: 0; font-size: 1.25rem; color: var(--color-text); }
-  .advanced-status p { margin: 0; max-width: 26rem; color: var(--color-text-secondary); line-height: 1.55; }
-  .advanced-status .status-line { color: var(--color-text-secondary); }
-  .advanced-status .btn { margin-top: var(--space-3); }
+  .advanced-status h2 { margin: 0; font-size: 1.25rem; color: var(--s-ink); font-weight: 400; }
+  .advanced-status p { margin: 0; max-width: 26rem; color: var(--s-ink-2); line-height: 1.55; }
+  .advanced-status .status-line { color: var(--s-ink-2); }
+  .advanced-status .btn { margin-top: var(--s-sp-3); }
 </style>

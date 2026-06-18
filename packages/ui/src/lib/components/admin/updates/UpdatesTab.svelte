@@ -688,36 +688,36 @@
 
 <style>
   .panel-subtitle {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    margin: var(--space-1) 0 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    margin: var(--s-sp-1) 0 0;
     max-width: 60ch;
   }
 
   .channel-indicator {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    margin: var(--space-2) 0 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    margin: var(--s-sp-2) 0 0;
     max-width: 60ch;
   }
   .channel-indicator strong {
-    color: var(--color-text);
+    color: var(--s-ink);
   }
 
   .refresh-releases {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     flex-shrink: 0;
   }
   .refresh-releases svg {
     flex-shrink: 0;
   }
-  /* Once the header wraps, separate the button from the subtitle above it so it
-     reads as an action, not a third line of text. */
   @media (max-width: 600px) {
     .refresh-releases {
-      margin-top: var(--space-2);
+      margin-top: var(--s-sp-2);
     }
   }
 
@@ -739,27 +739,28 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-4);
+    gap: var(--s-sp-4);
     flex-wrap: wrap;
-    padding: var(--space-4);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-bg-secondary);
+    padding: var(--s-sp-4);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
   }
   .update-card-text {
     flex: 1;
     min-width: 14rem;
   }
   .update-title {
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-voice);
+    color: var(--s-ink);
     margin: 0;
   }
   .update-desc {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    margin: var(--space-1) 0 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    margin: var(--s-sp-1) 0 0;
     line-height: 1.5;
     max-width: 60ch;
   }
@@ -767,61 +768,59 @@
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
-  /* When everything matches the control plane the primary card is a calm
-     "up to date" state rather than an action prompt. */
   .update-card-ok {
-    background: var(--color-success-bg, var(--color-bg-secondary));
-    border-color: var(--color-success, var(--color-border));
+    border-color: var(--s-moss);
   }
   .update-harness-note {
-    margin: var(--space-2) 0 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    margin: var(--s-sp-2) 0 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     line-height: 1.5;
     max-width: 60ch;
   }
-  .update-harness-note strong { color: var(--color-text); }
+  .update-harness-note strong { color: var(--s-ink); }
 
   /* ── Current versions ── */
   .versions-group {
-    margin: var(--space-5) 0 0;
+    margin: var(--s-sp-5) 0 0;
   }
   .versions-group-title {
     margin: 0;
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-voice);
+    color: var(--s-ink);
     display: flex;
     align-items: baseline;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     flex-wrap: wrap;
   }
   .versions-group-sub {
-    font-size: var(--text-xs);
-    font-weight: var(--font-normal, 400);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
   .versions {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    margin: var(--space-3) 0 0;
+    gap: var(--s-sp-2);
+    margin: var(--s-sp-3) 0 0;
   }
 
   /* Group label inside the version list (Services / App). */
   .versions-subhead dt {
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-secondary);
-    margin-top: var(--space-2);
+    color: var(--s-ink-3);
+    margin-top: var(--s-sp-2);
   }
   .versions-subhead {
     display: flex;
@@ -831,31 +830,38 @@
   .desktop-toggle {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-3);
-    margin-top: var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--color-text);
+    gap: var(--s-sp-3);
+    margin-top: var(--s-sp-3);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
 
   .desktop-toggle--nested {
-    margin-left: var(--space-6);
-    margin-bottom: var(--space-2);
+    margin-left: var(--s-sp-6);
+    margin-bottom: var(--s-sp-2);
   }
   .versions-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    padding: var(--s-sp-2) 0;
+  }
+  .versions-row:hover {
+    background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
   }
   .versions-row dt {
-    font-size: var(--text-sm);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
   .versions-row dd {
     margin: 0;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     flex-wrap: wrap;
     justify-content: flex-end;
   }
@@ -863,34 +869,36 @@
   .version-cell {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .version-value {
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    background: var(--color-bg-secondary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
     padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    /* Border colour IS the status signal — a 2px ring reads at a glance. */
-    border: 2px solid var(--color-border);
-    color: var(--color-text);
+    border-radius: 2px;
+    border: var(--s-hair) solid var(--s-line);
+    color: var(--s-ink-2);
   }
-  /* Up to date — green ring. */
+  /* Up to date — moss border. */
   .version-value.status-current {
-    border-color: var(--color-success, #16a34a);
+    border-color: var(--s-moss);
+    color: var(--s-moss);
   }
-  /* Update available — amber ring. */
+  /* Update available — seal border. */
   .version-value.status-update {
-    border-color: var(--color-warning, #d97706);
+    border-color: var(--s-seal);
+    color: var(--s-seal);
   }
-  /* Unknown (no release data / moving tag) — neutral. */
+  /* Unknown — neutral. */
   .version-value.status-unknown {
-    border-color: var(--color-border);
+    border-color: var(--s-line);
+    color: var(--s-ink-3);
   }
 
   .status-emoji {
-    font-size: var(--text-sm);
+    font-size: var(--s-type-deed);
     line-height: 1;
   }
 
@@ -900,71 +908,79 @@
   .version-action-note {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    gap: var(--s-sp-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-3);
   }
 
   /* ── Version pin sections (stack images / admin interface) ── */
   .version-pin-section {
-    margin-top: var(--space-5);
-    border-top: 1px solid var(--color-border);
-    padding-top: var(--space-4);
+    margin-top: var(--s-sp-5);
+    border-top: var(--s-hair) solid var(--s-line);
+    padding-top: var(--s-sp-4);
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
   }
   .version-pin-header {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--s-sp-1);
   }
   .version-pin-title {
     margin: 0;
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
   }
   .version-pin-subtitle {
     margin: 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
     max-width: 60ch;
     line-height: 1.5;
   }
 
   .downgrade-warning {
-    margin-top: var(--space-2);
-    padding: var(--space-3);
-    border: 1px solid var(--color-danger, var(--color-border));
-    border-radius: var(--radius-md);
-    background: var(--color-danger-bg, var(--color-surface));
+    margin-top: var(--s-sp-2);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
   }
   .downgrade-warning-title {
-    margin: 0 0 var(--space-1) 0;
-    font-weight: var(--font-semibold, var(--font-medium));
-    color: var(--color-danger-text, var(--color-text));
+    margin: 0 0 var(--s-sp-1) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-seal);
   }
   .downgrade-warning p {
-    margin: 0 0 var(--space-2) 0;
-    color: var(--color-text);
+    margin: 0 0 var(--s-sp-2) 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
   .downgrade-actions {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   .version-section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
 
   /* Per-unit row: label + current version on one line, picker below. */
   .version-unit-row {
-    gap: var(--space-3);
-    padding: var(--space-3) 0;
-    border-bottom: 1px solid var(--color-border);
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-3) 0;
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
   .version-unit-row:last-child {
     border-bottom: none;
@@ -973,19 +989,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
+    gap: var(--s-sp-3);
     flex-wrap: wrap;
   }
 
   .version-label {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
   }
 
   .version-input-row {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
     align-items: center;
     flex-wrap: wrap;
   }
@@ -993,13 +1009,13 @@
   .version-input {
     flex: 1;
     min-width: 0;
-    padding: var(--space-1-5) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-family: var(--font-mono);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
   }
 
   .version-input:disabled {
@@ -1007,41 +1023,42 @@
     cursor: not-allowed;
   }
 
-  /* Secondary (not tertiary) for AA contrast in light theme. */
   .version-hint {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
     margin: 0;
     line-height: 1.5;
   }
 
   .version-divider {
     height: 1px;
-    background: var(--color-border);
-    margin: var(--space-3) 0;
+    background: var(--s-line);
+    margin: var(--s-sp-3) 0;
   }
 
   .version-restart-prompt {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--color-success);
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-success-bg);
-    border-radius: var(--radius-md);
+    gap: var(--s-sp-3);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-moss);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-moss);
+    border-radius: 2px;
   }
 
   .version-select {
     flex: 1;
     min-width: 0;
-    padding: var(--space-1-5) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-family: var(--font-mono);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
   }
 
   .version-select:disabled {
@@ -1052,12 +1069,12 @@
   .version-select-skeleton {
     flex: 1;
     height: 34px;
-    border-radius: var(--radius-md);
+    border-radius: 2px;
     background: linear-gradient(
       90deg,
-      var(--color-bg-secondary) 25%,
-      var(--color-bg-tertiary) 50%,
-      var(--color-bg-secondary) 75%
+      var(--s-paper-deep) 25%,
+      color-mix(in srgb, var(--s-ink) 5%, var(--s-paper)) 50%,
+      var(--s-paper-deep) 75%
     );
     background-size: 200% 100%;
     animation: skeleton-shimmer 1.4s ease-in-out infinite;
@@ -1074,22 +1091,24 @@
 
   /* ── Desktop settings (Electron-only) ── */
   .desktop-settings {
-    margin-top: var(--space-5);
-    border-top: 1px solid var(--color-border);
-    padding-top: var(--space-4);
+    margin-top: var(--s-sp-5);
+    border-top: var(--s-hair) solid var(--s-line);
+    padding-top: var(--s-sp-4);
   }
   .desktop-settings-title {
-    margin: 0 0 var(--space-3) 0;
-    font-size: var(--text-base);
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
+    margin: 0 0 var(--s-sp-3) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
   }
   .desktop-setting-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3) 0;
-    border-bottom: 1px solid var(--color-border);
+    gap: var(--s-sp-2);
+    padding: var(--s-sp-3) 0;
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
   .desktop-setting-row:last-child {
     border-bottom: none;

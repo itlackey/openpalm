@@ -259,7 +259,10 @@
     flex-direction: column;
     align-items: center;
     overflow-y: auto;
-    padding: clamp(var(--space-8), 8vh, var(--space-12)) var(--space-6) var(--space-12);
+    padding: clamp(var(--s-sp-8), 8vh, 3rem) var(--s-sp-6) 3rem;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-family: var(--s-font-display);
   }
   .splash-panel {
     width: 100%;
@@ -274,43 +277,42 @@
     white-space: nowrap; border: 0;
   }
 
-  /* Calm, neutral eyebrow like the wizard's; severity reads from the wording + a
-     small leading dot (12px AA-safe secondary text keeps it above the contrast +
-     small-text thresholds, while the decorative dot restores the at-a-glance
-     severity signal). */
+  /* Severity eyebrow — mono label treatment matches the Stillness system. */
   .splash-panel .wiz-eyebrow {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-text-tertiary);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
   .sev-dot {
     width: 7px; height: 7px; border-radius: 50%; flex: none;
   }
-  .sev-dot.sev-danger { background: var(--color-danger); }
-  .sev-dot.sev-warning { background: var(--color-warning); }
-  .sev-dot.sev-info { background: var(--color-primary); }
-  .sev-dot.sev-success { background: var(--color-success); }
+  .sev-dot.sev-danger  { background: var(--s-seal); }
+  .sev-dot.sev-warning { background: color-mix(in srgb, var(--s-seal) 60%, var(--s-ink)); }
+  .sev-dot.sev-info    { background: var(--s-ink-2); }
+  .sev-dot.sev-success { background: var(--s-moss); }
 
-  /* Single, controlled gap before the actions (the wizard's .wiz-lede carries a
-     32px bottom margin; don't stack another 32px on top of it). */
-  .splash-panel :global(.wiz-lede) { margin-bottom: var(--space-2); }
+  /* Single, controlled gap before the actions. */
+  .splash-panel :global(.wiz-lede) { margin-bottom: var(--s-sp-2); }
 
   .splash-guidance {
-    font-size: var(--text-sm);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
     line-height: 1.6;
-    color: var(--color-text-secondary);
-    margin: 0 0 var(--space-2);
+    color: var(--s-ink-2);
+    margin: 0 0 var(--s-sp-2);
     max-width: 480px;
   }
 
   .splash-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-top: var(--space-6);
+    gap: var(--s-sp-3);
+    margin-top: var(--s-sp-6);
   }
 
   .spinner {
@@ -324,69 +326,75 @@
   @keyframes splash-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spinner { display: none; } }
 
-  /* Reassurance note below the migration CTA — adds calm context (and vertical
-     weight) without competing with the primary action. */
+  /* Reassurance note below the migration CTA. */
   .splash-reassure {
-    margin: var(--space-5) 0 0;
+    margin: var(--s-sp-5) 0 0;
     max-width: 30rem;
-    font-size: var(--text-sm);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
     line-height: 1.6;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
   }
 
   .splash-summary {
     list-style: none;
-    margin: var(--space-2) 0 var(--space-4);
-    padding: var(--space-4) var(--space-5);
-    background: var(--color-bg-secondary);
-    border-radius: var(--radius-lg);
+    margin: var(--s-sp-2) 0 var(--s-sp-4);
+    padding: var(--s-sp-4) var(--s-sp-5);
+    background: var(--s-paper-deep);
+    border: var(--s-hair) solid var(--s-line-soft);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
   .splash-summary li {
     display: flex;
-    gap: var(--space-4);
+    gap: var(--s-sp-4);
     align-items: baseline;
-    font-size: var(--text-sm);
+    font-size: var(--s-type-deed);
   }
-  .splash-summary li > span:first-child { color: var(--color-text-secondary); min-width: 7rem; }
+  .splash-summary li > span:first-child { color: var(--s-ink-2); min-width: 7rem; }
   .splash-summary code {
-    font-size: 0.85em;
-    color: var(--color-text);
+    font-family: var(--s-font-mono);
+    font-size: 0.9em;
+    color: var(--s-ink);
     word-break: break-all;
   }
 
   .splash-notes {
-    margin: 0 0 var(--space-4);
-    padding-left: var(--space-5);
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
+    margin: 0 0 var(--s-sp-4);
+    padding-left: var(--s-sp-5);
+    color: var(--s-ink-2);
+    font-size: var(--s-type-deed);
     line-height: 1.6;
   }
-  .splash-notes li { margin-bottom: var(--space-1); }
+  .splash-notes li { margin-bottom: var(--s-sp-1); }
 
   .splash-remotes {
     list-style: none;
-    margin: var(--space-10) 0 0;
-    padding: var(--space-4) 0 0;
-    border-top: 1px solid var(--color-border);
+    margin: var(--s-sp-8) 0 0;
+    padding: var(--s-sp-4) 0 0;
+    border-top: var(--s-hair) solid var(--s-line);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--s-sp-2);
   }
-  .splash-remotes li { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+  .splash-remotes li {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+  }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .dot.ok { background: var(--color-success); }
-  .dot.bad { background: var(--color-danger); }
-  .rname { color: var(--color-text); }
-  .rstate { color: var(--color-text-secondary); margin-left: auto; }
+  .dot.ok  { background: var(--s-moss); }
+  .dot.bad { background: var(--s-seal); }
+  .rname  { color: var(--s-ink); }
+  .rstate { color: var(--s-ink-3); margin-left: auto; }
 
   @media (max-width: 480px) {
-    .splash-stage { padding: var(--space-6) var(--space-4) var(--space-8); }
-    /* Align the topbar's horizontal inset with the content inset on mobile. */
-    .wiz-topbar { padding-left: var(--space-4); padding-right: var(--space-4); }
-    .splash-summary li { flex-direction: column; gap: var(--space-1); }
+    .splash-stage { padding: var(--s-sp-6) var(--s-sp-4) var(--s-sp-8); }
+    .wiz-topbar { padding-left: var(--s-sp-4); padding-right: var(--s-sp-4); }
+    .splash-summary li { flex-direction: column; gap: var(--s-sp-1); }
     .btn { width: 100%; }
   }
 </style>

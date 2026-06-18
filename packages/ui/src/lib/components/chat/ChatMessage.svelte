@@ -1,8 +1,7 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { ChatEntry } from '$lib/types.js';
   import { renderMarkdown } from '$lib/markdown.js';
-  import { formatTime } from '$lib/format-date.js';
-  import ToolStrip from '$lib/components/chat/ToolStrip.svelte';
 
   interface Props {
     entry: ChatEntry;
@@ -10,270 +9,343 @@
 
   let { entry }: Props = $props();
 
-  // User messages are echoed verbatim — they typed it, don't surprise them
-  // by reinterpreting punctuation as markdown. Assistant messages get
-  // rendered (markdown-it strips raw HTML at the source).
   const renderedHtml = $derived.by(() => {
     if (entry.type === 'divider' || entry.type === 'note' || entry.type === 'tool-group') return null;
     return entry.role === 'assistant' ? renderMarkdown(entry.text) : null;
   });
+
+  let deedsOpen = $state(false);
+  let settled = $state(false);
+
+  function toggleDeeds(): void {
+    deedsOpen = !deedsOpen;
+  }
+
+  onMount(() => {
+    if (entry.type !== 'divider' && entry.type !== 'note' && entry.type !== 'tool-group' && entry.role === 'assistant') {
+      requestAnimationFrame(() => {
+        settled = true;
+      });
+    }
+  });
 </script>
 
 {#if entry.type === 'divider'}
-  <div class="thread-divider" aria-label={entry.label}>
-    <span class="divider-line"></span>
-    <span class="divider-label">{entry.label}</span>
-    <span class="divider-line"></span>
+  <div class="s-divider" aria-label={entry.label}>
+    <span class="s-divider-label">{entry.label}</span>
   </div>
 {:else if entry.type === 'note'}
-  <div class="thread-note" aria-label={entry.label}>
-    <span class="thread-note-label">{entry.label}</span>
-    <span class="thread-note-text">{entry.text}</span>
+  <div class="s-note" aria-label={entry.label}>
+    <span class="s-note-text">{entry.text}</span>
   </div>
 {:else if entry.type === 'tool-group'}
-  <!-- Orphan tool activity (no following assistant text in the same turn) -->
-  <div class="message message-assistant message-tool-group">
-    <div class="tool-strip-inline">
-      <ToolStrip items={entry.toolStates} ariaLabel="Assistant tool activity" />
+  <div class="s-deed-group">
+    <div class="deeds-inner">
+      {#each entry.toolStates as tool}
+        <div class="deed">{tool.title}</div>
+      {/each}
     </div>
-    <span class="message-meta">Assistant · {formatTime(entry.timestamp)}</span>
+  </div>
+{:else if entry.role === 'user'}
+  <div class="turn you">
+    <div class="you-mark">you</div>
+    <div class="you-words">{entry.text}</div>
   </div>
 {:else}
-  <div
-    class="message"
-    class:message-user={entry.role === 'user'}
-    class:message-assistant={entry.role === 'assistant'}
-  >
-    <div class="message-bubble">
-      {#if renderedHtml !== null}
-        <div class="message-text markdown-body">{@html renderedHtml}</div>
-      {:else}
-        <p class="message-text">{entry.text}</p>
+  <div class="turn master">
+    {#if renderedHtml !== null}
+      <div class="master-words" class:settled>
+        <div class="markdown-body">{@html renderedHtml}</div>
+      </div>
+    {:else}
+      <div class="master-words" class:settled>
+        <p>{entry.text}</p>
+      </div>
+    {/if}
+
+    {#if entry.toolStates && entry.toolStates.length > 0}
+      <div class="seal-row">
+        <button
+          class="seal"
+          type="button"
+          aria-expanded={deedsOpen}
+          aria-label="What I did"
+          onclick={toggleDeeds}
+        >
+          <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+            <rect x="2.4" y="2.4" width="21.2" height="21.2" rx="3.6"
+                  fill="none" stroke="var(--s-seal)" stroke-width="1.7"/>
+            <path d="M8 8h10M13 8v10M8 18h10" stroke="var(--s-seal)" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <span class="seal-hint">what I did</span>
+      </div>
+
+      {#if deedsOpen}
+        <div class="deeds open">
+          <div class="deeds-inner">
+            <div class="deeds-title">what I did</div>
+            {#each entry.toolStates as tool}
+              <div class="deed">{tool.title}</div>
+            {/each}
+          </div>
+        </div>
       {/if}
-      {#if entry.role === 'assistant' && entry.toolStates && entry.toolStates.length > 0}
-        <ToolStrip
-          items={entry.toolStates}
-          bordered={true}
-          muted={true}
-          ariaLabel="Tool activity for this response"
-        />
-      {/if}
-    </div>
-    <span class="message-meta">
-      {entry.role === 'user' ? 'You' : 'Assistant'}
-      · {formatTime(entry.timestamp)}
-    </span>
+    {/if}
   </div>
 {/if}
 
 <style>
-  .thread-divider {
+  .s-divider {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-4) 0;
-    color: var(--color-text-tertiary);
-    /* font-size var(--text-xs) = 12px — rubric minimum floor, OK for a divider label */
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    /* All-caps divider label: ≤12 chars, ≥0.05em tracking — passes rubric cat 3 */
+    justify-content: center;
+    padding: var(--s-breath) 0 calc(var(--s-breath) * 0.4);
+  }
+
+  .s-divider-label {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    color: var(--s-ink-3);
   }
 
-  .divider-line {
-    flex: 1;
-    height: 1px;
-    background: var(--color-border);
+  .s-note {
+    display: flex;
+    justify-content: center;
+    padding: calc(var(--s-breath) * 0.5) 0;
   }
 
-  .divider-label {
-    flex-shrink: 0;
-    padding: 0 var(--space-2);
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-  }
-
-  .thread-note {
-    margin: 0 auto;
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-bg-tertiary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    text-align: center;
-    color: var(--color-text-secondary);
-  }
-
-  .thread-note-label {
-    font-size: var(--text-xs);
+  .s-note-text {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-text-tertiary);
+    color: var(--s-ink-3);
   }
 
-  .thread-note-text {
-    font-size: var(--text-xs);
-    line-height: 1.4;
-  }
-
-  /* Standard chat layout inside the centered conversation column: user turns
-     align right, assistant turns align left, each in a bubble capped well under
-     the column width so neither hugs the screen edge. */
-  /* The row stays centered in the conversation column (sized by the parent
-     .messages-area rule). align-items — NOT align-self — moves the bubble to the
-     correct side WITHIN the centered row; align-self would shove the whole row
-     to a screen edge. */
-  .message {
+  .s-deed-group {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .message-user {
-    align-items: flex-end;
-  }
-
-  .message-assistant {
     align-items: flex-start;
+    padding: calc(var(--s-breath) * 0.25) 0;
   }
 
-  .message-tool-group {
-    gap: var(--space-1);
+  /* ── Two-voice treatment ── */
+
+  .turn {
+    display: flex;
+    flex-direction: column;
   }
 
-  .message-bubble {
-    max-width: 85%;
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-lg);
-    line-height: var(--leading-normal);
+  /* The person — small, soft, whispered */
+  .turn.you {
+    gap: 0.5rem;
   }
 
-  /* User bubble: charcoal, right-aligned with a tucked corner. Keeps brand
-     orange reserved for primary actions. */
-  .message-user .message-bubble {
-    background: var(--color-chat-user-bubble);
-    color: var(--color-chat-user-text);
-    border: 1px solid color-mix(in srgb, var(--color-chat-user-bubble) 88%, #fff 12%);
-    border-bottom-right-radius: var(--radius-sm);
+  .you-mark {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-mark);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
   }
 
-  /* Assistant bubble: neutral surface, left-aligned with a tucked corner. */
-  .message-assistant .message-bubble {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-    border-bottom-left-radius: var(--radius-sm);
-  }
-
-  .tool-strip-inline {
-    max-width: 85%;
-    padding: var(--space-1) 0;
-  }
-
-  .message-text {
-    font-size: var(--text-base);
-    word-break: break-word;
-  }
-
-  /* User messages: preserve typed whitespace verbatim. */
-  .message-user .message-text:not(.markdown-body) {
+  .you-words {
+    font-family: var(--s-font-display);
+    font-weight: 400;
+    font-size: var(--s-type-whisper);
+    line-height: var(--s-type-whisper-lh);
+    color: var(--s-ink-2);
+    max-width: var(--s-measure-whisper);
     white-space: pre-wrap;
   }
 
-  /* Markdown-rendered assistant messages: style the common block-level
-     elements emitted by markdown-it. Scoped to .markdown-body so unrelated
-     <p>/<ul> on other pages are untouched. */
-  .markdown-body :global(p) {
-    margin: 0 0 var(--space-2) 0;
-  }
-  .markdown-body :global(p:last-child) {
-    margin-bottom: 0;
-  }
-  .markdown-body :global(ul),
-  .markdown-body :global(ol) {
-    margin: 0 0 var(--space-2) 0;
-    padding-left: var(--space-5);
-  }
-  .markdown-body :global(li) {
-    margin: var(--space-1) 0;
-  }
-  .markdown-body :global(li > p) {
-    margin: 0;
-  }
-  .markdown-body :global(code) {
-    font-family: var(--font-mono);
-    font-size: 0.9em;
-    background: var(--color-bg);
-    padding: 1px 6px;
-    border-radius: 4px;
-    border: 1px solid var(--color-border);
-  }
-  .markdown-body :global(pre) {
-    margin: var(--space-2) 0;
-    padding: var(--space-3);
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    overflow-x: auto;
-    font-size: 0.9em;
-  }
-  .markdown-body :global(pre code) {
-    background: transparent;
-    border: 0;
-    padding: 0;
-  }
-  .markdown-body :global(a) {
-    color: var(--color-primary);
-    text-decoration: underline;
-  }
-  .markdown-body :global(a:hover) {
-    text-decoration: none;
-  }
-  .markdown-body :global(blockquote) {
-    margin: var(--space-2) 0;
-    padding-left: var(--space-3);
-    border-left: 3px solid var(--color-border);
-    color: var(--color-text-secondary);
-  }
-  .markdown-body :global(h1),
-  .markdown-body :global(h2),
-  .markdown-body :global(h3),
-  .markdown-body :global(h4) {
-    margin: var(--space-3) 0 var(--space-2);
-    font-weight: var(--font-bold);
-    line-height: var(--leading-tight, 1.25);
-  }
-  .markdown-body :global(h1) { font-size: 1.4em; }
-  .markdown-body :global(h2) { font-size: 1.25em; }
-  .markdown-body :global(h3) { font-size: 1.1em; }
-  .markdown-body :global(h4) { font-size: 1em; }
-  .markdown-body :global(hr) {
-    margin: var(--space-3) 0;
-    border: 0;
-    border-top: 1px solid var(--color-border);
-  }
-  .markdown-body :global(table) {
-    border-collapse: collapse;
-    margin: var(--space-2) 0;
-    font-size: 0.9em;
-  }
-  .markdown-body :global(th),
-  .markdown-body :global(td) {
-    border: 1px solid var(--color-border);
-    padding: var(--space-1) var(--space-2);
-    text-align: left;
+  /* The agent — large, calm, unhurried */
+  .turn.master {
+    gap: 0.9rem;
   }
 
-  .message-meta {
-    margin-top: var(--space-1);
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
+  .master-words {
+    font-family: var(--s-font-display);
+    font-weight: 400;
+    font-size: var(--s-type-voice);
+    line-height: var(--s-type-voice-lh);
+    letter-spacing: 0.002em;
+    color: var(--s-ink);
+    text-wrap: pretty;
+    opacity: 0;
+    filter: blur(7px);
+    transform: translateY(5px);
+    transition:
+      opacity var(--s-t-bloom) var(--s-ease),
+      filter var(--s-t-bloom) var(--s-ease),
+      transform var(--s-t-bloom) var(--s-ease);
+  }
+
+  .master-words.settled {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+
+  /* Markdown inside master-words */
+  .master-words :global(p) {
+    margin: 0 0 0.6rem 0;
+  }
+  .master-words :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .master-words :global(ul),
+  .master-words :global(ol) {
+    margin: 0 0 0.6rem 0;
+    padding-left: 1.4rem;
+  }
+  .master-words :global(li) {
+    margin: 0.3rem 0;
+    font-size: var(--s-type-whisper);
+    color: var(--s-ink-2);
+  }
+  .master-words :global(code) {
+    font-family: var(--s-font-mono);
+    font-size: 0.78em;
+    color: var(--s-ink-2);
+  }
+  .master-words :global(pre) {
+    margin: 0.7rem 0;
+    padding: 0.8rem 1rem;
+    border-left: var(--s-hair) solid var(--s-line);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    overflow-x: auto;
+    white-space: pre-wrap;
+  }
+  .master-words :global(pre code) {
+    font-size: inherit;
+    color: inherit;
+  }
+  .master-words :global(a) {
+    color: var(--s-ink);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    text-decoration-color: var(--s-line);
+  }
+  .master-words :global(blockquote) {
+    margin: 0.6rem 0;
+    padding-left: 1rem;
+    border-left: var(--s-hair) solid var(--s-seal);
+    color: var(--s-ink-2);
+  }
+  .master-words :global(h1),
+  .master-words :global(h2),
+  .master-words :global(h3),
+  .master-words :global(h4) {
+    margin: 0.8rem 0 0.4rem;
+    font-family: var(--s-font-display);
+    font-weight: 400;
+    color: var(--s-ink);
+  }
+  .master-words :global(hr) {
+    margin: 0.8rem 0;
+    border: 0;
+    border-top: var(--s-hair) solid var(--s-line);
+  }
+
+  /* ── Seal + deeds ── */
+
+  .seal-row {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .seal {
+    appearance: none;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    padding: 0;
+    width: var(--s-glyph-size);
+    height: var(--s-glyph-size);
+    flex: 0 0 auto;
+    opacity: 0.62;
+    transition: opacity var(--s-t-quick) var(--s-ease), transform 0.7s var(--s-ease);
+  }
+
+  .seal:hover {
+    opacity: 1;
+    transform: rotate(-4deg);
+  }
+
+  .seal svg {
+    display: block;
+  }
+
+  .seal-hint {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    opacity: 0;
+    transition: opacity var(--s-t-quick) var(--s-ease);
+  }
+
+  .seal-row:hover .seal-hint {
+    opacity: 1;
+  }
+
+  .deeds {
+    border-left: var(--s-hair) solid var(--s-line);
+    margin: 0.2rem 0 0 14px;
+    padding: 0.3rem 0 0.3rem 1.1rem;
+    animation: s-bloom-in var(--s-t-settle) var(--s-ease-settle) both;
+  }
+
+  @keyframes s-bloom-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .deeds-title {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    margin-bottom: 0.7rem;
+  }
+
+  .deed {
+    font-family: var(--s-font-mono);
+    font-weight: 400;
+    font-size: var(--s-type-deed);
+    line-height: 1.5;
+    color: var(--s-ink-2);
+    padding-left: 1rem;
+    position: relative;
+    margin: 0.32rem 0;
+  }
+
+  .deed::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--s-seal);
+    opacity: 0.85;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .master-words {
+      transition: opacity 0.4s var(--s-ease);
+      filter: none;
+      transform: none;
+    }
   }
 </style>

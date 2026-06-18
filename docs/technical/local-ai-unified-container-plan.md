@@ -1,481 +1,400 @@
-# OpenPalm Local AI Unified Container Plan (revised)
+# openpalm/services — Unified Local AI Container Plan
 
-> **Status:** forward-looking plan, revised 2026-06-05 to align with the current
-> (0.11.0-rc.6) implementation and release processes.
->
-> The original draft was directionally good but assumed conventions OpenPalm no
-> longer uses (GitHub Container Registry, the `OP_CAP_*` env family, an `init`
-> container, varlock `.env.schema` files, a `registry/addons/<name>/` layout).
-> This revision keeps the strong ideas — a capability gateway, capability-not-
-> runtime UX, prebuilt model images, hardware profiles, out-of-band CI — and
-> re-expresses every concrete detail in OpenPalm's actual idioms. **Most of the
-> "advanced Docker build" recommendations are already proven in production by
-> `openpalm/voice` + `openpalm/voice-models:v1` and the `publish-voice*.yml`
-> workflows; this plan generalizes that pattern to a unified Local AI image.**
+> **Status:** revised 2026-06-16. Supersedes the previous "Local AI" draft.
+> Renamed: `local-ai` → `services` throughout. Issues #430 and #431 are merged
+> into a single `openpalm/services` addon. The `openpalm/voice` addon is
+> **removed and replaced** by `openpalm/services` — `containers/voice/` is the
+> starting point for `containers/services/`, not a parallel path.
 
 ---
 
-## 0. What already exists (don't re-invent it)
+## What already exists (don't re-invent it)
 
-OpenPalm already ships a local, OpenAI-compatible **voice** runtime that is, in
-effect, Phase 0 of this plan and the template for everything below:
+`openpalm/voice` (`containers/voice/`) is the template for everything below:
 
-- **`openpalm/voice`** (`containers/voice/`) — Kokoro TTS + faster-whisper STT behind a
-  FastAPI app, OpenAI-compatible (`/v1/audio/speech`, `/v1/audio/transcriptions`),
-  multi-variant (`cpu`, `cu121`, `rocm6`).
-- **`openpalm/voice-models:v1`** (`containers/voice/Dockerfile.models`) — a prebuilt
-  **model bundle** image (Kokoro + Whisper, `scratch` final) the runtime
-  `COPY --from`s, so the heavy model download happens **once per model bump**, not
-  per hardware build. Pinned in `containers/voice/Dockerfile` via
-  `FROM --platform=$BUILDPLATFORM openpalm/voice-models:v1 AS modelfetch`.
-- **Out-of-band CI** — `publish-voice.yml` (images) and `publish-voice-models.yml`
-  (the bundle) publish on their own cadence; they are **removed from the platform
-  `release.yml`** so a platform release never blocks on the ~slow GPU build.
-- **Decoupled image tags** — `openpalm/voice:${OP_VOICE_IMAGE_TAG:-latest-<variant>}`;
-  `voiceImageRef()` in `registry.ts` defaults to the moving `latest-<variant>` tag,
-  independent of the platform `OP_IMAGE_TAG`.
+- **FastAPI app** — `containers/voice/app/server.py`, one port, OpenAI-compatible
+  `/v1/audio/speech` + `/v1/audio/transcriptions`.
+- **Model bundle** — `openpalm/voice-models:v1` (`FROM scratch`, `$BUILDPLATFORM`-
+  pinned, optional `HF_TOKEN`). Runtime `COPY --from`s it so model downloads happen
+  once per bump, not per build.
+- **Out-of-band CI** — `publish-voice.yml` + `publish-voice-models.yml`, never in
+  `release.yml`. Platform releases stay fast.
+- **Decoupled image tag** — `voiceImageRef()` in `registry.ts`, `OP_VOICE_IMAGE_TAG`
+  → moving `latest-<variant>`, independent of `OP_IMAGE_TAG`.
 
-Local AI should be built **on this proven foundation**, reusing the model-bundle
-image pattern, the out-of-band workflows, the `$BUILDPLATFORM` model stage, the
-optional `HF_TOKEN` secret, and the `OP_*_IMAGE_TAG` / `OP_*_PROFILE` conventions.
-The unified gateway adds **agent + embeddings + Intel + hardware detection** and a
-single capability API on top.
+`openpalm/services` clones this pattern and extends it to four capabilities.
 
 ---
 
-## 1. Goals (unchanged in spirit)
+## Goal
 
-- Seamless local AI for non-technical users; capability toggles, not runtimes.
-- Local **voice** (STT + TTS), local **embeddings**, optional local **agent** model.
-- **Intel** as a first-class hardware target alongside CPU / NVIDIA / AMD.
-- One stable gateway API; runtime/model complexity hidden by default, fully
-  overridable for advanced users.
-- Docker build practices that minimize repeated model downloads and maximize CI
-  caching — **already the standard for `openpalm/voice`**.
+One container per hardware class (`cpu` / `cuda` / `rocm` / `intel`). One FastAPI
+app, one port (`4114`), four OpenAI-compatible endpoint groups:
 
-### Non-goals
-- Don't replace the existing **Ollama** addon (advanced local LLM provider).
-- Don't expose runtime/quantization/engine choices in the default wizard.
-- **One image per hardware class, and that single image provides *every*
-  capability** (voice + embeddings + agent baked in). The capability toggles
-  (`OP_LOCAL_AI_ENABLE_*`) control only which runtimes *start* — never what the
-  image contains — so a user installs exactly one image for their hardware and
-  flips capabilities on/off. (The only thing we don't build is one *universal*
-  image spanning all hardware classes — CPU/Intel/CUDA/ROCm stay separate, like
-  voice's `cpu`/`cu121`/`rocm6`.)
-- Don't require runtime model downloads on the default path.
+| Endpoint | Capability | Library |
+|---|---|---|
+| `POST /v1/audio/speech` | TTS | Kokoro (from `containers/voice/`) |
+| `POST /v1/audio/transcriptions` | STT | faster-whisper (from `containers/voice/`) |
+| `POST /v1/embeddings` | Embeddings | onnxruntime + ONNX model |
+| `POST /v1/chat/completions` | Chat LLM | llama-cpp-python (GGUF) |
+| `POST /v1/images/generations` | Image gen | diffusers + torch |
+| `GET /health` | Readiness | returns per-capability status |
+
+No gateway layer. No capability enable/disable toggles (those are the deleted
+`OP_CAP_*` resurrected — rejected, same as issue #430 notes). If a model file is
+present, that endpoint works. If not, it returns `503`. Hardware determines what
+runs well; users don't pick runtimes.
 
 ---
 
-## 2. Product model (capabilities, not runtimes)
-
-Wizard exposes capabilities; the runtime is hidden:
+## Container structure
 
 ```
-Local AI
-  [ ] Enable local voice        — STT + TTS on this device
-  [ ] Enable local embeddings   — memory / search / retrieval on this device
-  [ ] Enable local agent model  — small private/offline model (prompted by hardware)
-
-Hardware acceleration: Auto (recommended) · CPU only · Intel GPU · NVIDIA GPU · AMD GPU
+containers/services/
+  Dockerfile             # multi-target: FROM runtime-common AS runtime-cpu/cuda/rocm/intel
+  Dockerfile.models      # scratch bundle: Kokoro + Whisper + ONNX embed + GGUF + SD weights
+  app/
+    server.py            # FastAPI — all endpoints in one process
+    tts.py               # Kokoro handler (from containers/voice/app/)
+    stt.py               # faster-whisper handler (from containers/voice/app/)
+    embeddings.py        # onnxruntime InferenceSession
+    chat.py              # llama-cpp-python Llama()
+    imagegen.py          # diffusers StableDiffusionPipeline
+  requirements-common.txt
+  requirements-cuda.txt  # torch+cuda, onnxruntime-gpu, llama-cpp-python[cuda]
+  requirements-rocm.txt  # torch+rocm, llama-cpp-python[rocm]
+  requirements-intel.txt # torch+xpu (Intel Extension for PyTorch), onnxruntime-openvino
+  entrypoint.sh          # mkdir -p container-private paths only, then exec uvicorn
 ```
 
-Default: voice + embeddings local, agent optional, hardware auto, models =
-"OpenPalm recommended", runtime hidden. Advanced details reveal runtime, model
-IDs, custom OpenAI-compatible endpoints, manual profile, slim images, and runtime
-downloads.
-
----
-
-## 3. Addon structure — **Compose profiles, not a `registry/addons/` dir**
-
-OpenPalm no longer uses `.openpalm/registry/addons/<name>/compose.*.yml` +
-`.env.schema`. First-party optional services live in
-**`.openpalm/config/stack/services.compose.yml`**, gated by **Compose profiles**
-(this is exactly how `voice` and `ollama` are defined today, e.g.
-`addon.voice.cpu` / `addon.ollama.cuda`). varlock and `.env.schema` are gone (#391).
-
-Add Local AI as profiled services in `services.compose.yml`:
-
-```
-addon.local-ai.cpu
-addon.local-ai.intel
-addon.local-ai.cuda     # NVIDIA (matches the existing cuda profile naming)
-addon.local-ai.rocm     # AMD
-```
-
-The active profile is selected by an **`OP_LOCAL_AI_PROFILE`** env var
-(e.g. `OP_LOCAL_AI_PROFILE=addon.local-ai.intel`), mirroring the existing
-`OP_VOICE_PROFILE` / `OP_OLLAMA_PROFILE` resolution in
-`packages/lib/src/control-plane/registry.ts`. The **Ollama** profiles
-(`addon.ollama.*`) stay untouched as the advanced LLM provider.
-
-> Positioning: `local-ai` = recommended default for voice/embeddings/agent;
-> `ollama` = advanced LLM provider. Both surface as OpenAI-compatible providers.
-
----
-
-## 4. Runtime architecture — gateway
-
-One stable internal API (unchanged from the original, good):
-
-```
-GET  /health · GET /capabilities · GET /models
-POST /v1/chat/completions · /v1/embeddings · /v1/audio/transcriptions · /v1/audio/speech
-```
-
-```
-local-ai-gateway
-  ├─ agent runtime · embedding runtime · STT runtime · TTS runtime
-```
-
-OpenPalm talks **only** to the gateway (`http://local-ai:4114/v1`), never to
-internal runtimes. The gateway owns routing, model aliasing, health aggregation,
-embedding-dimension reporting, hardware/fallback reporting, OpenAI-compatible
-normalization, and friendly errors.
-
-> Single-image design: STT + TTS + embeddings (+ optional agent) are **all baked
-> into the one `openpalm/local-ai:<hardware>` image** and run inside it — there is
-> no separate voice/embedding/agent container. The existing `openpalm/voice`
-> work is reused as **source** (its Kokoro/Whisper Dockerfile stages and the
-> `voice-models` bundle pattern fold into this image's build), not run as a
-> separate service. The standalone `openpalm/voice` addon can remain as a lighter
-> voice-only option, but Local AI supersedes it for the recommended all-in-one
-> path.
-
----
-
-## 5–6. Capability endpoints & runtime matrix
-
-Unchanged from the original (they were sound): `agent.default`, `embedding.default`,
-`stt.default`, `tts.default` aliases; CPU baseline → Intel (OpenVINO/SYCL) → NVIDIA
-(CUDA) → AMD (ROCm), each with CPU fallback. The stable contract is the gateway API
-+ aliases; concrete runtimes can evolve.
-
----
-
-## 7. Image naming — **Docker Hub `openpalm/*`, not ghcr.io**
-
-OpenPalm publishes to **Docker Hub** under the `openpalm` namespace (overridable
-via `OP_IMAGE_NAMESPACE`), using the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`
-secrets. There is no `ghcr.io/itlackey/...`.
-
-Mirror the **voice tag scheme** exactly:
-
-```
-# moving (the stack default)
-openpalm/local-ai:latest-cpu      openpalm/local-ai:latest-intel
-openpalm/local-ai:latest-cuda     openpalm/local-ai:latest-rocm
-
-# immutable pin (published when a version is supplied)
-openpalm/local-ai:v0.11.0-cpu     openpalm/local-ai:v0.11.0-intel   ...
-```
-
-(Profile names `addon.local-ai.<variant>` map to image suffix `<variant>`, same as
-voice maps `addon.voice.cuda` → image suffix `cu121`. Pick clean suffixes
-`cpu/intel/cuda/rocm`.) **No `slim` / `with-models` split** — the model bundle is a
-separate image (§8), so every runtime image already carries baked defaults via
-`COPY --from`, exactly like voice. (`OP_LOCAL_AI_ALLOW_MODEL_DOWNLOADS` covers the
-rare runtime-download case.)
-
-### Image-ref resolution (mirror `voiceImageRef`)
-
-Add `localAiImageRef(variant)` in `registry.ts`, identical in shape to
-`voiceImageRef`:
-
-```
-${OP_IMAGE_NAMESPACE:-openpalm}/local-ai:${OP_LOCAL_AI_IMAGE_TAG:-latest-<variant>}
-```
-
-i.e. an explicit `OP_LOCAL_AI_IMAGE_TAG` override, otherwise the **moving
-`latest-<variant>`** tag — **decoupled from the platform `OP_IMAGE_TAG`**, because
-Local AI publishes out-of-band (§10).
-
----
-
-## 8. Model image strategy — **already proven by `openpalm/voice-models:v1`**
-
-Generalize the voice bundle to a Local AI bundle:
-
-```
-openpalm/local-ai-models:<tag>     # e.g. v1, all-defaults
-```
-
-Build it exactly like `containers/voice/Dockerfile.models`:
-
-- `FROM python:3.11-slim … AS fetch` → download Kokoro/Whisper/agent/embedding
-  defaults, then **`FROM scratch`** with just the data → tiny, pull-only image.
-- **`$BUILDPLATFORM`-pinned** so the platform-agnostic data isn't re-fetched under
-  QEMU for arm64 (the lesson from voice's Level-1 fix).
-- **Optional `hf_token` BuildKit secret** + retry/backoff on HuggingFace 429s (the
-  lesson from voice-models: anonymous HF rate-limits by IP).
-- A `manifest.json` (model, path, sha256, dims, runtime hints) for the gateway.
-
-Runtime Dockerfile consumes it like voice does:
-
-```dockerfile
-ARG VOICE_MODELS_IMAGE  # for parity; here: LOCAL_AI_MODELS_IMAGE
-ARG LOCAL_AI_MODELS_IMAGE=openpalm/local-ai-models:v1
-FROM --platform=$BUILDPLATFORM ${LOCAL_AI_MODELS_IMAGE} AS modelfetch
-...
-COPY --from=modelfetch /models /opt/openpalm/models
-```
-
-**Bumping models** (same runbook as voice): edit `Dockerfile.models` → publish a
-new `local-ai-models` tag via `publish-local-ai-models.yml` → bump the
-`LOCAL_AI_MODELS_IMAGE` default in the runtime Dockerfile → publish images.
-
----
-
-## 9. Dockerfile organization
-
-Single multi-target Dockerfile with BuildKit cache mounts (the original §9 skeleton
-is fine after two corrections): use **`COPY --from=modelfetch`** off the pinned
-models image (not a hard-coded `ghcr.io` ref), and there is **no `init`
-dependency** — first-boot dir creation + ownership happens in the entrypoint.
+Hardware-specific Python packages are installed via build-arg at build time:
 
 ```dockerfile
 # syntax=docker/dockerfile:1.7
-ARG LOCAL_AI_MODELS_IMAGE=openpalm/local-ai-models:v1
-FROM --platform=$BUILDPLATFORM ${LOCAL_AI_MODELS_IMAGE} AS modelfetch
-# os-base / python-base / gateway-builder with apt+pip cache mounts (as drafted)
-FROM python-base AS runtime-common
+ARG SERVICES_MODELS_IMAGE=openpalm/services-models:v1
+FROM --platform=$BUILDPLATFORM ${SERVICES_MODELS_IMAGE} AS modelfetch
+
+FROM python:3.11-slim AS base
+# ... apt deps (libsndfile, ffmpeg, etc.) with cache mounts
+
+FROM base AS runtime-common
 COPY --from=modelfetch /models /opt/openpalm/models
-# entrypoint mkdir -p + chown of CONTAINER-PRIVATE paths only (see §17)
-FROM runtime-common AS runtime-cpu    # ENV OP_LOCAL_AI_PROFILE handled at compose level
-FROM runtime-common AS runtime-intel
+COPY app/ /app/
+COPY requirements-common.txt /app/
+
+FROM runtime-common AS runtime-cpu
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /app/requirements-common.txt
+
 FROM runtime-common AS runtime-cuda
+ARG CUDA_VERSION=12.4
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /app/requirements-common.txt -r /app/requirements-cuda.txt
+
 FROM runtime-common AS runtime-rocm
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /app/requirements-common.txt -r /app/requirements-rocm.txt
+
+FROM runtime-common AS runtime-intel
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r /app/requirements-common.txt -r /app/requirements-intel.txt
 ```
 
-Build-practice requirements (strict `.dockerignore`, slow-deps-before-source, apt/pip
-cache mounts, named targets, registry/gha cache, models in a dedicated image,
-one-image-per-hardware) are all retained — they already describe how voice builds.
+No supervisor (s6, supervisord). One uvicorn process. Each handler loads its model
+at startup if the file exists; logs a warning and returns `503` if not.
 
 ---
 
-## 10. CI/CD — **out-of-band workflows mirroring `publish-voice*.yml`**
+## Model bundle (`openpalm/services-models:v1`)
 
-**Do not add Local AI to the platform `release.yml`.** Heavy GPU/model builds must
-stay off the critical release path (the explicit reason voice was moved out, and
-why platform releases now take minutes). Add two **standalone, dispatchable**
-workflows, registered on `main`:
+Clone of `containers/voice/Dockerfile.models` extended to include all default models:
 
-- **`publish-local-ai-models.yml`** — builds `openpalm/local-ai-models:<tag>`
-  (single-arch amd64, `scratch`), `secrets: hf_token=${{ secrets.HF_TOKEN }}`,
-  `cache-{from,to} type=gha,scope=openpalm/local-ai-models`. Run on model bumps.
-- **`publish-local-ai.yml`** — per-variant matrix (`cpu` amd64+arm64; `cuda`/`rocm`
-  amd64-only like voice's cu121; `intel` per device support), `docker/build-push-action@v6`,
-  `cache-{from,to} type=gha,scope=openpalm/local-ai-<variant>`, builds
-  `FROM …/local-ai-models:<pin>`, pushes moving `latest-<variant>` always + a pinned
-  `v<version>-<variant>` when a `version` input is supplied, `fail-fast: false`.
+```dockerfile
+FROM --platform=$BUILDPLATFORM python:3.11-slim AS fetch
+# HF_TOKEN secret for gated models; retry/backoff on 429s (lesson from voice-models)
+RUN --mount=type=secret,id=hf_token ...
+    # Kokoro weights  → /models/tts/
+    # Whisper weights → /models/stt/
+    # ONNX embed model (e.g. nomic-embed-text-v1.5 ONNX, 768 dims) → /models/embeddings/
+    # GGUF chat model (e.g. Llama-3.2-3B-Instruct.Q4_K_M.gguf, ~2GB) → /models/chat/
+    # SD weights      (e.g. SD-Turbo safetensors) → /models/imagegen/
 
-Concrete deltas from the original §10:
-- `docker/build-push-action@v6` (the repo's version), **not** `@v7`.
-- **gha cache** (`type=gha,scope=…`), the repo's standard — **not** `type=registry`
-  cache refs. (`mode=max` is fine.)
-- **Docker Hub** login (`docker/login-action@v3` + `DOCKERHUB_*`), **not** ghcr.
-- `docker-bake.hcl` is optional/nice — the established pattern is a
-  `build-push-action` matrix, so lead with that.
-- Add a **CI version-sync check** for `OPENCODE_VERSION`/`BUN_VERSION`/`CUDA`
-  toolkit args across the local-ai Dockerfiles, mirroring the existing
-  `AKM_CLI_VERSION` lockstep check.
+FROM scratch
+COPY --from=fetch /models /models
+```
 
-Both workflows must exist on the **default branch (`main`)** to be
-`workflow_dispatch`-able (a hard GitHub requirement we hit repeatedly).
+**Model choices for defaults** (small, permissively licensed, fast on CPU):
+- TTS: Kokoro (already shipped)
+- STT: Whisper tiny/base (already shipped)
+- Embeddings: `nomic-embed-text-v1.5` ONNX export (768 dims, Apache-2.0)
+- Chat: `Llama-3.2-3B-Instruct.Q4_K_M.gguf` (~2 GB, Meta Llama 3.2 Community License)
+- Image gen: SD-Turbo (`stabilityai/sd-turbo`, non-commercial for default; document this)
+
+> **Image gen license note:** SD-Turbo has a non-commercial research license. The
+> default can swap to a permissively licensed model (e.g. a fine-tune with Apache-2.0
+> weights) before shipping. Implementation defers the exact choice; the wiring is
+> identical regardless of model.
+
+Bump runbook: edit `Dockerfile.models` → publish `openpalm/services-models:<new-tag>` via
+`publish-services-models.yml` → update the `SERVICES_MODELS_IMAGE` ARG default →
+publish runtime images.
 
 ---
 
-## 11. Compose service (aligned to `services.compose.yml` idioms)
+## Image naming and tag resolution
+
+Docker Hub `openpalm/` namespace, same as voice:
+
+```
+openpalm/services:latest-cpu
+openpalm/services:latest-cuda
+openpalm/services:latest-rocm
+openpalm/services:latest-intel
+openpalm/services:v0.13.0-cpu   # pinned on release
+```
+
+`servicesImageRef(variant)` in `packages/lib/src/control-plane/registry.ts` —
+5-line clone of `voiceImageRef`:
+
+```ts
+export function servicesImageRef(variant: string): string {
+  const ns = process.env.OP_IMAGE_NAMESPACE ?? 'openpalm';
+  const tag = process.env.OP_SERVICES_IMAGE_TAG ?? `latest-${variant}`;
+  return `${ns}/services:${tag}`;
+}
+```
+
+---
+
+## Compose profiles
+
+Compose service name and network alias are both `services` — consistent with the
+image name and the URLs used everywhere. The CPU variant uses the service name as
+its implicit alias; GPU variants add an explicit `aliases: [services]` so the
+alias is stable regardless of which variant is active (mirrors the `ollama` pattern).
+
+In `.openpalm/config/stack/services.compose.yml` — **replaces** the existing
+`voice` / `voice-cuda` / `voice-rocm` service blocks:
 
 ```yaml
-# in .openpalm/config/stack/services.compose.yml
 services:
-  local-ai:
-    profiles: ["addon.local-ai.cpu"]            # + intel/cuda/rocm variants
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/local-ai:${OP_LOCAL_AI_IMAGE_TAG:-latest-cpu}
+  services:
+    profiles: ["addon.services.cpu"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/services:${OP_SERVICES_IMAGE_TAG:-latest-cpu}
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    environment:
-      OP_LOCAL_AI_PORT: "4114"
-      OP_LOCAL_AI_ENABLE_VOICE: "${OP_LOCAL_AI_ENABLE_VOICE:-true}"
-      OP_LOCAL_AI_ENABLE_AGENT: "${OP_LOCAL_AI_ENABLE_AGENT:-false}"
-      OP_LOCAL_AI_ENABLE_EMBEDDINGS: "${OP_LOCAL_AI_ENABLE_EMBEDDINGS:-true}"
-      OP_LOCAL_AI_HARDWARE: "${OP_LOCAL_AI_HARDWARE:-auto}"
-      OP_STT_MODEL: "${OP_STT_MODEL:-stt.default}"
-      OP_TTS_MODEL: "${OP_TTS_MODEL:-tts.default}"
-      OP_AGENT_MODEL: "${OP_AGENT_MODEL:-agent.default}"
-      OP_EMBEDDING_MODEL: "${OP_EMBEDDING_MODEL:-embedding.default}"
     ports:
-      # loopback default; one host port for the host UI server's /api/speak +
-      # /api/transcribe proxy, same as voice's OP_VOICE_BIND_ADDRESS/PORT_HOST.
-      - "${OP_LOCAL_AI_BIND_ADDRESS:-127.0.0.1}:${OP_LOCAL_AI_PORT_HOST:-4114}:4114"
+      - "${OP_SERVICES_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_SERVICES_PORT_HOST:-4114}:4114"
     volumes:
-      - ${OP_HOME}/data/local-ai:/data        # data/<service>/ pattern (cf. data/voice/models)
-    networks: [assistant_net]                  # in-network for the assistant; voice uses the same
+      - ${OP_HOME}/data/services:/data
+    networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4114/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 45s
+      start_period: 60s
     labels:
-      openpalm.name: Local AI
-      openpalm.description: Local voice, embeddings, and agent model runtime (OpenAI-compatible)
+      openpalm.name: "Local AI Services"
+      openpalm.description: "Local voice, embeddings, chat, and image generation (OpenAI-compatible)"
       openpalm.icon: cpu
       openpalm.category: ai
-      openpalm.healthcheck: http://local-ai:4114/health
+      openpalm.profile.label: CPU
+      openpalm.profile.default: "true"
+      openpalm.healthcheck: http://services:4114/health
+
+  services-cuda:
+    profiles: ["addon.services.cuda"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/services:${OP_SERVICES_IMAGE_TAG:-latest-cuda}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    ports:
+      - "${OP_SERVICES_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_SERVICES_PORT_HOST:-4114}:4114"
+    volumes:
+      - ${OP_HOME}/data/services:/data
+    networks:
+      assistant_net:
+        aliases: [services]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4114/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    labels:
+      openpalm.profile.label: NVIDIA (CUDA)
+      openpalm.profile.requires: nvidia-container-toolkit
+
+  services-rocm:
+    profiles: ["addon.services.rocm"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/services:${OP_SERVICES_IMAGE_TAG:-latest-rocm}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    ports:
+      - "${OP_SERVICES_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_SERVICES_PORT_HOST:-4114}:4114"
+    volumes:
+      - ${OP_HOME}/data/services:/data
+    networks:
+      assistant_net:
+        aliases: [services]
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add: [render, video]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4114/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    labels:
+      openpalm.profile.label: AMD (ROCm)
+      openpalm.profile.requires: amdgpu kernel module
+
+  services-intel:
+    profiles: ["addon.services.intel"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/services:${OP_SERVICES_IMAGE_TAG:-latest-intel}
+    restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    ports:
+      - "${OP_SERVICES_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_SERVICES_PORT_HOST:-4114}:4114"
+    volumes:
+      - ${OP_HOME}/data/services:/data
+    networks:
+      assistant_net:
+        aliases: [services]
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4114/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    labels:
+      openpalm.profile.label: Intel GPU
+      openpalm.profile.requires: Intel GPU + render group membership
 ```
 
-Per-variant overlays add only the hardware bits (Intel `/dev/dri`; NVIDIA
-`deploy.resources…devices:[gpu]` + `runtime: nvidia` CDI fallback as voice's CUDA
-profile does; AMD `/dev/kfd`+`/dev/dri`+`group_add`). Corrections vs the original:
-- **No `depends_on: init`** — the `init` container was removed (#396); first-boot
-  dirs/ownership are handled in the entrypoint.
-- **`OP_LOCAL_AI_BIND_ADDRESS` / `OP_LOCAL_AI_PORT_HOST`** (loopback default) match
-  the voice naming. When the global **`OP_BIND_ADDRESS`** (#395) lands, Local AI
-  consumes it like every other service.
+`OP_SERVICES_PROFILE` (e.g. `addon.services.cuda`) is set by the setup wizard's
+hardware detection step and persisted to `knowledge/env/stack.env`.
+`resolveActiveProfiles()` handles it via the `HARDWARE_PROFILED_ADDONS` data-driven
+map (the `if/else voice/ollama` chain is replaced as part of this work).
 
 ---
 
-## 12. Hardware detection & profile selection
+## Capability wiring (existing mechanisms, unchanged)
 
-Keep the original detection logic (Intel `/dev/dri`+lspci, NVIDIA `nvidia-smi`+`--gpus`
-smoke, AMD `/dev/kfd`, CPU fallback; Intel-priority). Wire it into the existing
-**setup wizard hardware/profile step** (the same place that already picks
-`OP_VOICE_PROFILE` and `OP_OLLAMA_PROFILE`). Persist:
+| Capability | Wired via | URL form |
+|---|---|---|
+| TTS | `OP_TTS_BASE_URL` (host UI proxy) | `http://127.0.0.1:${OP_SERVICES_PORT_HOST}/v1` |
+| STT | `OP_STT_BASE_URL` (host UI proxy) | `http://127.0.0.1:${OP_SERVICES_PORT_HOST}/v1` |
+| Embeddings | `config/akm/config.json` embedding section | `http://services:4114/v1` (compose network alias) |
+| Chat LLM | OpenPalm Connection → `auth.json` | `http://services:4114/v1` (compose network alias) |
+| Image gen | `OP_IMAGEGEN_BASE_URL` | `http://127.0.0.1:${OP_SERVICES_PORT_HOST}/v1` |
 
-```env
-# knowledge/env/stack.env (non-secret stack config)
-OP_LOCAL_AI_ENABLED=true
-OP_LOCAL_AI_ENABLE_VOICE=true
-OP_LOCAL_AI_ENABLE_AGENT=false
-OP_LOCAL_AI_ENABLE_EMBEDDINGS=true
-OP_LOCAL_AI_HARDWARE=intel
-OP_LOCAL_AI_PROFILE=addon.local-ai.intel
-OP_LOCAL_AI_IMAGE_TAG=latest-intel
-```
+No `OP_CAP_*`. No new env var surface beyond `OP_SERVICES_PROFILE`,
+`OP_SERVICES_IMAGE_TAG`, `OP_SERVICES_BIND_ADDRESS`, `OP_SERVICES_PORT_HOST`.
 
-(`OP_LOCAL_AI_PROFILE` is the compose-profile selector — the actual mechanism — and
-replaces the original's bare `OP_LOCAL_AI_HARDWARE` driving overlays.)
+**Host vs. network alias**: voice/imagegen are consumed by the host UI process →
+published loopback port. Embeddings/chat are consumed by the assistant container
+(in-network) → compose network alias `http://services:4114`. This distinction is a real
+failure mode; get them backwards and one side silently fails.
 
 ---
 
-## 13. Capability wiring — **no `OP_CAP_*`** (that family was deleted, #393)
+## CI/CD
 
-This is the biggest correction. The original `OP_CAP_*_PROVIDER/_BASE_URL/_MODEL`
-env block does not exist in OpenPalm anymore. Each consumer is wired through its
-**real** mechanism:
+Two out-of-band, dispatchable workflows on `main` — never in `release.yml`:
 
-- **Voice (STT/TTS) → the UI voice routes.** `/api/speak` + `/api/transcribe` read
-  `OP_TTS_BASE_URL` / `OP_STT_BASE_URL` (+ `OP_TTS_MODEL` / `OP_TTS_VOICE` /
-  `OP_STT_MODEL`, `OP_TTS_ENGINE` / `OP_STT_ENGINE`) from `stack.env`. Point them at
-  the gateway:
-  ```env
-  OP_TTS_BASE_URL=http://127.0.0.1:${OP_LOCAL_AI_PORT_HOST:-4114}/v1   # host UI proxy
-  OP_STT_BASE_URL=http://127.0.0.1:${OP_LOCAL_AI_PORT_HOST:-4114}/v1
-  OP_TTS_MODEL=tts.default   # OP_STT_MODEL=stt.default ; OP_TTS_VOICE=…
-  ```
-  (Exactly how the existing `openpalm/voice` addon is wired — Local AI just becomes
-  the target.)
-- **Embeddings (akm memory/retrieval) → `config/akm/config.json`.** Write the akm
-  0.8.0 canonical shape (`profiles.embedding.default` + `defaults.embedding`) with
-  the gateway's OpenAI-compatible base URL + **dims**, the same way `setup.ts`
-  already writes `profiles.llm.default` + `defaults.llm`. Dimensions are
-  load-bearing for the vector index (§16).
-- **Agent LLM (the assistant's OpenCode) → an OpenPalm Connection / OpenCode
-  provider**, not an env var. Register an `openai-compatible` connection whose base
-  URL is the gateway (`http://local-ai:4114/v1`), via the existing connections +
-  `auth.json` flow. If akm itself should use the local agent (for `akm improve`),
-  also set `profiles.llm.default` in `config/akm/config.json`.
-
-> Still expose **only** the gateway URL to the rest of the stack — never internal
-> runtime URLs (`kokoro:8880`, `whisper:8080`, …). That principle is unchanged.
+- **`publish-services-models.yml`** — builds `openpalm/services-models:<tag>`
+  (amd64 only, `scratch` final). `secrets: hf_token=${{ secrets.HF_TOKEN }}`,
+  `cache type=gha,scope=openpalm/services-models`. Run on model bumps only.
+- **`publish-services.yml`** — per-variant matrix (`cpu` amd64+arm64; `cuda`/`rocm`
+  amd64-only; `intel` per device support). `docker/build-push-action@v6`, gha cache
+  per variant, `fail-fast: false`. Gates on CI smoke test before push.
 
 ---
 
-## 14–18. Gateway startup, model defaults, embeddings metadata, supervision, file layout
+## Implementation phases (all target 0.13.0)
 
-Keep the original sections; two alignment notes:
+GPU variants are the goal; the phases are sequential implementation steps within
+a single milestone, not separate releases.
 
-- **§17 supervision / first-boot (corrects the `init` removal):** `tini` as PID 1 +
-  an entrypoint that, before starting runtimes, `mkdir -p`s and `chown`s **only
-  container-private paths** (`/data/cache`, `/data/logs`, …) — **never** a
-  bind-mounted host stash/model dir (the `akm-chown-clobbers-host-stash-on-boot`
-  lesson). Resolution order stays `/data override → /opt baked default → download
-  only if explicitly allowed`.
-- **§16 embeddings:** the dimension-mismatch guardrail is critical and aligns with
-  OpenPalm's existing constraint that `embedding_model_dims` must match the model
-  (nomic-embed-text = 768). The gateway reports dims in `/health` + `/models`, and
-  refuses silent dimension changes against an existing index.
+**Phase 0 — DONE.** `openpalm/voice` + `voice-models:v1` + out-of-band workflows.
+The proven foundation.
 
----
+**Phase 1 — CPU: voice + embeddings.** Extend `containers/voice/` into
+`containers/services/` (add `embeddings.py` + onnxruntime dep + nomic ONNX model in
+the bundle). New `addon.services.cpu` compose profile. Wire embeddings to
+`config/akm/config.json`. Unblocks all wiring work while GPU builds are still in progress.
 
-## 19. Image size policy — **drop the `slim`/`with-models` matrix**
+**Phase 2 — Chat + image gen (CPU baseline).** Add `chat.py` (llama-cpp-python, GGUF)
+and `imagegen.py` (diffusers). Add GGUF + SD weights to the bundle. Wire chat as a
+Connection; wire imagegen via `OP_IMAGEGEN_BASE_URL`. CPU performance is slow for
+image gen but validates the full endpoint surface before GPU work.
 
-The model bundle is a separate image (§8) that every runtime `COPY --from`s, so the
-voice precedent is: **one `latest-<variant>` (+ pinned `v<version>-<variant>`) per
-hardware class, models baked in.** No `-slim` / `-with-models` variants to maintain
-(that doubles the matrix for little value). The rare slim/runtime-download case is
-covered by `OP_LOCAL_AI_ALLOW_MODEL_DOWNLOADS=true` + a mounted `/data/models`.
+**Phase 3 — GPU variants (all three, same PR/milestone).** Build `runtime-cuda`,
+`runtime-rocm`, and `runtime-intel` Dockerfile targets in a single pass:
+- **CUDA**: `torch+cuda`, `llama-cpp-python[cuda]`, `onnxruntime-gpu`, `nvidia` deploy
+  block in compose overlay.
+- **ROCm**: `torch+rocm` (ROCm wheel index), `llama-cpp-python[rocm]` (hipBLAS),
+  `onnxruntime` ROCm build, `/dev/kfd` + `/dev/dri` device passthrough.
+- **Intel**: Intel Extension for PyTorch (IPEX/XPU), `llama-cpp-python` with SYCL
+  backend, `onnxruntime-openvino` EP, `/dev/dri/renderD128` passthrough.
 
----
-
-## 20. CI smoke tests
-
-Keep the original test list (start, `/health` 200, `/capabilities`, `/models`
-aliases, embeddings dims, STT/TTS round-trip, agent if enabled, manifest hashes,
-non-root `/data` write, stdout logs). Run them in `publish-local-ai.yml` **before
-push** (a gate), mirroring the structure of the existing portal/UI publish gates.
-Embedding-dimension tests are required on every variant.
+All three GPU variants ship in `publish-services.yml` as a matrix with `fail-fast: false`
+so a slow ROCm build doesn't block CUDA publication.
 
 ---
 
-## 21–23. Wizard flow, advanced overrides, migration
+## What this replaces / consolidates
 
-Mostly unchanged. Corrections:
-- Advanced override env names stay `OP_LOCAL_AI_RUNTIME_*`, `OP_*_MODEL_PATH`,
-  `OP_LOCAL_AI_ALLOW_MODEL_DOWNLOADS` (already `OP_`-prefixed — good; OpenPalm
-  mandates the `OP_` prefix so stray shell vars can't leak in).
-- The "use Ollama for LLM, Local AI for voice/embeddings" advanced combo is
-  expressed via **a Connection (LLM) + `OP_TTS/STT_BASE_URL` (voice) +
-  `config/akm/config.json` (embeddings)** — not `OP_CAP_*`.
-- Admin UI provider list (Recommended: Local AI · Advanced: Ollama / LM Studio /
-  Docker Model Runner / custom OpenAI-compatible) is correct and matches the
-  current provider model.
-
----
-
-## 24. Implementation phases (re-sequenced to leverage what's built)
-
-- **Phase 0 — DONE:** `openpalm/voice` + `openpalm/voice-models:v1` + out-of-band
-  `publish-voice*.yml`. This is the proven model-image + decoupled-build pattern.
-- **Phase 1 — Local AI single image (CPU): voice + embeddings baked in.** Build the
-  one `local-ai:latest-cpu` image with the gateway **plus** the Kokoro/Whisper
-  runtimes (folded in from `containers/voice`) **and** an embedding runtime, all in the
-  one container; `local-ai-models:v1` carries every default model. Wire embeddings
-  to `config/akm/config.json` and voice to `OP_TTS/STT_BASE_URL` (pointing at the
-  gateway). Ship `publish-local-ai.yml` + `publish-local-ai-models.yml`. No
-  separate voice/embedding container.
-- **Phase 2 — Intel first-class.** `local-ai:intel`, `/dev/dri` overlay, OpenVINO/
-  SYCL paths with CPU fallback, wizard detection + fallback display.
-- **Phase 3 — Local agent model.** `/v1/chat/completions`, `agent.default`,
-  register the gateway as an OpenCode connection.
-- **Phase 4 — NVIDIA + AMD profiles** (mirror voice's cuda/rocm build + device
-  overlays).
-- **Phase 5 — Advanced customization** (custom model paths, dimension guardrails,
-  runtime selection, runtime downloader, admin diagnostics, index migration).
+- **Issue #430** (Local AI: voice + embeddings) → Phase 1 of `openpalm/services`.
+- **Issue #431** (image gen addon, closed) → Phase 2 of `openpalm/services`. A
+  separate `openpalm/imagegen` addon is unnecessary once `torch` is already in the
+  image for GPU support; the endpoint is just another FastAPI handler.
+- **`openpalm/voice` addon** — **removed**. `containers/voice/` is the starting
+  point for `containers/services/`; the voice Dockerfile stages, app code, and
+  `voice-models:v1` bundle pattern are folded in, then `containers/voice/` is
+  deleted. The `voice` addon name, `OP_VOICE_*` env vars, `publish-voice*.yml`
+  workflows, and `addon.voice.*` compose profiles are all removed.
 
 ---
 
-## 25. The one design decision that matters (unchanged)
+## Migration (existing installs)
 
-> **Local AI is a capability gateway, not a model-runtime brand.**
+A layout migration must handle the rename before the next `openpalm up`:
 
-This revision keeps that abstraction and re-grounds every concrete detail —
-**Docker Hub `openpalm/*` images, a prebuilt `local-ai-models` bundle, out-of-band
-`publish-local-ai*.yml` workflows, `OP_LOCAL_AI_*`/profile/image-tag conventions,
-akm-config + `OP_TTS/STT_BASE_URL` + Connections wiring (no `OP_CAP_*`), and
-entrypoint-based first-boot (no `init` container)** — so it drops cleanly into the
-0.11.x architecture and reuses the build/release machinery already shipped for
-voice.
+- `OP_ENABLED_ADDONS`: rename `voice` → `services`
+- `OP_VOICE_PROFILE=addon.voice.<variant>` → `OP_SERVICES_PROFILE=addon.services.<variant>`
+  (variant map: `cpu` → `cpu`, `cuda` → `cuda`, `rocm` → `rocm`)
+- `OP_VOICE_PORT_HOST` → `OP_SERVICES_PORT_HOST` (default changes 8880 → 4114)
+- `OP_TTS_BASE_URL` / `OP_STT_BASE_URL` pointing at `127.0.0.1:8880` → rewrite to `127.0.0.1:4114`
+- `OP_VOICE_WHISPER_MODEL` → drop (value becomes the `OP_STT_MODEL` default in the
+  services container; if non-default, preserve as `OP_STT_MODEL`)
+- `OP_VOICE_KOKORO_VOICE` → drop (value becomes `OP_TTS_VOICE` default; preserve
+  if non-default)
+- `data/voice/` → `data/services/` (rename the bind-mount dir; migration must mv,
+  not copy, to avoid doubling disk usage)
+
+---
+
+## What is NOT in scope
+
+- No capability enable/disable env flags (`OP_SERVICES_ENABLE_*`). That's `OP_CAP_*`
+  with different names. A 503 from a missing model file is sufficient signal.
+- No in-container supervisor. One uvicorn process; if an engine can't co-host in
+  that process without crashing the others, that's a signal to reconsider, not a
+  reason to add supervisord.
+- No Ollama replacement. Ollama remains the advanced LLM addon. `openpalm/services`
+  is the simple default for single-user localhost use.
+- No fancy gateway routing layer. One FastAPI app. Routes map directly to model
+  handlers. No model aliasing system.
+- No advanced override surface in Phase 1–2. Model paths are baked from the bundle.
+  Users who want custom models drop them into `data/ai/models/` and set
+  `OP_SERVICES_MODEL_PATH_*` (Phase 3+).

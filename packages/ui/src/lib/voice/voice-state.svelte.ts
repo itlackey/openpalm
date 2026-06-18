@@ -258,6 +258,15 @@ export async function initVoice(): Promise<void> {
 		voiceState.sttEngine = 'browser';
 	}
 
+	// Friendly default: if no TTS engine was configured AND the browser has
+	// speechSynthesis, enable browser TTS so the speak button is functional.
+	// An explicit server engine (openpalm-voice / remote) overrides this on
+	// the next page load via admin → voice settings.
+	if (voiceState.ttsEngine === 'disabled' && browserTts) {
+		voiceState.ttsEngine = 'browser';
+		voiceState.ttsSupported = true;
+	}
+
 	voiceState.sttSupported = resolveEngineSupport(voiceState.sttEngine);
 }
 

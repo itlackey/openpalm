@@ -74,22 +74,21 @@
 
 <style>
   .setting-toggle {
-    background: var(--color-bg);
-    border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: 10px 14px;
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 2px;
+    padding: var(--s-sp-3) var(--s-sp-4);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: border-color var(--s-t-quick) var(--s-ease), background var(--s-t-quick) var(--s-ease);
   }
 
   .setting-toggle:hover {
-    border-color: var(--color-border-hover);
-    box-shadow: var(--shadow-sm);
+    border-color: var(--s-line);
   }
 
   .setting-toggle.on {
-    border-color: var(--color-primary-hover);
-    background: var(--color-primary-subtle);
+    border-color: color-mix(in srgb, var(--s-seal) 40%, transparent);
+    background: color-mix(in srgb, var(--s-seal) 4%, var(--s-paper));
   }
 
   .setting-toggle.locked {
@@ -99,11 +98,11 @@
 
   .setting-toggle.locked:hover,
   .setting-toggle.addon-disabled:hover {
-    box-shadow: none;
+    border-color: var(--s-line-soft);
   }
 
   .setting-toggle.addon-disabled {
-    opacity: 0.6;
+    opacity: 0.5;
   }
 
   .setting-toggle.wide {
@@ -113,21 +112,20 @@
   .setting-toggle-header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--s-sp-3);
   }
 
   .setting-toggle-header:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--s-ink-2);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
   }
 
   .setting-toggle-icon {
     width: 32px;
     height: 32px;
-    border-radius: var(--radius-sm);
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
+    border: var(--s-hair) solid var(--s-line-soft);
     display: grid;
     place-items: center;
     font-size: 16px;
@@ -140,18 +138,20 @@
   }
 
   .setting-toggle-name {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--s-sp-2);
     flex-wrap: wrap;
   }
 
   .setting-toggle-desc {
-    font-size: var(--text-xs);
-    color: var(--color-text-secondary);
-    margin-top: 1px;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    color: var(--s-ink-3);
+    margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -165,29 +165,28 @@
     width: 36px;
     height: 20px;
     border-radius: 10px;
-    background: var(--toggle-bg-off);
+    background: var(--s-line);
     position: relative;
-    transition: background 0.2s;
+    transition: background var(--s-t-quick) var(--s-ease);
   }
 
   .setting-toggle-track.on {
-    background: var(--toggle-bg-on);
+    background: var(--s-seal);
   }
 
   .setting-toggle-track.locked {
-    background: var(--color-success);
+    background: var(--s-moss);
   }
 
   .setting-toggle-thumb {
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: white;
+    background: var(--s-paper);
     position: absolute;
     top: 2px;
     left: 2px;
-    transition: transform 0.2s;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    transition: transform var(--s-t-quick) var(--s-ease);
   }
 
   .setting-toggle-track.on .setting-toggle-thumb,
@@ -196,14 +195,14 @@
   }
 
   .setting-toggle-panel {
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--color-border);
-    animation: setting-toggle-fade-in 0.2s ease;
+    margin-top: var(--s-sp-3);
+    padding-top: var(--s-sp-3);
+    border-top: var(--s-hair) solid var(--s-line-soft);
+    animation: setting-toggle-fade-in 0.2s var(--s-ease);
   }
 
   @keyframes setting-toggle-fade-in {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
   }
 </style>
