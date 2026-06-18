@@ -83,10 +83,10 @@ services:
       # bind-mounted at /etc/opencode below.
       OPENCODE_CONFIG_DIR: /etc/opencode
       # Content validation (LLM-assisted moderation of inbound messages).
-      # OFF by default: fail-closed policy means an unreachable moderator blocks
-      # suspicious traffic, so enabling it requires a configured moderation model
-      # in config/guardian/opencode.jsonc. The moderator runs on loopback :4097.
-      GUARDIAN_CONTENT_VALIDATION: ${GUARDIAN_CONTENT_VALIDATION:-0}
+      # ON by default: fail-closed policy blocks suspicious traffic when the
+      # moderator is unreachable. Requires a configured moderation model in
+      # config/guardian/opencode.jsonc. The moderator runs on loopback :4097.
+      GUARDIAN_CONTENT_VALIDATION: ${GUARDIAN_CONTENT_VALIDATION:-1}
       GUARDIAN_MODERATION_URL: http://127.0.0.1:4097
       GUARDIAN_MODERATION_PORT: "4097"
       GUARDIAN_MODERATION_TIMEOUT_MS: ${GUARDIAN_MODERATION_TIMEOUT_MS:-4000}

@@ -13,7 +13,7 @@
 set -euo pipefail
 
 enabled=0
-case "${GUARDIAN_CONTENT_VALIDATION:-0}" in
+case "${GUARDIAN_CONTENT_VALIDATION:-1}" in
   1 | true | TRUE | yes | on) enabled=1 ;;
 esac
 

@@ -13,8 +13,8 @@
  * Policy is FAIL-CLOSED: if the moderator cannot render a verdict for an
  * escalated message (timeout, error, unparseable output), the message is
  * BLOCKED. Because that trades availability for security, the whole stage is
- * opt-in via GUARDIAN_CONTENT_VALIDATION — when disabled, every message is
- * allowed (the structural + auth guarantees still apply upstream).
+ * on by default via GUARDIAN_CONTENT_VALIDATION — when disabled, every message
+ * is allowed (the structural + auth guarantees still apply upstream).
  */
 
 import { screenContent, type ContentSignal } from './content-screen.ts';
