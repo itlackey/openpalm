@@ -12,7 +12,9 @@ name: Release
 #               deps need updating) + git tag + GitHub release
 #   major     — all units simultaneously, bumps major, resets all to X.0.0 + summary tag
 #
-# No version input — bump type drives the next version computed from the unit's anchor.
+# Optional version override — when set, skips bump computation and uses the explicit version
+# (e.g. 0.12.14-rc.1). Pre-release suffixes auto-select the correct npm dist-tag (rc/beta/next).
+# When omitted, bump type drives the next version computed from the unit's anchor.
 # Tag scheme: platform-X.Y.Z, portals-X.Y.Z, assistant-X.Y.Z, guardian-X.Y.Z, vX.0.0 (major summary).
 # Docker images: openpalm/assistant:vX.Y.Z, openpalm/portal:vX.Y.Z, openpalm/guardian:vX.Y.Z
 #
@@ -31,11 +33,16 @@ on:
         type: choice
         options: [platform, portals, assistant, guardian, major]
       bump:
-        description: 'Semver increment (ignored for unit=major)'
+        description: 'Semver increment (ignored for unit=major or when version is set)'
         required: true
         type: choice
         options: [patch, minor, major]
         default: patch
+      version:
+        description: 'Explicit version override (e.g. 0.12.14-rc.1). Skips bump computation. Pre-release suffix selects the correct npm dist-tag.'
+        required: false
+        type: string
+        default: ''
       include_electron:
         description: 'Build and publish Electron installer (platform only; always included for major)'
         required: false
@@ -82,7 +89,17 @@ jobs:
           UNIT: ${{ inputs.unit }}
           BUMP: ${{ inputs.bump }}
           STAMP: 'false'
-        run: node scripts/bump-unit.mjs
+          VERSION_OVERRIDE: ${{ inputs.version }}
+        run: |
+          if [ -n "${VERSION_OVERRIDE}" ]; then
+            CURRENT=$(node -p "require('./package.json').version")
+            echo "current_version=${CURRENT}" >> "$GITHUB_OUTPUT"
+            echo "new_version=${VERSION_OVERRIDE}" >> "$GITHUB_OUTPUT"
+            echo "tag_prefix=${{ inputs.unit }}" >> "$GITHUB_OUTPUT"
+            echo "Version override: ${CURRENT} → ${VERSION_OVERRIDE}"
+          else
+            node scripts/bump-unit.mjs
+          fi
 
       - name: Resolve prerelease flag
         id: meta
@@ -218,8 +235,33 @@ jobs:
           UNIT: ${{ inputs.unit }}
           BUMP: ${{ inputs.bump }}
           STAMP: 'true'
+          VERSION_OVERRIDE: ${{ inputs.version }}
         run: |
-          node scripts/bump-unit.mjs
+          if [ -n "${VERSION_OVERRIDE}" ]; then
+            V="${VERSION_OVERRIDE}"
+            # Stamp the same files bump-unit.mjs would for this unit
+            case "${UNIT}" in
+              platform)
+                for f in package.json packages/lib/package.json packages/cli/package.json \
+                          packages/ui/package.json packages/electron/package.json \
+                          packages/electron/admin-tools/package.json; do
+                  node scripts/set-version.mjs "$f" "$V"
+                done
+                ;;
+              portals)
+                node scripts/set-version.mjs portals/discord/package.json "$V"
+                node scripts/set-version.mjs portals/slack/package.json "$V"
+                ;;
+              guardian)
+                node scripts/set-version.mjs containers/guardian/package.json "$V"
+                ;;
+              *)
+                echo "::error::version override not supported for unit=${UNIT}"; exit 1
+                ;;
+            esac
+          else
+            node scripts/bump-unit.mjs
+          fi
           bun install
 
       - name: Preview (dry-run — no commit)
