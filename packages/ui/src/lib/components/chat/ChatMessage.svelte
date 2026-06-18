@@ -160,6 +160,11 @@
     color: var(--s-ink-2);
     max-width: var(--s-measure-whisper);
     white-space: pre-wrap;
+    border-width: 0 0 1px;
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--s-ink) 10%, transparent);
+    border-radius: 0 0 0 10px;
+    padding: 0 5px;
   }
 
   /* The agent — large, calm, unhurried */
@@ -182,6 +187,11 @@
       opacity var(--s-t-bloom) var(--s-ease),
       filter var(--s-t-bloom) var(--s-ease),
       transform var(--s-t-bloom) var(--s-ease);
+    border-width: 1px 0 3px;
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--s-ink) 9%, transparent);
+    border-radius: 20px;
+    padding: 5px 5px 10px;
   }
 
   .master-words.settled {

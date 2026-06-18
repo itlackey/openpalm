@@ -34,7 +34,7 @@
   let ensoRippleL2 = $state<SVGPathElement | undefined>();
   let ensoRippleS1 = $state<SVGPathElement | undefined>();
   let ensoRippleS2 = $state<SVGPathElement | undefined>();
-  let presenceEl = $state<HTMLDivElement | undefined>();
+  let presenceEl = $state<HTMLElement | undefined>();
   let drawLen = 0;
   let ensoReady = false;
 
@@ -325,23 +325,8 @@
 </svg>
 
 <!-- corners: the only persistent chrome -->
+<!-- top-left: theme toggle -->
 <div class="s-corner s-corner-left">
-  <button
-    class="s-glyph-btn"
-    type="button"
-    onclick={openGarden}
-    aria-label="Conversations"
-  >
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <line x1="4" y1="7" x2="18" y2="7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
-      <line x1="4" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-      <line x1="4" y1="15" x2="16.5" y2="15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
-    </svg>
-  </button>
-  <span class="s-glyph-label">conversations</span>
-</div>
-
-<div class="s-corner s-corner-right">
   <button
     class="s-glyph-btn s-orb-btn"
     type="button"
@@ -360,7 +345,8 @@
   <span class="s-glyph-label">day &amp; night</span>
 </div>
 
-<div class="s-corner s-corner-bottom-left">
+<!-- top-right: advanced -->
+<div class="s-corner s-corner-right">
   <button
     class="s-glyph-btn"
     type="button"
@@ -376,23 +362,26 @@
   <span class="s-glyph-label">advanced</span>
 </div>
 
-{#if voiceEnabled || ttsAvailable}
+<!-- bottom-left: conversations -->
+<div class="s-corner s-corner-bottom-left">
+  <button
+    class="s-glyph-btn"
+    type="button"
+    onclick={openGarden}
+    aria-label="Conversations"
+  >
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <line x1="4" y1="7" x2="18" y2="7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+      <line x1="4" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
+      <line x1="4" y1="15" x2="16.5" y2="15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
+    </svg>
+  </button>
+  <span class="s-glyph-label">conversations</span>
+</div>
+
+<!-- bottom-right: speak (mic is the enso) -->
+{#if ttsAvailable}
   <div class="s-corner s-corner-bottom-right">
-    {#if voiceEnabled}
-      <button
-        class="s-glyph-btn"
-        type="button"
-        aria-label={voiceActive ? 'Stop listening' : 'Speak to the agent'}
-        aria-pressed={voiceActive}
-        onclick={toggleVoice}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 2.2a2.5 2.5 0 0 0-2.5 2.5v6a2.5 2.5 0 0 0 5 0v-6A2.5 2.5 0 0 0 12 2.2z"/>
-          <path d="M18 10v1a6 6 0 0 1-12 0v-1"/>
-          <line x1="12" y1="18" x2="12" y2="22"/><line x1="9" y1="22" x2="15" y2="22"/>
-        </svg>
-      </button>
-    {/if}
     <button
       class="s-glyph-btn"
       type="button"
@@ -412,7 +401,7 @@
         </svg>
       {/if}
     </button>
-    <span class="s-glyph-label">voice</span>
+    <span class="s-glyph-label">speak</span>
   </div>
 {/if}
 
@@ -594,22 +583,44 @@
 
 <!-- presence + composer -->
 <div class="s-base">
-  <div
-    class="s-presence breathing"
-    id="s-presence"
-    bind:this={presenceEl}
-    class:listening={voiceState.status === 'recording'}
-    class:speaking={voiceState.status === 'speaking'}
-  >
-    <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
-      <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
-      <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
-      <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
-      <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
-      <path class="s-wet" bind:this={ensoWet}></path>
-      <path class="s-dry" bind:this={ensoDry}></path>
-    </svg>
-  </div>
+  {#if voiceEnabled}
+    <button
+      class="s-presence breathing"
+      id="s-presence"
+      type="button"
+      bind:this={presenceEl}
+      class:listening={voiceState.status === 'recording'}
+      class:speaking={voiceState.status === 'speaking'}
+      aria-label={voiceState.status === 'recording' ? 'Stop listening' : 'Speak to the agent'}
+      aria-pressed={voiceState.status === 'recording'}
+      onclick={toggleVoice}
+    >
+      <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
+        <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
+        <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
+        <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
+        <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
+        <path class="s-wet" bind:this={ensoWet}></path>
+        <path class="s-dry" bind:this={ensoDry}></path>
+      </svg>
+    </button>
+  {:else}
+    <div
+      class="s-presence breathing"
+      id="s-presence"
+      bind:this={presenceEl}
+      class:speaking={voiceState.status === 'speaking'}
+    >
+      <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
+        <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
+        <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
+        <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
+        <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
+        <path class="s-wet" bind:this={ensoWet}></path>
+        <path class="s-dry" bind:this={ensoDry}></path>
+      </svg>
+    </div>
+  {/if}
   <ChatInput
     sending={chat.sending}
     questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
@@ -1126,6 +1137,16 @@
     height: var(--s-enso-size);
     margin-bottom: 0.5rem;
     position: relative;
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    display: block;
+  }
+
+  div.s-presence {
+    cursor: default;
   }
 
   .s-presence.breathing {
