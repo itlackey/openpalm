@@ -29,10 +29,10 @@
   const visibleSessions = $derived(showAll ? sessions : sessions.slice(0, SESSION_LIST_CAP));
   const overflowCount = $derived(Math.max(0, sessions.length - SESSION_LIST_CAP));
 
-  // Reactive load: triggers on mount AND whenever `active` becomes non-null
-  // after mount (e.g. when the drawer opens before endpoints finish loading).
-  $effect(() => {
-    if (active && !endpointState?.sessionsLoaded && !endpointState?.sessionsLoading) {
+  import { onMount } from 'svelte';
+
+  onMount(() => {
+    if (active && !endpointState?.sessionsLoaded && !loading) {
       void chat.loadSessions();
     }
   });
