@@ -483,7 +483,7 @@
 
 <!-- presence + composer -->
 <div class="s-base">
-  <Presence voiceEnabled={voiceEnabled} sending={chat.sending} voiceStatus={voiceState.status} onToggle={toggleVoice} />
+  <Presence height={32} voiceEnabled={voiceEnabled} sending={chat.sending} voiceStatus={voiceState.status} onToggle={toggleVoice} />
   <ChatInput
     sending={chat.sending}
     questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
