@@ -12,6 +12,8 @@
 
   let ensoDry = $state<SVGPathElement | undefined>();
   let ensoWet = $state<SVGPathElement | undefined>();
+  let ensoProc = $state<SVGPathElement | undefined>();
+  let ensoEcho = $state<SVGPathElement | undefined>();
   let ensoRippleL1 = $state<SVGPathElement | undefined>();
   let ensoRippleL2 = $state<SVGPathElement | undefined>();
   let ensoRippleS1 = $state<SVGPathElement | undefined>();
@@ -76,12 +78,14 @@
       const path = ensoPath(60, 62, 44);
       ensoDry.setAttribute('d', path);
       ensoWet.setAttribute('d', path);
-      const ripple1 = ensoPath(60, 62, 46);
-      const ripple2 = ensoPath(60, 62, 50);
-      ensoRippleL1?.setAttribute('d', ripple1);
-      ensoRippleL2?.setAttribute('d', ripple2);
-      ensoRippleS1?.setAttribute('d', ripple1);
-      ensoRippleS2?.setAttribute('d', ripple2);
+      ensoProc?.setAttribute('d', path);
+      ensoEcho?.setAttribute('d', ensoPath(60, 62, 50));
+      const rippleA = ensoPath(60, 62, 44);
+      const rippleB = ensoPath(60, 62, 43.4);
+      ensoRippleL1?.setAttribute('d', rippleA);
+      ensoRippleL2?.setAttribute('d', rippleB);
+      ensoRippleS1?.setAttribute('d', rippleA);
+      ensoRippleS2?.setAttribute('d', rippleB);
       try { drawLen = ensoDry.getTotalLength(); } catch { drawLen = 360; }
       drawEnso();
       setTimeout(() => {
@@ -122,12 +126,14 @@
   onkeydown={voiceEnabled ? (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } } : undefined}
 >
   <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
+    <path class="s-echo" bind:this={ensoEcho}></path>
     <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
     <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
     <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
     <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
     <path class="s-wet" bind:this={ensoWet}></path>
     <path class="s-dry" bind:this={ensoDry}></path>
+    <path class="s-proc" bind:this={ensoProc}></path>
   </svg>
 </div>
 
@@ -139,38 +145,59 @@
     position: relative;
   }
 
-  /* Tap ring — appears on hover and while listening */
-  .s-presence--mic::before {
-    content: '';
-    position: absolute;
-    inset: -10px;
-    border-radius: 50%;
-    border: 1px solid transparent;
-    transition: border-color 0.4s var(--s-ease);
-    pointer-events: none;
-  }
-
   .s-presence--mic {
     cursor: pointer;
   }
 
-  .s-presence--mic:hover::before,
-  .s-presence.listening::before {
-    border-color: color-mix(in srgb, var(--s-seal) 22%, transparent);
+  /* At rest — gentle breath on the whole presence */
+  .s-presence.breathing {
+    animation: s-breathe var(--s-breathe-dur) ease-in-out infinite;
+  }
+
+  @keyframes s-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+  }
+
+  /* Pointer over — sway animation on the SVG, ink tinted toward seal */
+  .s-presence--mic:hover .s-enso {
+    animation: s-over-sway 3.2s var(--s-ease) infinite;
+    transform-box: fill-box;
+    transform-origin: center;
   }
 
   .s-presence--mic:hover .s-dry {
-    stroke: color-mix(in srgb, var(--s-ink) 75%, var(--s-seal));
+    stroke: color-mix(in srgb, var(--s-ink) 80%, var(--s-seal));
     transition: stroke 0.3s var(--s-ease);
   }
 
-  /* Processing — faster breath + seal tint while assistant is thinking */
-  .s-presence.processing {
-    animation: s-breathe-quick 1.8s ease-in-out infinite;
+  @keyframes s-over-sway {
+    0%, 100% { transform: rotate(-2.6deg) scale(1.05); }
+    50%       { transform: rotate(2.6deg)  scale(1.05); }
+  }
+
+  /* Processing — seal comet orbits the ring; dry stroke recedes toward paper */
+  .s-proc {
+    fill: none;
+    stroke: var(--s-seal);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    filter: url(#s-brush);
+    opacity: 0;
+  }
+
+  .s-presence.processing .s-proc {
+    opacity: 1;
+    stroke-dasharray: 46 232;
+    animation: s-proc-orbit 1.5s linear infinite;
+  }
+
+  @keyframes s-proc-orbit {
+    to { stroke-dashoffset: -278; }
   }
 
   .s-presence.processing .s-dry {
-    stroke: color-mix(in srgb, var(--s-ink) 55%, var(--s-seal));
+    stroke: color-mix(in srgb, var(--s-ink) 50%, var(--s-paper));
     transition: stroke 0.6s var(--s-ease);
   }
 
@@ -179,13 +206,19 @@
     transition: opacity 0.6s var(--s-ease);
   }
 
-  @keyframes s-breathe-quick {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.08); }
+  /* Mic affordance — brushed echo ring at r=50, visible only when voice is enabled */
+  .s-echo {
+    fill: none;
+    stroke: var(--s-ink);
+    opacity: 0;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: url(#s-brush);
   }
 
-  .s-presence.breathing {
-    animation: s-breathe var(--s-breathe-dur) ease-in-out infinite;
+  .s-presence--mic .s-echo {
+    opacity: 0.13;
   }
 
   .s-enso {
@@ -239,10 +272,11 @@
     animation-delay: 2s;
   }
 
+  /* Ripples gather INWARD — they shrink toward the center */
   @keyframes s-listen-in {
-    0%   { opacity: 0;   transform: scale(1.32) rotate(-6deg); }
-    50%  { opacity: .32; }
-    100% { opacity: 0;   transform: scale(.96) rotate(3deg); }
+    0%   { opacity: 0;   transform: scale(.92) rotate(-6deg); }
+    45%  { opacity: .34; }
+    100% { opacity: 0;   transform: scale(.58) rotate(4deg); }
   }
 
   .s-presence.speaking .s-ripple-speak {
@@ -254,13 +288,15 @@
   }
 
   @keyframes s-speak-out {
-    0%   { opacity: .3; transform: scale(.9) rotate(-3deg); }
+    0%   { opacity: .3; transform: scale(.9)  rotate(-3deg); }
     100% { opacity: 0;  transform: scale(1.34) rotate(6deg); }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .s-presence { animation: none !important; }
+    .s-enso { animation: none !important; }
     .s-ripple { animation: none !important; }
+    .s-proc { animation: none !important; }
     .s-presence.listening .s-ripple-listen { opacity: 0.22; }
     .s-presence.speaking  .s-ripple-speak  { opacity: 0.22; }
   }
