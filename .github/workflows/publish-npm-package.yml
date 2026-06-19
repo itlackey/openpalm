@@ -96,13 +96,6 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@latest
 
-      - name: Clear injected npm token for OIDC trusted publishing
-        run: |
-          # setup-node writes _authToken=${NODE_AUTH_TOKEN} (=GITHUB_TOKEN) into
-          # NPM_CONFIG_USERCONFIG. Overwrite that file with just the registry line
-          # so npm falls through to OIDC trusted publishing.
-          echo "registry=https://registry.npmjs.org/" > "${NPM_CONFIG_USERCONFIG}"
-
       - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
