@@ -362,26 +362,9 @@
   <span class="s-glyph-label">advanced</span>
 </div>
 
-<!-- bottom-left: conversations -->
-<div class="s-corner s-corner-bottom-left">
-  <button
-    class="s-glyph-btn"
-    type="button"
-    onclick={openGarden}
-    aria-label="Conversations"
-  >
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <line x1="4" y1="7" x2="18" y2="7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
-      <line x1="4" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-      <line x1="4" y1="15" x2="16.5" y2="15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
-    </svg>
-  </button>
-  <span class="s-glyph-label">conversations</span>
-</div>
-
-<!-- bottom-right: speak (mic is the enso) -->
+<!-- bottom-left: speak (mic is the enso) -->
 {#if ttsAvailable}
-  <div class="s-corner s-corner-bottom-right">
+  <div class="s-corner s-corner-bottom-left">
     <button
       class="s-glyph-btn"
       type="button"
@@ -404,6 +387,23 @@
     <span class="s-glyph-label">speak</span>
   </div>
 {/if}
+
+<!-- bottom-right: conversations -->
+<div class="s-corner s-corner-bottom-right">
+  <button
+    class="s-glyph-btn"
+    type="button"
+    onclick={openGarden}
+    aria-label="Conversations"
+  >
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <line x1="4" y1="7" x2="18" y2="7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
+      <line x1="4" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
+      <line x1="4" y1="15" x2="16.5" y2="15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
+    </svg>
+  </button>
+  <span class="s-glyph-label">conversations</span>
+</div>
 
 <!-- conversation thread -->
 <main class="s-scroll" id="s-scroll" aria-label="Chat history">
@@ -591,6 +591,7 @@
     class:listening={voiceState.status === 'recording'}
     class:speaking={voiceState.status === 'speaking'}
     class:s-presence--mic={voiceEnabled}
+    class:processing={chat.sending}
     role={voiceEnabled ? 'button' : undefined}
     tabindex={voiceEnabled ? 0 : undefined}
     aria-label={voiceEnabled ? (voiceState.status === 'recording' ? 'Stop listening' : 'Speak to the agent') : undefined}
@@ -1125,8 +1126,49 @@
     position: relative;
   }
 
+  /* Tap ring — appears on hover and while listening */
+  .s-presence--mic::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    transition: border-color 0.4s var(--s-ease);
+    pointer-events: none;
+  }
+
   .s-presence--mic {
     cursor: pointer;
+  }
+
+  .s-presence--mic:hover::before,
+  .s-presence.listening::before {
+    border-color: color-mix(in srgb, var(--s-seal) 22%, transparent);
+  }
+
+  .s-presence--mic:hover .s-dry {
+    stroke: color-mix(in srgb, var(--s-ink) 75%, var(--s-seal));
+    transition: stroke 0.3s var(--s-ease);
+  }
+
+  /* Processing — faster breath + seal tint while assistant is thinking */
+  .s-presence.processing {
+    animation: s-breathe-quick 1.8s ease-in-out infinite;
+  }
+
+  .s-presence.processing .s-dry {
+    stroke: color-mix(in srgb, var(--s-ink) 55%, var(--s-seal));
+    transition: stroke 0.6s var(--s-ease);
+  }
+
+  .s-presence.processing .s-wet {
+    opacity: 0.28;
+    transition: opacity 0.6s var(--s-ease);
+  }
+
+  @keyframes s-breathe-quick {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
   }
 
   .s-presence.breathing {

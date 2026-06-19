@@ -72,10 +72,10 @@
           aria-label="What I did"
           onclick={toggleDeeds}
         >
-          <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-            <rect x="2.4" y="2.4" width="21.2" height="21.2" rx="3.6"
-                  fill="none" stroke="var(--s-seal)" stroke-width="1.7"/>
-            <path d="M8 8h10M13 8v10M8 18h10" stroke="var(--s-seal)" stroke-width="1.7" stroke-linecap="round"/>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="17" rx="2.5" stroke="var(--s-seal)" stroke-width="1.5"/>
+            <path d="M7 9h10M7 13h6" stroke="var(--s-seal)" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M15 16l1.5 1.5 2.5-2.5" stroke="var(--s-seal)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
         <span class="seal-hint">what I did</span>
@@ -337,6 +337,8 @@
     padding-left: 1rem;
     position: relative;
     margin: 0.32rem 0;
+    overflow-wrap: break-word;
+    word-break: break-all;
   }
 
   .deed::before {
