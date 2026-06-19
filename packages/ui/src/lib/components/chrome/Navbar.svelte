@@ -128,7 +128,6 @@
   }
   .brand-text {
     font-family: var(--s-font-header);
-    font-size: var(--s-type-mark);
     color: var(--s-ink-3);
     white-space: nowrap;
   }
