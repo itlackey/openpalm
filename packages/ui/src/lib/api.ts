@@ -61,7 +61,7 @@ async function requireOk(res: Response, fallback?: string): Promise<Response> {
     throw Object.assign(new Error('Sign-in required.'), { status: 401 });
   }
   if (!res.ok) {
-    throw new Error(await readErrorMessage(res, fallback));
+    throw Object.assign(new Error(await readErrorMessage(res, fallback)), { status: res.status });
   }
   return res;
 }

@@ -4,6 +4,7 @@
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import { buildAdvancedIframeUrl } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
+  import { chat } from '$lib/chat/chat-state.svelte.js';
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders
   // when the visitor is already an authenticated admin.
@@ -86,6 +87,15 @@
     if (active?.id) {
       requestedSessionId; // track so a session change re-resolves
       void resolve();
+    }
+  });
+
+  // Keep the chat state's session cursor in sync with the URL param so that
+  // switching back to /chat highlights the right session in the list and the
+  // navbar session picker shows the correct entry.
+  $effect(() => {
+    if (requestedSessionId) {
+      chat.setActiveSessionId(requestedSessionId);
     }
   });
 

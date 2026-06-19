@@ -161,10 +161,10 @@ class ChatService {
 		this.entries = [];
 		this.error = '';
 
-		const cached = this.byEndpoint.get(id);
-		if (!cached?.sessionsLoaded) {
-			await this.loadSessions();
-		}
+		// Always re-fetch sessions on endpoint activation. The cache guard
+		// (`sessionsLoaded`) caused stale lists when returning to a previously-
+		// visited endpoint or when sessions were created externally while away.
+		await this.loadSessions();
 
 		const state = this.byEndpoint.get(id) ?? emptyEndpointState();
 		const sessions = state.sessions;
@@ -456,7 +456,13 @@ class ChatService {
 		const prev = this.byEndpoint.get(endpointId);
 		if (!prev) return;
 		const idx = prev.sessions.findIndex((s) => s.id === sessionId);
-		if (idx === -1) return;
+		if (idx === -1) {
+			// Session not yet in the local list (e.g. created by another client
+			// and the `session.created` event arrived out of order or was missed).
+			// Upsert it so the update isn't silently lost.
+			this._onSessionCreated(sessionId);
+			return;
+		}
 		const existing = prev.sessions[idx];
 		const next: SessionSummary = {
 			...existing,
@@ -496,6 +502,15 @@ class ChatService {
 	/** Mark sessions as stale so the next onEndpointChanged call re-fetches. */
 	invalidateSessions(id: EndpointId): void {
 		this.setEndpointState(id, { sessionsLoaded: false });
+	}
+
+	/**
+	 * Sync the active session cursor without loading messages. Used by the
+	 * advanced-mode page to keep the chat layer's cursor in step with what is
+	 * displayed in the embedded OpenCode iframe.
+	 */
+	setActiveSessionId(sessionId: string | null): void {
+		this.setEndpointState(this.activeEndpointId, { activeSessionId: sessionId });
 	}
 
 	/** Fetch the session list for the active endpoint. */

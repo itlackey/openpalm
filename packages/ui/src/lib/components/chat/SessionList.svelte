@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import SessionTitle from '$lib/components/chat/SessionTitle.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
@@ -30,8 +29,10 @@
   const visibleSessions = $derived(showAll ? sessions : sessions.slice(0, SESSION_LIST_CAP));
   const overflowCount = $derived(Math.max(0, sessions.length - SESSION_LIST_CAP));
 
-  onMount(() => {
-    if (active && !endpointState?.sessionsLoaded && !loading) {
+  // Reactive load: triggers on mount AND whenever `active` becomes non-null
+  // after mount (e.g. when the drawer opens before endpoints finish loading).
+  $effect(() => {
+    if (active && !endpointState?.sessionsLoaded && !endpointState?.sessionsLoading) {
       void chat.loadSessions();
     }
   });
@@ -58,7 +59,7 @@
     <div class="notice">Wait for the current reply to finish before switching.</div>
   {/if}
 
-  {#if loading}
+  {#if !endpointState || loading}
     <div class="empty"><Spinner size={12} /><span>Loading sessions…</span></div>
   {:else if error}
     <div class="list-error">

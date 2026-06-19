@@ -50,7 +50,7 @@
 
 	async function reconnect(): Promise<void> {
 		chat.error = '';
-		await chat.loadSessions();
+		// onEndpointChanged always calls loadSessions() internally — no separate call needed.
 		await chat.onEndpointChanged(endpointsService.activeId);
 	}
 
@@ -164,6 +164,10 @@
 				const reachable = await probeChatBackend();
 				if (!reachable && !destroyed) {
 					chat.error = 'Assistant is not reachable. Try reconnecting.';
+				} else if (!destroyed) {
+					// Refresh the session list: new sessions may have been created by the
+					// CLI or another tab while this one was hidden.
+					await chat.loadSessions();
 				}
 			})();
 		}
@@ -285,7 +289,7 @@
 			aria-pressed={advancedModeService.enabled}
 			onclick={() => {
 				advancedModeService.setEnabled(true);
-				void goto(buildAdvancedPath(null));
+				void goto(buildAdvancedPath(page.url.searchParams.get('session') ?? chat.activeSessionId));
 			}}
 		>
 			<IconAdvanced size={20} />

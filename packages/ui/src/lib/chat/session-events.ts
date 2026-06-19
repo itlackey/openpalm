@@ -69,7 +69,10 @@ export type OpenCodeSessionEventPayload = {
 
 function dispatch(handlers: SessionEventHandlers, payload: OpenCodeSessionEventPayload): void {
   const info = payload.properties?.info;
-  const id = info?.id;
+  // OpenCode may carry the session id at the top level (`sessionID`) or nested
+  // under `properties.info.id`. Accept both so events aren't silently dropped
+  // when the SDK changes the envelope shape.
+  const id = info?.id ?? payload.sessionID;
   if (!id) return;
   switch (payload.type) {
     case 'session.created':
