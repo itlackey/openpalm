@@ -1,6 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=The+Girl+Next+Door&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Edu+TAS+Beginner:wght@400..700&family=Hubballi&family=Iosevka+Charon+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&family=The+Girl+Next+Door&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Edu+TAS+Beginner:wght@400..700&family=Hubballi&family=Iosevka+Charon+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&family=Poor+Story&family=The+Girl+Next+Door&family=Waiting+for+the+Sunrise&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poor+Story&family=Iosevka+Charon+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
 /* Brushed icon filter — applied to all .s-icon SVGs. The #ibrush filter is
    defined once in the root layout. */
 .s-icon { filter: url(#ibrush); }
@@ -39,7 +37,7 @@
 }
 
 :root {
-  --s-font-header: "Poor Story", "Waiting for the Sunrise", "Edu TAS Beginner", "The Girl Next Door", ui-rounded, "Segoe UI", system-ui, sans-serif;
+  --s-font-header: "Poor Story", ui-rounded, "Segoe UI", system-ui, sans-serif;
   --s-font-display: "Iosevka Charon Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --s-font-mono:    "Iosevka Charon Mono", ui-monospace, "SF Mono", Menlo, monospace;
 

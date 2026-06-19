@@ -101,6 +101,7 @@
     border: var(--s-hair) solid currentColor;
     margin-top: auto;
     color: var(--s-ink-3);
+    border: none;
   }
   .s-tile-badge--ok {
     color: var(--s-moss);
