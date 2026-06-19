@@ -4,12 +4,18 @@
   import UpdateBanner from '$lib/components/common/UpdateBanner.svelte';
   import Toast from '$lib/components/common/Toast.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
+  import { featuresService } from '$lib/features.svelte.js';
 
   interface Props {
+    data: import('./$types').LayoutData;
     children?: import('svelte').Snippet;
   }
 
-  let { children }: Props = $props();
+  let { children, data }: Props = $props();
+
+  // Initialize feature flags from server data on every render (SSR + CSR navigations).
+  // Env vars don't change at runtime so this is idempotent.
+  featuresService.init(data.features);
 
   onMount(() => {
     themeService.init();

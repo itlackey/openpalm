@@ -9,8 +9,10 @@
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
+  import { featuresService } from '$lib/features.svelte.js';
   import IconChat from '$lib/components/icons/IconChat.svelte';
   import IconLogo from '$lib/components/icons/IconLogo.svelte';
+  import IconSettings from '$lib/components/icons/IconSettings.svelte';
 
   // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
   // usable everywhere:
@@ -64,6 +66,8 @@
     <div class="navbar-actions">
       {#if onAdmin}
         <IconButton href={preferredChatHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
+      {:else if featuresService.admin}
+        <IconButton href="/admin" ariaLabel="Manage assistant" title="Admin" icon={settingsIcon} />
       {/if}
       <ThemeToggle />
       {#if onConversationSurface}
@@ -81,6 +85,10 @@
 
 {#snippet chatIcon()}
   <IconChat size={18} />
+{/snippet}
+
+{#snippet settingsIcon()}
+  <IconSettings size={18} />
 {/snippet}
 
 <style>

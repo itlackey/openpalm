@@ -1,5 +1,12 @@
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
+export interface FeatureFlags {
+  /** Control-plane tools (Docker compose management, stack orchestration).
+   *  Enabled when running inside Electron (OP_INSIDE_ELECTRON=1) or
+   *  explicitly via OP_ENABLE_ADMIN=1 for local dev. Defaults to false. */
+  admin: boolean;
+}
+
 export type { ToolStripEntry };
 
 export type HealthPayload = { status: string; service: string };

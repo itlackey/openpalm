@@ -4,6 +4,7 @@
   import ToggleButton from '$lib/components/common/ToggleButton.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
+  import { chat } from '$lib/chat/chat-state.svelte.js';
   import IconAdvanced from '$lib/components/icons/IconAdvanced.svelte';
 
   // Single "Advanced" toggle for the chat surface: off on /chat, on
@@ -16,6 +17,12 @@
   function toggle(): void {
     const enabled = advancedModeService.toggle();
     if (onAdmin) return;
+    // Returning from advanced → chat: stale session cache won't auto-refresh
+    // because onEndpointChanged() skips loadSessions() when sessionsLoaded=true.
+    // Invalidate so the chat panel re-fetches the session list on next load.
+    if (!enabled) {
+      chat.invalidateSessions(chat.activeEndpointId);
+    }
     const sessionId = page.url.searchParams.get('session') ?? currentChatSessionId();
     void goto(enabled ? buildAdvancedPath(sessionId) : buildChatPath(sessionId));
   }

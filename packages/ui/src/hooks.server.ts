@@ -15,6 +15,7 @@ import { getState } from "$lib/server/state.js";
 import { checkHostHeader, checkOriginHeader, UI_PORT, identifyCallerByToken } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
+import { computeFeatureFlags } from '$lib/server/features.js';
 import {
   createLogger,
   composePs,
@@ -181,6 +182,12 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (originError) return originError;
 
   const path = event.url.pathname;
+
+  // Feature gate: /admin/* requires admin flag (Electron or OP_ENABLE_ADMIN=1).
+  // Redirect to /chat so the user lands somewhere useful instead of a 404/403.
+  if (path.startsWith('/admin') && !computeFeatureFlags().admin) {
+    redirect(302, '/chat');
+  }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(p + "/"));
 
   // SEC-4: While setup is not yet complete the /setup routes are unauthenticated

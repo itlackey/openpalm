@@ -493,6 +493,11 @@ class ChatService {
 		}
 	}
 
+	/** Mark sessions as stale so the next onEndpointChanged call re-fetches. */
+	invalidateSessions(id: EndpointId): void {
+		this.setEndpointState(id, { sessionsLoaded: false });
+	}
+
 	/** Fetch the session list for the active endpoint. */
 	async loadSessions(): Promise<void> {
 		const id = this.activeEndpointId;
