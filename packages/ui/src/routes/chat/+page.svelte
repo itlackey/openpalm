@@ -34,7 +34,7 @@
   let ensoRippleL2 = $state<SVGPathElement | undefined>();
   let ensoRippleS1 = $state<SVGPathElement | undefined>();
   let ensoRippleS2 = $state<SVGPathElement | undefined>();
-  let presenceEl = $state<HTMLElement | undefined>();
+  let presenceEl = $state<HTMLDivElement | undefined>();
   let drawLen = 0;
   let ensoReady = false;
 
@@ -583,44 +583,30 @@
 
 <!-- presence + composer -->
 <div class="s-base">
-  {#if voiceEnabled}
-    <button
-      class="s-presence breathing"
-      id="s-presence"
-      type="button"
-      bind:this={presenceEl}
-      class:listening={voiceState.status === 'recording'}
-      class:speaking={voiceState.status === 'speaking'}
-      aria-label={voiceState.status === 'recording' ? 'Stop listening' : 'Speak to the agent'}
-      aria-pressed={voiceState.status === 'recording'}
-      onclick={toggleVoice}
-    >
-      <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
-        <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
-        <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
-        <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
-        <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
-        <path class="s-wet" bind:this={ensoWet}></path>
-        <path class="s-dry" bind:this={ensoDry}></path>
-      </svg>
-    </button>
-  {:else}
-    <div
-      class="s-presence breathing"
-      id="s-presence"
-      bind:this={presenceEl}
-      class:speaking={voiceState.status === 'speaking'}
-    >
-      <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
-        <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
-        <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
-        <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
-        <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
-        <path class="s-wet" bind:this={ensoWet}></path>
-        <path class="s-dry" bind:this={ensoDry}></path>
-      </svg>
-    </div>
-  {/if}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div
+    class="s-presence breathing"
+    id="s-presence"
+    bind:this={presenceEl}
+    class:listening={voiceState.status === 'recording'}
+    class:speaking={voiceState.status === 'speaking'}
+    class:s-presence--mic={voiceEnabled}
+    role={voiceEnabled ? 'button' : undefined}
+    tabindex={voiceEnabled ? 0 : undefined}
+    aria-label={voiceEnabled ? (voiceState.status === 'recording' ? 'Stop listening' : 'Speak to the agent') : undefined}
+    aria-pressed={voiceEnabled ? voiceState.status === 'recording' : undefined}
+    onclick={voiceEnabled ? toggleVoice : undefined}
+    onkeydown={voiceEnabled ? (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleVoice(); } } : undefined}
+  >
+    <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
+      <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
+      <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
+      <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
+      <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
+      <path class="s-wet" bind:this={ensoWet}></path>
+      <path class="s-dry" bind:this={ensoDry}></path>
+    </svg>
+  </div>
   <ChatInput
     sending={chat.sending}
     questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
@@ -1137,16 +1123,10 @@
     height: var(--s-enso-size);
     margin-bottom: 0.5rem;
     position: relative;
-    appearance: none;
-    border: 0;
-    background: none;
-    padding: 0;
-    cursor: pointer;
-    display: block;
   }
 
-  div.s-presence {
-    cursor: default;
+  .s-presence--mic {
+    cursor: pointer;
   }
 
   .s-presence.breathing {
