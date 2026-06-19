@@ -10,9 +10,11 @@
 
   const { voiceEnabled, sending, voiceStatus, onToggle }: Props = $props();
 
+  const LOGO = "M60.1244 5L62.0057 27.9635L64.4287 9.00887L79.3326 5.24671L79.9277 25.889L81.4519 17.468L95 13.7365L91.3023 74.2325L80.2203 94.5104L76.8802 92.6756L87.5529 73.1466L90.8727 18.8331L84.7715 20.5135L80.424 44.5332L76.6468 44.2474L75.6626 10.1107L67.8764 12.0762L63.4799 46.4686L59.6931 46.3822L56.7419 10.3574L47.8228 13.7251V50.3803L44.0772 50.8677L34.1996 13.3604L26.7978 17.3103C28.0204 24.0062 29.6096 35.4296 30.9221 45.4104C31.6281 50.779 32.2566 55.7505 32.7086 59.3796C32.9346 61.1942 33.1165 62.6735 33.2419 63.6994C33.4531 65.4268 33.66 67.1548 33.8682 68.8826L12.9705 58.0378L9.48426 67.1466L36.7143 92.186L34.1399 95L5 68.2044L10.9401 52.6845L29.2165 62.169C29.1313 61.4788 29.0351 60.7026 28.9293 59.8527C28.478 56.2295 27.8507 51.2671 27.1461 45.9095C25.7337 35.1688 24.0214 22.9203 22.7978 16.6515L22.5269 15.2638L36.6546 7.72465L44.0141 35.6703V11.0829L60.1244 5Z";
+
   let ensoDry = $state<SVGPathElement | undefined>();
   let ensoWet = $state<SVGPathElement | undefined>();
-  let ensoProc = $state<SVGPathElement | undefined>();
+  let ensoDraw = $state<SVGPathElement | undefined>();
   let ensoEcho = $state<SVGPathElement | undefined>();
   let ensoRippleL1 = $state<SVGPathElement | undefined>();
   let ensoRippleL2 = $state<SVGPathElement | undefined>();
@@ -22,45 +24,25 @@
   let drawLen = 0;
   let ensoReady = false;
 
-  function ensoPath(cx: number, cy: number, r: number): string {
-    const start = -0.62 * Math.PI;
-    const end = 1.30 * Math.PI;
-    const steps = 130;
-    let d = '';
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const a = start + (end - start) * t;
-      const wobble = Math.sin(a * 3.1 + 1) * 1.4 + Math.sin(a * 7.3) * 0.7;
-      const taper = Math.sin(t * Math.PI);
-      const rr = r + wobble + taper * 2.2;
-      const x = cx + rr * Math.cos(a);
-      const y = cy + rr * Math.sin(a);
-      d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2);
-    }
-    return d;
-  }
-
   function drawEnso(): void {
-    if (!ensoDry || !ensoWet || !presenceEl) return;
+    if (!ensoDraw || !ensoDry || !presenceEl) return;
     presenceEl.classList.remove('breathing');
-    [ensoDry, ensoWet].forEach(p => {
-      p.style.transition = 'none';
-      p.style.strokeDasharray = String(drawLen);
-      p.style.strokeDashoffset = String(drawLen);
-    });
-    void ensoDry.getBoundingClientRect();
-    [ensoDry, ensoWet].forEach(p => {
-      p.style.transition = 'stroke-dashoffset var(--s-t-draw) var(--s-ease-draw)';
-      p.style.strokeDashoffset = '0';
-    });
+    ensoDry.style.opacity = '0';
+    ensoDraw.style.transition = 'none';
+    ensoDraw.style.opacity = '1';
+    ensoDraw.style.strokeDasharray = String(drawLen);
+    ensoDraw.style.strokeDashoffset = String(drawLen);
+    void ensoDraw.getBoundingClientRect();
+    ensoDraw.style.transition = 'stroke-dashoffset var(--s-t-draw) var(--s-ease-draw)';
+    ensoDraw.style.strokeDashoffset = '0';
   }
 
   function restEnso(): void {
-    if (!ensoDry || !ensoWet || !presenceEl) return;
-    [ensoDry, ensoWet].forEach(p => {
-      p.style.transition = 'opacity 0.6s ease';
-      p.style.strokeDasharray = 'none';
-    });
+    if (!ensoDraw || !ensoDry || !presenceEl) return;
+    ensoDry.style.transition = 'opacity 0.6s ease';
+    ensoDry.style.opacity = '1';
+    ensoDraw.style.transition = 'opacity 0.4s ease';
+    ensoDraw.style.opacity = '0';
     presenceEl.classList.add('breathing');
   }
 
@@ -74,25 +56,15 @@
   });
 
   onMount(() => {
-    if (ensoDry && ensoWet) {
-      const path = ensoPath(60, 62, 44);
-      ensoDry.setAttribute('d', path);
-      ensoWet.setAttribute('d', path);
-      ensoProc?.setAttribute('d', path);
-      ensoEcho?.setAttribute('d', ensoPath(60, 62, 50));
-      const rippleA = ensoPath(60, 62, 44);
-      const rippleB = ensoPath(60, 62, 43.4);
-      ensoRippleL1?.setAttribute('d', rippleA);
-      ensoRippleL2?.setAttribute('d', rippleB);
-      ensoRippleS1?.setAttribute('d', rippleA);
-      ensoRippleS2?.setAttribute('d', rippleB);
-      try { drawLen = ensoDry.getTotalLength(); } catch { drawLen = 360; }
-      drawEnso();
-      setTimeout(() => {
-        restEnso();
-        ensoReady = true;
-      }, 2400);
-    }
+    [ensoDry, ensoWet, ensoEcho, ensoDraw, ensoRippleL1, ensoRippleL2, ensoRippleS1, ensoRippleS2].forEach(el => {
+      el?.setAttribute('d', LOGO);
+    });
+    try { drawLen = ensoDraw!.getTotalLength(); } catch { drawLen = 400; }
+    drawEnso();
+    setTimeout(() => {
+      restEnso();
+      ensoReady = true;
+    }, 2400);
   });
 </script>
 
@@ -125,15 +97,21 @@
   onclick={voiceEnabled ? onToggle : undefined}
   onkeydown={voiceEnabled ? (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } } : undefined}
 >
-  <svg class="s-enso" viewBox="0 0 120 120" id="s-enso" aria-hidden="true">
+  <svg class="s-enso" viewBox="0 0 100 100" aria-hidden="true">
+    <!-- Echo ring: brushed outline at scale(1.14), visible only when voice enabled -->
     <path class="s-echo" bind:this={ensoEcho}></path>
+    <!-- Speaking ripples: expand outward -->
     <path class="s-ripple s-ripple-speak s-r1" bind:this={ensoRippleS1}></path>
     <path class="s-ripple s-ripple-speak s-r2" bind:this={ensoRippleS2}></path>
+    <!-- Listening ripples: gather inward -->
     <path class="s-ripple s-ripple-listen s-l1" bind:this={ensoRippleL1}></path>
     <path class="s-ripple s-ripple-listen s-l2" bind:this={ensoRippleL2}></path>
+    <!-- Wet: blurred fill bloom behind the mark -->
     <path class="s-wet" bind:this={ensoWet}></path>
+    <!-- Draw: stroke-only overlay used only during the initial trace animation -->
+    <path class="s-draw" bind:this={ensoDraw}></path>
+    <!-- Dry: the crisp brushed filled mark -->
     <path class="s-dry" bind:this={ensoDry}></path>
-    <path class="s-proc" bind:this={ensoProc}></path>
   </svg>
 </div>
 
@@ -159,100 +137,65 @@
     50% { transform: scale(1.04); }
   }
 
-  /* Pointer over — sway the SVG (rotation only), tint ink toward seal */
-  .s-presence--mic:hover .s-enso {
-    animation: s-over-sway 3.2s var(--s-ease) infinite;
-    transform-box: fill-box;
-    transform-origin: center;
-  }
-
-  .s-presence--mic:hover .s-dry {
-    stroke: color-mix(in srgb, var(--s-ink) 80%, var(--s-seal));
-    transition: stroke 0.3s var(--s-ease);
-  }
-
-  /* Rotation only — no scale — so entering hover doesn't jank */
-  @keyframes s-over-sway {
-    0%   { transform: rotate(0deg); }
-    25%  { transform: rotate(-2.6deg); }
-    75%  { transform: rotate(2.6deg); }
-    100% { transform: rotate(0deg); }
-  }
-
-  /* Processing — seal comet orbits the ring; dry stroke recedes toward paper */
-  .s-proc {
-    fill: none;
-    stroke: var(--s-seal);
-    stroke-width: 3.2;
-    stroke-linecap: round;
-    filter: url(#s-brush);
-    opacity: 0;
-  }
-
-  .s-presence.processing .s-proc {
-    opacity: 1;
-    stroke-dasharray: 46 232;
-    animation: s-proc-orbit 1.5s linear infinite;
-  }
-
-  @keyframes s-proc-orbit {
-    to { stroke-dashoffset: -278; }
-  }
-
-  .s-presence.processing .s-dry {
-    stroke: color-mix(in srgb, var(--s-ink) 50%, var(--s-paper));
-    transition: stroke 0.6s var(--s-ease);
-  }
-
-  .s-presence.processing .s-wet {
-    opacity: 0.28;
-    transition: opacity 0.6s var(--s-ease);
-  }
-
-  /* Mic affordance — brushed echo ring at r=50, visible only when voice is enabled */
-  .s-echo {
-    fill: none;
-    stroke: var(--s-ink);
-    opacity: 0;
-    stroke-width: 1.6;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    filter: url(#s-brush);
-  }
-
-  .s-presence--mic .s-echo {
-    opacity: 0.13;
-  }
-
   .s-enso {
     overflow: visible;
+    width: 100%;
+    height: 100%;
+    display: block;
   }
 
+  /* Filled mark — the crisp brushed logo shape */
   .s-dry {
+    fill: var(--s-ink);
+    filter: url(#s-brush);
+    transition: fill var(--s-t-theme) var(--s-ease), opacity 0.6s ease;
+  }
+
+  /* Blurred bloom behind the mark */
+  .s-wet {
+    fill: var(--s-ink);
+    opacity: 0.14;
+    filter: url(#s-bloom);
+    transition: fill var(--s-t-theme) var(--s-ease), opacity var(--s-t-theme) var(--s-ease);
+  }
+
+  /* Draw overlay: stroke-only, used during the initial trace animation */
+  .s-draw {
     fill: none;
     stroke: var(--s-ink);
     stroke-width: 2.4;
     stroke-linecap: round;
     stroke-linejoin: round;
     filter: url(#s-brush);
-    transition: stroke var(--s-t-theme) var(--s-ease);
+    opacity: 0;
+    pointer-events: none;
   }
 
-  .s-wet {
+  /* Echo ring: brushed stroke at scale(1.14), signals mic interactivity */
+  .s-echo {
     fill: none;
     stroke: var(--s-ink);
-    opacity: 0.16;
-    stroke-width: 6.5;
-    filter: url(#s-bloom);
+    opacity: 0;
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+    filter: url(#s-brush);
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: scale(1.14);
   }
 
-  /* ── Enso ripple states (voice listening / speaking) ─────────────── */
+  .s-presence--mic .s-echo {
+    opacity: 0.13;
+  }
+
+  /* ── Listening — seal ripples gather inward ─────────────────────────── */
+
+  .s-presence.listening .s-dry {
+    fill: var(--s-seal);
+  }
 
   .s-ripple {
-    fill: none;
-    stroke-width: 1.6;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    fill: var(--s-ink);
     opacity: 0;
     filter: url(#s-brush);
     transform-box: fill-box;
@@ -260,12 +203,8 @@
     pointer-events: none;
   }
 
-  .s-ripple-listen { stroke: var(--s-seal); }
-  .s-ripple-speak  { stroke: var(--s-ink); }
-
-  .s-presence.listening .s-dry {
-    stroke: color-mix(in srgb, var(--s-ink) 74%, var(--s-seal));
-  }
+  .s-ripple-listen { fill: var(--s-seal); }
+  .s-ripple-speak  { fill: var(--s-ink); }
 
   .s-presence.listening .s-ripple-listen {
     animation: s-listen-in 4s var(--s-ease) infinite;
@@ -275,12 +214,13 @@
     animation-delay: 2s;
   }
 
-  /* Ripples gather INWARD — they shrink toward the center */
   @keyframes s-listen-in {
     0%   { opacity: 0;   transform: scale(.92) rotate(-6deg); }
-    45%  { opacity: .34; }
+    45%  { opacity: .22; }
     100% { opacity: 0;   transform: scale(.58) rotate(4deg); }
   }
+
+  /* ── Speaking — ink ripples expand outward ──────────────────────────── */
 
   .s-presence.speaking .s-ripple-speak {
     animation: s-speak-out 4s var(--s-ease) infinite;
@@ -291,15 +231,46 @@
   }
 
   @keyframes s-speak-out {
-    0%   { opacity: .3; transform: scale(.9)  rotate(-3deg); }
-    100% { opacity: 0;  transform: scale(1.34) rotate(6deg); }
+    0%   { opacity: .2;  transform: scale(.9)  rotate(-3deg); }
+    100% { opacity: 0;   transform: scale(1.34) rotate(6deg); }
+  }
+
+  /* ── Pointer over — awake sway (rotation + slight lift) ────────────── */
+
+  .s-presence--mic:hover .s-enso {
+    animation: s-over-sway 3.2s var(--s-ease) infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  @keyframes s-over-sway {
+    0%, 100% { transform: rotate(-2.6deg) scale(1.05); }
+    50%       { transform: rotate(2.6deg)  scale(1.05); }
+  }
+
+  /* ── Processing — mark dims, seal bloom pulses behind it ───────────── */
+
+  .s-presence.processing .s-dry {
+    fill: var(--s-ink-2);
+  }
+
+  .s-presence.processing .s-wet {
+    fill: var(--s-seal);
+    animation: s-proc-pulse 1.8s var(--s-ease) infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  @keyframes s-proc-pulse {
+    0%, 100% { opacity: .10; transform: scale(.97); }
+    50%       { opacity: .30; transform: scale(1.13); }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .s-presence { animation: none !important; }
     .s-enso { animation: none !important; }
     .s-ripple { animation: none !important; }
-    .s-proc { animation: none !important; }
+    .s-presence.processing .s-wet { animation: none !important; }
     .s-presence.listening .s-ripple-listen { opacity: 0.22; }
     .s-presence.speaking  .s-ripple-speak  { opacity: 0.22; }
   }
