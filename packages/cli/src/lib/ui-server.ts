@@ -99,7 +99,7 @@ async function spawnUiChild(
         ORIGIN:                 `http://127.0.0.1:${port}`,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
         // Tell the UI child it has a supervisor that can respawn it on demand
-        // (design §6.2). The admin "install UI version" route signals SIGHUP to
+        // (design §6.2). The admin "install UI version" route signals SIGUSR2 to
         // its parent (this process) after seeding a newer data/ui.
         OP_UI_SUPERVISOR:       'cli',
       },
@@ -186,6 +186,9 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   process.on('SIGINT',  () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  // SIGUSR2: sent by the UI child's admin/ui-version route after seeding a new build.
+  // SIGHUP:  kept for backward compatibility / manual use.
+  process.on('SIGUSR2', () => { void restartUiServer(); });
   process.on('SIGHUP',  () => { void restartUiServer(); });
 
   // Keep the process alive

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import IconLock from '$lib/components/icons/IconLock.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import {
     createEndpoint,
@@ -151,7 +152,7 @@
               <span class="endpoint-label">{ep.label}</span>
               {#if ep.isDefault}<span class="badge default">Default</span>{/if}
               {#if ep.id === active?.id}<span class="badge active">Active</span>{/if}
-              {#if ep.hasPassword}<span class="badge password" title="Server password configured">🔒</span>{/if}
+              {#if ep.hasPassword}<span class="badge password" title="Server password configured"><IconLock size={11} /></span>{/if}
             </div>
             <div class="endpoint-url">{ep.url}</div>
           </div>

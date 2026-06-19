@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
+  import IconServer from '$lib/components/icons/IconServer.svelte';
+  import IconConnect from '$lib/components/icons/IconConnect.svelte';
   import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
 
@@ -39,11 +41,7 @@
     'model-runner': 'Docker Model Runner',
   };
 
-  const PROVIDER_ICONS: Record<string, string> = {
-    ollama: '🦙',
-    lmstudio: '🖥️',
-    'model-runner': '🐳',
-  };
+  const KNOWN_PROVIDERS = new Set(['ollama', 'lmstudio', 'model-runner']);
 
   interface Props {
     onnext: () => void;
@@ -188,8 +186,8 @@
   {#if result?.hostProviders && result.hostProviders.length > 0}
     {#each result.hostProviders as hp (hp.provider)}
       <div class="syscheck-row syscheck-row--info">
-        <div class="syscheck-icon syscheck-icon--emoji" aria-hidden="true">
-          {PROVIDER_ICONS[hp.provider] ?? '🔌'}
+        <div class="syscheck-icon" aria-hidden="true">
+          {#if KNOWN_PROVIDERS.has(hp.provider)}<IconServer size={18} />{:else}<IconConnect size={18} />{/if}
         </div>
         <div class="syscheck-body">
           <div class="syscheck-title">{PROVIDER_LABELS[hp.provider] ?? hp.provider} is running</div>
@@ -263,10 +261,6 @@
     align-items: center;
     justify-content: center;
     padding-top: 2px;
-  }
-  .syscheck-icon--emoji {
-    font-size: 1.1rem;
-    line-height: 1;
   }
   .syscheck-body { flex: 1; min-width: 0; }
   .syscheck-title { font-weight: 600; font-size: var(--s-type-deed); }

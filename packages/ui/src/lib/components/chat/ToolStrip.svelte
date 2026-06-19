@@ -1,6 +1,17 @@
 <script lang="ts">
   import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
   import IconClose from '$lib/components/icons/IconClose.svelte';
+  import IconAlert from '$lib/components/icons/IconAlert.svelte';
+  import IconRefresh from '$lib/components/icons/IconRefresh.svelte';
+  import IconDoneCircle from '$lib/components/icons/IconDoneCircle.svelte';
+  import IconTerminal from '$lib/components/icons/IconTerminal.svelte';
+  import IconSearch from '$lib/components/icons/IconSearch.svelte';
+  import IconFile from '$lib/components/icons/IconFile.svelte';
+  import IconEdit from '$lib/components/icons/IconEdit.svelte';
+  import IconLink from '$lib/components/icons/IconLink.svelte';
+  import IconAgent from '$lib/components/icons/IconAgent.svelte';
+  import IconDone from '$lib/components/icons/IconDone.svelte';
+  import IconClock from '$lib/components/icons/IconClock.svelte';
 
   interface Props {
     items: ToolStripEntry[];
@@ -98,17 +109,18 @@
       .replace(/^./, (char) => char.toUpperCase());
   }
 
-  function toolEmoji(tool: string, status: string): string {
+  function toolIconSize(): number { return 13; }
+  function toolIconType(tool: string, status: string): string {
     const name = tool.toLowerCase();
-    if (status === 'error' || status === 'failed') return '⚠️';
-    if (name === 'step') return status === 'completed' ? '🧩' : '🔄';
-    if (name.includes('bash') || name.includes('shell') || name.includes('command')) return '🛠️';
-    if (name.includes('grep') || name.includes('search')) return '🔎';
-    if (name.includes('read') || name.includes('file')) return '📄';
-    if (name.includes('edit') || name.includes('write') || name.includes('patch')) return '✍️';
-    if (name.includes('web') || name.includes('http') || name.includes('fetch')) return '🌐';
-    if (name.includes('task') || name.includes('agent')) return '🤖';
-    return status === 'completed' ? '✅' : '⏳';
+    if (status === 'error' || status === 'failed') return 'alert';
+    if (name === 'step') return status === 'completed' ? 'done-circle' : 'refresh';
+    if (name.includes('bash') || name.includes('shell') || name.includes('command')) return 'terminal';
+    if (name.includes('grep') || name.includes('search')) return 'search';
+    if (name.includes('read') || name.includes('file')) return 'file';
+    if (name.includes('edit') || name.includes('write') || name.includes('patch')) return 'edit';
+    if (name.includes('web') || name.includes('http') || name.includes('fetch')) return 'link';
+    if (name.includes('task') || name.includes('agent')) return 'agent';
+    return status === 'completed' ? 'done' : 'clock';
   }
 
   function timelineTitle(entry: ToolStripEntry): string {
@@ -175,15 +187,38 @@
 {#if items.length > 0}
   <div class="tool-strip" class:tool-strip-muted={muted} class:tool-strip-bordered={bordered} aria-label={ariaLabel}>
     {#each items as tool (tool.id)}
+      {@const toolType = toolIconType(tool.tool, tool.status)}
       <button
-        class="tool-emoji-btn"
+        class="tool-icon-btn"
         class:selected={selectedToolId === tool.id}
         type="button"
         aria-label={toolAriaLabel(tool)}
         title={toolAriaLabel(tool)}
         onclick={() => openToolDetails(tool.id)}
       >
-        <span class="tool-emoji" aria-hidden="true">{toolEmoji(tool.tool, tool.status)}</span>
+        {#if toolType === 'alert'}
+          <span class="tool-icon" aria-hidden="true"><IconAlert size={13} /></span>
+        {:else if toolType === 'done-circle'}
+          <span class="tool-icon" aria-hidden="true"><IconDoneCircle size={13} /></span>
+        {:else if toolType === 'refresh'}
+          <span class="tool-icon" aria-hidden="true"><IconRefresh size={13} /></span>
+        {:else if toolType === 'terminal'}
+          <span class="tool-icon" aria-hidden="true"><IconTerminal size={13} /></span>
+        {:else if toolType === 'search'}
+          <span class="tool-icon" aria-hidden="true"><IconSearch size={13} /></span>
+        {:else if toolType === 'file'}
+          <span class="tool-icon" aria-hidden="true"><IconFile size={13} /></span>
+        {:else if toolType === 'edit'}
+          <span class="tool-icon" aria-hidden="true"><IconEdit size={13} /></span>
+        {:else if toolType === 'link'}
+          <span class="tool-icon" aria-hidden="true"><IconLink size={13} /></span>
+        {:else if toolType === 'agent'}
+          <span class="tool-icon" aria-hidden="true"><IconAgent size={13} /></span>
+        {:else if toolType === 'done'}
+          <span class="tool-icon" aria-hidden="true"><IconDone size={13} /></span>
+        {:else}
+          <span class="tool-icon" aria-hidden="true"><IconClock size={13} /></span>
+        {/if}
       </button>
     {/each}
   </div>
@@ -250,13 +285,13 @@
     border-top: var(--s-hair) solid var(--s-line-soft);
   }
 
-  .tool-emoji {
-    display: block;
-    font-size: 0.9rem;
-    text-align: center;
+  .tool-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .tool-emoji-btn {
+  .tool-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -269,16 +304,16 @@
     transition: opacity 120ms ease;
   }
 
-  .tool-emoji-btn:hover {
+  .tool-icon-btn:hover {
     opacity: 0.6;
   }
 
-  .tool-emoji-btn:focus-visible {
+  .tool-icon-btn:focus-visible {
     outline: var(--s-hair) solid var(--s-line);
     outline-offset: 2px;
   }
 
-  .tool-emoji-btn.selected {
+  .tool-icon-btn.selected {
     text-decoration: underline;
     text-decoration-color: var(--s-seal);
     text-underline-offset: 3px;

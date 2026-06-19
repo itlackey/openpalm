@@ -1,5 +1,7 @@
 <script lang="ts">
   import { PORTALS, PROVIDERS } from '$lib/client/constants.js';
+  import IconAgent from '$lib/components/icons/IconAgent.svelte';
+  import IconMic from '$lib/components/icons/IconMic.svelte';
   import type { Provider, ModelSelection, PortalState } from '$lib/client/types.js';
   import { isPortalEnabled as _isPortalEnabled } from '$lib/client/helpers.js';
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
@@ -220,7 +222,7 @@
   <!-- AI (always shown) -->
   {#if aiLabel}
     <div class="summary-row">
-      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <span class="summary-icon" aria-hidden="true"><IconAgent size={16} /></span>
       <div class="summary-body">
         <div class="summary-key">AI</div>
         <div class="summary-val">{aiLabel}</div>
@@ -229,7 +231,7 @@
     </div>
   {:else if verifiedProviders.length > 0}
     <div class="summary-row">
-      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <span class="summary-icon" aria-hidden="true"><IconAgent size={16} /></span>
       <div class="summary-body">
         <div class="summary-key">AI</div>
         <div class="summary-val">{friendlyProviderName(verifiedProviders[0].id)}</div>
@@ -238,7 +240,7 @@
     </div>
   {:else if ollamaEnabled}
     <div class="summary-row">
-      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <span class="summary-icon" aria-hidden="true"><IconAgent size={16} /></span>
       <div class="summary-body">
         <div class="summary-key">AI</div>
         <div class="summary-val">Runs on this computer</div>
@@ -247,7 +249,7 @@
     </div>
   {:else if hostProviderLabel}
     <div class="summary-row">
-      <span class="summary-icon" aria-hidden="true">🤖</span>
+      <span class="summary-icon" aria-hidden="true"><IconAgent size={16} /></span>
       <div class="summary-body">
         <div class="summary-key">AI</div>
         <div class="summary-val">{friendlyProviderName(hostProviderLabel)}</div>
@@ -259,7 +261,7 @@
   <!-- Voice (only if active) -->
   {#if voiceActive}
     <div class="summary-row">
-      <span class="summary-icon" aria-hidden="true">🎙</span>
+      <span class="summary-icon" aria-hidden="true"><IconMic size={16} /></span>
       <div class="summary-body">
         <div class="summary-key">Voice</div>
         <div class="summary-val">On — built-in voice</div>

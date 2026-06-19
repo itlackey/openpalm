@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import type { ReleaseEntry, UiVersionEntry, StackServiceVersion } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import IconDone from '$lib/components/icons/IconDone.svelte';
+  import IconCloudDownload from '$lib/components/icons/IconCloudDownload.svelte';
   import {
     desktopNotifyEnabled,
     desktopReplyPreviewEnabled,
@@ -243,8 +245,8 @@
     }
   }
 
-  function statusEmoji(s: UpdateStatus): string {
-    return s === 'current' ? '✅' : s === 'update' ? '⬆️' : '';
+  function hasStatusIcon(s: UpdateStatus): boolean {
+    return s === 'current' || s === 'update';
   }
   function statusTitle(s: UpdateStatus): string {
     return s === 'current' ? 'Up to date' : s === 'update' ? 'Update available' : 'Update status unknown';
@@ -368,8 +370,10 @@
           <dd>
             <span class="version-cell">
               <code class="version-value status-{s.status}">{formatVersionForDisplay(s.version) || '—'}</code>
-              {#if statusEmoji(s.status)}
-                <span class="status-emoji" role="img" aria-label={statusTitle(s.status)} title={statusTitle(s.status)}>{statusEmoji(s.status)}</span>
+              {#if hasStatusIcon(s.status)}
+                <span class="status-icon" aria-label={statusTitle(s.status)} title={statusTitle(s.status)}>
+                  {#if s.status === 'current'}<IconDone size={13} />{:else}<IconCloudDownload size={13} />{/if}
+                </span>
               {/if}
             </span>
             {#if s.status === 'update'}
@@ -392,8 +396,10 @@
         <dd>
           <span class="version-cell">
             <code class="version-value status-{appStatus}">{formatVersionForDisplay(electronVersion) || '—'}</code>
-            {#if statusEmoji(appStatus)}
-              <span class="status-emoji" role="img" aria-label={statusTitle(appStatus)} title={statusTitle(appStatus)}>{statusEmoji(appStatus)}</span>
+            {#if hasStatusIcon(appStatus)}
+              <span class="status-icon" aria-label={statusTitle(appStatus)} title={statusTitle(appStatus)}>
+                {#if appStatus === 'current'}<IconDone size={13} />{:else}<IconCloudDownload size={13} />{/if}
+              </span>
             {/if}
           </span>
           {#if appStatus === 'update'}
@@ -409,8 +415,10 @@
         <dd>
           <span class="version-cell">
             <code class="version-value status-{uiStatus}">{formatVersionForDisplay(uiVersion) || '—'}</code>
-            {#if statusEmoji(uiStatus)}
-              <span class="status-emoji" role="img" aria-label={statusTitle(uiStatus)} title={statusTitle(uiStatus)}>{statusEmoji(uiStatus)}</span>
+            {#if hasStatusIcon(uiStatus)}
+              <span class="status-icon" aria-label={statusTitle(uiStatus)} title={statusTitle(uiStatus)}>
+                {#if uiStatus === 'current'}<IconDone size={13} />{:else}<IconCloudDownload size={13} />{/if}
+              </span>
             {/if}
           </span>
           {#if uiStatus === 'update'}
@@ -460,8 +468,10 @@
             <label class="version-label" for="unit-version-select-{row.unit}">{row.service.label}</label>
             <span class="version-cell">
               <code class="version-value status-{row.service.status}">{formatVersionForDisplay(row.service.version) || '—'}</code>
-              {#if statusEmoji(row.service.status)}
-                <span class="status-emoji" role="img" aria-label={statusTitle(row.service.status)} title={statusTitle(row.service.status)}>{statusEmoji(row.service.status)}</span>
+              {#if hasStatusIcon(row.service.status)}
+                <span class="status-icon" aria-label={statusTitle(row.service.status)} title={statusTitle(row.service.status)}>
+                  {#if row.service.status === 'current'}<IconDone size={13} />{:else}<IconCloudDownload size={13} />{/if}
+                </span>
               {/if}
             </span>
           </div>
@@ -896,9 +906,11 @@
     color: var(--s-ink-3);
   }
 
-  .status-emoji {
-    font-size: var(--s-type-deed);
-    line-height: 1;
+  .status-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--s-ink-3);
+    flex-shrink: 0;
   }
 
   .version-action {

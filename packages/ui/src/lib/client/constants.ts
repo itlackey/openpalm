@@ -22,7 +22,7 @@ export const PROVIDERS: Provider[] = [
   { id: 'together', name: 'Together AI', kind: 'cloud', group: 'cloud', order: 3, icon: '✦', desc: 'Open models at scale', needsKey: true, placeholder: '...', baseUrl: 'https://api.together.xyz', llmModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', embModel: '', embDims: 0 },
   { id: 'deepseek', name: 'DeepSeek', kind: 'cloud', group: 'advanced', order: 1, icon: '◎', desc: 'DeepSeek chat & reasoning', needsKey: true, placeholder: 'sk-...', baseUrl: 'https://api.deepseek.com', llmModel: 'deepseek-chat', embModel: '', embDims: 0 },
   { id: 'xai', name: 'xAI (Grok)', kind: 'cloud', group: 'advanced', order: 2, icon: '✦', desc: 'Grok models', needsKey: true, placeholder: 'xai-...', baseUrl: 'https://api.x.ai', llmModel: 'grok-2', embModel: '', embDims: 0 },
-  { id: 'openai-compatible', name: 'Custom API server', kind: 'cloud', group: 'advanced', order: 3, icon: '🔧', desc: 'Connect any AI server that uses the standard OpenAI API format.', needsKey: false, needsUrl: true, optionalKey: true, placeholder: 'API key (optional)', baseUrl: '', llmModel: '', embModel: '', embDims: 0 },
+  { id: 'openai-compatible', name: 'Custom API server', kind: 'cloud', group: 'advanced', order: 3, icon: '~', desc: 'Connect any AI server that uses the standard OpenAI API format.', needsKey: false, needsUrl: true, optionalKey: true, placeholder: 'API key (optional)', baseUrl: '', llmModel: '', embModel: '', embDims: 0 },
 ];
 
 export const STEP_LABELS = ['Models', 'Extras', 'Review'];
