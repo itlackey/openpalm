@@ -127,10 +127,8 @@
     display: block;
   }
   .brand-text {
-    font-family: var(--s-font-mono);
+    font-family: var(--s-font-header);
     font-size: var(--s-type-mark);
-    text-transform: uppercase;
-    letter-spacing: var(--s-track-label);
     color: var(--s-ink-3);
     white-space: nowrap;
   }
