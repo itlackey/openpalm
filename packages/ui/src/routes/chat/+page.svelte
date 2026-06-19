@@ -644,7 +644,17 @@
     <section class="s-veil-section">
       <div class="s-section-head">
         <div class="s-veil-section-label">assistant</div>
-        <a class="s-new-convo" href="/admin/endpoints" onclick={closeGarden}>manage connections</a>
+        <a class="s-new-convo" href="/admin/endpoints" onclick={closeGarden}>
+          <span class="s-new-mark" aria-hidden="true">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <circle cx="6" cy="6" r="2.4" stroke="currentColor" stroke-width="1.1"/>
+              <line x1="4.5" y1="3.6" x2="4.5" y2="1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+              <line x1="7.5" y1="3.6" x2="7.5" y2="1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+              <line x1="6" y1="8.4" x2="6" y2="10.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
+          </span>
+          manage connections
+        </a>
       </div>
       <div class="s-endpoint-list" role="group" aria-label="Assistant endpoints">
         {#each endpointsService.endpoints as ep (ep.id)}
@@ -660,7 +670,7 @@
               <div class="s-endpoint-label">{ep.label}</div>
               <div class="s-endpoint-url">{ep.url}</div>
             </button>
-            {#if isLocalAssistantUrl(ep.url)}
+            {#if ep.url && isLocalAssistantUrl(ep.url)}
               <a class="s-endpoint-manage" href="/admin" onclick={closeGarden}>manage this assistant</a>
             {/if}
           </div>
