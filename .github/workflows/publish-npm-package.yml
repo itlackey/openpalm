@@ -97,7 +97,11 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Clear injected npm token for OIDC trusted publishing
-        run: npm config delete //registry.npmjs.org/:_authToken
+        run: |
+          # setup-node writes _authToken=${NODE_AUTH_TOKEN} (=GITHUB_TOKEN) into
+          # NPM_CONFIG_USERCONFIG. Overwrite that file with just the registry line
+          # so npm falls through to OIDC trusted publishing.
+          echo "registry=https://registry.npmjs.org/" > "${NPM_CONFIG_USERCONFIG}"
 
       - uses: oven-sh/setup-bun@v2
 
