@@ -42,3 +42,5 @@ packages/electron/dist/
 .dev_*/*
 # UX validation gate artifacts (skill:web-ux/ux-dom-audit)
 .reviews/
+# Scratch research/working artifacts (not deliverables)
+.scratch/
