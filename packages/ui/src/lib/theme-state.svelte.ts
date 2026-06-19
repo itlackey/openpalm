@@ -41,7 +41,10 @@ class ThemeService {
   }
 
   toggle(): void {
-    this.setPreference(this.resolved === 'dark' ? 'light' : 'dark');
+    const next: ThemePreference =
+      this.preference === 'system' ? 'light' :
+      this.preference === 'light'  ? 'dark'  : 'system';
+    this.setPreference(next);
   }
 
   dispose(): void {

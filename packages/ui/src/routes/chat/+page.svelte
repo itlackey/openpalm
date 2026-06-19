@@ -325,24 +325,26 @@
 </svg>
 
 <!-- corners: the only persistent chrome -->
-<!-- top-left: theme toggle -->
+<!-- top-left: theme toggle (cycles system → day → night) -->
 <div class="s-corner s-corner-left">
   <button
     class="s-glyph-btn s-orb-btn"
     type="button"
     onclick={() => themeService.toggle()}
-    aria-label="Switch between day and night"
+    aria-label={themeService.preference === 'system' ? 'Switch to light theme' : themeService.preference === 'light' ? 'Switch to dark theme' : 'Switch to system theme'}
   >
     <svg class="s-toggle-orb" viewBox="0 0 30 30" aria-hidden="true">
       <circle cx="15" cy="15" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
-      <path
-        class="s-orb-half"
-        d="M15 7a8 8 0 0 1 0 16z"
-        class:night={themeService.resolved === 'dark'}
-      />
+      {#if themeService.preference === 'light'}
+        <circle cx="15" cy="15" r="8" fill="currentColor"/>
+      {:else if themeService.preference === 'dark'}
+        <path class="s-orb-half" d="M15 7a8 8 0 0 1 0 16z" style="transform: rotate(180deg); transform-origin: 15px 15px;"/>
+      {:else}
+        <path class="s-orb-half" d="M15 7a8 8 0 0 1 0 16z"/>
+      {/if}
     </svg>
   </button>
-  <span class="s-glyph-label">day &amp; night</span>
+  <span class="s-glyph-label">{themeService.preference === 'system' ? 'system' : themeService.preference === 'light' ? 'day' : 'night'}</span>
 </div>
 
 <!-- top-right: advanced -->
@@ -352,7 +354,7 @@
     type="button"
     aria-label="Advanced mode"
     aria-pressed={advancedModeService.enabled}
-    onclick={() => void goto(buildAdvancedPath(null))}
+    onclick={() => { advancedModeService.setEnabled(true); void goto(buildAdvancedPath(null)); }}
   >
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <rect x="3" y="3" width="18" height="18" rx="2.5"/>
@@ -626,7 +628,7 @@
 >
   <div class="s-veil-head">
     <div>
-      <div class="s-veil-title">The garden</div>
+      <div class="s-veil-title">Conversations</div>
       {#if endpointsService.active}
         <div class="s-veil-sub">{endpointsService.active.label}</div>
       {/if}
@@ -640,25 +642,29 @@
 
   <div class="s-veil-body">
     <section class="s-veil-section">
-      <div class="s-veil-section-label">assistant</div>
+      <div class="s-section-head">
+        <div class="s-veil-section-label">assistant</div>
+        <a class="s-new-convo" href="/admin/endpoints" onclick={closeGarden}>manage connections</a>
+      </div>
       <div class="s-endpoint-list" role="group" aria-label="Assistant endpoints">
         {#each endpointsService.endpoints as ep (ep.id)}
-          <button
-            type="button"
-            class="s-endpoint"
-            class:active={ep.id === endpointsService.active?.id}
-            aria-current={ep.id === endpointsService.active?.id ? 'true' : undefined}
-            onclick={() => void activateEndpoint(ep.id)}
-            disabled={endpointSwitching}
-          >
-            <div class="s-endpoint-label">{ep.label}</div>
-            <div class="s-endpoint-url">{ep.url}</div>
-          </button>
+          <div class="s-endpoint-item">
+            <button
+              type="button"
+              class="s-endpoint"
+              class:active={ep.id === endpointsService.active?.id}
+              aria-current={ep.id === endpointsService.active?.id ? 'true' : undefined}
+              onclick={() => void activateEndpoint(ep.id)}
+              disabled={endpointSwitching}
+            >
+              <div class="s-endpoint-label">{ep.label}</div>
+              <div class="s-endpoint-url">{ep.url}</div>
+            </button>
+            {#if isLocalAssistantUrl(ep.url)}
+              <a class="s-endpoint-manage" href="/admin" onclick={closeGarden}>manage this assistant</a>
+            {/if}
+          </div>
         {/each}
-        {#if isLocalAssistantUrl(endpointsService.active?.url)}
-          <a class="s-manage" href="/admin" onclick={closeGarden}>manage this assistant…</a>
-        {/if}
-        <a class="s-manage" href="/admin/endpoints" onclick={closeGarden}>manage assistant connections…</a>
       </div>
     </section>
 
@@ -792,12 +798,6 @@
 
   .s-orb-half {
     fill: currentColor;
-    transition: transform 0.9s var(--s-ease);
-    transform-origin: 15px 15px;
-  }
-
-  .s-orb-half.night {
-    transform: rotate(180deg);
   }
 
   /* ── Conversation ─────────────────────────────────────────────────── */
@@ -896,7 +896,6 @@
   }
 
   :global(.deeds-inner) {
-    border-left: var(--s-hair) solid var(--s-line);
     padding: 0.3rem 0 0.3rem 1.1rem;
   }
 
@@ -943,6 +942,7 @@
   .s-live-deeds {
     display: flex;
     flex-direction: column;
+    border-left: var(--s-hair) solid var(--s-line);
   }
 
   /* ── Action cards (permission / question) ─────────────────────────── */
@@ -1465,14 +1465,14 @@
     margin-top: 0.25rem;
   }
 
-  .s-manage {
-    appearance: none;
-    border: 0;
-    background: none;
-    cursor: pointer;
-    text-align: left;
+  .s-endpoint-item {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .s-endpoint-manage {
     display: block;
-    padding: 0.55rem 0 0.55rem 1.1rem;
+    padding: 0.1rem 0 0.6rem 1.1rem;
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark-sm);
     letter-spacing: var(--s-track-label);
@@ -1482,13 +1482,7 @@
     transition: color var(--s-t-quick) var(--s-ease);
   }
 
-  .s-manage:hover { color: var(--s-ink); }
-
-  .s-manage:first-of-type {
-    margin-top: 0.4rem;
-    border-top: var(--s-hair) solid var(--s-line-soft);
-    padding-top: 1rem;
-  }
+  .s-endpoint-manage:hover { color: var(--s-seal); }
 
   @media (max-width: 520px) {
     .s-thread {

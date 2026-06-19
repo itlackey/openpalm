@@ -130,6 +130,7 @@
     flex-direction: column;
     align-items: flex-start;
     padding: calc(var(--s-breath) * 0.25) 0;
+    border-left: var(--s-hair) solid var(--s-line);
   }
 
   /* ── Two-voice treatment ── */
@@ -310,7 +311,6 @@
   .deeds {
     border-left: var(--s-hair) solid var(--s-line);
     margin: 0.2rem 0 0 14px;
-    padding: 0.3rem 0 0.3rem 1.1rem;
     animation: s-bloom-in var(--s-t-settle) var(--s-ease-settle) both;
   }
 
