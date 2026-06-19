@@ -91,6 +91,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@latest
@@ -208,6 +209,7 @@ jobs:
         working-directory: ${{ inputs.package-dir }}
         env:
           DRY_RUN: ${{ inputs.dry-run }}
+          NODE_AUTH_TOKEN: ''
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [ "${DRY_RUN}" = 'true' ]; then
