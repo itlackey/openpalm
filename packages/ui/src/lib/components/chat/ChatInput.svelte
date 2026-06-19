@@ -1,11 +1,16 @@
 <script lang="ts">
+  import IconMic from '$lib/components/icons/IconMic.svelte';
+
   interface Props {
     sending: boolean;
     questionPending?: boolean;
     onSend: (text: string) => void;
+    voiceEnabled?: boolean;
+    voiceActive?: boolean;
+    onMicToggle?: () => void;
   }
 
-  let { sending, questionPending = false, onSend }: Props = $props();
+  let { sending, questionPending = false, onSend, voiceEnabled = false, voiceActive = false, onMicToggle }: Props = $props();
 
   let inputText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
@@ -48,14 +53,28 @@
     bind:value={inputText}
     onkeydown={handleKeydown}
     oninput={handleInput}
-    placeholder={sending && !questionPending ? '' : 'Write…'}
+    placeholder={sending && !questionPending ? '' : 'Write a message...'}
     rows="1"
     disabled={inputDisabled}
     aria-label={questionPending ? 'Answer the assistant' : 'Speak to the agent'}
     autocomplete="off"
     spellcheck="false"
   ></textarea>
-  <div class="s-rule"></div>
+  <div class="s-footer">
+    <div class="s-rule"></div>
+    {#if voiceEnabled}
+      <button
+        class="s-mic-btn"
+        class:active={voiceActive}
+        type="button"
+        aria-label={voiceActive ? 'Stop listening' : 'Start listening'}
+        aria-pressed={voiceActive}
+        onclick={onMicToggle}
+      >
+        <IconMic size={16} />
+      </button>
+    {/if}
+  </div>
 </form>
 
 <style>
@@ -64,7 +83,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.55rem;
+    gap: 0.125rem;
   }
 
   .s-composer textarea {
@@ -73,7 +92,7 @@
     border: 0;
     outline: 0;
     background: none;
-    font-family: var(--s-font-display);
+    font-family: var(--s-font-header);
     font-weight: 400;
     font-size: var(--s-type-compose);
     line-height: 1.5;
@@ -84,6 +103,48 @@
     padding: 0.2rem 0;
     transition: color var(--s-t-theme) var(--s-ease);
   }
+
+  /* Footer row: rule line + optional mic button, sharing the same horizontal band */
+  .s-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: clamp(8rem, 60%, 20rem);
+  }
+
+  .s-mic-btn {
+    flex-shrink: 0;
+    appearance: none;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: var(--s-ink-3);
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: color var(--s-t-quick) var(--s-ease);
+  }
+
+  .s-mic-btn:hover { color: var(--s-ink); }
+  .s-mic-btn:active { transform: scale(0.9); }
+  .s-mic-btn.active {
+    color: var(--s-seal);
+    animation: s-mic-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes s-mic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  .s-mic-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px var(--s-paper), 0 0 0 2px var(--s-ink-3);
+  }
+
+  .s-mic-btn :global(.s-icon) { display: block; }
 
   .s-composer textarea::placeholder {
     color: var(--s-ink-3);
@@ -96,11 +157,11 @@
   }
 
   .s-rule {
-    width: clamp(8rem, 60%, 20rem);
+    flex: 1;
     height: 1px;
     background: var(--s-line);
     position: relative;
-    transition: width var(--s-t-settle) var(--s-ease), background var(--s-t-quick) var(--s-ease);
+    transition: background var(--s-t-quick) var(--s-ease);
   }
 
   .s-rule::after {

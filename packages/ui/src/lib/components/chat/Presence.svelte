@@ -89,6 +89,22 @@
       <feTurbulence type="fractalNoise" baseFrequency="0.018 0.026" numOctaves="2" seed="7" result="t"/>
       <feDisplacementMap in="SourceGraphic" in2="t" scale="3.4" xChannelSelector="R" yChannelSelector="G"/>
     </filter>
+    <!--
+      Wave-brush: matches the #ibrush icon filter pipeline exactly — two displacement
+      passes merged, then grained — but uses filterUnits="userSpaceOnUse" so the filter
+      region doesn't collapse to zero for vertical <line> elements (which have zero
+      geometric width, making percentage-based regions invisible).
+    -->
+    <filter id="s-wave-brush" filterUnits="userSpaceOnUse" x="-10" y="-10" width="120" height="120">
+      <feTurbulence type="fractalNoise" baseFrequency="0.026 0.032" numOctaves="1" seed="3" result="nA"/>
+      <feDisplacementMap in="SourceGraphic" in2="nA" scale="2.4" xChannelSelector="R" yChannelSelector="G" result="dA"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.034 0.028" numOctaves="1" seed="17" result="nB"/>
+      <feDisplacementMap in="SourceGraphic" in2="nB" scale="3.0" xChannelSelector="R" yChannelSelector="G" result="dB"/>
+      <feMerge result="strokes"><feMergeNode in="dA"/><feMergeNode in="dB"/></feMerge>
+      <feTurbulence type="turbulence" baseFrequency="0.7 0.7" numOctaves="2" seed="7" result="g"/>
+      <feComponentTransfer in="g" result="gm"><feFuncA type="linear" slope="0.55" intercept="0.52"/></feComponentTransfer>
+      <feComposite in="strokes" in2="gm" operator="in"/>
+    </filter>
     <filter id="s-bloom" x="-40%" y="-40%" width="180%" height="180%">
       <feGaussianBlur stdDeviation="2.4"/>
     </filter>
@@ -125,17 +141,17 @@
     <!-- Dry: the crisp brushed filled mark -->
     <path class="s-dry" bind:this={ensoDry}></path>
     <!--
-      Waveform: speaking state indicator — 5 filled rects, bell-curve heights
-      matching the design system waveform icon proportions (scaled to 100×100).
-      Filled (not stroked) so scaleY never makes bars sub-pixel invisible.
-      All bars centered at y=50; rx gives rounded-pill caps.
+      Waveform: speaking state indicator — 5 stroked lines, bell-curve heights
+      matching the design system icon recipe (stroke-linecap:round, fill:none,
+      brush filter). scaleY compresses line length but not stroke-width, so bars
+      stay legible at any component size. Centers at x = 18/32/46/60/74.
     -->
     <g class="s-waveform" aria-hidden="true">
-      <rect class="s-waveform-bar s-wb1" x="14" y="38" width="8" height="24" rx="4"/>
-      <rect class="s-waveform-bar s-wb2" x="28" y="24" width="8" height="52" rx="4"/>
-      <rect class="s-waveform-bar s-wb3" x="42" y="12" width="8" height="76" rx="4"/>
-      <rect class="s-waveform-bar s-wb4" x="56" y="18" width="8" height="64" rx="4"/>
-      <rect class="s-waveform-bar s-wb5" x="70" y="32" width="8" height="36" rx="4"/>
+      <line class="s-waveform-bar s-wb1" x1="18" y1="38" x2="18" y2="62"/>
+      <line class="s-waveform-bar s-wb2" x1="32" y1="24" x2="32" y2="76"/>
+      <line class="s-waveform-bar s-wb3" x1="46" y1="12" x2="46" y2="88"/>
+      <line class="s-waveform-bar s-wb4" x1="60" y1="18" x2="60" y2="82"/>
+      <line class="s-waveform-bar s-wb5" x1="74" y1="32" x2="74" y2="68"/>
     </g>
   </svg>
 </div>
@@ -146,6 +162,7 @@
     height: var(--s-enso-size);
     margin-bottom: 0.5rem;
     position: relative;
+    will-change: transform;
   }
 
   .s-presence--mic {
@@ -169,6 +186,11 @@
     width: 100%;
     height: 100%;
     display: block;
+    /* Spring transition for smooth hover enter/exit — cubic-bezier overshoots
+       slightly past the target then settles, giving a natural physical feel.
+       Only `transform` and `opacity` are animated (GPU composited, no reflow). */
+    transition: transform 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
+    will-change: transform;
   }
 
   /* Filled mark — the crisp brushed logo shape */
@@ -275,43 +297,51 @@
   }
 
   .s-waveform-bar {
-    /* Filled rects: fill is NOT subject to stroke-width scaling during scaleY,
-       so bars stay visible at any scale — critical at height=32 (3.1× viewBox). */
-    fill: var(--s-seal);
-    stroke: none;
-    filter: url(#s-brush);
+    /* Stroked lines match the design system icon recipe: round caps, fill:none,
+       brush filter. scaleY compresses line length but not the horizontal
+       stroke-width, so bars stay visible at height=32 unlike the earlier rect
+       approach where fill-scaling caused sub-pixel invisibility. */
+    fill: none;
+    stroke: var(--s-seal);
+    stroke-width: 7;
+    stroke-linecap: round;
+    filter: url(#s-wave-brush);
     transform-box: fill-box;
     transform-origin: 50% 50%;
-    /* Rects have a non-zero bounding box so transform-origin resolves correctly. */
-    transform: scaleY(0.14);
-  }
-
-  @keyframes s-wave {
-    from { transform: scaleY(0.14); }
-    to   { transform: scaleY(1); }
+    transform: scaleY(0.25);
   }
 
   /*
-    Five bars, each with a distinct duration and phase offset so no two bars
-    are ever in sync — creates the organic, audio-driven waveform feel.
+    Sine-like easing: slow at extremes (bar "hangs" at peak/trough — physical
+    inertia of a speaker cone), fast through the midpoint. Each bar gets its
+    own peak height so the waveform has natural amplitude variation.
   */
-  .s-presence.speaking .s-wb1 { animation: s-wave 0.90s ease-in-out 0.00s infinite alternate both; }
-  .s-presence.speaking .s-wb2 { animation: s-wave 0.64s ease-in-out 0.12s infinite alternate both; }
-  .s-presence.speaking .s-wb3 { animation: s-wave 0.72s ease-in-out 0.05s infinite alternate both; }
-  .s-presence.speaking .s-wb4 { animation: s-wave 0.57s ease-in-out 0.18s infinite alternate both; }
-  .s-presence.speaking .s-wb5 { animation: s-wave 0.84s ease-in-out 0.08s infinite alternate both; }
+  @keyframes s-wave1 { from { transform: scaleY(0.22); } to { transform: scaleY(0.72); } }
+  @keyframes s-wave2 { from { transform: scaleY(0.18); } to { transform: scaleY(1.00); } }
+  @keyframes s-wave3 { from { transform: scaleY(0.14); } to { transform: scaleY(1.00); } }
+  @keyframes s-wave4 { from { transform: scaleY(0.20); } to { transform: scaleY(0.88); } }
+  @keyframes s-wave5 { from { transform: scaleY(0.24); } to { transform: scaleY(0.66); } }
 
-  /* ── Pointer over — awake sway (rotation + slight lift) ────────────── */
+  /*
+    Five bars: prime-number-like durations ensure no two bars ever phase-lock.
+    easeInOutSine cubic-bezier gives the speaker-cone weight at peaks/troughs.
+  */
+  .s-presence.speaking .s-wb1 { animation: s-wave1 0.91s cubic-bezier(0.37, 0, 0.63, 1) 0.00s infinite alternate both; }
+  .s-presence.speaking .s-wb2 { animation: s-wave2 0.67s cubic-bezier(0.37, 0, 0.63, 1) 0.13s infinite alternate both; }
+  .s-presence.speaking .s-wb3 { animation: s-wave3 0.79s cubic-bezier(0.37, 0, 0.63, 1) 0.05s infinite alternate both; }
+  .s-presence.speaking .s-wb4 { animation: s-wave4 0.59s cubic-bezier(0.37, 0, 0.63, 1) 0.19s infinite alternate both; }
+  .s-presence.speaking .s-wb5 { animation: s-wave5 0.83s cubic-bezier(0.37, 0, 0.63, 1) 0.08s infinite alternate both; }
+
+  /* ── Pointer over — spring lift ─────────────────────────────────────
+     A single stable lifted state entered/exited via the spring transition
+     on .s-enso. No loop animation — loops can't enter/exit cleanly because
+     CSS can't transition INTO a running animation mid-cycle. The parent's
+     breathing continues independently and provides gentle oscillation while
+     hovered (the transforms compose: wrapper breathes, child is lifted).
+     On hover-out the spring returns it to rest with a matching overshoot. */
 
   .s-presence--mic:hover .s-enso {
-    animation: s-over-sway 3s var(--s-ease-settle) infinite;
-    transform-box: fill-box;
-    transform-origin: center;
-  }
-
-  @keyframes s-over-sway {
-    0%, 100% { transform: rotate(-3deg) scale(1.06); }
-    50%       { transform: rotate(3deg)  scale(1.08); }
+    transform: scale(1.09) rotate(1.8deg);
   }
 
   /* ── Processing — mark dims, seal bloom pulses behind it ───────────── */
@@ -328,19 +358,19 @@
   }
 
   @keyframes s-proc-pulse {
-    0%, 100% { opacity: .08; transform: scale(.93); }
-    40%       { opacity: .24; transform: scale(1.10); }
-    70%       { opacity: .30; transform: scale(1.18); }
+    0%   { opacity: .07; transform: scale(.94); }
+    45%  { opacity: .26; transform: scale(1.14); }
+    100% { opacity: .07; transform: scale(.94); }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .s-presence { animation: none !important; }
-    .s-enso { animation: none !important; }
+    .s-enso { animation: none !important; transition: none !important; }
     .s-ripple { animation: none !important; }
-    .s-waveform-bar { animation: none !important; transform: scaleY(0.55) !important; }
+    .s-waveform-bar { animation: none !important; transform: scaleY(0.6) !important; }
     .s-presence.processing .s-wet { animation: none !important; }
     .s-presence.listening .s-ripple-listen { opacity: 0.22; }
     .s-presence.speaking .s-waveform { opacity: 1; }
-    .s-presence.speaking .s-waveform-bar { transform: scaleY(0.55) !important; }
+    .s-presence.speaking .s-waveform-bar { transform: scaleY(0.6) !important; }
   }
 </style>
