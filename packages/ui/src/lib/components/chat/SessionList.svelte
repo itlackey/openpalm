@@ -12,8 +12,10 @@
   interface Props {
     /** Called after a session is opened or started (e.g. to close the drawer). */
     onChosen?: () => void;
+    /** Hide the internal new-session button (use when the parent already provides one). */
+    hideNewBtn?: boolean;
   }
-  let { onChosen }: Props = $props();
+  let { onChosen, hideNewBtn = false }: Props = $props();
 
   const SESSION_LIST_CAP = 50;
   let showAll = $state(false);
@@ -91,12 +93,13 @@
     {/if}
   {/if}
 
-  <div class="divider"></div>
-
-  <button type="button" class="list-item new-btn" onclick={startNew} disabled={chat.sending}>
-    <span class="check" aria-hidden="true">+</span>
-    <span class="item-text"><span class="item-label">New session</span></span>
-  </button>
+  {#if !hideNewBtn}
+    <div class="divider"></div>
+    <button type="button" class="list-item new-btn" onclick={startNew} disabled={chat.sending}>
+      <span class="check" aria-hidden="true">+</span>
+      <span class="item-text"><span class="item-label">New session</span></span>
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -194,10 +197,10 @@
     min-width: 0;
   }
 
-  /* Session title — display font, deed size */
+  /* Session title — display font, navigation size (not deed/tool scale) */
   .item-label {
     font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
+    font-size: clamp(0.9rem, 2.2vw, 1.05rem);
     font-weight: 400;
     color: var(--s-ink-2);
     overflow: hidden;
