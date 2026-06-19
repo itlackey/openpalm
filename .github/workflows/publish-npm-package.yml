@@ -96,6 +96,9 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@latest
 
+      - name: Clear injected npm token for OIDC trusted publishing
+        run: npm config delete //registry.npmjs.org/:_authToken
+
       - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
@@ -209,7 +212,6 @@ jobs:
         working-directory: ${{ inputs.package-dir }}
         env:
           DRY_RUN: ${{ inputs.dry-run }}
-          NODE_AUTH_TOKEN: ''
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [ "${DRY_RUN}" = 'true' ]; then
