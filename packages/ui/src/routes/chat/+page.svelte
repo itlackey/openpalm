@@ -259,7 +259,7 @@
 </script>
 
 <svelte:head>
-	<title>Stillness</title>
+	<title>{endpointsService.active?.label ?? 'OpenPalm'}</title>
 </svelte:head>
 
 <!-- atmosphere -->
