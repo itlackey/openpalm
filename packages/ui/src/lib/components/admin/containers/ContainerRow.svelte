@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ServiceEntry } from '$lib/types.js';
   import { parseImageTag, containerStatusColor, fmtState } from './container-format.js';
+  import IconExpand from '$lib/components/icons/IconExpand.svelte';
 
   interface Props {
     entry: ServiceEntry;
@@ -42,20 +43,7 @@
     </span>
   </span>
   <span class="ct-col ct-col--actions">
-    <svg
-      aria-hidden="true"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      class:ct-chevron-open={selected}
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
+    <IconExpand size={14} class={selected ? 'ct-chevron-open' : ''} />
   </span>
 </button>
 
@@ -82,6 +70,7 @@
 
   .ct-indicator--success {
     background: var(--s-moss);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-moss) 20%, transparent);
   }
 
   .ct-indicator--danger {

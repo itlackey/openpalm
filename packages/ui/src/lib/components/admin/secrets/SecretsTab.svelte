@@ -3,6 +3,7 @@
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { fetchSecretFiles, fetchSecretFile, saveSecretFile, deleteSecretFile, type SecretFileInfo } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import IconLock from '$lib/components/icons/IconLock.svelte';
 
   interface Props { tokenStored: boolean; }
   let { tokenStored }: Props = $props();
@@ -173,10 +174,7 @@
         </div>
       {:else}
         <div class="editor-empty">
-          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
+          <IconLock size={24} />
           <p>Select a file to view or edit its contents.</p>
           <button class="btn btn-secondary btn-sm" onclick={() => newNameInput?.focus()}>New secret</button>
         </div>
@@ -213,6 +211,27 @@
   .secrets-editor { min-width: 0; }
   .editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-sp-2); }
   .reveal-toggle { display: flex; align-items: center; gap: var(--s-sp-1); font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-ink-3); }
+  .reveal-toggle input[type='checkbox'] {
+    appearance: none;
+    width: 0.9rem; height: 0.9rem;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: none;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .reveal-toggle input[type='checkbox']:checked {
+    background: var(--s-seal);
+    border-color: var(--s-seal);
+  }
+  .reveal-toggle input[type='checkbox']:checked::after {
+    content: '';
+    position: absolute; left: 1px; top: 0px;
+    width: 6px; height: 4px;
+    border: 1.2px solid white; border-top: 0; border-right: 0;
+    transform: rotate(-45deg);
+  }
   .editor-area { width: 100%; font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); resize: vertical; background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper)); border: var(--s-hair) solid var(--s-line-soft); color: var(--s-ink-2); border-radius: 2px; padding: var(--s-sp-3); }
   .editor-area.masked { -webkit-text-security: disc; }
   .editor-actions { display: flex; justify-content: flex-end; gap: var(--s-sp-2); margin-top: var(--s-sp-2); }
@@ -223,6 +242,6 @@
     border: var(--s-hair) solid var(--s-line-soft); border-radius: 2px;
     min-height: 12rem;
   }
-  .editor-empty svg { opacity: 0.4; }
+  .editor-empty :global(.s-icon) { opacity: 0.4; }
   .editor-empty p { font-size: var(--s-type-deed); margin: 0; max-width: 24rem; font-family: var(--s-font-display); color: var(--s-ink-2); }
 </style>

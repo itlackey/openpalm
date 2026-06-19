@@ -10,6 +10,8 @@
    */
   import { voiceState } from '$lib/voice/voice-state.svelte.js';
   import { notifications, type Toast } from '$lib/notifications.svelte.js';
+  import IconDone from '$lib/components/icons/IconDone.svelte';
+  import IconInfo from '$lib/components/icons/IconInfo.svelte';
 
   // Track the toast id for the current voice error so consecutive
   // errors update in place instead of stacking.
@@ -50,21 +52,11 @@
       >
         <span class="toast-icon" aria-hidden="true">
           {#if t.kind === 'success'}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+            <IconDone size={16} />
           {:else if t.kind === 'error'}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
+            <IconInfo size={16} />
           {:else}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="16" x2="12" y2="12"/>
-              <line x1="12" y1="8" x2="12.01" y2="8"/>
-            </svg>
+            <IconInfo size={16} />
           {/if}
           <span class="sr-only">{kindLabel(t)}:</span>
         </span>

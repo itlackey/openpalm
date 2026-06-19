@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
 	import type { LlmProfile } from './profile-types';
+	import IconDatabase from '$lib/components/icons/IconDatabase.svelte';
 
 	// Presentation-only list of LLM profiles. The parent (AkmTab) owns the array
 	// and default-name state via $bindable; this component renders the rows and
@@ -29,9 +30,7 @@
 
 	{#if profiles.length === 0}
 		<div class="profile-empty">
-			<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-				<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
-			</svg>
+			<IconDatabase size={24} />
 			<p class="empty-note">No LLM profiles configured — add one below.</p>
 		</div>
 	{:else}
@@ -75,6 +74,6 @@
 	.section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
 	.empty-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
 	.profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-sp-2); margin-bottom: var(--s-sp-2); color: var(--s-ink-3); }
-	.profile-empty svg { opacity: 0.35; }
+	.profile-empty :global(.s-icon) { opacity: 0.35; }
 	.profile-list { display: flex; flex-direction: column; gap: 0; }
 </style>

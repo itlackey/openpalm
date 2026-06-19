@@ -16,7 +16,7 @@
   stroke-width="2"
   stroke-linecap="round"
   stroke-linejoin="round"
-  class={className}
+  class="s-icon {className}"
 >
   <path d="M3 12h4l2-5 4 10 2-5h6" />
 </svg>

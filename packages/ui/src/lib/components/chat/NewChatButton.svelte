@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import IconButton from '$lib/components/common/IconButton.svelte';
+  import IconAdd from '$lib/components/icons/IconAdd.svelte';
 
   // Global "new chat" action (lives in the navbar next to the session picker).
   // On the chat page it starts a fresh session in place; from anywhere else
@@ -37,7 +38,5 @@
 />
 
 {#snippet plus()}
-  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M12 5v14" /><path d="M5 12h14" />
-  </svg>
+  <IconAdd size={18} />
 {/snippet}

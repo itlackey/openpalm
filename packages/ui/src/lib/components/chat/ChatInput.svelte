@@ -60,7 +60,7 @@
 
 <style>
   .s-composer {
-    width: min(40rem, 100%);
+    width: min(34rem, 100%);
     display: flex;
     flex-direction: column;
     align-items: center;

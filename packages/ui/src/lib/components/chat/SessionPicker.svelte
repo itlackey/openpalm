@@ -4,6 +4,7 @@
   import Drawer from '$lib/components/common/Drawer.svelte';
   import SessionList from '$lib/components/chat/SessionList.svelte';
   import { resolveSessionTitle } from '$lib/session-title.js';
+  import IconConversations from '$lib/components/icons/IconConversations.svelte';
 
   // Navbar trigger that opens the session chooser in a drawer. The list body
   // lives in SessionList, shared with the chat side panel.
@@ -30,11 +31,7 @@
   aria-label="Sessions"
   title={triggerLabel}
 >
-  <!-- messages-square (Lucide) -->
-  <svg class="trigger-icon" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" />
-    <path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" />
-  </svg>
+  <IconConversations class="trigger-icon" size={14} />
   <span
     class="dot"
     class:connected={liveConnected}
@@ -83,7 +80,7 @@
     outline-offset: 2px;
   }
 
-  .trigger-icon {
+  :global(.trigger-icon) {
     flex-shrink: 0;
     color: var(--s-ink-3);
   }

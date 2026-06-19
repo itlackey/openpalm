@@ -9,6 +9,8 @@
 -->
 <script lang="ts">
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import IconDone from '$lib/components/icons/IconDone.svelte';
+	import IconClose from '$lib/components/icons/IconClose.svelte';
 	import VoiceEngineSelector from '$lib/components/voice/VoiceEngineSelector.svelte';
 	import type {
 		TtsOption,
@@ -80,12 +82,12 @@
 				</button>
 				{#if testResult === 'success'}
 					<span class="test-result test-result--ok" aria-live="polite">
-						<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+						<IconDone size={14} />
 						Working
 					</span>
 				{:else if testResult === 'error'}
 					<span class="test-result test-result--err" aria-live="polite">
-						<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+						<IconClose size={14} />
 						{testError || 'Failed'}
 					</span>
 				{/if}

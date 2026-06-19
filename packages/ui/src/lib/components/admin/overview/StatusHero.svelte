@@ -1,5 +1,8 @@
 <script lang="ts">
   import type { TabId } from '$lib/components/chrome/TabBar.svelte';
+  import IconAlert from '$lib/components/icons/IconAlert.svelte';
+  import IconDoneCircle from '$lib/components/icons/IconDoneCircle.svelte';
+  import IconInfo from '$lib/components/icons/IconInfo.svelte';
 
   interface Props {
     status: 'ok' | 'warning' | 'unknown';
@@ -33,18 +36,11 @@
 <section class="hero hero--{status}" role="status" aria-live="polite">
   <span class="hero-icon" aria-hidden="true">
     {#if status === 'warning'}
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-        <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
+      <IconAlert size={22} />
     {:else if status === 'ok'}
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-      </svg>
+      <IconDoneCircle size={22} />
     {:else}
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-      </svg>
+      <IconInfo size={22} />
     {/if}
   </span>
   <div class="hero-text">
@@ -99,9 +95,11 @@
     border: var(--s-hair) solid var(--s-line);
   }
   .hero--ok .hero-icon {
+    border-color: color-mix(in srgb, var(--s-moss) 40%, transparent);
     color: var(--s-moss);
   }
   .hero--warning .hero-icon {
+    border-color: color-mix(in srgb, var(--s-seal) 30%, transparent);
     color: var(--s-seal);
   }
   .hero--unknown .hero-icon {

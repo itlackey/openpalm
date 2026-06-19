@@ -12,9 +12,13 @@
     loaded?: boolean;
     /** Decorative icon, mutually exclusive with value. */
     icon?: Snippet;
+    /** Status for value and badge color: 'ok' (moss) or 'warn' (seal). */
+    status?: 'ok' | 'warn' | undefined;
+    /** Optional status badge text (e.g. "configured", "3 active"). */
+    badge?: string;
   }
 
-  let { label, onClick, value = null, sub = null, loaded = true, icon }: Props = $props();
+  let { label, onClick, value = null, sub = null, loaded = true, icon, status, badge }: Props = $props();
 </script>
 
 <button class="tile" onclick={onClick}>
@@ -23,11 +27,16 @@
       {@render icon()}
     </span>
   {:else}
-    <span class="tile-metric">
+    <span class="tile-metric" class:tile-metric--ok={status === 'ok'} class:tile-metric--warn={status === 'warn'}>
       {#if loaded}{value}{#if sub}<span class="tile-metric-sub">{sub}</span>{/if}{:else}—{/if}
     </span>
   {/if}
   <span class="tile-label">{label}</span>
+  {#if badge}
+    <span class="s-tile-badge" class:s-tile-badge--ok={status === 'ok'} class:s-tile-badge--warn={status === 'warn'}>
+      {badge}
+    </span>
+  {/if}
 </button>
 
 <style>
@@ -59,6 +68,12 @@
     color: var(--s-ink);
     line-height: 1.1;
   }
+  .tile-metric--ok {
+    color: var(--s-moss);
+  }
+  .tile-metric--warn {
+    color: var(--s-seal);
+  }
   .tile-metric-sub {
     font-family: var(--s-font-display);
     font-size: var(--s-type-whisper);
@@ -74,5 +89,23 @@
     text-transform: uppercase;
     letter-spacing: var(--s-track-label);
     color: var(--s-ink-3);
+  }
+  .s-tile-badge {
+    display: inline-flex;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    padding: 0.1em 0.6em;
+    border-radius: 2px;
+    border: var(--s-hair) solid currentColor;
+    margin-top: auto;
+    color: var(--s-ink-3);
+  }
+  .s-tile-badge--ok {
+    color: var(--s-moss);
+  }
+  .s-tile-badge--warn {
+    color: var(--s-seal);
   }
 </style>

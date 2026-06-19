@@ -310,7 +310,7 @@
          to match" action (resolves correctly now that /admin/upgrade passes
          allowPrerelease from the control-plane channel). When everything matches,
          it reads "up to date". -->
-    <section class="update-card" aria-labelledby="update-primary-title" class:update-card-ok={!servicesBehind}>
+    <section class="update-card" aria-labelledby="update-primary-title" class:update-card-ok={!servicesBehind} class:alert={servicesBehind}>
       <div class="update-card-text">
         {#if servicesBehind}
           <h3 id="update-primary-title" class="update-title">
@@ -731,10 +731,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--s-sp-4);
+    gap: var(--s-sp-6);
     flex-wrap: wrap;
-    padding: var(--s-sp-4);
-    border: var(--s-hair) solid var(--s-line);
+    padding: var(--s-sp-6);
+    border: var(--s-hair) solid var(--s-line-soft);
     border-radius: 2px;
     background: var(--s-paper-deep);
   }
@@ -745,14 +745,17 @@
   .update-title {
     font-family: var(--s-font-display);
     font-size: var(--s-type-voice);
+    font-weight: 400;
     color: var(--s-ink);
-    margin: 0;
+    margin: 0 0 var(--s-sp-1);
   }
   .update-desc {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-2);
-    margin: var(--s-sp-1) 0 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    margin: 0;
     line-height: 1.5;
     max-width: 60ch;
   }
@@ -764,7 +767,10 @@
   }
 
   .update-card-ok {
-    border-color: var(--s-moss);
+    border-color: color-mix(in srgb, var(--s-moss) 30%, transparent);
+  }
+  .update-card.alert {
+    border-color: color-mix(in srgb, var(--s-seal) 30%, transparent);
   }
   .update-harness-note {
     margin: var(--s-sp-2) 0 0;
@@ -784,6 +790,7 @@
     margin: 0;
     font-family: var(--s-font-display);
     font-size: var(--s-type-voice);
+    font-weight: 400;
     color: var(--s-ink);
     display: flex;
     align-items: baseline;

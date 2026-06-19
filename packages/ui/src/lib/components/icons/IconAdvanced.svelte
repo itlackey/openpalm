@@ -16,9 +16,8 @@
   stroke-width="2"
   stroke-linecap="round"
   stroke-linejoin="round"
-  class={className}
+  class="s-icon {className}"
 >
-  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-  <path d="m7 9 3 3-3 3" />
-  <line x1="13" y1="15" x2="17" y2="15" />
+  <path d="M4 17l4-4-4-4" />
+  <path d="M12 17h8" />
 </svg>

@@ -229,7 +229,7 @@
     align-items: flex-end;
     gap: var(--s-sp-4);
     padding: var(--s-sp-4) var(--s-sp-6);
-    border-bottom: var(--s-hair) solid var(--s-line);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
     background: var(--s-paper-deep);
     flex-wrap: wrap;
   }
@@ -264,7 +264,7 @@
     background: var(--s-paper);
     color: var(--s-ink);
     font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
+    font-size: var(--s-type-mark);
     min-width: 140px;
   }
 
@@ -303,7 +303,7 @@
   }
 
   .source-pill--active {
-    background: color-mix(in srgb, var(--s-ink) 6%, var(--s-paper));
+    background: var(--s-paper-deep);
     color: var(--s-ink);
     border: var(--s-hair) solid var(--s-line);
   }
@@ -328,10 +328,9 @@
     color: var(--s-ink-2);
     background: color-mix(in srgb, var(--s-ink) 3%, var(--s-paper));
     border: var(--s-hair) solid var(--s-line-soft);
-    padding: var(--s-sp-4) var(--s-sp-6);
+    padding: var(--s-sp-4);
     margin: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
+    white-space: pre;
     overflow-y: auto;
     max-height: 600px;
     tab-size: 4;
@@ -341,8 +340,8 @@
 
   .error-banner {
     padding: var(--s-sp-3) var(--s-sp-6);
-    border-bottom: var(--s-hair) solid var(--s-seal);
-    color: var(--s-seal);
+    border-bottom: var(--s-hair) solid var(--s-error);
+    color: var(--s-error);
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
   }

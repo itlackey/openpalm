@@ -13,6 +13,8 @@
 	import type { AssistantCliToolStatus, ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import AddProviderSheet from './AddProviderSheet.svelte';
 	import ConnectSheet from './ConnectSheet.svelte';
+	import IconServer from '$lib/components/icons/IconServer.svelte';
+	import IconLock from '$lib/components/icons/IconLock.svelte';
 	import CustomProviderForm from './CustomProviderForm.svelte';
 	import HostImportModal from './HostImportModal.svelte';
 
@@ -280,11 +282,7 @@
 		{#if !pageState.available && !loading}
 			<EmptyState>
 				{#snippet icon()}
-					<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-						<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-						<line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
-						<line x1="1" y1="1" x2="23" y2="23"/>
-					</svg>
+					<IconServer size={40} />
 				{/snippet}
 				<p>The assistant (OpenCode server) is not reachable. Start the assistant container and refresh.</p>
 			</EmptyState>
@@ -296,9 +294,7 @@
 		{:else if connected.length === 0}
 			<EmptyState>
 				{#snippet icon()}
-					<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-					</svg>
+					<IconLock size={40} />
 				{/snippet}
 				<p>No providers connected yet.</p>
 				<p class="empty-hint">Click <strong>Add provider</strong> above to sign in to one.</p>
@@ -350,22 +346,26 @@
 				{#if modelSaveError}<p class="model-error">{modelSaveError}</p>{/if}
 			</div>
 
-			{#each connected as p (p.id)}
-				<div class="provider-row">
-					<div class="provider-id">
-						<span class="provider-name">{p.name}</span>
-						<span class="badge badge-connected">{authBadge(p)}</span>
+			<div class="providers-container">
+				{#each connected as p (p.id)}
+					<div class="provider-row">
+						<div class="provider-id">
+							<div>
+								<span class="provider-name">{p.name}</span>
+								<span class="provider-desc">{authBadge(p)}</span>
+							</div>
+						</div>
+						<button
+							class="btn btn-outline btn-sm"
+							disabled={disconnectingId === p.id}
+							onclick={() => void disconnect(p)}
+						>
+							{#if disconnectingId === p.id}<Spinner />{/if}
+							Disconnect
+						</button>
 					</div>
-					<button
-						class="btn btn-outline btn-sm"
-						disabled={disconnectingId === p.id}
-						onclick={() => void disconnect(p)}
-					>
-						{#if disconnectingId === p.id}<Spinner />{/if}
-						Disconnect
-					</button>
-				</div>
-			{/each}
+				{/each}
+			</div>
 		{/if}
 		{:else if assistantCliLoading}
 			<div class="loading-state cli-loading-state">
@@ -553,12 +553,29 @@
 		color: var(--s-ink-3);
 	}
 
+	.providers-container {
+		border: var(--s-hair) solid var(--s-line-soft);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.providers-container {
+		border: var(--s-hair) solid var(--s-line-soft);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
 	.provider-row {
 		display: flex;
 		align-items: center;
-		gap: var(--s-sp-3);
-		padding: var(--s-sp-3) var(--s-sp-5);
+		justify-content: space-between;
+		gap: var(--s-sp-4);
+		padding: var(--s-sp-4) var(--s-sp-5);
 		border-bottom: var(--s-hair) solid var(--s-line-soft);
+	}
+
+	.provider-row:last-child {
+		border-bottom: none;
 	}
 
 	.model-defaults {
@@ -576,6 +593,28 @@
 		gap: var(--s-sp-1);
 	}
 
+	.model-field :global(.form-label) {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+	}
+
+	.model-field :global(.form-input) {
+		height: auto;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
+		background: none;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		padding: 0.4em 0.6em;
+	}
+
+	.model-field :global(.form-input:focus) {
+		border-color: var(--s-seal);
+	}
+
 	.model-error {
 		grid-column: 1 / -1;
 		font-family: var(--s-font-mono);
@@ -585,17 +624,32 @@
 	}
 
 	.provider-id {
-		flex: 1;
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: var(--s-sp-2);
 		min-width: 0;
+	}
+
+	.provider-id > div {
+		display: flex;
+		flex-direction: column;
 	}
 
 	.provider-name {
 		font-family: var(--s-font-display);
 		font-size: var(--s-type-deed);
 		color: var(--s-ink);
+		display: block;
+		margin-bottom: var(--s-sp-1);
+	}
+
+	.provider-desc {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+		display: block;
 	}
 
 	.empty-hint {

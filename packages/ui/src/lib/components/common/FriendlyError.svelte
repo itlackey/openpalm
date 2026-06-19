@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FriendlyErrorView } from '$lib/client/error-messages.js';
+  import IconAlert from '$lib/components/icons/IconAlert.svelte';
 
   interface Props {
     error: FriendlyErrorView | null | undefined;
@@ -14,12 +15,7 @@
 {#if error}
   <div class="friendly-error" {role}>
     <div class="friendly-error-header">
-      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-        <line x1="12" y1="9" x2="12" y2="13"/>
-        <line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
+      <IconAlert size={18} />
       <strong class="friendly-error-title">{error.title}</strong>
     </div>
     {#if error.body}

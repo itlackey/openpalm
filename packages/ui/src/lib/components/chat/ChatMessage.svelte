@@ -42,14 +42,14 @@
   <div class="s-deed-group">
     <div class="deeds-inner">
       {#each entry.toolStates as tool}
-        <div class="deed">{tool.title}</div>
+        <div class="deed">{tool.title || tool.tool || 'step'}</div>
       {/each}
     </div>
   </div>
 {:else if entry.role === 'user'}
   <div class="turn you">
-    <div class="you-mark">you</div>
     <div class="you-words">{entry.text}</div>
+    <div class="mark">you</div>
   </div>
 {:else}
   <div class="turn master">
@@ -62,6 +62,7 @@
         <p>{entry.text}</p>
       </div>
     {/if}
+    <div class="mark">the agent</div>
 
     {#if entry.toolStates && entry.toolStates.length > 0}
       <div class="seal-row">
@@ -86,7 +87,7 @@
           <div class="deeds-inner">
             <div class="deeds-title">what I did</div>
             {#each entry.toolStates as tool}
-              <div class="deed">{tool.title}</div>
+              <div class="deed">{tool.title || tool.tool || 'step'}</div>
             {/each}
           </div>
         </div>
@@ -140,32 +141,35 @@
     flex-direction: column;
   }
 
-  /* The person — small, soft, whispered */
+  /* The person — small, soft, whispered — sits right */
   .turn.you {
-    gap: 0.5rem;
+    align-items: flex-end;
+    text-align: right;
   }
 
-  .you-mark {
+  .mark {
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
     letter-spacing: var(--s-track-mark);
     text-transform: uppercase;
     color: var(--s-ink-3);
+    white-space: nowrap;
+    margin-top: var(--s-sp-3);
   }
 
   .you-words {
-    font-family: var(--s-font-display);
-    font-weight: 400;
+    font-family: var(--s-font-header);
+    font-weight: 300;
     font-size: var(--s-type-whisper);
-    line-height: var(--s-type-whisper-lh);
+    line-height: 1.5;
     color: var(--s-ink-2);
-    max-width: var(--s-measure-whisper);
-    white-space: pre-wrap;
-    border-width: 0 0 1px;
+    max-width: 80%;
+    text-wrap: pretty;
+    border-width: 0 0 var(--s-hair);
     border-style: solid;
     border-color: color-mix(in srgb, var(--s-ink) 10%, transparent);
-    border-radius: 0 0 0 10px;
-    padding: 0 5px;
+    border-radius: 0 0 10px 0;
+    padding: 0 var(--s-sp-4) var(--s-sp-2);
   }
 
   /* The agent — large, calm, unhurried */
@@ -174,13 +178,14 @@
   }
 
   .master-words {
-    font-family: var(--s-font-display);
-    font-weight: 400;
-    font-size: var(--s-type-voice);
-    line-height: var(--s-type-voice-lh);
+    font-family: var(--s-font-header);
+    font-weight: 300;
+    font-size: 1.6rem;
+    line-height: 1.42;
     letter-spacing: 0.002em;
     color: var(--s-ink);
     text-wrap: pretty;
+    max-width: 80%;
     opacity: 0;
     filter: blur(7px);
     transform: translateY(5px);
@@ -188,11 +193,11 @@
       opacity var(--s-t-bloom) var(--s-ease),
       filter var(--s-t-bloom) var(--s-ease),
       transform var(--s-t-bloom) var(--s-ease);
-    border-width: 1px 0 3px;
+    border-width: var(--s-hair) 0 3px;
     border-style: solid;
     border-color: color-mix(in srgb, var(--s-ink) 9%, transparent);
     border-radius: 20px;
-    padding: 5px 5px 10px;
+    padding: var(--s-sp-3) var(--s-sp-4) var(--s-sp-4);
   }
 
   .master-words.settled {
@@ -254,7 +259,7 @@
   .master-words :global(h3),
   .master-words :global(h4) {
     margin: 0.8rem 0 0.4rem;
-    font-family: var(--s-font-display);
+    font-family: var(--s-font-header);
     font-weight: 400;
     color: var(--s-ink);
   }
@@ -309,8 +314,6 @@
   }
 
   .deeds {
-    border-left: var(--s-hair) solid var(--s-line);
-    margin: 0.2rem 0 0 14px;
     animation: s-bloom-in var(--s-t-settle) var(--s-ease-settle) both;
   }
 

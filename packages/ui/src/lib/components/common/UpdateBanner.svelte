@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import IconDownload from '$lib/components/icons/IconDownload.svelte';
 
   interface UpdateStatus {
     inElectron: boolean;
@@ -44,12 +45,7 @@
 {#if status && !dismissed}
   <div class="update-banner" role="status">
     <span class="update-banner-icon" aria-hidden="true">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
+      <IconDownload size={16} />
     </span>
     <span class="update-banner-text">
       A new version of OpenPalm is available — <strong>v{status.latestVersion}</strong>
@@ -70,9 +66,10 @@
     align-items: center;
     gap: var(--s-sp-3);
     padding: var(--s-sp-2) var(--s-sp-4);
-    background: color-mix(in srgb, var(--s-seal) 6%, var(--s-paper));
-    border-bottom: var(--s-hair) solid color-mix(in srgb, var(--s-seal) 20%, transparent);
-    color: var(--s-ink-2);
+    border-top: 1px solid var(--s-line-soft);
+    border-bottom: 1px solid var(--s-line-soft);
+    background: none;
+    color: var(--s-ink-3);
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
     letter-spacing: var(--s-track-label);

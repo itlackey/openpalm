@@ -112,7 +112,6 @@
   }
 
   .radio-row-title {
-    font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink-2);
   }

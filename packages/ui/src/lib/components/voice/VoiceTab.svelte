@@ -716,8 +716,25 @@
 		cursor: pointer;
 	}
 	.auto-speak-toggle input[type='checkbox'] {
-		accent-color: var(--s-seal);
-		width: 14px; height: 14px;
+		appearance: none;
+		width: 1rem; height: 1rem;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
+		background: none;
+		flex-shrink: 0;
+		position: relative;
+		cursor: pointer;
+	}
+	.auto-speak-toggle input[type='checkbox']:checked {
+		background: var(--s-seal);
+		border-color: var(--s-seal);
+	}
+	.auto-speak-toggle input[type='checkbox']:checked::after {
+		content: '';
+		position: absolute; left: 2px; top: 1px;
+		width: 8px; height: 5px;
+		border: 1.4px solid white; border-top: 0; border-right: 0;
+		transform: rotate(-45deg);
 	}
 
 	.error-banner {

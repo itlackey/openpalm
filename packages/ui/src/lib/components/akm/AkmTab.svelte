@@ -496,7 +496,10 @@
 
 <div class="panel" role="tabpanel">
 	<div class="panel-header">
-		<h2>Knowledge</h2>
+		<div>
+			<h2>Knowledge</h2>
+			<p class="panel-header-sub">Memory · LLM · embedding config</p>
+		</div>
 		<div class="panel-header-actions">
 			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored}>
 				{#if loading}<Spinner />{/if}
@@ -646,7 +649,6 @@
 		scrollbar-width: none;
 		gap: 0;
 		border-bottom: var(--s-hair) solid var(--s-line-soft);
-		margin-bottom: var(--s-sp-4);
 	}
 	.k-tabs::-webkit-scrollbar { display: none; }
 	.k-tab {
@@ -660,7 +662,8 @@
 		letter-spacing: var(--s-track-label);
 		text-transform: uppercase;
 		color: var(--s-ink-3);
-		padding: var(--s-sp-3) var(--s-sp-4);
+		padding: var(--s-sp-2) var(--s-sp-4);
+		margin-bottom: -1px;
 		white-space: nowrap;
 		flex: 1 0 auto;
 		min-height: 2.75rem;
@@ -675,18 +678,39 @@
 		.k-tab { font-size: var(--s-type-mark-sm); padding: var(--s-sp-2); }
 	}
 
+	/* Panel header */
+	h2 {
+		font-family: var(--s-font-header);
+		font-size: var(--s-type-voice);
+		font-weight: 400;
+		color: var(--s-ink);
+		margin: 0;
+	}
+	.panel-header-sub {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+		margin: var(--s-sp-1) 0 0;
+	}
+
 	.panel-body { display: flex; flex-direction: column; gap: var(--s-sp-8); }
 	.panel-header-actions { display: flex; gap: var(--s-sp-2); }
 
 	.section-note--lead {
-		font-family: var(--s-font-display);
-		font-size: var(--s-type-deed);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
 		color: var(--s-ink-3);
-		max-width: 72ch; margin: 0 0 var(--s-sp-4);
+		max-width: 44rem; margin: 0 0 var(--s-sp-4);
 	}
 	.section-note {
-		font-family: var(--s-font-display);
-		font-size: var(--s-type-deed);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
 		color: var(--s-ink-3);
 		margin: 0;
 	}

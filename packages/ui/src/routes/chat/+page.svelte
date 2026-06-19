@@ -14,6 +14,14 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { themeService } from '$lib/theme-state.svelte.js';
   import { voiceState, setTtsAutoEnabled, startListening, stopListening, initVoice } from '$lib/voice/voice-state.svelte.js';
+  import IconSoundOn from '$lib/components/icons/IconSoundOn.svelte';
+  import IconSoundOff from '$lib/components/icons/IconSoundOff.svelte';
+  import IconConversations from '$lib/components/icons/IconConversations.svelte';
+  import IconClose from '$lib/components/icons/IconClose.svelte';
+  import IconThemeSystem from '$lib/components/icons/IconThemeSystem.svelte';
+  import IconThemeLight from '$lib/components/icons/IconThemeLight.svelte';
+  import IconThemeDark from '$lib/components/icons/IconThemeDark.svelte';
+  import IconAdvanced from '$lib/components/icons/IconAdvanced.svelte';
 
   let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
@@ -239,16 +247,13 @@
     onclick={() => themeService.toggle()}
     aria-label={themeService.preference === 'system' ? 'Switch to light theme' : themeService.preference === 'light' ? 'Switch to dark theme' : 'Switch to system theme'}
   >
-    <svg class="s-toggle-orb" viewBox="0 0 30 30" aria-hidden="true">
-      <circle cx="15" cy="15" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/>
-      {#if themeService.preference === 'light'}
-        <circle cx="15" cy="15" r="8" fill="currentColor"/>
-      {:else if themeService.preference === 'dark'}
-        <path class="s-orb-half" d="M15 7a8 8 0 0 1 0 16z" style="transform: rotate(180deg); transform-origin: 15px 15px;"/>
-      {:else}
-        <path class="s-orb-half" d="M15 7a8 8 0 0 1 0 16z"/>
-      {/if}
-    </svg>
+    {#if themeService.preference === 'light'}
+      <IconThemeLight size={20} />
+    {:else if themeService.preference === 'dark'}
+      <IconThemeDark size={20} />
+    {:else}
+      <IconThemeSystem size={20} />
+    {/if}
   </button>
   <span class="s-glyph-label">{themeService.preference === 'system' ? 'system' : themeService.preference === 'light' ? 'day' : 'night'}</span>
 </div>
@@ -262,10 +267,7 @@
     aria-pressed={advancedModeService.enabled}
     onclick={() => { advancedModeService.setEnabled(true); void goto(buildAdvancedPath(null)); }}
   >
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect x="3" y="3" width="18" height="18" rx="2.5"/>
-      <path d="m7.5 9 3 3-3 3"/><line x1="13" y1="15" x2="17" y2="15"/>
-    </svg>
+    <IconAdvanced size={20} />
   </button>
   <span class="s-glyph-label">advanced</span>
 </div>
@@ -281,15 +283,9 @@
       onclick={toggleSpeak}
     >
       {#if ttsEnabled}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M11 5 6 9H2v6h4l5 4V5z"/>
-          <path d="M15.5 8.7a4.5 4.5 0 0 1 0 6.6"/><path d="M18.4 6.2a8 8 0 0 1 0 11.6"/>
-        </svg>
+        <IconSoundOn size={20} />
       {:else}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M11 5 6 9H2v6h4l5 4V5z"/>
-          <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
-        </svg>
+        <IconSoundOff size={20} />
       {/if}
     </button>
     <span class="s-glyph-label">speak</span>
@@ -304,11 +300,7 @@
     onclick={openGarden}
     aria-label="Conversations"
   >
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <line x1="4" y1="7" x2="18" y2="7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.85"/>
-      <line x1="4" y1="11" x2="14" y2="11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/>
-      <line x1="4" y1="15" x2="16.5" y2="15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
-    </svg>
+    <IconConversations size={22} />
   </button>
   <span class="s-glyph-label">conversations</span>
 </div>
@@ -346,7 +338,7 @@
           <div class="s-live-deeds">
             <div class="deeds-inner">
               {#each chat.pendingToolStates as tool}
-                <div class="deed">{tool.title}</div>
+                <div class="deed">{tool.title || tool.tool || 'step'}</div>
               {/each}
             </div>
           </div>
@@ -516,9 +508,7 @@
       {/if}
     </div>
     <button class="s-glyph-btn" type="button" onclick={closeGarden} aria-label="Return to the conversation">
-      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-      </svg>
+      <IconClose size={20} />
     </button>
   </div>
 
@@ -652,7 +642,7 @@
 
   .s-glyph-btn:hover { color: var(--s-ink); }
   .s-glyph-btn:active { transform: scale(0.94); }
-  .s-glyph-btn svg { display: block; }
+  .s-glyph-btn :global(.s-icon) { display: block; }
 
   .s-glyph-btn:focus-visible {
     outline: none;
@@ -682,15 +672,6 @@
   }
 
   .s-glyph-btn[aria-pressed="true"] { color: var(--s-seal); }
-
-  .s-toggle-orb {
-    width: 30px;
-    height: 30px;
-  }
-
-  .s-orb-half {
-    fill: currentColor;
-  }
 
   /* ── Conversation ─────────────────────────────────────────────────── */
 
@@ -725,35 +706,39 @@
     flex-direction: column;
   }
 
-  :global(.turn.you) { gap: 0.5rem; }
-
-  :global(.you-mark) {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-mark);
-    text-transform: uppercase;
-    color: var(--s-ink-3);
-  }
+  :global(.turn.you) { align-items: flex-end; text-align: right; }
 
   :global(.you-words) {
-    font-family: var(--s-font-display);
-    font-weight: 400;
+    font-family: var(--s-font-header);
+    font-weight: 300;
     font-size: var(--s-type-whisper);
-    line-height: var(--s-type-whisper-lh);
+    line-height: 1.5;
     color: var(--s-ink-2);
-    max-width: var(--s-measure-whisper);
+    max-width: 80%;
+    text-wrap: pretty;
+    border-width: 0 0 var(--s-hair);
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--s-ink) 10%, transparent);
+    border-radius: 0 0 10px 0;
+    padding: 0 var(--s-sp-4) var(--s-sp-2);
   }
 
   :global(.turn.master) { gap: 0.9rem; }
 
   :global(.master-words) {
-    font-family: var(--s-font-display);
-    font-weight: 400;
-    font-size: var(--s-type-voice);
-    line-height: var(--s-type-voice-lh);
+    font-family: var(--s-font-header);
+    font-weight: 300;
+    font-size: 1.6rem;
+    line-height: 1.42;
     letter-spacing: 0.002em;
     color: var(--s-ink);
     text-wrap: pretty;
+    max-width: 80%;
+    border-width: var(--s-hair) 0 3px;
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--s-ink) 9%, transparent);
+    border-radius: 20px;
+    padding: var(--s-sp-3) var(--s-sp-4) var(--s-sp-4);
   }
 
   :global(.master-words p) {
@@ -788,6 +773,8 @@
   }
 
   :global(.deeds-inner) {
+    border-left: var(--s-hair) solid var(--s-line);
+    margin: 1rem 0 0 14px;
     padding: 0.3rem 0 0.3rem 1.1rem;
   }
 
@@ -857,13 +844,13 @@
   }
 
   .s-action-title {
-    font-family: var(--s-font-display);
+    font-family: var(--s-font-header);
     font-size: var(--s-type-whisper);
     color: var(--s-ink);
   }
 
   .s-action-question {
-    font-family: var(--s-font-display);
+    font-family: var(--s-font-header);
     font-size: var(--s-type-whisper);
     color: var(--s-ink);
     margin: 0;
@@ -871,7 +858,7 @@
 
   .s-action-body,
   .s-action-hint {
-    font-family: var(--s-font-display);
+    font-family: var(--s-font-header);
     font-size: var(--s-type-whisper);
     color: var(--s-ink-2);
     margin: 0;
@@ -962,7 +949,7 @@
     border: 0;
     border-bottom: var(--s-hair) solid var(--s-line);
     outline: 0;
-    font-family: var(--s-font-display);
+    font-family: var(--s-font-header);
     font-size: var(--s-type-whisper);
     color: var(--s-ink);
     padding: 0.3rem 0;
@@ -1077,7 +1064,7 @@
   }
 
   .s-veil-head {
-    padding: clamp(1.4rem, 5vw, 2.4rem);
+    padding: 20px 28px 14px;
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -1086,12 +1073,13 @@
     width: 100%;
     margin: 0 auto;
     flex-shrink: 0;
+    border-bottom: 1px solid var(--s-line-soft);
   }
 
   .s-veil-title {
-    font-family: var(--s-font-display);
+    font-family: var(--s-font-header);
     font-weight: 400;
-    font-size: clamp(1.5rem, 4vw, 1.9rem);
+    font-size: 1.55rem;
     letter-spacing: 0.01em;
     color: var(--s-ink);
   }

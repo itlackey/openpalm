@@ -3,6 +3,7 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import Drawer from '$lib/components/common/Drawer.svelte';
   import EndpointList from '$lib/components/chat/EndpointList.svelte';
+  import IconServer from '$lib/components/icons/IconServer.svelte';
 
   // Navbar trigger that opens the assistant-endpoint chooser in a drawer.
   // The list body itself lives in EndpointList, shared with the chat side panel.
@@ -27,13 +28,7 @@
   title={active ? `Connected to: ${active.label} (${active.url})` : 'Assistant endpoints'}
   disabled={endpointsService.loading}
 >
-  <!-- server icon (Lucide) -->
-  <svg class="trigger-icon" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-    <line x1="6" y1="6" x2="6.01" y2="6"/>
-    <line x1="6" y1="18" x2="6.01" y2="18"/>
-  </svg>
+  <IconServer size={14} class="trigger-icon" />
   <span class="dot" aria-hidden="true"></span>
   <span class="label">{active?.label ?? 'Endpoint…'}</span>
   <span class="caret" aria-hidden="true">▾</span>
@@ -76,7 +71,7 @@
     cursor: progress;
   }
 
-  .trigger-icon {
+  :global(.trigger-icon) {
     flex-shrink: 0;
     color: var(--s-ink-3);
   }

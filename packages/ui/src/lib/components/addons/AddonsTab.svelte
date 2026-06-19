@@ -13,6 +13,7 @@
   import { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import SecretSelect from '$lib/components/common/SecretSelect.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import IconAddons from '$lib/components/icons/IconAddons.svelte';
   import Drawer from '$lib/components/common/Drawer.svelte';
 
   interface Props {
@@ -186,9 +187,7 @@
     {:else if addons.length === 0}
       <EmptyState>
         {#snippet icon()}
-          <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-          </svg>
+          <IconAddons size={40} />
         {/snippet}
         <p>No addons found in registry/addons/.</p>
       </EmptyState>
@@ -315,7 +314,7 @@
     background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
     border-bottom: var(--s-hair) solid var(--s-line-soft);
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    font-size: var(--s-type-deed);
     letter-spacing: var(--s-track-label);
     color: var(--s-ink-3);
     text-transform: uppercase;
@@ -384,7 +383,7 @@
     gap: var(--s-sp-3);
     padding: var(--s-sp-4) var(--s-sp-5);
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    font-size: var(--s-type-deed);
     color: var(--s-seal);
   }
 
@@ -411,13 +410,13 @@
     gap: var(--s-sp-2);
     color: var(--s-ink-2);
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    font-size: var(--s-type-deed);
   }
 
   .creds-empty,
   .creds-hint {
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    font-size: var(--s-type-deed);
     color: var(--s-ink-3);
     margin: 0;
   }
@@ -433,7 +432,7 @@
     align-items: center;
     gap: var(--s-sp-2);
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    font-size: var(--s-type-deed);
     letter-spacing: var(--s-track-label);
     text-transform: uppercase;
     color: var(--s-ink-3);
@@ -467,7 +466,7 @@
 
   .creds-desc {
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    font-size: var(--s-type-deed);
     color: var(--s-ink-3);
     margin: 0;
   }

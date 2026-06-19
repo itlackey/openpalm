@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Hubballi&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=The+Girl+Next+Door&display=swap');
+
+/* Brushed icon filter — applied to all .s-icon SVGs. The #ibrush filter is
+   defined once in the root layout. */
+.s-icon { filter: url(#ibrush); }
 
 /* ── Stillness Design System Tokens ───────────────────────────────── */
 
@@ -10,8 +14,9 @@
   --s-ink:         #26292B;
   --s-ink-2:       #5A5E5C;
   --s-ink-3:       #8C8F88;
-  --s-seal:        #C5402B;
+  --s-seal:        #CB782D;
   --s-moss:        #6E7459;
+  --s-error:       #C5402B;
   --s-line:        rgba(38, 41, 43, 0.14);
   --s-line-soft:   rgba(38, 41, 43, 0.07);
   --s-paper-grain: 0.05;
@@ -24,15 +29,17 @@
   --s-ink:         #DAD6C9;
   --s-ink-2:       #989B91;
   --s-ink-3:       #63665E;
-  --s-seal:        #DD5A40;
+  --s-seal:        #DCC25C;
   --s-moss:        #8FA08C;
+  --s-error:       #D95F4E;
   --s-line:        rgba(218, 214, 201, 0.15);
   --s-line-soft:   rgba(218, 214, 201, 0.07);
   --s-paper-grain: 0.04;
 }
 
 :root {
-  --s-font-display: "Hubballi", ui-rounded, "Segoe UI", system-ui, sans-serif;
+  --s-font-header:  "The Girl Next Door", ui-rounded, "Segoe UI", system-ui, sans-serif;
+  --s-font-display: "Iosevka Charon Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --s-font-mono:    "Iosevka Charon Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   --s-type-voice:      clamp(1.5rem, 4.4vw, 2rem);
@@ -121,6 +128,10 @@ body {
   min-height: 100vh;
 }
 
+h1, h2, h3, h4 {
+  font-family: var(--s-font-header);
+}
+
 /* Set by chat/+page.svelte while it's mounted. The chat page is the only
    route that wants exactly viewport-height with its own internal scroll;
    every other page keeps the default flow. */
@@ -199,36 +210,37 @@ body.chat-locked {
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: var(--s-sp-2);
-  padding: 10px 20px;
-  min-height: 44px;
-  font-family: var(--s-font-display);
-  font-size: var(--s-type-deed);
-  font-weight: 400;
-  line-height: 1.4;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
   justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  min-height: 2rem;
+  font-family: var(--s-font-mono);
+  font-size: var(--s-type-mark);
+  letter-spacing: var(--s-track-label);
+  text-transform: uppercase;
+  font-weight: 400;
+  border: var(--s-hair) solid var(--s-line);
+  border-radius: 2px;
+  background: none;
+  color: var(--s-ink-3);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
 }
 
 .btn:disabled {
-  /* 0.55 faded the primary CTA's black-on-orange to ~3.2:1 (axe color-contrast
-     fail); 0.7 keeps the disabled look while holding ~5:1 (WCAG AA). */
-  opacity: 0.7;
+  opacity: 0.38;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background: var(--s-seal);
-  color: #000;
   border-color: var(--s-seal);
+  color: var(--s-seal);
+  background: none;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--s-seal);
+  background: color-mix(in srgb, var(--s-seal) 8%, transparent);
   border-color: var(--s-seal);
 }
 
@@ -258,37 +270,39 @@ body.chat-locked {
 }
 
 .btn-sm {
-  padding: 6px 12px;
-  min-height: 36px;
-  font-size: var(--s-type-deed);
+  padding: 0.3rem 0.7rem;
+  min-height: 1.6rem;
+  font-size: 0.58rem;
 }
 
 .btn-lg {
-  padding: 12px 32px;
-  min-height: 48px;
+  padding: 0.7rem 1.6rem;
+  min-height: 2.6rem;
   font-size: var(--s-type-deed);
   border-radius: 2px;
 }
 
 .btn-secondary {
-  background: var(--s-paper);
-  color: var(--s-ink);
+  background: none;
+  color: var(--s-ink-3);
   border-color: var(--s-line);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--s-paper);
+  color: var(--s-ink-2);
   border-color: var(--s-line);
 }
 
 .btn-danger {
-  background: var(--s-seal);
-  color: #fff;
-  border-color: var(--s-seal);
+  border-color: color-mix(in srgb, var(--s-error) 50%, transparent);
+  color: var(--s-error);
+  background: none;
+  opacity: 0.8;
 }
 
 .btn-danger:hover:not(:disabled) {
-  opacity: 0.9;
+  opacity: 1;
+  border-color: var(--s-error);
 }
 
 /* ── Shared Utility: Feedback Banners ──────────────────────────── */
@@ -313,8 +327,8 @@ body.chat-locked {
 }
 
 .feedback--error {
-  background: color-mix(in srgb, var(--s-seal) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
+  background: color-mix(in srgb, var(--s-error) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--s-error) 25%, transparent);
   color: var(--s-ink);
 }
 
@@ -422,7 +436,7 @@ body.chat-locked {
 .s-input:disabled { opacity: 0.4; cursor: not-allowed; }
 .s-input--narrow { max-width: 8rem; }
 .s-input--mono { font-family: var(--s-font-mono); }
-.s-input--error { border-bottom-color: var(--s-seal); }
+.s-input--error { border-bottom-color: var(--s-error); }
 
 /* ── Textarea ── */
 .s-textarea {
@@ -446,7 +460,7 @@ body.chat-locked {
 .s-textarea:focus-visible { outline: 2px solid var(--s-seal); outline-offset: 2px; }
 .s-textarea:disabled { opacity: 0.4; cursor: not-allowed; }
 .s-textarea--mono { font-family: var(--s-font-mono); font-size: var(--s-type-deed); }
-.s-textarea--error { border-bottom-color: var(--s-seal); }
+.s-textarea--error { border-bottom-color: var(--s-error); }
 
 /* ── Select — underline + mask-based chevron (theme-adaptive) ── */
 .s-select-wrap {
@@ -485,7 +499,7 @@ body.chat-locked {
 .s-select:focus-visible { outline: 2px solid var(--s-seal); outline-offset: 2px; }
 .s-select:disabled { opacity: 0.4; cursor: not-allowed; }
 .s-select-wrap:focus-within::after { background-color: var(--s-seal); }
-.s-select--error { border-bottom-color: var(--s-seal); }
+.s-select--error { border-bottom-color: var(--s-error); }
 
 /* ── Checkbox ── */
 .s-check {
@@ -635,7 +649,7 @@ body.chat-locked {
   font-family: var(--s-font-mono);
   font-size: var(--s-type-mark-sm);
   letter-spacing: var(--s-track-label);
-  color: var(--s-seal);
+  color: var(--s-error);
 }
 
 /* ── Shared Utility: Panel ─────────────────────────────────────── */
@@ -664,7 +678,7 @@ body.chat-locked {
 }
 
 .panel-header h2 {
-  font-family: var(--s-font-display);
+  font-family: var(--s-font-header);
   font-size: var(--s-type-voice);
   font-weight: 400;
   color: var(--s-ink);
@@ -707,10 +721,16 @@ body.chat-locked {
 .badge {
   display: inline-flex;
   align-items: center;
-  font-size: var(--s-type-deed);   /* 0.75rem = 12px — rubric minimum */
+  font-family: var(--s-font-mono);
+  font-size: var(--s-type-mark);
+  letter-spacing: var(--s-track-label);
+  text-transform: uppercase;
   font-weight: 400;
-  padding: 2px 8px;
-  border-radius: 9999px;
+  padding: 0.1em 0.5rem;
+  border: 1px solid var(--s-line-soft);
+  border-radius: 2px;
+  background: none;
+  color: var(--s-ink-3);
   white-space: nowrap;          /* prevent mid-word wrapping */
   line-height: 1.4;
   /* No text-transform: uppercase here — use sentence-case words.
@@ -718,55 +738,40 @@ body.chat-locked {
      Specific badge variants may opt in to uppercase via a modifier class. */
 }
 
-.badge-enabled {
-  background: color-mix(in srgb, var(--s-moss) 12%, transparent);
+.badge-enabled, .badge-running, .badge-connected, .badge-recommended {
   color: var(--s-moss);
+  border-color: color-mix(in srgb, var(--s-moss) 35%, transparent);
 }
 
-.badge-disabled {
-  background: var(--s-paper-deep);
+.badge-disabled, .badge-idle {
   color: var(--s-ink-3);
+  border-color: var(--s-line-soft);
 }
 
-.badge-connected {
-  background: color-mix(in srgb, var(--s-moss) 12%, transparent);
-  color: var(--s-moss);
+.badge-stopped {
+  color: var(--s-ink-2);
+  border-color: var(--s-line);
 }
 
-.badge-recommended {
-  background: color-mix(in srgb, var(--s-moss) 12%, transparent);
-  color: var(--s-moss);
+.badge-error, .badge-danger {
+  color: var(--s-error);
+  border-color: color-mix(in srgb, var(--s-error) 35%, transparent);
 }
 
 .badge-success {
-  background: color-mix(in srgb, var(--s-moss) 12%, transparent);
   color: var(--s-moss);
-}
-
-.badge-danger {
-  background: color-mix(in srgb, var(--s-seal) 8%, transparent);
-  color: var(--s-seal);
+  border-color: color-mix(in srgb, var(--s-moss) 35%, transparent);
 }
 
 .badge-warning,
 .badge-warn {
-  background: color-mix(in srgb, var(--s-ink) 4%, var(--s-paper));
   color: var(--s-ink-2);
+  border-color: var(--s-line-soft);
 }
 
 .badge-neutral {
-  background: var(--s-paper-deep);
   color: var(--s-ink-3);
-}
-
-.badge-error {
-  background: color-mix(in srgb, var(--s-seal) 8%, transparent);
-  color: var(--s-seal);
-}
-
-.badge-idle {
-  background: var(--s-paper-deep);
-  color: var(--s-ink-3);
+  border-color: var(--s-line-soft);
 }
 
 /* ── Shared Utility: Tag badge (image tag / digest) ────────────────
@@ -930,7 +935,7 @@ body.chat-locked {
   flex-direction: column;
   background: var(--s-paper);
   color: var(--s-ink);
-  font-family: var(--s-font-display);
+  font-family: var(--s-font-header);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -976,7 +981,7 @@ body.chat-locked {
   gap: 10px;
 }
 
-.wiz-wordmark img { width: 30px; height: 30px; }
+.wiz-wordmark svg { display: block; flex-shrink: 0; color: var(--s-ink); }
 
 .wiz-wordmark b {
   font-size: 15px;
@@ -1066,7 +1071,7 @@ body.chat-locked {
 }
 
 .wiz-title {
-  font-family: var(--s-font-display);
+  font-family: var(--s-font-header);
   font-size: clamp(28px, 4vw, 38px);
   font-weight: 400;
   line-height: 1.1;

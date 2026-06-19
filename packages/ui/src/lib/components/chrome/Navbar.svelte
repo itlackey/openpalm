@@ -9,6 +9,8 @@
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
+  import IconChat from '$lib/components/icons/IconChat.svelte';
+  import IconLogo from '$lib/components/icons/IconLogo.svelte';
 
   // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
   // usable everywhere:
@@ -49,7 +51,7 @@
     <!-- Brand -->
     <a class="navbar-brand" href={preferredChatHref} aria-label="OpenPalm — go to chat">
       <span class="brand-icon" aria-hidden="true">
-        <img src="/logo-128.png" alt="" />
+        <IconLogo size={28} />
       </span>
       <span class="brand-text">OpenPalm</span>
     </a>
@@ -78,9 +80,7 @@
 </header>
 
 {#snippet chatIcon()}
-  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
+  <IconChat size={18} />
 {/snippet}
 
 <style>
@@ -121,9 +121,9 @@
     width: 28px;
     height: 28px;
     flex-shrink: 0;
+    color: var(--s-ink);
   }
-  .brand-icon img {
-    max-width: 28px;
+  .brand-icon :global(svg) {
     display: block;
   }
   .brand-text {

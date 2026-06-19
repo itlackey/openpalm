@@ -39,6 +39,7 @@
   {#if endpointsService.error}
     <p class="list-error" role="alert">{endpointsService.error}</p>
   {/if}
+  <div class="s-ep-section-label">assistant</div>
   <div class="group" role="group" aria-label="Assistant endpoints">
     {#each endpoints as ep (ep.id)}
       <button
@@ -171,5 +172,15 @@
   .list-item.link:focus-visible {
     color: var(--s-ink-2);
     text-decoration: none;
+  }
+
+  .s-ep-section-label {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    margin-bottom: 0.7rem;
+    padding: var(--s-sp-2) var(--s-sp-3) 0;
   }
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
 	import type { ImproveProfile } from './profile-types';
+	import IconFlame from '$lib/components/icons/IconFlame.svelte';
 
 	// Presentation-only list of memory-maintenance (improve) profiles. Parent owns
 	// array + default-name via $bindable; this raises edit/add/remove. Each row
@@ -29,9 +30,7 @@
 
 	{#if profiles.length === 0}
 		<div class="profile-empty">
-			<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M12 3c-1 2-2 3-3 4 1 3 3 5 3 8a6 6 0 0 1-6-6c0-3 2-5 3-6"/><path d="M17.5 3.5c.5 1.5.5 3-.5 4.5 1 1 2 2.5 2 4a4 4 0 0 1-4-4c0-2 1-3.5 2.5-4.5z"/>
-			</svg>
+			<IconFlame size={24} />
 			<p class="empty-note">No improve profiles defined — add one below.</p>
 		</div>
 	{:else}
@@ -81,7 +80,7 @@
 	.section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
 	.empty-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
 	.profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-sp-2); margin-bottom: var(--s-sp-2); color: var(--s-ink-3); }
-	.profile-empty svg { opacity: 0.35; }
+	.profile-empty :global(.s-icon) { opacity: 0.35; }
 	.profile-list { display: flex; flex-direction: column; gap: 0; }
 	.profile-row-desc {
 		font-family: var(--s-font-mono);

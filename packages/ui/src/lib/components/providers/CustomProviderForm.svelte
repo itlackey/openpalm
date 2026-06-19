@@ -152,4 +152,19 @@
 		font-size: var(--s-type-mark);
 		color: var(--s-ink-3);
 	}
+
+	:global(.form-field .form-input) {
+		height: auto;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
+		background: none;
+		font-family: var(--s-font-mono);
+		padding: 0.4em 0.6em;
+		font-size: var(--s-type-deed);
+	}
+
+	:global(.form-field .form-input:focus) {
+		border-color: var(--s-seal);
+		box-shadow: none;
+	}
 </style>

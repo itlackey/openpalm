@@ -192,14 +192,14 @@
 </script>
 
 <div class="panel" role="tabpanel">
-  <div class="panel-header">
+  <div class="ph">
     <div>
-      <h2>Routines</h2>
-      <p class="panel-subtitle">Scheduled tasks from knowledge/tasks/</p>
+      <h2 class="ph-title">Routines</h2>
+      <p class="ph-sub">Scheduled tasks from knowledge/tasks/</p>
     </div>
-    <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={openNewTask} disabled={drawerSaving || !tokenStored}>New task</button>
-      <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+    <div class="ph-actions">
+      <button class="btn btn-primary btn-outline btn-sm" onclick={openNewTask} disabled={drawerSaving || !tokenStored}>New task</button>
+      <button class="btn btn-primary btn-outline btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
         {#if loading}
           <Spinner />
         {/if}
@@ -351,10 +351,43 @@
 </Drawer>
 
 <style>
+  .ph {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--s-sp-4);
+    padding: var(--s-sp-6) clamp(1rem, 4vw, 2rem);
+  }
+
+  .ph-title {
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-voice);
+    font-weight: 400;
+    color: var(--s-ink);
+    margin: 0;
+  }
+
+  .ph-sub {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    margin: var(--s-sp-1) 0 0;
+  }
+
+  .ph-actions {
+    display: flex;
+    gap: var(--s-sp-2);
+    align-items: center;
+    flex-shrink: 0;
+  }
+
   .automation-list {
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-3);
+    padding: 0 clamp(1rem, 4vw, 2rem) var(--s-sp-5);
   }
 
   .automation-card {
@@ -369,7 +402,7 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--s-sp-4);
-    padding: var(--s-sp-4);
+    padding: var(--s-sp-4) var(--s-sp-5);
   }
 
   .automation-main {
@@ -388,9 +421,11 @@
   }
 
   .automation-desc {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
     margin-top: var(--s-sp-1);
   }
 
@@ -415,16 +450,27 @@
     text-align: right;
   }
 
-  .badge-type {
-    background: none;
-    color: var(--s-ink-3);
-    border: var(--s-hair) solid var(--s-ink-3);
+  .badge {
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    font-size: var(--s-type-mark-sm);
     letter-spacing: var(--s-track-label);
     text-transform: uppercase;
     padding: 0.1em 0.5em;
     border-radius: 2px;
+    border: var(--s-hair) solid currentColor;
+    background: none;
+  }
+
+  .badge.badge-enabled {
+    color: var(--s-moss);
+  }
+
+  .badge.badge-disabled {
+    color: var(--s-ink-3);
+  }
+
+  .badge-type {
+    color: var(--s-ink-3);
   }
 
   .automation-footer {
@@ -432,7 +478,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--s-sp-3);
-    padding: var(--s-sp-2) var(--s-sp-4);
+    padding: var(--s-sp-2) var(--s-sp-5);
     border-top: var(--s-hair) solid var(--s-line-soft);
     background: var(--s-paper-deep);
   }
@@ -449,6 +495,10 @@
     font-size: var(--s-type-mark-sm);
     color: var(--s-ink-3);
     letter-spacing: var(--s-track-label);
+  }
+
+  :global(.panel-body) {
+    padding: 0 clamp(1rem, 4vw, 2rem) var(--s-sp-5);
   }
 
   .empty-state-hint {

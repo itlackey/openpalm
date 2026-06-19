@@ -16,7 +16,7 @@
   stroke-width="2"
   stroke-linecap="round"
   stroke-linejoin="round"
-  class={className}
+  class="s-icon {className}"
 >
   <path d="M12 5v14" />
   <path d="M5 12h14" />

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import IconClose from '$lib/components/icons/IconClose.svelte';
 
   // Reusable slide-in drawer (right edge). The app-wide replacement for inline
   // expand-in-place forms: edit flows open here instead of pushing page content
@@ -88,9 +89,7 @@
       {#if headerStart}{@render headerStart()}{/if}
       <h3 class="drawer-title">{title}</h3>
       <button class="drawer-close" onclick={onClose} aria-label="Close">
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-        </svg>
+        <IconClose size={18} />
       </button>
     </header>
 

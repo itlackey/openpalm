@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ContainerListResponse } from '$lib/types.js';
+  import IconServer from '$lib/components/icons/IconServer.svelte';
 
   interface Props {
     loading: boolean;
@@ -13,10 +14,7 @@
 </script>
 
 <div class="empty-state">
-  <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-    <line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" />
-  </svg>
+  <IconServer size={40} />
   {#if loading}
     <p>Loading container status...</p>
   {:else if error}

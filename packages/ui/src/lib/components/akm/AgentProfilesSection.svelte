@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
 	import type { AgentProfile } from './profile-types';
+	import IconAgent from '$lib/components/icons/IconAgent.svelte';
 
 	// Presentation-only list of agent-runner profiles. Parent owns array +
 	// default-name via $bindable; this raises edit/add/remove. Each row gets a
@@ -29,10 +30,7 @@
 
 	{#if profiles.length === 0}
 		<div class="profile-empty">
-			<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-				<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/>
-				<circle cx="12" cy="10" r="2"/><path d="M9 10H7m10 0h-2"/>
-			</svg>
+			<IconAgent size={24} />
 			<p class="empty-note">No agent profiles defined.</p>
 		</div>
 	{:else}
@@ -80,7 +78,7 @@
 	.section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
 	.empty-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
 	.profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-sp-2); margin-bottom: var(--s-sp-2); color: var(--s-ink-3); }
-	.profile-empty svg { opacity: 0.35; }
+	.profile-empty :global(.s-icon) { opacity: 0.35; }
 	.profile-list { display: flex; flex-direction: column; gap: 0; }
 	.badge {
 		font-family: var(--s-font-mono);

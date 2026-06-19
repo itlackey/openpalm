@@ -1,4 +1,20 @@
 <script lang="ts">
+	import type { Component } from 'svelte';
+	import IconOverview from '$lib/components/icons/IconOverview.svelte';
+	import IconServer from '$lib/components/icons/IconServer.svelte';
+	import IconJournal from '$lib/components/icons/IconJournal.svelte';
+	import IconLink from '$lib/components/icons/IconLink.svelte';
+	import IconMemory from '$lib/components/icons/IconMemory.svelte';
+	import IconAgent from '$lib/components/icons/IconAgent.svelte';
+	import IconSharing from '$lib/components/icons/IconSharing.svelte';
+	import IconActivity from '$lib/components/icons/IconActivity.svelte';
+	import IconMic from '$lib/components/icons/IconMic.svelte';
+	import IconAddons from '$lib/components/icons/IconAddons.svelte';
+	import IconAutomations from '$lib/components/icons/IconAutomations.svelte';
+	import IconLock from '$lib/components/icons/IconLock.svelte';
+	import IconCloudDownload from '$lib/components/icons/IconCloudDownload.svelte';
+	import IconHome from '$lib/components/icons/IconHome.svelte';
+
 	export type TabId =
 		| 'overview'
 		| 'addons'
@@ -20,7 +36,7 @@
 	interface SubTab {
 		id: TabId;
 		label: string;
-		icon: string; // SVG path data (inner content)
+		icon: Component;
 	}
 
 	interface Section {
@@ -36,24 +52,6 @@
 
 	let { active, onSelect }: Props = $props();
 
-	// Icon SVG inner-markup keyed by tab id. Exact SVGs from the original flat strip.
-	const ICONS: Record<TabId, string> = {
-		overview: `<rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />`,
-		containers: `<rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" />`,
-		logs: `<polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />`,
-		connections: `<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />`,
-		akm: `<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />`,
-		assistant: `<path d="M12 2a4 4 0 0 1 4 4v2h1a3 3 0 0 1 3 3v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-6a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z" /><path d="M9 8h6" /><circle cx="9" cy="14" r="1" /><circle cx="15" cy="14" r="1" /><path d="M9 18c1 .8 2 .8 3 .8s2 0 3-.8" />`,
-		'host-sharing': `<circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />`,
-		activity: `<path d="M3 12h4l2-5 4 10 2-5h6" />`,
-		voice: `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />`,
-		addons: `<path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />`,
-		automations: `<circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />`,
-		secrets: `<rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />`,
-		updates: `<polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />`,
-		recovery: `<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />`,
-	};
-
 	// Entity-framed sections (configuring the assistant + its host). Section names
 	// carry the metaphor; sub-tab nouns are mostly the entity vocabulary too.
 	const SECTIONS: Section[] = [
@@ -61,42 +59,42 @@
 			id: 'health',
 			label: 'Health',
 			tabs: [
-				{ id: 'overview', label: 'Overview', icon: ICONS.overview },
-				{ id: 'activity', label: 'Activity', icon: ICONS.activity },
-				{ id: 'containers', label: 'Systems', icon: ICONS.containers },
-				{ id: 'logs', label: 'Journal', icon: ICONS.logs },
-				{ id: 'updates', label: 'Check-up', icon: ICONS.updates },
-				{ id: 'recovery', label: 'Recovery', icon: ICONS.recovery },
+				{ id: 'overview', label: 'Overview', icon: IconOverview },
+				{ id: 'activity', label: 'Activity', icon: IconActivity },
+				{ id: 'containers', label: 'Systems', icon: IconServer },
+				{ id: 'logs', label: 'Journal', icon: IconJournal },
+				{ id: 'updates', label: 'Check-up', icon: IconCloudDownload },
+				{ id: 'recovery', label: 'Recovery', icon: IconHome },
 			],
 		},
 		{
 			id: 'mind',
 			label: 'Mind',
-			tabs: [{ id: 'connections', label: 'AI Providers', icon: ICONS.connections }],
+			tabs: [{ id: 'connections', label: 'AI Providers', icon: IconLink }],
 		},
 		{
 			id: 'voice',
 			label: 'Voice',
-			tabs: [{ id: 'voice', label: 'Voice', icon: ICONS.voice }],
+			tabs: [{ id: 'voice', label: 'Voice', icon: IconMic }],
 		},
 		{
 			id: 'routines',
 			label: 'Routines',
-			tabs: [{ id: 'automations', label: 'Automations', icon: ICONS.automations }],
+			tabs: [{ id: 'automations', label: 'Automations', icon: IconAutomations }],
 		},
 		{
 			id: 'capabilities',
 			label: 'Capabilities',
-			tabs: [{ id: 'addons', label: 'Add-ons', icon: ICONS.addons }],
+			tabs: [{ id: 'addons', label: 'Add-ons', icon: IconAddons }],
 		},
 		{
 			id: 'knowledge',
 			label: 'Knowledge',
 			tabs: [
-				{ id: 'akm', label: 'Memory', icon: ICONS.akm },
-				{ id: 'assistant', label: 'Assistant', icon: ICONS.assistant },
-				{ id: 'secrets', label: 'Secrets', icon: ICONS.secrets },
-				{ id: 'host-sharing', label: 'Sharing', icon: ICONS['host-sharing'] },
+				{ id: 'akm', label: 'Memory', icon: IconMemory },
+				{ id: 'assistant', label: 'Assistant', icon: IconAgent },
+				{ id: 'secrets', label: 'Secrets', icon: IconLock },
+				{ id: 'host-sharing', label: 'Sharing', icon: IconSharing },
 			],
 		},
 	];
@@ -175,20 +173,7 @@
 					onclick={() => onSelect(tab.id)}
 					onkeydown={handleSubtabKeydown}
 				>
-					<svg
-						aria-hidden="true"
-						width="15"
-						height="15"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-						{@html tab.icon}
-					</svg>
+					<tab.icon size={13} />
 					{tab.label}
 				</button>
 			{/each}
@@ -265,6 +250,7 @@
 	.section-tab-active {
 		color: var(--s-ink-2);
 		background: var(--s-paper-deep);
+		border-radius: 2px 2px 0 0;
 		border-bottom-color: var(--s-seal);
 	}
 

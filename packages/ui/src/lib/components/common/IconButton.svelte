@@ -117,7 +117,7 @@
   }
 
   .icon-btn:focus-visible {
-    outline: 2px solid var(--s-ink-2);
+    outline: var(--s-hair) solid var(--s-seal);
     outline-offset: 2px;
   }
 

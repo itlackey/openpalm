@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import IconLogo from '$lib/components/icons/IconLogo.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -123,7 +124,7 @@
 <div class="setup-page">
   <header class="wiz-topbar">
     <div class="wiz-wordmark">
-      <img src="/logo-128.png" alt="" />
+      <IconLogo size={30} />
       <b>OpenPalm</b>
     </div>
   </header>

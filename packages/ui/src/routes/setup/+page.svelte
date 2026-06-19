@@ -17,6 +17,7 @@
   import Screen2ExtrasStep from './steps/Screen2ExtrasStep.svelte';
   import ReviewStep from './steps/ReviewStep.svelte';
   import DeployStep from './steps/DeployStep.svelte';
+  import IconLogo from '$lib/components/icons/IconLogo.svelte';
 
   interface OAuthAuthorizeResponse {
     url?: string;
@@ -1695,7 +1696,7 @@
     <!-- Topbar -->
     <header class="wiz-topbar">
       <div class="wiz-wordmark">
-        <img src="/logo-128.png" alt="OpenPalm" />
+        <IconLogo size={30} />
         <b>OpenPalm</b><span>setup</span>
       </div>
       <nav class="wiz-ticker" aria-label="Setup steps">

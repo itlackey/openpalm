@@ -13,11 +13,12 @@
   viewBox="0 0 24 24"
   fill="none"
   stroke="currentColor"
-  stroke-width="2"
+  stroke-width="1.5"
   stroke-linecap="round"
   stroke-linejoin="round"
-  class={className}
+  class="s-icon {className}"
 >
-  <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" />
-  <path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" />
+  <path d="M4 7h16" opacity="0.9" />
+  <path d="M4 12h11" opacity="0.65" />
+  <path d="M4 17h7.5" opacity="0.5" />
 </svg>
