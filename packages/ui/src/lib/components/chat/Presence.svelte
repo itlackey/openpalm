@@ -159,7 +159,11 @@
     50% { transform: scale(1.04); }
   }
 
-  /* Pointer over — sway animation on the SVG, ink tinted toward seal */
+  /* Pointer over — pause breath, sway the SVG, tint ink toward seal */
+  .s-presence--mic:hover {
+    animation: none;
+  }
+
   .s-presence--mic:hover .s-enso {
     animation: s-over-sway 3.2s var(--s-ease) infinite;
     transform-box: fill-box;
@@ -171,9 +175,12 @@
     transition: stroke 0.3s var(--s-ease);
   }
 
+  /* Start and end at neutral so the animation eases in without a jump */
   @keyframes s-over-sway {
-    0%, 100% { transform: rotate(-2.6deg) scale(1.05); }
-    50%       { transform: rotate(2.6deg)  scale(1.05); }
+    0%        { transform: rotate(0deg)    scale(1); }
+    25%       { transform: rotate(-2.6deg) scale(1.05); }
+    75%       { transform: rotate(2.6deg)  scale(1.05); }
+    100%      { transform: rotate(0deg)    scale(1); }
   }
 
   /* Processing — seal comet orbits the ring; dry stroke recedes toward paper */
