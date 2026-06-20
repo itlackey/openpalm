@@ -19,7 +19,9 @@ name: Release
 # Docker images: openpalm/assistant:vX.Y.Z, openpalm/portal:vX.Y.Z, openpalm/guardian:vX.Y.Z
 #
 # npm OIDC: all npm publishes go through publish-npm-package.yml (single top-level caller).
-# Docker-only units (portals/assistant/guardian) skip npm jobs entirely.
+# Docker-only units (portals/assistant) skip npm jobs entirely.
+# unit=guardian publishes @openpalm/guardian + @openpalm/skeleton (thin-host needs both at runtime).
+# unit=platform also builds the guardian Docker image (thin-host must match platform version).
 #
 # TAG-LAST: the git tag + GitHub release are created LAST ("tag exists = fully published").
 # Always run with dry_run=true first to validate the plan without committing.
@@ -123,7 +125,7 @@ jobs:
 
             // Only npm-published units need a regression guard
             if (!['platform', 'major'].includes(unit)) {
-              console.log('Docker-only unit — skipping npm regression guard.');
+              console.log('Non-platform unit — skipping npm regression guard.');
               process.exit(0);
             }
 
@@ -297,11 +299,16 @@ jobs:
           echo "::error::Failed to push after 5 attempts"
           exit 1
 
-  # ── npm layer: skeleton → lib → (cli + ui + guardian) (platform + major only) ───
+  # ── npm layer ─────────────────────────────────────────────────────────────────
+  # skeleton + guardian: published for unit=guardian (thin-host needs both at runtime)
+  #                      and unit=platform + unit=major (full coordinated release)
+  # lib + cli + ui:      platform + major only (guardian npm pkg has no lib dep)
+  # NOTE: guardian and skeleton are published independently of lib to avoid
+  # blocking the platform regression guard. lib is platform-managed.
   npm-skeleton:
     name: npm @openpalm/skeleton
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'major')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -328,8 +335,8 @@ jobs:
 
   npm-guardian:
     name: npm @openpalm/guardian
-    needs: [compute-version, bump, npm-lib]
-    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    needs: [compute-version, bump, npm-skeleton]
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'major')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -420,7 +427,7 @@ jobs:
   docker-guardian:
     name: Docker openpalm/guardian
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'guardian' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'guardian' || inputs.unit == 'platform' || inputs.unit == 'major')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -465,7 +472,7 @@ jobs:
   docker-assistant:
     name: Docker openpalm/assistant
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'platform' || inputs.unit == 'major')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

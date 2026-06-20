@@ -964,6 +964,54 @@ function purgeStaleEnabledAddons(ctx: MigrationCtx): void {
   ctx.log(`set OP_ENABLED_ADDONS=${cleaned.join(',')}`);
 }
 
+/**
+ * Patch portals.compose.yml in-place to add the OP_GUARDIAN_VERSION and
+ * PLATFORM_VERSION env vars to the guardian service. The thin-host entrypoint
+ * (v0.12.14+) needs these to resolve the correct npm package versions on boot.
+ * Both values are derived from OP_GUARDIAN_IMAGE_TAG / OP_IMAGE_TAG — vars
+ * already written to stack.env by the lifecycle. No-op when already present.
+ */
+function patchPortalsComposeForThinHost(ctx: MigrationCtx): void {
+  const path = join(ctx.stackDir, 'portals.compose.yml');
+  if (!existsSync(path)) return;
+
+  const content = readFileSync(path, 'utf-8');
+  if (content.includes('OP_GUARDIAN_VERSION:')) return; // already patched
+
+  // Insert after the OP_ASSISTANT_URL line in the guardian service's environment
+  // block. This line is stable across versions and uniquely identifies the right
+  // insertion point in the guardian service (not the discord/slack services).
+  const ANCHOR = '      OP_ASSISTANT_URL: http://assistant:4096';
+  if (!content.includes(ANCHOR)) {
+    ctx.log('WARN: portals.compose.yml does not contain expected anchor line; skipping thin-host env patch — apply manually');
+    ctx.notes.push(
+      'portals.compose.yml could not be auto-patched for the guardian thin-host. ' +
+      'Add OP_GUARDIAN_VERSION and PLATFORM_VERSION to the guardian service environment manually ' +
+      '(see packages/skeleton/config/stack/portals.compose.yml for the reference values).',
+    );
+    return;
+  }
+
+  const INSERTION = [
+    '      # Thin-host entrypoint uses these to install @openpalm/guardian and',
+    '      # @openpalm/skeleton at the correct versions on first boot.',
+    '      # OP_GUARDIAN_IMAGE_TAG (e.g. v0.12.9) may differ from OP_IMAGE_TAG when',
+    '      # guardian is released independently of the platform.',
+    '      OP_GUARDIAN_VERSION: ${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-}}',
+    '      PLATFORM_VERSION: ${OP_IMAGE_TAG:-}',
+  ].join('\n');
+
+  const patched = content.replace(ANCHOR, `${ANCHOR}\n${INSERTION}`);
+
+  if (ctx.dryRun) {
+    ctx.log('[dry-run] would patch portals.compose.yml with OP_GUARDIAN_VERSION + PLATFORM_VERSION');
+    return;
+  }
+
+  writeFileSync(path, patched);
+  ctx.log('patched portals.compose.yml: added OP_GUARDIAN_VERSION and PLATFORM_VERSION to guardian service env');
+}
+
 const RELEASE_MIGRATIONS: ReleaseMigration[] = [
   {
     // Pinned to the release that INTRODUCED per-image tags, not the lib
@@ -1043,6 +1091,28 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
         if (!KNOWN_ADDON_IDS.has(id)) {
           throw new Error(`post-migration check failed: stale addon ID '${id}' still in OP_ENABLED_ADDONS`);
         }
+      }
+    },
+  },
+  {
+    // Pinned to v0.12.14: the guardian thin-host entrypoint (introduced in
+    // 0.12.14) needs OP_GUARDIAN_VERSION and PLATFORM_VERSION in the container
+    // environment to resolve which @openpalm/guardian and @openpalm/skeleton
+    // packages to install at boot. These are derived from the already-present
+    // OP_GUARDIAN_IMAGE_TAG and OP_IMAGE_TAG vars (written by the lifecycle to
+    // stack.env). portals.compose.yml is a system-managed file (users customise
+    // via custom.compose.yml), so a targeted in-place patch is safe.
+    // Idempotent: no-op when the vars are already present.
+    version: 'v0.12.14-rc.1',
+    describe: 'patch portals.compose.yml — add OP_GUARDIAN_VERSION + PLATFORM_VERSION to guardian service env',
+    apply: patchPortalsComposeForThinHost,
+    verify(ctx) {
+      if (ctx.dryRun) return;
+      const path = join(ctx.stackDir, 'portals.compose.yml');
+      if (!existsSync(path)) return;
+      const content = readFileSync(path, 'utf-8');
+      if (!content.includes('OP_GUARDIAN_VERSION:')) {
+        throw new Error('post-migration check failed: OP_GUARDIAN_VERSION still missing from portals.compose.yml');
       }
     },
   },

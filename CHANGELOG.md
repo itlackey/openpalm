@@ -5,6 +5,29 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`@openpalm/guardian` is now importable as a library** (in addition to being
+  a runnable thin host). It exposes composition seams so downstream
+  distributions can extend the guardian without forking `server.ts`:
+  - `createGuardian()` / `startGuardian()` — the composition root. Importing the
+    package no longer binds any listener; `server.ts` only boots when run as the
+    entrypoint (`import.meta.main`), so `bun run src/server.ts` is unchanged.
+  - `registerTransport()` — register an additive route on the direct listener
+    (alongside the built-in `/oc` and `/mcp`), gated by an optional env var.
+  - `setAuthStrategy()` / `AuthStrategy` — replace the built-in HTTP Basic /
+    principal-token authenticator (e.g. with SSO/OIDC). The default
+    `basicTokenAuthStrategy` is unchanged.
+  - `setPolicyProvider()` / `PolicyProvider` — a port for richer authorization
+    (per-tenant data scope, RBAC, routing). The public default allows all;
+    ownership and rate limits still apply.
+  - The package now declares `exports`, `main`/`types`, a `bin`
+    (`openpalm-guardian`), and a `files` allowlist that excludes test files.
+- The audit writer is created lazily on first write, so importing the guardian
+  library has no filesystem side effects.
+
 ## [0.12.10] - 2026-06-17
 
 ### Fixed
