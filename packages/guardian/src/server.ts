@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { createLogger } from './logger.ts';
 
 import { handleAdminRequest } from './admin';
@@ -18,6 +19,7 @@ import { handleProxy, OC_PREFIX } from './proxy';
 import { allow, activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
 import { runDriftCheckWithRetry, startProxyRecovery, isProxyEnabled } from './drift';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
+import { matchTransport, registerTransport, type Transport } from './transport';
 
 const logger = createLogger('guardian');
 
@@ -128,6 +130,12 @@ async function handleDirectRequest(req: Request): Promise<Response> {
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
     return handleOcRequest(req, requestId, 'direct');
   }
+  const transport = matchTransport(url, req);
+  if (transport) {
+    const response = await transport.handle(req, requestId);
+    countRequest(`${transport.name}:${response.status}`);
+    return response;
+  }
   return json(404, { error: 'not_found', requestId });
 }
 
@@ -139,33 +147,70 @@ async function handleAdminListenerRequest(req: Request): Promise<Response> {
   return json(404, { error: 'not_found', requestId });
 }
 
-initializePrincipalStore();
-seedPortalPrincipalsFromEnv();
-if (MCP_ENABLED) seedMcpPrincipalFromToken();
+/** A running guardian: its three Bun listeners plus a combined stop(). */
+export interface GuardianServers {
+  internal: ReturnType<typeof Bun.serve>;
+  direct: ReturnType<typeof Bun.serve>;
+  admin: ReturnType<typeof Bun.serve>;
+  stop(): void;
+}
 
-void runDriftCheckWithRetry()
-  .then((enabled) => {
-    if (!enabled) startProxyRecovery();
-  })
-  .catch((err) => {
-    logger.error('drift_check_error', { error: String(err) });
-    startProxyRecovery();
+export interface StartGuardianOptions {
+  /** Additive direct-listener transports to register before binding. */
+  transports?: Transport[];
+}
+
+/**
+ * Composition root: seed the principal store, start drift recovery, and bind the
+ * internal (8080), direct (3830) and admin (3831) listeners. Running
+ * `bun run src/server.ts` calls this automatically (see the `import.meta.main`
+ * guard below). Downstream distributions import and call it after registering
+ * their transports / auth strategy / policy provider.
+ */
+export function startGuardian(options: StartGuardianOptions = {}): GuardianServers {
+  for (const transport of options.transports ?? []) registerTransport(transport);
+
+  initializePrincipalStore();
+  seedPortalPrincipalsFromEnv();
+  if (MCP_ENABLED) seedMcpPrincipalFromToken();
+
+  void runDriftCheckWithRetry()
+    .then((enabled) => {
+      if (!enabled) startProxyRecovery();
+    })
+    .catch((err) => {
+      logger.error('drift_check_error', { error: String(err) });
+      startProxyRecovery();
+    });
+
+  const internal = Bun.serve({ port: INTERNAL_PORT, idleTimeout: 0, fetch: handleInternalRequest });
+  const direct = Bun.serve({ port: DIRECT_PORT, idleTimeout: 0, fetch: handleDirectRequest });
+  const admin = Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });
+
+  audit({
+    requestId: crypto.randomUUID(),
+    action: 'guardian_boot',
+    status: 'ok',
   });
 
-Bun.serve({ port: INTERNAL_PORT, idleTimeout: 0, fetch: handleInternalRequest });
-Bun.serve({ port: DIRECT_PORT, idleTimeout: 0, fetch: handleDirectRequest });
-Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });
+  logger.info('started', {
+    internalPort: INTERNAL_PORT,
+    directPort: DIRECT_PORT,
+    adminPort: ADMIN_PORT,
+    directIngressEnabled: DIRECT_INGRESS_ENABLED,
+    seededPrincipals: listPrincipals().length,
+  });
 
-audit({
-  requestId: crypto.randomUUID(),
-  action: 'guardian_boot',
-  status: 'ok',
-});
+  return {
+    internal,
+    direct,
+    admin,
+    stop() {
+      internal.stop();
+      direct.stop();
+      admin.stop();
+    },
+  };
+}
 
-logger.info('started', {
-  internalPort: INTERNAL_PORT,
-  directPort: DIRECT_PORT,
-  adminPort: ADMIN_PORT,
-  directIngressEnabled: DIRECT_INGRESS_ENABLED,
-  seededPrincipals: listPrincipals().length,
-});
+if (import.meta.main) startGuardian();
