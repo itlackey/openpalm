@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/guardian",
   "description": "Basic-auth message gateway with ownership, moderation, and rate limiting — importable as a library to compose custom auth, authorization, and transports",
-  "version": "0.12.10",
+  "version": "0.12.11",
   "private": false,
   "license": "MPL-2.0",
   "type": "module",
