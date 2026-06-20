@@ -242,7 +242,8 @@ jobs:
             # Stamp the same files bump-unit.mjs would for this unit
             case "${UNIT}" in
               platform)
-                for f in package.json packages/lib/package.json packages/cli/package.json \
+                for f in package.json packages/lib/package.json packages/skeleton/package.json \
+                          packages/guardian/package.json packages/cli/package.json \
                           packages/ui/package.json packages/electron/package.json \
                           packages/electron/admin-tools/package.json; do
                   node scripts/set-version.mjs "$f" "$V"
@@ -253,7 +254,7 @@ jobs:
                 node scripts/set-version.mjs portals/slack/package.json "$V"
                 ;;
               guardian)
-                node scripts/set-version.mjs containers/guardian/package.json "$V"
+                node scripts/set-version.mjs packages/guardian/package.json "$V"
                 ;;
               *)
                 echo "::error::version override not supported for unit=${UNIT}"; exit 1
@@ -296,16 +297,44 @@ jobs:
           echo "::error::Failed to push after 5 attempts"
           exit 1
 
-  # ── npm layer: lib → cli → ui (platform + major only) ────────────────────────
-  npm-lib:
-    name: npm @openpalm/lib
+  # ── npm layer: skeleton → lib → (cli + ui + guardian) (platform + major only) ───
+  npm-skeleton:
+    name: npm @openpalm/skeleton
     needs: [compute-version, bump]
     if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
+      package-dir: packages/skeleton
+      package-name: '@openpalm/skeleton'
+      version: ${{ needs.compute-version.outputs.new_version }}
+      ref: ${{ github.ref_name }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-lib:
+    name: npm @openpalm/lib
+    needs: [compute-version, bump, npm-skeleton]
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
       package-dir: packages/lib
       package-name: '@openpalm/lib'
+      version: ${{ needs.compute-version.outputs.new_version }}
+      ref: ${{ github.ref_name }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-guardian:
+    name: npm @openpalm/guardian
+    needs: [compute-version, bump, npm-lib]
+    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/guardian
+      package-name: '@openpalm/guardian'
       version: ${{ needs.compute-version.outputs.new_version }}
       ref: ${{ github.ref_name }}
       exact-version: true
@@ -486,8 +515,8 @@ jobs:
   # ── CLI native binaries (platform + major) ────────────────────────────────────
   cli:
     name: CLI binary (${{ matrix.artifact }})
-    needs: [compute-version, bump, npm-lib, npm-cli, npm-ui]
-    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && needs.npm-ui.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && needs.npm-ui.result == 'success' && needs.npm-guardian.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -530,13 +559,15 @@ jobs:
   # ── Electron installer (platform/major: gated; major: always) ─────────────────
   electron:
     name: Electron (${{ matrix.platform }})
-    needs: [compute-version, bump, npm-lib, npm-cli, npm-ui]
+    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
     if: |
       always() &&
       needs.bump.result == 'success' &&
+      needs.npm-skeleton.result == 'success' &&
       needs.npm-lib.result == 'success' &&
       needs.npm-cli.result == 'success' &&
       needs.npm-ui.result == 'success' &&
+      needs.npm-guardian.result == 'success' &&
       (inputs.unit == 'major' || (inputs.unit == 'platform' && (inputs.include_electron == true || inputs.bump != 'patch')))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -587,7 +618,9 @@ jobs:
     needs:
       - compute-version
       - bump
+      - npm-skeleton
       - npm-lib
+      - npm-guardian
       - npm-cli
       - npm-ui
       - docker-portal

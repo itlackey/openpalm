@@ -18,7 +18,7 @@ extraResources:
     filter: "**/*"
   - from: admin-tools/dist/index.js
     to: admin-tools/index.js
-  - from: ../../.openpalm
+  - from: ../../packages/skeleton
     to: openpalm-skeleton
     filter: "**/*"
 

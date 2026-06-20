@@ -12,6 +12,7 @@
  * historical `.env.schema` files (varlock format) were retired in #391.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
@@ -21,8 +22,32 @@ import { sha256 } from "./crypto.js";
 const logger = createLogger("core-assets");
 const GITHUB_ASSET_TIMEOUT_MS = 10_000;
 
+const _require = createRequire(import.meta.url);
+
 function bundledAssetPath(relPath: string): string {
-  return join(dirname(fileURLToPath(import.meta.url)), '../../../../.openpalm', relPath);
+  // 1. @openpalm/skeleton installed as a package dep (CLI bundled, npm install)
+  try {
+    const pkgPath = _require.resolve('@openpalm/skeleton/package.json');
+    return join(dirname(pkgPath), relPath);
+  } catch { /* fall through */ }
+
+  // 2. OPENPALM_REPO_ROOT env var (explicit dev override or test preload)
+  const repoRoot = process.env.OPENPALM_REPO_ROOT;
+  if (repoRoot) return join(repoRoot, 'packages', 'skeleton', relPath);
+
+  // 3. Source-relative fallback — works when running from the repo tree
+  //    (bun run, bun test). This file lives at
+  //    packages/lib/src/control-plane/core-assets.ts; skeleton is four levels up.
+  try {
+    const meta = fileURLToPath(import.meta.url);
+    const candidate = join(dirname(meta), '..', '..', '..', '..', 'packages', 'skeleton', relPath);
+    // Only return this candidate if the skeleton package.json exists (sanity check)
+    if (existsSync(join(dirname(meta), '..', '..', '..', '..', 'packages', 'skeleton', 'package.json'))) {
+      return candidate;
+    }
+  } catch { /* fall through */ }
+
+  throw new Error('@openpalm/skeleton not found. Set OPENPALM_REPO_ROOT or install @openpalm/skeleton.');
 }
 
 // ── Core Compose (stack/) ─────────────────────────────────────────────

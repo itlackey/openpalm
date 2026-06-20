@@ -1,0 +1,11 @@
+{
+  "global": [
+    { "package": "opencode",                  "envKey": "OP_TOOL_OPENCODE_VERSION",    "default": "^1.17.0" },
+    { "package": "@anthropic-ai/claude-code", "envKey": "OP_TOOL_CLAUDE_CODE_VERSION", "default": "^1.5.0" },
+    { "package": "@openai/codex",             "envKey": "OP_TOOL_CODEX_VERSION",       "default": "^0.1.0" }
+  ],
+  "guardian": [
+    { "package": "opencode", "envKey": "OP_TOOL_OPENCODE_VERSION", "default": "^1.17.0" },
+    { "package": "akm-cli",  "envKey": "OP_TOOL_AKM_VERSION",      "default": "^0.8.14" }
+  ]
+}

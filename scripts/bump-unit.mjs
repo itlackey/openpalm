@@ -82,7 +82,9 @@ const UNITS = {
     stamp(version) {
       stampJsonFiles([
         'package.json',
+        'packages/skeleton/package.json',
         'packages/lib/package.json',
+        'packages/guardian/package.json',
         'packages/cli/package.json',
         'packages/ui/package.json',
         'packages/electron/package.json',
@@ -107,9 +109,9 @@ const UNITS = {
     },
   },
   guardian: {
-    anchorFn: () => readJsonVersion('containers/guardian/package.json'),
+    anchorFn: () => readJsonVersion('packages/guardian/package.json'),
     stamp(version) {
-      stampJsonFiles(['containers/guardian/package.json'], version);
+      stampJsonFiles(['packages/guardian/package.json'], version);
     },
   },
 };

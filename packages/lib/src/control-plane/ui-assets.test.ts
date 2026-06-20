@@ -152,17 +152,17 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
   const stamp = () => join(opHome, SKELETON_VERSION_STAMP);
 
   beforeEach(() => {
-    // Local skeleton source at OPENPALM_REPO_ROOT/.openpalm (candidate 1).
-    mkdirSync(join(repoRoot, ".openpalm", "config", "stack"), { recursive: true });
-    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "x.txt"), "seed\n");
+    // Local skeleton source at OPENPALM_REPO_ROOT/packages/skeleton (candidate 1).
+    mkdirSync(join(repoRoot, "packages", "skeleton", "config", "stack"), { recursive: true });
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "x.txt"), "seed\n");
     // refreshCoreAssetsFromSource reads all MANAGED_ASSETS from the source; populate stubs.
-    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "core.compose.yml"), "services: {}\n");
-    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "services.compose.yml"), "services: {}\n");
-    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "portals.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "core.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "services.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "portals.compose.yml"), "services: {}\n");
     // SEEDED_ASSETS are also read from source when the target is absent.
-    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "custom.compose.yml"), "services: {}\n");
-    mkdirSync(join(repoRoot, ".openpalm", "config", "assistant"), { recursive: true });
-    writeFileSync(join(repoRoot, ".openpalm", "config", "assistant", "opencode.jsonc"), "{}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "custom.compose.yml"), "services: {}\n");
+    mkdirSync(join(repoRoot, "packages", "skeleton", "config", "assistant"), { recursive: true });
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "assistant", "opencode.jsonc"), "{}\n");
     mkdirSync(opHome, { recursive: true });
   });
 
@@ -192,7 +192,7 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     const custom = join(opHome, "config", "stack", "custom.compose.yml");
     // Skeleton ships the CURRENT managed compose. (custom.compose.yml is user-owned
     // and intentionally not part of the skeleton refresh.)
-    writeFileSync(join(repoRoot, ".openpalm", "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
 
     // First seed materializes everything + stamps the version.
     await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));

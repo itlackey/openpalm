@@ -1,0 +1,121 @@
+# OpenPalm — Core Services
+#
+# This file defines the core infrastructure. Optional first-party services are
+# defined in services.compose.yml and portals.compose.yml, then activated with
+# Compose profiles. User customizations live in custom.compose.yml.
+#
+# Docker Compose reads variable values via --env-file for stack config:
+#   knowledge/env/stack.env   — system config (ports, image tags), akm `env:stack`
+# Portal and bot secrets are mounted per service via Compose secrets in
+# addon overlays and exposed to containers as *_FILE variables.
+#
+# User-managed env config lives in the akm `env:user` file at
+# knowledge/env/user.env (akm-cli >= 0.8.0 layout). The assistant
+# entrypoint sources that file at startup (akm `env path env:user`).
+# OpenCode provider credentials live in knowledge/secrets/auth.json
+# (bind-mounted into the assistant + guardian).
+#
+# Directory model:
+#   ~/.openpalm/config/       — user-editable + system config (akm/)
+#   ~/.openpalm/config/stack/ — compose assembly only (core/services/portals/custom
+#                               compose files) — no secrets, no env
+#   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
+#   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents);
+#                               env:user, env:stack, and auth.json live here
+#   ~/.openpalm/workspace/    — shared work area
+
+services:
+  # ── Assistant (opencode runtime — NO docker socket) ────────────────
+  assistant:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      # OpenCode reads its operator-managed config from OP_HOME/config/assistant.
+      OPENCODE_CONFIG_DIR: /etc/opencode
+      OPENCODE_PORT: "4096"
+      # Auth is disabled because the assistant is only reachable via the
+      # internal assistant_net Docker network and the host port binding
+      # defaults to 127.0.0.1 (loopback-only). Guardian communicates with
+      # the assistant over assistant_net without credentials, and the
+      # scheduler now runs as a co-process inside this container so it
+      # reaches OpenCode via http://localhost:4096.
+      # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, the assistant is
+      # no longer loopback-only. Guardian-side upstream auth plumbing has been
+      # removed, so enabling assistant auth is not a supported hardening path.
+      OPENCODE_AUTH: "false"
+      OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
+      TERM: xterm-256color
+      HOME: /home/opencode
+      # akm-cli layout: user-managed config and stash are separate from
+      # operational cache/data, which live under OP_HOME/data.
+      AKM_STASH_DIR: /stash
+      AKM_CONFIG_DIR: /etc/akm
+      AKM_CACHE_DIR: /opt/akm/cache
+      AKM_DATA_DIR: /opt/akm/data
+      OP_UID: ${OP_UID:-1000}
+      OP_GID: ${OP_GID:-1000}
+      OPENCODE_API_URL: http://localhost:4096
+      # Provider credentials live in OpenCode's auth.json (bind-mounted
+      # below) — NOT in this env block. The Connections tab and the setup
+      # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks
+      # the key up via OpenCode at call time.
+    ports:
+      - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
+      # SSH remains loopback-bound. The port is always declared so enabling
+      # SSH only needs OPENCODE_ENABLE_SSH=1 in stack.env; sshd is not started
+      # when that flag is 0.
+      - "127.0.0.1:${OP_ASSISTANT_SSH_PORT:-2222}:22"
+    volumes:
+      - ${OP_HOME}/config/assistant:/etc/opencode
+      - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
+      - ${OP_HOME}/data/assistant:/home/opencode
+      # Primary stash + config are ALWAYS OpenPalm-managed.
+      - ${OP_HOME}/knowledge:/stash
+      - ${OP_HOME}/config/akm:/etc/akm
+      - ${OP_HOME}/data/akm/cache:/opt/akm/cache
+      - ${OP_HOME}/data/akm/data:/opt/akm/data
+      # Host AKM secondary stash. ALWAYS mounted: when the host has AKM,
+      # OP_HOST_AKM_STASH points at the user's personal stash (e.g. ~/akm) and
+      # "sharing" = a writable secondary source entry named host-akm in
+      # config/akm/config.json. When absent, OP_HOST_AKM_STASH is unset and this
+      # falls back to an always-present empty dir, so compose never errors and
+      # akm simply never walks it (it is not a configured source). The container
+      # NEVER chowns this mount (see entrypoint.sh).
+      - ${OP_HOST_AKM_STASH:-${OP_HOME}/data/akm/empty-host-stash}:/host-stash
+      - ${OP_HOME}/workspace:/work
+      # Escape hatch for prefix-style global installs that cannot cleanly live
+      # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
+      # tools that require an explicit non-home prefix.
+      - assistant-persistent:/opt/persistent
+    networks: [ assistant_net ]
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── mDNS service discovery ───────────────────────────────────────────
+  # mDNS is no longer published by avahi sidecars. OpenCode advertises its own
+  # `.local` name in-process via its native mDNS responder (server.mdns /
+  # server.mdnsDomain in the assistant + guardian opencode.jsonc files). See
+  # those config files and docs/technical/network-partitioning-d5a.md for the
+  # native approach and its limitations (LAN reachability requires the OpenCode
+  # process to bind a LAN-facing interface; the guardian moderator stays
+  # loopback-only by design and does NOT advertise).
+
+# Portal-style ingress services join portal_net to reach the guardian.
+networks:
+  portal_net:
+  assistant_net:
+  # DEPRECATED (renamed to portal_net in 0.12.0). Retained as an empty bridge for
+  # ONE release so existing custom.compose.yml overlays that still reference
+  # `channel_lan` keep validating on upgrade. No first-party service joins it.
+  # REMOVED in 0.13.0 — migrate custom overlays to `portal_net` before upgrading.
+  channel_lan:
+
+volumes:
+  assistant-persistent:

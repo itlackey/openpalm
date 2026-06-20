@@ -4,30 +4,36 @@
  * These functions are consumed by both the CLI and the Electron shell — they
  * must use only Node.js-compatible APIs (no Bun.spawn, Bun.write, etc.).
  *
- * Source resolution order (UI build and .openpalm/ skeleton):
- *   1. OPENPALM_REPO_ROOT env var — explicit dev override
- *   2. Relative to import.meta.url — works for `bun run` / source installs
- *   3. Relative to process.execPath — works for compiled Bun binary in repo
- *   4. null → remote download (the UI build from the @openpalm/ui npm registry
- *      tarball; the .openpalm skeleton from the GitHub repo tarball)
+ * Skeleton (packages/skeleton/) resolution order:
+ *   1. OPENPALM_REPO_ROOT env var → packages/skeleton/ (dev override)
+ *   2. OPENPALM_SKELETON_DIR env var → set by Electron from extraResources
+ *   3. require.resolve('@openpalm/skeleton/package.json') → npm/CLI dep
+ *   4. null → seedOpenPalmDir throws with an actionable error message
+ *
+ * UI build resolution order:
+ *   1. OPENPALM_REPO_ROOT env var → packages/ui/build/ (dev override)
+ *   2. Electron extraResources → ui-build/ alongside the asar
+ *   3. Relative to import.meta.url — works for `bun run` / source installs
+ *   4. Relative to process.execPath — works for compiled Bun binary in repo
+ *   5. null → remote download (from the @openpalm/ui npm registry tarball)
  */
 import {
   existsSync, mkdirSync, readdirSync, copyFileSync,
   writeFileSync, readFileSync, rmSync, realpathSync, renameSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
+
+const _require = createRequire(import.meta.url);
 import { resolveBackupsDir, resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
 import { compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
 import { refreshCoreAssetsFromSource } from './core-assets.js';
 
 const logger = createLogger('lib:ui-assets');
-
-const REPO_OWNER = 'itlackey';
-const REPO_NAME  = 'openpalm';
 
 // ── Private helpers ──────────────────────────────────────────────────────────
 
@@ -81,25 +87,38 @@ function resolveLocalCandidate(
 // ── .openpalm/ skeleton ──────────────────────────────────────────────────────
 
 /**
- * Locate the repo's .openpalm/ skeleton directory.
+ * Locate the skeleton directory (packages/skeleton/ or equivalent).
  * Used by seedOpenPalmDir to avoid a network download when running from source.
  */
 export function resolveLocalOpenpalmDir(): string | null {
   return resolveLocalCandidate(
-    // 1. Explicit dev override
+    // 1. Explicit dev override — OPENPALM_REPO_ROOT points to repo root,
+    //    skeleton is now at packages/skeleton/
     () => process.env.OPENPALM_REPO_ROOT
-      ? join(process.env.OPENPALM_REPO_ROOT, '.openpalm')
+      ? join(process.env.OPENPALM_REPO_ROOT, 'packages', 'skeleton')
       : null,
     // 2. Electron extraResources — openpalm-skeleton/ placed alongside the asar
+    //    (set by Electron main from process.resourcesPath/openpalm-skeleton)
     () => process.env.OPENPALM_SKELETON_DIR ?? null,
-    // 3. Relative to this source file (dev / bun run)
+    // 3. @openpalm/skeleton installed as a package dep (CLI bundled, npm install)
     () => {
-      const meta = fileURLToPath(import.meta.url);
-      if (meta.startsWith('/$bunfs/')) return null;
-      return join(dirname(meta), '..', '..', '..', '..', '.openpalm');
+      try {
+        return dirname(_require.resolve('@openpalm/skeleton/package.json'));
+      } catch { return null; }
     },
-    // 4. Relative to the compiled binary on disk
-    () => join(dirname(realpathSync(process.execPath)), '..', '..', '..', '.openpalm'),
+    // 4. Source-relative fallback — works when running from the repo tree
+    //    (bun run, bun test, ts-node). This file lives at
+    //    packages/lib/src/control-plane/ui-assets.ts; skeleton is four levels up
+    //    at packages/skeleton/.
+    () => {
+      try {
+        const meta = fileURLToPath(import.meta.url);
+        return join(dirname(meta), '..', '..', '..', '..', 'packages', 'skeleton');
+      } catch { return null; }
+    },
+    // 5. null — cold start without @openpalm/skeleton installed
+    //    (seedOpenPalmDir will throw a helpful error in this case)
+    () => null,
   );
 }
 
@@ -159,38 +178,13 @@ export async function seedOpenPalmDir(
     return;
   }
 
-  // No local skeleton (pure-binary install). If already seeded for this version
-  // there's nothing cheap to refresh from — skip the expensive tarball download.
-  // (The packaged Electron app ships the skeleton via OPENPALM_SKELETON_DIR, so
-  // it takes the local path above; this branch is the rare bare-binary case.)
-  if (alreadySeeded) {
-    logger.debug('skeleton already seeded and no local source to refresh from — skipping', { repoRef });
-    return;
-  }
-
-  const tarballUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/${repoRef}.tar.gz`;
-  logger.debug('downloading .openpalm skeleton', { url: tarballUrl });
-
-  const tmpDir = join(homeDir, '.seed-tmp');
-  const tmpTar = join(tmpDir, 'repo.tar.gz');
-  mkdirSync(tmpDir, { recursive: true });
-
-  try {
-    const res = await fetchWithRetry(tarballUrl);
-    if (!res.ok) throw new Error(`Failed to download tarball (HTTP ${res.status})`);
-    writeFileSync(tmpTar, new Uint8Array(await res.arrayBuffer()));
-
-    await tarExtract({ file: tmpTar, cwd: tmpDir, strip: 1 });
-
-    const srcOpenpalm = join(tmpDir, '.openpalm');
-    if (!existsSync(srcOpenpalm)) throw new Error('.openpalm/ not found in tarball');
-    // Refresh system-managed stack assets (overwrite), then seed the rest.
-    refreshCoreAssetsFromSource(srcOpenpalm, homeDir);
-    copyTree(srcOpenpalm, homeDir, { skipExisting: true });
-    stamp();
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
-  }
+  // No local skeleton found — this is a cold start without @openpalm/skeleton
+  // installed (and without OPENPALM_REPO_ROOT or OPENPALM_SKELETON_DIR set).
+  // Throw a helpful error so the caller can surface an actionable message.
+  throw new Error(
+    'Cannot locate @openpalm/skeleton. Set OPENPALM_REPO_ROOT (dev) or install @openpalm/skeleton: ' +
+    'npm install @openpalm/skeleton@' + (process.env.OP_SKELETON_VERSION ?? process.env.PLATFORM_VERSION ?? '<version>')
+  );
 }
 
 // ── UI build ─────────────────────────────────────────────────────────────────

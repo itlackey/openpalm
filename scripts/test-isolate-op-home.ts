@@ -60,6 +60,18 @@ function assertSafeOpHome(value: string | undefined, label: string): void {
   }
 }
 
+// ── Point @openpalm/skeleton at the repo for tests ─────────────────────────
+// bundledAssetPath() in core-assets.ts tries require.resolve('@openpalm/skeleton')
+// first, then falls back to OPENPALM_REPO_ROOT. The package is not published yet,
+// so we set the env var here (top-level, not inside beforeAll) so it is visible
+// before any test module is evaluated. Tests that manage OPENPALM_REPO_ROOT
+// themselves save/restore it in their own beforeEach/afterEach.
+
+const originalOpenpalmRepoRoot: string | undefined = process.env.OPENPALM_REPO_ROOT;
+if (!originalOpenpalmRepoRoot) {
+  process.env.OPENPALM_REPO_ROOT = REPO_ROOT;
+}
+
 // ── Suite-level temp dir ────────────────────────────────────────────────────
 
 let suiteTempDir: string | undefined;
@@ -83,6 +95,11 @@ afterAll(() => {
     process.env.OP_WORK_DIR = originalOpWorkDir;
   } else {
     delete process.env.OP_WORK_DIR;
+  }
+  if (originalOpenpalmRepoRoot !== undefined) {
+    process.env.OPENPALM_REPO_ROOT = originalOpenpalmRepoRoot;
+  } else {
+    delete process.env.OPENPALM_REPO_ROOT;
   }
 
   if (suiteTempDir && existsSync(suiteTempDir)) {

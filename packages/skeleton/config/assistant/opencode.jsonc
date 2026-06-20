@@ -1,0 +1,75 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "./instructions/core.md",
+    "./instructions/conversation.md",
+    "./persona.md"
+  ],
+  "plugin": [
+    "akm-opencode@latest"
+  ],
+  // MCP consume-only example: OpenCode can connect to external MCP servers,
+  // but it does not serve MCP itself. Seed-only file: existing installs keep
+  // their current config unless the operator edits it.
+  // "mcp": {
+  //   "docs": {
+  //     "type": "local",
+  //     "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/work"]
+  //   },
+  //   "local-http": {
+  //     "type": "remote",
+  //     "url": "http://127.0.0.1:8787/mcp"
+  //   }
+  // },
+  // The assistant binds 0.0.0.0, so OpenCode's native in-process mDNS responder
+  // would pass its loopback gate and publish a `.local` record. We ship it OFF
+  // (LAN-first default): mDNS only makes sense once the assistant is actually
+  // LAN-exposed.
+  //
+  // NATIVE mDNS — how it works and its limits (see
+  // docs/technical/network-partitioning-d5a.md):
+  //   - Set "mdns": true to publish. OpenCode advertises service type
+  //     `_http._tcp.local` with a HARDCODED instance label `opencode-4096`
+  //     (the port; not configurable) and an SRV/A host target of "mdnsDomain"
+  //     (below), defaulting to "opencode.local".
+  //   - "mdnsDomain" is the resolvable `.local` HOSTNAME other devices use.
+  //     OpenCode cannot template it, so install/upgrade writes the whole file
+  //     with the operator's chosen name, e.g. "openpalm.local" derived from the
+  //     assistant name (file-assembly, per the no-template-rendering rule).
+  //   - LAN REACHABILITY GAP: the responder publishes from inside the
+  //     container's own network namespace. On the default Docker BRIDGE network
+  //     the multicast (UDP 5353) stays inside the bridge and does NOT reach the
+  //     physical LAN. To be seen by other LAN devices on a LINUX host the
+  //     assistant container must run with network_mode: host (gated behind LAN
+  //     exposure). On macOS (Docker Desktop / OrbStack) network_mode: host is
+  //     the Linux VM, not the Mac LAN, so native container mDNS is inert there —
+  //     macOS LAN advertisement must come from the host OS.
+  "server": {
+    "port": 4096,
+    "hostname": "0.0.0.0",
+    "mdns": false,
+    "mdnsDomain": "openpalm.local"
+  },
+  "permission": {
+    "bash": {
+      "*": "allow",
+      "rm -rf /": "ask",
+      "sudo": "ask"
+    },
+    "edit": "allow",
+    "task": "allow",
+    "read": {
+      "*": "allow",
+      ".env": "deny",
+      "/home/opencode/.local/share/opencode/auth.json": "deny",
+      "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
+    },
+    "external_directory": {
+      "/tmp": "allow",
+      "/work": "allow",
+      "/stash": "allow",
+      "/host-stash": "allow",
+      "/etc/akm": "allow"
+    }
+  }
+}
