@@ -252,7 +252,7 @@ describe('PUT /admin/voice — host fallback overlays', () => {
 		expect(stepNames).toContain('compose-up');
 	});
 
-	test('falls back gracefully when rootless detection cannot reach docker', async () => {
+	test('falls back gracefully when rootless detection cannot reach docker', { timeout: 10_000 }, async () => {
 		// Temporarily unset VITEST so the rootless detection runs. The probe
 		// will fail (no docker daemon in the test environment), but the
 		// route MUST NOT 502 — it just skips the overlay and continues.

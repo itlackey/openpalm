@@ -87,7 +87,7 @@ export interface GuardianBuilder {
   setAuthStrategy(strategy: AuthStrategy): GuardianBuilder;
   setPolicyProvider(provider: PolicyProvider): GuardianBuilder;
   registerTransport(transport: Transport): GuardianBuilder;
-  start(): GuardianServers;
+  start(options?: StartGuardianOptions): GuardianServers;
 }
 
 export function createGuardian(): GuardianBuilder {
