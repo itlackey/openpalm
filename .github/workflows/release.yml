@@ -472,7 +472,7 @@ jobs:
   docker-assistant:
     name: Docker openpalm/assistant
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'platform' || inputs.unit == 'major')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
