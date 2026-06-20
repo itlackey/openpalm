@@ -301,7 +301,7 @@ jobs:
   npm-skeleton:
     name: npm @openpalm/skeleton
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'major')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -315,7 +315,7 @@ jobs:
   npm-lib:
     name: npm @openpalm/lib
     needs: [compute-version, bump, npm-skeleton]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'major')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
