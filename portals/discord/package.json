@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/discord-portal",
   "description": "Discord bot portal adapter for OpenPalm",
-  "version": "0.12.6",
+  "version": "0.12.7",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
