@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 VOLUME ["/opt/openpalm"]
 
-COPY entrypoint.sh /entrypoint.sh
+COPY containers/guardian/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENV HOME=/opt/openpalm/guardian \
