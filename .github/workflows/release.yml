@@ -329,7 +329,7 @@ jobs:
   npm-guardian:
     name: npm @openpalm/guardian
     needs: [compute-version, bump, npm-lib]
-    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'major')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
