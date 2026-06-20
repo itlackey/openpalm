@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { MessageFlags } from "discord.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -620,7 +621,7 @@ describe("discord command behavior", () => {
       interaction,
     );
 
-    expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     expect(forward).toHaveBeenCalledTimes(1);
     expect(forward.mock.calls[0]?.[0]).toMatchObject({
       userId: "discord:user-1",
@@ -698,7 +699,7 @@ describe("discord command behavior", () => {
 
     expect(queueInteraction.reply).toHaveBeenCalledWith({
       content: "Queued. I will run that next.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
 
     release();
@@ -706,7 +707,7 @@ describe("discord command behavior", () => {
     await secondRun;
     await Bun.sleep(0);
 
-    expect(queueInteraction.followUp).toHaveBeenCalledWith({ content: "second", ephemeral: true });
+    expect(queueInteraction.followUp).toHaveBeenCalledWith({ content: "second", flags: MessageFlags.Ephemeral });
   });
 
   it("thread slash commands in different threads do not share a session key", async () => {
@@ -757,6 +758,34 @@ describe("discord command behavior", () => {
         sessionKey: "discord:thread:thread-77",
         clearSession: true,
       },
+    });
+  });
+
+  // Regression: a throwing command handler (e.g. an expired/already-acknowledged
+  // interaction → DiscordAPIError 10062/40060 from interaction.reply) must NOT
+  // escape onSlashCommand. The InteractionCreate listener fires it
+  // fire-and-forget, so an escaped rejection becomes an unhandled rejection and
+  // crashes the Bun process (which is what took the portal container down).
+  it("onSlashCommand swallows a throwing handler instead of rejecting", async () => {
+    const channel = new DiscordChannel();
+    const replyError = new Error("Unknown interaction");
+    const interaction = createInteraction({
+      commandName: "help",
+      reply: mock(async () => {
+        throw replyError;
+      }),
+    });
+
+    // Must resolve, not reject — a rejection here is the crash we are guarding against.
+    await expect(
+      (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(interaction),
+    ).resolves.toBeUndefined();
+
+    // The handler reply throws, then the catch attempts one best-effort fallback reply.
+    expect(interaction.reply).toHaveBeenCalledTimes(2);
+    expect(interaction.reply.mock.calls[1]?.[0]).toMatchObject({
+      content: "An error occurred.",
+      flags: MessageFlags.Ephemeral,
     });
   });
 });

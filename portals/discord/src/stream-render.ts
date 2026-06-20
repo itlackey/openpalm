@@ -31,6 +31,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
+  MessageFlags,
   type ButtonInteraction,
   type Message,
   type ThreadChannel,
@@ -363,7 +364,7 @@ async function renderPermissionPrompt(
   collector.on("collect", async (i: ButtonInteraction) => {
     // Interaction identity: only the requesting Discord user may decide (§4.1).
     if (i.user.id !== requestingUserId) {
-      await i.reply({ content: "Only the requester can answer this permission prompt.", ephemeral: true });
+      await i.reply({ content: "Only the requester can answer this permission prompt.", flags: MessageFlags.Ephemeral });
       return;
     }
     const [action] = i.customId.split(":");
@@ -432,7 +433,7 @@ async function renderQuestionPrompt(
   let resolved = false;
   const resolveOnce = async (answer: string, interaction?: ButtonInteraction): Promise<void> => {
     if (resolved) {
-      if (interaction) await interaction.reply({ content: "That question was already answered.", ephemeral: true }).catch(() => {});
+      if (interaction) await interaction.reply({ content: "That question was already answered.", flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     resolved = true;
@@ -458,7 +459,7 @@ async function renderQuestionPrompt(
   collector = prompt.createMessageComponentCollector({ componentType: ComponentType.Button, time: BUTTON_COLLECTOR_MS });
   collector.on("collect", async (i: ButtonInteraction) => {
     if (i.user.id !== requestingUserId) {
-      await i.reply({ content: "Only the requester can answer this question.", ephemeral: true }).catch(() => {});
+      await i.reply({ content: "Only the requester can answer this question.", flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const idx = Number(i.customId.split(":")[2]);

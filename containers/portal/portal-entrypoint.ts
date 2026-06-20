@@ -7,6 +7,30 @@ function logError(msg: string): void {
   }));
 }
 
+// Last-resort safety net: under Bun an unhandled rejection or uncaught
+// exception terminates the process. Log it as structured JSON first so the
+// crash is diagnosable, then exit non-zero so Docker's restart policy recovers.
+process.on('unhandledRejection', (reason) => {
+  console.error(JSON.stringify({
+    ts: new Date().toISOString(),
+    level: 'error',
+    service: 'portal-entrypoint',
+    msg: 'unhandledRejection',
+    reason: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
+  }));
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error(JSON.stringify({
+    ts: new Date().toISOString(),
+    level: 'error',
+    service: 'portal-entrypoint',
+    msg: 'uncaughtException',
+    reason: err instanceof Error ? (err.stack ?? err.message) : String(err),
+  }));
+  process.exit(1);
+});
+
 const portalPackage = Bun.env.PORTAL_PACKAGE;
 
 if (!portalPackage) {

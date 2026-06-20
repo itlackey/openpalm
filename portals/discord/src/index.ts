@@ -14,6 +14,7 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  MessageFlags,
   Partials,
   REST,
   Routes,
@@ -225,6 +226,12 @@ export default class DiscordChannel {
       partials: [Partials.Message, Partials.Channel],
     });
 
+    // discord.js emits Events.Error for WebSocket/shard errors. Without a
+    // listener, the EventEmitter rethrows as an uncaught exception and kills the
+    // process — log and keep the gateway alive so discord.js can auto-reconnect.
+    this.client.on(Events.Error, (err) => {
+      log.error("discord_client_error", { error: err instanceof Error ? err.message : String(err) });
+    });
     this.client.once(Events.ClientReady, (c) => this.onReady(c));
     this.client.on(Events.MessageCreate, (msg) => void this.onMessage(msg));
     this.client.on(Events.InteractionCreate, (interaction) => {
@@ -552,31 +559,50 @@ export default class DiscordChannel {
       guildId: userInfo.guildId,
     });
 
-    const permResult = checkPermissions(this.permissions, userInfo);
-    if (!permResult.allowed) {
-      await interaction.reply({
-        content: "You do not have permission to use this bot.",
-        ephemeral: true,
-      });
-      return;
-    }
+    try {
+      const permResult = checkPermissions(this.permissions, userInfo);
+      if (!permResult.allowed) {
+        await interaction.reply({
+          content: "You do not have permission to use this bot.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
 
-    switch (commandName) {
-      case "help":
-        await this.handleHelpCommand(interaction);
-        return;
-      case "clear":
-        await this.handleClearCommand(interaction, userInfo);
-        return;
-      case "queue":
-        await this.handleAskCommand(interaction, commandName, userInfo, true);
-        return;
-      case "health":
-        await this.handleHealthCommand(interaction, userInfo.userId);
-        return;
-      default:
-        await this.handleAskCommand(interaction, commandName, userInfo);
-        return;
+      switch (commandName) {
+        case "help":
+          await this.handleHelpCommand(interaction);
+          return;
+        case "clear":
+          await this.handleClearCommand(interaction, userInfo);
+          return;
+        case "queue":
+          await this.handleAskCommand(interaction, commandName, userInfo, true);
+          return;
+        case "health":
+          await this.handleHealthCommand(interaction, userInfo.userId);
+          return;
+        default:
+          await this.handleAskCommand(interaction, commandName, userInfo);
+          return;
+      }
+    } catch (error) {
+      // A throw here (e.g. an expired/already-acknowledged interaction:
+      // DiscordAPIError 10062/40060) would otherwise become an unhandled
+      // rejection — the InteractionCreate listener fires this fire-and-forget —
+      // and crash the Bun process. Log and best-effort notify the user instead.
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("slash_command_error", {
+        command: commandName,
+        userId: userInfo.userId,
+        guildId: userInfo.guildId,
+        error: errMsg,
+      });
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction
+          .reply({ content: "An error occurred.", flags: MessageFlags.Ephemeral })
+          .catch(() => {});
+      }
     }
   }
 
@@ -589,14 +615,14 @@ export default class DiscordChannel {
       lines.push(`\`/${cmd.name}${opts ? ` ${opts}` : ""}\` — ${cmd.description}`);
     }
     lines.push("\nYou can also mention me in any channel to start a conversation.");
-    await interaction.reply({ content: lines.join("\n"), ephemeral: true });
+    await interaction.reply({ content: lines.join("\n"), flags: MessageFlags.Ephemeral });
   }
 
   private async handleHealthCommand(
     interaction: ChatInputCommandInteraction,
     userId: string,
   ): Promise<void> {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       const resp = await this.forward({
         userId: `discord:${userId}`,
@@ -637,7 +663,7 @@ export default class DiscordChannel {
     }
 
     if (!text.trim()) {
-      await interaction.reply({ content: "Please provide a message.", ephemeral: true });
+      await interaction.reply({ content: "Please provide a message.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -649,7 +675,7 @@ export default class DiscordChannel {
     const shouldQueue = forceQueue && isBusy;
 
     if (shouldQueue) {
-      await interaction.reply({ content: "Queued. I will run that next.", ephemeral: true });
+      await interaction.reply({ content: "Queued. I will run that next.", flags: MessageFlags.Ephemeral });
     } else {
       await interaction.deferReply();
     }
@@ -675,9 +701,9 @@ export default class DiscordChannel {
           const firstChunk = chunks[0] ?? "No response received.";
 
           if (shouldQueue) {
-            await interaction.followUp({ content: firstChunk, ephemeral: true });
+            await interaction.followUp({ content: firstChunk, flags: MessageFlags.Ephemeral });
             for (let i = 1; i < chunks.length; i++) {
-              await interaction.followUp({ content: chunks[i], ephemeral: true });
+              await interaction.followUp({ content: chunks[i], flags: MessageFlags.Ephemeral });
             }
           } else {
             await interaction.editReply(firstChunk);
@@ -696,7 +722,7 @@ export default class DiscordChannel {
           const errMsg = error instanceof Error ? error.message : String(error);
           log.error("command_error", { command: commandName, error: errMsg, sessionKey });
           if (shouldQueue) {
-            await interaction.followUp({ content: `Error: ${errMsg}`, ephemeral: true });
+            await interaction.followUp({ content: `Error: ${errMsg}`, flags: MessageFlags.Ephemeral });
           } else {
             await interaction.editReply(`Error: ${errMsg}`);
           }
@@ -709,7 +735,7 @@ export default class DiscordChannel {
     interaction: ChatInputCommandInteraction,
     userInfo: UserInfo,
   ): Promise<void> {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const clearThreadId = interaction.channel?.isThread() ? interaction.channel.id : null;
     const sessionKey = clearThreadId?.trim()
