@@ -34,11 +34,15 @@ ARG BUN_VERSION=bun-v1.3.10
 # validates this pin is extractable. Carries the env/secret asset types, profiles
 # config, multi-source, and the built-in local embedder (Xenova/bge-small-en).
 ARG AKM_CLI_VERSION=0.8.14
+# Platform version — drives OP_UI_VERSION and OP_SKELETON_VERSION defaults in
+# the entrypoint when no per-component env var override is set.
+ARG PLATFORM_VERSION
 
 # Re-export for runtime introspection.
 ENV OPENCODE_VERSION=${OPENCODE_VERSION} \
     BUN_VERSION=${BUN_VERSION} \
-    AKM_CLI_VERSION=${AKM_CLI_VERSION}
+    AKM_CLI_VERSION=${AKM_CLI_VERSION} \
+    PLATFORM_VERSION=${PLATFORM_VERSION}
 
 # Combined OS packages: base tools (tini, gosu) + assistant-specific
 # (openssh-server, sudo, cron, python3, jq, gh) + DB clients (sqlite3,
@@ -172,9 +176,9 @@ RUN set -e; \
 # Prepend opencode user's local bin so per-user installs win.
 ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
-    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin \
-    && chown opencode:opencode /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin \
+RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin /opt/openpalm \
+    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm \
+    && chown opencode:opencode /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
@@ -204,7 +208,11 @@ ENV PATH="/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:
 # OPENCODE_CONFIG_DIR only if the operator has not placed their own copy there.
 COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
-EXPOSE 4096 22
+# Artifact cache volume — persists @openpalm/ui, @openpalm/skeleton, and
+# runtime tools across restarts so warm starts don't re-download.
+VOLUME ["/opt/openpalm"]
+
+EXPOSE 4096 3000 22
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
   CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-4096}' || exit 1

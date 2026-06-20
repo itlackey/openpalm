@@ -497,7 +497,9 @@ jobs:
             type=raw,value=v${{ needs.compute-version.outputs.new_version }}
       - name: Assistant image smoke (amd64 only)
         run: |
-          docker build -f containers/assistant/Dockerfile -t openpalm-assistant-smoke:${{ github.run_id }} .
+          docker build -f containers/assistant/Dockerfile \
+            --build-arg PLATFORM_VERSION=${{ needs.compute-version.outputs.new_version }} \
+            -t openpalm-assistant-smoke:${{ github.run_id }} .
           docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
             -lc 'codex --version && claude --version && pi --version && copilot --version'
       - name: Build and push
@@ -505,6 +507,8 @@ jobs:
         with:
           context: .
           file: containers/assistant/Dockerfile
+          build-args: |
+            PLATFORM_VERSION=${{ needs.compute-version.outputs.new_version }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
           tags: ${{ steps.meta.outputs.tags }}

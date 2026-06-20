@@ -91,6 +91,83 @@ maybe_source_akm_user_env() {
   set +a
 }
 
+install_runtime_artifacts() {
+  # ── Exact-pinned npm artifacts ──────────────────────────────────────────────
+  # UI and skeleton versions come from OP_*_VERSION env overrides, then fall
+  # back to PLATFORM_VERSION (set at image build time via ARG). Hard error if
+  # neither is set — no 'latest' fallback for exact-pinned components.
+  local ui_version="${OP_UI_VERSION:-${PLATFORM_VERSION:-}}"
+  local skeleton_version="${OP_SKELETON_VERSION:-${PLATFORM_VERSION:-}}"
+
+  if [ -z "$ui_version" ]; then
+    echo "ERROR: set OP_UI_VERSION or PLATFORM_VERSION to install @openpalm/ui" >&2
+    exit 1
+  fi
+  if [ -z "$skeleton_version" ]; then
+    echo "ERROR: set OP_SKELETON_VERSION or PLATFORM_VERSION to install @openpalm/skeleton" >&2
+    exit 1
+  fi
+
+  echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
+  npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
+    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || true
+
+  echo "entrypoint: installing @openpalm/skeleton@${skeleton_version}..." >&2
+  npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${skeleton_version}" \
+    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || true
+
+  # ── Range-versioned tools from tools.json (global section) ─────────────────
+  # These shadow the baked image tools on PATH — same binaries, runtime-updatable.
+  local tools_json="/opt/openpalm/skeleton/node_modules/@openpalm/skeleton/tools.json"
+  if [ -f "$tools_json" ]; then
+    local tool_pkgs
+    tool_pkgs=$(node -e "
+      const tools = require('${tools_json}').global || [];
+      const pkgs = tools.map(t => t.package + '@' + (process.env[t.envKey] || t.default));
+      process.stdout.write(pkgs.join(' '));
+    " 2>/dev/null || true)
+
+    if [ -n "$tool_pkgs" ]; then
+      echo "entrypoint: installing runtime tools: ${tool_pkgs}" >&2
+      mkdir -p /opt/openpalm/tools
+      # Use a subshell so BUN_INSTALL override doesn't pollute the outer env.
+      (export BUN_INSTALL=/opt/openpalm/tools && bun add -g $tool_pkgs) \
+        || echo "warning: some runtime tool installs failed; baked tools remain available" >&2
+      export PATH="/opt/openpalm/tools/bin:$PATH"
+    fi
+  else
+    echo "entrypoint: tools.json not found — skipping runtime tool install" >&2
+  fi
+}
+
+start_ui() {
+  local ui_build="/opt/openpalm/ui/node_modules/@openpalm/ui/build/index.js"
+  if [ ! -f "$ui_build" ]; then
+    echo "entrypoint: @openpalm/ui build not found — UI co-process skipped" >&2
+    return 0
+  fi
+
+  local ui_port="${OP_UI_PORT:-3000}"
+  echo "entrypoint: starting UI co-process on port ${ui_port}..." >&2
+
+  # Run the UI server as the opencode user (same uid as OpenCode) so file access
+  # on bind-mounted OP_HOME volumes is consistent. The gosu drop happens in
+  # start_opencode; we start the UI BEFORE that drop so we can use gosu here too.
+  local ui_cmd=(
+    node "$ui_build"
+  )
+  if [ "$IS_ROOT" = "1" ] && command -v gosu >/dev/null 2>&1; then
+    ui_cmd=(gosu opencode env HOME=/home/opencode "${ui_cmd[@]}")
+  fi
+
+  OPENCODE_API_URL="http://127.0.0.1:${PORT}" \
+  PORT="$ui_port" \
+  ORIGIN="${OP_UI_ORIGIN:-http://localhost:${ui_port}}" \
+    "${ui_cmd[@]}" &
+
+  echo "entrypoint: UI co-process PID $! started" >&2
+}
+
 seed_default_agents_md() {
   local src="/usr/local/share/openpalm/AGENTS.md"
   local dest="${OPENCODE_CONFIG_DIR:-/etc/opencode}/AGENTS.md"
@@ -237,7 +314,9 @@ maybe_adjust_uid_gid
 ensure_home_layout
 maybe_enable_ssh
 maybe_source_akm_user_env
+install_runtime_artifacts
 seed_default_agents_md
 run_akm_schema_migration
 start_cron_and_sync_tasks
+start_ui
 start_opencode
