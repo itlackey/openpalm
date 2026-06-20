@@ -7,12 +7,12 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.12.14-rc.9",
+      "version": "0.12.14",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
       "dependencies": {
-        "@openpalm/lib": ">=0.12.14-rc.9 <1.0.0",
+        "@openpalm/lib": ">=0.12.14 <1.0.0",
         "@openpalm/skeleton": "0.12.8",
         "citty": "^0.2.1",
         "yaml": "^2.8.0",
@@ -24,7 +24,7 @@
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.12.14-rc.9",
+      "version": "0.12.14",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^25.9.1",
@@ -36,14 +36,14 @@
     },
     "packages/electron/admin-tools": {
       "name": "@openpalm/admin-tools-plugin",
-      "version": "0.12.14-rc.9",
+      "version": "0.12.14",
       "dependencies": {
         "@opencode-ai/plugin": "^1.17.7",
       },
     },
     "packages/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.12.8",
+      "version": "0.12.14",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "dotenv": "^17.4.2",
@@ -51,7 +51,7 @@
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.12.14-rc.9",
+      "version": "0.12.14",
       "dependencies": {
         "dotenv": "^17.4.2",
         "tar": "^7.5.15",
@@ -64,11 +64,11 @@
     },
     "packages/skeleton": {
       "name": "@openpalm/skeleton",
-      "version": "0.12.8",
+      "version": "0.12.14",
     },
     "packages/ui": {
       "name": "@openpalm/ui",
-      "version": "0.12.14-rc.9",
+      "version": "0.12.14",
       "devDependencies": {
         "@axe-core/playwright": "^4.11.3",
         "@eslint/compat": "^2.0.2",
@@ -105,7 +105,7 @@
     },
     "portals/discord": {
       "name": "@openpalm/discord-portal",
-      "version": "0.12.6",
+      "version": "0.12.7",
       "dependencies": {
         "@opencode-ai/sdk": "1.17.7",
         "discord.js": "^14.16.3",
@@ -113,7 +113,7 @@
     },
     "portals/slack": {
       "name": "@openpalm/slack-portal",
-      "version": "0.12.6",
+      "version": "0.12.7",
       "dependencies": {
         "@opencode-ai/sdk": "1.17.7",
         "@slack/bolt": "^4.1.0",
@@ -1500,6 +1500,8 @@
     "node-gyp/undici": ["undici@6.25.0", "", {}, "sha512-ZgpWDC5gmNiuY9CnLVXEH8rl50xhRCuLNA97fAUnKi8RRuV4E6KG31pDTsLVUKnohJE0I3XDrTeEydAXRw47xg=="],
 
     "node-gyp/which": ["which@6.0.1", "", { "dependencies": { "isexe": "^4.0.0" }, "bin": { "node-which": "bin/which.js" } }, "sha512-oGLe46MIrCRqX7ytPUf66EAYvdeMIZYn3WaocqqKZAxrBpkqHfL/qvTyJ/bTk5+AqHCjXmrv3CEWgy368zhRUg=="],
+
+    "openpalm/@openpalm/skeleton": ["@openpalm/skeleton@0.12.8", "", {}, "sha512-v8I8SX4Zv2Kq16z4JUVg9mgCMCyQfYdYRFuhvMCUYiEU25BtCO15nZObn9IR5Zr+567AlO6bvHYF1ezHasFrAA=="],
 
     "p-queue/eventemitter3": ["eventemitter3@4.0.7", "", {}, "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw=="],
 
