@@ -8,6 +8,7 @@
    * into the queue so the voice control's existing error surface keeps
    * working without a separate code path.
    */
+  import { afterUpdate } from 'svelte';
   import { voiceState } from '$lib/voice/voice-state.svelte.js';
   import { notifications, type Toast } from '$lib/notifications.svelte.js';
   import IconDone from '$lib/components/icons/IconDone.svelte';
@@ -17,16 +18,12 @@
   // errors update in place instead of stacking.
   let voiceErrorToastId: string | null = null;
 
-  $effect(() => {
+  afterUpdate(() => {
     const msg = voiceState.errorMessage;
     if (!msg) return;
     voiceErrorToastId = notifications.push('error', msg, {
       replaceId: voiceErrorToastId ?? undefined,
     });
-    // Drain the source immediately. The toast queue now owns the
-    // message — clearing it here means a *new* speech error always
-    // produces a fresh push, never gets swallowed because the value
-    // happened to match the previous one.
     voiceState.errorMessage = '';
   });
 

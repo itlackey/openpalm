@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { afterNavigate } from '$app/navigation';
   import { onMount } from 'svelte';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import { buildAdvancedIframeUrl } from '$lib/chat/navigation.js';
@@ -80,33 +81,24 @@
     }
   }
 
-  // Re-resolve whenever the active endpoint OR requested session changes (initial
-  // mount, switching assistants, switching Chat↔Advanced with a different
-  // session). Genuine side-effect on dependencies, not state sync.
-  $effect(() => {
-    if (active?.id) {
-      requestedSessionId; // track so a session change re-resolves
-      void resolve();
-    }
-  });
-
-  // Keep the chat state's session cursor in sync with the URL param so that
-  // switching back to /chat highlights the right session in the list and the
-  // navbar session picker shows the correct entry.
-  $effect(() => {
-    if (requestedSessionId) {
-      chat.setActiveSessionId(requestedSessionId);
-    }
-  });
-
+  // Lock scroll on mount; restore on destroy. This is a CSS side-effect tied to
+  // component lifetime, not navigation, so onMount is correct here.
   onMount(() => {
     document.documentElement.classList.add('chat-locked');
     document.body.classList.add('chat-locked');
-    void endpointsService.load();
     return () => {
       document.documentElement.classList.remove('chat-locked');
       document.body.classList.remove('chat-locked');
     };
+  });
+
+  // afterNavigate fires on initial load AND every same-route navigation (e.g.
+  // switching to a different session while staying on /advanced). This is the
+  // correct SvelteKit hook for "run on every arrival at this route" — no $effect.
+  afterNavigate(({ to }) => {
+    const sid = to?.url.searchParams.get('session') ?? null;
+    if (sid) chat.setActiveSessionId(sid);
+    void endpointsService.load().then(() => resolve());
   });
 </script>
 

@@ -10,7 +10,11 @@ vi.mock('$app/state', () => ({ page: mockPage }));
 
 vi.mock('$app/navigation', () => ({
   goto: vi.fn(),
-  afterNavigate: vi.fn(),
+  // Call the callback immediately to simulate the initial load navigation event.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  afterNavigate: vi.fn((cb: (nav: any) => void) =>
+    cb({ to: mockPage, from: null, type: 'goto', complete: Promise.resolve(), delta: 0, willUnload: false })
+  ),
 }));
 
 vi.mock('$lib/endpoints-state.svelte.js', () => ({
@@ -49,6 +53,7 @@ vi.mock('$lib/chat/chat-state.svelte.js', () => ({
   chat: {
     sending: false,
     send: vi.fn().mockResolvedValue(undefined),
+    setActiveSessionId: vi.fn(),
     // Navbar renders SessionPicker, which reads the per-endpoint session state.
     byEndpoint: new Map(),
     activeSessionId: null,
@@ -91,7 +96,7 @@ describe('/advanced/+page.svelte', () => {
   });
 
   test('renders the OpenCode iframe and exposes the theme toggle in the navbar', async () => {
-    render(AdvancedPage);
+    await render(AdvancedPage);
 
     const iframe = page.getByTitle('OpenCode — Advanced Chat');
     await expect.element(iframe).toBeVisible();
@@ -103,7 +108,7 @@ describe('/advanced/+page.svelte', () => {
 
   test('shows an inline Reconnect affordance when the endpoint is unreachable', async () => {
     probeOk = false; // the probe to /proxy/assistant/ returns 503
-    render(AdvancedPage);
+    await render(AdvancedPage);
 
     // No broken iframe — a clear status + Reconnect instead.
     await expect.element(page.getByRole('heading', { name: /Can.t reach/ })).toBeVisible();
@@ -120,7 +125,7 @@ describe('/advanced/+page.svelte', () => {
   test('deep-links a requested session using its REAL directory, not a hardcoded path', async () => {
     mockPage.url = new URL('http://localhost/advanced?session=ses_known');
     sessionDirectory = '/work'; // the directory the session actually lives in
-    render(AdvancedPage);
+    await render(AdvancedPage);
 
     const iframe = page.getByTitle('OpenCode — Advanced Chat');
     await expect.element(iframe).toBeVisible();
@@ -134,7 +139,7 @@ describe('/advanced/+page.svelte', () => {
   test('falls back to the base URL when the session is not on the active endpoint', async () => {
     mockPage.url = new URL('http://localhost/advanced?session=ses_elsewhere');
     sessionDirectory = null; // the lookup 404s — session belongs to another endpoint
-    render(AdvancedPage);
+    await render(AdvancedPage);
 
     const iframe = page.getByTitle('OpenCode — Advanced Chat');
     await expect.element(iframe).toBeVisible();

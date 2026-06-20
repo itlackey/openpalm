@@ -77,12 +77,6 @@
     if (tokenStored) void loadLogs();
   });
 
-  $effect(() => {
-    if (source === 'routines' && !selectedAutomation && automations.length > 0) {
-      selectedAutomation = automations[0] ?? '';
-    }
-  });
-
   function switchSource(next: 'services' | 'routines'): void {
     source = next;
     error = '';

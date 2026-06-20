@@ -50,12 +50,12 @@ function makeTool(id: string, toolName: string): ToolStripEntry {
 
 describe('ChatMessage — user messages', () => {
   test('renders user message text', async () => {
-    render(ChatMessage, { props: { entry: userMsg('hello world') } });
+    await render(ChatMessage, { props: { entry: userMsg('hello world') } });
     await expect.element(page.getByText('hello world')).toBeVisible();
   });
 
   test('user message text is NOT markdown-rendered (verbatim)', async () => {
-    const { container } = render(ChatMessage, { props: { entry: userMsg('**bold** text') } });
+    const { container } = await render(ChatMessage, { props: { entry: userMsg('**bold** text') } });
     // Text is rendered verbatim — check within this component's container only
     await expect.element(page.getByText('**bold** text')).toBeVisible();
     // No <strong> within this specific render (scoped to avoid cross-test pollution)
@@ -63,37 +63,37 @@ describe('ChatMessage — user messages', () => {
   });
 
   test('shows "You" in message meta', async () => {
-    render(ChatMessage, { props: { entry: userMsg('hi') } });
+    await render(ChatMessage, { props: { entry: userMsg('hi') } });
     await expect.element(page.getByText(/You/)).toBeVisible();
   });
 });
 
 describe('ChatMessage — assistant messages', () => {
   test('renders assistant message text', async () => {
-    render(ChatMessage, { props: { entry: assistantMsg('Hello there!') } });
+    await render(ChatMessage, { props: { entry: assistantMsg('Hello there!') } });
     await expect.element(page.getByText('Hello there!')).toBeVisible();
   });
 
   test('assistant markdown is rendered as HTML (bold)', async () => {
-    const { container } = render(ChatMessage, { props: { entry: assistantMsg('**bold**') } });
+    const { container } = await render(ChatMessage, { props: { entry: assistantMsg('**bold**') } });
     // Scoped to this render's container to avoid cross-test pollution
     expect(container.querySelector('strong')).not.toBeNull();
   });
 
   test('shows "Assistant" in message meta', async () => {
-    render(ChatMessage, { props: { entry: assistantMsg('hi') } });
+    await render(ChatMessage, { props: { entry: assistantMsg('hi') } });
     await expect.element(page.getByText(/Assistant/)).toBeVisible();
   });
 });
 
 describe('ChatMessage — divider', () => {
   test('renders divider with its label', async () => {
-    render(ChatMessage, { props: { entry: divider('New conversation') } });
+    await render(ChatMessage, { props: { entry: divider('New conversation') } });
     await expect.element(page.getByText('New conversation')).toBeVisible();
   });
 
   test('divider has aria-label', async () => {
-    const { container } = render(ChatMessage, { props: { entry: divider('Session start') } });
+    const { container } = await render(ChatMessage, { props: { entry: divider('Session start') } });
     expect(container.querySelector('[aria-label="Session start"]')).not.toBeNull();
   });
 });
@@ -101,40 +101,40 @@ describe('ChatMessage — divider', () => {
 describe('ChatMessage — assistant with tool strip', () => {
   test('renders tool strip inside the assistant bubble when toolStates present', async () => {
     const tools = [makeTool('c1', 'bash'), makeTool('c2', 'read')];
-    const { container } = render(ChatMessage, {
+    const { container } = await render(ChatMessage, {
       props: { entry: assistantMsgWithTools('Here is the result.', tools) },
     });
     await expect.element(page.getByText('Here is the result.')).toBeVisible();
     // ToolStrip renders emoji buttons; there should be 2.
-    const toolBtns = container.querySelectorAll('.tool-emoji-btn');
+    const toolBtns = container.querySelectorAll('.tool-icon-btn');
     expect(toolBtns.length).toBe(2);
   });
 
   test('does NOT render tool strip when toolStates is absent', async () => {
-    const { container } = render(ChatMessage, { props: { entry: assistantMsg('No tools.') } });
+    const { container } = await render(ChatMessage, { props: { entry: assistantMsg('No tools.') } });
     await expect.element(page.getByText('No tools.')).toBeVisible();
-    expect(container.querySelector('.tool-emoji-btn')).toBeNull();
+    expect(container.querySelector('.tool-icon-btn')).toBeNull();
   });
 
   test('does NOT render tool strip for user messages even if toolStates were somehow set', async () => {
     // TypeScript prevents this but the component must be robust.
     const entry = { id: '1', role: 'user' as const, text: 'hi', timestamp: NOW, toolStates: [makeTool('c1', 'bash')] };
-    const { container } = render(ChatMessage, { props: { entry } });
-    expect(container.querySelector('.tool-emoji-btn')).toBeNull();
+    const { container } = await render(ChatMessage, { props: { entry } });
+    expect(container.querySelector('.tool-icon-btn')).toBeNull();
   });
 });
 
 describe('ChatMessage — orphan tool-group', () => {
   test('renders tool-group as a single bubble with all tools', async () => {
     const tools = [makeTool('c1', 'bash'), makeTool('c2', 'grep'), makeTool('c3', 'read')];
-    const { container } = render(ChatMessage, { props: { entry: toolGroup(tools) } });
-    const toolBtns = container.querySelectorAll('.tool-emoji-btn');
+    const { container } = await render(ChatMessage, { props: { entry: toolGroup(tools) } });
+    const toolBtns = container.querySelectorAll('.tool-icon-btn');
     expect(toolBtns.length).toBe(3);
   });
 
   test('tool-group has accessible aria-label on strip', async () => {
     const tools = [makeTool('c1', 'bash')];
-    const { container } = render(ChatMessage, { props: { entry: toolGroup(tools) } });
+    const { container } = await render(ChatMessage, { props: { entry: toolGroup(tools) } });
     // The tool-strip div has the ariaLabel passed in.
     expect(container.querySelector('[aria-label="Assistant tool activity"]')).not.toBeNull();
   });

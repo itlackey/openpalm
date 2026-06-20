@@ -290,14 +290,16 @@
   </div>
 </div>
 
-<TaskDrawer
-  open={drawerOpen}
-  draft={drawerDraft}
-  saving={drawerSaving}
-  saveError={drawerError}
-  onClose={closeDrawer}
-  onSave={(fileName, yaml) => void handleSave(fileName, yaml)}
-/>
+{#key drawerDraft?.fileName}
+  <TaskDrawer
+    open={drawerOpen}
+    draft={drawerDraft}
+    saving={drawerSaving}
+    saveError={drawerError}
+    onClose={closeDrawer}
+    onSave={(fileName, yaml) => void handleSave(fileName, yaml)}
+  />
+{/key}
 
 <Drawer
   open={logDrawerOpen}

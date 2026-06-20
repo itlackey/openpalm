@@ -47,11 +47,6 @@
 		destroyVoice();
 	});
 
-	$effect(() => {
-		if (!mounted) return;
-		void (window as Window & { openpalm?: OpenPalmBridge }).openpalm?.setTrayMicRecording?.(isRecording);
-	});
-
 	// Mic only renders when a usable STT engine is configured AND available
 	// in this browser. (e.g. don't render "browser" mic on Firefox.)
 	let supported = $derived(
@@ -83,6 +78,7 @@
 		if (isProcessing) return;
 		if (isRecording) {
 			stopListening();
+			void (window as Window & { openpalm?: OpenPalmBridge }).openpalm?.setTrayMicRecording?.(false);
 			return;
 		}
 		if (isTranscribing) {
@@ -120,6 +116,7 @@
 			}
 		}
 
+		void (window as Window & { openpalm?: OpenPalmBridge }).openpalm?.setTrayMicRecording?.(true);
 		startListening((transcript: string) => {
 			const trimmed = transcript.trim();
 			if (!trimmed) return;

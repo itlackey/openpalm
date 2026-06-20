@@ -19,21 +19,16 @@
   let ensoEcho = $state<SVGPathElement | undefined>();
   let ensoRippleL1 = $state<SVGPathElement | undefined>();
   let ensoRippleL2 = $state<SVGPathElement | undefined>();
-  let presenceEl = $state<HTMLDivElement | undefined>();
   let drawLen = 0;
-  let ensoReady = false;
 
-  // Fades logo in or out. Must go through JS because restEnso/drawEnso both set
-  // inline opacity on ensoDry — inline styles always win over CSS class rules.
-  function setLogoVisible(visible: boolean): void {
-    if (!ensoDry) return;
-    ensoDry.style.transition = 'opacity 0.45s var(--s-ease-settle)';
-    ensoDry.style.opacity = visible ? '1' : '0';
-  }
+  // When neither processing nor speaking, show the breathing animation.
+  // Driven by $derived so the class toggles automatically — no $effect needed.
+  const breathing = $derived(!sending && voiceStatus !== 'speaking');
 
   function drawEnso(): void {
-    if (!ensoDraw || !ensoDry || !presenceEl) return;
-    presenceEl.classList.remove('breathing');
+    if (!ensoDraw || !ensoDry) return;
+    // Inline opacity only during the initial mount draw animation.
+    // After restEnso() clears the inline style, CSS class rules take over.
     ensoDry.style.opacity = '0';
     ensoDraw.style.transition = 'none';
     ensoDraw.style.opacity = '1';
@@ -45,29 +40,13 @@
   }
 
   function restEnso(): void {
-    if (!ensoDraw || !ensoDry || !presenceEl) return;
-    setLogoVisible(true);
+    if (!ensoDraw || !ensoDry) return;
     ensoDraw.style.transition = 'opacity 0.4s ease';
     ensoDraw.style.opacity = '0';
-    presenceEl.classList.add('breathing');
+    // Remove inline opacity so CSS class rules (.processing, .speaking, .breathing)
+    // can control the dry mark opacity without specificity conflicts.
+    ensoDry.style.removeProperty('opacity');
   }
-
-  // Single effect owns all visual-state transitions so state transitions never race.
-  $effect(() => {
-    if (!ensoReady) return;
-    const speaking = voiceStatus === 'speaking';
-
-    if (sending) {
-      drawEnso();
-    } else if (speaking) {
-      // Remove breathing pulse; hide logo with a smooth crossfade; draw overlay off.
-      if (presenceEl) presenceEl.classList.remove('breathing');
-      if (ensoDraw) { ensoDraw.style.transition = 'opacity 0.4s ease'; ensoDraw.style.opacity = '0'; }
-      setLogoVisible(false);
-    } else {
-      restEnso();
-    }
-  });
 
   onMount(() => {
     [ensoDry, ensoWet, ensoEcho, ensoDraw, ensoRippleL1, ensoRippleL2].forEach(el => {
@@ -77,7 +56,6 @@
     drawEnso();
     setTimeout(() => {
       restEnso();
-      ensoReady = true;
     }, 2400);
   });
 </script>
@@ -113,9 +91,9 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  class="s-presence breathing"
+  class="s-presence"
+  class:breathing
   id="s-presence"
-  bind:this={presenceEl}
   style={height != null ? `--s-enso-size: ${height}px` : undefined}
   class:listening={voiceStatus === 'recording'}
   class:speaking={voiceStatus === 'speaking'}
@@ -197,9 +175,14 @@
   .s-dry {
     fill: var(--s-ink);
     filter: url(#s-brush);
-    /* opacity is managed entirely via JS (inline style) to avoid specificity
-       conflicts with restEnso/drawEnso — no CSS opacity rule here */
-    transition: fill var(--s-t-theme) var(--s-ease);
+    transition: fill var(--s-t-theme) var(--s-ease), opacity 0.45s var(--s-ease-settle);
+  }
+
+  /* Hide the dry mark during processing/speaking — use !important to win over
+     the transient inline style set by drawEnso() during the initial mount animation. */
+  .s-presence.processing .s-dry,
+  .s-presence.speaking .s-dry {
+    opacity: 0 !important;
   }
 
   /* Blurred bloom behind the mark */

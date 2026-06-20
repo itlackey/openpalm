@@ -29,6 +29,34 @@ export default defineConfig(
 		}
 	},
 	{
+		// $effect is banned everywhere in Svelte files. It creates hidden reactive
+		// loops, masks reactivity bugs, and can cause effect_update_depth_exceeded
+		// crashes. Svelte 5 runes mode also does NOT support afterUpdate — that is
+		// a legacy Svelte 4 API that throws at runtime in runes mode files.
+		//
+		// Canonical replacements by use-case:
+		//   DOM setup + cleanup       → onMount(() => { ...; return () => { cleanup }; })
+		//   Same-route navigation     → afterNavigate (from $app/navigation)
+		//   DOM mutations (streaming) → use: actions with MutationObserver
+		//   User-triggered changes    → call directly in the event handler
+		//   One-time prop read        → untrack(() => value) at $state initializer
+		//   Component re-init on id   → {#key id} in parent forces remount + onMount
+		//   Class from reactive state → $derived + class:name binding (never $effect → classList)
+		//
+		// Zero $effect calls, zero svelte-check warnings/errors — both are required.
+		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector: "CallExpression[callee.name='$effect']",
+					message:
+						'$effect is banned. Replacements: onMount (DOM setup/cleanup), afterNavigate (same-route nav), use: actions with MutationObserver (DOM side effects), event handlers (user-triggered state), untrack() (one-time prop reads), {#key id} in parent (re-init on identity change), $derived+class: binding (reactive CSS classes).'
+				}
+			]
+		}
+	},
+	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {

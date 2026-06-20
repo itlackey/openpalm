@@ -1,5 +1,6 @@
 <script lang="ts">
   import IconMic from '$lib/components/icons/IconMic.svelte';
+  import IconSend from '$lib/components/icons/IconSend.svelte';
 
   interface Props {
     sending: boolean;
@@ -56,7 +57,7 @@
     placeholder={sending && !questionPending ? '' : 'Write a message...'}
     rows="1"
     disabled={inputDisabled}
-    aria-label={questionPending ? 'Answer the assistant' : 'Speak to the agent'}
+    aria-label="Message input"
     autocomplete="off"
     spellcheck="false"
   ></textarea>
@@ -74,6 +75,14 @@
         <IconMic size={16} />
       </button>
     {/if}
+    <button
+      class="s-send-btn"
+      type="submit"
+      aria-label="Send message"
+      disabled={!isActive || inputDisabled}
+    >
+      <IconSend size={16} />
+    </button>
   </div>
 </form>
 
@@ -112,7 +121,8 @@
     width: clamp(8rem, 60%, 20rem);
   }
 
-  .s-mic-btn {
+  .s-mic-btn,
+  .s-send-btn {
     flex-shrink: 0;
     appearance: none;
     border: 0;
@@ -127,11 +137,20 @@
     transition: color var(--s-t-quick) var(--s-ease);
   }
 
-  .s-mic-btn:hover { color: var(--s-ink); }
-  .s-mic-btn:active { transform: scale(0.9); }
+  .s-mic-btn:hover,
+  .s-send-btn:hover { color: var(--s-ink); }
+
+  .s-mic-btn:active,
+  .s-send-btn:active { transform: scale(0.9); }
+
   .s-mic-btn.active {
     color: var(--s-seal);
     animation: s-mic-pulse 1.4s ease-in-out infinite;
+  }
+
+  .s-send-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   @keyframes s-mic-pulse {

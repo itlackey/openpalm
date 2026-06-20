@@ -515,12 +515,11 @@
   let savedCloudLlm = $state<ModelSelection | undefined>(undefined);
   // Stable "detected cloud service" connId — captured once so the cloud row stays
   // visible even after the user switches to local (lets them switch back).
-  let detectedCloudConn = $state('');
-  $effect(() => {
-    if (!detectedCloudConn && modelSelection.llm && !LOCAL_PROVIDER_IDS.has(modelSelection.llm.connId)) {
-      detectedCloudConn = modelSelection.llm.connId;
-    }
-  });
+  let detectedCloudConn = $state(
+    modelSelection.llm && !LOCAL_PROVIDER_IDS.has(modelSelection.llm.connId)
+      ? modelSelection.llm.connId
+      : ''
+  );
 
   function handleConnectModeChange(mode: 'cloud' | 'local' | 'both'): void {
     modelMode = mode;

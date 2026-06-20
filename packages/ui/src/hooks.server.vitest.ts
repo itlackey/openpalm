@@ -72,6 +72,7 @@ describe('hooks.server — sliding renewal', () => {
 
   beforeEach(() => {
     process.env.PORT = '3880';
+    process.env.OP_ENABLE_ADMIN = '1';
     // Isolate each test in its own OP_HOME so seeded files (e.g. core.compose.yml)
     // can't leak into the next test and flip its install classification.
     prevHome = process.env.OP_HOME;
@@ -85,6 +86,7 @@ describe('hooks.server — sliding renewal', () => {
 
   afterEach(() => {
     delete process.env.PORT;
+    delete process.env.OP_ENABLE_ADMIN;
     if (prevHome === undefined) delete process.env.OP_HOME; else process.env.OP_HOME = prevHome;
     rmSync(home, { recursive: true, force: true });
   });

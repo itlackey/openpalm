@@ -85,98 +85,21 @@
 		await chat.rejectQuestion();
 	}
 
-	function scrollToBottom(): void {
-		queueMicrotask(() => {
-			scrollAnchorEl?.scrollIntoView({ behavior: 'smooth' });
+	// MutationObserver-based autoscroll: fires whenever the thread DOM changes
+	// (new message, streaming text, loading spinners, permission cards, etc.)
+	// — no $effect or afterUpdate needed.
+	function autoscroll(node: HTMLElement): { destroy(): void } {
+		const observer = new MutationObserver(() => {
+			queueMicrotask(() => scrollAnchorEl?.scrollIntoView({ behavior: 'smooth' }));
 		});
+		observer.observe(node, { childList: true, subtree: true, characterData: true });
+		return { destroy() { observer.disconnect(); } };
 	}
-
-	let lastSeenPermissionId = '';
-	let lastSeenQuestionId = '';
-
-	$effect(() => {
-		const lastEntry = chat.entries.at(-1);
-		const lastEntryContent =
-			lastEntry?.type === 'divider'
-				? lastEntry.label
-				: lastEntry?.type === 'note'
-					? lastEntry.text
-					: lastEntry?.type === 'tool-group'
-						? (lastEntry.toolStates[0]?.title ?? '')
-						: (lastEntry?.text ?? '');
-
-		if (!lastEntry && !entriesLoading && !sessionsLoading && !chat.sending) return;
-
-		const permissionId = chat.pendingPermission?.requestID ?? '';
-		const questionId = chat.pendingQuestion?.requestID ?? '';
-		const permissionChanged = permissionId !== lastSeenPermissionId;
-		const questionChanged = questionId !== lastSeenQuestionId;
-
-		lastEntryContent;
-		chat.pendingAssistantText;
-		chat.pendingToolStates.length;
-
-		if (permissionChanged) lastSeenPermissionId = permissionId;
-		if (questionChanged) lastSeenQuestionId = questionId;
-
-		if (
-			lastEntry ||
-			entriesLoading ||
-			sessionsLoading ||
-			chat.sending ||
-			permissionChanged ||
-			questionChanged
-		) {
-			scrollToBottom();
-		}
-	});
 
 	function clamp(text: string, max = 160): string {
 		return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 	}
 
-	// ── Body class management ─────────────────────────────────────────────
-	$effect(() => {
-		if (typeof document === 'undefined') return;
-		document.documentElement.classList.add('chat-locked');
-		document.body.classList.add('chat-locked', 'stillness-mode');
-		return () => {
-			document.documentElement.classList.remove('chat-locked');
-			document.body.classList.remove('chat-locked', 'stillness-mode');
-		};
-	});
-
-	// ── Keyboard: escape closes garden ───────────────────────────────────
-	$effect(() => {
-		function onKey(e: KeyboardEvent): void {
-			if (e.key === 'Escape') closeGarden();
-		}
-		document.addEventListener('keydown', onKey);
-		return () => document.removeEventListener('keydown', onKey);
-	});
-
-	// ── Visibility-change reconnect ───────────────────────────────────────
-	$effect(() => {
-		let destroyed = false;
-		function handleVisibilityChange(): void {
-			if (destroyed || document.visibilityState !== 'visible') return;
-			void (async () => {
-				const reachable = await probeChatBackend();
-				if (!reachable && !destroyed) {
-					chat.error = 'Assistant is not reachable. Try reconnecting.';
-				} else if (!destroyed) {
-					// Refresh the session list: new sessions may have been created by the
-					// CLI or another tab while this one was hidden.
-					await chat.loadSessions();
-				}
-			})();
-		}
-		document.addEventListener('visibilitychange', handleVisibilityChange);
-		return () => {
-			destroyed = true;
-			document.removeEventListener('visibilitychange', handleVisibilityChange);
-		};
-	});
 
 	// ── Voice / TTS ───────────────────────────────────────────────────────
 
@@ -232,6 +155,28 @@
 
 	// ── Mount ─────────────────────────────────────────────────────────────
 	onMount(() => {
+		document.documentElement.classList.add('chat-locked');
+		document.body.classList.add('chat-locked', 'stillness-mode');
+
+		function onKey(e: KeyboardEvent): void {
+			if (e.key === 'Escape') closeGarden();
+		}
+		document.addEventListener('keydown', onKey);
+
+		let visDestroyed = false;
+		function handleVisibilityChange(): void {
+			if (visDestroyed || document.visibilityState !== 'visible') return;
+			void (async () => {
+				const reachable = await probeChatBackend();
+				if (!reachable && !visDestroyed) {
+					chat.error = 'Assistant is not reachable. Try reconnecting.';
+				} else if (!visDestroyed) {
+					await chat.loadSessions();
+				}
+			})();
+		}
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
 		void initVoice();
 
 		void (async () => {
@@ -255,6 +200,14 @@
 				chat.error = 'Unable to reach the assistant.';
 			}
 		})();
+
+		return () => {
+			visDestroyed = true;
+			document.documentElement.classList.remove('chat-locked');
+			document.body.classList.remove('chat-locked', 'stillness-mode');
+			document.removeEventListener('keydown', onKey);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		};
 	});
 </script>
 
@@ -362,7 +315,7 @@
 
 <!-- conversation thread -->
 <main class="s-scroll" id="s-scroll" aria-label="Chat history">
-	<div class="s-thread" id="s-thread">
+	<div class="s-thread" id="s-thread" use:autoscroll>
 		{#if sessionsLoading || entriesLoading}
 			<div class="s-loading" aria-live="polite">
 				<span class="s-loading-text">loading…</span>

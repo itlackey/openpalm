@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import "../app.css";
   import UpdateBanner from '$lib/components/common/UpdateBanner.svelte';
   import Toast from '$lib/components/common/Toast.svelte';
@@ -13,9 +13,9 @@
 
   let { children, data }: Props = $props();
 
-  // Initialize feature flags from server data on every render (SSR + CSR navigations).
-  // Env vars don't change at runtime so this is idempotent.
-  featuresService.init(data.features);
+  // Feature flags come from server env vars — constant at runtime. untrack() signals
+  // this is an intentional one-time read, not a reactive subscription.
+  untrack(() => featuresService.init(data.features));
 
   onMount(() => {
     themeService.init();

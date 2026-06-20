@@ -45,6 +45,7 @@
    *   onnext                  — proceed to Screen 2
    */
 
+  import { untrack } from 'svelte';
   import CloudAttachPanel from './CloudAttachPanel.svelte';
   import LocalModelsStatus from './LocalModelsStatus.svelte';
   import type { OpenCodeProvider, AuthMethod, ProviderState } from '$lib/client/types.js';
@@ -216,17 +217,11 @@
   // 'detected' | 'local' | 'cloud' | null
   type RowChoice = 'detected' | 'local' | 'cloud' | null;
 
-  let selectedRow = $state<RowChoice>(null);
-
-  // Initialize the selection based on what was detected.
-  $effect(() => {
-    if (selectedRow !== null) return;
-    if (showDetectedRow) {
-      selectedRow = 'detected';
-    } else if (detectedIsLocal && llmProvider) {
-      selectedRow = 'local';
-    }
-  });
+  // One-time initialization from derived prop values. untrack() signals intentionality
+  // — the user modifies selectedRow via selectRow() after this point.
+  let selectedRow = $state<RowChoice>(
+    untrack(() => showDetectedRow ? 'detected' : (detectedIsLocal && llmProvider ? 'local' : null))
+  );
 
   function selectRow(row: RowChoice): void {
     if (row === 'local' && !localAvailable) return;

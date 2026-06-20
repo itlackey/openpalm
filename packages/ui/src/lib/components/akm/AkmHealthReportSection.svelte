@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	type ReportWindow = '24h' | '72h' | '7d' | '14d' | '30d';
 
 	type Props = {
@@ -46,16 +47,15 @@
 
 	function refresh(): void {
 		refreshKey += 1;
+		void loadReport();
 	}
 
 	function handleWindowChange(): void {
 		refreshKey += 1;
+		void loadReport();
 	}
 
-	$effect(() => {
-		// Re-run the preflight whenever reportUrl changes (window or refreshKey).
-		void loadReport();
-	});
+	onMount(() => { void loadReport(); });
 </script>
 
 <section class="report-section">

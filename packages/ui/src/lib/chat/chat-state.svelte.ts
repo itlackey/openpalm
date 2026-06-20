@@ -167,7 +167,7 @@ class ChatService {
 		await this.loadSessions();
 
 		const state = this.byEndpoint.get(id) ?? emptyEndpointState();
-		const sessions = state.sessions;
+		const sessions = state.sessions ?? [];
 		const previous = state.activeSessionId;
 		let nextSessionId: SessionId | null = null;
 		if (previous && sessions.some((s) => s.id === previous)) {

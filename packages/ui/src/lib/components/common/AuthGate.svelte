@@ -36,6 +36,7 @@
     <form class="s-gate-form" onsubmit={handleSubmit}>
       <input type="text" name="username" autocomplete="username" value="admin" class="sr-only" tabindex="-1" aria-hidden="true" />
       <div class="s-gate-field">
+        <label for="admin-token" class="sr-only">Admin Password</label>
         <input
           id="admin-token"
           name="admin-token"
@@ -50,7 +51,7 @@
           type="button"
           class="s-gate-reveal"
           onclick={() => showToken = !showToken}
-          aria-label={showToken ? 'Hide password' : 'Show password'}
+          aria-label={showToken ? 'Hide token' : 'Show token'}
         >
           {#if showToken}
             <IconHide size={14} />
@@ -64,8 +65,8 @@
         <p class="s-gate-error" role="alert">{error}</p>
       {/if}
 
-      <button class="s-gate-submit" type="submit" disabled={loading || !tokenInput.trim()}>
-        {#if loading}<Spinner />{:else}enter{/if}
+      <button class="s-gate-submit" type="submit" aria-label="Unlock Console" disabled={loading || !tokenInput.trim()}>
+        {#if loading}<Spinner />{:else}Unlock Console{/if}
       </button>
     </form>
   </div>

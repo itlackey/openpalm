@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import type { ChatEntry } from '$lib/types.js';
   import { renderMarkdown } from '$lib/markdown.js';
+  import ToolStrip from '$lib/components/chat/ToolStrip.svelte';
 
   interface Props {
     entry: ChatEntry;
@@ -14,12 +15,7 @@
     return entry.role === 'assistant' ? renderMarkdown(entry.text) : null;
   });
 
-  let deedsOpen = $state(false);
   let settled = $state(false);
-
-  function toggleDeeds(): void {
-    deedsOpen = !deedsOpen;
-  }
 
   onMount(() => {
     if (entry.type !== 'divider' && entry.type !== 'note' && entry.type !== 'tool-group' && entry.role === 'assistant') {
@@ -40,16 +36,12 @@
   </div>
 {:else if entry.type === 'tool-group'}
   <div class="s-deed-group">
-    <div class="deeds-inner">
-      {#each entry.toolStates as tool}
-        <div class="deed">{tool.title || tool.tool || 'step'}</div>
-      {/each}
-    </div>
+    <ToolStrip items={entry.toolStates} />
   </div>
 {:else if entry.role === 'user'}
   <div class="turn you">
     <div class="you-words">{entry.text}</div>
-    <div class="mark">you</div>
+    <div class="mark">You</div>
   </div>
 {:else}
   <div class="turn master">
@@ -62,36 +54,10 @@
         <p>{entry.text}</p>
       </div>
     {/if}
-    <div class="mark">the agent</div>
+    <div class="mark">Assistant</div>
 
     {#if entry.toolStates && entry.toolStates.length > 0}
-      <div class="seal-row">
-        <button
-          class="seal"
-          type="button"
-          aria-expanded={deedsOpen}
-          aria-label="What I did"
-          onclick={toggleDeeds}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="17" rx="2.5" stroke="var(--s-seal)" stroke-width="1.5"/>
-            <path d="M7 9h10M7 13h6" stroke="var(--s-seal)" stroke-width="1.5" stroke-linecap="round"/>
-            <path d="M15 16l1.5 1.5 2.5-2.5" stroke="var(--s-seal)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <span class="seal-hint">what I did</span>
-      </div>
-
-      {#if deedsOpen}
-        <div class="deeds open">
-          <div class="deeds-inner">
-            <div class="deeds-title">what I did</div>
-            {#each entry.toolStates as tool}
-              <div class="deed">{tool.title || tool.tool || 'step'}</div>
-            {/each}
-          </div>
-        </div>
-      {/if}
+      <ToolStrip items={entry.toolStates} bordered />
     {/if}
   </div>
 {/if}
@@ -267,93 +233,6 @@
     margin: 0.8rem 0;
     border: 0;
     border-top: var(--s-hair) solid var(--s-line);
-  }
-
-  /* ── Seal + deeds ── */
-
-  .seal-row {
-    display: flex;
-    align-items: center;
-    gap: 0.85rem;
-  }
-
-  .seal {
-    appearance: none;
-    border: 0;
-    background: none;
-    cursor: pointer;
-    padding: 0;
-    width: var(--s-glyph-size);
-    height: var(--s-glyph-size);
-    flex: 0 0 auto;
-    opacity: 0.62;
-    transition: opacity var(--s-t-quick) var(--s-ease), transform 0.7s var(--s-ease);
-  }
-
-  .seal:hover {
-    opacity: 1;
-    transform: rotate(-4deg);
-  }
-
-  .seal svg {
-    display: block;
-  }
-
-  .seal-hint {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    color: var(--s-ink-3);
-    opacity: 0;
-    transition: opacity var(--s-t-quick) var(--s-ease);
-  }
-
-  .seal-row:hover .seal-hint {
-    opacity: 1;
-  }
-
-  .deeds {
-    animation: s-bloom-in var(--s-t-settle) var(--s-ease-settle) both;
-  }
-
-  @keyframes s-bloom-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: none; }
-  }
-
-  .deeds-title {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    letter-spacing: 0.26em;
-    text-transform: uppercase;
-    color: var(--s-ink-3);
-    margin-bottom: 0.7rem;
-  }
-
-  .deed {
-    font-family: var(--s-font-mono);
-    font-weight: 400;
-    font-size: var(--s-type-deed);
-    line-height: 1.5;
-    color: var(--s-ink-2);
-    padding-left: 1rem;
-    position: relative;
-    margin: 0.32rem 0;
-    overflow-wrap: break-word;
-    word-break: break-all;
-  }
-
-  .deed::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0.55em;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--s-seal);
-    opacity: 0.85;
   }
 
   @media (prefers-reduced-motion: reduce) {

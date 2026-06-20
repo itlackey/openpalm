@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Drawer from '$lib/components/common/Drawer.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import {
@@ -34,22 +35,39 @@
   let isNew = $derived(draft !== null && draft.fileName === '');
 
   // File name for new tasks only; for edits, the fileName is fixed.
+  // State starts empty; onMount populates from draft. The parent uses
+  // {#key draft?.fileName} to remount this component when the task changes,
+  // so onMount always sees the right draft at the right time.
   let newFileName = $state('');
-
   let description = $state('');
   let enabled = $state(false);
   let actionKind = $state<'command' | 'prompt' | 'workflow'>('command');
   let commandShell = $state('echo hello');
   let promptBody = $state('');
   let workflowRef = $state('');
-
-  // Schedule state
   let presetId = $state<SchedulePresetId>('daily');
   let hour = $state(9);
   let dow = $state(1);
   let dom = $state(1);
   let rawCron = $state('0 9 * * *');
   let advancedOpen = $state(false);
+
+  onMount(() => {
+    if (!draft) return;
+    description = draft.description;
+    enabled = draft.enabled;
+    actionKind = draft.actionKind;
+    commandShell = draft.commandShell;
+    promptBody = draft.promptBody;
+    workflowRef = draft.workflowRef;
+    const pid = cronToPresetId(draft.schedule);
+    presetId = pid;
+    hour = cronToHour(draft.schedule);
+    dow = cronToDow(draft.schedule);
+    dom = cronToDom(draft.schedule);
+    rawCron = draft.schedule;
+    advancedOpen = pid === 'advanced';
+  });
 
   // Validation
   let fileNameError = $derived(
@@ -67,33 +85,6 @@
     (isNew ? fileNameError === null && newFileName.trim() !== '' : true) &&
     cronError === null
   );
-
-  // ── Sync form state when draft changes ────────────────────────────────
-
-  // Use $effect for one-time init when drawer opens (not reactive sync —
-  // we want to init once per open, not stomp user edits on each render).
-  let prevDraft = $state<TaskFormData | null>(null);
-  $effect(() => {
-    if (draft === prevDraft) return;
-    prevDraft = draft;
-    if (!draft) return;
-
-    newFileName = '';
-    description = draft.description;
-    enabled = draft.enabled;
-    actionKind = draft.actionKind;
-    commandShell = draft.commandShell;
-    promptBody = draft.promptBody;
-    workflowRef = draft.workflowRef;
-
-    const pid = cronToPresetId(draft.schedule);
-    presetId = pid;
-    hour = cronToHour(draft.schedule);
-    dow = cronToDow(draft.schedule);
-    dom = cronToDom(draft.schedule);
-    rawCron = draft.schedule;
-    advancedOpen = pid === 'advanced';
-  });
 
   // ── Save ──────────────────────────────────────────────────────────────
 

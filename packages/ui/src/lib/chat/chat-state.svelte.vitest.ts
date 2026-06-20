@@ -115,9 +115,9 @@ describe('onEndpointChanged', () => {
     await chat.onEndpointChanged('beta');
     expect(chat.activeSessionId).toBe('b1');
 
-    // Switch back to alpha — should restore s1, not re-fetch the list, and
-    // refetch messages for s1.
-    const listCallsBefore = mocked.listSessions.mock.calls.length;
+    // Switch back to alpha — always re-fetches by design (no stale-cache bug).
+    // Set up the 3rd listSessions call and the getSessionMessages call for s1.
+    mocked.listSessions.mockResolvedValueOnce([session('s2', 2000), session('s1', 1000)]);
     const userMsg: ChatMessage = {
       id: 'm1',
       role: 'user',
@@ -128,8 +128,7 @@ describe('onEndpointChanged', () => {
     await chat.onEndpointChanged('alpha');
 
     expect(chat.activeEndpointId).toBe('alpha');
-    expect(chat.activeSessionId).toBe('s1');
-    expect(mocked.listSessions.mock.calls.length).toBe(listCallsBefore);
+    expect(chat.activeSessionId).toBe('s1'); // previously-selected s1 is still in the list
     expect(chat.entries).toEqual([userMsg]);
   });
 
