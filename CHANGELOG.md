@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The guardian thin-host entrypoint can now install and boot a configurable
+  guardian composition package via `OP_GUARDIAN_PACKAGE` (default
+  `@openpalm/guardian`) with an overridable boot entry `OP_GUARDIAN_ENTRY`
+  (default `src/server.ts`). The OpenAI-compatible API server is resolved from
+  the public core `@openpalm/guardian`, and defaults are byte-for-byte unchanged.
+
 - **`@openpalm/guardian` is now importable as a library** (in addition to being
   a runnable thin host). It exposes composition seams so downstream
   distributions can extend the guardian without forking `server.ts`:
