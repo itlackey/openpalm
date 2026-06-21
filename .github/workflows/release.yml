@@ -228,6 +228,7 @@ jobs:
           bun install --frozen-lockfile
           bun run test
           bun run ui:check
+          bun run --cwd packages/ui test:browsers
           bun run ui:test:unit
           bun run electron:test
 
