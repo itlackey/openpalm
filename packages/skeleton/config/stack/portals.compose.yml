@@ -83,12 +83,12 @@ services:
       GUARDIAN_DIRECT_PORT: "3830"
       GUARDIAN_ADMIN_PORT: "3831"
       OP_ASSISTANT_URL: http://assistant:4096
-      # Thin-host entrypoint uses these to install @openpalm/guardian and
-      # @openpalm/skeleton at the correct versions on first boot.
-      # OP_GUARDIAN_IMAGE_TAG (e.g. v0.12.9) may differ from OP_IMAGE_TAG when
-      # guardian is released independently of the platform.
+      # The guardian package version is baked into the image at build time
+      # (GUARDIAN_VERSION), so no version env is required to boot. Set
+      # OP_GUARDIAN_VERSION only to override — e.g. to pin a private package or a
+      # tag that differs from the image's baked version. Empty resolves to the
+      # baked GUARDIAN_VERSION in the entrypoint.
       OP_GUARDIAN_VERSION: ${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-}}
-      PLATFORM_VERSION: ${OP_IMAGE_TAG:-}
       OPENCODE_TIMEOUT_MS: "0"
       # OpenCode global config (opencode.jsonc) lives in OP_HOME/config/guardian,
       # bind-mounted at /etc/opencode below.

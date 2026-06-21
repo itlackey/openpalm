@@ -499,6 +499,8 @@ jobs:
         with:
           context: .
           file: containers/guardian/Dockerfile
+          build-args: |
+            GUARDIAN_VERSION=${{ needs.compute-version.outputs.new_version }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
           tags: ${{ steps.meta.outputs.tags }}
