@@ -159,7 +159,8 @@
         else stackUpdates[k] = v;
       }
 
-      if (uiVersion) await downloadUiVersion(uiVersion);
+      let uiMessage = '';
+      if (uiVersion) uiMessage = await applyUiVersion(uiVersion);
 
       if (Object.keys(stackUpdates).length > 0) {
         await patchVersions(stackUpdates);
@@ -184,7 +185,7 @@
       latest = {};
       latestFetchedAt = '';
       resultIsError = false;
-      resultMessage = uiVersion ? 'Updated to latest. UI will reload shortly.' : 'Updated to latest.';
+      resultMessage = uiMessage || 'Updated to latest.';
     } catch (e) {
       const err = e as { message?: string };
       resultIsError = true;
@@ -211,7 +212,8 @@
         else stackUpdates[k] = edited[k] ?? '';
       }
 
-      if (uiVersion) await downloadUiVersion(uiVersion);
+      let uiMessage = '';
+      if (uiVersion) uiMessage = await applyUiVersion(uiVersion);
       if (Object.keys(stackUpdates).length > 0) await patchVersions(stackUpdates);
       loaded = { ...edited };
 
@@ -232,9 +234,9 @@
           resultIsError = true;
           resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
         }
-      } else if (uiVersion) {
+      } else if (uiMessage) {
         resultIsError = false;
-        resultMessage = 'UI update downloading — will reload shortly.';
+        resultMessage = uiMessage;
       } else {
         resultIsError = false;
         resultMessage = 'Versions applied.';
@@ -245,6 +247,23 @@
       resultMessage = `Failed to apply versions: ${err.message ?? e}`;
     }
     applying = false;
+  }
+
+  async function applyUiVersion(version: string): Promise<string> {
+    const result = await downloadUiVersion(version);
+    if (result.pendingRestart) {
+      // Electron IPC path — renderer triggers the restart.
+      const restarted = await window.openpalm?.restartUiServer?.();
+      return restarted
+        ? `UI updated to ${version} — restarting…`
+        : `UI ${version} downloaded. Reload the page to apply it.`;
+    }
+    if (result.restarting) {
+      // CLI supervisor sent SIGUSR2 — process will respawn. Reload after it comes back up.
+      setTimeout(() => location.reload(), 4_000);
+      return `UI updated to ${version} — reloading in a moment…`;
+    }
+    return `UI ${version} downloaded. Restart the admin UI to apply it.`;
   }
 
   async function onLaunchOnLoginChange(event: Event): Promise<void> {
