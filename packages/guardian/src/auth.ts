@@ -60,7 +60,10 @@ function parseBasicAuth(header: string): { id: string; secret: string } | null {
  * the exported {@link authenticate} delegates to whichever strategy is active.
  */
 export interface AuthStrategy {
-  authenticate(req: Request, expectedKind?: PrincipalKind): AuthenticatedPrincipal | null;
+  authenticate(
+    req: Request,
+    expectedKind?: PrincipalKind,
+  ): AuthenticatedPrincipal | null | Promise<AuthenticatedPrincipal | null>;
 }
 
 /** The built-in HTTP Basic / principal-token authenticator. */
@@ -106,6 +109,9 @@ export function resetAuthStrategy(): void {
 }
 
 /** Authenticate a request via the active {@link AuthStrategy}. */
-export function authenticate(req: Request, expectedKind?: PrincipalKind): AuthenticatedPrincipal | null {
+export async function authenticate(
+  req: Request,
+  expectedKind?: PrincipalKind,
+): Promise<AuthenticatedPrincipal | null> {
   return activeStrategy.authenticate(req, expectedKind);
 }

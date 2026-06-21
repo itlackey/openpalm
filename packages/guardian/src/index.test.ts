@@ -76,20 +76,42 @@ describe('transport registry seam', () => {
 describe('auth strategy seam', () => {
   beforeEach(() => resetAuthStrategy());
 
-  test('defaults to the built-in basic-token strategy', () => {
+  test('defaults to the built-in basic-token strategy', async () => {
     expect(getAuthStrategy()).toBe(basicTokenAuthStrategy);
     // No credentials -> the built-in strategy returns null.
-    expect(authenticate(new Request('http://x'))).toBeNull();
+    expect(await authenticate(new Request('http://x'))).toBeNull();
   });
 
-  test('authenticate() delegates to the active strategy', () => {
+  test('authenticate() delegates to the active strategy', async () => {
     const fake: AuthStrategy = {
       authenticate: () => ({ id: 'svc', kind: 'direct', label: 'Service', userId: 'svc' }),
     };
     setAuthStrategy(fake);
-    expect(authenticate(new Request('http://x'))?.id).toBe('svc');
+    expect((await authenticate(new Request('http://x')))?.id).toBe('svc');
     resetAuthStrategy();
-    expect(authenticate(new Request('http://x'))).toBeNull();
+    expect(await authenticate(new Request('http://x'))).toBeNull();
+  });
+
+  test('awaits an asynchronous strategy (JWKS/OIDC use case)', async () => {
+    // A strategy that resolves on a later tick — the seam must await it.
+    const asyncStrategy: AuthStrategy = {
+      authenticate: async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return { id: 'async-svc', kind: 'direct', label: 'Async', userId: 'async-svc' };
+      },
+    };
+    setAuthStrategy(asyncStrategy);
+    expect((await authenticate(new Request('http://x')))?.id).toBe('async-svc');
+  });
+
+  test('authenticate() returns a thenable — callers MUST await (no auth-bypass via truthy Promise)', async () => {
+    // Regression guard: the exported authenticate() is async, so its raw
+    // (unawaited) return value is a Promise. A caller that forgets to await and
+    // checks truthiness would treat every request as authenticated. This test
+    // documents the contract; the sole production caller (proxy.ts) awaits.
+    const result = authenticate(new Request('http://x'));
+    expect(typeof (result as Promise<unknown>).then).toBe('function');
+    await result; // settle so it isn't left dangling
   });
 });
 
