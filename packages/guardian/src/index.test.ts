@@ -76,20 +76,20 @@ describe('transport registry seam', () => {
 describe('auth strategy seam', () => {
   beforeEach(() => resetAuthStrategy());
 
-  test('defaults to the built-in basic-token strategy', () => {
+  test('defaults to the built-in basic-token strategy', async () => {
     expect(getAuthStrategy()).toBe(basicTokenAuthStrategy);
     // No credentials -> the built-in strategy returns null.
-    expect(authenticate(new Request('http://x'))).toBeNull();
+    expect(await authenticate(new Request('http://x'))).toBeNull();
   });
 
-  test('authenticate() delegates to the active strategy', () => {
+  test('authenticate() delegates to the active strategy', async () => {
     const fake: AuthStrategy = {
       authenticate: () => ({ id: 'svc', kind: 'direct', label: 'Service', userId: 'svc' }),
     };
     setAuthStrategy(fake);
-    expect(authenticate(new Request('http://x'))?.id).toBe('svc');
+    expect((await authenticate(new Request('http://x')))?.id).toBe('svc');
     resetAuthStrategy();
-    expect(authenticate(new Request('http://x'))).toBeNull();
+    expect(await authenticate(new Request('http://x'))).toBeNull();
   });
 });
 

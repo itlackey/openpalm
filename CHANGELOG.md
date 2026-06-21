@@ -41,6 +41,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The audit writer is created lazily on first write, so importing the guardian
   library has no filesystem side effects.
 
+### Changed
+
+- The `@openpalm/guardian` `AuthStrategy` seam is now async-capable: a strategy's
+  `authenticate()` may return a `Promise` (enabling JWKS/OIDC bearer-token
+  strategies that verify against a remote JWKS), and the exported `authenticate()`
+  is now async. The built-in `basicTokenAuthStrategy` and its behavior are
+  unchanged (it still resolves synchronously).
+
 ### Fixed
 
 - **`packages/skeleton/tools.json` now installs the real `opencode-ai` npm

@@ -164,7 +164,7 @@ export async function handleProxy(
     }
   }
 
-  const authenticated = authenticate(req, expectedKind);
+  const authenticated = await authenticate(req, expectedKind);
   if (!authenticated) {
     return deny(rid, 401, 'unauthorized', {});
   }
