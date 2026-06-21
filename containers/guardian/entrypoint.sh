@@ -5,188 +5,138 @@ TARGET_UID="${OP_UID:-1000}"
 TARGET_GID="${OP_GID:-1000}"
 IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
 
-# ── Configurable guardian composition package ─────────────────────────────────
-# This thin host installs and boots a guardian composition package. The package
-# is overridable so downstream distributions built on the published library
-# seams can run on the stock image without forking this entrypoint. Defaults to
-# the public core so existing behavior is unchanged. Version resolution
-# (OP_GUARDIAN_VERSION / PLATFORM_VERSION) is independent of which package is
-# installed; the exact-version pin remains a security boundary (no ranges).
+# ── Version resolution ────────────────────────────────────────────────────────
+# GUARDIAN_VERSION is baked into the image at build time (Dockerfile ARG → ENV),
+# so the thin host boots with no operator configuration. Operators may override
+# with OP_GUARDIAN_VERSION (e.g. to pin a private package at a different
+# version). PLATFORM_VERSION is a legacy fallback only. The exact-version pin is
+# a security boundary — never loosen it to a range.
+VERSION="${OP_GUARDIAN_VERSION:-${GUARDIAN_VERSION:-${PLATFORM_VERSION:-}}}"
+if [ -z "$VERSION" ]; then
+  echo "ERROR: No guardian version. Set OP_GUARDIAN_VERSION, or rebuild the image with the GUARDIAN_VERSION build arg." >&2
+  exit 1
+fi
+
+# Composition package + boot entry, overridable for downstream distributions
+# built on the published library seams (defaults to the public core).
 OP_GUARDIAN_PACKAGE="${OP_GUARDIAN_PACKAGE:-@openpalm/guardian}"
-# Boot entry within the configured package, overridable for alternate packages.
 OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
 
-resolve_version() {
-  local override="$1" platform="$2" name="$3"
-  [ -n "$override" ] && echo "$override" && return
-  [ -n "$platform" ] && echo "$platform" && return
-  echo "ERROR: Cannot resolve version for $name. Set OP_${name}_VERSION or PLATFORM_VERSION." >&2
-  exit 1
-}
-
 # ── Privilege setup: chown the artifact volume then drop to OP_UID:OP_GID ──────
-# /opt/openpalm is the guardian-cache named volume, initialised root-owned on
-# first boot. There is no `user:` in the compose service, so the container
-# starts as root; we fix ownership of the container-private paths on that
-# volume, then re-exec via gosu at the target uid for the server processes.
-#
-# Chown ONLY the named-volume paths. The nested bind mounts
-# (/opt/openpalm/guardian -> OP_HOME/data/guardian, /opt/openpalm/logs ->
-# OP_HOME/data/logs, and the read-only auth.json under guardian/) are
-# host-owned; recursively chowning a bind mount rewrites host file ownership on
-# every boot (a data-ownership hazard) and the :ro auth.json chown would fail.
-# The host owner is OP_UID:OP_GID, so the gosu'd process reads/writes those
-# bind mounts directly. Same reasoning as the assistant entrypoint.
-ensure_volume_ownership() {
-  if [ "$IS_ROOT" = "0" ]; then return 0; fi
-
+# The container starts as root (no `user:` in compose). /opt/openpalm is the
+# guardian-cache named volume, root-owned on first boot. Chown ONLY the
+# named-volume paths — the nested bind mounts (guardian/ -> data/guardian,
+# logs/ -> data/logs, and the :ro auth.json) are host-owned, so recursively
+# chowning them would rewrite host ownership every boot (and the :ro chown
+# would fail). The host owner is OP_UID:OP_GID, so the gosu'd process can
+# read/write the bind mounts directly.
+if [ "$IS_ROOT" = "1" ]; then
   mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian
-  # Volume root + guardian/ bind-mount mountpoint: non-recursive (just the dir,
-  # so the gosu'd user can traverse). tools/ (bun global install root) and
-  # skeleton/ live on the named volume: recursive.
   chown "${TARGET_UID}:${TARGET_GID}" /opt/openpalm /opt/openpalm/guardian 2>/dev/null || true
   chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm/tools /opt/openpalm/skeleton 2>/dev/null || true
-}
+fi
 
-# ── Exact-pinned components ───────────────────────────────────────────────────
-# install_artifact: skip if already at target version, retry on transient failures.
+# ── Optional private-registry auth ────────────────────────────────────────────
+# To install OP_GUARDIAN_PACKAGE from a private registry, supply an .npmrc. Bun
+# reads $HOME/.npmrc for registry + auth. Prefer a mounted secret file
+# (OP_GUARDIAN_NPMRC_FILE); OP_GUARDIAN_NPMRC is an inline convenience. Runs on
+# the root pass and again after the gosu drop, so on the root pass hand the file
+# to the target uid:gid for the second (non-privileged) pass. The token is
+# never logged.
+NPMRC_DEST="${HOME:-/opt/openpalm/guardian}/.npmrc"
+if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
+  if [ ! -f "${OP_GUARDIAN_NPMRC_FILE}" ]; then
+    echo "ERROR: OP_GUARDIAN_NPMRC_FILE is set but not found: ${OP_GUARDIAN_NPMRC_FILE}" >&2
+    exit 1
+  fi
+  install -m 600 "${OP_GUARDIAN_NPMRC_FILE}" "$NPMRC_DEST"
+  [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$NPMRC_DEST" 2>/dev/null || true
+  echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC_FILE"
+elif [ -n "${OP_GUARDIAN_NPMRC:-}" ]; then
+  printf '%s\n' "${OP_GUARDIAN_NPMRC}" > "$NPMRC_DEST"
+  chmod 600 "$NPMRC_DEST"
+  [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$NPMRC_DEST" 2>/dev/null || true
+  echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC"
+fi
+
+# ── Exact-pinned install: skip if already at version, retry transient failures ─
+# FROM oven/bun:1.3-slim ships no node/npm — use bun. bun installs into the
+# cwd's node_modules, so cd into the prefix.
 install_artifact() {
   local pkg="$1" version="$2" prefix="$3"
-  # The image is FROM oven/bun:1.3-slim, which ships no node/npm. Use bun, the
-  # runtime this entrypoint already relies on. bun installs into the cwd's
-  # node_modules, so cd into the prefix; the exact-version pin (${version}) is a
-  # security boundary and must not be loosened to a range.
   local manifest="${prefix}/node_modules/${pkg}/package.json"
-  local installed_version=""
 
-  if [ -f "$manifest" ]; then
-    installed_version=$(bun -e "try { const p = require('$manifest'); console.log(p.version); } catch { console.log(''); }" 2>/dev/null || true)
-  fi
-
-  if [ "$installed_version" = "$version" ]; then
+  if [ -f "$manifest" ] && \
+     [ "$(bun -e "try{console.log(require('$manifest').version)}catch{console.log('')}" 2>/dev/null)" = "$version" ]; then
     echo "  ${pkg}@${version} already installed, skipping"
     return 0
   fi
 
-  local attempt=0
-  while [ $attempt -lt 3 ]; do
-    attempt=$((attempt + 1))
+  local attempt
+  for attempt in 1 2 3; do
     echo "Installing ${pkg}@${version} (attempt ${attempt})..."
     mkdir -p "$prefix"
-    if ( cd "$prefix" && bun add "${pkg}@${version}" --production ); then
-      return 0
-    fi
-    [ $attempt -lt 3 ] && echo "  Install failed, retrying in 5s..." && sleep 5
+    ( cd "$prefix" && bun add "${pkg}@${version}" --production ) && return 0
+    [ "$attempt" -lt 3 ] && echo "  Install failed, retrying in 5s..." && sleep 5
   done
   echo "ERROR: Failed to install ${pkg}@${version} after 3 attempts" >&2
   exit 1
 }
 
-# ── Optional private-registry auth ────────────────────────────────────────────
-# To install the guardian package (OP_GUARDIAN_PACKAGE) from a private,
-# authenticated registry, supply an .npmrc. Bun reads $HOME/.npmrc for registry
-# + auth (registry=, @scope:registry=, //host/:_authToken=, _auth). Prefer a
-# mounted secret file (OP_GUARDIAN_NPMRC_FILE — e.g. a Key Vault secret volume);
-# OP_GUARDIAN_NPMRC (inline content) is a convenience that puts the token in an
-# env var. The token is never logged.
-setup_npmrc() {
-  local dest="${HOME:-/opt/openpalm/guardian}/.npmrc"
-  # This runs on the root pass (before installs) and again after the gosu drop.
-  # When invoked as root, hand the file to the target uid:gid so the second,
-  # non-privileged pass can re-place it without an EACCES on its own mode-600 file.
-  if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
-    if [ -f "${OP_GUARDIAN_NPMRC_FILE}" ]; then
-      install -m 600 "${OP_GUARDIAN_NPMRC_FILE}" "$dest"
-      [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$dest" 2>/dev/null || true
-      echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC_FILE"
-    else
-      echo "ERROR: OP_GUARDIAN_NPMRC_FILE is set but not found: ${OP_GUARDIAN_NPMRC_FILE}" >&2
-      exit 1
-    fi
-  elif [ -n "${OP_GUARDIAN_NPMRC:-}" ]; then
-    printf '%s\n' "${OP_GUARDIAN_NPMRC}" > "$dest"
-    chmod 600 "$dest"
-    [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$dest" 2>/dev/null || true
-    echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC"
-  fi
-}
+# Guardian and skeleton are co-released, so the skeleton follows the same
+# version by default; OP_SKELETON_VERSION overrides if they ever diverge.
+install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
+install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
-ensure_volume_ownership
-setup_npmrc
-
-GUARDIAN_VERSION=$(resolve_version "${OP_GUARDIAN_VERSION:-}" "${PLATFORM_VERSION:-}" "GUARDIAN")
-install_artifact "$OP_GUARDIAN_PACKAGE" "$GUARDIAN_VERSION" /opt/openpalm/guardian
-
-SKELETON_VERSION=$(resolve_version "${OP_SKELETON_VERSION:-}" "${PLATFORM_VERSION:-}" "SKELETON")
-install_artifact "@openpalm/skeleton" "$SKELETON_VERSION" /opt/openpalm/skeleton
-
-# ── Range-versioned tools from tools.json guardian section ────────────────────
+# ── Range-versioned tools from the skeleton's tools.json guardian section ──────
 export BUN_INSTALL=/opt/openpalm/tools
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 TOOL_PKGS=$(bun -e "
   const tools = require('/opt/openpalm/skeleton/node_modules/@openpalm/skeleton/tools.json').guardian || [];
-  const pkgs = tools.map(t => t.package + '@' + (process.env[t.envKey] || t.default));
-  console.log(pkgs.join(' '));
+  console.log(tools.map(t => t.package + '@' + (process.env[t.envKey] || t.default)).join(' '));
 ")
 [ -n "$TOOL_PKGS" ] && bun add -g $TOOL_PKGS || echo "WARN: some tool installs failed; continuing"
 
-# ── Fix M3: Hard-fail when content validation is enabled but opencode is missing
+# ── Hard-fail when content validation is enabled but opencode is missing ───────
 enabled=0
 case "${GUARDIAN_CONTENT_VALIDATION:-0}" in
   1 | true | TRUE | yes | on) enabled=1 ;;
 esac
-
 if [ "$enabled" = "1" ] && ! command -v opencode >/dev/null 2>&1; then
   echo "ERROR: GUARDIAN_CONTENT_VALIDATION=1 but opencode is not on PATH after tool install. Cannot start." >&2
   exit 1
 fi
 
-# ── Paths resolved once (package is now installed) ────────────────────────────
-# Boot path resolves from the configured composition package.
-GUARDIAN_PKG="/opt/openpalm/guardian/node_modules/${OP_GUARDIAN_PACKAGE}"
-
 # ── Drop privileges before starting servers ───────────────────────────────────
-# All artifact installs ran as root (needed to write /opt/openpalm on a
-# fresh named volume). Now drop to the target uid:gid for the server processes.
-# Re-exec this script as the target user so the remaining sections run
-# non-privileged. The GUARDIAN_ENTRYPOINT_DROPPED marker prevents infinite loops.
+# Installs ran as root (to write /opt/openpalm on a fresh named volume). Re-exec
+# as the target uid:gid for the server processes; the marker prevents a loop.
 if [ "$IS_ROOT" = "1" ] && [ "${GUARDIAN_ENTRYPOINT_DROPPED:-0}" != "1" ]; then
   if ! command -v gosu >/dev/null 2>&1; then
     echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
     exit 1
   fi
-  export GUARDIAN_ENTRYPOINT_DROPPED=1
   exec gosu "${TARGET_UID}:${TARGET_GID}" \
     env HOME=/opt/openpalm/guardian GUARDIAN_ENTRYPOINT_DROPPED=1 \
     "$0" "$@"
 fi
 
 # ── Start OpenCode moderator (when content validation is enabled) ─────────────
-# opencode is a range-versioned tool installed above via tools.json. The
-# hard-fail check above guarantees we only reach here if opencode is present
-# when content validation is enabled.
 if [ "$enabled" = "1" ]; then
-  if command -v opencode >/dev/null 2>&1; then
-    port="${GUARDIAN_MODERATION_PORT:-4097}"
-    echo "[guardian] starting OpenCode moderator on 127.0.0.1:${port}"
-    OPENCODE_AUTH=false \
-    OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-/etc/opencode}" \
-      opencode serve --hostname 127.0.0.1 --port "${port}" \
-      --print-logs --log-level INFO 2>&1 | sed -u 's/^/[moderator] /' >&2 &
-  fi
+  port="${GUARDIAN_MODERATION_PORT:-4097}"
+  echo "[guardian] starting OpenCode moderator on 127.0.0.1:${port}"
+  OPENCODE_AUTH=false \
+  OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-/etc/opencode}" \
+    opencode serve --hostname 127.0.0.1 --port "${port}" \
+    --print-logs --log-level INFO 2>&1 | sed -u 's/^/[moderator] /' >&2 &
 fi
 
 # ── Start the OpenAI-compatible API server ────────────────────────────────────
-# Runs on GUARDIAN_OPENAI_PORT (default 8182) and proxies to the guardian
-# server on localhost:${PORT:-8080}. Backgrounded so it doesn't block the main
-# server; pipe to stderr so logs appear in `docker logs`.
-#
-# The OpenAI-compatible API server lives in the public core @openpalm/guardian.
-# When OP_GUARDIAN_PACKAGE is an alternate package, the core is still present as
-# a (transitive) dependency, so resolve the core package dir robustly via
-# require.resolve and run openai-api from there rather than from $GUARDIAN_PKG.
-# In the default case GUARDIAN_CORE_PKG == GUARDIAN_PKG, so behavior is identical.
+# Runs on GUARDIAN_OPENAI_PORT (default 8182), proxies to the guardian server on
+# localhost:${PORT:-8080}. The openai-api server lives in the public core
+# @openpalm/guardian; when OP_GUARDIAN_PACKAGE is an alternate package the core
+# is still present (transitive dep), so resolve it via require.resolve. In the
+# default case this equals the guardian package dir.
 GUARDIAN_CORE_PKG=$(cd /opt/openpalm/guardian && bun -e "console.log(require('node:path').dirname(require.resolve('@openpalm/guardian/package.json')))" 2>/dev/null || echo "/opt/openpalm/guardian/node_modules/@openpalm/guardian")
 guardian_server_port="${PORT:-8080}"
 openai_port="${GUARDIAN_OPENAI_PORT:-8182}"
@@ -194,5 +144,4 @@ PORT="${openai_port}" GUARDIAN_URL="http://localhost:${guardian_server_port}" \
   bun run "${GUARDIAN_CORE_PKG}/src/openai-api-server.ts" 2>&1 | sed -u 's/^/[openai-api] /' >&2 &
 
 # ── Start guardian ────────────────────────────────────────────────────────────
-# Boot the configured composition package at its (overridable) entry point.
-exec bun run "${GUARDIAN_PKG}/${OP_GUARDIAN_ENTRY}"
+exec bun run "/opt/openpalm/guardian/node_modules/${OP_GUARDIAN_PACKAGE}/${OP_GUARDIAN_ENTRY}"

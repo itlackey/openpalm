@@ -6,6 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY containers/guardian/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Baked at build time so the thin host boots with no operator configuration.
+# Operators may override at runtime with OP_GUARDIAN_VERSION.
+ARG GUARDIAN_VERSION
+ENV GUARDIAN_VERSION=${GUARDIAN_VERSION}
+
 ENV HOME=/opt/openpalm/guardian \
     PORT=8080 \
     OPENCODE_CONFIG_DIR=/etc/opencode
