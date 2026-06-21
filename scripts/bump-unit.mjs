@@ -15,7 +15,87 @@
 // Preview locally: UNIT=platform BUMP=patch STAMP=false node scripts/bump-unit.mjs
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { setVersion } from './set-version.mjs';
+
+// Parse a semver into comparable parts (prerelease-aware).
+function parseSemver(v) {
+  const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
+  return m ? { ma: +m[1], mi: +m[2], pa: +m[3], pre: m[4] || null } : null;
+}
+
+function cmpPre(a, b) {
+  if (a === b) return 0;
+  if (a === null) return 1; // no prerelease > prerelease
+  if (b === null) return -1;
+  const ai = a.split('.'), bi = b.split('.');
+  for (let i = 0; i < Math.max(ai.length, bi.length); i++) {
+    if (ai[i] === undefined) return -1;
+    if (bi[i] === undefined) return 1;
+    const an = /^[0-9]+$/.test(ai[i]), bn = /^[0-9]+$/.test(bi[i]);
+    if (an && bn) { if (+ai[i] !== +bi[i]) return +ai[i] > +bi[i] ? 1 : -1; }
+    else if (ai[i] !== bi[i]) return ai[i] > bi[i] ? 1 : -1;
+  }
+  return 0;
+}
+
+function cmpSemver(a, b) {
+  const x = parseSemver(a), y = parseSemver(b);
+  if (!x || !y) return null;
+  for (const k of ['ma', 'mi', 'pa']) { if (x[k] !== y[k]) return x[k] > y[k] ? 1 : -1; }
+  return cmpPre(x.pre, y.pre);
+}
+
+// Highest version published on npm for a package name (null if unpublished/unknown).
+function maxPublished(name) {
+  let vs;
+  try {
+    vs = JSON.parse(
+      execSync(`npm view ${name} versions --json`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString(),
+    );
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(vs)) vs = vs ? [vs] : [];
+  let mx = null;
+  for (const v of vs) { if (mx === null || cmpSemver(v, mx) > 0) mx = v; }
+  return mx;
+}
+
+// Compute the platform anchor as the highest of the on-disk root version and the
+// highest version published across ALL npm packages the platform unit publishes
+// (lib, cli, ui, AND the dual-owned skeleton + guardian). skeleton/guardian are
+// also published by the independent `guardian` unit, so they can be ahead of the
+// root package.json on disk. Anchoring on the max prevents the platform release
+// from computing a next version that collides with an already-published
+// skeleton/guardian (the "cannot publish over previously published" failure).
+const PLATFORM_NPM_PACKAGES = ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'];
+
+// Bump a disk-version anchor up to the highest version published across the
+// given npm package names. npm failures return null and are ignored, so this
+// degrades gracefully to the on-disk value in offline/test contexts.
+function anchorFromPublished(diskVersion, npmPackages) {
+  let anchor = diskVersion;
+  for (const name of npmPackages) {
+    const published = maxPublished(name);
+    if (published && cmpSemver(published, anchor) > 0) anchor = published;
+  }
+  return anchor;
+}
+
+function platformAnchor() {
+  return anchorFromPublished(readJsonVersion('package.json'), PLATFORM_NPM_PACKAGES);
+}
+
+// The guardian unit publishes @openpalm/guardian + @openpalm/skeleton (thin-host
+// needs both). Both are dual-owned with the platform unit, so the on-disk guardian
+// package.json can lag behind what's already on npm. Anchor on the max-published to
+// avoid computing a colliding next version.
+const GUARDIAN_NPM_PACKAGES = ['@openpalm/guardian', '@openpalm/skeleton'];
+
+function guardianAnchor() {
+  return anchorFromPublished(readJsonVersion('packages/guardian/package.json'), GUARDIAN_NPM_PACKAGES);
+}
 
 function bumpVersion(current, type) {
   const m = current.match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
@@ -78,7 +158,7 @@ function stampVersionFile(file, version) {
 // for an independent unit release.
 const UNITS = {
   platform: {
-    anchorFn: () => readJsonVersion('package.json'),
+    anchorFn: () => platformAnchor(),
     stamp(version) {
       stampJsonFiles([
         'package.json',
@@ -109,7 +189,7 @@ const UNITS = {
     },
   },
   guardian: {
-    anchorFn: () => readJsonVersion('packages/guardian/package.json'),
+    anchorFn: () => guardianAnchor(),
     stamp(version) {
       stampJsonFiles(['packages/guardian/package.json'], version);
     },

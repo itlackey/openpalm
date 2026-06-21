@@ -144,9 +144,15 @@ jobs:
               process.exit(0);
             }
 
+            // skeleton + guardian are dual-owned: published by BOTH the platform
+            // unit (the CLI hard-pins @openpalm/skeleton to the platform version)
+            // AND the independent guardian unit. They MUST be in the platform guard
+            // so a platform release can never compute a next version <= an
+            // already-published skeleton/guardian (the "cannot publish over
+            // previously published version" failure mode).
             const npmPackages = {
-              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui'],
-              major: ['@openpalm/lib', 'openpalm', '@openpalm/ui'],
+              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
+              major: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
               guardian: ['@openpalm/guardian', '@openpalm/skeleton'],
             };
             const packages = npmPackages[unit] || [];
@@ -347,6 +353,10 @@ jobs:
       version: ${{ needs.compute-version.outputs.new_version }}
       ref: ${{ github.ref_name }}
       exact-version: true
+      # skeleton is dual-owned (platform + guardian units). If the guardian unit
+      # already published this exact version in a coordinated cut, tolerate it
+      # instead of failing the whole platform release.
+      allow-existing: true
       dry-run: ${{ inputs.dry_run }}
 
   npm-lib:
@@ -375,6 +385,9 @@ jobs:
       version: ${{ needs.compute-version.outputs.new_version }}
       ref: ${{ github.ref_name }}
       exact-version: true
+      # guardian npm pkg is dual-owned (platform + guardian units). Tolerate an
+      # already-published exact version from a coordinated guardian cut.
+      allow-existing: true
       dry-run: ${{ inputs.dry_run }}
 
   npm-cli:
