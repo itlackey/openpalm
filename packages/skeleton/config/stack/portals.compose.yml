@@ -117,6 +117,7 @@ services:
       - "${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182"
       - "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182"
     volumes:
+      - guardian-cache:/opt/openpalm
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # OpenCode global config (opencode.jsonc, instructions). Operator-managed,
@@ -143,7 +144,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 180s
 
 secrets:
   portal_chat_secret:
@@ -164,3 +165,10 @@ secrets:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_admin_token
   op_guardian_mcp_token:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_mcp_token
+
+volumes:
+  # Named volume for guardian npm artifact cache (/opt/openpalm).
+  # Replaces the anonymous volume that the Dockerfile previously declared via
+  # VOLUME ["/opt/openpalm"], which accumulated orphan volumes on every deploy.
+  # docker compose down --volumes will clean this up explicitly.
+  guardian-cache: {}
