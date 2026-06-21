@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/lib",
-  "version": "0.12.19",
+  "version": "0.12.20",
   "license": "MPL-2.0",
   "type": "module",
   "description": "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, portals, connections, scheduler",
