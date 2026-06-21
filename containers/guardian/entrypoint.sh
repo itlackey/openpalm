@@ -5,6 +5,17 @@ TARGET_UID="${OP_UID:-1000}"
 TARGET_GID="${OP_GID:-1000}"
 IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
 
+# ── Configurable guardian composition package ─────────────────────────────────
+# This thin host installs and boots a guardian composition package. The package
+# is overridable so downstream distributions built on the published library
+# seams can run on the stock image without forking this entrypoint. Defaults to
+# the public core so existing behavior is unchanged. Version resolution
+# (OP_GUARDIAN_VERSION / PLATFORM_VERSION) is independent of which package is
+# installed; the exact-version pin remains a security boundary (no ranges).
+OP_GUARDIAN_PACKAGE="${OP_GUARDIAN_PACKAGE:-@openpalm/guardian}"
+# Boot entry within the configured package, overridable for alternate packages.
+OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
+
 resolve_version() {
   local override="$1" platform="$2" name="$3"
   [ -n "$override" ] && echo "$override" && return
@@ -71,10 +82,40 @@ install_artifact() {
   exit 1
 }
 
+# ── Optional private-registry auth ────────────────────────────────────────────
+# To install the guardian package (OP_GUARDIAN_PACKAGE) from a private,
+# authenticated registry, supply an .npmrc. Bun reads $HOME/.npmrc for registry
+# + auth (registry=, @scope:registry=, //host/:_authToken=, _auth). Prefer a
+# mounted secret file (OP_GUARDIAN_NPMRC_FILE — e.g. a Key Vault secret volume);
+# OP_GUARDIAN_NPMRC (inline content) is a convenience that puts the token in an
+# env var. The token is never logged.
+setup_npmrc() {
+  local dest="${HOME:-/opt/openpalm/guardian}/.npmrc"
+  # This runs on the root pass (before installs) and again after the gosu drop.
+  # When invoked as root, hand the file to the target uid:gid so the second,
+  # non-privileged pass can re-place it without an EACCES on its own mode-600 file.
+  if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
+    if [ -f "${OP_GUARDIAN_NPMRC_FILE}" ]; then
+      install -m 600 "${OP_GUARDIAN_NPMRC_FILE}" "$dest"
+      [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$dest" 2>/dev/null || true
+      echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC_FILE"
+    else
+      echo "ERROR: OP_GUARDIAN_NPMRC_FILE is set but not found: ${OP_GUARDIAN_NPMRC_FILE}" >&2
+      exit 1
+    fi
+  elif [ -n "${OP_GUARDIAN_NPMRC:-}" ]; then
+    printf '%s\n' "${OP_GUARDIAN_NPMRC}" > "$dest"
+    chmod 600 "$dest"
+    [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$dest" 2>/dev/null || true
+    echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC"
+  fi
+}
+
 ensure_volume_ownership
+setup_npmrc
 
 GUARDIAN_VERSION=$(resolve_version "${OP_GUARDIAN_VERSION:-}" "${PLATFORM_VERSION:-}" "GUARDIAN")
-install_artifact "@openpalm/guardian" "$GUARDIAN_VERSION" /opt/openpalm/guardian
+install_artifact "$OP_GUARDIAN_PACKAGE" "$GUARDIAN_VERSION" /opt/openpalm/guardian
 
 SKELETON_VERSION=$(resolve_version "${OP_SKELETON_VERSION:-}" "${PLATFORM_VERSION:-}" "SKELETON")
 install_artifact "@openpalm/skeleton" "$SKELETON_VERSION" /opt/openpalm/skeleton
@@ -102,7 +143,8 @@ if [ "$enabled" = "1" ] && ! command -v opencode >/dev/null 2>&1; then
 fi
 
 # ── Paths resolved once (package is now installed) ────────────────────────────
-GUARDIAN_PKG=/opt/openpalm/guardian/node_modules/@openpalm/guardian
+# Boot path resolves from the configured composition package.
+GUARDIAN_PKG="/opt/openpalm/guardian/node_modules/${OP_GUARDIAN_PACKAGE}"
 
 # ── Drop privileges before starting servers ───────────────────────────────────
 # All artifact installs ran as root (needed to write /opt/openpalm on a
@@ -139,10 +181,18 @@ fi
 # Runs on GUARDIAN_OPENAI_PORT (default 8182) and proxies to the guardian
 # server on localhost:${PORT:-8080}. Backgrounded so it doesn't block the main
 # server; pipe to stderr so logs appear in `docker logs`.
+#
+# The OpenAI-compatible API server lives in the public core @openpalm/guardian.
+# When OP_GUARDIAN_PACKAGE is an alternate package, the core is still present as
+# a (transitive) dependency, so resolve the core package dir robustly via
+# require.resolve and run openai-api from there rather than from $GUARDIAN_PKG.
+# In the default case GUARDIAN_CORE_PKG == GUARDIAN_PKG, so behavior is identical.
+GUARDIAN_CORE_PKG=$(cd /opt/openpalm/guardian && bun -e "console.log(require('node:path').dirname(require.resolve('@openpalm/guardian/package.json')))" 2>/dev/null || echo "/opt/openpalm/guardian/node_modules/@openpalm/guardian")
 guardian_server_port="${PORT:-8080}"
 openai_port="${GUARDIAN_OPENAI_PORT:-8182}"
 PORT="${openai_port}" GUARDIAN_URL="http://localhost:${guardian_server_port}" \
-  bun run "${GUARDIAN_PKG}/src/openai-api-server.ts" 2>&1 | sed -u 's/^/[openai-api] /' >&2 &
+  bun run "${GUARDIAN_CORE_PKG}/src/openai-api-server.ts" 2>&1 | sed -u 's/^/[openai-api] /' >&2 &
 
 # ── Start guardian ────────────────────────────────────────────────────────────
-exec bun run "${GUARDIAN_PKG}/src/server.ts"
+# Boot the configured composition package at its (overridable) entry point.
+exec bun run "${GUARDIAN_PKG}/${OP_GUARDIAN_ENTRY}"
