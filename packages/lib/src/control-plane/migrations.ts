@@ -1177,12 +1177,15 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
     },
   },
   {
-    // Pinned to v0.12.18: the version-system redesign replaces the single
+    // Pinned to v0.12.19: the version-system redesign replaces the single
     // whole-stack OP_IMAGE_TAG (and the per-unit OP_*_IMAGE_TAG escape-hatch
     // keys) with one explicit OP_*_VERSION var per image — no compose cascade.
+    // Pinned to v0.12.19 (not v0.12.18-rc.1) so the migration fires for users
+    // already on v0.12.18 stable (v0.12.18 > v0.12.18-rc.1 in semver, so a
+    // v0.12.18-rc.1 gate would skip anyone already on the 0.12.18 stable release).
     // Map an existing install's legacy tag vars onto the new per-image vars and
     // strip the legacy keys. Idempotent + skip-if-present.
-    version: 'v0.12.18-rc.1',
+    version: 'v0.12.19-rc.1',
     describe: 'map OP_IMAGE_TAG / OP_*_IMAGE_TAG -> OP_*_VERSION and remove legacy image-tag keys',
     apply: migrateImageTagsToVersionVars,
     verify(ctx) {

@@ -184,7 +184,7 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
     ensureMigrated({ homeDir: home });
     // Target a version >= the image-tag→version migration (v0.12.18) so the
     // legacy *_IMAGE_TAG keys are mapped onto the new per-unit *_VERSION vars.
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.19" });
 
     const env = stackEnv();
     // Hand-set per-image escape-hatch keys carry their pinned values forward — the
@@ -275,14 +275,14 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
   });
 
   it("run 2: no keys are duplicated in stack.env after two upgrade passes", () => {
-    // Run 1 — target >= v0.12.18 so the image-tag→version migration fires and
+    // Run 1 — target >= v0.12.19 so the image-tag→version migration fires and
     // the asserted OP_*_VERSION keys exist.
     ensureMigrated({ homeDir: home });
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.19" });
 
     // Run 2
     ensureMigrated({ homeDir: home });
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.19" });
 
     const env = stackEnv();
 
@@ -340,18 +340,18 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
 
   // ── complete stack.env key set ─────────────────────────────────────────────
 
-  it("final stack.env contains all expected keys from the 0.11.5 → v0.12.18 upgrade", () => {
+  it("final stack.env contains all expected keys from the 0.11.5 → v0.12.19 upgrade", () => {
     ensureMigrated({ homeDir: home });
-    // Target >= v0.12.18 so the image-tag→version migration fires and the
+    // Target >= v0.12.19 so the image-tag→version migration fires and the
     // per-unit OP_*_VERSION keys are present in the final stack.env.
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.19" });
 
     const env = stackEnv();
 
     // Layout stamp
     expect(env).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
     // Release stamp bumped to target
-    expect(env).toContain("OP_RELEASE_VERSION=v0.12.18");
+    expect(env).toContain("OP_RELEASE_VERSION=v0.12.19");
     // Addons preserved
     expect(env).toContain("OP_ENABLED_ADDONS=discord");
     // Per-service bind var preserved
