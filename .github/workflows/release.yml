@@ -124,14 +124,15 @@ jobs:
             const unit = process.env.UNIT;
 
             // Only npm-published units need a regression guard
-            if (!['platform', 'major'].includes(unit)) {
-              console.log('Non-platform unit — skipping npm regression guard.');
+            if (!['platform', 'major', 'guardian'].includes(unit)) {
+              console.log('Non-npm unit — skipping npm regression guard.');
               process.exit(0);
             }
 
             const npmPackages = {
               platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui'],
               major: ['@openpalm/lib', 'openpalm', '@openpalm/ui'],
+              guardian: ['@openpalm/guardian', '@openpalm/skeleton'],
             };
             const packages = npmPackages[unit] || [];
 
@@ -184,11 +185,11 @@ jobs:
             }
           "
 
-  # ── Preflight gate (platform + major only) ────────────────────────────────────
+  # ── Preflight gate (platform + major + guardian) ─────────────────────────────
   preflight:
     name: Preflight (test gate)
     needs: compute-version
-    if: inputs.unit == 'platform' || inputs.unit == 'major'
+    if: inputs.unit == 'platform' || inputs.unit == 'major' || inputs.unit == 'guardian'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -206,12 +207,20 @@ jobs:
             exit 1
           fi
 
-      - name: Install + test
+      - name: Install + test (platform / major)
+        if: inputs.unit == 'platform' || inputs.unit == 'major'
         run: |
           bun install --frozen-lockfile
           bun run test
           bun run ui:check
+          bun run ui:test:unit
           bun run electron:test
+
+      - name: Install + test (guardian)
+        if: inputs.unit == 'guardian'
+        run: |
+          bun install --frozen-lockfile
+          bun test packages/guardian
 
   # ── Stamp + commit + push the new version ─────────────────────────────────────
   bump:
@@ -426,8 +435,13 @@ jobs:
 
   docker-guardian:
     name: Docker openpalm/guardian
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'guardian' || inputs.unit == 'platform' || inputs.unit == 'major')
+    needs: [compute-version, bump, npm-guardian, npm-skeleton]
+    if: |
+      always() &&
+      needs.bump.result == 'success' &&
+      (inputs.unit == 'guardian' || inputs.unit == 'platform' || inputs.unit == 'major') &&
+      needs.npm-guardian.result != 'failure' &&
+      needs.npm-skeleton.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -526,8 +540,8 @@ jobs:
   # ── CLI native binaries (platform + major) ────────────────────────────────────
   cli:
     name: CLI binary (${{ matrix.artifact }})
-    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && needs.npm-ui.result == 'success' && needs.npm-guardian.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli]
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
