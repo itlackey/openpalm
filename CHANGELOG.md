@@ -30,6 +30,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`packages/skeleton/tools.json` now installs the real `opencode-ai` npm
+  package.** It referenced `opencode`, which does not exist on npm (404), so the
+  tool install never produced the `opencode` binary. With
+  `GUARDIAN_CONTENT_VALIDATION` enabled, the guardian entrypoint's
+  `command -v opencode` check then hard-failed the boot. `opencode-ai`
+  (the official OpenCode package) ships the `opencode` bin and resolves the same
+  `^1.17.0` range. (#524)
 - **Guardian thin-host container boots again.** The entrypoint installed the
   exact-pinned `@openpalm/guardian` / `@openpalm/skeleton` artifacts with
   `npm`, but the image is `FROM oven/bun:1.3-slim`, which ships no node/npm —
