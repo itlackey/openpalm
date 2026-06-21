@@ -15,7 +15,11 @@ name: Release
 #               current (or explicitly overridden) platform version. No npm publish.
 #               Use to roll out container-level changes (system deps, OpenCode version)
 #               without touching npm packages.
-#   major     — all units simultaneously, bumps major, resets all to X.0.0 + summary tag
+#   electron  — Electron installers only (mac/linux/win). No npm publish. Use when
+#               only the desktop harness has changed and other units are already published.
+#               Always pass version explicitly (the version the existing npm packages are at).
+#   all       — every unit simultaneously at a specific or bumped version + summary tag.
+#               Accepts any bump type (patch/minor/major) or an explicit version override.
 #
 # Thin-host decoupling: guardian and platform npm packages can be released independently
 # of Docker images. npm patches deploy instantly to thin-host deployments without a
@@ -26,7 +30,7 @@ name: Release
 # (e.g. 0.12.14-rc.1). Pre-release suffixes auto-select the correct npm dist-tag (rc/beta/next).
 # When omitted, bump type drives the next version computed from the unit's anchor.
 # Tag scheme: platform-X.Y.Z, portals-X.Y.Z, assistant-X.Y.Z, guardian-X.Y.Z,
-#             images-X.Y.Z, vX.0.0 (major summary).
+#             electron-X.Y.Z, images-X.Y.Z, vX.Y.Z (all-units summary).
 # Docker images: openpalm/assistant:vX.Y.Z, openpalm/portal:vX.Y.Z, openpalm/guardian:vX.Y.Z
 #
 # npm OIDC: all npm publishes go through publish-npm-package.yml (single top-level caller).
@@ -43,9 +47,9 @@ on:
         description: 'Unit to release'
         required: true
         type: choice
-        options: [platform, portals, assistant, guardian, images, major]
+        options: [platform, portals, assistant, guardian, images, electron, all]
       bump:
-        description: 'Semver increment (ignored for unit=major or when version is set)'
+        description: 'Semver increment (ignored for unit=images or when version is set)'
         required: true
         type: choice
         options: [patch, minor, major]
@@ -56,12 +60,12 @@ on:
         type: string
         default: ''
       include_electron:
-        description: 'Build and publish Electron installer (platform only; always included for major)'
+        description: 'Build and publish Electron installer alongside platform release (use unit=electron for standalone)'
         required: false
         type: boolean
         default: false
       include_images:
-        description: 'Also rebuild Docker images (guardian/platform only; images and major always build images)'
+        description: 'Also rebuild Docker images (guardian/platform only; images and all always build images)'
         required: false
         type: boolean
         default: false
@@ -139,7 +143,7 @@ jobs:
             const unit = process.env.UNIT;
 
             // Only npm-published units need a regression guard
-            if (!['platform', 'major', 'guardian'].includes(unit)) {
+            if (!['platform', 'all', 'guardian'].includes(unit)) {
               console.log('Non-npm unit (' + unit + ') — skipping npm regression guard.');
               process.exit(0);
             }
@@ -151,7 +155,7 @@ jobs:
             // already-published skeleton/guardian, which npm rejects.
             const npmPackages = {
               platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
-              major: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
+              all: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
               guardian: ['@openpalm/guardian', '@openpalm/skeleton'],
             };
             const packages = npmPackages[unit] || [];
@@ -205,11 +209,11 @@ jobs:
             }
           "
 
-  # ── Preflight gate (platform + major + guardian) ─────────────────────────────
+  # ── Preflight gate (platform + all + guardian + electron) ───────────────────
   preflight:
     name: Preflight (test gate)
     needs: compute-version
-    if: inputs.unit == 'platform' || inputs.unit == 'major' || inputs.unit == 'guardian'
+    if: inputs.unit == 'platform' || inputs.unit == 'all' || inputs.unit == 'guardian' || inputs.unit == 'electron'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -227,14 +231,20 @@ jobs:
             exit 1
           fi
 
-      - name: Install + test (platform / major)
-        if: inputs.unit == 'platform' || inputs.unit == 'major'
+      - name: Install + test (platform / all)
+        if: inputs.unit == 'platform' || inputs.unit == 'all'
         run: |
           bun install --frozen-lockfile
           bun run test
           bun run ui:check
           bun run --cwd packages/ui test:browsers
           bun run ui:test:unit
+          bun run electron:test
+
+      - name: Install + test (electron)
+        if: inputs.unit == 'electron'
+        run: |
+          bun install --frozen-lockfile
           bun run electron:test
 
       - name: Install + test (guardian)
@@ -282,6 +292,23 @@ jobs:
                 done
                 sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${V}\"/" scripts/setup.sh
                 sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${V}'/" scripts/setup.ps1
+                ;;
+              all)
+                for f in package.json packages/lib/package.json packages/skeleton/package.json \
+                          packages/guardian/package.json packages/cli/package.json \
+                          packages/ui/package.json packages/electron/package.json \
+                          packages/electron/admin-tools/package.json; do
+                  node scripts/set-version.mjs "$f" "$V"
+                done
+                node scripts/set-version.mjs portals/discord/package.json "$V"
+                node scripts/set-version.mjs portals/slack/package.json "$V"
+                printf '%s\n' "$V" > containers/assistant/VERSION
+                sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${V}\"/" scripts/setup.sh
+                sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${V}'/" scripts/setup.ps1
+                ;;
+              electron)
+                node scripts/set-version.mjs packages/electron/package.json "$V"
+                node scripts/set-version.mjs packages/electron/admin-tools/package.json "$V"
                 ;;
               portals)
                 node scripts/set-version.mjs portals/discord/package.json "$V"
@@ -336,14 +363,14 @@ jobs:
 
   # ── npm layer ─────────────────────────────────────────────────────────────────
   # skeleton + guardian: published for unit=guardian (thin-host needs both at runtime)
-  #                      and unit=platform + unit=major (full coordinated release)
-  # lib + cli + ui:      platform + major only (guardian npm pkg has no lib dep)
+  #                      and unit=platform + unit=all (full coordinated release)
+  # lib + cli + ui:      platform + all only (guardian npm pkg has no lib dep)
   # NOTE: guardian and skeleton are published independently of lib to avoid
   # blocking the platform regression guard. lib is platform-managed.
   npm-skeleton:
     name: npm @openpalm/skeleton
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -361,7 +388,7 @@ jobs:
   npm-lib:
     name: npm @openpalm/lib
     needs: [compute-version, bump, npm-skeleton]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -375,7 +402,7 @@ jobs:
   npm-guardian:
     name: npm @openpalm/guardian
     needs: [compute-version, bump, npm-skeleton]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -392,7 +419,7 @@ jobs:
   npm-cli:
     name: npm openpalm (CLI)
     needs: [compute-version, bump, npm-lib]
-    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -406,7 +433,7 @@ jobs:
   npm-ui:
     name: npm @openpalm/ui
     needs: [compute-version, bump, npm-lib]
-    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -419,13 +446,13 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   # ── Docker images ─────────────────────────────────────────────────────────────
-  # portal:    portals | images | major
-  # guardian:  images | major | guardian+include_images | platform+include_images
-  # assistant: assistant | images | major | platform+include_images
+  # portal:    portals | images | all
+  # guardian:  images | all | guardian+include_images | platform+include_images
+  # assistant: assistant | images | all | platform+include_images
   docker-portal:
     name: Docker openpalm/portal
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'images' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'images' || inputs.unit == 'all')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -473,7 +500,7 @@ jobs:
     if: |
       always() &&
       needs.bump.result == 'success' &&
-      (inputs.unit == 'images' || inputs.unit == 'major' ||
+      (inputs.unit == 'images' || inputs.unit == 'all' ||
        ((inputs.unit == 'guardian' || inputs.unit == 'platform') && inputs.include_images)) &&
       needs.npm-guardian.result != 'failure' &&
       needs.npm-skeleton.result != 'failure'
@@ -523,7 +550,7 @@ jobs:
   docker-assistant:
     name: Docker openpalm/assistant
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'major' || (inputs.unit == 'platform' && inputs.include_images))
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'platform' && inputs.include_images))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -574,11 +601,11 @@ jobs:
           cache-from: type=gha,scope=openpalm/assistant
           cache-to: type=gha,scope=openpalm/assistant,mode=max
 
-  # ── CLI native binaries (platform + major) ────────────────────────────────────
+  # ── CLI native binaries (platform + all) ─────────────────────────────────────
   cli:
     name: CLI binary (${{ matrix.artifact }})
     needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -618,19 +645,27 @@ jobs:
           name: ${{ matrix.artifact }}
           path: packages/cli/dist/${{ matrix.artifact }}
 
-  # ── Electron installer (platform/major: gated; major: always) ─────────────────
+  # ── Electron installer ────────────────────────────────────────────────────────
+  # Standalone: unit=electron (npm jobs are skipped — condition gates on unit instead)
+  # Bundled:    unit=platform with include_electron=true or non-patch bump
+  # Always:     unit=all
   electron:
     name: Electron (${{ matrix.platform }})
     needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
     if: |
       always() &&
       needs.bump.result == 'success' &&
-      needs.npm-skeleton.result == 'success' &&
-      needs.npm-lib.result == 'success' &&
-      needs.npm-cli.result == 'success' &&
-      needs.npm-ui.result == 'success' &&
-      needs.npm-guardian.result == 'success' &&
-      (inputs.unit == 'major' || (inputs.unit == 'platform' && (inputs.include_electron == true || inputs.bump != 'patch')))
+      (
+        inputs.unit == 'electron' ||
+        (
+          needs.npm-skeleton.result == 'success' &&
+          needs.npm-lib.result == 'success' &&
+          needs.npm-cli.result == 'success' &&
+          needs.npm-ui.result == 'success' &&
+          needs.npm-guardian.result == 'success' &&
+          (inputs.unit == 'all' || (inputs.unit == 'platform' && (inputs.include_electron == true || inputs.bump != 'patch')))
+        )
+      )
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -714,7 +749,7 @@ jobs:
             .openpalm containers packages portals scripts README.md
 
       - name: Download CLI artifacts
-        if: inputs.unit == 'platform' || inputs.unit == 'major'
+        if: inputs.unit == 'platform' || inputs.unit == 'all'
         uses: actions/download-artifact@v8
         with:
           pattern: openpalm-cli-*
@@ -722,7 +757,7 @@ jobs:
           merge-multiple: true
 
       - name: Download Electron artifacts
-        if: inputs.unit == 'platform' || inputs.unit == 'major'
+        if: inputs.unit == 'platform' || inputs.unit == 'all' || inputs.unit == 'electron'
         uses: actions/download-artifact@v8
         with:
           pattern: electron-*
@@ -765,12 +800,12 @@ jobs:
             fi
           }
 
-          if [ "${UNIT}" = 'major' ]; then
-            # All per-unit prefixed tags + vX.0.0 summary
-            for PREFIX in platform portals assistant guardian; do
+          if [ "${UNIT}" = 'all' ]; then
+            # All per-unit prefixed tags + vX.Y.Z summary
+            for PREFIX in platform portals assistant guardian electron; do
               create_tag "${PREFIX}-${VERSION}" "Release ${PREFIX} ${VERSION}"
             done
-            create_tag "v${VERSION}" "Major release v${VERSION}"
+            create_tag "v${VERSION}" "All-units release v${VERSION}"
           elif [ "${UNIT}" = 'platform' ]; then
             # Platform releases also create vX.Y.Z — asset download URLs use this tag
             create_tag "platform-${VERSION}" "Release platform ${VERSION}"
@@ -804,11 +839,11 @@ jobs:
             echo "Created GitHub release: ${TAG}"
           }
 
-          if [ "${UNIT}" = 'major' ]; then
-            for PREFIX in platform portals assistant guardian; do
+          if [ "${UNIT}" = 'all' ]; then
+            for PREFIX in platform portals assistant guardian electron; do
               create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}"
             done
-            create_release "v${VERSION}" "OpenPalm v${VERSION} (major)"
+            create_release "v${VERSION}" "OpenPalm v${VERSION} (all units)"
           elif [ "${UNIT}" = 'images' ]; then
             create_release "images-${VERSION}" "OpenPalm images ${VERSION}"
           else

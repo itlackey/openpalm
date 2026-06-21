@@ -2,14 +2,14 @@
 // bump-unit.mjs — compute next version for a release unit and stamp unit files.
 //
 // Env in:
-//   UNIT    — platform | portals | assistant | guardian | images | major
-//   BUMP    — patch | minor | major  (ignored when UNIT=major or UNIT=images)
+//   UNIT    — platform | portals | assistant | guardian | images | electron | all
+//   BUMP    — patch | minor | major  (ignored when UNIT=images)
 //   STAMP   — 'true' to write files in place; any other value = compute-only (dry preview)
 //
 // Out (when GITHUB_OUTPUT is set):
 //   new_version=X.Y.Z
 //   current_version=X.Y.Z
-//   tag_prefix=<unit>   (e.g. 'platform'; 'major' emits all per-unit as JSON in major_tags)
+//   tag_prefix=<unit>   (e.g. 'platform'; 'all' emits all per-unit as JSON in all_tags)
 //
 // Used by .github/workflows/release.yml.
 // Preview locally: UNIT=platform BUMP=patch STAMP=false node scripts/bump-unit.mjs
@@ -201,6 +201,15 @@ const UNITS = {
     anchorFn: () => readJsonVersion('package.json'),
     stamp(_version) { /* no files to stamp for images-only release */ },
   },
+  electron: {
+    anchorFn: () => readJsonVersion('packages/electron/package.json'),
+    stamp(version) {
+      stampJsonFiles([
+        'packages/electron/package.json',
+        'packages/electron/admin-tools/package.json',
+      ], version);
+    },
+  },
 };
 
 const unit = process.env.UNIT;
@@ -208,7 +217,7 @@ const bump = process.env.BUMP || 'patch';
 const doStamp = process.env.STAMP === 'true';
 
 if (!unit) {
-  console.error('Error: UNIT env var is required (platform|portals|assistant|guardian|images|major)');
+  console.error('Error: UNIT env var is required (platform|portals|assistant|guardian|images|electron|all)');
   process.exit(1);
 }
 
@@ -229,11 +238,13 @@ if (unit === 'images') {
       `tag_prefix=images`,
     ].join('\n') + '\n');
   }
-} else if (unit === 'major') {
-  // Major cut: increment major of the platform anchor, then stamp ALL units to X.0.0.
+} else if (unit === 'all') {
+  // All-units release: stamp every unit to the same version using the specified bump type.
+  // Unlike the old 'major' unit, 'all' accepts any bump type (patch/minor/major) and
+  // accepts an explicit version override for coordinated point releases.
   currentVersion = UNITS.platform.anchorFn();
-  newVersion = bumpVersion(currentVersion, 'major');
-  console.log(`Major cut: ${currentVersion} → ${newVersion}`);
+  newVersion = bumpVersion(currentVersion, bump);
+  console.log(`All-units release: ${currentVersion} → ${newVersion} (${bump} bump)`);
   console.log('Files to stamp:');
   if (doStamp) {
     for (const [name, cfg] of Object.entries(UNITS)) {
@@ -247,20 +258,20 @@ if (unit === 'images') {
       console.log(`  ${name}: ${cur} → ${newVersion}`);
     }
   }
-  // Emit per-unit tag list for the major release job
-  const majorTags = Object.keys(UNITS).map(n => `${n}-${newVersion}`);
+  // Emit per-unit tag list for the all-units release job
+  const allTags = Object.keys(UNITS).filter(n => n !== 'images').map(n => `${n}-${newVersion}`);
   if (out) {
     appendFileSync(out, [
       `current_version=${currentVersion}`,
       `new_version=${newVersion}`,
-      `tag_prefix=major`,
-      `major_tags=${JSON.stringify(majorTags)}`,
+      `tag_prefix=all`,
+      `all_tags=${JSON.stringify(allTags)}`,
     ].join('\n') + '\n');
   }
 } else {
   const cfg = UNITS[unit];
   if (!cfg) {
-    console.error(`Error: Unknown unit '${unit}'. Must be platform|portals|assistant|guardian|images|major`);
+    console.error(`Error: Unknown unit '${unit}'. Must be platform|portals|assistant|guardian|images|electron|all`);
     process.exit(1);
   }
   currentVersion = cfg.anchorFn();
