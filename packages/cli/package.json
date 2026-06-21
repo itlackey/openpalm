@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@openpalm/lib": ">=0.12.16 <1.0.0",
-    "@openpalm/skeleton": "0.12.8",
+    "@openpalm/skeleton": ">=0.12.0 <1.0.0",
     "citty": "^0.2.1",
     "yaml": "^2.8.0"
   },
