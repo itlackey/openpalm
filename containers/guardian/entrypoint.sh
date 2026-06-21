@@ -82,7 +82,37 @@ install_artifact() {
   exit 1
 }
 
+# ── Optional private-registry auth ────────────────────────────────────────────
+# To install the guardian package (OP_GUARDIAN_PACKAGE) from a private,
+# authenticated registry, supply an .npmrc. Bun reads $HOME/.npmrc for registry
+# + auth (registry=, @scope:registry=, //host/:_authToken=, _auth). Prefer a
+# mounted secret file (OP_GUARDIAN_NPMRC_FILE — e.g. a Key Vault secret volume);
+# OP_GUARDIAN_NPMRC (inline content) is a convenience that puts the token in an
+# env var. The token is never logged.
+setup_npmrc() {
+  local dest="${HOME:-/opt/openpalm/guardian}/.npmrc"
+  # This runs on the root pass (before installs) and again after the gosu drop.
+  # When invoked as root, hand the file to the target uid:gid so the second,
+  # non-privileged pass can re-place it without an EACCES on its own mode-600 file.
+  if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
+    if [ -f "${OP_GUARDIAN_NPMRC_FILE}" ]; then
+      install -m 600 "${OP_GUARDIAN_NPMRC_FILE}" "$dest"
+      [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$dest" 2>/dev/null || true
+      echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC_FILE"
+    else
+      echo "ERROR: OP_GUARDIAN_NPMRC_FILE is set but not found: ${OP_GUARDIAN_NPMRC_FILE}" >&2
+      exit 1
+    fi
+  elif [ -n "${OP_GUARDIAN_NPMRC:-}" ]; then
+    printf '%s\n' "${OP_GUARDIAN_NPMRC}" > "$dest"
+    chmod 600 "$dest"
+    [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$dest" 2>/dev/null || true
+    echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC"
+  fi
+}
+
 ensure_volume_ownership
+setup_npmrc
 
 GUARDIAN_VERSION=$(resolve_version "${OP_GUARDIAN_VERSION:-}" "${PLATFORM_VERSION:-}" "GUARDIAN")
 install_artifact "$OP_GUARDIAN_PACKAGE" "$GUARDIAN_VERSION" /opt/openpalm/guardian
