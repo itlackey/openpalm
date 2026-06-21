@@ -149,10 +149,12 @@ describe('hooks.server — sliding renewal', () => {
   test('not_installed + an accessible remote (no migration) skips splash → /chat', async () => {
     // Fresh home, nothing installed, but a reachable remote assistant is configured:
     // the user should land in chat, not on the splash.
+    // OP_LAYOUT_VERSION=2 prevents the version-1→2 migration from being detected as
+    // pending (a stack.env with no stamp is treated as layout 1, which triggers migration).
     const state = resetState('test-admin-pw');
     const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
     mkdirSync(kvDir, { recursive: true });
-    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
+    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\nOP_LAYOUT_VERSION=2\n');
     vi.mocked(listRemoteStatuses).mockResolvedValue([
       { id: 'r1', name: 'Remote', url: 'http://example/', state: 'accessible' },
     ]);
