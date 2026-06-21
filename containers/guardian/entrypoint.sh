@@ -13,7 +13,12 @@ resolve_version() {
 install_artifact() {
   local pkg="$1" version="$2" prefix="$3"
   echo "Installing ${pkg}@${version}..."
-  npm install --prefix "$prefix" "${pkg}@${version}" --omit=dev --prefer-offline
+  # The image is FROM oven/bun:1.3-slim, which ships no node/npm. Use bun, the
+  # runtime this entrypoint already relies on. bun installs into the cwd's
+  # node_modules, so cd into the prefix; the exact-version pin (${version}) is a
+  # security boundary and must not be loosened to a range.
+  mkdir -p "$prefix"
+  ( cd "$prefix" && bun add "${pkg}@${version}" --production )
 }
 
 GUARDIAN_VERSION=$(resolve_version "${OP_GUARDIAN_VERSION:-}" "${PLATFORM_VERSION:-}" "GUARDIAN")

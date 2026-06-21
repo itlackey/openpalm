@@ -28,6 +28,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The audit writer is created lazily on first write, so importing the guardian
   library has no filesystem side effects.
 
+### Fixed
+
+- **Guardian thin-host container boots again.** The entrypoint installed the
+  exact-pinned `@openpalm/guardian` / `@openpalm/skeleton` artifacts with
+  `npm`, but the image is `FROM oven/bun:1.3-slim`, which ships no node/npm —
+  the container exited 127 with `npm: command not found`. It now installs with
+  `bun add ... --production` (the runtime it already uses), keeping the exact
+  version pin and the `$prefix/node_modules/@openpalm/...` layout the final
+  `bun run` depends on. (#518)
+
 ## [0.12.10] - 2026-06-17
 
 ### Fixed
