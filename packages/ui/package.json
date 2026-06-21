@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/ui",
   "description": "SvelteKit web UI and API for OpenPalm stack management",
-  "version": "0.12.25",
+  "version": "0.12.26",
   "license": "MPL-2.0",
   "type": "module",
   "//minHarnessContract": "Minimum native Electron harness contract this UI build requires (design §5.3). The harness refuses to self-update onto a build whose minHarnessContract exceeds the contract it provides and prompts an app re-download instead. Bump ONLY when the UI starts depending on a new IPC method / spawn env key; keep in lockstep with packages/electron/src/harness-contract.ts HARNESS_CONTRACT_VERSION.",
