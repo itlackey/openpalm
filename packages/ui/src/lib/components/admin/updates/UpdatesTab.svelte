@@ -28,6 +28,7 @@
     { key: 'OP_TOOL_AKM_VERSION', label: 'AKM CLI', hint: 'npm semver range, e.g. ^0.8.14.' },
     { key: 'OP_TOOL_CLAUDE_CODE_VERSION', label: 'Claude Code', hint: 'npm semver range, e.g. ^1.5.0.' },
     { key: 'OP_TOOL_CODEX_VERSION', label: 'Codex', hint: 'npm semver range, e.g. ^0.1.0.' },
+    { key: 'OP_UI_VERSION', label: 'Admin UI', hint: 'Takes effect after the UI restarts — automatic in the desktop app.' },
   ];
   const ALL_FIELDS = [...SERVICE_FIELDS, ...NPM_FIELDS];
 
@@ -87,12 +88,6 @@
   let launchOnLoginEnabled = $state(false);
   let launchOnLoginSaving = $state(false);
 
-  // ── Admin UI build ────────────────────────────────────────────────────────
-  let uiBuildTag = $state('');
-  let uiBuildBusy = $state(false);
-  let uiBuildMessage = $state('');
-  let uiBuildIsError = $state(false);
-
   onMount(() => {
     inElectron = typeof window.openpalm !== 'undefined';
     notificationsEnabled = desktopNotifyEnabled();
@@ -107,8 +102,9 @@
     try {
       const data = await fetchVersions();
       platformVersion = data.platformVersion;
-      loaded = { ...data.versions };
-      edited = { ...data.versions };
+      // Inject UI version so it appears alongside other npm packages.
+      loaded = { ...data.versions, OP_UI_VERSION: data.platformVersion };
+      edited = { ...data.versions, OP_UI_VERSION: data.platformVersion };
       mode = data.autoUpdate ? 'auto' : 'manual';
     } catch (e) {
       const err = e as { message?: string };
@@ -154,38 +150,41 @@
     resultMessage = '';
     resultIsError = false;
     try {
-      const updates: Record<string, string> = {};
+      const stackUpdates: Record<string, string> = {};
+      let uiVersion: string | undefined;
       for (const k of autoChanges) {
         const v = latest[k];
-        if (v !== null && v !== undefined) updates[k] = v;
+        if (v === null || v === undefined) continue;
+        if (k === 'OP_UI_VERSION') uiVersion = v;
+        else stackUpdates[k] = v;
       }
-      await patchVersions(updates);
 
-      const result = await applyChanges();
-      if (result.overallSuccess) {
-        // Reload from disk only after a full success so loaded/edited reflect
-        // what the running stack now has.
-        const refreshed = await fetchVersions();
-        loaded = { ...refreshed.versions };
-        edited = { ...refreshed.versions };
-        // Clear check state so the user re-checks after the next release.
-        latest = {};
-        latestFetchedAt = '';
-        resultIsError = false;
-        resultMessage = result.restarted.length > 0
-          ? `Updated to latest. Restarted: ${result.restarted.join(', ')}.`
-          : 'Updated to latest.';
-      } else if (result.failed.length > 0) {
-        resultIsError = true;
-        const failures = result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ');
-        resultMessage = `Saved, but applying failed for ${result.failed.length} service(s): ${failures}`;
-      } else if (!result.dockerAvailable) {
-        resultIsError = true;
-        resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
-      } else {
-        resultIsError = true;
-        resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
+      if (uiVersion) await downloadUiVersion(uiVersion);
+
+      if (Object.keys(stackUpdates).length > 0) {
+        await patchVersions(stackUpdates);
+        const result = await applyChanges();
+        if (!result.overallSuccess) {
+          resultIsError = true;
+          if (result.failed.length > 0) {
+            resultMessage = `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`;
+          } else if (!result.dockerAvailable) {
+            resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
+          } else {
+            resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
+          }
+          applying = false;
+          return;
+        }
       }
+
+      const refreshed = await fetchVersions();
+      loaded = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
+      edited = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
+      latest = {};
+      latestFetchedAt = '';
+      resultIsError = false;
+      resultMessage = uiVersion ? 'Updated to latest. UI will reload shortly.' : 'Updated to latest.';
     } catch (e) {
       const err = e as { message?: string };
       resultIsError = true;
@@ -205,27 +204,40 @@
     resultMessage = '';
     resultIsError = false;
     try {
-      const updates: Record<string, string> = {};
-      for (const k of changedKeys) updates[k] = edited[k] ?? '';
-      await patchVersions(updates);
+      const stackUpdates: Record<string, string> = {};
+      let uiVersion: string | undefined;
+      for (const k of changedKeys) {
+        if (k === 'OP_UI_VERSION') uiVersion = edited[k];
+        else stackUpdates[k] = edited[k] ?? '';
+      }
+
+      if (uiVersion) await downloadUiVersion(uiVersion);
+      if (Object.keys(stackUpdates).length > 0) await patchVersions(stackUpdates);
       loaded = { ...edited };
 
-      const result = await applyChanges();
-      if (result.overallSuccess) {
+      if (Object.keys(stackUpdates).length > 0) {
+        const result = await applyChanges();
+        if (result.overallSuccess) {
+          resultIsError = false;
+          resultMessage = result.restarted.length > 0
+            ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
+            : 'Versions applied.';
+        } else if (result.failed.length > 0) {
+          resultIsError = true;
+          resultMessage = `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`;
+        } else if (!result.dockerAvailable) {
+          resultIsError = true;
+          resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
+        } else {
+          resultIsError = true;
+          resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
+        }
+      } else if (uiVersion) {
         resultIsError = false;
-        resultMessage = result.restarted.length > 0
-          ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
-          : 'Versions applied.';
-      } else if (result.failed.length > 0) {
-        resultIsError = true;
-        const failures = result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ');
-        resultMessage = `Saved, but applying failed for ${result.failed.length} service(s): ${failures}`;
-      } else if (!result.dockerAvailable) {
-        resultIsError = true;
-        resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
+        resultMessage = 'UI update downloading — will reload shortly.';
       } else {
-        resultIsError = true;
-        resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
+        resultIsError = false;
+        resultMessage = 'Versions applied.';
       }
     } catch (e) {
       const err = e as { message?: string };
@@ -249,37 +261,6 @@
     } finally {
       launchOnLoginSaving = false;
     }
-  }
-
-  async function handleUiBuildInstall(): Promise<void> {
-    const tag = uiBuildTag.trim();
-    if (!tag || uiBuildBusy) return;
-    uiBuildBusy = true;
-    uiBuildMessage = '';
-    try {
-      const result = await downloadUiVersion(tag);
-      if (result.pendingRestart) {
-        const restarted = await window.openpalm?.restartUiServer?.();
-        if (restarted) {
-          uiBuildIsError = false;
-          uiBuildMessage = `Installed ${tag} and restarted the admin UI.`;
-        } else {
-          uiBuildIsError = true;
-          uiBuildMessage = `Downloaded ${tag} but the restart failed — reload the page to apply it.`;
-        }
-      } else if (result.restarting) {
-        uiBuildIsError = false;
-        uiBuildMessage = `Installed ${tag} — restarting…`;
-      } else {
-        uiBuildIsError = false;
-        uiBuildMessage = `Downloaded ${tag}. Restart the admin UI to apply it.`;
-      }
-      uiBuildTag = '';
-    } catch (e) {
-      uiBuildIsError = true;
-      uiBuildMessage = `Failed: ${e instanceof Error ? e.message : String(e)}`;
-    }
-    uiBuildBusy = false;
   }
 
   const statusText = $derived(
@@ -517,50 +498,6 @@
         {resultMessage}
       </p>
     {/if}
-
-    <!-- ── Admin UI build (always visible, no stack restart needed) ─────── -->
-    <section class="version-group" aria-labelledby="ui-build-title">
-      <h3 id="ui-build-title" class="version-group-title">Admin UI build</h3>
-      <p class="version-group-subtitle">
-        Install a specific <code>@openpalm/ui</code> npm version. Takes effect after the
-        admin UI restarts — automatic in the desktop app; reload the page otherwise.
-      </p>
-      <div class="ui-build-row">
-        <label class="version-label" for="ui-build-tag">Version tag</label>
-        <input
-          id="ui-build-tag"
-          class="version-input"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="e.g. 0.12.19 or latest"
-          bind:value={uiBuildTag}
-          disabled={uiBuildBusy}
-        />
-        <button
-          class="btn btn-secondary"
-          onclick={handleUiBuildInstall}
-          disabled={uiBuildBusy || !uiBuildTag.trim()}
-          aria-busy={uiBuildBusy}
-        >
-          {#if uiBuildBusy}
-            <Spinner /> Installing…
-          {:else}
-            Install
-          {/if}
-        </button>
-      </div>
-      {#if uiBuildMessage}
-        <p
-          class="result-message"
-          class:result-success={!uiBuildIsError}
-          class:result-error={uiBuildIsError}
-          role="status"
-        >
-          {uiBuildMessage}
-        </p>
-      {/if}
-    </section>
 
     <!-- ── Desktop settings (Electron-only) ────────────────────────────── -->
     {#if inElectron}
@@ -876,23 +813,6 @@
     color: var(--s-ink-3);
     margin: 0;
     line-height: 1.5;
-  }
-
-  .ui-build-row {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--s-sp-3);
-    flex-wrap: wrap;
-  }
-  .ui-build-row .version-input {
-    flex: 1;
-    min-width: 10rem;
-  }
-  .ui-build-row .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s-sp-2);
-    flex-shrink: 0;
   }
 
   .apply-row {
