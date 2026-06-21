@@ -71,7 +71,12 @@ services:
     profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack", "addon.gateway"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    # No `user:` here. The container starts as root so the entrypoint can chown
+    # the root-owned guardian-cache named volume (/opt/openpalm) and the bun
+    # global install dir, then drops to OP_UID:OP_GID via gosu before starting
+    # the server processes. Setting `user:` would force a non-root start, the
+    # chown would be skipped, and `bun add -g` into /opt/openpalm/tools on a
+    # fresh volume would fail with EACCES. Matches the assistant service.
     environment:
       HOME: /opt/openpalm/guardian
       PORT: "8080"

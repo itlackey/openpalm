@@ -14,14 +14,27 @@ resolve_version() {
 }
 
 # ── Privilege setup: chown the artifact volume then drop to OP_UID:OP_GID ──────
-# The compose service sets user: "${OP_UID}:${OP_GID}", but named volumes are
-# initialised as root-owned. We start as root, fix ownership of /opt/openpalm,
-# then re-exec via gosu at the target uid so bun add can write into it.
+# /opt/openpalm is the guardian-cache named volume, initialised root-owned on
+# first boot. There is no `user:` in the compose service, so the container
+# starts as root; we fix ownership of the container-private paths on that
+# volume, then re-exec via gosu at the target uid for the server processes.
+#
+# Chown ONLY the named-volume paths. The nested bind mounts
+# (/opt/openpalm/guardian -> OP_HOME/data/guardian, /opt/openpalm/logs ->
+# OP_HOME/data/logs, and the read-only auth.json under guardian/) are
+# host-owned; recursively chowning a bind mount rewrites host file ownership on
+# every boot (a data-ownership hazard) and the :ro auth.json chown would fail.
+# The host owner is OP_UID:OP_GID, so the gosu'd process reads/writes those
+# bind mounts directly. Same reasoning as the assistant entrypoint.
 ensure_volume_ownership() {
   if [ "$IS_ROOT" = "0" ]; then return 0; fi
 
-  mkdir -p /opt/openpalm
-  chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm 2>/dev/null || true
+  mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian
+  # Volume root + guardian/ bind-mount mountpoint: non-recursive (just the dir,
+  # so the gosu'd user can traverse). tools/ (bun global install root) and
+  # skeleton/ live on the named volume: recursive.
+  chown "${TARGET_UID}:${TARGET_GID}" /opt/openpalm /opt/openpalm/guardian 2>/dev/null || true
+  chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm/tools /opt/openpalm/skeleton 2>/dev/null || true
 }
 
 # ── Exact-pinned components ───────────────────────────────────────────────────
