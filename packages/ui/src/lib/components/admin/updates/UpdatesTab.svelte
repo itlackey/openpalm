@@ -1,7 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
-  import { fetchVersions, patchVersions, applyChanges, downloadUiVersion } from '$lib/api.js';
+  import {
+    fetchVersions,
+    fetchLatestVersions,
+    patchVersions,
+    applyChanges,
+    downloadUiVersion,
+  } from '$lib/api.js';
   import {
     desktopNotifyEnabled,
     desktopReplyPreviewEnabled,
@@ -9,11 +15,7 @@
     setDesktopReplyPreviewEnabled,
   } from '$lib/desktop-notifications.js';
 
-  // ── Version sections ─────────────────────────────────────────────────────────
-  // Two groups of stack.env version pins, edited as plain text inputs:
-  //  • Container images — exact Docker tags / "latest" / "next" (no semver ranges).
-  //  • npm packages — installed at container boot; semver ranges allowed.
-  // The key order here is the on-screen order; the labels are operator-facing.
+  // ── Field metadata ────────────────────────────────────────────────────────
   const SERVICE_FIELDS: { key: string; label: string; hint: string }[] = [
     { key: 'OP_ASSISTANT_VERSION', label: 'Assistant', hint: 'Docker image tag — exact tag, "latest", or "next".' },
     { key: 'OP_GUARDIAN_VERSION', label: 'Guardian', hint: 'Docker image tag — exact tag, "latest", or "next".' },
@@ -21,26 +23,63 @@
     { key: 'OP_VOICE_VERSION', label: 'Voice', hint: 'Docker image tag — exact tag, "latest", or "next".' },
   ];
   const NPM_FIELDS: { key: string; label: string; hint: string }[] = [
-    { key: 'OP_GUARDIAN_NPM_VERSION', label: 'Guardian package', hint: 'Empty = use the version baked into the guardian image. Semver range allowed.' },
+    { key: 'OP_GUARDIAN_NPM_VERSION', label: 'Guardian package', hint: 'Empty = use the version baked into the guardian image.' },
     { key: 'OP_TOOL_OPENCODE_VERSION', label: 'OpenCode', hint: 'npm semver range, e.g. ^1.17.0.' },
     { key: 'OP_TOOL_AKM_VERSION', label: 'AKM CLI', hint: 'npm semver range, e.g. ^0.8.14.' },
     { key: 'OP_TOOL_CLAUDE_CODE_VERSION', label: 'Claude Code', hint: 'npm semver range, e.g. ^1.5.0.' },
     { key: 'OP_TOOL_CODEX_VERSION', label: 'Codex', hint: 'npm semver range, e.g. ^0.1.0.' },
   ];
+  const ALL_FIELDS = [...SERVICE_FIELDS, ...NPM_FIELDS];
 
-  // The running control-plane version (PLATFORM_VERSION) — read-only header line.
+  // ── Mode ──────────────────────────────────────────────────────────────────
+  // Loaded from and persisted to the server (configDir/update-mode.json).
+  // 'auto'   — one-click "update all to latest"
+  // 'manual' — individual text inputs (original behaviour)
+  type UpdateMode = 'auto' | 'manual';
+
+  let mode = $state<UpdateMode>('auto');
+
+  // ── Current versions (loaded from stack.env) ──────────────────────────────
   let platformVersion = $state('');
-  // The version values loaded from the server (the on-disk baseline) and the
-  // local edited copy. We diff against `loaded` so Apply only sends changes.
   let loaded = $state<Record<string, string>>({});
   let edited = $state<Record<string, string>>({});
   let loading = $state(true);
   let loadError = $state('');
+
+  // ── Latest versions (fetched on demand from Docker Hub + npm) ─────────────
+  let latest = $state<Record<string, string | null>>({});
+  let latestErrors = $state<string[]>([]);
+  let latestFetchedAt = $state('');
+  let checkingLatest = $state(false);
+  let checkError = $state('');
+
+  // ── Apply state ───────────────────────────────────────────────────────────
   let applying = $state(false);
   let resultMessage = $state('');
-  let resultType: 'success' | 'error' = $state('success');
+  let resultIsError = $state(false);
 
-  // Electron bridge state (these sections use window.openpalm directly — no props).
+  // ── Manual mode: diff from loaded baseline ────────────────────────────────
+  const changedKeys = $derived(
+    Object.keys(edited).filter((k) => (edited[k] ?? '') !== (loaded[k] ?? '')),
+  );
+  const hasManualChanges = $derived(changedKeys.length > 0);
+
+  // ── Auto mode: keys where latest differs from current ────────────────────
+  // Auto mode pins npm packages to exact versions, so any diff (even range vs
+  // concrete) is a meaningful change. If the operator wants range semantics they
+  // use manual mode.
+  const autoChanges = $derived(
+    ALL_FIELDS
+      .map((f) => f.key)
+      .filter((k) => {
+        const lat = latest[k];
+        return lat !== null && lat !== undefined && lat !== (loaded[k] ?? '');
+      })
+  );
+  const hasLatestFetch = $derived(latestFetchedAt !== '');
+  const hasAutoUpdates = $derived(autoChanges.length > 0);
+
+  // ── Electron bridge ───────────────────────────────────────────────────────
   let inElectron = $state(false);
   let notificationsEnabled = $state(false);
   let replyPreviewEnabled = $state(false);
@@ -48,20 +87,14 @@
   let launchOnLoginEnabled = $state(false);
   let launchOnLoginSaving = $state(false);
 
-  // Control-plane UI build install (Electron: IPC restart; CLI: SIGUSR2 restart).
+  // ── Admin UI build ────────────────────────────────────────────────────────
   let uiBuildTag = $state('');
   let uiBuildBusy = $state(false);
   let uiBuildMessage = $state('');
-  let uiBuildMessageType: 'success' | 'error' = $state('success');
-
-  // Changed keys: the local edit differs from the loaded baseline.
-  const changedKeys = $derived(
-    Object.keys(edited).filter((k) => (edited[k] ?? '') !== (loaded[k] ?? '')),
-  );
-  const hasChanges = $derived(changedKeys.length > 0);
+  let uiBuildIsError = $state(false);
 
   onMount(() => {
-    inElectron = typeof window !== 'undefined' && typeof window.openpalm !== 'undefined';
+    inElectron = typeof window.openpalm !== 'undefined';
     notificationsEnabled = desktopNotifyEnabled();
     replyPreviewEnabled = desktopReplyPreviewEnabled();
     void loadVersions();
@@ -76,6 +109,7 @@
       platformVersion = data.platformVersion;
       loaded = { ...data.versions };
       edited = { ...data.versions };
+      mode = data.autoUpdate ? 'auto' : 'manual';
     } catch (e) {
       const err = e as { message?: string };
       loadError = `Failed to load versions: ${err.message ?? e}`;
@@ -90,42 +124,112 @@
     launchOnLoginEnabled = status.enabled;
   }
 
+  function handleSetMode(newMode: UpdateMode): void {
+    mode = newMode;
+    patchVersions({ OP_AUTO_UPDATE: newMode === 'auto' ? 'true' : 'false' }).catch(() => {});
+  }
+
+  // ── Auto mode: check for latest versions ─────────────────────────────────
+  async function handleCheckLatest(): Promise<void> {
+    if (checkingLatest) return;
+    checkingLatest = true;
+    checkError = '';
+    latestErrors = [];
+    try {
+      const data = await fetchLatestVersions();
+      latest = data.versions;
+      latestFetchedAt = data.fetchedAt;
+      if (data.errors.length > 0) latestErrors = data.errors;
+    } catch (e) {
+      const err = e as { message?: string };
+      checkError = `Check failed: ${err.message ?? e}`;
+    }
+    checkingLatest = false;
+  }
+
+  // ── Auto mode: apply latest versions ─────────────────────────────────────
+  async function handleAutoUpdate(): Promise<void> {
+    if (applying || !hasAutoUpdates) return;
+    applying = true;
+    resultMessage = '';
+    resultIsError = false;
+    try {
+      const updates: Record<string, string> = {};
+      for (const k of autoChanges) {
+        const v = latest[k];
+        if (v !== null && v !== undefined) updates[k] = v;
+      }
+      await patchVersions(updates);
+
+      const result = await applyChanges();
+      if (result.overallSuccess) {
+        // Reload from disk only after a full success so loaded/edited reflect
+        // what the running stack now has.
+        const refreshed = await fetchVersions();
+        loaded = { ...refreshed.versions };
+        edited = { ...refreshed.versions };
+        // Clear check state so the user re-checks after the next release.
+        latest = {};
+        latestFetchedAt = '';
+        resultIsError = false;
+        resultMessage = result.restarted.length > 0
+          ? `Updated to latest. Restarted: ${result.restarted.join(', ')}.`
+          : 'Updated to latest.';
+      } else if (result.failed.length > 0) {
+        resultIsError = true;
+        const failures = result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ');
+        resultMessage = `Saved, but applying failed for ${result.failed.length} service(s): ${failures}`;
+      } else if (!result.dockerAvailable) {
+        resultIsError = true;
+        resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
+      } else {
+        resultIsError = true;
+        resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
+      }
+    } catch (e) {
+      const err = e as { message?: string };
+      resultIsError = true;
+      resultMessage = `Failed to update: ${err.message ?? e}`;
+    }
+    applying = false;
+  }
+
+  // ── Manual mode: apply changed fields ────────────────────────────────────
   function setField(key: string, value: string): void {
     edited[key] = value;
   }
 
-  async function handleApply(): Promise<void> {
-    if (applying || !hasChanges) return;
+  async function handleManualApply(): Promise<void> {
+    if (applying || !hasManualChanges) return;
     applying = true;
     resultMessage = '';
+    resultIsError = false;
     try {
-      // 1) Persist only the changed version keys to stack.env.
       const updates: Record<string, string> = {};
       for (const k of changedKeys) updates[k] = edited[k] ?? '';
       await patchVersions(updates);
       loaded = { ...edited };
 
-      // 2) Recreate the stack so the new image tags / package pins take effect.
       const result = await applyChanges();
       if (result.overallSuccess) {
-        resultType = 'success';
+        resultIsError = false;
         resultMessage = result.restarted.length > 0
           ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
           : 'Versions applied.';
       } else if (result.failed.length > 0) {
-        resultType = 'error';
+        resultIsError = true;
         const failures = result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ');
         resultMessage = `Saved, but applying failed for ${result.failed.length} service(s): ${failures}`;
       } else if (!result.dockerAvailable) {
-        resultType = 'error';
+        resultIsError = true;
         resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
       } else {
-        resultType = 'error';
+        resultIsError = true;
         resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
       }
     } catch (e) {
       const err = e as { message?: string };
-      resultType = 'error';
+      resultIsError = true;
       resultMessage = `Failed to apply versions: ${err.message ?? e}`;
     }
     applying = false;
@@ -147,14 +251,6 @@
     }
   }
 
-  const statusText = $derived(
-    applying
-      ? 'Applying versions and restarting services…'
-      : loading
-        ? 'Loading versions…'
-        : '',
-  );
-
   async function handleUiBuildInstall(): Promise<void> {
     const tag = uiBuildTag.trim();
     if (!tag || uiBuildBusy) return;
@@ -163,44 +259,65 @@
     try {
       const result = await downloadUiVersion(tag);
       if (result.pendingRestart) {
-        // Electron IPC path — signal the harness to kill + respawn the UI child.
         const restarted = await window.openpalm?.restartUiServer?.();
         if (restarted) {
-          uiBuildMessageType = 'success';
+          uiBuildIsError = false;
           uiBuildMessage = `Installed ${tag} and restarted the admin UI.`;
         } else {
-          uiBuildMessageType = 'error';
+          uiBuildIsError = true;
           uiBuildMessage = `Downloaded ${tag} but the restart failed — reload the page to apply it.`;
         }
       } else if (result.restarting) {
-        uiBuildMessageType = 'success';
+        uiBuildIsError = false;
         uiBuildMessage = `Installed ${tag} — restarting…`;
       } else {
-        uiBuildMessageType = 'success';
+        uiBuildIsError = false;
         uiBuildMessage = `Downloaded ${tag}. Restart the admin UI to apply it.`;
       }
       uiBuildTag = '';
     } catch (e) {
-      uiBuildMessageType = 'error';
+      uiBuildIsError = true;
       uiBuildMessage = `Failed: ${e instanceof Error ? e.message : String(e)}`;
     }
     uiBuildBusy = false;
   }
+
+  const statusText = $derived(
+    applying ? 'Applying versions and restarting services…'
+      : loading ? 'Loading versions…'
+      : checkingLatest ? 'Checking for latest versions…'
+      : '',
+  );
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <div>
       <h2>Versions</h2>
-      <p class="panel-subtitle">Pin the version of each container image and bundled tool.</p>
+      <p class="panel-subtitle">Keep your stack current or pin specific versions.</p>
       <p class="control-plane-line">
         Control plane: <strong>{platformVersion || '—'}</strong>
       </p>
     </div>
+    <div class="mode-toggle" role="group" aria-label="Update mode">
+      <button
+        class="mode-btn"
+        class:mode-btn--active={mode === 'auto'}
+        onclick={() => handleSetMode('auto')}
+        aria-pressed={mode === 'auto'}
+      >Automatic</button>
+      <button
+        class="mode-btn"
+        class:mode-btn--active={mode === 'manual'}
+        onclick={() => handleSetMode('manual')}
+        aria-pressed={mode === 'manual'}
+      >Manual</button>
+    </div>
   </div>
 
-  <!-- Polite status region for assistive tech. -->
-  <p class="status-live" role="status" aria-live="polite">{statusText}</p>
+  {#if statusText}
+    <p class="status-live" role="status" aria-live="polite" aria-atomic="true">{statusText}</p>
+  {/if}
 
   <div class="panel-body">
     {#if loadError}
@@ -209,7 +326,121 @@
 
     {#if loading}
       <p class="loading-line"><Spinner /> Loading versions…</p>
+    {:else if mode === 'auto'}
+      <!-- ═══════════════════════════════════════════════════════════════════
+           AUTOMATIC MODE
+           ══════════════════════════════════════════════════════════════════ -->
+      <section class="auto-section" aria-labelledby="auto-mode-desc">
+        <p id="auto-mode-desc" class="auto-description">
+          Check Docker Hub and npm for the latest stable release of each image and
+          package, then apply them all in one step. npm packages are pinned to their
+          exact latest version. The stack will restart (~1 min offline) and your data
+          is kept.
+        </p>
+
+        {#if !hasLatestFetch}
+          <div class="auto-action-row">
+            <button
+              class="btn btn-primary"
+              onclick={handleCheckLatest}
+              disabled={checkingLatest}
+              aria-busy={checkingLatest}
+            >
+              {#if checkingLatest}
+                <Spinner /> Checking…
+              {:else}
+                Check for updates
+              {/if}
+            </button>
+            {#if checkError}
+              <p class="result-message result-error" role="alert">{checkError}</p>
+            {/if}
+          </div>
+        {:else}
+          <div class="latest-results">
+            {#if latestErrors.length > 0}
+              <div role="status">
+                {#each latestErrors as err (err)}
+                  <p class="registry-warning">⚠ {err}</p>
+                {/each}
+              </div>
+            {/if}
+
+            <table class="version-table" aria-label="Version comparison">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-component">Component</th>
+                  <th scope="col" class="col-current">Current</th>
+                  <th scope="col" class="col-latest">Latest</th>
+                  <th scope="col" class="col-status">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each ALL_FIELDS as field (field.key)}
+                  {@const cur = loaded[field.key] ?? ''}
+                  {@const lat = latest[field.key]}
+                  {@const changed = lat !== null && lat !== undefined && lat !== cur}
+                  {@const unavailable = lat === null || lat === undefined}
+                  <tr class:row-changed={changed}>
+                    <td class="col-component">{field.label}</td>
+                    <td class="col-current"><code>{cur || '—'}</code></td>
+                    <td class="col-latest">
+                      {#if unavailable}
+                        <span class="val-unavailable">unavailable</span>
+                      {:else}
+                        <code class:val-new={changed}>{lat}</code>
+                      {/if}
+                    </td>
+                    <td class="col-status">
+                      {#if unavailable}
+                        <span class="badge badge-warn">?</span>
+                      {:else if changed}
+                        <span class="badge badge-update">update</span>
+                      {:else}
+                        <span class="badge badge-ok">current</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+
+            <div class="auto-action-row">
+              {#if hasAutoUpdates}
+                <button
+                  class="btn btn-primary"
+                  onclick={handleAutoUpdate}
+                  disabled={applying}
+                  aria-busy={applying}
+                >
+                  {#if applying}
+                    <Spinner /> Applying…
+                  {:else}
+                    Update {autoChanges.length} component{autoChanges.length === 1 ? '' : 's'}
+                  {/if}
+                </button>
+                <p class="apply-hint">
+                  Saves the versions shown above, then recreates the stack (~1 min offline). Your data is kept.
+                </p>
+              {:else}
+                <p class="up-to-date">Everything is up to date.</p>
+              {/if}
+              <button
+                class="btn btn-ghost recheck-btn"
+                onclick={handleCheckLatest}
+                disabled={checkingLatest || applying}
+                aria-busy={checkingLatest}
+              >
+                {checkingLatest ? 'Checking…' : 'Re-check'}
+              </button>
+            </div>
+          </div>
+        {/if}
+      </section>
     {:else}
+      <!-- ═══════════════════════════════════════════════════════════════════
+           MANUAL MODE
+           ══════════════════════════════════════════════════════════════════ -->
       <section class="version-group" aria-labelledby="version-images-title">
         <h3 id="version-images-title" class="version-group-title">Container images</h3>
         <p class="version-group-subtitle">
@@ -259,8 +490,8 @@
       <div class="apply-row">
         <button
           class="btn btn-primary"
-          onclick={handleApply}
-          disabled={applying || !hasChanges}
+          onclick={handleManualApply}
+          disabled={applying || !hasManualChanges}
           aria-busy={applying}
         >
           {#if applying}
@@ -270,23 +501,29 @@
           {/if}
         </button>
         <p class="apply-hint">
-          Saves the changed versions, then recreates the stack so the new images and packages take effect
-          (about a minute offline). Your data is kept.
+          Saves the changed versions, then recreates the stack so the new images and packages take
+          effect (~1 min offline). Your data is kept.
         </p>
       </div>
-
-      {#if resultMessage}
-        <p class="result-message" class:result-success={resultType === 'success'} class:result-error={resultType === 'error'} role="status">
-          {resultMessage}
-        </p>
-      {/if}
     {/if}
 
+    {#if resultMessage}
+      <p
+        class="result-message"
+        class:result-success={!resultIsError}
+        class:result-error={resultIsError}
+        role="status"
+      >
+        {resultMessage}
+      </p>
+    {/if}
+
+    <!-- ── Admin UI build (always visible, no stack restart needed) ─────── -->
     <section class="version-group" aria-labelledby="ui-build-title">
       <h3 id="ui-build-title" class="version-group-title">Admin UI build</h3>
       <p class="version-group-subtitle">
-        Install a specific <code>@openpalm/ui</code> npm version. The new build takes effect after the
-        admin UI restarts — done automatically in the desktop app; reload the page otherwise.
+        Install a specific <code>@openpalm/ui</code> npm version. Takes effect after the
+        admin UI restarts — automatic in the desktop app; reload the page otherwise.
       </p>
       <div class="ui-build-row">
         <label class="version-label" for="ui-build-tag">Version tag</label>
@@ -316,8 +553,8 @@
       {#if uiBuildMessage}
         <p
           class="result-message"
-          class:result-success={uiBuildMessageType === 'success'}
-          class:result-error={uiBuildMessageType === 'error'}
+          class:result-success={!uiBuildIsError}
+          class:result-error={uiBuildIsError}
           role="status"
         >
           {uiBuildMessage}
@@ -325,6 +562,7 @@
       {/if}
     </section>
 
+    <!-- ── Desktop settings (Electron-only) ────────────────────────────── -->
     {#if inElectron}
       <section class="desktop-settings" aria-labelledby="desktop-settings-title">
         <h3 id="desktop-settings-title" class="desktop-settings-title">Desktop settings</h3>
@@ -351,7 +589,7 @@
 
         <div class="desktop-setting-row">
           <div class="version-label">Desktop notifications</div>
-          {#if typeof window !== 'undefined' && typeof window.openpalm?.notify === 'function'}
+          {#if inElectron && typeof window.openpalm?.notify === 'function'}
             <label class="desktop-toggle">
               <input
                 type="checkbox"
@@ -394,7 +632,6 @@
         </div>
       </section>
     {/if}
-
   </div>
 </div>
 
@@ -411,7 +648,6 @@
     color: var(--s-ink);
   }
 
-  /* Visually hidden, still announced by screen readers. */
   .status-live {
     position: absolute;
     width: 1px;
@@ -424,6 +660,45 @@
     border: 0;
   }
 
+  .panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--s-sp-4);
+    flex-wrap: wrap;
+  }
+
+  /* ── Mode toggle ── */
+  .mode-toggle {
+    display: flex;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    margin-top: var(--s-sp-1);
+  }
+  .mode-btn {
+    padding: var(--s-sp-2) var(--s-sp-4);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    border-right: var(--s-hair) solid var(--s-line);
+    transition: background 0.1s, color 0.1s;
+  }
+  .mode-btn:last-child {
+    border-right: none;
+  }
+  .mode-btn--active {
+    background: var(--s-ink);
+    color: var(--s-paper);
+  }
+  .mode-btn:not(.mode-btn--active):hover {
+    background: var(--s-line-soft);
+  }
+
   .loading-line {
     display: flex;
     align-items: center;
@@ -434,6 +709,117 @@
     margin: 0;
   }
 
+  /* ── Automatic mode ── */
+  .auto-section {
+    margin-top: var(--s-sp-3);
+  }
+  .auto-description {
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    margin: 0 0 var(--s-sp-4) 0;
+    line-height: 1.5;
+    max-width: 60ch;
+  }
+
+  .auto-action-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-4);
+    flex-wrap: wrap;
+    margin-top: var(--s-sp-4);
+  }
+
+  .latest-results {
+    margin-top: var(--s-sp-2);
+  }
+
+  /* Version comparison table */
+  .version-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    margin-bottom: var(--s-sp-2);
+  }
+  .version-table th {
+    text-align: left;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    border-bottom: var(--s-hair) solid var(--s-line);
+  }
+  .version-table td {
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    vertical-align: middle;
+    color: var(--s-ink);
+  }
+  .version-table tr:last-child td {
+    border-bottom: none;
+  }
+  .row-changed {
+    background: color-mix(in srgb, var(--s-amber, #f59e0b) 8%, transparent);
+  }
+  .col-component { width: 30%; }
+  .col-current, .col-latest { width: 28%; }
+  .col-status { width: 14%; text-align: center; }
+  .version-table code {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+  }
+  .val-new {
+    color: var(--s-moss, #16a34a);
+    font-weight: 600;
+  }
+  .val-unavailable {
+    color: var(--s-ink-3);
+    font-style: italic;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    padding: 1px var(--s-sp-2);
+    border-radius: 2px;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+  }
+  .badge-ok {
+    background: color-mix(in srgb, var(--s-moss, #16a34a) 12%, transparent);
+    color: var(--s-moss, #16a34a);
+  }
+  .badge-update {
+    background: color-mix(in srgb, var(--s-amber, #f59e0b) 15%, transparent);
+    color: color-mix(in srgb, var(--s-amber, #f59e0b) 80%, var(--s-ink));
+  }
+  .badge-warn {
+    background: color-mix(in srgb, var(--s-ink-3) 10%, transparent);
+    color: var(--s-ink-3);
+  }
+
+  .up-to-date {
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-moss, #16a34a);
+    margin: 0;
+  }
+
+  .recheck-btn { margin-left: auto; }
+
+  .registry-warning {
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
+    margin: 0 0 var(--s-sp-1) 0;
+  }
+
+  /* ── Manual mode ── */
   .version-group {
     margin-top: var(--s-sp-5);
     display: flex;
@@ -459,7 +845,6 @@
     max-width: 60ch;
     line-height: 1.5;
   }
-
   .version-field {
     display: flex;
     flex-direction: column;
@@ -467,16 +852,12 @@
     padding: var(--s-sp-2) 0;
     border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
-  .version-field:last-child {
-    border-bottom: none;
-  }
-
+  .version-field:last-child { border-bottom: none; }
   .version-label {
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink);
   }
-
   .version-input {
     width: 100%;
     min-width: 0;
@@ -488,11 +869,7 @@
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
   }
-  .version-input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
+  .version-input:disabled { opacity: 0.5; cursor: not-allowed; }
   .version-hint {
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
@@ -553,12 +930,12 @@
     border: var(--s-hair) solid var(--s-line);
   }
   .result-success {
-    border-color: var(--s-moss);
-    color: var(--s-moss);
+    border-color: var(--s-moss, #16a34a);
+    color: var(--s-moss, #16a34a);
   }
   .result-error {
-    border-color: var(--s-seal);
-    color: var(--s-seal);
+    border-color: var(--s-seal, #ef4444);
+    color: var(--s-seal, #ef4444);
   }
 
   /* ── Desktop settings (Electron-only) ── */
@@ -582,9 +959,7 @@
     padding: var(--s-sp-3) 0;
     border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
-  .desktop-setting-row:last-child {
-    border-bottom: none;
-  }
+  .desktop-setting-row:last-child { border-bottom: none; }
   .desktop-toggle {
     display: flex;
     align-items: flex-start;

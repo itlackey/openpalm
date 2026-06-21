@@ -160,11 +160,9 @@ export async function upgradeStack(): Promise<UpgradeStackResult> {
  *  `latestVersion` is the best-effort latest tag for THIS unit's image on Docker
  *  Hub (null when the check failed or was skipped). */
 export interface VersionsResponse {
-  /** Every version key in stack.env (Docker image tags + npm package pins),
-   *  with documented defaults applied for any that are unset. */
   versions: Record<string, string>;
-  /** Running control-plane version (PLATFORM_VERSION) — read-only header line. */
   platformVersion: string;
+  autoUpdate: boolean;
 }
 
 export async function fetchVersions(): Promise<VersionsResponse> {
@@ -177,6 +175,23 @@ export async function fetchVersions(): Promise<VersionsResponse> {
 export async function patchVersions(versions: Record<string, string>): Promise<{ ok: boolean; versions: Record<string, string> }> {
   const res = await requireOk(await request('PATCH', '/admin/versions', { versions }));
   return (await res.json()) as { ok: boolean; versions: Record<string, string> };
+}
+
+
+/** Response from GET /admin/versions/latest — resolved latest versions from
+ *  GitHub releases (images) and npm registry (packages). null means the registry
+ *  was unreachable for that key. */
+export interface LatestVersionsResponse {
+  versions: Record<string, string | null>;
+  errors: string[];
+  fetchedAt: string;
+}
+
+/** Query the latest available versions from GitHub releases + npm registry.
+ *  Called only on explicit user action; never auto-polled. */
+export async function fetchLatestVersions(): Promise<LatestVersionsResponse> {
+  const res = await requireOk(await request('GET', '/admin/versions/latest'));
+  return (await res.json()) as LatestVersionsResponse;
 }
 
 /** Preview the release migrations an upgrade to <tag> would run (#497). Returns

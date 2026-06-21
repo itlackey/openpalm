@@ -1,10 +1,11 @@
 /**
  * UpdatesTab component tests.
  *
- * The Versions tab self-fetches GET /admin/versions on mount, renders two
- * groups of plain text inputs (container image tags + npm package pins), and
- * applies changes via PATCH /admin/versions + POST /admin/update. The Electron
- * launch-on-login section uses the window.openpalm bridge directly.
+ * The Versions tab has two modes:
+ *  - Automatic (default): "Check for updates" → comparison table → "Update N components".
+ *  - Manual: individual text inputs for every image tag / npm range, with an Apply button.
+ *
+ * The Electron launch-on-login section uses the window.openpalm bridge directly.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -12,13 +13,14 @@ import { page } from 'vitest/browser';
 
 vi.mock('$lib/api.js', () => ({
   fetchVersions: vi.fn(),
+  fetchLatestVersions: vi.fn(),
   patchVersions: vi.fn(),
   applyChanges: vi.fn(),
   downloadUiVersion: vi.fn(),
 }));
 
 import UpdatesTab from './UpdatesTab.svelte';
-import { fetchVersions, patchVersions, applyChanges } from '$lib/api.js';
+import { fetchVersions, fetchLatestVersions, patchVersions, applyChanges } from '$lib/api.js';
 
 const ALL_VERSIONS = {
   OP_ASSISTANT_VERSION: 'latest',
@@ -33,7 +35,25 @@ const ALL_VERSIONS = {
 };
 
 beforeEach(() => {
-  vi.mocked(fetchVersions).mockResolvedValue({ versions: { ...ALL_VERSIONS }, platformVersion: '0.12.20' });
+  // Reset mock call counts so tests don't bleed into each other.
+  vi.clearAllMocks();
+
+  vi.mocked(fetchVersions).mockResolvedValue({ versions: { ...ALL_VERSIONS }, platformVersion: '0.12.20', autoUpdate: true });
+  vi.mocked(fetchLatestVersions).mockResolvedValue({
+    versions: {
+      OP_ASSISTANT_VERSION: '0.12.22',
+      OP_GUARDIAN_VERSION: '0.12.22',
+      OP_PORTAL_VERSION: '0.12.22',
+      OP_VOICE_VERSION: '0.12.22',
+      OP_GUARDIAN_NPM_VERSION: '0.12.22',
+      OP_TOOL_OPENCODE_VERSION: '1.18.0',
+      OP_TOOL_AKM_VERSION: '0.9.1',
+      OP_TOOL_CLAUDE_CODE_VERSION: '1.6.0',
+      OP_TOOL_CODEX_VERSION: '0.2.0',
+    },
+    errors: [],
+    fetchedAt: '2026-06-21T00:00:00Z',
+  });
   vi.mocked(patchVersions).mockResolvedValue({ ok: true, versions: { ...ALL_VERSIONS } });
   vi.mocked(applyChanges).mockResolvedValue({
     ok: true,
@@ -42,29 +62,118 @@ beforeEach(() => {
     dockerAvailable: true,
     overallSuccess: true,
   });
-  // The component checks for the Electron bridge on mount.
   window.openpalm = {
     launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
     setLaunchOnLogin: vi.fn(),
   };
 });
 
-describe('UpdatesTab — version sections', () => {
+describe('UpdatesTab — header', () => {
   test('shows the control-plane version from the endpoint', async () => {
     render(UpdatesTab, { props: {} });
     await expect.element(page.getByText('0.12.20')).toBeVisible();
   });
 
-  test('renders a labelled input for every container image version', async () => {
+  test('shows the Automatic / Manual mode toggle', async () => {
     render(UpdatesTab, { props: {} });
+    await expect.element(page.getByRole('button', { name: 'Automatic' })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Manual' })).toBeVisible();
+  });
+});
+
+describe('UpdatesTab — automatic mode', () => {
+  test('shows "Check for updates" button in auto mode', async () => {
+    render(UpdatesTab, { props: {} });
+    await expect.element(page.getByRole('button', { name: /check for updates/i })).toBeVisible();
+  });
+
+  test('calls fetchLatestVersions on check and reveals re-check button', async () => {
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+
+    await vi.waitFor(() => {
+      expect(fetchLatestVersions).toHaveBeenCalledTimes(1);
+    });
+
+    // After a successful check, the "Re-check" button becomes visible.
+    await expect.element(page.getByRole('button', { name: /re-check/i })).toBeVisible();
+  });
+
+  test('shows "Update N components" button after check finds updates', async () => {
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+
+    await vi.waitFor(async () => {
+      await expect.element(page.getByRole('button', { name: /update \d+ component/i })).toBeVisible();
+    });
+  });
+
+  test('calls patchVersions + applyChanges with the latest resolved versions', async () => {
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+
+    const updateBtn = page.getByRole('button', { name: /update \d+ component/i });
+    await expect.element(updateBtn).toBeVisible();
+    await updateBtn.click();
+
+    await vi.waitFor(() => {
+      expect(patchVersions).toHaveBeenCalledTimes(1);
+    });
+    expect(applyChanges).toHaveBeenCalledTimes(1);
+    // The patch should include the latest versions returned by the mock
+    const patchArg = vi.mocked(patchVersions).mock.calls[0][0];
+    expect(patchArg['OP_ASSISTANT_VERSION']).toBe('0.12.22');
+    expect(patchArg['OP_TOOL_OPENCODE_VERSION']).toBe('1.18.0');
+  });
+
+  test('shows "up to date" when latest matches current', async () => {
+    // Return latest == current for all keys
+    vi.mocked(fetchLatestVersions).mockResolvedValue({
+      versions: { ...ALL_VERSIONS },
+      errors: [],
+      fetchedAt: '2026-06-21T00:00:00Z',
+    });
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+
+    await vi.waitFor(async () => {
+      await expect.element(page.getByText(/everything is up to date/i)).toBeVisible();
+    });
+  });
+
+  test('shows registry error messages when some checks fail', async () => {
+    vi.mocked(fetchLatestVersions).mockResolvedValue({
+      versions: { ...ALL_VERSIONS, OP_ASSISTANT_VERSION: null },
+      errors: ['GitHub releases unavailable'],
+      fetchedAt: '2026-06-21T00:00:00Z',
+    });
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+
+    await vi.waitFor(async () => {
+      await expect.element(page.getByText(/github releases unavailable/i)).toBeVisible();
+    });
+  });
+});
+
+
+describe('UpdatesTab — manual mode', () => {
+  async function switchToManual() {
+    await page.getByRole('button', { name: 'Manual' }).click();
+  }
+
+  test('renders a labelled input for every container image version in manual mode', async () => {
+    render(UpdatesTab, { props: {} });
+    await switchToManual();
     await expect.element(page.getByLabelText('Assistant', { exact: true })).toBeVisible();
     await expect.element(page.getByLabelText('Guardian', { exact: true })).toBeVisible();
     await expect.element(page.getByLabelText('Portal (Discord/Slack/API)', { exact: true })).toBeVisible();
     await expect.element(page.getByLabelText('Voice', { exact: true })).toBeVisible();
   });
 
-  test('renders a labelled input for every npm package pin', async () => {
+  test('renders a labelled input for every npm package pin in manual mode', async () => {
     render(UpdatesTab, { props: {} });
+    await switchToManual();
     await expect.element(page.getByLabelText('OpenCode')).toBeVisible();
     await expect.element(page.getByLabelText('AKM CLI')).toBeVisible();
     await expect.element(page.getByLabelText('Claude Code')).toBeVisible();
@@ -74,18 +183,17 @@ describe('UpdatesTab — version sections', () => {
 
   test('the Apply button is disabled until a value changes', async () => {
     render(UpdatesTab, { props: {} });
+    await switchToManual();
     const apply = page.getByRole('button', { name: /^apply$/i });
     await expect.element(apply).toBeDisabled();
   });
-});
 
-describe('UpdatesTab — apply', () => {
   test('patches only the changed version keys, then recreates the stack', async () => {
     render(UpdatesTab, { props: {} });
+    await switchToManual();
 
     const assistantInput = page.getByLabelText('Assistant', { exact: true });
     await expect.element(assistantInput).toBeVisible();
-    // Replace the value with a concrete tag.
     await assistantInput.fill('v0.12.18');
 
     const apply = page.getByRole('button', { name: /^apply$/i });

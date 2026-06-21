@@ -36,6 +36,37 @@ export const NPM_VERSION_KEYS = [
   "OP_TOOL_CODEX_VERSION",
 ] as const;
 
+/**
+ * Maps each npm version key to its published npm package name.
+ * Single source of truth — used by the admin UI's latest-version checker
+ * so it doesn't duplicate this mapping independently.
+ * Source: packages/skeleton/tools.json + containers/guardian/entrypoint.sh.
+ */
+export const NPM_PACKAGE_NAMES: Record<(typeof NPM_VERSION_KEYS)[number], string> = {
+  OP_GUARDIAN_NPM_VERSION: "@openpalm/guardian",
+  OP_TOOL_OPENCODE_VERSION: "opencode-ai",
+  OP_TOOL_AKM_VERSION: "akm-cli",
+  OP_TOOL_CLAUDE_CODE_VERSION: "@anthropic-ai/claude-code",
+  OP_TOOL_CODEX_VERSION: "@openai/codex",
+};
+
+/**
+ * Maps each service version key to its Docker Hub image name (without namespace).
+ * Namespace defaults to "openpalm" (OP_IMAGE_NAMESPACE env var in compose).
+ * Source: .openpalm/config/stack/core.compose.yml + services.compose.yml + portals.compose.yml.
+ *
+ * NOTE: voice tags carry a variant suffix in compose (e.g. "-cpu", "-cu121") that is
+ * appended by the compose file itself. OP_VOICE_VERSION holds only the base semver part.
+ * Docker Hub voice tags are therefore "<version>-cpu" etc. — strip the suffix when
+ * comparing or displaying.
+ */
+export const DOCKER_IMAGE_NAMES: Record<(typeof SERVICE_VERSION_KEYS)[number], string> = {
+  OP_ASSISTANT_VERSION: "assistant",
+  OP_GUARDIAN_VERSION: "guardian",
+  OP_PORTAL_VERSION: "portal",
+  OP_VOICE_VERSION: "voice",
+};
+
 /** Every version key the control plane reads/writes in stack.env. */
 export const ALL_VERSION_KEYS = [
   ...SERVICE_VERSION_KEYS,

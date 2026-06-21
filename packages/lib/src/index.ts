@@ -322,6 +322,8 @@ export {
   NPM_VERSION_KEYS,
   ALL_VERSION_KEYS,
   VERSION_DEFAULTS,
+  NPM_PACKAGE_NAMES,
+  DOCKER_IMAGE_NAMES,
   isVersionKey,
   readVersions,
   writeVersions,
