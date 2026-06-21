@@ -2,8 +2,8 @@
 // bump-unit.mjs — compute next version for a release unit and stamp unit files.
 //
 // Env in:
-//   UNIT    — platform | portals | assistant | guardian | major
-//   BUMP    — patch | minor | major  (ignored when UNIT=major)
+//   UNIT    — platform | portals | assistant | guardian | images | major
+//   BUMP    — patch | minor | major  (ignored when UNIT=major or UNIT=images)
 //   STAMP   — 'true' to write files in place; any other value = compute-only (dry preview)
 //
 // Out (when GITHUB_OUTPUT is set):
@@ -114,6 +114,13 @@ const UNITS = {
       stampJsonFiles(['packages/guardian/package.json'], version);
     },
   },
+  // Images-only unit: rebuilds Docker images at the current platform version without
+  // publishing npm. No files are stamped; no version bump is applied by default.
+  // Provide an explicit --version override to tag images at a new version.
+  images: {
+    anchorFn: () => readJsonVersion('package.json'),
+    stamp(_version) { /* no files to stamp for images-only release */ },
+  },
 };
 
 const unit = process.env.UNIT;
@@ -121,7 +128,7 @@ const bump = process.env.BUMP || 'patch';
 const doStamp = process.env.STAMP === 'true';
 
 if (!unit) {
-  console.error('Error: UNIT env var is required (platform|portals|assistant|guardian|major)');
+  console.error('Error: UNIT env var is required (platform|portals|assistant|guardian|images|major)');
   process.exit(1);
 }
 
@@ -129,7 +136,20 @@ let newVersion;
 let currentVersion;
 const out = process.env.GITHUB_OUTPUT;
 
-if (unit === 'major') {
+if (unit === 'images') {
+  // Images-only release: read current platform version, no bump.
+  // Use --version override to tag images at a specific version.
+  currentVersion = UNITS.images.anchorFn();
+  newVersion = currentVersion;
+  console.log(`images: using current platform version ${newVersion} (no bump; use version override for a new tag)`);
+  if (out) {
+    appendFileSync(out, [
+      `current_version=${currentVersion}`,
+      `new_version=${newVersion}`,
+      `tag_prefix=images`,
+    ].join('\n') + '\n');
+  }
+} else if (unit === 'major') {
   // Major cut: increment major of the platform anchor, then stamp ALL units to X.0.0.
   currentVersion = UNITS.platform.anchorFn();
   newVersion = bumpVersion(currentVersion, 'major');
@@ -160,7 +180,7 @@ if (unit === 'major') {
 } else {
   const cfg = UNITS[unit];
   if (!cfg) {
-    console.error(`Error: Unknown unit '${unit}'. Must be platform|portals|assistant|guardian|major`);
+    console.error(`Error: Unknown unit '${unit}'. Must be platform|portals|assistant|guardian|images|major`);
     process.exit(1);
   }
   currentVersion = cfg.anchorFn();

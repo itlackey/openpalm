@@ -5,23 +5,33 @@ name: Release
 # Units:
 #   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + admin-tools +
 #               CLI native binaries + optional Electron + git tag + GitHub release
+#               (add include_images=true to also rebuild Docker images)
 #   portals   — openpalm/portal image + openpalm/guardian image (baked adapters,
 #               NOT on npm; private packages) + git tag + GitHub release
 #   assistant — openpalm/assistant image + git tag + GitHub release
-#   guardian  — openpalm/guardian image (standalone; released separately when its own
-#               deps need updating) + git tag + GitHub release
+#   guardian  — @openpalm/guardian + @openpalm/skeleton npm packages only
+#               (add include_images=true to also rebuild the guardian Docker image)
+#   images    — Docker-only: rebuilds guardian + assistant + portal images at the
+#               current (or explicitly overridden) platform version. No npm publish.
+#               Use to roll out container-level changes (system deps, OpenCode version)
+#               without touching npm packages.
 #   major     — all units simultaneously, bumps major, resets all to X.0.0 + summary tag
+#
+# Thin-host decoupling: guardian and platform npm packages can be released independently
+# of Docker images. npm patches deploy instantly to thin-host deployments without a
+# docker pull. Use unit=images (or include_images=true) only when the container itself
+# needs to change.
 #
 # Optional version override — when set, skips bump computation and uses the explicit version
 # (e.g. 0.12.14-rc.1). Pre-release suffixes auto-select the correct npm dist-tag (rc/beta/next).
 # When omitted, bump type drives the next version computed from the unit's anchor.
-# Tag scheme: platform-X.Y.Z, portals-X.Y.Z, assistant-X.Y.Z, guardian-X.Y.Z, vX.0.0 (major summary).
+# Tag scheme: platform-X.Y.Z, portals-X.Y.Z, assistant-X.Y.Z, guardian-X.Y.Z,
+#             images-X.Y.Z, vX.0.0 (major summary).
 # Docker images: openpalm/assistant:vX.Y.Z, openpalm/portal:vX.Y.Z, openpalm/guardian:vX.Y.Z
 #
 # npm OIDC: all npm publishes go through publish-npm-package.yml (single top-level caller).
-# Docker-only units (portals/assistant) skip npm jobs entirely.
+# Docker-only units (portals/assistant/images) skip npm jobs entirely.
 # unit=guardian publishes @openpalm/guardian + @openpalm/skeleton (thin-host needs both at runtime).
-# unit=platform also builds the guardian Docker image (thin-host must match platform version).
 #
 # TAG-LAST: the git tag + GitHub release are created LAST ("tag exists = fully published").
 # Always run with dry_run=true first to validate the plan without committing.
@@ -33,7 +43,7 @@ on:
         description: 'Unit to release'
         required: true
         type: choice
-        options: [platform, portals, assistant, guardian, major]
+        options: [platform, portals, assistant, guardian, images, major]
       bump:
         description: 'Semver increment (ignored for unit=major or when version is set)'
         required: true
@@ -47,6 +57,11 @@ on:
         default: ''
       include_electron:
         description: 'Build and publish Electron installer (platform only; always included for major)'
+        required: false
+        type: boolean
+        default: false
+      include_images:
+        description: 'Also rebuild Docker images (guardian/platform only; images and major always build images)'
         required: false
         type: boolean
         default: false
@@ -125,7 +140,7 @@ jobs:
 
             // Only npm-published units need a regression guard
             if (!['platform', 'major', 'guardian'].includes(unit)) {
-              console.log('Non-npm unit — skipping npm regression guard.');
+              console.log('Non-npm unit (' + unit + ') — skipping npm regression guard.');
               process.exit(0);
             }
 
@@ -267,6 +282,9 @@ jobs:
               guardian)
                 node scripts/set-version.mjs packages/guardian/package.json "$V"
                 ;;
+              images)
+                echo "Images-only release — no files to stamp."
+                ;;
               *)
                 echo "::error::version override not supported for unit=${UNIT}"; exit 1
                 ;;
@@ -386,12 +404,13 @@ jobs:
       dry-run: ${{ inputs.dry_run }}
 
   # ── Docker images ─────────────────────────────────────────────────────────────
-  # portal + guardian: built for unit=portals, unit=guardian (guardian standalone),
-  #                    and unit=major
+  # portal:    portals | images | major
+  # guardian:  images | major | guardian+include_images | platform+include_images
+  # assistant: assistant | images | major | platform+include_images
   docker-portal:
     name: Docker openpalm/portal
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'images' || inputs.unit == 'major')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -439,7 +458,8 @@ jobs:
     if: |
       always() &&
       needs.bump.result == 'success' &&
-      (inputs.unit == 'guardian' || inputs.unit == 'platform' || inputs.unit == 'major') &&
+      (inputs.unit == 'images' || inputs.unit == 'major' ||
+       ((inputs.unit == 'guardian' || inputs.unit == 'platform') && inputs.include_images)) &&
       needs.npm-guardian.result != 'failure' &&
       needs.npm-skeleton.result != 'failure'
     runs-on: ubuntu-latest
@@ -486,7 +506,7 @@ jobs:
   docker-assistant:
     name: Docker openpalm/assistant
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'platform' || inputs.unit == 'major')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'major' || (inputs.unit == 'platform' && inputs.include_images))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -738,6 +758,9 @@ jobs:
             # Platform releases also create vX.Y.Z — asset download URLs use this tag
             create_tag "platform-${VERSION}" "Release platform ${VERSION}"
             create_tag "v${VERSION}" "Platform release v${VERSION}"
+          elif [ "${UNIT}" = 'images' ]; then
+            # Docker-only release: tag as images-X.Y.Z (no vX.Y.Z alias)
+            create_tag "images-${VERSION}" "Release images ${VERSION}"
           else
             create_tag "${UNIT}-${VERSION}" "Release ${UNIT} ${VERSION}"
           fi
@@ -769,6 +792,8 @@ jobs:
               create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}"
             done
             create_release "v${VERSION}" "OpenPalm v${VERSION} (major)"
+          elif [ "${UNIT}" = 'images' ]; then
+            create_release "images-${VERSION}" "OpenPalm images ${VERSION}"
           else
             create_release "${UNIT}-${VERSION}" "OpenPalm ${UNIT} ${VERSION}"
           fi
