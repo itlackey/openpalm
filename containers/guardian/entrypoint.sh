@@ -8,12 +8,13 @@ IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
 # ── Version resolution ────────────────────────────────────────────────────────
 # GUARDIAN_VERSION is baked into the image at build time (Dockerfile ARG → ENV),
 # so the thin host boots with no operator configuration. Operators may override
-# with OP_GUARDIAN_VERSION (e.g. to pin a private package at a different
-# version). PLATFORM_VERSION is a legacy fallback only. The exact-version pin is
-# a security boundary — never loosen it to a range.
-VERSION="${OP_GUARDIAN_VERSION:-${GUARDIAN_VERSION:-${PLATFORM_VERSION:-}}}"
+# the installed npm package version with OP_GUARDIAN_NPM_VERSION (e.g. to pin a
+# private package at a different version; semver ranges are supported here).
+# OP_GUARDIAN_VERSION is now ONLY the Docker image tag (consumed by Compose on
+# the `image:` line) and is NOT used for the npm install.
+VERSION="${OP_GUARDIAN_NPM_VERSION:-${GUARDIAN_VERSION:-}}"
 if [ -z "$VERSION" ]; then
-  echo "ERROR: No guardian version. Set OP_GUARDIAN_VERSION, or rebuild the image with the GUARDIAN_VERSION build arg." >&2
+  echo "ERROR: No guardian version. Set OP_GUARDIAN_NPM_VERSION, or rebuild the image with the GUARDIAN_VERSION build arg." >&2
   exit 1
 fi
 

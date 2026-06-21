@@ -8,7 +8,7 @@
  * and asserts:
  *
  *  - expected stack.env keys present after first run (C4 non-sensitive keys +
- *    D5b per-image tag keys + OP_RELEASE_VERSION stamp)
+ *    hand-set per-image tag escape-hatch keys preserved + OP_RELEASE_VERSION stamp)
  *  - user-file content unchanged for files outside documented upgrade writes
  *    (custom.compose.yml, the secret files, user env)
  *  - second run is a no-op (no duplicated keys, no content change)
@@ -36,7 +36,7 @@ import {
 /**
  * Seed a fully-populated 0.11.5 OP_HOME:
  *   - knowledge/env/stack.env with OP_IMAGE_TAG=v0.11.5, OP_RELEASE_VERSION=v0.11.5
- *     and the per-image tag keys already seeded by the v0.11.5-rc.1 migration
+ *     and hand-set per-image tag escape-hatch keys (must be preserved, never auto-rewritten)
  *   - knowledge/env/user.env with user preferences
  *   - knowledge/secrets/discord_bot_token (sensitive — must stay as secret)
  *   - knowledge/secrets/discord_allowed_guilds (non-sensitive — C4 copies to stack.env)
@@ -51,7 +51,7 @@ function seed0115(h: string): void {
   mkdirSync(join(h, "config", "stack"), { recursive: true });
   mkdirSync(join(h, "data"), { recursive: true });
 
-  // stack.env — 0.11.5 state with per-image tags already seeded
+  // stack.env — 0.11.5 state with hand-set per-image tag escape-hatch keys
   writeFileSync(
     join(h, "knowledge", "env", "stack.env"),
     [
@@ -180,16 +180,22 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
     expect(env).not.toContain("auth.json");
   });
 
-  it("run 1: per-image tag keys (D5b) are present in stack.env after upgrade", () => {
+  it("run 1: hand-set per-image tag escape-hatch keys are converted to per-unit version vars after upgrade", () => {
     ensureMigrated({ homeDir: home });
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.0" });
+    // Target a version >= the image-tag→version migration (v0.12.18) so the
+    // legacy *_IMAGE_TAG keys are mapped onto the new per-unit *_VERSION vars.
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
 
     const env = stackEnv();
-    // D5b portal/platform tag keys — already seeded by v0.11.5-rc.1 migration;
-    // must still be present after the 0.12.0 run.
-    expect(env).toContain("OP_ASSISTANT_IMAGE_TAG=v0.11.5");
-    expect(env).toContain("OP_GUARDIAN_IMAGE_TAG=v0.11.5");
-    expect(env).toContain("OP_PORTAL_IMAGE_TAG=v0.11.5");
+    // Hand-set per-image escape-hatch keys carry their pinned values forward — the
+    // release migration converts the old *_IMAGE_TAG keys to the new per-unit
+    // *_VERSION keys and drops the old ones.
+    expect(env).toContain("OP_ASSISTANT_VERSION=v0.11.5");
+    expect(env).toContain("OP_GUARDIAN_VERSION=v0.11.5");
+    expect(env).toContain("OP_PORTAL_VERSION=v0.11.5");
+    expect(env).not.toContain("OP_ASSISTANT_IMAGE_TAG=");
+    expect(env).not.toContain("OP_GUARDIAN_IMAGE_TAG=");
+    expect(env).not.toContain("OP_PORTAL_IMAGE_TAG=");
   });
 
   it("run 1: OP_RELEASE_VERSION is stamped to the target version", () => {
@@ -269,13 +275,14 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
   });
 
   it("run 2: no keys are duplicated in stack.env after two upgrade passes", () => {
-    // Run 1
+    // Run 1 — target >= v0.12.18 so the image-tag→version migration fires and
+    // the asserted OP_*_VERSION keys exist.
     ensureMigrated({ homeDir: home });
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.0" });
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
 
     // Run 2
     ensureMigrated({ homeDir: home });
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.0" });
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
 
     const env = stackEnv();
 
@@ -283,9 +290,9 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
     for (const key of [
       "OP_RELEASE_VERSION",
       "OP_LAYOUT_VERSION",
-      "OP_ASSISTANT_IMAGE_TAG",
-      "OP_GUARDIAN_IMAGE_TAG",
-      "OP_PORTAL_IMAGE_TAG",
+      "OP_ASSISTANT_VERSION",
+      "OP_GUARDIAN_VERSION",
+      "OP_PORTAL_VERSION",
       "DISCORD_ALLOWED_GUILDS",
       "OP_CHAT_BIND_ADDRESS",
     ]) {
@@ -333,29 +340,31 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
 
   // ── complete stack.env key set ─────────────────────────────────────────────
 
-  it("final stack.env contains all expected keys from the 0.11.5 → 0.12.0 upgrade", () => {
+  it("final stack.env contains all expected keys from the 0.11.5 → v0.12.18 upgrade", () => {
     ensureMigrated({ homeDir: home });
-    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.0" });
+    // Target >= v0.12.18 so the image-tag→version migration fires and the
+    // per-unit OP_*_VERSION keys are present in the final stack.env.
+    ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.18" });
 
     const env = stackEnv();
 
     // Layout stamp
     expect(env).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
     // Release stamp bumped to target
-    expect(env).toContain("OP_RELEASE_VERSION=v0.12.0");
+    expect(env).toContain("OP_RELEASE_VERSION=v0.12.18");
     // Addons preserved
     expect(env).toContain("OP_ENABLED_ADDONS=discord");
     // Per-service bind var preserved
     expect(env).toContain("OP_CHAT_BIND_ADDRESS=0.0.0.0");
-    // D5b per-image tag keys present
-    expect(env).toContain("OP_ASSISTANT_IMAGE_TAG=");
-    expect(env).toContain("OP_GUARDIAN_IMAGE_TAG=");
-    expect(env).toContain("OP_PORTAL_IMAGE_TAG=");
+    // Hand-set per-image escape-hatch keys converted to per-unit version keys
+    expect(env).toContain("OP_ASSISTANT_VERSION=");
+    expect(env).toContain("OP_GUARDIAN_VERSION=");
+    expect(env).toContain("OP_PORTAL_VERSION=");
     // C4 non-sensitive addon config promoted
     expect(env).toContain("DISCORD_ALLOWED_GUILDS=11111,22222");
     // Sensitive keys never promoted
     expect(env).not.toContain("DISCORD_BOT_TOKEN");
-    // Portal image tag present (D5b)
-    expect(env).toMatch(/OP_PORTAL_IMAGE_TAG=v0\.11\./);
+    // Portal escape-hatch tag preserved at the hand-set value
+    expect(env).toMatch(/OP_PORTAL_VERSION=v0\.11\./);
   });
 });

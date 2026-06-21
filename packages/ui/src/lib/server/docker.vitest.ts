@@ -494,7 +494,7 @@ describe("composePull", () => {
   test("merges env file values into process env for pull", async () => {
     const tmpEnvFile = `/tmp/docker-pull-test-${Date.now()}.env`;
     const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    realFs.writeFileSync(tmpEnvFile, "OP_IMAGE_TAG=v1.2.3\nOP_IMAGE_NAMESPACE=myns\n");
+    realFs.writeFileSync(tmpEnvFile, "OP_ASSISTANT_VERSION=v1.2.3\nOP_IMAGE_NAMESPACE=myns\n");
 
     existsSyncMock.mockReturnValue(true);
     mockExecSuccess();
@@ -505,7 +505,7 @@ describe("composePull", () => {
     // The env passed to execFile should contain the env file values
     const call = execFileMock.mock.calls[0];
     const opts = call[2] as { env: Record<string, string> };
-    expect(opts.env.OP_IMAGE_TAG).toBe("v1.2.3");
+    expect(opts.env.OP_ASSISTANT_VERSION).toBe("v1.2.3");
     expect(opts.env.OP_IMAGE_NAMESPACE).toBe("myns");
 
     realFs.unlinkSync(tmpEnvFile);

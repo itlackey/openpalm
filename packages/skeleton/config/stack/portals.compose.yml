@@ -6,7 +6,7 @@
 services:
   discord:
     profiles: ["addon.discord"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-latest}
     restart: unless-stopped
     environment:
       PORT: "8184"
@@ -40,7 +40,7 @@ services:
       retries: 3
   slack:
     profiles: ["addon.slack"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-latest}
     restart: unless-stopped
     environment:
       PORT: "8185"
@@ -69,7 +69,7 @@ services:
       retries: 3
   guardian:
     profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack", "addon.gateway"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-latest}
     restart: unless-stopped
     # No `user:` here. The container starts as root so the entrypoint can chown
     # the root-owned guardian-cache named volume (/opt/openpalm) and the bun
@@ -83,12 +83,14 @@ services:
       GUARDIAN_DIRECT_PORT: "3830"
       GUARDIAN_ADMIN_PORT: "3831"
       OP_ASSISTANT_URL: http://assistant:4096
-      # The guardian package version is baked into the image at build time
+      # The guardian npm package version is baked into the image at build time
       # (GUARDIAN_VERSION), so no version env is required to boot. Set
-      # OP_GUARDIAN_VERSION only to override — e.g. to pin a private package or a
-      # tag that differs from the image's baked version. Empty resolves to the
-      # baked GUARDIAN_VERSION in the entrypoint.
-      OP_GUARDIAN_VERSION: ${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-}}
+      # OP_GUARDIAN_NPM_VERSION only to override the npm package version — e.g. to
+      # pin a private package or a version that differs from the image's baked
+      # version (semver ranges are supported here). Empty resolves to the baked
+      # GUARDIAN_VERSION in the entrypoint. The Docker image tag is controlled
+      # separately by OP_GUARDIAN_VERSION on the `image:` line above.
+      OP_GUARDIAN_NPM_VERSION: ${OP_GUARDIAN_NPM_VERSION:-}
       OPENCODE_TIMEOUT_MS: "0"
       # OpenCode global config (opencode.jsonc) lives in OP_HOME/config/guardian,
       # bind-mounted at /etc/opencode below.

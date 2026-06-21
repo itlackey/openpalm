@@ -17,7 +17,7 @@ import { listEnabledAddonIds } from "./addons.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
-import { buildPlatformImageTagEnv } from './image-tags.js';
+import { SERVICE_VERSION_KEYS, NPM_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 
 import {
   readCoreCompose,
@@ -26,8 +26,6 @@ import {
 } from "./core-assets.js";
 export { sha256, randomHex } from "./crypto.js";
 import { sha256, randomHex } from "./crypto.js";
-
-export const DEFAULT_IMAGE_TAG = "latest";
 
 const logger = createLogger("config-persistence");
 
@@ -211,7 +209,12 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
-    ...Object.entries(buildPlatformImageTagEnv(DEFAULT_IMAGE_TAG)).map(([key, value]) => `${key}=${value}`),
+    "# Docker image tags (exact tag, \"latest\", or \"next\" — no semver ranges).",
+    ...SERVICE_VERSION_KEYS.map((key) => `${key}=${VERSION_DEFAULTS[key]}`),
+    "",
+    "# ── npm package versions (semver ranges supported) ──────────────────",
+    "# OP_GUARDIAN_NPM_VERSION empty ⇒ use the GUARDIAN_VERSION baked into the image.",
+    ...NPM_VERSION_KEYS.map((key) => `${key}=${VERSION_DEFAULTS[key]}`),
     "",
     "# ── Layout (on-disk schema version; managed by the migration harness) ──",
     `OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`,

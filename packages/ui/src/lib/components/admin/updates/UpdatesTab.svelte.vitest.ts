@@ -1,206 +1,131 @@
+/**
+ * UpdatesTab component tests.
+ *
+ * The Versions tab self-fetches GET /admin/versions on mount, renders two
+ * groups of plain text inputs (container image tags + npm package pins), and
+ * applies changes via PATCH /admin/versions + POST /admin/update. The Electron
+ * launch-on-login section uses the window.openpalm bridge directly.
+ */
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
+
+vi.mock('$lib/api.js', () => ({
+  fetchVersions: vi.fn(),
+  patchVersions: vi.fn(),
+  applyChanges: vi.fn(),
+}));
+
 import UpdatesTab from './UpdatesTab.svelte';
+import { fetchVersions, patchVersions, applyChanges } from '$lib/api.js';
 
-const launchOnLoginStatus = vi.fn<() => Promise<{ supported: boolean; enabled: boolean }>>();
-const setLaunchOnLogin = vi.fn<(enabled: boolean) => Promise<{ supported: boolean; enabled: boolean }>>();
-
-const defaultProps = {
-  // Control plane (what the user opted into) = rc.4; the stack still runs the
-  // stable 0.11.5 image — exactly the "services behind the control plane" case.
-  currentImageTag: '0.11.5',
-  platformVersion: '0.12.0-rc.4',
-  services: [
-    { id: 'assistant', label: 'Assistant', version: '0.11.5' },
-    { id: 'guardian', label: 'Guardian', version: '0.11.5' },
-    { id: 'portal', label: 'Chat (Discord/Slack)', version: '0.11.5' },
-  ],
-  harnessUpdateAvailable: false,
-  anyDangerousLoading: false,
-  tokenStored: true,
-  upgradeLoading: false,
-  inElectron: true,
-  electronVersion: '0.12.0-rc.4',
-  electronLatestVersion: null,
-  electronLatestUrl: null,
-  uiVersion: '0.12.0-rc.4',
-  uiVersions: [],
-  uiVersionsLoading: false,
-  selectedUiTag: '',
-  uiDownloadLoading: false,
-  uiDownloadReady: false,
-  uiDownloadRestarting: false,
-  releases: [],
-  unitTags: {},
-  releasesLoading: false,
-  unitInstallLoading: null,
-  onSetUnitImageTag: vi.fn(),
-  onConfirmUnitDowngrade: vi.fn(),
-  onCancelUnitDowngrade: vi.fn(),
-  onUpgradeStack: vi.fn(),
-  onSelectedUiTagChange: vi.fn(),
-  onDownloadUiVersion: vi.fn(),
-  onRestartApp: vi.fn(),
-  onRefreshReleases: vi.fn(),
+const ALL_VERSIONS = {
+  OP_ASSISTANT_VERSION: 'latest',
+  OP_GUARDIAN_VERSION: 'latest',
+  OP_PORTAL_VERSION: 'latest',
+  OP_VOICE_VERSION: 'latest',
+  OP_GUARDIAN_NPM_VERSION: '',
+  OP_TOOL_OPENCODE_VERSION: '^1.17.0',
+  OP_TOOL_AKM_VERSION: '^0.8.14',
+  OP_TOOL_CLAUDE_CODE_VERSION: '^1.5.0',
+  OP_TOOL_CODEX_VERSION: '^0.1.0',
 };
 
-describe('UpdatesTab control-plane version handling', () => {
-  beforeEach(() => {
-    // The version logic doesn't touch the Electron bridge, but onMount calls it.
-    window.openpalm = {
-      launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
-      setLaunchOnLogin: vi.fn(),
-    };
+beforeEach(() => {
+  vi.mocked(fetchVersions).mockResolvedValue({ versions: { ...ALL_VERSIONS }, platformVersion: '0.12.20' });
+  vi.mocked(patchVersions).mockResolvedValue({ ok: true, versions: { ...ALL_VERSIONS } });
+  vi.mocked(applyChanges).mockResolvedValue({
+    ok: true,
+    restarted: ['assistant'],
+    failed: [],
+    dockerAvailable: true,
+    overallSuccess: true,
+  });
+  // The component checks for the Electron bridge on mount.
+  window.openpalm = {
+    launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
+    setLaunchOnLogin: vi.fn(),
+  };
+});
+
+describe('UpdatesTab — version sections', () => {
+  test('shows the control-plane version from the endpoint', async () => {
+    render(UpdatesTab, { props: {} });
+    await expect.element(page.getByText('0.12.20')).toBeVisible();
   });
 
-  test('reports the channel from the control plane (rc.4 ⇒ prerelease), not the stable stack tag', async () => {
-    render(UpdatesTab, { props: defaultProps });
-    // platformVersion 0.12.0-rc.4 ⇒ prerelease channel, even though the stack
-    // image tag (0.11.5) is stable. The old code keyed off the stable tag and
-    // wrongly said "stable".
-    await expect.element(page.getByText(/you're on the/i)).toBeVisible();
-    await expect.element(page.getByText(/prerelease/i).first()).toBeVisible();
+  test('renders a labelled input for every container image version', async () => {
+    render(UpdatesTab, { props: {} });
+    await expect.element(page.getByLabelText('Assistant', { exact: true })).toBeVisible();
+    await expect.element(page.getByLabelText('Guardian', { exact: true })).toBeVisible();
+    await expect.element(page.getByLabelText('Portal (Discord/Slack/API)', { exact: true })).toBeVisible();
+    await expect.element(page.getByLabelText('Voice', { exact: true })).toBeVisible();
   });
 
-  test('renders every configured stack service', async () => {
-    render(UpdatesTab, { props: defaultProps });
-    // Each service label now appears in both the versions list and the per-unit
-    // picker, so scope to the first match.
-    await expect.element(page.getByText('Assistant', { exact: true }).first()).toBeVisible();
-    await expect.element(page.getByText('Guardian', { exact: true }).first()).toBeVisible();
-    await expect.element(page.getByText('Chat (Discord/Slack)', { exact: true }).first()).toBeVisible();
+  test('renders a labelled input for every npm package pin', async () => {
+    render(UpdatesTab, { props: {} });
+    await expect.element(page.getByLabelText('OpenCode')).toBeVisible();
+    await expect.element(page.getByLabelText('AKM CLI')).toBeVisible();
+    await expect.element(page.getByLabelText('Claude Code')).toBeVisible();
+    await expect.element(page.getByLabelText('Codex')).toBeVisible();
+    await expect.element(page.getByLabelText('Guardian package')).toBeVisible();
   });
 
-  test('a service behind the control plane shows update-available, never a green up-to-date', async () => {
-    render(UpdatesTab, { props: defaultProps });
-    // Assistant on 0.11.5 is behind the 0.12.0-rc.4 control plane → an
-    // "Update available" affordance for it.
-    await expect.element(page.getByText('Update to 0.12.0-rc.4').first()).toBeVisible();
-    // ...and NO "Up to date" status badge anywhere (the misleading green ✅).
-    expect(document.body.querySelector('[title="Up to date"]')).toBeNull();
-  });
-
-  test('the primary card prompts to update the services to the control-plane version', async () => {
-    render(UpdatesTab, { props: defaultProps });
-    await expect.element(
-      page.getByText(/your services are on 0\.11\.5 — update to 0\.12\.0-rc\.4/i),
-    ).toBeVisible();
-  });
-
-  test('when every service matches the control plane it reads up to date', async () => {
-    render(UpdatesTab, {
-      props: {
-        ...defaultProps,
-        services: [
-          { id: 'assistant', label: 'Assistant', version: '0.12.0-rc.4' },
-          { id: 'guardian', label: 'Guardian', version: '0.12.0-rc.4' },
-        ],
-      },
-    });
-    await expect.element(page.getByText(/you're up to date/i)).toBeVisible();
-  });
-
-  test('compares each service against its OWN latestVersion, not a shared tag', async () => {
-    // Independent release units: assistant latest is 0.12.5, guardian latest is
-    // 0.12.7. Both run 0.12.5. Guardian is behind ITS own latest (0.12.7) even
-    // though it matches the assistant's tag — the old single-tag comparison
-    // wrongly read guardian as "current".
-    render(UpdatesTab, {
-      props: {
-        ...defaultProps,
-        platformVersion: '0.12.5',
-        latestImageTag: '0.12.5',
-        services: [
-          { id: 'assistant', label: 'Assistant', version: '0.12.5', latestVersion: '0.12.5' },
-          { id: 'guardian', label: 'Guardian', version: '0.12.5', latestVersion: '0.12.7' },
-        ],
-      },
-    });
-    // Guardian is behind 0.12.7 → its row offers an update to 0.12.7.
-    await expect.element(page.getByText('Update to 0.12.7').first()).toBeVisible();
-    // Assistant is current at its own latest (0.12.5) → an up-to-date badge.
-    expect(document.body.querySelector('[title="Up to date"]')).not.toBeNull();
-  });
-
-  test('renders a per-unit version picker for each present service', async () => {
-    render(UpdatesTab, {
-      props: {
-        ...defaultProps,
-        unitTags: {
-          assistant: ['v0.12.5'],
-          guardian: ['v0.12.7'],
-          portal: ['v0.12.6'],
-        },
-      },
-    });
-    // Each unit picker is labelled by its service label + "version to install".
-    await expect.element(page.getByLabelText(/Assistant version to install/i)).toBeVisible();
-    await expect.element(page.getByLabelText(/Guardian version to install/i)).toBeVisible();
-    await expect.element(page.getByLabelText(/Chat \(Discord\/Slack\) version to install/i)).toBeVisible();
-  });
-
-  test('the per-unit Install button pins that unit via onSetUnitImageTag', async () => {
-    const onSetUnitImageTag = vi.fn();
-    render(UpdatesTab, {
-      props: {
-        ...defaultProps,
-        onSetUnitImageTag,
-        unitTags: {
-          assistant: ['v0.12.5'],
-          guardian: [],
-          portal: [],
-        },
-      },
-    });
-    // Rows render in service order (assistant first), so the first Install
-    // button belongs to the assistant unit. The default selection is "latest".
-    const installBtn = page.getByRole('button', { name: /install.*restart/i }).first();
-    await expect.element(installBtn).toBeVisible();
-    await installBtn.click();
-    expect(onSetUnitImageTag).toHaveBeenCalledWith('assistant', 'latest');
+  test('the Apply button is disabled until a value changes', async () => {
+    render(UpdatesTab, { props: {} });
+    const apply = page.getByRole('button', { name: /^apply$/i });
+    await expect.element(apply).toBeDisabled();
   });
 });
 
-describe('UpdatesTab launch-on-login', () => {
-  beforeEach(() => {
-    launchOnLoginStatus.mockReset();
-    setLaunchOnLogin.mockReset();
-    window.openpalm = {
-      launchOnLoginStatus,
-      setLaunchOnLogin,
-    };
+describe('UpdatesTab — apply', () => {
+  test('patches only the changed version keys, then recreates the stack', async () => {
+    render(UpdatesTab, { props: {} });
+
+    const assistantInput = page.getByLabelText('Assistant', { exact: true });
+    await expect.element(assistantInput).toBeVisible();
+    // Replace the value with a concrete tag.
+    await assistantInput.fill('v0.12.18');
+
+    const apply = page.getByRole('button', { name: /^apply$/i });
+    await expect.element(apply).toBeEnabled();
+    await apply.click();
+
+    await vi.waitFor(() => {
+      expect(patchVersions).toHaveBeenCalledWith({ OP_ASSISTANT_VERSION: 'v0.12.18' });
+    });
+    expect(applyChanges).toHaveBeenCalledTimes(1);
+    await expect.element(page.getByText(/versions applied/i)).toBeVisible();
   });
 
+  test('surfaces a load error when the versions fetch fails', async () => {
+    vi.mocked(fetchVersions).mockRejectedValue(new Error('boom'));
+    render(UpdatesTab, { props: {} });
+    await expect.element(page.getByText(/failed to load versions/i)).toBeVisible();
+  });
+});
+
+describe('UpdatesTab — launch on login', () => {
   test('shows the current launch-on-login state when Electron supports it', async () => {
-    launchOnLoginStatus.mockResolvedValue({ supported: true, enabled: true });
-
-    render(UpdatesTab, { props: defaultProps });
-
+    window.openpalm = {
+      launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: true, enabled: true }),
+      setLaunchOnLogin: vi.fn(),
+    };
+    render(UpdatesTab, { props: {} });
     const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
     await expect.element(toggle).toBeChecked();
     await expect.element(page.getByText(/uses the native desktop login-item integration/i)).toBeVisible();
   });
 
-  test('shows the unsupported-platform message when launch-on-login is unavailable', async () => {
-    launchOnLoginStatus.mockResolvedValue({ supported: false, enabled: false });
-
-    render(UpdatesTab, { props: defaultProps });
-
-    const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
-    await expect.element(toggle).toBeDisabled();
-    await expect.element(page.getByText(/not wired on this platform yet/i)).toBeVisible();
-  });
-
   test('writes the updated launch-on-login value through the Electron bridge', async () => {
-    launchOnLoginStatus.mockResolvedValue({ supported: true, enabled: false });
-    setLaunchOnLogin.mockResolvedValue({ supported: true, enabled: true });
-
-    render(UpdatesTab, { props: defaultProps });
-
+    const setLaunchOnLogin = vi.fn().mockResolvedValue({ supported: true, enabled: true });
+    window.openpalm = {
+      launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: true, enabled: false }),
+      setLaunchOnLogin,
+    };
+    render(UpdatesTab, { props: {} });
     const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
     await toggle.click();
-
     expect(setLaunchOnLogin).toHaveBeenCalledWith(true);
     await expect.element(toggle).toBeChecked();
   });

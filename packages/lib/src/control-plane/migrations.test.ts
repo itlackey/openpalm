@@ -336,13 +336,16 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
 
     const currentTarget = ensureReleaseMigrated({ targetVersion: 'v0.11.5-rc.1' });
-    // The per-image-tag migration is pinned to the release that introduced it.
+    // The v0.11.5-rc.1 migration is pinned to the release that introduced it and
+    // still runs (it stamps OP_RELEASE_VERSION). It is now a no-op for image tags:
+    // compose resolves every service from OP_IMAGE_TAG, so no per-image vars are
+    // written. The per-unit keys remain only as a hand-set escape hatch.
     expect(currentTarget.applied).toEqual(['v0.11.5-rc.1']);
     stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.5-rc.1');
-    expect(stackEnv).toContain('OP_ASSISTANT_IMAGE_TAG=v0.11.0');
-    expect(stackEnv).toContain('OP_GUARDIAN_IMAGE_TAG=v0.11.0');
-    expect(stackEnv).toContain('OP_PORTAL_IMAGE_TAG=v0.11.0');
+    expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
+    expect(stackEnv).not.toContain('OP_GUARDIAN_IMAGE_TAG=');
+    expect(stackEnv).not.toContain('OP_PORTAL_IMAGE_TAG=');
   });
 
   it('skips stamping a non-comparable explicit release target', () => {

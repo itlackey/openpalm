@@ -27,7 +27,7 @@
 services:
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-latest}
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"

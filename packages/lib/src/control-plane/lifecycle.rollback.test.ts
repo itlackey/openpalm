@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 type RollbackScenario = {
-  mode: 'performUpgrade' | 'applyTagChange';
+  mode: 'performUpgrade';
   composePullOk?: boolean;
   composePullStderr?: string;
   composeUpOk?: boolean;
@@ -68,7 +68,7 @@ function makeState() {
   mkdirSync(join(home, 'data'), { recursive: true });
   writeFileSync(
     join(home, 'knowledge', 'env', 'stack.env'),
-    'OP_IMAGE_NAMESPACE=openpalm\\nOP_IMAGE_TAG=v0.11.5\\n',
+    'OP_IMAGE_NAMESPACE=openpalm\\nOP_ASSISTANT_VERSION=v0.11.5\\n',
   );
   process.env.OP_HOME = home;
   process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -136,9 +136,7 @@ async function main() {
     const stackEnvPath = join(state.stashDir, 'env', 'stack.env');
     const original = readFileSync(stackEnvPath, 'utf-8');
     const lifecycle = await import(lifecycleUrl + '?scenario=' + Math.random());
-    const run = scenario.mode === 'performUpgrade'
-      ? lifecycle.performUpgrade(state)
-      : lifecycle.applyTagChange(state, 'v0.12.0');
+    const run = lifecycle.performUpgrade(state);
 
     let threw = false;
     try {
@@ -205,9 +203,9 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
-  test('applyTagChange restores stack.env when asset refresh fails', () => {
+  test('performUpgrade restores stack.env when asset refresh fails', () => {
     const result = runRollbackScenario({
-      mode: 'applyTagChange',
+      mode: 'performUpgrade',
       refreshCoreAssetsError: 'asset refresh failed',
       expectedError: 'asset refresh failed',
     });
@@ -252,7 +250,7 @@ function makeState(home) {
   mkdirSync(join(home, 'data', 'rollback'), { recursive: true });
   writeFileSync(
     join(home, 'knowledge', 'env', 'stack.env'),
-    'OP_IMAGE_NAMESPACE=openpalm\\nOP_IMAGE_TAG=v0.11.5\\n',
+    'OP_IMAGE_NAMESPACE=openpalm\\nOP_ASSISTANT_VERSION=v0.11.5\\n',
   );
   process.env.OP_HOME = home;
   process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';

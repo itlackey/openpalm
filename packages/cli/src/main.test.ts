@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectHostInfo, main } from './main.ts';
-import { readSecret, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
+import { readSecret, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
 import { canReplaceCurrentExecutable, resolveCliArtifactName } from './commands/self-update.ts';
 
 /** Write a minimal SetupSpec YAML file that satisfies validation, allowing --file installs to skip the wizard. */
@@ -201,11 +201,12 @@ describe('cli main', () => {
     }
   });
 
-  it('OP_IMAGE_TAG defaults to `latest` when no --version is given (decoupled from the install ref)', async () => {
+  it('per-image versions default to `latest` when no --version is given (decoupled from the install ref)', async () => {
     // With no --version, the install ref still falls back to the CLI version for
-    // GitHub asset download, but OP_IMAGE_TAG must NOT be pinned to the host
-    // version — images track `latest` (host & images version independently).
-    // Mock the GitHub redirect to fail so resolveDefaultInstallRef falls back.
+    // GitHub asset download, but the per-image OP_*_VERSION vars must NOT be
+    // pinned to the host version — images track `latest` (host & images version
+    // independently). Mock the GitHub redirect to fail so resolveDefaultInstallRef
+    // falls back.
     globalThis.fetch = mock(async () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
@@ -224,13 +225,16 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--file', specFile]);
       const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
-      expect(stackEnv).toMatch(/^OP_IMAGE_TAG=latest$/m);
+      expect(stackEnv).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
+      expect(stackEnv).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
+      expect(stackEnv).toMatch(/^OP_PORTAL_VERSION=latest$/m);
+      expect(stackEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
   });
 
-  it('an explicit --version pins OP_IMAGE_TAG to that version', async () => {
+  it('an explicit --version pins every per-image version to that version', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-pin-'));
     const workDir = join(base, 'work');
     const specFile = writeMinimalSetupSpec(base);
@@ -245,7 +249,10 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--version', 'v0.11.0', '--file', specFile]);
       const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
-      expect(stackEnv).toMatch(/^OP_IMAGE_TAG=v0\.11\.0$/m);
+      expect(stackEnv).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.0$/m);
+      expect(stackEnv).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.0$/m);
+      expect(stackEnv).toMatch(/^OP_PORTAL_VERSION=v0\.11\.0$/m);
+      expect(stackEnv).toMatch(/^OP_VOICE_VERSION=v0\.11\.0$/m);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -539,25 +546,6 @@ describe('install image tag pinning', () => {
     expect(resolveRequestedImageTag('v1.0.0-rc..10')).toBeNull();
     expect(resolveRequestedImageTag('v1.0.0..1')).toBeNull();
     expect(resolveRequestedImageTag('v1.0.0-rc_10')).toBeNull();
-  });
-
-  it('pins existing stack.env image tag to the requested release tag', () => {
-    const original = 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=latest\n';
-    expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10')).toBe(
-      'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v0.9.0-rc10\n',
-    );
-  });
-
-  it('does not overwrite existing stack.env image tag for main installs', () => {
-    const original = 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=latest\n';
-    expect(reconcileStackEnvImageTag(original, 'main')).toBe(original);
-  });
-
-  it('prefers an explicit image tag over the requested release ref', () => {
-    const original = 'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=latest\n';
-    expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10', 'v9.9.9-test')).toBe(
-      'OP_IMAGE_NAMESPACE=openpalm\nOP_IMAGE_TAG=v9.9.9-test\n',
-    );
   });
 
   it('updates an existing key in env content', () => {

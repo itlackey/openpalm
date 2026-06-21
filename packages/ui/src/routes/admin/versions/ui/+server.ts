@@ -1,44 +1,70 @@
 import { json } from "@sveltejs/kit";
 import { requireAdmin, getRequestId } from "$lib/server/helpers.js";
-import { withCache, invalidateVersionCache } from "$lib/server/version-cache.js";
-import { listNpmVersions, type NpmVersionEntry } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
-export type { NpmVersionEntry as UiVersionEntry } from "@openpalm/lib";
+/** One installable `@openpalm/ui` build from the npm registry. */
+export interface UiVersionEntry {
+  version: string;
+  prerelease: boolean;
+  publishedAt: string | null;
+  distTag: string | null;
+}
 
 const UI_PACKAGE = "@openpalm/ui";
-const CACHE_KEY = `npm:${UI_PACKAGE}`;
+
+type Packument = {
+  "dist-tags"?: Record<string, string>;
+  versions?: Record<string, unknown>;
+  time?: Record<string, string>;
+};
 
 /**
  * List published `@openpalm/ui` npm versions for the admin "UI build" picker.
  *
- * The UI is independently versioned and distributed via npm (not GitHub release
- * assets), so this is the authoritative source of installable UI builds — the
- * selected version is POSTed to /admin/ui-version, which seeds it from npm.
- * Returns newest-first; 404 (package not yet published) yields an empty list.
- * Cached server-side so tab switches / polls do not hit the npm registry.
+ * The UI is independently versioned and distributed via npm, so this is the
+ * authoritative source of installable UI builds — the selected version is POSTed
+ * to /admin/ui-version, which seeds it from npm. Best-effort: a 404 (package not
+ * yet published) or registry outage yields an empty list. Newest-first. (No
+ * server-side cache — the admin UI no longer polls this.)
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  if (event.url.searchParams.get('refresh') === '1') invalidateVersionCache();
-
-  const cached = await withCache<{ versions: NpmVersionEntry[]; distTags: Record<string, string> }>(CACHE_KEY, async () => {
-    const versions = await listNpmVersions(UI_PACKAGE, { max: 20 });
-    // Reverse-map version → dist-tag for the UI's distTag badge.
-    const distTags: Record<string, string> = {};
-    for (const v of versions) {
-      if (v.distTag) distTags[v.distTag] = v.version;
+  try {
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(UI_PACKAGE)}`, {
+      headers: { Accept: "application/json", "User-Agent": "openpalm-admin/1.0" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) {
+      return json({ versions: [], distTags: {}, error: "npm registry unavailable" });
     }
-    return { versions, distTags };
-  });
+    const pack = (await res.json()) as Packument;
 
-  if (cached !== undefined) {
-    return json(cached);
+    const distTagByVersion = new Map<string, string>();
+    const distTags: Record<string, string> = {};
+    for (const [tag, version] of Object.entries(pack["dist-tags"] ?? {})) {
+      distTags[tag] = version;
+      // Prefer "latest" if a version carries multiple tags.
+      if (!distTagByVersion.has(version) || tag === "latest") distTagByVersion.set(version, tag);
+    }
+
+    const allVersions = Object.keys(pack.versions ?? {});
+    const time = pack.time ?? {};
+    const versions: UiVersionEntry[] = allVersions
+      .map((version) => ({
+        version,
+        prerelease: version.includes("-"),
+        publishedAt: time[version] ?? null,
+        distTag: distTagByVersion.get(version) ?? null,
+      }))
+      // Newest-first by publish time (fall back to lexical when time is absent).
+      .sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""))
+      .slice(0, 20);
+
+    return json({ versions, distTags });
+  } catch {
+    return json({ versions: [], distTags: {}, error: "npm registry unavailable" });
   }
-
-  // Fetch failed and no stale cache — return empty.
-  return json({ versions: [], distTags: {}, error: "npm registry unavailable" });
 };

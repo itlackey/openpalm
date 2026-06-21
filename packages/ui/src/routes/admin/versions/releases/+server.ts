@@ -1,20 +1,22 @@
 import { json } from "@sveltejs/kit";
 import { requireAdmin, getRequestId } from "$lib/server/helpers.js";
-import { withCache, invalidateVersionCache } from "$lib/server/version-cache.js";
 import { selectInstallableReleases, type RawGitHubRelease } from "$lib/server/release-units.js";
-import type { ReleaseEntry } from "$lib/server/release-units.js";
 import type { RequestHandler } from "./$types";
 
-const CACHE_KEY = "github:releases";
-
+/**
+ * GET /admin/versions/releases — list installable platform releases from GitHub.
+ *
+ * Powers the desktop App-update badge: only platform releases that carry an
+ * Electron installer asset. Best-effort — a GitHub outage yields an empty list
+ * with an error signal rather than failing the page. (No server-side cache: the
+ * admin UI no longer polls this, so a direct fetch per visit is fine.)
+ */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  if (event.url.searchParams.get('refresh') === '1') invalidateVersionCache();
-
-  const cached = await withCache<ReleaseEntry[]>(CACHE_KEY, async () => {
+  try {
     const res = await fetch(
       "https://api.github.com/repos/itlackey/openpalm/releases?per_page=20",
       {
@@ -22,22 +24,14 @@ export const GET: RequestHandler = async (event) => {
         signal: AbortSignal.timeout(8_000),
       }
     );
-
     if (!res.ok) {
-      throw new Error(`GitHub API ${res.status}`);
+      return json({ releases: [], error: "GitHub releases unavailable" });
     }
-
     const raw = (await res.json()) as RawGitHubRelease[];
-    // Per-unit version pickers now read from Docker Hub tags, so the releases
-    // endpoint only returns app-level releases — platform releases that carry
-    // Electron installer assets. This is what populates the app update badge.
-    return selectInstallableReleases(raw);
-  });
-
-  if (cached !== undefined) {
-    return json({ releases: cached });
+    // Only app-level platform releases that carry Electron installer assets —
+    // this is what populates the desktop app update badge.
+    return json({ releases: selectInstallableReleases(raw) });
+  } catch {
+    return json({ releases: [], error: "GitHub releases unavailable" });
   }
-
-  // Fetch failed and no stale cache — return empty with the error signal.
-  return json({ releases: [], error: "GitHub releases unavailable" });
 };

@@ -107,21 +107,8 @@ export {
   removeEnvKey,
   upsertEnvValue,
   resolveRequestedImageTag,
-  reconcileStackEnvImageTag,
   RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
-export {
-  buildPinnedImageTagEnv,
-  buildPinnedImagesValue,
-  parsePinnedImages,
-  platformImageTagKeyFor,
-  resolveEffectivePlatformImageTag,
-  isDeployableUnit,
-  deployableUnitImageName,
-  deployableUnitImageTagKey,
-} from './control-plane/image-tags.js';
-export type { PinnablePlatformImage, DeployableUnit } from './control-plane/image-tags.js';
-
 export type {
   AssistantCliToolId,
   AssistantCliProviderMapping,
@@ -308,8 +295,6 @@ export {
   applyUpgrade,
   buildManagedServices,
   performUpgrade,
-  updateStackEnvToLatestImageTag,
-  applyUnitImageTagChange,
 } from './control-plane/lifecycle.js';
 
 // ── Rollback ─────────────────────────────────────────────────────────────
@@ -326,24 +311,22 @@ export {
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
-  applyTagChange,
-  resolveLatestPlatformTag,
-  resolveLatestPlatformTagForCurrentMajor,
-  resolveLatestImageTag,
-  resolveLatestImageTagForCurrentMajor,
-  listDockerImageTags,
-  resolveDefaultMigrateTarget,
   DowngradeConfirmationRequired,
   buildComposeFileList,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
 
-// ── npm registry lookups (latest version + version list) ──────────────────
-export type { NpmVersionEntry } from "./control-plane/npm-registry.js";
+// ── Version variables (stack.env image + npm pins) ───────────────────────
 export {
-  resolveLatestNpmVersion,
-  listNpmVersions,
-} from "./control-plane/npm-registry.js";
+  SERVICE_VERSION_KEYS,
+  NPM_VERSION_KEYS,
+  ALL_VERSION_KEYS,
+  VERSION_DEFAULTS,
+  isVersionKey,
+  readVersions,
+  writeVersions,
+} from "./control-plane/versions.js";
+export type { VersionKey } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject } from "./control-plane/docker.js";

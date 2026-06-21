@@ -7,8 +7,8 @@ import {
 import { getState } from "$lib/server/state.js";
 import {
   ensureReleaseMigrated,
-  resolveDefaultMigrateTarget,
   formatForDisplay,
+  PLATFORM_VERSION,
   createLogger,
   MigrationError,
 } from "@openpalm/lib";
@@ -36,14 +36,12 @@ export const POST: RequestHandler = async (event) => {
 
   const state = getState();
 
+  // With Docker Hub / npm "latest" lookups removed, the default migrate target
+  // is the running control-plane version (PLATFORM_VERSION) — the version whose
+  // release migrations the running build carries. An explicit tag overrides it.
   let targetVersion = requested;
   if (!targetVersion || requested.toLowerCase() === "latest") {
-    try {
-      targetVersion = await resolveDefaultMigrateTarget(state);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return errorResponse(502, "resolve_failed", `Could not resolve the latest version to preview: ${msg}`, {}, requestId);
-    }
+    targetVersion = PLATFORM_VERSION;
   }
 
   const lines: string[] = [];

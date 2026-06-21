@@ -87,7 +87,7 @@ services:
 
   voice:
     profiles: ["addon.voice.cpu"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-latest-cpu}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest}-cpu
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
@@ -112,7 +112,7 @@ services:
 
   voice-cuda:
     profiles: ["addon.voice.cuda"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-latest-cu121}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest}-cu121
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     runtime: nvidia
@@ -142,7 +142,7 @@ services:
 
   voice-rocm:
     profiles: ["addon.voice.rocm"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_IMAGE_TAG:-latest-rocm6}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest}-rocm6
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:

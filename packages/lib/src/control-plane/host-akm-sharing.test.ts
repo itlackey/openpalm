@@ -72,11 +72,11 @@ describe("ensureHostStashEnv", () => {
   });
 
   it("removes OP_HOST_AKM_STASH when not available (→ compose empty-dir fallback)", () => {
-    writeFileSync(stackEnv, "OP_HOST_AKM_STASH=/stale/path\nOP_IMAGE_TAG=x\n");
+    writeFileSync(stackEnv, "OP_HOST_AKM_STASH=/stale/path\nOP_ASSISTANT_VERSION=x\n");
     ensureHostStashEnv(state);
     const env = readFileSync(stackEnv, "utf-8");
     expect(env).not.toContain("OP_HOST_AKM_STASH");
-    expect(env).toContain("OP_IMAGE_TAG=x");
+    expect(env).toContain("OP_ASSISTANT_VERSION=x");
   });
 });
 

@@ -86,13 +86,16 @@ describe("skeleton: .openpalm/config/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "guardian", "instructions", "moderation.md"))).toBe(true);
   });
 
-  test('stack compose assets use per-service image tags with OP_IMAGE_TAG fallback', () => {
+  test('stack compose assets use a per-image OP_*_VERSION pin (no OP_IMAGE_TAG cascade)', () => {
     const coreCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'core.compose.yml'), 'utf-8');
     const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'portals.compose.yml'), 'utf-8');
 
-    expect(coreCompose).toContain('assistant:${OP_ASSISTANT_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
-    expect(channelsCompose).toContain('portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
-    expect(channelsCompose).toContain('guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}');
+    expect(coreCompose).toContain('assistant:${OP_ASSISTANT_VERSION:-latest}');
+    expect(channelsCompose).toContain('portal:${OP_PORTAL_VERSION:-latest}');
+    expect(channelsCompose).toContain('guardian:${OP_GUARDIAN_VERSION:-latest}');
+    // The old single-tag cascade must be gone.
+    expect(coreCompose).not.toContain('OP_IMAGE_TAG');
+    expect(channelsCompose).not.toContain('OP_IMAGE_TAG');
   });
 
   test('host-published optional listeners use OP_BIND_ADDRESS nested defaults', () => {

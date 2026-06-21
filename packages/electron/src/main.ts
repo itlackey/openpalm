@@ -184,21 +184,21 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
   // host UI server's own routes read from process.env — notably the Voice
   // engine vars (OP_TTS_*/OP_STT_*/OP_VOICE_*) written by /admin/voice. Without
   // merging them here, /api/speak + /api/transcribe see empty OP_*_BASE_URL and
-  // 503 ("Configure a TTS/STT engine"). Merge stack.env BUT skip OP_IMAGE_TAG:
-  // the docker-compose deploy path reads it via --env-file and shell-env takes
-  // precedence over --env-file, so injecting it here would override the
-  // authoritative tag (see the OP_IMAGE_TAG note below).
+  // 503 ("Configure a TTS/STT engine"). Merge stack.env BUT skip the per-unit
+  // version vars: the docker-compose deploy path reads them via --env-file and
+  // shell-env takes precedence over --env-file, so injecting them here would
+  // override the authoritative versions (see the version-var note below).
   const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
   const stackForUi: NodeJS.ProcessEnv = {};
-  // Per-image tag keys get the same treatment as OP_IMAGE_TAG: shell-env
-  // beats --env-file in docker compose, so leaking them here would override
-  // the authoritative tags in stack.env during deploys.
+  // Per-unit version keys: shell-env beats --env-file in docker compose, so
+  // leaking them here would override the authoritative versions in stack.env
+  // during deploys.
   const skippedKeys = new Set([
     'OP_HOME',
-    'OP_IMAGE_TAG',
-    'OP_ASSISTANT_IMAGE_TAG',
-    'OP_GUARDIAN_IMAGE_TAG',
-    'OP_PORTAL_IMAGE_TAG',
+    'OP_ASSISTANT_VERSION',
+    'OP_GUARDIAN_VERSION',
+    'OP_PORTAL_VERSION',
+    'OP_VOICE_VERSION',
   ]);
   for (const [k, v] of Object.entries(stackEnv)) {
     if (skippedKeys.has(k)) continue;
@@ -219,14 +219,14 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     // genuinely harness-scoped value (it describes the native shell, not the
     // platform/control-plane version).
     OP_HARNESS_CONTRACT_VERSION: String(HARNESS_CONTRACT_VERSION),
-    // Do NOT set OP_IMAGE_TAG here. Docker precedence is shell-env >
-    // --env-file, so any value injected into the UI server's process.env
-    // overrides the authoritative OP_IMAGE_TAG written to stack.env (e.g.
-    // "dev" for local images, or a pinned "vX.Y.Z"). Forcing "latest" here
-    // made every `docker compose config/pull` resolve `…:latest`/`voice:latest-*`
+    // Do NOT set the per-unit OP_*_VERSION vars here. Docker precedence is
+    // shell-env > --env-file, so any value injected into the UI server's
+    // process.env overrides the authoritative versions written to stack.env
+    // (e.g. "dev" for local images, or a pinned "vX.Y.Z"). Forcing "latest"
+    // here made every `docker compose config/pull` resolve `…:latest`/`voice:latest-*`
     // — and `latest`/`latest-*` are never published for prereleases, so the
-    // deploy failed with "manifest unknown". The deploy reads the tag from
-    // stack.env via --env-file; leave it untouched.
+    // deploy failed with "manifest unknown". The deploy reads the versions from
+    // stack.env via --env-file; leave them untouched.
     OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
   };
   // Pass the bundled skeleton path so the UI server can refresh the registry

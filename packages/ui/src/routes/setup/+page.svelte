@@ -1533,13 +1533,13 @@
           // On rerun the wizard keeps the generated password unless the user
           // edits it — hasPassword just confirms a password is already set.
           //
-          // Do NOT pre-fill the image-tag field from the existing OP_IMAGE_TAG.
-          // Doing so made a stale pin sticky: a re-run over an OP_HOME pinned to
-          // an old version (e.g. v0.11.1) re-submitted that tag as if it were a
-          // deliberate choice, so performSetup kept deploying the old image
-          // instead of resetting to `latest`. Leaving the field blank lets the
-          // reconcile default to `latest`; a power user can still re-pin in the
-          // Advanced field.
+          // Do NOT pre-fill the image-tag field from the existing per-unit
+          // OP_*_VERSION vars. Doing so made a stale pin sticky: a re-run over an
+          // OP_HOME pinned to an old version (e.g. v0.11.1) re-submitted that tag
+          // as if it were a deliberate choice, so performSetup kept deploying the
+          // old image instead of resetting to `latest`. Leaving the field blank
+          // lets the reconcile default to `latest`; a power user can still re-pin
+          // in the Advanced field.
           if (typeof data.hostAkm === 'boolean') hostAkmEnabled = data.hostAkm;
 
           // Models — store saved selections; the connId resolves once the

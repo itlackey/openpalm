@@ -264,10 +264,12 @@ describe("writeRuntimeFiles", () => {
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
-    expect(content).toContain(`OP_IMAGE_TAG=`);
-    expect(content).toContain('OP_ASSISTANT_IMAGE_TAG=');
-    expect(content).toContain('OP_GUARDIAN_IMAGE_TAG=');
-    expect(content).toContain('OP_PORTAL_IMAGE_TAG=');
+    // Per-image version pins (exact tag / "latest" / "next") replaced the old
+    // single OP_IMAGE_TAG + per-unit OP_*_IMAGE_TAG cascade.
+    expect(content).toContain('OP_ASSISTANT_VERSION=');
+    expect(content).toContain('OP_GUARDIAN_VERSION=');
+    expect(content).toContain('OP_PORTAL_VERSION=');
+    expect(content).toContain('OP_VOICE_VERSION=');
   });
 
   test("stack.env does NOT leak user-managed secrets", () => {

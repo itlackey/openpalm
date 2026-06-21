@@ -1,86 +1,59 @@
 /**
- * Route-level tests for GET /admin/versions.
+ * Route-level tests for GET + PATCH /admin/versions.
  *
- * Locks the contract that the desktop (Electron) version + update info are
- * surfaced to the UI. The env-var NAMES here must stay in sync with
- * buildUIServerEnv() in packages/electron/src/main.ts — a rename there would
- * silently blank the "Desktop app" row in the Updates tab, so pin them.
- *
- * Docker Hub and npm lookups are mocked so the tests are fast and deterministic.
- * The version cache is reset between tests.
+ * The version system is a plain stack.env edit now: GET reads every version key
+ * (Docker image tags + npm package pins) with documented defaults for unset
+ * keys; PATCH validates each key against the ALL_VERSION_KEYS allowlist and
+ * writes it back. No Docker Hub / npm lookups, no version cache.
  */
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { resetState } from '$lib/server/test-helpers.js';
-import { _resetVersionCache } from '$lib/server/version-cache.js';
-import { GET } from './+server.js';
+import { getState } from '$lib/server/state.js';
+import { ALL_VERSION_KEYS } from '@openpalm/lib';
+import { GET, PATCH } from './+server.js';
 
-const ELECTRON_ENV = ['OP_INSIDE_ELECTRON', 'OP_ELECTRON_VERSION', 'OP_ELECTRON_LATEST_VERSION', 'OP_ELECTRON_LATEST_URL'] as const;
-const saved: Record<string, string | undefined> = {};
-const originalFetch = globalThis.fetch;
+function stackEnvPath(): string {
+  return `${getState().stashDir}/env/stack.env`;
+}
+
+function seedStackEnv(content: string): void {
+  const path = stackEnvPath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
+}
 
 function makeGetEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
   return {
     url: new URL('http://localhost/admin/versions'),
     request: new Request('http://localhost/admin/versions', {
       method: 'GET',
-      headers: { cookie: `op_session=${token}`, 'x-request-id': 'req-versions-test' },
+      headers: { cookie: `op_session=${token}`, 'x-request-id': 'req-versions-get' },
     }),
   } as Parameters<typeof GET>[0];
 }
 
-// Mock fetch: Docker Hub tags → valid response, npm → valid packument.
-// Non-matching URLs get an empty 200 so nothing throws unexpectedly.
-function mockFetch(): ReturnType<typeof vi.fn> {
-  return vi.fn(async (input: string | URL | Request) => {
-    const url = String(input);
-    if (url.includes('registry.hub.docker.com')) {
-      return new Response(
-        JSON.stringify({ results: [{ name: 'v0.12.5' }, { name: 'v0.12.4' }, { name: 'latest' }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
-    }
-    if (url.includes('registry.npmjs.org')) {
-      return new Response(
-        JSON.stringify({
-          'dist-tags': { latest: '0.12.5' },
-          versions: { '0.12.5': {} },
-          time: { '0.12.5': '2026-06-18T00:00:00Z' },
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
-    }
-    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
-  });
+function makePatchEvent(body: unknown, token = 'admin-token'): Parameters<typeof PATCH>[0] {
+  return {
+    url: new URL('http://localhost/admin/versions'),
+    request: new Request('http://localhost/admin/versions', {
+      method: 'PATCH',
+      headers: { cookie: `op_session=${token}`, 'content-type': 'application/json', 'x-request-id': 'req-versions-patch' },
+      body: JSON.stringify(body),
+    }),
+  } as Parameters<typeof PATCH>[0];
 }
+
+type VersionsBody = { versions: Record<string, string>; platformVersion: string };
 
 beforeEach(() => {
   resetState('admin-token');
-  _resetVersionCache();
-  for (const k of ELECTRON_ENV) { saved[k] = process.env[k]; delete process.env[k]; }
-  vi.stubGlobal('fetch', mockFetch());
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
-  globalThis.fetch = originalFetch;
-  for (const k of ELECTRON_ENV) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
+  // resetState builds a fresh temp OP_HOME each run; nothing to undo.
 });
-
-type VersionsBody = {
-  imageTag: string;
-  inElectron: boolean;
-  electronVersion: string | null;
-  electronLatestVersion: string | null;
-  electronLatestUrl: string | null;
-  electronUpdateAvailable: boolean;
-  platformVersion: string;
-  platformLatest: string | null;
-  unitTags: Record<string, string[]>;
-  services: { id: string; latestVersion?: string | null }[];
-};
 
 describe('GET /admin/versions', () => {
   test('requires admin auth', async () => {
@@ -88,60 +61,80 @@ describe('GET /admin/versions', () => {
     expect(res.status).toBe(401);
   });
 
-  test('reports no Electron info outside the desktop app', async () => {
+  test('returns defaults for every version key when stack.env is empty', async () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = (await res.json()) as VersionsBody;
-    expect(body.inElectron).toBe(false);
-    expect(body.electronVersion).toBeNull();
-    expect(body.electronUpdateAvailable).toBe(false);
+    for (const key of ALL_VERSION_KEYS) {
+      expect(body.versions).toHaveProperty(key);
+    }
+    expect(body.versions.OP_ASSISTANT_VERSION).toBe('latest');
+    expect(body.versions.OP_TOOL_OPENCODE_VERSION).toBe('^1.17.0');
+    expect(typeof body.platformVersion).toBe('string');
+    expect(body.platformVersion.length).toBeGreaterThan(0);
   });
 
-  test('surfaces the Electron version (up to date)', async () => {
-    process.env.OP_INSIDE_ELECTRON = '1';
-    process.env.OP_ELECTRON_VERSION = '0.11.2';
+  test('reflects values written in stack.env', async () => {
+    seedStackEnv('OP_ASSISTANT_VERSION=v0.12.18\nOP_TOOL_AKM_VERSION=^0.8.20\n');
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as VersionsBody;
-    expect(body.inElectron).toBe(true);
-    expect(body.electronVersion).toBe('0.11.2');
-    expect(body.electronUpdateAvailable).toBe(false);
-    expect(body.electronLatestVersion).toBeNull();
+    expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.18');
+    expect(body.versions.OP_TOOL_AKM_VERSION).toBe('^0.8.20');
+    // Unset keys still fall back to defaults.
+    expect(body.versions.OP_GUARDIAN_VERSION).toBe('latest');
+  });
+});
+
+describe('PATCH /admin/versions', () => {
+  test('requires admin auth', async () => {
+    const res = await PATCH(makePatchEvent({ versions: { OP_ASSISTANT_VERSION: 'v1' } }, 'bad-token'));
+    expect(res.status).toBe(401);
   });
 
-  test('surfaces an available desktop update with its download URL', async () => {
-    process.env.OP_INSIDE_ELECTRON = '1';
-    process.env.OP_ELECTRON_VERSION = '0.11.2';
-    process.env.OP_ELECTRON_LATEST_VERSION = '0.11.3';
-    process.env.OP_ELECTRON_LATEST_URL = 'https://github.com/itlackey/openpalm/releases/tag/v0.11.3';
-    const res = await GET(makeGetEvent());
-    const body = (await res.json()) as VersionsBody;
-    expect(body.electronUpdateAvailable).toBe(true);
-    expect(body.electronLatestVersion).toBe('0.11.3');
-    expect(body.electronLatestUrl).toContain('releases/tag/v0.11.3');
+  test('rejects a body without a versions object', async () => {
+    const res = await PATCH(makePatchEvent({ nope: true }));
+    expect(res.status).toBe(400);
   });
 
-  test('returns unitTags from Docker Hub and platformLatest from npm', async () => {
-    const res = await GET(makeGetEvent());
+  test('rejects unknown version keys', async () => {
+    const res = await PATCH(makePatchEvent({ versions: { OP_NOT_A_KEY: 'x' } }));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('unknown_version_key');
+  });
+
+  test('rejects a non-string version value', async () => {
+    const res = await PATCH(makePatchEvent({ versions: { OP_ASSISTANT_VERSION: 123 } }));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('invalid_version_value');
+  });
+
+  test('writes valid version keys to stack.env and echoes the full set', async () => {
+    const res = await PATCH(
+      makePatchEvent({
+        versions: { OP_ASSISTANT_VERSION: 'v0.12.18', OP_TOOL_CODEX_VERSION: '^0.2.0' },
+      }),
+    );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as VersionsBody;
-    // Assistant is always present; its Docker Hub tags are mocked.
-    expect(body.unitTags.assistant).toEqual(['v0.12.5', 'v0.12.4']);
-    // platformLatest comes from the mocked npm packument.
-    expect(body.platformLatest).toBe('0.12.5');
-    // The assistant service carries the latest tag from Docker Hub.
-    expect(body.services.find((s) => s.id === 'assistant')?.latestVersion).toBe('0.12.5');
+    const body = (await res.json()) as { ok: boolean; versions: Record<string, string> };
+    expect(body.ok).toBe(true);
+    expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.18');
+    expect(body.versions.OP_TOOL_CODEX_VERSION).toBe('^0.2.0');
+
+    // Persisted to disk.
+    const onDisk = readFileSync(stackEnvPath(), 'utf-8');
+    expect(onDisk).toContain('OP_ASSISTANT_VERSION=v0.12.18');
+    expect(onDisk).toContain('OP_TOOL_CODEX_VERSION=^0.2.0');
   });
 
-  test('serves cached data on a second call without hitting upstreams', async () => {
-    const fetchSpy = mockFetch();
-    vi.stubGlobal('fetch', fetchSpy);
-
-    await GET(makeGetEvent());
-    const callsAfterFirst = fetchSpy.mock.calls.length;
-    expect(callsAfterFirst).toBeGreaterThan(0);
-
-    // Second call — cache hit, no new upstream fetches.
-    await GET(makeGetEvent());
-    expect(fetchSpy.mock.calls.length).toBe(callsAfterFirst);
+  test('preserves existing non-version keys in stack.env', async () => {
+    seedStackEnv('OP_ENABLED_ADDONS=voice\nOP_IMAGE_NAMESPACE=openpalm\n');
+    const res = await PATCH(makePatchEvent({ versions: { OP_VOICE_VERSION: 'v0.12.18' } }));
+    expect(res.status).toBe(200);
+    const onDisk = readFileSync(stackEnvPath(), 'utf-8');
+    expect(onDisk).toContain('OP_ENABLED_ADDONS=voice');
+    expect(onDisk).toContain('OP_IMAGE_NAMESPACE=openpalm');
+    expect(onDisk).toContain('OP_VOICE_VERSION=v0.12.18');
   });
 });

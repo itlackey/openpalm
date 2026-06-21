@@ -368,48 +368,52 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
-  // ── OP_IMAGE_TAG reconcile (A1: stop preserving a stale pinned tag) ──────
+  // ── Per-image version reconcile (A1: stop preserving a stale pinned tag) ──
   const stackEnvPath = () => join(homeDir, "knowledge", "env", "stack.env");
 
-  it("blank imageTag RESETS a stale pinned OP_IMAGE_TAG to the platform default (latest)", async () => {
-    // Simulate an old OP_HOME whose stack.env pinned a now-stale version tag.
+  it("blank imageTag RESETS stale per-image version pins to the moving default (latest)", async () => {
+    // Simulate an old OP_HOME whose stack.env pinned now-stale per-image versions.
     writeFileSync(
       stackEnvPath(),
-      ["OP_SETUP_COMPLETE=false", "OP_IMAGE_TAG=v0.11.1", ""].join("\n"),
+      [
+        "OP_SETUP_COMPLETE=false",
+        "OP_ASSISTANT_VERSION=v0.11.1",
+        "OP_GUARDIAN_VERSION=v0.11.1",
+        "",
+      ].join("\n"),
     );
     const result = await performSetup(makeValidSpec()); // no imageTag => blank
     expect(result.ok).toBe(true);
     const env = readFileSync(stackEnvPath(), "utf-8");
-    expect(env).toMatch(/^OP_IMAGE_TAG=latest$/m);
-    expect(env).toMatch(/^OP_ASSISTANT_IMAGE_TAG=latest$/m);
-    expect(env).toMatch(/^OP_GUARDIAN_IMAGE_TAG=latest$/m);
-    expect(env).toMatch(/^OP_PORTAL_IMAGE_TAG=latest$/m);
-    expect(env).not.toMatch(/OP_IMAGE_TAG=v0\.11\.1/);
+    // Each image rides its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade).
+    expect(env).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
+    expect(env).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
+    expect(env).not.toMatch(/_VERSION=v0\.11\.1/);
   });
 
-  it("a non-empty imageTag pins deliberately (kept verbatim)", async () => {
+  it("a non-empty imageTag pins every per-image version deliberately (kept verbatim)", async () => {
     const result = await performSetup(makeValidSpec({ imageTag: "v0.11.1" }));
     expect(result.ok).toBe(true);
     const env = readFileSync(stackEnvPath(), 'utf-8');
-    expect(env).toMatch(/^OP_IMAGE_TAG=v0\.11\.1$/m);
-    expect(env).toMatch(/^OP_ASSISTANT_IMAGE_TAG=v0\.11\.1$/m);
+    expect(env).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.1$/m);
+    expect(env).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.1$/m);
+    expect(env).toMatch(/^OP_PORTAL_VERSION=v0\.11\.1$/m);
+    expect(env).toMatch(/^OP_VOICE_VERSION=v0\.11\.1$/m);
   });
 
   it("imageTag is trimmed before writing", async () => {
     const result = await performSetup(makeValidSpec({ imageTag: "  dev  " }));
     expect(result.ok).toBe(true);
     const env = readFileSync(stackEnvPath(), 'utf-8');
-    expect(env).toMatch(/^OP_IMAGE_TAG=dev$/m);
-    expect(env).toMatch(/^OP_PORTAL_IMAGE_TAG=dev$/m);
+    expect(env).toMatch(/^OP_ASSISTANT_VERSION=dev$/m);
   });
 
-  it("fresh install with blank imageTag writes OP_IMAGE_TAG=latest", async () => {
-    // beforeEach's stub stack.env has no OP_IMAGE_TAG.
+  it("fresh install with blank imageTag writes per-image versions = latest", async () => {
+    // beforeEach's stub stack.env has no per-image version pins.
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
     const env = readFileSync(stackEnvPath(), 'utf-8');
-    expect(env).toMatch(/^OP_IMAGE_TAG=latest$/m);
-    expect(env).toMatch(/^OP_GUARDIAN_IMAGE_TAG=latest$/m);
+    expect(env).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
   });
 
   it("writes the UI login password to knowledge/secrets", async () => {

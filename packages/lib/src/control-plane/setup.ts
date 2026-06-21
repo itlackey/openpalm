@@ -15,8 +15,7 @@ import {
 } from "../provider-constants.js";
 import { buildAkmEndpoint } from './akm-endpoints.js';
 import { mergeEnvContent } from "./env.js";
-import { DEFAULT_IMAGE_TAG } from "./config-persistence.js";
-import { buildPlatformImageTagEnv } from './image-tags.js';
+import { SERVICE_VERSION_KEYS } from "./versions.js";
 import { ensureHomeDirs } from "./home.js";
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "./install-lock.js";
 import {
@@ -208,17 +207,18 @@ export async function performSetup(
         ? readFileSync(`${state.stashDir}/env/stack.env`, "utf-8")
         : "";
       const akmUpdates: Record<string, string> = {};
-      // Reconcile OP_IMAGE_TAG on EVERY setup run. A non-empty wizard value pins
-      // a tag deliberately; a BLANK field means "track the platform default", so
-      // write `latest` rather than silently preserving a stale pin left in an
-      // existing stack.env. Without this, re-running setup over an OP_HOME whose
-      // OP_IMAGE_TAG was pinned to an old version (e.g. v0.11.1) kept deploying a
-      // months-old image — the akm-0.3.1 surprise. The Advanced image-tag field
-      // still lets a power user pin deliberately by entering a value.
-      Object.assign(
-        akmUpdates,
-        buildPlatformImageTagEnv(imageTag && imageTag.trim() ? imageTag.trim() : DEFAULT_IMAGE_TAG),
-      );
+      // Reconcile the per-image version pins on EVERY setup run. A non-empty
+      // wizard value pins every service image to that exact tag deliberately; a
+      // BLANK field means "track the moving default", so write `latest` rather
+      // than silently preserving a stale pin left in an existing stack.env.
+      // Without this, re-running setup over an OP_HOME whose versions were pinned
+      // to an old release kept deploying a months-old image. Each image now has
+      // its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade); the Advanced
+      // field pins all four to the same tag.
+      const requestedTag = imageTag && imageTag.trim() ? imageTag.trim() : "latest";
+      for (const key of SERVICE_VERSION_KEYS) {
+        akmUpdates[key] = requestedTag;
+      }
       // NOTE: host-akm sharing no longer repoints the container's primary stash
       // (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is
       // wired as a read-write SECONDARY source — see configureHostAkmSharing()

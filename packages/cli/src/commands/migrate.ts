@@ -2,7 +2,7 @@ import { defineCommand } from 'citty';
 import {
   ensureMigrated,
   ensureReleaseMigrated,
-  resolveDefaultMigrateTarget,
+  PLATFORM_VERSION,
   formatForDisplay,
   MigrationError,
 } from '@openpalm/lib';
@@ -22,7 +22,7 @@ export default defineCommand({
     to: {
       type: 'string',
       description:
-        'Preview the release migrations an upgrade to <version> would run (defaults to the newest published version in the current major). Requires --dry-run.',
+        'Preview the release migrations an upgrade to <version> would run (defaults to the running control-plane version). Requires --dry-run.',
     },
   },
   async run({ args }) {
@@ -41,11 +41,10 @@ export default defineCommand({
       }
       try {
         const state = ensureValidState();
-        let targetVersion = toArg;
-        if (!targetVersion) {
-          console.log('Resolving the newest published version for the current major...');
-          targetVersion = await resolveDefaultMigrateTarget(state);
-        }
+        // Default the preview target to the running control plane's own version —
+        // image versions are now user-managed in stack.env (no remote registry
+        // lookup), and `openpalm update` runs migrations for PLATFORM_VERSION.
+        const targetVersion = toArg || PLATFORM_VERSION;
         console.log(`\n[dry-run] Release migrations that an upgrade to ${formatForDisplay(targetVersion)} would run:`);
         const report = ensureReleaseMigrated({
           homeDir: state.homeDir,

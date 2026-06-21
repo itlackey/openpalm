@@ -185,7 +185,9 @@ export function checkSkeletonMismatch(stackDir: string): { expected: string; act
     return null;
   }
   const env = parseEnvFile(stackEnvPathFromStackDir(stackDir));
-  const expected = env.OP_RELEASE_VERSION ?? env.OP_IMAGE_TAG ?? "";
+  // OP_RELEASE_VERSION is the migration stamp; OP_ASSISTANT_VERSION is the
+  // version-of-record image tag (no single OP_IMAGE_TAG cascade anymore).
+  const expected = env.OP_RELEASE_VERSION ?? env.OP_ASSISTANT_VERSION ?? "";
   if (!expected || expected === actual) return null;
   return { expected, actual };
 }

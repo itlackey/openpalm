@@ -35,23 +35,6 @@ async function runStatusCommand(): Promise<{ stdout: string; stderr: string }> {
   return { stdout: out.join('\n'), stderr: err.join('\n') };
 }
 
-// Mock fields the update advisory (#498) reads from @openpalm/lib. Real
-// semver/target logic is covered in lib's own tests; here we drive the
-// advisory's emit/skip branch by controlling the resolved "latest".
-function advisoryLibMock(opts: { currentTag: string; latest: string }) {
-  return {
-    parseEnvFile: () => ({ OP_IMAGE_TAG: opts.currentTag }),
-    resolveDefaultMigrateTarget: async () => opts.latest,
-    isComparableSemver: (v: unknown) =>
-      typeof v === 'string' && /^v?\d+\.\d+\.\d+/.test(v),
-    compareComparableVersions: (a: string, b: string) => {
-      const norm = (s: string) => s.replace(/^v/, '');
-      return norm(a) < norm(b) ? -1 : norm(a) > norm(b) ? 1 : 0;
-    },
-    formatForDisplay: (v: string) => v.replace(/^v/, ''),
-  };
-}
-
 describe('openpalm status — deriveLaunchStatus snapshot', () => {
   test('prints a valid LaunchStatus JSON when the stack is running', async () => {
     mock.module(libUrl, () => ({
@@ -151,42 +134,5 @@ describe('openpalm status — deriveLaunchStatus snapshot', () => {
     expect(parsed.recommendedRoute).toBe('splash');
     expect(parsed.localInstalledButUnhealthy).toBe(true);
     expect(parsed.activeAssistant).toBeNull();
-  });
-});
-
-describe('openpalm status — update advisory (#498)', () => {
-  const baseLib = {
-    createState: () => ({ stackDir: '/fake/config/stack', homeDir: '/fake', configDir: '/fake/config', stashDir: '/fake/knowledge', dataDir: '/fake/data', workspaceDir: '/fake/workspace', services: {}, artifacts: { compose: '' }, artifactMeta: [] }),
-    initializeStateSecrets: () => undefined,
-    classifyLocalInstall: () => 'installed',
-    composePs: async () => ({ ok: true, stdout: JSON.stringify({ Service: 'assistant', State: 'running', Health: 'healthy' }), stderr: '', exitCode: 0 }),
-    buildComposeOptions: () => ({}),
-    deriveLocalStackState: () => 'running',
-    deriveLaunchStatus: (input: { local: { state: string }; remotes: unknown[] }) => ({
-      local: input.local, remotes: [], hasHealthyLocal: true, localInstalledButUnhealthy: false,
-      hasAccessibleRemote: false, recommendedRoute: 'chat', activeAssistant: { kind: 'local' }, alerts: [],
-    }),
-    detectRuntime: async () => ({ dockerPresent: true, composeAvailable: true }),
-  };
-
-  test('prints an advisory to stderr when a newer release is available (stdout stays clean JSON)', async () => {
-    mock.module('node:fs', () => ({ existsSync: () => true }));
-    mock.module(libUrl, () => ({ ...baseLib, ...advisoryLibMock({ currentTag: 'v0.11.5', latest: 'v0.12.0' }) }));
-
-    const { stdout, stderr } = await runStatusCommand();
-
-    // stdout is still parseable JSON — the advisory never pollutes it.
-    expect(() => JSON.parse(stdout)).not.toThrow();
-    expect(stderr).toContain('An update is available: OpenPalm 0.12.0');
-    expect(stderr).toContain("you're on 0.11.5");
-    expect(stderr).toContain('openpalm update');
-  });
-
-  test('emits nothing when already on the latest release', async () => {
-    mock.module('node:fs', () => ({ existsSync: () => true }));
-    mock.module(libUrl, () => ({ ...baseLib, ...advisoryLibMock({ currentTag: 'v0.12.0', latest: 'v0.12.0' }) }));
-
-    const { stderr } = await runStatusCommand();
-    expect(stderr).toBe('');
   });
 });

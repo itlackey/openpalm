@@ -26,7 +26,7 @@ describe('isSecretLikeKey', () => {
     expect(isSecretLikeKey('OP_UI_LOGIN_PASSWORD')).toBe(true);
     expect(isSecretLikeKey('PORTAL_CHAT_SECRET')).toBe(true);
     expect(isSecretLikeKey('OPENAI_API_KEY_FILE')).toBe(false);
-    expect(isSecretLikeKey('OP_IMAGE_TAG')).toBe(false);
+    expect(isSecretLikeKey('OP_ASSISTANT_VERSION')).toBe(false);
   });
 });
 
@@ -34,7 +34,7 @@ describe('auditStackEnv', () => {
   it('rejects secret-like keys in stack.env', () => {
     const issues = auditStackEnv({
       OP_HOME: '/home/me/.openpalm',
-      OP_IMAGE_TAG: 'latest',
+      OP_ASSISTANT_VERSION: 'latest',
       OPENAI_API_KEY: 'sk-test',
       OP_UI_LOGIN_PASSWORD: 'secret',
     });

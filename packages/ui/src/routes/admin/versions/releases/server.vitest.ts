@@ -2,13 +2,12 @@
  * Route-level tests for GET /admin/versions/releases.
  *
  * The releases endpoint now returns ONLY platform releases that carry Electron
- * installer assets (app-level releases). Per-unit container-image version
- * pickers read from Docker Hub tags via /admin/versions, not GitHub releases.
- * Results are cached server-side; each test resets the cache.
+ * installer assets (app-level releases). Container-image version pins live in
+ * stack.env and are edited via /admin/versions, not GitHub releases. Fetched
+ * fresh per request (no server-side cache).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { resetState } from '$lib/server/test-helpers.js';
-import { _resetVersionCache } from '$lib/server/version-cache.js';
 import { GET } from './+server.js';
 
 const originalFetch = globalThis.fetch;
@@ -32,7 +31,6 @@ function githubResponse(releases: Array<{ tag_name: string; prerelease: boolean;
 
 beforeEach(() => {
   resetState('admin-token');
-  _resetVersionCache();
 });
 
 afterEach(() => {
@@ -83,22 +81,6 @@ describe('GET /admin/versions/releases', () => {
     const body = await res.json() as { releases: { tag: string }[] };
     expect(body.releases).toHaveLength(1);
     expect(body.releases[0]!.tag).toBe('0.12.5');
-  });
-
-  test('serves cached data on a second call without hitting GitHub', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(githubResponse([
-      { tag_name: 'platform-0.12.5', prerelease: false, published_at: '2026-06-18T00:00:00Z', assets: [{ name: 'OpenPalm-0.12.5.dmg' }] },
-    ]));
-    vi.stubGlobal('fetch', fetchSpy);
-
-    await GET(makeGetEvent());
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-    // Second call — cache hit, no new GitHub fetch.
-    const res2 = await GET(makeGetEvent());
-    const body2 = await res2.json() as { releases: { tag: string }[] };
-    expect(body2.releases.map((r) => r.tag)).toEqual(['0.12.5']);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   test('returns empty list with error when GitHub API returns an error status', async () => {

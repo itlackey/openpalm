@@ -30,9 +30,8 @@ import { join, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { backupOpenPalmHome, timestampDirName, checkBackupFreeSpace, describeBackupSpaceShortfall } from "./backup.js";
-import { upsertEnvValue, parseEnabledAddons } from "./env.js";
+import { upsertEnvValue, removeEnvKey, parseEnabledAddons } from "./env.js";
 import { nonSensitiveAddonEnvKeys } from "./addon-env-schemas.js";
-import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
 import { compareComparableVersions, isComparableSemver } from './versioning.js';
 import { BUILTIN_ADDON_IDS } from './addon-ids.js';
 
@@ -326,30 +325,11 @@ function writeFile600(ctx: MigrationCtx, path: string, content: string): void {
   try { chmodSync(path, 0o600); } catch { /* best-effort */ }
 }
 
-function seedPerImageTagVars(ctx: MigrationCtx): void {
-  const envPath = stackEnvFile(ctx.stashDir);
-  if (!existsSync(envPath)) return;
-
-  const current = readFileSync(envPath, 'utf-8');
-  const imageTagMatch = current.match(/^OP_IMAGE_TAG=(.+)$/m);
-  const imageTag = imageTagMatch?.[1]?.trim();
-  if (!imageTag) return;
-
-  const missingKeys = PLATFORM_IMAGE_TAG_KEYS.filter((key) => !new RegExp(`^${key}=`, 'm').test(current));
-  if (missingKeys.length === 0) return;
-
-  if (ctx.dryRun) {
-    ctx.log(`[dry-run] seed per-image tag vars from OP_IMAGE_TAG=${imageTag}`);
-    return;
-  }
-
-  let next = upsertMany(current, buildPlatformImageTagEnv(imageTag));
-  const legacyPortalTag = readStackEnvValue(ctx.stashDir, 'OP_CHANNEL_IMAGE_TAG');
-  if (legacyPortalTag && !/^OP_PORTAL_IMAGE_TAG=/m.test(next)) {
-    next = upsertEnvValue(next, 'OP_PORTAL_IMAGE_TAG', legacyPortalTag);
-  }
-  writeFile600(ctx, envPath, next);
-  ctx.log(`seeded per-image tag vars from OP_IMAGE_TAG=${imageTag}`);
+function seedPerImageTagVars(_ctx: MigrationCtx): void {
+  // No-op. Per-image tag vars are no longer auto-seeded: compose resolves every
+  // service from OP_IMAGE_TAG directly via `${OP_*_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}`.
+  // The per-unit OP_*_IMAGE_TAG keys remain only as a hand-set escape hatch.
+  // Retained as a no-op so historical migration ordering/ids stay stable.
 }
 
 // ── Release migration v0.12.0: copy non-sensitive addon config from secret files → stack.env ─
@@ -1011,6 +991,88 @@ function patchPortalsComposeForThinHost(ctx: MigrationCtx): void {
   ctx.log('patched portals.compose.yml: added OP_GUARDIAN_VERSION and PLATFORM_VERSION to guardian service env');
 }
 
+// ── Release migration v0.12.18: per-image-tag cascade → per-image version vars ─
+
+/**
+ * Legacy image-tag keys removed by the version-system redesign. The single
+ * whole-stack OP_IMAGE_TAG and the per-unit OP_*_IMAGE_TAG escape-hatch keys are
+ * replaced by one explicit OP_*_VERSION var per image (no compose cascade).
+ */
+const LEGACY_IMAGE_TAG_KEYS = [
+  'OP_IMAGE_TAG',
+  'OP_ASSISTANT_IMAGE_TAG',
+  'OP_GUARDIAN_IMAGE_TAG',
+  'OP_PORTAL_IMAGE_TAG',
+  'OP_CHANNEL_IMAGE_TAG',
+];
+
+/**
+ * Map an existing install's legacy image-tag vars onto the new per-image
+ * OP_*_VERSION vars, then strip the legacy keys.
+ *
+ * Each new var is seeded from the most specific legacy source: the per-unit
+ * OP_<UNIT>_IMAGE_TAG when set, else the whole-stack OP_IMAGE_TAG, else "latest"
+ * (the moving default). Voice never had a managed tag var, so it defaults to
+ * "latest". The legacy keys are then removed (they are SYSTEM-managed compose
+ * config, not user data — and the layout migration path takes a full-home backup
+ * first; here ensureReleaseMigrated takes a targeted stack.env backup).
+ *
+ * Idempotent: once the legacy keys are gone and the new vars are present, a
+ * second run is a no-op (mapped values already exist; nothing to strip).
+ */
+function migrateImageTagsToVersionVars(ctx: MigrationCtx): void {
+  const envPath = stackEnvFile(ctx.stashDir);
+  if (!existsSync(envPath)) return;
+
+  let content = readFileSync(envPath, 'utf-8');
+
+  const read = (key: string): string | undefined => {
+    const m = content.match(new RegExp(`^${key}=(.*)$`, 'm'));
+    return m ? m[1].trim() : undefined;
+  };
+  const has = (key: string): boolean => new RegExp(`^${key}=`, 'm').test(content);
+
+  const imageTag = read('OP_IMAGE_TAG');
+  const fallback = imageTag && imageTag.length > 0 ? imageTag : 'latest';
+
+  const mapped: Record<string, string> = {
+    OP_ASSISTANT_VERSION: read('OP_ASSISTANT_IMAGE_TAG') ?? fallback,
+    OP_GUARDIAN_VERSION: read('OP_GUARDIAN_IMAGE_TAG') ?? fallback,
+    OP_PORTAL_VERSION: read('OP_PORTAL_IMAGE_TAG') ?? fallback,
+    OP_VOICE_VERSION: 'latest',
+  };
+
+  // Nothing to do when there are no legacy keys AND every new var is present.
+  const hasLegacy = LEGACY_IMAGE_TAG_KEYS.some(has);
+  const missingNew = Object.keys(mapped).some((k) => !has(k));
+  if (!hasLegacy && !missingNew) return;
+
+  if (ctx.dryRun) {
+    ctx.log(`[dry-run] would set ${Object.entries(mapped).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+    if (hasLegacy) ctx.log(`[dry-run] would remove legacy image-tag keys: ${LEGACY_IMAGE_TAG_KEYS.filter(has).join(', ')}`);
+    return;
+  }
+
+  // Seed the new per-image version vars (skip-if-present so a hand-set value
+  // already migrated is never clobbered on a re-run).
+  for (const [key, value] of Object.entries(mapped)) {
+    if (!has(key)) {
+      content = upsertEnvValue(content, key, value);
+      ctx.log(`set ${key}=${value}`);
+    }
+  }
+
+  // Strip the legacy keys (system-managed compose config).
+  for (const key of LEGACY_IMAGE_TAG_KEYS) {
+    if (has(key)) {
+      content = removeEnvKey(content, key);
+      ctx.log(`removed legacy image-tag key: ${key}`);
+    }
+  }
+
+  writeFile600(ctx, envPath, content);
+}
+
 const RELEASE_MIGRATIONS: ReleaseMigration[] = [
   {
     // Pinned to the release that INTRODUCED per-image tags, not the lib
@@ -1019,19 +1081,11 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
     // Every release migration must also be idempotent — it may run again on
     // installs whose OP_RELEASE_VERSION was never stamped.
     version: 'v0.11.5-rc.1',
-    describe: 'seed per-image platform tags from OP_IMAGE_TAG',
+    describe: 'seed per-image platform tags from OP_IMAGE_TAG (no-op: compose now resolves every service from OP_IMAGE_TAG)',
     apply: seedPerImageTagVars,
-    verify(ctx) {
-      if (ctx.dryRun) return;
-      const envPath = stackEnvFile(ctx.stashDir);
-      if (!existsSync(envPath)) return;
-      const content = readFileSync(envPath, 'utf-8');
-      if (!/^OP_IMAGE_TAG=/m.test(content)) return;
-      for (const key of PLATFORM_IMAGE_TAG_KEYS) {
-        if (!new RegExp(`^${key}=`, 'm').test(content)) {
-          throw new Error(`post-migration check failed: ${key} is missing`);
-        }
-      }
+    verify() {
+      // No-op migration: nothing to assert. Compose resolves every service from
+      // OP_IMAGE_TAG, so the per-image keys are no longer required to exist.
     },
   },
   {
@@ -1119,6 +1173,32 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
           'post-migration check failed: portals.compose.yml is missing the expected anchor line ' +
           '(OP_ASSISTANT_URL: http://assistant:4096). The file may be structurally corrupt.',
         );
+      }
+    },
+  },
+  {
+    // Pinned to v0.12.18: the version-system redesign replaces the single
+    // whole-stack OP_IMAGE_TAG (and the per-unit OP_*_IMAGE_TAG escape-hatch
+    // keys) with one explicit OP_*_VERSION var per image — no compose cascade.
+    // Map an existing install's legacy tag vars onto the new per-image vars and
+    // strip the legacy keys. Idempotent + skip-if-present.
+    version: 'v0.12.18-rc.1',
+    describe: 'map OP_IMAGE_TAG / OP_*_IMAGE_TAG -> OP_*_VERSION and remove legacy image-tag keys',
+    apply: migrateImageTagsToVersionVars,
+    verify(ctx) {
+      if (ctx.dryRun) return;
+      const envPath = stackEnvFile(ctx.stashDir);
+      if (!existsSync(envPath)) return;
+      const content = readFileSync(envPath, 'utf-8');
+      for (const key of LEGACY_IMAGE_TAG_KEYS) {
+        if (new RegExp(`^${key}=`, 'm').test(content)) {
+          throw new Error(`post-migration check failed: legacy image-tag key '${key}' still present in stack.env`);
+        }
+      }
+      for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION', 'OP_VOICE_VERSION']) {
+        if (!new RegExp(`^${key}=`, 'm').test(content)) {
+          throw new Error(`post-migration check failed: ${key} missing from stack.env after version migration`);
+        }
       }
     },
   },

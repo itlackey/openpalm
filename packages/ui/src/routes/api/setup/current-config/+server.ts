@@ -120,7 +120,10 @@ export const GET: RequestHandler = async (event) => {
     // S3: Never return the plaintext password. The wizard rerun path checks
     // whether a password is set so it can show the field as pre-filled.
     hasPassword: typeof configured === "string" && configured.length > 0,
-    imageTag: env.OP_IMAGE_TAG ?? "",
+    assistantVersion: env.OP_ASSISTANT_VERSION ?? "",
+    guardianVersion: env.OP_GUARDIAN_VERSION ?? "",
+    portalVersion: env.OP_PORTAL_VERSION ?? "",
+    voiceVersion: env.OP_VOICE_VERSION ?? "",
     hostAkm,
     llm: akm.llm ? {
       provider: akm.llm.provider ?? "",

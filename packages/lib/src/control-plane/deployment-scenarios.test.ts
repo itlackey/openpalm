@@ -29,7 +29,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureMigrated, CURRENT_LAYOUT_VERSION } from "./migrations.js";
-import { reconcileStackEnvImageTag } from "./env.js";
+import { upsertEnvValue } from "./env.js";
 import { refreshCoreAssetsFromSource } from "./core-assets.js";
 import { buildManagedServices } from "./lifecycle.js";
 import { isProjectOurs } from "./docker.js";
@@ -43,7 +43,7 @@ interface OpHomeOptions {
   legacy010?: boolean;
   /** OP_SETUP_COMPLETE=true (a finished install). */
   setupComplete?: boolean;
-  /** OP_IMAGE_TAG value to pin (simulate a stale pin). */
+  /** OP_ASSISTANT_VERSION value to pin (simulate a stale pin). */
   imageTag?: string;
   /** OP_ENABLED_ADDONS value. */
   enabledAddons?: string;
@@ -87,7 +87,7 @@ function buildOpHome(opts: OpHomeOptions = {}): OpHome {
   // stack.env (the 0.11 location).
   const lines: string[] = [];
   if (opts.setupComplete) lines.push("OP_SETUP_COMPLETE=true");
-  if (opts.imageTag) lines.push(`OP_IMAGE_TAG=${opts.imageTag}`);
+  if (opts.imageTag) lines.push(`OP_ASSISTANT_VERSION=${opts.imageTag}`);
   if (opts.enabledAddons) lines.push(`OP_ENABLED_ADDONS=${opts.enabledAddons}`);
   for (const [k, v] of Object.entries(opts.extraStackEnv ?? {})) lines.push(`${k}=${v}`);
   if (lines.length > 0 || !opts.legacy010) {
@@ -144,15 +144,15 @@ describe("scenario: old-version OP_HOME (0.10 → current)", () => {
   });
 });
 
-// ── Scenario 2: stale OP_IMAGE_TAG pin → reconciled (no longer deploys old) ──
+// ── Scenario 2: stale per-unit version pin → reconciled (no longer deploys old) ──
 
-describe("scenario: stale OP_IMAGE_TAG pin", () => {
+describe("scenario: stale OP_ASSISTANT_VERSION pin", () => {
   it("reconciles a stale pin (v0.10.9) to the requested tag, dropping the old deploy", () => {
     active = buildOpHome({ setupComplete: true, imageTag: "v0.10.9" });
     const envPath = join(active.homeDir, "knowledge", "env", "stack.env");
-    const reconciled = reconcileStackEnvImageTag(readFileSync(envPath, "utf-8"), "main", "latest");
-    expect(reconciled).toContain("OP_IMAGE_TAG=latest");
-    expect(reconciled).not.toContain("OP_IMAGE_TAG=v0.10.9");
+    const reconciled = upsertEnvValue(readFileSync(envPath, "utf-8"), "OP_ASSISTANT_VERSION", "latest");
+    expect(reconciled).toContain("OP_ASSISTANT_VERSION=latest");
+    expect(reconciled).not.toContain("OP_ASSISTANT_VERSION=v0.10.9");
   });
 });
 

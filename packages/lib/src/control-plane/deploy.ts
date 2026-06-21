@@ -140,7 +140,12 @@ function parseComposePsOutput(stdout: string): ComposeContainerState[] {
 }
 
 function resolveImageTag(state: ControlPlaneState): string {
-  return parseEnvFile(`${state.stashDir}/env/stack.env`).OP_IMAGE_TAG ?? '';
+  // Per-image versions replaced the single OP_IMAGE_TAG cascade. The assistant
+  // is the version-of-record image; its tag is representative for the "dev tag ⇒
+  // skip remote pull" heuristic. Fall back to the legacy OP_IMAGE_TAG for an
+  // install whose stack.env predates the version migration.
+  const env = parseEnvFile(`${state.stashDir}/env/stack.env`);
+  return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
 }
 
 async function missingServiceImages(composeOpts: ReturnType<typeof buildComposeOptions>, services: string[]): Promise<string[]> {

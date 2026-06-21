@@ -7,7 +7,7 @@ function stubLib(overrides: Record<string, unknown> = {}) {
   mock.module('@openpalm/lib', () => ({
     ensureMigrated: () => ({ migrated: false, from: 1, to: 1, applied: [], backupDir: null, notes: [], releaseFrom: null, releaseTo: '', releaseApplied: [] }),
     ensureReleaseMigrated: () => ({ migrated: false, from: null, to: 'v0.12.0', applied: [], backupDir: null, notes: [] }),
-    resolveDefaultMigrateTarget: async () => 'v0.12.0',
+    PLATFORM_VERSION: 'v0.12.0',
     formatForDisplay: (v: string) => v.replace(/^v/, ''),
     MigrationError: class MigrationError extends Error { guidance = ''; backupDir: string | null = null; },
     ...overrides,
@@ -61,11 +61,10 @@ describe('migrate --to (#497)', () => {
     expect(logs.join('\n')).toContain('[dry-run]');
   });
 
-  test('`--dry-run --to` with no value defaults to the newest published tag', async () => {
-    let resolved = false;
+  test('`--dry-run --to` with no value defaults to the running PLATFORM_VERSION', async () => {
     let targetSeen: string | null = null;
     stubLib({
-      resolveDefaultMigrateTarget: async () => { resolved = true; return 'v0.12.0'; },
+      PLATFORM_VERSION: 'v0.12.0',
       ensureReleaseMigrated: (opts: { targetVersion: string }) => {
         targetSeen = opts.targetVersion;
         return { migrated: false, from: null, to: opts.targetVersion, applied: [], backupDir: null, notes: [] };
@@ -79,7 +78,6 @@ describe('migrate --to (#497)', () => {
     } finally {
       console.log = origLog;
     }
-    expect(resolved).toBe(true);
     expect(targetSeen).toBe('v0.12.0');
   });
 });

@@ -52,7 +52,7 @@ describe('file-based control-plane secrets', () => {
     const stackDir = tempStackDir();
     writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
 
-    patchSecretsEnvFile(stackDir, { OP_UI_LOGIN_PASSWORD: 'pw', OP_IMAGE_TAG: 'latest' });
+    patchSecretsEnvFile(stackDir, { OP_UI_LOGIN_PASSWORD: 'pw', OP_ASSISTANT_VERSION: 'latest' });
 
     expect(readSecret(stackDir, 'op_ui_login_password')).toBe('pw\n');
     expect(listSecretNames(stackDir)).toContain('op_ui_login_password');

@@ -111,19 +111,6 @@ export function resolveRequestedImageTag(repoRef: string): string | null {
   return formatForDocker(trimmed);
 }
 
-/**
- * Reconciles the OP_IMAGE_TAG value in stack.env content.
- */
-export function reconcileStackEnvImageTag(
-  content: string,
-  repoRef: string,
-  explicitImageTag?: string,
-): string {
-  const desiredImageTag = explicitImageTag || resolveRequestedImageTag(repoRef);
-  if (!desiredImageTag) return content;
-  return upsertEnvValue(content, 'OP_IMAGE_TAG', desiredImageTag);
-}
-
 export function mergeEnvContent(
   content: string,
   updates: Record<string, string>,
