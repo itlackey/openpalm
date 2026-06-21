@@ -41,6 +41,11 @@ on:
         required: false
         type: boolean
         default: true
+      allow-existing:
+        description: 'When true, treat an already-published version as a warning instead of an error.'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       package-dir:
@@ -70,6 +75,11 @@ on:
         default: false
       dry-run:
         description: 'Pack + validate but do NOT npm publish or commit.'
+        required: false
+        type: boolean
+        default: false
+      allow-existing:
+        description: 'When true, treat an already-published version as a warning instead of an error. Default false — accidental re-publishes fail loudly.'
         required: false
         type: boolean
         default: false
@@ -209,6 +219,7 @@ jobs:
         working-directory: ${{ inputs.package-dir }}
         env:
           DRY_RUN: ${{ inputs.dry-run }}
+          ALLOW_EXISTING: ${{ inputs.allow-existing }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [ "${DRY_RUN}" = 'true' ]; then
@@ -225,9 +236,14 @@ jobs:
           fi
           npm publish "${TARBALL}" --provenance --access public ${TAG_ARGS} || {
             EXIT_CODE=$?
-            # Treat "already published" as success so version bump commit still happens
+            # Check if the version is already published
             if npm view "${{ inputs.package-name }}@${VERSION}" version 2>/dev/null; then
-              echo "::warning::Version ${VERSION} already published — skipping"
+              if [ "${ALLOW_EXISTING}" = 'true' ]; then
+                echo "::warning::Version ${VERSION} already published — skipping (allow-existing=true)"
+              else
+                echo "::error::Version ${VERSION} is already published on npm. Set allow-existing=true to treat this as a warning instead of an error."
+                exit 1
+              fi
             else
               exit $EXIT_CODE
             fi
