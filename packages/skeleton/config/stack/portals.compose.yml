@@ -71,7 +71,12 @@ services:
     profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack", "addon.gateway"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
     restart: unless-stopped
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    # No `user:` here. The container starts as root so the entrypoint can chown
+    # the root-owned guardian-cache named volume (/opt/openpalm) and the bun
+    # global install dir, then drops to OP_UID:OP_GID via gosu before starting
+    # the server processes. Setting `user:` would force a non-root start, the
+    # chown would be skipped, and `bun add -g` into /opt/openpalm/tools on a
+    # fresh volume would fail with EACCES. Matches the assistant service.
     environment:
       HOME: /opt/openpalm/guardian
       PORT: "8080"
@@ -117,6 +122,7 @@ services:
       - "${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182"
       - "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182"
     volumes:
+      - guardian-cache:/opt/openpalm
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # OpenCode global config (opencode.jsonc, instructions). Operator-managed,
@@ -143,7 +149,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 180s
 
 secrets:
   portal_chat_secret:
@@ -164,3 +170,10 @@ secrets:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_admin_token
   op_guardian_mcp_token:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_mcp_token
+
+volumes:
+  # Named volume for guardian npm artifact cache (/opt/openpalm).
+  # Replaces the anonymous volume that the Dockerfile previously declared via
+  # VOLUME ["/opt/openpalm"], which accumulated orphan volumes on every deploy.
+  # docker compose down --volumes will clean this up explicitly.
+  guardian-cache: {}
