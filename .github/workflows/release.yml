@@ -275,6 +275,8 @@ jobs:
                           packages/electron/admin-tools/package.json; do
                   node scripts/set-version.mjs "$f" "$V"
                 done
+                sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${V}\"/" scripts/setup.sh
+                sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${V}'/" scripts/setup.ps1
                 ;;
               portals)
                 node scripts/set-version.mjs portals/discord/package.json "$V"
