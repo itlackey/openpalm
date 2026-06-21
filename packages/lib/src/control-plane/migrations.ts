@@ -34,6 +34,7 @@ import { upsertEnvValue, parseEnabledAddons } from "./env.js";
 import { nonSensitiveAddonEnvKeys } from "./addon-env-schemas.js";
 import { PLATFORM_IMAGE_TAG_KEYS, buildPlatformImageTagEnv } from './image-tags.js';
 import { compareComparableVersions, isComparableSemver } from './versioning.js';
+import { BUILTIN_ADDON_IDS } from './addon-ids.js';
 
 export const LAYOUT_VERSION_KEY = "OP_LAYOUT_VERSION";
 /** Bump when the on-disk layout changes and add a Migration to MIGRATIONS. */
@@ -246,7 +247,7 @@ function readLayoutVersion(ctx: { homeDir: string; stashDir: string }): number {
   }
   if (existsSync(join(ctx.homeDir, "vault"))) return 0;            // (2) 0.10.x / crash-recovery
   if (existsSync(join(ctx.homeDir, "config", "system.env"))) return 0; // (3) 0.9.x
-  if (envExists) return CURRENT_LAYOUT_VERSION;                    // (4) 0.11.0 pre-stamp
+  if (envExists) return 1;                                         // (4) 0.11.0 pre-stamp — must run 1→2 migration
   if (!hasOpenPalmContent(ctx.homeDir)) return CURRENT_LAYOUT_VERSION; // (5) fresh install
   throw new UnrecognizedLayoutError(ctx.homeDir);                  // (6) fail loud
 }
@@ -925,11 +926,11 @@ export function releaseMigrationVersions(): string[] {
 // ── Release migration v0.12.3: remove stale addon IDs from OP_ENABLED_ADDONS ───
 
 /**
- * The hardcoded builtin addon IDs from addons.ts. Inlined here to avoid an
- * import cycle (addons.ts → config-persistence.ts → … which itself may call
- * migrations). These must stay in sync with BUILTIN_ADDONS in addons.ts.
+ * Set of valid built-in addon IDs for fast membership checks.
+ * Derived from BUILTIN_ADDON_IDS (addon-ids.ts — the single source of truth).
+ * To add or remove an addon, update addon-ids.ts only.
  */
-const KNOWN_ADDON_IDS = new Set(['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice']);
+const KNOWN_ADDON_IDS = new Set(BUILTIN_ADDON_IDS);
 
 /**
  * Strip any addon IDs from OP_ENABLED_ADDONS that are not in the current
@@ -983,13 +984,11 @@ function patchPortalsComposeForThinHost(ctx: MigrationCtx): void {
   // insertion point in the guardian service (not the discord/slack services).
   const ANCHOR = '      OP_ASSISTANT_URL: http://assistant:4096';
   if (!content.includes(ANCHOR)) {
-    ctx.log('WARN: portals.compose.yml does not contain expected anchor line; skipping thin-host env patch — apply manually');
-    ctx.notes.push(
-      'portals.compose.yml could not be auto-patched for the guardian thin-host. ' +
-      'Add OP_GUARDIAN_VERSION and PLATFORM_VERSION to the guardian service environment manually ' +
-      '(see packages/skeleton/config/stack/portals.compose.yml for the reference values).',
+    throw new Error(
+      `Migration patchPortalsComposeForThinHost: anchor line not found in ${path}. ` +
+      `The guardian thin-host env vars cannot be injected. ` +
+      `Manual fix: add OP_GUARDIAN_VERSION and PLATFORM_VERSION env vars to the guardian service in portals.compose.yml.`,
     );
-    return;
   }
 
   const INSERTION = [
@@ -1113,6 +1112,13 @@ const RELEASE_MIGRATIONS: ReleaseMigration[] = [
       const content = readFileSync(path, 'utf-8');
       if (!content.includes('OP_GUARDIAN_VERSION:')) {
         throw new Error('post-migration check failed: OP_GUARDIAN_VERSION still missing from portals.compose.yml');
+      }
+      const ANCHOR = '      OP_ASSISTANT_URL: http://assistant:4096';
+      if (!content.includes(ANCHOR)) {
+        throw new Error(
+          'post-migration check failed: portals.compose.yml is missing the expected anchor line ' +
+          '(OP_ASSISTANT_URL: http://assistant:4096). The file may be structurally corrupt.',
+        );
       }
     },
   },
@@ -1356,9 +1362,11 @@ export function ensureReleaseMigrated(
       if (!lock) {
         throw new MigrationError('Another install/upgrade is in progress.', RECOVERY_GUIDANCE, null);
       }
-      // Release migrations only edit knowledge/env/stack.env, so back up just
-      // that file — a full OP_HOME copy (data/ can be gigabytes) is the layout
-      // migration's job, not warranted for an env-file append.
+      // Release migrations primarily edit knowledge/env/stack.env; some also write
+      // portals.compose.yml and custom.compose.yml. Back up stack.env here as a
+      // targeted safety copy — lifecycle callers wrap ensureReleaseMigrated in
+      // withStackEnvRollback which snapshots and restores all three files on error.
+      // A full OP_HOME copy (data/ can be gigabytes) is the layout migration's job.
       const envPath = stackEnvFile(paths.stashDir);
       if (existsSync(envPath)) {
         log('Backing up stack.env before migrating…');

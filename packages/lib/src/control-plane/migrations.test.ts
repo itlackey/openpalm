@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureMigrated, ensureReleaseMigrated, MigrationError, BackupSpaceError, CURRENT_LAYOUT_VERSION } from "./migrations.js";
+import { ensureMigrated, ensureReleaseMigrated, MigrationError, BackupSpaceError, CURRENT_LAYOUT_VERSION, selectPendingReleaseMigrations, releaseMigrationVersions } from "./migrations.js";
 
 // The harness resolves all paths from OP_HOME; point it at a synthetic 0.10 home.
 let home: string;
@@ -713,5 +713,47 @@ describe('release migration v0.12.3-rc.1: purge stale addon IDs from OP_ENABLED_
     const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
     // stale ID still present — migration was not run
     expect(stackEnv).toContain('OP_ENABLED_ADDONS=discord,stale,voice');
+  });
+});
+
+describe('M2: readLayoutVersion case 4 — pre-stamp 0.11.0 home runs 1→2 migration', () => {
+  it('stamps CURRENT_LAYOUT_VERSION=2 and runs the 1→2 layout migration for a pre-stamp 0.11.0 home', () => {
+    // A home that has knowledge/env/stack.env but no OP_LAYOUT_VERSION stamp
+    // and no vault/ — the "0.11.0 installed before the stamp was added" case.
+    // Fix (M2): readLayoutVersion must return 1 (not CURRENT_LAYOUT_VERSION) so
+    // the 1→2 migration runs (removing inert pre-0.12.0 system files).
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(home, 'config', 'stack'), { recursive: true });
+    mkdirSync(join(home, 'data'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.11.5\n');
+    // Plant an inert system file that the 1→2 migration removes.
+    writeFileSync(join(home, 'config', 'stack', 'channels.compose.yml'), 'services: {}\n');
+
+    const report = ensureMigrated();
+
+    expect(report.migrated).toBe(true);
+    expect(report.from).toBe(1);
+    expect(report.to).toBe(CURRENT_LAYOUT_VERSION);
+
+    const stackEnv = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
+
+    // The 1→2 migration must have run — channels.compose.yml is an inert system file.
+    expect(existsSync(join(home, 'config', 'stack', 'channels.compose.yml'))).toBe(false);
+  });
+});
+
+describe('RELEASE_MIGRATIONS uniqueness', () => {
+  it('has no duplicate describe strings in RELEASE_MIGRATIONS', () => {
+    const versions = releaseMigrationVersions();
+    // releaseMigrationVersions() returns one entry per migration in order.
+    // Use selectPendingReleaseMigrations with a far-future target to obtain the
+    // full list, and check describes via the exported versions + internal shape.
+    // Since we only export versions here, check there are no duplicate (version, describe)
+    // pairs by running the selector for a target beyond all known versions.
+    const all = selectPendingReleaseMigrations(null, 'v99.0.0');
+    const describes = all.map((m) => m.describe);
+    const unique = new Set(describes);
+    expect(unique.size).toBe(describes.length);
   });
 });
