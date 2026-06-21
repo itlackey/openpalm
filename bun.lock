@@ -7,13 +7,13 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.12.16",
+      "version": "0.12.19",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
       "dependencies": {
-        "@openpalm/lib": ">=0.12.16 <1.0.0",
-        "@openpalm/skeleton": ">=0.12.0 <1.0.0",
+        "@openpalm/lib": ">=0.12.19 <1.0.0",
+        "@openpalm/skeleton": "0.12.18",
         "citty": "^0.2.1",
         "yaml": "^2.8.0",
       },
@@ -24,7 +24,7 @@
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.12.16",
+      "version": "0.12.19",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^25.9.1",
@@ -36,14 +36,14 @@
     },
     "packages/electron/admin-tools": {
       "name": "@openpalm/admin-tools-plugin",
-      "version": "0.12.16",
+      "version": "0.12.19",
       "dependencies": {
         "@opencode-ai/plugin": "^1.17.7",
       },
     },
     "packages/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.12.17",
+      "version": "0.12.19",
       "bin": {
         "openpalm-guardian": "./src/server.ts",
       },
@@ -57,7 +57,7 @@
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.12.16",
+      "version": "0.12.19",
       "dependencies": {
         "dotenv": "^17.4.2",
         "tar": "^7.5.15",
@@ -70,11 +70,11 @@
     },
     "packages/skeleton": {
       "name": "@openpalm/skeleton",
-      "version": "0.12.16",
+      "version": "0.12.19",
     },
     "packages/ui": {
       "name": "@openpalm/ui",
-      "version": "0.12.16",
+      "version": "0.12.19",
       "devDependencies": {
         "@axe-core/playwright": "^4.11.3",
         "@eslint/compat": "^2.0.2",
@@ -1506,6 +1506,8 @@
     "node-gyp/undici": ["undici@6.25.0", "", {}, "sha512-ZgpWDC5gmNiuY9CnLVXEH8rl50xhRCuLNA97fAUnKi8RRuV4E6KG31pDTsLVUKnohJE0I3XDrTeEydAXRw47xg=="],
 
     "node-gyp/which": ["which@6.0.1", "", { "dependencies": { "isexe": "^4.0.0" }, "bin": { "node-which": "bin/which.js" } }, "sha512-oGLe46MIrCRqX7ytPUf66EAYvdeMIZYn3WaocqqKZAxrBpkqHfL/qvTyJ/bTk5+AqHCjXmrv3CEWgy368zhRUg=="],
+
+    "openpalm/@openpalm/skeleton": ["@openpalm/skeleton@0.12.18", "", {}, "sha512-s80tOj6FEDjAwoJOJ6siAdxrqIdgm2pLp4PL4WuWkNef1gT1/fxiPmR6ayTHr5K4mmO6ZHrWjrRtOzZJxQptOQ=="],
 
     "p-queue/eventemitter3": ["eventemitter3@4.0.7", "", {}, "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw=="],
 
