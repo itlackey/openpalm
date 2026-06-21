@@ -41,6 +41,10 @@ ensure_volume_ownership() {
 # install_artifact: skip if already at target version, retry on transient failures.
 install_artifact() {
   local pkg="$1" version="$2" prefix="$3"
+  # The image is FROM oven/bun:1.3-slim, which ships no node/npm. Use bun, the
+  # runtime this entrypoint already relies on. bun installs into the cwd's
+  # node_modules, so cd into the prefix; the exact-version pin (${version}) is a
+  # security boundary and must not be loosened to a range.
   local manifest="${prefix}/node_modules/${pkg}/package.json"
   local installed_version=""
 

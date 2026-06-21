@@ -19,10 +19,10 @@ import { parseEnabledAddons } from './env.js';
 import type { ControlPlaneState } from './types.js';
 import { resolveStashDir } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
+import { BUILTIN_ADDON_IDS } from './addon-ids.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
-const BUILTIN_ADDONS = ['api', 'discord', 'ollama', 'slack', 'voice'] as const;
 
 export type RegistryAddonConfig = {
   schemaPath: string;
@@ -61,7 +61,7 @@ export function getRegistryAddonConfig(name: string): RegistryAddonConfig {
 }
 
 export function listAvailableAddonIds(): string[] {
-  return [...BUILTIN_ADDONS].sort();
+  return [...BUILTIN_ADDON_IDS].sort();
 }
 
 export function listEnabledAddonIds(homeDir: string): string[] {

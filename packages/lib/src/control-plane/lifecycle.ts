@@ -664,10 +664,23 @@ export type UpgradeResult = {
 
 async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Promise<T>): Promise<T> {
   const stackEnvPath = `${state.stashDir}/env/stack.env`;
+  // Release migrations (ensureReleaseMigrated) may also write these compose files,
+  // so snapshot them alongside stack.env for full rollback coverage.
+  const portalsComposePath = `${state.stackDir}/portals.compose.yml`;
+  const customComposePath = `${state.stackDir}/custom.compose.yml`;
+
   let originalStackEnv: string | null = null;
+  let originalPortalsCompose: string | null = null;
+  let originalCustomCompose: string | null = null;
   try {
     originalStackEnv = readFileSync(stackEnvPath, 'utf-8');
   } catch { /* stack.env may not exist yet */ }
+  try {
+    originalPortalsCompose = readFileSync(portalsComposePath, 'utf-8');
+  } catch { /* portals.compose.yml may not exist yet */ }
+  try {
+    originalCustomCompose = readFileSync(customComposePath, 'utf-8');
+  } catch { /* custom.compose.yml may not exist yet */ }
 
   // Persist the PRE-upgrade state for `openpalm rollback`. Without this, the
   // snapshot taken later inside reconcileCore captures stack.env AFTER the new
@@ -681,6 +694,16 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
     if (originalStackEnv !== null) {
       try {
         writeFileSync(stackEnvPath, originalStackEnv);
+      } catch { /* best effort */ }
+    }
+    if (originalPortalsCompose !== null) {
+      try {
+        writeFileSync(portalsComposePath, originalPortalsCompose);
+      } catch { /* best effort */ }
+    }
+    if (originalCustomCompose !== null) {
+      try {
+        writeFileSync(customComposePath, originalCustomCompose);
       } catch { /* best effort */ }
     }
     throw e;

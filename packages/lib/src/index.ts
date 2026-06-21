@@ -66,6 +66,7 @@ export type {
   AddonProfileAvailability,
   RegistryAddonConfig,
 } from "./control-plane/addons.js";
+export { BUILTIN_ADDON_IDS } from "./control-plane/addon-ids.js";
 export {
   getRegistryAutomation,
   getRegistryAddonConfig,
