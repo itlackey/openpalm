@@ -145,11 +145,10 @@ jobs:
             }
 
             // skeleton + guardian are dual-owned: published by BOTH the platform
-            // unit (the CLI hard-pins @openpalm/skeleton to the platform version)
-            // AND the independent guardian unit. They MUST be in the platform guard
-            // so a platform release can never compute a next version <= an
-            // already-published skeleton/guardian (the "cannot publish over
-            // previously published version" failure mode).
+            // unit (the CLI hard-pins skeleton to the platform version) AND the
+            // independent guardian unit. They MUST be in the platform guard so a
+            // platform release can never compute a next version at or below an
+            // already-published skeleton/guardian, which npm rejects.
             const npmPackages = {
               platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
               major: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
