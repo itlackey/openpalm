@@ -255,9 +255,11 @@ export async function clearInstallLock(): Promise<{ ok: boolean; removed: boolea
   return (await res.json()) as { ok: boolean; removed: boolean };
 }
 
-export async function downloadUiVersion(tag: string): Promise<{ ok: boolean; tag: string; restarting: boolean }> {
+export async function downloadUiVersion(
+  tag: string,
+): Promise<{ ok: boolean; tag: string; restarting: boolean; pendingRestart: boolean }> {
   const res = await requireOk(await request('POST', '/admin/ui-version', { tag }));
-  return (await res.json()) as { ok: boolean; tag: string; restarting: boolean };
+  return (await res.json()) as { ok: boolean; tag: string; restarting: boolean; pendingRestart: boolean };
 }
 
 // ── Automations ─────────────────────────────────────────────────────────

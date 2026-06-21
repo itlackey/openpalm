@@ -14,6 +14,7 @@ vi.mock('$lib/api.js', () => ({
   fetchVersions: vi.fn(),
   patchVersions: vi.fn(),
   applyChanges: vi.fn(),
+  downloadUiVersion: vi.fn(),
 }));
 
 import UpdatesTab from './UpdatesTab.svelte';

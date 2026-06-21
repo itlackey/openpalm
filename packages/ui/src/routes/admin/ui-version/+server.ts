@@ -33,16 +33,28 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // The freshly seeded data/ui does nothing until the Node child running THIS
-  // process is respawned (design §6.2) — the old @openpalm/lib (+ migrations)
-  // is held in memory. Signal the supervisor (CLI `openpalm ui serve` or the
-  // Electron harness) to kill + respawn us against the new build. The supervisor
-  // installs a SIGUSR2 handler that re-resolves data/ui and respawns; OP_UI_SUPERVISOR
-  // is set by the supervisor when it spawned us. Best-effort: if there is no
-  // supervisor (dev `vite preview`, direct `node index.js`), report restarting:false
-  // so the client tells the user to restart manually.
+  // process is respawned (design §6.2). The restart mechanism differs by supervisor:
+  //
+  // • electron — SIGUSR2 from a detached child to its Electron parent is silently
+  //   dropped on Linux (different process groups) and unreliable on macOS in newer
+  //   Electron/Node builds. The Electron preload already exposes window.openpalm.restartUiServer()
+  //   via contextBridge → ipcMain.handle('restart-ui-server') → restartUIServer(). The
+  //   client calls that IPC path after receiving pendingRestart:true here. No signal needed.
+  //
+  // • cli / other — SIGUSR2 to ppid remains the signal path; the CLI supervisor
+  //   installs a handler that re-resolves data/ui and respawns the child.
+  //
+  // • none (dev preview, direct node) — no supervisor; report restarting:false so
+  //   the client prompts the user to restart manually.
   const supervisor = process.env.OP_UI_SUPERVISOR ?? "";
   let restarting = false;
-  if (supervisor && process.ppid && process.ppid > 1) {
+  let pendingRestart = false;
+
+  if (supervisor === "electron") {
+    // IPC path: client renderer must call window.openpalm.restartUiServer() after this response.
+    pendingRestart = true;
+    logger.info("ui-version downloaded (electron — client will restart via IPC)", { requestId, tag });
+  } else if (supervisor && process.ppid && process.ppid > 1) {
     try {
       process.kill(process.ppid, "SIGUSR2");
       restarting = true;
@@ -52,6 +64,6 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  logger.info("ui-version downloaded", { requestId, tag, restarting });
-  return jsonResponse(200, { ok: true, tag, restarting }, requestId);
+  logger.info("ui-version downloaded", { requestId, tag, restarting, pendingRestart });
+  return jsonResponse(200, { ok: true, tag, restarting, pendingRestart }, requestId);
 };

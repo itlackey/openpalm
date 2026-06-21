@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
-  import { fetchVersions, patchVersions, applyChanges } from '$lib/api.js';
+  import { fetchVersions, patchVersions, applyChanges, downloadUiVersion } from '$lib/api.js';
   import {
     desktopNotifyEnabled,
     desktopReplyPreviewEnabled,
@@ -47,6 +47,12 @@
   let launchOnLoginSupported = $state(false);
   let launchOnLoginEnabled = $state(false);
   let launchOnLoginSaving = $state(false);
+
+  // Control-plane UI build install (Electron: IPC restart; CLI: SIGUSR2 restart).
+  let uiBuildTag = $state('');
+  let uiBuildBusy = $state(false);
+  let uiBuildMessage = $state('');
+  let uiBuildMessageType: 'success' | 'error' = $state('success');
 
   // Changed keys: the local edit differs from the loaded baseline.
   const changedKeys = $derived(
@@ -148,6 +154,38 @@
         ? 'Loading versions…'
         : '',
   );
+
+  async function handleUiBuildInstall(): Promise<void> {
+    const tag = uiBuildTag.trim();
+    if (!tag || uiBuildBusy) return;
+    uiBuildBusy = true;
+    uiBuildMessage = '';
+    try {
+      const result = await downloadUiVersion(tag);
+      if (result.pendingRestart) {
+        // Electron IPC path — signal the harness to kill + respawn the UI child.
+        const restarted = await window.openpalm?.restartUiServer?.();
+        if (restarted) {
+          uiBuildMessageType = 'success';
+          uiBuildMessage = `Installed ${tag} and restarted the admin UI.`;
+        } else {
+          uiBuildMessageType = 'error';
+          uiBuildMessage = `Downloaded ${tag} but the restart failed — reload the page to apply it.`;
+        }
+      } else if (result.restarting) {
+        uiBuildMessageType = 'success';
+        uiBuildMessage = `Installed ${tag} — restarting…`;
+      } else {
+        uiBuildMessageType = 'success';
+        uiBuildMessage = `Downloaded ${tag}. Restart the admin UI to apply it.`;
+      }
+      uiBuildTag = '';
+    } catch (e) {
+      uiBuildMessageType = 'error';
+      uiBuildMessage = `Failed: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    uiBuildBusy = false;
+  }
 </script>
 
 <div class="panel" role="tabpanel">
@@ -243,6 +281,49 @@
         </p>
       {/if}
     {/if}
+
+    <section class="version-group" aria-labelledby="ui-build-title">
+      <h3 id="ui-build-title" class="version-group-title">Admin UI build</h3>
+      <p class="version-group-subtitle">
+        Install a specific <code>@openpalm/ui</code> npm version. The new build takes effect after the
+        admin UI restarts — done automatically in the desktop app; reload the page otherwise.
+      </p>
+      <div class="ui-build-row">
+        <label class="version-label" for="ui-build-tag">Version tag</label>
+        <input
+          id="ui-build-tag"
+          class="version-input"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="e.g. 0.12.19 or latest"
+          bind:value={uiBuildTag}
+          disabled={uiBuildBusy}
+        />
+        <button
+          class="btn btn-secondary"
+          onclick={handleUiBuildInstall}
+          disabled={uiBuildBusy || !uiBuildTag.trim()}
+          aria-busy={uiBuildBusy}
+        >
+          {#if uiBuildBusy}
+            <Spinner /> Installing…
+          {:else}
+            Install
+          {/if}
+        </button>
+      </div>
+      {#if uiBuildMessage}
+        <p
+          class="result-message"
+          class:result-success={uiBuildMessageType === 'success'}
+          class:result-error={uiBuildMessageType === 'error'}
+          role="status"
+        >
+          {uiBuildMessage}
+        </p>
+      {/if}
+    </section>
 
     {#if inElectron}
       <section class="desktop-settings" aria-labelledby="desktop-settings-title">
@@ -418,6 +499,23 @@
     color: var(--s-ink-3);
     margin: 0;
     line-height: 1.5;
+  }
+
+  .ui-build-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-sp-3);
+    flex-wrap: wrap;
+  }
+  .ui-build-row .version-input {
+    flex: 1;
+    min-width: 10rem;
+  }
+  .ui-build-row .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    flex-shrink: 0;
   }
 
   .apply-row {
