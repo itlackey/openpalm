@@ -6,6 +6,11 @@ if [ -z "$PORTAL_PACKAGE" ]; then
 	exit 1
 fi
 
+# Update adapter packages within declared semver ranges (same pattern as
+# assistant and guardian). Falls back to baked image defaults on error.
+bun update --cwd /opt/openpalm/tools --production \
+	|| echo "WARN: tool update had errors; check logs above" >&2
+
 # Run the portal entrypoint. varlock-based runtime redaction was retired
 # in #391; secret hygiene now lives in the in-process logger redactor
 # (`@openpalm/lib/logger`) and the akm secret store (knowledge/secrets/).

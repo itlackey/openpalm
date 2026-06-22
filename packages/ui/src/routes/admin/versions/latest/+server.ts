@@ -24,6 +24,20 @@ function semverCompare(a: string, b: string): number {
   return 0;
 }
 
+async function resolveNpmLatest(pkg: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`,
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(6_000) }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { version?: string };
+    return typeof data.version === "string" ? data.version : null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveDockerLatest(image: string): Promise<string | null> {
   try {
     const res = await fetch(
@@ -62,17 +76,23 @@ export const GET: RequestHandler = async (event) => {
 
   const errors: string[] = [];
 
-  const dockerResults = await Promise.all(
-    SERVICE_VERSION_KEYS.map(async (key) => {
-      const image = DOCKER_IMAGE_NAMES[key];
-      const version = await resolveDockerLatest(image);
-      if (!version) errors.push(`Docker Hub: could not resolve latest for ${DOCKER_HUB_NAMESPACE}/${image}`);
-      return [key, version] as [string, string | null];
-    })
-  );
+  const [dockerResults, uiResult] = await Promise.all([
+    Promise.all(
+      SERVICE_VERSION_KEYS.map(async (key) => {
+        const image = DOCKER_IMAGE_NAMES[key];
+        const version = await resolveDockerLatest(image);
+        if (!version) errors.push(`Docker Hub: could not resolve latest for ${DOCKER_HUB_NAMESPACE}/${image}`);
+        return [key, version] as [string, string | null];
+      })
+    ),
+    resolveNpmLatest("@openpalm/ui").then((v) => {
+      if (!v) errors.push("npm: could not resolve latest for @openpalm/ui");
+      return ["OP_UI_VERSION", v] as [string, string | null];
+    }),
+  ]);
 
   const versions: Record<string, string | null> = {};
-  for (const [key, val] of dockerResults) {
+  for (const [key, val] of [...dockerResults, uiResult]) {
     versions[key as string] = val as string | null;
   }
 

@@ -90,12 +90,13 @@ services:
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
       - assistant-persistent:/opt/persistent
-      # Tool packages managed via package.json. Edit OP_HOME/data/assistant/tools/package.json
-      # to pin or update individual tool versions; bun update applies changes on next start.
-      - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
       # Platform artifact cache — persists @openpalm/ui and @openpalm/skeleton
       # across restarts so warm starts don't re-download.
       - assistant-artifacts:/opt/openpalm
+      # Tool packages managed via package.json. Edit OP_HOME/data/assistant/tools/package.json
+      # to pin or update individual tool versions; bun update applies changes on next start.
+      # Declared after the named volume so the bind-mount wins on all platforms.
+      - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
     networks: [ assistant_net ]
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]

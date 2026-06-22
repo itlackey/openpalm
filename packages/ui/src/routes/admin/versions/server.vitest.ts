@@ -2,7 +2,7 @@
  * Route-level tests for GET + PATCH /admin/versions.
  *
  * The version system is a plain stack.env edit now: GET reads every version key
- * (Docker image tags + npm package pins) with documented defaults for unset
+ * (Docker image tags) with documented defaults for unset
  * keys; PATCH validates each key against the ALL_VERSION_KEYS allowlist and
  * writes it back. No Docker Hub / npm lookups, no version cache.
  */

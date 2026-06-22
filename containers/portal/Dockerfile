@@ -1,7 +1,7 @@
 # ── Portal Runner ─────────────────────────────────────────────────────────────
-# Runs first-party portal adapters. Tools live at /opt/openpalm/tools following
-# the standard cross-container pattern; adapters are referenced via file: paths
-# in tools/package.json and will migrate to versioned npm packages when published.
+# Thin host container for portal adapters. Adapters are installed from npm at
+# build time via tools/package.json; bun update at boot keeps them current
+# within the declared semver ranges.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM oven/bun:1.3-slim
@@ -9,17 +9,8 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Bake portal adapter source. The file: references in tools/package.json link
-# these into /opt/openpalm/tools/node_modules/ so they can be imported by
-# package name (e.g. @openpalm/discord-portal). When adapters are published to
-# npm the COPY lines below are removed and the file: refs become version ranges.
-COPY portals/discord /app/portals/discord
-RUN cd /app/portals/discord && bun install --production
-
-COPY portals/slack /app/portals/slack
-RUN cd /app/portals/slack && bun install --production
-
-# Standard tools layer — file: links adapter source into node_modules/.
+# Bake portal adapter packages at /opt/openpalm/tools using the standard
+# cross-container pattern. Adapters are published npm packages; no source copy needed.
 COPY containers/portal/tools/package.json /opt/openpalm/tools/package.json
 RUN bun install --cwd /opt/openpalm/tools --production
 

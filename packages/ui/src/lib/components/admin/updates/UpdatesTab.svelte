@@ -22,7 +22,8 @@
     { key: 'OP_PORTAL_VERSION', label: 'Portal (Discord/Slack/API)', hint: 'Docker image tag — exact tag, "latest", or "next".' },
     { key: 'OP_VOICE_VERSION', label: 'Voice', hint: 'Docker image tag — exact tag, "latest", or "next".' },
   ];
-  const ALL_FIELDS = [...SERVICE_FIELDS];
+  const UI_FIELD = { key: 'OP_UI_VERSION', label: 'Admin UI', hint: 'Takes effect after the UI restarts — automatic in the desktop app.' };
+  const ALL_FIELDS = [...SERVICE_FIELDS, UI_FIELD];
 
   // ── Mode ──────────────────────────────────────────────────────────────────
   // Loaded from and persisted to the server (configDir/update-mode.json).
@@ -94,7 +95,6 @@
     try {
       const data = await fetchVersions();
       platformVersion = data.platformVersion;
-      // Inject UI version so it appears alongside other npm packages.
       loaded = { ...data.versions, OP_UI_VERSION: data.platformVersion };
       edited = { ...data.versions, OP_UI_VERSION: data.platformVersion };
       mode = data.autoUpdate ? 'auto' : 'manual';
@@ -467,6 +467,24 @@
             <p class="version-hint">{field.hint}</p>
           </div>
         {/each}
+      </section>
+
+      <section class="version-group" aria-labelledby="version-ui-title">
+        <h3 id="version-ui-title" class="version-group-title">Admin UI</h3>
+        <div class="version-field">
+          <label class="version-label" for="version-OP_UI_VERSION">{UI_FIELD.label}</label>
+          <input
+            id="version-OP_UI_VERSION"
+            class="version-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            value={edited[UI_FIELD.key] ?? ''}
+            oninput={(e) => setField(UI_FIELD.key, (e.currentTarget as HTMLInputElement).value)}
+            disabled={applying}
+          />
+          <p class="version-hint">{UI_FIELD.hint}</p>
+        </div>
       </section>
 
       <div class="apply-row">

@@ -20,7 +20,7 @@ vi.mock('$lib/api.js', () => ({
 }));
 
 import UpdatesTab from './UpdatesTab.svelte';
-import { fetchVersions, fetchLatestVersions, patchVersions, applyChanges } from '$lib/api.js';
+import { fetchVersions, fetchLatestVersions, patchVersions, applyChanges, downloadUiVersion } from '$lib/api.js';
 
 const ALL_VERSIONS = {
   OP_ASSISTANT_VERSION: 'latest',
@@ -40,11 +40,13 @@ beforeEach(() => {
       OP_GUARDIAN_VERSION: '0.12.22',
       OP_PORTAL_VERSION: '0.12.22',
       OP_VOICE_VERSION: '0.12.22',
+      OP_UI_VERSION: '0.12.22',
     },
     errors: [],
     fetchedAt: '2026-06-21T00:00:00Z',
   });
   vi.mocked(patchVersions).mockResolvedValue({ ok: true, versions: { ...ALL_VERSIONS } });
+  vi.mocked(downloadUiVersion).mockResolvedValue({ ok: true, tag: '0.12.22', restarting: false, pendingRestart: false });
   vi.mocked(applyChanges).mockResolvedValue({
     ok: true,
     restarted: ['assistant'],

@@ -14,7 +14,8 @@ ENV GUARDIAN_VERSION=${GUARDIAN_VERSION}
 
 ENV HOME=/opt/openpalm/guardian \
     PORT=8080 \
-    OPENCODE_CONFIG_DIR=/etc/opencode
+    OPENCODE_CONFIG_DIR=/etc/opencode \
+    PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Bake default tool packages at /opt/openpalm/tools. In compose,
 # OP_HOME/data/guardian/tools is bind-mounted over this path so operators

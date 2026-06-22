@@ -86,17 +86,26 @@ install_artifact() {
   exit 1
 }
 
-# Guardian and skeleton are co-released, so the skeleton follows the same
-# version by default; OP_SKELETON_VERSION overrides if they ever diverge.
-install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
-install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
+# Install and update only on the root pass. The gosu re-exec preserves the
+# installed artifacts (named volume + bind-mount persist), so a second install
+# cycle on the non-root pass is redundant and wastes ~5s per boot.
+if [ "$IS_ROOT" = "1" ]; then
+  # Guardian and skeleton are co-released, so the skeleton follows the same
+  # version by default; OP_SKELETON_VERSION overrides if they ever diverge.
+  install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
+  install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
-# ── Range-versioned tools via bun update ────────────────────────────────────
-# /opt/openpalm/tools/package.json declares tool semver ranges (baked as image
-# defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
-# bun update installs missing packages and advances within declared ranges.
-bun update --cwd /opt/openpalm/tools --production \
-  || echo "WARN: tool update had errors; baked defaults remain on PATH"
+  # ── Range-versioned tools via bun update ──────────────────────────────────
+  # /opt/openpalm/tools/package.json declares tool semver ranges (baked as
+  # image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
+  # bun update installs missing packages and advances within declared ranges.
+  if [ -f "/opt/openpalm/tools/package.json" ]; then
+    bun update --cwd /opt/openpalm/tools --production \
+      || echo "WARN: tool update had errors; check logs above" >&2
+  else
+    echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool update" >&2
+  fi
+fi
 
 # ── Hard-fail when content validation is enabled but opencode is missing ───────
 enabled=0

@@ -2,7 +2,6 @@
   "name": "@openpalm/slack-portal",
   "description": "Slack bot portal adapter for OpenPalm",
   "version": "0.12.7",
-  "private": true,
   "type": "module",
   "license": "MPL-2.0",
   "repository": {
