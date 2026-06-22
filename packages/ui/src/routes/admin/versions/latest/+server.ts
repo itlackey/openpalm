@@ -5,18 +5,19 @@ import type { RequestHandler } from "./$types";
 
 const DOCKER_HUB_NAMESPACE = "openpalm";
 
-// Tags are published as "v0.12.22" — capture and strip the "v".
-const STABLE_SEMVER = /^v?(\d+\.\d+\.\d+)$/;
+// Tags are published as "v0.12.22". We preserve the "v" prefix so the resolved
+// version can be written directly to stack.env and used as a Docker image tag.
+const STABLE_SEMVER = /^(v\d+\.\d+\.\d+)$/;
 // Voice tags carry a variant suffix appended by compose ("-cpu", "-cu121", etc.).
 // Only applied to the voice image — other images use hyphens for pre-releases/arch variants.
-const VOICE_STABLE = /^v?(\d+\.\d+\.\d+)-\w+$/;
+const VOICE_STABLE = /^(v\d+\.\d+\.\d+)-\w+$/;
 
 type DockerHubTag = { name: string };
 type DockerHubResponse = { results?: DockerHubTag[] };
 
 function semverCompare(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
+  const pa = a.replace(/^v/, "").split(".").map(Number);
+  const pb = b.replace(/^v/, "").split(".").map(Number);
   for (let i = 0; i < 3; i++) {
     if (pa[i] !== pb[i]) return pa[i] - pb[i];
   }
