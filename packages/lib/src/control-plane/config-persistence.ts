@@ -17,7 +17,7 @@ import { listEnabledAddonIds } from "./addons.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
-import { SERVICE_VERSION_KEYS, NPM_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
+import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 
 import {
   readCoreCompose,
@@ -211,10 +211,6 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
     "# Docker image tags (exact tag, \"latest\", or \"next\" — no semver ranges).",
     ...SERVICE_VERSION_KEYS.map((key) => `${key}=${VERSION_DEFAULTS[key]}`),
-    "",
-    "# ── npm package versions (semver ranges supported) ──────────────────",
-    "# OP_GUARDIAN_NPM_VERSION empty ⇒ use the GUARDIAN_VERSION baked into the image.",
-    ...NPM_VERSION_KEYS.map((key) => `${key}=${VERSION_DEFAULTS[key]}`),
     "",
     "# ── Layout (on-disk schema version; managed by the migration harness) ──",
     `OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`,

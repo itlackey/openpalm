@@ -315,10 +315,8 @@ export {
 // ── Version variables (stack.env image + npm pins) ───────────────────────
 export {
   SERVICE_VERSION_KEYS,
-  NPM_VERSION_KEYS,
   ALL_VERSION_KEYS,
   VERSION_DEFAULTS,
-  NPM_PACKAGE_NAMES,
   DOCKER_IMAGE_NAMES,
   isVersionKey,
   readVersions,

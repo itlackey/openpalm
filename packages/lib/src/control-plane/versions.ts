@@ -1,15 +1,14 @@
 /**
  * Version variable management for the OpenPalm control plane.
  *
- * The stack carries two kinds of version pins in knowledge/env/stack.env:
+ * SERVICE versions (`OP_*_VERSION`) are Docker image tags. They take an exact
+ * tag ("v0.12.18"), the moving "latest" / "next" refs, or empty (compose
+ * falls back to "latest"). They are NEVER semver ranges — Docker image tags
+ * are concrete refs, not range expressions.
  *
- *  - SERVICE versions (`OP_*_VERSION`) are Docker image tags. They take an exact
- *    tag ("v0.12.18"), the moving "latest" / "next" refs, or empty (compose
- *    falls back to "latest"). They are NEVER semver ranges — Docker image tags
- *    are concrete refs, not range expressions.
- *  - NPM versions (`OP_*_NPM_VERSION` / `OP_TOOL_*_VERSION`) pin npm packages
- *    installed at container boot (guardian thin-host, assistant CLI tools). These
- *    accept semver ranges ("^1.17.0", "~0.8.14") because npm resolves them.
+ * Tool package versions are managed via per-container package.json files at
+ * OP_HOME/data/<container>/tools/package.json. Edit those files to pin or
+ * update individual tool versions.
  *
  * Compose reads every SERVICE_VERSION_KEY directly via
  * `${OP_*_VERSION:-latest}` — there is no cascade fallback to a single platform
@@ -26,29 +25,6 @@ export const SERVICE_VERSION_KEYS = [
   "OP_PORTAL_VERSION",
   "OP_VOICE_VERSION",
 ] as const;
-
-/** npm package pins installed at container boot. Semver ranges allowed. */
-export const NPM_VERSION_KEYS = [
-  "OP_GUARDIAN_NPM_VERSION",
-  "OP_TOOL_OPENCODE_VERSION",
-  "OP_TOOL_AKM_VERSION",
-  "OP_TOOL_CLAUDE_CODE_VERSION",
-  "OP_TOOL_CODEX_VERSION",
-] as const;
-
-/**
- * Maps each npm version key to its published npm package name.
- * Single source of truth — used by the admin UI's latest-version checker
- * so it doesn't duplicate this mapping independently.
- * Source: packages/skeleton/tools.json + containers/guardian/entrypoint.sh.
- */
-export const NPM_PACKAGE_NAMES: Record<(typeof NPM_VERSION_KEYS)[number], string> = {
-  OP_GUARDIAN_NPM_VERSION: "@openpalm/guardian",
-  OP_TOOL_OPENCODE_VERSION: "opencode-ai",
-  OP_TOOL_AKM_VERSION: "akm-cli",
-  OP_TOOL_CLAUDE_CODE_VERSION: "@anthropic-ai/claude-code",
-  OP_TOOL_CODEX_VERSION: "@openai/codex",
-};
 
 /**
  * Maps each service version key to its Docker Hub image name (without namespace).
@@ -70,7 +46,6 @@ export const DOCKER_IMAGE_NAMES: Record<(typeof SERVICE_VERSION_KEYS)[number], s
 /** Every version key the control plane reads/writes in stack.env. */
 export const ALL_VERSION_KEYS = [
   ...SERVICE_VERSION_KEYS,
-  ...NPM_VERSION_KEYS,
 ] as const;
 
 export type VersionKey = (typeof ALL_VERSION_KEYS)[number];
@@ -83,12 +58,6 @@ export const VERSION_DEFAULTS: Record<VersionKey, string> = {
   OP_GUARDIAN_VERSION: "latest",
   OP_PORTAL_VERSION: "latest",
   OP_VOICE_VERSION: "latest",
-  // Empty means: use the GUARDIAN_VERSION baked into the Docker image.
-  OP_GUARDIAN_NPM_VERSION: "",
-  OP_TOOL_OPENCODE_VERSION: "^1.17.0",
-  OP_TOOL_AKM_VERSION: "^0.8.14",
-  OP_TOOL_CLAUDE_CODE_VERSION: "^1.5.0",
-  OP_TOOL_CODEX_VERSION: "^0.1.0",
 };
 
 export function isVersionKey(key: string): key is VersionKey {

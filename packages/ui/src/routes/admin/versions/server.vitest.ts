@@ -69,17 +69,17 @@ describe('GET /admin/versions', () => {
       expect(body.versions).toHaveProperty(key);
     }
     expect(body.versions.OP_ASSISTANT_VERSION).toBe('latest');
-    expect(body.versions.OP_TOOL_OPENCODE_VERSION).toBe('^1.17.0');
+    expect(body.versions.OP_GUARDIAN_VERSION).toBe('latest');
     expect(typeof body.platformVersion).toBe('string');
     expect(body.platformVersion.length).toBeGreaterThan(0);
   });
 
   test('reflects values written in stack.env', async () => {
-    seedStackEnv('OP_ASSISTANT_VERSION=v0.12.18\nOP_TOOL_AKM_VERSION=^0.8.20\n');
+    seedStackEnv('OP_ASSISTANT_VERSION=v0.12.18\nOP_PORTAL_VERSION=v0.12.18\n');
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as VersionsBody;
     expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.18');
-    expect(body.versions.OP_TOOL_AKM_VERSION).toBe('^0.8.20');
+    expect(body.versions.OP_PORTAL_VERSION).toBe('v0.12.18');
     // Unset keys still fall back to defaults.
     expect(body.versions.OP_GUARDIAN_VERSION).toBe('latest');
   });
@@ -113,19 +113,19 @@ describe('PATCH /admin/versions', () => {
   test('writes valid version keys to stack.env and echoes the full set', async () => {
     const res = await PATCH(
       makePatchEvent({
-        versions: { OP_ASSISTANT_VERSION: 'v0.12.18', OP_TOOL_CODEX_VERSION: '^0.2.0' },
+        versions: { OP_ASSISTANT_VERSION: 'v0.12.18', OP_PORTAL_VERSION: 'v0.12.18' },
       }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; versions: Record<string, string> };
     expect(body.ok).toBe(true);
     expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.18');
-    expect(body.versions.OP_TOOL_CODEX_VERSION).toBe('^0.2.0');
+    expect(body.versions.OP_PORTAL_VERSION).toBe('v0.12.18');
 
     // Persisted to disk.
     const onDisk = readFileSync(stackEnvPath(), 'utf-8');
     expect(onDisk).toContain('OP_ASSISTANT_VERSION=v0.12.18');
-    expect(onDisk).toContain('OP_TOOL_CODEX_VERSION=^0.2.0');
+    expect(onDisk).toContain('OP_PORTAL_VERSION=v0.12.18');
   });
 
   test('preserves existing non-version keys in stack.env', async () => {

@@ -1,0 +1,10 @@
+{
+  "name": "@openpalm/assistant-tools",
+  "private": true,
+  "dependencies": {
+    "opencode-ai":                "^1.17.0",
+    "akm-cli":                   "^0.8.0",
+    "@anthropic-ai/claude-code": "^1.5.0",
+    "@openai/codex":             "^0.1.0"
+  }
+}

@@ -22,15 +22,7 @@
     { key: 'OP_PORTAL_VERSION', label: 'Portal (Discord/Slack/API)', hint: 'Docker image tag — exact tag, "latest", or "next".' },
     { key: 'OP_VOICE_VERSION', label: 'Voice', hint: 'Docker image tag — exact tag, "latest", or "next".' },
   ];
-  const NPM_FIELDS: { key: string; label: string; hint: string }[] = [
-    { key: 'OP_GUARDIAN_NPM_VERSION', label: 'Guardian package', hint: 'Empty = use the version baked into the guardian image.' },
-    { key: 'OP_TOOL_OPENCODE_VERSION', label: 'OpenCode', hint: 'npm semver range, e.g. ^1.17.0.' },
-    { key: 'OP_TOOL_AKM_VERSION', label: 'AKM CLI', hint: 'npm semver range, e.g. ^0.8.14.' },
-    { key: 'OP_TOOL_CLAUDE_CODE_VERSION', label: 'Claude Code', hint: 'npm semver range, e.g. ^1.5.0.' },
-    { key: 'OP_TOOL_CODEX_VERSION', label: 'Codex', hint: 'npm semver range, e.g. ^0.1.0.' },
-    { key: 'OP_UI_VERSION', label: 'Admin UI', hint: 'Takes effect after the UI restarts — automatic in the desktop app.' },
-  ];
-  const ALL_FIELDS = [...SERVICE_FIELDS, ...NPM_FIELDS];
+  const ALL_FIELDS = [...SERVICE_FIELDS];
 
   // ── Mode ──────────────────────────────────────────────────────────────────
   // Loaded from and persisted to the server (configDir/update-mode.json).
@@ -460,29 +452,6 @@
           Each image rides its own tag. Use an exact tag, <code>latest</code>, or <code>next</code> — not a semver range.
         </p>
         {#each SERVICE_FIELDS as field (field.key)}
-          <div class="version-field">
-            <label class="version-label" for="version-{field.key}">{field.label}</label>
-            <input
-              id="version-{field.key}"
-              class="version-input"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              value={edited[field.key] ?? ''}
-              oninput={(e) => setField(field.key, (e.currentTarget as HTMLInputElement).value)}
-              disabled={applying}
-            />
-            <p class="version-hint">{field.hint}</p>
-          </div>
-        {/each}
-      </section>
-
-      <section class="version-group" aria-labelledby="version-npm-title">
-        <h3 id="version-npm-title" class="version-group-title">npm packages</h3>
-        <p class="version-group-subtitle">
-          Installed at container boot. Semver ranges are allowed (npm resolves them).
-        </p>
-        {#each NPM_FIELDS as field (field.key)}
           <div class="version-field">
             <label class="version-label" for="version-{field.key}">{field.label}</label>
             <input

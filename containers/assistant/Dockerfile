@@ -3,10 +3,11 @@
 # and tools. Config, plugins, and persona are mounted at runtime — not baked
 # into the image.
 #
-# v0.11.0: the previously-shared `openpalm-base` image has been inlined here.
-# The guardian also ships OpenCode + akm-cli (on `oven/bun:1.3-slim`); channels
-# use `oven/bun:1.3-slim` directly. CI keeps AKM_CLI_VERSION and OPENCODE_VERSION
-# between this file and containers/guardian/Dockerfile in lockstep.
+# Tool packages (opencode-ai, akm-cli, etc.) are managed via the standard
+# package.json pattern: baked defaults live at /opt/openpalm/tools/package.json
+# and are updated within their semver ranges on every container start via
+# `bun update`. Operators may pin different versions by editing
+# OP_HOME/data/assistant/tools/package.json (bind-mounted at runtime).
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── embedder model bundle ──
@@ -28,20 +29,13 @@ FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 
 FROM node:22-trixie-slim
 
-ARG OPENCODE_VERSION=1.17.7
 ARG BUN_VERSION=bun-v1.3.10
-# Pinned to the latest stable akm-cli release (0.8.14). Bump deliberately; CI
-# validates this pin is extractable. Carries the env/secret asset types, profiles
-# config, multi-source, and the built-in local embedder (Xenova/bge-small-en).
-ARG AKM_CLI_VERSION=0.8.14
 # Platform version — drives OP_UI_VERSION and OP_SKELETON_VERSION defaults in
 # the entrypoint when no per-component env var override is set.
 ARG PLATFORM_VERSION
 
 # Re-export for runtime introspection.
-ENV OPENCODE_VERSION=${OPENCODE_VERSION} \
-    BUN_VERSION=${BUN_VERSION} \
-    AKM_CLI_VERSION=${AKM_CLI_VERSION} \
+ENV BUN_VERSION=${BUN_VERSION} \
     PLATFORM_VERSION=${PLATFORM_VERSION}
 
 # Combined OS packages: base tools (tini, gosu) + assistant-specific
@@ -61,49 +55,22 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# OpenCode installer drops the binary under $HOME/.opencode/bin. Pin
-# HOME=/usr/local so the binary lands at /usr/local/.opencode/bin and is
-# reachable from every user the entrypoint switches to.
-RUN HOME=/usr/local curl -fsSL https://opencode.ai/install \
-        | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
-ENV PATH="/usr/local/.opencode/bin:$PATH"
-
 # Install Bun into /usr/local. Later we override BUN_INSTALL +
 # BUN_INSTALL_CACHE_DIR to per-user paths so unprivileged users can install
 # additional packages at runtime.
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
-
-# Install assistant CLIs globally through Bun where packages exist.
-# One RUN per package: a single combined layer weighed ~1.9GB (0.7GB
-# compressed), which Docker Hub repeatedly rejected on blob upload (400) and
-# which re-uploads in full whenever ANY one CLI bumps. Per-package layers are
-# individually cacheable and stay well under upload limits.
-# The find-chmod fixes world-readability (for the unprivileged opencode user)
-# but ONLY on files that lack it — a blanket `chmod -R` would overlayfs-copy-up
-# every previously installed file into each new layer, ballooning the image.
-RUN BUN_INSTALL=/usr/local bun add -g "akm-cli@${AKM_CLI_VERSION}" \
-    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
-    && chmod 755 /usr/local/bin/akm \
-    && akm --version
-RUN BUN_INSTALL=/usr/local bun add -g "@anthropic-ai/claude-code" \
-    && node /usr/local/install/global/node_modules/@anthropic-ai/claude-code/install.cjs \
-    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
-    && chmod 755 /usr/local/bin/claude \
-    && claude --version
-RUN BUN_INSTALL=/usr/local bun add -g "@github/copilot" \
-    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
-    && chmod 755 /usr/local/bin/copilot \
-    && copilot --version
-RUN BUN_INSTALL=/usr/local bun add -g "@openai/codex" \
-    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
-    && chmod 755 /usr/local/bin/codex \
-    && codex --version
-RUN BUN_INSTALL=/usr/local bun add -g "@mariozechner/pi-coding-agent" \
-    && find /usr/local/install/global ! -perm -o+r -exec chmod a+rX {} + \
-    && chmod 755 /usr/local/bin/pi \
-    && pi --version
 ENV BUN_INSTALL=
+
+# Bake default tool packages at /opt/openpalm/tools. npm is used here because
+# opencode-ai's postinstall downloads the native binary and internally calls npm.
+# At runtime, `bun update` updates within the declared semver ranges.
+# In compose, OP_HOME/data/assistant/tools is bind-mounted over this path so
+# operators can edit package.json directly; this bake speeds standalone starts.
+COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
+RUN npm install --prefix /opt/openpalm/tools --omit=dev --no-fund --no-audit \
+    && find /opt/openpalm/tools/node_modules/@anthropic-ai/claude-code -name "install.cjs" -exec node {} \; 2>/dev/null || true \
+    && chmod -R a+rX /opt/openpalm/tools/node_modules
 
 # Pre-bake akm's default local embedding model so semantic search works out of
 # the box with NO embedding configuration and NO runtime network. When
@@ -125,10 +92,10 @@ ENV BUN_INSTALL=
 # @huggingface/transformers / onnxruntime native binary can't load on this arch or
 # the copied cache is incomplete — no silent fallback to keyword-only search, and
 # no network access.
-COPY --from=modelfetch /opt/embedder-cache/ /usr/local/install/global/node_modules/@huggingface/transformers/.cache/
-RUN cd /usr/local/install/global \
+COPY --from=modelfetch /opt/embedder-cache/ /opt/openpalm/tools/node_modules/@huggingface/transformers/.cache/
+RUN cd /opt/openpalm/tools/node_modules \
     && node --input-type=module -e "import { env, pipeline } from '@huggingface/transformers'; env.allowRemoteModels = false; const embed = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5'); const out = await embed('warmup', { pooling: 'mean', normalize: true }); if (!out?.data?.length) { console.error('local embedder produced no vector'); process.exit(1); } console.log('akm local embedder OK offline (' + out.data.length + ' dims)');" \
-    && chmod -R a+rX /usr/local/install/global/node_modules/@huggingface/transformers/.cache
+    && chmod -R a+rX /opt/openpalm/tools/node_modules/@huggingface/transformers/.cache
 
 # Rename the base "node" user (UID 1000) to "opencode" for clarity.
 # Passwordless sudo lets agents run root operations; the entrypoint's gosu
@@ -173,12 +140,9 @@ RUN set -e; \
          | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
     && chmod +x /usr/local/bin/gws
 
-# Prepend opencode user's local bin so per-user installs win.
-ENV PATH="/home/opencode/.local/bin:/usr/local/.opencode/bin:$PATH"
-
-RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin /opt/openpalm \
-    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm \
-    && chown opencode:opencode /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm \
+RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
+    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm/tools \
+    && chown -R opencode:opencode /home/opencode /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm/tools \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
@@ -196,21 +160,18 @@ ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 
 # PATH precedence (highest first):
-#   /opt/persistent/bin — prefix-style global installs that need an escape hatch
-#   /home/opencode/.local/bin — assistant-installed tools in the persistent home bind mount
-#   /home/opencode/.bun/bin   — bun install -g (BUN_INSTALL points here)
-#   /usr/local/bin            — image-baked tools
-ENV PATH="/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
+#   /opt/persistent/bin        — prefix-style global installs (escape hatch)
+#   /opt/openpalm/tools/node_modules/.bin — managed tool packages (bun update)
+#   /home/opencode/.local/bin  — per-user installs in the persistent home bind mount
+#   /home/opencode/.bun/bin    — bun install -g (BUN_INSTALL points here)
+#   /usr/local/bin             — image-baked system tools
+ENV PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
 # OpenCode config (opencode.jsonc, openpalm.md, system.md) lives in
 # OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.
 # AGENTS.md is baked here as a default; the entrypoint seeds it into
 # OPENCODE_CONFIG_DIR only if the operator has not placed their own copy there.
 COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
-
-# Artifact cache volume — persists @openpalm/ui, @openpalm/skeleton, and
-# runtime tools across restarts so warm starts don't re-download.
-VOLUME ["/opt/openpalm"]
 
 EXPOSE 4096 3000 22
 

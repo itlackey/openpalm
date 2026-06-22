@@ -27,11 +27,6 @@ const ALL_VERSIONS = {
   OP_GUARDIAN_VERSION: 'latest',
   OP_PORTAL_VERSION: 'latest',
   OP_VOICE_VERSION: 'latest',
-  OP_GUARDIAN_NPM_VERSION: '',
-  OP_TOOL_OPENCODE_VERSION: '^1.17.0',
-  OP_TOOL_AKM_VERSION: '^0.8.14',
-  OP_TOOL_CLAUDE_CODE_VERSION: '^1.5.0',
-  OP_TOOL_CODEX_VERSION: '^0.1.0',
 };
 
 beforeEach(() => {
@@ -45,11 +40,6 @@ beforeEach(() => {
       OP_GUARDIAN_VERSION: '0.12.22',
       OP_PORTAL_VERSION: '0.12.22',
       OP_VOICE_VERSION: '0.12.22',
-      OP_GUARDIAN_NPM_VERSION: '0.12.22',
-      OP_TOOL_OPENCODE_VERSION: '1.18.0',
-      OP_TOOL_AKM_VERSION: '0.9.1',
-      OP_TOOL_CLAUDE_CODE_VERSION: '1.6.0',
-      OP_TOOL_CODEX_VERSION: '0.2.0',
     },
     errors: [],
     fetchedAt: '2026-06-21T00:00:00Z',
@@ -123,7 +113,6 @@ describe('UpdatesTab — automatic mode', () => {
     // The patch should include the latest versions returned by the mock
     const patchArg = vi.mocked(patchVersions).mock.calls[0][0];
     expect(patchArg['OP_ASSISTANT_VERSION']).toBe('0.12.22');
-    expect(patchArg['OP_TOOL_OPENCODE_VERSION']).toBe('1.18.0');
   });
 
   test('shows "up to date" when latest matches current', async () => {
@@ -169,16 +158,6 @@ describe('UpdatesTab — manual mode', () => {
     await expect.element(page.getByLabelText('Guardian', { exact: true })).toBeVisible();
     await expect.element(page.getByLabelText('Portal (Discord/Slack/API)', { exact: true })).toBeVisible();
     await expect.element(page.getByLabelText('Voice', { exact: true })).toBeVisible();
-  });
-
-  test('renders a labelled input for every npm package pin in manual mode', async () => {
-    render(UpdatesTab, { props: {} });
-    await switchToManual();
-    await expect.element(page.getByLabelText('OpenCode')).toBeVisible();
-    await expect.element(page.getByLabelText('AKM CLI')).toBeVisible();
-    await expect.element(page.getByLabelText('Claude Code')).toBeVisible();
-    await expect.element(page.getByLabelText('Codex')).toBeVisible();
-    await expect.element(page.getByLabelText('Guardian package')).toBeVisible();
   });
 
   test('the Apply button is disabled until a value changes', async () => {

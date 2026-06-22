@@ -82,7 +82,9 @@ export function ensureHomeDirs(): void {
     `${home}/data/assistant/.local/bin`,
     `${home}/data/assistant/.local/share/opencode`,
     `${home}/data/assistant/.local/state/opencode`,
+    `${home}/data/assistant/tools`, // runtime tools managed via package.json
     `${home}/data/guardian`,       // guardian runtime data
+    `${home}/data/guardian/tools`, // runtime tools managed via package.json
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent

@@ -41,11 +41,11 @@ if (!portalPackage) {
 const versionAt = portalPackage.lastIndexOf('@');
 const name = versionAt > 0 ? portalPackage.slice(0, versionAt) : portalPackage;
 
-// Each adapter is baked at <root>/<short> with its own node_modules in place, so
-// import it BY PATH ("@openpalm/discord-portal" -> <root>/discord). A bare
-// specifier would need a linked package; the bake installs deps in place instead.
-const portalsRoot = Bun.env.PORTALS_ROOT ?? '/app/portals';
-const importTarget = `${portalsRoot}/${name.replace(/^@openpalm\//, '').replace(/-portal$/, '')}`;
+// Adapters are installed as named packages under /opt/openpalm/tools/node_modules
+// via file: references in tools/package.json. Import by package specifier so the
+// same code works after adapters migrate to versioned npm releases.
+const toolsRoot = Bun.env.TOOLS_ROOT ?? '/opt/openpalm/tools';
+const importTarget = `${toolsRoot}/node_modules/${name}`;
 
 let mod: Record<string, unknown>;
 try {

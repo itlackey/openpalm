@@ -37,6 +37,8 @@ if [ "$IS_ROOT" = "1" ]; then
   chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm/tools /opt/openpalm/skeleton 2>/dev/null || true
 fi
 
+export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
+
 # ── Optional private-registry auth ────────────────────────────────────────────
 # To install OP_GUARDIAN_PACKAGE from a private registry, supply an .npmrc. Bun
 # reads $HOME/.npmrc for registry + auth. Prefer a mounted secret file
@@ -89,15 +91,12 @@ install_artifact() {
 install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
 install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
-# ── Range-versioned tools from the skeleton's tools.json guardian section ──────
-export BUN_INSTALL=/opt/openpalm/tools
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-TOOL_PKGS=$(bun -e "
-  const tools = require('/opt/openpalm/skeleton/node_modules/@openpalm/skeleton/tools.json').guardian || [];
-  console.log(tools.map(t => t.package + '@' + (process.env[t.envKey] || t.default)).join(' '));
-")
-[ -n "$TOOL_PKGS" ] && bun add -g $TOOL_PKGS || echo "WARN: some tool installs failed; continuing"
+# ── Range-versioned tools via bun update ────────────────────────────────────
+# /opt/openpalm/tools/package.json declares tool semver ranges (baked as image
+# defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
+# bun update installs missing packages and advances within declared ranges.
+bun update --cwd /opt/openpalm/tools --production \
+  || echo "WARN: tool update had errors; baked defaults remain on PATH"
 
 # ── Hard-fail when content validation is enabled but opencode is missing ───────
 enabled=0

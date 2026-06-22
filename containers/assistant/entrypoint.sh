@@ -116,27 +116,22 @@ install_runtime_artifacts() {
   npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${skeleton_version}" \
     --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || true
 
-  # ── Range-versioned tools from tools.json (global section) ─────────────────
-  # These shadow the baked image tools on PATH — same binaries, runtime-updatable.
-  local tools_json="/opt/openpalm/skeleton/node_modules/@openpalm/skeleton/tools.json"
-  if [ -f "$tools_json" ]; then
-    local tool_pkgs
-    tool_pkgs=$(node -e "
-      const tools = require('${tools_json}').global || [];
-      const pkgs = tools.map(t => t.package + '@' + (process.env[t.envKey] || t.default));
-      process.stdout.write(pkgs.join(' '));
-    " 2>/dev/null || true)
-
-    if [ -n "$tool_pkgs" ]; then
-      echo "entrypoint: installing runtime tools: ${tool_pkgs}" >&2
-      mkdir -p /opt/openpalm/tools
-      # Use a subshell so BUN_INSTALL override doesn't pollute the outer env.
-      (export BUN_INSTALL=/opt/openpalm/tools && bun add -g $tool_pkgs) \
-        || echo "warning: some runtime tool installs failed; baked tools remain available" >&2
-      export PATH="/opt/openpalm/tools/bin:$PATH"
+  # ── Range-versioned tools via bun update ────────────────────────────────────
+  # /opt/openpalm/tools/package.json declares tool semver ranges (baked as
+  # image defaults; bind-mounted from OP_HOME/data/assistant/tools in compose).
+  # bun update installs missing packages and advances within declared ranges.
+  # npm is used for the claude-code install hook (requires node, present in base).
+  local tools_dir="/opt/openpalm/tools"
+  if [ -f "${tools_dir}/package.json" ]; then
+    echo "entrypoint: updating tools in ${tools_dir}..." >&2
+    bun update --cwd "${tools_dir}" --production \
+      || echo "warning: tool update had errors; baked defaults remain on PATH" >&2
+    # @anthropic-ai/claude-code ships a node install script that must be run
+    # after install/update to set up the native binary.
+    local claude_install="${tools_dir}/node_modules/@anthropic-ai/claude-code/install.cjs"
+    if [ -f "$claude_install" ]; then
+      node "$claude_install" 2>/dev/null || true
     fi
-  else
-    echo "entrypoint: tools.json not found — skipping runtime tool install" >&2
   fi
 }
 

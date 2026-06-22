@@ -1,0 +1,8 @@
+{
+  "name": "@openpalm/portal-tools",
+  "private": true,
+  "dependencies": {
+    "@openpalm/discord-portal": "file:../../portals/discord",
+    "@openpalm/slack-portal":   "file:../../portals/slack"
+  }
+}

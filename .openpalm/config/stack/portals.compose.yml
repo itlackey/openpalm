@@ -125,6 +125,10 @@ services:
       - "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182"
     volumes:
       - guardian-cache:/opt/openpalm
+      # Tool packages managed via package.json. Edit OP_HOME/data/guardian/tools/package.json
+      # to pin or update individual tool versions; bun update applies changes on next start.
+      # This bind-mount overlays the guardian-cache named volume at /opt/openpalm/tools.
+      - ${OP_HOME}/data/guardian/tools:/opt/openpalm/tools
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # OpenCode global config (opencode.jsonc, instructions). Operator-managed,
