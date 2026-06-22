@@ -2,8 +2,8 @@
  * Tests for /admin/akm/host-sharing (GET status, PUT enable, DELETE disable).
  *
  * Orchestration lives in @openpalm/lib (unit-tested there); here we assert the
- * HTTP surface: auth gating, response shape, that the lib orchestrators are
- * invoked, and that a "host AKM not available" error surfaces as 409.
+ * HTTP surface: auth gating, response shape, and that the lib orchestrators are
+ * invoked with the right arguments.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { join } from 'node:path';
@@ -18,7 +18,7 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 		...original,
 		enableHostAkmSharing: vi.fn(() => ({ profilesImported: ['profiles.llm'] })),
 		disableHostAkmSharing: vi.fn(() => undefined),
-		getHostAkmSharingStatus: vi.fn(() => ({ available: true, enabled: true, hostStashPath: '/home/u/akm' })),
+		getHostAkmSharingStatus: vi.fn(() => ({ enabled: true, hostStashPath: '/home/u/akm' })),
 	};
 });
 
@@ -53,7 +53,7 @@ beforeEach(() => {
 	resetState('admin-token');
 	vi.clearAllMocks();
 	vi.mocked(enableHostAkmSharing).mockReturnValue({ profilesImported: ['profiles.llm'] });
-	vi.mocked(getHostAkmSharingStatus).mockReturnValue({ available: true, enabled: true, hostStashPath: '/home/u/akm' });
+	vi.mocked(getHostAkmSharingStatus).mockReturnValue({ enabled: true, hostStashPath: '/home/u/akm' });
 });
 
 afterEach(() => {
@@ -67,11 +67,11 @@ describe('GET /admin/akm/host-sharing', () => {
 		expect((await GET(makeEvent('GET', undefined, ''))).status).toBe(401);
 	});
 
-	test('returns sharing status { available, enabled, hostStashPath }', async () => {
+	test('returns sharing status { enabled, hostStashPath }', async () => {
 		const res = await GET(makeEvent('GET'));
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { sharing: Record<string, unknown> };
-		expect(body.sharing).toEqual({ available: true, enabled: true, hostStashPath: '/home/u/akm' });
+		const body = (await res.json()) as Record<string, unknown>;
+		expect(body).toMatchObject({ enabled: true, hostStashPath: '/home/u/akm' });
 	});
 });
 
@@ -81,29 +81,11 @@ describe('PUT /admin/akm/host-sharing', () => {
 	});
 
 	test('enables sharing and returns profilesImported', async () => {
-		const res = await PUT(makeEvent('PUT', { writable: true, importProfiles: true }));
+		const res = await PUT(makeEvent('PUT', {}));
 		expect(res.status).toBe(200);
-		expect(enableHostAkmSharing).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ writable: true, importProfiles: true }),
-		);
+		expect(enableHostAkmSharing).toHaveBeenCalledWith(expect.anything());
 		const body = (await res.json()) as Record<string, unknown>;
 		expect(body.profilesImported).toEqual(['profiles.llm']);
-	});
-
-	test('defaults writable=true, importProfiles=false when body omits them', async () => {
-		await PUT(makeEvent('PUT', {}));
-		expect(enableHostAkmSharing).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ writable: true, importProfiles: false }),
-		);
-	});
-
-	test('surfaces a "host AKM not available" error as 409', async () => {
-		vi.mocked(enableHostAkmSharing).mockImplementation(() => {
-			throw new Error('Host AKM is not available');
-		});
-		expect((await PUT(makeEvent('PUT', {}))).status).toBe(409);
 	});
 });
 

@@ -1,40 +1,25 @@
 /**
  * Host ↔ Assistant AKM source wiring (control-plane logic — lives in lib).
  *
- * Implements the "symmetric writable secondary" design
- * (docs/technical/akm-host-assistant-integration-proposal.md §8).
- *
- * Each akm instance keeps its OWN primary stash, data dir, and cache. Sharing
- * is done purely by adding the other instance's stash as a *secondary* source
- * in `config.sources[]`:
- *   - The OpenPalm/container config gains a `host-akm` source → /host-stash
- *     (the user's personal ~/akm, bind-mounted by the host-akm.compose.yml overlay).
- *   - The personal config gains an `openpalm` source → OP_HOME/knowledge.
- *
- * VERIFIED against akm 0.8.0 (rc.13 → stable; schema unchanged):
- *  - `SourceConfigEntrySchema` (config-schema.ts:259) accepts
- *    { type, path?, url?, name?, enabled?, writable?, primary?, options?, wikiName? }.
- *  - The indexer's `resolveSourceEntries` (search-source.ts:56) ALWAYS injects the
- *    env-resolved primary stash (AKM_STASH_DIR) as sources[0], then appends
- *    config.sources[] deduped by path. So a secondary entry can never strand or
- *    displace the primary — provided we NEVER set `primary:true` and NEVER set
- *    `config.stashDir`.
- *  - Writes resolve to the primary unless an explicit `--target` is given
- *    (write-source.ts) and `defaultWriteTarget` is left unset, so a writable
- *    secondary is safe by construction.
+ * The assistant config ALWAYS has a `host-akm` secondary source pointing at
+ * /host-stash (written once at install, never removed). The compose bind-mount
+ * controls what actually lands at /host-stash: the real ~/akm when sharing is
+ * enabled, an empty dir when disabled. Profile import is best-effort — missing
+ * or corrupt host config is logged and skipped, never an error.
  *
  * Invariants (enforced + unit-tested):
  *  - Only ever appends/updates a NAMED source (idempotent upsert by name).
  *  - NEVER sets `primary`, NEVER sets `defaultWriteTarget`, NEVER sets `stashDir`.
  *  - Atomic 0600 writes.
  *  - The OpenPalm config is parse-tolerant (we own it: corrupt → start from {}).
- *  - The PERSONAL config FAILS CLOSED (corrupt/unreadable → throw, never overwrite
- *    the user's file). This asymmetry is the host-data-loss guard.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./fs-atomic.js";
+import { createLogger } from "../logger.js";
 import type { ControlPlaneState } from "./types.js";
+
+const logger = createLogger("akm-sources");
 
 /** Source entry name added to the OpenPalm/container config (points at /host-stash). */
 export const HOST_SOURCE_NAME = "host-akm";
@@ -61,35 +46,15 @@ function readConfigTolerant(configPath: string): AkmConfigObject {
   }
 }
 
-function readConfigFailClosed(configPath: string): AkmConfigObject {
-  // The PERSONAL config belongs to the user. If it doesn't exist there is
-  // nothing to share into and creating one silently would be surprising;
-  // if it's corrupt we must NOT overwrite it. Both cases throw.
-  if (!existsSync(configPath)) {
-    throw new Error(
-      `Personal akm config not found at ${configPath}; refusing to create it. ` +
-        `Run \`akm init\`/\`akm setup\` first, then enable host AKM sharing.`,
-    );
-  }
-  let text: string;
+function readHostConfigBestEffort(configPath: string): AkmConfigObject | null {
+  if (!existsSync(configPath)) return null;
   try {
-    text = readFileSync(configPath, "utf-8");
-  } catch (err) {
-    throw new Error(`Unable to read personal akm config at ${configPath}: ${(err as Error).message}`);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
+    const parsed = JSON.parse(readFileSync(configPath, "utf-8"));
+    return parsed && typeof parsed === "object" ? (parsed as AkmConfigObject) : null;
   } catch {
-    throw new Error(
-      `Personal akm config at ${configPath} is not valid JSON; refusing to overwrite it. ` +
-        `Fix the file by hand, then retry.`,
-    );
+    logger.warn("host akm config is not valid JSON — skipping profile import", { configPath });
+    return null;
   }
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error(`Personal akm config at ${configPath} is not a JSON object; refusing to overwrite it.`);
-  }
-  return parsed as AkmConfigObject;
 }
 
 /**
@@ -151,35 +116,22 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
 }
 
 /**
- * Remove the `host-akm` secondary source from the assistant config (disable
- * sharing). Parse-tolerant; never touches the user's personal config (D1 —
- * host sharing is assistant-reads-host only). Idempotent.
- */
-export function removeHostAkmSource(state: ControlPlaneState): void {
-  const opPath = openpalmConfigPath(state);
-  const opConfig = readConfigTolerant(opPath);
-  writeFileAtomic(opPath, JSON.stringify(removeSource(opConfig, HOST_SOURCE_NAME), null, 2), 0o600);
-}
-
-/**
- * Read-only snapshot import of the host's reusable akm config into the OpenPalm
- * config. Reads the personal config READ-ONLY; never writes back to the host.
+ * Best-effort import of the host's LLM/agent profiles into the OpenPalm akm config.
+ * Reads the personal host config READ-ONLY; never writes back to the host.
  *
  * ADDITIVE MERGE: existing OpenPalm values ALWAYS win — the host only fills gaps.
- * A profile name, default selection, or embedding field that OpenPalm already has
- * is never overwritten; host-only profiles/fields are added. Covers the
- * LLM/agent/improve PROFILES (+ their `defaults.*`) and the top-level `embedding`
- * connection. Returns which sections actually gained values.
+ * Returns `{ imported: [] }` when the host config is absent or unreadable (never
+ * throws — profile import is always optional).
  *
- * Writes the canonical akm 0.8.0 shape (profiles.* + defaults.* + embedding) —
- * never the legacy top-level `llm` (see I-3). NEVER touches `sources`, `stashDir`,
- * `registries`, or `installed`.
+ * Writes the canonical akm shape (profiles.* + defaults.* + embedding).
+ * NEVER touches `sources`, `stashDir`, `registries`, or `installed`.
  */
 export function importHostProfiles(
   state: ControlPlaneState,
   hostConfigPath: string,
 ): { imported: string[] } {
-  const host = readConfigFailClosed(hostConfigPath);
+  const host = readHostConfigBestEffort(hostConfigPath);
+  if (!host) return { imported: [] };
   const hostProfiles = (host.profiles as Record<string, unknown> | undefined) ?? {};
   const hostDefaults = (host.defaults as Record<string, unknown> | undefined) ?? {};
 

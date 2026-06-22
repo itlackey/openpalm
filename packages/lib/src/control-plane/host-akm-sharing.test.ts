@@ -6,10 +6,7 @@ import {
   enableHostAkmSharing,
   disableHostAkmSharing,
   getHostAkmSharingStatus,
-  ensureHostStashEnv,
-  isHostAkmAvailable,
 } from "./host-akm-sharing.js";
-import { HOST_SOURCE_NAME } from "./akm-sources.js";
 import type { ControlPlaneState } from "./types.js";
 
 let root = "";
@@ -22,17 +19,12 @@ const savedHome = process.env.HOME;
 function readJson(p: string): Record<string, unknown> {
   return JSON.parse(readFileSync(p, "utf-8"));
 }
-/** Make the host look like it has (or hasn't) an initialized AKM. */
-function setHostAkm(available: boolean): void {
-  if (available) {
-    mkdirSync(join(fakeHome, "akm"), { recursive: true });
-    mkdirSync(join(fakeHome, ".config", "akm"), { recursive: true });
-    writeFileSync(join(fakeHome, ".config", "akm", "config.json"), JSON.stringify({ stashDir: join(fakeHome, "akm") }));
-  }
-}
-function opSources(): Array<Record<string, unknown>> {
-  if (!existsSync(opConfig)) return [];
-  return (readJson(opConfig).sources as Array<Record<string, unknown>>) ?? [];
+function setHostAkmConfig(opts?: { profiles?: unknown }): void {
+  mkdirSync(join(fakeHome, "akm"), { recursive: true });
+  mkdirSync(join(fakeHome, ".config", "akm"), { recursive: true });
+  const cfg: Record<string, unknown> = { stashDir: join(fakeHome, "akm") };
+  if (opts?.profiles) cfg.profiles = opts.profiles;
+  writeFileSync(join(fakeHome, ".config", "akm", "config.json"), JSON.stringify(cfg));
 }
 
 beforeEach(() => {
@@ -53,92 +45,83 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
   if (savedHome === undefined) delete process.env.HOME;
   else process.env.HOME = savedHome;
-  delete process.env.OP_HOST_AKM_STASH;
-});
-
-describe("isHostAkmAvailable", () => {
-  it("is false without a personal akm config, true with one", () => {
-    expect(isHostAkmAvailable()).toBe(false);
-    setHostAkm(true);
-    expect(isHostAkmAvailable()).toBe(true);
-  });
-});
-
-describe("ensureHostStashEnv", () => {
-  it("sets OP_HOST_AKM_STASH to ~/akm when available", () => {
-    setHostAkm(true);
-    ensureHostStashEnv(state);
-    expect(readFileSync(stackEnv, "utf-8")).toContain(`OP_HOST_AKM_STASH=${join(fakeHome, "akm")}`);
-  });
-
-  it("removes OP_HOST_AKM_STASH when not available (→ compose empty-dir fallback)", () => {
-    writeFileSync(stackEnv, "OP_HOST_AKM_STASH=/stale/path\nOP_ASSISTANT_VERSION=x\n");
-    ensureHostStashEnv(state);
-    const env = readFileSync(stackEnv, "utf-8");
-    expect(env).not.toContain("OP_HOST_AKM_STASH");
-    expect(env).toContain("OP_ASSISTANT_VERSION=x");
-  });
 });
 
 describe("enableHostAkmSharing", () => {
-  it("sets env + adds the writable host-akm source when available", () => {
-    setHostAkm(true);
+  it("sets OP_HOST_AKM_STASH to ~/akm in stack.env", () => {
     enableHostAkmSharing(state);
     expect(readFileSync(stackEnv, "utf-8")).toContain(`OP_HOST_AKM_STASH=${join(fakeHome, "akm")}`);
-    const src = opSources().find((s) => s.name === HOST_SOURCE_NAME);
-    expect(src).toBeDefined();
-    expect(src!.writable).toBe(true);
-    expect(src!.path).toBe("/host-stash");
   });
 
-  it("throws when host AKM is not available (never writes a source)", () => {
-    expect(() => enableHostAkmSharing(state)).toThrow();
-    expect(opSources()).toHaveLength(0);
+  it("does NOT add a source entry to akm config (source is managed separately)", () => {
+    writeFileSync(opConfig, "{}");
+    enableHostAkmSharing(state);
+    const cfg = readJson(opConfig);
+    expect((cfg.sources as unknown[]) ?? []).toHaveLength(0);
   });
 
-  it("imports host profiles when importProfiles is set", () => {
-    setHostAkm(true);
-    writeFileSync(join(fakeHome, ".config", "akm", "config.json"), JSON.stringify({
-      stashDir: join(fakeHome, "akm"),
+  it("imports host LLM profiles when host config exists", () => {
+    setHostAkmConfig({
       profiles: { llm: { default: { endpoint: "http://h/v1/chat/completions", model: "qwen" } } },
-      defaults: { llm: "default" },
-    }));
-    const { profilesImported } = enableHostAkmSharing(state, { importProfiles: true });
+    });
+    writeFileSync(opConfig, "{}");
+    const { profilesImported } = enableHostAkmSharing(state);
     expect(profilesImported).toContain("profiles.llm");
-    expect(((readJson(opConfig).profiles as Record<string, Record<string, Record<string, unknown>>>).llm.default).model).toBe("qwen");
+    const opProfiles = readJson(opConfig).profiles as Record<string, Record<string, Record<string, unknown>>>;
+    expect(opProfiles.llm.default.model).toBe("qwen");
+  });
+
+  it("skips profile import (no error) when host config is absent", () => {
+    // ~/akm doesn't exist, ~/.config/akm/config.json doesn't exist — just skips.
+    const { profilesImported } = enableHostAkmSharing(state);
+    expect(profilesImported).toEqual([]);
+    expect(readFileSync(stackEnv, "utf-8")).toContain("OP_HOST_AKM_STASH=");
   });
 
   it("is idempotent", () => {
-    setHostAkm(true);
     enableHostAkmSharing(state);
     enableHostAkmSharing(state);
-    expect(opSources().filter((s) => s.name === HOST_SOURCE_NAME)).toHaveLength(1);
+    const lines = readFileSync(stackEnv, "utf-8").split("\n").filter((l) => l.startsWith("OP_HOST_AKM_STASH="));
+    expect(lines).toHaveLength(1);
   });
 });
 
 describe("disableHostAkmSharing", () => {
-  it("removes the host-akm source; never deletes stash content or the personal config", () => {
-    setHostAkm(true);
+  it("removes OP_HOST_AKM_STASH from stack.env", () => {
     enableHostAkmSharing(state);
+    expect(readFileSync(stackEnv, "utf-8")).toContain("OP_HOST_AKM_STASH=");
     disableHostAkmSharing(state);
-    expect(opSources().find((s) => s.name === HOST_SOURCE_NAME)).toBeUndefined();
-    // Personal config untouched (D1 — assistant-only).
-    expect(existsSync(join(fakeHome, ".config", "akm", "config.json"))).toBe(true);
+    expect(readFileSync(stackEnv, "utf-8")).not.toContain("OP_HOST_AKM_STASH=");
   });
 
-  it("is safe when nothing is enabled", () => {
-    writeFileSync(opConfig, "{}");
+  it("does NOT touch the akm config source list", () => {
+    writeFileSync(opConfig, JSON.stringify({ sources: [{ type: "filesystem", name: "host-akm", path: "/host-stash", writable: true, enabled: true }] }));
+    disableHostAkmSharing(state);
+    // source entry untouched — source is always present
+    const cfg = readJson(opConfig);
+    const sources = cfg.sources as Array<Record<string, unknown>>;
+    expect(sources.some((s) => s.name === "host-akm")).toBe(true);
+  });
+
+  it("is safe when OP_HOST_AKM_STASH was never set", () => {
     expect(() => disableHostAkmSharing(state)).not.toThrow();
   });
 });
 
 describe("getHostAkmSharingStatus", () => {
-  it("reports available+enabled transitions", () => {
-    expect(getHostAkmSharingStatus(state)).toEqual({ available: false, enabled: false, hostStashPath: null });
-    setHostAkm(true);
-    expect(getHostAkmSharingStatus(state)).toEqual({ available: true, enabled: false, hostStashPath: join(fakeHome, "akm") });
+  it("reports disabled when stack.env has no OP_HOST_AKM_STASH", () => {
+    const status = getHostAkmSharingStatus(state);
+    expect(status.enabled).toBe(false);
+    expect(typeof status.hostStashPath).toBe("string");
+  });
+
+  it("reports enabled after enableHostAkmSharing", () => {
     enableHostAkmSharing(state);
     expect(getHostAkmSharingStatus(state).enabled).toBe(true);
+  });
+
+  it("reports disabled after disableHostAkmSharing", () => {
+    enableHostAkmSharing(state);
     disableHostAkmSharing(state);
     expect(getHostAkmSharingStatus(state).enabled).toBe(false);
   });

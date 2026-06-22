@@ -9,7 +9,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
 import { writeFileAtomic } from "./fs-atomic.js";
-import { enableHostAkmSharing, ensureHostStashEnv, isHostAkmAvailable } from "./host-akm-sharing.js";
+import { enableHostAkmSharing, disableHostAkmSharing } from "./host-akm-sharing.js";
+import { addHostStashToOpenpalmConfig } from "./akm-sources.js";
 import {
   PROVIDER_KEY_MAP,
 } from "../provider-constants.js";
@@ -277,23 +278,17 @@ export async function performSetup(
         writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
       }
 
-      // Host AKM sharing. /host-stash is ALWAYS mounted (core.compose.yml, with
-      // an empty-dir fallback). ensureHostStashEnv points OP_HOST_AKM_STASH at
-      // the user's ~/akm when host AKM is available, else unsets it (→ empty dir).
-      // "Sharing" is just a writable secondary source entry; auto-enabled when the
-      // host has AKM and the wizard didn't opt out.
-      ensureHostStashEnv(state);
-      if (hostAkm !== false && isHostAkmAvailable()) {
-        try {
-          const { profilesImported } = enableHostAkmSharing(state, {
-            writable: true,
-            importProfiles: !llm, // import host profiles only if the wizard set none
-          });
-          logger.info("host akm sharing auto-enabled during setup", { profilesImported });
-        } catch (err) {
-          // Non-fatal — the mount is present regardless; user can enable from the admin tab.
-          logger.warn("host akm sharing could not be enabled", { error: (err as Error).message });
-        }
+      // Host AKM sharing. /host-stash is ALWAYS a secondary source in the akm
+      // config — written once here, never removed. The compose bind-mount
+      // controls what actually arrives at /host-stash: the real ~/akm when
+      // OP_HOST_AKM_STASH is set (enabled), or the always-present empty dir
+      // when it is unset (disabled). Profile import is best-effort on enable.
+      addHostStashToOpenpalmConfig(state);
+      if (hostAkm !== false) {
+        const { profilesImported } = enableHostAkmSharing(state);
+        logger.info("host akm sharing enabled during setup", { profilesImported });
+      } else {
+        disableHostAkmSharing(state);
       }
 
       // Write TTS/STT vars to stack.env for the voice channel

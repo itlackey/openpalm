@@ -236,7 +236,6 @@ export {
 export {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
-  removeHostAkmSource,
   importHostProfiles,
 } from "./control-plane/akm-sources.js";
 export type {
@@ -246,10 +245,7 @@ export {
   enableHostAkmSharing,
   disableHostAkmSharing,
   getHostAkmSharingStatus,
-  ensureHostStashEnv,
-  isHostAkmAvailable,
   hostAkmStashPath,
-  hostAkmConfigPath,
 } from "./control-plane/host-akm-sharing.js";
 
 // ── Atomic file write (shared by all control-plane writers) ───────────────

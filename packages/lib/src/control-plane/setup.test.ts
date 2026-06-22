@@ -543,18 +543,19 @@ describe("performSetup", () => {
     }
   });
 
-  it("does not enable (and does not fail) when host AKM is not available; mount falls back to empty dir", async () => {
+  it("enables sharing even when host has no akm config (profile import silently skipped)", async () => {
     const fakeHome = mkdtempSync(join(tmpdir(), "openpalm-fakehome-"));
     const savedHome = process.env.HOME;
     process.env.HOME = fakeHome;
     try {
-      // No ~/.config/akm/config.json → not available.
+      // ~/akm and ~/.config/akm/config.json both absent on host — profile import skipped.
       const result = await performSetup(makeValidSpec({ hostAkm: true }));
       expect(result.ok).toBe(true);
-      // No source entry added, and OP_HOST_AKM_STASH left unset (→ compose empty-dir fallback).
+      // Source entry always present (written unconditionally).
       const opCfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
-      expect((opCfg.sources ?? []).some((s: { name?: string }) => s.name === "host-akm")).toBe(false);
-      expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).not.toContain("OP_HOST_AKM_STASH=");
+      expect((opCfg.sources ?? []).some((s: { name?: string }) => s.name === "host-akm")).toBe(true);
+      // OP_HOST_AKM_STASH set (compose mount active; falls back to empty dir since ~/akm absent).
+      expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).toContain("OP_HOST_AKM_STASH=");
     } finally {
       if (savedHome !== undefined) process.env.HOME = savedHome;
       else delete process.env.HOME;

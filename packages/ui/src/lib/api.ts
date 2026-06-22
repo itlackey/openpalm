@@ -666,7 +666,8 @@ export async function fetchAkmKnowledgeStats(): Promise<AkmKnowledgeStats> {
 
 // ── Host AKM sharing ────────────────────────────────────────────────
 export type HostAkmSharing = {
-  sharing: { available: boolean; enabled: boolean; hostStashPath: string | null };
+  enabled: boolean;
+  hostStashPath: string;
   profilesImported?: string[];
 };
 
@@ -675,10 +676,8 @@ export async function fetchHostAkmSharing(): Promise<HostAkmSharing> {
   return (await res.json()) as HostAkmSharing;
 }
 
-export async function enableHostAkmSharing(
-  opts: { writable?: boolean; importProfiles?: boolean } = {}
-): Promise<HostAkmSharing> {
-  const res = await requireOk(await request('PUT', '/admin/akm/host-sharing', opts));
+export async function enableHostAkmSharing(): Promise<HostAkmSharing> {
+  const res = await requireOk(await request('PUT', '/admin/akm/host-sharing', {}));
   return (await res.json()) as HostAkmSharing;
 }
 

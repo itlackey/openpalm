@@ -5,7 +5,6 @@ import { join } from "node:path";
 import {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
-  removeHostAkmSource,
   importHostProfiles,
 } from "./akm-sources.js";
 import type { ControlPlaneState } from "./types.js";
@@ -77,24 +76,6 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
   });
 });
 
-describe("removeHostAkmSource (assistant side only — never touches personal config)", () => {
-  it("removes the host-akm source, leaving other sources intact", () => {
-    writeFileSync(opConfigPath, JSON.stringify({
-      sources: [
-        { type: "filesystem", path: "/host-stash", name: HOST_SOURCE_NAME },
-        { type: "filesystem", path: "/keep", name: "keep" },
-      ],
-    }));
-    removeHostAkmSource(state);
-    expect((readJson(opConfigPath).sources as Array<Record<string, unknown>>).map((s) => s.name)).toEqual(["keep"]);
-  });
-
-  it("is idempotent when no host-akm source exists", () => {
-    writeFileSync(opConfigPath, JSON.stringify({ sources: [{ name: "keep", type: "filesystem", path: "/k" }] }));
-    expect(() => removeHostAkmSource(state)).not.toThrow();
-    expect((readJson(opConfigPath).sources as unknown[]).length).toBe(1);
-  });
-});
 
 describe("importHostProfiles (read-only snapshot of host profiles)", () => {
   function seedHostConfig(obj: Record<string, unknown>): string {
@@ -199,8 +180,8 @@ describe("importHostProfiles (read-only snapshot of host profiles)", () => {
     expect(importHostProfiles(state, hostConfigPath).imported).toEqual([]);
   });
 
-  it("throws (fails closed) when the personal config is missing", () => {
+  it("returns empty imported list (does not throw) when host config is absent", () => {
     writeFileSync(opConfigPath, "{}");
-    expect(() => importHostProfiles(state, hostConfigPath)).toThrow();
+    expect(importHostProfiles(state, hostConfigPath).imported).toEqual([]);
   });
 });
