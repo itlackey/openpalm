@@ -29,6 +29,8 @@
   { "relPath": "data/backups/.gitkeep",                            "category": "seeded" },
   { "relPath": "data/guardian/.gitkeep",                           "category": "seeded" },
   { "relPath": "data/guardian/tools/package.json",                 "category": "seeded" },
+  { "relPath": "data/portal/.gitkeep",                             "category": "seeded" },
+  { "relPath": "data/portal/tools/package.json",                   "category": "seeded" },
   { "relPath": "data/logs/.gitkeep",                               "category": "seeded" },
   { "relPath": "data/rollback/.gitkeep",                           "category": "seeded" },
   { "relPath": "knowledge/env/user.env",                           "category": "seeded" },

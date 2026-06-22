@@ -29,6 +29,10 @@ services:
       DISCORD_THREAD_TTL_HOURS: ${DISCORD_THREAD_TTL_HOURS:-}
       DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
     secrets: [portal_discord_secret, discord_bot_token]
+    volumes:
+      # Tool packages managed via package.json. Edit OP_HOME/data/portal/tools/package.json
+      # to pin or update portal adapter versions; bun update applies changes on next start.
+      - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
       guardian:
@@ -58,6 +62,8 @@ services:
       SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
     secrets: [portal_slack_secret, slack_bot_token, slack_app_token]
+    volumes:
+      - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
       guardian:
