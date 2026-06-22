@@ -50,6 +50,7 @@ export const POST: RequestHandler = async (event) => {
     let restarted: string[] = [];
     let failed: { service: string; reason: string }[] = [];
     let dockerError: string | undefined;
+    let pullWarning: string | undefined;
 
     if (dockerCheck.ok) {
       const composeOpts = buildComposeOptions(state);
@@ -60,6 +61,8 @@ export const POST: RequestHandler = async (event) => {
       // recreate from local images.
       const pullResult = await composePull(composeOpts);
       if (!pullResult.ok) {
+        const pullSummary = summarizeComposeStderr(pullResult.stderr) || "image pull failed";
+        pullWarning = `Images could not be pulled — restarted from local cache. (${pullSummary})`;
         logger.warn("update: image pull failed — recreating from local images", {
           requestId, stderr: pullResult.stderr?.slice(0, 300),
         });
@@ -126,6 +129,7 @@ export const POST: RequestHandler = async (event) => {
         failed,
         dockerAvailable: dockerCheck.ok,
         overallSuccess,
+        ...(pullWarning ? { pullWarning } : {}),
         ...(dockerError ? { error: dockerError } : {}),
       },
       requestId,

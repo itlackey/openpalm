@@ -177,6 +177,15 @@
           applying = false;
           return;
         }
+        if (result.pullWarning) {
+          resultIsError = false;
+          resultMessage = `Restarted, but images may not have updated: ${result.pullWarning}`;
+          applying = false;
+          const refreshed = await fetchVersions();
+          loaded = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
+          edited = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
+          return;
+        }
       }
 
       const refreshed = await fetchVersions();
@@ -221,9 +230,13 @@
         const result = await applyChanges();
         if (result.overallSuccess) {
           resultIsError = false;
-          resultMessage = result.restarted.length > 0
-            ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
-            : 'Versions applied.';
+          if (result.pullWarning) {
+            resultMessage = `Restarted, but images may not have updated: ${result.pullWarning}`;
+          } else {
+            resultMessage = result.restarted.length > 0
+              ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
+              : 'Versions applied.';
+          }
         } else if (result.failed.length > 0) {
           resultIsError = true;
           resultMessage = `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`;
