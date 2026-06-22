@@ -171,8 +171,8 @@ export async function fetchVersions(): Promise<VersionsResponse> {
   return (await res.json()) as VersionsResponse;
 }
 
-/** Persist version pins to stack.env. Only keys in the server's ALL_VERSION_KEYS
- *  allowlist are accepted; the change takes effect on the next POST /admin/update. */
+/** Persist version pins to stack.env. Only SERVICE_VERSION_KEYS + OP_AUTO_UPDATE
+ *  are accepted; the change takes effect on the next POST /admin/update. */
 export async function patchVersions(versions: Record<string, string>): Promise<{ ok: boolean; versions: Record<string, string> }> {
   const res = await requireOk(await request('PATCH', '/admin/versions', { versions }));
   return (await res.json()) as { ok: boolean; versions: Record<string, string> };

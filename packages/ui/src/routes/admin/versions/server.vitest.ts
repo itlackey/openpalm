@@ -3,7 +3,7 @@
  *
  * The version system is a plain stack.env edit now: GET reads every version key
  * (Docker image tags) with documented defaults for unset
- * keys; PATCH validates each key against the ALL_VERSION_KEYS allowlist and
+ * keys; PATCH validates each key against the SERVICE_VERSION_KEYS allowlist and
  * writes it back. No Docker Hub / npm lookups, no version cache.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -11,7 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { resetState } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
-import { ALL_VERSION_KEYS } from '@openpalm/lib';
+import { SERVICE_VERSION_KEYS } from '@openpalm/lib';
 import { GET, PATCH } from './+server.js';
 
 function stackEnvPath(): string {
@@ -65,7 +65,7 @@ describe('GET /admin/versions', () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = (await res.json()) as VersionsBody;
-    for (const key of ALL_VERSION_KEYS) {
+    for (const key of SERVICE_VERSION_KEYS) {
       expect(body.versions).toHaveProperty(key);
     }
     expect(body.versions.OP_ASSISTANT_VERSION).toBe('latest');

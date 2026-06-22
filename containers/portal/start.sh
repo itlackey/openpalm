@@ -6,10 +6,21 @@ if [ -z "$PORTAL_PACKAGE" ]; then
 	exit 1
 fi
 
-# Update adapter packages within declared semver ranges (same pattern as
-# assistant and guardian). Falls back to baked image defaults on error.
-bun update --cwd /opt/openpalm/tools --production \
-	|| echo "WARN: tool update had errors; check logs above" >&2
+# Install or update adapter packages from the operator-managed package.json
+# (bind-mounted at /opt/openpalm/tools from OP_HOME/data/portal/tools).
+# Use bun install on cold start (node_modules absent) and bun update on warm
+# restarts — both resolve within the declared semver ranges.
+if [ ! -f "/opt/openpalm/tools/package.json" ]; then
+	echo "ERROR: /opt/openpalm/tools/package.json not found — seed OP_HOME/data/portal/tools/package.json" >&2
+	exit 1
+fi
+if [ ! -d "/opt/openpalm/tools/node_modules" ]; then
+	bun install --cwd /opt/openpalm/tools --production \
+		|| { echo "ERROR: tool install failed; check logs above" >&2; exit 1; }
+else
+	bun update --cwd /opt/openpalm/tools --production \
+		|| echo "WARN: tool update had errors; check logs above" >&2
+fi
 
 # Run the portal entrypoint. varlock-based runtime redaction was retired
 # in #391; secret hygiene now lives in the in-process logger redactor

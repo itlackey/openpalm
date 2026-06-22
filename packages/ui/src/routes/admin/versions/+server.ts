@@ -2,10 +2,10 @@ import { json } from "@sveltejs/kit";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { getState } from "$lib/server/state.js";
 import { requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
-import { readVersions, writeVersions, ALL_VERSION_KEYS, PLATFORM_VERSION, formatForDisplay, parseEnvFile, mergeEnvContent } from "@openpalm/lib";
+import { readVersions, writeVersions, SERVICE_VERSION_KEYS, PLATFORM_VERSION, formatForDisplay, parseEnvFile, mergeEnvContent } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
-const ALLOWED_KEYS = new Set<string>([...ALL_VERSION_KEYS, "OP_AUTO_UPDATE"]);
+const ALLOWED_KEYS = new Set<string>([...SERVICE_VERSION_KEYS, "OP_AUTO_UPDATE"]);
 
 function stackEnvPath(): string {
   return `${getState().stashDir}/env/stack.env`;

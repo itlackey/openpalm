@@ -312,10 +312,9 @@ export {
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
 
-// ── Version variables (stack.env image + npm pins) ───────────────────────
+// ── Version variables (stack.env image tags) ─────────────────────────────
 export {
   SERVICE_VERSION_KEYS,
-  ALL_VERSION_KEYS,
   VERSION_DEFAULTS,
   DOCKER_IMAGE_NAMES,
   isVersionKey,

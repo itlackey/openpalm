@@ -30,8 +30,10 @@ services:
       DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
     secrets: [portal_discord_secret, discord_bot_token]
     volumes:
+      - portal-cache:/opt/openpalm
       # Tool packages managed via package.json. Edit OP_HOME/data/portal/tools/package.json
-      # to pin or update portal adapter versions; bun update applies changes on next start.
+      # to pin or update portal adapter versions; bun install/update applies changes on next start.
+      # Declared after the named volume so the bind-mount wins at /opt/openpalm/tools.
       - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
@@ -63,6 +65,7 @@ services:
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
     secrets: [portal_slack_secret, slack_bot_token, slack_app_token]
     volumes:
+      - portal-cache:/opt/openpalm
       - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
@@ -184,8 +187,9 @@ secrets:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_mcp_token
 
 volumes:
-  # Named volume for guardian npm artifact cache (/opt/openpalm).
-  # Replaces the anonymous volume that the Dockerfile previously declared via
+  # Named volumes for npm artifact caches (/opt/openpalm).
+  # Replaces anonymous volumes that Dockerfiles previously declared via
   # VOLUME ["/opt/openpalm"], which accumulated orphan volumes on every deploy.
-  # docker compose down --volumes will clean this up explicitly.
+  # docker compose down --volumes will clean these up explicitly.
   guardian-cache: {}
+  portal-cache: {}

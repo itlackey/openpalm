@@ -43,14 +43,9 @@ export const DOCKER_IMAGE_NAMES: Record<(typeof SERVICE_VERSION_KEYS)[number], s
   OP_VOICE_VERSION: "voice",
 };
 
-/** Every version key the control plane reads/writes in stack.env. */
-export const ALL_VERSION_KEYS = [
-  ...SERVICE_VERSION_KEYS,
-] as const;
+export type VersionKey = (typeof SERVICE_VERSION_KEYS)[number];
 
-export type VersionKey = (typeof ALL_VERSION_KEYS)[number];
-
-const VERSION_KEY_SET: ReadonlySet<string> = new Set(ALL_VERSION_KEYS);
+const VERSION_KEY_SET: ReadonlySet<string> = new Set(SERVICE_VERSION_KEYS);
 
 /** Default values seeded into a fresh stack.env (and returned for unset keys). */
 export const VERSION_DEFAULTS: Record<VersionKey, string> = {
@@ -70,13 +65,13 @@ function stackEnvPath(state: ControlPlaneState): string {
 
 /**
  * Read every version key from stack.env. Keys that are absent fall back to their
- * documented default (so callers always get the full ALL_VERSION_KEYS set).
+ * documented default (so callers always get the full SERVICE_VERSION_KEYS set).
  */
 export function readVersions(state: ControlPlaneState): Record<string, string> {
   const path = stackEnvPath(state);
   const parsed = existsSync(path) ? parseEnvFile(path) : {};
   const out: Record<string, string> = {};
-  for (const key of ALL_VERSION_KEYS) {
+  for (const key of SERVICE_VERSION_KEYS) {
     out[key] = parsed[key] ?? VERSION_DEFAULTS[key];
   }
   return out;
@@ -84,7 +79,7 @@ export function readVersions(state: ControlPlaneState): Record<string, string> {
 
 /**
  * Write validated version keys into stack.env. Only keys in the
- * ALL_VERSION_KEYS allowlist are written; anything else is rejected so a typo or
+ * SERVICE_VERSION_KEYS allowlist are written; anything else is rejected so a typo or
  * a hostile caller can't smuggle arbitrary env into the stack config. Uses
  * mergeEnvContent so existing non-version keys (and comments) are preserved.
  */

@@ -41,9 +41,9 @@ if (!portalPackage) {
 const versionAt = portalPackage.lastIndexOf('@');
 const name = versionAt > 0 ? portalPackage.slice(0, versionAt) : portalPackage;
 
-// Adapters are installed as named packages under /opt/openpalm/tools/node_modules
-// via file: references in tools/package.json. Import by package specifier so the
-// same code works after adapters migrate to versioned npm releases.
+// Adapters are installed as versioned npm packages under /opt/openpalm/tools/node_modules
+// via tools/package.json. Import by package name so the specifier matches
+// the npm package regardless of version.
 const toolsRoot = Bun.env.TOOLS_ROOT ?? '/opt/openpalm/tools';
 const importTarget = `${toolsRoot}/node_modules/${name}`;
 
