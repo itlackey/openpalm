@@ -8,26 +8,41 @@ const DOCKER_HUB_NAMESPACE = "openpalm";
 // Tags are published as "v0.12.22" — capture and strip the "v".
 const STABLE_SEMVER = /^v?(\d+\.\d+\.\d+)$/;
 // Voice tags carry a variant suffix appended by compose ("-cpu", "-cu121", etc.).
+// Only applied to the voice image — other images use hyphens for pre-releases/arch variants.
 const VOICE_STABLE = /^v?(\d+\.\d+\.\d+)-\w+$/;
 
 type DockerHubTag = { name: string };
 type DockerHubResponse = { results?: DockerHubTag[] };
 
+function semverCompare(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  }
+  return 0;
+}
+
 async function resolveDockerLatest(image: string): Promise<string | null> {
   try {
     const res = await fetch(
-      `https://hub.docker.com/v2/repositories/${DOCKER_HUB_NAMESPACE}/${image}/tags?page_size=25&ordering=-last_updated`,
+      `https://hub.docker.com/v2/repositories/${DOCKER_HUB_NAMESPACE}/${image}/tags?page_size=100&ordering=-name`,
       { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) }
     );
     if (!res.ok) return null;
     const data = (await res.json()) as DockerHubResponse;
+    const isVoice = image === "voice";
+    const candidates: string[] = [];
     for (const tag of data.results ?? []) {
       const plain = tag.name.match(STABLE_SEMVER);
-      if (plain) return plain[1];
-      const voice = tag.name.match(VOICE_STABLE);
-      if (voice) return voice[1];
+      if (plain) { candidates.push(plain[1]); continue; }
+      if (isVoice) {
+        const voice = tag.name.match(VOICE_STABLE);
+        if (voice) candidates.push(voice[1]);
+      }
     }
-    return null;
+    if (candidates.length === 0) return null;
+    return candidates.sort(semverCompare).at(-1) ?? null;
   } catch {
     return null;
   }
