@@ -5,7 +5,7 @@ import { buildAkmHealthReport } from '$lib/server/akm-health-report.js';
 
 const REPORT_CSP = [
   "default-src 'none'",
-  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "script-src 'self' 'unsafe-inline'",
   "style-src 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
