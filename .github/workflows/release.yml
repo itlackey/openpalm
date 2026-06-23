@@ -489,6 +489,10 @@ jobs:
           file: containers/portal/Dockerfile
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
+          # Provenance/SBOM attestations add extra manifests + blobs that make
+          # Docker Hub's CDN intermittently 400 on large multi-blob pushes.
+          provenance: false
+          sbom: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=openpalm/portal
@@ -542,6 +546,10 @@ jobs:
             GUARDIAN_VERSION=${{ needs.compute-version.outputs.new_version }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
+          # Provenance/SBOM attestations add extra manifests + blobs that make
+          # Docker Hub's CDN intermittently 400 on large multi-blob pushes.
+          provenance: false
+          sbom: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=openpalm/guardian
@@ -596,6 +604,10 @@ jobs:
             PLATFORM_VERSION=${{ needs.compute-version.outputs.new_version }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
+          # Provenance/SBOM attestations add extra manifests + blobs that make
+          # Docker Hub's CDN intermittently 400 on large multi-blob pushes.
+          provenance: false
+          sbom: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=openpalm/assistant
