@@ -28,8 +28,13 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  // Auto-migrate the on-disk layout before touching state (getState/ensureSecrets
-  // assume the current layout). Backs up first; no-ops on an already-current home.
+  // Pre-state layout migration gate. This MUST run before getState() —
+  // createState()/initializeStateSecrets() resolve and write to the CURRENT
+  // layout, so on a 0.10.x home they'd target paths that only exist post-migration.
+  // performUpgrade later re-runs ensureMigrated idempotently (inside
+  // reconcileStack → reconcileHome), but only AFTER state is built; this explicit
+  // call is the pre-state gate and is NOT redundant. Backs up first; no-ops on an
+  // already-current home.
   try {
     const report = ensureMigrated();
     if (report.migrated) {
@@ -58,11 +63,11 @@ export const POST: RequestHandler = async (event) => {
 
   let result;
   try {
-    // The channel is driven by the CONTROL PLANE (PLATFORM_VERSION), not the
-    // stack image tag. A user on an rc control plane opted into prereleases, so
-    // the stack must be allowed to move onto rc images; a stable control plane
-    // stays on stable. Without this, performUpgrade's #494 prerelease filter
-    // refuses to move a stable-tagged stack onto the rc the user is running.
+    // Pass the control-plane's prerelease status as caller intent. NOTE:
+    // allowPrerelease is currently a NO-OP in performUpgrade (the upgrade target
+    // is always the running PLATFORM_VERSION and image tags are user-pinned in
+    // stack.env — there is no remote tag to gate). We still derive and pass it so
+    // a future remote-resolution gate works without changing this call site.
     result = await performUpgrade(state, { allowPrerelease: isPrerelease(PLATFORM_VERSION) });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -7,10 +7,16 @@
  */
 import { describe, test, expect } from "bun:test";
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const SKELETON_DIR = join(REPO_ROOT, ".openpalm");
+// The published @openpalm/skeleton package — the SOURCE the runtime actually
+// seeds OP_HOME from (resolveLocalOpenpalmDir -> packages/skeleton). .openpalm/
+// is the dev template (dev-setup.sh). They MUST carry identical seedable assets;
+// when they drift, an upgrade seeds stale assets (e.g. a compose missing the
+// tools bind-mount) and containers fail. See the parity test below.
+const SKELETON_PKG_DIR = join(REPO_ROOT, "packages", "skeleton");
 
 // Allowed top-level dirs in .openpalm/ — mirrors the OP_HOME runtime layout
 const ALLOWED_SOURCE_DIRS = new Set([
@@ -125,6 +131,57 @@ describe("skeleton: .openpalm/config/ structure", () => {
     expect(servicesCompose).not.toContain('openpalm.category:');
     expect(servicesCompose).not.toContain('openpalm.healthcheck:');
     expect(servicesCompose).toContain('openpalm.profile.label:');
+  });
+});
+
+// ── .openpalm/ ↔ packages/skeleton/ parity (no silent drift) ──────────
+//
+// These two trees are the same seedable content for two consumers (dev-setup vs
+// the published package). Files unique to the package (package.json, manifest,
+// READMEs) and empty-dir markers are exempt; every other asset must be byte
+// identical. This guard would have caught the tool-management refactor shipping
+// the bind-mount compose to .openpalm but not to packages/skeleton.
+
+describe("skeleton: .openpalm and packages/skeleton stay in lockstep", () => {
+  // Basenames allowed to exist in only one tree / differ.
+  const EXEMPT = new Set(["package.json", "manifest.json", "tools.json", "README.md", ".gitkeep"]);
+
+  function walkAssets(root: string): Map<string, string> {
+    const out = new Map<string, string>();
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const abs = join(dir, entry.name);
+        if (entry.isDirectory()) { walk(abs); continue; }
+        if (EXEMPT.has(entry.name)) continue;
+        out.set(relative(root, abs), abs);
+      }
+    };
+    if (existsSync(root)) walk(root);
+    return out;
+  }
+
+  test("every shared seedable asset is byte-identical in both trees", () => {
+    const devTree = walkAssets(SKELETON_DIR);
+    const pkgTree = walkAssets(SKELETON_PKG_DIR);
+
+    const missingInPackage: string[] = [];
+    const missingInOpenpalm: string[] = [];
+    const contentDiffers: string[] = [];
+
+    for (const [rel, abs] of devTree) {
+      const pkgAbs = pkgTree.get(rel);
+      if (!pkgAbs) { missingInPackage.push(rel); continue; }
+      if (readFileSync(abs, "utf-8") !== readFileSync(pkgAbs, "utf-8")) contentDiffers.push(rel);
+    }
+    for (const rel of pkgTree.keys()) {
+      if (!devTree.has(rel)) missingInOpenpalm.push(rel);
+    }
+
+    expect({ contentDiffers, missingInPackage, missingInOpenpalm }).toEqual({
+      contentDiffers: [],
+      missingInPackage: [],
+      missingInOpenpalm: [],
+    });
   });
 });
 

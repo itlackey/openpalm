@@ -163,8 +163,20 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "custom.compose.yml"), "services: {}\n");
     mkdirSync(join(repoRoot, "packages", "skeleton", "config", "assistant"), { recursive: true });
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "assistant", "opencode.jsonc"), "{}\n");
+    // Skeleton ships per-service tool manifests under data/<svc>/tools/package.json.
+    // These are seeded ONLY by the full copyTree(skipExisting) on a version change,
+    // NOT by refreshCoreAssetsFromSource (which only covers config/stack/*).
+    for (const svc of ["guardian", "assistant", "portal"]) {
+      mkdirSync(join(repoRoot, "packages", "skeleton", "data", svc, "tools"), { recursive: true });
+      writeFileSync(
+        join(repoRoot, "packages", "skeleton", "data", svc, "tools", "package.json"),
+        `{ "name": "${svc}-tools" }\n`,
+      );
+    }
     mkdirSync(opHome, { recursive: true });
   });
+
+  const toolsPkg = (svc: string) => join(opHome, "data", svc, "tools", "package.json");
 
   it("seeds once and stamps the version", async () => {
     await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
@@ -208,6 +220,32 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     expect(readFileSync(core, "utf-8")).toContain("image: current");
     expect(readFileSync(core, "utf-8")).not.toContain("STALE");
     expect(readFileSync(custom, "utf-8")).toContain("image: user");
+  });
+
+  it("seeds data/<svc>/tools/package.json into an OP_HOME stamped at an OLDER skeleton version (regression)", async () => {
+    // Reproduces the bug that started the reconcile refactor: data/<svc>/tools/
+    // package.json is materialized ONLY by the version-gated full copyTree, never
+    // by the always-on refreshCoreAssetsFromSource. So an OP_HOME stamped at an
+    // older skeleton version (an upgraded install) never received these files —
+    // the guardian container then failed with "opencode not on PATH".
+
+    // 1. Seed at the OLD version, then DELETE the tool manifests to simulate an
+    //    OP_HOME that predates them (older skeleton shipped no data/<svc>/tools).
+    await seedOpenPalmDir("v0", opHome, join(opHome, "config"), join(opHome, "data"));
+    for (const svc of ["guardian", "assistant", "portal"]) {
+      rmSync(toolsPkg(svc), { force: true });
+      expect(existsSync(toolsPkg(svc))).toBe(false);
+    }
+
+    // 2. Reconcile to the NEW platform version (stamp changes → full seed runs).
+    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+
+    // 3. The missing tool manifests are now materialized for every service.
+    for (const svc of ["guardian", "assistant", "portal"]) {
+      expect(existsSync(toolsPkg(svc)), `data/${svc}/tools/package.json must be seeded`).toBe(true);
+      expect(readFileSync(toolsPkg(svc), "utf-8")).toContain(`${svc}-tools`);
+    }
+    expect(readFileSync(stamp(), "utf-8").trim()).toBe("v1");
   });
 });
 

@@ -2,12 +2,10 @@
  * Tests for lifecycle.ts — state factory, lifecycle helpers, compose builders,
  * caller normalization.
  */
-import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import {
   mkdirSync,
-  writeFileSync,
-  readFileSync,
-  existsSync
+  writeFileSync
 } from "node:fs";
 import { join } from "node:path";
 
@@ -22,7 +20,7 @@ import {
   CORE_SERVICES,
   readSecret,
 } from "@openpalm/lib";
-import { makeTempDir, makeTestState, trackDir, registerCleanup , stackEnvFor} from "./test-helpers.js";
+import { makeTempDir, makeTestState, trackDir, registerCleanup, seedSecretsEnv } from "./test-helpers.js";
 
 registerCleanup();
 
@@ -215,6 +213,10 @@ describe("applyInstall", () => {
     // Create required dirs and seed core compose for writeRuntimeFiles
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
+    // applyInstall now runs the OP_HOME reconcile (reconcileHome → ensureMigrated).
+    // ensureMigrated throws UnrecognizedLayoutError on a home that has data/ but no
+    // current-layout marker; a stack.env makes it a recognized, already-current layout.
+    seedSecretsEnv(state.stackDir, "OP_IMAGE_NAMESPACE=openpalm\nOP_LAYOUT_VERSION=2\n");
 
     await applyInstall(state);
 
@@ -233,7 +235,7 @@ describe("applyUpdate", () => {
     delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
   });
 
-  test("returns list of running services that were restarted", async () => {
+  test("reports the already-running set and PRESERVES prior service state (no force-activate)", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     process.env.OP_HOME = state.homeDir;
@@ -241,11 +243,19 @@ describe("applyUpdate", () => {
 
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
+    // See applyInstall note: reconcileHome → ensureMigrated needs a recognized layout.
+    seedSecretsEnv(state.stackDir, "OP_IMAGE_NAMESPACE=openpalm\nOP_LAYOUT_VERSION=2\n");
 
     const result = await applyUpdate(state);
+    // Already-running services are reported as restarted...
     expect(result.restarted).toContain("admin");
     expect(result.restarted).toContain("guardian");
+    // ...but applyUpdate passes NO activate flag (reconcileStack({})), so a
+    // deliberately-stopped core service is NOT force-marked running by an update.
+    // The route drives the real recreate from buildManagedServices; the persisted
+    // service state must reflect what the operator left it as.
     expect(result.restarted).not.toContain("assistant");
+    expect(state.services.assistant).toBe("stopped");
   });
 });
 
@@ -266,6 +276,8 @@ describe("applyUninstall", () => {
 
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
+    // See applyInstall note: reconcileHome → ensureMigrated needs a recognized layout.
+    seedSecretsEnv(state.stackDir, "OP_IMAGE_NAMESPACE=openpalm\nOP_LAYOUT_VERSION=2\n");
 
     const result = await applyUninstall(state);
     expect(result.stopped).toContain("admin");

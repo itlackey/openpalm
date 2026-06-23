@@ -20,7 +20,6 @@ import { createLogger } from "../logger.js";
 import { sha256 } from "./crypto.js";
 
 const logger = createLogger("core-assets");
-const GITHUB_ASSET_TIMEOUT_MS = 10_000;
 
 const _require = createRequire(import.meta.url);
 
@@ -115,11 +114,8 @@ export const SHIPPED_DEFAULT_HASHES: Record<string, string[]> = {
 };
 
 /** Assets under config/guardian/ that are managed (refreshable) but respect user edits. */
-export const GUARDIAN_MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  {
-    relPath: "config/guardian/instructions/moderation.md",
-    githubFilename: ".openpalm/config/guardian/instructions/moderation.md",
-  },
+export const GUARDIAN_MANAGED_ASSETS: { relPath: string }[] = [
+  { relPath: "config/guardian/instructions/moderation.md" },
 ];
 
 /**
@@ -134,59 +130,28 @@ export function isUnmodifiedDefault(relPath: string, currentContent: string): bo
   return known.includes(h);
 }
 
-// ── Asset Refresh (GitHub download) ──────────────────────────────────
-
-const REPO = "itlackey/openpalm";
-
-// The version to download assets for is ALWAYS passed in by the caller (the
-// upgrade flow resolves the canonical platform tag — the newest published
-// `openpalm/assistant` Docker tag, e.g. "v0.11.0-rc.6" — and threads it here).
-// This module intentionally does NOT resolve the version itself: no env var, no
-// `import.meta.url` package.json read (which breaks when the lib is bundled into
-// the UI/electron), and never a silent "main" fallback (main's asset layout can
-// differ from a released install). Bundler-agnostic by construction.
-
-function normalizeAssetRef(version: string): string {
-  const v = version.trim();
-  if (!v) {
-    throw new Error(
-      "Cannot download OpenPalm stack assets: no version provided. " +
-      "The caller must pass the target release tag (e.g. \"v0.11.0-rc.6\")."
-    );
-  }
-  // GitHub release/raw refs are `vX.Y.Z`; accept a bare semver and add the `v`.
-  return /^\d/.test(v) ? `v${v}` : v;
-}
+// ── Managed / Seeded asset manifests ─────────────────────────────────
+//
+// Asset refresh is always a LOCAL copy from the bundled @openpalm/skeleton
+// source (refreshCoreAssetsFromSource). There is no GitHub/registry download:
+// OP_HOME assets are materialized from the skeleton that ships with the running
+// control plane, keyed on PLATFORM_VERSION via seedOpenPalmDir's stamp.
 
 // Persona files (openpalm.md, system.md), stash seeds, and user-editable config
 // files are intentionally NOT in this list. They are seeded once (never
 // overwritten) via seedOpenPalmDir (skipExisting) or SEEDED_ASSETS below.
-export const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/stack/core.compose.yml", githubFilename: ".openpalm/config/stack/core.compose.yml" },
-  { relPath: "config/stack/services.compose.yml", githubFilename: ".openpalm/config/stack/services.compose.yml" },
-  { relPath: "config/stack/portals.compose.yml", githubFilename: ".openpalm/config/stack/portals.compose.yml" },
+export const MANAGED_ASSETS: { relPath: string }[] = [
+  { relPath: "config/stack/core.compose.yml" },
+  { relPath: "config/stack/services.compose.yml" },
+  { relPath: "config/stack/portals.compose.yml" },
 ];
 
 // Seeded once — written only when the file does not exist yet.
 // User edits always win; upgrade never touches these files.
-export const SEEDED_ASSETS: { relPath: string; githubFilename: string }[] = [
-  { relPath: "config/assistant/opencode.jsonc", githubFilename: ".openpalm/config/assistant/opencode.jsonc" },
-  { relPath: "config/stack/custom.compose.yml", githubFilename: ".openpalm/config/stack/custom.compose.yml" },
+export const SEEDED_ASSETS: { relPath: string }[] = [
+  { relPath: "config/assistant/opencode.jsonc" },
+  { relPath: "config/stack/custom.compose.yml" },
 ];
-
-async function downloadAsset(filename: string, version: string): Promise<string> {
-  // Compose assets are repo paths (with slashes), never flat GitHub release assets.
-  // The raw.githubusercontent.com URL is the only one that can work; it requires
-  // a valid git ref (platform-X.Y.Z). See versioning-audit.md HIGH-1.
-  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${version}/${filename}`;
-  try {
-    const res = await fetch(rawUrl, { signal: AbortSignal.timeout(GITHUB_ASSET_TIMEOUT_MS) });
-    if (res.ok) return await res.text();
-  } catch {
-    // fall through to error
-  }
-  throw new Error(`Failed to download ${filename} from GitHub (ref "${version}" not found or network error)`);
-}
 
 function ensureBackupDir(backupDir: string | null, suffix = ''): string {
   if (backupDir) return backupDir;
@@ -258,72 +223,6 @@ export function refreshCoreAssetsFromSource(sourceRoot: string, homeDir = resolv
     if (existsSync(targetPath)) continue;
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, readFileSync(sourcePath, 'utf-8'));
-    updated.push(asset.relPath);
-  }
-
-  return { backupDir, updated, kept };
-}
-
-export async function refreshCoreAssets(version: string): Promise<{
-  backupDir: string | null;
-  updated: string[];
-  kept: string[];
-}> {
-  const ref = normalizeAssetRef(version);
-  const homeDir = resolveOpenPalmHome();
-  const updated: string[] = [];
-  const kept: string[] = [];
-  let backupDir: string | null = null;
-
-  for (const asset of MANAGED_ASSETS) {
-    const freshContent = await downloadAsset(asset.githubFilename, ref);
-    const targetPath = join(homeDir, asset.relPath);
-
-    if (existsSync(targetPath)) {
-      const currentContent = readFileSync(targetPath, "utf-8");
-      if (sha256(currentContent) === sha256(freshContent)) {
-        continue;
-      }
-
-      backupDir = backupExistingFile(targetPath, asset.relPath, backupDir);
-    }
-
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, freshContent);
-    updated.push(asset.relPath);
-  }
-
-  // Guardian managed assets: skip-if-user-modified (owner decision #1).
-  for (const asset of GUARDIAN_MANAGED_ASSETS) {
-    const freshContent = await downloadAsset(asset.githubFilename, ref);
-    const targetPath = join(homeDir, asset.relPath);
-
-    if (existsSync(targetPath)) {
-      const currentContent = readFileSync(targetPath, "utf-8");
-      if (sha256(currentContent) === sha256(freshContent)) continue;
-      if (!isUnmodifiedDefault(asset.relPath, currentContent)) {
-        // User has edited this file — keep it, surface a notice.
-        logger.info('guardian managed asset kept (user-modified); new default available', {
-          path: asset.relPath,
-          hint: 'Remove the file or restore the shipped default to pick up the new version on the next refresh.',
-        });
-        kept.push(asset.relPath);
-        continue;
-      }
-    }
-
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, freshContent);
-    updated.push(asset.relPath);
-  }
-
-  // Seed user-editable assets only when missing — never overwrite.
-  for (const asset of SEEDED_ASSETS) {
-    const targetPath = join(homeDir, asset.relPath);
-    if (existsSync(targetPath)) continue;
-    const freshContent = await downloadAsset(asset.githubFilename, ref);
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, freshContent);
     updated.push(asset.relPath);
   }
 

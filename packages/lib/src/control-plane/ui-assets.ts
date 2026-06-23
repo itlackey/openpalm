@@ -147,7 +147,7 @@ export async function seedOpenPalmDir(
   homeDir: string,
   _configDir: string,
   _dataDir: string,
-): Promise<void> {
+): Promise<{ updated: string[]; backupDir: string | null }> {
   const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
   let alreadySeeded = false;
   if (existsSync(stampPath)) {
@@ -166,16 +166,16 @@ export async function seedOpenPalmDir(
     // re-install over an existing OP_HOME picks up the current compose files
     // even when the skeleton stamp already matches (#472). User-owned files stay
     // seed-if-missing via the copyTree below.
-    const { updated: refreshed } = refreshCoreAssetsFromSource(local, homeDir);
-    if (refreshed.length) logger.debug('refreshed managed stack assets', { refreshed });
+    const { updated, backupDir } = refreshCoreAssetsFromSource(local, homeDir);
+    if (updated.length) logger.debug('refreshed managed stack assets', { refreshed: updated });
     if (alreadySeeded) {
       logger.debug('skeleton already seeded for this version — managed assets refreshed, skipping full seed', { repoRef });
-      return;
+      return { updated, backupDir };
     }
     logger.debug('seeding .openpalm from local source', { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
     stamp();
-    return;
+    return { updated, backupDir };
   }
 
   // No local skeleton found — this is a cold start without @openpalm/skeleton

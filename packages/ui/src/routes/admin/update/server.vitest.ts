@@ -34,6 +34,9 @@ vi.mock('@openpalm/lib', async () => {
     ensureHomeDirs: () => undefined,
     ensureOpenCodeConfig: () => undefined,
     ensureOpenCodeSystemConfig: () => undefined,
+    // Pre-state migration gate: no-op (already-current layout) so the route's
+    // compose orchestration is exercised. MigrationError handling has its own path.
+    ensureMigrated: () => ({ migrated: false, from: 2, to: 2, applied: [], backupDir: null, notes: [], releaseFrom: null, releaseTo: '', releaseApplied: [] }),
     buildComposeOptions: () => ({ files: ['/tmp/fake/compose.yml'], envFiles: [] }),
   };
 });

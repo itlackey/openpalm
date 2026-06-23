@@ -18,15 +18,15 @@ import {
   discoverStackOverlays,
   ensureComposeVolumeTargets,
 } from "./config-persistence.js";
-import { refreshCoreAssets } from "./core-assets.js";
-import { ensureReleaseMigrated } from './migrations.js';
+import { seedOpenPalmDir } from "./ui-assets.js";
+import { ensureMigrated, ensureReleaseMigrated } from './migrations.js';
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName, repairRootOwnedBindMounts } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./addons.js";
-import { PLATFORM_VERSION, formatForDisplay, normalizeVersion } from "./versioning.js";
+import { PLATFORM_VERSION, formatForDisplay } from "./versioning.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
@@ -132,6 +132,38 @@ async function reconcileCore(
   return active;
 }
 
+/**
+ * Idempotent OP_HOME asset reconciliation to the running platform version.
+ *
+ * This is the single place that brings an OP_HOME's *assets* (layout, skeleton
+ * data/, managed compose, release transforms) up to PLATFORM_VERSION. It is
+ * keyed entirely on PLATFORM_VERSION (the running control plane), NOT on the
+ * per-image OP_*_VERSION pins in stack.env — those stay independent and drive
+ * compose image resolution only.
+ *
+ * Every step is a cheap no-op when already current:
+ *   • ensureMigrated        — forward-only layout migrations (skip-if-done)
+ *   • seedOpenPalmDir       — skeleton data/ seed (stamp-gated, skip-existing) +
+ *                             managed compose refresh from BUNDLED local source
+ *   • ensureReleaseMigrated — forward-only release transforms (copy-only, idempotent)
+ *
+ * Returns the assets it actually changed (the refreshed managed compose/config
+ * files) and the backup directory a release migration created (if any), so
+ * performUpgrade can surface them in UpgradeResult — the upgrade route logs the
+ * asset list and shows the backup dir to the operator.
+ */
+async function reconcileHome(state: ControlPlaneState): Promise<{ assetsUpdated: string[]; backupDir: string | null }> {
+  ensureMigrated({ homeDir: state.homeDir });
+  const seed = await seedOpenPalmDir(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
+  const release = ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: PLATFORM_VERSION });
+  return {
+    assetsUpdated: seed.updated,
+    // Prefer the release migration's stack.env backup (the destructive one);
+    // fall back to the managed-asset backup seedOpenPalmDir took, if any.
+    backupDir: release.backupDir ?? seed.backupDir,
+  };
+}
+
 type LockedLifecycleOptions = { lock?: InstallLockHandle | null };
 
 function resolveLifecycleLock(state: ControlPlaneState, opts?: LockedLifecycleOptions): InstallLockHandle | null {
@@ -144,11 +176,87 @@ function releaseLifecycleLock(lock: InstallLockHandle | null, opts?: LockedLifec
   releaseInstallLock(lock);
 }
 
+/**
+ * The single idempotent stack reconcile. Every lifecycle entry point is a thin
+ * flag variant of this:
+ *   1. reconcileHome   — bring OP_HOME assets up to PLATFORM_VERSION (migrations,
+ *                        bundled skeleton seed, release transforms). No GitHub.
+ *   2. reconcileCore   — preflight, snapshot (rollback), write runtime files,
+ *                        flip service state per activate/deactivate.
+ *   3. composePull     — (compose+pull only) fetch images per OP_*_VERSION pins.
+ *   4. composeUp       — (compose only) recreate the managed service set.
+ *
+ * The whole thing runs under withStackEnvRollback: stack.env + the portals/custom
+ * compose files are snapshotted and restored if any step throws, and the
+ * pre-reconcile state is armed for `openpalm rollback`. reconcileCore runs with
+ * skipSnapshot:true so it never takes a second snapshot over that armed one.
+ *
+ * The `compose` flag is deliberately OFF for install/update/uninstall: those
+ * consumers (runDeploy, the admin install/update/uninstall routes) already own a
+ * bespoke compose phase — pulling images first, parsing per-service failures,
+ * polling health, and emitting progress. Letting the wrapper composeUp too would
+ * (a) double-recreate and (b) on a fresh install fatally `up` BEFORE images are
+ * pulled. Only performUpgrade sets compose:true — its consumers (CLI update, the
+ * admin upgrade route) have no separate compose phase and want the full
+ * pull+recreate to happen inside the wrapper, with rollback on failure.
+ *
+ * Returns the services that were active (running) after the reconcile — the
+ * "restarted" set for update/upgrade reporting — plus the OP_HOME assets it
+ * changed and any backup dir a release migration created, for UpgradeResult.
+ */
+function reconcileStack(
+  state: ControlPlaneState,
+  opts: { activate?: boolean; deactivate?: boolean; pull?: boolean; compose?: boolean },
+): Promise<{ active: string[]; assetsUpdated: string[]; backupDir: string | null }> {
+  return withStackEnvRollback(state, async () => {
+    // Activation flows (install/update/upgrade) may recreate containers; the
+    // deactivation flow (uninstall) only rewrites runtime files reflecting the
+    // stopped state — the route does composeDown. Gate the container-touching
+    // work on activation so uninstall stays a pure file/state reconcile.
+    const activating = !opts.deactivate;
+
+    // Repair any root-owned bind-mount directories before writing/recreating.
+    // Guardian historically ran without a `user:` directive, leaving data/guardian
+    // and data/logs owned by root. The host process can't chown them directly;
+    // a temporary root Docker container fixes ownership.
+    if (activating && opts.compose) await repairRootOwnedBindMounts(state.homeDir);
+
+    const home = await reconcileHome(state);
+
+    // skipSnapshot: withStackEnvRollback already armed the pre-reconcile snapshot.
+    const active = await reconcileCore(state, {
+      activateServices: opts.activate,
+      deactivateServices: opts.deactivate,
+      skipSnapshot: true,
+    });
+
+    if (activating && opts.compose) {
+      const composeOpts = buildComposeOptions(state);
+      if (opts.pull) {
+        const pullResult = await composePull(composeOpts);
+        if (!pullResult.ok) {
+          throw new Error(`Failed to pull images: ${pullResult.stderr}`);
+        }
+      }
+
+      // forceRecreate is REQUIRED so portal containers restart onto a newly
+      // pulled baked image even when the managed compose config is unchanged (#450).
+      const services = await buildManagedServices(state);
+      const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
+      if (!upResult.ok) {
+        throw new Error(`Failed to recreate containers: ${upResult.stderr}`);
+      }
+    }
+
+    return { active, assetsUpdated: home.assetsUpdated, backupDir: home.backupDir };
+  });
+}
+
 export async function applyInstall(state: ControlPlaneState, opts?: LockedLifecycleOptions): Promise<void> {
   const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
-    await reconcileCore(state, { activateServices: true });
+    await reconcileStack(state, { activate: true });
     // Pre-create host-side volume mount targets as the current user so
     // Docker doesn't create them root-owned (which causes EACCES inside
     // non-root containers).
@@ -162,7 +270,13 @@ export async function applyUpdate(state: ControlPlaneState, opts?: LockedLifecyc
   const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
-    return { restarted: await reconcileCore(state, {}) };
+    // No activate flag: an update reconciles assets + runtime files and reports
+    // the already-running set, preserving each service's prior running/stopped
+    // state (matching HEAD's reconcileCore(state, {}) semantics). It must NOT
+    // force-mark a deliberately-stopped core service as running. The route drives
+    // the actual recreate from buildManagedServices; `restarted` is for reporting.
+    const { active } = await reconcileStack(state, {});
+    return { restarted: active };
   } finally {
     releaseLifecycleLock(lock, opts);
   }
@@ -172,7 +286,8 @@ export async function applyUninstall(state: ControlPlaneState, opts?: LockedLife
   const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
-    return { stopped: await reconcileCore(state, { deactivateServices: true }) };
+    const { active } = await reconcileStack(state, { deactivate: true });
+    return { stopped: active };
   } finally {
     releaseLifecycleLock(lock, opts);
   }
@@ -218,34 +333,6 @@ function resolveImageNamespace(state: ControlPlaneState): string {
   return namespace;
 }
 
-export async function applyUpgrade(
-  state: ControlPlaneState,
-  /** Release tag whose stack assets to fetch (e.g. "platform-0.12.18"). Caller-supplied. */
-  version: string,
-  opts?: LockedLifecycleOptions,
-): Promise<{
-  backupDir: string | null;
-  updated: string[];
-  restarted: string[];
-}> {
-  const lock = resolveLifecycleLock(state, opts);
-  if (!lock) throw new Error("Another install is already in progress");
-  try {
-    // Repair any root-owned bind-mount directories before the backup runs.
-    // Guardian historically ran without a `user:` directive, leaving data/guardian
-    // and data/logs owned by root. The host process can't chown them directly;
-    // we use a temporary Docker container with root access to fix ownership.
-    await repairRootOwnedBindMounts(state.homeDir);
-    const { backupDir, updated } = await refreshCoreAssets(version);
-    // skipSnapshot: the upgrade wrapper (withStackEnvRollback) snapshotted the
-    // pre-upgrade state before assets were refreshed.
-    const restarted = await reconcileCore(state, { skipSnapshot: true });
-    return { backupDir, updated, restarted };
-  } finally {
-    releaseLifecycleLock(lock, opts);
-  }
-}
-
 export type UpgradeResult = {
   imageTag: string;
   namespace: string;
@@ -275,11 +362,19 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
     originalCustomCompose = readFileSync(customComposePath, 'utf-8');
   } catch { /* custom.compose.yml may not exist yet */ }
 
-  // Persist the PRE-upgrade state for `openpalm rollback`. Without this, the
+  // Persist the PRE-reconcile state for `openpalm rollback`. Without this, the
   // snapshot taken later inside reconcileCore captures stack.env AFTER the
   // release migrations ran, so a post-crash manual rollback would "restore" the
   // already-migrated state.
-  snapshotCurrentState(state, { arm: true });
+  //
+  // Guard on hasArmedSnapshot(): an armed snapshot that already exists is a
+  // PRE-EXISTING pre-operation snapshot from an earlier lifecycle run that
+  // crashed before it could roll back or clear its arm. Re-arming here would
+  // overwrite it with the CURRENT (post-crash, partially-changed) state, so a
+  // later `openpalm rollback` would restore the wrong (broken) state. Preserve
+  // the existing armed snapshot; only arm a fresh one when none is armed.
+  // reconcileCore runs with skipSnapshot:true, so this is the only arm point.
+  if (!hasArmedSnapshot()) snapshotCurrentState(state, { arm: true });
 
   try {
     return await run();
@@ -312,48 +407,47 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
  * There are NO Docker Hub calls: image versions are user-managed in stack.env
  * (PATCH /admin/versions), and the platform asset version is the running lib's
  * PLATFORM_VERSION — never resolved from a remote registry.
+ *
+ * `allowPrerelease` is accepted for caller intent/forward-compatibility but is
+ * currently a NO-OP: there is no remote-tag resolution to gate, since the target
+ * is always the running PLATFORM_VERSION and image tags are user-pinned in
+ * stack.env. Forward-only release migrations decide compatibility (a downgrade
+ * target yields no pending migrations rather than throwing). Callers pass it so
+ * the gate can be wired here later without an API change.
  */
 export async function performUpgrade(
   state: ControlPlaneState,
-  _opts: { allowPrerelease?: boolean } = {},
+  opts?: LockedLifecycleOptions & { allowPrerelease?: boolean },
 ): Promise<UpgradeResult> {
-  return withStackEnvRollback(state, async () => {
-    const composeOpts = buildComposeOptions(state);
-    const namespace = resolveImageNamespace(state);
-
+  const lock = resolveLifecycleLock(state, opts);
+  if (!lock) throw new Error("Another install is already in progress");
+  try {
     // The asset version is the running control plane's own version — the data/ui
     // build self-updates to the current platform before serving the request, so
-    // PLATFORM_VERSION is authoritative. Run release migrations for it, then
-    // refresh the matching stack assets.
-    const releaseTag = 'platform-' + normalizeVersion(PLATFORM_VERSION);
-    ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: PLATFORM_VERSION });
-    const upgradeResult = await applyUpgrade(state, releaseTag);
+    // PLATFORM_VERSION is authoritative. OP_HOME asset reconciliation (layout +
+    // bundled skeleton seed + release migrations) happens inside reconcileStack
+    // via reconcileHome; there are NO GitHub/registry calls — image versions are
+    // user-managed in stack.env (PATCH /admin/versions).
+    const namespace = resolveImageNamespace(state);
 
-    // Pull all images (core + addons, including profile-gated voice). Compose
-    // resolves each image from its OP_*_VERSION pin in stack.env.
-    const pullResult = await composePull(composeOpts);
-    if (!pullResult.ok) {
-      throw new Error(`Failed to pull images: ${pullResult.stderr}`);
-    }
-
-    // Recreate containers (includes profiles for voice addon).
-    // forceRecreate is REQUIRED so portal containers restart onto the newly
-    // pulled baked image even when the managed compose config is unchanged.
-    const services = await buildManagedServices(state);
-    const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
-    if (!upResult.ok) {
-      throw new Error(`Images pulled but failed to recreate containers: ${upResult.stderr}`);
-    }
+    // compose+pull: fetch each image from its OP_*_VERSION pin, then recreate
+    // containers (including profile-gated voice). performUpgrade is the only
+    // wrapper that drives compose itself — its consumers (CLI update, the admin
+    // upgrade route) have no separate compose phase. withStackEnvRollback inside
+    // reconcileStack restores stack.env + compose overlays if any step throws.
+    const { active, assetsUpdated, backupDir } = await reconcileStack(state, { activate: true, pull: true, compose: true });
 
     return {
       imageTag: PLATFORM_VERSION,
       namespace,
-      backupDir: upgradeResult.backupDir,
-      assetsUpdated: upgradeResult.updated,
-      restarted: upgradeResult.restarted,
+      backupDir,
+      assetsUpdated,
+      restarted: active,
       warnings: [],
     };
-  });
+  } finally {
+    releaseLifecycleLock(lock, opts);
+  }
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {

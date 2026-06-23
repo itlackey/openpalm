@@ -11,7 +11,8 @@ type RollbackScenario = {
   composePullStderr?: string;
   composeUpOk?: boolean;
   composeUpStderr?: string;
-  refreshCoreAssetsError?: string;
+  /** Inject a failure from the bundled OP_HOME seed (reconcileHome → seedOpenPalmDir). */
+  seedError?: string;
   expectedError: string;
 };
 
@@ -20,7 +21,8 @@ const moduleUrls = {
   composeArgs: new URL('./compose-args.js', import.meta.url).href,
   docker: new URL('./docker.js', import.meta.url).href,
   configPersistence: new URL('./config-persistence.js', import.meta.url).href,
-  coreAssets: new URL('./core-assets.js', import.meta.url).href,
+  uiAssets: new URL('./ui-assets.js', import.meta.url).href,
+  migrations: new URL('./migrations.js', import.meta.url).href,
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./addons.js', import.meta.url).href,
   rollback: new URL('./rollback.js', import.meta.url).href,
@@ -113,11 +115,15 @@ mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   discoverStackOverlays: () => [],
   ensureComposeVolumeTargets: () => {},
 }));
-mock.module(${JSON.stringify(moduleUrls.coreAssets)}, () => ({
-  refreshCoreAssets: async () => {
-    if (scenario.refreshCoreAssetsError) throw new Error(scenario.refreshCoreAssetsError);
-    return { backupDir: null, updated: [] };
+mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
+  seedOpenPalmDir: async () => {
+    if (scenario.seedError) throw new Error(scenario.seedError);
+    return { updated: [], backupDir: null };
   },
+}));
+mock.module(${JSON.stringify(moduleUrls.migrations)}, () => ({
+  ensureMigrated: () => ({}),
+  ensureReleaseMigrated: () => ({ backupDir: null }),
 }));
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),
@@ -197,34 +203,40 @@ describe('stack.env rollback during upgrade failures (#476)', () => {
       mode: 'performUpgrade',
       composeUpOk: false,
       composeUpStderr: 'up failed',
-      expectedError: 'Images pulled but failed to recreate containers: up failed',
+      expectedError: 'Failed to recreate containers: up failed',
     });
 
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
-  test('performUpgrade restores stack.env when asset refresh fails', () => {
+  test('performUpgrade restores stack.env when the bundled OP_HOME seed fails', () => {
     const result = runRollbackScenario({
       mode: 'performUpgrade',
-      refreshCoreAssetsError: 'asset refresh failed',
-      expectedError: 'asset refresh failed',
+      seedError: 'asset seed failed',
+      expectedError: 'asset seed failed',
     });
 
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 });
 
-// ── Armed-snapshot protection (B5 step 17) ───────────────────────────────────
+// ── Armed-snapshot protection (B5) ───────────────────────────────────────────
 //
-// reconcileCore guards re-snapshot with hasArmedSnapshot(): while an armed
-// snapshot exists (i.e. an upgrade is in progress / has not been cleared by a
-// successful rollback), a subsequent reconcileCore call MUST NOT overwrite the
-// pre-upgrade snapshot with the post-write live state.  The guard lives at:
-//   lifecycle.ts: if (!opts.skipSnapshot && !hasArmedSnapshot()) snapshotCurrentState(state);
+// Every lifecycle entry point now flows through reconcileStack, which wraps the
+// reconcile in withStackEnvRollback. withStackEnvRollback arms a pre-reconcile
+// snapshot for `openpalm rollback` — but ONLY when one is not already armed.
 //
-// The test mocks the rollback module and counts snapshotCurrentState calls.
-// It pre-plants the armed-snapshot marker, then runs applyUpdate (which calls
-// reconcileCore without skipSnapshot), and asserts the call count is 0.
+// A pre-existing armed snapshot is a pre-operation snapshot from an earlier
+// lifecycle run that crashed before it could roll back / clear its arm. It MUST
+// be preserved: re-arming would overwrite it with the current (post-crash,
+// partially-changed) state, so a later `openpalm rollback` would restore the
+// wrong state. reconcileCore runs with skipSnapshot:true, so withStackEnvRollback
+// is the only arm point.
+//
+// The test mocks the rollback module and counts snapshotCurrentState calls, then
+// runs applyUpdate and asserts:
+//   • preArmed=true  → 0 snapshot calls (the existing armed snapshot is preserved)
+//   • preArmed=false → exactly 1 snapshot call (a fresh pre-reconcile arm)
 //
 function runArmedSnapshotScenario(opts: { preArmed: boolean }): {
   stdout: string;
@@ -297,8 +309,12 @@ mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   discoverStackOverlays: () => [],
   ensureComposeVolumeTargets: () => {},
 }));
-mock.module(${JSON.stringify(moduleUrls.coreAssets)}, () => ({
-  refreshCoreAssets: async () => ({ backupDir: null, updated: [] }),
+mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
+  seedOpenPalmDir: async () => ({ updated: [], backupDir: null }),
+}));
+mock.module(${JSON.stringify(moduleUrls.migrations)}, () => ({
+  ensureMigrated: () => ({}),
+  ensureReleaseMigrated: () => ({ backupDir: null }),
 }));
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),
@@ -316,19 +332,17 @@ async function main() {
     const lifecycle = await import(lifecycleUrl + '?armed=' + Math.random());
     await lifecycle.applyUpdate(state);
 
-    // Verify the guard behavior:
-    // - preArmed=true  → hasArmedSnapshot() returned true → snapshotCurrentState must NOT be called
-    // - preArmed=false → hasArmedSnapshot() returned false → snapshotCurrentState IS called
-    if (preArmed && snapshotCallCount !== 0) {
+    // withStackEnvRollback arms a pre-reconcile snapshot ONLY when none is
+    // already armed; reconcileCore (skipSnapshot:true) never takes a second one.
+    //   • preArmed=true  → 0 calls: the existing armed snapshot is PRESERVED
+    //     (re-arming would clobber a crashed upgrade's pre-op state).
+    //   • preArmed=false → 1 call: a fresh pre-reconcile snapshot is armed.
+    const expected = preArmed ? 0 : 1;
+    if (snapshotCallCount !== expected) {
       throw new Error(
-        'BUG: snapshotCurrentState was called ' + snapshotCallCount + ' time(s) even though an armed snapshot was present. ' +
-        'reconcileCore must skip re-snapshot while hasArmedSnapshot() is true.',
-      );
-    }
-    if (!preArmed && snapshotCallCount === 0) {
-      throw new Error(
-        'BUG: snapshotCurrentState was never called when no armed snapshot was present. ' +
-        'reconcileCore must snapshot before writing when no armed snapshot exists.',
+        'BUG: expected ' + expected + ' snapshotCurrentState call(s) but got ' +
+        snapshotCallCount + ' (preArmed=' + preArmed + '). withStackEnvRollback must NOT ' +
+        're-arm over a pre-existing armed snapshot, and must arm exactly one when none exists.',
       );
     }
     process.exit(0);
@@ -359,14 +373,160 @@ await main();
   }
 }
 
-describe('armed-snapshot protection in reconcileCore (B5)', () => {
-  test('reconcileCore skips snapshotCurrentState while an armed snapshot is present', () => {
+describe('armed-snapshot protection via withStackEnvRollback (B5)', () => {
+  test('applyUpdate does NOT re-arm (clobber) a pre-existing armed snapshot', () => {
     const result = runArmedSnapshotScenario({ preArmed: true });
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
-  test('reconcileCore calls snapshotCurrentState when no armed snapshot is present', () => {
+  test('applyUpdate arms exactly one snapshot when none is already armed', () => {
     const result = runArmedSnapshotScenario({ preArmed: false });
+    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+});
+
+// ── Wired-path seed regression (the bug that started the refactor) ────────────
+//
+// The seed-layer test in ui-assets.test.ts proves seedOpenPalmDir re-materializes
+// data/<svc>/tools/package.json when the version stamp changes. This test proves
+// the WIRED path: applyUpdate (the `update` entry point that NEVER invoked seeding
+// in HEAD) actually reaches the real seed via reconcileStack → reconcileHome and
+// materializes the file into an OP_HOME stamped at an OLDER skeleton version.
+//
+// Only the side-effecting infra (docker/compose/config-persistence/install-lock)
+// is mocked; seedOpenPalmDir, migrations, core-assets, and rollback run for real
+// against the actual repo skeleton (OPENPALM_REPO_ROOT = repo root).
+function runWiredSeedScenario(): { stdout: string; stderr: string; exitCode: number } {
+  const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+  const tempDir = mkdtempSync(join(rollbackHarnessDir, '.tmp-openpalm-wired-seed-'));
+  const scriptPath = join(tempDir, 'wired-seed-scenario.ts');
+  const runnerPath = join(tempDir, 'run-bun.sh');
+
+  const script = `
+import { mock } from 'bun:test';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+const lifecycleUrl = ${JSON.stringify(lifecycleUrl)};
+const repoRoot = ${JSON.stringify(repoRoot)};
+
+// Real skeleton resolution: point OPENPALM_REPO_ROOT at the repo so the real
+// seedOpenPalmDir copies packages/skeleton/** (including data/<svc>/tools).
+process.env.OPENPALM_REPO_ROOT = repoRoot;
+process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+
+// Mock ONLY the side-effecting infra. seedOpenPalmDir, migrations, core-assets,
+// and rollback run for real.
+mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
+  buildComposeOptions: () => ({ files: [], envFiles: [], profiles: [] }),
+}));
+mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
+  checkDocker: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composePreflight: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composePull: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composeConfigServices: async () => ({ ok: true, services: [] }),
+  resolveComposeProjectName: () => 'openpalm',
+  repairRootOwnedBindMounts: async () => {},
+}));
+mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
+  resolveRuntimeFiles: () => ({ compose: '' }),
+  writeRuntimeFiles: () => {},
+  discoverStackOverlays: () => [],
+  ensureComposeVolumeTargets: () => {},
+}));
+mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
+  acquireInstallLock: () => ({ path: 'test-lock' }),
+  releaseInstallLock: () => {},
+}));
+mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
+  getAddonServiceNames: () => [],
+  listEnabledAddonIds: () => [],
+}));
+
+function makeState(home) {
+  mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+  mkdirSync(join(home, 'config', 'stack'), { recursive: true });
+  mkdirSync(join(home, 'data', 'rollback'), { recursive: true });
+  writeFileSync(
+    join(home, 'knowledge', 'env', 'stack.env'),
+    'OP_IMAGE_NAMESPACE=openpalm\\nOP_ASSISTANT_VERSION=v0.11.5\\n',
+  );
+  process.env.OP_HOME = home;
+  return {
+    homeDir: home,
+    configDir: join(home, 'config'),
+    stashDir: join(home, 'knowledge'),
+    workspaceDir: join(home, 'workspace'),
+    dataDir: join(home, 'data'),
+    stackDir: join(home, 'config', 'stack'),
+    services: {},
+    artifacts: { compose: '' },
+    artifactMeta: [],
+  };
+}
+
+async function main() {
+  try {
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-wired-seed-'));
+    const state = makeState(home);
+    const lifecycle = await import(lifecycleUrl + '?wired=' + Math.random());
+    const { seedOpenPalmDir } = await import(${JSON.stringify(moduleUrls.uiAssets)});
+
+    // 1. Seed at an OLDER skeleton version, then DELETE the tool manifests to
+    //    simulate an upgraded OP_HOME that predates data/<svc>/tools.
+    await seedOpenPalmDir('v0.0.0-older', home, join(home, 'config'), join(home, 'data'));
+    const toolsPkg = (svc) => join(home, 'data', svc, 'tools', 'package.json');
+    for (const svc of ['guardian', 'assistant', 'portal']) {
+      rmSync(toolsPkg(svc), { force: true });
+      if (existsSync(toolsPkg(svc))) throw new Error('precondition: ' + svc + ' tools should be deleted');
+    }
+
+    // 2. Run the WIRED update path. In HEAD this NEVER seeded.
+    await lifecycle.applyUpdate(state);
+
+    // 3. The real reconcile re-stamps to PLATFORM_VERSION and re-materializes the
+    //    missing tool manifests for every service.
+    for (const svc of ['guardian', 'assistant', 'portal']) {
+      if (!existsSync(toolsPkg(svc))) {
+        throw new Error('BUG: applyUpdate did not seed data/' + svc + '/tools/package.json');
+      }
+      if (!readFileSync(toolsPkg(svc), 'utf-8').includes(svc + '-tools')) {
+        throw new Error('seeded ' + svc + ' tools manifest has unexpected content');
+      }
+    }
+    process.exit(0);
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
+  }
+}
+
+await main();
+`;
+  const runner = '#!/usr/bin/env bash\nexec bun "$1"\n';
+
+  try {
+    writeFileSync(scriptPath, script);
+    writeFileSync(runnerPath, runner);
+    const proc = spawnSync('bash', [runnerPath, scriptPath], {
+      cwd: rollbackHarnessDir,
+      encoding: 'utf8',
+    });
+    return {
+      stdout: proc.stdout ?? '',
+      stderr: proc.stderr ?? '',
+      exitCode: proc.status ?? 1,
+    };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+describe('wired reconcile seeds data/<svc>/tools/package.json on update', () => {
+  test('applyUpdate materializes the tool manifests into an older-stamped OP_HOME', () => {
+    const result = runWiredSeedScenario();
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 });

@@ -12,6 +12,8 @@ import {
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
   ensureSecrets,
+  ensureMigrated,
+  MigrationError,
   buildComposeOptions,
   buildManagedServices,
   CORE_SERVICES,
@@ -31,6 +33,26 @@ export const POST: RequestHandler = async (event) => {
 
   return withSerialQueue("admin:install", async () => {
     try {
+      // 0. Pre-state layout migration gate. MUST run before getState() —
+      // createState()/initializeStateSecrets() resolve and write to the CURRENT
+      // layout, so on a pre-2 home they'd target paths that only exist post-migration.
+      // applyInstall later re-runs migrations idempotently inside reconcileHome
+      // (defused by the reentrant install lock), but this explicit pre-state call
+      // is what surfaces a MigrationError to the operator before any state work and
+      // pre-stamps the layout. Backs up first; no-ops on an already-current home.
+      try {
+        const report = ensureMigrated();
+        if (report.migrated) {
+          logger.info("layout migrated", { requestId, from: report.from, to: report.to, backupDir: report.backupDir });
+        }
+      } catch (e) {
+        if (e instanceof MigrationError) {
+          logger.error("auto-migration aborted", { requestId, error: e.message, backupDir: e.backupDir });
+          return errorResponse(500, "migration_failed", e.message, { guidance: e.guidance, backupDir: e.backupDir }, requestId);
+        }
+        throw e;
+      }
+
       const state = getState();
 
       // 1. Ensure home directory tree exists
@@ -44,8 +66,12 @@ export const POST: RequestHandler = async (event) => {
       // 3. Write consolidated secrets file
       ensureSecrets(state);
 
-      // 4. Update state and generate artifacts. OpenCode session logs are the
-      // audit trail (D6a in docs/technical/auth-and-proxy-refactor-plan.md).
+      // 4. Reconcile OP_HOME + generate artifacts. applyInstall runs the unified
+      // OP_HOME reconcile (layout migrations + bundled skeleton data/ seed +
+      // release transforms, all idempotent) and writes runtime files — it does
+      // NOT compose. The compose phase stays here, so it is the sole composeUp
+      // (no double-recreate). OpenCode session logs are the audit trail (D6a in
+      // docs/technical/auth-and-proxy-refactor-plan.md).
       await applyInstall(state);
 
       // 5. Run docker compose up — managed services derived from compose config

@@ -13,7 +13,7 @@
  * exported), verifying the concurrency property without needing a full runDeploy.
  */
 import { describe, it, expect, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -124,7 +124,7 @@ mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
 }));
 
 mock.module(${JSON.stringify(moduleUrls.coreAssets)}, () => ({
-  refreshCoreAssetsFromSource: async () => ({ backupDir: null, updated: [] }),
+  refreshCoreAssetsFromSource: () => ({ backupDir: null, updated: [], kept: [] }),
 }));
 
 mock.module(${JSON.stringify(moduleUrls.lifecycle)}, () => ({
@@ -292,18 +292,27 @@ describe('A2b(c): install lock held through deploy; second concurrent deploy ref
     releaseInstallLock(handle);
   });
 
-  it('second concurrent acquire returns null while first lock is held', () => {
+  it('second SAME-PROCESS acquire is reentrant (no self-deadlock) while first lock is held', () => {
     lockDir = mkdtempSync(join(tmpdir(), 'op-lock-test-'));
     const first = acquireInstallLock(lockDir);
     expect(first).not.toBeNull();
+    expect(first?.reentrant).toBeFalsy();
 
     try {
-      // A second acquire on the same dataDir must be refused (returns null).
+      // A nested acquire from the SAME process (e.g. a lifecycle wrapper holds the
+      // lock, then a migration helper acquires it again) must NOT deadlock — it
+      // returns a reentrant no-op handle. Releasing it does not clear the file.
       const second = acquireInstallLock(lockDir);
-      expect(second).toBeNull();
+      expect(second).not.toBeNull();
+      expect(second?.reentrant).toBe(true);
+      releaseInstallLock(second);
+      // The outer lock is still held after releasing the reentrant handle.
+      expect(existsSync(join(lockDir, '.install.lock'))).toBe(true);
     } finally {
       releaseInstallLock(first);
     }
+    // Outermost release clears the file.
+    expect(existsSync(join(lockDir, '.install.lock'))).toBe(false);
   });
 
   it('lock becomes acquirable again after release', () => {
@@ -318,16 +327,18 @@ describe('A2b(c): install lock held through deploy; second concurrent deploy ref
     releaseInstallLock(second);
   });
 
-  it('acquireInstallLock returns null when lock file is held by a live PID (current process)', () => {
-    // Pre-write the lock file as the current process PID so it is "held".
+  it('acquireInstallLock returns null when lock file is held by a live FOREIGN PID', () => {
+    // Pre-write the lock file as a DIFFERENT live process (PID 1 / init is always
+    // alive) so it is genuinely "held by another install". A foreign live holder
+    // must be refused (returns null) — the reentrancy short-circuit only applies
+    // to the CURRENT process's own PID.
     lockDir = mkdtempSync(join(tmpdir(), 'op-lock-ac-'));
     mkdirSync(lockDir, { recursive: true });
     const lockPath = join(lockDir, '.install.lock');
-    // Write lock content manually: current PID + timestamp (recent).
-    writeFileSync(lockPath, `${process.pid}\n${Date.now()}\n`, { mode: 0o644 });
+    writeFileSync(lockPath, `1\n${Date.now()}\n`, { mode: 0o644 });
 
-    // acquireInstallLock sees EEXIST, checks staleness: process is alive and
-    // timestamp is recent → not stale → returns null.
+    // acquireInstallLock sees EEXIST, the holder PID is foreign and alive and the
+    // timestamp is recent → not stale, not reentrant → returns null.
     const handle = acquireInstallLock(lockDir);
     expect(handle).toBeNull();
   });

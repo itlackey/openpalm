@@ -256,7 +256,6 @@ export {
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
-  refreshCoreAssets,
   refreshCoreAssetsFromSource,
   seedAssistantPersonaFiles,
   GUARDIAN_MANAGED_ASSETS,
@@ -288,7 +287,6 @@ export {
   applyInstall,
   applyUpdate,
   applyUninstall,
-  applyUpgrade,
   buildManagedServices,
   performUpgrade,
 } from './control-plane/lifecycle.js';

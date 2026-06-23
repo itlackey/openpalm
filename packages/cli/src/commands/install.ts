@@ -173,6 +173,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // a 0.10.x home has no knowledge/env/stack.env, so without this it would be
   // treated as a fresh install and the vault/ data ignored. Backs up first;
   // no-ops on a fresh or already-current home.
+  //
+  // This is a PRE-STATE gate, NOT redundant with reconcileHome's ensureMigrated:
+  // it must run before the stack.env-based install detection below (and before
+  // createState assumes the current layout). reconcileHome (inside applyInstall,
+  // reached later via runDeploy / the wizard's UI install endpoint) runs
+  // ensureMigrated again idempotently — both are required.
   try {
     const report = ensureMigrated({ log: (m) => console.log(`  ${m}`) });
     if (report.migrated) {
@@ -274,7 +280,18 @@ async function prepareInstallFiles(
   try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
 
-  // Seed OP_HOME from .openpalm/ (local source if available, else GitHub tarball)
+  // Seed OP_HOME from the bundled .openpalm/ source (skeleton data/ + managed
+  // compose, stamp-gated/skip-existing). This is the PRE-WIZARD seed and is
+  // load-bearing: the wizard's `openpalm ui serve` child reads seeded
+  // config/stack assets at boot (runStartupApply -> resolveRuntimeFiles), and
+  // the bundled-asset fallback does not survive into the packaged UI build, so
+  // the live seeded copy must exist before /setup is served.
+  //
+  // NOT redundant with reconcileHome: the deploy paths (runFileInstall and the
+  // update-mode redeploy) reach reconcileHome via runDeploy -> applyInstall,
+  // which re-seeds idempotently; but the interactive wizard serves BEFORE any
+  // applyInstall runs (deploy happens later from inside the UI), so this
+  // explicit seed is the only one that runs before the wizard comes up.
   await seedOpenPalmDir(version, homeDir, configDir, dataDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is

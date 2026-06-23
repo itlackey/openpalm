@@ -26,9 +26,16 @@ export default defineCommand({
 });
 
 export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {}): Promise<void> {
-  // Auto-migrate the on-disk layout BEFORE validating state — createState()
-  // assumes the current layout, so a 0.10.x home must be migrated first. This
-  // backs up first and fails safe (no-ops on an already-current install).
+  // Auto-migrate the on-disk layout BEFORE validating state — ensureValidState()
+  // -> createState() assumes the current layout and classifyLocalInstall() reads
+  // config/stack, so a 0.10.x home (no config/stack) would be rejected as
+  // "not installed" before performUpgrade could migrate it. Backs up first and
+  // fails safe (no-ops on an already-current install).
+  //
+  // This is a PRE-STATE gate, NOT redundant with reconcileHome's ensureMigrated:
+  // performUpgrade -> reconcileStack -> reconcileHome runs ensureMigrated again
+  // idempotently, but only AFTER ensureValidState has already needed the current
+  // layout. Both are required.
   try {
     const report = ensureMigrated({ log: (m) => console.log(`  ${m}`) });
     if (report.migrated) {

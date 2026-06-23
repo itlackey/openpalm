@@ -26,6 +26,14 @@ const STALE_AFTER_MS = 30 * 60 * 1000; // 30 minutes
 
 export type InstallLockHandle = {
   path: string;
+  /**
+   * True when this handle is a REENTRANT no-op: the lock file was already held
+   * by THIS process when acquire was called (e.g. a lifecycle wrapper holds the
+   * lock and then calls a migration helper that also acquires it). Releasing a
+   * reentrant handle does NOT remove the file — only the outermost owner does —
+   * so the nested call can't clear a lock it didn't create.
+   */
+  reentrant?: boolean;
 };
 
 function isProcessAlive(pid: number): boolean {
@@ -115,6 +123,18 @@ export function acquireInstallLock(dataDir: string): InstallLockHandle | null {
       error: err instanceof Error ? err.message : String(err),
     });
     return null;
+  }
+
+  // EEXIST — the lock is held. Reentrant case: if THIS process already holds it
+  // (a lifecycle wrapper holds the lock, then a nested migration helper acquires
+  // it again), grant a no-op handle instead of self-deadlocking. The file-based
+  // O_EXCL lock excludes OTHER processes; it must not block one process's own
+  // nested acquisitions.
+  try {
+    const { pid } = parseLockContent(readFileSync(path, "utf-8"));
+    if (pid === process.pid) return { path, reentrant: true };
+  } catch {
+    // Unreadable lock content — fall through to the staleness check.
   }
 
   // EEXIST — check whether the existing lock is stale.
@@ -233,6 +253,8 @@ export function unlockInstallLock(dataDir: string): UnlockResult {
 
 export function releaseInstallLock(handle: InstallLockHandle | null): void {
   if (!handle) return;
+  // A reentrant handle never owned the file — the outermost acquirer removes it.
+  if (handle.reentrant) return;
   try {
     rmSync(handle.path, { force: true });
   } catch (err) {

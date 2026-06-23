@@ -11,6 +11,8 @@ import {
   createLogger,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
+  ensureMigrated,
+  MigrationError,
   buildComposeOptions,
   buildManagedServices,
   ensureHomeDirs,
@@ -32,12 +34,33 @@ export const POST: RequestHandler = async (event) => {
 
   return withSerialQueue("admin:update", async () => {
     try {
+    // Pre-state layout migration gate (see admin/install for the full rationale).
+    // MUST run before getState(); applyUpdate re-runs it idempotently inside
+    // reconcileHome (defused by the reentrant install lock). Backs up first.
+    try {
+      const report = ensureMigrated();
+      if (report.migrated) {
+        logger.info("layout migrated", { requestId, from: report.from, to: report.to, backupDir: report.backupDir });
+      }
+    } catch (e) {
+      if (e instanceof MigrationError) {
+        logger.error("auto-migration aborted", { requestId, error: e.message, backupDir: e.backupDir });
+        return errorResponse(500, "migration_failed", e.message, { guidance: e.guidance, backupDir: e.backupDir }, requestId);
+      }
+      throw e;
+    }
+
     const state = getState();
 
     ensureHomeDirs();
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig();
-    // OpenCode session logs are the audit trail (D6a).
+    // applyUpdate runs the unified OP_HOME reconcile (layout migrations + bundled
+    // skeleton data/ seed + release transforms, all idempotent) and writes runtime
+    // files — it does NOT compose. The compose phase (pull-soft + force-recreate +
+    // per-service failure parsing) stays here, so it is the sole composeUp; the
+    // skeleton seed inside reconcileHome is what fixes data/<svc>/tools/package.json
+    // not being seeded on update. OpenCode session logs are the audit trail (D6a).
     const result = await applyUpdate(state);
     logger.info("update applied, re-running compose", {
       requestId,
