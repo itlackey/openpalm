@@ -68,9 +68,14 @@ ENV BUN_INSTALL=
 # In compose, OP_HOME/data/assistant/tools is bind-mounted over this path so
 # operators can edit package.json directly; this bake speeds standalone starts.
 COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
+# chmod ONLY the files that lack o+rX (find-scoped). A blanket `chmod -R` would
+# overlayfs-copy-up the entire node_modules into a single huge layer that Docker
+# Hub rejects on push (400 on the >1GB blob); find-scoped touches only the few
+# files needing the bit, keeping the layer small.
 RUN npm install --prefix /opt/openpalm/tools --omit=dev --no-fund --no-audit \
     && find /opt/openpalm/tools/node_modules/@anthropic-ai/claude-code -name "install.cjs" -exec node {} \; 2>/dev/null || true \
-    && chmod -R a+rX /opt/openpalm/tools/node_modules
+    && find /opt/openpalm/tools/node_modules ! -perm -o+r -exec chmod a+rX {} + \
+    && chown -R 1000:1000 /opt/openpalm/tools
 
 # Pre-bake akm's default local embedding model so semantic search works out of
 # the box with NO embedding configuration and NO runtime network. When
@@ -142,7 +147,7 @@ RUN set -e; \
 
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
     && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm/tools \
-    && chown -R opencode:opencode /home/opencode /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm/tools \
+    && chown -R opencode:opencode /home/opencode /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
