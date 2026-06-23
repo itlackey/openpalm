@@ -195,15 +195,6 @@ export async function fetchLatestVersions(): Promise<LatestVersionsResponse> {
   return (await res.json()) as LatestVersionsResponse;
 }
 
-/** Preview the release migrations an upgrade to <tag> would run (#497). Returns
- *  the human-readable `[dry-run]` log lines from ensureReleaseMigrated. */
-export async function previewMigration(
-  tag: string,
-): Promise<{ ok: boolean; targetVersion: string; applied: string[]; lines: string[]; notes: string[] }> {
-  const res = await requireOk(await request('POST', '/admin/migrate-preview', { tag }));
-  return (await res.json()) as { ok: boolean; targetVersion: string; applied: string[]; lines: string[]; notes: string[] };
-}
-
 // ── Backups (#499) ──────────────────────────────────────────────────────
 
 export interface BackupEntryView {
