@@ -10,14 +10,16 @@ import {
   resolveWorkspaceDir,
   resolveDataDir,
   resolveStackDir,
+  ensureHomeDirs,
 } from "./home.js";
-import { ensureSecrets } from "./secrets.js";
+import { ensureSecrets, ensureOpenCodeConfig } from "./secrets.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
   discoverStackOverlays,
   ensureComposeVolumeTargets,
 } from "./config-persistence.js";
+import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { seedOpenPalmDir } from "./ui-assets.js";
 import { ensureMigrated, ensureReleaseMigrated } from './migrations.js';
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
@@ -143,9 +145,14 @@ async function reconcileCore(
  *
  * Every step is a cheap no-op when already current:
  *   • ensureMigrated        — forward-only layout migrations (skip-if-done)
+ *   • ensureHomeDirs        — create the OP_HOME directory layout
  *   • seedOpenPalmDir       — skeleton data/ seed (stamp-gated, skip-existing) +
  *                             managed compose refresh from BUNDLED local source
+ *   • ensureOpenCode*       — starter OpenCode config + data dir (seed-if-missing)
  *   • ensureReleaseMigrated — forward-only release transforms (copy-only, idempotent)
+ *
+ * This is the ONLY function that writes OP_HOME's layout/assets, so callers never
+ * need to defensively re-ensure dirs or config themselves.
  *
  * Returns the assets it actually changed (the refreshed managed compose/config
  * files) and the backup directory a release migration created (if any), so
@@ -154,7 +161,11 @@ async function reconcileCore(
  */
 async function reconcileHome(state: ControlPlaneState): Promise<{ assetsUpdated: string[]; backupDir: string | null }> {
   ensureMigrated({ homeDir: state.homeDir });
+  ensureHomeDirs();
+  ensureSecrets(state);
   const seed = await seedOpenPalmDir(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
+  ensureOpenCodeConfig();
+  ensureOpenCodeSystemConfig();
   const release = ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: PLATFORM_VERSION });
   return {
     assetsUpdated: seed.updated,

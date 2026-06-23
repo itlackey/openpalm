@@ -8,10 +8,6 @@ import { getState } from "$lib/server/state.js";
 import {
   performUpgrade,
   createLogger,
-  ensureOpenCodeConfig,
-  ensureOpenCodeSystemConfig,
-  ensureSecrets,
-  ensureHomeDirs,
   ensureMigrated,
   MigrationError,
   checkDocker,
@@ -50,11 +46,8 @@ export const POST: RequestHandler = async (event) => {
 
   const state = getState();
 
-  ensureHomeDirs();
-  ensureOpenCodeConfig();
-  ensureOpenCodeSystemConfig();
-  ensureSecrets(state);
-
+  // performUpgrade's reconcile (inside reconcileStack → reconcileHome) does all
+  // OP_HOME setup — dirs, secrets, skeleton seed, OpenCode config, migrations.
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {
     logger.error("upgrade aborted: docker unavailable", { requestId, stderr: dockerCheck.stderr });

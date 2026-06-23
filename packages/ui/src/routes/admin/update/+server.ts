@@ -9,13 +9,10 @@ import { withSerialQueue } from "$lib/server/serial-queue.js";
 import {
   applyUpdate,
   createLogger,
-  ensureOpenCodeConfig,
-  ensureOpenCodeSystemConfig,
   ensureMigrated,
   MigrationError,
   buildComposeOptions,
   buildManagedServices,
-  ensureHomeDirs,
   composePull,
   composeUp,
   checkDocker,
@@ -52,15 +49,10 @@ export const POST: RequestHandler = async (event) => {
 
     const state = getState();
 
-    ensureHomeDirs();
-    ensureOpenCodeConfig();
-    ensureOpenCodeSystemConfig();
-    // applyUpdate runs the unified OP_HOME reconcile (layout migrations + bundled
-    // skeleton data/ seed + release transforms, all idempotent) and writes runtime
-    // files — it does NOT compose. The compose phase (pull-soft + force-recreate +
-    // per-service failure parsing) stays here, so it is the sole composeUp; the
-    // skeleton seed inside reconcileHome is what fixes data/<svc>/tools/package.json
-    // not being seeded on update. OpenCode session logs are the audit trail (D6a).
+    // applyUpdate runs the unified OP_HOME reconcile (dirs, secrets, skeleton
+    // seed, OpenCode config, migrations — all idempotent) and writes runtime
+    // files; it does NOT compose. The compose phase below (pull-soft +
+    // force-recreate + per-service failure parsing) is the sole composeUp.
     const result = await applyUpdate(state);
     logger.info("update applied, re-running compose", {
       requestId,

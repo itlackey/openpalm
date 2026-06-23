@@ -9,15 +9,11 @@ import { withSerialQueue } from "$lib/server/serial-queue.js";
 import {
   applyInstall,
   createLogger,
-  ensureOpenCodeConfig,
-  ensureOpenCodeSystemConfig,
-  ensureSecrets,
   ensureMigrated,
   MigrationError,
   buildComposeOptions,
   buildManagedServices,
   CORE_SERVICES,
-  ensureHomeDirs,
   composeUp,
   checkDocker,
 } from "@openpalm/lib";
@@ -55,23 +51,10 @@ export const POST: RequestHandler = async (event) => {
 
       const state = getState();
 
-      // 1. Ensure home directory tree exists
-      logger.info("ensuring home directories and seeding config", { requestId });
-      ensureHomeDirs();
-
-      // 2. Seed starter OpenCode config (opencode.json + tools/plugins/skills dirs)
-      ensureOpenCodeConfig();
-      ensureOpenCodeSystemConfig();
-
-      // 3. Write consolidated secrets file
-      ensureSecrets(state);
-
-      // 4. Reconcile OP_HOME + generate artifacts. applyInstall runs the unified
-      // OP_HOME reconcile (layout migrations + bundled skeleton data/ seed +
-      // release transforms, all idempotent) and writes runtime files — it does
-      // NOT compose. The compose phase stays here, so it is the sole composeUp
-      // (no double-recreate). OpenCode session logs are the audit trail (D6a in
-      // docs/technical/auth-and-proxy-refactor-plan.md).
+      // Reconcile OP_HOME: layout migrations, dir tree, secrets, skeleton seed,
+      // OpenCode config, release transforms — all idempotent, all inside
+      // applyInstall's reconcile. Writes runtime files but does NOT compose; the
+      // compose phase below is the sole composeUp (no double-recreate).
       await applyInstall(state);
 
       // 5. Run docker compose up — managed services derived from compose config
