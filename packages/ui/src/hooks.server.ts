@@ -21,12 +21,6 @@ import {
   composePs,
   deriveLaunchStatus,
   deriveLocalStackState,
-  ensureSecrets,
-  ensureOpenCodeConfig,
-  ensureOpenCodeSystemConfig,
-  resolveRuntimeFiles,
-  writeRuntimeFiles,
-  ensureHomeDirs,
   isSetupComplete,
   resolveStackDir,
   readStackRuntimeEnv,
@@ -59,7 +53,10 @@ export function _resetLaunchCache(): void {
   localStatusCache = null;
 }
 
-function runStartupApply(): void {
+// Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
+// install/update own every OP_HOME write (via reconcileHome), so merely serving
+// the UI never mutates the home directory — no startup "auto-apply".
+function loadProcessEnv(): void {
   if (startupApplyDone) return;
   startupApplyDone = true;
 
@@ -69,15 +66,12 @@ function runStartupApply(): void {
   }
 
   try {
-    ensureHomeDirs();
     const state = getState();
-    ensureSecrets(state);
     // Fallback for the UI login password: production `openpalm ui serve`
     // (packages/cli/src/lib/ui-server.ts) injects OP_UI_LOGIN_PASSWORD before
     // spawning the UI by reading the `op_ui_login_password` file secret. The
     // raw `vite dev` server has no such launcher, so when the env var is unset
-    // read it from the same file secret here (the single source of truth —
-    // lib's readSecret). No-op in production since the env var is already set.
+    // read it from the same file secret here. No-op in production.
     if (!process.env.OP_UI_LOGIN_PASSWORD) {
       const pw = readSecret(state.stackDir, "op_ui_login_password");
       if (pw) process.env.OP_UI_LOGIN_PASSWORD = pw.trimEnd();
@@ -88,21 +82,13 @@ function runStartupApply(): void {
     for (const [k, v] of Object.entries(stackVars)) {
       if (v && !process.env[k]) process.env[k] = v;
     }
-    ensureOpenCodeConfig();
-    ensureOpenCodeSystemConfig();
-    state.artifacts = resolveRuntimeFiles();
-    writeRuntimeFiles(state);
-
-    logger.info("startup auto-apply completed successfully", {
-      artifactMeta: state.artifactMeta,
-    });
   } catch (err) {
-    logger.error("startup auto-apply failed", { error: String(err) });
+    logger.error("process env load failed", { error: String(err) });
   }
 }
 
 // Run immediately on module load (server startup)
-runStartupApply();
+loadProcessEnv();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.
 
