@@ -1,24 +1,19 @@
 /**
- * Skeleton guardrail tests — validate .openpalm/ directory structure matches v0.11.0.
+ * Skeleton guardrail tests — validate packages/skeleton/ directory structure matches v0.11.0.
  *
- * The .openpalm/ directory is the repo-shipped OP_HOME skeleton. These tests
- * prevent reintroduction of pre-v0.11.0 directories (stack/, registry/,
- * stash-seeds/) and ensure the v0.11.0 structure stays intact.
+ * packages/skeleton/ is the repo-shipped OP_HOME skeleton (the SOURCE the
+ * runtime seeds OP_HOME from, resolveLocalOpenpalmDir -> packages/skeleton).
+ * These tests prevent reintroduction of pre-v0.11.0 directories (stack/,
+ * registry/, stash-seeds/) and ensure the v0.11.0 structure stays intact.
  */
 import { describe, test, expect } from "bun:test";
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
-import { join, resolve, relative } from "node:path";
+import { join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
-const SKELETON_DIR = join(REPO_ROOT, ".openpalm");
-// The published @openpalm/skeleton package — the SOURCE the runtime actually
-// seeds OP_HOME from (resolveLocalOpenpalmDir -> packages/skeleton). .openpalm/
-// is the dev template (dev-setup.sh). They MUST carry identical seedable assets;
-// when they drift, an upgrade seeds stale assets (e.g. a compose missing the
-// tools bind-mount) and containers fail. See the parity test below.
-const SKELETON_PKG_DIR = join(REPO_ROOT, "packages", "skeleton");
+const SKELETON_DIR = join(REPO_ROOT, "packages", "skeleton");
 
-// Allowed top-level dirs in .openpalm/ — mirrors the OP_HOME runtime layout
+// Allowed top-level dirs in the skeleton — mirrors the OP_HOME runtime layout
 const ALLOWED_SOURCE_DIRS = new Set([
   "config",     // seed files for config/ (assistant, guardian, stack/, akm/)
   "knowledge",      // knowledge source assets: skills/, env/, secrets/, tasks/
@@ -28,7 +23,7 @@ const ALLOWED_SOURCE_DIRS = new Set([
 
 // ── Top-level structure ───────────────────────────────────────────────
 
-describe("skeleton: .openpalm/ top-level directories", () => {
+describe("skeleton: top-level directories", () => {
   test("only allowed directories exist", () => {
     const entries = readdirSync(SKELETON_DIR);
     const dirs = entries.filter(e => {
@@ -62,7 +57,7 @@ describe("skeleton: helper scripts", () => {
 
 // ── config/ subdirectory ──────────────────────────────────────────────
 
-describe("skeleton: .openpalm/config/ structure", () => {
+describe("skeleton: config/ structure", () => {
   test("config/stack/ exists with fixed compose files (no stack.yml)", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "core.compose.yml"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "services.compose.yml"))).toBe(true);
@@ -134,57 +129,6 @@ describe("skeleton: .openpalm/config/ structure", () => {
   });
 });
 
-// ── .openpalm/ ↔ packages/skeleton/ parity (no silent drift) ──────────
-//
-// These two trees are the same seedable content for two consumers (dev-setup vs
-// the published package). Files unique to the package (package.json, manifest,
-// READMEs) and empty-dir markers are exempt; every other asset must be byte
-// identical. This guard would have caught the tool-management refactor shipping
-// the bind-mount compose to .openpalm but not to packages/skeleton.
-
-describe("skeleton: .openpalm and packages/skeleton stay in lockstep", () => {
-  // Basenames allowed to exist in only one tree / differ.
-  const EXEMPT = new Set(["package.json", "manifest.json", "tools.json", "README.md", ".gitkeep"]);
-
-  function walkAssets(root: string): Map<string, string> {
-    const out = new Map<string, string>();
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const abs = join(dir, entry.name);
-        if (entry.isDirectory()) { walk(abs); continue; }
-        if (EXEMPT.has(entry.name)) continue;
-        out.set(relative(root, abs), abs);
-      }
-    };
-    if (existsSync(root)) walk(root);
-    return out;
-  }
-
-  test("every shared seedable asset is byte-identical in both trees", () => {
-    const devTree = walkAssets(SKELETON_DIR);
-    const pkgTree = walkAssets(SKELETON_PKG_DIR);
-
-    const missingInPackage: string[] = [];
-    const missingInOpenpalm: string[] = [];
-    const contentDiffers: string[] = [];
-
-    for (const [rel, abs] of devTree) {
-      const pkgAbs = pkgTree.get(rel);
-      if (!pkgAbs) { missingInPackage.push(rel); continue; }
-      if (readFileSync(abs, "utf-8") !== readFileSync(pkgAbs, "utf-8")) contentDiffers.push(rel);
-    }
-    for (const rel of pkgTree.keys()) {
-      if (!devTree.has(rel)) missingInOpenpalm.push(rel);
-    }
-
-    expect({ contentDiffers, missingInPackage, missingInOpenpalm }).toEqual({
-      contentDiffers: [],
-      missingInPackage: [],
-      missingInOpenpalm: [],
-    });
-  });
-});
-
 // ── no runtime registry ───────────────────────────────────────────────
 
 describe("skeleton: no runtime registry", () => {
@@ -195,7 +139,7 @@ describe("skeleton: no runtime registry", () => {
 
 // ── knowledge/ subdirectory ───────────────────────────────────────────────
 
-describe("skeleton: .openpalm/knowledge/ structure", () => {
+describe("skeleton: knowledge/ structure", () => {
   test("knowledge/skills/ exists with config-diagnostics skill", () => {
     expect(existsSync(join(SKELETON_DIR, "knowledge", "skills", "config-diagnostics", "SKILL.md"))).toBe(true);
   });
@@ -215,7 +159,7 @@ describe("skeleton: .openpalm/knowledge/ structure", () => {
 
 // ── data/ service dirs ────────────────────────────────────────────────
 
-describe("skeleton: .openpalm/data/ service directories", () => {
+describe("skeleton: data/ service directories", () => {
   const serviceDirs = ["assistant", "guardian"];
 
   for (const dir of serviceDirs) {
@@ -240,7 +184,7 @@ describe("skeleton: .openpalm/data/ service directories", () => {
 
 // ── data/rollback and workspace/ ──────────────────────────────────────
 
-describe("skeleton: .openpalm/data/rollback and workspace/", () => {
+describe("skeleton: data/rollback and workspace/", () => {
   test("cache/ does not exist in the skeleton", () => {
     expect(existsSync(join(SKELETON_DIR, "cache"))).toBe(false);
   });

@@ -2,7 +2,7 @@
  * Install flow validation tests.
  *
  * Tier 1: File structure validation (no Docker containers, fast).
- *   - Seeds from LOCAL .openpalm/ directory (no GitHub fetch)
+ *   - Seeds from LOCAL packages/skeleton/ directory (no GitHub fetch)
  *   - Runs performSetup with a realistic SetupSpec
  *   - Validates every file, directory, and permission the install should produce
  *   - Validates compose config with `docker compose config --quiet`
@@ -25,7 +25,7 @@ import { parseEnvFile, expandEnvVars } from '@openpalm/lib';
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..');
-const OPENPALM_SRC = join(REPO_ROOT, '.openpalm');
+const OPENPALM_SRC = join(REPO_ROOT, 'packages', 'skeleton');
 const ASSISTANT_SRC = join(OPENPALM_SRC, 'config', 'assistant');
 const SKIP_INSTALL_FLOW_IN_CI = process.env.CI === 'true';
 const DOCKER_AVAILABLE = Boolean(Bun.which('docker'));
@@ -162,7 +162,7 @@ describe('install flow — tier 1 (file validation)', () => {
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
-    // Step 1: Seed from local .openpalm/
+    // Step 1: Seed from local packages/skeleton/
     seedFromLocal(homeDir, ['chat']);
 
     // Step 2: Run performSetup

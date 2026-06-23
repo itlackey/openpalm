@@ -244,7 +244,7 @@ chmod 700 "${SECRETS_DIR}"
 chmod 600 "${SECRETS_DIR}/"*
 
 # Seed core.compose.yml into config/stack/
-cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
+cp "${ROOT_DIR}/packages/skeleton/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
 # Seed opencode config
 cat >"${OP_HOME}/config/assistant/opencode.json" <<'EOF'
@@ -364,7 +364,7 @@ mkdir -p \
   "${DATA_DIR}/logs" "${OP_HOME}/workspace"
 
 # Step 2: Refresh compose (simulate download from GitHub)
-cp "${ROOT_DIR}/.openpalm/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
+cp "${ROOT_DIR}/packages/skeleton/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
 # Step 3: knowledge/env/user.env — must NOT be overwritten on upgrade
 if [[ -f "${STASH_DIR}/env/user.env" ]]; then

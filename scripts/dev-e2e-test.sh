@@ -107,7 +107,7 @@ echo "=== Step 2: Seed isolated OP_HOME at $OP_E2E_HOME ==="
 # Use dev-setup.sh but redirect DEV_ROOT to our isolated dir
 # dev-setup.sh hardcodes .dev, so we cp the skeleton manually instead
 mkdir -p "${OP_E2E_HOME}"
-cp -r .openpalm/. "${OP_E2E_HOME}/"
+cp -r packages/skeleton/. "${OP_E2E_HOME}/"
 
 # Seed stack.env with isolated non-secret values
 mkdir -p "${OP_E2E_HOME}/knowledge/secrets" "${OP_E2E_HOME}/knowledge/env"
@@ -142,7 +142,7 @@ mkdir -p "${OP_E2E_HOME}/knowledge/env"
 touch "${OP_E2E_HOME}/knowledge/env/user.env"
 chmod 600 "${OP_E2E_HOME}/knowledge/env/user.env"
 
-pass "Isolated OP_HOME seeded from .openpalm/"
+pass "Isolated OP_HOME seeded from packages/skeleton/"
 
 # ── Step 3: Build UI ─────────────────────────────────────────────────
 if [[ $SKIP_BUILD -eq 0 ]]; then

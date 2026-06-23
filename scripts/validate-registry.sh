@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# validate-registry.sh — CI validation for .openpalm/data/registry/addons/ directories.
+# validate-registry.sh — CI validation for packages/skeleton/data/registry/addons/ directories.
 #
-# Scans .openpalm/data/registry/addons/ and validates each addon:
+# Scans packages/skeleton/data/registry/addons/ and validates each addon:
 #   1. Has compose.yml + .env.schema
 #   2. compose.yml has required openpalm.name and openpalm.description labels
 #   3. compose.yml uses a static service name (not ${INSTANCE_ID})
@@ -15,14 +15,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ADDONS_DIR="$REPO_ROOT/.openpalm/data/registry/addons"
+ADDONS_DIR="$REPO_ROOT/packages/skeleton/data/registry/addons"
 
 errors=0
 checked=0
 
 if [ ! -d "$ADDONS_DIR" ]; then
 	# The file-based addon registry was removed from the skeleton (the
-	# skeleton-guardrail test asserts .openpalm/data/registry/ is absent; built-in
+	# skeleton-guardrail test asserts data/registry/ is absent; built-in
 	# addon credential schemas now live in-code in packages/lib registry.ts). With
 	# no bundled registry there is nothing to validate — skip cleanly. A
 	# materialized/custom registry, when present, is still validated below.

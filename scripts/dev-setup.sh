@@ -114,11 +114,13 @@ DATA_DIR="$DEV_ROOT/data"
 LOGS_DIR="$DEV_ROOT/data/logs"
 
 # ── Template sync ────────────────────────────────────────────────
-# `.openpalm/` in the repo IS the canonical OP_HOME template (per
-# CLAUDE.md and packages/lib/src/control-plane/home.ts). Mirror the
-# whole tree into .dev/ so any new file/dir the team adds there shows
-# up automatically — no per-file copy lines to keep in sync. Generated
-# files (env/stack.env, knowledge/secrets/auth.json, knowledge/secrets/, env/user.env) are excluded
+# `packages/skeleton/` in the repo IS the canonical OP_HOME template
+# (per CLAUDE.md and packages/lib/src/control-plane/ui-assets.ts). Mirror
+# the whole tree into .dev/ so any new file/dir the team adds there shows
+# up automatically — no per-file copy lines to keep in sync. The skeleton
+# package's own metadata (package.json, manifest.json, README.md) is NOT
+# a seedable OP_HOME asset and is excluded. Generated files (env/stack.env,
+# knowledge/secrets/auth.json, knowledge/secrets/, env/user.env) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
 # --force does a destructive resync (drop stale files that no longer
@@ -128,14 +130,18 @@ rsync_flags=(-a)
 [[ $force -eq 1 ]] && rsync_flags+=(--delete)
 
 rsync "${rsync_flags[@]}" \
+	--exclude=/package.json \
+	--exclude=/manifest.json \
+	--exclude=/tools.json \
+	--exclude=/README.md \
 	--exclude=knowledge/env/stack.env \
 	--exclude=knowledge/secrets \
 	--exclude=knowledge/secrets/auth.json \
 	--exclude=knowledge/env/user.env \
-	"$ROOT_DIR/.openpalm/" "$DEV_ROOT/"
+	"$ROOT_DIR/packages/skeleton/" "$DEV_ROOT/"
 
 # ── Runtime-only mount targets ───────────────────────────────────
-# Dirs the compose stack expects to bind-mount but `.openpalm/` doesn't
+# Dirs the compose stack expects to bind-mount but the skeleton doesn't
 # ship (they're per-container data, not config). All must exist before
 # `docker compose up` or bind-mount creation runs as root.
 mkdir -p \
