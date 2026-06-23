@@ -27,6 +27,24 @@
 ARG ASSISTANT_MODELS_IMAGE=openpalm/assistant-models:v1
 FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 
+# ── Tool builder stage ────────────────────────────────────────────────────────
+# Install the agent CLIs from the single operator-editable manifest, then
+# PARTITION node_modules into balanced groups. A single `npm install` produces
+# one ~3.5GB layer (~1.75GB compressed) that Docker Hub's CDN rejects on push
+# (HTTP 400 on the oversized blob). The final stage COPYs each group as its own
+# layer (each < ~1GB) so every blob is comfortably pushable. NOT --platform
+# pinned: native deps (onnxruntime, opencode/codex/copilot binaries) must match
+# the TARGET arch.
+FROM node:22-trixie-slim AS toolbuild
+WORKDIR /opt/openpalm/tools
+COPY containers/assistant/tools/package.json ./package.json
+RUN npm install --omit=dev --no-fund --no-audit \
+    && find node_modules/@anthropic-ai/claude-code -name "install.cjs" -exec node {} \; 2>/dev/null || true \
+    && find node_modules ! -perm -o+r -exec chmod a+rX {} + \
+    && mkdir -p /split/g1 /split/g2 \
+    && mv node_modules/@github node_modules/@huggingface /split/g1/ \
+    && mv node_modules/onnxruntime-node node_modules/@openai node_modules/@anthropic-ai /split/g2/
+
 FROM node:22-trixie-slim
 
 ARG BUN_VERSION=bun-v1.3.10
@@ -62,20 +80,16 @@ ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV BUN_INSTALL=
 
-# Bake default tool packages at /opt/openpalm/tools. npm is used here because
-# opencode-ai's postinstall downloads the native binary and internally calls npm.
-# At runtime, `bun update` updates within the declared semver ranges.
-# In compose, OP_HOME/data/assistant/tools is bind-mounted over this path so
-# operators can edit package.json directly; this bake speeds standalone starts.
+# Bake default tool packages at /opt/openpalm/tools, assembled from the toolbuild
+# stage as THREE COPY layers (g1, g2, and the remainder) so no single blob is the
+# ~1.75GB monolith Docker Hub rejects on push. --chown sets opencode (UID 1000)
+# ownership in-layer (no copy-up). At runtime, OP_HOME/data/assistant/tools is
+# bind-mounted over this path; operators edit package.json + `bun update` keeps
+# it current. The package.json is the single source of truth for the tool set.
+COPY --from=toolbuild --chown=1000:1000 /opt/openpalm/tools/node_modules /opt/openpalm/tools/node_modules
+COPY --from=toolbuild --chown=1000:1000 /split/g2/ /opt/openpalm/tools/node_modules/
+COPY --from=toolbuild --chown=1000:1000 /split/g1/ /opt/openpalm/tools/node_modules/
 COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
-# chmod ONLY the files that lack o+rX (find-scoped). A blanket `chmod -R` would
-# overlayfs-copy-up the entire node_modules into a single huge layer that Docker
-# Hub rejects on push (400 on the >1GB blob); find-scoped touches only the few
-# files needing the bit, keeping the layer small.
-RUN npm install --prefix /opt/openpalm/tools --omit=dev --no-fund --no-audit \
-    && find /opt/openpalm/tools/node_modules/@anthropic-ai/claude-code -name "install.cjs" -exec node {} \; 2>/dev/null || true \
-    && find /opt/openpalm/tools/node_modules ! -perm -o+r -exec chmod a+rX {} + \
-    && chown -R 1000:1000 /opt/openpalm/tools
 
 # Pre-bake akm's default local embedding model so semantic search works out of
 # the box with NO embedding configuration and NO runtime network. When
