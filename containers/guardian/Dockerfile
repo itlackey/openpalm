@@ -21,7 +21,7 @@ ENV HOME=/opt/openpalm/guardian \
 # OP_HOME/data/guardian/tools is bind-mounted over this path so operators
 # can edit package.json directly.
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
-RUN npm install --prefix /opt/openpalm/tools --omit=dev --no-fund --no-audit \
+RUN bun install --cwd /opt/openpalm/tools --production \
     && chmod -R a+rX /opt/openpalm/tools/node_modules
 
 EXPOSE 8080
