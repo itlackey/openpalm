@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/admin-tools-plugin",
-  "version": "0.12.33",
+  "version": "0.12.34",
   "type": "module",
   "license": "MPL-2.0",
   "description": "Admin OpenCode tools for the Electron-spawned ephemeral OpenCode server (Phase 3 of the auth/proxy refactor)",
