@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # Updated automatically by release workflow — do not edit manually
-SCRIPT_VERSION="0.12.31"
+SCRIPT_VERSION="0.12.32"
 
 # ── Colors ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
