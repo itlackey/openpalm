@@ -29,7 +29,7 @@ export const SERVICE_VERSION_KEYS = [
 /**
  * Maps each service version key to its Docker Hub image name (without namespace).
  * Namespace defaults to "openpalm" (OP_IMAGE_NAMESPACE env var in compose).
- * Source: .openpalm/config/stack/core.compose.yml + services.compose.yml + portals.compose.yml.
+ * Source: packages/skeleton/config/stack/core.compose.yml + services.compose.yml + portals.compose.yml.
  *
  * NOTE: voice tags carry a variant suffix in compose (e.g. "-cpu", "-cu121") that is
  * appended by the compose file itself. OP_VOICE_VERSION holds only the base semver part.

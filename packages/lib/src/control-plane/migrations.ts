@@ -289,13 +289,6 @@ function stampReleaseVersion(stashDir: string, version: string): boolean {
   return true;
 }
 
-function upsertMany(content: string, values: Record<string, string>): string {
-  return Object.entries(values).reduce(
-    (next, [key, value]) => upsertEnvValue(next, key, value),
-    content,
-  );
-}
-
 // ── helpers (non-destructive: copy, never delete the source) ──────────────────
 
 function ensureDir(ctx: MigrationCtx, dir: string): void {

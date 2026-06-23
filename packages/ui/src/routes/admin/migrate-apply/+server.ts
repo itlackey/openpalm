@@ -16,8 +16,7 @@ import type { RequestHandler } from "./$types";
 const logger = createLogger("migrate-apply");
 
 /**
- * Apply the pending on-disk migration and report the result. This is the
- * lightweight counterpart to /admin/migrate-preview: it runs the REAL
+ * Apply the pending on-disk migration and report the result. Runs the REAL
  * `ensureMigrated()` (layout migrations + release migrations up to the home's
  * recorded version), which takes a full-home backup first and is idempotent.
  *
