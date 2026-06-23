@@ -40,8 +40,14 @@ async function resolveNpmLatest(pkg: string): Promise<string | null> {
 
 async function resolveDockerLatest(image: string): Promise<string | null> {
   try {
+    // Order by last_updated (newest push first), NOT -name. -name is
+    // lexicographic, so "v0.12.9" sorts above "v0.12.33"; and once a repo
+    // accumulates >100 tags (sha-*, rc, arch variants), the newest stable
+    // release falls outside the first page entirely — the UI then reports a
+    // stale "latest". last_updated keeps the most recent releases in-window;
+    // the semverCompare below still picks the highest stable among them.
     const res = await fetch(
-      `https://hub.docker.com/v2/repositories/${DOCKER_HUB_NAMESPACE}/${image}/tags?page_size=100&ordering=-name`,
+      `https://hub.docker.com/v2/repositories/${DOCKER_HUB_NAMESPACE}/${image}/tags?page_size=100&ordering=last_updated`,
       { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) }
     );
     if (!res.ok) return null;
