@@ -167,6 +167,14 @@ ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 #   /usr/local/bin             — image-baked system tools
 ENV PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
+# A login shell (`bash -l`, e.g. the release smoke test and interactive ssh)
+# re-runs /etc/profile, which on Debian overwrites PATH with the system default
+# and drops the managed tool dirs from the ENV PATH above. Re-prepend them via
+# profile.d so agent CLIs (opencode/akm/claude/codex/copilot/pi) resolve in
+# login shells too.
+RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:$PATH"\n' \
+      > /etc/profile.d/openpalm-tools.sh
+
 # OpenCode config (opencode.jsonc, openpalm.md, system.md) lives in
 # OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.
 # AGENTS.md is baked here as a default; the entrypoint seeds it into
