@@ -258,9 +258,6 @@ export {
   ensureOpenCodeSystemConfig,
   refreshCoreAssetsFromSource,
   seedAssistantPersonaFiles,
-  GUARDIAN_MANAGED_ASSETS,
-  SHIPPED_DEFAULT_HASHES,
-  isUnmodifiedDefault,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────

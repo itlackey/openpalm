@@ -159,7 +159,7 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "core.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "services.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "portals.compose.yml"), "services: {}\n");
-    // SEEDED_ASSETS are also read from source when the target is absent.
+    // Seeded once by the skip-existing copyTree (custom.compose.yml, opencode.jsonc).
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "custom.compose.yml"), "services: {}\n");
     mkdirSync(join(repoRoot, "packages", "skeleton", "config", "assistant"), { recursive: true });
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "assistant", "opencode.jsonc"), "{}\n");
