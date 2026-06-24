@@ -38,7 +38,7 @@ jobs:
             --include='*.ps1' \
             --include='*.yml' \
             '["'"'"']stack\.yml["'"'"']' \
-            packages core scripts .openpalm/config/stack || true)
+            packages core scripts packages/skeleton/config/stack || true)
 
           if [ -z "$matches" ]; then
             echo "::error::Expected the legacy stack.yml migration reader in migrations.ts"
@@ -59,7 +59,7 @@ jobs:
       - name: Gate host bind safety defaults
         run: |
           set -euo pipefail
-          published=$(grep -nE '^[[:space:]]+- ".*\$\{OP_[A-Z0-9_]+PORT.*:[0-9]+"' .openpalm/config/stack/*.yml || true)
+          published=$(grep -nE '^[[:space:]]+- ".*\$\{OP_[A-Z0-9_]+PORT.*:[0-9]+"' packages/skeleton/config/stack/*.yml || true)
 
           if [ -z "$published" ]; then
             echo "::error::No published port bindings found to validate"
@@ -164,14 +164,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${OP_HOME}/config/stack" "${OP_HOME}/knowledge/env" "${OP_HOME}/knowledge/secrets" "${OP_HOME}/data"
-          docker compose -f .openpalm/config/stack/core.compose.yml -f compose.dev.yml config -q
+          docker compose -f packages/skeleton/config/stack/core.compose.yml -f compose.dev.yml config -q
 
       - name: Assert deleted scripts are absent
         run: |
           set -euo pipefail
           # start.sh was deleted in P1-5 (0.10.0 cleanup). Prevent reintroduction.
-          if [ -f ".openpalm/stack/start.sh" ]; then
-            echo "::error file=.openpalm/stack/start.sh::.openpalm/stack/start.sh must not exist — deleted in P1-5 cleanup"
+          if [ -f "packages/skeleton/stack/start.sh" ]; then
+            echo "::error file=packages/skeleton/stack/start.sh::packages/skeleton/stack/start.sh must not exist — deleted in P1-5 cleanup"
             exit 1
           fi
           for path in scripts/migrate-0.10-to-0.11.sh scripts/migrate-0.10-to-0.11.ps1; do
@@ -192,7 +192,7 @@ jobs:
           # Also validate catalog automation YAML files are well-formed
           pip install --quiet PyYAML
           errors=0
-          for f in .openpalm/data/registry/automations/*.yml; do
+          for f in packages/skeleton/knowledge/tasks/*.yml; do
             if [ ! -f "$f" ]; then continue; fi
             if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/dev/null; then
               echo "::error file=$f::Invalid YAML: $f"

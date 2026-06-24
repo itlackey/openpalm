@@ -758,7 +758,7 @@ jobs:
           UNIT="${{ inputs.unit }}"
           mkdir -p dist
           tar -czf "dist/openpalm-${UNIT}-${VERSION}-deploy-bundle.tar.gz" \
-            .openpalm containers packages portals scripts README.md
+            containers packages portals scripts README.md
 
       - name: Download CLI artifacts
         if: inputs.unit == 'platform' || inputs.unit == 'all'
