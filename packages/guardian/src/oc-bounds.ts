@@ -13,7 +13,7 @@
  *      window per principal. A reconnect loop (mobile, gateway flaps) or an
  *      adversary must not be able to churn reconnections without bound.
  *   2. Concurrent /event streams per principal (§3.6): at most
- *      OC_EVENT_MAX_CONCURRENT_STREAMS open at once; a second open is rejected
+ *      ocEventMaxConcurrentStreams() open at once; a second open is rejected
  *      429 — the portal must close the first. Prevents unbounded held-open
  *      streams from one principal.
  *   3. In-flight turns per principal (§3.6): at most OC_MAX_INFLIGHT_TURNS
@@ -52,9 +52,10 @@ export const OC_EVENT_RECONNECT_WINDOW_MS = Number(
  * is never rejected in normal use; it exists only to bound a true runaway leak.
  * Set to 0 to disable the concurrent-stream cap entirely.
  */
-export const OC_EVENT_MAX_CONCURRENT_STREAMS = Number(
-  Bun.env.GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS ?? 64,
-);
+// Read lazily so a test can set the cap and exercise it in-process. Prod identical.
+export function ocEventMaxConcurrentStreams(): number {
+  return Number(Bun.env.GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS ?? 64);
+}
 
 /**
  * Max concurrent in-flight prompt turns per principal. A turn is a
@@ -116,12 +117,12 @@ const streamCounts = new Map<string, number>();
 /**
  * Try to reserve a concurrent-stream slot for the principal. Returns true if a
  * slot was reserved (caller MUST call releaseEventStream on close), false if the
- * principal is already at OC_EVENT_MAX_CONCURRENT_STREAMS (caller → 429).
+ * principal is already at ocEventMaxConcurrentStreams() (caller → 429).
  */
 export function reserveEventStream(principal: Principal): boolean {
   const key = principalKey(principal);
   const current = streamCounts.get(key) ?? 0;
-  if (OC_EVENT_MAX_CONCURRENT_STREAMS > 0 && current >= OC_EVENT_MAX_CONCURRENT_STREAMS) return false;
+  if (ocEventMaxConcurrentStreams() > 0 && current >= ocEventMaxConcurrentStreams()) return false;
   streamCounts.set(key, current + 1);
   if (streamCounts.size > PRINCIPAL_STREAMS_MAX) pruneZeroStreams();
   return true;

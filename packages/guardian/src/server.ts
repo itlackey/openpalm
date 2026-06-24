@@ -9,7 +9,7 @@ import { sessionOwnerCount, permissionOwnerCount } from './ownership';
 import {
   activeStreamPrincipalCount,
   inflightTurnCount,
-  OC_EVENT_MAX_CONCURRENT_STREAMS,
+  ocEventMaxConcurrentStreams,
   OC_EVENT_RECONNECT_LIMIT,
   OC_MAX_INFLIGHT_TURNS,
   OC_TURN_WALL_CLOCK_MS,
@@ -73,7 +73,7 @@ function statsResponse(): Response {
       inflight_turns: inflightTurnCount(),
       bounds: {
         event_reconnect_limit: OC_EVENT_RECONNECT_LIMIT,
-        event_max_concurrent_streams: OC_EVENT_MAX_CONCURRENT_STREAMS,
+        event_max_concurrent_streams: ocEventMaxConcurrentStreams(),
         max_inflight_turns: OC_MAX_INFLIGHT_TURNS,
         turn_wall_clock_ms: OC_TURN_WALL_CLOCK_MS,
       },
