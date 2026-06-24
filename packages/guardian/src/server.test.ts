@@ -1,23 +1,24 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import type { Subprocess } from 'bun';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { OC_DOC_FIXTURE } from './oc-doc-fixture';
+import { handleInternalRequest } from './server';
+import { _setProxyEnabledForTest } from './drift';
+import { initializePrincipalStore, seedPortalPrincipalsFromEnv, _resetDatabaseForTest } from './state-db';
 
 const TEST_SECRET = 'test-secret-value-1234';
 const TEST_PRINCIPAL = 'test';
 
-let guardianProc: Subprocess;
+// IN-PROCESS: the guardian's config (assistant URL, db path, flags) is now read
+// lazily, so we drive `handleInternalRequest` directly with a Request — no
+// `bun run src/server.ts` subprocess, no ports to bind, no readiness polling, no
+// leaked processes. The only real server is the mock upstream assistant.
 let mockAssistantServer: ReturnType<typeof Bun.serve>;
-let guardianUrl: string;
 let tmpDir: string;
 let assistantPort = 0;
-let guardianPort = 0;
-let directPort = 0;
-let adminPort = 0;
 let sessionCreateCount = 0;
 let messageCount = 0;
 let lastCreateBody: unknown = null;
@@ -44,6 +45,11 @@ function authorization(secret = TEST_SECRET, principalId = TEST_PRINCIPAL): stri
   return `Basic ${Buffer.from(`${principalId}:${secret}`, 'utf-8').toString('base64')}`;
 }
 
+/** Call the internal listener's handler directly (in-process, no HTTP server). */
+function internal(path: string, init: RequestInit = {}): Promise<Response> {
+  return handleInternalRequest(new Request(`http://guardian${path}`, init));
+}
+
 function ocCall(
   path: string,
   init: RequestInit = {},
@@ -53,16 +59,7 @@ function ocCall(
   headers.set('authorization', authorization(opts.secret, opts.principalId));
   if (opts.userId) headers.set('x-openpalm-user', opts.userId);
   if (opts.sessionKey) headers.set('x-openpalm-session-key', opts.sessionKey);
-  return fetch(`${guardianUrl}/oc${path}`, { ...init, headers });
-}
-
-async function waitForProxyEnabled(): Promise<void> {
-  for (let i = 0; i < 50; i++) {
-    const resp = await fetch(`${guardianUrl}/stats`);
-    if (resp.ok && (await resp.json()).oc_proxy?.enabled === true) return;
-    await Bun.sleep(100);
-  }
-  throw new Error('guardian /oc proxy did not enable');
+  return internal(`/oc${path}`, { ...init, headers });
 }
 
 function startMockAssistant(): ReturnType<typeof Bun.serve> {
@@ -105,50 +102,29 @@ function startMockAssistant(): ReturnType<typeof Bun.serve> {
 
 beforeAll(async () => {
   assistantPort = await getAvailablePort();
-  guardianPort = await getAvailablePort();
-  directPort = await getAvailablePort();
-  adminPort = await getAvailablePort();
-
   tmpDir = mkdtempSync(join(tmpdir(), 'guardian-test-'));
   const secretPath = join(tmpDir, 'test-secret');
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
 
+  // Configure the guardian in-process (all read lazily now).
+  Bun.env.GUARDIAN_STATE_DB_PATH = join(tmpDir, 'state.db');
+  Bun.env.GUARDIAN_AUDIT_PATH = join(tmpDir, 'audit.log');
+  Bun.env.OP_ASSISTANT_URL = `http://127.0.0.1:${assistantPort}`;
+  Bun.env.PORTAL_TEST_SECRET_FILE = secretPath;
+
   mockAssistantServer = startMockAssistant();
 
-  guardianProc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
-    cwd: join(import.meta.dir, '..'),
-    env: {
-      ...process.env,
-      PORT: String(guardianPort),
-      GUARDIAN_DIRECT_PORT: String(directPort),
-      GUARDIAN_ADMIN_PORT: String(adminPort),
-      GUARDIAN_STATE_DB_PATH: join(tmpDir, 'state.db'),
-      PORTAL_TEST_SECRET_FILE: secretPath,
-      OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
-      GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
-    },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-
-  guardianUrl = `http://127.0.0.1:${guardianPort}`;
-  for (let i = 0; i < 50; i++) {
-    if (guardianProc.exitCode !== null) throw new Error(`guardian exited before ready with code ${guardianProc.exitCode}`);
-    try {
-      const resp = await fetch(`${guardianUrl}/health`);
-      if (resp.ok) break;
-    } catch {
-      // not ready yet
-    }
-    await Bun.sleep(100);
-  }
-
-  await waitForProxyEnabled();
+  _resetDatabaseForTest();
+  initializePrincipalStore();
+  seedPortalPrincipalsFromEnv();
+  _setProxyEnabledForTest(true); // skip the async drift handshake — deterministic
 });
 
 afterAll(() => {
-  guardianProc?.kill();
   mockAssistantServer?.stop(true);
+  _setProxyEnabledForTest(false);
+  _resetDatabaseForTest();
+  delete Bun.env.PORTAL_TEST_SECRET_FILE;
   try {
     rmSync(tmpDir, { recursive: true, force: true });
   } catch {
@@ -158,7 +134,7 @@ afterAll(() => {
 
 describe('Guardian server integration', () => {
   it('GET /health returns service metadata', async () => {
-    const resp = await fetch(`${guardianUrl}/health`);
+    const resp = await internal('/health');
     expect(resp.status).toBe(200);
     const data = await resp.json();
     expect(data.ok).toBe(true);
@@ -166,14 +142,14 @@ describe('Guardian server integration', () => {
   });
 
   it('GET /health/ready returns 200 when the proxy is enabled', async () => {
-    const resp = await fetch(`${guardianUrl}/health/ready`);
+    const resp = await internal('/health/ready');
     expect(resp.status).toBe(200);
     const data = await resp.json();
     expect(data.ready).toBe(true);
   });
 
   it('GET /stats reports current proxy and listener state', async () => {
-    const resp = await fetch(`${guardianUrl}/stats`);
+    const resp = await internal('/stats');
     expect(resp.status).toBe(200);
     const data = await resp.json();
     expect(Array.isArray(data.principals)).toBe(true);
@@ -206,7 +182,7 @@ describe('Guardian server integration', () => {
   });
 
   it('missing Basic auth returns 401 unauthorized', async () => {
-    const resp = await fetch(`${guardianUrl}/oc/session`, { method: 'GET' });
+    const resp = await internal('/oc/session', { method: 'GET' });
     expect(resp.status).toBe(401);
     expect((await resp.json()).error).toBe('unauthorized');
   });
@@ -225,110 +201,61 @@ describe('Guardian server integration', () => {
 
   it('assistant outage on session creation returns 502 oc_session_create_failed', async () => {
     mockAssistantServer.stop(true);
-    await Bun.sleep(100);
-
+    await Bun.sleep(50);
     try {
       const resp = await ocCall('/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }, { userId: 'down-u', sessionKey: 'down-thread' });
       expect(resp.status).toBe(502);
       expect((await resp.json()).error).toBe('oc_session_create_failed');
     } finally {
       mockAssistantServer = startMockAssistant();
-      await waitForProxyEnabled();
     }
   });
 
   it('unknown route returns 404', async () => {
-    const resp = await fetch(`${guardianUrl}/unknown`);
+    const resp = await internal('/unknown');
     expect(resp.status).toBe(404);
     expect((await resp.json()).error).toBe('not_found');
   });
 });
 
 describe('Guardian portal secret startup contract', () => {
-  it('ignores the legacy GUARDIAN_REQUIRE_PORTAL_SECRETS flag under principal seeding', async () => {
-    const port = await getAvailablePort();
-    const direct = await getAvailablePort();
-    const admin = await getAvailablePort();
-    const localTmpDir = mkdtempSync(join(tmpdir(), 'guardian-no-secrets-'));
-    const proc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
-      cwd: join(import.meta.dir, '..'),
-      env: {
-        PATH: process.env.PATH ?? '',
-        PORT: String(port),
-        GUARDIAN_DIRECT_PORT: String(direct),
-        GUARDIAN_ADMIN_PORT: String(admin),
-        GUARDIAN_STATE_DB_PATH: join(localTmpDir, 'state.db'),
-        OP_ASSISTANT_URL: 'http://127.0.0.1:1',
-        GUARDIAN_AUDIT_PATH: join(localTmpDir, 'audit.log'),
-        GUARDIAN_REQUIRE_PORTAL_SECRETS: 'true',
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+  // Boot = principal seeding succeeds and the proxy serves /health. Driven
+  // in-process: seed under the given env, assert the grant contract + health.
+  function reseed(): void {
+    _resetDatabaseForTest();
+    initializePrincipalStore();
+    seedPortalPrincipalsFromEnv();
+  }
 
+  it('ignores the legacy GUARDIAN_REQUIRE_PORTAL_SECRETS flag under principal seeding', async () => {
+    const prev = Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS;
+    Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS = 'true';
     try {
-      const url = `http://127.0.0.1:${port}`;
-      let ready = false;
-      for (let i = 0; i < 50; i++) {
-        if (proc.exitCode !== null) break;
-        try {
-          const resp = await fetch(`${url}/health`);
-          if (resp.ok) {
-            ready = true;
-            break;
-          }
-        } catch {
-          // not ready yet
-        }
-        await Bun.sleep(100);
-      }
-      expect(ready).toBe(true);
+      _resetDatabaseForTest();
+      initializePrincipalStore();
+      const seeded = seedPortalPrincipalsFromEnv(); // PORTAL_TEST_SECRET_FILE set in beforeAll
+      expect(seeded.some((p) => p.id === TEST_PRINCIPAL)).toBe(true); // flag ignored — still seeds
+      expect((await internal('/health')).status).toBe(200);
     } finally {
-      proc.kill();
-      rmSync(localTmpDir, { recursive: true, force: true });
+      if (prev === undefined) delete Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS;
+      else Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS = prev;
+      reseed();
     }
   });
 
   it('allows zero portal grants for a core-only no-portal stack', async () => {
-    const port = await getAvailablePort();
-    const direct = await getAvailablePort();
-    const admin = await getAvailablePort();
-    const localTmpDir = mkdtempSync(join(tmpdir(), 'guardian-empty-secrets-'));
-    const proc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
-      cwd: join(import.meta.dir, '..'),
-      env: {
-        PATH: process.env.PATH ?? '',
-        PORT: String(port),
-        GUARDIAN_DIRECT_PORT: String(direct),
-        GUARDIAN_ADMIN_PORT: String(admin),
-        GUARDIAN_STATE_DB_PATH: join(localTmpDir, 'state.db'),
-        OP_ASSISTANT_URL: 'http://127.0.0.1:1',
-        GUARDIAN_AUDIT_PATH: join(localTmpDir, 'audit.log'),
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-
+    const prev = Bun.env.PORTAL_TEST_SECRET_FILE;
+    delete Bun.env.PORTAL_TEST_SECRET_FILE;
     try {
-      const url = `http://127.0.0.1:${port}`;
-      let ready = false;
-      for (let i = 0; i < 50; i++) {
-        if (proc.exitCode !== null) break;
-        try {
-          const resp = await fetch(`${url}/health`);
-          if (resp.ok) {
-            ready = true;
-            break;
-          }
-        } catch {
-          // not ready yet
-        }
-        await Bun.sleep(100);
-      }
-      expect(ready).toBe(true);
+      _resetDatabaseForTest();
+      initializePrincipalStore();
+      const seeded = seedPortalPrincipalsFromEnv(); // no portal secrets present
+      expect(seeded).toEqual([]); // zero grants is allowed — no throw, boot continues
+      expect((await internal('/health')).status).toBe(200);
     } finally {
-      proc.kill();
-      rmSync(localTmpDir, { recursive: true, force: true });
+      if (prev === undefined) delete Bun.env.PORTAL_TEST_SECRET_FILE;
+      else Bun.env.PORTAL_TEST_SECRET_FILE = prev;
+      reseed();
     }
   });
 });
