@@ -31,10 +31,12 @@ function envFlag(name: string): boolean {
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
-const ENABLED = envFlag("GUARDIAN_CONTENT_VALIDATION");
-const MODERATOR_URL = Bun.env.GUARDIAN_MODERATION_URL ?? "http://127.0.0.1:4097";
-const TIMEOUT_MS = Number(Bun.env.GUARDIAN_MODERATION_TIMEOUT_MS ?? 4_000);
-const ESCALATE_THRESHOLD = Number(Bun.env.GUARDIAN_MODERATION_THRESHOLD ?? 3);
+// Read lazily so tests can flip the switch + point the moderator at a mock
+// without spawning a subprocess. Prod behaviour is identical (same env/defaults).
+function moderationEnabled(): boolean { return envFlag("GUARDIAN_CONTENT_VALIDATION"); }
+function moderatorUrl(): string { return Bun.env.GUARDIAN_MODERATION_URL ?? "http://127.0.0.1:4097"; }
+function moderatorTimeoutMs(): number { return Number(Bun.env.GUARDIAN_MODERATION_TIMEOUT_MS ?? 4_000); }
+function escalateThresholdDefault(): number { return Number(Bun.env.GUARDIAN_MODERATION_THRESHOLD ?? 3); }
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -75,13 +77,13 @@ export async function moderateMessage(
   metadata: unknown,
   deps: ModerateDeps = {},
 ): Promise<ModerationResult> {
-  const enabled = deps.enabled ?? ENABLED;
+  const enabled = deps.enabled ?? moderationEnabled();
   if (!enabled) {
     return { verdict: "allow", reason: "validation disabled", source: "disabled", signals: [], score: 0 };
   }
 
   const screen = screenContent(text, metadata);
-  const threshold = deps.escalateThreshold ?? ESCALATE_THRESHOLD;
+  const threshold = deps.escalateThreshold ?? escalateThresholdDefault();
 
   // Fast path: nothing suspicious → allow without touching the model.
   if (screen.risk < threshold) {
@@ -158,11 +160,13 @@ function* jsonObjectCandidates(raw: string): Generator<string> {
 
 // ── Default moderator (local OpenCode) ───────────────────────────────────────
 
-const MODERATOR_CLIENT: AssistantClientOptions = Object.freeze({
-  baseUrl: MODERATOR_URL,
-  createTimeoutMs: TIMEOUT_MS,
-  messageTimeoutMs: TIMEOUT_MS,
-});
+function moderatorClient(): AssistantClientOptions {
+  return {
+    baseUrl: moderatorUrl(),
+    createTimeoutMs: moderatorTimeoutMs(),
+    messageTimeoutMs: moderatorTimeoutMs(),
+  };
+}
 
 /**
  * Build the classifier prompt. The user's message is wrapped in unambiguous
@@ -199,10 +203,10 @@ export function buildModerationPrompt(text: string, signals: ContentSignal[]): s
  */
 async function callOpenCodeModerator(text: string, signals: ContentSignal[]): Promise<string> {
   const prompt = buildModerationPrompt(text, signals);
-  const sessionId = await createSession(MODERATOR_CLIENT, "moderation");
+  const sessionId = await createSession(moderatorClient(), "moderation");
   try {
-    return await sendMessage(MODERATOR_CLIENT, sessionId, prompt);
+    return await sendMessage(moderatorClient(), sessionId, prompt);
   } finally {
-    deleteSession(MODERATOR_CLIENT, sessionId).catch(() => {});
+    deleteSession(moderatorClient(), sessionId).catch(() => {});
   }
 }
