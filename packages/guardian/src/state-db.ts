@@ -14,14 +14,8 @@ export type PrincipalRecord = {
   createdAt: number;
 };
 
-// Read lazily, not into a module-load-time const: a frozen path is what forced
-// integration tests to spawn a subprocess just to point the DB at a temp file.
-// Reading per-open lets a test set GUARDIAN_STATE_DB_PATH and drive the store
-// in-process. Prod behaviour is identical (same env, same default).
-function dbPath(): string {
-  const home = Bun.env.HOME ?? '/opt/openpalm/guardian';
-  return Bun.env.GUARDIAN_STATE_DB_PATH ?? join(home, 'state.db');
-}
+const GUARDIAN_HOME = Bun.env.HOME ?? '/opt/openpalm/guardian';
+const DB_PATH = Bun.env.GUARDIAN_STATE_DB_PATH ?? join(GUARDIAN_HOME, 'state.db');
 
 let db: Database | null = null;
 
@@ -75,9 +69,9 @@ function migrateKindConstraintIfNeeded(database: Database): void {
 
 function openDatabase(): Database {
   if (db) return db;
-  mkdirSync(dirname(dbPath()), { recursive: true, mode: 0o700 });
-  db = new Database(dbPath(), { create: true });
-  chmodSync(dbPath(), 0o600);
+  mkdirSync(dirname(DB_PATH), { recursive: true, mode: 0o700 });
+  db = new Database(DB_PATH, { create: true });
+  chmodSync(DB_PATH, 0o600);
 
   // Run the kind-constraint migration BEFORE creating the table (if the table
   // already exists with the old schema the CREATE IF NOT EXISTS below is a

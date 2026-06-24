@@ -11,9 +11,9 @@ const logger = createLogger('guardian:mcp');
 
 const MCP_PRINCIPAL_ID = 'mcp';
 const MCP_LABEL = 'guardian-mcp';
-// Read lazily so MCP can be exercised in-process (no subprocess). Prod identical.
-function mcpTokenFile(): string { return Bun.env.GUARDIAN_MCP_TOKEN_FILE ?? ''; }
-function directBaseUrl(): string { return `http://127.0.0.1:${Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830)}`; }
+const MCP_TOKEN_FILE = Bun.env.GUARDIAN_MCP_TOKEN_FILE ?? '';
+const DIRECT_PORT = Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830);
+const DIRECT_BASE_URL = `http://127.0.0.1:${DIRECT_PORT}`;
 
 type JsonObject = Record<string, unknown>;
 
@@ -35,9 +35,9 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 
 function readMcpToken(): string {
-  if (!mcpTokenFile()) return '';
+  if (!MCP_TOKEN_FILE) return '';
   try {
-    return readFileSync(mcpTokenFile(), 'utf-8').replace(/[\r\n]+$/, '');
+    return readFileSync(MCP_TOKEN_FILE, 'utf-8').replace(/[\r\n]+$/, '');
   } catch {
     return '';
   }
@@ -106,7 +106,7 @@ async function askAssistant(prompt: string, userId: string, sessionKey: string, 
     'x-openpalm-session-key': sessionKey,
   });
 
-  const sessionRes = await fetch(`${directBaseUrl()}/oc/session`, {
+  const sessionRes = await fetch(`${DIRECT_BASE_URL}/oc/session`, {
     method: 'POST',
     headers,
     body: '{}',
@@ -129,7 +129,7 @@ async function askAssistant(prompt: string, userId: string, sessionKey: string, 
     };
   }
 
-  const messageRes = await fetch(`${directBaseUrl()}/oc/session/${sessionBody.id}/message`, {
+  const messageRes = await fetch(`${DIRECT_BASE_URL}/oc/session/${sessionBody.id}/message`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ parts: [{ type: 'text', text: prompt }] }),

@@ -69,14 +69,7 @@ const logger = createLogger("guardian:proxy");
 /** Base path under which the native OpenCode proxy is served. */
 export const OC_PREFIX = "/oc";
 
-// Read per-call, not into a module-load-time const: a frozen const is what
-// forced every integration test to spawn a fresh guardian subprocess just to
-// point it at a mock assistant. Reading the env lazily lets the guardian be
-// driven in-process (set OP_ASSISTANT_URL, call the handler). Prod behaviour is
-// identical — same env, same default.
-function assistantUrl(): string {
-  return Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
-}
+const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
 
 // Wire the stale-turn reaper's abort side-effect (§3.6 per-turn wall-clock cap).
@@ -85,7 +78,7 @@ const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576
 // unit-testable); the proxy owns that side-effect. Best-effort, fire-and-forget.
 setTurnAbortFn((sessionId) => {
   const headers = new Headers({ "content-type": "application/json" });
-  void fetch(`${assistantUrl()}/session/${sessionId}/abort`, { method: "POST", headers, body: "{}" })
+  void fetch(`${ASSISTANT_URL}/session/${sessionId}/abort`, { method: "POST", headers, body: "{}" })
     .then(() => logger.warn("oc_turn_wall_clock_abort", { sessionId }))
     .catch((err) => logger.error("oc_turn_abort_failed", { sessionId, error: String(err) }));
 });
@@ -623,7 +616,7 @@ async function forwardSessionCreate(
 }
 
 async function findExistingOcSessionId(req: Request, title: string): Promise<string | null> {
-  const upstream = await fetch(`${assistantUrl()}/session`, {
+  const upstream = await fetch(`${ASSISTANT_URL}/session`, {
     method: 'GET',
     headers: buildUpstreamHeaders(req, false),
     signal: req.signal,
@@ -706,7 +699,7 @@ function fetchUpstream(
   search: string,
   body: string | undefined,
 ): Promise<Response> {
-  const targetUrl = `${assistantUrl()}${rawPath}${search}`;
+  const targetUrl = `${ASSISTANT_URL}${rawPath}${search}`;
   const method = req.method;
   const hasBody = method !== "GET" && method !== "HEAD";
 

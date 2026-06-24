@@ -9,7 +9,7 @@ import { sessionOwnerCount, permissionOwnerCount } from './ownership';
 import {
   activeStreamPrincipalCount,
   inflightTurnCount,
-  ocEventMaxConcurrentStreams,
+  OC_EVENT_MAX_CONCURRENT_STREAMS,
   OC_EVENT_RECONNECT_LIMIT,
   OC_MAX_INFLIGHT_TURNS,
   OC_TURN_WALL_CLOCK_MS,
@@ -23,15 +23,11 @@ import { matchTransport, registerTransport, type Transport } from './transport';
 
 const logger = createLogger('guardian');
 
-// Ports are read at bind time (startGuardian); flags are read per-call. A frozen
-// module-load-time const is what forced every integration test to spawn a fresh
-// subprocess just to flip a flag — reading lazily lets the guardian be driven
-// in-process. Prod behaviour is identical (same env, same defaults).
-function internalPort(): number { return Number(Bun.env.PORT ?? 8080); }
-function directPort(): number { return Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830); }
-function adminPort(): number { return Number(Bun.env.GUARDIAN_ADMIN_PORT ?? 3831); }
-function directIngressEnabled(): boolean { return Bun.env.GUARDIAN_DIRECT_INGRESS === 'true'; }
-function mcpEnabled(): boolean { return Bun.env.GUARDIAN_MCP === 'true'; }
+const INTERNAL_PORT = Number(Bun.env.PORT ?? 8080);
+const DIRECT_PORT = Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830);
+const ADMIN_PORT = Number(Bun.env.GUARDIAN_ADMIN_PORT ?? 3831);
+const DIRECT_INGRESS_ENABLED = Bun.env.GUARDIAN_DIRECT_INGRESS === 'true';
+const MCP_ENABLED = Bun.env.GUARDIAN_MCP === 'true';
 
 const startTime = Date.now();
 const requestCounters = {
@@ -53,8 +49,8 @@ function statsResponse(): Response {
   return json(200, {
     uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
     principals: listPrincipals().map(({ tokenHash, ...rest }) => rest),
-    direct_ingress_enabled: directIngressEnabled(),
-    mcp_enabled: mcpEnabled(),
+    direct_ingress_enabled: DIRECT_INGRESS_ENABLED,
+    mcp_enabled: MCP_ENABLED,
     rate_limits: {
       user_window_ms: USER_RATE_WINDOW_MS,
       user_max_requests: USER_RATE_LIMIT,
@@ -73,7 +69,7 @@ function statsResponse(): Response {
       inflight_turns: inflightTurnCount(),
       bounds: {
         event_reconnect_limit: OC_EVENT_RECONNECT_LIMIT,
-        event_max_concurrent_streams: ocEventMaxConcurrentStreams(),
+        event_max_concurrent_streams: OC_EVENT_MAX_CONCURRENT_STREAMS,
         max_inflight_turns: OC_MAX_INFLIGHT_TURNS,
         turn_wall_clock_ms: OC_TURN_WALL_CLOCK_MS,
       },
@@ -106,7 +102,7 @@ async function handleOcRequest(req: Request, requestId: string, expectedKind?: '
   return response;
 }
 
-export async function handleInternalRequest(req: Request): Promise<Response> {
+async function handleInternalRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
@@ -119,14 +115,14 @@ export async function handleInternalRequest(req: Request): Promise<Response> {
   return json(404, { error: 'not_found', requestId });
 }
 
-export async function handleDirectRequest(req: Request): Promise<Response> {
+async function handleDirectRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
-  if (!directIngressEnabled()) return json(404, { error: 'not_found', requestId });
+  if (!DIRECT_INGRESS_ENABLED) return json(404, { error: 'not_found', requestId });
   if (url.pathname === '/mcp') {
-    if (!mcpEnabled()) return json(404, { error: 'not_found', requestId });
+    if (!MCP_ENABLED) return json(404, { error: 'not_found', requestId });
     const response = await handleMcpRequest(req, requestId);
     countRequest(`mcp:${response.status}`);
     return response;
@@ -143,7 +139,7 @@ export async function handleDirectRequest(req: Request): Promise<Response> {
   return json(404, { error: 'not_found', requestId });
 }
 
-export async function handleAdminListenerRequest(req: Request): Promise<Response> {
+async function handleAdminListenerRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
@@ -176,7 +172,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
 
   initializePrincipalStore();
   seedPortalPrincipalsFromEnv();
-  if (mcpEnabled()) seedMcpPrincipalFromToken();
+  if (MCP_ENABLED) seedMcpPrincipalFromToken();
 
   void runDriftCheckWithRetry()
     .then((enabled) => {
@@ -187,9 +183,9 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
       startProxyRecovery();
     });
 
-  const internal = Bun.serve({ port: internalPort(), idleTimeout: 0, fetch: handleInternalRequest });
-  const direct = Bun.serve({ port: directPort(), idleTimeout: 0, fetch: handleDirectRequest });
-  const admin = Bun.serve({ port: adminPort(), idleTimeout: 0, fetch: handleAdminListenerRequest });
+  const internal = Bun.serve({ port: INTERNAL_PORT, idleTimeout: 0, fetch: handleInternalRequest });
+  const direct = Bun.serve({ port: DIRECT_PORT, idleTimeout: 0, fetch: handleDirectRequest });
+  const admin = Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });
 
   audit({
     requestId: crypto.randomUUID(),
@@ -198,10 +194,10 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
   });
 
   logger.info('started', {
-    internalPort: internal.port,
-    directPort: direct.port,
-    adminPort: admin.port,
-    directIngressEnabled: directIngressEnabled(),
+    internalPort: INTERNAL_PORT,
+    directPort: DIRECT_PORT,
+    adminPort: ADMIN_PORT,
+    directIngressEnabled: DIRECT_INGRESS_ENABLED,
     seededPrincipals: listPrincipals().length,
   });
 

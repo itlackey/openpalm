@@ -21,7 +21,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "start:openai-api": "bun run src/openai-api-server.ts",
-    "test": "bun test"
+    "test": "bun test --no-orphans"
   },
   "repository": {
     "type": "git",

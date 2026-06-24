@@ -83,10 +83,6 @@ beforeAll(() => {
   suiteTempDir = mkdtempSync(join(tmpdir(), "op-test-"));
   process.env.OP_HOME = suiteTempDir;
   process.env.OP_WORK_DIR = join(suiteTempDir, "workspace");
-  // Point the guardian's file-backed state at the throwaway dir too, so its
-  // tests can run IN-PROCESS (no subprocess) without writing to ~ or
-  // /opt/openpalm. One config location beats a per-file path + a DB-reset helper.
-  if (!process.env.GUARDIAN_STATE_DB_PATH) process.env.GUARDIAN_STATE_DB_PATH = join(suiteTempDir, "guardian-state.db");
 });
 
 afterAll(() => {
