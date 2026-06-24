@@ -140,20 +140,6 @@ export async function applyChanges(): Promise<ApplyChangesResult> {
   return data;
 }
 
-export type UpgradeStackResult = {
-  ok: boolean;
-  imageTag: string;
-  backupDir: string | null;
-  assetsUpdated: string[];
-  restarted: string[];
-  adminRecreateScheduled: boolean;
-};
-
-export async function upgradeStack(): Promise<UpgradeStackResult> {
-  const res = await requireOk(await request('POST', '/admin/upgrade', {}));
-  return (await res.json()) as UpgradeStackResult;
-}
-
 // ── Version management ───────────────────────────────────────────────────
 
 /** One configured stack piece + the image tag it actually runs (#503). The

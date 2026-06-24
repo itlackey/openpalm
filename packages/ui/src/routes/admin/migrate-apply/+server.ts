@@ -20,9 +20,9 @@ const logger = createLogger("migrate-apply");
  * `ensureMigrated()` (layout migrations + release migrations up to the home's
  * recorded version), which takes a full-home backup first and is idempotent.
  *
- * Unlike /admin/upgrade this does NOT pull images or recreate containers — it
- * only reconciles the home directory so the splash "invalid state" landing can
- * unblock a user whose home needs migrating, then route them onward.
+ * This does NOT pull images or recreate containers — it only reconciles the home
+ * directory so the splash "invalid state" landing can unblock a user whose home
+ * needs migrating, then route them onward.
  *
  * BackupSpaceError (the pre-backup free-space guard) is surfaced as 409 with the
  * estimate so the UI can ask the user to confirm before retrying with
