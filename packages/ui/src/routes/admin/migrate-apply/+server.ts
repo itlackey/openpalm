@@ -5,6 +5,7 @@ import {
   requireAdmin,
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
+import { withSerialQueue } from "$lib/server/serial-queue.js";
 import {
   applyHomeReconcile,
   createLogger,
@@ -39,6 +40,12 @@ export const POST: RequestHandler = async (event) => {
   try { body = await event.request.json(); } catch { body = {}; }
   const confirmLowSpace = body.confirmLowSpace === true;
 
+  // Serialize on the same queue as install/update: applyHomeReconcile takes the
+  // install lock, but that lock is per-process reentrant, so two concurrent
+  // reconciles in this UI process (e.g. a double-clicked "apply" button) would
+  // otherwise interleave their OP_HOME writes. The queue gives real mutual
+  // exclusion across all three lock-taking endpoints.
+  return withSerialQueue("admin:install", async () => {
   const state = getState();
 
   try {
@@ -88,4 +95,5 @@ export const POST: RequestHandler = async (event) => {
     logger.error("migration failed (unexpected)", { requestId, error: msg });
     return errorResponse(500, "migration_failed", msg, {}, requestId);
   }
+  });
 };

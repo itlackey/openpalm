@@ -45,12 +45,23 @@ export async function runComposeWithPreflight(
       const projectName = resolveComposeProjectName();
       const fileArgs = files.map(f => `-f ${f}`).join(' ');
       const envArgs = envFiles.map(f => `--env-file ${f}`).join(' ');
+      // A missing secret/asset file means OP_HOME is incomplete — usually a home
+      // behind the running platform (secrets are written only by install/update,
+      // not self-healed on a plain command). Point the user at the repair path
+      // instead of leaving them with a raw compose "file not found" error.
+      const stderr = preflight.stderr ?? "";
+      const looksLikeMissingFile = /secret/i.test(stderr)
+        && /(not found|no such file|does not exist|cannot find)/i.test(stderr);
+      const guidance = looksLikeMissingFile
+        ? `\n\nThis usually means your OpenPalm home is missing files. Run \`openpalm update\` to repair it, then try again.`
+        : "";
       throw new Error(
-        `Compose preflight failed: ${preflight.stderr}\n` +
+        `Compose preflight failed: ${stderr}\n` +
         `Resolved command: docker compose ${fileArgs} --project-name ${projectName} ${envArgs} config --quiet\n` +
         `Files: ${files.join(', ')}\n` +
         `Env files: ${envFiles.join(', ')}\n` +
-        `Project: ${projectName}`,
+        `Project: ${projectName}` +
+        guidance,
       );
     }
   }

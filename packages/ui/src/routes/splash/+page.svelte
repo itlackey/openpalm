@@ -147,10 +147,14 @@
         {#if phase.name === 'done'}
           <p class="wiz-eyebrow"><span class="sev-dot sev-success" aria-hidden="true"></span>All done</p>
           <h1 class="wiz-title">Your data is <span class="accent">up to date</span></h1>
-          <p class="wiz-lede">OpenPalm finished updating your settings. Everything was backed up first.</p>
+          <p class="wiz-lede">OpenPalm finished updating your settings to match this version.</p>
           <ul class="splash-summary">
             {#if phase.backupDir}<li><span>Backed up to</span><code>{phase.backupDir}</code></li>{/if}
-            {#if phase.from !== phase.to}<li><span>What changed</span><span>Settings layout v{phase.from} → v{phase.to}</span></li>{/if}
+            {#if phase.from !== phase.to}
+              <li><span>What changed</span><span>Settings layout v{phase.from} → v{phase.to}</span></li>
+            {:else}
+              <li><span>What changed</span><span>Refreshed your settings and secrets</span></li>
+            {/if}
           </ul>
           {#if phase.notes.length}
             <ul class="splash-notes">{#each phase.notes as note}<li>{note}</li>{/each}</ul>

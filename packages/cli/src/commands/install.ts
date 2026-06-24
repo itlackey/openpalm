@@ -18,6 +18,7 @@ import {
   ensureAkmUserEnv,
   ensureMigrated,
   MigrationError,
+  PLATFORM_VERSION,
   runDeploy,
   writeSystemEnv,
   collectBindAddressWarnings,
@@ -292,7 +293,13 @@ async function prepareInstallFiles(
   // which re-seeds idempotently; but the interactive wizard serves BEFORE any
   // applyInstall runs (deploy happens later from inside the UI), so this
   // explicit seed is the only one that runs before the wizard comes up.
-  await seedOpenPalmDir(version, homeDir, configDir, dataDir);
+  //
+  // Stamp with PLATFORM_VERSION (not `version`, the GitHub install ref like
+  // "v0.12.5"/"main"): the .skeleton-version stamp is compared against
+  // PLATFORM_VERSION by isSkeletonStale, and reconcileHome also stamps
+  // PLATFORM_VERSION — both seed writers must agree or a fresh install would be
+  // flagged stale and bounced to /splash.
+  await seedOpenPalmDir(PLATFORM_VERSION, homeDir, configDir, dataDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather

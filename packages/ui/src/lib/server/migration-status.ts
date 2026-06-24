@@ -12,13 +12,12 @@ import { ensureMigrated, isSkeletonStale, MigrationError } from '@openpalm/lib';
 
 export type MigrationStatus =
   | { status: 'none' }
-  | { status: 'pending'; from: number; to: number; applied: string[]; releaseApplied: string[]; notes: string[]; lines: string[] }
+  | { status: 'pending'; from: number; to: number; applied: string[]; releaseApplied: string[]; notes: string[] }
   | { status: 'error'; message: string; guidance: string };
 
 export function detectMigration(homeDir: string): MigrationStatus {
-  const lines: string[] = [];
   try {
-    const report = ensureMigrated({ homeDir, dryRun: true, log: (m) => lines.push(m) });
+    const report = ensureMigrated({ homeDir, dryRun: true });
     // "Pending" means real reconcile work would run. Two triggers, both healed by
     // the one "apply" button (applyHomeReconcile): a layout/release migration, OR
     // the home was seeded by a different platform version than the one now running
@@ -33,7 +32,6 @@ export function detectMigration(homeDir: string): MigrationStatus {
       applied: report.applied,
       releaseApplied: report.releaseApplied,
       notes: report.notes,
-      lines,
     };
   } catch (e) {
     if (e instanceof MigrationError) {

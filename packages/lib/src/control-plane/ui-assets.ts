@@ -29,9 +29,8 @@ import { x as tarExtract } from 'tar';
 
 const _require = createRequire(import.meta.url);
 import { resolveBackupsDir, resolveDataDir } from './home.js';
-import { PLATFORM_VERSION } from './versioning.js';
 import { createLogger } from '../logger.js';
-import { compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
+import { PLATFORM_VERSION, compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
 import { refreshCoreAssetsFromSource } from './core-assets.js';
 
 const logger = createLogger('lib:ui-assets');
