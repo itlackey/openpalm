@@ -156,9 +156,8 @@ case "$TIER" in
 	bun run ui:test:unit
 	;;
 4)
-	echo "=== Tier 4: Mocked browser E2E ==="
-	ensure_ui_build
-	bun run ui:test:e2e:mocked
+	echo "=== Tier 4: Self-contained browser E2E (*.pw.ts, builds own server) ==="
+	( cd packages/ui && npm run test:e2e )
 	;;
 5)
 	echo "=== Tier 5: Integration E2E (stack-dependent) ==="

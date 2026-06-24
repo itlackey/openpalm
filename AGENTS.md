@@ -89,7 +89,6 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
 | Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
 | Playwright (UI integration) | `bun run ui:test:e2e` | packages/ui integration tests (no browser route mocks) |
-| Playwright (UI mocked) | `bun run ui:test:e2e:mocked` | packages/ui mocked browser contract tests |
 | Both UI | `bun run ui:test` | Vitest then Playwright (requires running build) |
 | Playwright (stack) | `bun run ui:test:stack` | Stack-dependent integration tests (needs running stack + ADMIN_TOKEN) |
 | Playwright (LLM) | `bun run ui:test:llm` | LLM-dependent pipeline tests (needs stack + ADMIN_TOKEN + API keys) |

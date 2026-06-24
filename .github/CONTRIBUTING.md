@@ -99,7 +99,6 @@ bun run guardian:test        # Guardian security tests
 bun run cli:test             # CLI tests
 bun run ui:test:unit      # UI Vitest (unit + browser components)
 bun run ui:test:e2e       # UI Playwright integration tests (no-skip enforced locally)
-bun run ui:test:e2e:mocked # UI Playwright mocked browser contract tests
 ```
 
 > UI uses Vitest and Playwright, not Bun's test runner. Use `bun run test` (not bare `bun test`) from the repo root — the script filters to non-UI directories.
@@ -125,7 +124,6 @@ All scripts are defined in the root [`package.json`](../package.json):
 | `bun run ui:test` | Vitest + Playwright (requires build) |
 | `bun run ui:test:unit` | Vitest only (CI-friendly) |
 | `bun run ui:test:e2e` | Playwright integration only (no browser route mocks) |
-| `bun run ui:test:e2e:mocked` | Playwright mocked browser contracts |
 | `bun run guardian:dev` | Guardian server |
 | `bun run guardian:test` | Guardian tests |
 | `bun run guardian:api:dev` | Guardian-hosted OpenAI-compatible API service |

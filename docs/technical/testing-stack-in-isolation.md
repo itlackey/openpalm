@@ -155,9 +155,11 @@ The guardian is intentionally not host-published in either core or dev compose. 
 ### OpenCode port vs admin default
 The admin UI's `http.ts` defaults to reading `OP_ASSISTANT_PORT` from `process.env`, which is promoted from `stack.env` during startup. When running the admin as a host process in dev, set `OP_OPENCODE_URL=http://localhost:3800` (or 4800 for test stacks) to reach the assistant through its host-side port mapping.
 
-### Mocked contract tests (no stack required)
-The mocked e2e suite tests the wizard and admin browser contracts without a running stack:
+### Self-contained browser tests (no stack required)
+The self-contained Playwright suite (`*.pw.ts`) builds + previews the UI itself and
+runs without a stack:
 ```bash
-bun run ui:test:e2e:mocked
+cd packages/ui && npm run test:e2e
 ```
-These always pass without docker and cover the majority of browser-level route contracts.
+Browser-level route contracts are now covered by the UI Vitest suite (`bun run
+ui:test:unit`). The previous `@mocked` Playwright suite was removed.
