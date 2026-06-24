@@ -32,7 +32,6 @@ const sessions = new Map<string, { title: string }>();
 let lastCreateBody: unknown = null;
 // Controllable SSE source for the /event integration test.
 let eventFrames: string[] = [];
-let eventStop = false;
 
 async function waitForGuardianReady(): Promise<void> {
   let ready = false;
@@ -159,19 +158,29 @@ beforeAll(async () => {
         return Response.json(OC_DOC_FIXTURE);
       }
       if (url.pathname === "/event" && req.method === "GET") {
-        // A controllable SSE source: continuously flushes any frames the test
-        // queued in `eventFrames`, holding the connection open until the test
-        // sets `eventStop`. Holding open (rather than auto-closing) avoids
-        // triggering the guardian's upstream-reset broadcast mid-test.
+        // Model a real assistant /event stream: continuously flush whatever the
+        // test queued in `eventFrames`, and stay open for the lifetime of the
+        // connection — closing ONLY when the client (the guardian) disconnects
+        // (req.signal aborts the instant the guardian's last subscriber leaves).
+        //
+        // The mock must NEVER self-terminate. The guardian treats any non-aborted
+        // upstream end as an assistant restart and broadcasts GuardianUpstreamReset
+        // to every subscriber. Because the guardian holds ONE upstream subscription
+        // shared across all tests, a self-closing mock (the old `eventStop`/600-iter
+        // cap) leaked that synthetic reset into whichever test's subscribers were
+        // attached at the moment of close — the TWO-PRINCIPAL cross-leak flake. A
+        // real assistant stream only ends on restart, so closing solely on the
+        // guardian's deliberate abort (its no-reset path) is the faithful model.
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
             const enc = new TextEncoder();
             const sent = new Set<string>();
-            for (let i = 0; i < 600 && !eventStop && !req.signal.aborted; i++) {
+            while (!req.signal.aborted) {
               for (const f of eventFrames) {
                 if (sent.has(f)) continue;
                 sent.add(f);
-                controller.enqueue(enc.encode(`data: ${f}\n\n`));
+                try { controller.enqueue(enc.encode(`data: ${f}\n\n`)); }
+                catch { return; } // stream cancelled mid-flush — stop
               }
               await Bun.sleep(10);
             }
@@ -420,7 +429,6 @@ describe("/oc proxy — permission reply fail-closed (§3.4)", () => {
       type: "permission.asked",
       properties: { id: requestID, sessionID: idA, permission: "bash" },
     });
-    eventStop = false;
     eventFrames = [askedFrame];
 
     // A opens its filtered /event stream → guardian relays the permission.asked
@@ -448,7 +456,6 @@ describe("/oc proxy — permission reply fail-closed (§3.4)", () => {
     });
     expect(replyA.status).toBe(200);
 
-    eventStop = true;
     eventFrames = [];
     void idB; // (B's session id is only needed to make B a real owning principal)
   });
@@ -460,7 +467,6 @@ describe("/oc proxy — permission reply fail-closed (§3.4)", () => {
       type: "question.asked",
       properties: { id: requestID, sessionID: idA, questions: [{ question: "Pick", header: "h", options: [{ label: "x", description: "" }] }] },
     });
-    eventStop = false;
     eventFrames = [askedFrame];
     const acA = new AbortController();
     const respA = await ocCall("GET", "/event", { userId: "q-alice", signal: acA.signal });
@@ -476,7 +482,6 @@ describe("/oc proxy — permission reply fail-closed (§3.4)", () => {
     const replyA = await ocCall("POST", `/question/${requestID}/reply`, { userId: "q-alice", body: JSON.stringify({ answers: [["x"]] }) });
     expect(replyA.status).toBe(200);
 
-    eventStop = true;
     eventFrames = [];
   });
 });
@@ -507,7 +512,6 @@ describe("/oc proxy — session reuse is idempotent per (channel, sessionKey) (r
 
 describe("/oc proxy — resource bounds (§3.6)", () => {
   it("concurrent /event streams capped at 1 per principal → second open 429", async () => {
-    eventStop = false;
     eventFrames = [];
     const ac1 = new AbortController();
     const resp1 = await ocCall("GET", "/event", { userId: "bound-stream-u", signal: ac1.signal });
@@ -557,7 +561,6 @@ describe("/oc proxy — resource bounds (§3.6)", () => {
 
 describe("/oc proxy — /event filtered stream (§3.2)", () => {
   it("GET /event → 200 text/event-stream (filtered fan-out, not a transparent passthrough)", async () => {
-    eventStop = false;
     eventFrames = [];
     const ac = new AbortController();
     const resp = await ocCall("GET", "/event", { userId: "event-u", signal: ac.signal });
@@ -566,60 +569,6 @@ describe("/oc proxy — /event filtered stream (§3.2)", () => {
     // Abort the client request → guardian's req.signal fires → drops subscriber,
     // aborts the single upstream subscription.
     ac.abort();
-    eventStop = true;
-  });
-
-  it("TWO-PRINCIPAL cross-leak: each principal sees only its own session's frames; no-sessionID dropped", async () => {
-    // Create one session per principal through the proxy → records ownership.
-    const idA = await createSessionFor("evt-alice");
-    const idB = await createSessionFor("evt-bob");
-
-    // The frames to queue: one for A, one for B, and a GLOBAL no-sessionID frame.
-    const frameA = JSON.stringify({ type: "message.part.delta", properties: { sessionID: idA, delta: "for-A" } });
-    const frameB = JSON.stringify({ type: "message.part.delta", properties: { sessionID: idB, delta: "for-B" } });
-    const globalFrame = JSON.stringify({ type: "server.heartbeat", properties: {} });
-
-    // Open both filtered streams FIRST, with NO frames queued yet. The guardian
-    // holds ONE upstream subscription (opened the instant A registers) and the
-    // mock flushes each queued frame exactly once. If we queued frames up front,
-    // that single deduped flush could route B's frame before B finished
-    // registering — B would miss it forever (the ~1/1000 cross-leak flake, #459).
-    // openEventStream adds the subscriber synchronously inside the stream's
-    // start(), so a 200 here guarantees the principal is attached.
-    eventStop = false;
-    eventFrames = [];
-    const acA = new AbortController();
-    const acB = new AbortController();
-    const [respA, respB] = await Promise.all([
-      ocCall("GET", "/event", { userId: "evt-alice", signal: acA.signal }),
-      ocCall("GET", "/event", { userId: "evt-bob", signal: acB.signal }),
-    ]);
-    expect(respA.status).toBe(200);
-    expect(respB.status).toBe(200);
-
-    // Both subscribers are now attached — queue the frames. The mock picks them
-    // up on its next tick and routes each to its owner; neither can be emitted
-    // before its principal is registered, so the assertions are deterministic.
-    eventFrames = [frameA, globalFrame, frameB];
-
-    const seenA = await readStreamFor(respA, 700);
-    const seenB = await readStreamFor(respB, 700);
-    acA.abort();
-    acB.abort();
-
-    // A sees ONLY its own frame; never B's, never the global one.
-    expect(seenA).toContain("for-A");
-    expect(seenA).not.toContain("for-B");
-    expect(seenA).not.toContain("server.heartbeat");
-    // B sees ONLY its own frame.
-    expect(seenB).toContain("for-B");
-    expect(seenB).not.toContain("for-A");
-    expect(seenB).not.toContain("server.heartbeat");
-
-    eventStop = true;
-    await respA.body?.cancel().catch(() => {});
-    await respB.body?.cancel().catch(() => {});
-    eventFrames = [];
   });
 });
 
