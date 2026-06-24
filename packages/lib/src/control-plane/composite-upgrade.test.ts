@@ -202,7 +202,7 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
     ensureMigrated({ homeDir: home });
     ensureReleaseMigrated({ homeDir: home, targetVersion: "v0.12.0" });
 
-    expect(stackEnv()).toContain("OP_RELEASE_VERSION=v0.12.0");
+    expect(stackEnv()).toContain("OP_RELEASE_VERSION=0.12.0");
   });
 
   it("run 1: per-service bind override is preserved in stack.env", () => {
@@ -351,7 +351,7 @@ describe("composite 0.11.5 → 0.12.0 upgrade EXIT GATE", () => {
     // Layout stamp
     expect(env).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
     // Release stamp bumped to target
-    expect(env).toContain("OP_RELEASE_VERSION=v0.12.19");
+    expect(env).toContain("OP_RELEASE_VERSION=0.12.19");
     // Addons preserved
     expect(env).toContain("OP_ENABLED_ADDONS=discord");
     // Per-service bind var preserved

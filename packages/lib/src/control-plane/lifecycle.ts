@@ -28,7 +28,7 @@ import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds } from "./addons.js";
-import { PLATFORM_VERSION, formatForDisplay } from "./versioning.js";
+import { PLATFORM_VERSION, formatForDisplay, formatForDocker } from "./versioning.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
@@ -475,7 +475,9 @@ export async function performUpgrade(
     const { active, assetsUpdated, backupDir } = await reconcileStack(state, { activate: true, pull: true, compose: true });
 
     return {
-      imageTag: PLATFORM_VERSION,
+      // The published Docker image is tagged `vX.Y.Z`, so report the real ref
+      // form (PLATFORM_VERSION is now bare; re-add the `v` at this tag boundary).
+      imageTag: formatForDocker(PLATFORM_VERSION),
       namespace,
       backupDir,
       assetsUpdated,

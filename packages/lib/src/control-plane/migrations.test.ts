@@ -289,7 +289,7 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     const stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
     expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
-    expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.0');
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=0.11.0');
     expect(report.releaseApplied).toEqual([]);
   });
 
@@ -332,7 +332,7 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     const lowerTarget = ensureReleaseMigrated({ targetVersion: 'v0.11.4' });
     expect(lowerTarget.applied).toEqual([]);
     let stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
-    expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.4');
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=0.11.4');
     expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
 
     const currentTarget = ensureReleaseMigrated({ targetVersion: 'v0.11.5-rc.1' });
@@ -342,7 +342,7 @@ describe("ensureMigrated 0.10 → 0.11", () => {
     // written. The per-unit keys remain only as a hand-set escape hatch.
     expect(currentTarget.applied).toEqual(['v0.11.5-rc.1']);
     stackEnv = readFileSync(join(home, "knowledge", "env", "stack.env"), "utf-8");
-    expect(stackEnv).toContain('OP_RELEASE_VERSION=v0.11.5-rc.1');
+    expect(stackEnv).toContain('OP_RELEASE_VERSION=0.11.5-rc.1');
     expect(stackEnv).not.toContain('OP_ASSISTANT_IMAGE_TAG=');
     expect(stackEnv).not.toContain('OP_GUARDIAN_IMAGE_TAG=');
     expect(stackEnv).not.toContain('OP_PORTAL_IMAGE_TAG=');
@@ -675,7 +675,7 @@ describe('release migration v0.12.3-rc.1: purge stale addon IDs from OP_ENABLED_
     ensureReleaseMigrated({ targetVersion: 'v0.12.3-rc.1' });
     const after = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
     expect(after).not.toContain('OP_ENABLED_ADDONS');
-    expect(after).toContain('OP_RELEASE_VERSION=v0.12.3-rc.1');
+    expect(after).toContain('OP_RELEASE_VERSION=0.12.3-rc.1');
   });
 
   it('sets OP_ENABLED_ADDONS to empty string when all IDs are stale', () => {

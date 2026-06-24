@@ -11,15 +11,14 @@ const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
  * place — it is NOT the Electron harness version (see
  * packages/electron/src/harness-contract.ts: HARNESS_CONTRACT_VERSION).
  *
- * Stored Docker-canonical (`v`-prefixed) because every consumer that stamps a
- * version into stack.env / a skeleton / a migration target wants the Docker tag
- * form. Use `formatForDisplay` for user-facing strings and `normalizeVersion`
- * for npm-style (no-`v`) comparisons.
- *
- * Replaces the former implicit `v${libPkg.version}` scattered through lifecycle
- * / migrations so the platform version has a single, named home.
+ * Stored BARE (npm form, no `v`) because every internal consumer that stamps or
+ * compares it — `.skeleton-version`, `OP_RELEASE_VERSION`, the skeleton-mismatch
+ * check — wants a value that matches the bare Docker tags in `OP_*_VERSION`. The
+ * `v` is re-added only at the Docker/git-tag boundary via `formatForDocker`. A
+ * `v`-prefixed PLATFORM_VERSION was the source of a false-mismatch bug class
+ * ("v0.12.37" stamp vs "0.12.37" tag).
  */
-export const PLATFORM_VERSION: string = formatForDocker(libPkg.version);
+export const PLATFORM_VERSION: string = normalizeVersion(libPkg.version);
 
 type ParsedVersion = {
   major: number;

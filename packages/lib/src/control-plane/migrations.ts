@@ -32,7 +32,7 @@ import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import { backupOpenPalmHome, timestampDirName, checkBackupFreeSpace, describeBackupSpaceShortfall } from "./backup.js";
 import { upsertEnvValue, removeEnvKey, parseEnabledAddons } from "./env.js";
 import { nonSensitiveAddonEnvKeys } from "./addon-env-schemas.js";
-import { compareComparableVersions, isComparableSemver } from './versioning.js';
+import { compareComparableVersions, isComparableSemver, normalizeVersion } from './versioning.js';
 import { BUILTIN_ADDON_IDS } from './addon-ids.js';
 
 export const LAYOUT_VERSION_KEY = "OP_LAYOUT_VERSION";
@@ -272,7 +272,11 @@ function readReleaseVersion(stashDir: string): string | null {
 }
 
 function readStampedReleaseVersion(stashDir: string): string | null {
-  return readStackEnvValue(stashDir, RELEASE_VERSION_KEY);
+  const raw = readStackEnvValue(stashDir, RELEASE_VERSION_KEY);
+  // Normalize so a pre-existing `v`-prefixed stamp (written before the stamp went
+  // bare) compares equal to a bare comparableTarget — otherwise idempotent reruns
+  // re-stamp forever.
+  return raw === null ? null : normalizeVersion(raw);
 }
 
 function readImageTag(stashDir: string): string | null {
@@ -283,7 +287,9 @@ function stampReleaseVersion(stashDir: string, version: string): boolean {
   const envPath = stackEnvFile(stashDir);
   if (!existsSync(envPath)) return false;
   const current = readFileSync(envPath, 'utf-8');
-  const next = upsertEnvValue(current, RELEASE_VERSION_KEY, version);
+  // Stamp bare so OP_RELEASE_VERSION matches the bare OP_*_VERSION image tags and
+  // the bare .skeleton-version stamp — even if a `v`-prefixed target arrives here.
+  const next = upsertEnvValue(current, RELEASE_VERSION_KEY, normalizeVersion(version));
   if (next === current) return false;
   writeFileSync(envPath, next);
   return true;
@@ -1211,7 +1217,9 @@ const RECOVERY_GUIDANCE =
 
 function resolveComparableReleaseTarget(rawVersion: string | null): string | null {
   if (!rawVersion) return null;
-  return isComparableSemver(rawVersion) ? rawVersion : null;
+  // Return bare so the stamp written from it, and the `=== comparableTarget`
+  // idempotency check, both use one canonical (no-`v`) spelling.
+  return isComparableSemver(rawVersion) ? normalizeVersion(rawVersion) : null;
 }
 
 function logSkippedNonComparableReleaseStamp(

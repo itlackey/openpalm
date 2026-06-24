@@ -24,6 +24,7 @@ import { parseEnvFile } from "./env.js";
 import { stackEnvPathFromStackDir } from "./paths.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
 import { SKELETON_VERSION_STAMP } from "./ui-assets.js";
+import { normalizeVersion } from "./versioning.js";
 
 export type LocalStackState =
   | "not_installed"     // nothing installed — offer install / add remote
@@ -188,7 +189,10 @@ export function checkSkeletonMismatch(stackDir: string): { expected: string; act
   // OP_RELEASE_VERSION is the migration stamp; OP_ASSISTANT_VERSION is the
   // version-of-record image tag (no single OP_IMAGE_TAG cascade anymore).
   const expected = env.OP_RELEASE_VERSION ?? env.OP_ASSISTANT_VERSION ?? "";
-  if (!expected || expected === actual) return null;
+  // Compare normalized: the stamp and OP_*_VERSION may differ only by a leading
+  // `v` (e.g. an old `v`-prefixed stamp vs a bare image tag) — that is not a real
+  // mismatch.
+  if (!expected || normalizeVersion(expected) === normalizeVersion(actual)) return null;
   return { expected, actual };
 }
 

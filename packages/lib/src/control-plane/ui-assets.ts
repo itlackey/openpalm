@@ -150,7 +150,10 @@ export function readSkeletonVersion(homeDir: string): string | null {
  */
 export function isSkeletonStale(homeDir: string): boolean {
   const stamped = readSkeletonVersion(homeDir);
-  return stamped !== null && stamped !== PLATFORM_VERSION.trim();
+  // normalizeVersion on the stamp so a pre-existing `v`-prefixed stamp (written
+  // by an older platform) doesn't read as stale forever after PLATFORM_VERSION
+  // went bare.
+  return stamped !== null && normalizeVersion(stamped) !== PLATFORM_VERSION;
 }
 
 /**
@@ -173,7 +176,8 @@ export async function seedOpenPalmDir(
   let alreadySeeded = false;
   if (existsSync(stampPath)) {
     try {
-      alreadySeeded = readFileSync(stampPath, 'utf-8').trim() === repoRef.trim();
+      // Compare normalized so an old `v`-prefixed stamp still matches a bare repoRef.
+      alreadySeeded = normalizeVersion(readFileSync(stampPath, 'utf-8')) === normalizeVersion(repoRef);
     } catch { /* unreadable stamp → re-seed */ }
   }
 

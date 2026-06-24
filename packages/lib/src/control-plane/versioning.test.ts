@@ -13,9 +13,9 @@ import {
 import libPkg from '../../package.json' with { type: 'json' };
 
 describe('PLATFORM_VERSION', () => {
-  it('is the v-prefixed lib package version (single source of truth)', () => {
-    expect(PLATFORM_VERSION).toBe(`v${libPkg.version.replace(/^v/, '')}`);
-    expect(PLATFORM_VERSION.startsWith('v')).toBe(true);
+  it('is the bare (no-v) lib package version — single source of truth, v added only at tag boundaries', () => {
+    expect(PLATFORM_VERSION).toBe(libPkg.version.replace(/^v/, ''));
+    expect(PLATFORM_VERSION.startsWith('v')).toBe(false);
     expect(isComparableSemver(PLATFORM_VERSION)).toBe(true);
   });
 });

@@ -154,7 +154,7 @@ describe("scenario: 0.11.5 channels install → 0.12.0-rc.5", () => {
     // Layout stamped to current; a full-home backup was taken first.
     const env = readEnv();
     expect(env).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
-    expect(env).toContain("OP_RELEASE_VERSION=v0.12.0-rc.5");
+    expect(env).toContain("OP_RELEASE_VERSION=0.12.0-rc.5");
     expect(layout.backupDir).toBeTruthy();
     expect(existsSync(layout.backupDir!)).toBe(true);
 
