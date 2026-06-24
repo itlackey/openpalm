@@ -22,15 +22,17 @@ function makeGetEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
 }
 
 // Newest-first (as Docker Hub returns with ordering=last_updated). v0.12.9 is
-// included to prove lexicographic ordering is NOT relied on for the max.
+// included to prove lexicographic ordering is NOT relied on for the max. Tags
+// mix bare (post-0.12.41 cutover) and legacy `v`-prefixed forms — the resolver
+// must read both and return the canonical bare version.
 const HUB_TAGS = {
   results: [
-    { name: 'v0.12.33' },
+    { name: '0.12.33' },
     { name: 'latest' },
     { name: 'v0.12.9' },
     { name: 'v0.12.30' },
     { name: 'sha-abc1234-amd64' },
-    { name: 'v0.12.0-rc.8' },
+    { name: '0.12.0-rc.8' },
   ],
 };
 
@@ -67,8 +69,9 @@ describe('GET /admin/versions/latest', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { versions: Record<string, string | null> };
 
-    // Highest stable wins even though v0.12.9 is lexicographically larger.
-    expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.33');
+    // Highest stable wins even though v0.12.9 is lexicographically larger;
+    // returned bare regardless of the published tag's `v` prefix.
+    expect(body.versions.OP_ASSISTANT_VERSION).toBe('0.12.33');
 
     // Regression guard: must order by last_updated, never lexicographic -name.
     const hubCall = calls.find((c) => c.includes('hub.docker.com'));

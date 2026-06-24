@@ -24,7 +24,7 @@ details.
 
 ```bash
 git clone https://github.com/itlackey/openpalm.git
-cp -R openpalm/.openpalm "$HOME/.openpalm"
+cp -R openpalm/packages/skeleton "$HOME/.openpalm"
 
 $EDITOR "$HOME/.openpalm/knowledge/env/stack.env"
 $EDITOR "$HOME/.openpalm/knowledge/env/user.env"

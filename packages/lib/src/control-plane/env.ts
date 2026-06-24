@@ -1,6 +1,6 @@
 import { parse as dotenvParse } from 'dotenv';
 import { readFileSync, existsSync, copyFileSync } from 'node:fs';
-import { formatForDocker } from './versioning.js';
+import { normalizeVersion } from './versioning.js';
 
 export function parseEnvContent(content: string): Record<string, string> {
   return dotenvParse(content);
@@ -101,14 +101,15 @@ export function parseEnabledAddons(value: string | undefined): string[] {
 export const RELEASE_TAG_REGEX = /^v?\d+\.\d+\.\d+(?:[-+](?:[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?$/;
 
 /**
- * Normalizes a repository ref to an image tag. Returns null for non-release refs.
- * E.g. "0.9.0" → "v0.9.0", "v0.9.0" → "v0.9.0", "main" → null.
+ * Normalizes a repository ref to a bare image tag. Returns null for non-release
+ * refs. E.g. "0.9.0" → "0.9.0", "v0.9.0" → "0.9.0" (legacy `v` stripped),
+ * "main" → null. Image tags are bare as of 0.12.41.
  */
 export function resolveRequestedImageTag(repoRef: string): string | null {
   const trimmed = repoRef.trim();
   if (!trimmed || trimmed === 'main') return null;
   if (!RELEASE_TAG_REGEX.test(trimmed)) return null;
-  return formatForDocker(trimmed);
+  return normalizeVersion(trimmed);
 }
 
 export function mergeEnvContent(

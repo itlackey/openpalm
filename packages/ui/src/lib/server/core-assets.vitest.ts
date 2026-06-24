@@ -17,7 +17,6 @@ import {
 import { join } from "node:path";
 
 import {
-  ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig
 } from "@openpalm/lib";
@@ -27,7 +26,7 @@ registerCleanup();
 
 // ── Core Compose (stack/ source of truth) ──────────────────────────────
 
-describe("ensureCoreCompose / readCoreCompose", () => {
+describe("readCoreCompose", () => {
   const origEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -37,32 +36,6 @@ describe("ensureCoreCompose / readCoreCompose", () => {
 
   afterEach(() => {
     process.env.OP_HOME = origEnv.OP_HOME;
-  });
-
-  test("ensureCoreCompose creates stack/ directory and returns path", () => {
-    const path = ensureCoreCompose();
-    expect(path).toContain("core.compose.yml");
-    expect(path).toContain("stack");
-    // Directory should exist even though file is not written
-    const stackDir = join(process.env.OP_HOME!, "config", "stack");
-    expect(existsSync(stackDir)).toBe(true);
-  });
-
-  test("ensureCoreCompose is idempotent", () => {
-    const path1 = ensureCoreCompose();
-    const path2 = ensureCoreCompose();
-    expect(path1).toBe(path2);
-  });
-
-  test("ensureCoreCompose does not overwrite existing file", () => {
-    const stackDir = join(process.env.OP_HOME!, "config", "stack");
-    mkdirSync(stackDir, { recursive: true });
-    const existingContent = "# user-managed compose\nservices: {}";
-    writeFileSync(join(stackDir, "core.compose.yml"), existingContent);
-
-    ensureCoreCompose();
-    const content = readFileSync(join(stackDir, "core.compose.yml"), "utf-8");
-    expect(content).toBe(existingContent);
   });
 
   test("readCoreCompose returns file content when file exists", () => {

@@ -1,7 +1,7 @@
 # Environment Variables, Mounts, and Network Wiring
 
-This document mirrors the current shipped runtime: repo assets under `.openpalm/`
-and runtime files under `OP_HOME`.
+This document mirrors the current shipped runtime: repo assets under
+`packages/skeleton/` and runtime files under `OP_HOME`.
 
 Primary sources:
 

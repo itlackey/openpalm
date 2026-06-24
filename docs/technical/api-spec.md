@@ -146,32 +146,10 @@ Response:
 { "ok": true, "stopped": ["assistant"], "dockerAvailable": true }
 ```
 
-### `POST /admin/upgrade`
-
-Full upgrade sequence: fetches the latest image tag, downloads fresh stack
-files from GitHub, backs up changed files, writes updated configuration, pulls
-images, and recreates all containers. After responding, the host admin process exits cleanly so the HTTP response is flushed first.
-
-Response:
-
-```json
-{
-  "ok": true,
-  "imageTag": "0.9.0",
-  "backupDir": "/home/user/.openpalm/data/backups/2025-01-01T00-00-00",
-  "assetsUpdated": ["core.compose.yml"],
-  "restarted": ["guardian"],
-  "adminRecreateScheduled": true
-}
-```
-
-Error responses:
-
-- `502 image_tag_update_failed` — Failed to resolve latest image tag.
-- `502 asset_download_failed` — Failed to download fresh stack files from GitHub.
-- `503 docker_unavailable` — Docker is not reachable.
-- `502 pull_failed` — `docker compose pull` failed.
-- `502 up_failed` — Images pulled but container recreation failed.
+> The former `POST /admin/upgrade` endpoint was removed in 0.12.36. Updates now
+> run through `POST /admin/update` (above) plus `POST /admin/migrate-apply`,
+> which performs the full reconcile under lock when a home is detected stale (see
+> the splash apply flow).
 
 ## Container Operations
 

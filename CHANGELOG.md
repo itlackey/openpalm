@@ -43,11 +43,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Version tags are now bare semver everywhere — the `v` prefix is retired.**
+  Docker images publish as `openpalm/<svc>:X.Y.Z` (was `:vX.Y.Z`), the git
+  summary tag is `X.Y.Z` (was `vX.Y.Z`), and `OP_*_VERSION` / `.skeleton-version`
+  are written bare. Every read path still tolerates a legacy leading `v`
+  (`normalizeVersion`, the Docker Hub resolver, the CLI self-update redirect,
+  `groupReleasesByUnit`), so images and releases published before the cutover
+  keep working. Clean break: a stack pinned to a pre-cutover version by bare tag
+  must rely on `:latest` or pin the legacy `vX.Y.Z`. Removed the now-unused
+  `formatForDocker` helper.
 - The `@openpalm/guardian` `AuthStrategy` seam is now async-capable: a strategy's
   `authenticate()` may return a `Promise` (enabling JWKS/OIDC bearer-token
   strategies that verify against a remote JWKS), and the exported `authenticate()`
   is now async. The built-in `basicTokenAuthStrategy` and its behavior are
   unchanged (it still resolves synchronously).
+
+### Removed
+
+- Dead control-plane exports pruned from `@openpalm/lib`: `formatForDocker`
+  (the `v`-prefix boundary, no longer needed), `ensureCoreCompose`, and
+  `seedAssistantPersonaFiles` (zero production callers after the 0.12.34–0.12.40
+  reconcile consolidation). Also deleted the unused client-side
+  `packages/ui/src/lib/version-compare.ts` duplicate; the one server route that
+  needed semver comparison now imports `compareComparableVersions` from the lib.
 
 ### Fixed
 

@@ -4,7 +4,7 @@ import {
   errorResponse,
   requireAdmin,
 } from "$lib/server/helpers.js";
-import { seedUiBuild, resolveDataDir, createLogger } from "@openpalm/lib";
+import { seedUiBuild, resolveDataDir, createLogger, normalizeVersion } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("ui-version");
@@ -22,7 +22,8 @@ export const POST: RequestHandler = async (event) => {
   if (!/^[a-zA-Z0-9._\-]+$/.test(tag)) return errorResponse(400, "invalid_tag", "Tag must be alphanumeric with . _ or - only", {}, requestId);
 
   const dataDir = resolveDataDir();
-  const repoRef = tag.startsWith("v") ? tag : `v${tag}`;
+  // UI builds resolve from the npm registry by bare version; strip any legacy `v`.
+  const repoRef = normalizeVersion(tag);
 
   try {
     await seedUiBuild(repoRef, dataDir, { forceRemote: true });
