@@ -25,13 +25,6 @@ function dbPath(): string {
 
 let db: Database | null = null;
 
-/** Close + drop the singleton so the next open re-reads the path and starts
- *  clean. In-process tests call this to isolate the principal store per file. */
-export function _resetDatabaseForTest(): void {
-  try { db?.close(); } catch { /* already closed */ }
-  db = null;
-}
-
 /**
  * Migrate an existing principals table from the old CHECK constraint
  * `kind IN ('channel', 'direct')` to `kind IN ('portal', 'direct')`.

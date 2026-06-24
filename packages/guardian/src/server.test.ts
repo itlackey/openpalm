@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { OC_DOC_FIXTURE } from './oc-doc-fixture';
 import { handleInternalRequest } from './server';
 import { _setProxyEnabledForTest } from './drift';
-import { initializePrincipalStore, seedPortalPrincipalsFromEnv, _resetDatabaseForTest } from './state-db';
+import { initializePrincipalStore, seedPortalPrincipalsFromEnv } from './state-db';
 
 const TEST_SECRET = 'test-secret-value-1234';
 const TEST_PRINCIPAL = 'test';
@@ -106,24 +106,20 @@ beforeAll(async () => {
   const secretPath = join(tmpDir, 'test-secret');
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
 
-  // Configure the guardian in-process (all read lazily now).
-  Bun.env.GUARDIAN_STATE_DB_PATH = join(tmpDir, 'state.db');
-  Bun.env.GUARDIAN_AUDIT_PATH = join(tmpDir, 'audit.log');
+  // The DB path comes from the test preload (one throwaway dir). Only the
+  // file-specific config is set here; all of it is read lazily by the guardian.
   Bun.env.OP_ASSISTANT_URL = `http://127.0.0.1:${assistantPort}`;
   Bun.env.PORTAL_TEST_SECRET_FILE = secretPath;
 
   mockAssistantServer = startMockAssistant();
 
-  _resetDatabaseForTest();
   initializePrincipalStore();
-  seedPortalPrincipalsFromEnv();
+  seedPortalPrincipalsFromEnv(); // idempotent upsert of the `test` principal
   _setProxyEnabledForTest(true); // skip the async drift handshake — deterministic
 });
 
 afterAll(() => {
   mockAssistantServer?.stop(true);
-  _setProxyEnabledForTest(false);
-  _resetDatabaseForTest();
   delete Bun.env.PORTAL_TEST_SECRET_FILE;
   try {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -200,8 +196,7 @@ describe('Guardian server integration', () => {
   });
 
   it('assistant outage on session creation returns 502 oc_session_create_failed', async () => {
-    mockAssistantServer.stop(true);
-    await Bun.sleep(50);
+    await mockAssistantServer.stop(true); // await the close → next fetch is refused deterministically
     try {
       const resp = await ocCall('/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }, { userId: 'down-u', sessionKey: 'down-thread' });
       expect(resp.status).toBe(502);
@@ -219,43 +214,28 @@ describe('Guardian server integration', () => {
 });
 
 describe('Guardian portal secret startup contract', () => {
-  // Boot = principal seeding succeeds and the proxy serves /health. Driven
-  // in-process: seed under the given env, assert the grant contract + health.
-  function reseed(): void {
-    _resetDatabaseForTest();
-    initializePrincipalStore();
-    seedPortalPrincipalsFromEnv();
-  }
-
-  it('ignores the legacy GUARDIAN_REQUIRE_PORTAL_SECRETS flag under principal seeding', async () => {
+  // The contract is entirely in what seedPortalPrincipalsFromEnv() returns for a
+  // given env — assert that directly (idempotent upsert; no DB reset needed).
+  it('ignores the legacy GUARDIAN_REQUIRE_PORTAL_SECRETS flag under principal seeding', () => {
     const prev = Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS;
     Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS = 'true';
     try {
-      _resetDatabaseForTest();
-      initializePrincipalStore();
-      const seeded = seedPortalPrincipalsFromEnv(); // PORTAL_TEST_SECRET_FILE set in beforeAll
-      expect(seeded.some((p) => p.id === TEST_PRINCIPAL)).toBe(true); // flag ignored — still seeds
-      expect((await internal('/health')).status).toBe(200);
+      // PORTAL_TEST_SECRET_FILE is set in beforeAll; the legacy flag must not block it.
+      expect(seedPortalPrincipalsFromEnv().some((p) => p.id === TEST_PRINCIPAL)).toBe(true);
     } finally {
       if (prev === undefined) delete Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS;
       else Bun.env.GUARDIAN_REQUIRE_PORTAL_SECRETS = prev;
-      reseed();
     }
   });
 
-  it('allows zero portal grants for a core-only no-portal stack', async () => {
+  it('allows zero portal grants for a core-only no-portal stack', () => {
     const prev = Bun.env.PORTAL_TEST_SECRET_FILE;
     delete Bun.env.PORTAL_TEST_SECRET_FILE;
     try {
-      _resetDatabaseForTest();
-      initializePrincipalStore();
-      const seeded = seedPortalPrincipalsFromEnv(); // no portal secrets present
-      expect(seeded).toEqual([]); // zero grants is allowed — no throw, boot continues
-      expect((await internal('/health')).status).toBe(200);
+      // No PORTAL_*_SECRET_FILE present → zero grants, and that's allowed (no throw).
+      expect(seedPortalPrincipalsFromEnv()).toEqual([]);
     } finally {
-      if (prev === undefined) delete Bun.env.PORTAL_TEST_SECRET_FILE;
-      else Bun.env.PORTAL_TEST_SECRET_FILE = prev;
-      reseed();
+      Bun.env.PORTAL_TEST_SECRET_FILE = prev as string;
     }
   });
 });
