@@ -6,7 +6,7 @@ import {
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
-  ensureMigrated,
+  applyHomeReconcile,
   createLogger,
   MigrationError,
   BackupSpaceError,
@@ -16,13 +16,15 @@ import type { RequestHandler } from "./$types";
 const logger = createLogger("migrate-apply");
 
 /**
- * Apply the pending on-disk migration and report the result. Runs the REAL
- * `ensureMigrated()` (layout migrations + release migrations up to the home's
- * recorded version), which takes a full-home backup first and is idempotent.
+ * Apply everything OP_HOME needs to match the running platform, and report the
+ * result. Runs the single home-reconcile primitive (`applyHomeReconcile`):
+ * layout + release migrations (full-home backup first, idempotent), then secrets,
+ * skeleton seed, and OpenCode config. This is the deliberate, user-clicked write
+ * path that replaced the per-request self-healing — serving the UI is a pure read.
  *
  * This does NOT pull images or recreate containers — it only reconciles the home
- * directory so the splash "invalid state" landing can unblock a user whose home
- * needs migrating, then route them onward.
+ * directory so the splash landing can unblock a user whose home is behind, then
+ * route them onward.
  *
  * BackupSpaceError (the pre-backup free-space guard) is surfaced as 409 with the
  * estimate so the UI can ask the user to confirm before retrying with
@@ -38,34 +40,28 @@ export const POST: RequestHandler = async (event) => {
   const confirmLowSpace = body.confirmLowSpace === true;
 
   const state = getState();
-  const lines: string[] = [];
 
   try {
-    const report = ensureMigrated({
-      homeDir: state.homeDir,
-      confirmLowSpace,
-      log: (m) => lines.push(m),
-    });
-    logger.info("migration applied", {
+    const { migration, backupDir } = await applyHomeReconcile(state, { confirmLowSpace });
+    logger.info("home reconciled", {
       requestId,
-      migrated: report.migrated,
-      from: report.from,
-      to: report.to,
-      releaseApplied: report.releaseApplied,
-      backupDir: report.backupDir,
+      migrated: migration.migrated,
+      from: migration.from,
+      to: migration.to,
+      releaseApplied: migration.releaseApplied,
+      backupDir,
     });
     return jsonResponse(200, {
       ok: true,
-      migrated: report.migrated,
-      from: report.from,
-      to: report.to,
-      applied: report.applied,
-      releaseFrom: report.releaseFrom,
-      releaseTo: report.releaseTo,
-      releaseApplied: report.releaseApplied,
-      backupDir: report.backupDir,
-      notes: report.notes,
-      lines,
+      migrated: migration.migrated,
+      from: migration.from,
+      to: migration.to,
+      applied: migration.applied,
+      releaseFrom: migration.releaseFrom,
+      releaseTo: migration.releaseTo,
+      releaseApplied: migration.releaseApplied,
+      backupDir,
+      notes: migration.notes,
     }, requestId);
   } catch (e) {
     if (e instanceof BackupSpaceError) {
@@ -86,11 +82,10 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(500, "migration_failed", e.message, {
         guidance: e.guidance,
         backupDir: e.backupDir,
-        lines,
       }, requestId);
     }
     const msg = e instanceof Error ? e.message : String(e);
     logger.error("migration failed (unexpected)", { requestId, error: msg });
-    return errorResponse(500, "migration_failed", msg, { lines }, requestId);
+    return errorResponse(500, "migration_failed", msg, {}, requestId);
   }
 };

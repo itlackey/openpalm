@@ -21,7 +21,7 @@ import {
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { seedOpenPalmDir } from "./ui-assets.js";
-import { ensureMigrated, ensureReleaseMigrated } from './migrations.js';
+import { ensureMigrated, ensureReleaseMigrated, type MigrationReport } from './migrations.js';
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName, repairRootOwnedBindMounts } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
@@ -159,8 +159,11 @@ async function reconcileCore(
  * performUpgrade can surface them in UpgradeResult — the upgrade route logs the
  * asset list and shows the backup dir to the operator.
  */
-async function reconcileHome(state: ControlPlaneState): Promise<{ assetsUpdated: string[]; backupDir: string | null }> {
-  ensureMigrated({ homeDir: state.homeDir });
+async function reconcileHome(
+  state: ControlPlaneState,
+  opts: { confirmLowSpace?: boolean } = {},
+): Promise<{ migration: MigrationReport; assetsUpdated: string[]; backupDir: string | null }> {
+  const migration = ensureMigrated({ homeDir: state.homeDir, confirmLowSpace: opts.confirmLowSpace });
   ensureHomeDirs();
   ensureSecrets(state);
   const seed = await seedOpenPalmDir(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
@@ -168,11 +171,34 @@ async function reconcileHome(state: ControlPlaneState): Promise<{ assetsUpdated:
   ensureOpenCodeSystemConfig();
   const release = ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: PLATFORM_VERSION });
   return {
+    migration,
     assetsUpdated: seed.updated,
     // Prefer the release migration's stack.env backup (the destructive one);
     // fall back to the managed-asset backup seedOpenPalmDir took, if any.
     backupDir: release.backupDir ?? seed.backupDir,
   };
+}
+
+/**
+ * Bring OP_HOME up to date WITHOUT touching containers — the single primitive
+ * behind the splash "apply updates" button. Runs the full home reconcile
+ * (migrations + dirs + secrets + skeleton seed + OpenCode config) under the
+ * install lock so it can't race a concurrent install/update, then returns the
+ * migration report for the UI to display. This is the deliberate, user-clicked
+ * replacement for the per-request self-healing we removed: serving the UI is a
+ * pure read; THIS is where the home is mutated.
+ */
+export async function applyHomeReconcile(
+  state: ControlPlaneState,
+  opts: { confirmLowSpace?: boolean } = {},
+): Promise<{ migration: MigrationReport; assetsUpdated: string[]; backupDir: string | null }> {
+  const lock = resolveLifecycleLock(state);
+  if (!lock) throw new Error("Another install is already in progress");
+  try {
+    return await reconcileHome(state, opts);
+  } finally {
+    releaseLifecycleLock(lock);
+  }
 }
 
 type LockedLifecycleOptions = { lock?: InstallLockHandle | null };

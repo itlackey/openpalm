@@ -8,7 +8,7 @@
  * launch-routing guard (to force the user onto /splash even when the stack is
  * otherwise healthy) — one source of truth, no duplicated logic.
  */
-import { ensureMigrated, MigrationError } from '@openpalm/lib';
+import { ensureMigrated, isSkeletonStale, MigrationError } from '@openpalm/lib';
 
 export type MigrationStatus =
   | { status: 'none' }
@@ -19,8 +19,12 @@ export function detectMigration(homeDir: string): MigrationStatus {
   const lines: string[] = [];
   try {
     const report = ensureMigrated({ homeDir, dryRun: true, log: (m) => lines.push(m) });
-    // "Pending" means real migration work would run, not just a version stamp.
-    const pending = report.applied.length > 0 || report.releaseApplied.length > 0;
+    // "Pending" means real reconcile work would run. Two triggers, both healed by
+    // the one "apply" button (applyHomeReconcile): a layout/release migration, OR
+    // the home was seeded by a different platform version than the one now running
+    // (binary updated, assets/secrets not yet applied — the case the per-request
+    // self-heal used to silently paper over).
+    const pending = report.applied.length > 0 || report.releaseApplied.length > 0 || isSkeletonStale(homeDir);
     if (!pending) return { status: 'none' };
     return {
       status: 'pending',

@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { classifyLocalInstall, composePs, buildComposeOptions, createState, deriveLaunchStatus, deriveLocalStackState, detectRuntime, initializeStateSecrets } from '@openpalm/lib';
+import { classifyLocalInstall, composePs, buildComposeOptions, createState, deriveLaunchStatus, deriveLocalStackState, detectRuntime } from '@openpalm/lib';
 
 function parseComposePsServices(stdout: string) {
   return stdout
@@ -28,7 +28,6 @@ export default defineCommand({
   async run() {
     try {
       const state = createState();
-      initializeStateSecrets(state);
       const installState = classifyLocalInstall(state.stackDir);
       const ps = await composePs(buildComposeOptions(state));
       const launchStatus = deriveLaunchStatus({

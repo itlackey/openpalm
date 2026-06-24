@@ -150,7 +150,7 @@
           <p class="wiz-lede">OpenPalm finished updating your settings. Everything was backed up first.</p>
           <ul class="splash-summary">
             {#if phase.backupDir}<li><span>Backed up to</span><code>{phase.backupDir}</code></li>{/if}
-            <li><span>What changed</span><span>Settings layout v{phase.from} → v{phase.to}</span></li>
+            {#if phase.from !== phase.to}<li><span>What changed</span><span>Settings layout v{phase.from} → v{phase.to}</span></li>{/if}
           </ul>
           {#if phase.notes.length}
             <ul class="splash-notes">{#each phase.notes as note}<li>{note}</li>{/each}</ul>
@@ -183,7 +183,7 @@
           <p class="wiz-eyebrow"><span class="sev-dot sev-warning" aria-hidden="true"></span>One quick step</p>
           <h1 class="wiz-title">A small update to your <span class="accent">settings</span></h1>
           <p class="wiz-lede">
-            Before you continue, OpenPalm needs to reorganize your settings folder to match this
+            Before you continue, OpenPalm needs to update your settings folder to match this
             version. It’s safe — a full backup is taken first and your existing files are kept.
           </p>
           {#if data.migration.status === 'pending' && data.migration.notes.length}

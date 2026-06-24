@@ -12,10 +12,8 @@ if (!(globalThis as Record<string, unknown>).Bun) {
 import {
   resolveOpenPalmHome,
   resolveDataDir,
-  resolveConfigDir,
   resolveUiBuildDir,
   seedUiBuild,
-  seedOpenPalmDir,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
   uiUpdateChannel,
@@ -352,28 +350,15 @@ async function startUIServer(): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   const dataDir = resolveDataDir();
 
-  // resolveConfigDir is imported but used implicitly via lib internals; calling
-  // it here keeps the import live and makes the dependency explicit.
-  resolveConfigDir();
-
+  // Ensure the runtime dir tree exists so the harness can write its pid file and
+  // the UI child can boot. The harness does NOT seed or reconcile OP_HOME — that
+  // is the UI's job (install/update/apply → reconcileHome). Seeding on launch
+  // would stamp the new platform version WITHOUT running the backup-protected
+  // migrations/secrets reconcile, masking a needed update and leaving a
+  // half-migrated home; instead the UI detects a stale/just-updated home
+  // read-only and routes the user to /splash to apply it. The UI child locates
+  // the bundled skeleton via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
-
-  // Seed .openpalm skeleton (registry, default configs) from the bundled
-  // extraResources. This refreshes the registry on every launch so addon
-  // profiles stay current without requiring a source checkout or network fetch.
-  const skeletonDir = join(process.resourcesPath ?? '', 'openpalm-skeleton');
-  if (existsSync(skeletonDir)) {
-    process.env.OPENPALM_SKELETON_DIR = skeletonDir;
-    try {
-      // Stamp the skeleton with the PLATFORM (control-plane) version, not the
-      // harness's marketing version. The skeleton + control plane travel with
-      // @openpalm/lib (PLATFORM_VERSION), so a platform release must re-seed
-      // without looking like it needs a new app (design §5.2).
-      await seedOpenPalmDir(PLATFORM_VERSION, homeDir, resolveConfigDir(), dataDir);
-    } catch (err) {
-      console.warn('Skeleton seed failed (non-fatal):', err instanceof Error ? err.message : String(err));
-    }
-  }
 
   // app.getVersion() is the HARNESS marketing version — use it ONLY for the
   // genuinely harness-scoped Electron self-update check (which polls GitHub

@@ -4,15 +4,16 @@
  * Initialized once on server start. All API endpoints operate on this
  * shared state instance.
  */
-import { createState, initializeStateSecrets, type ControlPlaneState } from "@openpalm/lib";
+import { createState, type ControlPlaneState } from "@openpalm/lib";
 
 let _state: ControlPlaneState | null = null;
 
 export function getState(): ControlPlaneState {
-  if (!_state) {
-    _state = createState();
-    initializeStateSecrets(_state);
-  }
+  // Pure read: resolve paths/config from disk only. Secrets and other OP_HOME
+  // assets are written ONLY by install/update/apply (reconcileHome) — serving
+  // the UI never mutates the home. A home that needs reconciling is detected
+  // read-only and routed to /splash, where the user clicks "apply".
+  if (!_state) _state = createState();
   return _state;
 }
 

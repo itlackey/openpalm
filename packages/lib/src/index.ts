@@ -283,6 +283,7 @@ export {
   initializeStateSecrets,
   applyInstall,
   applyUpdate,
+  applyHomeReconcile,
   applyUninstall,
   buildManagedServices,
   performUpgrade,
@@ -468,6 +469,8 @@ export type { UiBuildUpdateResult, UiUpdateChannel } from "./control-plane/ui-as
 export {
   resolveLocalOpenpalmDir,
   seedOpenPalmDir,
+  readSkeletonVersion,
+  isSkeletonStale,
   resolveLocalUiBuild,
   resolveUiBuildDir,
   seedUiBuild,

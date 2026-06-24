@@ -29,6 +29,7 @@ import { x as tarExtract } from 'tar';
 
 const _require = createRequire(import.meta.url);
 import { resolveBackupsDir, resolveDataDir } from './home.js';
+import { PLATFORM_VERSION } from './versioning.js';
 import { createLogger } from '../logger.js';
 import { compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
 import { refreshCoreAssetsFromSource } from './core-assets.js';
@@ -131,6 +132,27 @@ export function resolveLocalOpenpalmDir(): string | null {
  */
 /** Version stamp recording which skeleton version OP_HOME was last seeded from. */
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
+
+/** The skeleton version OP_HOME was last seeded from, or null when unstamped. */
+export function readSkeletonVersion(homeDir: string): string | null {
+  try {
+    const p = join(homeDir, SKELETON_VERSION_STAMP);
+    return existsSync(p) ? readFileSync(p, 'utf-8').trim() : null;
+  } catch { return null; }
+}
+
+/**
+ * True when this home was seeded by a DIFFERENT platform version than the one
+ * now running — i.e. the binary was updated but its assets/secrets/migrations
+ * have not been applied to OP_HOME yet. The launch flow uses this to land the
+ * user on /splash with an "apply updates" button instead of silently
+ * self-healing on every request. An unstamped home (null) is NOT stale — that's
+ * a fresh/not-installed home handled by the setup flow.
+ */
+export function isSkeletonStale(homeDir: string): boolean {
+  const stamped = readSkeletonVersion(homeDir);
+  return stamped !== null && stamped !== PLATFORM_VERSION.trim();
+}
 
 /**
  * Seed the bundled `.openpalm/` skeleton into OP_HOME — ONCE PER VERSION.
