@@ -193,6 +193,33 @@ describe("routeFrame — permission.asked ownership recording (§3.4)", () => {
   });
 });
 
+describe("routeFrame — question.asked ownership recording (§3.4)", () => {
+  it("records the que_ requestID→principal for the owning subscriber only", () => {
+    // question.asked carries its reply id at properties.id (que_…) and is
+    // answered by requestID exactly like permission.asked — routeFrame records
+    // requestID→owner for both so the reply gate can authorize it.
+    recordSessionOwner("ses_A", A);
+    recordSessionOwner("ses_B", B);
+    const a = collector(A);
+    const b = collector(B);
+
+    const frame = JSON.stringify({
+      type: "question.asked",
+      properties: { id: "que_xyz", sessionID: "ses_A", questions: [{ question: "Pick", header: "h", options: [{ label: "x", description: "" }] }] },
+    });
+    routeFrame(frame);
+
+    // Only A saw the question, and only A now owns the que_ requestID.
+    expect(payloads(a.frames)).toEqual([frame]);
+    expect(b.frames).toEqual([]); // ZERO cross-delivery
+    expect(ownsPermission("que_xyz", A)).toBe(true);
+    expect(ownsPermission("que_xyz", B)).toBe(false);
+
+    a.drop();
+    b.drop();
+  });
+});
+
 describe("consumeSseBuffer — SSE frame parsing", () => {
   it("parses multiple complete frames in one chunk and routes each", () => {
     recordSessionOwner("ses_A", A);

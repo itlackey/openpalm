@@ -436,7 +436,7 @@ describe("/oc proxy — permission reply fail-closed (§3.4)", () => {
     const acA = new AbortController();
     const respA = await ocCall("GET", "/event", { userId: "perm-alice", signal: acA.signal });
     expect(respA.status).toBe(200);
-    const seenA = await readStreamFor(respA, 700);
+    const seenA = await readStreamUntil(respA, requestID);
     expect(seenA).toContain(requestID);
     acA.abort();
     await respA.body?.cancel().catch(() => {});
@@ -470,7 +470,7 @@ describe("/oc proxy — permission reply fail-closed (§3.4)", () => {
     eventFrames = [askedFrame];
     const acA = new AbortController();
     const respA = await ocCall("GET", "/event", { userId: "q-alice", signal: acA.signal });
-    const seenA = await readStreamFor(respA, 700);
+    const seenA = await readStreamUntil(respA, requestID);
     expect(seenA).toContain(requestID);
     acA.abort();
     await respA.body?.cancel().catch(() => {});
@@ -572,12 +572,17 @@ describe("/oc proxy — /event filtered stream (§3.2)", () => {
   });
 });
 
-/** Read an SSE response for up to `ms`, returning the concatenated text. */
-async function readStreamFor(resp: Response, ms: number): Promise<string> {
+/**
+ * Read an SSE response until `needle` appears, returning the concatenated text.
+ * Event-driven: returns the instant the awaited frame arrives — no fixed wait.
+ * `maxMs` is only a safety cap so a regression (frame never routed) fails fast
+ * instead of hanging the suite.
+ */
+async function readStreamUntil(resp: Response, needle: string, maxMs = 2000): Promise<string> {
   const reader = resp.body!.getReader();
   const decoder = new TextDecoder();
   let out = "";
-  const deadline = Date.now() + ms;
+  const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
     const result = await Promise.race([
@@ -587,6 +592,7 @@ async function readStreamFor(resp: Response, ms: number): Promise<string> {
     if (result === "timeout") break;
     if (result.done) break;
     out += decoder.decode(result.value, { stream: true });
+    if (out.includes(needle)) break; // arrived — stop immediately
   }
   try { await reader.cancel(); } catch { /* ignore */ }
   return out;
