@@ -150,49 +150,76 @@
         if (k === 'OP_UI_VERSION') uiVersion = v;
         else stackUpdates[k] = v;
       }
-
-      let uiMessage = '';
-      if (uiVersion) uiMessage = await applyUiVersion(uiVersion);
-
-      if (Object.keys(stackUpdates).length > 0) {
-        await patchVersions(stackUpdates);
-        const result = await applyChanges();
-        if (!result.overallSuccess) {
-          resultIsError = true;
-          if (result.failed.length > 0) {
-            resultMessage = `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`;
-          } else if (!result.dockerAvailable) {
-            resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
-          } else {
-            resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
-          }
-          applying = false;
-          return;
-        }
-        if (result.pullWarning) {
-          resultIsError = false;
-          resultMessage = `Restarted, but images may not have updated: ${result.pullWarning}`;
-          applying = false;
-          const refreshed = await fetchVersions();
-          loaded = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
-          edited = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
-          return;
-        }
+      await applyVersionChanges(stackUpdates, uiVersion);
+      if (!resultIsError) {
+        const refreshed = await fetchVersions();
+        loaded = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
+        edited = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
+        latest = {};
+        latestFetchedAt = '';
       }
-
-      const refreshed = await fetchVersions();
-      loaded = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
-      edited = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
-      latest = {};
-      latestFetchedAt = '';
-      resultIsError = false;
-      resultMessage = uiMessage || 'Updated to latest.';
     } catch (e) {
       const err = e as { message?: string };
       resultIsError = true;
       resultMessage = `Failed to update: ${err.message ?? e}`;
     }
     applying = false;
+  }
+
+  // ── Shared apply pipeline (auto + manual modes) ───────────────────────────
+  // Write image-tag pins, swap the UI build (which restarts onto the new control
+  // plane), then reconcile the home + pull + recreate containers. The reconcile
+  // ALWAYS runs for any applied change: a UI-version bump is a control-plane
+  // update, so the stack must be reconciled + restarted too. (The previous code
+  // skipped this entirely for a UI-only update, which left containers untouched.)
+  async function applyVersionChanges(
+    stackUpdates: Record<string, string>,
+    uiVersion: string | undefined,
+  ): Promise<void> {
+    const hasStack = Object.keys(stackUpdates).length > 0;
+    if (hasStack) await patchVersions(stackUpdates);
+
+    // Swap the UI build first when we can restart onto it synchronously, so the
+    // reconcile below runs on the NEW control plane (its seed/migration logic).
+    let restartedOntoNew = false;
+    if (uiVersion) {
+      const ui = await applyUiVersion(uiVersion);
+      if (ui.outcome === 'reloading') {
+        // Host CLI is respawning; the splash apply screen finishes the reconcile
+        // on the new code after the reload to '/'.
+        resultMessage = ui.message;
+        return;
+      }
+      if (ui.outcome === 'manual') {
+        // Build downloaded but can't auto-restart. Still apply image-pin changes
+        // on the current code, then tell the user to restart for the UI build.
+        if (hasStack) await applyChanges();
+        resultMessage = ui.message;
+        return;
+      }
+      restartedOntoNew = true; // ui.outcome === 'ready' — new control plane is live
+    }
+
+    const result = await applyChanges();
+    if (!result.overallSuccess) {
+      resultIsError = true;
+      resultMessage = result.failed.length > 0
+        ? `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`
+        : !result.dockerAvailable
+          ? 'Versions saved, but Docker is unavailable — services were not restarted.'
+          : `Apply failed: ${result.error ?? 'unknown error'}`;
+      return;
+    }
+
+    resultMessage = result.pullWarning
+      ? `Restarted, but images may not have updated: ${result.pullWarning}`
+      : result.restarted.length > 0
+        ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
+        : 'Versions applied.';
+
+    // Reload so the freshly-restarted control plane's renderer loads; the launch
+    // guard routes onward (chat when healthy, /splash if anything still pending).
+    if (restartedOntoNew) setTimeout(() => { location.href = '/'; }, 800);
   }
 
   // ── Manual mode: apply changed fields ────────────────────────────────────
@@ -212,40 +239,8 @@
         if (k === 'OP_UI_VERSION') uiVersion = edited[k];
         else stackUpdates[k] = edited[k] ?? '';
       }
-
-      let uiMessage = '';
-      if (uiVersion) uiMessage = await applyUiVersion(uiVersion);
-      if (Object.keys(stackUpdates).length > 0) await patchVersions(stackUpdates);
       loaded = { ...edited };
-
-      if (Object.keys(stackUpdates).length > 0) {
-        const result = await applyChanges();
-        if (result.overallSuccess) {
-          resultIsError = false;
-          if (result.pullWarning) {
-            resultMessage = `Restarted, but images may not have updated: ${result.pullWarning}`;
-          } else {
-            resultMessage = result.restarted.length > 0
-              ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
-              : 'Versions applied.';
-          }
-        } else if (result.failed.length > 0) {
-          resultIsError = true;
-          resultMessage = `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`;
-        } else if (!result.dockerAvailable) {
-          resultIsError = true;
-          resultMessage = 'Versions saved, but Docker is unavailable — services were not restarted.';
-        } else {
-          resultIsError = true;
-          resultMessage = `Apply failed: ${result.error ?? 'unknown error'}`;
-        }
-      } else if (uiMessage) {
-        resultIsError = false;
-        resultMessage = uiMessage;
-      } else {
-        resultIsError = false;
-        resultMessage = 'Versions applied.';
-      }
+      await applyVersionChanges(stackUpdates, uiVersion);
     } catch (e) {
       const err = e as { message?: string };
       resultIsError = true;
@@ -254,21 +249,26 @@
     applying = false;
   }
 
-  async function applyUiVersion(version: string): Promise<string> {
+  // Download + activate a new UI build. Returns how the activation resolved:
+  //  'ready'     — Electron restarted the UI server AND waited for /health, so the
+  //                new control plane is live; the caller reconciles on it.
+  //  'reloading' — host CLI is respawning; we redirect to '/' so the splash apply
+  //                screen reconciles on the new code.
+  //  'manual'    — build is on disk but can't be auto-activated; needs a restart.
+  type UiOutcome = { outcome: 'ready' | 'reloading' | 'manual'; message: string };
+  async function applyUiVersion(version: string): Promise<UiOutcome> {
     const result = await downloadUiVersion(version);
     if (result.pendingRestart) {
-      // Electron IPC path — renderer triggers the restart.
-      const restarted = await window.openpalm?.restartUiServer?.();
-      return restarted
-        ? `UI updated to ${version} — restarting…`
-        : `UI ${version} downloaded. Reload the page to apply it.`;
+      const ready = await window.openpalm?.restartUiServer?.();
+      return ready
+        ? { outcome: 'ready', message: '' }
+        : { outcome: 'manual', message: `UI ${version} downloaded. Reload the page to apply it.` };
     }
     if (result.restarting) {
-      // CLI supervisor sent SIGUSR2 — process will respawn. Reload after it comes back up.
-      setTimeout(() => location.reload(), 4_000);
-      return `UI updated to ${version} — reloading in a moment…`;
+      setTimeout(() => { location.href = '/'; }, 4_000);
+      return { outcome: 'reloading', message: `UI updated to ${version} — reloading in a moment…` };
     }
-    return `UI ${version} downloaded. Restart the admin UI to apply it.`;
+    return { outcome: 'manual', message: `UI ${version} downloaded. Restart the admin UI to apply it.` };
   }
 
   async function onLaunchOnLoginChange(event: Event): Promise<void> {

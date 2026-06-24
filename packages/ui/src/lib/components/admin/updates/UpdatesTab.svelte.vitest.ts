@@ -117,6 +117,45 @@ describe('UpdatesTab — automatic mode', () => {
     expect(patchArg['OP_ASSISTANT_VERSION']).toBe('0.12.22');
   });
 
+  test('a UI-only update still reconciles + recreates the stack (gap fix)', async () => {
+    // Only the UI build is behind; image pins are current. Previously this path
+    // swapped the UI build and skipped applyChanges entirely, leaving containers
+    // (and a broken guardian) untouched.
+    vi.mocked(fetchLatestVersions).mockResolvedValue({
+      versions: {
+        OP_ASSISTANT_VERSION: 'latest',
+        OP_GUARDIAN_VERSION: 'latest',
+        OP_PORTAL_VERSION: 'latest',
+        OP_VOICE_VERSION: 'latest',
+        OP_UI_VERSION: '0.12.22',
+      },
+      errors: [],
+      fetchedAt: '2026-06-21T00:00:00Z',
+    });
+    // Electron present + restart awaits readiness → outcome 'ready'.
+    window.openpalm = {
+      launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
+      setLaunchOnLogin: vi.fn(),
+      restartUiServer: vi.fn().mockResolvedValue(true),
+    };
+    vi.mocked(downloadUiVersion).mockResolvedValue({ ok: true, tag: '0.12.22', restarting: false, pendingRestart: true });
+
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+    const updateBtn = page.getByRole('button', { name: /update \d+ component/i });
+    await expect.element(updateBtn).toBeVisible();
+    await updateBtn.click();
+
+    await vi.waitFor(() => {
+      expect(downloadUiVersion).toHaveBeenCalledWith('0.12.22');
+    });
+    expect(window.openpalm!.restartUiServer).toHaveBeenCalledTimes(1);
+    // The reconcile + recreate must run even though no image pins changed.
+    expect(applyChanges).toHaveBeenCalledTimes(1);
+    // No image-pin changes → patchVersions is not called.
+    expect(patchVersions).not.toHaveBeenCalled();
+  });
+
   test('shows "up to date" when latest matches current', async () => {
     // Return latest == current for all keys
     vi.mocked(fetchLatestVersions).mockResolvedValue({
