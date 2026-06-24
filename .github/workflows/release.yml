@@ -6,8 +6,10 @@ name: Release
 #   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + admin-tools +
 #               CLI native binaries + optional Electron + git tag + GitHub release
 #               (add include_images=true to also rebuild Docker images)
-#   portals   — openpalm/portal image + openpalm/guardian image (baked adapters,
-#               NOT on npm; private packages) + git tag + GitHub release
+#   portals   — @openpalm/discord-portal + @openpalm/slack-portal npm packages
+#               (the portal image bun-installs these at runtime, so they update via
+#               `bun update` without an image rebuild) + optional portal image
+#               (include_images=true) + git tag + GitHub release
 #   assistant — openpalm/assistant image + git tag + GitHub release
 #   guardian  — @openpalm/guardian + @openpalm/skeleton npm packages only
 #               (add include_images=true to also rebuild the guardian Docker image)
@@ -34,7 +36,8 @@ name: Release
 # Docker images: openpalm/assistant:vX.Y.Z, openpalm/portal:vX.Y.Z, openpalm/guardian:vX.Y.Z
 #
 # npm OIDC: all npm publishes go through publish-npm-package.yml (single top-level caller).
-# Docker-only units (portals/assistant/images) skip npm jobs entirely.
+# Docker-only units (assistant/images) skip npm jobs entirely; portals publishes the
+# discord/slack adapter npm packages (its image is opt-in via include_images).
 # unit=guardian publishes @openpalm/guardian + @openpalm/skeleton (thin-host needs both at runtime).
 #
 # TAG-LAST: the git tag + GitHub release are created LAST ("tag exists = fully published").
@@ -445,14 +448,45 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
+  # Portal adapters: the portal image bun-installs these from npm at runtime
+  # (data/portal/tools/package.json + bun update), so a published patch reaches
+  # running portals without an image rebuild. Published as `src` only (no build).
+  npm-discord-portal:
+    name: npm @openpalm/discord-portal
+    needs: [compute-version, bump]
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: portals/discord
+      package-name: '@openpalm/discord-portal'
+      version: ${{ needs.compute-version.outputs.new_version }}
+      ref: ${{ github.ref_name }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  npm-slack-portal:
+    name: npm @openpalm/slack-portal
+    needs: [compute-version, bump]
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: portals/slack
+      package-name: '@openpalm/slack-portal'
+      version: ${{ needs.compute-version.outputs.new_version }}
+      ref: ${{ github.ref_name }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
   # ── Docker images ─────────────────────────────────────────────────────────────
-  # portal:    portals | images | all
+  # portal:    images | all | portals+include_images
   # guardian:  images | all | guardian+include_images | platform+include_images
   # assistant: assistant | images | all | platform+include_images
   docker-portal:
     name: Docker openpalm/portal
     needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'images' || inputs.unit == 'all')
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'portals' && inputs.include_images))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -732,6 +766,8 @@ jobs:
       - npm-guardian
       - npm-cli
       - npm-ui
+      - npm-discord-portal
+      - npm-slack-portal
       - docker-portal
       - docker-guardian
       - docker-assistant
