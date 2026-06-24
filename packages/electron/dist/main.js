@@ -7422,7 +7422,7 @@ import { readFileSync, existsSync, copyFileSync } from "node:fs";
 // ../lib/package.json
 var package_default = {
   name: "@openpalm/lib",
-  version: "0.12.35",
+  version: "0.12.38",
   license: "MPL-2.0",
   type: "module",
   description: "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, portals, connections, scheduler",
@@ -7461,7 +7461,7 @@ var package_default = {
 
 // ../lib/src/control-plane/versioning.ts
 var SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
-var PLATFORM_VERSION = formatForDocker(package_default.version);
+var PLATFORM_VERSION = normalizeVersion(package_default.version);
 function isComparableSemver(version) {
   return !!version && SEMVER_RE.test(version.trim());
 }
@@ -7527,10 +7527,6 @@ function isSameMajorVersion(a, b) {
 }
 function normalizeVersion(version) {
   return (version ?? "").trim().replace(/^v/, "");
-}
-function formatForDocker(version) {
-  const bare = normalizeVersion(version);
-  return bare ? `v${bare}` : "";
 }
 function isPrerelease(version) {
   if (!isComparableSemver(version))
@@ -11971,6 +11967,10 @@ async function restartUIServer() {
       return false;
     }
     console.log("UI server restarted.");
+    const win = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+    if (win && !win.isDestroyed()) {
+      win.loadURL(`http://127.0.0.1:${UI_PORT}/`);
+    }
     return true;
   } catch (err) {
     console.error("UI server restart failed:", err instanceof Error ? err.message : String(err));

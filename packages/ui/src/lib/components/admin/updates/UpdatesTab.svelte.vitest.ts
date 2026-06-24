@@ -117,10 +117,12 @@ describe('UpdatesTab — automatic mode', () => {
     expect(patchArg['OP_ASSISTANT_VERSION']).toBe('0.12.22');
   });
 
-  test('a UI-only update still reconciles + recreates the stack (gap fix)', async () => {
+  test('a UI-only update restarts onto the new control plane (gap fix)', async () => {
     // Only the UI build is behind; image pins are current. Previously this path
-    // swapped the UI build and skipped applyChanges entirely, leaving containers
-    // (and a broken guardian) untouched.
+    // swapped the UI build and never restarted the stack, leaving a broken
+    // guardian. Now it restarts the UI server — the harness reloads the window
+    // onto the new control plane, where the splash apply step reconciles +
+    // recreates the stack. (No image-pin change → no direct applyChanges here.)
     vi.mocked(fetchLatestVersions).mockResolvedValue({
       versions: {
         OP_ASSISTANT_VERSION: 'latest',
@@ -132,7 +134,6 @@ describe('UpdatesTab — automatic mode', () => {
       errors: [],
       fetchedAt: '2026-06-21T00:00:00Z',
     });
-    // Electron present + restart awaits readiness → outcome 'ready'.
     window.openpalm = {
       launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
       setLaunchOnLogin: vi.fn(),
@@ -149,11 +150,11 @@ describe('UpdatesTab — automatic mode', () => {
     await vi.waitFor(() => {
       expect(downloadUiVersion).toHaveBeenCalledWith('0.12.22');
     });
+    // Triggers the harness restart (which reloads the window → splash reconcile).
     expect(window.openpalm!.restartUiServer).toHaveBeenCalledTimes(1);
-    // The reconcile + recreate must run even though no image pins changed.
-    expect(applyChanges).toHaveBeenCalledTimes(1);
-    // No image-pin changes → patchVersions is not called.
+    // No image-pin changes → no direct stack apply from this component.
     expect(patchVersions).not.toHaveBeenCalled();
+    expect(applyChanges).not.toHaveBeenCalled();
   });
 
   test('shows "up to date" when latest matches current', async () => {

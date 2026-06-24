@@ -324,6 +324,31 @@ describe('waitForReady', () => {
   });
 });
 
+// ── restart-ui-server: must reload the window onto the new control plane ──────
+// Regression guard: respawning the UI server child is not enough — without a
+// window reload the renderer keeps showing the OLD build, so an in-app update
+// looks like it did nothing (the recurring "the restart doesn't work" report).
+describe('restart-ui-server reloads the renderer', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('loads the root URL after the UI server becomes ready', async () => {
+    // /health responds 200 → the restart "succeeds" and the reload runs.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    mockBrowserWindow.loadURL.mockClear();
+    mockBrowserWindow.isDestroyed.mockReturnValue(false);
+
+    const handler = ipcMainHandleHandlers.get('restart-ui-server');
+    expect(handler).toBeTypeOf('function');
+
+    const ok = await handler!();
+
+    expect(ok).toBe(true);
+    expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/');
+  });
+});
+
 describe('showNotification', () => {
   beforeEach(() => {
     mockNotificationShow.mockReset();

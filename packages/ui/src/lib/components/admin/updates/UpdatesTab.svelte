@@ -167,59 +167,41 @@
   }
 
   // ── Shared apply pipeline (auto + manual modes) ───────────────────────────
-  // Write image-tag pins, swap the UI build (which restarts onto the new control
-  // plane), then reconcile the home + pull + recreate containers. The reconcile
-  // ALWAYS runs for any applied change: a UI-version bump is a control-plane
-  // update, so the stack must be reconciled + restarted too. (The previous code
-  // skipped this entirely for a UI-only update, which left containers untouched.)
+  // Two kinds of change, handled distinctly:
+  //  - Image-tag pins (OP_*_VERSION): no control-plane restart needed → reconcile
+  //    + pull + recreate immediately via /admin/update.
+  //  - UI build (OP_UI_VERSION) IS the control plane: download + restart. The
+  //    harness reloads the window onto the new code, landing on the splash apply
+  //    step which reconciles the home + recreates the stack on the NEW control
+  //    plane. (A UI-only update used to skip the stack entirely — the bug.)
   async function applyVersionChanges(
     stackUpdates: Record<string, string>,
     uiVersion: string | undefined,
   ): Promise<void> {
     const hasStack = Object.keys(stackUpdates).length > 0;
-    if (hasStack) await patchVersions(stackUpdates);
 
-    // Swap the UI build first when we can restart onto it synchronously, so the
-    // reconcile below runs on the NEW control plane (its seed/migration logic).
-    let restartedOntoNew = false;
-    if (uiVersion) {
-      const ui = await applyUiVersion(uiVersion);
-      if (ui.outcome === 'reloading') {
-        // Host CLI is respawning; the splash apply screen finishes the reconcile
-        // on the new code after the reload to '/'.
-        resultMessage = ui.message;
+    if (hasStack) {
+      await patchVersions(stackUpdates);
+      const result = await applyChanges();
+      if (!result.overallSuccess) {
+        resultIsError = true;
+        resultMessage = result.failed.length > 0
+          ? `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`
+          : !result.dockerAvailable
+            ? 'Versions saved, but Docker is unavailable — services were not restarted.'
+            : `Apply failed: ${result.error ?? 'unknown error'}`;
         return;
       }
-      if (ui.outcome === 'manual') {
-        // Build downloaded but can't auto-restart. Still apply image-pin changes
-        // on the current code, then tell the user to restart for the UI build.
-        if (hasStack) await applyChanges();
-        resultMessage = ui.message;
-        return;
-      }
-      restartedOntoNew = true; // ui.outcome === 'ready' — new control plane is live
+      resultMessage = result.pullWarning
+        ? `Restarted, but images may not have updated: ${result.pullWarning}`
+        : result.restarted.length > 0
+          ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
+          : 'Versions applied.';
     }
 
-    const result = await applyChanges();
-    if (!result.overallSuccess) {
-      resultIsError = true;
-      resultMessage = result.failed.length > 0
-        ? `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`
-        : !result.dockerAvailable
-          ? 'Versions saved, but Docker is unavailable — services were not restarted.'
-          : `Apply failed: ${result.error ?? 'unknown error'}`;
-      return;
-    }
-
-    resultMessage = result.pullWarning
-      ? `Restarted, but images may not have updated: ${result.pullWarning}`
-      : result.restarted.length > 0
-        ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
-        : 'Versions applied.';
-
-    // Reload so the freshly-restarted control plane's renderer loads; the launch
-    // guard routes onward (chat when healthy, /splash if anything still pending).
-    if (restartedOntoNew) setTimeout(() => { location.href = '/'; }, 800);
+    // Activate a new control plane last: the harness restarts the UI server and
+    // reloads the window onto it, so the splash apply step finishes the reconcile.
+    if (uiVersion) resultMessage = await applyUiVersion(uiVersion);
   }
 
   // ── Manual mode: apply changed fields ────────────────────────────────────
@@ -249,26 +231,23 @@
     applying = false;
   }
 
-  // Download + activate a new UI build. Returns how the activation resolved:
-  //  'ready'     — Electron restarted the UI server AND waited for /health, so the
-  //                new control plane is live; the caller reconciles on it.
-  //  'reloading' — host CLI is respawning; we redirect to '/' so the splash apply
-  //                screen reconciles on the new code.
-  //  'manual'    — build is on disk but can't be auto-activated; needs a restart.
-  type UiOutcome = { outcome: 'ready' | 'reloading' | 'manual'; message: string };
-  async function applyUiVersion(version: string): Promise<UiOutcome> {
+  // Download a new UI build and activate it. The control plane only changes once
+  // the UI server is respawned onto the new build AND the window reloads onto it.
+  async function applyUiVersion(version: string): Promise<string> {
     const result = await downloadUiVersion(version);
     if (result.pendingRestart) {
-      const ready = await window.openpalm?.restartUiServer?.();
-      return ready
-        ? { outcome: 'ready', message: '' }
-        : { outcome: 'manual', message: `UI ${version} downloaded. Reload the page to apply it.` };
+      // Electron: the harness respawns the UI server and reloads the window onto
+      // the new control plane (which lands on the splash apply step). Fire-and-
+      // forget — the window navigates away when the restart completes.
+      void window.openpalm?.restartUiServer?.();
+      return `Updating to ${version} — restarting…`;
     }
     if (result.restarting) {
+      // Host CLI supervisor respawns the process; reload onto the new code.
       setTimeout(() => { location.href = '/'; }, 4_000);
-      return { outcome: 'reloading', message: `UI updated to ${version} — reloading in a moment…` };
+      return `UI updated to ${version} — reloading in a moment…`;
     }
-    return { outcome: 'manual', message: `UI ${version} downloaded. Restart the admin UI to apply it.` };
+    return `UI ${version} downloaded. Restart the admin UI to apply it.`;
   }
 
   async function onLaunchOnLoginChange(event: Event): Promise<void> {

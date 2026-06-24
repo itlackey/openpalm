@@ -576,6 +576,16 @@ async function restartUIServer(): Promise<boolean> {
       return false;
     }
     console.log('UI server restarted.');
+    // Reload the renderer onto the freshly-restarted control plane. Respawning the
+    // server child is not enough on its own: the window keeps showing the OLD
+    // build's page (and its stale "control plane vX" / cached state), so an update
+    // looks like it did nothing. Load the root so the launch guard re-routes
+    // (→ /splash to apply a pending home update, then onward; → /chat when healthy).
+    // Covers both restart triggers: the IPC path and the SIGUSR2 supervisor path.
+    const win = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+    if (win && !win.isDestroyed()) {
+      void win.loadURL(`http://127.0.0.1:${UI_PORT}/`);
+    }
     return true;
   } catch (err) {
     console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
