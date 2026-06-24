@@ -75,7 +75,12 @@ const log = createLogger("channel-discord:stream");
  */
 export const DISCORD_SESSION_PREAMBLE =
   Bun.env.DISCORD_SESSION_PREAMBLE ??
-  "[channel:discord] CRITICAL OUTPUT RULE for this Discord conversation: whenever you ask the user anything that has a discrete set of answers — a yes/no, a confirmation, or a choice between options — you MUST call the `question` tool to ask it. NEVER write the question and its options as plain text in your reply. Listing choices as text (e.g. \"1. … 2. … or let me know\") is WRONG here; the user cannot click text. The `question` tool renders real clickable buttons in Discord (and the user may also type a free-text answer). If you find yourself about to write options as a numbered or bulleted list for the user to pick from, STOP and call the `question` tool instead. Only use plain text for open-ended questions that have no enumerable options.";
+  // Worded to avoid tripping the guardian's content screen. The prior text
+  // ("CRITICAL OUTPUT RULE … you MUST … STOP and call the tool") matched the
+  // exfiltration/injection heuristic ("output rule") and read to the moderator as
+  // a tool-forcing jailbreak, so the FIRST turn of every Discord session was
+  // blocked. Keep this descriptive, not imperative-override. See content-screen.ts.
+  "[channel:discord] In this Discord conversation, when you need the user to choose between a set of options or confirm a yes/no, ask using the `question` tool so Discord shows clickable buttons. Avoid listing choices as plain text — the user cannot click text. Plain text is fine for open-ended questions that have no fixed set of answers.";
 
 // ── Named tunables (design §4.1, §3.6 edit-throttle) ───────────────────────
 
