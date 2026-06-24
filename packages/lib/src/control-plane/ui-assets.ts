@@ -190,7 +190,17 @@ export async function seedOpenPalmDir(
     const { updated, backupDir } = refreshCoreAssetsFromSource(local, homeDir);
     if (updated.length) logger.debug('refreshed managed stack assets', { refreshed: updated });
     if (alreadySeeded) {
-      logger.debug('skeleton already seeded for this version — managed assets refreshed, skipping full seed', { repoRef });
+      // Even when the stamp matches, ALWAYS seed-if-missing the service-required
+      // files under data/ — above all the assistant/guardian/portal tool manifests
+      // (data/*/tools/package.json) that those containers bind-mount and `bun update`
+      // from at startup. A home stamped at the current version but missing them
+      // (older install, an incomplete earlier seed) would otherwise stay broken
+      // forever, because the old guard skipped the copy entirely. `skipExisting`
+      // preserves any existing file. config/ + knowledge/ are user-owned and
+      // intentionally NOT re-materialized here (#472: a removed user file stays
+      // removed). copyTree no-ops if the skeleton has no data/.
+      copyTree(join(local, 'data'), join(homeDir, 'data'), { skipExisting: true });
+      logger.debug('skeleton already seeded — refreshed managed assets + service data defaults', { repoRef });
       return { updated, backupDir };
     }
     logger.debug('seeding .openpalm from local source', { src: local, repoRef });
