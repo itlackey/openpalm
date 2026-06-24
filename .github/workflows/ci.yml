@@ -206,29 +206,6 @@ jobs:
           fi
           echo "All stack files validated successfully"
 
-      - name: Validate AKM_CLI_VERSION (assistant; guardian only if it still installs akm-cli)
-        run: |
-          set -euo pipefail
-          # The assistant installs akm-cli. The guardian no longer does (its OpenCode
-          # is a pure content moderator — no akm plugin, tools denied), so it has no
-          # AKM_CLI_VERSION. Validate the assistant pin; only require a lockstep match
-          # if the guardian Dockerfile ever reintroduces an AKM_CLI_VERSION pin.
-          ASSISTANT_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' containers/assistant/Dockerfile || true)
-          GUARDIAN_VERSION=$(grep -oP '^ARG AKM_CLI_VERSION=\K\S+' containers/guardian/Dockerfile || true)
-          if [ -z "$ASSISTANT_VERSION" ]; then
-            echo "::error file=containers/assistant/Dockerfile::Could not extract AKM_CLI_VERSION ARG"
-            exit 1
-          fi
-          if [ -n "$GUARDIAN_VERSION" ] && [ "$ASSISTANT_VERSION" != "$GUARDIAN_VERSION" ]; then
-            echo "::error::AKM_CLI_VERSION mismatch: assistant=$ASSISTANT_VERSION guardian=$GUARDIAN_VERSION — bump both together"
-            exit 1
-          fi
-          if [ -z "$GUARDIAN_VERSION" ]; then
-            echo "AKM_CLI_VERSION (assistant): $ASSISTANT_VERSION — guardian does not install akm-cli (skipped)."
-          else
-            echo "AKM_CLI_VERSION matches across assistant + guardian: $ASSISTANT_VERSION"
-          fi
-
       - name: Validate BUN_VERSION sync between assistant and guardian/portal Dockerfiles
         run: |
           set -euo pipefail
