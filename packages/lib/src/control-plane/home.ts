@@ -48,6 +48,45 @@ export function resolveStackDir(): string {
   return `${resolveConfigDir()}/stack`;
 }
 
+/** Managed tree (constitution §1): release-shipped assets, overwritten wholesale. */
+export function resolveSystemDir(): string {
+  return `${resolveOpenPalmHome()}/system`;
+}
+
+/** State tree: app-written records (pins, enabled add-ons, channel, setup). */
+export function resolveStateDir(): string {
+  return `${resolveOpenPalmHome()}/state`;
+}
+
+// ── Well-known files — THE single source of truth ────────────────────────────
+// Every well-known path is defined HERE, once, derived from an explicit `home`.
+// Moving a file/dir is a one-line edit in this section — never a grep-and-replace
+// across the codebase. (This section exists specifically to kill the blast-radius
+// class of change, e.g. `${state.stashDir}/env/stack.env` duplicated 18×.)
+
+/** A fixed compose file in the stack dir. */
+export function composeFilePath(home: string, name: string): string {
+  return `${home}/config/stack/${name}`;
+}
+/** Pins/add-ons/channel state (constitution §1) — OP_HOME/state. */
+export function stateEnvFile(home: string): string {
+  return `${home}/state/stack.state.env`;
+}
+/** Pre-split system env; read only as a transition fallback, then deleted. */
+export function legacyStackEnvFile(home: string): string {
+  return `${home}/knowledge/env/stack.env`;
+}
+/** User env (entrypoint-sourced — never a compose --env-file; secret boundary). */
+export function userEnvFile(home: string): string {
+  return `${home}/knowledge/env/user.env`;
+}
+export function secretsDir(home: string): string {
+  return `${home}/knowledge/secrets`;
+}
+export function authJsonFile(home: string): string {
+  return `${secretsDir(home)}/auth.json`;
+}
+
 export function resolveLogsDir(): string {
   return `${resolveDataDir()}/logs`;
 }
@@ -102,6 +141,10 @@ export function ensureHomeDirs(): void {
 
     // config/stack/ — compose runtime + stack config files
     `${home}/config/stack`,
+
+    // system/ — managed tree (release-shipped assets, overwritten); state/ — app-written records
+    `${home}/system`,
+    `${home}/state`,
   ]) {
     mkdirSync(dir, { recursive: true });
   }

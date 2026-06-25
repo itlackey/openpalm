@@ -16,6 +16,7 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
+import { stateEnvFile, legacyStackEnvFile } from "./home.js";
 import type { ControlPlaneState } from "./types.js";
 
 /** Docker image tag pins — one per deployable image. Exact tag / "latest" / "next". */
@@ -59,16 +60,6 @@ export function isVersionKey(key: string): key is VersionKey {
   return VERSION_KEY_SET.has(key);
 }
 
-/** Pins are STATE (constitution §1): they live in OP_HOME/state, never in a
- *  managed or user file. `legacyEnvPath` is the pre-split location read only as a
- *  fallback during the transition window. */
-function stateEnvPath(state: ControlPlaneState): string {
-  return `${state.homeDir}/state/stack.state.env`;
-}
-function legacyEnvPath(state: ControlPlaneState): string {
-  return `${state.stashDir}/env/stack.env`;
-}
-
 /**
  * Read every version key. Prefers the state file (`state/stack.state.env`); for a
  * key absent there, falls back to the legacy `knowledge/env/stack.env`, then the
@@ -76,8 +67,8 @@ function legacyEnvPath(state: ControlPlaneState): string {
  * existing installs read unchanged until the one-time copy-out runs.
  */
 export function readVersions(state: ControlPlaneState): Record<string, string> {
-  const fromState = existsSync(stateEnvPath(state)) ? parseEnvFile(stateEnvPath(state)) : {};
-  const fromLegacy = existsSync(legacyEnvPath(state)) ? parseEnvFile(legacyEnvPath(state)) : {};
+  const fromState = existsSync(stateEnvFile(state.homeDir)) ? parseEnvFile(stateEnvFile(state.homeDir)) : {};
+  const fromLegacy = existsSync(legacyStackEnvFile(state.homeDir)) ? parseEnvFile(legacyStackEnvFile(state.homeDir)) : {};
   const out: Record<string, string> = {};
   for (const key of SERVICE_VERSION_KEYS) {
     out[key] = fromState[key] ?? fromLegacy[key] ?? VERSION_DEFAULTS[key];
@@ -101,7 +92,7 @@ export function writeVersions(state: ControlPlaneState, updates: Record<string, 
   }
   if (Object.keys(accepted).length === 0) return;
 
-  const path = stateEnvPath(state);
+  const path = stateEnvFile(state.homeDir);
   mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
   const current = existsSync(path) ? readFileSync(path, "utf-8") : "";
   const tmp = `${path}.tmp`;

@@ -91,8 +91,16 @@ export {
   resolveWorkspaceDir,
   resolveDataDir,
   resolveStackDir,
+  resolveSystemDir,
+  resolveStateDir,
   resolveLogsDir,
   ensureHomeDirs,
+  composeFilePath,
+  stateEnvFile,
+  legacyStackEnvFile,
+  userEnvFile,
+  secretsDir,
+  authJsonFile,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────

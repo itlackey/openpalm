@@ -37,15 +37,15 @@ describe('file-based control-plane secrets', () => {
   });
 
   it('does not include file-based secrets in compose env files', () => {
-    const stackDir = tempStackDir();
-    const stashDir = join(stackDir, 'knowledge');
+    const homeDir = tempStackDir(); // a temp OP_HOME root for this test
+    const stashDir = join(homeDir, 'knowledge');
     const stackEnv = join(stashDir, 'env', 'stack.env');
     mkdirSync(join(stashDir, 'env'), { recursive: true });
     writeFileSync(stackEnv, 'OP_HOME=/tmp/openpalm\n');
-    writeSecret(stackDir, 'portal_chat_secret', 'value');
-    const state = { stackDir, stashDir } as ControlPlaneState;
+    writeSecret(homeDir, 'portal_chat_secret', 'value');
+    const state = { homeDir, stackDir: join(homeDir, 'config', 'stack'), stashDir } as ControlPlaneState;
 
-    expect(buildEnvFiles(state)).toEqual([stackEnv]);
+    expect(buildEnvFiles(state)).toEqual([stackEnv]); // state file absent → just legacy stack.env
   });
 
   it('routes secret patches to lower-case secret files instead of stack.env', () => {

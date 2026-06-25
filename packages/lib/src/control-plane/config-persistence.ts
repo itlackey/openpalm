@@ -14,6 +14,7 @@ import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secre
 import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
+import { legacyStackEnvFile, stateEnvFile } from "./home.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
@@ -44,8 +45,8 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
   // enabled add-ons — OP_HOME/state) overrides the legacy/default stack.env.
   // user.env is intentionally NOT here (entrypoint-sourced; secret boundary).
   return [
-    `${state.stashDir}/env/stack.env`,
-    `${state.homeDir}/state/stack.state.env`,
+    legacyStackEnvFile(state.homeDir),
+    stateEnvFile(state.homeDir),
   ].filter(existsSync);
 }
 
