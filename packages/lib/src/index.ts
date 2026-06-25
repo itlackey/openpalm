@@ -472,7 +472,7 @@ export { collectBindAddressWarnings } from "./control-plane/bind-warning.js";
 export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
 export {
   resolveLocalOpenpalmDir,
-  seedOpenPalmDir,
+  applyHomeSeed,
   resolveLocalUiBuild,
   resolveUiBuildDir,
   readSkeletonVersion,

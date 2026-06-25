@@ -398,7 +398,7 @@ export function writeRuntimeFiles(
 ): void {
   mkdirSync(state.stackDir, { recursive: true });
   // The managed system/ tree (compose stack + system OpenCode config) is
-  // overwritten wholesale from the release skeleton in seedOpenPalmDir
+  // overwritten wholesale from the release skeleton in applyHomeSeed
   // (overwriteSystemTree) before this runs. Here we only seed-if-absent the
   // compose files a fresh home is missing, never overwriting the managed copies.
   const composePath = `${state.stackDir}/core.compose.yml`;

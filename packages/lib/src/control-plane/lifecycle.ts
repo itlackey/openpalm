@@ -21,7 +21,7 @@ import {
   ensureComposeVolumeTargets,
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
-import { seedOpenPalmDir } from "./ui-assets.js";
+import { applyHomeSeed } from "./ui-assets.js";
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName, repairRootOwnedBindMounts } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
@@ -142,7 +142,7 @@ async function reconcileCore(
  * write policy follows the destination. Every step is idempotent:
  *   • ensureHomeDirs        — create the OP_HOME directory layout
  *   • ensureSecrets         — generate any missing service secrets
- *   • seedOpenPalmDir       — overwrite the managed system/ tree wholesale +
+ *   • applyHomeSeed       — overwrite the managed system/ tree wholesale +
  *                             seed the user/data trees once (skip-existing)
  *   • ensureOpenCode*       — starter OpenCode config + data dir (seed-if-missing)
  *
@@ -158,7 +158,7 @@ async function applyHome(
 ): Promise<{ assetsUpdated: string[]; backupDir: string | null }> {
   ensureHomeDirs();
   ensureSecrets(state);
-  const seed = await seedOpenPalmDir(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
+  const seed = await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
   return { assetsUpdated: seed.updated, backupDir: seed.backupDir };

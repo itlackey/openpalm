@@ -68,8 +68,8 @@ async function spawnUiChild(
 
   // Self-update the control plane BEFORE spawning, matching the Electron harness
   // (main.ts: checkAndUpdateUiBuild before resolveUiBuildDir). `openpalm ui serve`
-  // is a long-lived supervisor too, so without this the served UI/lib (and its
-  // RELEASE_MIGRATIONS) would only ever update via the `openpalm update` command.
+  // is a long-lived supervisor too, so without this the served UI/lib would only
+  // ever update via the `openpalm update` command.
   console.log('Checking for UI build update...');
   const uiResult = await checkAndUpdateUiBuild(PLATFORM_VERSION, state.dataDir);
   if (uiResult.updated) {

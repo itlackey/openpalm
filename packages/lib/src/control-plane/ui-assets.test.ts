@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import {
   resolveUiBuildDir, readUiBuildVersion, UI_VERSION_STAMP,
-  seedOpenPalmDir, SKELETON_VERSION_STAMP,
+  applyHomeSeed, SKELETON_VERSION_STAMP,
   uiUpdateChannel, checkAndUpdateUiBuild, checkAndUpdateSkeleton,
   readSkeletonVersion, declaredUiChannel,
 } from "./ui-assets.js";
@@ -148,12 +148,10 @@ describe("resolveUiBuildDir — de-route visibility (§6.1 / Risk #1)", () => {
   });
 });
 
-describe("seedOpenPalmDir — version guard (P2)", () => {
-  // A USER-tree seed marker: seeded once by the version-gated copyTree, so a
-  // removed copy stays removed on a same-version re-seed. (system/ files are
-  // ALWAYS overwritten by overwriteSystemTree and are NOT valid seed-once markers.)
+describe("applyHomeSeed — unconditional seed (§1/§8)", () => {
+  // A USER-tree seed marker: config/ files are seeded create-if-missing on every
+  // call (no stamp gate). system/ files are ALWAYS overwritten by overwriteSystemTree.
   const seededFile = () => join(opHome, "config", "marker.txt");
-  const stamp = () => join(opHome, SKELETON_VERSION_STAMP);
 
   beforeEach(() => {
     // Local skeleton source at OPENPALM_REPO_ROOT/packages/skeleton (candidate 1).
@@ -163,13 +161,12 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "services.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "portals.compose.yml"), "services: {}\n");
-    // USER-owned seeds (seed-once via copyTree): the custom overlay + a marker.
+    // USER-owned seeds (create-if-missing via copyTree({skipExisting})): the custom overlay + a marker.
     mkdirSync(join(repoRoot, "packages", "skeleton", "config", "stack"), { recursive: true });
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "custom.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "marker.txt"), "user-seed\n");
     // Skeleton ships per-service tool manifests under data/<svc>/tools/package.json.
-    // These are seeded ONLY by the full copyTree(skipExisting) on a version change,
-    // NOT by refreshCoreAssetsFromSource (which only covers system/stack/*).
+    // These are always seeded by copyTree({skipExisting}) on every applyHomeSeed call.
     for (const svc of ["guardian", "assistant", "portal"]) {
       mkdirSync(join(repoRoot, "packages", "skeleton", "data", svc, "tools"), { recursive: true });
       writeFileSync(
@@ -182,74 +179,71 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
 
   const toolsPkg = (svc: string) => join(opHome, "data", svc, "tools", "package.json");
 
-  it("seeds once and stamps the version", async () => {
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+  it("seeds user files on first call", async () => {
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
     expect(existsSync(seededFile())).toBe(true);
-    expect(readFileSync(stamp(), "utf-8").trim()).toBe("v1");
   });
 
-  it("does NOT re-seed (or re-materialize a removed file) for the same version", async () => {
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
-    rmSync(seededFile(), { force: true });
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
-    expect(existsSync(seededFile())).toBe(false); // guard skipped the copy
+  it("does NOT overwrite a user-edited file (skipExisting preserves user edits)", async () => {
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // User edits the seeded file.
+    writeFileSync(seededFile(), "user-edit\n");
+    // Re-seed (same or different version — no stamp gate).
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    expect(readFileSync(seededFile(), "utf-8")).toBe("user-edit\n");
   });
 
-  it("re-seeds on a version change", async () => {
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+  it("unconditionally re-seeds missing user files on every call (create-if-missing, §1)", async () => {
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
     rmSync(seededFile(), { force: true });
-    await seedOpenPalmDir("v2", opHome, join(opHome, "config"), join(opHome, "data"));
+    // Re-seed — no stamp gate; copyTree({skipExisting}) re-creates absent files.
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
     expect(existsSync(seededFile())).toBe(true);
-    expect(readFileSync(stamp(), "utf-8").trim()).toBe("v2");
   });
 
-  it("OVERWRITES the managed system/ tree on every seed (even same version), preserving user files (#472)", async () => {
+  it("OVERWRITES the managed system/ tree on every call, preserving user files (#472)", async () => {
     const core = join(opHome, "system", "stack", "core.compose.yml");
     const custom = join(opHome, "config", "stack", "custom.compose.yml"); // USER-owned
     // Skeleton ships the CURRENT managed compose.
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
 
-    // First seed materializes everything + stamps the version.
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // First call materializes everything.
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
-    // Simulate an OLD OP_HOME: a STALE managed compose + a user-owned overlay edit.
+    // Simulate a STALE managed compose + user-owned overlay edit.
     writeFileSync(core, "services:\n  assistant:\n    image: STALE\n");
     writeFileSync(custom, "services:\n  my-thing:\n    image: user\n");
 
-    // Re-seed the SAME version (stamp matches → the old code skipped entirely).
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // Re-seed — overwriteSystemTree always fires; user files never overwritten.
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
     // Managed system/ asset is overwritten to the shipped version; the user file
-    // in config/ is untouched (seed-once, never overwritten).
+    // in config/ is untouched (skipExisting).
     expect(readFileSync(core, "utf-8")).toContain("image: current");
     expect(readFileSync(core, "utf-8")).not.toContain("STALE");
     expect(readFileSync(custom, "utf-8")).toContain("image: user");
   });
 
-  it("seeds data/<svc>/tools/package.json into an OP_HOME stamped at an OLDER skeleton version (regression)", async () => {
-    // Reproduces the bug that started the reconcile refactor: data/<svc>/tools/
-    // package.json is materialized ONLY by the version-gated full copyTree, never
-    // by the always-on refreshCoreAssetsFromSource. So an OP_HOME stamped at an
-    // older skeleton version (an upgraded install) never received these files —
-    // the guardian container then failed with "opencode not on PATH".
+  it("seeds data/<svc>/tools/package.json on every call (regression: old stamp gate blocked this)", async () => {
+    // Previously: data/<svc>/tools/package.json was only seeded on a version change
+    // (stamp gate). An OP_HOME stamped at the current version but missing these
+    // files stayed broken forever. Now: copyTree({skipExisting}) always runs.
 
-    // 1. Seed at the OLD version, then DELETE the tool manifests to simulate an
-    //    OP_HOME that predates them (older skeleton shipped no data/<svc>/tools).
-    await seedOpenPalmDir("v0", opHome, join(opHome, "config"), join(opHome, "data"));
+    // 1. Seed once, then delete the tool manifests to simulate a partially-seeded home.
+    await applyHomeSeed("v0", opHome, join(opHome, "config"), join(opHome, "data"));
     for (const svc of ["guardian", "assistant", "portal"]) {
       rmSync(toolsPkg(svc), { force: true });
       expect(existsSync(toolsPkg(svc))).toBe(false);
     }
 
-    // 2. Reconcile to the NEW platform version (stamp changes → full seed runs).
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // 2. Re-seed (same or different version — no gate).
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
-    // 3. The missing tool manifests are now materialized for every service.
+    // 3. The missing tool manifests are re-materialized for every service.
     for (const svc of ["guardian", "assistant", "portal"]) {
       expect(existsSync(toolsPkg(svc)), `data/${svc}/tools/package.json must be seeded`).toBe(true);
       expect(readFileSync(toolsPkg(svc), "utf-8")).toContain(`${svc}-tools`);
     }
-    expect(readFileSync(stamp(), "utf-8").trim()).toBe("v1");
   });
 });
 

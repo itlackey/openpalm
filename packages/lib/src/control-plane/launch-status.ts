@@ -17,14 +17,12 @@
  *   local install always gets the user's attention instead of being silently
  *   routed around.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
 import { legacyStackEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
-import { SKELETON_VERSION_STAMP } from "./ui-assets.js";
-import { normalizeVersion } from "./versioning.js";
 
 export type LocalStackState =
   | "not_installed"     // nothing installed — offer install / add remote
@@ -75,8 +73,6 @@ export interface LocalStatus {
   detail?: Record<string, unknown>;
   /** Present (and meaningful) when nothing is installed: can the user install? */
   runtime?: RuntimeInfo;
-  /** Skeleton version mismatch alert (when OP_HOME was seeded from a different release). */
-  skeletonMismatch?: { expected: string; actual: string };
 }
 
 export type ComposeServiceStatus = {
@@ -172,27 +168,6 @@ export function classifyLocalInstall(stackDir: string, homeDir: string): "not_in
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
   return "setup_incomplete";
-}
-
-/** Check if the OP_HOME skeleton was seeded from a different release. */
-export function checkSkeletonMismatch(homeDir: string): { expected: string; actual: string } | null {
-  const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
-  if (!existsSync(stampPath)) return null;
-  let actual: string;
-  try {
-    actual = readFileSync(stampPath, "utf-8").trim();
-  } catch {
-    return null;
-  }
-  const env = parseEnvFile(legacyStackEnvFile(homeDir));
-  // OP_RELEASE_VERSION is the migration stamp; OP_ASSISTANT_VERSION is the
-  // version-of-record image tag (no single OP_IMAGE_TAG cascade anymore).
-  const expected = env.OP_RELEASE_VERSION ?? env.OP_ASSISTANT_VERSION ?? "";
-  // Compare normalized: the stamp and OP_*_VERSION may differ only by a leading
-  // `v` (e.g. an old `v`-prefixed stamp vs a bare image tag) — that is not a real
-  // mismatch.
-  if (!expected || normalizeVersion(expected) === normalizeVersion(actual)) return null;
-  return { expected, actual };
 }
 
 export function deriveLocalStackState(

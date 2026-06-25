@@ -320,13 +320,13 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(proc.exitCode).toBe(0);
   }, 30_000);
 
-  tier1Test('seedOpenPalmDir copies the built-in stash skill on first install', async () => {
+  tier1Test('applyHomeSeed copies the built-in stash skill on first install', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
-    const { seedOpenPalmDir } = await import('./lib/io.ts');
-    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
+    const { applyHomeSeed } = await import('./lib/io.ts');
+    await applyHomeSeed('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
 
     // The shipped config-diagnostics skill must land on disk with valid frontmatter.
     const skillPath = join(homeDir, 'knowledge/skills/config-diagnostics/SKILL.md');
@@ -337,15 +337,15 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(skill.startsWith('---')).toBe(true);
   }, 30_000);
 
-  tier1Test('seedOpenPalmDir preserves user edits to seeded stash assets', async () => {
+  tier1Test('applyHomeSeed preserves user edits to seeded stash assets', async () => {
     homeDir = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
     process.env.OP_HOME = homeDir;
     process.env.OP_WORK_DIR = join(homeDir, 'workspace');
 
-    const { seedOpenPalmDir } = await import('./lib/io.ts');
+    const { applyHomeSeed } = await import('./lib/io.ts');
 
     // First install seeds the asset.
-    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
+    await applyHomeSeed('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
     const skillPath = join(homeDir, 'knowledge/skills/config-diagnostics/SKILL.md');
     expect(existsSync(skillPath)).toBe(true);
 
@@ -354,7 +354,7 @@ describe('install flow — tier 1 (file validation)', () => {
     writeFileSync(skillPath, userEdit);
 
     // Re-install must not overwrite the user's edit (skipExisting).
-    await seedOpenPalmDir('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
+    await applyHomeSeed('local', homeDir, join(homeDir, 'config'), join(homeDir, 'data'));
     expect(readFileSync(skillPath, 'utf-8')).toBe(userEdit);
   }, 30_000);
 

@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureDirectoryTree, seedOpenPalmDir, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
+import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
 import {
   backupOpenPalmHome,
   buildComposeOptions,
@@ -268,7 +268,7 @@ async function prepareInstallFiles(
   // Stamp with PLATFORM_VERSION (not `version`, the GitHub install ref like
   // "v0.12.5"/"main") so this pre-wizard seed and applyHome's seed agree on the
   // stamp written into .skeleton-version.
-  await seedOpenPalmDir(PLATFORM_VERSION, homeDir, configDir, dataDir);
+  await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather

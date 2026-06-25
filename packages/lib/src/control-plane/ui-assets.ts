@@ -8,7 +8,7 @@
  *   1. OPENPALM_REPO_ROOT env var → packages/skeleton/ (dev override)
  *   2. OPENPALM_SKELETON_DIR env var → set by Electron from extraResources
  *   3. require.resolve('@openpalm/skeleton/package.json') → npm/CLI dep
- *   4. null → seedOpenPalmDir throws with an actionable error message
+ *   4. null → applyHomeSeed throws with an actionable error message
  *
  * UI build resolution order:
  *   1. OPENPALM_REPO_ROOT env var → packages/ui/build/ (dev override)
@@ -88,7 +88,7 @@ function resolveLocalCandidate(
 
 /**
  * Locate the skeleton directory (packages/skeleton/ or equivalent).
- * Used by seedOpenPalmDir to avoid a network download when running from source.
+ * Used by applyHomeSeed to avoid a network download when running from source.
  */
 export function resolveLocalOpenpalmDir(): string | null {
   return resolveLocalCandidate(
@@ -117,77 +117,47 @@ export function resolveLocalOpenpalmDir(): string | null {
       } catch { return null; }
     },
     // 5. null — cold start without @openpalm/skeleton installed
-    //    (seedOpenPalmDir will throw a helpful error in this case)
+    //    (applyHomeSeed will throw a helpful error in this case)
     () => null,
   );
 }
 
 /**
- * Seed OP_HOME from the .openpalm/ skeleton.
- *
- * Existing files are never overwritten (user edits win).
- * Falls back to downloading the repo tarball from GitHub when no local
- * skeleton is found (production binary, packaged Electron app).
+ * Version stamp written by checkAndUpdateSkeleton after an npm hot-swap.
+ * Used by §4.2 pinning controls to read which skeleton version is on disk.
+ * NOT used by applyHomeSeed to gate seeding — ownership alone (§1) determines
+ * write policy; no stamp gate is needed or allowed (constitution §8).
  */
-/** Version stamp recording which skeleton version OP_HOME was last seeded from. */
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
 
 /**
- * Seed the bundled `.openpalm/` skeleton into OP_HOME — ONCE PER VERSION.
+ * Seed the bundled `.openpalm/` skeleton into OP_HOME.
  *
- * Electron calls this on every launch; without a guard it re-copied the entire
- * skeleton tree each time (wasteful, and it re-materialized files a user/process
- * had deliberately removed). We stamp OP_HOME/.skeleton-version with `repoRef`
- * after a successful seed and skip the copy when it already matches — so a given
- * version seeds once and an upgrade re-seeds (skipExisting still preserves any
- * user edits). To force a re-seed, delete the stamp.
+ * Called on every install/update. Per constitution §1 and §8:
+ *   - system/ (managed tree) is ALWAYS overwritten from the release skeleton.
+ *   - User trees (config/, knowledge/, workspace/, data/) are seeded-once via
+ *     copyTree({skipExisting:true}) — existing files are never overwritten.
+ *
+ * No version-stamp gate. skipExisting already preserves user edits, so running
+ * unconditionally is both correct and simpler. Changed managed files are backed
+ * up first by overwriteSystemTree.
  */
-export async function seedOpenPalmDir(
+export async function applyHomeSeed(
   repoRef: string,
   homeDir: string,
   _configDir: string,
   _dataDir: string,
 ): Promise<{ updated: string[]; backupDir: string | null }> {
-  const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
-  let alreadySeeded = false;
-  if (existsSync(stampPath)) {
-    try {
-      // Compare normalized so an old `v`-prefixed stamp still matches a bare repoRef.
-      alreadySeeded = normalizeVersion(readFileSync(stampPath, 'utf-8')) === normalizeVersion(repoRef);
-    } catch { /* unreadable stamp → re-seed */ }
-  }
-
-  const stamp = (): void => {
-    try { writeFileSync(stampPath, `${repoRef}\n`); } catch { /* best-effort */ }
-  };
-
   const local = resolveLocalOpenpalmDir();
   if (local) {
     // ALWAYS overwrite the entire MANAGED system/ tree (compose stack + system
-    // OpenCode config) from the release skeleton, so a re-install/update picks up
-    // the current managed assets even when the skeleton stamp already matches
-    // (#472) — changed files are backed up first. User-owned files (config/,
-    // knowledge/, workspace/, the tool/skill/task seeds) stay seed-if-missing via
-    // the copyTree below; data/ + state/ are never touched here.
+    // OpenCode config) from the release skeleton — changed files are backed up first.
     const { updated, backupDir } = overwriteSystemTree(local, homeDir);
     if (updated.length) logger.debug('overwrote managed system/ tree', { refreshed: updated });
-    if (alreadySeeded) {
-      // Even when the stamp matches, ALWAYS seed-if-missing the service-required
-      // files under data/ — above all the assistant/guardian/portal tool manifests
-      // (data/*/tools/package.json) that those containers bind-mount and `bun update`
-      // from at startup. A home stamped at the current version but missing them
-      // (older install, an incomplete earlier seed) would otherwise stay broken
-      // forever, because the old guard skipped the copy entirely. `skipExisting`
-      // preserves any existing file. config/ + knowledge/ are user-owned and
-      // intentionally NOT re-materialized here (#472: a removed user file stays
-      // removed). copyTree no-ops if the skeleton has no data/.
-      copyTree(join(local, 'data'), join(homeDir, 'data'), { skipExisting: true });
-      logger.debug('skeleton already seeded — refreshed managed assets + service data defaults', { repoRef });
-      return { updated, backupDir };
-    }
+    // Seed user/data trees once — skipExisting preserves any existing file so
+    // user edits, removed files, and service-generated data are never touched.
     logger.debug('seeding .openpalm from local source', { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
-    stamp();
     return { updated, backupDir };
   }
 

@@ -551,9 +551,9 @@ function spawnUIServer(
 
 // ── UI server restart (post UI-build update) ──────────────────────────────────
 // The admin "install UI version" route seeds a newer data/ui, then signals this
-// supervisor to respawn the UI child so the new @openpalm/lib (and its
-// RELEASE_MIGRATIONS) loads without a full app relaunch (design §6.2). The
-// downloaded build does nothing until the Node child is respawned.
+// supervisor to respawn the UI child so the new @openpalm/lib loads without a
+// full app relaunch (design §6.2). The downloaded build does nothing until the
+// Node child is respawned.
 let uiServerRestarting = false;
 // Backup of the previous data/ui set by checkAndUpdateUiBuild; used by the
 // supervisor to restore on startup failure (§4.4 / §6). Null = no backup available.
