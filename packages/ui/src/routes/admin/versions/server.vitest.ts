@@ -1,10 +1,11 @@
 /**
  * Route-level tests for GET + PATCH /admin/versions.
  *
- * The version system is a plain stack.env edit now: GET reads every version key
- * (Docker image tags) with documented defaults for unset
- * keys; PATCH validates each key against the SERVICE_VERSION_KEYS allowlist and
- * writes it back. No Docker Hub / npm lookups, no version cache.
+ * Pins are STATE (constitution §1): GET reads every version key (Docker image
+ * tags) from OP_HOME/state, falling back to the legacy stack.env during the
+ * transition window, with documented defaults for unset keys; PATCH validates
+ * each key against the SERVICE_VERSION_KEYS allowlist and writes it to the state
+ * file. No Docker Hub / npm lookups, no version cache.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -16,6 +17,11 @@ import { GET, PATCH } from './+server.js';
 
 function stackEnvPath(): string {
   return `${getState().stashDir}/env/stack.env`;
+}
+
+/** Pins are STATE now (constitution §1): written to OP_HOME/state, not stack.env. */
+function stateEnvPath(): string {
+  return `${getState().homeDir}/state/stack.state.env`;
 }
 
 function seedStackEnv(content: string): void {
@@ -110,7 +116,7 @@ describe('PATCH /admin/versions', () => {
     expect(body.error).toBe('invalid_version_value');
   });
 
-  test('writes valid version keys to stack.env and echoes the full set', async () => {
+  test('writes valid version keys to the state file and echoes the full set', async () => {
     const res = await PATCH(
       makePatchEvent({
         versions: { OP_ASSISTANT_VERSION: 'v0.12.18', OP_PORTAL_VERSION: 'v0.12.18' },
@@ -122,19 +128,22 @@ describe('PATCH /admin/versions', () => {
     expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.18');
     expect(body.versions.OP_PORTAL_VERSION).toBe('v0.12.18');
 
-    // Persisted to disk.
-    const onDisk = readFileSync(stackEnvPath(), 'utf-8');
+    // Persisted to the STATE file (OP_HOME/state), not the legacy stack.env.
+    const onDisk = readFileSync(stateEnvPath(), 'utf-8');
     expect(onDisk).toContain('OP_ASSISTANT_VERSION=v0.12.18');
     expect(onDisk).toContain('OP_PORTAL_VERSION=v0.12.18');
   });
 
-  test('preserves existing non-version keys in stack.env', async () => {
+  test('writing a pin never touches the legacy stack.env (its keys are left intact)', async () => {
     seedStackEnv('OP_ENABLED_ADDONS=voice\nOP_IMAGE_NAMESPACE=openpalm\n');
     const res = await PATCH(makePatchEvent({ versions: { OP_VOICE_VERSION: 'v0.12.18' } }));
     expect(res.status).toBe(200);
-    const onDisk = readFileSync(stackEnvPath(), 'utf-8');
-    expect(onDisk).toContain('OP_ENABLED_ADDONS=voice');
-    expect(onDisk).toContain('OP_IMAGE_NAMESPACE=openpalm');
-    expect(onDisk).toContain('OP_VOICE_VERSION=v0.12.18');
+    // The pin lands in the state file…
+    expect(readFileSync(stateEnvPath(), 'utf-8')).toContain('OP_VOICE_VERSION=v0.12.18');
+    // …and the legacy stack.env is untouched (not rewritten, nothing lost).
+    const legacy = readFileSync(stackEnvPath(), 'utf-8');
+    expect(legacy).toContain('OP_ENABLED_ADDONS=voice');
+    expect(legacy).toContain('OP_IMAGE_NAMESPACE=openpalm');
+    expect(legacy).not.toContain('OP_VOICE_VERSION');
   });
 });

@@ -40,8 +40,12 @@ const logger = createLogger("config-persistence");
  * env_file — it is sourced by the assistant entrypoint at container startup.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
+  // Order matters: compose applies later --env-files last, so STATE (pins,
+  // enabled add-ons — OP_HOME/state) overrides the legacy/default stack.env.
+  // user.env is intentionally NOT here (entrypoint-sourced; secret boundary).
   return [
     `${state.stashDir}/env/stack.env`,
+    `${state.homeDir}/state/stack.state.env`,
   ].filter(existsSync);
 }
 

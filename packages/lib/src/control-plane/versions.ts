@@ -14,7 +14,7 @@
  * `${OP_*_VERSION:-latest}` — there is no cascade fallback to a single platform
  * tag anymore. Each image rides its own var.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -59,29 +59,37 @@ export function isVersionKey(key: string): key is VersionKey {
   return VERSION_KEY_SET.has(key);
 }
 
-function stackEnvPath(state: ControlPlaneState): string {
+/** Pins are STATE (constitution §1): they live in OP_HOME/state, never in a
+ *  managed or user file. `legacyEnvPath` is the pre-split location read only as a
+ *  fallback during the transition window. */
+function stateEnvPath(state: ControlPlaneState): string {
+  return `${state.homeDir}/state/stack.state.env`;
+}
+function legacyEnvPath(state: ControlPlaneState): string {
   return `${state.stashDir}/env/stack.env`;
 }
 
 /**
- * Read every version key from stack.env. Keys that are absent fall back to their
- * documented default (so callers always get the full SERVICE_VERSION_KEYS set).
+ * Read every version key. Prefers the state file (`state/stack.state.env`); for a
+ * key absent there, falls back to the legacy `knowledge/env/stack.env`, then the
+ * documented default — so callers always get the full SERVICE_VERSION_KEYS set and
+ * existing installs read unchanged until the one-time copy-out runs.
  */
 export function readVersions(state: ControlPlaneState): Record<string, string> {
-  const path = stackEnvPath(state);
-  const parsed = existsSync(path) ? parseEnvFile(path) : {};
+  const fromState = existsSync(stateEnvPath(state)) ? parseEnvFile(stateEnvPath(state)) : {};
+  const fromLegacy = existsSync(legacyEnvPath(state)) ? parseEnvFile(legacyEnvPath(state)) : {};
   const out: Record<string, string> = {};
   for (const key of SERVICE_VERSION_KEYS) {
-    out[key] = parsed[key] ?? VERSION_DEFAULTS[key];
+    out[key] = fromState[key] ?? fromLegacy[key] ?? VERSION_DEFAULTS[key];
   }
   return out;
 }
 
 /**
- * Write validated version keys into stack.env. Only keys in the
- * SERVICE_VERSION_KEYS allowlist are written; anything else is rejected so a typo or
- * a hostile caller can't smuggle arbitrary env into the stack config. Uses
- * mergeEnvContent so existing non-version keys (and comments) are preserved.
+ * Write validated version keys to the state file (atomically: temp + rename).
+ * Only SERVICE_VERSION_KEYS are accepted, so a typo or hostile caller can't smuggle
+ * arbitrary env into the stack config. mergeEnvContent preserves any existing state
+ * keys/comments. Pins are never written back to a managed or legacy file.
  */
 export function writeVersions(state: ControlPlaneState, updates: Record<string, string>): void {
   const accepted: Record<string, string> = {};
@@ -93,7 +101,10 @@ export function writeVersions(state: ControlPlaneState, updates: Record<string, 
   }
   if (Object.keys(accepted).length === 0) return;
 
-  const path = stackEnvPath(state);
+  const path = stateEnvPath(state);
+  mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
   const current = existsSync(path) ? readFileSync(path, "utf-8") : "";
-  writeFileSync(path, mergeEnvContent(current, accepted), { mode: 0o600 });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, mergeEnvContent(current, accepted), { mode: 0o600 });
+  renameSync(tmp, path);
 }
