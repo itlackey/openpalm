@@ -253,11 +253,9 @@ export { writeFileAtomic } from "./control-plane/fs-atomic.js";
 
 // ── Core Assets ─────────────────────────────────────────────────────────
 export {
-  ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssetsFromSource,
-  seedAssistantPersonaFiles,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────
@@ -487,7 +485,6 @@ export {
   majorVersionOf,
   isSameMajorVersion,
   normalizeVersion,
-  formatForDocker,
   formatForDisplay,
   isPrerelease,
   distTagForVersion,

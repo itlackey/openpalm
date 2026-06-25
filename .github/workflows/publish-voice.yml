@@ -6,7 +6,7 @@ name: Publish openpalm/voice images
 #
 # Tags pushed:
 #   - openpalm/voice:latest-{cpu,cu121}     (moving — always; the stack default)
-#   - openpalm/voice:v<version>-{cpu,cu121} (immutable pin — only when `version`
+#   - openpalm/voice:<version>-{cpu,cu121} (immutable pin — only when `version`
 #                                            is supplied via workflow_dispatch)
 #
 # The runtime stack resolves the voice image as
@@ -79,7 +79,7 @@ jobs:
           images: openpalm/voice
           tags: |
             type=raw,value=latest-${{ matrix.tag_suffix }}
-            type=raw,value=v${{ inputs.version }}-${{ matrix.tag_suffix }},enable=${{ inputs.version != '' }}
+            type=raw,value=${{ inputs.version }}-${{ matrix.tag_suffix }},enable=${{ inputs.version != '' }}
 
       - name: Build and push image
         uses: docker/build-push-action@v6

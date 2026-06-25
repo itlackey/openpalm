@@ -1,28 +1,21 @@
 import { json } from "@sveltejs/kit";
 import { requireAdmin, getRequestId } from "$lib/server/helpers.js";
-import { DOCKER_IMAGE_NAMES, SERVICE_VERSION_KEYS } from "@openpalm/lib";
+import { DOCKER_IMAGE_NAMES, SERVICE_VERSION_KEYS, compareComparableVersions } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const DOCKER_HUB_NAMESPACE = "openpalm";
 
-// Tags are published as "v0.12.22". We preserve the "v" prefix so the resolved
-// version can be written directly to stack.env and used as a Docker image tag.
-const STABLE_SEMVER = /^(v\d+\.\d+\.\d+)$/;
+// Images are published with bare semver tags ("0.12.41"). Pre-0.12.41 images
+// carry a legacy leading "v" ("v0.12.40") which is still on Docker Hub, so the
+// `v?` keeps the resolver reading across the cutover. The captured group is bare
+// — that is the canonical form written to stack.env and used as the image tag.
+const STABLE_SEMVER = /^v?(\d+\.\d+\.\d+)$/;
 // Voice tags carry a variant suffix appended by compose ("-cpu", "-cu121", etc.).
 // Only applied to the voice image — other images use hyphens for pre-releases/arch variants.
-const VOICE_STABLE = /^(v\d+\.\d+\.\d+)-\w+$/;
+const VOICE_STABLE = /^v?(\d+\.\d+\.\d+)-\w+$/;
 
 type DockerHubTag = { name: string };
 type DockerHubResponse = { results?: DockerHubTag[] };
-
-function semverCompare(a: string, b: string): number {
-  const pa = a.replace(/^v/, "").split(".").map(Number);
-  const pb = b.replace(/^v/, "").split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  }
-  return 0;
-}
 
 async function resolveNpmLatest(pkg: string): Promise<string | null> {
   try {
@@ -63,7 +56,7 @@ async function resolveDockerLatest(image: string): Promise<string | null> {
       }
     }
     if (candidates.length === 0) return null;
-    return candidates.sort(semverCompare).at(-1) ?? null;
+    return candidates.sort(compareComparableVersions).at(-1) ?? null;
   } catch {
     return null;
   }

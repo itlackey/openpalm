@@ -1,6 +1,5 @@
 import { parse as dotenvParse } from 'dotenv';
 import { readFileSync, existsSync, copyFileSync } from 'node:fs';
-import { formatForDocker } from './versioning.js';
 
 export function parseEnvContent(content: string): Record<string, string> {
   return dotenvParse(content);
@@ -101,14 +100,18 @@ export function parseEnabledAddons(value: string | undefined): string[] {
 export const RELEASE_TAG_REGEX = /^v?\d+\.\d+\.\d+(?:[-+](?:[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?$/;
 
 /**
- * Normalizes a repository ref to an image tag. Returns null for non-release refs.
- * E.g. "0.9.0" → "v0.9.0", "v0.9.0" → "v0.9.0", "main" → null.
+ * Validates a repository ref and returns it verbatim as an image tag, or null
+ * for non-release refs. Pass-through (not normalized): an explicit pin is
+ * honored exactly as typed so a user can still pin a legacy `v`-tagged image
+ * that predates the 0.12.41 bare-tag cutover (e.g. "v0.12.40"). Bare input
+ * stays bare ("0.9.0" → "0.9.0"); "main" → null. The platform's own default
+ * tag never flows through here — it is `PLATFORM_VERSION`, which is always bare.
  */
 export function resolveRequestedImageTag(repoRef: string): string | null {
   const trimmed = repoRef.trim();
   if (!trimmed || trimmed === 'main') return null;
   if (!RELEASE_TAG_REGEX.test(trimmed)) return null;
-  return formatForDocker(trimmed);
+  return trimmed;
 }
 
 export function mergeEnvContent(

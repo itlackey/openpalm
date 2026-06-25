@@ -2,7 +2,6 @@ import { describe, it, expect } from 'bun:test';
 import {
   PLATFORM_VERSION,
   normalizeVersion,
-  formatForDocker,
   formatForDisplay,
   isPrerelease,
   distTagForVersion,
@@ -13,7 +12,7 @@ import {
 import libPkg from '../../package.json' with { type: 'json' };
 
 describe('PLATFORM_VERSION', () => {
-  it('is the bare (no-v) lib package version — single source of truth, v added only at tag boundaries', () => {
+  it('is the bare (no-v) lib package version — the one canonical spelling everywhere', () => {
     expect(PLATFORM_VERSION).toBe(libPkg.version.replace(/^v/, ''));
     expect(PLATFORM_VERSION.startsWith('v')).toBe(false);
     expect(isComparableSemver(PLATFORM_VERSION)).toBe(true);
@@ -30,18 +29,6 @@ describe('normalizeVersion', () => {
     expect(normalizeVersion('')).toBe('');
     expect(normalizeVersion(null)).toBe('');
     expect(normalizeVersion(undefined)).toBe('');
-  });
-});
-
-describe('formatForDocker', () => {
-  it('ensures exactly one leading v', () => {
-    expect(formatForDocker('0.12.0')).toBe('v0.12.0');
-    expect(formatForDocker('v0.12.0')).toBe('v0.12.0');
-    expect(formatForDocker('0.12.0-rc.1')).toBe('v0.12.0-rc.1');
-  });
-  it('returns empty for empty input', () => {
-    expect(formatForDocker('')).toBe('');
-    expect(formatForDocker(null)).toBe('');
   });
 });
 

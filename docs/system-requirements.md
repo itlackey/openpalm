@@ -11,7 +11,7 @@ OpenPalm stack.
 |---|---|---|
 | Docker Engine or Docker Desktop | 24.0+ | Must include Compose V2 |
 | Docker Compose | 2.20+ | Usually bundled with Docker |
-| `git` | any | Needed if you clone the repo to copy `.openpalm/` |
+| `git` | any | Needed if you clone the repo to copy `packages/skeleton/` |
 | `curl` | any | Only needed for optional installer scripts |
 
 ### Supported operating systems

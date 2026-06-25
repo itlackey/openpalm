@@ -4,7 +4,7 @@ OpenPalm has three setup paths, in order of recommendation:
 
 1. **Desktop app** (most users) — download, unzip, run, follow the wizard. Recommended.
 2. **CLI install script** — for servers and headless environments. Same wizard, in your browser.
-3. **Manual compose** — copy `.openpalm/` by hand and run `docker compose` yourself.
+3. **Manual compose** — copy `packages/skeleton/` by hand and run `docker compose` yourself.
 
 All three install the same stack from the same compose files. Pick whichever fits.
 
@@ -71,7 +71,7 @@ For full control without any harness:
 
 ```bash
 git clone https://github.com/itlackey/openpalm.git
-cp -R openpalm/.openpalm "$HOME/.openpalm"
+cp -R openpalm/packages/skeleton "$HOME/.openpalm"
 $EDITOR "$HOME/.openpalm/knowledge/env/stack.env"
 $EDITOR "$HOME/.openpalm/knowledge/env/user.env"
 ```

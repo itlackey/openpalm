@@ -11,12 +11,12 @@ const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
  * place — it is NOT the Electron harness version (see
  * packages/electron/src/harness-contract.ts: HARNESS_CONTRACT_VERSION).
  *
- * Stored BARE (npm form, no `v`) because every internal consumer that stamps or
- * compares it — `.skeleton-version`, `OP_RELEASE_VERSION`, the skeleton-mismatch
- * check — wants a value that matches the bare Docker tags in `OP_*_VERSION`. The
- * `v` is re-added only at the Docker/git-tag boundary via `formatForDocker`. A
- * `v`-prefixed PLATFORM_VERSION was the source of a false-mismatch bug class
- * ("v0.12.37" stamp vs "0.12.37" tag).
+ * Stored BARE (npm form, no `v`) — the canonical spelling everywhere. Docker
+ * image tags, git tags, `.skeleton-version`, `OP_RELEASE_VERSION`, and
+ * `OP_*_VERSION` are all bare as of 0.12.41 (the `v` prefix was retired); reads
+ * still tolerate a legacy leading `v` via `normalizeVersion`. A `v`-prefixed
+ * PLATFORM_VERSION was the source of a false-mismatch bug class ("v0.12.37"
+ * stamp vs "0.12.37" tag).
  */
 export const PLATFORM_VERSION: string = normalizeVersion(libPkg.version);
 
@@ -85,28 +85,21 @@ export function isSameMajorVersion(a: string | null | undefined, b: string | nul
   return aMajor !== null && bMajor !== null && aMajor === bMajor;
 }
 
-// ── Canonical normalization across the three version vocabularies ─────────────
-// Docker tags are `v`-prefixed (`v0.12.0`), npm versions are not (`0.12.0`), and
-// npm dist-tags route stable → `latest` / prerelease → `next`. These helpers are
-// the ONE place that reconciles those forms; route ad-hoc `replace(/^v/, '')` and
-// `version.includes('-')` checks through them instead of re-deriving inline.
+// ── Canonical normalization across the version vocabularies ───────────────────
+// Versions are bare everywhere (`0.12.0`) as of 0.12.41; npm dist-tags route
+// stable → `latest` / prerelease → `next`. `normalizeVersion` is the ONE place
+// that strips a legacy leading `v` (still present on pre-cutover Docker/git
+// tags); route ad-hoc `replace(/^v/, '')` and `version.includes('-')` checks
+// through these helpers instead of re-deriving inline.
 
 /**
- * npm/display form: strip a single leading `v` and trim. `v0.12.0` → `0.12.0`.
- * Pass-through for an already-bare version. Empty/whitespace → ''.
+ * Canonical bare form: strip a single legacy leading `v` and trim. `v0.12.0` →
+ * `0.12.0`. Pass-through for an already-bare version. Empty/whitespace → ''.
+ * This is the form written to stack.env (`OP_*_VERSION`), used as the Docker
+ * image tag, and stamped into `.skeleton-version`.
  */
 export function normalizeVersion(version: string | null | undefined): string {
   return (version ?? '').trim().replace(/^v/, '');
-}
-
-/**
- * Docker-tag form: ensure exactly one leading `v`. `0.12.0` → `v0.12.0`,
- * `v0.12.0` → `v0.12.0`. Empty/whitespace → '' (callers gate on RELEASE_TAG_REGEX
- * before treating a value as a real tag).
- */
-export function formatForDocker(version: string | null | undefined): string {
-  const bare = normalizeVersion(version);
-  return bare ? `v${bare}` : '';
 }
 
 /**

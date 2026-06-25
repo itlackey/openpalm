@@ -247,6 +247,8 @@ describe('cli main', () => {
     console.warn = mock(() => {}) as typeof console.warn;
 
     try {
+      // An explicit --version is honored verbatim. A legacy `v`-prefixed pin is
+      // preserved (not stripped) so a pre-0.12.41 `v`-tagged image stays pullable.
       await main(['install', '--no-start', '--version', 'v0.11.0', '--file', specFile]);
       const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
       expect(stackEnv).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.0$/m);
@@ -535,8 +537,8 @@ describe('detectHostInfo', () => {
 });
 
 describe('install image tag pinning', () => {
-  it('normalizes semver refs to image tags', () => {
-    expect(resolveRequestedImageTag('0.9.0-rc10')).toBe('v0.9.0-rc10');
+  it('validates and passes refs through verbatim (bare stays bare, legacy v preserved)', () => {
+    expect(resolveRequestedImageTag('0.9.0-rc10')).toBe('0.9.0-rc10');
     expect(resolveRequestedImageTag('v0.9.0-rc10')).toBe('v0.9.0-rc10');
     expect(resolveRequestedImageTag('main')).toBeNull();
     expect(resolveRequestedImageTag('   ')).toBeNull();

@@ -146,7 +146,7 @@ Preflight: `bun run electron:test`.
 
 ### `all`
 
-Stamps every unit's files simultaneously to the same version (any bump type or explicit override). Publishes all npm packages and Docker images. Creates per-unit tags + `vX.Y.Z` summary tag.
+Stamps every unit's files simultaneously to the same version (any bump type or explicit override). Publishes all npm packages and Docker images. Creates per-unit tags + bare `X.Y.Z` summary tag.
 
 ---
 
@@ -154,13 +154,18 @@ Stamps every unit's files simultaneously to the same version (any bump type or e
 
 | Unit | Tag(s) |
 |---|---|
-| `platform` | `platform-X.Y.Z` + `vX.Y.Z` |
+| `platform` | `platform-X.Y.Z` + `X.Y.Z` |
 | `portals` | `portals-X.Y.Z` |
 | `assistant` | `assistant-X.Y.Z` |
 | `guardian` | `guardian-X.Y.Z` |
 | `images` | `images-X.Y.Z` |
 | `electron` | `electron-X.Y.Z` |
-| `all` | `platform-X.Y.Z`, `portals-X.Y.Z`, `assistant-X.Y.Z`, `guardian-X.Y.Z`, `electron-X.Y.Z` + `vX.Y.Z` |
+| `all` | `platform-X.Y.Z`, `portals-X.Y.Z`, `assistant-X.Y.Z`, `guardian-X.Y.Z`, `electron-X.Y.Z` + `X.Y.Z` |
+
+Tags and image tags are **bare semver** (no `v` prefix) as of 0.12.41. Releases
+published before the cutover keep their legacy `vX.Y.Z` tags; every read path
+(`normalizeVersion`, the Docker Hub resolver, the CLI self-update redirect,
+`groupReleasesByUnit`'s legacy pattern) still tolerates a leading `v`.
 
 All tags are created last, after all artifacts are published. Existing tags at the same SHA are skipped; tags at a different SHA fail the job (no tag movement).
 
@@ -169,9 +174,9 @@ All tags are created last, after all artifacts are published. Existing tags at t
 ## Docker Image Tag Scheme
 
 ```
-openpalm/assistant:vX.Y.Z   (+ :latest for stable releases)
-openpalm/guardian:vX.Y.Z    (+ :latest for stable releases)
-openpalm/portal:vX.Y.Z      (+ :latest for stable releases)
+openpalm/assistant:X.Y.Z   (+ :latest for stable releases)
+openpalm/guardian:X.Y.Z    (+ :latest for stable releases)
+openpalm/portal:X.Y.Z      (+ :latest for stable releases)
 ```
 
 `latest` is only applied for non-prerelease versions (no `-` in version string).

@@ -32,8 +32,9 @@ name: Release
 # (e.g. 0.12.14-rc.1). Pre-release suffixes auto-select the correct npm dist-tag (rc/beta/next).
 # When omitted, bump type drives the next version computed from the unit's anchor.
 # Tag scheme: platform-X.Y.Z, portals-X.Y.Z, assistant-X.Y.Z, guardian-X.Y.Z,
-#             electron-X.Y.Z, images-X.Y.Z, vX.Y.Z (all-units summary).
-# Docker images: openpalm/assistant:vX.Y.Z, openpalm/portal:vX.Y.Z, openpalm/guardian:vX.Y.Z
+#             electron-X.Y.Z, images-X.Y.Z, X.Y.Z (all-units/platform summary).
+# Docker images: openpalm/assistant:X.Y.Z, openpalm/portal:X.Y.Z, openpalm/guardian:X.Y.Z
+#             (bare semver, no `v` prefix as of 0.12.41; reads still tolerate legacy `v`).
 #
 # npm OIDC: all npm publishes go through publish-npm-package.yml (single top-level caller).
 # Docker-only units (assistant/images) skip npm jobs entirely; portals publishes the
@@ -504,8 +505,8 @@ jobs:
       - name: Guard — fail if image tag already exists
         if: ${{ !inputs.dry_run }}
         run: |
-          if docker manifest inspect openpalm/portal:v${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
-            echo "ERROR: openpalm/portal:v${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+          if docker manifest inspect openpalm/portal:${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
+            echo "ERROR: openpalm/portal:${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
             exit 1
           fi
       - name: Docker metadata
@@ -515,7 +516,7 @@ jobs:
           images: openpalm/portal
           tags: |
             type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
-            type=raw,value=v${{ needs.compute-version.outputs.new_version }}
+            type=raw,value=${{ needs.compute-version.outputs.new_version }}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -559,8 +560,8 @@ jobs:
       - name: Guard — fail if image tag already exists
         if: ${{ !inputs.dry_run }}
         run: |
-          if docker manifest inspect openpalm/guardian:v${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
-            echo "ERROR: openpalm/guardian:v${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+          if docker manifest inspect openpalm/guardian:${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
+            echo "ERROR: openpalm/guardian:${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
             exit 1
           fi
       - name: Docker metadata
@@ -570,7 +571,7 @@ jobs:
           images: openpalm/guardian
           tags: |
             type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
-            type=raw,value=v${{ needs.compute-version.outputs.new_version }}
+            type=raw,value=${{ needs.compute-version.outputs.new_version }}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -610,8 +611,8 @@ jobs:
       - name: Guard — fail if image tag already exists
         if: ${{ !inputs.dry_run }}
         run: |
-          if docker manifest inspect openpalm/assistant:v${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
-            echo "ERROR: openpalm/assistant:v${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+          if docker manifest inspect openpalm/assistant:${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
+            echo "ERROR: openpalm/assistant:${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
             exit 1
           fi
       - name: Docker metadata
@@ -621,7 +622,7 @@ jobs:
           images: openpalm/assistant
           tags: |
             type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
-            type=raw,value=v${{ needs.compute-version.outputs.new_version }}
+            type=raw,value=${{ needs.compute-version.outputs.new_version }}
       - name: Assistant image smoke (amd64 only)
         run: |
           docker build -f containers/assistant/Dockerfile \
@@ -849,17 +850,17 @@ jobs:
           }
 
           if [ "${UNIT}" = 'all' ]; then
-            # All per-unit prefixed tags + vX.Y.Z summary
+            # All per-unit prefixed tags + bare X.Y.Z summary (no `v` as of 0.12.41)
             for PREFIX in platform portals assistant guardian electron; do
               create_tag "${PREFIX}-${VERSION}" "Release ${PREFIX} ${VERSION}"
             done
-            create_tag "v${VERSION}" "All-units release v${VERSION}"
+            create_tag "${VERSION}" "All-units release ${VERSION}"
           elif [ "${UNIT}" = 'platform' ]; then
-            # Platform releases also create vX.Y.Z — asset download URLs use this tag
+            # Platform releases also create the bare X.Y.Z summary — asset download URLs use this tag
             create_tag "platform-${VERSION}" "Release platform ${VERSION}"
-            create_tag "v${VERSION}" "Platform release v${VERSION}"
+            create_tag "${VERSION}" "Platform release ${VERSION}"
           elif [ "${UNIT}" = 'images' ]; then
-            # Docker-only release: tag as images-X.Y.Z (no vX.Y.Z alias)
+            # Docker-only release: tag as images-X.Y.Z (no bare X.Y.Z alias)
             create_tag "images-${VERSION}" "Release images ${VERSION}"
           else
             create_tag "${UNIT}-${VERSION}" "Release ${UNIT} ${VERSION}"
@@ -891,7 +892,7 @@ jobs:
             for PREFIX in platform portals assistant guardian electron; do
               create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}"
             done
-            create_release "v${VERSION}" "OpenPalm v${VERSION} (all units)"
+            create_release "${VERSION}" "OpenPalm ${VERSION} (all units)"
           elif [ "${UNIT}" = 'images' ]; then
             create_release "images-${VERSION}" "OpenPalm images ${VERSION}"
           else

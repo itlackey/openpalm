@@ -50,12 +50,6 @@ function bundledAssetPath(relPath: string): string {
 
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
-export function ensureCoreCompose(): string {
-  const path = `${resolveOpenPalmHome()}/config/stack/core.compose.yml`;
-  mkdirSync(dirname(path), { recursive: true });
-  return path;
-}
-
 export function readCoreCompose(): string {
   const livePath = `${resolveOpenPalmHome()}/config/stack/core.compose.yml`;
   if (existsSync(livePath)) {
@@ -143,31 +137,3 @@ export function refreshCoreAssetsFromSource(sourceRoot: string, homeDir = resolv
   return { backupDir, updated };
 }
 
-// ── Assistant Persona File Seeding ────────────────────────────────────
-
-/**
- * Seed assistant persona files (openpalm.md, system.md) into OP_HOME.
- *
- * Idempotent: **never overwrites** an existing file — user edits always
- * win. This preserves the "config/ is user-owned" contract: persona files
- * are seeded once on first install and never touched again on update.
- *
- * `seeds` maps relative path keys (e.g. `"config/assistant/openpalm.md"`)
- * to file content. Each file is written to `resolveOpenPalmHome()/<relPath>`
- * only if the file does not already exist.
- *
- * Returns the list of relative paths that were actually written (empty on
- * re-run when every seed already exists on disk).
- */
-export function seedAssistantPersonaFiles(seeds: Record<string, string>): string[] {
-  const homeDir = resolveOpenPalmHome();
-  const written: string[] = [];
-  for (const [relPath, content] of Object.entries(seeds)) {
-    const targetPath = join(homeDir, relPath);
-    if (existsSync(targetPath)) continue;
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, content);
-    written.push(relPath);
-  }
-  return written;
-}
