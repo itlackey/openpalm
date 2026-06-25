@@ -827,27 +827,45 @@ function migrate1to2(ctx: MigrationCtx): void {
 }
 
 /**
- * 0.13.0 four-tree split: MANAGED compose moved config/stack/ → system/stack/.
- * The managed trio self-heals at system/stack/ on the reconcile that follows this
- * migration (refreshCoreAssetsFromSource), so the old config/stack/ copies are
- * inert duplicates and are removed (the full-home backup ran first). The USER's
- * config/stack/custom.compose.yml is NOT listed here — it STAYS in the user tree
- * and is never touched (constitution §1: never overwrite/relocate user files).
+ * 0.13.0 four-tree split: MANAGED assets moved out of the user `config/` tree.
+ *   - compose:  config/stack/{core,services,portals}.compose.yml → system/stack/
+ *   - OpenCode: config/{assistant,guardian}/{opencode.jsonc,instructions,themes}
+ *               → system/{assistant,guardian}/ (the operator's model/persona stays
+ *               in config/ as opencode.json/persona.md — NEVER listed here).
+ * These managed files self-heal at their system/ location on the reconcile that
+ * follows this migration, so the old config/ copies are inert duplicates and are
+ * removed (the full-home backup ran first). This is an EXPLICIT allowlist of the
+ * exact managed files that shipped in the prior release — never a dir sweep — so
+ * any user-added file in those dirs survives (constitution §1).
  */
 const ORPHANED_LAYOUT_V3_FILES: string[] = [
   join("config", "stack", "core.compose.yml"),
   join("config", "stack", "services.compose.yml"),
   join("config", "stack", "portals.compose.yml"),
   join("config", "stack", "README.md"),
+  // assistant OpenCode config (moved to system/assistant/)
+  join("config", "assistant", "opencode.jsonc"),
+  join("config", "assistant", "instructions", "core.md"),
+  join("config", "assistant", "instructions", "conversation.md"),
+  join("config", "assistant", "instructions", "system.md"),
+  join("config", "assistant", "instructions", "README.md"),
+  join("config", "assistant", "themes", "mercury.json"),
+  join("config", "assistant", "themes", "openpalm.json"),
+  // assistant runtime cruft from when config/assistant was OPENCODE_CONFIG_DIR
+  join("config", "assistant", "bun.lock"),
+  join("config", "assistant", "package.json"),
+  // guardian OpenCode config (moved to system/guardian/)
+  join("config", "guardian", "opencode.jsonc"),
+  join("config", "guardian", "instructions", "moderation.md"),
 ];
 
 function migrate2to3(ctx: MigrationCtx): void {
   for (const rel of ORPHANED_LAYOUT_V3_FILES) {
     const full = join(ctx.homeDir, rel);
     if (!existsSync(full)) continue;
-    if (ctx.dryRun) { ctx.log(`[dry-run] remove orphaned managed file (now at system/stack): ${rel}`); continue; }
+    if (ctx.dryRun) { ctx.log(`[dry-run] remove orphaned managed file (now under system/): ${rel}`); continue; }
     rmSync(full, { force: true });
-    ctx.log(`removed orphaned config/stack managed file (now at system/stack): ${rel}`);
+    ctx.log(`removed orphaned managed file (now under system/): ${rel}`);
   }
 }
 

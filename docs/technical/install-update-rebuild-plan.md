@@ -143,23 +143,34 @@ carries **seed-once defaults** for the user trees. Concretely:
   OpenCode HOME and **plugin `node_modules`**. Dirs ensured; contents never copied.
 - **→ `state/`:** pins, addons, channel, setup (Phase 1a/1b).
 
-**OpenCode config split (verified — OpenCode 1.17.4 spike):** the assistant +
-guardian containers point `OPENCODE_CONFIG_DIR` at the **`system/`** OpenCode
-config (plugin list/permissions; plugin `node_modules` then install under `data/`
-via the XDG data/config dir under the container HOME), and load the user's
-`config/assistant/opencode.json` via **`OPENCODE_CONFIG` (a single file)** — which
-merges as a user override **without** polluting `config/assistant` with
-`node_modules`. System and user keys are disjoint (plugins/permissions vs
-model/provider) so both apply. Requires editing `containers/{assistant,guardian}/`
-entrypoint + compose env/mounts.
+**OpenCode config split (per OpenCode config precedence — opencode.ai/docs/config):**
+OpenCode MERGES config sources in precedence order; the two tiers we use are
+(2) the **global config `~/.config/opencode/opencode.json`** (under HOME, user-
+overridable) and (7) **managed config files / `OPENCODE_CONFIG_DIR`** (a system
+directory, high precedence). Mapping:
+- **USER (power-user managed):** `OP_HOME/config/{assistant,guardian}` is bind-
+  mounted at the container's **`~/.config/opencode`**. The operator edits
+  `config/assistant/opencode.json` (model/providers), `persona.md`, `tui.json`
+  directly — it IS OpenCode's global config. Seeded once, never overwritten.
+- **MANAGED (platform-enforced):** `OP_HOME/system/{assistant,guardian}` is bind-
+  mounted as **`OPENCODE_CONFIG_DIR`** (plugin list/permissions/instructions),
+  overwritten on update. Plugin `node_modules` install relative to
+  `OPENCODE_CONFIG_DIR` / data caches — NOT into the user's `config/` tree.
+
+Disjoint keys (plugins/permissions vs model/provider) so both apply; on any
+conflict the managed system dir wins (correct — platform enforcement). NO
+`OPENCODE_CONFIG` single-file and no bespoke mount path. `AGENTS.md` ships in
+`system/` so the entrypoint's seed-if-absent skips → **compose env/mounts only,
+no entrypoint change / no image rebuild** (verified against `assistant:0.12.42`).
 
 **Port/namespace overrides** are **state** (carried into `state/stack.state.env`),
 so overwriting the managed env defaults never reverts a user's port (compliance V2).
 
-**Acceptance:** transition is copy-only (source `stack.env` unchanged, Phase-0 stub);
-`config/assistant` has **no `node_modules`** after a real assistant boot (spike-style
-integration check); `system/` overwrite preserves every user-tree + `data/` file;
-built-in skills/tasks still delivered (from `system/`); user-added skills survive.
+**Acceptance:** `config/assistant` (= `~/.config/opencode`) has **no `node_modules`**
+after a real assistant boot; a power-user edit to `config/assistant/opencode.json`
+(model/provider) takes effect; managed plugins/permissions from `system/assistant`
+apply; same for guardian (`config/guardian` → `~/.config/opencode`, `system/guardian`
+→ `OPENCODE_CONFIG_DIR`); `system/` overwrite preserves every user-tree + `data/` file.
 
 ---
 

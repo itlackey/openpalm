@@ -3,7 +3,9 @@
   "instructions": [
     "./instructions/core.md",
     "./instructions/conversation.md",
-    "./persona.md"
+    // The persona is USER-owned (config/assistant/persona.md → ~/.config/opencode);
+    // referenced by absolute ~ path so the managed config always loads it.
+    "~/.config/opencode/persona.md"
   ],
   "plugin": [
     "akm-opencode@latest"

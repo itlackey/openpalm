@@ -138,6 +138,8 @@ rsync "${rsync_flags[@]}" \
 	--exclude=knowledge/secrets \
 	--exclude=knowledge/secrets/auth.json \
 	--exclude=knowledge/env/user.env \
+	--exclude=config/assistant/opencode.json \
+	--exclude=config/guardian/opencode.json \
 	"$ROOT_DIR/packages/skeleton/" "$DEV_ROOT/"
 
 # ── Runtime-only mount targets ───────────────────────────────────

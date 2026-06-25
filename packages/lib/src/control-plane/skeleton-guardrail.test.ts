@@ -78,16 +78,19 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "akm"))).toBe(true);
   });
 
-  test("config/assistant/ has seed files", () => {
-    expect(existsSync(join(SKELETON_DIR, "config", "assistant", "opencode.jsonc"))).toBe(true);
-  });
-
-  test("config/guardian/ has the OpenCode global config (mounted at /etc/opencode)", () => {
-    expect(existsSync(join(SKELETON_DIR, "config", "guardian", "opencode.jsonc"))).toBe(true);
-  });
-
-  test("config/guardian/ ships the message-moderation instructions", () => {
-    expect(existsSync(join(SKELETON_DIR, "config", "guardian", "instructions", "moderation.md"))).toBe(true);
+  test("OpenCode config is split: MANAGED → system/, USER → config/ (four-tree)", () => {
+    // MANAGED (OPENCODE_CONFIG_DIR): plugins/permissions/instructions in system/.
+    expect(existsSync(join(SKELETON_DIR, "system", "assistant", "opencode.jsonc"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "system", "assistant", "instructions", "core.md"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "system", "guardian", "opencode.jsonc"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "system", "guardian", "instructions", "moderation.md"))).toBe(true);
+    // USER (mounted at ~/.config/opencode): power-user model/persona in config/.
+    expect(existsSync(join(SKELETON_DIR, "config", "assistant", "opencode.json"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "assistant", "persona.md"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "guardian", "opencode.json"))).toBe(true);
+    // The managed config must NOT ship in the user tree.
+    expect(existsSync(join(SKELETON_DIR, "config", "assistant", "opencode.jsonc"))).toBe(false);
+    expect(existsSync(join(SKELETON_DIR, "config", "guardian", "opencode.jsonc"))).toBe(false);
   });
 
   test('stack compose assets use a per-image OP_*_VERSION pin (no OP_IMAGE_TAG cascade)', () => {

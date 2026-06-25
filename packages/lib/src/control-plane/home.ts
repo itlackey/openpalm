@@ -157,6 +157,8 @@ export function ensureHomeDirs(): void {
 
     // system/ — managed tree (release-shipped assets, overwritten); state/ — app-written records
     `${home}/system/stack`,         // fixed compose files (managed, overwritten on update)
+    `${home}/system/assistant`,     // MANAGED assistant OpenCode config (OPENCODE_CONFIG_DIR)
+    `${home}/system/guardian`,      // MANAGED guardian OpenCode config (OPENCODE_CONFIG_DIR)
     `${home}/state`,
   ]) {
     mkdirSync(dir, { recursive: true });
