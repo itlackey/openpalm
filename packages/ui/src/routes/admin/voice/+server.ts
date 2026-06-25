@@ -580,7 +580,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     };
   }
 
-  writeVoiceVars(config, state.stackDir);
+  writeVoiceVars(config, state.homeDir);
 
   // If either side targets OpenPalm Voice, make sure the addon is
   // enabled + running before we tell the operator "saved". This is the

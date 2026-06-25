@@ -190,7 +190,7 @@ describe("Fresh Install", () => {
       "OP_SETUP_COMPLETE=false\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   // Scenario 3: performSetup succeeds from completely empty state
@@ -389,7 +389,7 @@ describe("Broken/Corrupt State", () => {
       "OP_IMAGE_TAG=latest\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   it("isSetupComplete returns false when OP_UI_LOGIN_PASSWORD is set but OP_SETUP_COMPLETE is missing", () => {
@@ -401,7 +401,7 @@ describe("Broken/Corrupt State", () => {
 
     // Password alone is no longer a proxy for setup completion.
     // Only OP_SETUP_COMPLETE=true counts.
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   // Scenario 12: API key with special characters round-trips
@@ -466,7 +466,7 @@ describe("Environment Edge Cases", () => {
       "SOME_OTHER_KEY=value\nexport OP_UI_LOGIN_PASSWORD=real-password-here\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   // Scenario 17: export prefix on env vars

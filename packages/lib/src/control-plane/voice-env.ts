@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { mergeEnvContent } from './env.js';
 import { assertNoSecretLikeStackEnvKeys } from './secrets.js';
-import { stackEnvPathFromStackDir } from './paths.js';
+import { legacyStackEnvFile } from './home.js';
 
 export type VoiceVarsConfig = {
   tts?: {
@@ -48,8 +48,8 @@ function applyOpenPalmVoicePreset(
   }
 }
 
-export function writeVoiceVars(config: VoiceVarsConfig, stackDir: string): void {
-  const stackEnvPath = stackEnvPathFromStackDir(stackDir);
+export function writeVoiceVars(config: VoiceVarsConfig, homeDir: string): void {
+  const stackEnvPath = legacyStackEnvFile(homeDir);
   const base = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, 'utf-8') : '';
   const vars: Record<string, string> = {};
 

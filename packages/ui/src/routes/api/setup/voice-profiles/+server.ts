@@ -4,14 +4,14 @@ import {
 	getAddonProfiles,
 	getAddonProfileSelection,
 	isSetupComplete,
-	resolveStackDir,
+	resolveOpenPalmHome,
 } from '@openpalm/lib';
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';
 import { getRequestId, requireAdmin } from '$lib/server/helpers.js';
 
 export const GET: RequestHandler = async (event) => {
-	if (isSetupComplete(resolveStackDir())) {
+	if (isSetupComplete(resolveOpenPalmHome())) {
 		const requestId = getRequestId(event);
 		const authError = requireAdmin(event, requestId);
 		if (authError) return authError;

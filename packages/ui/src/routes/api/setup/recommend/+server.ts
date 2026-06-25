@@ -7,7 +7,7 @@ import {
 	detectLocalProviders,
 	recommendSetup,
 	isSetupComplete,
-	resolveStackDir,
+	resolveOpenPalmHome,
 	PROVIDER_KEY_MAP,
 } from "@openpalm/lib";
 import { getOpenCodeClient, getRequestId, requireAdmin } from "$lib/server/helpers.js";
@@ -58,7 +58,7 @@ async function detectCloudProviders(): Promise<string[]> {
 }
 
 export const GET: RequestHandler = async (event) => {
-	if (isSetupComplete(resolveStackDir())) {
+	if (isSetupComplete(resolveOpenPalmHome())) {
 		const requestId = getRequestId(event);
 		const authError = requireAdmin(event, requestId);
 		if (authError) return authError;

@@ -4,7 +4,7 @@ import {
   markSetupComplete,
   readDeployJournal,
   resolveDeployJournalPath,
-  resolveStackDir,
+  resolveOpenPalmHome,
   runDeploy,
   type ControlPlaneState,
   type DeployEntry,
@@ -39,7 +39,7 @@ function deployStateFromJournal(state: ControlPlaneState): DeployState {
   return {
     deploying: journal.deploying,
     interrupted: journal.interrupted,
-    setupComplete: journal.setupComplete || isSetupComplete(resolveStackDir()),
+    setupComplete: journal.setupComplete || isSetupComplete(resolveOpenPalmHome()),
     deployStatus: journal.deployStatus,
     deployError: journal.deployError,
     imageWarning: journal.imageWarning,
@@ -50,7 +50,7 @@ function deployStateFromJournal(state: ControlPlaneState): DeployState {
 export function getDeployState(state?: ControlPlaneState): DeployState {
   if (state) {
     _state = deployStateFromJournal(state);
-  } else if (!_state.setupComplete && !_state.deploying && isSetupComplete(resolveStackDir())) {
+  } else if (!_state.setupComplete && !_state.deploying && isSetupComplete(resolveOpenPalmHome())) {
     _state.setupComplete = true;
   }
   return { ..._state, deployStatus: _state.deployStatus.map((entry) => ({ ...entry })) };

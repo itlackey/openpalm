@@ -76,7 +76,7 @@ describe('GET /admin/assistant', () => {
   });
 
   test('returns enabled LAN exposure when stack.env binds assistant to all interfaces', async () => {
-    writeFileSync(stackEnvFor(join(rootDir, 'config', 'stack')), 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
+    writeFileSync(stackEnvFor(rootDir), 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
 
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
@@ -101,7 +101,7 @@ describe('PUT /admin/assistant', () => {
     const res = await PUT(makePutEvent({ projectName: 'openpalm-dev', lanExposureEnabled: true, personaContent: '# Updated persona' }));
     expect(res.status).toBe(200);
 
-    const stackEnv = readFileSync(stackEnvFor(join(rootDir, 'config', 'stack')), 'utf-8');
+    const stackEnv = readFileSync(stackEnvFor(rootDir), 'utf-8');
     expect(stackEnv).toContain('OP_PROJECT_NAME=openpalm-dev');
     expect(stackEnv).toContain('OP_ASSISTANT_BIND_ADDRESS=0.0.0.0');
 
@@ -110,12 +110,12 @@ describe('PUT /admin/assistant', () => {
   });
 
   test('disables LAN exposure by restoring loopback bind address', async () => {
-    writeFileSync(stackEnvFor(join(rootDir, 'config', 'stack')), 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
+    writeFileSync(stackEnvFor(rootDir), 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
 
     const res = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false, personaContent: '# Persona' }));
     expect(res.status).toBe(200);
 
-    const stackEnv = readFileSync(stackEnvFor(join(rootDir, 'config', 'stack')), 'utf-8');
+    const stackEnv = readFileSync(stackEnvFor(rootDir), 'utf-8');
     expect(stackEnv).toContain('OP_ASSISTANT_BIND_ADDRESS=127.0.0.1');
   });
 });

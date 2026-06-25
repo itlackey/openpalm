@@ -22,7 +22,7 @@ import type { ControlPlaneState } from '@openpalm/lib';
  */
 export function ensureValidState(): ControlPlaneState {
   const state = createState();
-  if (classifyLocalInstall(state.stackDir) === 'not_installed') {
+  if (classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
     throw new Error('OpenPalm is not installed in this OP_HOME yet. Run `openpalm install` first.');
   }
   state.artifacts = resolveRuntimeFiles();

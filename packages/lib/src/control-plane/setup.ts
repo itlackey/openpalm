@@ -293,7 +293,7 @@ export async function performSetup(
 
       // Write TTS/STT vars to stack.env for the voice channel
       if (tts || stt) {
-        writeVoiceVars({ tts, stt }, state.stackDir);
+        writeVoiceVars({ tts, stt }, state.homeDir);
       }
 
       // Enable requested addons (portals like discord, slack, etc.)

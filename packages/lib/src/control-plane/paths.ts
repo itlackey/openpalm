@@ -11,7 +11,7 @@
  *   knowledge/     — akm knowledge (skills, env, secrets, agents)
  *   workspace/     — shared work area
  */
-import { dirname, basename } from "node:path";
+
 import type { ControlPlaneState } from "./types.js";
 
 // ── Config directory — user + system config ─────────────────────────────────
@@ -38,22 +38,9 @@ export const guardianConfigDir     = (s: ControlPlaneState): string => `${s.conf
  * Lives under knowledge/env/ alongside the user env file (akm `env:stack`).
  */
 export const stackEnvPath          = (s: ControlPlaneState): string => `${s.stashDir}/env/stack.env`;
-/**
- * Resolve the OP_HOME root from a stackDir. Normally `<home>/config/stack`;
- * falls back to the stackDir itself for callers/tests that pass a home-shaped
- * dir. Mirrors `resolveHomeDirFromStackDir` in secrets-files.ts so the env and
- * secret dirs resolve consistently from the same input.
- */
-const homeFromStackDir = (stackDir: string): string =>
-  basename(stackDir) === "stack" && basename(dirname(stackDir)) === "config"
-    ? dirname(dirname(stackDir))
-    : stackDir;
-
-/**
- * Same as `stackEnvPath` but resolved from a `stackDir` for the few callers
- * that only have the stack dir, not full state.
- */
-export const stackEnvPathFromStackDir = (stackDir: string): string => `${homeFromStackDir(stackDir)}/knowledge/env/stack.env`;
+// (Removed homeFromStackDir + stackEnvPathFromStackDir — the path-reverse-engineering
+//  twin of resolveHomeDirFromStackDir. Callers now take homeDir and use
+//  home.ts `legacyStackEnvFile(homeDir)` directly.)
 
 // ── Operational state directories ───────────────────────────────────────────
 

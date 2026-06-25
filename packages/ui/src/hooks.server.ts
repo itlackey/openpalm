@@ -22,7 +22,7 @@ import {
   deriveLaunchStatus,
   deriveLocalStackState,
   isSetupComplete,
-  resolveStackDir,
+  resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
   classifyLocalInstall,
@@ -144,7 +144,7 @@ function parseComposePsServices(stdout: string): ComposeServiceStatus[] {
 async function resolveLaunchRouting(): Promise<LaunchRouting> {
   if (localStatusCache && localStatusCache.expiresAt > Date.now()) return localStatusCache.value;
   const state = getState();
-  const installState = classifyLocalInstall(state.stackDir);
+  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
   const composeResult = await composePs(buildComposeOptions(state));
   const services = composeResult.ok ? parseComposePsServices(composeResult.stdout) : [];
   const localState = deriveLocalStackState(installState, services);
@@ -180,7 +180,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   // by design (first-run). Restrict them to the local machine so a remote actor
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
-  const setupComplete = setupCompleteMemo || isSetupComplete(resolveStackDir());
+  const setupComplete = setupCompleteMemo || isSetupComplete(resolveOpenPalmHome());
   if (setupComplete) setupCompleteMemo = true;
 
   if (isSetupPath && !setupComplete) {

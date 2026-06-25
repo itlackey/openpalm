@@ -51,7 +51,7 @@ async function isAssistantHealthy(): Promise<boolean> {
  * subcommand.
  */
 async function autoRun(opts: BareRunOpts = {}): Promise<void> {
-  const isInstalled = classifyLocalInstall(resolveStackDir()) !== 'not_installed';
+  const isInstalled = classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed';
 
   if (!isInstalled) {
     const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts') as any;

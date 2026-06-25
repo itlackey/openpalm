@@ -24,7 +24,7 @@ function parseComposePsServices(stdout: string) {
 
 export async function load() {
   const state = getState();
-  const installState = classifyLocalInstall(state.stackDir);
+  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
   const composeResult = await composePs(buildComposeOptions(state));
   const localState = deriveLocalStackState(installState, composeResult.ok ? parseComposePsServices(composeResult.stdout) : []);
   return {

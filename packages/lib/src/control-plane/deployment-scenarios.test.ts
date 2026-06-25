@@ -216,7 +216,7 @@ describe("scenario: a foreign project shares our compose project-name", () => {
 describe("scenario: partial / broken install (no OP_SETUP_COMPLETE)", () => {
   it("classifies a half-written install as setup_incomplete → splash route", () => {
     active = buildOpHome({ staleCoreCompose: "services: {}\n" }); // compose present, NOT complete
-    expect(classifyLocalInstall(active.stackDir)).toBe("setup_incomplete");
+    expect(classifyLocalInstall(active.stackDir, active.homeDir)).toBe("setup_incomplete");
 
     const status = deriveLaunchStatus({ local: { state: "setup_incomplete" }, remotes: [] });
     expect(status.recommendedRoute).toBe("splash");
@@ -238,7 +238,7 @@ describe("scenario: partial / broken install (no OP_SETUP_COMPLETE)", () => {
 describe("scenario: nothing installed", () => {
   it("a fresh machine classifies as not_installed", () => {
     active = buildOpHome(); // no compose, not complete
-    expect(classifyLocalInstall(active.stackDir)).toBe("not_installed");
+    expect(classifyLocalInstall(active.stackDir, active.homeDir)).toBe("not_installed");
   });
 
   it("not_installed + no accessible remote + runtime missing → splash carrying runtime detail", () => {

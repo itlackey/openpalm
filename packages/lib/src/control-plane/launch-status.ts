@@ -21,7 +21,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { stackEnvPathFromStackDir } from "./paths.js";
+import { legacyStackEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
 import { SKELETON_VERSION_STAMP } from "./ui-assets.js";
 import { normalizeVersion } from "./versioning.js";
@@ -166,17 +166,16 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
  * which routes to the splash with the install's attention-needed state rather
  * than silently restarting the wizard over their config.
  */
-export function classifyLocalInstall(stackDir: string): "not_installed" | "setup_incomplete" | "installed" {
+export function classifyLocalInstall(stackDir: string, homeDir: string): "not_installed" | "setup_incomplete" | "installed" {
   const hasCompose = existsSync(join(stackDir, "core.compose.yml"));
-  const env = parseEnvFile(stackEnvPathFromStackDir(stackDir));
+  const env = parseEnvFile(legacyStackEnvFile(homeDir));
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
   return "setup_incomplete";
 }
 
 /** Check if the OP_HOME skeleton was seeded from a different release. */
-export function checkSkeletonMismatch(stackDir: string): { expected: string; actual: string } | null {
-  const homeDir = join(stackDir, "..", "..");
+export function checkSkeletonMismatch(homeDir: string): { expected: string; actual: string } | null {
   const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
   if (!existsSync(stampPath)) return null;
   let actual: string;
@@ -185,7 +184,7 @@ export function checkSkeletonMismatch(stackDir: string): { expected: string; act
   } catch {
     return null;
   }
-  const env = parseEnvFile(stackEnvPathFromStackDir(stackDir));
+  const env = parseEnvFile(legacyStackEnvFile(homeDir));
   // OP_RELEASE_VERSION is the migration stamp; OP_ASSISTANT_VERSION is the
   // version-of-record image tag (no single OP_IMAGE_TAG cascade anymore).
   const expected = env.OP_RELEASE_VERSION ?? env.OP_ASSISTANT_VERSION ?? "";
