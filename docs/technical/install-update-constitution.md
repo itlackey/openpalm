@@ -35,8 +35,8 @@ install/update may do to it:
 
 | Tree | Class | Owner | Install/update write policy |
 |---|---|---|---|
-| `config/` (except `config/stack`), `knowledge/`, `workspace/` | **User** | the user | **Seeded once** on first install (create-if-missing), then **never touched** — never overwritten, merged, or drift-checked |
-| `system/` (was `config/stack`) — compose stack, system OpenCode config, **built-in** skills/tasks, tool manifests, shipped defaults | **Managed** | OpenPalm | **Overwritten wholesale** every install/update — it *is* the skeleton |
+| `config/` (except `config/stack`), `knowledge/`, `workspace/`, **built-in skills/tasks, tool manifests** | **User / seeds** | the user | **Seeded once** on first install (create-if-missing), then **never touched** — never overwritten, merged, or drift-checked. Built-in skills (`knowledge/skills`), tasks (`knowledge/tasks`), and tool manifests (`data/<svc>/tools/package.json`) are seed defaults the operator may then customize. |
+| `system/` (was `config/stack`) — compose stack + system OpenCode config (plugins/permissions/instructions), shipped defaults | **Managed** | OpenPalm | **Overwritten wholesale** every install/update — it *is* the skeleton |
 | `data/` — service runtime: dbs, logs, caches, the OpenCode HOME + **plugin installs** | **Runtime** | services | **Never written** by install/update (directories are ensured to exist; contents are service-generated) |
 | `state/` — pins, enabled add-ons, channel, setup record | **State** | the app | App actions only; **never** overwritten by the file copy |
 
@@ -53,10 +53,12 @@ Rules that follow:
    user/state (today's `config/stack/stack.env` mixing defaults + pins + addons)
    **must be split** — the managed part to `system/`, the state part to `state/`.
 4. **Managed assets never live in a user tree, and runtime data never lives in a
-   managed tree.** This is why `config/stack` (managed) moves out of the
-   user-owned `config/` into `system/`, and why built-in skills move out of the
-   user-owned `knowledge/` into `system/` — while a user's *own* skills stay in
-   `knowledge/`.
+   managed tree.** This is why `config/stack`'s managed compose moves out of the
+   user-owned `config/` into `system/`. **Built-in skills/tasks and tool manifests
+   are an explicit exception: they are SEEDS, not managed** — the platform writes
+   the defaults once (`knowledge/skills`, `knowledge/tasks`, `data/<svc>/tools/
+   package.json`) and the operator may then customize them; install/update never
+   overwrites them. (Owner directive: tools/skills/tasks are operator-owned seeds.)
 
 This is the whole point: clean trees delete drift detection, version-stamped
 seeding, layout migrations, and "non-destructive reconcile" — those exist only to

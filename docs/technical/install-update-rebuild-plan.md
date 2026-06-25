@@ -132,13 +132,15 @@ The skeleton becomes the **`system/` (managed)** tree; the release additionally
 carries **seed-once defaults** for the user trees. Concretely:
 
 - **→ `system/` (managed, overwritten):** the compose stack (moved out of
-  `config/stack`), the **system** OpenCode config (plugin list + permissions),
-  **built-in** skills/tasks, `<svc>/tools/package.json` tool manifests, shipped
-  defaults. `system/` *is* the skeleton.
-- **→ user trees (seed-once, never overwritten):** default `config/assistant/*`
-  user config (`opencode.json`, `persona.md`, `instructions/`, themes), default
-  `knowledge/` user content, `workspace/`, `config/stack/custom.compose.yml` (user
-  overlay), `knowledge/env/user.env`. Written only where absent.
+  `config/stack`), the **system** OpenCode config (plugin list + permissions +
+  instructions), shipped defaults. `system/` *is* the skeleton.
+- **→ user trees / seeds (seed-once, never overwritten):** default
+  `config/assistant/*` user config (`opencode.json`, `persona.md`, themes),
+  default `knowledge/` content, **built-in skills/tasks (`knowledge/skills`,
+  `knowledge/tasks`)**, **tool manifests (`data/<svc>/tools/package.json`)**,
+  `workspace/`, `config/stack/custom.compose.yml` (user overlay),
+  `knowledge/env/user.env`. Written only where absent. (Owner directive:
+  tools/skills/tasks are operator-owned seeds, NOT system-managed.)
 - **→ `data/` (runtime, never written by install/update):** dbs, logs, caches, the
   OpenCode HOME and **plugin `node_modules`**. Dirs ensured; contents never copied.
 - **→ `state/`:** pins, addons, channel, setup (Phase 1a/1b).
