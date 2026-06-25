@@ -62,12 +62,19 @@
   // Auto mode pins npm packages to exact versions, so any diff (even range vs
   // concrete) is a meaningful change. If the operator wants range semantics they
   // use manual mode.
+  // Treat a legacy `v`-prefixed pin and its bare equivalent as the SAME version
+  // (stack.env "v0.11.0" vs the bare "0.11.0" the latest-resolver returns as of
+  // the 0.12.41 cutover). Without this, an up-to-date component reads as an
+  // "update" and gets re-pinned to a bare tag whose image may not exist yet
+  // (e.g. voice, still published only as v0.11.0-cpu).
+  const sameVersion = (a: string, b: string) => a.replace(/^v/, '') === b.replace(/^v/, '');
+
   const autoChanges = $derived(
     ALL_FIELDS
       .map((f) => f.key)
       .filter((k) => {
         const lat = latest[k];
-        return lat !== null && lat !== undefined && lat !== (loaded[k] ?? '');
+        return lat !== null && lat !== undefined && !sameVersion(lat, loaded[k] ?? '');
       })
   );
   const hasLatestFetch = $derived(latestFetchedAt !== '');
@@ -363,7 +370,7 @@
                 {#each ALL_FIELDS as field (field.key)}
                   {@const cur = loaded[field.key] ?? ''}
                   {@const lat = latest[field.key]}
-                  {@const changed = lat !== null && lat !== undefined && lat !== cur}
+                  {@const changed = lat !== null && lat !== undefined && !sameVersion(lat, cur)}
                   {@const unavailable = lat === null || lat === undefined}
                   <tr class:row-changed={changed}>
                     <td class="col-component">{field.label}</td>
