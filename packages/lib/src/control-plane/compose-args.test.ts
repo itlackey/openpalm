@@ -21,7 +21,7 @@ function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneStat
     stashDir: join(tempDir, "knowledge"),
     workspaceDir: join(tempDir, "workspace"),
     dataDir: join(tempDir, "data"),
-    stackDir: join(configDir, "stack"),
+    stackDir: join(tempDir, "system", "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -30,7 +30,7 @@ function makeState(overrides: Partial<ControlPlaneState> = {}): ControlPlaneStat
 }
 
 function seedCoreCompose(): void {
-  const stackDir = join(tempDir, "config", "stack");
+  const stackDir = join(tempDir, "system", "stack");
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
 }
@@ -44,7 +44,7 @@ function seedEnvFiles(files: { stack?: boolean } = {}): void {
 }
 
 function seedAddon(name: string): void {
-  const stackDir = join(tempDir, "config", "stack");
+  const stackDir = join(tempDir, "system", "stack");
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(join(stackDir, "portals.compose.yml"), `services:\n  ${name}:\n    profiles: [\"addon.${name}\"]\n    image: test\n`);
   const envDir = join(tempDir, "knowledge", "env");
@@ -85,7 +85,9 @@ describe("buildComposeOptions", () => {
 
   it("includes the user custom compose file", () => {
     seedCoreCompose();
+    // custom.compose.yml is USER-owned → config/stack (not system/stack).
     const stackDir = join(tempDir, "config", "stack");
+    mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, "custom.compose.yml"), "services: {}");
 
     const state = makeState();

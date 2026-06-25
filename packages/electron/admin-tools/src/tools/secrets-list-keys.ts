@@ -42,13 +42,15 @@ export default tool({
   async execute(args) {
     const home = opHome();
     const files: Record<string, string> = {
-      stack: join(home, "config", "stack", "stack.env"),
+      // Non-secret system env lives under knowledge/env/ (NOT config/stack/).
+      stack: join(home, "knowledge", "env", "stack.env"),
     };
     const targets = args.file === "all" ? ["stack", "secrets"] : [args.file];
     const result: Record<string, { exists: boolean; keys: string[] }> = {};
     for (const t of targets) {
       if (t === "secrets") {
-        const secretsDir = join(home, "config", "stack", "secrets");
+        // File-based stack secrets live under knowledge/secrets/ (NOT config/stack/secrets).
+        const secretsDir = join(home, "knowledge", "secrets");
         result[t] = existsSync(secretsDir)
           ? { exists: true, keys: readdirSync(secretsDir).sort() }
           : { exists: false, keys: [] };

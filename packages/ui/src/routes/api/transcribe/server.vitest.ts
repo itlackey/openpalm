@@ -93,7 +93,7 @@ describe('POST /api/transcribe', () => {
 		// engine to stack.env. process.env has NO OP_STT_* set (cleared in
 		// beforeEach), mirroring the UI host process that never loaded stack.env.
 		const { writeVoiceVars } = await import('@openpalm/lib');
-		writeVoiceVars({ stt: { engine: 'openpalm-voice' } }, getState().stackDir);
+		writeVoiceVars({ stt: { engine: 'openpalm-voice' } }, getState().homeDir);
 
 		let capturedUrl = '';
 		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {

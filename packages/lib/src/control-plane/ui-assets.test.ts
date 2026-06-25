@@ -148,24 +148,24 @@ describe("resolveUiBuildDir — de-route visibility (§6.1 / Risk #1)", () => {
 });
 
 describe("seedOpenPalmDir — version guard (P2)", () => {
-  const seededFile = () => join(opHome, "config", "stack", "x.txt");
+  const seededFile = () => join(opHome, "system", "stack", "x.txt");
   const stamp = () => join(opHome, SKELETON_VERSION_STAMP);
 
   beforeEach(() => {
     // Local skeleton source at OPENPALM_REPO_ROOT/packages/skeleton (candidate 1).
-    mkdirSync(join(repoRoot, "packages", "skeleton", "config", "stack"), { recursive: true });
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "x.txt"), "seed\n");
+    mkdirSync(join(repoRoot, "packages", "skeleton", "system", "stack"), { recursive: true });
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "x.txt"), "seed\n");
     // refreshCoreAssetsFromSource reads all MANAGED_ASSETS from the source; populate stubs.
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "core.compose.yml"), "services: {}\n");
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "services.compose.yml"), "services: {}\n");
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "portals.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "services.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "portals.compose.yml"), "services: {}\n");
     // Seeded once by the skip-existing copyTree (custom.compose.yml, opencode.jsonc).
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "custom.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "custom.compose.yml"), "services: {}\n");
     mkdirSync(join(repoRoot, "packages", "skeleton", "config", "assistant"), { recursive: true });
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "assistant", "opencode.jsonc"), "{}\n");
     // Skeleton ships per-service tool manifests under data/<svc>/tools/package.json.
     // These are seeded ONLY by the full copyTree(skipExisting) on a version change,
-    // NOT by refreshCoreAssetsFromSource (which only covers config/stack/*).
+    // NOT by refreshCoreAssetsFromSource (which only covers system/stack/*).
     for (const svc of ["guardian", "assistant", "portal"]) {
       mkdirSync(join(repoRoot, "packages", "skeleton", "data", svc, "tools"), { recursive: true });
       writeFileSync(
@@ -200,11 +200,11 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
   });
 
   it("REFRESHES system-managed stack assets on every seed (even same version), preserving user files (#472)", async () => {
-    const core = join(opHome, "config", "stack", "core.compose.yml");
-    const custom = join(opHome, "config", "stack", "custom.compose.yml");
+    const core = join(opHome, "system", "stack", "core.compose.yml");
+    const custom = join(opHome, "system", "stack", "custom.compose.yml");
     // Skeleton ships the CURRENT managed compose. (custom.compose.yml is user-owned
     // and intentionally not part of the skeleton refresh.)
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
 
     // First seed materializes everything + stamps the version.
     await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));

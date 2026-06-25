@@ -158,11 +158,12 @@ describe('cli main', () => {
       await main(['install', '--no-start', '--file', specFile]);
       // Bootstrap runs directly, creating directories
       expect(existsSync(join(base, 'data', 'assistant'))).toBe(true);
-      expect(existsSync(join(base, 'config', 'stack', 'services.compose.yml'))).toBe(true);
-      expect(existsSync(join(base, 'config', 'stack', 'portals.compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'system', 'stack', 'services.compose.yml'))).toBe(true);
+      expect(existsSync(join(base, 'system', 'stack', 'portals.compose.yml'))).toBe(true);
+      // custom.compose.yml is USER-owned → config/stack, not system/stack.
       expect(existsSync(join(base, 'config', 'stack', 'custom.compose.yml'))).toBe(true);
       expect(existsSync(join(base, 'knowledge', 'tasks', 'akm-improve.yml'))).toBe(true);
-      expect(existsSync(join(base, 'config', 'stack', 'guardian.env'))).toBe(false);
+      expect(existsSync(join(base, 'system', 'stack', 'guardian.env'))).toBe(false);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -270,7 +271,8 @@ describe('cli main', () => {
     // Seed it so the backup path triggers AND we can prove the backup
     // carries forward existing content.
     mkdirSync(join(base, 'data'), { recursive: true });
-    mkdirSync(join(base, 'config', 'stack'), { recursive: true });
+    mkdirSync(join(base, 'system', 'stack'), { recursive: true });
+    mkdirSync(join(base, 'config'), { recursive: true });
     mkdirSync(join(base, 'knowledge', 'env'), { recursive: true });
     writeFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'OP_OWNER_NAME=existing-owner\n');
     writeFileSync(stackConfig, 'llm: old\n');
@@ -309,13 +311,13 @@ describe('cli main', () => {
 
   it('supports addon enable/disable commands', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-addon-cli-'));
-    const coreCompose = join(base, 'config', 'stack', 'core.compose.yml');
+    const coreCompose = join(base, 'system', 'stack', 'core.compose.yml');
     const logs: string[] = [];
 
-    mkdirSync(join(base, 'config', 'stack'), { recursive: true });
+    mkdirSync(join(base, 'system', 'stack'), { recursive: true });
     mkdirSync(join(base, 'data'), { recursive: true });
     writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
-    writeFileSync(join(base, 'config', 'stack', 'portals.compose.yml'), 'services:\n  discord:\n    profiles: ["addon.discord"]\n    image: discord\n    environment:\n      PORTAL_NAME: "Discord Bot"\n');
+    writeFileSync(join(base, 'system', 'stack', 'portals.compose.yml'), 'services:\n  discord:\n    profiles: ["addon.discord"]\n    image: discord\n    environment:\n      PORTAL_NAME: "Discord Bot"\n');
 
     process.env.OP_HOME = base;
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -417,7 +419,7 @@ describe('npm bin launcher', () => {
 describe('validate command', () => {
   it('is a recognized command and exits 0 when file-based required secrets exist', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const stackDir = join(tempHome, 'config', 'stack');
+    const stackDir = join(tempHome, 'system', 'stack');
     const envDir = join(tempHome, 'knowledge', 'env');
     const secretDir = join(tempHome, 'knowledge', 'secrets');
     mkdirSync(stackDir, { recursive: true });
@@ -447,7 +449,7 @@ describe('validate command', () => {
 describe('scan command', () => {
   it('is a recognized command and exits 0 listing sensitive keys', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const stackDir = join(tempHome, 'config', 'stack');
+    const stackDir = join(tempHome, 'system', 'stack');
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, 'stack.env'), 'OP_UI_LOGIN_PASSWORD=abc\nOPENAI_API_KEY=sk-test\n');
 
@@ -472,7 +474,7 @@ describe('scan command', () => {
 describe('audit-secrets command', () => {
   it('is a recognized command and exits 0 for file-based secrets', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const stackDir = join(tempHome, 'config', 'stack');
+    const stackDir = join(tempHome, 'system', 'stack');
     const secretDir = join(tempHome, 'knowledge', 'secrets');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(secretDir, { recursive: true, mode: 0o700 });

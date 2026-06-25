@@ -34,10 +34,11 @@ import { upsertEnvValue, removeEnvKey, parseEnabledAddons } from "./env.js";
 import { nonSensitiveAddonEnvKeys } from "./addon-env-schemas.js";
 import { compareComparableVersions, isComparableSemver, normalizeVersion } from './versioning.js';
 import { BUILTIN_ADDON_IDS } from './addon-ids.js';
+import { stackDirFor, customComposeFilePath } from './home.js';
 
 export const LAYOUT_VERSION_KEY = "OP_LAYOUT_VERSION";
 /** Bump when the on-disk layout changes and add a Migration to MIGRATIONS. */
-export const CURRENT_LAYOUT_VERSION = 2;
+export const CURRENT_LAYOUT_VERSION = 3;
 
 const ADDON_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
@@ -147,7 +148,7 @@ function resolveMigrationPaths(homeDir: string): Pick<MigrationCtx, 'homeDir' | 
   return {
     homeDir,
     dataDir: join(homeDir, 'data'),
-    stackDir: join(homeDir, 'config', 'stack'),
+    stackDir: stackDirFor(homeDir),
     stashDir: join(homeDir, 'knowledge'),
     configDir: join(homeDir, 'config'),
   };
@@ -449,7 +450,7 @@ function migratePortalSecretNames(ctx: MigrationCtx): void {
  * *defines* its own external `channel_lan` network is covered by the .bak copy.
  */
 function migrateCustomComposeChannelLan(ctx: MigrationCtx): void {
-  const customPath = join(ctx.stackDir, 'custom.compose.yml');
+  const customPath = customComposeFilePath(ctx.homeDir);
   if (!existsSync(customPath)) return;
 
   let content: string;
@@ -661,7 +662,13 @@ function writeVaultReadme(ctx: MigrationCtx, vault: string): void {
 
 /** Extract a validated addons[] list from any legacy stack.yml, or []. */
 function readLegacyStackYmlAddons(ctx: MigrationCtx): string[] {
-  for (const p of [join(ctx.configDir, "stack.yml"), join(ctx.stackDir, "stack.yml")]) {
+  // Legacy stack.yml lived at config/stack.yml or the old config/stack/stack.yml;
+  // ctx.stackDir now points at the new system/stack, so check the legacy path explicitly.
+  for (const p of [
+    join(ctx.configDir, "stack.yml"),
+    join(ctx.configDir, "stack", "stack.yml"),
+    join(ctx.stackDir, "stack.yml"),
+  ]) {
     if (!existsSync(p)) continue;
     try {
       const raw = yamlParse(readFileSync(p, "utf-8")) as { addons?: unknown };
@@ -819,6 +826,31 @@ function migrate1to2(ctx: MigrationCtx): void {
   }
 }
 
+/**
+ * 0.13.0 four-tree split: MANAGED compose moved config/stack/ → system/stack/.
+ * The managed trio self-heals at system/stack/ on the reconcile that follows this
+ * migration (refreshCoreAssetsFromSource), so the old config/stack/ copies are
+ * inert duplicates and are removed (the full-home backup ran first). The USER's
+ * config/stack/custom.compose.yml is NOT listed here — it STAYS in the user tree
+ * and is never touched (constitution §1: never overwrite/relocate user files).
+ */
+const ORPHANED_LAYOUT_V3_FILES: string[] = [
+  join("config", "stack", "core.compose.yml"),
+  join("config", "stack", "services.compose.yml"),
+  join("config", "stack", "portals.compose.yml"),
+  join("config", "stack", "README.md"),
+];
+
+function migrate2to3(ctx: MigrationCtx): void {
+  for (const rel of ORPHANED_LAYOUT_V3_FILES) {
+    const full = join(ctx.homeDir, rel);
+    if (!existsSync(full)) continue;
+    if (ctx.dryRun) { ctx.log(`[dry-run] remove orphaned managed file (now at system/stack): ${rel}`); continue; }
+    rmSync(full, { force: true });
+    ctx.log(`removed orphaned config/stack managed file (now at system/stack): ${rel}`);
+  }
+}
+
 const MIGRATIONS: Migration[] = [
   {
     from: 0,
@@ -851,6 +883,20 @@ const MIGRATIONS: Migration[] = [
       for (const rel of INERT_LAYOUT_V2_FILES) {
         if (existsSync(join(ctx.homeDir, rel))) {
           throw new Error(`post-migration check failed: inert ${rel} still present`);
+        }
+      }
+    },
+  },
+  {
+    from: 2,
+    to: 3,
+    describe: "four-tree split: managed compose → system/stack/; remove orphaned config/stack/ managed files (custom.compose.yml stays)",
+    apply: migrate2to3,
+    verify(ctx) {
+      if (ctx.dryRun) return;
+      for (const rel of ORPHANED_LAYOUT_V3_FILES) {
+        if (existsSync(join(ctx.homeDir, rel))) {
+          throw new Error(`post-migration check failed: orphaned ${rel} still present`);
         }
       }
     },

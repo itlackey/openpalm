@@ -14,7 +14,7 @@ import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secre
 import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
-import { legacyStackEnvFile, stateEnvFile } from "./home.js";
+import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
@@ -23,6 +23,7 @@ import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 import {
   readCoreCompose,
   readBundledStackAsset,
+  readBundledCustomCompose,
   refreshCoreAssetsFromSource,
 } from "./core-assets.js";
 export { sha256, randomHex } from "./crypto.js";
@@ -245,16 +246,18 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
  * is purely a writable secondary source entry in config/akm/config.json. No
  * conditional overlay file is involved.
  */
-export function discoverStackOverlays(stackDir: string): string[] {
+export function discoverStackOverlays(homeDir: string): string[] {
   const files: string[] = [];
 
-  const coreYml = `${stackDir}/core.compose.yml`;
-  if (existsSync(coreYml)) files.push(coreYml);
-
-  for (const name of ['services.compose.yml', 'portals.compose.yml', 'custom.compose.yml']) {
-    const composePath = `${stackDir}/${name}`;
+  // Managed compose (system/stack) — core first, then the fixed overlays.
+  for (const name of ['core.compose.yml', 'services.compose.yml', 'portals.compose.yml']) {
+    const composePath = composeFilePath(homeDir, name);
     if (existsSync(composePath)) files.push(composePath);
   }
+
+  // User custom overlay lives in the config/ tree (not system/stack).
+  const custom = customComposeFilePath(homeDir);
+  if (existsSync(custom)) files.push(custom);
 
   return files;
 }
@@ -308,7 +311,7 @@ export function ensurePortalSecret(homeDir: string, addon: string): string {
  * explicit OP_HOME paths.
  */
 export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
-  const composeFiles = discoverStackOverlays(state.stackDir);
+  const composeFiles = discoverStackOverlays(state.homeDir);
   if (composeFiles.length === 0) return;
 
   // Resolve the operator UID/GID compose runs containers as (`user:`), so we
@@ -400,7 +403,7 @@ export function writeRuntimeFiles(
 ): void {
   mkdirSync(state.stackDir, { recursive: true });
   const managedSourceRoot = `${state.homeDir}/.openpalm`;
-  if (existsSync(`${managedSourceRoot}/config/stack/core.compose.yml`)) {
+  if (existsSync(`${managedSourceRoot}/system/stack/core.compose.yml`)) {
     refreshCoreAssetsFromSource(managedSourceRoot, state.homeDir);
   }
   const composePath = `${state.stackDir}/core.compose.yml`;
@@ -409,8 +412,11 @@ export function writeRuntimeFiles(
     const path = `${state.stackDir}/${name}`;
     if (!existsSync(path)) writeFileSync(path, readBundledStackAsset(name));
   }
-  const customComposePath = `${state.stackDir}/custom.compose.yml`;
-  if (!existsSync(customComposePath)) writeFileSync(customComposePath, readBundledStackAsset('custom.compose.yml'));
+  const customComposePath = customComposeFilePath(state.homeDir);
+  if (!existsSync(customComposePath)) {
+    mkdirSync(dirname(customComposePath), { recursive: true });
+    writeFileSync(customComposePath, readBundledCustomCompose());
+  }
 
   for (const addon of listEnabledAddonIds(state.homeDir)) {
     if (['api', 'chat', 'discord', 'slack'].includes(addon)) {

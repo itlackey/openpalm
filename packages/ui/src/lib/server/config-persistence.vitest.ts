@@ -31,7 +31,7 @@ function enableAddons(homeDir: string, csv: string): void {
 }
 
 function writeStackCompose(homeDir: string, filename: string, yml: string): void {
-  const stackDir = join(homeDir, "config", "stack");
+  const stackDir = join(homeDir, "system", "stack");
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(join(stackDir, filename), yml);
 }
@@ -107,31 +107,39 @@ describe("buildRuntimeFileMeta", () => {
 // ── Stack Overlay Discovery ───────────────────────────────────────────────
 
 describe("discoverStackOverlays", () => {
-  let stackDir: string;
+  // discoverStackOverlays takes an OP_HOME root: managed compose from system/stack,
+  // the user custom overlay from config/stack.
+  let homeDir: string;
+  let sysStack: string;
+  let cfgStack: string;
 
   beforeEach(() => {
-    stackDir = trackDir(makeTempDir());
+    homeDir = trackDir(makeTempDir());
+    sysStack = join(homeDir, "system", "stack");
+    cfgStack = join(homeDir, "config", "stack");
+    mkdirSync(sysStack, { recursive: true });
+    mkdirSync(cfgStack, { recursive: true });
   });
 
   test("returns empty when stack dir has no compose files", () => {
-    expect(discoverStackOverlays(stackDir)).toEqual([]);
+    expect(discoverStackOverlays(homeDir)).toEqual([]);
   });
 
   test("discovers core.compose.yml", () => {
-    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
+    writeFileSync(join(sysStack, "core.compose.yml"), "services: {}");
 
-    const result = discoverStackOverlays(stackDir);
+    const result = discoverStackOverlays(homeDir);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatch(/core\.compose\.yml$/);
   });
 
   test("discovers fixed compose overlay files", () => {
-    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
-    writeFileSync(join(stackDir, "services.compose.yml"), "services: {}");
-    writeFileSync(join(stackDir, "portals.compose.yml"), "services: {}");
-    writeFileSync(join(stackDir, "custom.compose.yml"), "services: {}");
+    writeFileSync(join(sysStack, "core.compose.yml"), "services: {}");
+    writeFileSync(join(sysStack, "services.compose.yml"), "services: {}");
+    writeFileSync(join(sysStack, "portals.compose.yml"), "services: {}");
+    writeFileSync(join(cfgStack, "custom.compose.yml"), "services: {}");
 
-    const result = discoverStackOverlays(stackDir);
+    const result = discoverStackOverlays(homeDir);
     expect(result).toHaveLength(4);
     expect(result[0]).toMatch(/core\.compose\.yml$/);
     expect(result.some((f) => f.endsWith("services.compose.yml"))).toBe(true);
@@ -140,12 +148,12 @@ describe("discoverStackOverlays", () => {
   });
 
   test("ignores addon dirs without compose.yml", () => {
-    writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
-    const addonsDir = join(stackDir, "addons");
+    writeFileSync(join(sysStack, "core.compose.yml"), "services: {}");
+    const addonsDir = join(sysStack, "addons");
     mkdirSync(join(addonsDir, "empty-addon"), { recursive: true });
     // no compose.yml in empty-addon
 
-    const result = discoverStackOverlays(stackDir);
+    const result = discoverStackOverlays(homeDir);
     expect(result).toHaveLength(1); // only core.compose.yml
   });
 });
@@ -168,7 +176,7 @@ describe("buildEnvFiles", () => {
     trackDir(state.homeDir);
 
     mkdirSync(join(state.stashDir, "env"), { recursive: true });
-    writeFileSync(stackEnvFor(state.stackDir), "KEY=val");
+    writeFileSync(stackEnvFor(state.homeDir), "KEY=val");
     // user.env may still exist on disk during migration but must NOT be
     // surfaced as a compose env_file (compose would shadow akm-sourced values).
 
@@ -184,7 +192,7 @@ describe("buildEnvFiles", () => {
     trackDir(state.homeDir);
 
     mkdirSync(join(state.stashDir, "env"), { recursive: true });
-    writeFileSync(stackEnvFor(state.stackDir), "KEY=val");
+    writeFileSync(stackEnvFor(state.homeDir), "KEY=val");
 
     const files = buildEnvFiles(state);
     expect(files).toHaveLength(1);
@@ -228,19 +236,22 @@ describe("writeRuntimeFiles", () => {
 
   test('refreshes managed compose assets on rerun but preserves custom.compose.yml', () => {
     seedManagedSource(state.homeDir, {
-      'config/stack/core.compose.yml': 'services:\n  assistant:\n    image: current\n',
-      'config/stack/services.compose.yml': 'services:\n  ollama: {}\n',
-      'config/stack/portals.compose.yml': 'services:\n  chat: {}\n',
-      'config/stack/custom.compose.yml': 'services:\n  seeded: {}\n',
+      'system/stack/core.compose.yml': 'services:\n  assistant:\n    image: current\n',
+      'system/stack/services.compose.yml': 'services:\n  ollama: {}\n',
+      'system/stack/portals.compose.yml': 'services:\n  chat: {}\n',
       'config/assistant/opencode.jsonc': '{}\n',
     });
     writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services:\n  assistant:\n    image: stale\n');
-    writeFileSync(join(state.stackDir, 'custom.compose.yml'), 'services:\n  mine: {}\n');
+    // The USER custom overlay lives in config/stack and must NOT be clobbered.
+    const userStackDir = join(state.homeDir, 'config', 'stack');
+    mkdirSync(userStackDir, { recursive: true });
+    writeFileSync(join(userStackDir, 'custom.compose.yml'), 'services:\n  mine: {}\n');
 
     writeRuntimeFiles(state);
 
+    // Managed core refreshed from the bundled source; user custom preserved.
     expect(readFileSync(join(state.stackDir, 'core.compose.yml'), 'utf-8')).toContain('image: current');
-    expect(readFileSync(join(state.stackDir, 'custom.compose.yml'), 'utf-8')).toContain('mine');
+    expect(readFileSync(join(userStackDir, 'custom.compose.yml'), 'utf-8')).toContain('mine');
   });
 
   test("generates file-based portal secrets for discovered portals", () => {
@@ -250,17 +261,17 @@ describe("writeRuntimeFiles", () => {
     writeRuntimeFiles(state);
 
     expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
-    expect(readSecret(state.stackDir, "portal_chat_secret")).toBeTruthy();
+    expect(readSecret(state.homeDir, "portal_chat_secret")).toBeTruthy();
 
     // Portal secrets must NOT be in stack.env
-    const stackContent = readFileSync(stackEnvFor(state.stackDir), "utf-8");
+    const stackContent = readFileSync(stackEnvFor(state.homeDir), "utf-8");
     expect(stackContent).not.toContain("PORTAL_CHAT_SECRET=");
   });
 
   test("writes stack.env with runtime configuration", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = stackEnvFor(state.stackDir);
+    const systemEnvPath = stackEnvFor(state.homeDir);
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
@@ -275,21 +286,21 @@ describe("writeRuntimeFiles", () => {
   test("stack.env does NOT leak user-managed secrets", () => {
     writeRuntimeFiles(state);
 
-    const systemEnvPath = stackEnvFor(state.stackDir);
+    const systemEnvPath = stackEnvFor(state.homeDir);
     const content = readFileSync(systemEnvPath, "utf-8");
     const lines = content.split("\n");
     expect(lines.some((l) => /^OP_UI_LOGIN_PASSWORD=/.test(l))).toBe(false);
   });
 
   test("preserves existing file-based portal secrets (does not regenerate)", () => {
-    writeSecret(state.stackDir, "portal_chat_secret", "pre-existing-secret-value");
+    writeSecret(state.homeDir, "portal_chat_secret", "pre-existing-secret-value");
 
     writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
     enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);
 
-    expect(readSecret(state.stackDir, "portal_chat_secret")).toBe("pre-existing-secret-value");
+    expect(readSecret(state.homeDir, "portal_chat_secret")).toBe("pre-existing-secret-value");
   });
 
 });
@@ -301,11 +312,11 @@ describe("portal secret files", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeSecret(state.stackDir, "portal_chat_secret", "abc123");
-    writeSecret(state.stackDir, "portal_api_secret", "def456");
+    writeSecret(state.homeDir, "portal_chat_secret", "abc123");
+    writeSecret(state.homeDir, "portal_api_secret", "def456");
 
-    expect(readSecret(state.stackDir, "portal_chat_secret")).toBe("abc123");
-    expect(readSecret(state.stackDir, "portal_api_secret")).toBe("def456");
+    expect(readSecret(state.homeDir, "portal_chat_secret")).toBe("abc123");
+    expect(readSecret(state.homeDir, "portal_api_secret")).toBe("def456");
   });
 
   test("returns null when no secret file exists", () => {
@@ -313,18 +324,18 @@ describe("portal secret files", () => {
     trackDir(state.homeDir);
     mkdirSync(state.stackDir, { recursive: true });
 
-    expect(readSecret(state.stackDir, "portal_chat_secret")).toBeNull();
+    expect(readSecret(state.homeDir, "portal_chat_secret")).toBeNull();
   });
 
   test("writes secrets to knowledge/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeSecret(state.stackDir, "portal_chat_secret", "abc");
-    writeSecret(state.stackDir, "portal_api_secret", "def");
+    writeSecret(state.homeDir, "portal_chat_secret", "abc");
+    writeSecret(state.homeDir, "portal_api_secret", "def");
 
-    expect(readFileSync(secretPath(state.stackDir, "portal_chat_secret"), "utf-8")).toBe("abc");
-    expect(readFileSync(secretPath(state.stackDir, "portal_api_secret"), "utf-8")).toBe("def");
+    expect(readFileSync(secretPath(state.homeDir, "portal_chat_secret"), "utf-8")).toBe("abc");
+    expect(readFileSync(secretPath(state.homeDir, "portal_api_secret"), "utf-8")).toBe("def");
     expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
   });
 });

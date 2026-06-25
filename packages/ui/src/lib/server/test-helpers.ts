@@ -44,7 +44,7 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
     stashDir: join(tempDir, "knowledge"),
     workspaceDir: join(tempDir, "workspace"),
     dataDir: join(tempDir, "data"),
-    stackDir: join(tempDir, "config", "stack"),
+    stackDir: join(tempDir, "system", "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],

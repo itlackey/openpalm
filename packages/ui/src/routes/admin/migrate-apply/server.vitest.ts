@@ -100,12 +100,15 @@ describe('POST /admin/migrate-apply', () => {
     expect(body.ok).toBe(true);
     expect(body.migrated).toBe(true);
     expect(body.from).toBe(1);
-    expect(body.to).toBe(2);
+    // Full chain runs to the current layout (1→2→3).
+    expect(body.to).toBe(3);
     expect(body.applied).toContain('1->2');
+    expect(body.applied).toContain('2->3');
     expect(body.backupDir).toBeTruthy();
-    // The inert system file is gone; user/managed files remain.
+    // Inert (v2) channels.compose.yml gone; orphaned managed core.compose.yml
+    // removed from config/stack by v3 (it self-heals at system/stack on reconcile).
     expect(existsSync(join(home, 'config/stack/channels.compose.yml'))).toBe(false);
-    expect(existsSync(join(home, 'config/stack/core.compose.yml'))).toBe(true);
+    expect(existsSync(join(home, 'config/stack/core.compose.yml'))).toBe(false);
   });
 
   test('is idempotent — a second apply is a no-op', async () => {

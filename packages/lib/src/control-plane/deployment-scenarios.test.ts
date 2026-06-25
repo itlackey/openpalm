@@ -63,7 +63,7 @@ function buildOpHome(opts: OpHomeOptions = {}): OpHome {
   const homeDir = mkdtempSync(join(tmpdir(), "op-deploy-scn-"));
   process.env.OP_HOME = homeDir;
   const configDir = join(homeDir, "config");
-  const stackDir = join(configDir, "stack");
+  const stackDir = join(homeDir, "system", "stack"); // managed compose tree (was config/stack)
   const envDir = join(homeDir, "knowledge", "env");
   mkdirSync(stackDir, { recursive: true });
   mkdirSync(envDir, { recursive: true });
@@ -166,18 +166,18 @@ describe("scenario: stale managed compose asset in an existing OP_HOME", () => {
 
     // Build a minimal source .openpalm tree with the CURRENT managed assets.
     const srcOpenpalm = mkdtempSync(join(tmpdir(), "op-src-"));
-    mkdirSync(join(srcOpenpalm, "config", "stack"), { recursive: true });
+    mkdirSync(join(srcOpenpalm, "system", "stack"), { recursive: true });
     mkdirSync(join(srcOpenpalm, "config", "assistant"), { recursive: true });
-    writeFileSync(join(srcOpenpalm, "config", "stack", "core.compose.yml"), "services:\n  assistant: {}  # current\n");
-    writeFileSync(join(srcOpenpalm, "config", "stack", "services.compose.yml"), "services: {}\n");
-    writeFileSync(join(srcOpenpalm, "config", "stack", "portals.compose.yml"), "services: {}\n");
+    writeFileSync(join(srcOpenpalm, "system", "stack", "core.compose.yml"), "services:\n  assistant: {}  # current\n");
+    writeFileSync(join(srcOpenpalm, "system", "stack", "services.compose.yml"), "services: {}\n");
+    writeFileSync(join(srcOpenpalm, "system", "stack", "portals.compose.yml"), "services: {}\n");
     // Seeded assets (written only if missing in target — target already has custom.compose.yml so that is skipped)
-    writeFileSync(join(srcOpenpalm, "config", "stack", "custom.compose.yml"), "services: {}\n");
+    writeFileSync(join(srcOpenpalm, "system", "stack", "custom.compose.yml"), "services: {}\n");
     writeFileSync(join(srcOpenpalm, "config", "assistant", "opencode.jsonc"), "{}\n");
 
     try {
       const { updated: refreshed } = refreshCoreAssetsFromSource(srcOpenpalm, active.homeDir);
-      expect(refreshed).toContain("config/stack/core.compose.yml");
+      expect(refreshed).toContain("system/stack/core.compose.yml");
       expect(readFileSync(join(active.stackDir, "core.compose.yml"), "utf-8")).toContain("# current");
       expect(readFileSync(join(active.stackDir, "core.compose.yml"), "utf-8")).not.toContain("stale");
       // User overlay untouched.

@@ -38,7 +38,7 @@ export default defineCommand({
       secretsDir: resolveSecretsDir(state.stackDir),
     }).issues);
 
-    for (const file of discoverStackOverlays(state.stackDir)) {
+    for (const file of discoverStackOverlays(state.homeDir)) {
       issues.push(...auditComposeSecrets(readFileSync(file, 'utf-8')).map((issue) => ({
         ...issue,
         path: issue.path ? `${file}:${issue.path}` : file,

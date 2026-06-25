@@ -29,7 +29,7 @@ import { ensureReleaseMigrated } from "./migrations.js";
 
 // __dirname = packages/lib/src/control-plane/ ; repo root is four levels up.
 const REPO_ROOT = join(import.meta.dir, "../../../..");
-const PORTALS_COMPOSE = join(REPO_ROOT, "packages/skeleton/config/stack/portals.compose.yml");
+const PORTALS_COMPOSE = join(REPO_ROOT, "packages/skeleton/system/stack/portals.compose.yml");
 
 type ComposeService = {
   environment?: Record<string, string>;

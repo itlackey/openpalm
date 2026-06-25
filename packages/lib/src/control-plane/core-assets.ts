@@ -2,7 +2,7 @@
  * Core runtime asset management for the OpenPalm control plane.
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
- *   config/stack/       — system-owned compose files, refreshed every reconcile
+ *   system/stack/       — system-owned compose files, refreshed every reconcile
  *
  * This module manages runtime-owned core files only.
  * Addon compose bundle generation and registry catalog refresh are handled
@@ -51,11 +51,11 @@ function bundledAssetPath(relPath: string): string {
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
 export function readCoreCompose(): string {
-  const livePath = `${resolveOpenPalmHome()}/config/stack/core.compose.yml`;
+  const livePath = `${resolveOpenPalmHome()}/system/stack/core.compose.yml`;
   if (existsSync(livePath)) {
     return readFileSync(livePath, 'utf-8');
   }
-  return readFileSync(bundledAssetPath('config/stack/core.compose.yml'), 'utf-8');
+  return readFileSync(bundledAssetPath('system/stack/core.compose.yml'), 'utf-8');
 }
 
 export function readBundledStackAsset(name: string): string {
@@ -67,10 +67,26 @@ export function readBundledStackAsset(name: string): string {
   // return empty rather than throwing a 500 — the live OP_HOME assets are the
   // source of truth once seeded.
   try {
-    return readFileSync(bundledAssetPath(`config/stack/${name}`), 'utf-8');
+    return readFileSync(bundledAssetPath(`system/stack/${name}`), 'utf-8');
   } catch (err) {
     logger.warn('bundled stack asset unavailable (returning empty)', {
       name,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return '';
+  }
+}
+
+/**
+ * The bundled USER custom.compose.yml default. Unlike the managed trio it ships
+ * in the user tree (config/stack/), so it is resolved separately. Used only to
+ * seed the file once when absent — never to overwrite an existing user overlay.
+ */
+export function readBundledCustomCompose(): string {
+  try {
+    return readFileSync(bundledAssetPath('config/stack/custom.compose.yml'), 'utf-8');
+  } catch (err) {
+    logger.warn('bundled custom.compose.yml unavailable (returning empty)', {
       error: err instanceof Error ? err.message : String(err),
     });
     return '';
@@ -93,9 +109,9 @@ export function ensureOpenCodeSystemConfig(): void {
 // instructions, personas — is seeded ONCE by seedOpenPalmDir's skip-existing
 // copy of the skeleton tree, so user edits are never clobbered.
 export const MANAGED_ASSETS: { relPath: string }[] = [
-  { relPath: "config/stack/core.compose.yml" },
-  { relPath: "config/stack/services.compose.yml" },
-  { relPath: "config/stack/portals.compose.yml" },
+  { relPath: "system/stack/core.compose.yml" },
+  { relPath: "system/stack/services.compose.yml" },
+  { relPath: "system/stack/portals.compose.yml" },
 ];
 
 function ensureBackupDir(backupDir: string | null, suffix = ''): string {

@@ -34,20 +34,25 @@ $ErrorActionPreference = 'Stop'
 
 $OpHome = if ($env:OP_HOME) { $env:OP_HOME } else { $PSScriptRoot }
 $env:OP_HOME = $OpHome
-$StackDir = Join-Path $OpHome 'config/stack'
+# MANAGED compose (core/services/portals) lives in system/stack; the USER
+# custom overlay lives in config/stack (four-tree ownership split).
+$SystemStackDir = Join-Path $OpHome 'system/stack'
+$UserStackDir = Join-Path $OpHome 'config/stack'
 
-$core = Join-Path $StackDir 'core.compose.yml'
+$core = Join-Path $SystemStackDir 'core.compose.yml'
 if (-not (Test-Path $core)) {
-  Write-Error "core.compose.yml not found in $StackDir — is OP_HOME correct?"
+  Write-Error "core.compose.yml not found in $SystemStackDir — is OP_HOME correct?"
   exit 1
 }
 
 # Compose overlays, in the same order the control plane assembles them.
 $files = @('-f', $core)
-foreach ($name in 'services', 'portals', 'custom') {
-  $overlay = Join-Path $StackDir "$name.compose.yml"
+foreach ($name in 'services', 'portals') {
+  $overlay = Join-Path $SystemStackDir "$name.compose.yml"
   if (Test-Path $overlay) { $files += @('-f', $overlay) }
 }
+$customOverlay = Join-Path $UserStackDir 'custom.compose.yml'
+if (Test-Path $customOverlay) { $files += @('-f', $customOverlay) }
 
 # stack.env (knowledge/env/stack.env) feeds both compose variable substitution
 # (--env-file) and the process environment (so COMPOSE_PROFILES and friends

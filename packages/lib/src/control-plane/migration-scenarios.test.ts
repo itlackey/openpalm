@@ -129,10 +129,13 @@ describe("scenario: 0.11.5 channels install → 0.12.0-rc.5", () => {
     // credential files NOT leaked, user/managed files kept, nothing extra.
     expect(fileSet()).toEqual([
       "config/assistant/persona.md",
-      "config/stack/core.compose.yml",
+      // The USER custom overlay stays in config/stack; its channel_lan→portal_net
+      // backup sibling is written here too.
       "config/stack/custom.compose.yml",
       "config/stack/custom.compose.yml.pre-portal-rename.bak",
-      "config/stack/services.compose.yml",
+      // core/services.compose.yml are GONE from config/stack — managed files moved
+      // to system/stack (layout v2→v3); they self-heal there on the next reconcile
+      // and are recoverable from the full-home backup.
       // channels.compose.yml + stack.yml are GONE (inert, removed by layout v1→v2)
       "data/backups/",
       "knowledge/env/stack.env",
@@ -179,9 +182,11 @@ describe("scenario: 0.11.5 channels install → 0.12.0-rc.5", () => {
     expect(readFileSync(join(home, "config", "stack", "custom.compose.yml.pre-portal-rename.bak"), "utf-8"))
       .toContain("channel_lan");
 
-    // The inert files are recoverable from the full-home backup.
+    // The inert + orphaned-managed files are recoverable from the full-home backup.
     expect(existsSync(join(layout.backupDir!, "config", "stack", "channels.compose.yml"))).toBe(true);
     expect(existsSync(join(layout.backupDir!, "config", "stack", "stack.yml"))).toBe(true);
+    expect(existsSync(join(layout.backupDir!, "config", "stack", "core.compose.yml"))).toBe(true);
+    expect(existsSync(join(layout.backupDir!, "config", "stack", "services.compose.yml"))).toBe(true);
 
     // User config untouched.
     expect(readFileSync(join(home, "config", "assistant", "persona.md"), "utf-8")).toBe("you are helpful\n");
@@ -407,7 +412,9 @@ describe("invariant harness: messy homes satisfy migration properties", () => {
     {
       name: "0.11.x channels (channel_* secrets + addon config) — inert files removed",
       recognized: true,
-      intentionallyRemoved: ["config/stack/channels.compose.yml", "config/stack/stack.yml"],
+      // core.compose.yml is a MANAGED file removed from config/stack by layout v2→v3
+      // (it self-heals at system/stack on reconcile; recoverable from the backup).
+      intentionallyRemoved: ["config/stack/channels.compose.yml", "config/stack/stack.yml", "config/stack/core.compose.yml"],
       seed: {
         "knowledge/env/stack.env": "OP_LAYOUT_VERSION=1\nOP_IMAGE_TAG=v0.11.5\nOP_RELEASE_VERSION=v0.11.5\n",
         "knowledge/secrets/channel_discord_secret": "disc-sec\n",
@@ -422,6 +429,9 @@ describe("invariant harness: messy homes satisfy migration properties", () => {
     {
       name: "0.11.x pre-stamp (stack.env, no OP_LAYOUT_VERSION)",
       recognized: true,
+      // core.compose.yml is removed from config/stack by layout v2→v3 (managed →
+      // system/stack); recoverable from the backup.
+      intentionallyRemoved: ["config/stack/core.compose.yml"],
       seed: {
         "knowledge/env/stack.env": "OP_IMAGE_TAG=v0.11.0\nOP_KEEP=1\n",
         "config/stack/core.compose.yml": "services: {}\n",
@@ -565,7 +575,8 @@ describe("scenario: 0.10.x vault hellscape → 0.12.0", () => {
     expect(fileSet()).toEqual([
       "backups/old.tgz",                                  // old top-level backups — UNTOUCHED
       "config/assistant/persona.md",                      // user config — UNTOUCHED
-      "config/stack/core.compose.yml",                    // managed compose — kept
+      // config/stack/core.compose.yml GONE — managed compose moved to system/stack
+      // (layout v2→v3); self-heals there on reconcile, recoverable from backup.
       // config/stack/{stack.yml,channels.compose.yml} GONE (inert, removed by v2)
       "data/assistant/.keep",                             // service data — UNTOUCHED
       "data/backups/",
@@ -776,12 +787,14 @@ describe("scenario: minimal v1 install", () => {
     expect(report.from).toBe(1);
     expect(report.to).toBe(CURRENT_LAYOUT_VERSION);
 
+    // config/stack/core.compose.yml is a MANAGED orphan removed by layout v2→v3
+    // (self-heals at system/stack on reconcile; recoverable from the backup).
     expect(fileSet()).toEqual([
-      "config/stack/core.compose.yml",
       "data/.keep",
       "data/backups/",
       "knowledge/env/stack.env",
     ]);
+    expect(existsSync(join(report.backupDir!, "config", "stack", "core.compose.yml"))).toBe(true);
     expect(readEnv()).toContain(`OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`);
   });
 });

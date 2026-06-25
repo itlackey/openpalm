@@ -15,8 +15,8 @@ import { resolveRollbackDir } from "./home.js";
  *  are never overwritten by lifecycle operations. */
 const SNAPSHOT_FILES = [
   "knowledge/env/stack.env",
-  "config/stack/services.compose.yml",
-  "config/stack/portals.compose.yml",
+  "system/stack/services.compose.yml",
+  "system/stack/portals.compose.yml",
   "config/stack/custom.compose.yml",
   "knowledge/secrets/auth.json",
 ];
@@ -48,9 +48,9 @@ export function snapshotCurrentState(state: ControlPlaneState, opts: { arm?: boo
     safeCopy(src, dest);
   }
 
-  // Snapshot config/stack/core.compose.yml
-  const coreCompose = join(state.homeDir, "config/stack/core.compose.yml");
-  safeCopy(coreCompose, join(rollbackDir, "config/stack/core.compose.yml"));
+  // Snapshot system/stack/core.compose.yml
+  const coreCompose = join(state.homeDir, "system/stack/core.compose.yml");
+  safeCopy(coreCompose, join(rollbackDir, "system/stack/core.compose.yml"));
 
   // Write a timestamp marker
   writeFileSync(
@@ -80,10 +80,10 @@ export function restoreSnapshot(state: ControlPlaneState): void {
     safeCopy(src, dest);
   }
 
-  // Restore config/stack/core.compose.yml
-  const srcCoreCompose = join(rollbackDir, "config/stack/core.compose.yml");
+  // Restore system/stack/core.compose.yml
+  const srcCoreCompose = join(rollbackDir, "system/stack/core.compose.yml");
   if (existsSync(srcCoreCompose)) {
-    safeCopy(srcCoreCompose, join(state.homeDir, "config/stack/core.compose.yml"));
+    safeCopy(srcCoreCompose, join(state.homeDir, "system/stack/core.compose.yml"));
   }
 
   clearArmedSnapshot();

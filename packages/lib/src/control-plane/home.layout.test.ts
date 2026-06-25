@@ -29,7 +29,7 @@ describe("OP_HOME layout (single source of truth)", () => {
     expect(userEnvFile(H)).toBe("/op/home/knowledge/env/user.env");
     expect(secretsDir(H)).toBe("/op/home/knowledge/secrets");
     expect(authJsonFile(H)).toBe("/op/home/knowledge/secrets/auth.json");
-    expect(composeFilePath(H, "core.compose.yml")).toBe("/op/home/config/stack/core.compose.yml");
+    expect(composeFilePath(H, "core.compose.yml")).toBe("/op/home/system/stack/core.compose.yml");
   });
 
   test("ensureHomeDirs creates the managed (system/) and state/ trees", () => {

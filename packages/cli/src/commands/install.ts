@@ -284,7 +284,7 @@ async function prepareInstallFiles(
   // Seed OP_HOME from the bundled .openpalm/ source (skeleton data/ + managed
   // compose, stamp-gated/skip-existing). This is the PRE-WIZARD seed and is
   // load-bearing: the wizard's `openpalm ui serve` child reads seeded
-  // config/stack assets at boot (runStartupApply -> resolveRuntimeFiles), and
+  // system/stack assets at boot (runStartupApply -> resolveRuntimeFiles), and
   // the bundled-asset fallback does not survive into the packaged UI build, so
   // the live seeded copy must exist before /setup is served.
   //

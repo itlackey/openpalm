@@ -100,7 +100,10 @@ describe("buildComposeFileList", () => {
 
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
-    writeFileSync(join(state.stackDir, "custom.compose.yml"), "services: {}");
+    // custom.compose.yml is USER-owned → config/stack, not system/stack.
+    const userStackDir = join(state.homeDir, "config", "stack");
+    mkdirSync(userStackDir, { recursive: true });
+    writeFileSync(join(userStackDir, "custom.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(2);

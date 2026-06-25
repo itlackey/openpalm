@@ -41,13 +41,17 @@ function cpTree(src: string, dest: string): void {
 function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   const configDir = join(homeDir, 'config');
   const dataDir = join(homeDir, 'data');
-  const stackDir = join(configDir, 'stack');
+  const stackDir = join(homeDir, 'system', 'stack');
 
-  // config/stack/ — seed fixed compose files
+  // system/stack/ — seed MANAGED compose files
   mkdirSync(stackDir, { recursive: true });
-  for (const name of ['core.compose.yml', 'services.compose.yml', 'portals.compose.yml', 'custom.compose.yml']) {
-    Bun.spawnSync(['cp', join(OPENPALM_SRC, 'config', 'stack', name), join(stackDir, name)]);
+  for (const name of ['core.compose.yml', 'services.compose.yml', 'portals.compose.yml']) {
+    Bun.spawnSync(['cp', join(OPENPALM_SRC, 'system', 'stack', name), join(stackDir, name)]);
   }
+  // config/stack/ — seed the USER-owned custom overlay
+  const userStackDir = join(homeDir, 'config', 'stack');
+  mkdirSync(userStackDir, { recursive: true });
+  Bun.spawnSync(['cp', join(OPENPALM_SRC, 'config', 'stack', 'custom.compose.yml'), join(userStackDir, 'custom.compose.yml')]);
 
   if (enabledAddons.length > 0) {
     const envDir = join(homeDir, 'knowledge', 'env');
@@ -185,9 +189,9 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(akmConfig.defaults.llm).toBe('default');
 
     // ── Validate compose files exist ─────────────────────────────────
-    expect(existsSync(join(homeDir, 'config/stack/core.compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'config/stack/services.compose.yml'))).toBe(true);
-    expect(existsSync(join(homeDir, 'config/stack/portals.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'system/stack/core.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'system/stack/services.compose.yml'))).toBe(true);
+    expect(existsSync(join(homeDir, 'system/stack/portals.compose.yml'))).toBe(true);
     expect(existsSync(join(homeDir, 'config/stack/custom.compose.yml'))).toBe(true);
 
     // ── Validate env/secret files are regular files (not directories) ─
@@ -202,7 +206,7 @@ describe('install flow — tier 1 (file validation)', () => {
       expect(existsSync(fullPath)).toBe(true);
       expect(statSync(fullPath).isFile()).toBe(true);
     }
-    expect(existsSync(join(homeDir, 'config/stack/guardian.env'))).toBe(false);
+    expect(existsSync(join(homeDir, 'system/stack/guardian.env'))).toBe(false);
 
     // ── Validate all volume mount targets exist as user-owned ────────
     const stackEnvVars = {
@@ -213,9 +217,9 @@ describe('install flow — tier 1 (file validation)', () => {
     stackEnvVars.OP_HOME = homeDir;
 
     const allComposeFiles = [
-      join(homeDir, 'config/stack/core.compose.yml'),
-      join(homeDir, 'config/stack/services.compose.yml'),
-      join(homeDir, 'config/stack/portals.compose.yml'),
+      join(homeDir, 'system/stack/core.compose.yml'),
+      join(homeDir, 'system/stack/services.compose.yml'),
+      join(homeDir, 'system/stack/portals.compose.yml'),
       join(homeDir, 'config/stack/custom.compose.yml'),
     ];
     const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
@@ -288,9 +292,9 @@ describe('install flow — tier 1 (file validation)', () => {
     // Ensure all volume mount targets exist so compose doesn't complain
     const stackEnv = join(homeDir, 'knowledge/env/stack.env');
     const composeFiles = [
-      join(homeDir, 'config/stack/core.compose.yml'),
-      join(homeDir, 'config/stack/services.compose.yml'),
-      join(homeDir, 'config/stack/portals.compose.yml'),
+      join(homeDir, 'system/stack/core.compose.yml'),
+      join(homeDir, 'system/stack/services.compose.yml'),
+      join(homeDir, 'system/stack/portals.compose.yml'),
       join(homeDir, 'config/stack/custom.compose.yml'),
     ];
     const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');
@@ -373,7 +377,7 @@ describe('install flow — tier 1 (file validation)', () => {
     const stackEnv = join(homeDir, 'knowledge/env/stack.env');
     const proc = Bun.spawnSync([
       'docker', 'compose', '--project-name', 'openpalm-test',
-      '-f', join(homeDir, 'config/stack/core.compose.yml'),
+      '-f', join(homeDir, 'system/stack/core.compose.yml'),
       '--env-file', stackEnv,
       'config', '--services',
     ], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OP_HOME: homeDir } });

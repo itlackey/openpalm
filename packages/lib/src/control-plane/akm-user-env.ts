@@ -57,7 +57,7 @@ const ENV_FILE_MODE = 0o600;
 /**
  * Build the env that points akm at the shared OpenPalm stash. We mirror the
  * layout that the assistant container uses (see
- * `packages/skeleton/config/stack/core.compose.yml`) so host-side and container-side
+ * `packages/skeleton/system/stack/core.compose.yml`) so host-side and container-side
  * runs resolve to the same files.
  *
  * Host-side runs use the same explicit directories as the assistant container:

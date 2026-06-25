@@ -4,7 +4,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { rmSync } from "node:fs";
-import { writeSecret, secretPath, resolveStackDir } from "@openpalm/lib";
+import { writeSecret, secretPath, resolveOpenPalmHome } from "@openpalm/lib";
 import {
   createSession,
   validateSession,
@@ -68,7 +68,7 @@ describe("secret resolution (the forgeable-token regression)", () => {
   test("falls back to the on-disk stack secret when the env var is unset (first-run wizard window)", () => {
     delete process.env.OP_UI_LOGIN_PASSWORD;
     // Simulate the wizard writing the password mid-process (env never updated).
-    writeSecret(resolveStackDir(), "op_ui_login_password", "wizard-set-password");
+    writeSecret(resolveOpenPalmHome(), "op_ui_login_password", "wizard-set-password");
     try {
       const token = createSession();
       expect(validateSession(token)).toBe(true);
@@ -79,7 +79,7 @@ describe("secret resolution (the forgeable-token regression)", () => {
     } finally {
       // The temp OP_HOME is shared across test files in this run — don't leak
       // a configured password into suites that assert the unconfigured state.
-      rmSync(secretPath(resolveStackDir(), "op_ui_login_password"), { force: true });
+      rmSync(secretPath(resolveOpenPalmHome(), "op_ui_login_password"), { force: true });
     }
   });
 });

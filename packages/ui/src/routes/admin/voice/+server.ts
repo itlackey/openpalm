@@ -27,6 +27,7 @@ import {
   readStackEnv,
   setAddonEnabled,
   setAddonProfileSelection,
+  stackDirFor,
   writeVoiceVars,
 } from '@openpalm/lib';
 import type { AddonProfile } from '@openpalm/lib';
@@ -420,7 +421,7 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
  * voice compose overlay to patch.
  */
 function writeCdiOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = join(homeDir, 'config', 'stack');
+  const stackDir = stackDirFor(homeDir);
   if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
   const overlayPath = join(stackDir, 'voice.compose.cdi.yml');
   const yaml = [
@@ -492,7 +493,7 @@ async function detectRootlessDocker(): Promise<boolean> {
  * doesn't blow up on a missing -f arg).
  */
 function writeRootlessOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = join(homeDir, 'config', 'stack');
+  const stackDir = stackDirFor(homeDir);
   if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
   const overlayPath = join(stackDir, 'voice.compose.rootless.yml');
   // `user: null` in YAML drops the directive when compose merges files.

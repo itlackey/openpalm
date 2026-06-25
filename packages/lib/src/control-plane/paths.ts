@@ -4,11 +4,12 @@
  * Every consumer imports from here instead of concatenating paths inline.
  * When the directory layout changes, update this file only.
  *
- * Layout:
+ * Layout (four-tree ownership):
  *   config/        — user-editable config + system config files (akm/)
- *   config/stack/  — fixed compose files only (stack.env, secrets, auth.json live under knowledge/; no stack.yml)
+ *   config/stack/  — USER custom.compose.yml overlay ONLY (seeded once, never overwritten)
+ *   system/stack/  — MANAGED fixed compose files (core/services/portals), overwritten on reconcile
  *   data/          — persistent service data, logs, backups, rollback
- *   knowledge/     — akm knowledge (skills, env, secrets, agents)
+ *   knowledge/     — akm knowledge (skills, env, secrets, agents); stack.env, secrets, auth.json live here
  *   workspace/     — shared work area
  */
 
@@ -80,4 +81,5 @@ export const passStoreDir          = (s: ControlPlaneState): string => `${s.data
 export const coreComposePath       = (s: ControlPlaneState): string => `${s.stackDir}/core.compose.yml`;
 export const servicesComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/services.compose.yml`;
 export const portalsComposePath   = (s: ControlPlaneState): string => `${s.stackDir}/portals.compose.yml`;
-export const customComposePath     = (s: ControlPlaneState): string => `${s.stackDir}/custom.compose.yml`;
+// custom.compose.yml is USER-owned and lives in the config/ tree, not system/stack.
+export const customComposePath     = (s: ControlPlaneState): string => `${s.homeDir}/config/stack/custom.compose.yml`;

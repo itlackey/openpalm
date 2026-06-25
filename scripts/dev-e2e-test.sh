@@ -5,7 +5,7 @@
 # v0.11.0 architecture:
 #   - UI is a HOST PROCESS (`openpalm`), not a container
 #   - Compose stack: assistant + guardian containers only
-#   - Directory layout: config/stack/, data/, knowledge/env/, knowledge/secrets/, workspace/
+#   - Directory layout: system/stack/ (managed) + config/stack/custom (user), data/, knowledge/env/, knowledge/secrets/, workspace/
 #
 # Cleans state, rebuilds all images from source, starts the stack and
 # admin process, then verifies:
@@ -66,7 +66,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 # ── Compose helper bound to OP_E2E_HOME ──────────────────────────────
 dev_compose() {
 	docker compose --project-directory . \
-		-f "${OP_E2E_HOME}/config/stack/core.compose.yml" \
+		-f "${OP_E2E_HOME}/system/stack/core.compose.yml" \
 		-f compose.dev.yml \
 		--env-file "${OP_E2E_HOME}/knowledge/env/stack.env" \
 		--project-name "$COMPOSE_PROJECT_NAME" "$@"

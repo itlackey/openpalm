@@ -39,7 +39,7 @@ describe("readCoreCompose", () => {
   });
 
   test("readCoreCompose returns file content when file exists", () => {
-    const stackDir = join(process.env.OP_HOME!, "config", "stack");
+    const stackDir = join(process.env.OP_HOME!, "system", "stack");
     mkdirSync(stackDir, { recursive: true });
     const composeContent = "services:\n  memory:\n    image: test\n";
     writeFileSync(join(stackDir, "core.compose.yml"), composeContent);

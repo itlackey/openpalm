@@ -60,7 +60,7 @@ export function makeHome(): Home {
       "system/assistant/tools/package.json", // tool manifest
     ],
     // USER — seeded once, then never touched
-    config: ["config/assistant/opencode.json", "config/assistant/persona.md", "config/custom.compose.yml"],
+    config: ["config/assistant/opencode.json", "config/assistant/persona.md", "config/stack/custom.compose.yml"],
     knowledge: ["knowledge/secrets/auth.json", "knowledge/skills/my-own/SKILL.md"],
     workspace: ["workspace/notes.md"],
     // RUNTIME — never written by install/update
@@ -75,7 +75,7 @@ export function makeHome(): Home {
     "system/assistant/tools/package.json": '{ "dependencies": { "opencode-ai": "^1.17.0" } }\n',
     "config/assistant/opencode.json": '{ "model": "USER/choice" }\n',
     "config/assistant/persona.md": "# my persona\n",
-    "config/custom.compose.yml": "services:\n  myextra:\n    image: mine\n",
+    "config/stack/custom.compose.yml": "services:\n  myextra:\n    image: mine\n",
     "knowledge/secrets/auth.json": '{ "token": "USER-PRIVATE-SECRET" }\n',
     "knowledge/skills/my-own/SKILL.md": "# user authored skill\n",
     "workspace/notes.md": "my notes\n",

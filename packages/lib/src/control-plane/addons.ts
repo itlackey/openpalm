@@ -13,11 +13,11 @@ import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
-import { readBundledStackAsset } from './core-assets.js';
+import { readBundledStackAsset, readBundledCustomCompose } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
 import { parseEnabledAddons } from './env.js';
 import type { ControlPlaneState } from './types.js';
-import { resolveStashDir } from './home.js';
+import { resolveStashDir, composeFilePath, customComposeFilePath } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS } from './addon-ids.js';
 
@@ -112,9 +112,9 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "config", "stack", "portals.compose.yml"),
-    join(homeDir, "config", "stack", "services.compose.yml"),
-    join(homeDir, "config", "stack", "custom.compose.yml"),
+    composeFilePath(homeDir, "portals.compose.yml"),
+    composeFilePath(homeDir, "services.compose.yml"),
+    customComposeFilePath(homeDir),
   ];
 
   for (const composePath of composeCandidates) {
@@ -122,10 +122,12 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
     if (services.length > 0) return services;
   }
 
-  for (const assetName of ["portals.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+  for (const assetName of ["portals.compose.yml", "services.compose.yml"]) {
     const services = readAddonServiceNamesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`, name);
     if (services.length > 0) return services;
   }
+  const customServices = readAddonServiceNamesFromContent(readBundledCustomCompose(), 'bundled:custom.compose.yml', name);
+  if (customServices.length > 0) return customServices;
 
   return [];
 }
@@ -438,16 +440,16 @@ export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] 
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "config", "stack", "portals.compose.yml"),
-    join(homeDir, "config", "stack", "services.compose.yml"),
-    join(homeDir, "config", "stack", "custom.compose.yml"),
+    composeFilePath(homeDir, "portals.compose.yml"),
+    composeFilePath(homeDir, "services.compose.yml"),
+    customComposeFilePath(homeDir),
   ];
 
 	const localOpenpalmDir = resolveLocalOpenpalmDir();
 	if (localOpenpalmDir) {
-		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'portals.compose.yml'));
-		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'services.compose.yml'));
-		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'custom.compose.yml'));
+		composeCandidates.push(composeFilePath(localOpenpalmDir, 'portals.compose.yml'));
+		composeCandidates.push(composeFilePath(localOpenpalmDir, 'services.compose.yml'));
+		composeCandidates.push(customComposeFilePath(localOpenpalmDir));
 	}
 
   for (const composePath of composeCandidates) {
@@ -455,11 +457,14 @@ export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] 
     if (profiles.length > 0) return profiles;
   }
 
-  for (const assetName of ["portals.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+  for (const assetName of ["portals.compose.yml", "services.compose.yml"]) {
     const profiles = readAddonProfilesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`)
       .filter((profile) => profile.id.startsWith(`addon.${name}`));
     if (profiles.length > 0) return profiles;
   }
+  const customProfiles = readAddonProfilesFromContent(readBundledCustomCompose(), 'bundled:custom.compose.yml')
+    .filter((profile) => profile.id.startsWith(`addon.${name}`));
+  if (customProfiles.length > 0) return customProfiles;
 
   return [];
 }

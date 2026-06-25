@@ -19,7 +19,10 @@ import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 registerCleanup();
 
 function writeStackCompose(homeDir: string, filename: string, yml: string): void {
-  const stackDir = join(homeDir, "config", "stack");
+  // MANAGED compose lives in system/stack; the USER custom overlay in config/stack.
+  const stackDir = filename === "custom.compose.yml"
+    ? join(homeDir, "config", "stack")
+    : join(homeDir, "system", "stack");
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(join(stackDir, filename), yml);
 }

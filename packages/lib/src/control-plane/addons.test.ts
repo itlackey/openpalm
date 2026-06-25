@@ -82,6 +82,7 @@ describe('addon runtime state', () => {
   });
 
   it('returns addon service names from fixed compose files', () => {
+    // custom.compose.yml is USER-owned → config/stack, not system/stack.
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, 'custom.compose.yml'), 'services:\n  proxy-test:\n    profiles: ["addon.proxy-test"]\n    image: image-a\n  proxy-test-worker:\n    profiles: ["addon.proxy-test"]\n    image: image-b\n');
@@ -90,7 +91,7 @@ describe('addon runtime state', () => {
   });
 
   it('toggles addons and generates channel secrets for channel addons', () => {
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackDir = join(process.env.OP_HOME!, 'system', 'stack');
     mkdirSync(stackDir, { recursive: true });
 
     const enabled = setAddonEnabled(process.env.OP_HOME!, 'discord', true);
@@ -118,7 +119,7 @@ describe('addon runtime state', () => {
   });
 
   it('round-trips addon profile selection through stack.env', () => {
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackDir = join(process.env.OP_HOME!, 'system', 'stack');
     const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });

@@ -10,6 +10,7 @@ import {
   resolveWorkspaceDir,
   resolveDataDir,
   resolveStackDir,
+  customComposeFilePath,
   ensureHomeDirs,
 } from "./home.js";
 import { ensureSecrets, ensureOpenCodeConfig } from "./secrets.js";
@@ -384,7 +385,7 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   // Release migrations (ensureReleaseMigrated) may also write these compose files,
   // so snapshot them alongside stack.env for full rollback coverage.
   const portalsComposePath = `${state.stackDir}/portals.compose.yml`;
-  const customComposePath = `${state.stackDir}/custom.compose.yml`;
+  const customComposePath = customComposeFilePath(state.homeDir);
 
   let originalStackEnv: string | null = null;
   let originalPortalsCompose: string | null = null;
@@ -490,7 +491,7 @@ export async function performUpgrade(
 }
 
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  return discoverStackOverlays(state.stackDir);
+  return discoverStackOverlays(state.homeDir);
 }
 
 // Portal addons that require the guardian ingress. Mirrors the profile gate on

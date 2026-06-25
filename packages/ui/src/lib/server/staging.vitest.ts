@@ -45,7 +45,7 @@ function makeState(tempDir?: string): ControlPlaneState {
     stashDir: join(base, "knowledge"),
     workspaceDir: join(base, "workspace"),
     dataDir: join(base, "data"),
-    stackDir: join(base, "config", "stack"),
+    stackDir: join(base, "system", "stack"),
     services: {},
     artifacts: { compose: "" },
     artifactMeta: [],
@@ -75,33 +75,33 @@ afterEach(() => {
   rmSync(baseDir, { recursive: true, force: true });
 });
 
-describe("Stack overlay discovery — stack/ layout", () => {
-  test("discoverStackOverlays returns core.compose.yml from stack/", () => {
-    const stackDir = join(baseDir, "stack");
+describe("Stack overlay discovery — system/stack layout", () => {
+  // discoverStackOverlays takes an OP_HOME root; managed compose is in system/stack.
+  test("discoverStackOverlays returns core.compose.yml from system/stack/", () => {
+    const stackDir = join(baseDir, "system", "stack");
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, "core.compose.yml"), "services:\n  guardian:\n    image: guardian:latest\n");
 
-    const files = discoverStackOverlays(stackDir);
+    const files = discoverStackOverlays(baseDir);
     expect(files.length).toBe(1);
     expect(files[0]).toMatch(/core\.compose\.yml$/);
   });
 
   test("discoverStackOverlays discovers fixed compose overlay files", () => {
-    const stackDir = join(baseDir, "stack");
+    const stackDir = join(baseDir, "system", "stack");
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, "core.compose.yml"), "services: {}");
     writeFileSync(join(stackDir, "services.compose.yml"), "services: {}");
 
-    const files = discoverStackOverlays(stackDir);
+    const files = discoverStackOverlays(baseDir);
     expect(files.length).toBe(2);
     expect(files.some((f) => f.endsWith("services.compose.yml"))).toBe(true);
   });
 
   test("discoverStackOverlays returns empty when stack dir is empty", () => {
-    const stackDir = join(baseDir, "stack");
-    mkdirSync(stackDir, { recursive: true });
+    mkdirSync(join(baseDir, "system", "stack"), { recursive: true });
 
-    expect(discoverStackOverlays(stackDir)).toEqual([]);
+    expect(discoverStackOverlays(baseDir)).toEqual([]);
   });
 });
 

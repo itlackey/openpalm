@@ -19,6 +19,7 @@ const ALLOWED_SOURCE_DIRS = new Set([
   "knowledge",      // knowledge source assets: skills/, env/, secrets/, tasks/
   "data",       // empty service dirs (.gitkeep)
   "workspace",  // empty workspace dir (.gitkeep)
+  "system",     // managed tree: compose stack (system/stack)
 ]);
 
 // ── Top-level structure ───────────────────────────────────────────────
@@ -33,7 +34,7 @@ describe("skeleton: top-level directories", () => {
     expect(unexpected).toEqual([]);
   });
 
-  test("stack/ no longer exists (moved to config/stack/)", () => {
+  test("stack/ no longer exists (moved to system/stack/)", () => {
     expect(existsSync(join(SKELETON_DIR, "stack"))).toBe(false);
   });
 
@@ -58,17 +59,19 @@ describe("skeleton: helper scripts", () => {
 // ── config/ subdirectory ──────────────────────────────────────────────
 
 describe("skeleton: config/ structure", () => {
-  test("config/stack/ exists with fixed compose files (no stack.yml)", () => {
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "core.compose.yml"))).toBe(true);
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "services.compose.yml"))).toBe(true);
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "portals.compose.yml"))).toBe(true);
+  test("system/stack/ holds the MANAGED compose trio; custom.compose.yml is USER-owned in config/stack", () => {
+    expect(existsSync(join(SKELETON_DIR, "system", "stack", "core.compose.yml"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "system", "stack", "services.compose.yml"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "system", "stack", "portals.compose.yml"))).toBe(true);
+    // custom.compose.yml is user-editable → ships in the user tree, NOT system/stack.
     expect(existsSync(join(SKELETON_DIR, "config", "stack", "custom.compose.yml"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "system", "stack", "custom.compose.yml"))).toBe(false);
     // stack.yml removed in 0.11.0 — addon enablement lives in stack.env.
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "stack.yml"))).toBe(false);
+    expect(existsSync(join(SKELETON_DIR, "system", "stack", "stack.yml"))).toBe(false);
   });
 
   test("config/stack/addons/ does not exist", () => {
-    expect(existsSync(join(SKELETON_DIR, "config", "stack", "addons"))).toBe(false);
+    expect(existsSync(join(SKELETON_DIR, "system", "stack", "addons"))).toBe(false);
   });
 
   test("config/akm/ exists", () => {
@@ -88,8 +91,8 @@ describe("skeleton: config/ structure", () => {
   });
 
   test('stack compose assets use a per-image OP_*_VERSION pin (no OP_IMAGE_TAG cascade)', () => {
-    const coreCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'core.compose.yml'), 'utf-8');
-    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'portals.compose.yml'), 'utf-8');
+    const coreCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'core.compose.yml'), 'utf-8');
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'portals.compose.yml'), 'utf-8');
 
     expect(coreCompose).toContain('assistant:${OP_ASSISTANT_VERSION:-latest}');
     expect(channelsCompose).toContain('portal:${OP_PORTAL_VERSION:-latest}');
@@ -100,9 +103,9 @@ describe("skeleton: config/ structure", () => {
   });
 
   test('host-published optional listeners use OP_BIND_ADDRESS nested defaults', () => {
-    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'portals.compose.yml'), 'utf-8');
-    const servicesCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'services.compose.yml'), 'utf-8');
-    const coreCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'core.compose.yml'), 'utf-8');
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'portals.compose.yml'), 'utf-8');
+    const servicesCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'services.compose.yml'), 'utf-8');
+    const coreCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'core.compose.yml'), 'utf-8');
 
     expect(channelsCompose).toContain('${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182');
     expect(channelsCompose).toContain('${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182');
@@ -112,8 +115,8 @@ describe("skeleton: config/ structure", () => {
   });
 
   test('compose assets keep only consumed openpalm.profile labels', () => {
-    const channelsCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'portals.compose.yml'), 'utf-8');
-    const servicesCompose = readFileSync(join(SKELETON_DIR, 'config', 'stack', 'services.compose.yml'), 'utf-8');
+    const channelsCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'portals.compose.yml'), 'utf-8');
+    const servicesCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'services.compose.yml'), 'utf-8');
 
     expect(channelsCompose).not.toContain('openpalm.name:');
     expect(channelsCompose).not.toContain('openpalm.description:');
