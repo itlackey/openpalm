@@ -24,7 +24,6 @@
     fetchHealth,
     fetchContainers,
     fetchAutomations,
-    applyChanges,
     containerAction,
     pullImages,
   } from '$lib/api.js';
@@ -36,13 +35,10 @@
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
-  let applyLoading = $state(false);
   let containersLoading = $state(false);
   let automationsLoading = $state(false);
 
   // ── Content state ───────────────────────────────────────────────────────────
-  let operationResult = $state('');
-  let operationResultType: 'success' | 'error' | 'info' = $state('info');
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
   let containersLastUpdated: string | null = $state(null);
@@ -83,7 +79,6 @@
   });
 
   // ── Derived ─────────────────────────────────────────────────────────────────
-  let anyDangerousLoading = $derived(applyLoading);
 
   /** Merged service → state map (used by OverviewTab for health indicators) */
   let mergedServices = $derived.by((): Map<string, string> => {
@@ -198,45 +193,6 @@
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
-  async function handleApplyChanges(): Promise<void> {
-    if (anyDangerousLoading) return;
-    applyLoading = true;
-    try {
-      const result = await applyChanges();
-      if (result.overallSuccess) {
-        const summary = result.restarted.length > 0
-          ? `Changes applied successfully. Restarted: ${result.restarted.join(', ')}.`
-          : 'Changes applied successfully.';
-        operationResult = summary;
-        operationResultType = 'success';
-      } else if (result.failed.length > 0) {
-        const failures = result.failed
-          .map((f) => `${f.service}: ${f.reason}`)
-          .join('; ');
-        const restartedNote = result.restarted.length > 0
-          ? ` (other services restarted: ${result.restarted.join(', ')})`
-          : '';
-        operationResult = `Apply failed for ${result.failed.length} service(s): ${failures}${restartedNote}`;
-        operationResultType = 'error';
-      } else if (!result.dockerAvailable) {
-        operationResult = 'Config written, but Docker is unavailable — services were not restarted.';
-        operationResultType = 'error';
-      } else {
-        operationResult = `Apply failed: ${result.error ?? 'unknown error'}`;
-        operationResultType = 'error';
-      }
-    } catch (e) {
-      const err = e as { status?: number; message?: string };
-      if (err.status === 401) {
-        applyInvalidTokenState();
-      } else {
-        operationResult = `Error applying changes: ${err.message ?? e}`;
-        operationResultType = 'error';
-      }
-    }
-    applyLoading = false;
-  }
-
   async function handleContainerAction(
     action: 'start' | 'stop' | 'restart',
     containerId: string
@@ -329,17 +285,10 @@
 <main>
     {#if activeTab === 'overview'}
       <OverviewTab
-        {operationResult}
-        {operationResultType}
-        tokenStored={true}
         {healthLoading}
-        {applyLoading}
-        {anyDangerousLoading}
         {mergedServices}
         managedServices={containerData?.managedServices ?? []}
         onCheckHealth={loadHealth}
-        onApplyChanges={handleApplyChanges}
-        onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
         onNavigate={handleTabSelect}
       />
     {:else if activeTab === 'updates'}

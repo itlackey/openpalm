@@ -9,11 +9,7 @@
     title: string;
     detail: string;
     healthLoading: boolean;
-    applyLoading: boolean;
-    anyDangerousLoading: boolean;
-    tokenStored: boolean;
     onCheckHealth: () => void;
-    onApplyChanges: () => void;
     onNavigate: (tab: TabId) => void;
   }
 
@@ -22,11 +18,7 @@
     title,
     detail,
     healthLoading,
-    applyLoading,
-    anyDangerousLoading,
-    tokenStored,
     onCheckHealth,
-    onApplyChanges,
     onNavigate,
   }: Props = $props();
 </script>
@@ -56,9 +48,8 @@
            status card, not a primary create/apply action (rubric D5). -->
       <button class="btn btn-secondary" onclick={() => onNavigate('containers')}>View containers</button>
     {/if}
-    <button class="btn btn-secondary" onclick={onApplyChanges} disabled={anyDangerousLoading || !tokenStored}>
-      {applyLoading ? 'Applying…' : 'Apply config & restart'}
-    </button>
+    <!-- Updates are managed in the Updates tab (§7: one obvious place). -->
+    <button class="btn btn-secondary" onclick={() => onNavigate('updates')}>Check for updates</button>
   </div>
 </section>
 

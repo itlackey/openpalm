@@ -23,10 +23,68 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
+  // Optional body: { service?: string } for scoped single-service updates (§4, §7).
+  // When service is present, skip the managed-file apply (no file changes) and only
+  // pull + recreate that one container — updating one container MUST NOT touch others.
+  let service: string | undefined;
+  try {
+    const body = event.request.headers.get("content-type")?.includes("application/json")
+      ? await event.request.json() as { service?: unknown }
+      : {};
+    if (typeof body?.service === "string" && body.service.trim()) {
+      service = body.service.trim();
+    }
+  } catch {
+    // No body or unparseable — treat as "all" (backward compat)
+  }
+
   return withSerialQueue("admin:update", async () => {
     try {
       const state = getState();
+      const composeOpts = buildComposeOptions(state);
 
+      const dockerCheck = await checkDocker();
+      if (!dockerCheck.ok) {
+        // Docker unavailable: user pressed "update now" but the daemon is down.
+        // Per §6 "registry-down is handled by who asked" — a user-triggered update
+        // that cannot reach Docker fails loudly with overallSuccess:false.
+        logger.info("Docker unavailable — update rejected", { requestId });
+        return jsonResponse(200, {
+          ok: false,
+          restarted: [],
+          failed: [],
+          dockerAvailable: false,
+          overallSuccess: false,
+        }, requestId);
+      }
+
+      if (service) {
+        // Scoped single-service update (§4, §7 "Update <container>"):
+        // pull + recreate ONLY this service; do NOT run applyUpdate (no file changes).
+        // Pull failure is FATAL — never falls through to a stale local image (§6).
+        logger.info("scoped service update", { requestId, service });
+        const stackResult = await applyStack({ kind: "service", service }, composeOpts);
+        const overallSuccess = stackResult.ok;
+        const status = stackResult.ok ? 200 : 502;
+        logger.info("service update completed", {
+          requestId,
+          service,
+          overallSuccess,
+          startedCount: stackResult.started.length,
+          failedCount: stackResult.failed.length,
+          error: stackResult.error,
+        });
+        return jsonResponse(status, {
+          ok: overallSuccess,
+          restarted: stackResult.started,
+          failed: stackResult.failed,
+          dockerAvailable: true,
+          overallSuccess,
+          ...(stackResult.error ? { error: stackResult.error } : {}),
+        }, requestId);
+      }
+
+      // Full update ("Update everything"): apply managed files first, then pull + recreate all.
       // applyUpdate runs the unified OP_HOME apply (dirs, secrets, overwrite the
       // managed system/ tree, seed user/data once, OpenCode config — all idempotent)
       // and writes runtime files. It does NOT compose; the compose phase below is
@@ -37,24 +95,8 @@ export const POST: RequestHandler = async (event) => {
         intended: result.restarted,
       });
 
-      const dockerCheck = await checkDocker();
-      if (!dockerCheck.ok) {
-        // Docker unavailable: user pressed "update now" but the daemon is down.
-        // Per §6 "registry-down is handled by who asked" — a user-triggered update
-        // that cannot reach Docker fails loudly with overallSuccess:false.
-        logger.info("Docker unavailable — files updated, stack not restarted", { requestId });
-        return jsonResponse(200, {
-          ok: false,
-          restarted: [],
-          failed: [],
-          dockerAvailable: false,
-          overallSuccess: false,
-        }, requestId);
-      }
-
       // applyStack: pull the whole set first (§4.3), then recreate.
       // Pull failure is FATAL — never falls through to a stale local image (§6).
-      const composeOpts = buildComposeOptions(state);
       const stackResult = await applyStack({ kind: "all" }, composeOpts);
 
       const overallSuccess = stackResult.ok;

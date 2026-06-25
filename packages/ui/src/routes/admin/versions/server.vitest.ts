@@ -146,4 +146,40 @@ describe('PATCH /admin/versions', () => {
     expect(legacy).toContain('OP_IMAGE_NAMESPACE=openpalm');
     expect(legacy).not.toContain('OP_VOICE_VERSION');
   });
+
+  // ── OP_CHANNEL routing (§4.2) ─────────────────────────────────────────────
+  //
+  // OP_CHANNEL is routed through writeChannelPreference (state file, atomic write)
+  // and MUST NOT update any stack.env version key.
+
+  test('OP_CHANNEL: writes channel preference to state file and returns ok', async () => {
+    // Ensure state dir exists (resetState() creates homeDir but not state/ subdir in all paths)
+    const { mkdirSync: mkdir } = await import('node:fs');
+    mkdir(`${getState().homeDir}/state`, { recursive: true });
+
+    const res = await PATCH(makePatchEvent({ versions: { OP_CHANNEL: 'next' } }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; versions: Record<string, string> };
+    expect(body.ok).toBe(true);
+
+    // Channel is written to the state file as OP_UI_CHANNEL (writeChannelPreference)
+    const stateContent = readFileSync(stateEnvPath(), 'utf-8');
+    expect(stateContent).toContain('OP_UI_CHANNEL=next');
+
+    // No service version pin is written alongside the channel update
+    for (const key of SERVICE_VERSION_KEYS) {
+      expect(stateContent).not.toContain(`${key}=next`);
+    }
+  });
+
+  test('OP_CHANNEL: invalid channel returns 400 invalid_channel without touching stack.env', async () => {
+    seedStackEnv('OP_ENABLED_ADDONS=voice\n');
+    const res = await PATCH(makePatchEvent({ versions: { OP_CHANNEL: 'alpha' } }));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('invalid_channel');
+
+    // stack.env must be untouched
+    expect(readFileSync(stackEnvPath(), 'utf-8')).toContain('OP_ENABLED_ADDONS=voice');
+  });
 });

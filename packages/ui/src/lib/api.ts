@@ -139,15 +139,48 @@ export async function applyChanges(): Promise<ApplyChangesResult> {
   return data;
 }
 
+/** Scoped single-service update (§4, §7 "Update <container>"):
+ *  pull + recreate ONLY the named compose service. Pull failure is FATAL (§6). */
+export async function applyServiceUpdate(service: string): Promise<ApplyChangesResult> {
+  const res = await request('POST', '/admin/update', { service });
+  if (res.status === 401) {
+    throw Object.assign(new Error('Sign-in required.'), { status: 401 });
+  }
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(await readErrorMessage(res, `Update failed (HTTP ${res.status})`));
+  }
+  return (await res.json()) as ApplyChangesResult;
+}
+
 // ── Version management ───────────────────────────────────────────────────
 
-/** One configured stack piece + the image tag it actually runs (#503). The
- *  Updates tab flags any whose version is behind its own latest published tag.
- *  `latestVersion` is the best-effort latest tag for THIS unit's image on Docker
- *  Hub (null when the check failed or was skipped). */
+/** Phase-5 per-component version info (three distinct values per component, §5). */
+export interface ComponentVersionInfo {
+  /** Running: what the live container was created from. Null when not running. */
+  running: {
+    digest: string;
+    tag: string;
+    /** Plain version with hardware variant suffix stripped (voice images). */
+    plainVersion: string;
+    healthStatus: string;
+    containerState: string;
+  } | null;
+  /** Explicit pin from state file, or null = track latest. */
+  pinned: string | null;
+  /** Best-effort latest on the active channel (null when registry unreachable). */
+  available: string | null;
+}
+
+/** GET /admin/versions response (Phase 5 shape + backward-compat legacy fields). */
 export interface VersionsResponse {
-  versions: Record<string, string>;
+  /** Phase-5 per-component detail (three distinct values per key, §5). */
+  components: Record<string, ComponentVersionInfo>;
+  /** Channel preference: "latest" (stable releases) or "next" (prereleases). */
+  channel: 'latest' | 'next';
   platformVersion: string;
+  // Legacy backward-compat fields — old UIs still read these
+  versions: Record<string, string>;
   autoUpdate: boolean;
 }
 

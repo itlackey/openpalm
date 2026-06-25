@@ -3,10 +3,11 @@
   import Spinner from '$lib/components/common/Spinner.svelte';
   import {
     fetchVersions,
-    fetchLatestVersions,
     patchVersions,
     applyChanges,
+    applyServiceUpdate,
     downloadUiVersion,
+    type ComponentVersionInfo,
   } from '$lib/api.js';
   import {
     desktopNotifyEnabled,
@@ -15,70 +16,48 @@
     setDesktopReplyPreviewEnabled,
   } from '$lib/desktop-notifications.js';
 
-  // ── Field metadata ────────────────────────────────────────────────────────
-  const SERVICE_FIELDS: { key: string; label: string; hint: string }[] = [
-    { key: 'OP_ASSISTANT_VERSION', label: 'Assistant', hint: 'Docker image tag — exact tag, "latest", or "next".' },
-    { key: 'OP_GUARDIAN_VERSION', label: 'Guardian', hint: 'Docker image tag — exact tag, "latest", or "next".' },
-    { key: 'OP_PORTAL_VERSION', label: 'Portal (Discord/Slack/API)', hint: 'Docker image tag — exact tag, "latest", or "next".' },
-    { key: 'OP_VOICE_VERSION', label: 'Voice', hint: 'Docker image tag — exact tag, "latest", or "next".' },
+  // ── Component metadata ────────────────────────────────────────────────────
+  // Maps version key → human label + compose service name for scoped updates.
+  // The service name is the compose service to pull/recreate (§4.3 "one container").
+  const COMPONENTS: { key: string; label: string; service: string }[] = [
+    { key: 'OP_ASSISTANT_VERSION', label: 'Assistant', service: 'assistant' },
+    { key: 'OP_GUARDIAN_VERSION',  label: 'Guardian',  service: 'guardian' },
+    { key: 'OP_PORTAL_VERSION',    label: 'Portal',    service: 'portal' },
+    { key: 'OP_VOICE_VERSION',     label: 'Voice',     service: 'voice' },
   ];
-  const UI_FIELD = { key: 'OP_UI_VERSION', label: 'Admin UI', hint: 'Takes effect after the UI restarts — automatic in the desktop app.' };
-  const ALL_FIELDS = [...SERVICE_FIELDS, UI_FIELD];
 
-  // ── Mode ──────────────────────────────────────────────────────────────────
-  // Loaded from and persisted to the server (configDir/update-mode.json).
-  // 'auto'   — one-click "update all to latest"
-  // 'manual' — individual text inputs (original behaviour)
-  type UpdateMode = 'auto' | 'manual';
-
-  let mode = $state<UpdateMode>('auto');
-
-  // ── Current versions (loaded from stack.env) ──────────────────────────────
+  // ── Data ──────────────────────────────────────────────────────────────────
   let platformVersion = $state('');
-  let loaded = $state<Record<string, string>>({});
-  let edited = $state<Record<string, string>>({});
+  let channel = $state<'latest' | 'next'>('latest');
+  let components = $state<Record<string, ComponentVersionInfo>>({});
   let loading = $state(true);
   let loadError = $state('');
 
-  // ── Latest versions (fetched on demand from Docker Hub + npm) ─────────────
-  let latest = $state<Record<string, string | null>>({});
-  let latestErrors = $state<string[]>([]);
-  let latestFetchedAt = $state('');
-  let checkingLatest = $state(false);
-  let checkError = $state('');
+  // ── Per-row pin editing ───────────────────────────────────────────────────
+  // Key → the draft tag string while the user is editing (undefined = not editing)
+  let editingPin = $state<Record<string, string | undefined>>({});
 
-  // ── Apply state ───────────────────────────────────────────────────────────
-  let applying = $state(false);
-  let resultMessage = $state('');
-  let resultIsError = $state(false);
+  // ── Per-row update state ──────────────────────────────────────────────────
+  let rowApplying = $state<Record<string, boolean>>({});
+  // Separate maps for update vs pin feedback so the two actions don't overwrite
+  // each other's messages (§6: errors shown on the screen that triggered them).
+  let rowUpdateError = $state<Record<string, string>>({});
+  let rowUpdateSuccess = $state<Record<string, string>>({});
+  let rowPinError = $state<Record<string, string>>({});
+  let rowPinSuccess = $state<Record<string, string>>({});
 
-  // ── Manual mode: diff from loaded baseline ────────────────────────────────
-  const changedKeys = $derived(
-    Object.keys(edited).filter((k) => (edited[k] ?? '') !== (loaded[k] ?? '')),
-  );
-  const hasManualChanges = $derived(changedKeys.length > 0);
+  // ── Channel toggle state ──────────────────────────────────────────────────
+  let channelError = $state('');
 
-  // ── Auto mode: keys where latest differs from current ────────────────────
-  // Auto mode pins npm packages to exact versions, so any diff (even range vs
-  // concrete) is a meaningful change. If the operator wants range semantics they
-  // use manual mode.
-  // Treat a legacy `v`-prefixed pin and its bare equivalent as the SAME version
-  // (stack.env "v0.11.0" vs the bare "0.11.0" the latest-resolver returns as of
-  // the 0.12.41 cutover). Without this, an up-to-date component reads as an
-  // "update" and gets re-pinned to a bare tag whose image may not exist yet
-  // (e.g. voice, still published only as v0.11.0-cpu).
-  const sameVersion = (a: string, b: string) => a.replace(/^v/, '') === b.replace(/^v/, '');
+  // ── "Update everything" state ─────────────────────────────────────────────
+  let allApplying = $state(false);
+  let allError = $state('');
+  let allSuccess = $state('');
 
-  const autoChanges = $derived(
-    ALL_FIELDS
-      .map((f) => f.key)
-      .filter((k) => {
-        const lat = latest[k];
-        return lat !== null && lat !== undefined && !sameVersion(lat, loaded[k] ?? '');
-      })
-  );
-  const hasLatestFetch = $derived(latestFetchedAt !== '');
-  const hasAutoUpdates = $derived(autoChanges.length > 0);
+  // ── UI (control plane) update state ──────────────────────────────────────
+  let uiApplying = $state(false);
+  let uiError = $state('');
+  let uiMessage = $state('');
 
   // ── Electron bridge ───────────────────────────────────────────────────────
   let inElectron = $state(false);
@@ -102,12 +81,11 @@
     try {
       const data = await fetchVersions();
       platformVersion = data.platformVersion;
-      loaded = { ...data.versions, OP_UI_VERSION: data.platformVersion };
-      edited = { ...data.versions, OP_UI_VERSION: data.platformVersion };
-      mode = data.autoUpdate ? 'auto' : 'manual';
+      channel = data.channel ?? 'latest';
+      components = data.components ?? {};
     } catch (e) {
       const err = e as { message?: string };
-      loadError = `Failed to load versions: ${err.message ?? e}`;
+      loadError = `Failed to load versions: ${err.message ?? String(e)}`;
     }
     loading = false;
   }
@@ -119,141 +97,169 @@
     launchOnLoginEnabled = status.enabled;
   }
 
-  function handleSetMode(newMode: UpdateMode): void {
-    mode = newMode;
-    patchVersions({ OP_AUTO_UPDATE: newMode === 'auto' ? 'true' : 'false' }).catch(() => {});
+  // ── Version display helpers ───────────────────────────────────────────────
+
+  function runningDisplay(info: ComponentVersionInfo | undefined): string {
+    // §5: when no container exists, show 'not installed', not '—' (truthful state)
+    if (!info?.running) return 'not installed';
+    const v = info.running.plainVersion || info.running.tag.split(':').pop() || '—';
+    const stopped = info.running.containerState !== 'running';
+    return stopped ? `${v} (stopped)` : v;
   }
 
-  // ── Auto mode: check for latest versions ─────────────────────────────────
-  async function handleCheckLatest(): Promise<void> {
-    if (checkingLatest) return;
-    checkingLatest = true;
-    checkError = '';
-    latestErrors = [];
+  function pinnedDisplay(info: ComponentVersionInfo | undefined): string {
+    if (!info) return '—';
+    return info.pinned ?? 'latest (tracking)';
+  }
+
+  function availableDisplay(info: ComponentVersionInfo | undefined): string {
+    if (!info?.available) return '—';
+    return info.available;
+  }
+
+  function hasUpdate(info: ComponentVersionInfo | undefined): boolean {
+    if (!info?.available || !info.running) return false;
+    const running = info.running.plainVersion || info.running.tag.split(':').pop() || '';
+    return bare(info.available) !== bare(running);
+  }
+
+  function bare(v: string): string {
+    return v.replace(/^v/, '');
+  }
+
+  // ── Row pin actions ───────────────────────────────────────────────────────
+
+  function startEditPin(key: string): void {
+    const info = components[key];
+    editingPin[key] = info?.pinned ?? '';
+  }
+
+  function cancelEditPin(key: string): void {
+    delete editingPin[key];
+    editingPin = { ...editingPin };
+  }
+
+  async function savePin(key: string): Promise<void> {
+    const draft = editingPin[key];
+    if (draft === undefined) return;
+    // Empty string = unpin (track latest)
+    const value = draft.trim() || null;
+    rowPinError[key] = '';
+    rowPinSuccess[key] = '';
     try {
-      const data = await fetchLatestVersions();
-      latest = data.versions;
-      latestFetchedAt = data.fetchedAt;
-      if (data.errors.length > 0) latestErrors = data.errors;
+      // null means "track latest" → send 'latest' to the server (moving tag sentinel)
+      await patchVersions({ [key]: value ?? 'latest' });
+      // Update local state immediately (inline, no splash — §4.1 trivial change)
+      components = {
+        ...components,
+        [key]: {
+          ...components[key]!,
+          pinned: value,
+        },
+      };
+      rowPinSuccess[key] = value ? `Pinned to ${value}` : 'Tracking latest';
+      cancelEditPin(key);
     } catch (e) {
       const err = e as { message?: string };
-      checkError = `Check failed: ${err.message ?? e}`;
+      rowPinError[key] = `Pin failed: ${err.message ?? String(e)}`;
     }
-    checkingLatest = false;
   }
 
-  // ── Auto mode: apply latest versions ─────────────────────────────────────
-  async function handleAutoUpdate(): Promise<void> {
-    if (applying || !hasAutoUpdates) return;
-    applying = true;
-    resultMessage = '';
-    resultIsError = false;
+  // ── Single-service update ─────────────────────────────────────────────────
+
+  async function updateService(key: string, service: string): Promise<void> {
+    if (rowApplying[key] || allApplying) return;
+    rowApplying[key] = true;
+    rowUpdateError[key] = '';
+    rowUpdateSuccess[key] = '';
     try {
-      const stackUpdates: Record<string, string> = {};
-      let uiVersion: string | undefined;
-      for (const k of autoChanges) {
-        const v = latest[k];
-        if (v === null || v === undefined) continue;
-        if (k === 'OP_UI_VERSION') uiVersion = v;
-        else stackUpdates[k] = v;
-      }
-      await applyVersionChanges(stackUpdates, uiVersion);
-      if (!resultIsError) {
-        const refreshed = await fetchVersions();
-        loaded = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
-        edited = { ...refreshed.versions, OP_UI_VERSION: refreshed.platformVersion };
-        latest = {};
-        latestFetchedAt = '';
+      const result = await applyServiceUpdate(service);
+      if (!result.overallSuccess) {
+        rowUpdateError[key] = result.failed.length > 0
+          ? result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')
+          : !result.dockerAvailable
+            ? 'Docker is unavailable'
+            : result.error ?? 'Update failed';
+      } else {
+        rowUpdateSuccess[key] = `Updated (${result.restarted.join(', ') || service})`;
+        // Reload versions to show the new running image (truthful state, §5)
+        void reloadVersions();
       }
     } catch (e) {
       const err = e as { message?: string };
-      resultIsError = true;
-      resultMessage = `Failed to update: ${err.message ?? e}`;
+      rowUpdateError[key] = err.message ?? String(e);
     }
-    applying = false;
+    rowApplying[key] = false;
   }
 
-  // ── Shared apply pipeline (auto + manual modes) ───────────────────────────
-  // Two kinds of change, handled distinctly:
-  //  - Image-tag pins (OP_*_VERSION): no control-plane restart needed → reconcile
-  //    + pull + recreate immediately via /admin/update.
-  //  - UI build (OP_UI_VERSION) IS the control plane: download + restart. The
-  //    harness reloads the window onto the new code, landing on the splash apply
-  //    step which reconciles the home + recreates the stack on the NEW control
-  //    plane. (A UI-only update used to skip the stack entirely — the bug.)
-  async function applyVersionChanges(
-    stackUpdates: Record<string, string>,
-    uiVersion: string | undefined,
-  ): Promise<void> {
-    const hasStack = Object.keys(stackUpdates).length > 0;
+  // ── Update everything ─────────────────────────────────────────────────────
 
-    if (hasStack) {
-      await patchVersions(stackUpdates);
+  async function updateAll(): Promise<void> {
+    if (allApplying || Object.values(rowApplying).some(Boolean)) return;
+    allApplying = true;
+    allError = '';
+    allSuccess = '';
+    try {
       const result = await applyChanges();
       if (!result.overallSuccess) {
-        resultIsError = true;
-        resultMessage = result.failed.length > 0
-          ? `Saved, but applying failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`
+        allError = result.failed.length > 0
+          ? `Failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`
           : !result.dockerAvailable
-            ? 'Versions saved, but Docker is unavailable — services were not restarted.'
-            : `Apply failed: ${result.error ?? 'unknown error'}`;
-        return;
+            ? 'Docker is unavailable — stack not restarted'
+            : result.error ?? 'Update failed';
+      } else {
+        allSuccess = result.restarted.length > 0
+          ? `Updated: ${result.restarted.join(', ')}`
+          : 'Stack is up to date';
+        void reloadVersions();
       }
-      resultMessage = result.restarted.length > 0
-        ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
-        : 'Versions applied.';
-    }
-
-    // Activate a new control plane last: the harness restarts the UI server and
-    // reloads the window onto it, so the splash apply step finishes the reconcile.
-    if (uiVersion) resultMessage = await applyUiVersion(uiVersion);
-  }
-
-  // ── Manual mode: apply changed fields ────────────────────────────────────
-  function setField(key: string, value: string): void {
-    edited[key] = value;
-  }
-
-  async function handleManualApply(): Promise<void> {
-    if (applying || !hasManualChanges) return;
-    applying = true;
-    resultMessage = '';
-    resultIsError = false;
-    try {
-      const stackUpdates: Record<string, string> = {};
-      let uiVersion: string | undefined;
-      for (const k of changedKeys) {
-        if (k === 'OP_UI_VERSION') uiVersion = edited[k];
-        else stackUpdates[k] = edited[k] ?? '';
-      }
-      loaded = { ...edited };
-      await applyVersionChanges(stackUpdates, uiVersion);
     } catch (e) {
       const err = e as { message?: string };
-      resultIsError = true;
-      resultMessage = `Failed to apply versions: ${err.message ?? e}`;
+      allError = err.message ?? String(e);
     }
-    applying = false;
+    allApplying = false;
   }
 
-  // Download a new UI build and activate it. The control plane only changes once
-  // the UI server is respawned onto the new build AND the window reloads onto it.
-  async function applyUiVersion(version: string): Promise<string> {
-    const result = await downloadUiVersion(version);
-    if (result.pendingRestart) {
-      // Electron: the harness respawns the UI server and reloads the window onto
-      // the new control plane (which lands on the splash apply step). Fire-and-
-      // forget — the window navigates away when the restart completes.
-      void window.openpalm?.restartUiServer?.();
-      return `Updating to ${version} — restarting…`;
+  // Reload versions after an update to show the new running reality (§5)
+  async function reloadVersions(): Promise<void> {
+    try {
+      const data = await fetchVersions();
+      platformVersion = data.platformVersion;
+      channel = data.channel ?? 'latest';
+      components = data.components ?? {};
+    } catch {
+      // Silent — the data we have is still accurate enough
     }
-    if (result.restarting) {
-      // Host CLI supervisor respawns the process; reload onto the new code.
-      setTimeout(() => { location.href = '/'; }, 4_000);
-      return `UI updated to ${version} — reloading in a moment…`;
-    }
-    return `UI ${version} downloaded. Restart the admin UI to apply it.`;
   }
+
+  // ── UI (control-plane) update ─────────────────────────────────────────────
+
+  async function updateUi(): Promise<void> {
+    if (uiApplying) return;
+    uiApplying = true;
+    uiError = '';
+    uiMessage = '';
+    try {
+      // Use available if known, else "latest"
+      const target = 'latest';
+      const result = await downloadUiVersion(target);
+      if (result.pendingRestart) {
+        void window.openpalm?.restartUiServer?.();
+        uiMessage = `Updating UI — restarting…`;
+      } else if (result.restarting) {
+        setTimeout(() => { location.href = '/'; }, 4_000);
+        uiMessage = `UI updated — reloading in a moment…`;
+      } else {
+        uiMessage = `UI downloaded. Restart the admin UI to apply it.`;
+      }
+    } catch (e) {
+      const err = e as { message?: string };
+      uiError = err.message ?? String(e);
+    }
+    uiApplying = false;
+  }
+
+  // ── Electron desktop settings ─────────────────────────────────────────────
 
   async function onLaunchOnLoginChange(event: Event): Promise<void> {
     const enabled = (event.currentTarget as HTMLInputElement).checked;
@@ -271,244 +277,219 @@
     }
   }
 
-  const statusText = $derived(
-    applying ? 'Applying versions and restarting services…'
-      : loading ? 'Loading versions…'
-      : checkingLatest ? 'Checking for latest versions…'
-      : '',
-  );
+  const anyApplying = $derived(allApplying || uiApplying || Object.values(rowApplying).some(Boolean));
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <div>
-      <h2>Versions</h2>
-      <p class="panel-subtitle">Keep your stack current or pin specific versions.</p>
+      <h2>Updates</h2>
+      <p class="panel-subtitle">Update individual components or everything at once.</p>
       <p class="control-plane-line">
         Control plane: <strong>{platformVersion || '—'}</strong>
       </p>
     </div>
-    <div class="mode-toggle" role="group" aria-label="Update mode">
+
+    <div class="header-actions">
       <button
-        class="mode-btn"
-        class:mode-btn--active={mode === 'auto'}
-        onclick={() => handleSetMode('auto')}
-        aria-pressed={mode === 'auto'}
-      >Automatic</button>
+        class="btn btn-primary"
+        onclick={updateAll}
+        disabled={anyApplying}
+        aria-busy={allApplying}
+      >
+        {#if allApplying}
+          <Spinner /> Updating everything…
+        {:else}
+          Update everything
+        {/if}
+      </button>
       <button
-        class="mode-btn"
-        class:mode-btn--active={mode === 'manual'}
-        onclick={() => handleSetMode('manual')}
-        aria-pressed={mode === 'manual'}
-      >Manual</button>
+        class="btn btn-outline"
+        onclick={updateUi}
+        disabled={anyApplying}
+        aria-busy={uiApplying}
+      >
+        {#if uiApplying}
+          <Spinner /> Updating UI…
+        {:else}
+          Update UI
+        {/if}
+      </button>
     </div>
   </div>
 
-  {#if statusText}
-    <p class="status-live" role="status" aria-live="polite" aria-atomic="true">{statusText}</p>
+  {#if allError}
+    <p class="msg msg-error" role="alert">{allError}</p>
+  {/if}
+  {#if allSuccess}
+    <p class="msg msg-success" role="status">{allSuccess}</p>
+  {/if}
+  {#if uiError}
+    <p class="msg msg-error" role="alert">UI update failed: {uiError}</p>
+  {/if}
+  {#if uiMessage}
+    <p class="msg msg-success" role="status">{uiMessage}</p>
   {/if}
 
   <div class="panel-body">
     {#if loadError}
-      <p class="result-message result-error" role="alert">{loadError}</p>
+      <p class="msg msg-error" role="alert">{loadError}</p>
     {/if}
 
     {#if loading}
       <p class="loading-line"><Spinner /> Loading versions…</p>
-    {:else if mode === 'auto'}
-      <!-- ═══════════════════════════════════════════════════════════════════
-           AUTOMATIC MODE
-           ══════════════════════════════════════════════════════════════════ -->
-      <section class="auto-section" aria-labelledby="auto-mode-desc">
-        <p id="auto-mode-desc" class="auto-description">
-          Check Docker Hub and npm for the latest stable release of each image and
-          package, then apply them all in one step. npm packages are pinned to their
-          exact latest version. The stack will restart (~1 min offline) and your data
-          is kept.
-        </p>
-
-        {#if !hasLatestFetch}
-          <div class="auto-action-row">
-            <button
-              class="btn btn-primary"
-              onclick={handleCheckLatest}
-              disabled={checkingLatest}
-              aria-busy={checkingLatest}
-            >
-              {#if checkingLatest}
-                <Spinner /> Checking…
-              {:else}
-                Check for updates
-              {/if}
-            </button>
-            {#if checkError}
-              <p class="result-message result-error" role="alert">{checkError}</p>
-            {/if}
-          </div>
-        {:else}
-          <div class="latest-results">
-            {#if latestErrors.length > 0}
-              <div role="status">
-                {#each latestErrors as err (err)}
-                  <p class="registry-warning">⚠ {err}</p>
-                {/each}
-              </div>
-            {/if}
-
-            <table class="version-table" aria-label="Version comparison">
-              <thead>
-                <tr>
-                  <th scope="col" class="col-component">Component</th>
-                  <th scope="col" class="col-current">Current</th>
-                  <th scope="col" class="col-latest">Latest</th>
-                  <th scope="col" class="col-status">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each ALL_FIELDS as field (field.key)}
-                  {@const cur = loaded[field.key] ?? ''}
-                  {@const lat = latest[field.key]}
-                  {@const changed = lat !== null && lat !== undefined && !sameVersion(lat, cur)}
-                  {@const unavailable = lat === null || lat === undefined}
-                  <tr class:row-changed={changed}>
-                    <td class="col-component">{field.label}</td>
-                    <td class="col-current"><code>{cur || '—'}</code></td>
-                    <td class="col-latest">
-                      {#if unavailable}
-                        <span class="val-unavailable">unavailable</span>
-                      {:else}
-                        <code class:val-new={changed}>{lat}</code>
-                      {/if}
-                    </td>
-                    <td class="col-status">
-                      {#if unavailable}
-                        <span class="badge badge-warn">?</span>
-                      {:else if changed}
-                        <span class="badge badge-update">update</span>
-                      {:else}
-                        <span class="badge badge-ok">current</span>
-                      {/if}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-
-            <div class="auto-action-row">
-              {#if hasAutoUpdates}
-                <button
-                  class="btn btn-primary"
-                  onclick={handleAutoUpdate}
-                  disabled={applying}
-                  aria-busy={applying}
-                >
-                  {#if applying}
-                    <Spinner /> Applying…
-                  {:else}
-                    Update {autoChanges.length} component{autoChanges.length === 1 ? '' : 's'}
+    {:else}
+      <!-- ── Container image components ────────────────────────────────────── -->
+      <section aria-label="Container images">
+        <table class="comp-table" aria-label="Component versions">
+          <thead>
+            <tr>
+              <th scope="col" class="col-name">Component</th>
+              <th scope="col" class="col-running">Running</th>
+              <th scope="col" class="col-pin">Pin</th>
+              <th scope="col" class="col-avail">Available</th>
+              <th scope="col" class="col-action"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each COMPONENTS as comp (comp.key)}
+              {@const info = components[comp.key]}
+              {@const isUpdating = rowApplying[comp.key] ?? false}
+              {@const updateAvailable = hasUpdate(info)}
+              <tr class:row-has-update={updateAvailable}>
+                <td class="col-name">
+                  <span class="comp-label">{comp.label}</span>
+                </td>
+                <td class="col-running">
+                  <code class="ver">{runningDisplay(info)}</code>
+                  {#if info?.running?.healthStatus && info.running.healthStatus !== 'none' && info.running.healthStatus !== ''}
+                    <span class="health-dot health-{info.running.healthStatus}" aria-label="Health: {info.running.healthStatus}"></span>
                   {/if}
-                </button>
-                <p class="apply-hint">
-                  Saves the versions shown above, then recreates the stack (~1 min offline). Your data is kept.
-                </p>
-              {:else}
-                <p class="up-to-date">Everything is up to date.</p>
-              {/if}
-              <button
-                class="btn btn-ghost recheck-btn"
-                onclick={handleCheckLatest}
-                disabled={checkingLatest || applying}
-                aria-busy={checkingLatest}
-              >
-                {checkingLatest ? 'Checking…' : 'Re-check'}
-              </button>
-            </div>
-          </div>
+                </td>
+                <td class="col-pin">
+                  {#if editingPin[comp.key] !== undefined}
+                    <!-- Inline pin editor — trivial change, no splash (§4.1) -->
+                    <div class="pin-edit-row">
+                      <input
+                        class="pin-input"
+                        type="text"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="tag or leave empty for latest"
+                        bind:value={editingPin[comp.key]}
+                        aria-label="Pin version for {comp.label}"
+                        onkeydown={(e) => {
+                          if (e.key === 'Enter') void savePin(comp.key);
+                          if (e.key === 'Escape') cancelEditPin(comp.key);
+                        }}
+                      />
+                      <button class="btn-inline btn-save" onclick={() => savePin(comp.key)}>Save</button>
+                      <button class="btn-inline btn-cancel" onclick={() => cancelEditPin(comp.key)}>Cancel</button>
+                    </div>
+                  {:else}
+                    <button class="pin-chip" onclick={() => startEditPin(comp.key)} title="Edit pin for {comp.label}">
+                      <span class="pin-chip-text">{pinnedDisplay(info)}</span>
+                      <span class="pin-edit-icon" aria-hidden="true">✏</span>
+                    </button>
+                  {/if}
+                  <!-- Pin action feedback stays in col-pin (§6: on the screen that triggered it) -->
+                  {#if rowPinSuccess[comp.key]}
+                    <span class="inline-success">{rowPinSuccess[comp.key]}</span>
+                  {/if}
+                  {#if rowPinError[comp.key]}
+                    <span class="inline-error" role="alert">{rowPinError[comp.key]}</span>
+                  {/if}
+                </td>
+                <td class="col-avail">
+                  {#if updateAvailable}
+                    <code class="ver ver-new">{availableDisplay(info)}</code>
+                  {:else}
+                    <code class="ver">{availableDisplay(info)}</code>
+                  {/if}
+                </td>
+                <td class="col-action">
+                  <button
+                    class="btn btn-sm"
+                    class:btn-primary={updateAvailable}
+                    class:btn-ghost={!updateAvailable}
+                    onclick={() => updateService(comp.key, comp.service)}
+                    disabled={isUpdating || anyApplying}
+                    aria-busy={isUpdating}
+                    aria-label="Update {comp.label}"
+                  >
+                    {#if isUpdating}
+                      <Spinner />
+                    {:else if updateAvailable}
+                      Update
+                    {:else}
+                      Recheck
+                    {/if}
+                  </button>
+                  <!-- Update action feedback next to the Update button (§6: on the screen that triggered it) -->
+                  {#if rowUpdateSuccess[comp.key]}
+                    <span class="inline-success">{rowUpdateSuccess[comp.key]}</span>
+                  {/if}
+                  {#if rowUpdateError[comp.key]}
+                    <span class="inline-error" role="alert">{rowUpdateError[comp.key]}</span>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ── Channel preference ─────────────────────────────────────────────── -->
+      <section class="channel-section" aria-labelledby="channel-heading">
+        <h3 id="channel-heading" class="section-heading">Update channel</h3>
+        <p class="section-desc">Controls which releases are considered when tracking latest.</p>
+        <div class="channel-toggle" role="group" aria-label="Update channel">
+          <button
+            class="channel-btn"
+            class:channel-btn--active={channel === 'latest'}
+            onclick={async () => {
+              const prev = channel;
+              channel = 'latest';
+              channelError = '';
+              try {
+                await patchVersions({ OP_CHANNEL: 'latest' });
+              } catch (e) {
+                channel = prev;
+                channelError = e instanceof Error ? e.message : 'Failed to save channel preference';
+              }
+            }}
+            aria-pressed={channel === 'latest'}
+          >Stable</button>
+          <button
+            class="channel-btn"
+            class:channel-btn--active={channel === 'next'}
+            onclick={async () => {
+              const prev = channel;
+              channel = 'next';
+              channelError = '';
+              try {
+                await patchVersions({ OP_CHANNEL: 'next' });
+              } catch (e) {
+                channel = prev;
+                channelError = e instanceof Error ? e.message : 'Failed to save channel preference';
+              }
+            }}
+            aria-pressed={channel === 'next'}
+          >Prerelease</button>
+        </div>
+        {#if channelError}
+          <p class="inline-error" role="alert">{channelError}</p>
         {/if}
       </section>
-    {:else}
-      <!-- ═══════════════════════════════════════════════════════════════════
-           MANUAL MODE
-           ══════════════════════════════════════════════════════════════════ -->
-      <section class="version-group" aria-labelledby="version-images-title">
-        <h3 id="version-images-title" class="version-group-title">Container images</h3>
-        <p class="version-group-subtitle">
-          Each image rides its own tag. Use an exact tag, <code>latest</code>, or <code>next</code> — not a semver range.
-        </p>
-        {#each SERVICE_FIELDS as field (field.key)}
-          <div class="version-field">
-            <label class="version-label" for="version-{field.key}">{field.label}</label>
-            <input
-              id="version-{field.key}"
-              class="version-input"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              value={edited[field.key] ?? ''}
-              oninput={(e) => setField(field.key, (e.currentTarget as HTMLInputElement).value)}
-              disabled={applying}
-            />
-            <p class="version-hint">{field.hint}</p>
-          </div>
-        {/each}
-      </section>
-
-      <section class="version-group" aria-labelledby="version-ui-title">
-        <h3 id="version-ui-title" class="version-group-title">Admin UI</h3>
-        <div class="version-field">
-          <label class="version-label" for="version-OP_UI_VERSION">{UI_FIELD.label}</label>
-          <input
-            id="version-OP_UI_VERSION"
-            class="version-input"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            value={edited[UI_FIELD.key] ?? ''}
-            oninput={(e) => setField(UI_FIELD.key, (e.currentTarget as HTMLInputElement).value)}
-            disabled={applying}
-          />
-          <p class="version-hint">{UI_FIELD.hint}</p>
-        </div>
-      </section>
-
-      <div class="apply-row">
-        <button
-          class="btn btn-primary"
-          onclick={handleManualApply}
-          disabled={applying || !hasManualChanges}
-          aria-busy={applying}
-        >
-          {#if applying}
-            <Spinner /> Applying…
-          {:else}
-            Apply
-          {/if}
-        </button>
-        <p class="apply-hint">
-          Saves the changed versions, then recreates the stack so the new images and packages take
-          effect (~1 min offline). Your data is kept.
-        </p>
-      </div>
-    {/if}
-
-    {#if resultMessage}
-      <p
-        class="result-message"
-        class:result-success={!resultIsError}
-        class:result-error={resultIsError}
-        role="status"
-      >
-        {resultMessage}
-      </p>
     {/if}
 
     <!-- ── Desktop settings (Electron-only) ────────────────────────────── -->
     {#if inElectron}
       <section class="desktop-settings" aria-labelledby="desktop-settings-title">
-        <h3 id="desktop-settings-title" class="desktop-settings-title">Desktop settings</h3>
+        <h3 id="desktop-settings-title" class="section-heading">Desktop settings</h3>
 
         <div class="desktop-setting-row">
-          <div class="version-label">Launch on login</div>
+          <div class="setting-label">Launch on login</div>
           <label class="desktop-toggle">
             <input
               type="checkbox"
@@ -518,7 +499,7 @@
             />
             <span>Start OpenPalm automatically when you sign in on this device.</span>
           </label>
-          <p class="version-hint">
+          <p class="setting-hint">
             {#if launchOnLoginSupported}
               Uses the native desktop login-item integration for this platform.
             {:else}
@@ -528,7 +509,7 @@
         </div>
 
         <div class="desktop-setting-row">
-          <div class="version-label">Desktop notifications</div>
+          <div class="setting-label">Desktop notifications</div>
           {#if inElectron && typeof window.openpalm?.notify === 'function'}
             <label class="desktop-toggle">
               <input
@@ -557,7 +538,7 @@
               />
               <span>Include reply preview in the notification body.</span>
             </label>
-            <p class="version-hint">Reply previews stay off by default because desktop notifications can persist outside the app.</p>
+            <p class="setting-hint">Reply previews stay off by default because desktop notifications can persist outside the app.</p>
           {:else}
             <label class="desktop-toggle">
               <input type="checkbox" disabled />
@@ -567,7 +548,7 @@
               <input type="checkbox" disabled />
               <span>Include reply preview in the notification body.</span>
             </label>
-            <p class="version-hint">Desktop notifications are available in the OpenPalm desktop app.</p>
+            <p class="setting-hint">Desktop notifications are available in the OpenPalm desktop app.</p>
           {/if}
         </div>
       </section>
@@ -588,55 +569,21 @@
     color: var(--s-ink);
   }
 
-  .status-live {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
   .panel-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--s-sp-4);
     flex-wrap: wrap;
+    margin-bottom: var(--s-sp-4);
   }
 
-  /* ── Mode toggle ── */
-  .mode-toggle {
+  .header-actions {
     display: flex;
-    border: var(--s-hair) solid var(--s-line);
-    border-radius: 4px;
-    overflow: hidden;
+    gap: var(--s-sp-3);
+    flex-wrap: wrap;
     flex-shrink: 0;
     margin-top: var(--s-sp-1);
-  }
-  .mode-btn {
-    padding: var(--s-sp-2) var(--s-sp-4);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-2);
-    border-right: var(--s-hair) solid var(--s-line);
-    transition: background 0.1s, color 0.1s;
-  }
-  .mode-btn:last-child {
-    border-right: none;
-  }
-  .mode-btn--active {
-    background: var(--s-ink);
-    color: var(--s-paper);
-  }
-  .mode-btn:not(.mode-btn--active):hover {
-    background: var(--s-line-soft);
   }
 
   .loading-line {
@@ -649,40 +596,33 @@
     margin: 0;
   }
 
-  /* ── Automatic mode ── */
-  .auto-section {
-    margin-top: var(--s-sp-3);
-  }
-  .auto-description {
+  /* ── Status messages ── */
+  .msg {
+    margin: var(--s-sp-2) 0;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border-radius: 2px;
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
-    color: var(--s-ink-2);
-    margin: 0 0 var(--s-sp-4) 0;
-    line-height: 1.5;
-    max-width: 60ch;
+    border: var(--s-hair) solid var(--s-line);
+  }
+  .msg-success {
+    border-color: var(--s-moss, #16a34a);
+    color: var(--s-moss, #16a34a);
+  }
+  .msg-error {
+    border-color: var(--s-seal, #ef4444);
+    color: var(--s-seal, #ef4444);
   }
 
-  .auto-action-row {
-    display: flex;
-    align-items: center;
-    gap: var(--s-sp-4);
-    flex-wrap: wrap;
-    margin-top: var(--s-sp-4);
-  }
-
-  .latest-results {
-    margin-top: var(--s-sp-2);
-  }
-
-  /* Version comparison table */
-  .version-table {
+  /* ── Component table ── */
+  .comp-table {
     width: 100%;
     border-collapse: collapse;
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     margin-bottom: var(--s-sp-2);
   }
-  .version-table th {
+  .comp-table th {
     text-align: left;
     padding: var(--s-sp-2) var(--s-sp-3);
     font-family: var(--s-font-mono);
@@ -692,116 +632,98 @@
     color: var(--s-ink-3);
     border-bottom: var(--s-hair) solid var(--s-line);
   }
-  .version-table td {
+  .comp-table td {
     padding: var(--s-sp-2) var(--s-sp-3);
     border-bottom: var(--s-hair) solid var(--s-line-soft);
     vertical-align: middle;
     color: var(--s-ink);
   }
-  .version-table tr:last-child td {
+  .comp-table tr:last-child td {
     border-bottom: none;
   }
-  .row-changed {
-    background: color-mix(in srgb, var(--s-amber, #f59e0b) 8%, transparent);
-  }
-  .col-component { width: 30%; }
-  .col-current, .col-latest { width: 28%; }
-  .col-status { width: 14%; text-align: center; }
-  .version-table code {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-  }
-  .val-new {
-    color: var(--s-moss, #16a34a);
-    font-weight: 600;
-  }
-  .val-unavailable {
-    color: var(--s-ink-3);
-    font-style: italic;
+  .row-has-update td:first-child {
+    border-left: 2px solid var(--s-amber, #f59e0b);
+    padding-left: calc(var(--s-sp-3) - 2px);
   }
 
-  /* Badges */
-  .badge {
-    display: inline-block;
-    padding: 1px var(--s-sp-2);
-    border-radius: 2px;
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-  }
-  .badge-ok {
-    background: color-mix(in srgb, var(--s-moss, #16a34a) 12%, transparent);
-    color: var(--s-moss, #16a34a);
-  }
-  .badge-update {
-    background: color-mix(in srgb, var(--s-amber, #f59e0b) 15%, transparent);
-    color: color-mix(in srgb, var(--s-amber, #f59e0b) 80%, var(--s-ink));
-  }
-  .badge-warn {
-    background: color-mix(in srgb, var(--s-ink-3) 10%, transparent);
-    color: var(--s-ink-3);
-  }
+  .col-name   { width: 18%; }
+  .col-running { width: 20%; }
+  .col-pin    { width: 30%; }
+  .col-avail  { width: 16%; }
+  .col-action { width: 16%; text-align: right; }
 
-  .up-to-date {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-moss, #16a34a);
-    margin: 0;
-  }
-
-  .recheck-btn { margin-left: auto; }
-
-  .registry-warning {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-3);
-    margin: 0 0 var(--s-sp-1) 0;
-  }
-
-  /* ── Manual mode ── */
-  .version-group {
-    margin-top: var(--s-sp-5);
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-sp-3);
-  }
-  .version-group:first-of-type {
-    margin-top: var(--s-sp-2);
-  }
-  .version-group-title {
-    margin: 0;
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    color: var(--s-ink-3);
-  }
-  .version-group-subtitle {
-    margin: 0;
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-2);
-    max-width: 60ch;
-    line-height: 1.5;
-  }
-  .version-field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-sp-1);
-    padding: var(--s-sp-2) 0;
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
-  }
-  .version-field:last-child { border-bottom: none; }
-  .version-label {
+  .comp-label {
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink);
   }
-  .version-input {
-    width: 100%;
-    min-width: 0;
-    padding: var(--s-sp-2) var(--s-sp-3);
+
+  .ver {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-2);
+  }
+  .ver-new {
+    color: var(--s-moss, #16a34a);
+    font-weight: 600;
+  }
+
+  .health-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-left: var(--s-sp-2);
+    vertical-align: middle;
+    flex: none;
+  }
+  .health-healthy { background: var(--s-moss, #16a34a); }
+  .health-starting, .health-unhealthy { background: var(--s-seal, #ef4444); }
+
+  /* ── Pin chip + inline editor ── */
+  .pin-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-sp-1);
+    background: transparent;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    padding: 1px var(--s-sp-2);
+    cursor: pointer;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    color: var(--s-ink-2);
+    transition: border-color 0.1s;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .pin-chip:hover {
+    border-color: var(--s-ink-2);
+  }
+  .pin-chip-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pin-edit-icon {
+    opacity: 0;
+    font-size: 0.7em;
+    flex: none;
+  }
+  .pin-chip:hover .pin-edit-icon {
+    opacity: 0.5;
+  }
+
+  .pin-edit-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    flex-wrap: wrap;
+  }
+  .pin-input {
+    flex: 1;
+    min-width: 8rem;
+    padding: 2px var(--s-sp-2);
     border: var(--s-hair) solid var(--s-line);
     border-radius: 2px;
     background: var(--s-paper);
@@ -809,56 +731,93 @@
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
   }
-  .version-input:disabled { opacity: 0.5; cursor: not-allowed; }
-  .version-hint {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-3);
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .apply-row {
-    display: flex;
-    align-items: center;
-    gap: var(--s-sp-4);
-    flex-wrap: wrap;
-    margin-top: var(--s-sp-5);
-    padding-top: var(--s-sp-4);
-    border-top: var(--s-hair) solid var(--s-line);
-  }
-  .apply-row .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s-sp-2);
-    flex-shrink: 0;
-  }
-  .apply-hint {
-    flex: 1;
-    min-width: 14rem;
-    margin: 0;
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-3);
-    line-height: 1.5;
-    max-width: 60ch;
-  }
-
-  .result-message {
-    margin: var(--s-sp-3) 0 0;
-    padding: var(--s-sp-2) var(--s-sp-3);
+  .btn-inline {
+    padding: 2px var(--s-sp-2);
     border-radius: 2px;
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
+    cursor: pointer;
     border: var(--s-hair) solid var(--s-line);
+    background: transparent;
+    color: var(--s-ink-2);
+    white-space: nowrap;
   }
-  .result-success {
+  .btn-save {
     border-color: var(--s-moss, #16a34a);
     color: var(--s-moss, #16a34a);
   }
-  .result-error {
-    border-color: var(--s-seal, #ef4444);
+  .btn-cancel { color: var(--s-ink-3); }
+
+  .inline-success {
+    display: block;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-moss, #16a34a);
+    margin-top: 2px;
+  }
+  .inline-error {
+    display: block;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
     color: var(--s-seal, #ef4444);
+    margin-top: 2px;
+  }
+
+  .btn-sm {
+    padding: var(--s-sp-1) var(--s-sp-3);
+    font-size: var(--s-type-deed);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-sp-1);
+  }
+
+  /* ── Channel section ── */
+  .channel-section {
+    margin-top: var(--s-sp-6);
+    padding-top: var(--s-sp-4);
+    border-top: var(--s-hair) solid var(--s-line);
+  }
+  .section-heading {
+    margin: 0 0 var(--s-sp-2) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
+    font-weight: 400;
+  }
+  .section-desc {
+    margin: 0 0 var(--s-sp-3) 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    line-height: 1.5;
+  }
+  .channel-toggle {
+    display: flex;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 4px;
+    overflow: hidden;
+    width: fit-content;
+  }
+  .channel-btn {
+    padding: var(--s-sp-2) var(--s-sp-4);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    border-right: var(--s-hair) solid var(--s-line);
+    transition: background 0.1s, color 0.1s;
+  }
+  .channel-btn:last-child { border-right: none; }
+  .channel-btn--active {
+    background: var(--s-ink);
+    color: var(--s-paper);
+  }
+  .channel-btn:not(.channel-btn--active):hover {
+    background: var(--s-line-soft);
   }
 
   /* ── Desktop settings (Electron-only) ── */
@@ -867,13 +826,18 @@
     border-top: var(--s-hair) solid var(--s-line);
     padding-top: var(--s-sp-4);
   }
-  .desktop-settings-title {
-    margin: 0 0 var(--s-sp-3) 0;
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
+  .setting-label {
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    margin-bottom: var(--s-sp-1);
+  }
+  .setting-hint {
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
     color: var(--s-ink-3);
+    margin: var(--s-sp-1) 0 0;
+    line-height: 1.5;
   }
   .desktop-setting-row {
     display: flex;
@@ -887,13 +851,24 @@
     display: flex;
     align-items: flex-start;
     gap: var(--s-sp-3);
-    margin-top: var(--s-sp-3);
+    margin-top: var(--s-sp-1);
     font-family: var(--s-font-display);
     font-size: var(--s-type-deed);
     color: var(--s-ink);
+    cursor: pointer;
   }
   .desktop-toggle--nested {
     margin-left: var(--s-sp-6);
     margin-bottom: var(--s-sp-2);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>

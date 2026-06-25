@@ -51,6 +51,7 @@ import {
   writeVersions,
   readPinnedVersions,
   readChannelPreference,
+  writeChannelPreference,
   SERVICE_VERSION_KEYS,
   DOCKER_IMAGE_NAMES,
   PLATFORM_VERSION,
@@ -65,7 +66,7 @@ import {
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
-const ALLOWED_KEYS = new Set<string>([...SERVICE_VERSION_KEYS, "OP_AUTO_UPDATE"]);
+const ALLOWED_KEYS = new Set<string>([...SERVICE_VERSION_KEYS, "OP_AUTO_UPDATE", "OP_CHANNEL"]);
 
 function stackEnvPath(): string {
   return `${getState().stashDir}/env/stack.env`;
@@ -297,6 +298,7 @@ export const PATCH: RequestHandler = async (event) => {
 
   const versionUpdates: Record<string, string> = {};
   const settingUpdates: Record<string, string> = {};
+  let channelUpdate: string | undefined;
 
   for (const [key, value] of Object.entries(versions)) {
     if (!ALLOWED_KEYS.has(key)) {
@@ -305,7 +307,10 @@ export const PATCH: RequestHandler = async (event) => {
     if (typeof value !== "string") {
       return errorResponse(400, "invalid_version_value", `Value for ${key} must be a string`, {}, requestId);
     }
-    if (key === "OP_AUTO_UPDATE") {
+    if (key === "OP_CHANNEL") {
+      // Channel preference (§4.2) — written via writeChannelPreference (state file, never overwritten).
+      channelUpdate = value;
+    } else if (key === "OP_AUTO_UPDATE") {
       settingUpdates[key] = value;
     } else {
       versionUpdates[key] = value;
@@ -316,6 +321,16 @@ export const PATCH: RequestHandler = async (event) => {
     writeVersions(state, versionUpdates);
     // Invalidate the available cache so the next GET reflects updated pins
     _availableCache.clear();
+  }
+
+  if (channelUpdate !== undefined) {
+    try {
+      writeChannelPreference(state, channelUpdate);
+      _availableCache.clear();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return errorResponse(400, "invalid_channel", msg, {}, requestId);
+    }
   }
 
   if (Object.keys(settingUpdates).length > 0) {

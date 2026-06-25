@@ -4,7 +4,6 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { fetchAkmHealth, type AkmHealth } from '$lib/api.js';
   import StatusHero from './StatusHero.svelte';
-  import OperationOutput from './OperationOutput.svelte';
   import MetricTile from './MetricTile.svelte';
   import AkmHealthCard from './AkmHealthCard.svelte';
   import ConfigureShortcuts from './ConfigureShortcuts.svelte';
@@ -12,12 +11,7 @@
   import IconCloudDownload from '$lib/components/icons/IconCloudDownload.svelte';
 
   interface Props {
-    operationResult: string;
-    operationResultType: 'success' | 'error' | 'info';
-    tokenStored: boolean;
     healthLoading: boolean;
-    applyLoading: boolean;
-    anyDangerousLoading: boolean;
     mergedServices: Map<string, string>;
     /**
      * Services this stack actually deploys (compose model resolved with active
@@ -27,23 +21,14 @@
      */
     managedServices: string[];
     onCheckHealth: () => void;
-    onApplyChanges: () => void;
-    onDismissResult: () => void;
     onNavigate: (tab: TabId) => void;
   }
 
   let {
-    operationResult,
-    operationResultType,
-    tokenStored,
     healthLoading,
-    applyLoading,
-    anyDangerousLoading,
     mergedServices,
     managedServices,
     onCheckHealth,
-    onApplyChanges,
-    onDismissResult,
     onNavigate,
   }: Props = $props();
 
@@ -117,15 +102,9 @@
   title={health.title}
   detail={health.detail}
   {healthLoading}
-  {applyLoading}
-  {anyDangerousLoading}
-  {tokenStored}
   {onCheckHealth}
-  {onApplyChanges}
   {onNavigate}
 />
-
-<OperationOutput {operationResult} {operationResultType} {onDismissResult} />
 
 <!-- Live metrics — each tile is a shortcut to where you act on it. -->
 <div class="tile-grid">

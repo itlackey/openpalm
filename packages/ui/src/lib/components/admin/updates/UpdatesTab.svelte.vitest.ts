@@ -1,11 +1,9 @@
 /**
- * UpdatesTab component tests.
+ * UpdatesTab component tests (Phase 6 rebuild).
  *
- * The Versions tab has two modes:
- *  - Automatic (default): "Check for updates" → comparison table → "Update N components".
- *  - Manual: individual text inputs for every image tag / npm range, with an Apply button.
- *
- * The Electron launch-on-login section uses the window.openpalm bridge directly.
+ * The Updates tab shows per-component rows with running/pin/available columns
+ * and granular "Update <container>", "Update UI", "Update everything" buttons.
+ * No auto/manual mode split. Errors appear in context.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -13,46 +11,83 @@ import { page } from 'vitest/browser';
 
 vi.mock('$lib/api.js', () => ({
   fetchVersions: vi.fn(),
-  fetchLatestVersions: vi.fn(),
   patchVersions: vi.fn(),
   applyChanges: vi.fn(),
+  applyServiceUpdate: vi.fn(),
   downloadUiVersion: vi.fn(),
 }));
 
 import UpdatesTab from './UpdatesTab.svelte';
-import { fetchVersions, fetchLatestVersions, patchVersions, applyChanges, downloadUiVersion } from '$lib/api.js';
+import {
+  fetchVersions,
+  patchVersions,
+  applyChanges,
+  applyServiceUpdate,
+  downloadUiVersion,
+} from '$lib/api.js';
 
-const ALL_VERSIONS = {
-  OP_ASSISTANT_VERSION: 'latest',
-  OP_GUARDIAN_VERSION: 'latest',
-  OP_PORTAL_VERSION: 'latest',
-  OP_VOICE_VERSION: 'latest',
-};
+const MOCK_COMPONENT_RUNNING = (version: string) => ({
+  digest: `sha256:abc${version}`,
+  tag: `openpalm/assistant:${version}`,
+  plainVersion: version,
+  healthStatus: 'healthy',
+  containerState: 'running',
+});
+
+function makeVersionsResponse(opts: {
+  runningVersion?: string;
+  pinnedVersion?: string | null;
+  availableVersion?: string | null;
+} = {}) {
+  const { runningVersion = '0.12.20', pinnedVersion = null, availableVersion = null } = opts;
+  const info = {
+    running: MOCK_COMPONENT_RUNNING(runningVersion),
+    pinned: pinnedVersion,
+    available: availableVersion,
+  };
+  return {
+    components: {
+      OP_ASSISTANT_VERSION: info,
+      OP_GUARDIAN_VERSION: info,
+      OP_PORTAL_VERSION: info,
+      OP_VOICE_VERSION: info,
+    },
+    channel: 'latest' as const,
+    platformVersion: '0.12.20',
+    versions: {
+      OP_ASSISTANT_VERSION: runningVersion,
+      OP_GUARDIAN_VERSION: runningVersion,
+      OP_PORTAL_VERSION: runningVersion,
+      OP_VOICE_VERSION: runningVersion,
+    },
+    autoUpdate: true,
+  };
+}
 
 beforeEach(() => {
-  // Reset mock call counts so tests don't bleed into each other.
   vi.clearAllMocks();
 
-  vi.mocked(fetchVersions).mockResolvedValue({ versions: { ...ALL_VERSIONS }, platformVersion: '0.12.20', autoUpdate: true });
-  vi.mocked(fetchLatestVersions).mockResolvedValue({
-    versions: {
-      OP_ASSISTANT_VERSION: '0.12.22',
-      OP_GUARDIAN_VERSION: '0.12.22',
-      OP_PORTAL_VERSION: '0.12.22',
-      OP_VOICE_VERSION: '0.12.22',
-      OP_UI_VERSION: '0.12.22',
-    },
-    errors: [],
-    fetchedAt: '2026-06-21T00:00:00Z',
-  });
-  vi.mocked(patchVersions).mockResolvedValue({ ok: true, versions: { ...ALL_VERSIONS } });
-  vi.mocked(downloadUiVersion).mockResolvedValue({ ok: true, tag: '0.12.22', restarting: false, pendingRestart: false });
+  vi.mocked(fetchVersions).mockResolvedValue(makeVersionsResponse());
+  vi.mocked(patchVersions).mockResolvedValue({ ok: true, versions: {} });
   vi.mocked(applyChanges).mockResolvedValue({
+    ok: true,
+    restarted: ['assistant', 'guardian'],
+    failed: [],
+    dockerAvailable: true,
+    overallSuccess: true,
+  });
+  vi.mocked(applyServiceUpdate).mockResolvedValue({
     ok: true,
     restarted: ['assistant'],
     failed: [],
     dockerAvailable: true,
     overallSuccess: true,
+  });
+  vi.mocked(downloadUiVersion).mockResolvedValue({
+    ok: true,
+    tag: '0.12.22',
+    restarting: false,
+    pendingRestart: false,
   });
   window.openpalm = {
     launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
@@ -61,254 +96,246 @@ beforeEach(() => {
 });
 
 describe('UpdatesTab — header', () => {
-  test('shows the control-plane version from the endpoint', async () => {
+  test('shows the control-plane version', async () => {
     render(UpdatesTab, { props: {} });
-    await expect.element(page.getByText('0.12.20')).toBeVisible();
+    // The version appears in the control-plane line (strong element)
+    await expect.element(page.getByRole('strong').first()).toBeVisible();
+    await expect.element(page.getByText('0.12.20').first()).toBeVisible();
   });
 
-  test('shows the Automatic / Manual mode toggle', async () => {
+  test('shows "Update everything" button', async () => {
     render(UpdatesTab, { props: {} });
-    await expect.element(page.getByRole('button', { name: 'Automatic' })).toBeVisible();
-    await expect.element(page.getByRole('button', { name: 'Manual' })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /update everything/i })).toBeVisible();
+  });
+
+  test('shows "Update UI" button', async () => {
+    render(UpdatesTab, { props: {} });
+    await expect.element(page.getByRole('button', { name: /update ui/i })).toBeVisible();
   });
 });
 
-describe('UpdatesTab — automatic mode', () => {
-  test('shows "Check for updates" button in auto mode', async () => {
+describe('UpdatesTab — component table', () => {
+  test('shows a row for every component', async () => {
     render(UpdatesTab, { props: {} });
-    await expect.element(page.getByRole('button', { name: /check for updates/i })).toBeVisible();
+    await expect.element(page.getByText('Assistant')).toBeVisible();
+    await expect.element(page.getByText('Guardian')).toBeVisible();
+    await expect.element(page.getByText('Portal')).toBeVisible();
+    await expect.element(page.getByText('Voice')).toBeVisible();
   });
 
-  test('calls fetchLatestVersions on check and reveals re-check button', async () => {
+  test('shows the running version for each component', async () => {
     render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
+    // Running version appears in the table (may appear multiple times across rows)
+    const cells = page.getByText('0.12.20');
+    await expect.element(cells.first()).toBeVisible();
+  });
+
+  test('shows "latest (tracking)" for unpinned components', async () => {
+    render(UpdatesTab, { props: {} });
+    const chips = page.getByText(/latest \(tracking\)/i);
+    await expect.element(chips.first()).toBeVisible();
+  });
+
+  test('shows pinned version when a pin is set', async () => {
+    vi.mocked(fetchVersions).mockResolvedValue(makeVersionsResponse({ pinnedVersion: '0.11.0' }));
+    render(UpdatesTab, { props: {} });
+    await expect.element(page.getByText('0.11.0').first()).toBeVisible();
+  });
+});
+
+describe('UpdatesTab — "Update everything" action', () => {
+  test('calls applyChanges and shows success message', async () => {
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /update everything/i }).click();
 
     await vi.waitFor(() => {
-      expect(fetchLatestVersions).toHaveBeenCalledTimes(1);
+      expect(applyChanges).toHaveBeenCalledTimes(1);
     });
 
-    // After a successful check, the "Re-check" button becomes visible.
-    await expect.element(page.getByRole('button', { name: /re-check/i })).toBeVisible();
+    await expect.element(page.getByText(/updated:/i)).toBeVisible();
   });
 
-  test('shows "Update N components" button after check finds updates', async () => {
+  test('shows error message in context when applyChanges fails', async () => {
+    vi.mocked(applyChanges).mockResolvedValue({
+      ok: false,
+      restarted: [],
+      failed: [{ service: 'assistant', reason: 'manifest unknown: openpalm/assistant:99.0.0' }],
+      dockerAvailable: true,
+      overallSuccess: false,
+    });
     render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
+    await page.getByRole('button', { name: /update everything/i }).click();
 
     await vi.waitFor(async () => {
-      await expect.element(page.getByRole('button', { name: /update \d+ component/i })).toBeVisible();
+      await expect.element(page.getByText(/manifest unknown/i)).toBeVisible();
     });
   });
 
-  test('calls patchVersions + applyChanges with the latest resolved versions', async () => {
+  test('shows Docker-unavailable message in context', async () => {
+    vi.mocked(applyChanges).mockResolvedValue({
+      ok: false,
+      restarted: [],
+      failed: [],
+      dockerAvailable: false,
+      overallSuccess: false,
+    });
     render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
+    await page.getByRole('button', { name: /update everything/i }).click();
 
-    const updateBtn = page.getByRole('button', { name: /update \d+ component/i });
-    await expect.element(updateBtn).toBeVisible();
-    await updateBtn.click();
+    await vi.waitFor(async () => {
+      await expect.element(page.getByText(/docker is unavailable/i)).toBeVisible();
+    });
+  });
+});
+
+describe('UpdatesTab — per-component update action', () => {
+  test('calls applyServiceUpdate for the correct service and shows success', async () => {
+    render(UpdatesTab, { props: {} });
+
+    // The Assistant row has aria-label="Update Assistant"
+    await page.getByRole('button', { name: 'Update Assistant' }).click();
 
     await vi.waitFor(() => {
-      expect(patchVersions).toHaveBeenCalledTimes(1);
+      expect(applyServiceUpdate).toHaveBeenCalledTimes(1);
     });
-    expect(applyChanges).toHaveBeenCalledTimes(1);
-    // The patch should include the latest versions returned by the mock
-    const patchArg = vi.mocked(patchVersions).mock.calls[0][0];
-    expect(patchArg['OP_ASSISTANT_VERSION']).toBe('0.12.22');
+    // Should have called with 'assistant' (first row)
+    expect(vi.mocked(applyServiceUpdate).mock.calls[0][0]).toBe('assistant');
   });
 
-  test('a UI-only update restarts onto the new control plane (gap fix)', async () => {
-    // Only the UI build is behind; image pins are current. Previously this path
-    // swapped the UI build and never restarted the stack, leaving a broken
-    // guardian. Now it restarts the UI server — the harness reloads the window
-    // onto the new control plane, where the splash apply step reconciles +
-    // recreates the stack. (No image-pin change → no direct applyChanges here.)
-    vi.mocked(fetchLatestVersions).mockResolvedValue({
-      versions: {
-        OP_ASSISTANT_VERSION: 'latest',
-        OP_GUARDIAN_VERSION: 'latest',
-        OP_PORTAL_VERSION: 'latest',
-        OP_VOICE_VERSION: 'latest',
-        OP_UI_VERSION: '0.12.22',
-      },
-      errors: [],
-      fetchedAt: '2026-06-21T00:00:00Z',
+  test('shows in-row error when single-service update fails', async () => {
+    vi.mocked(applyServiceUpdate).mockResolvedValue({
+      ok: false,
+      restarted: [],
+      failed: [{ service: 'assistant', reason: 'pull access denied: openpalm/assistant' }],
+      dockerAvailable: true,
+      overallSuccess: false,
+    });
+    render(UpdatesTab, { props: {} });
+
+    await page.getByRole('button', { name: 'Update Assistant' }).click();
+
+    await vi.waitFor(async () => {
+      await expect.element(page.getByText(/pull access denied/i)).toBeVisible();
+    });
+  });
+
+  test('updating one service does not call applyChanges (scoped, §4)', async () => {
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: 'Update Assistant' }).click();
+
+    await vi.waitFor(() => {
+      expect(applyServiceUpdate).toHaveBeenCalledTimes(1);
+    });
+    expect(applyChanges).not.toHaveBeenCalled();
+  });
+});
+
+describe('UpdatesTab — pin editing (inline, no splash — §4.1)', () => {
+  test('clicking pin chip opens the inline editor', async () => {
+    render(UpdatesTab, { props: {} });
+
+    // Click the first pin chip
+    const chips = page.getByTitle(/edit pin for/i);
+    await chips.first().click();
+
+    // Inline input should appear
+    await expect.element(page.getByRole('textbox', { name: /pin version for assistant/i })).toBeVisible();
+  });
+
+  test('saving a pin calls patchVersions without triggering a splash', async () => {
+    render(UpdatesTab, { props: {} });
+
+    const chips = page.getByTitle(/edit pin for/i);
+    await chips.first().click();
+
+    const input = page.getByRole('textbox', { name: /pin version for assistant/i });
+    await input.fill('0.12.18');
+
+    const saveBtn = page.getByRole('button', { name: /save/i }).first();
+    await saveBtn.click();
+
+    await vi.waitFor(() => {
+      expect(patchVersions).toHaveBeenCalledWith({ OP_ASSISTANT_VERSION: '0.12.18' });
+    });
+  });
+
+  test('clicking Cancel cancels pin editing without saving', async () => {
+    render(UpdatesTab, { props: {} });
+    const chips = page.getByTitle(/edit pin for/i);
+    await chips.first().click();
+
+    const input = page.getByRole('textbox', { name: /pin version for assistant/i });
+    await input.fill('0.11.0');
+
+    const cancelBtn = page.getByRole('button', { name: /cancel/i }).first();
+    await cancelBtn.click();
+
+    // Input should be gone
+    await expect.element(input).not.toBeInTheDocument();
+    expect(patchVersions).not.toHaveBeenCalled();
+  });
+
+  test('clearing the pin input and saving sends "latest" (unpin)', async () => {
+    vi.mocked(fetchVersions).mockResolvedValue(makeVersionsResponse({ pinnedVersion: '0.11.0' }));
+    render(UpdatesTab, { props: {} });
+
+    const chips = page.getByTitle(/edit pin for/i);
+    await chips.first().click();
+
+    const input = page.getByRole('textbox', { name: /pin version for assistant/i });
+    await input.fill('');
+
+    const saveBtn = page.getByRole('button', { name: /save/i }).first();
+    await saveBtn.click();
+
+    await vi.waitFor(() => {
+      // Empty = unpin = "latest"
+      expect(patchVersions).toHaveBeenCalledWith({ OP_ASSISTANT_VERSION: 'latest' });
+    });
+  });
+});
+
+describe('UpdatesTab — UI update', () => {
+  test('clicking "Update UI" triggers downloadUiVersion', async () => {
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /update ui/i }).click();
+
+    await vi.waitFor(() => {
+      expect(downloadUiVersion).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test('a pendingRestart triggers the Electron harness restart', async () => {
+    vi.mocked(downloadUiVersion).mockResolvedValue({
+      ok: true,
+      tag: '0.12.22',
+      restarting: false,
+      pendingRestart: true,
     });
     window.openpalm = {
       launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
       setLaunchOnLogin: vi.fn(),
       restartUiServer: vi.fn().mockResolvedValue(true),
     };
-    vi.mocked(downloadUiVersion).mockResolvedValue({ ok: true, tag: '0.12.22', restarting: false, pendingRestart: true });
-
     render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
-    const updateBtn = page.getByRole('button', { name: /update \d+ component/i });
-    await expect.element(updateBtn).toBeVisible();
-    await updateBtn.click();
+    await page.getByRole('button', { name: /update ui/i }).click();
 
     await vi.waitFor(() => {
-      expect(downloadUiVersion).toHaveBeenCalledWith('0.12.22');
+      expect(downloadUiVersion).toHaveBeenCalledTimes(1);
     });
-    // Triggers the harness restart (which reloads the window → splash reconcile).
     expect(window.openpalm!.restartUiServer).toHaveBeenCalledTimes(1);
-    // No image-pin changes → no direct stack apply from this component.
-    expect(patchVersions).not.toHaveBeenCalled();
-    expect(applyChanges).not.toHaveBeenCalled();
-  });
-
-  test('shows "up to date" when latest matches current', async () => {
-    // Return latest == current for all keys
-    vi.mocked(fetchLatestVersions).mockResolvedValue({
-      versions: { ...ALL_VERSIONS },
-      errors: [],
-      fetchedAt: '2026-06-21T00:00:00Z',
-    });
-    render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
-
-    await vi.waitFor(async () => {
-      await expect.element(page.getByText(/everything is up to date/i)).toBeVisible();
-    });
-  });
-
-  test('treats a legacy v-prefixed current as up-to-date against a bare latest (0.12.41 cutover)', async () => {
-    // stack.env still carries v-prefixed pins (v0.11.0); the latest-resolver now
-    // returns bare (0.11.0). Same version must NOT register as an update.
-    vi.mocked(fetchVersions).mockResolvedValue({
-      versions: {
-        OP_ASSISTANT_VERSION: 'v0.12.22',
-        OP_GUARDIAN_VERSION: 'v0.12.22',
-        OP_PORTAL_VERSION: 'v0.12.22',
-        OP_VOICE_VERSION: 'v0.11.0',
-      },
-      platformVersion: '0.12.22',
-      autoUpdate: true,
-    });
-    vi.mocked(fetchLatestVersions).mockResolvedValue({
-      versions: {
-        OP_ASSISTANT_VERSION: '0.12.22',
-        OP_GUARDIAN_VERSION: '0.12.22',
-        OP_PORTAL_VERSION: '0.12.22',
-        OP_VOICE_VERSION: '0.11.0',
-        OP_UI_VERSION: '0.12.22',
-      },
-      errors: [],
-      fetchedAt: '2026-06-21T00:00:00Z',
-    });
-    render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
-
-    await vi.waitFor(async () => {
-      await expect.element(page.getByText(/everything is up to date/i)).toBeVisible();
-    });
-  });
-
-  test('excludes a v-vs-bare equal component from "update all" so it is never re-pinned to a missing bare image', async () => {
-    // The reported failure: voice (v0.11.0, image only published as v0.11.0-cpu)
-    // got swept into "update all", re-pinned to bare 0.11.0, and the stack pull
-    // aborted on the nonexistent openpalm/voice:0.11.0-cpu. Voice must stay out
-    // of the patch; the genuinely-behind images still update.
-    vi.mocked(fetchVersions).mockResolvedValue({
-      versions: {
-        OP_ASSISTANT_VERSION: 'v0.12.18',
-        OP_GUARDIAN_VERSION: 'v0.12.18',
-        OP_PORTAL_VERSION: 'v0.12.18',
-        OP_VOICE_VERSION: 'v0.11.0',
-      },
-      platformVersion: '0.12.22',
-      autoUpdate: true,
-    });
-    vi.mocked(fetchLatestVersions).mockResolvedValue({
-      versions: {
-        OP_ASSISTANT_VERSION: '0.12.22',
-        OP_GUARDIAN_VERSION: '0.12.22',
-        OP_PORTAL_VERSION: '0.12.22',
-        OP_VOICE_VERSION: '0.11.0',
-        OP_UI_VERSION: '0.12.22',
-      },
-      errors: [],
-      fetchedAt: '2026-06-21T00:00:00Z',
-    });
-    render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
-
-    const updateBtn = page.getByRole('button', { name: /update \d+ component/i });
-    await expect.element(updateBtn).toBeVisible();
-    await updateBtn.click();
-
-    await vi.waitFor(() => {
-      expect(patchVersions).toHaveBeenCalledTimes(1);
-    });
-    const patchArg = vi.mocked(patchVersions).mock.calls[0][0];
-    expect(patchArg['OP_VOICE_VERSION']).toBeUndefined();
-    expect(patchArg['OP_ASSISTANT_VERSION']).toBe('0.12.22');
-  });
-
-  test('shows registry error messages when some checks fail', async () => {
-    vi.mocked(fetchLatestVersions).mockResolvedValue({
-      versions: { ...ALL_VERSIONS, OP_ASSISTANT_VERSION: null },
-      errors: ['GitHub releases unavailable'],
-      fetchedAt: '2026-06-21T00:00:00Z',
-    });
-    render(UpdatesTab, { props: {} });
-    await page.getByRole('button', { name: /check for updates/i }).click();
-
-    await vi.waitFor(async () => {
-      await expect.element(page.getByText(/github releases unavailable/i)).toBeVisible();
-    });
   });
 });
 
-
-describe('UpdatesTab — manual mode', () => {
-  async function switchToManual() {
-    await page.getByRole('button', { name: 'Manual' }).click();
-  }
-
-  test('renders a labelled input for every container image version in manual mode', async () => {
-    render(UpdatesTab, { props: {} });
-    await switchToManual();
-    await expect.element(page.getByLabelText('Assistant', { exact: true })).toBeVisible();
-    await expect.element(page.getByLabelText('Guardian', { exact: true })).toBeVisible();
-    await expect.element(page.getByLabelText('Portal (Discord/Slack/API)', { exact: true })).toBeVisible();
-    await expect.element(page.getByLabelText('Voice', { exact: true })).toBeVisible();
-  });
-
-  test('the Apply button is disabled until a value changes', async () => {
-    render(UpdatesTab, { props: {} });
-    await switchToManual();
-    const apply = page.getByRole('button', { name: /^apply$/i });
-    await expect.element(apply).toBeDisabled();
-  });
-
-  test('patches only the changed version keys, then recreates the stack', async () => {
-    render(UpdatesTab, { props: {} });
-    await switchToManual();
-
-    const assistantInput = page.getByLabelText('Assistant', { exact: true });
-    await expect.element(assistantInput).toBeVisible();
-    await assistantInput.fill('v0.12.18');
-
-    const apply = page.getByRole('button', { name: /^apply$/i });
-    await expect.element(apply).toBeEnabled();
-    await apply.click();
-
-    await vi.waitFor(() => {
-      expect(patchVersions).toHaveBeenCalledWith({ OP_ASSISTANT_VERSION: 'v0.12.18' });
-    });
-    expect(applyChanges).toHaveBeenCalledTimes(1);
-    await expect.element(page.getByText(/versions applied/i)).toBeVisible();
-  });
-
+describe('UpdatesTab — load error', () => {
   test('surfaces a load error when the versions fetch fails', async () => {
-    vi.mocked(fetchVersions).mockRejectedValue(new Error('boom'));
+    vi.mocked(fetchVersions).mockRejectedValue(new Error('network error'));
     render(UpdatesTab, { props: {} });
     await expect.element(page.getByText(/failed to load versions/i)).toBeVisible();
   });
 });
 
-describe('UpdatesTab — launch on login', () => {
+describe('UpdatesTab — launch on login (Electron)', () => {
   test('shows the current launch-on-login state when Electron supports it', async () => {
     window.openpalm = {
       launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: true, enabled: true }),
@@ -317,7 +344,6 @@ describe('UpdatesTab — launch on login', () => {
     render(UpdatesTab, { props: {} });
     const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
     await expect.element(toggle).toBeChecked();
-    await expect.element(page.getByText(/uses the native desktop login-item integration/i)).toBeVisible();
   });
 
   test('writes the updated launch-on-login value through the Electron bridge', async () => {
@@ -330,6 +356,5 @@ describe('UpdatesTab — launch on login', () => {
     const toggle = page.getByRole('checkbox', { name: /start openpalm automatically when you sign in/i });
     await toggle.click();
     expect(setLaunchOnLogin).toHaveBeenCalledWith(true);
-    await expect.element(toggle).toBeChecked();
   });
 });

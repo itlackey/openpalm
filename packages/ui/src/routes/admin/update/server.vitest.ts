@@ -36,7 +36,7 @@ vi.mock('@openpalm/lib', async () => {
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
+function makePostEvent(token = 'admin-token', body: unknown = {}): Parameters<typeof POST>[0] {
   return {
     request: new Request('http://localhost/admin/update', {
       method: 'POST',
@@ -45,7 +45,7 @@ function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
         'x-request-id': 'req-update-test',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     }),
   } as Parameters<typeof POST>[0];
 }
@@ -168,5 +168,71 @@ describe('POST /admin/update', () => {
     expect(body.failed).toEqual([]);
     // applyStack must NOT have been called when docker is unavailable
     expect(applyStackMock).not.toHaveBeenCalled();
+  });
+
+  // ── Scoped single-service update (§4, §7 "Update <container>") ──────────────
+  //
+  // Acceptance criterion: "updating one container MUST NOT touch the others."
+  // The route calls applyStack({ kind: "service", service }) which pulls + recreates
+  // ONLY that service with --force-recreate --no-deps.  applyUpdate (managed-file
+  // apply) must NOT be called — no file changes happen on a scoped update.
+
+  test('scoped service update: calls applyStack with kind:service and does NOT call applyUpdate', async () => {
+    applyStackMock.mockResolvedValue({ ok: true, started: ['assistant'], failed: [] });
+
+    const res = await POST(makePostEvent('admin-token', { service: 'assistant' }));
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as {
+      ok: boolean;
+      restarted: string[];
+      failed: { service: string; reason: string }[];
+      overallSuccess: boolean;
+      dockerAvailable: boolean;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.overallSuccess).toBe(true);
+    expect(body.restarted).toEqual(['assistant']);
+    expect(body.failed).toEqual([]);
+    expect(body.dockerAvailable).toBe(true);
+
+    // Must have called applyStack with the scoped shape — NOT kind:"all"
+    expect(applyStackMock).toHaveBeenCalledOnce();
+    expect(applyStackMock).toHaveBeenCalledWith(
+      { kind: 'service', service: 'assistant' },
+      expect.objectContaining({ files: expect.any(Array) }),
+    );
+
+    // applyUpdate must NOT be called — scoped update has no managed-file phase
+    expect(applyUpdateMock).not.toHaveBeenCalled();
+  });
+
+  test('scoped service update: pull failure returns 502 with the service name in failed[]', async () => {
+    applyStackMock.mockResolvedValue({
+      ok: false,
+      started: [],
+      failed: [{ service: 'guardian', reason: 'pull access denied for openpalm/guardian' }],
+      error: 'pull access denied for openpalm/guardian',
+    });
+
+    const res = await POST(makePostEvent('admin-token', { service: 'guardian' }));
+    expect(res.status).toBe(502);
+
+    const body = (await res.json()) as {
+      ok: boolean;
+      restarted: string[];
+      failed: { service: string; reason: string }[];
+      overallSuccess: boolean;
+      error?: string;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.overallSuccess).toBe(false);
+    expect(body.restarted).toEqual([]);
+    expect(body.failed).toHaveLength(1);
+    expect(body.failed[0].service).toBe('guardian');
+    expect(body.failed[0].reason).toMatch(/pull access denied/);
+
+    // applyUpdate must NOT be called even on failure — no managed-file phase
+    expect(applyUpdateMock).not.toHaveBeenCalled();
   });
 });
