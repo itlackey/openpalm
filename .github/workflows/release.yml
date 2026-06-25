@@ -2,26 +2,40 @@ name: Release
 
 # Single manually-dispatched orchestrator for releasing OpenPalm by deployment UNIT.
 #
-# Units:
+# Units. NOTE: every unit EXCEPT `all` is PARTIAL by design — it publishes only
+# its own slice. A partial unit will silently leave the other units behind (e.g.
+# `platform` does NOT touch the portal image or the discord/slack npm adapters).
+# For a complete, coordinated release of the whole platform, use `all`.
 #   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + admin-tools +
 #               CLI native binaries + optional Electron + git tag + GitHub release
-#               (add include_images=true to also rebuild Docker images)
+#               (add include_images=true to also rebuild guardian + assistant images).
+#               PARTIAL: no portal image, no portal npm, no voice.
 #   portals   — @openpalm/discord-portal + @openpalm/slack-portal npm packages
 #               (the portal image bun-installs these at runtime, so they update via
 #               `bun update` without an image rebuild) + optional portal image
-#               (include_images=true) + git tag + GitHub release
-#   assistant — openpalm/assistant image + git tag + GitHub release
+#               (include_images=true) + git tag + GitHub release. PARTIAL.
+#   assistant — openpalm/assistant image + git tag + GitHub release. PARTIAL.
 #   guardian  — @openpalm/guardian + @openpalm/skeleton npm packages only
-#               (add include_images=true to also rebuild the guardian Docker image)
+#               (add include_images=true to also rebuild the guardian Docker image). PARTIAL.
 #   images    — Docker-only: rebuilds guardian + assistant + portal images at the
 #               current (or explicitly overridden) platform version. No npm publish.
 #               Use to roll out container-level changes (system deps, OpenCode version)
-#               without touching npm packages.
+#               without touching npm packages. PARTIAL.
 #   electron  — Electron installers only (mac/linux/win). No npm publish. Use when
 #               only the desktop harness has changed and other units are already published.
-#               Always pass version explicitly (the version the existing npm packages are at).
-#   all       — every unit simultaneously at a specific or bumped version + summary tag.
+#               Always pass version explicitly (the version the existing npm packages are at). PARTIAL.
+#   all       — COMPLETE coordinated release. Publishes EVERY unit at one version,
+#               flag-free (no include_images / include_electron needed):
+#                 npm: @openpalm/{lib,ui,guardian,skeleton} + openpalm (CLI)
+#                      + @openpalm/{discord,slack}-portal
+#                 images: openpalm/{assistant,guardian,portal}  (+ :latest when stable)
+#                 electron installers (mac/linux/win) + CLI native binaries
+#                 per-unit tags + bare X.Y.Z summary tag + GitHub release.
 #               Accepts any bump type (patch/minor/major) or an explicit version override.
+#               THE ONLY thing `all` does NOT build is the voice image — voice ships
+#               from publish-voice.yml on its own cadence (GPU cpu/cu121 variants).
+#               Prefer `all` for a real release; reach for a partial unit only for a
+#               deliberate, isolated hotfix to one slice.
 #
 # Thin-host decoupling: guardian and platform npm packages can be released independently
 # of Docker images. npm patches deploy instantly to thin-host deployments without a
