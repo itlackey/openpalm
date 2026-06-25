@@ -115,6 +115,26 @@ describe('readStackEnv excludes secret-like keys', () => {
     expect(env.DISCORD_BOT_TOKEN).toBeUndefined();
     expect(env.DISCORD_ALLOWED_GUILDS).toBe('ok');
   });
+
+  it('merges the state/ tree OVER legacy stack.env (matches compose --env-file precedence)', () => {
+    // The app-written state/ tree wins — so host reads see the SAME effective
+    // value the running stack uses, never a stale legacy pin (current ≠ running).
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_ASSISTANT_VERSION=0.12.0\nOP_OWNER_NAME=alice\n');
+    mkdirSync(join(home, 'state'), { recursive: true });
+    writeFileSync(join(home, 'state', 'stack.state.env'),
+      'OP_ASSISTANT_VERSION=0.13.0\n');
+
+    const env = readStackEnv(home);
+    expect(env.OP_ASSISTANT_VERSION).toBe('0.13.0'); // state wins
+    expect(env.OP_OWNER_NAME).toBe('alice');          // legacy-only key preserved
+  });
+
+  it('falls back to legacy when no state/ file exists', () => {
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_ENABLED_ADDONS=discord\n');
+    const env = readStackEnv(home);
+    expect(env.OP_ENABLED_ADDONS).toBe('discord');
+  });
 });
 
 describe('readStackSecretEnv reads from secret files', () => {

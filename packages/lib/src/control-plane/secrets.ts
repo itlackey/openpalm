@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSyn
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
-import { resolveConfigDir, legacyStackEnvFile } from "./home.js";
+import { resolveConfigDir, legacyStackEnvFile, stateEnvFile } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath } from "./paths.js";
 import { dirname } from "node:path";
 import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
@@ -251,10 +251,20 @@ export function writeAuthJsonProviderKeys(
 }
 
 /** Read and parse knowledge/env/stack.env. Returns {} if the file does not exist. */
+/**
+ * The effective non-secret stack config, merging the app-written `state/` tree
+ * OVER the legacy `knowledge/env/stack.env`. This matches the compose `--env-file`
+ * precedence (buildEnvFiles passes legacy then state, so state wins) — so host
+ * code reads the SAME effective values the running stack does. Without this merge,
+ * a pin/addon recorded in state/ but stale in legacy would make the host report a
+ * different value than the containers actually use (the "current ≠ running" trap).
+ */
 export function readStackEnv(homeDir: string): Record<string, string> {
-  const parsed = parseEnvFile(legacyStackEnvFile(homeDir));
+  const legacy = parseEnvFile(legacyStackEnvFile(homeDir));
+  const state = existsSync(stateEnvFile(homeDir)) ? parseEnvFile(stateEnvFile(homeDir)) : {};
+  const merged = { ...legacy, ...state };
   const nonSecret: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
+  for (const [key, value] of Object.entries(merged)) {
     if (!isSecretLikeStackEnvKey(key)) nonSecret[key] = value;
   }
   return nonSecret;
