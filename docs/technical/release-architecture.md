@@ -19,12 +19,14 @@ Each unit has a single canonical version anchor. All packages/images within a un
 | Unit | Artifacts | Canonical version anchor |
 |---|---|---|
 | `platform` | @openpalm/lib (npm), openpalm CLI (npm + binaries), @openpalm/ui (npm), @openpalm/skeleton (npm), @openpalm/guardian (npm) | root `package.json` (max with npm-published) |
-| `portals` | `openpalm/portal` Docker image | `portals/discord/package.json` |
+| `portals` | @openpalm/discord-portal + @openpalm/slack-portal (npm), optional `openpalm/portal` Docker image (`include_images=true`) | `portals/discord/package.json` |
 | `assistant` | `openpalm/assistant` Docker image | `containers/assistant/VERSION` |
 | `guardian` | @openpalm/guardian (npm), @openpalm/skeleton (npm), optional guardian Docker image | `packages/guardian/package.json` (max with npm-published) |
 | `images` | Guardian + assistant + portal Docker images (no npm) | root `package.json` (no bump — use `version` override to tag images at a new version) |
 | `electron` | Electron installers (mac/linux/win). No npm. | `packages/electron/package.json` |
-| `all` | Every unit simultaneously at any version | root `package.json` (max with npm-published) |
+| `all` | **Every unit** — all platform npm + both portal npm adapters + all three Docker images (assistant/guardian/portal) + electron installers + CLI binaries, flag-free | root `package.json` (max with npm-published) |
+
+> **Every unit except `all` is partial by design** — it publishes only its own slice and silently leaves the others behind. In particular, `platform` does **not** touch the portal image or the discord/slack npm adapters (that's a `portals` release). For a complete, coordinated release of the whole platform, use **`all`** — it builds every unit at one version with no `include_images`/`include_electron` flags required. The **only** artifact `all` does not build is the **voice** image, which ships from `publish-voice.yml` on its own cadence (GPU cpu/cu121 variants).
 
 ### Dual-owned packages
 
@@ -146,7 +148,14 @@ Preflight: `bun run electron:test`.
 
 ### `all`
 
-Stamps every unit's files simultaneously to the same version (any bump type or explicit override). Publishes all npm packages and Docker images. Creates per-unit tags + bare `X.Y.Z` summary tag.
+The **complete** release. Stamps every unit's files simultaneously to the same version (any bump type or explicit override) and publishes everything, flag-free:
+
+- **npm**: `@openpalm/{lib,ui,guardian,skeleton}` + `openpalm` (CLI) + `@openpalm/{discord,slack}-portal`
+- **Docker**: `openpalm/{assistant,guardian,portal}` (+ `:latest` for stable)
+- **Electron** installers (mac/linux/win) + CLI native binaries
+- Per-unit tags + bare `X.Y.Z` summary tag + GitHub release
+
+No `include_images` / `include_electron` needed — `all` always builds them. The only thing it does **not** build is the voice image (`publish-voice.yml`, separate cadence). Prefer `all` for a real release; reach for a partial unit only for a deliberate, isolated hotfix.
 
 ---
 
