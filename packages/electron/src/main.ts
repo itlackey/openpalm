@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences, type NativeImage } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, renameSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 
@@ -16,6 +16,7 @@ import {
   seedUiBuild,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
+  checkAndUpdateSkeleton,
   uiUpdateChannel,
   parseEnvFile,
   PLATFORM_VERSION,
@@ -382,6 +383,16 @@ async function startUIServer(): Promise<void> {
     console.log(`App update check skipped: ${appUpdate.error}`);
   }
 
+  // Hot-swap the skeleton (managed system/ tree) from npm before starting.
+  // Non-fatal: any network/registry error leaves the existing skeleton in place.
+  const homeDir0 = resolveOpenPalmHome();
+  const skeletonResult = await checkAndUpdateSkeleton(platformVersion, homeDir0, dataDir);
+  if (skeletonResult.updated) {
+    console.log(`Skeleton updated to v${skeletonResult.latestVersion}`);
+  } else if (skeletonResult.error) {
+    console.log(`Skeleton update check skipped: ${skeletonResult.error}`);
+  }
+
   // Check for a newer UI build on npm before starting. Non-fatal: if the check
   // or download fails, we continue with what's on disk. Pass this harness's
   // native contract version so a UI build that needs a newer harness is NOT
@@ -404,6 +415,10 @@ async function startUIServer(): Promise<void> {
   } else if (updateResult.error) {
     console.log(`UI update check skipped: ${updateResult.error}`);
   }
+
+  // Stash the UI backup path so the supervisor can restore it if the new build
+  // fails to start (§4.4 / §6). Cleared once the server confirms healthy.
+  pendingUiBackupDir = updateResult.backupDir ?? null;
 
   let uiBuildDir = resolveUiBuildDir();
 
@@ -540,11 +555,17 @@ function spawnUIServer(
 // RELEASE_MIGRATIONS) loads without a full app relaunch (design §6.2). The
 // downloaded build does nothing until the Node child is respawned.
 let uiServerRestarting = false;
+// Backup of the previous data/ui set by checkAndUpdateUiBuild; used by the
+// supervisor to restore on startup failure (§4.4 / §6). Null = no backup available.
+let pendingUiBackupDir: string | null = null;
 
 async function restartUIServer(): Promise<boolean> {
   if (uiServerRestarting) return false;
   uiServerRestarting = true;
   console.log('UI update detected — restarting UI server...');
+  // Capture the backup path before clearing it; we consume it exactly once here.
+  const uiBackup = pendingUiBackupDir;
+  pendingUiBackupDir = null;
   try {
     const homeDir = resolveOpenPalmHome();
     const dataDir = resolveDataDir();
@@ -571,6 +592,18 @@ async function restartUIServer(): Promise<boolean> {
     const ready = await waitForReady(UI_PORT);
     if (!ready) {
       console.error('UI server did not become ready after restart.');
+      // Post-swap failure → restore backup (§4.4 / §6). Swap the failed data/ui
+      // out and reinstate the backup with a local rename — no registry needed.
+      if (uiBackup && existsSync(uiBackup)) {
+        try {
+          const failedDir = join(dataDir, `.ui-failed-${Date.now()}`);
+          if (existsSync(join(dataDir, 'ui'))) renameSync(join(dataDir, 'ui'), failedDir);
+          renameSync(uiBackup, join(dataDir, 'ui'));
+          console.error(`UI build restore: reinstated backup from ${uiBackup}; failed build at ${failedDir}`);
+        } catch (restoreErr) {
+          console.error('UI backup restore failed:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
+        }
+      }
       return false;
     }
     console.log('UI server restarted.');

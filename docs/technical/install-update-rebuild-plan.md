@@ -278,6 +278,33 @@ Rework `ui-assets.ts` (`seedUiBuild`/`checkAndUpdateUiBuild`; drop `seedOpenPalm
 5. **Gates:** never auto-cross a **major**; a **harness-contract** bump → prompt
    full app re-download, never self-apply.
 
+### Supervisor contract (Phase 4)
+
+The supervisor is the process that owns the UI server child and responds to the
+completed-swap signal. There are exactly two implementations — no shared
+abstraction (§8):
+
+**Electron main process** (`packages/electron/src/main.ts`):
+- `checkAndUpdateUiBuild` / `checkAndUpdateSkeleton` run before spawn, returning
+  `backupDir` (the prior build's on-disk backup).
+- After swap: the UI child or IPC/SIGUSR2 signals the parent. `restartUIServer()`
+  kills the old child, re-resolves `resolveUiBuildDir()`, respawns, polls
+  `waitForReady()`. On ready: reloads the renderer window. On timeout: renames the
+  failed `data/ui` aside and restores `backupDir` → `data/ui` (local rename, no
+  registry), logs the failure in context (§6).
+
+**CLI watchdog** (`packages/cli/src/lib/ui-server.ts`):
+- Same `checkAndUpdateUiBuild` / `checkAndUpdateSkeleton` before spawn; `spawnUiChild`
+  returns `{ proc, uiBackupDir }`.
+- After swap: the UI child sends SIGUSR2 (or SIGHUP) to its parent. `restartUiServer()`
+  kills the old proc, calls `spawnUiChild` again (which re-runs the update check),
+  polls `waitForReady()`. On timeout: restores `uiBackupDir` → `data/ui`, exits 1.
+
+**Unsupported mode:** running the UI build directly (without either supervisor)
+means a hot-swap will stage and rename successfully, but the new build does not
+take effect until the next manual restart. This is stated to the user, not
+discovered at runtime — `OP_UI_SUPERVISOR` is unset in direct-run mode.
+
 **Acceptance:** hot-swap from npm + supervisor restart lands on the new build with
 no manual step; corrupt integrity aborts and the prior build keeps running;
 restart-failure restores the backup; cross-major/contract-bump prompt.

@@ -463,14 +463,16 @@ export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 export { collectBindAddressWarnings } from "./control-plane/bind-warning.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
-export type { UiBuildUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
+export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
 export {
   resolveLocalOpenpalmDir,
   seedOpenPalmDir,
   resolveLocalUiBuild,
   resolveUiBuildDir,
+  readSkeletonVersion,
   seedUiBuild,
   checkAndUpdateUiBuild,
+  checkAndUpdateSkeleton,
   uiUpdateChannel,
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";

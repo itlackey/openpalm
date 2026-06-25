@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, spyOn, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,8 @@ import { createHash } from "node:crypto";
 import {
   resolveUiBuildDir, readUiBuildVersion, UI_VERSION_STAMP,
   seedOpenPalmDir, SKELETON_VERSION_STAMP,
-  uiUpdateChannel, checkAndUpdateUiBuild, declaredUiChannel,
+  uiUpdateChannel, checkAndUpdateUiBuild, checkAndUpdateSkeleton,
+  readSkeletonVersion, declaredUiChannel,
 } from "./ui-assets.js";
 
 let root = "";
@@ -648,5 +649,212 @@ describe("checkAndUpdateUiBuild", () => {
       expect(result.redownloadRequired).toBeUndefined();
       expect(result.error).toMatch(/no integrity hash/i); // proceeded past the gate to the download
     });
+  });
+});
+
+// ── checkAndUpdateSkeleton ────────────────────────────────────────────────────
+
+describe("checkAndUpdateSkeleton", () => {
+  let savedFetch: typeof globalThis.fetch;
+  let skelOpHome = "";
+  let skelDataDir = "";
+  let savedEnvOpHome: string | undefined;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+    // Fresh isolated home for each test
+    skelOpHome = mkdtempSync(join(tmpdir(), "skel-test-"));
+    skelDataDir = join(skelOpHome, "data");
+    mkdirSync(join(skelDataDir, "backups"), { recursive: true });
+    mkdirSync(join(skelOpHome, "system", "stack"), { recursive: true });
+    savedEnvOpHome = process.env.OP_HOME;
+    process.env.OP_HOME = skelOpHome;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+    rmSync(skelOpHome, { recursive: true, force: true });
+    if (savedEnvOpHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = savedEnvOpHome;
+  });
+
+  function manifestResponse(version: string, integrity?: string) {
+    return new Response(
+      JSON.stringify({
+        version,
+        dist: {
+          tarball: "https://registry.npmjs.org/skel.tgz",
+          ...(integrity !== undefined ? { integrity } : {}),
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  it("returns {updated:false} when the skeleton is already up to date", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    globalThis.fetch = async () => manifestResponse("0.12.0");
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("0.12.0");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns {updated:false} when npm has an older version", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    globalThis.fetch = async () => manifestResponse("0.11.0");
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("0.11.0");
+  });
+
+  it("never auto-crosses a major version boundary", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    let tarballFetched = false;
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) return manifestResponse("1.0.0", "sha512-abc");
+      tarballFetched = true;
+      return new Response("", { status: 200 });
+    };
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("1.0.0");
+    expect(result.error).toBeUndefined();
+    expect(tarballFetched).toBe(false);
+  });
+
+  it("returns {updated:false, error} when the manifest fetch rejects (non-fatal)", async () => {
+    globalThis.fetch = async () => { throw new Error("network failure"); };
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBeNull();
+    expect(result.error).toMatch(/network failure/i);
+  });
+
+  it("fails closed when the manifest has no integrity hash", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) return manifestResponse("0.12.0"); // no integrity
+      return new Response("", { status: 200 });
+    };
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.error).toMatch(/no integrity hash/i);
+  });
+
+  it("fails closed when the tarball bytes do not match the stated integrity hash", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    const wrongSri = `sha512-${Buffer.from("wrong").toString("base64")}`;
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org") && !u.includes("tarball")) {
+        return manifestResponse("0.12.0", wrongSri);
+      }
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    };
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.error).toMatch(/integrity mismatch/i);
+  });
+
+  it("readSkeletonVersion returns the stamped version or null when absent", () => {
+    expect(readSkeletonVersion(skelOpHome)).toBeNull();
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    expect(readSkeletonVersion(skelOpHome)).toBe("0.12.0");
+  });
+
+  it("uses the `latest` channel for stable versions and `next` for prerelease", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    const channels: string[] = [];
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("@openpalm/skeleton/")) {
+        channels.push(u.split("@openpalm/skeleton/")[1]);
+        return manifestResponse("0.11.0"); // up to date, no download
+      }
+      return new Response("", { status: 200 });
+    };
+    await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    await checkAndUpdateSkeleton("0.12.0-rc.1", skelOpHome, skelDataDir);
+    expect(channels[0]).toBe("latest");
+    expect(channels[1]).toBe("next");
+  });
+
+  it("happy-path: stages, verifies integrity, atomically swaps system/, stamps version", async () => {
+    // Plant an old skeleton stamp and compose file.
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    writeFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "services:\n  a:\n    image: old\n");
+
+    // Build a minimal valid skeleton tarball (npm wraps under package/).
+    const pkgRoot = mkdtempSync(join(tmpdir(), "skel-happy-pkg-"));
+    const pkgSystemStack = join(pkgRoot, "package", "system", "stack");
+    mkdirSync(pkgSystemStack, { recursive: true });
+    writeFileSync(join(pkgSystemStack, "core.compose.yml"), "services:\n  a:\n    image: new\n");
+    const tarPath = join(pkgRoot, "skel.tgz");
+    const { exited } = Bun.spawn(["tar", "-czf", tarPath, "-C", pkgRoot, "package"], { stdout: "pipe", stderr: "pipe" });
+    await exited;
+    const skelBytes = new Uint8Array(await Bun.file(tarPath).arrayBuffer());
+    const integrity = `sha512-${createHash("sha512").update(skelBytes).digest("base64")}`;
+    rmSync(pkgRoot, { recursive: true, force: true });
+
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) {
+        return new Response(
+          JSON.stringify({ version: "0.12.0", dist: { tarball: "https://r.npm/skel.tgz", integrity } }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(skelBytes, { status: 200 });
+    };
+
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+
+    expect(result.updated).toBe(true);
+    expect(result.latestVersion).toBe("0.12.0");
+    expect(result.error).toBeUndefined();
+    // New compose is in place
+    expect(existsSync(join(skelOpHome, "system", "stack", "core.compose.yml"))).toBe(true);
+    expect(readFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "utf8")).toContain("image: new");
+    // Stamp written
+    expect(readSkeletonVersion(skelOpHome)).toBe("0.12.0");
+    // Backup of the OLD system/ tree exists in data/backups/skeleton-<ts>/
+    const { readdirSync } = await import("node:fs");
+    const backupsDir = join(skelDataDir, "backups");
+    const skelBackups = existsSync(backupsDir) ? readdirSync(backupsDir).filter((n: string) => n.startsWith("skeleton-")) : [];
+    expect(skelBackups.length).toBeGreaterThan(0);
+    const backup = join(backupsDir, skelBackups[0]!);
+    expect(existsSync(join(backup, "stack", "core.compose.yml"))).toBe(true);
+    expect(readFileSync(join(backup, "stack", "core.compose.yml"), "utf8")).toContain("image: old");
+  });
+
+  it("restores system/ from backup when download fails after the pre-swap (§6)", async () => {
+    // Plant an old skeleton with a sentinel compose file.
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    writeFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "services:\n  a:\n    image: sentinel\n");
+
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) {
+        // Manifest says a newer version exists with a valid integrity field.
+        return new Response(
+          JSON.stringify({ version: "0.12.0", dist: { tarball: "https://r.npm/skel.tgz", integrity: "sha512-AAAA" } }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      // Tarball download succeeds but returns bytes that won't match the integrity hash.
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    };
+
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+
+    // Must be non-fatal.
+    expect(result.updated).toBe(false);
+    expect(result.error).toBeTruthy();
+    // system/ must be restored to the previous working state (§6).
+    expect(existsSync(join(skelOpHome, "system", "stack", "core.compose.yml"))).toBe(true);
+    expect(readFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "utf8")).toContain("image: sentinel");
   });
 });
