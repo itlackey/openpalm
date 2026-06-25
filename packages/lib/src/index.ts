@@ -311,8 +311,14 @@ export {
   isVersionKey,
   readVersions,
   writeVersions,
+  // Phase 5: pin-null semantics, channel preference, voice variant utilities
+  readPinnedVersions,
+  readChannelPreference,
+  writeChannelPreference,
+  stripVoiceVariantSuffix,
+  normalizePinValue,
 } from "./control-plane/versions.js";
-export type { VersionKey } from "./control-plane/versions.js";
+export type { VersionKey, ChannelPreference } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
