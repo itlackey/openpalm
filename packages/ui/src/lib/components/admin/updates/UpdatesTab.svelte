@@ -199,11 +199,9 @@
             : `Apply failed: ${result.error ?? 'unknown error'}`;
         return;
       }
-      resultMessage = result.pullWarning
-        ? `Restarted, but images may not have updated: ${result.pullWarning}`
-        : result.restarted.length > 0
-          ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
-          : 'Versions applied.';
+      resultMessage = result.restarted.length > 0
+        ? `Versions applied. Restarted: ${result.restarted.join(', ')}.`
+        : 'Versions applied.';
     }
 
     // Activate a new control plane last: the harness restarts the UI server and

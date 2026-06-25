@@ -277,6 +277,43 @@ describe("mapDockerError — table of representative stderr fixtures", () => {
       expectedCode: "docker_error",
       expectedMessageContains: "unknown error",
     },
+    // ── Phase 3: new named registry errors (§6) ─────────────────────────────
+    {
+      name: "rate limit — Docker Hub toomanyrequests",
+      stderr: "toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit",
+      expectedCode: "rate_limited",
+      expectedMessageContains: "rate limit",
+    },
+    {
+      name: "manifest unknown — bad tag",
+      stderr: "Error response from daemon: manifest for openpalm/assistant:does-not-exist-9999 not found: manifest unknown: manifest unknown",
+      expectedCode: "manifest_unknown",
+      expectedMessageContains: "tag does not exist",
+    },
+    {
+      name: "manifest unknown — plain",
+      stderr: "manifest unknown: manifest unknown",
+      expectedCode: "manifest_unknown",
+      expectedMessageContains: "tag does not exist",
+    },
+    {
+      name: "network error — dial tcp",
+      stderr: "error pulling image: dial tcp: lookup registry-1.docker.io on 8.8.8.8:53: i/o timeout",
+      expectedCode: "network_error",
+      expectedMessageContains: "network error",
+    },
+    {
+      name: "network error — connection reset by peer",
+      stderr: "Error response from daemon: Get \"https://registry-1.docker.io/v2/\": connection reset by peer",
+      expectedCode: "network_error",
+      expectedMessageContains: "network error",
+    },
+    {
+      name: "image auth — includes offending image",
+      stderr: "pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'",
+      expectedCode: "image_auth",
+      expectedMessageContains: "openpalm/assistant",
+    },
   ];
 
   for (const f of fixtures) {

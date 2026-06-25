@@ -26,6 +26,7 @@ import {
   type Home,
   type ComposeProject,
 } from "./iu-harness.js";
+import { getRunningImages } from "./docker.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -128,12 +129,35 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
 
   // ── STUBS — red until the named phase builds the code ───────────────────────
 
-  test("INV5 [STUB Phase 3] getRunningImages() returns running digest+tag; stopped/absent stated", () => {
-    throw new Error(
-      "STUB — Phase 3: implement getRunningImages() in docker.ts (digest + tag + health; " +
-        "stopped → 'current (stopped)'; absent → 'not installed'). Then assert it here against a live container.",
-    );
-  });
+  test("INV5 [Phase 3] getRunningImages() returns running digest+tag; stopped/absent stated", async () => {
+    const proj: ComposeProject = makeComposeProject("alpine:3.19");
+    cleanups.push(proj.cleanup);
+
+    // Before bringing the container up, the service should not exist
+    const before = await getRunningImages({ files: [proj.file], profiles: [] });
+    // compose ps on a project with no containers returns nothing — empty record
+    expect(Object.values(before).every((v) => v.state === "not_installed" || v.state === "stopped")).toBe(true);
+
+    // Bring the service up
+    const envFile = join(proj.dir, "up.env");
+    writeFileSync(envFile, "SVC_TAG=3.19\n");
+    const upResult = proj.up(envFile);
+    expect(upResult.ok).toBe(true);
+
+    // Now getRunningImages should show a running container with a real digest
+    const after = await getRunningImages({ files: [proj.file], profiles: [] });
+    const svcInfo = after["svc"];
+    expect(svcInfo).not.toBeUndefined();
+    expect(svcInfo!.state).toBe("running");
+    expect(svcInfo!.digest).toMatch(/^sha256:/);
+    expect(svcInfo!.tag).toContain("alpine");
+
+    // A separate inspect of a non-existent container returns not_installed
+    const { inspectContainerImage } = await import("./docker.js");
+    const absent = await inspectContainerImage("this-container-does-not-exist-xyz-9999");
+    expect(absent.state).toBe("not_installed");
+    expect(absent.digest).toBe("");
+  }, 60_000);
 
   test("INV6 [STUB Phase 1] config/assistant has NO node_modules after the OpenCode config split", () => {
     throw new Error(

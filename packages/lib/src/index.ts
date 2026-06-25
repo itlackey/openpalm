@@ -315,7 +315,7 @@ export {
 export type { VersionKey } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
-export type { DockerResult, ExistingProject } from "./control-plane/docker.js";
+export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
 export {
   checkDocker,
   checkDockerCompose,
@@ -334,7 +334,10 @@ export {
   composeStats,
   composeExec,
   getDockerEvents,
-  inspectContainerStatus,
+  inspectContainerImage,
+  getRunningImages,
+  waitForContainerHealthy,
+  applyStack,
 } from "./control-plane/docker.js";
 
 // ── Scheduler ───────────────────────────────────────────────────────────

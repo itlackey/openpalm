@@ -1,10 +1,11 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseEnvFile } from "./env.js";
 import { createLogger } from "../logger.js";
 import { resolveOperatorIds } from "./operator-ids.js";
+import { mapDockerError, parseComposeStderr } from "./compose-errors.js";
 
 const logger = createLogger("lib:docker");
 
@@ -532,25 +533,271 @@ export async function repairRootOwnedBindMounts(homeDir: string): Promise<void> 
 }
 
 /**
- * Query Docker for a container's running state by name.
- * Returns "running" or "stopped". Falls back to "unknown" on error.
+ * Full runtime image info for a single container (§5 truthful state).
+ *
+ * - `digest`      — {{.Image}}: the sha256 the container was CREATED FROM.
+ * - `tag`         — {{.Config.Image}}: the human tag (e.g. openpalm/assistant:latest).
+ * - `healthStatus`— {{.State.Health.Status}}: "healthy"|"unhealthy"|"starting"|"" (no healthcheck).
+ * - `state`       — "running"|"stopped"|"not_installed".
+ *
+ * Stopped containers still have a known image; absent containers are "not_installed".
  */
-export function inspectContainerStatus(
-  containerName: string
-): Promise<"running" | "stopped" | "unknown"> {
+export type ContainerImageInfo = {
+  digest: string;
+  tag: string;
+  healthStatus: string;
+  state: "running" | "stopped" | "not_installed";
+};
+
+/**
+ * Inspect a single container by name and return its full image + health info.
+ * "not_installed" when the container does not exist; "stopped" when it exists but is not running.
+ */
+export function inspectContainerImage(containerName: string): Promise<ContainerImageInfo> {
   return new Promise((resolve) => {
     execFile(
       "docker",
-      ["inspect", "--format", "{{.State.Status}}", containerName],
-      { timeout: 5000 },
+      [
+        "inspect",
+        "--format",
+        "{{.State.Status}}\t{{.Image}}\t{{.Config.Image}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}",
+        containerName,
+      ],
+      { timeout: 10_000 },
       (error, stdout) => {
         if (error) {
-          resolve("unknown");
+          // Container does not exist (exit code 1, "No such object")
+          resolve({ digest: "", tag: "", healthStatus: "", state: "not_installed" });
           return;
         }
-        const status = (stdout ?? "").toString().trim();
-        resolve(status === "running" ? "running" : "stopped");
+        const [rawState = "", digest = "", tag = "", healthStatus = ""] = (stdout ?? "")
+          .toString()
+          .trim()
+          .split("\t");
+        const state = rawState === "running" ? "running" : "stopped";
+        resolve({ digest, tag, healthStatus, state });
       }
     );
   });
+}
+
+/**
+ * Return the running image info for every container in a compose project (§5 truthful state).
+ *
+ * Keys are compose service names; values are ContainerImageInfo.
+ * Services that have no container (not created yet) are returned with state "not_installed".
+ * Services that exist but are stopped say "stopped".
+ *
+ * This is the canonical "what is actually running" data source — never env-file pins.
+ */
+export async function getRunningImages(options: {
+  files: string[];
+  envFiles?: string[];
+  profiles?: string[];
+}): Promise<Record<string, ContainerImageInfo>> {
+  // Get the list of service names from `compose ps --format json`
+  const psArgs = buildComposeArgs(options);
+  psArgs.push("ps", "--format", "json", "--all");
+  const psResult = await run(psArgs, undefined, 15_000, collectComposeEnvOverrides(options.envFiles));
+
+  const out: Record<string, ContainerImageInfo> = {};
+
+  if (!psResult.ok || !psResult.stdout.trim()) {
+    return out;
+  }
+
+  // compose ps --format json may output one JSON object per line or a JSON array
+  const lines = psResult.stdout.trim().split(/\r?\n/).filter(Boolean);
+  for (const line of lines) {
+    let entry: { Service?: string; Name?: string } | undefined;
+    try { entry = JSON.parse(line); } catch { continue; }
+    const service = entry?.Service ?? entry?.Name ?? "";
+    if (!service) continue;
+    // Inspect by container name (Name field) or fall back to service
+    const containerName = (entry as { Name?: string }).Name ?? service;
+    out[service] = await inspectContainerImage(containerName);
+  }
+
+  return out;
+}
+
+// ── Health-wait ─────────────────────────────────────────────────────────────
+
+/** Default health-wait parameters. Override via OP_HEALTH_WAIT_TIMEOUT_MS. */
+const HEALTH_WAIT_DEFAULTS = { timeoutMs: 120_000, pollMs: 3_000 } as const;
+
+function healthWaitTimeoutMs(): number {
+  const raw = process.env.OP_HEALTH_WAIT_TIMEOUT_MS?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : HEALTH_WAIT_DEFAULTS.timeoutMs;
+}
+
+/**
+ * Poll `docker inspect` on `containerName` until its State.Health.Status is
+ * "healthy" (or the container has no healthcheck, in which case "running" is
+ * sufficient). Returns true on success; false on timeout with a log message.
+ *
+ * Containers with no healthcheck (`healthStatus === ""`) are declared healthy
+ * immediately once they are in state "running" — compose started them, they
+ * haven't crashed, that's the best signal we have.
+ */
+export async function waitForContainerHealthy(
+  containerName: string,
+  timeoutMs = healthWaitTimeoutMs(),
+  pollMs = HEALTH_WAIT_DEFAULTS.pollMs,
+): Promise<{ healthy: boolean; timedOut: boolean; reason: string }> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const info = await inspectContainerImage(containerName);
+    if (info.state === "not_installed") {
+      return { healthy: false, timedOut: false, reason: `container ${containerName} does not exist` };
+    }
+    if (info.state === "stopped") {
+      // Container exited — fail immediately rather than burning the full timeout.
+      return { healthy: false, timedOut: false, reason: `container ${containerName} exited` };
+    }
+    if (info.state === "running") {
+      // No healthcheck → running is good enough
+      if (!info.healthStatus || info.healthStatus === "healthy") {
+        return { healthy: true, timedOut: false, reason: "healthy" };
+      }
+      if (info.healthStatus === "unhealthy") {
+        return { healthy: false, timedOut: false, reason: `container ${containerName} is unhealthy` };
+      }
+      // "starting" — keep polling
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  const elapsed = Math.round(timeoutMs / 1000);
+  return {
+    healthy: false,
+    timedOut: true,
+    reason: `container ${containerName} did not become healthy within ${elapsed}s`,
+  };
+}
+
+// ── applyStack — the single compose driver (§4.3) ───────────────────────────
+
+export type ApplyStackScope =
+  | { kind: "service"; service: string }
+  | { kind: "all" };
+
+export type ApplyStackResult = {
+  ok: boolean;
+  /** Services that were successfully brought up. */
+  started: string[];
+  /** Per-service failures from compose stderr. */
+  failed: { service: string; reason: string }[];
+  /** Top-level error string (when compose itself fails and no per-service parse). */
+  error?: string;
+};
+
+/**
+ * The SINGLE Docker Compose driver for update (§4.3).
+ *
+ * pull-before-up, always. Pull failure is FATAL — never silently falls through
+ * to a stale local image. Active profiles are always passed (§4.3 "profiles on
+ * every command"). Success = running AND healthy (waitForContainerHealthy).
+ *
+ * scope = { kind:"service", service:"assistant" }  →  pull <svc> + up --force-recreate --no-deps <svc>
+ * scope = { kind:"all" }                           →  pull + up --remove-orphans
+ *
+ * Callers (install and update endpoints) pass the resolved ComposeOptions so
+ * this function never builds them itself — profiles are already resolved.
+ */
+export async function applyStack(
+  scope: ApplyStackScope,
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+): Promise<ApplyStackResult> {
+  const envOverrides = collectComposeEnvOverrides(options.envFiles);
+  const base = buildComposeArgs(options);
+
+  // ── 1. Pull the whole target set FIRST (§4.3 "Pull the whole target set first") ──
+  const pullArgs = [...base, "pull"];
+  if (scope.kind === "service") pullArgs.push(scope.service);
+
+  const pullResult = await run(pullArgs, undefined, PULL_TIMEOUT_MS, envOverrides);
+  if (!pullResult.ok) {
+    // Pull failure is FATAL (§6, constitution §8 "never swallowed").
+    // Route through mapDockerError so the user sees a named, friendly message
+    // (rate_limited / manifest_unknown / network_error / image_auth) instead of
+    // raw daemon stderr.
+    const mapped = mapDockerError(pullResult.stderr || "image pull failed");
+    return {
+      ok: false,
+      started: [],
+      failed: [{ service: scope.kind === "service" ? scope.service : "stack", reason: mapped.message }],
+      error: mapped.message,
+    };
+  }
+
+  // ── 2. Compose up ────────────────────────────────────────────────────────
+  const upArgs = [...base, "up", "-d"];
+  if (scope.kind === "service") {
+    upArgs.push("--force-recreate", "--no-deps", scope.service);
+  } else {
+    upArgs.push("--remove-orphans");
+  }
+
+  const upResult = await run(upArgs, undefined, composeUpTimeoutMs(), envOverrides);
+
+  // ── 3. Parse per-service failures from stderr ─────────────────────────────
+  if (!upResult.ok) {
+    const failed = parseComposeStderr(upResult.stderr);
+    if (failed.length === 0) {
+      // No per-service parse succeeded — map the full stderr to a named friendly message (§6).
+      const mapped = mapDockerError(upResult.stderr || `docker compose exited with code ${upResult.code}`);
+      return {
+        ok: false,
+        started: [],
+        failed: [{ service: scope.kind === "service" ? scope.service : "stack", reason: mapped.message }],
+        error: mapped.message,
+      };
+    }
+    // Per-service failures parsed: map each reason through mapDockerError so
+    // individual service failures also surface friendly named messages (§6).
+    const friendlyFailed = failed.map((f) => ({
+      service: f.service,
+      reason: mapDockerError(f.reason).message,
+    }));
+    const topLevelMapped = mapDockerError(upResult.stderr);
+    return { ok: false, started: [], failed: friendlyFailed, error: topLevelMapped.message };
+  }
+
+  // ── 4. Success = running AND healthy (§4.3) ───────────────────────────────
+  const targetServices =
+    scope.kind === "service"
+      ? [scope.service]
+      : await (async () => {
+          const configArgs = [...base, "config", "--services"];
+          const r = await run(configArgs, undefined, 15_000, envOverrides);
+          return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
+        })();
+
+  const started: string[] = [];
+  const failed: { service: string; reason: string }[] = [];
+
+  for (const svc of targetServices) {
+    // Get the container name from compose ps
+    const psArgs = [...base, "ps", "-q", svc];
+    const psResult = await run(psArgs, undefined, 10_000, envOverrides);
+    const containerId = psResult.stdout.trim();
+    if (!containerId) {
+      failed.push({ service: svc, reason: `container for service ${svc} not found after up` });
+      continue;
+    }
+    const wait = await waitForContainerHealthy(containerId);
+    if (wait.healthy) {
+      started.push(svc);
+    } else {
+      failed.push({ service: svc, reason: wait.reason });
+    }
+  }
+
+  return {
+    ok: failed.length === 0,
+    started,
+    failed,
+    ...(failed.length > 0 ? { error: failed.map((f) => f.reason).join("; ") } : {}),
+  };
 }

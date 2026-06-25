@@ -22,6 +22,9 @@ export type DockerErrorMapping = {
     | "no_space"
     | "platform_mismatch"
     | "image_auth"
+    | "rate_limited"
+    | "manifest_unknown"
+    | "network_error"
     | "out_of_memory"
     | "healthcheck_failed"
     | "docker_error";
@@ -43,6 +46,17 @@ const SERVICE_ERROR_RE = /^[\s⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠿✔✘×]*\s*([A-
 const SERVICE_FAILED_QUOTED_RE = /Service\s+["']([A-Za-z0-9._-]+)["']\s+failed[^:]*:\s*(.+)$/i;
 const SERVICE_NOT_FOUND_RE = /no such service:\s*([A-Za-z0-9._-]+)/i;
 const PULL_ACCESS_DENIED_RE = /pull access denied for\s+([^\s,]+)/i;
+
+// ── Registry error patterns — for named error messages (§6) ─────────────────
+/** Matches `toomanyrequests: You have reached your pull rate limit` (Docker Hub rate limit). */
+const RATE_LIMIT_RE = /toomanyrequests/i;
+/**
+ * Matches `manifest unknown` or `manifest for <image>:<tag> not found`.
+ * Captures the offending image reference when present.
+ */
+const MANIFEST_UNKNOWN_RE = /manifest\s+(?:unknown|for\s+([^\s]+)\s+not found)/i;
+/** Matches network-level pull failures (dial tcp, connection reset, EOF mid-layer). */
+const NETWORK_ERROR_RE = /(?:dial tcp|connection reset by peer|EOF|i\/o timeout|TLS handshake timeout|no route to host)/i;
 
 function pushUnique(
   failures: ComposeServiceFailure[],
@@ -183,10 +197,47 @@ export function mapDockerError(stderr: string): DockerErrorMapping {
     };
   }
 
+  // Rate limit (Docker Hub toomanyrequests) — check before generic image_auth
+  if (RATE_LIMIT_RE.test(stderr)) {
+    // Try to extract the offending image:tag from context lines
+    const imageMatch = /toomanyrequests.*?(\S+:\S+)/i.exec(stderr)
+      ?? /pull\s+(\S+:\S+)/i.exec(stderr);
+    const imagePart = imageMatch ? ` for ${imageMatch[1]}` : "";
+    return {
+      code: "rate_limited",
+      message: `Docker Hub rate limit reached${imagePart}. Wait a few minutes and retry, or log in to Docker Hub (docker login) for a higher limit.`,
+    };
+  }
+
+  // manifest unknown — bad tag (pull requested a tag that does not exist)
+  if (MANIFEST_UNKNOWN_RE.test(stderr)) {
+    const m = MANIFEST_UNKNOWN_RE.exec(stderr);
+    const imagePart = m?.[1] ? ` (${m[1]})` : "";
+    // Also try to pick up image:tag from nearby context if the regex didn't
+    const tagMatch = imagePart ? null : /(?:pull|manifest for)\s+(\S+:\S+)/i.exec(stderr);
+    const extra = imagePart || (tagMatch ? ` (${tagMatch[1]})` : "");
+    return {
+      code: "manifest_unknown",
+      message: `The requested image tag does not exist in the registry${extra}. Check your version pin or channel setting, then retry.`,
+    };
+  }
+
+  // Network-level pull failure
+  if (NETWORK_ERROR_RE.test(stderr)) {
+    return {
+      code: "network_error",
+      message: "A network error interrupted the image pull. Check your internet connection and retry.",
+    };
+  }
+
   if (/pull access denied|unauthorized|authentication required|requested access to the resource is denied|denied: requested access/i.test(stderr)) {
+    // Try to extract the offending image:tag
+    const imageMatch = /pull access denied for\s+(\S+)/i.exec(stderr)
+      ?? /unauthorized.*?(\S+:\S+)/i.exec(stderr);
+    const imagePart = imageMatch ? ` (${imageMatch[1]})` : "";
     return {
       code: "image_auth",
-      message: "Docker could not pull one or more images because the image is private, missing, or requires authentication.",
+      message: `Docker could not pull one or more images${imagePart} because the image is private, missing, or requires authentication.`,
     };
   }
 

@@ -119,7 +119,6 @@ export type ApplyChangesResult = {
   failed: { service: string; reason: string }[];
   dockerAvailable: boolean;
   overallSuccess: boolean;
-  pullWarning?: string;
   error?: string;
 };
 

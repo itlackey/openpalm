@@ -1,31 +1,34 @@
 /**
  * Route-level tests for POST /admin/install.
  *
- * Covers the consolidated install flow: the success response shape and the
- * docker-unavailable branch. applyInstall runs the OP_HOME apply internally (no
- * compose); the route owns the sole composeUp.
+ * Phase 3: the route is now a thin wrapper over applyInstall() (files) +
+ * applyStack() (containers). Pull failure is FATAL (§6). These tests verify
+ * the correct response shape at the route boundary.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-type ComposeFn = (args: unknown) => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>;
+type ApplyStackFn = (scope: unknown, opts: unknown) => Promise<{
+  ok: boolean;
+  started: string[];
+  failed: { service: string; reason: string }[];
+  error?: string;
+}>;
 const applyInstallMock = vi.fn<() => Promise<void>>();
-const composeUpMock = vi.fn<ComposeFn>();
+const applyStackMock = vi.fn<ApplyStackFn>();
 const checkDockerMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
-const buildManagedServicesMock = vi.fn<() => Promise<string[]>>();
 
 vi.mock('@openpalm/lib', async () => {
   const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
   return {
     ...actual,
     applyInstall: (...args: unknown[]) => applyInstallMock(...(args as [])),
-    composeUp: (...args: unknown[]) => composeUpMock(...(args as [unknown])),
+    applyStack: (...args: unknown[]) => applyStackMock(...(args as [unknown, unknown])),
     checkDocker: (...args: unknown[]) => checkDockerMock(...(args as [])),
-    buildManagedServices: (...args: unknown[]) => buildManagedServicesMock(...(args as [])),
     ensureHomeDirs: () => undefined,
     ensureOpenCodeConfig: () => undefined,
     ensureOpenCodeSystemConfig: () => undefined,
     ensureSecrets: () => undefined,
-    buildComposeOptions: () => ({ files: ['/tmp/fake/compose.yml'], envFiles: [] }),
+    buildComposeOptions: () => ({ files: ['/tmp/fake/compose.yml'], envFiles: [], profiles: [] }),
   };
 });
 
@@ -49,14 +52,12 @@ function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
 beforeEach(() => {
   resetState('admin-token');
   applyInstallMock.mockReset();
-  composeUpMock.mockReset();
+  applyStackMock.mockReset();
   checkDockerMock.mockReset();
-  buildManagedServicesMock.mockReset();
 
   applyInstallMock.mockResolvedValue(undefined);
-  composeUpMock.mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
   checkDockerMock.mockResolvedValue({ ok: true, stdout: '24.0.0', stderr: '', code: 0 });
-  buildManagedServicesMock.mockResolvedValue(['assistant']);
+  applyStackMock.mockResolvedValue({ ok: true, started: ['assistant', 'guardian'], failed: [] });
 });
 
 afterEach(() => {
@@ -69,33 +70,60 @@ describe('POST /admin/install', () => {
     expect(res.status).toBe(401);
   });
 
-  test('returns 200 with started core services and compose result on success', async () => {
+  test('returns 200 with started services when applyStack succeeds', async () => {
     const res = await POST(makePostEvent());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;
       started: string[];
+      failed: { service: string; reason: string }[];
       dockerAvailable: boolean;
-      composeResult: { ok: boolean; stderr: string } | null;
+      overallSuccess: boolean;
     };
     expect(body.ok).toBe(true);
+    expect(body.overallSuccess).toBe(true);
     expect(body.started).toContain('assistant');
-    expect(body.started).toContain('guardian');
     expect(body.dockerAvailable).toBe(true);
-    expect(body.composeResult).toEqual({ ok: true, stderr: '' });
-    // The route owns the sole composeUp (applyInstall no longer composes).
+    expect(body.failed).toEqual([]);
+    // applyInstall and applyStack each called once
     expect(applyInstallMock).toHaveBeenCalledTimes(1);
-    expect(composeUpMock).toHaveBeenCalledTimes(1);
+    expect(applyStackMock).toHaveBeenCalledTimes(1);
   });
 
-  test('skips composeUp and reports dockerAvailable:false when docker is unavailable', async () => {
+  test('skips applyStack and returns dockerAvailable:false when docker is unavailable', async () => {
     checkDockerMock.mockResolvedValue({ ok: false, stdout: '', stderr: 'docker not found', code: 1 });
 
     const res = await POST(makePostEvent());
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { dockerAvailable: boolean; composeResult: unknown };
+    const body = (await res.json()) as {
+      dockerAvailable: boolean;
+      started: string[];
+      ok: boolean;
+    };
     expect(body.dockerAvailable).toBe(false);
-    expect(body.composeResult).toBeNull();
-    expect(composeUpMock).not.toHaveBeenCalled();
+    expect(body.started).toEqual([]);
+    // applyStack must NOT have been called when docker is unavailable
+    expect(applyStackMock).not.toHaveBeenCalled();
+  });
+
+  test('returns 502 when applyStack fails (pull failure is fatal)', async () => {
+    applyStackMock.mockResolvedValue({
+      ok: false,
+      started: [],
+      failed: [{ service: 'stack', reason: 'manifest unknown for openpalm/assistant:bad-tag' }],
+      error: 'manifest unknown for openpalm/assistant:bad-tag',
+    });
+
+    const res = await POST(makePostEvent());
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as {
+      ok: boolean;
+      failed: { service: string; reason: string }[];
+      overallSuccess: boolean;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.overallSuccess).toBe(false);
+    expect(body.failed).toHaveLength(1);
+    expect(body.failed[0].reason).toMatch(/manifest unknown/);
   });
 });

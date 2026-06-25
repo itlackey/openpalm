@@ -10,10 +10,8 @@ import {
   applyInstall,
   createLogger,
   buildComposeOptions,
-  buildManagedServices,
-  CORE_SERVICES,
-  composeUp,
   checkDocker,
+  applyStack,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -30,39 +28,48 @@ export const POST: RequestHandler = async (event) => {
       const state = getState();
 
       // Apply OP_HOME: dir tree, secrets, overwrite the managed system/ tree, seed
-      // the user/data trees once, OpenCode config — all idempotent, all inside
-      // applyInstall's applyHome. Writes runtime files but does NOT compose; the
-      // compose phase below is the sole composeUp (no double-recreate).
+      // the user/data trees once, OpenCode config — all idempotent. Does NOT compose.
       await applyInstall(state);
 
-      // 5. Run docker compose up — managed services derived from compose config
-      const managedServices = await buildManagedServices(state);
-      logger.info("checking Docker availability", { requestId });
       const dockerCheck = await checkDocker();
-      let dockerResult = null;
-      if (dockerCheck.ok) {
-        logger.info("starting compose up", { requestId, services: managedServices });
-        dockerResult = await composeUp({
-          ...buildComposeOptions(state),
-          services: managedServices
-        });
+      if (!dockerCheck.ok) {
+        logger.info("install completed (Docker unavailable — stack not started)", { requestId });
+        return jsonResponse(200, {
+          ok: true,
+          started: [],
+          failed: [],
+          dockerAvailable: false,
+          overallSuccess: true,
+        }, requestId);
       }
 
-      const started = [...CORE_SERVICES];
+      // applyStack: pull the whole set first (§4.3 "pull before recreate, always"),
+      // then bring the stack up. Pull failure is FATAL per §6.
+      const composeOpts = buildComposeOptions(state);
+      const stackResult = await applyStack({ kind: "all" }, composeOpts);
 
-      logger.info("install completed", { requestId, started, dockerAvailable: dockerCheck.ok, composeOk: dockerResult?.ok ?? null });
+      const overallSuccess = stackResult.ok;
+      const status = stackResult.ok ? 200 : 502;
+
+      logger.info("install completed", {
+        requestId,
+        dockerAvailable: true,
+        overallSuccess,
+        startedCount: stackResult.started.length,
+        failedCount: stackResult.failed.length,
+      });
 
       return jsonResponse(
-        200,
+        status,
         {
-          ok: true,
-          started,
-          dockerAvailable: dockerCheck.ok,
-          composeResult: dockerResult
-            ? { ok: dockerResult.ok, stderr: dockerResult.stderr }
-            : null
+          ok: overallSuccess,
+          started: stackResult.started,
+          failed: stackResult.failed,
+          dockerAvailable: true,
+          overallSuccess,
+          ...(stackResult.error ? { error: stackResult.error } : {}),
         },
-        requestId
+        requestId,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
