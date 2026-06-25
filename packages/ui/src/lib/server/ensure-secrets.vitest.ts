@@ -38,7 +38,7 @@ describe("ensureSecrets", () => {
     expect(stackEnv).toContain("OP_SETUP_COMPLETE=false");
     expect(stackEnv).not.toContain("OPENAI_API_KEY=");
     expect(stackEnv).not.toContain("OP_UI_LOGIN_PASSWORD=");
-    expect(readSecret(stackDir, "op_ui_login_password")).toBeNull();
+    expect(readSecret(rootDir, "op_ui_login_password")).toBeNull();
   });
 
   test("applies strict permissions to state files", () => {

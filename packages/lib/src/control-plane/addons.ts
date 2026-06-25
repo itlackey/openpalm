@@ -65,7 +65,7 @@ export function listAvailableAddonIds(): string[] {
 }
 
 export function listEnabledAddonIds(homeDir: string): string[] {
-  const env = readStackEnv(join(homeDir, 'config', 'stack'));
+  const env = readStackEnv(homeDir);
   const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
   const profiles = new Set<string>();
   for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
@@ -469,50 +469,50 @@ function profileEnvKey(name: string): string {
   return `OP_${name.replace(/-/g, '_').toUpperCase()}_PROFILE`;
 }
 
-export function getAddonProfileSelection(stackDir: string, name: string): string | null {
-  const env = readStackEnv(stackDir);
+export function getAddonProfileSelection(homeDir: string, name: string): string | null {
+  const env = readStackEnv(homeDir);
   const value = env[profileEnvKey(name)];
   const normalized = value ? canonicalAddonProfileSelection(name, value) : '';
   return normalized ? normalized : null;
 }
 
-export function setAddonProfileSelection(stackDir: string, name: string, profile: string): void {
+export function setAddonProfileSelection(homeDir: string, name: string, profile: string): void {
   const trimmed = canonicalAddonProfileSelection(name, profile);
   if (!trimmed) throw new Error(`Invalid canonical profile id for addon ${name}: ${profile}`);
-  patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
+  patchSecretsEnvFile(homeDir, { [profileEnvKey(name)]: trimmed });
 }
 
 /** Add/remove an addon id in the OP_ENABLED_ADDONS list in stack.env. */
-function setEnabledAddonState(stackDir: string, name: string, enabled: boolean): void {
-  const current = new Set(parseEnabledAddons(readStackEnv(stackDir).OP_ENABLED_ADDONS));
+function setEnabledAddonState(homeDir: string, name: string, enabled: boolean): void {
+  const current = new Set(parseEnabledAddons(readStackEnv(homeDir).OP_ENABLED_ADDONS));
   if (enabled) current.add(name);
   else current.delete(name);
-  patchSecretsEnvFile(stackDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
+  patchSecretsEnvFile(homeDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
 }
 
-function enableAddon(stackDir: string, name: string): MutationResult {
+function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-    setEnabledAddonState(stackDir, name, true);
-    if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '1' });
+    setEnabledAddonState(homeDir, name, true);
+    if (name === 'ssh') patchSecretsEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '1' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-function disableAddonByName(stackDir: string, name: string): MutationResult {
+function disableAddonByName(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-    setEnabledAddonState(stackDir, name, false);
-    if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '0' });
+    setEnabledAddonState(homeDir, name, false);
+    if (name === 'ssh') patchSecretsEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '0' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-export function setAddonEnabled(homeDir: string, stackDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {
+export function setAddonEnabled(homeDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid addon name: ${name}` };
   }
@@ -533,13 +533,13 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
     };
   }
 
-  const mutation = enabled ? enableAddon(stackDir, name) : disableAddonByName(stackDir, name);
+  const mutation = enabled ? enableAddon(homeDir, name) : disableAddonByName(homeDir, name);
   if (!mutation.ok) return mutation;
 
   if (enabled) {
     if (['api', 'chat', 'discord', 'slack'].includes(name)) {
       for (const portal of ['api', 'chat', 'discord', 'slack']) {
-        ensurePortalSecret(stackDir, portal);
+        ensurePortalSecret(homeDir, portal);
       }
     }
 

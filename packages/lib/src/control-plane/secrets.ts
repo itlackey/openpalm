@@ -3,8 +3,8 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSyn
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
-import { resolveConfigDir } from "./home.js";
-import { authJsonPath as resolveAuthJsonPath, stackEnvPathFromStackDir } from "./paths.js";
+import { resolveConfigDir, legacyStackEnvFile } from "./home.js";
+import { authJsonPath as resolveAuthJsonPath } from "./paths.js";
 import { dirname } from "node:path";
 import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
 
@@ -77,20 +77,20 @@ function writeVaultFile(path: string, content: string): void {
   }
 }
 
-export function stackSecretsDir(stackDir: string): string {
-  return resolveSecretsDir(stackDir);
+export function stackSecretsDir(homeDir: string): string {
+  return resolveSecretsDir(homeDir);
 }
 
-export function stackSecretPath(stackDir: string, envKey: string): string {
-  return `${stackSecretsDir(stackDir)}/${envKey.toLowerCase()}`;
+export function stackSecretPath(homeDir: string, envKey: string): string {
+  return `${stackSecretsDir(homeDir)}/${envKey.toLowerCase()}`;
 }
 
-export function readStackSecretEnv(stackDir: string): Record<string, string> {
+export function readStackSecretEnv(homeDir: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const name of listSecretNames(stackDir)) {
+  for (const name of listSecretNames(homeDir)) {
     const envKey = name.toUpperCase();
     try {
-      out[envKey] = (readSecret(stackDir, name) ?? '').replace(/[\r\n]+$/, '');
+      out[envKey] = (readSecret(homeDir, name) ?? '').replace(/[\r\n]+$/, '');
     } catch {
       // ignore unreadable secret files; callers treat missing values as absent
     }
@@ -100,10 +100,10 @@ export function readStackSecretEnv(stackDir: string): Record<string, string> {
 
 export function writeStackSecretEnv(state: ControlPlaneState, updates: Record<string, string>): void {
   if (Object.keys(updates).length === 0) return;
-  resolveSecretsDir(state.stackDir);
+  resolveSecretsDir(state.homeDir);
   for (const [envKey, value] of Object.entries(updates)) {
     if (!/^[A-Z0-9_]+$/.test(envKey)) throw new Error(`Invalid secret env key: ${envKey}`);
-    writeSecret(state.stackDir, envKey.toLowerCase(), value.endsWith('\n') ? value : `${value}\n`);
+    writeSecret(state.homeDir, envKey.toLowerCase(), value.endsWith('\n') ? value : `${value}\n`);
   }
 }
 
@@ -151,8 +151,8 @@ export function ensureSecrets(state: ControlPlaneState): void {
 
   ensureSystemSecrets(state);
   ensureAuthJson(state);
-  ensureSecret(state.stackDir, 'op_guardian_admin_token', () => crypto.randomUUID().replace(/-/g, ''));
-  ensureSecret(state.stackDir, 'op_guardian_mcp_token', () => crypto.randomUUID().replace(/-/g, ''));
+  ensureSecret(state.homeDir, 'op_guardian_admin_token', () => crypto.randomUUID().replace(/-/g, ''));
+  ensureSecret(state.homeDir, 'op_guardian_mcp_token', () => crypto.randomUUID().replace(/-/g, ''));
 }
 
 function ensureAuthJson(state: ControlPlaneState): void {
@@ -190,7 +190,7 @@ export function updateSecretsEnv(
     else stackUpdates[key] = value;
   }
   writeStackSecretEnv(state, secretUpdates);
-  if (Object.keys(stackUpdates).length > 0) patchSecretsEnvFile(state.stackDir, stackUpdates);
+  if (Object.keys(stackUpdates).length > 0) patchSecretsEnvFile(state.homeDir, stackUpdates);
 }
 
 /**
@@ -251,8 +251,8 @@ export function writeAuthJsonProviderKeys(
 }
 
 /** Read and parse knowledge/env/stack.env. Returns {} if the file does not exist. */
-export function readStackEnv(stackDir: string): Record<string, string> {
-  const parsed = parseEnvFile(stackEnvPathFromStackDir(stackDir));
+export function readStackEnv(homeDir: string): Record<string, string> {
+  const parsed = parseEnvFile(legacyStackEnvFile(homeDir));
   const nonSecret: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (!isSecretLikeStackEnvKey(key)) nonSecret[key] = value;
@@ -260,8 +260,8 @@ export function readStackEnv(stackDir: string): Record<string, string> {
   return nonSecret;
 }
 
-export function readStackRuntimeEnv(stackDir: string): Record<string, string> {
-  return { ...readStackEnv(stackDir), ...readStackSecretEnv(stackDir) };
+export function readStackRuntimeEnv(homeDir: string): Record<string, string> {
+  return { ...readStackEnv(homeDir), ...readStackSecretEnv(homeDir) };
 }
 
 export function updateSystemSecretsEnv(
@@ -277,7 +277,7 @@ export function updateSystemSecretsEnv(
 }
 
 export function patchSecretsEnvFile(
-  stackDir: string,
+  homeDir: string,
   patches: Record<string, string>
 ): void {
   if (Object.keys(patches).length === 0) return;
@@ -288,13 +288,19 @@ export function patchSecretsEnvFile(
     if (SECRET_ENV_KEY_RE.test(key)) secretPatches[key] = value;
     else stackPatches[key] = value;
   }
+  // Write secret patches as file-based secrets (knowledge/secrets/<key>). Inlined
+  // here so no fake ControlPlaneState is needed (the de-coupling: secrets key on homeDir).
   if (Object.keys(secretPatches).length > 0) {
-    writeStackSecretEnv({ stackDir, homeDir: '', configDir: '', stashDir: '', workspaceDir: '', dataDir: '', services: {}, artifacts: { compose: '' }, artifactMeta: [] }, secretPatches);
+    resolveSecretsDir(homeDir);
+    for (const [envKey, value] of Object.entries(secretPatches)) {
+      if (!/^[A-Z0-9_]+$/.test(envKey)) throw new Error(`Invalid secret env key: ${envKey}`);
+      writeSecret(homeDir, envKey.toLowerCase(), value.endsWith('\n') ? value : `${value}\n`);
+    }
   }
   if (Object.keys(stackPatches).length === 0) return;
   assertNoSecretLikeStackEnvKeys(stackPatches);
 
-  const stackEnvPath = stackEnvPathFromStackDir(stackDir);
+  const stackEnvPath = legacyStackEnvFile(homeDir);
   enforceVaultDirMode(dirname(stackEnvPath));
 
   let existingContent = "";

@@ -71,7 +71,7 @@ describe("updateSecretsEnv", () => {
     const result = readStackEnv(state.stackDir);
     expect(result).not.toContain("OPENAI_API_KEY=");
     expect(result).toContain("USER_SETTING=my-admin-value");
-    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-new-key\n");
+    expect(readSecret(state.homeDir, "openai_api_key")).toBe("sk-new-key\n");
   });
 
   test("leaves commented secret placeholders untouched and writes a secret file", () => {
@@ -86,7 +86,7 @@ describe("updateSecretsEnv", () => {
     const result = readStackEnv(state.stackDir);
     expect(result).not.toContain("OPENAI_API_KEY=sk-uncommented");
     expect(result).toContain("# OPENAI_API_KEY=");
-    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-uncommented\n");
+    expect(readSecret(state.homeDir, "openai_api_key")).toBe("sk-uncommented\n");
   });
 
   test("appends non-secret keys when not in stack.env", () => {
@@ -117,8 +117,8 @@ describe("updateSecretsEnv", () => {
     expect(result).not.toContain("CUSTOM_SECRET=new-secure-token");
     expect(result).not.toContain("OPENAI_API_KEY=sk-legit");
     expect(result).toContain("USER_SETTING=token");
-    expect(readSecret(state.stackDir, "custom_secret")).toBe("new-secure-token\n");
-    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-legit\n");
+    expect(readSecret(state.homeDir, "custom_secret")).toBe("new-secure-token\n");
+    expect(readSecret(state.homeDir, "openai_api_key")).toBe("sk-legit\n");
   });
 
   test("handles multiple updates at once", () => {
@@ -140,8 +140,8 @@ describe("updateSecretsEnv", () => {
     expect(result).toContain("# GROQ_API_KEY=");
     expect(result).toContain("OP_OWNER_NAME=alice");
     expect(result).toContain("USER_SETTING=token");
-    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-openai\n");
-    expect(readSecret(state.stackDir, "groq_api_key")).toBe("gsk-groq\n");
+    expect(readSecret(state.homeDir, "openai_api_key")).toBe("sk-openai\n");
+    expect(readSecret(state.homeDir, "groq_api_key")).toBe("gsk-groq\n");
   });
 
   test("preserves comments and blank lines", () => {
@@ -163,7 +163,7 @@ describe("updateSecretsEnv", () => {
     expect(result).toContain("# Edit this file to update user vault keys.");
     expect(result).toContain("USER_SETTING=token123");
     expect(result).not.toContain("OPENAI_API_KEY=sk-updated");
-    expect(readSecret(state.stackDir, "openai_api_key")).toBe("sk-updated\n");
+    expect(readSecret(state.homeDir, "openai_api_key")).toBe("sk-updated\n");
   });
 
   test("appends keys that don't exist in the file at all", () => {

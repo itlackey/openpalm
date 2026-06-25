@@ -45,7 +45,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     return { ok: false, errors, warnings };
   }
 
-  const runtimeEnv = readStackRuntimeEnv(state.stackDir);
+  const runtimeEnv = readStackRuntimeEnv(state.homeDir);
 
   for (const key of REQUIRED_SECRET_KEYS) {
     const value = runtimeEnv[key];

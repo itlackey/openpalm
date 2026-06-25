@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import { join } from 'node:path';
+import { secretsDir as secretsDirPath } from './home.js';
 
 const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
 const SECRETS_DIR_MODE = 0o700;
@@ -9,16 +10,14 @@ export function validateSecretName(name: string): void {
   if (!SECRET_NAME_RE.test(name)) throw new Error(`Invalid secret name: ${name}`);
 }
 
-function resolveHomeDirFromStackDir(stackDir: string): string {
-  const parentDir = dirname(stackDir);
-  if (basename(stackDir) === 'stack' && basename(parentDir) === 'config') {
-    return dirname(parentDir);
-  }
-  return stackDir;
-}
-
-export function resolveSecretsDir(stackDir: string): string {
-  const dir = join(resolveHomeDirFromStackDir(stackDir), 'knowledge', 'secrets');
+/**
+ * Resolve (and harden) the secrets dir for an OP_HOME. The location comes from
+ * the single source of truth (home.ts `secretsDir`) — secrets are USER-owned
+ * `knowledge/secrets`, derived from `homeDir` alone, never inferred from a
+ * sibling path. Ensures 0700 on the dir and 0600 on its files.
+ */
+export function resolveSecretsDir(homeDir: string): string {
+  const dir = secretsDirPath(homeDir);
   mkdirSync(dir, { recursive: true, mode: SECRETS_DIR_MODE });
   chmodSync(dir, SECRETS_DIR_MODE);
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -27,38 +26,38 @@ export function resolveSecretsDir(stackDir: string): string {
   return dir;
 }
 
-export function secretPath(stackDir: string, name: string): string {
+export function secretPath(homeDir: string, name: string): string {
   validateSecretName(name);
-  return join(resolveSecretsDir(stackDir), name);
+  return join(resolveSecretsDir(homeDir), name);
 }
 
-export function readSecret(stackDir: string, name: string): string | null {
-  const path = secretPath(stackDir, name);
+export function readSecret(homeDir: string, name: string): string | null {
+  const path = secretPath(homeDir, name);
   if (!existsSync(path)) return null;
   chmodSync(path, SECRET_FILE_MODE);
   return readFileSync(path, 'utf-8');
 }
 
-export function writeSecret(stackDir: string, name: string, value: string): void {
-  const path = secretPath(stackDir, name);
+export function writeSecret(homeDir: string, name: string, value: string): void {
+  const path = secretPath(homeDir, name);
   writeFileSync(path, value, { mode: SECRET_FILE_MODE });
   chmodSync(path, SECRET_FILE_MODE);
 }
 
-export function ensureSecret(stackDir: string, name: string, valueFactory: () => string): string {
-  const existing = readSecret(stackDir, name);
+export function ensureSecret(homeDir: string, name: string, valueFactory: () => string): string {
+  const existing = readSecret(homeDir, name);
   if (existing !== null) return existing;
   const value = valueFactory();
-  writeSecret(stackDir, name, value);
+  writeSecret(homeDir, name, value);
   return value;
 }
 
-export function removeSecret(stackDir: string, name: string): void {
-  rmSync(secretPath(stackDir, name), { force: true });
+export function removeSecret(homeDir: string, name: string): void {
+  rmSync(secretPath(homeDir, name), { force: true });
 }
 
-export function listSecretNames(stackDir: string): string[] {
-  const dir = resolveSecretsDir(stackDir);
+export function listSecretNames(homeDir: string): string[] {
+  const dir = resolveSecretsDir(homeDir);
   return readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && SECRET_NAME_RE.test(entry.name))
     .map((entry) => entry.name)
@@ -81,8 +80,8 @@ export function assertSafeSecretFilename(name: string): void {
 export type SecretFileInfo = { name: string; size: number };
 
 /** List every regular file in the secrets dir (incl. auth.json), with byte size. */
-export function listSecretFiles(stackDir: string): SecretFileInfo[] {
-  const dir = resolveSecretsDir(stackDir);
+export function listSecretFiles(homeDir: string): SecretFileInfo[] {
+  const dir = resolveSecretsDir(homeDir);
   return readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && SECRET_FILENAME_RE.test(entry.name) && !entry.name.includes('..'))
     .map((entry) => ({ name: entry.name, size: statSync(join(dir, entry.name)).size }))
@@ -90,24 +89,24 @@ export function listSecretFiles(stackDir: string): SecretFileInfo[] {
 }
 
 /** Read a secrets-dir file by basename (raw contents), or null if absent. */
-export function readSecretFile(stackDir: string, name: string): string | null {
+export function readSecretFile(homeDir: string, name: string): string | null {
   assertSafeSecretFilename(name);
-  const path = join(resolveSecretsDir(stackDir), name);
+  const path = join(resolveSecretsDir(homeDir), name);
   if (!existsSync(path)) return null;
   chmodSync(path, SECRET_FILE_MODE);
   return readFileSync(path, 'utf-8');
 }
 
 /** Write a secrets-dir file by basename (0600). */
-export function writeSecretFile(stackDir: string, name: string, value: string): void {
+export function writeSecretFile(homeDir: string, name: string, value: string): void {
   assertSafeSecretFilename(name);
-  const path = join(resolveSecretsDir(stackDir), name);
+  const path = join(resolveSecretsDir(homeDir), name);
   writeFileSync(path, value, { mode: SECRET_FILE_MODE });
   chmodSync(path, SECRET_FILE_MODE);
 }
 
 /** Delete a secrets-dir file by basename. */
-export function removeSecretFile(stackDir: string, name: string): void {
+export function removeSecretFile(homeDir: string, name: string): void {
   assertSafeSecretFilename(name);
-  rmSync(join(resolveSecretsDir(stackDir), name), { force: true });
+  rmSync(join(resolveSecretsDir(homeDir), name), { force: true });
 }

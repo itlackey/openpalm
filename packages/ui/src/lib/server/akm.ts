@@ -167,7 +167,7 @@ export async function detectEmbeddingSettings(state: ControlPlaneState): Promise
     .sort(detectionPriority);
 
   for (const provider of detected) {
-    const modelsResult = await fetchProviderModels(provider.provider, '', provider.url, state.stackDir);
+    const modelsResult = await fetchProviderModels(provider.provider, '', provider.url, state.homeDir);
     if (modelsResult.status !== 'ok') continue;
     const model = bestEmbeddingModel(provider.provider, modelsResult.models);
     if (!model) continue;

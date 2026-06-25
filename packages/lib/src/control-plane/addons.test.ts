@@ -93,15 +93,15 @@ describe('addon runtime state', () => {
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
 
-    const enabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'discord', true);
+    const enabled = setAddonEnabled(process.env.OP_HOME!, 'discord', true);
     expect(enabled.ok).toBe(true);
     expect(enabled.enabled).toBe(true);
     expect(enabled.changed).toBe(true);
     expect(enabled.services).toEqual(expect.arrayContaining(['guardian']));
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['discord']);
-    expect(readSecret(stackDir, 'portal_discord_secret')).toBeTruthy();
+    expect(readSecret(process.env.OP_HOME!, 'portal_discord_secret')).toBeTruthy();
 
-    const disabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'discord', false);
+    const disabled = setAddonEnabled(process.env.OP_HOME!, 'discord', false);
     expect(disabled.ok).toBe(true);
     expect(disabled.enabled).toBe(false);
     expect(disabled.changed).toBe(true);
@@ -124,9 +124,9 @@ describe('addon runtime state', () => {
     mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
     writeFileSync(stackEnv, '');
 
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
-    setAddonProfileSelection(stackDir, 'voice', 'addon.voice.cuda');
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBe('addon.voice.cuda');
+    expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBeNull();
+    setAddonProfileSelection(process.env.OP_HOME!, 'voice', 'addon.voice.cuda');
+    expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBe('addon.voice.cuda');
     expect(readFileSync(stackEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
   });
 });

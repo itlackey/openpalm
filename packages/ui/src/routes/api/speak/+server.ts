@@ -45,7 +45,7 @@ export const POST: RequestHandler = async (event) => {
   // (the "voice broken after install" bug). process.env stays a dev fallback.
   // OP_ prefix only — a leaked unprefixed shell TTS_* var must never override
   // the saved selection.
-  const stackEnv = readStackEnv(getState().stackDir);
+  const stackEnv = readStackEnv(getState().homeDir);
   // `||` not `??`: an empty value on disk must fall back to process.env, not
   // shadow it (see transcribe/+server.ts for the desktop-install rationale).
   const ttsBaseURL = (stackEnv.OP_TTS_BASE_URL || process.env.OP_TTS_BASE_URL || '').trim();

@@ -326,7 +326,7 @@ describe('cli main', () => {
     try {
       await main(['addon', 'enable', 'discord']);
       expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_ENABLED_ADDONS=discord');
-      expect(readSecret(join(base, 'config', 'stack'), 'portal_discord_secret')).toBeTruthy();
+      expect(readSecret(base, 'portal_discord_secret')).toBeTruthy();
 
       await main(['addon', 'disable', 'discord']);
       expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).not.toContain('discord');

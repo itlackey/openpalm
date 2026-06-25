@@ -80,7 +80,7 @@ async function spawnUiChild(
   // it. Don't short-circuit here, or the install wizard can never come up.
   const uiLoginPassword =
     process.env.OP_UI_LOGIN_PASSWORD
-      ?? readSecret(state.stackDir, 'op_ui_login_password')?.trimEnd()
+      ?? readSecret(state.homeDir, 'op_ui_login_password')?.trimEnd()
       ?? '';
 
   console.log('Starting UI server...');

@@ -289,8 +289,8 @@ export function portalSecretName(addon: string): string {
   return `portal_${addon.replace(/-/g, '_')}_secret`;
 }
 
-export function ensurePortalSecret(stackDir: string, addon: string): string {
-  return ensureSecret(stackDir, portalSecretName(addon), () => randomHex(16));
+export function ensurePortalSecret(homeDir: string, addon: string): string {
+  return ensureSecret(homeDir, portalSecretName(addon), () => randomHex(16));
 }
 
 // ── Volume Mount Targets ───────────────────────────────────────────────
@@ -415,7 +415,7 @@ export function writeRuntimeFiles(
   for (const addon of listEnabledAddonIds(state.homeDir)) {
     if (['api', 'chat', 'discord', 'slack'].includes(addon)) {
       for (const portal of ['api', 'chat', 'discord', 'slack']) {
-        ensurePortalSecret(state.stackDir, portal);
+        ensurePortalSecret(state.homeDir, portal);
       }
       break;
     }

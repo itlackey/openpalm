@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { fetchProviderModels, resolveStackDir } from "@openpalm/lib";
+import { fetchProviderModels, resolveOpenPalmHome } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -15,7 +15,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
   const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";
 
   try {
-    const result = await fetchProviderModels(provider, apiKey, baseUrl, resolveStackDir());
+    const result = await fetchProviderModels(provider, apiKey, baseUrl, resolveOpenPalmHome());
     if (result.status !== "ok") return json({ ok: false, ...result }, { status: 502 });
     return json({ ok: true, ...result });
   } catch (err) {

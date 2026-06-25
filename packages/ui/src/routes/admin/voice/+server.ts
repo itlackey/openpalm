@@ -138,7 +138,7 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const env = readStackEnv(state.stackDir);
+  const env = readStackEnv(state.homeDir);
 
   const ttsBaseURL = env['OP_TTS_BASE_URL'] ?? '';
   const sttBaseURL = env['OP_STT_BASE_URL'] ?? '';
@@ -146,7 +146,7 @@ export const GET: RequestHandler = async (event) => {
   const rawProfiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
   const profiles = await annotateAddonProfileAvailability(rawProfiles);
   const selectedProfile =
-    getAddonProfileSelection(state.stackDir, VOICE_ADDON) ?? resolveDefaultProfile(profiles);
+    getAddonProfileSelection(state.homeDir, VOICE_ADDON) ?? resolveDefaultProfile(profiles);
 
   const [sttReachable, ttsReachable] = await Promise.all([
     probeReachable(sttBaseURL),
@@ -632,10 +632,10 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
       );
     }
     activeProfile = requestedProfile;
-    setAddonProfileSelection(state.stackDir, VOICE_ADDON, activeProfile);
+    setAddonProfileSelection(state.homeDir, VOICE_ADDON, activeProfile);
   } else {
     activeProfile =
-      getAddonProfileSelection(state.stackDir, VOICE_ADDON) ??
+      getAddonProfileSelection(state.homeDir, VOICE_ADDON) ??
       resolveDefaultProfile(availableProfiles);
   }
 
@@ -647,7 +647,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
 
   if (!wasAlreadyEnabled) {
     try {
-      setAddonEnabled(state.homeDir, state.stackDir, VOICE_ADDON, true, state);
+      setAddonEnabled(state.homeDir, VOICE_ADDON, true, state);
       steps.push({ step: 'enable', ok: true });
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);

@@ -73,12 +73,12 @@ function loadProcessEnv(): void {
     // raw `vite dev` server has no such launcher, so when the env var is unset
     // read it from the same file secret here. No-op in production.
     if (!process.env.OP_UI_LOGIN_PASSWORD) {
-      const pw = readSecret(state.stackDir, "op_ui_login_password");
+      const pw = readSecret(state.homeDir, "op_ui_login_password");
       if (pw) process.env.OP_UI_LOGIN_PASSWORD = pw.trimEnd();
     }
     // Promote stack.env values into process.env so lazy reads (OpenCode URL,
     // assistant port) in server modules pick up the correct values.
-    const stackVars = readStackRuntimeEnv(state.stackDir);
+    const stackVars = readStackRuntimeEnv(state.homeDir);
     for (const [k, v] of Object.entries(stackVars)) {
       if (v && !process.env[k]) process.env[k] = v;
     }
