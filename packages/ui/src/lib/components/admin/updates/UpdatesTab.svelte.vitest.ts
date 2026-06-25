@@ -172,6 +172,79 @@ describe('UpdatesTab — automatic mode', () => {
     });
   });
 
+  test('treats a legacy v-prefixed current as up-to-date against a bare latest (0.12.41 cutover)', async () => {
+    // stack.env still carries v-prefixed pins (v0.11.0); the latest-resolver now
+    // returns bare (0.11.0). Same version must NOT register as an update.
+    vi.mocked(fetchVersions).mockResolvedValue({
+      versions: {
+        OP_ASSISTANT_VERSION: 'v0.12.22',
+        OP_GUARDIAN_VERSION: 'v0.12.22',
+        OP_PORTAL_VERSION: 'v0.12.22',
+        OP_VOICE_VERSION: 'v0.11.0',
+      },
+      platformVersion: '0.12.22',
+      autoUpdate: true,
+    });
+    vi.mocked(fetchLatestVersions).mockResolvedValue({
+      versions: {
+        OP_ASSISTANT_VERSION: '0.12.22',
+        OP_GUARDIAN_VERSION: '0.12.22',
+        OP_PORTAL_VERSION: '0.12.22',
+        OP_VOICE_VERSION: '0.11.0',
+        OP_UI_VERSION: '0.12.22',
+      },
+      errors: [],
+      fetchedAt: '2026-06-21T00:00:00Z',
+    });
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+
+    await vi.waitFor(async () => {
+      await expect.element(page.getByText(/everything is up to date/i)).toBeVisible();
+    });
+  });
+
+  test('excludes a v-vs-bare equal component from "update all" so it is never re-pinned to a missing bare image', async () => {
+    // The reported failure: voice (v0.11.0, image only published as v0.11.0-cpu)
+    // got swept into "update all", re-pinned to bare 0.11.0, and the stack pull
+    // aborted on the nonexistent openpalm/voice:0.11.0-cpu. Voice must stay out
+    // of the patch; the genuinely-behind images still update.
+    vi.mocked(fetchVersions).mockResolvedValue({
+      versions: {
+        OP_ASSISTANT_VERSION: 'v0.12.18',
+        OP_GUARDIAN_VERSION: 'v0.12.18',
+        OP_PORTAL_VERSION: 'v0.12.18',
+        OP_VOICE_VERSION: 'v0.11.0',
+      },
+      platformVersion: '0.12.22',
+      autoUpdate: true,
+    });
+    vi.mocked(fetchLatestVersions).mockResolvedValue({
+      versions: {
+        OP_ASSISTANT_VERSION: '0.12.22',
+        OP_GUARDIAN_VERSION: '0.12.22',
+        OP_PORTAL_VERSION: '0.12.22',
+        OP_VOICE_VERSION: '0.11.0',
+        OP_UI_VERSION: '0.12.22',
+      },
+      errors: [],
+      fetchedAt: '2026-06-21T00:00:00Z',
+    });
+    render(UpdatesTab, { props: {} });
+    await page.getByRole('button', { name: /check for updates/i }).click();
+
+    const updateBtn = page.getByRole('button', { name: /update \d+ component/i });
+    await expect.element(updateBtn).toBeVisible();
+    await updateBtn.click();
+
+    await vi.waitFor(() => {
+      expect(patchVersions).toHaveBeenCalledTimes(1);
+    });
+    const patchArg = vi.mocked(patchVersions).mock.calls[0][0];
+    expect(patchArg['OP_VOICE_VERSION']).toBeUndefined();
+    expect(patchArg['OP_ASSISTANT_VERSION']).toBe('0.12.22');
+  });
+
   test('shows registry error messages when some checks fail', async () => {
     vi.mocked(fetchLatestVersions).mockResolvedValue({
       versions: { ...ALL_VERSIONS, OP_ASSISTANT_VERSION: null },
