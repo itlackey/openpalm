@@ -3,7 +3,6 @@ import { chmod, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { defineCommand } from 'citty';
-import { normalizeVersion } from '@openpalm/lib';
 
 const REPO = 'itlackey/openpalm';
 
@@ -129,7 +128,10 @@ export default defineCommand({
       throw new Error('Self-update requires the compiled OpenPalm binary. Reinstall with setup.sh --cli-only instead.');
     }
 
-    const version = args.version ? normalizeVersion(args.version) : await resolveLatestVersion();
+    // Honor an explicit --version verbatim (trim only) so a legacy `v`-tagged
+    // release that predates the 0.12.41 bare-tag cutover stays pinnable — the
+    // GitHub download URL must match the release tag exactly.
+    const version = args.version ? args.version.trim() : await resolveLatestVersion();
     const artifact = resolveCliArtifactName();
     const executablePath = process.execPath;
     const tempBinary = await downloadVerifiedBinary(version, artifact);

@@ -49,8 +49,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   are written bare. Every read path still tolerates a legacy leading `v`
   (`normalizeVersion`, the Docker Hub resolver, the CLI self-update redirect,
   `groupReleasesByUnit`), so images and releases published before the cutover
-  keep working. Clean break: a stack pinned to a pre-cutover version by bare tag
-  must rely on `:latest` or pin the legacy `vX.Y.Z`. Removed the now-unused
+  keep working. An explicit `--version` pin (CLI install / self-update) is honored
+  **verbatim** — bare stays bare, and a legacy `vX.Y.Z` is preserved (not stripped)
+  so a pre-cutover `v`-tagged image/release stays pinnable. The platform's own
+  default tag is `PLATFORM_VERSION`, always bare. Removed the now-unused
   `formatForDocker` helper.
 - The `@openpalm/guardian` `AuthStrategy` seam is now async-capable: a strategy's
   `authenticate()` may return a `Promise` (enabling JWKS/OIDC bearer-token
