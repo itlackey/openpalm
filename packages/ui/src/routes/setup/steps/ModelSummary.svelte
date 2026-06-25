@@ -81,11 +81,8 @@
 {/if}
 
 {#if children}
-  {@const drawerBody = children}
   <Drawer open={drawerOpen} title="Choose chat model" onClose={() => { drawerOpen = false; }}>
-    {#snippet children()}
-      {@render drawerBody()}
-    {/snippet}
+    {@render children()}
   </Drawer>
 {/if}
 

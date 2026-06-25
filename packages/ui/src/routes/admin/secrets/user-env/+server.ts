@@ -74,7 +74,11 @@ export const POST: RequestHandler = (event) =>
     // env values are single-line; a newline or control char would break the
     // line-oriented .env format that both the entrypoint `source` and dotenv
     // read back.
-    if (/[\x00-\x08\x0a-\x1f\x7f]/.test(value)) {
+    const hasControlChar = [...value].some((ch) => {
+      const code = ch.charCodeAt(0);
+      return (code >= 0x00 && code <= 0x08) || (code >= 0x0a && code <= 0x1f) || code === 0x7f;
+    });
+    if (hasControlChar) {
       return errorResponse(400, 'invalid_value', 'value must not contain newlines or control characters', {}, requestId);
     }
 

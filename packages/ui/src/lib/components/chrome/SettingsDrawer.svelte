@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ThemePreference } from '$lib/theme-state.svelte.js';
   import { afterNavigate } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import Drawer from '$lib/components/common/Drawer.svelte';
   import IconButton from '$lib/components/common/IconButton.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
@@ -54,11 +55,11 @@
 
     <nav class="settings-links" aria-label="Settings links">
       {#if showManageAssistant}
-        <a class="settings-link" href="/admin" onclick={() => (open = false)}>
+        <a class="settings-link" href={resolve('/admin')} onclick={() => (open = false)}>
           Manage this assistant...
         </a>
       {/if}
-      <a class="settings-link" href="/admin/endpoints" onclick={() => (open = false)}>
+      <a class="settings-link" href={resolve('/admin/endpoints')} onclick={() => (open = false)}>
         Manage assistant connections...
       </a>
     </nav>

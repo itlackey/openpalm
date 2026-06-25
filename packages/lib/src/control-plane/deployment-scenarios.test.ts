@@ -28,9 +28,8 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureMigrated, CURRENT_LAYOUT_VERSION } from "./migrations.js";
 import { upsertEnvValue } from "./env.js";
-import { refreshCoreAssetsFromSource } from "./core-assets.js";
+import { overwriteSystemTree } from "./core-assets.js";
 import { buildManagedServices } from "./lifecycle.js";
 import { isProjectOurs } from "./docker.js";
 import { classifyLocalInstall, deriveLaunchStatus } from "./launch-status.js";
@@ -127,23 +126,6 @@ afterEach(() => {
   else process.env.OP_SKIP_COMPOSE_PREFLIGHT = prevSkip;
 });
 
-// ── Scenario 1: old-version OP_HOME (0.10 layout) → auto-migrated + reported ──
-
-describe("scenario: old-version OP_HOME (0.10 → current)", () => {
-  it("auto-migrates the legacy vault layout, backs up, and reports what changed", () => {
-    active = buildOpHome({ legacy010: true });
-    const report = ensureMigrated();
-
-    expect(report.migrated).toBe(true);
-    expect(report.from).toBe(0);
-    expect(report.to).toBe(CURRENT_LAYOUT_VERSION);
-    expect(report.backupDir).toBeTruthy(); // a safety backup was taken first
-    // The user data survived into the new layout.
-    const env = readFileSync(join(active.homeDir, "knowledge", "env", "user.env"), "utf-8");
-    expect(env).toContain("MY_PREF=keepme");
-  });
-});
-
 // ── Scenario 2: stale per-unit version pin → reconciled (no longer deploys old) ──
 
 describe("scenario: stale OP_ASSISTANT_VERSION pin", () => {
@@ -161,27 +143,28 @@ describe("scenario: stale OP_ASSISTANT_VERSION pin", () => {
 describe("scenario: stale managed compose asset in an existing OP_HOME", () => {
   it("overwrites the stale core.compose.yml from source, preserving user custom.compose.yml", () => {
     active = buildOpHome({ setupComplete: true, staleCoreCompose: "services: {}  # 0.10 stale\n" });
-    // A user-owned overlay must NOT be touched.
-    writeFileSync(join(active.stackDir, "custom.compose.yml"), "services:\n  mine: {}\n");
+    // A user-owned overlay lives in the user tree (config/stack), NOT the managed
+    // system/ tree — overwriteSystemTree must never touch it.
+    const userOverlay = join(active.homeDir, "config", "stack", "custom.compose.yml");
+    mkdirSync(join(active.homeDir, "config", "stack"), { recursive: true });
+    writeFileSync(userOverlay, "services:\n  mine: {}\n");
 
-    // Build a minimal source .openpalm tree with the CURRENT managed assets.
+    // Build a minimal source skeleton with the CURRENT managed assets under system/.
     const srcOpenpalm = mkdtempSync(join(tmpdir(), "op-src-"));
     mkdirSync(join(srcOpenpalm, "system", "stack"), { recursive: true });
-    mkdirSync(join(srcOpenpalm, "config", "assistant"), { recursive: true });
+    mkdirSync(join(srcOpenpalm, "system", "assistant"), { recursive: true });
     writeFileSync(join(srcOpenpalm, "system", "stack", "core.compose.yml"), "services:\n  assistant: {}  # current\n");
     writeFileSync(join(srcOpenpalm, "system", "stack", "services.compose.yml"), "services: {}\n");
     writeFileSync(join(srcOpenpalm, "system", "stack", "portals.compose.yml"), "services: {}\n");
-    // Seeded assets (written only if missing in target — target already has custom.compose.yml so that is skipped)
-    writeFileSync(join(srcOpenpalm, "system", "stack", "custom.compose.yml"), "services: {}\n");
-    writeFileSync(join(srcOpenpalm, "config", "assistant", "opencode.jsonc"), "{}\n");
+    writeFileSync(join(srcOpenpalm, "system", "assistant", "opencode.jsonc"), "{}\n");
 
     try {
-      const { updated: refreshed } = refreshCoreAssetsFromSource(srcOpenpalm, active.homeDir);
+      const { updated: refreshed } = overwriteSystemTree(srcOpenpalm, active.homeDir);
       expect(refreshed).toContain("system/stack/core.compose.yml");
       expect(readFileSync(join(active.stackDir, "core.compose.yml"), "utf-8")).toContain("# current");
       expect(readFileSync(join(active.stackDir, "core.compose.yml"), "utf-8")).not.toContain("stale");
-      // User overlay untouched.
-      expect(readFileSync(join(active.stackDir, "custom.compose.yml"), "utf-8")).toContain("mine");
+      // User overlay in config/stack untouched (overwriteSystemTree is system-only).
+      expect(readFileSync(userOverlay, "utf-8")).toContain("mine");
     } finally {
       rmSync(srcOpenpalm, { recursive: true, force: true });
     }

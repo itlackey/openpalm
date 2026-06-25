@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { resolve } from '$app/paths';
   import {
     PROVIDERS, LOCAL_PROVIDERS, PORTALS, OLLAMA_DEFAULT_CHAT_MODEL,
   } from '$lib/client/constants.js';
@@ -11,7 +12,6 @@
   import type { VoiceAddonProfile } from '$lib/api.js';
   import type { SetupRecommendation } from '@openpalm/lib';
   import { addonProfileId } from '@openpalm/lib/provider-constants';
-  import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
   import SystemCheckStep from './steps/SystemCheckStep.svelte';
   import Screen1ModelsStep from './steps/Screen1ModelsStep.svelte';
   import Screen2ExtrasStep from './steps/Screen2ExtrasStep.svelte';
@@ -48,15 +48,11 @@
   // to stack.env as OP_UI_LOGIN_PASSWORD.
   let uiLoginPassword = $state('');
   let step0Error = $state('');
-  // Tracks whether the "Use recommended defaults" detection has settled
-  let detectionReady = $state(false);
   // True while auto mode is performing a host provider import before jumping to Review
   let autoModeImporting = $state(false);
   // Enable Voice toggle on the Welcome step (auto-mode only)
   // enableVoice is DERIVED from the voice engines (declared after voiceTts/Stt
   // below) — it is not its own state. See the $derived near the voice engines.
-  // Include Ollama in the stack toggle on the Welcome step
-  let includeOllama = $state(false);
   // Set when System Check detects a GPU — used to auto-select CUDA voice profile
   let gpuDetected = $state(false);
 
@@ -69,16 +65,12 @@
     providerState['ollama']?.ollamaMode === 'running' ||
       detectedHostProviders.some((p) => p.provider === 'ollama' || p.provider === 'lmstudio'),
   );
-  let expandedProvider = $state<string | null>(null);
   let detectedProviders = $state<DetectedProvider[]>([]);
-  let detecting = $state(false);
   let opencodeAvailable = $state(false);
   let opencodeProviders = $state<OpenCodeProvider[]>([]);
   let opencodeAuth = $state<Record<string, AuthMethod[]>>({});
-  let ocFilterQuery = $state('');
   // Host import detection
   let hostProviderCount = $state(0);
-  let hostStatusWarning = $state<string | null>(null);
   let allowEmptyInstall = $state(false);
   // Setup recommendation (from /api/setup/recommend) — drives auto-configuration
   // of providers/Ollama based on detected cloud providers, host providers + GPU.
@@ -89,9 +81,6 @@
   let detectedGpuVramMb = $state(0);
   let detectedGpuVendor = $state('');
   let detectedGpuName = $state('');
-  let detectedCloudProviders = $state<string[]>([]);
-  let voiceEngineUnknownTts = $state(false);
-  let voiceEngineUnknownStt = $state(false);
   /** Generation counter per provider — discard stale verify results */
   const verifyGeneration: Record<string, number> = {};
   /** AbortControllers for in-flight OAuth long-poll requests */
@@ -99,8 +88,6 @@
 
   // ── Step 2: Models ────────────────────────────────────────────────────────
   let modelSelection = $state<{ llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection }>({});
-  let step2Error = $state('');
-  let step2EmbDimWarning = $state('');
 
   // ── Step 3: Voice ─────────────────────────────────────────────────────────
   // VoiceEngineValue holds engine id + per-engine settings (model/voice/language).
@@ -128,16 +115,10 @@
     slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
   });
   let ollamaEnabled = $state(false);
-  // Guard so the Options-step auto-sync from ollamaMode runs at most ONCE and
-  // never clobbers a restored (rerun) value or a user's explicit toggle when
-  // they navigate back and forth.
-  let ollamaEnabledInitialized = $state(false);
   let ollamaProfiles = $state<VoiceAddonProfile[]>([]);
   let selectedOllamaProfile = $state('');
   let imageTag = $state('');
   let hostAkmEnabled = $state(false);
-  let hostAkmAvailable = $state(false);
-  let step4Error = $state('');
 
   // ── Step 5: Review + Install ──────────────────────────────────────────────
   let installError = $state('');
@@ -162,7 +143,6 @@
   let deployError = $state<string | null>(null);
   let deployTimer: ReturnType<typeof setInterval> | null = null;
   let deployPollErrors = $state(0);
-  let lastDeployData = $state<{ service: string; status: string; label?: string }[] | null>(null);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const verifiedCount = $derived.by(() => {
@@ -212,17 +192,7 @@
     return PROVIDERS.filter((p) => providerState[p.id]?.verified);
   });
 
-  const hasOllamaVerified = $derived(
-    PROVIDERS.some((p) => p.id === 'ollama' && providerState[p.id]?.verified)
-  );
-
   // ── Single source of truth for "can the user finish setup?" ──────────────
-  // ONE predicate drives the Providers Next button, the Models Next button,
-  // AND the Review/Install gate. The wizard must never simultaneously offer
-  // "continue without a provider" and error "a provider is required".
-  //   - A verified provider + a chosen chat model → ready.
-  //   - OR the user explicitly opted into an empty (no-AI) install.
-  const hasVerifiedProvider = $derived(verifiedProviders.length > 0);
   // Once a provider is verified you must pick a chat model; the empty-install
   // opt-in only governs the no-provider case. Expressed as a derived predicate
   // (not a state-mutating $effect that flipped `allowEmptyInstall` off on every
@@ -234,10 +204,6 @@
   const canComplete = $derived(
     !!modelSelection.llm?.model || allowEmptyInstall,
   );
-
-  // Chat-model options across all verified providers — drives the model picker
-  // on the Connect step so the user can choose which model to use.
-  const llmModelOptions = $derived(buildModelOptions('llm', verifiedProviders, providerState));
 
   const hasOpenAI = $derived(
     PROVIDERS.some((p) => p.id === 'openai' && providerState[p.id]?.verified)
@@ -257,17 +223,6 @@
   const persistedVoiceTts = $derived(resolveVoiceSide(voiceTts, enableVoice, ''));
   const persistedVoiceStt = $derived(resolveVoiceSide(voiceStt, enableVoice, ''));
 
-  const selectedVoiceProfileLabel = $derived.by(() => {
-    if (!selectedVoiceProfile) return '';
-    const profile = voiceProfiles.find((p) => p.id === selectedVoiceProfile);
-    return profile?.label ?? profile?.id ?? selectedVoiceProfile;
-  });
-
-  const selectedOllamaProfileLabel = $derived.by(() => {
-    if (!selectedOllamaProfile) return '';
-    const profile = ollamaProfiles.find((p) => p.id === selectedOllamaProfile);
-    return profile?.label ?? profile?.id ?? selectedOllamaProfile;
-  });
 
   // Build the install payload for /api/setup/complete
   const payload = $derived.by(() => {
@@ -478,18 +433,6 @@
     providerState = state;
   }
 
-  // ── Validation ────────────────────────────────────────────────────────────
-
-  function validateStep0(): boolean {
-    // Password is always generated on mount — this is just a safety check.
-    if (uiLoginPassword.trim().length < 8) {
-      step0Error = 'UI login password must be at least 8 characters.';
-      return false;
-    }
-    step0Error = '';
-    return true;
-  }
-
   function enableRecommendedOllama(variant?: 'cuda' | 'rocm' | 'cpu'): void {
     ollamaEnabled = true;
     const st = providerState['ollama'];
@@ -540,43 +483,6 @@
     }
   }
 
-  // True once the recommendation fetch (display-only) has settled, regardless of
-  // outcome — drives the Welcome step's "Checking your system…" neutral state.
-  let recommendationFetched = $state(false);
-
-  // Fetch the GPU/provider-aware setup recommendation for DISPLAY only (no apply).
-  // Called as soon as Get Started is shown so the operator can see what was
-  // detected before committing. Caches into `recommendation` so the later
-  // apply path reuses it instead of re-fetching. Non-critical — on any failure
-  // we leave `recommendation` null and the Welcome step falls back to generic copy.
-  async function fetchRecommendation(): Promise<void> {
-    if (recommendationFetched || recommendation) return;
-    try {
-      const res = await fetch('/api/setup/recommend');
-      if (res.ok) {
-        const data = await res.json() as {
-          ok?: boolean;
-          recommendation?: SetupRecommendation;
-          hostProviders?: { provider: string; url: string }[];
-          gpu?: { vramMb?: number; vendor?: string; name?: string } | null;
-          cloudProviders?: string[];
-        };
-        if (data.ok && data.recommendation) recommendation = data.recommendation;
-        if (data.ok && Array.isArray(data.hostProviders)) detectedHostProviders = data.hostProviders;
-        if (data.ok && data.gpu) {
-          detectedGpuVramMb = data.gpu.vramMb ?? 0;
-          detectedGpuVendor = data.gpu.vendor ?? '';
-          detectedGpuName = data.gpu.name ?? '';
-        }
-        if (data.ok && Array.isArray(data.cloudProviders)) detectedCloudProviders = data.cloudProviders;
-      }
-    } catch {
-      // non-critical — user can configure manually
-    } finally {
-      recommendationFetched = true;
-    }
-  }
-
   // Fetch the GPU/provider-aware setup recommendation once and apply it.
   // Supersedes the ad-hoc `gpuDetected ? 'cuda' : 'cpu'` guesses for the
   // Ollama path. Safe to call multiple times — applies only once. Reuses a
@@ -605,7 +511,6 @@
           detectedGpuVendor = data.gpu.vendor ?? '';
           detectedGpuName = data.gpu.name ?? '';
         }
-        if (Array.isArray(data.cloudProviders)) detectedCloudProviders = data.cloudProviders;
       } catch {
         return; // non-critical — user can configure manually
       }
@@ -642,39 +547,6 @@
     }
   }
 
-  // Apply imported prefs + auto-select, then advance to Screen 1.
-  // In the new 3-screen flow everything is on Screen 1 (step 1).
-  function applyDefaultsAndRoute(): void {
-    applyImportedModelPreferences();
-    autoSelectModels();
-    goToStep(1);
-  }
-
-  async function handleUseDefaults(): Promise<void> {
-    if (verifiedProviders.length >= 1) {
-      // Fast path: providers already verified by background detection (cloud or
-      // host). Don't force in-stack Ollama — those providers cover the assistant.
-      applyDefaultsAndRoute();
-      return;
-    }
-
-    // No verified provider yet — consult the GPU/provider-aware recommendation
-    // to decide what "defaults" means.
-    autoModeImporting = true;
-    await fetchAndApplyRecommendation();
-    autoModeImporting = false;
-
-    if (recommendation?.action === 'connect-manually') {
-      // No provider and no capable GPU — keep user on Screen 1 with alert.
-      goToStep(1);
-      return;
-    }
-
-    // use-host-providers (handled by fetchAndApplyRecommendation -> handleHostImport,
-    // which already imports + advances) and enable-ollama both leave us with a
-    // usable provider. use-cloud is unreachable here (verifiedProviders === 0).
-    applyDefaultsAndRoute();
-  }
 
   function handleEnableVoiceChange(v: boolean): void {
     // enableVoice is derived from the engines below — toggling drives the
@@ -696,65 +568,7 @@
     }
   }
 
-  function handleOptionsOllamaChange(v: boolean): void {
-    // User took explicit control — never auto-sync over this choice afterward.
-    ollamaEnabledInitialized = true;
-    if (v) {
-      enableRecommendedOllama();
-    } else {
-      ollamaEnabled = false;
-      const st = providerState['ollama'];
-      if (st && st.ollamaMode !== 'running') {
-        st.selected = false;
-        st.verified = false;
-      }
-    }
-  }
-
-  function validateStep2(): boolean {
-    // Single rule, identical to canComplete: either a verified provider with a
-    // chosen chat model, or an explicit empty-install opt-in. Empty-install is
-    // chosen on the Providers step; if it's set we never block here.
-    if (allowEmptyInstall) { step2Error = ''; return true; }
-    if (verifiedProviders.length === 0) {
-      step2Error = 'Connect a provider on the previous step to continue.';
-      return false;
-    }
-    if (!modelSelection.llm?.model) {
-      step2Error = 'Select a chat model to continue.';
-      return false;
-    }
-    step2Error = '';
-    return true;
-  }
-
-  function validateStep4(): boolean {
-    const errors: string[] = [];
-    for (const ch of PORTALS) {
-      if (!ch.credentials) continue;
-      const sel = portalSelection[ch.id];
-      if (typeof sel !== 'object' || sel === null) continue;
-      if (!sel.enabled) continue;
-      for (const cred of ch.credentials) {
-        if (cred.required && !String(sel[cred.key] ?? '').trim()) {
-          errors.push(ch.name + ': ' + cred.label + ' is required.');
-        }
-      }
-    }
-    if (errors.length > 0) {
-      step4Error = errors.join(' ');
-      return false;
-    }
-    step4Error = '';
-    return true;
-  }
-
   // ── Navigation ────────────────────────────────────────────────────────────
-
-  function canNavigateTo(step: number): boolean {
-    if (step > maxVisitedStep) return false;
-    return true;
-  }
 
   function goToStep(n: number): void {
     if (n < 0 || n > 3) return;
@@ -935,7 +749,6 @@
   }
 
   async function detectProviders(): Promise<void> {
-    detecting = true;
     try {
       const res = await fetch('/api/setup/detect-providers');
       if (res.ok) {
@@ -959,7 +772,6 @@
     } catch {
       detectedProviders = [];
     }
-    detecting = false;
   }
 
   async function apiFetchModels(provider: string, baseUrl: string, apiKey: string): Promise<{ models: string[] }> {
@@ -1016,41 +828,6 @@
   }
 
   // ── OpenCode auth ─────────────────────────────────────────────────────────
-
-  async function connectOpenCodeApiKey(providerId: string): Promise<void> {
-    const st = providerState[providerId];
-    if (!st?.apiKey) return;
-
-    st.verifying = true;
-    st.error = false;
-
-    try {
-      // Step 1: store the key in OpenCode auth
-      const res = await fetch('/api/setup/opencode/auth/' + encodeURIComponent(providerId), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'api', key: st.apiKey }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { message?: string }).message ?? ('Failed to connect (HTTP ' + res.status + ')'));
-      }
-
-      // Step 2: validate by fetching models — proves the key actually works.
-      // verifying stays true until verifyProvider clears it.
-      // verifyProvider sets verified=true on success, error=true on failure.
-      await verifyProvider(providerId);
-      // verifyProvider sets st.verifying = false itself; return here so the
-      // finally below does not double-clear it.
-      return;
-    } catch (e) {
-      st.verified = false;
-      st.error = true;
-      st.errorMessage = e instanceof Error ? e.message : 'Connection failed';
-    }
-
-    st.verifying = false;
-  }
 
   async function startOpenCodeOAuth(providerId: string, methodIndex: number): Promise<void> {
     const st = providerState[providerId];
@@ -1218,12 +995,6 @@
       const data = await res.json();
       deployPollErrors = 0;
 
-      if (data.deployStatus && data.deployStatus.length > 0) {
-        lastDeployData = data.deployStatus.map((s: { service: string; status: string; label?: string }) => ({
-          service: s.service, status: s.status, label: s.label,
-        }));
-      }
-
       deployData = data;
 
       if (data.deployError) {
@@ -1264,70 +1035,6 @@
 
   // ── Event handlers for child components ──────────────────────────────────
 
-  function handleToggleFallback(id: string): void {
-    const st = providerState[id];
-    if (!st) return;
-    if (st.selected) {
-      expandedProvider = expandedProvider === id ? null : id;
-    } else {
-      st.selected = true;
-      expandedProvider = id;
-      const detected = detectedProviders.find((d) => d.provider === id && d.available);
-      if (detected) st.baseUrl = detected.url;
-    }
-  }
-
-  function handleToggleOpenCode(id: string): void {
-    expandedProvider = expandedProvider === id ? null : id;
-  }
-
-  function handleDeselect(id: string): void {
-    const st = providerState[id];
-    if (!st) return;
-    st.selected = false;
-    st.verified = false;
-    st.verifying = false;
-    st.error = false;
-    st.apiKey = '';
-    st.models = [];
-    if (id === 'ollama') st.ollamaMode = null;
-    if (expandedProvider === id) expandedProvider = null;
-  }
-
-  function handleMarkReady(id: string): void {
-    const st = providerState[id];
-    if (st) { st.verified = true; st.error = false; }
-  }
-
-  function handleVerify(id: string): void {
-    if (opencodeAvailable) {
-      const st = providerState[id];
-      // Local/keyless providers: register empty key then fetch models to verify connectivity
-      if (st && !st.apiKey) {
-        void verifyProvider(id);
-      } else {
-        void connectOpenCodeApiKey(id);
-      }
-    } else {
-      void verifyProvider(id);
-    }
-  }
-
-  function handleApiKey(id: string, key: string): void {
-    const st = providerState[id];
-    if (st) st.apiKey = key;
-  }
-
-  function handleBaseUrl(id: string, url: string): void {
-    const st = providerState[id];
-    if (st) st.baseUrl = url;
-  }
-
-  function handleOllamaMode(mode: 'running' | 'instack'): void {
-    const st = providerState.ollama;
-    if (st) st.ollamaMode = mode;
-  }
-
   function handlePortalToggle(id: string): void {
     const sel = portalSelection[id];
     if (typeof sel === 'object' && sel !== null) {
@@ -1344,26 +1051,12 @@
     }
   }
 
-  function handleSelectModel(role: string, connId: string, modelId: string, dims: number): void {
-    modelSelection[role as 'llm' | 'embedding' | 'small'] = { connId, model: modelId, dims };
-    if (role === 'embedding' && (dims <= 0 || dims === undefined)) {
-      step2EmbDimWarning = 'Unknown embedding model dimensions — set manually in akm config after install.';
-    } else if (role === 'embedding') {
-      step2EmbDimWarning = '';
-    }
-  }
-
-  function handleSelectNone(role: string): void {
-    delete modelSelection[role as 'llm' | 'embedding' | 'small'];
-  }
-
   async function handleDeployRetry(): Promise<void> {
     installing = false;
     deployError = null;
     deployDone = false;
     deployHasWarnings = false;
     deployData = {};
-    lastDeployData = null;
     deployPollErrors = 0;
     const res = await fetch('/api/setup/retry-deploy', { method: 'POST' });
     const payload = await res.json().catch(() => ({}));
@@ -1382,7 +1075,6 @@
     deployHasWarnings = false;
     deployData = {};
     deployPollErrors = 0;
-    lastDeployData = null;
     showDeploy = false;
     // Return to Review step (index 3)
     currentStep = 3;
@@ -1402,12 +1094,10 @@
         hostProviderCount = Math.max(data.providerCount ?? 0, data.credentialCount ?? 0);
         if (data.imageTag && !imageTag) imageTag = data.imageTag;
         if (typeof data.hostAkmAvailable === 'boolean') {
-          hostAkmAvailable = data.hostAkmAvailable;
           // Owner Decision 3: auto-default hostAkmEnabled = hostAkmAvailable.
           // No wizard UI for this — it's set automatically from detection.
           if (!isRerun) hostAkmEnabled = data.hostAkmAvailable;
         }
-        hostStatusWarning = data.warning ?? null;
         // Eagerly store host model preferences so applyImportedModelPreferences()
         // works even on the fast path (providers already verified, no import needed).
         if (data.modelPreferences?.model) importedLlmModel = data.modelPreferences.model;
@@ -1443,7 +1133,6 @@
 
   async function handleHostImport(): Promise<void> {
     hostImporting = true;
-    hostStatusWarning = null;
     try {
       // Use setup-namespace endpoint — no admin auth needed during setup
       const res = await fetch('/api/setup/import-host', { method: 'POST' });
@@ -1458,9 +1147,6 @@
         // Hard failure (could not copy host config). Keep the user on the
         // Providers step with a clear message instead of silently doing nothing.
         hostImporting = false;
-        hostStatusWarning = data?.error
-          ? `Couldn't import host providers: ${data.error}`
-          : "Couldn't import providers from host OpenCode. Configure providers manually below.";
         return;
       }
 
@@ -1503,9 +1189,8 @@
       // After host import, ensure we stay on Screen 1 (index 1).
       // goToStep(1) is a no-op if already there.
       if (!isRerun) goToStep(1);
-    } catch (e) {
+    } catch {
       hostImporting = false;
-      hostStatusWarning = `Couldn't import providers from host OpenCode: ${e instanceof Error ? e.message : 'network error'}. Configure providers manually below.`;
     }
   }
 
@@ -1563,7 +1248,6 @@
               voiceTts = { ...storedTts, engine: storedTts.engine };
             } else {
               voiceTts = { engine: '' };
-              voiceEngineUnknownTts = true;
             }
           }
           if (data.voice?.stt) {
@@ -1572,7 +1256,6 @@
               voiceStt = { ...storedStt, engine: storedStt.engine };
             } else {
               voiceStt = { engine: '' };
-              voiceEngineUnknownStt = true;
             }
           }
 
@@ -1592,9 +1275,6 @@
           // Enabled addons + portal credentials
           const enabled: string[] = Array.isArray(data.enabledAddons) ? data.enabledAddons : [];
           if (enabled.includes('ollama')) ollamaEnabled = true;
-          // The restored value is authoritative — don't let the Options-step
-          // auto-sync overwrite it (#16).
-          ollamaEnabledInitialized = true;
           if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
             selectedOllamaProfile = data.ollama.selectedProfile;
           }
@@ -1635,14 +1315,9 @@
     void loadVoiceProfiles();
     void loadOllamaProfiles();
 
-    // U3: Ensure detectionReady is set after at most 10 s so the
-    // "Use recommended defaults" button is never permanently disabled.
-    const detectionTimeout = setTimeout(() => { detectionReady = true; }, 10_000);
-
     checkOpenCodeAndInit()
       .then(() => detectProviders())
-      .catch((e) => { console.error('[setup] provider detection failed:', e); })
-      .finally(() => { clearTimeout(detectionTimeout); detectionReady = true; });
+      .catch((e) => { console.error('[setup] provider detection failed:', e); });
   });
 </script>
 
@@ -1655,7 +1330,7 @@
   {#if isRerun}
     <div class="rerun-banner">
       <span>Updating existing installation</span>
-      <a href="/" class="rerun-back-link">← Back to Admin</a>
+      <a href={resolve('/')} class="rerun-back-link">← Back to Admin</a>
     </div>
   {/if}
 
@@ -1667,7 +1342,7 @@
           {isRerun}
           onpass={() => { systemCheckPassed = true; goToStep(1); }}
           onnext={() => { systemCheckPassed = true; goToStep(1); }}
-          ongpudetected={(_gpu) => {
+          ongpudetected={() => {
             gpuDetected = true;
             if (voiceProfiles.length > 0 && selectedVoiceProfile !== addonProfileId('voice', 'cuda')) {
               const cuda = voiceProfiles.find((p) => p.id === addonProfileId('voice', 'cuda') && p.available !== false);
@@ -1703,7 +1378,7 @@
           { n: 1, label: 'Connect' },
           { n: 2, label: 'Add-ons' },
           { n: 3, label: 'Finish' },
-        ] as tick}
+        ] as tick (tick.n)}
           <div
             class="wiz-tick"
             class:wiz-tick--active={currentStep === tick.n}
@@ -1760,12 +1435,9 @@
           {#if currentStep === 1}
             <section class="step-content" id="step-1">
               <Screen1ModelsStep
-                {modelMode}
                 detectionLoading={autoModeImporting}
                 systemCheckError={systemCheckPassed ? '' : (step0Error || '')}
                 hostProviders={detectedHostProviders}
-                credentialCount={hostProviderCount}
-                cloudProviders={detectedCloudProviders}
                 {opencodeProviders}
                 {opencodeAuth}
                 {providerState}
@@ -1776,9 +1448,7 @@
                 {allowEmptyInstall}
                 llmModel={modelSelection.llm?.model ?? ''}
                 llmProvider={modelSelection.llm?.connId ?? ''}
-                {llmModelOptions}
                 {detectedCloudConn}
-                onselectmodel={(connId, model, dims) => handleSelectModel('llm', connId, model, dims)}
                 gpuVramMb={detectedGpuVramMb}
                 gpuVendor={detectedGpuVendor}
                 gpuName={detectedGpuName}
@@ -1791,13 +1461,9 @@
                   const st = providerState[id];
                   if (st) { st.oauthPolling = false; st.verifying = false; }
                 }}
-                onbaseurl={handleBaseUrl}
-                onapikey={handleApiKey}
-                onverify={handleVerify}
                 onrecheck={() => void fetchAndApplyRecommendation()}
                 onsystemcheckretry={() => { goToStep(0); }}
                 onallowemptyinstallchange={(v) => { allowEmptyInstall = v; }}
-                onnext={() => goToStep(2)}
               />
             </section>
 
@@ -1809,25 +1475,15 @@
                 voiceTts={displayedVoiceTts}
                 voiceStt={displayedVoiceStt}
                 {hasOpenAI}
-                voiceProfiles={voiceProfiles}
-                {selectedVoiceProfile}
                 portalSelection={portalSelection}
                 onvoiceenabledchange={(v) => {
                   voiceEnabled = v;
                   handleEnableVoiceChange(v);
                 }}
-                onchangetts={(v) => {
-                  voiceTts = v;
-                  voiceEngineUnknownTts = false;
-                }}
-                onchangestt={(v) => {
-                  voiceStt = v;
-                  voiceEngineUnknownStt = false;
-                }}
-                onvoiceprofilechange={(id) => { selectedVoiceProfile = id; }}
+                onchangetts={(v) => { voiceTts = v; }}
+                onchangestt={(v) => { voiceStt = v; }}
                 onportaltoggle={handlePortalToggle}
                 oncredentialchange={handleCredentialChange}
-                onnext={() => goToStep(3)}
               />
             </section>
 
@@ -1839,19 +1495,13 @@
                 {modelSelection}
                 activeTts={voiceEnabled ? displayedVoiceTts.engine : ''}
                 activeStt={voiceEnabled ? displayedVoiceStt.engine : ''}
-                voiceProfileLabel={selectedVoiceProfileLabel}
-                ollamaProfileLabel={selectedOllamaProfileLabel}
                 portalSelection={portalSelection}
                 {ollamaEnabled}
-                cloudOnly={modelMode === 'cloud' && !ollamaEnabled && detectedHostProviders.length === 0}
                 hostProviderLabel={detectedHostProviders.length > 0 ? (detectedHostProviders[0].provider) : ''}
                 {payload}
                 {installError}
-                {installing}
                 {isRerun}
                 {systemCheckPassed}
-                onback={() => goToStep(2)}
-                oninstall={handleInstall}
                 oneditmodels={() => goToStep(1)}
                 oneditextras={() => goToStep(2)}
               />

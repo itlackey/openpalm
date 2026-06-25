@@ -351,13 +351,11 @@ async function startUIServer(): Promise<void> {
   const dataDir = resolveDataDir();
 
   // Ensure the runtime dir tree exists so the harness can write its pid file and
-  // the UI child can boot. The harness does NOT seed or reconcile OP_HOME — that
-  // is the UI's job (install/update/apply → reconcileHome). Seeding on launch
-  // would stamp the new platform version WITHOUT running the backup-protected
-  // migrations/secrets reconcile, masking a needed update and leaving a
-  // half-migrated home; instead the UI detects a stale/just-updated home
-  // read-only and routes the user to /splash to apply it. The UI child locates
-  // the bundled skeleton via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
+  // the UI child can boot. The harness does NOT seed or apply OP_HOME — that is
+  // the UI's job (install/update → applyHome): overwrite the managed system/ tree
+  // and seed the user/data trees once. Serving the UI never mutates OP_HOME, so
+  // the harness only ensures dirs here. The UI child locates the bundled skeleton
+  // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
 
   // app.getVersion() is the HARNESS marketing version — use it ONLY for the

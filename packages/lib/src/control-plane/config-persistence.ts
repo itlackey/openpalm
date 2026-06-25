@@ -17,14 +17,12 @@ import { listEnabledAddonIds } from "./addons.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
-import { CURRENT_LAYOUT_VERSION } from "./migrations.js";
 import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 
 import {
   readCoreCompose,
   readBundledStackAsset,
   readBundledCustomCompose,
-  refreshCoreAssetsFromSource,
 } from "./core-assets.js";
 export { sha256, randomHex } from "./crypto.js";
 import { sha256, randomHex } from "./crypto.js";
@@ -218,9 +216,6 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# Docker image tags (exact tag, \"latest\", or \"next\" — no semver ranges).",
     ...SERVICE_VERSION_KEYS.map((key) => `${key}=${VERSION_DEFAULTS[key]}`),
     "",
-    "# ── Layout (on-disk schema version; managed by the migration harness) ──",
-    `OP_LAYOUT_VERSION=${CURRENT_LAYOUT_VERSION}`,
-    "",
     "# ── Enabled addons (comma-separated; managed via the Add-ons UI / CLI) ──",
     "OP_ENABLED_ADDONS=",
     "",
@@ -402,10 +397,10 @@ export function writeRuntimeFiles(
   state: ControlPlaneState
 ): void {
   mkdirSync(state.stackDir, { recursive: true });
-  const managedSourceRoot = `${state.homeDir}/.openpalm`;
-  if (existsSync(`${managedSourceRoot}/system/stack/core.compose.yml`)) {
-    refreshCoreAssetsFromSource(managedSourceRoot, state.homeDir);
-  }
+  // The managed system/ tree (compose stack + system OpenCode config) is
+  // overwritten wholesale from the release skeleton in seedOpenPalmDir
+  // (overwriteSystemTree) before this runs. Here we only seed-if-absent the
+  // compose files a fresh home is missing, never overwriting the managed copies.
   const composePath = `${state.stackDir}/core.compose.yml`;
   if (!existsSync(composePath)) writeFileSync(composePath, state.artifacts.compose);
   for (const name of ['services.compose.yml', 'portals.compose.yml']) {

@@ -58,8 +58,6 @@
   }
 
   interface Props {
-    /** Currently selected model mode. */
-    modelMode: ModelMode;
     /** True while Phase-0 detection is in flight. */
     detectionLoading?: boolean;
     /** True when the 3-second detection timeout elapsed. */
@@ -76,10 +74,6 @@
     gpuName?: string;
     /** Local runtimes already running on the host. */
     hostProviders?: HostProvider[];
-    /** Number of importable host credentials. */
-    credentialCount?: number;
-    /** Provider ids detected as configured on the host. */
-    cloudProviders?: string[];
     /** Full OpenCode provider list (for OAuth sub-panel). */
     opencodeProviders?: OpenCodeProvider[];
     /** Auth methods per provider id. */
@@ -100,24 +94,16 @@
     llmModel?: string;
     /** Provider name for the selected chat model (connId). */
     llmProvider?: string;
-    /** Chat-model options across verified providers (for the model picker). */
-    llmModelOptions?: Array<{ id: string; connId: string; isDefault: boolean; dims: number }>;
     /** Stable connId of the detected cloud service (persists across local↔cloud switches). */
     detectedCloudConn?: string;
 
     onmodelmodechange: (mode: ModelMode) => void;
-    /** Choose the default chat model. */
-    onselectmodel?: (connId: string, model: string, dims: number) => void;
     onhostimport?: () => void;
     onoauthstart?: (id: string, methodIndex: number) => void;
     onoauthcancel?: (id: string) => void;
-    onbaseurl?: (id: string, url: string) => void;
-    onapikey?: (id: string, key: string) => void;
-    onverify?: (id: string) => void;
     onrecheck?: () => void;
     onsystemcheckretry?: () => void;
     onallowemptyinstallchange?: (v: boolean) => void;
-    onnext: () => void;
   }
 
   const MIN_LOCAL_GPU_VRAM_MB = 8192;
@@ -134,7 +120,6 @@
   };
 
   let {
-    modelMode,
     detectionLoading = false,
     detectionTimedOut = false,
     systemCheckError = '',
@@ -143,8 +128,6 @@
     gpuVendor = '',
     gpuName = '',
     hostProviders = [],
-    credentialCount = 0,
-    cloudProviders = [],
     opencodeProviders = [],
     opencodeAuth = {},
     providerState = {},
@@ -155,34 +138,20 @@
     allowEmptyInstall = false,
     llmModel = '',
     llmProvider = '',
-    llmModelOptions = [],
     detectedCloudConn = '',
-    onselectmodel,
     onmodelmodechange,
     onhostimport,
     onoauthstart,
     onoauthcancel,
-    onbaseurl,
-    onapikey,
-    onverify,
     onrecheck,
     onsystemcheckretry,
     onallowemptyinstallchange,
-    onnext,
   }: Props = $props();
 
   // Local-models gate: available when GPU >= 8 GiB, Apple Silicon, or runtime running.
   const localAvailable = $derived(
     gpuVramMb >= MIN_LOCAL_GPU_VRAM_MB ||
     gpuVendor === 'apple' ||
-    hostProviders.length > 0
-  );
-
-  // Can proceed: at least one provider verified, OR local is active, OR empty escape
-  const canProceed = $derived(
-    allowEmptyInstall ||
-    verifiedCount > 0 ||
-    ollamaEnabled ||
     hostProviders.length > 0
   );
 
@@ -406,9 +375,6 @@
             {onhostimport}
             onoauthstart={(id, idx) => onoauthstart?.(id, idx)}
             onoauthcancel={(id) => onoauthcancel?.(id)}
-            onbaseurl={(id, url) => onbaseurl?.(id, url)}
-            onapikey={(id, key) => onapikey?.(id, key)}
-            onverify={(id) => onverify?.(id)}
           />
         </div>
       {/if}

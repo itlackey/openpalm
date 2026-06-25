@@ -26,7 +26,8 @@
     {/if}
     {#if error.links && error.links.length > 0}
       <div class="friendly-error-links">
-        {#each error.links as link}
+        {#each error.links as link (link.href)}
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
           <a href={link.href} target="_blank" rel="noopener noreferrer" class="friendly-error-link">
             {link.label} →
           </a>

@@ -22,7 +22,6 @@ import {
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { seedOpenPalmDir } from "./ui-assets.js";
-import { ensureMigrated, ensureReleaseMigrated, type MigrationReport } from './migrations.js';
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName, repairRootOwnedBindMounts } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
@@ -136,70 +135,33 @@ async function reconcileCore(
 }
 
 /**
- * Idempotent OP_HOME asset reconciliation to the running platform version.
+ * Bring an OP_HOME's assets to the running platform version — the "apply" half
+ * of the single install==update path (constitution §1, §3, §4).
  *
- * This is the single place that brings an OP_HOME's *assets* (layout, skeleton
- * data/, managed compose, release transforms) up to PLATFORM_VERSION. It is
- * keyed entirely on PLATFORM_VERSION (the running control plane), NOT on the
- * per-image OP_*_VERSION pins in stack.env — those stay independent and drive
- * compose image resolution only.
- *
- * Every step is a cheap no-op when already current:
- *   • ensureMigrated        — forward-only layout migrations (skip-if-done)
+ * There is no reconcile/migration phase: ownership is by top-level tree, so the
+ * write policy follows the destination. Every step is idempotent:
  *   • ensureHomeDirs        — create the OP_HOME directory layout
- *   • seedOpenPalmDir       — skeleton data/ seed (stamp-gated, skip-existing) +
- *                             managed compose refresh from BUNDLED local source
+ *   • ensureSecrets         — generate any missing service secrets
+ *   • seedOpenPalmDir       — overwrite the managed system/ tree wholesale +
+ *                             seed the user/data trees once (skip-existing)
  *   • ensureOpenCode*       — starter OpenCode config + data dir (seed-if-missing)
- *   • ensureReleaseMigrated — forward-only release transforms (copy-only, idempotent)
  *
  * This is the ONLY function that writes OP_HOME's layout/assets, so callers never
  * need to defensively re-ensure dirs or config themselves.
  *
- * Returns the assets it actually changed (the refreshed managed compose/config
- * files) and the backup directory a release migration created (if any), so
- * performUpgrade can surface them in UpgradeResult — the upgrade route logs the
- * asset list and shows the backup dir to the operator.
+ * Returns the managed assets it actually overwrote and the backup dir created
+ * for any changed managed file, so performUpgrade can surface them in
+ * UpgradeResult — the upgrade route logs the asset list and shows the backup dir.
  */
-async function reconcileHome(
+async function applyHome(
   state: ControlPlaneState,
-  opts: { confirmLowSpace?: boolean } = {},
-): Promise<{ migration: MigrationReport; assetsUpdated: string[]; backupDir: string | null }> {
-  const migration = ensureMigrated({ homeDir: state.homeDir, confirmLowSpace: opts.confirmLowSpace });
+): Promise<{ assetsUpdated: string[]; backupDir: string | null }> {
   ensureHomeDirs();
   ensureSecrets(state);
   const seed = await seedOpenPalmDir(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  const release = ensureReleaseMigrated({ homeDir: state.homeDir, targetVersion: PLATFORM_VERSION });
-  return {
-    migration,
-    assetsUpdated: seed.updated,
-    // Prefer the release migration's stack.env backup (the destructive one);
-    // fall back to the managed-asset backup seedOpenPalmDir took, if any.
-    backupDir: release.backupDir ?? seed.backupDir,
-  };
-}
-
-/**
- * Bring OP_HOME up to date WITHOUT touching containers — the single primitive
- * behind the splash "apply updates" button. Runs the full home reconcile
- * (migrations + dirs + secrets + skeleton seed + OpenCode config) under the
- * install lock so it can't race a concurrent install/update, then returns the
- * migration report for the UI to display. This is the deliberate, user-clicked
- * replacement for the per-request self-healing we removed: serving the UI is a
- * pure read; THIS is where the home is mutated.
- */
-export async function applyHomeReconcile(
-  state: ControlPlaneState,
-  opts: { confirmLowSpace?: boolean } = {},
-): Promise<{ migration: MigrationReport; assetsUpdated: string[]; backupDir: string | null }> {
-  const lock = resolveLifecycleLock(state);
-  if (!lock) throw new Error("Another install is already in progress");
-  try {
-    return await reconcileHome(state, opts);
-  } finally {
-    releaseLifecycleLock(lock);
-  }
+  return { assetsUpdated: seed.updated, backupDir: seed.backupDir };
 }
 
 type LockedLifecycleOptions = { lock?: InstallLockHandle | null };
@@ -217,8 +179,8 @@ function releaseLifecycleLock(lock: InstallLockHandle | null, opts?: LockedLifec
 /**
  * The single idempotent stack reconcile. Every lifecycle entry point is a thin
  * flag variant of this:
- *   1. reconcileHome   — bring OP_HOME assets up to PLATFORM_VERSION (migrations,
- *                        bundled skeleton seed, release transforms). No GitHub.
+ *   1. applyHome       — bring OP_HOME assets up to PLATFORM_VERSION (overwrite
+ *                        the managed system/ tree, seed user/data once). No GitHub.
  *   2. reconcileCore   — preflight, snapshot (rollback), write runtime files,
  *                        flip service state per activate/deactivate.
  *   3. composePull     — (compose+pull only) fetch images per OP_*_VERSION pins.
@@ -259,7 +221,7 @@ function reconcileStack(
     // a temporary root Docker container fixes ownership.
     if (activating && opts.compose) await repairRootOwnedBindMounts(state.homeDir);
 
-    const home = await reconcileHome(state);
+    const home = await applyHome(state);
 
     // skipSnapshot: withStackEnvRollback already armed the pre-reconcile snapshot.
     const active = await reconcileCore(state, {
@@ -382,8 +344,8 @@ export type UpgradeResult = {
 
 async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Promise<T>): Promise<T> {
   const stackEnvPath = `${state.stashDir}/env/stack.env`;
-  // Release migrations (ensureReleaseMigrated) may also write these compose files,
-  // so snapshot them alongside stack.env for full rollback coverage.
+  // applyHome may overwrite these managed compose files from the skeleton, so
+  // snapshot them alongside stack.env for full rollback coverage.
   const portalsComposePath = `${state.stackDir}/portals.compose.yml`;
   const customComposePath = customComposeFilePath(state.homeDir);
 
@@ -462,9 +424,9 @@ export async function performUpgrade(
   try {
     // The asset version is the running control plane's own version — the data/ui
     // build self-updates to the current platform before serving the request, so
-    // PLATFORM_VERSION is authoritative. OP_HOME asset reconciliation (layout +
-    // bundled skeleton seed + release migrations) happens inside reconcileStack
-    // via reconcileHome; there are NO GitHub/registry calls — image versions are
+    // PLATFORM_VERSION is authoritative. OP_HOME asset application (overwrite the
+    // managed system/ tree + seed user/data once) happens inside reconcileStack
+    // via applyHome; there are NO GitHub/registry calls — image versions are
     // user-managed in stack.env (PATCH /admin/versions).
     const namespace = resolveImageNamespace(state);
 

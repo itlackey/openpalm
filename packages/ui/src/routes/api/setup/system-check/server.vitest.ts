@@ -31,7 +31,7 @@ vi.mock('node:net', () => ({
       listen: (port: number, host: string) => void;
     };
     emitter.close = () => {};
-    emitter.listen = (port: number, _host: string) => {
+    emitter.listen = (port: number) => {
       setTimeout(() => {
         if (port === 3880 || port === 3800) {
           emitter.emit('error', new Error('in use'));

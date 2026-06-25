@@ -10,24 +10,17 @@
   interface Props {
     uiLoginPassword: string;
     verifiedProviders: Provider[];
-    modelSelection: { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection };
+    modelSelection: { llm?: ModelSelection };
     activeTts: string;
     activeStt: string;
-    voiceProfileLabel?: string;
-    ollamaProfileLabel?: string;
     portalSelection: Record<string, boolean | PortalState>;
     ollamaEnabled: boolean;
-    /** When true and no host provider running, hide the Infrastructure card entirely. */
-    cloudOnly?: boolean;
     /** Label for the running host provider (e.g. "Ollama"). Shown when ollamaEnabled is false. */
     hostProviderLabel?: string;
     payload: unknown;
     installError: string;
-    installing: boolean;
     isRerun?: boolean;
     systemCheckPassed?: boolean;
-    onback: () => void;
-    oninstall: () => void;
     oneditmodels: () => void;
     oneditextras: () => void;
   }
@@ -43,11 +36,8 @@
     hostProviderLabel = '',
     payload,
     installError,
-    installing,
     isRerun = false,
     systemCheckPassed = true,
-    onback: _onback,
-    oninstall: _oninstall,
     oneditmodels,
     oneditextras,
   }: Props = $props();
@@ -123,7 +113,6 @@
     URL.revokeObjectURL(url);
   }
 
-  const canInstall = $derived(!installing && systemCheckPassed);
 </script>
 
 <!-- Step title/lede come from the wizard shell header; no duplicate heading here. -->

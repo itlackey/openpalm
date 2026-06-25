@@ -41,7 +41,7 @@ function envKeyConnected(): string[] {
 /** Cloud providers = OpenCode connected[] ∪ auth.json credentials, minus locals.
  *  Falls back to env-key detection when OpenCode is unavailable. */
 async function detectCloudProviders(): Promise<string[]> {
-	let connected: string[] = [];
+	let connected: string[];
 	try {
 		const client = getOpenCodeClient();
 		if (await client.isAvailable()) {

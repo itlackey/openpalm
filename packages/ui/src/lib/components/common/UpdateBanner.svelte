@@ -52,6 +52,7 @@
       {#if status.currentVersion}(you have v{status.currentVersion}){/if}
     </span>
     {#if status.latestUrl}
+      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
       <a href={status.latestUrl} target="_blank" rel="noopener noreferrer" class="update-banner-link">
         Download
       </a>

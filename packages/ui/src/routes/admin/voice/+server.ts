@@ -898,7 +898,7 @@ type BringUpOutcome = {
 async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
   const { state, services, activeProfile, extraFiles, availableProfiles, steps } = input;
 
-  let composeOk = true;
+  let composeOk: boolean;
   let composeErr: string | undefined;
   try {
     // Profile switch: stop services from OTHER profiles so they release

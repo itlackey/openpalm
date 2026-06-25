@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
   import type { TabId } from '$lib/components/chrome/TabBar.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { fetchAkmHealth, type AkmHealth } from '$lib/api.js';
@@ -13,14 +12,12 @@
   import IconCloudDownload from '$lib/components/icons/IconCloudDownload.svelte';
 
   interface Props {
-    adminHealth: HealthPayload | null;
     operationResult: string;
     operationResultType: 'success' | 'error' | 'info';
     tokenStored: boolean;
     healthLoading: boolean;
     applyLoading: boolean;
     anyDangerousLoading: boolean;
-    automationsData: AutomationsResponse | null;
     mergedServices: Map<string, string>;
     /**
      * Services this stack actually deploys (compose model resolved with active
@@ -36,14 +33,12 @@
   }
 
   let {
-    adminHealth,
     operationResult,
     operationResultType,
     tokenStored,
     healthLoading,
     applyLoading,
     anyDangerousLoading,
-    automationsData,
     mergedServices,
     managedServices,
     onCheckHealth,
@@ -76,11 +71,6 @@
   });
   let akmCheckTotal = $derived(
     akm && akm.available ? akm.checks.pass + akm.checks.warn + akm.checks.fail : 0
-  );
-
-  let automationCount = $derived(automationsData?.automations.length ?? 0);
-  let enabledAutomationCount = $derived(
-    automationsData?.automations.filter((a) => a.enabled).length ?? 0
   );
 
   // Measure health against the services the stack actually deploys, not every

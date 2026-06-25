@@ -10,7 +10,7 @@ import { rmSync } from "node:fs";
 import type { ControlPlaneState } from "@openpalm/lib";
 import { createState, initializeStateSecrets, legacyStackEnvFile } from "@openpalm/lib";
 import { dirname } from "node:path";
-import { _replaceState, getState } from "./state.js";
+import { _replaceState } from "./state.js";
 import { _seedSession, _clearSessions } from "./session-store.js";
 
 let tempDirs: string[] = [];

@@ -130,7 +130,7 @@
       <label for="log-service" class="control-label">Service</label>
       <select id="log-service" class="control-input" bind:value={selectedService} onchange={() => void loadLogs()}>
         <option value="">All services</option>
-        {#each services as svc}
+        {#each services as svc (svc)}
           <option value={svc}>{svc}</option>
         {/each}
       </select>
@@ -142,7 +142,7 @@
         {#if automations.length === 0}
           <option value="">No routines yet</option>
         {:else}
-          {#each automations as automation}
+          {#each automations as automation (automation)}
             <option value={automation}>{automation}</option>
           {/each}
         {/if}

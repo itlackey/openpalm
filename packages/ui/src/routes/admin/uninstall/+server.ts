@@ -29,9 +29,8 @@ export const POST: RequestHandler = async (event) => {
 
       // Stop Docker containers first
       const dockerCheck = await checkDocker();
-      let dockerResult = null;
       if (dockerCheck.ok) {
-        dockerResult = await composeDown(buildComposeOptions(state));
+        await composeDown(buildComposeOptions(state));
       }
 
       logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });

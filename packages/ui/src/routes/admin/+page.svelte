@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { goto } from '$app/navigation';
   import { formatTime } from '$lib/format-date.js';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
@@ -27,15 +28,11 @@
     containerAction,
     pullImages,
   } from '$lib/api.js';
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
+  import type { ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders for
   // an authenticated admin. A session that expires mid-operation surfaces as a
   // 401 on an in-page API call, handled by redirecting to /login.
-
-  // ── Health & service state ──────────────────────────────────────────────────
-  let adminHealth = $state<HealthPayload | null>(null);
-  let guardianHealth = $state<HealthPayload | null>(null);
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
@@ -90,8 +87,8 @@
 
   /** Merged service → state map (used by OverviewTab for health indicators) */
   let mergedServices = $derived.by((): Map<string, string> => {
-    if (!containerData) return new Map<string, string>();
-    const merged = new Map<string, string>();
+    if (!containerData) return new SvelteMap<string, string>();
+    const merged = new SvelteMap<string, string>();
     if (containerData.containers) {
       for (const [name, state] of Object.entries(containerData.containers)) {
         merged.set(name, state);
@@ -108,7 +105,7 @@
   /** Full merged ServiceEntry list (used by ContainersTab for detail rows) */
   let serviceEntries = $derived.by((): ServiceEntry[] => {
     if (!containerData) return [];
-    const byService = new Map<string, ServiceEntry>();
+    const byService = new SvelteMap<string, ServiceEntry>();
     if (containerData.containers) {
       for (const [name, state] of Object.entries(containerData.containers)) {
         byService.set(name, { id: name, service: name, state, docker: null });
@@ -144,7 +141,8 @@
   // mid-session). Server-side gating handles page navigations; here we bounce to
   // the login route and return to /admin after re-authenticating.
   function applyInvalidTokenState(): void {
-    void goto('/login?redirectTo=' + encodeURIComponent('/admin'));
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- internal login path with a query string, not a static route id
+    void goto(`/login?redirectTo=${encodeURIComponent('/admin')}`);
   }
 
   // ── Data loaders ─────────────────────────────────────────────────────────────
@@ -152,13 +150,9 @@
   async function loadHealth(): Promise<void> {
     healthLoading = true;
     try {
-      const health = await fetchHealth();
-      adminHealth = health.admin;
-      guardianHealth = health.guardian;
+      await fetchHealth();
     } catch (e) {
       console.warn('[page] Health check failed:', e);
-      adminHealth = { status: 'error', service: 'admin' };
-      guardianHealth = { status: 'error', service: 'guardian' };
     }
     healthLoading = false;
   }
@@ -267,7 +261,7 @@
   /** Derive service names from container data for the logs tab */
   let serviceNames = $derived.by((): string[] => {
     if (!containerData) return [];
-    const names = new Set<string>();
+    const names = new SvelteSet<string>();
     if (containerData.containers) {
       for (const name of Object.keys(containerData.containers)) {
         names.add(name);
@@ -335,14 +329,12 @@
 <main>
     {#if activeTab === 'overview'}
       <OverviewTab
-        {adminHealth}
         {operationResult}
         {operationResultType}
         tokenStored={true}
         {healthLoading}
         {applyLoading}
         {anyDangerousLoading}
-        {automationsData}
         {mergedServices}
         managedServices={containerData?.managedServices ?? []}
         onCheckHealth={loadHealth}

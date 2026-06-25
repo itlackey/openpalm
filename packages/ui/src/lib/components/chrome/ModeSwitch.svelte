@@ -12,7 +12,6 @@
   // ToggleButton keeps it aligned with the other chrome toggles.
   const pathname = $derived(page.url?.pathname ?? '');
   const onAdmin = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
-  const onAdvanced = $derived(pathname === '/advanced' || pathname.startsWith('/advanced/'));
 
   function toggle(): void {
     const enabled = advancedModeService.toggle();
@@ -24,7 +23,9 @@
       chat.invalidateSessions(chat.activeEndpointId);
     }
     const sessionId = page.url.searchParams.get('session') ?? currentChatSessionId();
-    void goto(enabled ? buildAdvancedPath(sessionId) : buildChatPath(sessionId));
+    const target = enabled ? buildAdvancedPath(sessionId) : buildChatPath(sessionId);
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
+    void goto(target);
   }
 </script>
 

@@ -32,7 +32,6 @@ import {
   type ComposeServiceStatus,
 } from "@openpalm/lib";
 import { listRemoteStatuses } from "$lib/server/endpoints.js";
-import { isMigrationBlocking } from "$lib/server/migration-status.js";
 
 const logger = createLogger("admin");
 
@@ -41,9 +40,6 @@ let setupCompleteMemo = false;
 type LaunchRouting = {
   installState: ReturnType<typeof classifyLocalInstall>;
   launch: ReturnType<typeof deriveLaunchStatus>;
-  /** A pending/unreadable migration must land the user on /splash before they can
-   *  use the assistant — even when the stack is running or a remote is healthy. */
-  migrationBlocking: boolean;
 };
 
 let localStatusCache: { expiresAt: number; value: LaunchRouting } | null = null;
@@ -54,7 +50,7 @@ export function _resetLaunchCache(): void {
 }
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
-// install/update own every OP_HOME write (via reconcileHome), so merely serving
+// install/update own every OP_HOME write (via applyHome), so merely serving
 // the UI never mutates the home directory — no startup "auto-apply".
 function loadProcessEnv(): void {
   if (startupApplyDone) return;
@@ -156,7 +152,7 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
     },
     remotes: await listRemoteStatuses(),
   });
-  const value = { installState, launch, migrationBlocking: isMigrationBlocking(state.homeDir) };
+  const value = { installState, launch };
   localStatusCache = { value, expiresAt: Date.now() + 5_000 };
   return value;
 }
@@ -197,24 +193,17 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   if (!isSetupPath) {
-    const { installState, launch, migrationBlocking } = await resolveLaunchRouting();
-    // A pending/unreadable migration outranks stack health: the assistant must not
-    // be used until the home is migrated, so force /splash even when the stack is
-    // running or a remote is healthy (otherwise `/` and `/chat` would skip it).
-    const desiredPath = migrationBlocking
+    const { installState, launch } = await resolveLaunchRouting();
+    const desiredPath = installState === 'setup_incomplete' && launch.local.state === 'running'
       ? '/splash'
-      : installState === 'setup_incomplete' && launch.local.state === 'running'
-        ? '/splash'
-        : launch.recommendedRoute === 'chat'
-          ? '/chat'
-          : '/splash';
-    // The assistant-usage routes (/chat, /advanced) are safe destinations ONLY when
-    // no migration is pending — during a migration they redirect to /splash too.
+      : launch.recommendedRoute === 'chat'
+        ? '/chat'
+        : '/splash';
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced');
     const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/admin')
       || path.startsWith('/splash')
-      || (!migrationBlocking && usageRoute);
+      || usageRoute;
     if (path === '/' || (path !== desiredPath && !exempt)) {
       redirect(302, desiredPath);
     }

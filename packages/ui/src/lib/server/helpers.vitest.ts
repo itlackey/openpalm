@@ -8,7 +8,7 @@
  * 4. requireAdmin enforces timing-safe token comparison (security invariant)
  * 5. parseJsonBody returns discriminated result with data or error type
  */
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach } from "vitest";
 import {
   jsonResponse,
   errorResponse,

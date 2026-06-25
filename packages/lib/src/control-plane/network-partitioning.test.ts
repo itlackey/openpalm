@@ -183,8 +183,8 @@ describe("mDNS — native OpenCode responder (no avahi sidecars)", () => {
     return JSON.parse(stripped) as Record<string, unknown>;
   }
 
-  const assistantConfig = loadJsonc("packages/skeleton/config/assistant/opencode.jsonc");
-  const guardianConfig = loadJsonc("packages/skeleton/config/guardian/opencode.jsonc");
+  const assistantConfig = loadJsonc("packages/skeleton/system/assistant/opencode.jsonc");
+  const guardianConfig = loadJsonc("packages/skeleton/system/guardian/opencode.jsonc");
 
   type ServerCfg = { server?: { mdns?: boolean; mdnsDomain?: string; hostname?: string } };
 

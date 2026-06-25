@@ -615,7 +615,7 @@
             {#if eventTypeRows.length === 0}
               <tr><td colspan="2" class="empty-cell">No events observed yet.</td></tr>
             {/if}
-            {#each eventTypeRows as [type, count]}
+            {#each eventTypeRows as [type, count] (type)}
               <tr>
                 <td class="mono">{type}</td>
                 <td>{count}</td>

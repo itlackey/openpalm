@@ -9,8 +9,6 @@ import { withSerialQueue } from "$lib/server/serial-queue.js";
 import {
   applyUpdate,
   createLogger,
-  ensureMigrated,
-  MigrationError,
   buildComposeOptions,
   buildManagedServices,
   composePull,
@@ -31,28 +29,13 @@ export const POST: RequestHandler = async (event) => {
 
   return withSerialQueue("admin:update", async () => {
     try {
-    // Pre-state layout migration gate (see admin/install for the full rationale).
-    // MUST run before getState(); applyUpdate re-runs it idempotently inside
-    // reconcileHome (defused by the reentrant install lock). Backs up first.
-    try {
-      const report = ensureMigrated();
-      if (report.migrated) {
-        logger.info("layout migrated", { requestId, from: report.from, to: report.to, backupDir: report.backupDir });
-      }
-    } catch (e) {
-      if (e instanceof MigrationError) {
-        logger.error("auto-migration aborted", { requestId, error: e.message, backupDir: e.backupDir });
-        return errorResponse(500, "migration_failed", e.message, { guidance: e.guidance, backupDir: e.backupDir }, requestId);
-      }
-      throw e;
-    }
-
     const state = getState();
 
-    // applyUpdate runs the unified OP_HOME reconcile (dirs, secrets, skeleton
-    // seed, OpenCode config, migrations — all idempotent) and writes runtime
-    // files; it does NOT compose. The compose phase below (pull-soft +
-    // force-recreate + per-service failure parsing) is the sole composeUp.
+    // applyUpdate runs the unified OP_HOME apply (dirs, secrets, overwrite the
+    // managed system/ tree, seed user/data once, OpenCode config — all idempotent)
+    // and writes runtime files; it does NOT compose. The compose phase below
+    // (pull-soft + force-recreate + per-service failure parsing) is the sole
+    // composeUp.
     const result = await applyUpdate(state);
     logger.info("update applied, re-running compose", {
       requestId,

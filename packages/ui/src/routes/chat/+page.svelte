@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import SessionList from '$lib/components/chat/SessionList.svelte';
@@ -128,7 +129,7 @@
 
 	async function beginNew(): Promise<void> {
 		await chat.startNewSession();
-		await goto('/chat', { replaceState: true });
+		await goto(resolve('/chat'), { replaceState: true });
 		closeGarden();
 	}
 
@@ -184,6 +185,7 @@
 				advancedModeService.init();
 				const requestedSessionId = page.url.searchParams.get('session');
 				if (advancedModeService.enabled) {
+					// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
 					await goto(buildAdvancedPath(requestedSessionId), { replaceState: true });
 					return;
 				}
@@ -194,7 +196,7 @@
 				}
 				if (page.url.searchParams.get('new') === '1') {
 					await chat.startNewSession();
-					await goto('/chat', { replaceState: true });
+					await goto(resolve('/chat'), { replaceState: true });
 				}
 			} catch {
 				chat.error = 'Unable to reach the assistant.';
@@ -242,6 +244,7 @@
 			aria-pressed={advancedModeService.enabled}
 			onclick={() => {
 				advancedModeService.setEnabled(true);
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
 				void goto(buildAdvancedPath(page.url.searchParams.get('session') ?? chat.activeSessionId));
 			}}
 		>
@@ -343,7 +346,7 @@
 				{#if chat.pendingToolStates.length > 0}
 					<div class="s-live-deeds">
 						<div class="deeds-inner">
-							{#each chat.pendingToolStates as tool}
+							{#each chat.pendingToolStates as tool (tool.id)}
 								<div class="deed">{tool.title || tool.tool || 'step'}</div>
 							{/each}
 						</div>
@@ -540,7 +543,7 @@
 		<section class="s-veil-section">
 			<div class="s-section-head">
 				<div class="s-veil-section-label">assistant</div>
-				<a class="s-new-convo" href="/admin/endpoints" onclick={closeGarden}>
+				<a class="s-new-convo" href={resolve('/admin/endpoints')} onclick={closeGarden}>
 					<span class="s-new-mark" aria-hidden="true">
 						<svg width="11" height="11" viewBox="0 0 12 12" fill="none">
 							<circle cx="6" cy="6" r="2.4" stroke="currentColor" stroke-width="1.1" />
@@ -591,7 +594,7 @@
 							<div class="s-endpoint-url">{ep.url}</div>
 						</button>
 						{#if ep.url && isLocalAssistantUrl(ep.url)}
-							<a class="s-endpoint-manage" href="/admin" onclick={closeGarden}
+							<a class="s-endpoint-manage" href={resolve('/admin')} onclick={closeGarden}
 								>manage this assistant</a
 							>
 						{/if}

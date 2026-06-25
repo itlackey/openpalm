@@ -133,6 +133,7 @@
             ? 'Docker isn\'t installed yet.'
             : dockerStartHint(result.platform)}
         </div>
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external docs URL (docker.com), not an internal route -->
         <a class="syscheck-link" href={dockerInstallLink(result.platform).href} target="_blank" rel="noopener noreferrer">
           {dockerInstallLink(result.platform).label} →
         </a>

@@ -3,7 +3,6 @@
  */
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
-import { getState } from "./state.js";
 import { getActiveEndpoint } from "./endpoints.js";
 import { createOpenCodeClient } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";

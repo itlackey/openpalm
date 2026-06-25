@@ -4,7 +4,7 @@ import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async ({ params, request }) => {
   const provider = decodeURIComponent(params.provider);
-  let body: Record<string, unknown> = {};
+  let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {

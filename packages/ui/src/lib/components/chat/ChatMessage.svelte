@@ -47,6 +47,7 @@
   <div class="turn master">
     {#if renderedHtml !== null}
       <div class="master-words" class:settled>
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false, so raw HTML in assistant output is escaped (not rendered); only generated formatting markup reaches here -->
         <div class="markdown-body">{@html renderedHtml}</div>
       </div>
     {:else}

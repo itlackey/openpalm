@@ -30,6 +30,7 @@
     <span class="shortcut-name">Secrets</span>
     <span class="shortcut-desc">Stack &amp; portal credentials</span>
   </button>
+  <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- internal setup path with a query string, not a static route id -->
   <a class="shortcut" href="/setup?rerun=1">
     <span class="shortcut-name">Re-run setup</span>
     <span class="shortcut-desc">Walk through the setup wizard again</span>

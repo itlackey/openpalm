@@ -10,7 +10,7 @@ let _state: ControlPlaneState | null = null;
 
 export function getState(): ControlPlaneState {
   // Pure read: resolve paths/config from disk only. Secrets and other OP_HOME
-  // assets are written ONLY by install/update/apply (reconcileHome) — serving
+  // assets are written ONLY by install/update/apply (applyHome) — serving
   // the UI never mutates the home. A home that needs reconciling is detected
   // read-only and routed to /splash, where the user clicks "apply".
   if (!_state) _state = createState();

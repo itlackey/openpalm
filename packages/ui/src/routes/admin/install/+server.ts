@@ -9,8 +9,6 @@ import { withSerialQueue } from "$lib/server/serial-queue.js";
 import {
   applyInstall,
   createLogger,
-  ensureMigrated,
-  MigrationError,
   buildComposeOptions,
   buildManagedServices,
   CORE_SERVICES,
@@ -29,31 +27,11 @@ export const POST: RequestHandler = async (event) => {
 
   return withSerialQueue("admin:install", async () => {
     try {
-      // 0. Pre-state layout migration gate. MUST run before getState() —
-      // createState()/initializeStateSecrets() resolve and write to the CURRENT
-      // layout, so on a pre-2 home they'd target paths that only exist post-migration.
-      // applyInstall later re-runs migrations idempotently inside reconcileHome
-      // (defused by the reentrant install lock), but this explicit pre-state call
-      // is what surfaces a MigrationError to the operator before any state work and
-      // pre-stamps the layout. Backs up first; no-ops on an already-current home.
-      try {
-        const report = ensureMigrated();
-        if (report.migrated) {
-          logger.info("layout migrated", { requestId, from: report.from, to: report.to, backupDir: report.backupDir });
-        }
-      } catch (e) {
-        if (e instanceof MigrationError) {
-          logger.error("auto-migration aborted", { requestId, error: e.message, backupDir: e.backupDir });
-          return errorResponse(500, "migration_failed", e.message, { guidance: e.guidance, backupDir: e.backupDir }, requestId);
-        }
-        throw e;
-      }
-
       const state = getState();
 
-      // Reconcile OP_HOME: layout migrations, dir tree, secrets, skeleton seed,
-      // OpenCode config, release transforms — all idempotent, all inside
-      // applyInstall's reconcile. Writes runtime files but does NOT compose; the
+      // Apply OP_HOME: dir tree, secrets, overwrite the managed system/ tree, seed
+      // the user/data trees once, OpenCode config — all idempotent, all inside
+      // applyInstall's applyHome. Writes runtime files but does NOT compose; the
       // compose phase below is the sole composeUp (no double-recreate).
       await applyInstall(state);
 

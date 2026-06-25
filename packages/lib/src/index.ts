@@ -47,18 +47,6 @@ export {
 } from "./control-plane/backup.js";
 export type { BackupSpaceCheck, BackupSummary, BackupEntry } from "./control-plane/backup.js";
 
-// ── Layout migration harness ────────────────────────────────────────────────
-export {
-  ensureMigrated,
-  ensureReleaseMigrated,
-  MigrationError,
-  BackupSpaceError,
-  UnrecognizedLayoutError,
-  CURRENT_LAYOUT_VERSION,
-  LAYOUT_VERSION_KEY,
-} from "./control-plane/migrations.js";
-export type { MigrationReport, ReleaseMigrationReport } from "./control-plane/migrations.js";
-
 // ── Registry Catalog ─────────────────────────────────────────────────────
 export type {
   AddonMutationResult,
@@ -265,7 +253,7 @@ export { writeFileAtomic } from "./control-plane/fs-atomic.js";
 export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
-  refreshCoreAssetsFromSource,
+  overwriteSystemTree,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────
@@ -291,7 +279,6 @@ export {
   initializeStateSecrets,
   applyInstall,
   applyUpdate,
-  applyHomeReconcile,
   applyUninstall,
   buildManagedServices,
   performUpgrade,
@@ -477,8 +464,6 @@ export type { UiBuildUpdateResult, UiUpdateChannel } from "./control-plane/ui-as
 export {
   resolveLocalOpenpalmDir,
   seedOpenPalmDir,
-  readSkeletonVersion,
-  isSkeletonStale,
   resolveLocalUiBuild,
   resolveUiBuildDir,
   seedUiBuild,

@@ -2,10 +2,8 @@
  * Tests for core-assets — directory creation and compose reading.
  *
  * After the CoreAssetProvider removal, ensure* functions only create
- * directories. Asset file content is seeded from the BUNDLED local source by
- * refreshCoreAssetsFromSource() (covered in packages/lib core-assets tests) or
- * by the CLI install command. The GitHub-download path (refreshCoreAssets) was
- * removed entirely.
+ * directories. The managed system/ tree is overwritten from the BUNDLED local
+ * source by overwriteSystemTree() (covered in packages/lib core-assets tests).
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import {

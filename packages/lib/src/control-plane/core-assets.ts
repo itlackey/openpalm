@@ -100,19 +100,7 @@ export function ensureOpenCodeSystemConfig(): void {
   mkdirSync(dir, { recursive: true });
 }
 
-// ── Managed asset manifest ───────────────────────────────────────────
-//
-// The system-owned stack compose files. refreshCoreAssetsFromSource overwrites
-// these from the bundled @openpalm/skeleton on every reconcile so they always
-// track the running platform (no GitHub/registry download). Everything else —
-// user-editable config (opencode.jsonc, custom.compose.yml), guardian
-// instructions, personas — is seeded ONCE by seedOpenPalmDir's skip-existing
-// copy of the skeleton tree, so user edits are never clobbered.
-export const MANAGED_ASSETS: { relPath: string }[] = [
-  { relPath: "system/stack/core.compose.yml" },
-  { relPath: "system/stack/services.compose.yml" },
-  { relPath: "system/stack/portals.compose.yml" },
-];
+// ── Managed system/ tree overwrite ───────────────────────────────────
 
 function ensureBackupDir(backupDir: string | null, suffix = ''): string {
   if (backupDir) return backupDir;
@@ -127,44 +115,15 @@ function backupExistingFile(targetPath: string, assetRelPath: string, backupDir:
   return resolvedBackupDir;
 }
 
-export function refreshCoreAssetsFromSource(sourceRoot: string, homeDir = resolveOpenPalmHome()): {
-  backupDir: string | null;
-  updated: string[];
-} {
-  const updated: string[] = [];
-  let backupDir: string | null = null;
-
-  for (const asset of MANAGED_ASSETS) {
-    const sourcePath = join(sourceRoot, asset.relPath);
-    const targetPath = join(homeDir, asset.relPath);
-    const freshContent = readFileSync(sourcePath, 'utf-8');
-
-    if (existsSync(targetPath)) {
-      const currentContent = readFileSync(targetPath, 'utf-8');
-      if (sha256(currentContent) === sha256(freshContent)) continue;
-      backupDir = backupExistingFile(targetPath, asset.relPath, backupDir);
-    }
-
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, freshContent);
-    updated.push(asset.relPath);
-  }
-
-  return { backupDir, updated };
-}
-
 /**
  * Overwrite the entire MANAGED `system/` tree from the release skeleton.
  *
- * This is the Phase-2 "overwrite the managed tree" primitive (constitution §1):
+ * This is the "overwrite the managed tree" primitive (constitution §1):
  * `system/` IS the skeleton, so every install/update blind-copies the release's
  * `system/` over OP_HOME/system — compose stack AND the system OpenCode config
  * (plugins/permissions/instructions). Unchanged files are skipped; changed ones
  * are backed up first (full recovery). User trees, `data/`, and `state/` are
  * NEVER touched here — that is the caller's seed-if-missing step.
- *
- * Supersedes refreshCoreAssetsFromSource (which only refreshed the 3 compose
- * files, leaving the rest of system/ stale on update).
  */
 export function overwriteSystemTree(sourceRoot: string, homeDir = resolveOpenPalmHome()): {
   backupDir: string | null;

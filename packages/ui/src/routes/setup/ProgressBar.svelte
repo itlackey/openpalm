@@ -12,12 +12,12 @@
 
 <nav class="prog-bar" aria-label="Wizard steps">
   <div class="prog-segments">
-    {#each STEP_LABELS as _, i}
+    {#each STEP_LABELS as label, i (label)}
       <div class="prog-seg {i <= currentStep ? 'on' : ''}"></div>
     {/each}
   </div>
   <div class="prog-labels">
-    {#each STEP_LABELS as label, i}
+    {#each STEP_LABELS as label, i (label)}
       <span
         class="prog-lbl {i <= currentStep ? 'on' : ''} {i === currentStep ? 'active' : ''}"
         role="button"

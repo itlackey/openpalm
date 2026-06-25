@@ -25,7 +25,6 @@ import type { ControlPlaneState } from "@openpalm/lib";
 import {
   isValidPortal,
   discoverStackOverlays,
-  writeSystemEnv,
 } from "@openpalm/lib";
 
 // ── Test helpers — create isolated temp directories ────────────────────

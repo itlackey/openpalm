@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, readFileSync, rmSync, statSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

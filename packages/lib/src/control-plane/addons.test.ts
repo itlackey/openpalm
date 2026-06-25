@@ -41,7 +41,7 @@ describe('builtin addon metadata', () => {
   it('returns static built-in addon ids', () => {
     // Canonical list from BUILTIN_ADDON_IDS (addon-ids.ts — single source of truth).
     // chat, gateway, ssh were previously missing from BUILTIN_ADDONS in addons.ts
-    // but present in KNOWN_ADDON_IDS in migrations.ts; H6 unified them.
+    // but present in the builtin addon id set; H6 unified them.
     expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice']);
   });
 

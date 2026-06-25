@@ -36,14 +36,6 @@ function writeStackCompose(homeDir: string, filename: string, yml: string): void
   writeFileSync(join(stackDir, filename), yml);
 }
 
-function seedManagedSource(homeDir: string, files: Record<string, string>): void {
-  for (const [relPath, content] of Object.entries(files)) {
-    const path = join(homeDir, '.openpalm', relPath);
-    mkdirSync(join(path, '..'), { recursive: true });
-    writeFileSync(path, content);
-  }
-}
-
 registerCleanup();
 
 // ── Pure Utility Functions ──────────────────────────────────────────────
@@ -234,14 +226,12 @@ describe("writeRuntimeFiles", () => {
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
   });
 
-  test('refreshes managed compose assets on rerun but preserves custom.compose.yml', () => {
-    seedManagedSource(state.homeDir, {
-      'system/stack/core.compose.yml': 'services:\n  assistant:\n    image: current\n',
-      'system/stack/services.compose.yml': 'services:\n  ollama: {}\n',
-      'system/stack/portals.compose.yml': 'services:\n  chat: {}\n',
-      'config/assistant/opencode.jsonc': '{}\n',
-    });
-    writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services:\n  assistant:\n    image: stale\n');
+  test('seeds the managed compose only when absent and never clobbers an existing one or the custom overlay', () => {
+    // writeRuntimeFiles is strictly seed-if-absent. The managed system/ tree is
+    // refreshed wholesale by overwriteSystemTree (covered in lib core-assets
+    // tests), so an already-present managed core.compose.yml must be left intact.
+    const managedCore = join(state.stackDir, 'core.compose.yml');
+    writeFileSync(managedCore, 'services:\n  assistant:\n    image: already-here\n');
     // The USER custom overlay lives in config/stack and must NOT be clobbered.
     const userStackDir = join(state.homeDir, 'config', 'stack');
     mkdirSync(userStackDir, { recursive: true });
@@ -249,8 +239,9 @@ describe("writeRuntimeFiles", () => {
 
     writeRuntimeFiles(state);
 
-    // Managed core refreshed from the bundled source; user custom preserved.
-    expect(readFileSync(join(state.stackDir, 'core.compose.yml'), 'utf-8')).toContain('image: current');
+    // Existing managed core left untouched (not overwritten with state.artifacts);
+    // user custom preserved.
+    expect(readFileSync(managedCore, 'utf-8')).toContain('image: already-here');
     expect(readFileSync(join(userStackDir, 'custom.compose.yml'), 'utf-8')).toContain('mine');
   });
 

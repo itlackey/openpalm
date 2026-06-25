@@ -113,7 +113,7 @@ describe('proxy/assistant streaming passthrough', () => {
     const arrivals: { t: number; text: string }[] = [];
     const start = Date.now();
     let combined = '';
-    // eslint-disable-next-line no-constant-condition
+     
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;

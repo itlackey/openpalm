@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
@@ -61,12 +62,12 @@
   <div class="divider"></div>
 
   {#if showManageAssistant}
-    <a class="list-item link" href="/admin" onclick={() => onChosen?.()}>
+    <a class="list-item link" href={resolve('/admin')} onclick={() => onChosen?.()}>
       Manage this assistant…
     </a>
   {/if}
 
-  <a class="list-item link" href="/admin/endpoints" onclick={() => onChosen?.()}>
+  <a class="list-item link" href={resolve('/admin/endpoints')} onclick={() => onChosen?.()}>
     Manage assistant connections…
   </a>
 </div>

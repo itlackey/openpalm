@@ -22,7 +22,6 @@ const moduleUrls = {
   docker: new URL('./docker.js', import.meta.url).href,
   configPersistence: new URL('./config-persistence.js', import.meta.url).href,
   uiAssets: new URL('./ui-assets.js', import.meta.url).href,
-  migrations: new URL('./migrations.js', import.meta.url).href,
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./addons.js', import.meta.url).href,
   rollback: new URL('./rollback.js', import.meta.url).href,
@@ -120,10 +119,6 @@ mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
     if (scenario.seedError) throw new Error(scenario.seedError);
     return { updated: [], backupDir: null };
   },
-}));
-mock.module(${JSON.stringify(moduleUrls.migrations)}, () => ({
-  ensureMigrated: () => ({}),
-  ensureReleaseMigrated: () => ({ backupDir: null }),
 }));
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),
@@ -311,10 +306,6 @@ mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
 }));
 mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
   seedOpenPalmDir: async () => ({ updated: [], backupDir: null }),
-}));
-mock.module(${JSON.stringify(moduleUrls.migrations)}, () => ({
-  ensureMigrated: () => ({}),
-  ensureReleaseMigrated: () => ({ backupDir: null }),
 }));
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),

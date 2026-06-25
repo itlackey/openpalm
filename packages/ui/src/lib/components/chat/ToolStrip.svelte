@@ -109,7 +109,6 @@
       .replace(/^./, (char) => char.toUpperCase());
   }
 
-  function toolIconSize(): number { return 13; }
   function toolIconType(tool: string, status: string): string {
     const name = tool.toLowerCase();
     if (status === 'error' || status === 'failed') return 'alert';
@@ -229,7 +228,6 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="tool-modal-scrim" onclick={closeToolDetails}></div>
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="tool-modal-shell">
     <div
       class="tool-modal"

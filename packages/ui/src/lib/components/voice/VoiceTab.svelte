@@ -336,7 +336,6 @@
 		} catch (e) {
 			if (bumpTimer) {
 				clearTimeout(bumpTimer);
-				bumpTimer = null;
 			}
 			const msg = e instanceof Error ? e.message : 'Failed to save voice settings.';
 			error = msg;

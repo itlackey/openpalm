@@ -2,7 +2,7 @@ import { json } from "@sveltejs/kit";
 import { performSetup, checkDocker, mapDockerError, type SetupSpec } from "@openpalm/lib";
 import { resetState, getState } from "$lib/server/state.js";
 import { prepareSetupRestorePoint, startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
-import { getUiLoginPassword, requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
+import { getUiLoginPassword, requireAdmin, getRequestId } from "$lib/server/helpers.js";
 import { isSetupComplete, resolveOpenPalmHome } from "@openpalm/lib";
 import { createSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader } from "$lib/server/session-cookie.js";

@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { performUpgrade, checkAndUpdateUiBuild, ensureMigrated, MigrationError } from '@openpalm/lib';
+import { performUpgrade, checkAndUpdateUiBuild } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 
 export default defineCommand({
@@ -26,33 +26,6 @@ export default defineCommand({
 });
 
 export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {}): Promise<void> {
-  // Auto-migrate the on-disk layout BEFORE validating state — ensureValidState()
-  // -> createState() assumes the current layout and classifyLocalInstall() reads
-  // config/stack, so a 0.10.x home (no config/stack) would be rejected as
-  // "not installed" before performUpgrade could migrate it. Backs up first and
-  // fails safe (no-ops on an already-current install).
-  //
-  // This is a PRE-STATE gate, NOT redundant with reconcileHome's ensureMigrated:
-  // performUpgrade -> reconcileStack -> reconcileHome runs ensureMigrated again
-  // idempotently, but only AFTER ensureValidState has already needed the current
-  // layout. Both are required.
-  try {
-    const report = ensureMigrated({ log: (m) => console.log(`  ${m}`) });
-    if (report.migrated) {
-      console.log(`Migrated layout ${report.from} → ${report.to} (backup: ${report.backupDir}).`);
-      for (const note of report.notes) console.log(`  NOTE: ${note}`);
-    }
-  } catch (err) {
-    if (err instanceof MigrationError) {
-      console.error(`\nAutomatic migration aborted: ${err.message}\n${err.guidance}`);
-      if (err.backupDir) {
-        console.error(`If something went wrong, your previous state is backed up at ${err.backupDir} — run \`openpalm rollback\`.`);
-      }
-      process.exit(1);
-    }
-    throw err;
-  }
-
   const state = ensureValidState();
 
   console.log(`Upgrading stack${opts.allowPrerelease ? ' (including prereleases)' : ''}...`);

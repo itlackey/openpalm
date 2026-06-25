@@ -65,10 +65,6 @@
     };
   }
 
-  function oauthMethod(id: string): AuthMethod | undefined {
-    return (opencodeAuth[id] ?? []).find((m) => m.type === 'oauth');
-  }
-
   function oauthMethodIndex(id: string): number {
     return (opencodeAuth[id] ?? []).findIndex((m) => m.type === 'oauth');
   }
@@ -80,7 +76,6 @@
   {:else}
     {#each visibleOauth as provider (provider.id)}
       {@const st = getState(provider.id)}
-      {@const method = oauthMethod(provider.id)}
       {@const methodIdx = oauthMethodIndex(provider.id)}
       <div class="oauth-row" role="listitem" data-provider={provider.id}>
         <span class="oauth-name">{provider.name}</span>
@@ -90,6 +85,7 @@
         {:else if st.oauthPolling}
           <div class="oauth-polling">
             {#if st.oauthUrl}
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external provider OAuth URL, not an internal route -->
               <a href={st.oauthUrl} target="_blank" rel="noopener" class="oauth-open-link">
                 Open authorization page →
               </a>

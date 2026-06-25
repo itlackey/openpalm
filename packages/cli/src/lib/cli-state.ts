@@ -16,7 +16,7 @@ import type { ControlPlaneState } from '@openpalm/lib';
  *
  * Pure read: resolves core assets/artifacts from OP_HOME and does NOT persist
  * anything. Secrets and other OP_HOME assets are written ONLY by
- * install/update/apply (reconcileHome) — no self-healing on a plain command.
+ * install/update/apply (applyHome) — no self-healing on a plain command.
  *
  * Returns a ControlPlaneState usable with buildComposeCliArgs().
  */

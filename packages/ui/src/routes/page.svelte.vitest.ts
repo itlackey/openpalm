@@ -1,4 +1,4 @@
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, it, afterEach } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { useConsoleGuard, type ConsoleGuard } from '$lib/test-utils/console-guard';
 import AdminPage from './admin/+page.svelte';
