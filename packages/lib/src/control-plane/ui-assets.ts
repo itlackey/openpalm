@@ -31,7 +31,7 @@ const _require = createRequire(import.meta.url);
 import { resolveBackupsDir, resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
 import { PLATFORM_VERSION, compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
-import { refreshCoreAssetsFromSource } from './core-assets.js';
+import { overwriteSystemTree } from './core-assets.js';
 
 const logger = createLogger('lib:ui-assets');
 
@@ -187,12 +187,14 @@ export async function seedOpenPalmDir(
 
   const local = resolveLocalOpenpalmDir();
   if (local) {
-    // ALWAYS refresh the system-managed stack assets (cheap local copy) so a
-    // re-install over an existing OP_HOME picks up the current compose files
-    // even when the skeleton stamp already matches (#472). User-owned files stay
-    // seed-if-missing via the copyTree below.
-    const { updated, backupDir } = refreshCoreAssetsFromSource(local, homeDir);
-    if (updated.length) logger.debug('refreshed managed stack assets', { refreshed: updated });
+    // ALWAYS overwrite the entire MANAGED system/ tree (compose stack + system
+    // OpenCode config) from the release skeleton, so a re-install/update picks up
+    // the current managed assets even when the skeleton stamp already matches
+    // (#472) — changed files are backed up first. User-owned files (config/,
+    // knowledge/, workspace/, the tool/skill/task seeds) stay seed-if-missing via
+    // the copyTree below; data/ + state/ are never touched here.
+    const { updated, backupDir } = overwriteSystemTree(local, homeDir);
+    if (updated.length) logger.debug('overwrote managed system/ tree', { refreshed: updated });
     if (alreadySeeded) {
       // Even when the stamp matches, ALWAYS seed-if-missing the service-required
       // files under data/ — above all the assistant/guardian/portal tool manifests

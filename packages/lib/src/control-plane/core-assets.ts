@@ -10,9 +10,9 @@
  * Env validation has moved to `akm vault` + the in-house redactor — the
  * historical `.env.schema` files (varlock format) were retired in #391.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
@@ -148,6 +148,52 @@ export function refreshCoreAssetsFromSource(sourceRoot: string, homeDir = resolv
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, freshContent);
     updated.push(asset.relPath);
+  }
+
+  return { backupDir, updated };
+}
+
+/**
+ * Overwrite the entire MANAGED `system/` tree from the release skeleton.
+ *
+ * This is the Phase-2 "overwrite the managed tree" primitive (constitution §1):
+ * `system/` IS the skeleton, so every install/update blind-copies the release's
+ * `system/` over OP_HOME/system — compose stack AND the system OpenCode config
+ * (plugins/permissions/instructions). Unchanged files are skipped; changed ones
+ * are backed up first (full recovery). User trees, `data/`, and `state/` are
+ * NEVER touched here — that is the caller's seed-if-missing step.
+ *
+ * Supersedes refreshCoreAssetsFromSource (which only refreshed the 3 compose
+ * files, leaving the rest of system/ stale on update).
+ */
+export function overwriteSystemTree(sourceRoot: string, homeDir = resolveOpenPalmHome()): {
+  backupDir: string | null;
+  updated: string[];
+} {
+  const updated: string[] = [];
+  let backupDir: string | null = null;
+
+  const sysSource = join(sourceRoot, 'system');
+  if (!existsSync(sysSource)) return { backupDir, updated };
+
+  for (const entry of readdirSync(sysSource, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const parentDir = (entry as unknown as { parentPath?: string; path?: string }).parentPath
+      ?? (entry as unknown as { path: string }).path;
+    const sourcePath = join(parentDir, entry.name);
+    const rel = join('system', relative(sysSource, sourcePath));
+    const targetPath = join(homeDir, rel);
+    const freshContent = readFileSync(sourcePath);
+
+    if (existsSync(targetPath)) {
+      const currentContent = readFileSync(targetPath);
+      if (sha256(currentContent.toString('utf-8')) === sha256(freshContent.toString('utf-8'))) continue;
+      backupDir = backupExistingFile(targetPath, rel, backupDir);
+    }
+
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, freshContent);
+    updated.push(rel);
   }
 
   return { backupDir, updated };

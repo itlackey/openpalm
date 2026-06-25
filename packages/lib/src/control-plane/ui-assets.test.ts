@@ -148,21 +148,24 @@ describe("resolveUiBuildDir — de-route visibility (§6.1 / Risk #1)", () => {
 });
 
 describe("seedOpenPalmDir — version guard (P2)", () => {
-  const seededFile = () => join(opHome, "system", "stack", "x.txt");
+  // A USER-tree seed marker: seeded once by the version-gated copyTree, so a
+  // removed copy stays removed on a same-version re-seed. (system/ files are
+  // ALWAYS overwritten by overwriteSystemTree and are NOT valid seed-once markers.)
+  const seededFile = () => join(opHome, "config", "marker.txt");
   const stamp = () => join(opHome, SKELETON_VERSION_STAMP);
 
   beforeEach(() => {
     // Local skeleton source at OPENPALM_REPO_ROOT/packages/skeleton (candidate 1).
     mkdirSync(join(repoRoot, "packages", "skeleton", "system", "stack"), { recursive: true });
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "x.txt"), "seed\n");
-    // refreshCoreAssetsFromSource reads all MANAGED_ASSETS from the source; populate stubs.
+    // overwriteSystemTree blind-copies ALL of system/ from the source; populate it.
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "services.compose.yml"), "services: {}\n");
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "portals.compose.yml"), "services: {}\n");
-    // Seeded once by the skip-existing copyTree (custom.compose.yml, opencode.jsonc).
-    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "custom.compose.yml"), "services: {}\n");
-    mkdirSync(join(repoRoot, "packages", "skeleton", "config", "assistant"), { recursive: true });
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "assistant", "opencode.jsonc"), "{}\n");
+    // USER-owned seeds (seed-once via copyTree): the custom overlay + a marker.
+    mkdirSync(join(repoRoot, "packages", "skeleton", "config", "stack"), { recursive: true });
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "custom.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "marker.txt"), "user-seed\n");
     // Skeleton ships per-service tool manifests under data/<svc>/tools/package.json.
     // These are seeded ONLY by the full copyTree(skipExisting) on a version change,
     // NOT by refreshCoreAssetsFromSource (which only covers system/stack/*).
@@ -199,24 +202,24 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
     expect(readFileSync(stamp(), "utf-8").trim()).toBe("v2");
   });
 
-  it("REFRESHES system-managed stack assets on every seed (even same version), preserving user files (#472)", async () => {
+  it("OVERWRITES the managed system/ tree on every seed (even same version), preserving user files (#472)", async () => {
     const core = join(opHome, "system", "stack", "core.compose.yml");
-    const custom = join(opHome, "system", "stack", "custom.compose.yml");
-    // Skeleton ships the CURRENT managed compose. (custom.compose.yml is user-owned
-    // and intentionally not part of the skeleton refresh.)
+    const custom = join(opHome, "config", "stack", "custom.compose.yml"); // USER-owned
+    // Skeleton ships the CURRENT managed compose.
     writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
 
     // First seed materializes everything + stamps the version.
     await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
-    // Simulate an OLD OP_HOME: a STALE managed compose + a user-owned overlay.
+    // Simulate an OLD OP_HOME: a STALE managed compose + a user-owned overlay edit.
     writeFileSync(core, "services:\n  assistant:\n    image: STALE\n");
     writeFileSync(custom, "services:\n  my-thing:\n    image: user\n");
 
     // Re-seed the SAME version (stamp matches → the old code skipped entirely).
     await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
-    // Managed asset is refreshed to the shipped version; user file is untouched.
+    // Managed system/ asset is overwritten to the shipped version; the user file
+    // in config/ is untouched (seed-once, never overwritten).
     expect(readFileSync(core, "utf-8")).toContain("image: current");
     expect(readFileSync(core, "utf-8")).not.toContain("STALE");
     expect(readFileSync(custom, "utf-8")).toContain("image: user");
