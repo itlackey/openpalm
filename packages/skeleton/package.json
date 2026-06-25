@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/skeleton",
-  "version": "0.12.41",
+  "version": "0.12.42",
   "description": "OpenPalm default config skeleton — seeded into OP_HOME on install",
   "private": false,
   "license": "MPL-2.0",
