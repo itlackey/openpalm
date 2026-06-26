@@ -127,6 +127,28 @@
     return v.replace(/^v/, '');
   }
 
+  // Resolve the version each component should ADVANCE to for an update: a deliberate
+  // pin if set, else the channel-latest `available`. A component on a moving tag
+  // (latest/next) with no pin is left alone — applyStack just re-pulls it; only a
+  // component stuck on a specific stale version needs an explicit target. This is the
+  // crux of the fix: a channel of specific tags (next/beta) has no moving tag to
+  // "track", so without writing the resolved target, update can never move forward.
+  function targetVersionsFor(keys: string[]): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const key of keys) {
+      const info = components[key];
+      if (!info) continue;
+      const target = info.pinned ?? info.available;
+      if (!target) continue;
+      const running = info.running?.plainVersion ?? null;
+      const moving = running === 'latest' || running === 'next' || running === null;
+      if (!info.pinned && moving) continue;
+      if (running && bare(target) === bare(running)) continue;
+      out[key] = target;
+    }
+    return out;
+  }
+
   // ── Row pin actions ───────────────────────────────────────────────────────
 
   function startEditPin(key: string): void {
@@ -173,7 +195,7 @@
     rowUpdateError[key] = '';
     rowUpdateSuccess[key] = '';
     try {
-      const result = await applyServiceUpdate(service);
+      const result = await applyServiceUpdate(service, targetVersionsFor([key]));
       if (!result.overallSuccess) {
         rowUpdateError[key] = result.failed.length > 0
           ? result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')
@@ -200,7 +222,7 @@
     allError = '';
     allSuccess = '';
     try {
-      const result = await applyChanges();
+      const result = await applyChanges(targetVersionsFor(Object.keys(components)));
       if (!result.overallSuccess) {
         allError = result.failed.length > 0
           ? `Failed: ${result.failed.map((f) => `${f.service}: ${f.reason}`).join('; ')}`

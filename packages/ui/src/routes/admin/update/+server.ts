@@ -12,6 +12,8 @@ import {
   buildComposeOptions,
   checkDocker,
   applyStack,
+  patchSecretsEnvFile,
+  isVersionKey,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -23,19 +25,34 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  // Optional body: { service?: string } for scoped single-service updates (§4, §7).
-  // When service is present, skip the managed-file apply (no file changes) and only
-  // pull + recreate that one container — updating one container MUST NOT touch others.
+  // Optional body:
+  //   { service?: string } — scoped single-service update (§4, §7); pull + recreate
+  //     ONLY that container, never touching others.
+  //   { versions?: { OP_<X>_VERSION: "<target>" } } — the version each component
+  //     should ADVANCE to before recreate (the channel-latest the UI resolved, or a
+  //     deliberate pin). Without this, "update" just re-applies the current tag and
+  //     can never move forward on a channel whose releases are specific tags (next/
+  //     beta have no moving tag). Targets are written to the legacy stack.env — the
+  //     APPLIED/current tracker — NOT state/ (state is for deliberate pins; writing
+  //     an applied version there would make it read back as a pin and re-freeze).
   let service: string | undefined;
+  const targetVersions: Record<string, string> = {};
   try {
     const body = event.request.headers.get("content-type")?.includes("application/json")
-      ? await event.request.json() as { service?: unknown }
+      ? await event.request.json() as { service?: unknown; versions?: unknown }
       : {};
     if (typeof body?.service === "string" && body.service.trim()) {
       service = body.service.trim();
     }
+    if (body?.versions && typeof body.versions === "object") {
+      for (const [k, v] of Object.entries(body.versions as Record<string, unknown>)) {
+        if (isVersionKey(k) && typeof v === "string" && v.trim()) {
+          targetVersions[k] = v.trim();
+        }
+      }
+    }
   } catch {
-    // No body or unparseable — treat as "all" (backward compat)
+    // No body or unparseable — treat as "all" with no explicit targets (backward compat).
   }
 
   return withSerialQueue("admin:update", async () => {
@@ -56,6 +73,17 @@ export const POST: RequestHandler = async (event) => {
           dockerAvailable: false,
           overallSuccess: false,
         }, requestId);
+      }
+
+      // Advance the APPLIED version before recreate: write each component's target
+      // (the channel-latest the UI resolved, or a deliberate pin) into the legacy
+      // stack.env that `docker compose --env-file` reads, so applyStack pulls the
+      // NEW tag instead of re-applying the current one. Written to legacy (the
+      // applied/current tracker) — never state/, which is reserved for deliberate
+      // pins (an applied version in state would read back as a pin and re-freeze).
+      if (Object.keys(targetVersions).length > 0) {
+        patchSecretsEnvFile(state.homeDir, targetVersions);
+        logger.info("advanced versions before update", { requestId, targetVersions });
       }
 
       if (service) {

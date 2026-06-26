@@ -18,6 +18,7 @@ type ApplyStackFn = (scope: unknown, opts: unknown) => Promise<{
 const applyStackMock = vi.fn<ApplyStackFn>();
 const checkDockerMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
 const applyUpdateMock = vi.fn<() => Promise<{ restarted: string[] }>>();
+const patchSecretsEnvFileMock = vi.fn<(homeDir: string, patches: Record<string, string>) => void>();
 
 vi.mock('@openpalm/lib', async () => {
   const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
@@ -25,6 +26,7 @@ vi.mock('@openpalm/lib', async () => {
     ...actual,
     applyUpdate: (...args: unknown[]) => applyUpdateMock(...(args as [])),
     applyStack: (...args: unknown[]) => applyStackMock(...(args as [unknown, unknown])),
+    patchSecretsEnvFile: (...args: unknown[]) => patchSecretsEnvFileMock(...(args as [string, Record<string, string>])),
     checkDocker: (...args: unknown[]) => checkDockerMock(...(args as [])),
     ensureHomeDirs: () => undefined,
     ensureOpenCodeConfig: () => undefined,
@@ -55,6 +57,7 @@ beforeEach(() => {
   applyStackMock.mockReset();
   checkDockerMock.mockReset();
   applyUpdateMock.mockReset();
+  patchSecretsEnvFileMock.mockReset();
 
   applyUpdateMock.mockResolvedValue({ restarted: [] });
   checkDockerMock.mockResolvedValue({ ok: true, stdout: '24.0.0', stderr: '', code: 0 });
@@ -70,6 +73,28 @@ describe('POST /admin/update', () => {
   test('requires admin auth', async () => {
     const res = await POST(makePostEvent('bad-token'));
     expect(res.status).toBe(401);
+  });
+
+  test('advances versions: writes the target versions (the resolved channel-latest) before applyStack', async () => {
+    // The freeze-bug fix: "Update everything" must write the target each component
+    // should advance to, else applyStack just re-applies the current tag. Targets go
+    // to the legacy stack.env (the applied/current tracker), never state/ (pins).
+    const res = await POST(makePostEvent('admin-token', {
+      versions: { OP_ASSISTANT_VERSION: '0.12.44-beta.2', OP_GUARDIAN_VERSION: '0.12.44-beta.2' },
+    }));
+    expect(res.status).toBe(200);
+    expect(patchSecretsEnvFileMock).toHaveBeenCalledTimes(1);
+    const [, patches] = patchSecretsEnvFileMock.mock.calls[0];
+    expect(patches).toEqual({ OP_ASSISTANT_VERSION: '0.12.44-beta.2', OP_GUARDIAN_VERSION: '0.12.44-beta.2' });
+    // written BEFORE the stack is recreated
+    expect(patchSecretsEnvFileMock.mock.invocationCallOrder[0])
+      .toBeLessThan(applyStackMock.mock.invocationCallOrder[0]);
+  });
+
+  test('does not write versions when no targets are supplied (re-apply only — backward compat)', async () => {
+    const res = await POST(makePostEvent());
+    expect(res.status).toBe(200);
+    expect(patchSecretsEnvFileMock).not.toHaveBeenCalled();
   });
 
   test('returns 200 with all services when applyStack succeeds', async () => {

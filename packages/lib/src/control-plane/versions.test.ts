@@ -139,13 +139,18 @@ describe("readPinnedVersions", () => {
     expect(pinned.OP_VOICE_VERSION).toBe("0.12.0");
   });
 
-  it("falls back to legacy stack.env when state file is absent (dual-read §1a)", () => {
+  it("a legacy stack.env value is NOT a pin — it is the applied/current version, so pinned is null (the freeze-bug fix)", () => {
+    // The old updater auto-wrote OP_*_VERSION into the legacy stack.env as the
+    // CURRENT version. Reading it as a pin froze every existing install: the UI
+    // showed it pinned and "update" re-applied that version forever. A deliberate
+    // pin lives ONLY in state/; a legacy-only value means "tracking" (pinned null),
+    // and update is free to advance it to the channel-latest.
     writeFileSync(
       join(home.state.homeDir, "knowledge", "env", "stack.env"),
       "OP_GUARDIAN_VERSION=0.12.33\n"
     );
     const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_GUARDIAN_VERSION).toBe("0.12.33");
+    expect(pinned.OP_GUARDIAN_VERSION).toBe(null);
   });
 
   it("state file wins over legacy when both present", () => {
