@@ -176,11 +176,18 @@ export function readVersions(state: ControlPlaneState): Record<string, string> {
  * UI could have written one).
  */
 export function readPinnedVersions(state: ControlPlaneState): Record<VersionKey, string | null> {
+  // A PIN is a DELIBERATE lock, and deliberate version records live in state/
+  // (constitution §1). A value in the legacy knowledge/env/stack.env is the
+  // auto-written APPLIED/current version (the old updater wrote it; a fresh
+  // install seeds it to "latest") — NOT a user pin. Reading legacy here was the
+  // bug that froze every existing install at whatever version it carried when it
+  // crossed onto this model: the UI showed it "pinned" and "update" re-applied
+  // that version forever. The effective/running version (what compose uses) is
+  // readVersions(), which DOES fall back to legacy; only the PIN is state-only.
   const fromState = existsSync(stateEnvFile(state.homeDir)) ? parseEnvFile(stateEnvFile(state.homeDir)) : {};
-  const fromLegacy = existsSync(legacyStackEnvFile(state.homeDir)) ? parseEnvFile(legacyStackEnvFile(state.homeDir)) : {};
   const out = {} as Record<VersionKey, string | null>;
   for (const key of SERVICE_VERSION_KEYS) {
-    const raw = fromState[key] ?? fromLegacy[key] ?? null;
+    const raw = fromState[key] ?? null;
     if (raw === null) { out[key] = null; continue; }
     // Normalize: strip legacy v-prefix and any voice variant suffix (tolerant read)
     let normalized = normalizePinValue(raw);

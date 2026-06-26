@@ -122,11 +122,13 @@ export type ApplyChangesResult = {
   error?: string;
 };
 
-export async function applyChanges(): Promise<ApplyChangesResult> {
+export async function applyChanges(versions: Record<string, string> = {}): Promise<ApplyChangesResult> {
   // The route returns 502 when individual services fail (e.g. an addon
   // image isn't available). The body still carries the structured result,
   // so parse it before requireOk would throw.
-  const res = await request('POST', '/admin/update', {});
+  // `versions` carries the target each component should advance to (the resolved
+  // channel-latest or a pin) so the update actually moves forward (see UpdatesTab).
+  const res = await request('POST', '/admin/update', { versions });
   if (res.status === 401) {
     throw Object.assign(new Error('Sign-in required.'), { status: 401 });
   }
@@ -141,8 +143,8 @@ export async function applyChanges(): Promise<ApplyChangesResult> {
 
 /** Scoped single-service update (§4, §7 "Update <container>"):
  *  pull + recreate ONLY the named compose service. Pull failure is FATAL (§6). */
-export async function applyServiceUpdate(service: string): Promise<ApplyChangesResult> {
-  const res = await request('POST', '/admin/update', { service });
+export async function applyServiceUpdate(service: string, versions: Record<string, string> = {}): Promise<ApplyChangesResult> {
+  const res = await request('POST', '/admin/update', { service, versions });
   if (res.status === 401) {
     throw Object.assign(new Error('Sign-in required.'), { status: 401 });
   }
