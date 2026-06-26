@@ -263,13 +263,35 @@ if grep -q '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" \
 	_old_port="$(grep '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" | head -1 | cut -d= -f2-)"
 	printf 'OP_HOST_UI_PORT=%s\n' "$_old_port" >>"$STASH_DIR/env/stack.env"
 fi
-# Enable requested addons via OP_ENABLED_ADDONS (comma-separated) in stack.env.
+# Enable requested addons via OP_ENABLED_ADDONS (comma-separated) in stack.env,
+# and seed the matching COMPOSE_PROFILES. The production `up` path computes
+# active profiles via the control plane (resolveActiveProfiles), but the dev
+# shortcuts (dev:stack / dev:build) call docker compose directly and bypass it —
+# so without COMPOSE_PROFILES the enabled addon's containers (e.g. guardian +
+# discord portal) silently never start. docker compose reads COMPOSE_PROFILES
+# from --env-file. Mirror resolveActiveProfiles' defaults: voice/ollama use their
+# .cpu variant, everything else is addon.<name>.
 if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 	_csv="$(IFS=,; echo "${enabled_addons[*]}")"
 	if grep -q '^OP_ENABLED_ADDONS=' "$STASH_DIR/env/stack.env"; then
 		sed -i "s/^OP_ENABLED_ADDONS=.*/OP_ENABLED_ADDONS=${_csv}/" "$STASH_DIR/env/stack.env"
 	else
 		printf 'OP_ENABLED_ADDONS=%s\n' "$_csv" >>"$STASH_DIR/env/stack.env"
+	fi
+
+	_profiles=()
+	for _a in "${enabled_addons[@]}"; do
+		case "$_a" in
+		voice) _profiles+=("addon.voice.cpu") ;;
+		ollama) _profiles+=("addon.ollama.cpu") ;;
+		*) _profiles+=("addon.${_a}") ;;
+		esac
+	done
+	_pcsv="$(IFS=,; echo "${_profiles[*]}")"
+	if grep -q '^COMPOSE_PROFILES=' "$STASH_DIR/env/stack.env"; then
+		sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=${_pcsv}/" "$STASH_DIR/env/stack.env"
+	else
+		printf 'COMPOSE_PROFILES=%s\n' "$_pcsv" >>"$STASH_DIR/env/stack.env"
 	fi
 fi
 
