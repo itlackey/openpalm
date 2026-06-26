@@ -357,7 +357,6 @@ export function patchStateEnvFile(homeDir: string, patches: Record<string, strin
   renameSync(tmp, path);
 }
 
-
 export function maskSecretValue(key: string, value: string): string {
   if (!value) return "";
   if (PLAIN_CONFIG_KEYS.has(key)) return value;
