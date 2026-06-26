@@ -6,10 +6,12 @@
  *   config/stack/ — USER: the custom.compose.yml overlay ONLY (seeded once, never overwritten)
  *   system/stack/ — MANAGED: fixed compose files (core/services/portals), overwritten on reconcile
  *   data/      — RUNTIME: persistent service data, logs, backups, rollback (never written by install/update)
- *   knowledge/ — USER/services: akm knowledge (env, secrets, tasks); env/stack.env is the
- *                authoritative stack composition + versions record
+ *   knowledge/ — USER/services: akm knowledge (env, secrets, tasks); env/stack.env holds
+ *                non-secret base Compose configuration only
  *   workspace/ — USER: shared assistant work area
- *   state/     — app-written records (pins, enabled add-ons, channel, setup)
+ *   state/     — app-written records (version pins, enabled add-ons, channel, setup);
+ *                stack.state.env is merged OVER legacy stack.env at compose time, so
+ *                pins/channel/add-ons live here, not in knowledge/env/stack.env
  */
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
