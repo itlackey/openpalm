@@ -16,8 +16,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
   try {
     const result = await fetchProviderModels(provider, apiKey, baseUrl, resolveOpenPalmHome());
-    if (result.status !== "ok") return json({ ok: false, ...result }, { status: 502 });
-    return json({ ok: true, ...result });
+    // `recoverable_error` (no/invalid credentials, unreachable, timeout) is an
+    // EXPECTED, non-fatal outcome: the request itself succeeded, the provider
+    // just isn't usable yet. Return 200 with the structured result so the wizard
+    // reads `data.status` and shows it inline — a 502 here only makes the browser
+    // log a hard console error for a state the client already handles. (Mirrors
+    // guardian/health returning 200 `not_deployed` instead of 503-spamming the
+    // console.) Genuine server faults still surface as 500 via the catch below.
+    return json({ ok: result.status === "ok", ...result });
   } catch (err) {
     return json({ ok: false, error: "model_fetch_failed", message: String(err) }, { status: 500 });
   }
