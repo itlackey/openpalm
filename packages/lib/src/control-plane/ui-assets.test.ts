@@ -539,22 +539,27 @@ describe("checkAndUpdateUiBuild", () => {
   // channel excludes prereleases, so a prerelease app would incorrectly see
   // "no update available" if it queried `latest`.
 
-  it('checkAndUpdateUiBuild uses `next` channel for prerelease app versions', async () => {
+  it('checkAndUpdateUiBuild (prerelease app) resolves the newest version across dist-tags, not the stale `next` tag', async () => {
     makeBuild(dataUi, '0.11.0');
 
-    let requestedChannel: string | null = null;
+    let requestedRef: string | null = null;
     globalThis.fetch = async (_url: string | URL | Request) => {
       const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('/dist-tags')) {
+        // `next` deliberately stale — the fix must pick max(dist-tags) = beta 0.12.5-beta.2
+        return new Response(JSON.stringify({ next: '0.12.0-rc.1', beta: '0.12.5-beta.2', latest: '0.12.4' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (url.includes('registry.npmjs.org/@openpalm/ui/')) {
-        requestedChannel = url.split('/@openpalm/ui/')[1];
-        return manifestResponse('0.12.0-rc.1');
+        requestedRef = url.split('/@openpalm/ui/')[1];
+        return manifestResponse('0.12.5-beta.2');
       }
       return new Response('', { status: 200 });
     };
 
-    // Call with a prerelease version — should query the `next` channel
+    // Prerelease app → `next` channel → newest across dist-tags (not the stale `next` dist-tag)
     await checkAndUpdateUiBuild('0.12.0-rc.1', join(opHome, 'data'));
-    expect(requestedChannel).toBe('next');
+    expect(requestedRef).toBe('0.12.5-beta.2');
   });
 
   it('checkAndUpdateUiBuild uses `latest` channel for stable app versions', async () => {
@@ -759,21 +764,31 @@ describe("checkAndUpdateSkeleton", () => {
     expect(readSkeletonVersion(skelOpHome)).toBe("0.12.0");
   });
 
-  it("uses the `latest` channel for stable versions and `next` for prerelease", async () => {
+  it("stable → @latest dist-tag; prerelease → NEWEST version across all dist-tags (not the stale `next` tag)", async () => {
+    // The fix: the `next` npm dist-tag goes stale because prereleases publish to a
+    // suffix tag (beta/rc), so the prerelease channel must resolve max(dist-tags),
+    // NOT @next. Here `next` is deliberately the OLDEST — the fix must ignore it.
     writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
-    const channels: string[] = [];
+    const refs: string[] = [];
     globalThis.fetch = async (url: string | URL | Request) => {
       const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("/dist-tags")) {
+        return new Response(
+          JSON.stringify({ next: "0.12.0-rc.1", beta: "0.12.5-beta.2", latest: "0.12.4" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
       if (u.includes("@openpalm/skeleton/")) {
-        channels.push(u.split("@openpalm/skeleton/")[1]);
+        refs.push(u.split("@openpalm/skeleton/")[1]);
         return manifestResponse("0.11.0"); // up to date, no download
       }
       return new Response("", { status: 200 });
     };
-    await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
-    await checkAndUpdateSkeleton("0.12.0-rc.1", skelOpHome, skelDataDir);
-    expect(channels[0]).toBe("latest");
-    expect(channels[1]).toBe("next");
+    await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);       // stable → latest
+    await checkAndUpdateSkeleton("0.12.0-rc.1", skelOpHome, skelDataDir);  // prerelease → next
+    expect(refs[0]).toBe("latest");
+    // next resolves to the newest across dist-tags (beta 0.12.5-beta.2), NOT stale `next` (0.12.0-rc.1)
+    expect(refs[1]).toBe("0.12.5-beta.2");
   });
 
   it("happy-path: stages, verifies integrity, atomically swaps system/, stamps version", async () => {

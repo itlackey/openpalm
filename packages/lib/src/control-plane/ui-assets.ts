@@ -363,6 +363,29 @@ async function fetchNpmUiManifest(versionOrTag: string): Promise<NpmUiManifest> 
 }
 
 /**
+ * Resolve a channel to the npm version ref to install.
+ *
+ *   `latest` → the @latest dist-tag (newest STABLE) — unchanged.
+ *   `next`   → the NEWEST published version across ALL dist-tags.
+ *
+ * Why not just `@next`: prereleases publish to a SUFFIX dist-tag (X.Y.Z-beta.N →
+ * `beta`, -rc.N → `rc`), NOT a single moving `next` tag — so the `next` tag goes
+ * stale (it sat at 0.12.0-rc.8 while betas shipped to `beta`). Resolving `@next`
+ * therefore froze (or downgraded) the prerelease channel. Mirroring the Docker
+ * resolver (which lists tags and picks the newest on-channel), take max(dist-tags)
+ * = the true bleeding edge (latest beta/rc/stable, whichever is newest).
+ */
+async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise<string> {
+  if (channel === 'latest') return 'latest';
+  const res = await fetchWithRetry(`${NPM_REGISTRY}/-/package/${encodeURIComponent(pkg)}/dist-tags`);
+  if (!res.ok) throw new Error(`npm registry returned HTTP ${res.status} for ${pkg} dist-tags`);
+  const tags = await res.json() as Record<string, unknown>;
+  const versions = Object.values(tags).filter((v): v is string => typeof v === 'string' && v.length > 0);
+  if (versions.length === 0) return 'next';
+  return versions.reduce((newest, v) => (compareComparableVersions(v, newest) > 0 ? v : newest));
+}
+
+/**
  * Verify a Subresource-Integrity string against the bytes. FAIL-CLOSED: a
  * present-but-wrong hash throws (the corruption / tamper case). A registry that
  * omits the hash entirely (legacy metadata) is logged and allowed — modern npm
@@ -522,7 +545,7 @@ export async function checkAndUpdateUiBuild(
   let uiBuildBackupDir: string | undefined;
   try {
     const channel  = uiUpdateChannel(appVersion, channelOverride);
-    const manifest = await fetchNpmUiManifest(channel);
+    const manifest = await fetchNpmUiManifest(await resolveChannelRef(UI_PACKAGE, channel));
     const latestVersion = manifest.version;
 
     // §5.3 self-update-vs-redownload gate. Only meaningful when a native harness
@@ -716,7 +739,7 @@ export async function checkAndUpdateSkeleton(
   let skelBackupDir: string | undefined;
   try {
     const channel = uiUpdateChannel(appVersion, channelOverride);
-    const manifest = await fetchNpmSkeletonManifest(channel);
+    const manifest = await fetchNpmSkeletonManifest(await resolveChannelRef(SKELETON_PACKAGE, channel));
     const latestVersion = manifest.version;
 
     const currentVersion = readSkeletonVersion(homeDir);
