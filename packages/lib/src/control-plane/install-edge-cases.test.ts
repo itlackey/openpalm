@@ -24,6 +24,7 @@ import {
   buildOwnerEnvFromSetup,
   buildAuthJsonFromSetup,
 } from "./setup.js";
+import { markSetupComplete } from "./deploy.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 import { readSecret } from './secrets-files.js';
@@ -219,6 +220,23 @@ describe("Fresh Install", () => {
     const parsed = parseEnvContent(stackEnv);
     // Either entirely absent, or still the seeded "false" — never "true".
     expect(parsed.OP_SETUP_COMPLETE === undefined || parsed.OP_SETUP_COMPLETE === "false").toBe(true);
+  });
+
+  // Scenario 5: markSetupComplete writes the flag to state/ (constitution §1),
+  // never into the operator-facing knowledge/env/stack.env, and isSetupComplete
+  // reads it back via the state-over-legacy merge.
+  it("markSetupComplete writes OP_SETUP_COMPLETE to state/, not stack.env", () => {
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    expect(isSetupComplete(homeDir)).toBe(false);
+
+    markSetupComplete({ homeDir } as unknown as ControlPlaneState);
+
+    expect(isSetupComplete(homeDir)).toBe(true);
+    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
+    expect(stateEnv).toContain("OP_SETUP_COMPLETE=true");
+    // The operator-facing stack.env keeps its seeded "false" — state wins on read.
+    expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).toContain("OP_SETUP_COMPLETE=false");
   });
 });
 

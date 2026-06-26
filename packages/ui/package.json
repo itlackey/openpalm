@@ -18,10 +18,10 @@
     "build"
   ],
   "scripts": {
-    "dev": "PORT=5173 vite dev",
+    "dev": "PORT=${PORT:-5173} vite dev",
     "ux:audit": "NODE_PATH=\"$PWD/node_modules\" bun \"${AKM_HOME:-$HOME/akm}/skills/web-ux/ux-dom-audit/scripts/audit.ts\" e2e/ux-audit.config.json",
     "ux:audit:wizard": "NODE_PATH=\"$PWD/node_modules\" bun \"${AKM_HOME:-$HOME/akm}/skills/web-ux/ux-dom-audit/scripts/audit.ts\" e2e/ux-audit.wizard.config.json",
-    "dev:local": "PORT=5173 OP_OPENCODE_URL=${OP_OPENCODE_URL:-http://localhost:3800} vite dev",
+    "dev:local": "PORT=${PORT:-5173} OP_OPENCODE_URL=${OP_OPENCODE_URL:-http://localhost:3800} vite dev",
     "build": "svelte-kit sync && vite build && node scripts/stamp-version.mjs",
     "clean:build": "rm -rf .svelte-kit build",
     "preview": "vite preview",

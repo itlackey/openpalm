@@ -118,9 +118,10 @@ describe('addon runtime state', () => {
     ]);
   });
 
-  it('round-trips addon profile selection through stack.env', () => {
+  it('round-trips addon profile selection, written to state/ not stack.env (constitution §1)', () => {
     const stackDir = join(process.env.OP_HOME!, 'system', 'stack');
     const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
+    const stateEnv = join(process.env.OP_HOME!, 'state', 'stack.state.env');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
     writeFileSync(stackEnv, '');
@@ -128,7 +129,9 @@ describe('addon runtime state', () => {
     expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBeNull();
     setAddonProfileSelection(process.env.OP_HOME!, 'voice', 'addon.voice.cuda');
     expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBe('addon.voice.cuda');
-    expect(readFileSync(stackEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
+    // App-written addon state lands in state/, and never in the operator-facing stack.env.
+    expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
+    expect(readFileSync(stackEnv, 'utf-8')).not.toContain('OP_VOICE_PROFILE');
   });
 });
 

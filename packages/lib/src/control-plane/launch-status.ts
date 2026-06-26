@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { legacyStackEnvFile } from "./home.js";
+import { legacyStackEnvFile, stateEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
 
 export type LocalStackState =
@@ -164,7 +164,11 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
  */
 export function classifyLocalInstall(stackDir: string, homeDir: string): "not_installed" | "setup_incomplete" | "installed" {
   const hasCompose = existsSync(join(stackDir, "core.compose.yml"));
-  const env = parseEnvFile(legacyStackEnvFile(homeDir));
+  // OP_SETUP_COMPLETE lives in state/ (constitution §1); merge state OVER legacy so
+  // installs that recorded it in the legacy stack.env still classify as installed.
+  const legacy = parseEnvFile(legacyStackEnvFile(homeDir));
+  const state = existsSync(stateEnvFile(homeDir)) ? parseEnvFile(stateEnvFile(homeDir)) : {};
+  const env = { ...legacy, ...state };
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
   return "setup_incomplete";
