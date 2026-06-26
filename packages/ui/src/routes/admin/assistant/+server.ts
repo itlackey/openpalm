@@ -43,7 +43,7 @@ export const GET: RequestHandler = async (event) => {
   if (denied) return denied;
 
   const state = getState();
-  const env = readStackEnv(state.stackDir);
+  const env = readStackEnv(state.homeDir);
 
   return jsonResponse(
     200,
@@ -80,7 +80,7 @@ export const PUT: RequestHandler = async (event) =>
     }
 
     const state = getState();
-    patchSecretsEnvFile(state.stackDir, {
+    patchSecretsEnvFile(state.homeDir, {
       OP_PROJECT_NAME: projectName,
       OP_ASSISTANT_BIND_ADDRESS: body.lanExposureEnabled ? LAN_ASSISTANT_BIND_ADDRESS : DEFAULT_ASSISTANT_BIND_ADDRESS,
     });

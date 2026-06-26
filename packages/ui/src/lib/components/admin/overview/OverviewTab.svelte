@@ -1,11 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { HealthPayload, AutomationsResponse } from '$lib/types.js';
   import type { TabId } from '$lib/components/chrome/TabBar.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { fetchAkmHealth, type AkmHealth } from '$lib/api.js';
   import StatusHero from './StatusHero.svelte';
-  import OperationOutput from './OperationOutput.svelte';
   import MetricTile from './MetricTile.svelte';
   import AkmHealthCard from './AkmHealthCard.svelte';
   import ConfigureShortcuts from './ConfigureShortcuts.svelte';
@@ -13,14 +11,7 @@
   import IconCloudDownload from '$lib/components/icons/IconCloudDownload.svelte';
 
   interface Props {
-    adminHealth: HealthPayload | null;
-    operationResult: string;
-    operationResultType: 'success' | 'error' | 'info';
-    tokenStored: boolean;
     healthLoading: boolean;
-    applyLoading: boolean;
-    anyDangerousLoading: boolean;
-    automationsData: AutomationsResponse | null;
     mergedServices: Map<string, string>;
     /**
      * Services this stack actually deploys (compose model resolved with active
@@ -30,25 +21,14 @@
      */
     managedServices: string[];
     onCheckHealth: () => void;
-    onApplyChanges: () => void;
-    onDismissResult: () => void;
     onNavigate: (tab: TabId) => void;
   }
 
   let {
-    adminHealth,
-    operationResult,
-    operationResultType,
-    tokenStored,
     healthLoading,
-    applyLoading,
-    anyDangerousLoading,
-    automationsData,
     mergedServices,
     managedServices,
     onCheckHealth,
-    onApplyChanges,
-    onDismissResult,
     onNavigate,
   }: Props = $props();
 
@@ -76,11 +56,6 @@
   });
   let akmCheckTotal = $derived(
     akm && akm.available ? akm.checks.pass + akm.checks.warn + akm.checks.fail : 0
-  );
-
-  let automationCount = $derived(automationsData?.automations.length ?? 0);
-  let enabledAutomationCount = $derived(
-    automationsData?.automations.filter((a) => a.enabled).length ?? 0
   );
 
   // Measure health against the services the stack actually deploys, not every
@@ -127,15 +102,9 @@
   title={health.title}
   detail={health.detail}
   {healthLoading}
-  {applyLoading}
-  {anyDangerousLoading}
-  {tokenStored}
   {onCheckHealth}
-  {onApplyChanges}
   {onNavigate}
 />
-
-<OperationOutput {operationResult} {operationResultType} {onDismissResult} />
 
 <!-- Live metrics — each tile is a shortcut to where you act on it. -->
 <div class="tile-grid">

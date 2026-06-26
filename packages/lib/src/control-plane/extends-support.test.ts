@@ -14,12 +14,15 @@ describe("compose extends support", () => {
   const skipDockerAssertions = process.env.CI === "true";
 
   beforeAll(() => {
+    // fixtureDir is an OP_HOME root: MANAGED compose lives in system/stack,
+    // the USER custom overlay in config/stack.
     fixtureDir = join(tmpdir(), `openpalm-extends-test-${Date.now()}`);
-    mkdirSync(join(fixtureDir, "stack"), { recursive: true });
+    mkdirSync(join(fixtureDir, "system", "stack"), { recursive: true });
+    mkdirSync(join(fixtureDir, "config", "stack"), { recursive: true });
 
-    // Write a minimal core compose
+    // Write a minimal core compose (managed)
     writeFileSync(
-      join(fixtureDir, "stack/core.compose.yml"),
+      join(fixtureDir, "system/stack/core.compose.yml"),
       [
         "services:",
         "  base-service:",
@@ -30,15 +33,15 @@ describe("compose extends support", () => {
       ].join("\n")
     );
 
-    // Write custom compose content that uses `extends`
+    // Write custom compose content that uses `extends` (user-owned)
     writeFileSync(
-      join(fixtureDir, "stack/custom.compose.yml"),
+      join(fixtureDir, "config/stack/custom.compose.yml"),
       [
         "services:",
         "  extended-service:",
         "    extends:",
         "      service: base-service",
-        `      file: ${join(fixtureDir, "stack/core.compose.yml")}`,
+        `      file: ${join(fixtureDir, "system/stack/core.compose.yml")}`,
         "    environment:",
         "      ADDON_VAR: addon-value",
         "",
@@ -53,13 +56,13 @@ describe("compose extends support", () => {
   });
 
   test("fixture files exist", () => {
-    expect(existsSync(join(fixtureDir, "stack/core.compose.yml"))).toBe(true);
-    expect(existsSync(join(fixtureDir, "stack/custom.compose.yml"))).toBe(true);
+    expect(existsSync(join(fixtureDir, "system/stack/core.compose.yml"))).toBe(true);
+    expect(existsSync(join(fixtureDir, "config/stack/custom.compose.yml"))).toBe(true);
   });
 
   test("extends custom compose works with discoverStackOverlays", async () => {
     const { discoverStackOverlays } = await import("./config-persistence.js");
-    const overlays = discoverStackOverlays(join(fixtureDir, "stack"));
+    const overlays = discoverStackOverlays(fixtureDir);
 
     expect(overlays.length).toBe(2);
     expect(overlays[0]).toContain("core.compose.yml");
@@ -77,7 +80,7 @@ describe("compose extends support", () => {
     }
 
     const { discoverStackOverlays } = await import("./config-persistence.js");
-    const files = discoverStackOverlays(join(fixtureDir, "stack"));
+    const files = discoverStackOverlays(fixtureDir);
 
     const result = await composePreflight({ files });
     expect(result.ok).toBe(true);
@@ -92,7 +95,7 @@ describe("compose extends support", () => {
     }
 
     const { discoverStackOverlays } = await import("./config-persistence.js");
-    const files = discoverStackOverlays(join(fixtureDir, "stack"));
+    const files = discoverStackOverlays(fixtureDir);
 
     const result = await composeConfigServices({ files });
     if (result.ok) {

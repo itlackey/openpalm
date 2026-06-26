@@ -1,0 +1,33 @@
+{
+  // Guardian content-moderator MANAGED config (OPENCODE_CONFIG_DIR=/etc/opencode).
+  // Platform-enforced and overwritten on update — security-critical settings live
+  // here so a user override (their ~/.config/opencode is LOWER precedence) can
+  // never weaken them. The operator-tunable moderation MODEL lives in the user
+  // config (config/guardian/opencode.json). Provider credentials come from the
+  // shared knowledge/secrets/auth.json mount.
+  "$schema": "https://opencode.ai/config.json",
+
+  // Moderation taxonomy + output contract (loaded as global context).
+  "instructions": ["./instructions/moderation.md"],
+
+  // Loopback server — the moderator binds 127.0.0.1:4097, reached only from
+  // inside the guardian container. mDNS off (loopback). Managed so it cannot be
+  // moved off loopback by a user override.
+  "server": {
+    "port": 4097,
+    "hostname": "127.0.0.1",
+    "mdns": false
+  },
+
+  // The moderator is a classifier, not an agent: never run tools / touch the
+  // filesystem / read its own credential files. Managed (non-weakenable).
+  "permission": {
+    "bash": "deny",
+    "edit": "deny",
+    "webfetch": "deny",
+    "read": {
+      "/opt/openpalm/guardian/.local/share/opencode/auth.json": "deny",
+      "/opt/openpalm/guardian/.local/share/opencode/mcp-auth.json": "deny"
+    }
+  }
+}

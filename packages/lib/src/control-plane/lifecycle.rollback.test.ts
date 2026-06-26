@@ -11,7 +11,7 @@ type RollbackScenario = {
   composePullStderr?: string;
   composeUpOk?: boolean;
   composeUpStderr?: string;
-  /** Inject a failure from the bundled OP_HOME seed (reconcileHome → seedOpenPalmDir). */
+  /** Inject a failure from the bundled OP_HOME seed (reconcileHome → applyHomeSeed). */
   seedError?: string;
   expectedError: string;
 };
@@ -22,7 +22,6 @@ const moduleUrls = {
   docker: new URL('./docker.js', import.meta.url).href,
   configPersistence: new URL('./config-persistence.js', import.meta.url).href,
   uiAssets: new URL('./ui-assets.js', import.meta.url).href,
-  migrations: new URL('./migrations.js', import.meta.url).href,
   installLock: new URL('./install-lock.js', import.meta.url).href,
   registry: new URL('./addons.js', import.meta.url).href,
   rollback: new URL('./rollback.js', import.meta.url).href,
@@ -116,14 +115,10 @@ mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   ensureComposeVolumeTargets: () => {},
 }));
 mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
-  seedOpenPalmDir: async () => {
+  applyHomeSeed: async () => {
     if (scenario.seedError) throw new Error(scenario.seedError);
     return { updated: [], backupDir: null };
   },
-}));
-mock.module(${JSON.stringify(moduleUrls.migrations)}, () => ({
-  ensureMigrated: () => ({}),
-  ensureReleaseMigrated: () => ({ backupDir: null }),
 }));
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),
@@ -310,11 +305,7 @@ mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   ensureComposeVolumeTargets: () => {},
 }));
 mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
-  seedOpenPalmDir: async () => ({ updated: [], backupDir: null }),
-}));
-mock.module(${JSON.stringify(moduleUrls.migrations)}, () => ({
-  ensureMigrated: () => ({}),
-  ensureReleaseMigrated: () => ({ backupDir: null }),
+  applyHomeSeed: async () => ({ updated: [], backupDir: null }),
 }));
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),
@@ -387,14 +378,14 @@ describe('armed-snapshot protection via withStackEnvRollback (B5)', () => {
 
 // ── Wired-path seed regression (the bug that started the refactor) ────────────
 //
-// The seed-layer test in ui-assets.test.ts proves seedOpenPalmDir re-materializes
+// The seed-layer test in ui-assets.test.ts proves applyHomeSeed re-materializes
 // data/<svc>/tools/package.json when the version stamp changes. This test proves
 // the WIRED path: applyUpdate (the `update` entry point that NEVER invoked seeding
 // in HEAD) actually reaches the real seed via reconcileStack → reconcileHome and
 // materializes the file into an OP_HOME stamped at an OLDER skeleton version.
 //
 // Only the side-effecting infra (docker/compose/config-persistence/install-lock)
-// is mocked; seedOpenPalmDir, migrations, core-assets, and rollback run for real
+// is mocked; applyHomeSeed, migrations, core-assets, and rollback run for real
 // against the actual repo skeleton (OPENPALM_REPO_ROOT = repo root).
 function runWiredSeedScenario(): { stdout: string; stderr: string; exitCode: number } {
   const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -412,11 +403,11 @@ const lifecycleUrl = ${JSON.stringify(lifecycleUrl)};
 const repoRoot = ${JSON.stringify(repoRoot)};
 
 // Real skeleton resolution: point OPENPALM_REPO_ROOT at the repo so the real
-// seedOpenPalmDir copies packages/skeleton/** (including data/<svc>/tools).
+// applyHomeSeed copies packages/skeleton/** (including data/<svc>/tools).
 process.env.OPENPALM_REPO_ROOT = repoRoot;
 process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
 
-// Mock ONLY the side-effecting infra. seedOpenPalmDir, migrations, core-assets,
+// Mock ONLY the side-effecting infra. applyHomeSeed, migrations, core-assets,
 // and rollback run for real.
 mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
   buildComposeOptions: () => ({ files: [], envFiles: [], profiles: [] }),
@@ -472,11 +463,11 @@ async function main() {
     const home = mkdtempSync(join(tmpdir(), 'openpalm-wired-seed-'));
     const state = makeState(home);
     const lifecycle = await import(lifecycleUrl + '?wired=' + Math.random());
-    const { seedOpenPalmDir } = await import(${JSON.stringify(moduleUrls.uiAssets)});
+    const { applyHomeSeed } = await import(${JSON.stringify(moduleUrls.uiAssets)});
 
     // 1. Seed at an OLDER skeleton version, then DELETE the tool manifests to
     //    simulate an upgraded OP_HOME that predates data/<svc>/tools.
-    await seedOpenPalmDir('v0.0.0-older', home, join(home, 'config'), join(home, 'data'));
+    await applyHomeSeed('v0.0.0-older', home, join(home, 'config'), join(home, 'data'));
     const toolsPkg = (svc) => join(home, 'data', svc, 'tools', 'package.json');
     for (const svc of ['guardian', 'assistant', 'portal']) {
       rmSync(toolsPkg(svc), { force: true });

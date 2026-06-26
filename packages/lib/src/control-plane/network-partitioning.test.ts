@@ -21,7 +21,7 @@ import { parse as yamlParse } from "yaml";
 // Resolve the compose files relative to the repo root.
 // __dirname = packages/lib/src/control-plane/
 const REPO_ROOT = join(import.meta.dir, "../../../..");
-const STACK_DIR = join(REPO_ROOT, "packages/skeleton/config/stack");
+const STACK_DIR = join(REPO_ROOT, "packages/skeleton/system/stack");
 
 function loadCompose(filename: string): Record<string, unknown> {
   const raw = readFileSync(join(STACK_DIR, filename), "utf8");
@@ -183,8 +183,8 @@ describe("mDNS — native OpenCode responder (no avahi sidecars)", () => {
     return JSON.parse(stripped) as Record<string, unknown>;
   }
 
-  const assistantConfig = loadJsonc("packages/skeleton/config/assistant/opencode.jsonc");
-  const guardianConfig = loadJsonc("packages/skeleton/config/guardian/opencode.jsonc");
+  const assistantConfig = loadJsonc("packages/skeleton/system/assistant/opencode.jsonc");
+  const guardianConfig = loadJsonc("packages/skeleton/system/guardian/opencode.jsonc");
 
   type ServerCfg = { server?: { mdns?: boolean; mdnsDomain?: string; hostname?: string } };
 

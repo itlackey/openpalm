@@ -28,44 +28,45 @@ registerCleanup();
 // ── Secrets Management ──────────────────────────────────────────────────
 
 describe("ensureSecrets", () => {
+  let homeDir: string;
   let stackDir: string;
   let configDir: string;
 
   beforeEach(() => {
-    const base = trackDir(makeTempDir());
-    configDir = join(base, "config");
-    stackDir = join(configDir, "stack");
+    homeDir = trackDir(makeTempDir());
+    configDir = join(homeDir, "config");
+    stackDir = join(homeDir, "system", "stack");
     mkdirSync(stackDir, { recursive: true });
   });
 
   test("seeds stack.env without secret placeholders on first run", () => {
-    const state = { stackDir, configDir, stashDir: join(configDir, "..", "knowledge") } as ControlPlaneState;
+    const state = { homeDir, stackDir, configDir, stashDir: join(homeDir, "knowledge") } as ControlPlaneState;
 
     ensureSecrets(state);
 
-    const secrets = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const secrets = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(secrets).toContain("OP_SETUP_COMPLETE=false");
     expect(secrets).not.toContain("OPENAI_API_KEY=");
     expect(secrets).not.toContain("OP_UI_LOGIN_PASSWORD=");
-    expect(readSecret(stackDir, "op_ui_login_password")).toBeNull();
+    expect(readSecret(homeDir, "op_ui_login_password")).toBeNull();
   });
 
   test("is idempotent — does not overwrite existing non-secret stack.env", () => {
-    const state = { stackDir, configDir, stashDir: join(configDir, "..", "knowledge") } as ControlPlaneState;
+    const state = { homeDir, stackDir, configDir, stashDir: join(homeDir, "knowledge") } as ControlPlaneState;
     const existingContent = "OP_SETUP_COMPLETE=false\nOP_OWNER_NAME=alice\n";
-    seedSecretsEnv(stackDir, existingContent);
+    seedSecretsEnv(homeDir, existingContent);
 
     ensureSecrets(state);
 
-    const result = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const result = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(result).toBe(existingContent);
   });
 
   test("does not include LLM provider key placeholders in stack.env", () => {
-    const state = { stackDir, configDir, stashDir: join(configDir, "..", "knowledge") } as ControlPlaneState;
+    const state = { homeDir, stackDir, configDir, stashDir: join(homeDir, "knowledge") } as ControlPlaneState;
     ensureSecrets(state);
 
-    const secrets = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const secrets = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(secrets).not.toContain("OPENAI_API_KEY=");
     expect(secrets).not.toContain("GROQ_API_KEY=");
     expect(secrets).not.toContain("MISTRAL_API_KEY=");
@@ -74,8 +75,8 @@ describe("ensureSecrets", () => {
 
   test("creates dirs and stack.env if missing", () => {
     const nestedDir = join(stackDir, "deep", "nested");
-    const stashDir = join(configDir, "..", "knowledge");
-    const state = { stackDir: nestedDir, configDir, stashDir } as ControlPlaneState;
+    const stashDir = join(homeDir, "knowledge");
+    const state = { homeDir, stackDir: nestedDir, configDir, stashDir } as ControlPlaneState;
 
     ensureSecrets(state);
 
@@ -87,172 +88,172 @@ describe("ensureSecrets", () => {
 });
 
 describe("updateSecretsEnv", () => {
-  let stackDir: string;
+  let homeDir: string;
 
   beforeEach(() => {
-    stackDir = trackDir(makeTempDir());
+    homeDir = trackDir(makeTempDir());
   });
 
   test("creates stack.env when stack.env does not exist", () => {
-    const state = { stackDir } as ControlPlaneState;
+    const state = { homeDir } as ControlPlaneState;
     updateSecretsEnv(state, { KEY: "val" });
-    expect(readFileSync(stackEnvFor(stackDir), "utf-8")).toContain("KEY=val");
+    expect(readFileSync(stackEnvFor(homeDir), "utf-8")).toContain("KEY=val");
   });
 
   test("routes secret keys to file-based secrets", () => {
-    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
-    const state = { stackDir } as ControlPlaneState;
+    seedSecretsEnv(homeDir, "OP_OWNER_NAME=alice\n");
+    const state = { homeDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-new" });
 
-    const result = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const result = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(result).not.toContain("OPENAI_API_KEY=");
     expect(result).toContain("OP_OWNER_NAME=alice");
-    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-new\n");
+    expect(readSecret(homeDir, "openai_api_key")).toBe("sk-new\n");
   });
 
   test("ignores commented-out secret keys in stack.env", () => {
-    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n# OPENAI_API_KEY=\n");
-    const state = { stackDir } as ControlPlaneState;
+    seedSecretsEnv(homeDir, "OP_OWNER_NAME=alice\n# OPENAI_API_KEY=\n");
+    const state = { homeDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { OPENAI_API_KEY: "sk-uncommented" });
 
-    const result = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const result = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(result).not.toContain("OPENAI_API_KEY=sk-uncommented");
     expect(result).toContain("# OPENAI_API_KEY=");
-    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-uncommented\n");
+    expect(readSecret(homeDir, "openai_api_key")).toBe("sk-uncommented\n");
   });
 
   test("appends keys not found in file", () => {
-    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
-    const state = { stackDir } as ControlPlaneState;
+    seedSecretsEnv(homeDir, "OP_OWNER_NAME=alice\n");
+    const state = { homeDir } as ControlPlaneState;
 
     updateSecretsEnv(state, { NEW_KEY: "new-value" });
 
-    const result = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const result = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(result).toContain("NEW_KEY=new-value");
     expect(result).toContain("OP_OWNER_NAME=alice");
   });
 
   test("empty updates leave file unchanged", () => {
     const original = "OP_OWNER_NAME=alice\n";
-    seedSecretsEnv(stackDir, original);
-    const state = { stackDir } as ControlPlaneState;
+    seedSecretsEnv(homeDir, original);
+    const state = { homeDir } as ControlPlaneState;
 
     updateSecretsEnv(state, {});
 
-    expect(readFileSync(stackEnvFor(stackDir), "utf-8")).toBe(original);
+    expect(readFileSync(stackEnvFor(homeDir), "utf-8")).toBe(original);
   });
 });
 
 // ── Connection Key Management ───────────────────────────────────────────
 
 describe("readStackEnv", () => {
-  let stackDir: string;
+  let homeDir: string;
 
   beforeEach(() => {
-    stackDir = trackDir(makeTempDir());
+    homeDir = trackDir(makeTempDir());
   });
 
   test("returns empty object when file does not exist", () => {
-    expect(readStackEnv(stackDir)).toEqual({});
+    expect(readStackEnv(homeDir)).toEqual({});
   });
 
   test("reads only non-secret keys from stack.env", () => {
     seedSecretsEnv(
-      stackDir,
+      homeDir,
       "OP_UI_LOGIN_PASSWORD=secret\nOPENAI_API_KEY=sk-test\nCUSTOM_KEY=val\n"
     );
 
-    const result = readStackEnv(stackDir);
+    const result = readStackEnv(homeDir);
     expect(result.OPENAI_API_KEY).toBeUndefined();
     expect(result.OP_UI_LOGIN_PASSWORD).toBeUndefined();
     expect(result.CUSTOM_KEY).toBe("val");
   });
 
   test("skips comments and blank lines", () => {
-    seedSecretsEnv(stackDir, "# A comment\n\nOP_OWNER_NAME=alice\n# another\n");
-    const result = readStackEnv(stackDir);
+    seedSecretsEnv(homeDir, "# A comment\n\nOP_OWNER_NAME=alice\n# another\n");
+    const result = readStackEnv(homeDir);
     expect(result.OP_OWNER_NAME).toBe("alice");
   });
 
   test("strips inline comments from values", () => {
-    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice # owner\n");
-    const result = readStackEnv(stackDir);
+    seedSecretsEnv(homeDir, "OP_OWNER_NAME=alice # owner\n");
+    const result = readStackEnv(homeDir);
     expect(result.OP_OWNER_NAME).toBe("alice");
   });
 
   test("unquotes single and double quoted values", () => {
     seedSecretsEnv(
-      stackDir,
+      homeDir,
       'OP_OWNER_NAME="Alice"\nOPENAI_BASE_URL=\'http://localhost:11434/v1\'\n'
     );
-    const result = readStackEnv(stackDir);
+    const result = readStackEnv(homeDir);
     expect(result.OP_OWNER_NAME).toBe("Alice");
     expect(result.OPENAI_BASE_URL).toBe("http://localhost:11434/v1");
   });
 
   test("returns empty string for keys with no value", () => {
-    seedSecretsEnv(stackDir, "OPENAI_BASE_URL=\n");
-    const result = readStackEnv(stackDir);
+    seedSecretsEnv(homeDir, "OPENAI_BASE_URL=\n");
+    const result = readStackEnv(homeDir);
     expect(result.OPENAI_BASE_URL).toBe("");
   });
 });
 
 describe("patchSecretsEnvFile", () => {
-  let stackDir: string;
+  let homeDir: string;
 
   beforeEach(() => {
-    stackDir = trackDir(makeTempDir());
+    homeDir = trackDir(makeTempDir());
   });
 
   test("routes secret-like patches to files and writes non-secrets to stack.env", () => {
-    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
-    patchSecretsEnvFile(stackDir, {
+    seedSecretsEnv(homeDir, "OP_OWNER_NAME=alice\n");
+    patchSecretsEnvFile(homeDir, {
       OPENAI_API_KEY: "sk-new",
       OP_UI_LOGIN_PASSWORD: "updated",
       CUSTOM_KEY: "injected"
     });
 
-    const result = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const result = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(result).not.toContain("OPENAI_API_KEY=");
     expect(result).not.toContain("OP_UI_LOGIN_PASSWORD=");
     expect(result).toContain("CUSTOM_KEY=injected");
-    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-new\n");
-    expect(readSecret(stackDir, "op_ui_login_password")).toBe("updated\n");
+    expect(readSecret(homeDir, "openai_api_key")).toBe("sk-new\n");
+    expect(readSecret(homeDir, "op_ui_login_password")).toBe("updated\n");
   });
 
   test("appends new non-secret keys when not in file", () => {
-    seedSecretsEnv(stackDir, "OP_OWNER_NAME=alice\n");
-    patchSecretsEnvFile(stackDir, { GROQ_API_KEY: "gsk-new" });
+    seedSecretsEnv(homeDir, "OP_OWNER_NAME=alice\n");
+    patchSecretsEnvFile(homeDir, { GROQ_API_KEY: "gsk-new" });
 
-    const result = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const result = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(result).toContain("OP_OWNER_NAME=alice");
     expect(result).not.toContain("GROQ_API_KEY=");
-    expect(readSecret(stackDir, "groq_api_key")).toBe("gsk-new\n");
+    expect(readSecret(homeDir, "groq_api_key")).toBe("gsk-new\n");
   });
 
   test("creates file if it does not exist", () => {
-    patchSecretsEnvFile(stackDir, { OPENAI_API_KEY: "sk-created" });
-    expect(existsSync(stackEnvFor(stackDir))).toBe(false);
-    expect(readSecret(stackDir, "openai_api_key")).toBe("sk-created\n");
+    patchSecretsEnvFile(homeDir, { OPENAI_API_KEY: "sk-created" });
+    expect(existsSync(stackEnvFor(homeDir))).toBe(false);
+    expect(readSecret(homeDir, "openai_api_key")).toBe("sk-created\n");
   });
 
   test("no-op when patches is empty", () => {
     const original = "OP_OWNER_NAME=alice\n";
-    seedSecretsEnv(stackDir, original);
-    patchSecretsEnvFile(stackDir, {});
-    expect(readFileSync(stackEnvFor(stackDir), "utf-8")).toBe(original);
+    seedSecretsEnv(homeDir, original);
+    patchSecretsEnvFile(homeDir, {});
+    expect(readFileSync(stackEnvFor(homeDir), "utf-8")).toBe(original);
   });
 
   test("preserves comments and existing keys", () => {
     seedSecretsEnv(
-      stackDir,
+      homeDir,
       "# Config\nOP_OWNER_NAME=alice\nCUSTOM=val\n"
     );
-    patchSecretsEnvFile(stackDir, { OP_OWNER_EMAIL: "alice@example.com" });
+    patchSecretsEnvFile(homeDir, { OP_OWNER_EMAIL: "alice@example.com" });
 
-    const result = readFileSync(stackEnvFor(stackDir), "utf-8");
+    const result = readFileSync(stackEnvFor(homeDir), "utf-8");
     expect(result).toContain("# Config");
     expect(result).toContain("OP_OWNER_NAME=alice");
     expect(result).toContain("CUSTOM=val");

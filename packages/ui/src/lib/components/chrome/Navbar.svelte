@@ -51,6 +51,7 @@
 <header class="navbar">
   <div class="navbar-inner">
     <!-- Brand -->
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session-aware chat path built internally, not a static route id -->
     <a class="navbar-brand" href={preferredChatHref} aria-label="OpenPalm — go to chat">
       <span class="brand-icon" aria-hidden="true">
         <IconLogo size={28} />

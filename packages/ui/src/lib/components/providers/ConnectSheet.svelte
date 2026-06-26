@@ -281,6 +281,7 @@
 		{:else if step === 'oauth-code'}
 			<p class="field-hint">
 				Visit
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 				<a href={oauthUrl ?? '#'} target="_blank" rel="noopener" class="text-link">this link</a>
 				to collect your authorization code to connect your account and use {provider.name} models in OpenCode.
 			</p>
@@ -303,7 +304,9 @@
 			{/if}
 			{#if oauthUrl}
 				<p class="field-hint">
-					Open <a href={oauthUrl} target="_blank" rel="noopener" class="text-link">{oauthUrl}</a>
+					Open
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+					<a href={oauthUrl} target="_blank" rel="noopener" class="text-link">{oauthUrl}</a>
 					to continue.
 				</p>
 			{/if}

@@ -2,7 +2,7 @@
  * The Electron thin-harness ↔ control-plane contract (design §5.1).
  *
  * The desktop app is a THIN NATIVE HARNESS. Everything mutable (the @openpalm/ui
- * build, @openpalm/lib + RELEASE_MIGRATIONS, the Docker stack images) self-updates
+ * build, @openpalm/lib, the Docker stack images) self-updates
  * in place over npm / `compose pull` with NO app re-download. The ONE thing whose
  * change forces a re-download is this native contract surface — the boundary
  * between the frozen asar harness and the updatable control plane it spawns.

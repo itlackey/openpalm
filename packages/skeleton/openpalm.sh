@@ -26,18 +26,22 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 OP_HOME="${OP_HOME:-$SCRIPT_DIR}"
 export OP_HOME
 
-STACK_DIR="$OP_HOME/config/stack"
+# MANAGED compose (core/services/portals) lives in system/stack; the USER
+# custom overlay lives in config/stack (four-tree ownership split).
+SYSTEM_STACK_DIR="$OP_HOME/system/stack"
+USER_STACK_DIR="$OP_HOME/config/stack"
 
-if [ ! -f "$STACK_DIR/core.compose.yml" ]; then
-  echo "error: $STACK_DIR/core.compose.yml not found — is OP_HOME correct?" >&2
+if [ ! -f "$SYSTEM_STACK_DIR/core.compose.yml" ]; then
+  echo "error: $SYSTEM_STACK_DIR/core.compose.yml not found — is OP_HOME correct?" >&2
   exit 1
 fi
 
 # Compose overlays, in the same order the control plane assembles them.
-files=(-f "$STACK_DIR/core.compose.yml")
-for name in services portals custom; do
-  [ -f "$STACK_DIR/$name.compose.yml" ] && files+=(-f "$STACK_DIR/$name.compose.yml")
+files=(-f "$SYSTEM_STACK_DIR/core.compose.yml")
+for name in services portals; do
+  [ -f "$SYSTEM_STACK_DIR/$name.compose.yml" ] && files+=(-f "$SYSTEM_STACK_DIR/$name.compose.yml")
 done
+[ -f "$USER_STACK_DIR/custom.compose.yml" ] && files+=(-f "$USER_STACK_DIR/custom.compose.yml")
 
 # stack.env (knowledge/env/stack.env) feeds both compose variable substitution
 # (--env-file) and the process environment (so COMPOSE_PROFILES and friends

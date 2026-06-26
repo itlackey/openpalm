@@ -43,7 +43,7 @@ export async function performAddonToggle(
     }
   }
 
-  const mutation = setAddonEnabled(state.homeDir, state.stackDir, name, nextEnabled, state);
+  const mutation = setAddonEnabled(state.homeDir, name, nextEnabled, state);
   if (!mutation.ok) return mutation;
 
   // The shared state singleton seeds its expected-service set (CORE_SERVICES,

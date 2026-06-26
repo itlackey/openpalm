@@ -2,6 +2,7 @@
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
   import { friendlyError } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import { resolve } from '$app/paths';
 
   interface ServiceStatus {
     service: string;
@@ -17,8 +18,6 @@
     | 'ready';
 
   interface DeployData {
-    deploying?: boolean;
-    setupComplete?: boolean;
     deployStatus?: ServiceStatus[];
     deployError?: string | null;
     /** Non-fatal: install used cached images because the registry pull failed. */
@@ -132,7 +131,7 @@
 </div>
 
 <div class="deploy-services" id="deploy-services">
-  {#each services as svc}
+  {#each services as svc (svc.service)}
     <div class="deploy-service-row">
       <div class="deploy-service-indicator">
         {#if svc.status === 'running'}
@@ -224,7 +223,7 @@
         <p class="done-close-hint">Setup is complete. You can safely close this tab now.</p>
       {/if}
       <ul class="service-list" id="deploy-service-list">
-        {#each services as svc}
+        {#each services as svc (svc.service)}
           {@const name = svc.service || svc.label || ''}
           {@const linkInfo = serviceLinks[name]}
           {@const isWarming = svc.status === 'warning'}
@@ -246,9 +245,9 @@
              exact host they loaded the UI from (127.0.0.1 in the desktop app).
              Navigating to a different host alias (localhost vs 127.0.0.1) would
              drop the session cookie, which is scoped per-host. -->
-        <a href="/chat" class="btn btn-primary">Open Chat</a>
+        <a href={resolve('/chat')} class="btn btn-primary">Open Chat</a>
         <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
-        <a href="/" class="btn btn-secondary">Admin Dashboard</a>
+        <a href={resolve('/')} class="btn btn-secondary">Admin Dashboard</a>
       </div>
     {/if}
   </div>

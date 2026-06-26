@@ -39,7 +39,7 @@ afterEach(() => {
 // Minimal fetch mock that records call count.
 function makeFetchSpy(responseStatus = 200): { spy: ReturnType<typeof vi.fn>; callCount: () => number } {
   let calls = 0;
-  const spy = vi.fn(async (_url: string | URL | Request) => {
+  const spy = vi.fn(async () => {
     calls++;
     return new Response(null, { status: responseStatus });
   });

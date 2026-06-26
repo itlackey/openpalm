@@ -256,11 +256,11 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     fi
   done
 
-  # Verify key files were created
-  if [ -f "$CONFIG_HOME/stack/core.compose.yml" ] && [ -s "$CONFIG_HOME/stack/core.compose.yml" ]; then
-    pass "Asset present: stack/core.compose.yml"
+  # Verify key files were created. MANAGED compose lives in system/stack now.
+  if [ -f "$OP_HOME/system/stack/core.compose.yml" ] && [ -s "$OP_HOME/system/stack/core.compose.yml" ]; then
+    pass "Asset present: system/stack/core.compose.yml"
   else
-    fail "Asset missing or empty: $CONFIG_HOME/stack/core.compose.yml"
+    fail "Asset missing or empty: $OP_HOME/system/stack/core.compose.yml"
   fi
 
   # Verify knowledge/env/user.env was seeded

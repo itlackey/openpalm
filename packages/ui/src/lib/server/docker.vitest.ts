@@ -24,7 +24,7 @@ vi.mock("node:child_process", () => ({
 
 // docker.ts also imports existsSync and readFileSync; mock existsSync but
 // pass through readFileSync so parseEnvFile works with real files.
-const existsSyncMock = vi.fn((_path: string) => false);
+const existsSyncMock = vi.fn(() => false);
 vi.mock("node:fs", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs")>();
   // vitest 4 requires `default` to be defined when downstream code does
@@ -33,14 +33,14 @@ vi.mock("node:fs", async (importOriginal) => {
   return {
     ...real,
     default: real,
-    existsSync: (path: string) => existsSyncMock(path),
+    existsSync: () => existsSyncMock(),
   };
 });
 
 // Helper: make execFile resolve successfully
 function mockExecSuccess(stdout = "", stderr = ""): void {
   execFileMock.mockImplementation(
-    (_cmd: string, _args: string[], _opts: unknown, cb?: Function) => {
+    (_cmd: string, _args: string[], _opts: unknown, cb?: (err: Error | null, stdout: string, stderr: string) => void) => {
       // execFile can be called with 3 or 4 args depending on the function
       const callback = cb ?? _opts;
       if (typeof callback === "function") {
@@ -53,7 +53,7 @@ function mockExecSuccess(stdout = "", stderr = ""): void {
 // Helper: make execFile resolve with error
 function mockExecError(code: number | string, stderr = ""): void {
   execFileMock.mockImplementation(
-    (_cmd: string, _args: string[], _opts: unknown, cb?: Function) => {
+    (_cmd: string, _args: string[], _opts: unknown, cb?: (err: Error | null, stdout: string, stderr: string) => void) => {
       const callback = cb ?? _opts;
       const err = Object.assign(new Error(`exit ${code}`), { code });
       if (typeof callback === "function") {
@@ -93,7 +93,7 @@ describe("checkDocker", () => {
 
   test("reports ok when docker info has warnings but returns version", async () => {
     execFileMock.mockImplementation(
-      (_cmd: string, _args: string[], _opts: unknown, cb?: Function) => {
+      (_cmd: string, _args: string[], _opts: unknown, cb?: (err: Error | null, stdout: string, stderr: string) => void) => {
         const callback = cb ?? _opts;
         const err = Object.assign(new Error("exit 1"), { code: 1 });
         if (typeof callback === "function") {

@@ -114,7 +114,7 @@ describe("PROVIDER_KEY_MAP", () => {
 
 describe("EMBEDDING_DIMS", () => {
   test("all dimension values are positive integers", () => {
-    for (const [model, dims] of Object.entries(EMBEDDING_DIMS)) {
+    for (const dims of Object.values(EMBEDDING_DIMS)) {
       expect(Number.isInteger(dims)).toBe(true);
       expect(dims).toBeGreaterThan(0);
     }

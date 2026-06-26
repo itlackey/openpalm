@@ -25,7 +25,7 @@
  * kill-switch is changing the login password, which invalidates everything.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { readSecret, resolveStackDir } from '@openpalm/lib';
+import { readSecret, resolveOpenPalmHome } from '@openpalm/lib';
 
 /** Session lifetime for both the token expiry and the cookie Max-Age. 14 days. */
 export const SESSION_TTL_MS = 1_209_600_000;
@@ -49,7 +49,7 @@ const _testOverrides = new Set<string>();
 export function getUiLoginPassword(): string {
   const envValue = process.env.OP_UI_LOGIN_PASSWORD;
   if (envValue) return envValue;
-  return readSecret(resolveStackDir(), 'op_ui_login_password')?.trimEnd() ?? "";
+  return readSecret(resolveOpenPalmHome(), 'op_ui_login_password')?.trimEnd() ?? "";
 }
 
 /** Sign `expiresAt` with the login password. Returns null when no password is configured. */

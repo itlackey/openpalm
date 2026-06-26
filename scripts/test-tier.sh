@@ -40,7 +40,7 @@ cd "$ROOT_DIR"
 
 dev_compose() {
 	docker compose --project-directory . \
-		-f .dev/config/stack/core.compose.yml \
+		-f .dev/system/stack/core.compose.yml \
 		-f compose.dev.yml \
 		--env-file .dev/knowledge/env/stack.env \
 		--project-name "${COMPOSE_PROJECT_NAME:-openpalm}" "$@"

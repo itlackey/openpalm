@@ -119,8 +119,8 @@ export const GET: RequestHandler = async (event) => {
 
   const schemaFields = parseEnvSchema(config.envSchema);
   // Sensitive fields live in knowledge/secrets/; non-sensitive in stack.env.
-  const secretEnv = readStackSecretEnv(state.stackDir);
-  const stackEnv = readStackEnv(state.stackDir);
+  const secretEnv = readStackSecretEnv(state.homeDir);
+  const stackEnv = readStackEnv(state.homeDir);
 
   const fields = schemaFields.map((f) => {
     const stored = f.sensitive ? secretEnv[f.key] : stackEnv[f.key];
@@ -190,7 +190,7 @@ export const POST: RequestHandler = async (event) => {
       writeStackSecretEnv(state, sensitiveUpdates);
     }
     if (Object.keys(configUpdates).length > 0) {
-      patchSecretsEnvFile(state.stackDir, configUpdates);
+      patchSecretsEnvFile(state.homeDir, configUpdates);
     }
   } catch (err) {
     logger.error("write failed", { name, error: String(err), requestId });

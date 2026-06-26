@@ -420,7 +420,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBe("test-admin-token-12345\n");
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBe("test-admin-token-12345\n");
   });
 
   it("writes akm config.json with llm and embedding", async () => {
@@ -582,7 +582,7 @@ describe("performSetup", () => {
 
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
     expect(stackEnv).not.toContain('OPENAI_API_KEY=');
-    expect(readSecret(stackDir, 'openai_api_key')).toBeNull();
+    expect(readSecret(homeDir, 'openai_api_key')).toBeNull();
 
     const authJson = JSON.parse(readFileSync(join(homeDir, "knowledge", "secrets", "auth.json"), 'utf-8')) as Record<string, { key: string }>;
     expect(authJson.openai.key).toBe('sk-secondary');
@@ -601,8 +601,8 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    expect(readSecret(stackDir, 'discord_bot_token')).toBe("discord-bot-token-xyz\n");
-    expect(readSecret(stackDir, 'discord_application_id')).toBeNull();
+    expect(readSecret(homeDir, 'discord_bot_token')).toBe("discord-bot-token-xyz\n");
+    expect(readSecret(homeDir, 'discord_application_id')).toBeNull();
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
     expect(stackEnv).toContain('DISCORD_APPLICATION_ID=discord-app-id-123');
     expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');

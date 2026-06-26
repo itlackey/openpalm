@@ -47,18 +47,6 @@ export {
 } from "./control-plane/backup.js";
 export type { BackupSpaceCheck, BackupSummary, BackupEntry } from "./control-plane/backup.js";
 
-// ── Layout migration harness ────────────────────────────────────────────────
-export {
-  ensureMigrated,
-  ensureReleaseMigrated,
-  MigrationError,
-  BackupSpaceError,
-  UnrecognizedLayoutError,
-  CURRENT_LAYOUT_VERSION,
-  LAYOUT_VERSION_KEY,
-} from "./control-plane/migrations.js";
-export type { MigrationReport, ReleaseMigrationReport } from "./control-plane/migrations.js";
-
 // ── Registry Catalog ─────────────────────────────────────────────────────
 export type {
   AddonMutationResult,
@@ -91,8 +79,18 @@ export {
   resolveWorkspaceDir,
   resolveDataDir,
   resolveStackDir,
+  resolveSystemDir,
+  resolveStateDir,
   resolveLogsDir,
   ensureHomeDirs,
+  stackDirFor,
+  composeFilePath,
+  customComposeFilePath,
+  stateEnvFile,
+  legacyStackEnvFile,
+  userEnvFile,
+  secretsDir,
+  authJsonFile,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────
@@ -255,7 +253,7 @@ export { writeFileAtomic } from "./control-plane/fs-atomic.js";
 export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
-  refreshCoreAssetsFromSource,
+  overwriteSystemTree,
 } from "./control-plane/core-assets.js";
 
 // ── Configuration Persistence ────────────────────────────────────────────
@@ -281,7 +279,6 @@ export {
   initializeStateSecrets,
   applyInstall,
   applyUpdate,
-  applyHomeReconcile,
   applyUninstall,
   buildManagedServices,
   performUpgrade,
@@ -314,11 +311,17 @@ export {
   isVersionKey,
   readVersions,
   writeVersions,
+  // Phase 5: pin-null semantics, channel preference, voice variant utilities
+  readPinnedVersions,
+  readChannelPreference,
+  writeChannelPreference,
+  stripVoiceVariantSuffix,
+  normalizePinValue,
 } from "./control-plane/versions.js";
-export type { VersionKey } from "./control-plane/versions.js";
+export type { VersionKey, ChannelPreference } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
-export type { DockerResult, ExistingProject } from "./control-plane/docker.js";
+export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
 export {
   checkDocker,
   checkDockerCompose,
@@ -337,7 +340,10 @@ export {
   composeStats,
   composeExec,
   getDockerEvents,
-  inspectContainerStatus,
+  inspectContainerImage,
+  getRunningImages,
+  waitForContainerHealthy,
+  applyStack,
 } from "./control-plane/docker.js";
 
 // ── Scheduler ───────────────────────────────────────────────────────────
@@ -463,16 +469,16 @@ export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 export { collectBindAddressWarnings } from "./control-plane/bind-warning.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
-export type { UiBuildUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
+export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
 export {
   resolveLocalOpenpalmDir,
-  seedOpenPalmDir,
-  readSkeletonVersion,
-  isSkeletonStale,
+  applyHomeSeed,
   resolveLocalUiBuild,
   resolveUiBuildDir,
+  readSkeletonVersion,
   seedUiBuild,
   checkAndUpdateUiBuild,
+  checkAndUpdateSkeleton,
   uiUpdateChannel,
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";

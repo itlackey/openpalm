@@ -90,7 +90,7 @@ cd "$ROOT_DIR"
 
 TEST_ROOT="${ROOT_DIR}/.upgrade-test"
 export OP_HOME="${OP_HOME:-${TEST_ROOT}}"
-STACK_DIR="${OP_HOME}/config/stack"
+STACK_DIR="${OP_HOME}/system/stack"
 STASH_DIR="${OP_HOME}/knowledge"
 SECRETS_DIR="${STASH_DIR}/secrets"
 STACK_ENV="${STASH_DIR}/env/stack.env"
@@ -243,8 +243,8 @@ openssl rand -hex 16 >"${SECRETS_DIR}/portal_slack_secret"
 chmod 700 "${SECRETS_DIR}"
 chmod 600 "${SECRETS_DIR}/"*
 
-# Seed core.compose.yml into config/stack/
-cp "${ROOT_DIR}/packages/skeleton/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
+# Seed core.compose.yml into system/stack/
+cp "${ROOT_DIR}/packages/skeleton/system/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
 # Seed opencode config
 cat >"${OP_HOME}/config/assistant/opencode.json" <<'EOF'
@@ -347,7 +347,7 @@ header "Phase 4: Simulate upgrade"
 # The upgrade simulation mirrors what setup.sh does on re-run:
 #   1. Detects existing install (knowledge/env/user.env exists)
 #   2. Re-creates directory tree (mkdir -p, idempotent)
-#   3. Refreshes compose to config/stack/
+#   3. Refreshes compose to system/stack/
 #   4. Does NOT overwrite knowledge/env/user.env, knowledge/env/stack.env, or knowledge/secrets/
 #   5. Restarts services with compose up
 
@@ -364,7 +364,7 @@ mkdir -p \
   "${DATA_DIR}/logs" "${OP_HOME}/workspace"
 
 # Step 2: Refresh compose (simulate download from GitHub)
-cp "${ROOT_DIR}/packages/skeleton/config/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
+cp "${ROOT_DIR}/packages/skeleton/system/stack/core.compose.yml" "${STACK_DIR}/core.compose.yml"
 
 # Step 3: knowledge/env/user.env — must NOT be overwritten on upgrade
 if [[ -f "${STASH_DIR}/env/user.env" ]]; then

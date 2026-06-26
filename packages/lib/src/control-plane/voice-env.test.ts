@@ -30,7 +30,7 @@ describe('writeVoiceVars', () => {
 
     writeVoiceVars({
       tts: { baseURL: 'https://tts.example.com/v1', model: 'tts-1', voice: 'alloy' },
-    }, stackDir);
+    }, tempDir);
 
     const content = readFileSync(stackEnv, 'utf-8');
     expect(content).toContain('OP_TTS_BASE_URL=https://tts.example.com/v1');
@@ -43,7 +43,7 @@ describe('writeVoiceVars', () => {
 
     writeVoiceVars({
       stt: { baseURL: 'https://stt.example.com/v1', model: 'whisper-1', language: 'en' },
-    }, stackDir);
+    }, tempDir);
 
     const content = readFileSync(stackEnv, 'utf-8');
     expect(content).toContain('OP_STT_BASE_URL=https://stt.example.com/v1');
@@ -54,7 +54,7 @@ describe('writeVoiceVars', () => {
   test('creates stack.env if it does not exist', () => {
     writeVoiceVars({
       tts: { baseURL: 'https://tts.example.com/v1', model: 'tts-1' },
-    }, stackDir);
+    }, tempDir);
 
     const content = readFileSync(stackEnv, 'utf-8');
     expect(content).toContain('OP_TTS_BASE_URL=https://tts.example.com/v1');
@@ -63,7 +63,7 @@ describe('writeVoiceVars', () => {
   test('is a no-op when no vars are provided', () => {
     writeFileSync(stackEnv, 'EXISTING=value\n');
 
-    writeVoiceVars({}, stackDir);
+    writeVoiceVars({}, tempDir);
 
     expect(readFileSync(stackEnv, 'utf-8')).toBe('EXISTING=value\n');
   });
@@ -72,7 +72,7 @@ describe('writeVoiceVars', () => {
     writeVoiceVars({
       tts: { engine: 'openpalm-voice' },
       stt: { engine: 'openpalm-voice' },
-    }, stackDir);
+    }, tempDir);
 
     const content = readFileSync(stackEnv, 'utf-8');
     expect(content).toContain('OP_TTS_ENGINE=openpalm-voice');
@@ -87,7 +87,7 @@ describe('writeVoiceVars', () => {
   test('does not overwrite explicit baseURL for openpalm-voice', () => {
     writeVoiceVars({
       tts: { engine: 'openpalm-voice', baseURL: 'http://192.168.1.50:8880' },
-    }, stackDir);
+    }, tempDir);
 
     expect(readFileSync(stackEnv, 'utf-8')).toContain('OP_TTS_BASE_URL=http://192.168.1.50:8880');
   });

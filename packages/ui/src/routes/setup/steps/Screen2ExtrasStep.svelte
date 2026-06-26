@@ -28,7 +28,6 @@
    */
 
   import type { VoiceEngineValue, PortalState } from '$lib/client/types.js';
-  import type { VoiceAddonProfile } from '$lib/api.js';
   import { PORTALS } from '$lib/client/constants.js';
   import { isPortalEnabled as _isPortalEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
 
@@ -50,20 +49,14 @@
     voiceStt: VoiceEngineValue;
     /** True when OpenAI is a verified provider (affects default engine). */
     hasOpenAI?: boolean;
-    /** Voice addon hardware profiles (CPU / CUDA / ROCm). */
-    voiceProfiles?: VoiceAddonProfile[];
-    /** Currently selected voice profile id. */
-    selectedVoiceProfile?: string;
     /** Portal enable + credential state (discord, slack). */
     portalSelection?: Record<string, boolean | PortalState>;
 
     onvoiceenabledchange: (enabled: boolean) => void;
     onchangetts: (v: VoiceEngineValue) => void;
     onchangestt: (v: VoiceEngineValue) => void;
-    onvoiceprofilechange?: (id: string) => void;
     onportaltoggle: (id: string) => void;
     oncredentialchange: (chId: string, credKey: string, value: string) => void;
-    onnext: () => void;
   }
 
   let {
@@ -78,7 +71,6 @@
     onchangestt,
     onportaltoggle,
     oncredentialchange,
-    onnext: _onnext,
   }: Props = $props();
 
   // Determine default TTS/STT engine based on modelMode and hasOpenAI.

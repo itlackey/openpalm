@@ -2,7 +2,7 @@
  * Core runtime asset management for the OpenPalm control plane.
  *
  * Manages source-of-truth files for the ~/.openpalm/ layout:
- *   config/stack/       — system-owned compose files, refreshed every reconcile
+ *   system/stack/       — system-owned compose files, refreshed every reconcile
  *
  * This module manages runtime-owned core files only.
  * Addon compose bundle generation and registry catalog refresh are handled
@@ -10,9 +10,9 @@
  * Env validation has moved to `akm vault` + the in-house redactor — the
  * historical `.env.schema` files (varlock format) were retired in #391.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir } from "./home.js";
 import { createLogger } from "../logger.js";
@@ -51,11 +51,11 @@ function bundledAssetPath(relPath: string): string {
 // ── Core Compose (stack/) ─────────────────────────────────────────────
 
 export function readCoreCompose(): string {
-  const livePath = `${resolveOpenPalmHome()}/config/stack/core.compose.yml`;
+  const livePath = `${resolveOpenPalmHome()}/system/stack/core.compose.yml`;
   if (existsSync(livePath)) {
     return readFileSync(livePath, 'utf-8');
   }
-  return readFileSync(bundledAssetPath('config/stack/core.compose.yml'), 'utf-8');
+  return readFileSync(bundledAssetPath('system/stack/core.compose.yml'), 'utf-8');
 }
 
 export function readBundledStackAsset(name: string): string {
@@ -67,10 +67,26 @@ export function readBundledStackAsset(name: string): string {
   // return empty rather than throwing a 500 — the live OP_HOME assets are the
   // source of truth once seeded.
   try {
-    return readFileSync(bundledAssetPath(`config/stack/${name}`), 'utf-8');
+    return readFileSync(bundledAssetPath(`system/stack/${name}`), 'utf-8');
   } catch (err) {
     logger.warn('bundled stack asset unavailable (returning empty)', {
       name,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return '';
+  }
+}
+
+/**
+ * The bundled USER custom.compose.yml default. Unlike the managed trio it ships
+ * in the user tree (config/stack/), so it is resolved separately. Used only to
+ * seed the file once when absent — never to overwrite an existing user overlay.
+ */
+export function readBundledCustomCompose(): string {
+  try {
+    return readFileSync(bundledAssetPath('config/stack/custom.compose.yml'), 'utf-8');
+  } catch (err) {
+    logger.warn('bundled custom.compose.yml unavailable (returning empty)', {
       error: err instanceof Error ? err.message : String(err),
     });
     return '';
@@ -84,19 +100,7 @@ export function ensureOpenCodeSystemConfig(): void {
   mkdirSync(dir, { recursive: true });
 }
 
-// ── Managed asset manifest ───────────────────────────────────────────
-//
-// The system-owned stack compose files. refreshCoreAssetsFromSource overwrites
-// these from the bundled @openpalm/skeleton on every reconcile so they always
-// track the running platform (no GitHub/registry download). Everything else —
-// user-editable config (opencode.jsonc, custom.compose.yml), guardian
-// instructions, personas — is seeded ONCE by seedOpenPalmDir's skip-existing
-// copy of the skeleton tree, so user edits are never clobbered.
-export const MANAGED_ASSETS: { relPath: string }[] = [
-  { relPath: "config/stack/core.compose.yml" },
-  { relPath: "config/stack/services.compose.yml" },
-  { relPath: "config/stack/portals.compose.yml" },
-];
+// ── Managed system/ tree overwrite ───────────────────────────────────
 
 function ensureBackupDir(backupDir: string | null, suffix = ''): string {
   if (backupDir) return backupDir;
@@ -111,27 +115,44 @@ function backupExistingFile(targetPath: string, assetRelPath: string, backupDir:
   return resolvedBackupDir;
 }
 
-export function refreshCoreAssetsFromSource(sourceRoot: string, homeDir = resolveOpenPalmHome()): {
+/**
+ * Overwrite the entire MANAGED `system/` tree from the release skeleton.
+ *
+ * This is the "overwrite the managed tree" primitive (constitution §1):
+ * `system/` IS the skeleton, so every install/update blind-copies the release's
+ * `system/` over OP_HOME/system — compose stack AND the system OpenCode config
+ * (plugins/permissions/instructions). Unchanged files are skipped; changed ones
+ * are backed up first (full recovery). User trees, `data/`, and `state/` are
+ * NEVER touched here — that is the caller's seed-if-missing step.
+ */
+export function overwriteSystemTree(sourceRoot: string, homeDir = resolveOpenPalmHome()): {
   backupDir: string | null;
   updated: string[];
 } {
   const updated: string[] = [];
   let backupDir: string | null = null;
 
-  for (const asset of MANAGED_ASSETS) {
-    const sourcePath = join(sourceRoot, asset.relPath);
-    const targetPath = join(homeDir, asset.relPath);
-    const freshContent = readFileSync(sourcePath, 'utf-8');
+  const sysSource = join(sourceRoot, 'system');
+  if (!existsSync(sysSource)) return { backupDir, updated };
+
+  for (const entry of readdirSync(sysSource, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const parentDir = (entry as unknown as { parentPath?: string; path?: string }).parentPath
+      ?? (entry as unknown as { path: string }).path;
+    const sourcePath = join(parentDir, entry.name);
+    const rel = join('system', relative(sysSource, sourcePath));
+    const targetPath = join(homeDir, rel);
+    const freshContent = readFileSync(sourcePath);
 
     if (existsSync(targetPath)) {
-      const currentContent = readFileSync(targetPath, 'utf-8');
-      if (sha256(currentContent) === sha256(freshContent)) continue;
-      backupDir = backupExistingFile(targetPath, asset.relPath, backupDir);
+      const currentContent = readFileSync(targetPath);
+      if (sha256(currentContent.toString('utf-8')) === sha256(freshContent.toString('utf-8'))) continue;
+      backupDir = backupExistingFile(targetPath, rel, backupDir);
     }
 
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, freshContent);
-    updated.push(asset.relPath);
+    updated.push(rel);
   }
 
   return { backupDir, updated };

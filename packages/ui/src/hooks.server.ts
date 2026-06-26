@@ -22,7 +22,7 @@ import {
   deriveLaunchStatus,
   deriveLocalStackState,
   isSetupComplete,
-  resolveStackDir,
+  resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
   classifyLocalInstall,
@@ -32,7 +32,6 @@ import {
   type ComposeServiceStatus,
 } from "@openpalm/lib";
 import { listRemoteStatuses } from "$lib/server/endpoints.js";
-import { isMigrationBlocking } from "$lib/server/migration-status.js";
 
 const logger = createLogger("admin");
 
@@ -41,9 +40,6 @@ let setupCompleteMemo = false;
 type LaunchRouting = {
   installState: ReturnType<typeof classifyLocalInstall>;
   launch: ReturnType<typeof deriveLaunchStatus>;
-  /** A pending/unreadable migration must land the user on /splash before they can
-   *  use the assistant — even when the stack is running or a remote is healthy. */
-  migrationBlocking: boolean;
 };
 
 let localStatusCache: { expiresAt: number; value: LaunchRouting } | null = null;
@@ -54,7 +50,7 @@ export function _resetLaunchCache(): void {
 }
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
-// install/update own every OP_HOME write (via reconcileHome), so merely serving
+// install/update own every OP_HOME write (via applyHome), so merely serving
 // the UI never mutates the home directory — no startup "auto-apply".
 function loadProcessEnv(): void {
   if (startupApplyDone) return;
@@ -73,12 +69,12 @@ function loadProcessEnv(): void {
     // raw `vite dev` server has no such launcher, so when the env var is unset
     // read it from the same file secret here. No-op in production.
     if (!process.env.OP_UI_LOGIN_PASSWORD) {
-      const pw = readSecret(state.stackDir, "op_ui_login_password");
+      const pw = readSecret(state.homeDir, "op_ui_login_password");
       if (pw) process.env.OP_UI_LOGIN_PASSWORD = pw.trimEnd();
     }
     // Promote stack.env values into process.env so lazy reads (OpenCode URL,
     // assistant port) in server modules pick up the correct values.
-    const stackVars = readStackRuntimeEnv(state.stackDir);
+    const stackVars = readStackRuntimeEnv(state.homeDir);
     for (const [k, v] of Object.entries(stackVars)) {
       if (v && !process.env[k]) process.env[k] = v;
     }
@@ -144,7 +140,7 @@ function parseComposePsServices(stdout: string): ComposeServiceStatus[] {
 async function resolveLaunchRouting(): Promise<LaunchRouting> {
   if (localStatusCache && localStatusCache.expiresAt > Date.now()) return localStatusCache.value;
   const state = getState();
-  const installState = classifyLocalInstall(state.stackDir);
+  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
   const composeResult = await composePs(buildComposeOptions(state));
   const services = composeResult.ok ? parseComposePsServices(composeResult.stdout) : [];
   const localState = deriveLocalStackState(installState, services);
@@ -156,7 +152,7 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
     },
     remotes: await listRemoteStatuses(),
   });
-  const value = { installState, launch, migrationBlocking: isMigrationBlocking(state.homeDir) };
+  const value = { installState, launch };
   localStatusCache = { value, expiresAt: Date.now() + 5_000 };
   return value;
 }
@@ -180,7 +176,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   // by design (first-run). Restrict them to the local machine so a remote actor
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
-  const setupComplete = setupCompleteMemo || isSetupComplete(resolveStackDir());
+  const setupComplete = setupCompleteMemo || isSetupComplete(resolveOpenPalmHome());
   if (setupComplete) setupCompleteMemo = true;
 
   if (isSetupPath && !setupComplete) {
@@ -197,24 +193,17 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   if (!isSetupPath) {
-    const { installState, launch, migrationBlocking } = await resolveLaunchRouting();
-    // A pending/unreadable migration outranks stack health: the assistant must not
-    // be used until the home is migrated, so force /splash even when the stack is
-    // running or a remote is healthy (otherwise `/` and `/chat` would skip it).
-    const desiredPath = migrationBlocking
+    const { installState, launch } = await resolveLaunchRouting();
+    const desiredPath = installState === 'setup_incomplete' && launch.local.state === 'running'
       ? '/splash'
-      : installState === 'setup_incomplete' && launch.local.state === 'running'
-        ? '/splash'
-        : launch.recommendedRoute === 'chat'
-          ? '/chat'
-          : '/splash';
-    // The assistant-usage routes (/chat, /advanced) are safe destinations ONLY when
-    // no migration is pending — during a migration they redirect to /splash too.
+      : launch.recommendedRoute === 'chat'
+        ? '/chat'
+        : '/splash';
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced');
     const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/admin')
       || path.startsWith('/splash')
-      || (!migrationBlocking && usageRoute);
+      || usageRoute;
     if (path === '/' || (path !== desiredPath && !exempt)) {
       redirect(302, desiredPath);
     }

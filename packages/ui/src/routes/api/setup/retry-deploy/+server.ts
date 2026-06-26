@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
-import { checkDocker, isSetupComplete, resolveStackDir } from '@openpalm/lib';
+import { checkDocker, isSetupComplete, resolveOpenPalmHome } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { getDeployState, startDeploy } from '$lib/server/setup-deploy.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async () => {
-  if (isSetupComplete(resolveStackDir())) {
+  if (isSetupComplete(resolveOpenPalmHome())) {
     return json({ ok: false, error: 'setup_complete', message: 'Setup is already complete.' }, { status: 409 });
   }
 

@@ -8,7 +8,7 @@
  *   1. OPENPALM_REPO_ROOT env var → packages/skeleton/ (dev override)
  *   2. OPENPALM_SKELETON_DIR env var → set by Electron from extraResources
  *   3. require.resolve('@openpalm/skeleton/package.json') → npm/CLI dep
- *   4. null → seedOpenPalmDir throws with an actionable error message
+ *   4. null → applyHomeSeed throws with an actionable error message
  *
  * UI build resolution order:
  *   1. OPENPALM_REPO_ROOT env var → packages/ui/build/ (dev override)
@@ -30,8 +30,8 @@ import { x as tarExtract } from 'tar';
 const _require = createRequire(import.meta.url);
 import { resolveBackupsDir, resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
-import { PLATFORM_VERSION, compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
-import { refreshCoreAssetsFromSource } from './core-assets.js';
+import { compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
+import { overwriteSystemTree } from './core-assets.js';
 
 const logger = createLogger('lib:ui-assets');
 
@@ -88,7 +88,7 @@ function resolveLocalCandidate(
 
 /**
  * Locate the skeleton directory (packages/skeleton/ or equivalent).
- * Used by seedOpenPalmDir to avoid a network download when running from source.
+ * Used by applyHomeSeed to avoid a network download when running from source.
  */
 export function resolveLocalOpenpalmDir(): string | null {
   return resolveLocalCandidate(
@@ -117,99 +117,47 @@ export function resolveLocalOpenpalmDir(): string | null {
       } catch { return null; }
     },
     // 5. null — cold start without @openpalm/skeleton installed
-    //    (seedOpenPalmDir will throw a helpful error in this case)
+    //    (applyHomeSeed will throw a helpful error in this case)
     () => null,
   );
 }
 
 /**
- * Seed OP_HOME from the .openpalm/ skeleton.
- *
- * Existing files are never overwritten (user edits win).
- * Falls back to downloading the repo tarball from GitHub when no local
- * skeleton is found (production binary, packaged Electron app).
+ * Version stamp written by checkAndUpdateSkeleton after an npm hot-swap.
+ * Used by §4.2 pinning controls to read which skeleton version is on disk.
+ * NOT used by applyHomeSeed to gate seeding — ownership alone (§1) determines
+ * write policy; no stamp gate is needed or allowed (constitution §8).
  */
-/** Version stamp recording which skeleton version OP_HOME was last seeded from. */
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
 
-/** The skeleton version OP_HOME was last seeded from, or null when unstamped. */
-export function readSkeletonVersion(homeDir: string): string | null {
-  try {
-    const p = join(homeDir, SKELETON_VERSION_STAMP);
-    return existsSync(p) ? readFileSync(p, 'utf-8').trim() : null;
-  } catch { return null; }
-}
-
 /**
- * True when this home was seeded by a DIFFERENT platform version than the one
- * now running — i.e. the binary was updated but its assets/secrets/migrations
- * have not been applied to OP_HOME yet. The launch flow uses this to land the
- * user on /splash with an "apply updates" button instead of silently
- * self-healing on every request. An unstamped home (null) is NOT stale — that's
- * a fresh/not-installed home handled by the setup flow.
- */
-export function isSkeletonStale(homeDir: string): boolean {
-  const stamped = readSkeletonVersion(homeDir);
-  // normalizeVersion on the stamp so a pre-existing `v`-prefixed stamp (written
-  // by an older platform) doesn't read as stale forever after PLATFORM_VERSION
-  // went bare.
-  return stamped !== null && normalizeVersion(stamped) !== PLATFORM_VERSION;
-}
-
-/**
- * Seed the bundled `.openpalm/` skeleton into OP_HOME — ONCE PER VERSION.
+ * Seed the bundled `.openpalm/` skeleton into OP_HOME.
  *
- * Electron calls this on every launch; without a guard it re-copied the entire
- * skeleton tree each time (wasteful, and it re-materialized files a user/process
- * had deliberately removed). We stamp OP_HOME/.skeleton-version with `repoRef`
- * after a successful seed and skip the copy when it already matches — so a given
- * version seeds once and an upgrade re-seeds (skipExisting still preserves any
- * user edits). To force a re-seed, delete the stamp.
+ * Called on every install/update. Per constitution §1 and §8:
+ *   - system/ (managed tree) is ALWAYS overwritten from the release skeleton.
+ *   - User trees (config/, knowledge/, workspace/, data/) are seeded-once via
+ *     copyTree({skipExisting:true}) — existing files are never overwritten.
+ *
+ * No version-stamp gate. skipExisting already preserves user edits, so running
+ * unconditionally is both correct and simpler. Changed managed files are backed
+ * up first by overwriteSystemTree.
  */
-export async function seedOpenPalmDir(
+export async function applyHomeSeed(
   repoRef: string,
   homeDir: string,
   _configDir: string,
   _dataDir: string,
 ): Promise<{ updated: string[]; backupDir: string | null }> {
-  const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
-  let alreadySeeded = false;
-  if (existsSync(stampPath)) {
-    try {
-      // Compare normalized so an old `v`-prefixed stamp still matches a bare repoRef.
-      alreadySeeded = normalizeVersion(readFileSync(stampPath, 'utf-8')) === normalizeVersion(repoRef);
-    } catch { /* unreadable stamp → re-seed */ }
-  }
-
-  const stamp = (): void => {
-    try { writeFileSync(stampPath, `${repoRef}\n`); } catch { /* best-effort */ }
-  };
-
   const local = resolveLocalOpenpalmDir();
   if (local) {
-    // ALWAYS refresh the system-managed stack assets (cheap local copy) so a
-    // re-install over an existing OP_HOME picks up the current compose files
-    // even when the skeleton stamp already matches (#472). User-owned files stay
-    // seed-if-missing via the copyTree below.
-    const { updated, backupDir } = refreshCoreAssetsFromSource(local, homeDir);
-    if (updated.length) logger.debug('refreshed managed stack assets', { refreshed: updated });
-    if (alreadySeeded) {
-      // Even when the stamp matches, ALWAYS seed-if-missing the service-required
-      // files under data/ — above all the assistant/guardian/portal tool manifests
-      // (data/*/tools/package.json) that those containers bind-mount and `bun update`
-      // from at startup. A home stamped at the current version but missing them
-      // (older install, an incomplete earlier seed) would otherwise stay broken
-      // forever, because the old guard skipped the copy entirely. `skipExisting`
-      // preserves any existing file. config/ + knowledge/ are user-owned and
-      // intentionally NOT re-materialized here (#472: a removed user file stays
-      // removed). copyTree no-ops if the skeleton has no data/.
-      copyTree(join(local, 'data'), join(homeDir, 'data'), { skipExisting: true });
-      logger.debug('skeleton already seeded — refreshed managed assets + service data defaults', { repoRef });
-      return { updated, backupDir };
-    }
+    // ALWAYS overwrite the entire MANAGED system/ tree (compose stack + system
+    // OpenCode config) from the release skeleton — changed files are backed up first.
+    const { updated, backupDir } = overwriteSystemTree(local, homeDir);
+    if (updated.length) logger.debug('overwrote managed system/ tree', { refreshed: updated });
+    // Seed user/data trees once — skipExisting preserves any existing file so
+    // user edits, removed files, and service-generated data are never touched.
     logger.debug('seeding .openpalm from local source', { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
-    stamp();
     return { updated, backupDir };
   }
 
@@ -530,6 +478,12 @@ export interface UiBuildUpdateResult {
    */
   redownloadRequired?: boolean;
   requiredHarnessContract?: number;
+  /**
+   * The on-disk backup of the PREVIOUS UI build, kept for rollback. Present only
+   * when `updated` is true and a prior build existed. The supervisor uses this to
+   * restore the old build if the new one fails to start (§4.4 / §6).
+   */
+  backupDir?: string;
 }
 
 /**
@@ -564,6 +518,8 @@ export async function checkAndUpdateUiBuild(
    */
   harnessContract?: number | null,
 ): Promise<UiBuildUpdateResult> {
+  // Hoisted outside try so the catch block can return it for supervisor restore (§4.4/§6).
+  let uiBuildBackupDir: string | undefined;
   try {
     const channel  = uiUpdateChannel(appVersion, channelOverride);
     const manifest = await fetchNpmUiManifest(channel);
@@ -618,23 +574,205 @@ export async function checkAndUpdateUiBuild(
       logger.debug('UI build is unstamped — refreshing from npm to re-establish a known version', { latest: latestVersion, channel });
     }
 
-    // Back up the existing UI build before replacing it. (Automatic rollback on
-    // a failed start is deferred — see ui-distribution-gap-analysis.md G1.)
+    // Back up the existing UI build before replacing it. The supervisor uses
+    // uiBuildBackupDir to restore the old build if the new one fails to start (§4.4/§6).
     const uiDir = join(dataDir, 'ui');
     if (existsSync(join(uiDir, 'index.js'))) {
-      const backupDir = join(resolveBackupsDir(), `ui-${Date.now()}`);
+      uiBuildBackupDir = join(resolveBackupsDir(), `ui-${Date.now()}`);
       mkdirSync(resolveBackupsDir(), { recursive: true });
-      renameSync(uiDir, backupDir);
-      logger.debug('backed up UI build before update', { backup: backupDir });
+      renameSync(uiDir, uiBuildBackupDir);
+      logger.debug('backed up UI build before update', { backup: uiBuildBackupDir });
     }
 
     await downloadNpmUiBundle(manifest, uiDir, dataDir);
     logger.debug('UI build updated', { from: currentUiVersion ?? '(unstamped)', to: latestVersion });
 
-    return { updated: true, latestVersion };
+    return { updated: true, latestVersion, backupDir: uiBuildBackupDir };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     logger.debug('UI build update check failed (non-fatal)', { error });
+    // Include backupDir even on failure: if the backup was created before the
+    // download threw, the supervisor can restore the old build (§4.4 / §6).
+    return { updated: false, latestVersion: null, error, backupDir: uiBuildBackupDir };
+  }
+}
+
+// ── Skeleton npm hot-swap ────────────────────────────────────────────────────
+//
+// The skeleton (`@openpalm/skeleton`) is the managed tree that install/update
+// overwrites into OP_HOME/system/ on every apply(). It is independently versioned
+// and ships as an npm package so the control plane can hot-swap it at runtime
+// without a native-shell update — exactly the same channel/verify/stage/rename/
+// stamp/backup pipeline as the UI build above (§2, §4.4).
+//
+// NOTE: the skeleton's managed content lands at OP_HOME/system/, NOT at OP_HOME
+// directly. The tarball publishes the skeleton tree at `package/` (the npm default
+// wrapper). We strip 1 component and extract into a staging dir, then rename into
+// OP_HOME/system/ — the same atomic rename pattern used for the UI build.
+
+const SKELETON_PACKAGE = '@openpalm/skeleton';
+
+interface NpmSkeletonManifest {
+  version: string;
+  tarball: string;
+  /** Subresource-integrity string ("sha512-<base64>"); null if the registry omitted it. */
+  integrity: string | null;
+}
+
+/** Read the stamped skeleton version from OP_HOME, or null if absent/unreadable. */
+export function readSkeletonVersion(homeDir: string): string | null {
+  try {
+    const v = readFileSync(join(homeDir, SKELETON_VERSION_STAMP), 'utf-8').trim();
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchNpmSkeletonManifest(versionOrTag: string): Promise<NpmSkeletonManifest> {
+  const url = `${NPM_REGISTRY}/${SKELETON_PACKAGE}/${versionOrTag}`;
+  const res = await fetchWithRetry(url);
+  if (!res.ok) throw new Error(`npm registry returned HTTP ${res.status} for ${SKELETON_PACKAGE}@${versionOrTag}`);
+  const m = await res.json() as { version?: string; dist?: { tarball?: string; integrity?: string } };
+  if (!m.version || !m.dist?.tarball) {
+    throw new Error(`npm manifest for ${SKELETON_PACKAGE}@${versionOrTag} is missing version/dist.tarball`);
+  }
+  return { version: m.version, tarball: m.dist.tarball, integrity: m.dist.integrity ?? null };
+}
+
+/**
+ * Download `@openpalm/skeleton` from npm, verify integrity, and install its
+ * contents into `homeDir/system/`. The tarball wraps the skeleton tree under
+ * `package/` (npm standard); we strip 1 path component and extract everything
+ * that is NOT `package/system/` into the staging dir, then validate and rename.
+ *
+ * FAIL-CLOSED + non-destructive: throws if integrity is missing or wrong.
+ * Extracts into a staging dir, validates, then atomically renames into system/.
+ */
+async function downloadNpmSkeletonBundle(manifest: NpmSkeletonManifest, homeDir: string, dataDir: string): Promise<void> {
+  const res = await fetchWithRetry(manifest.tarball);
+  if (!res.ok) throw new Error(`Failed to download skeleton bundle (HTTP ${res.status})`);
+  const data = new Uint8Array(await res.arrayBuffer());
+
+  if (!manifest.integrity) {
+    throw new Error(
+      `npm manifest for ${SKELETON_PACKAGE}@${manifest.version} has no integrity hash — refusing to install unverified`,
+    );
+  }
+  verifyNpmIntegrity(data, manifest.integrity);
+  logger.debug('skeleton bundle integrity verified', { version: manifest.version });
+
+  const tmpTar  = join(dataDir, '.skeleton.tgz.tmp');
+  const staging = join(dataDir, '.skeleton.staging');
+  try {
+    rmSync(staging, { recursive: true, force: true });
+    mkdirSync(staging, { recursive: true });
+    writeFileSync(tmpTar, data);
+    // npm wraps under `package/`; strip 1 component to land the skeleton tree directly in staging.
+    await tarExtract({ file: tmpTar, cwd: staging, strip: 1 });
+    // Validate: the skeleton must contain system/stack/
+    if (!existsSync(join(staging, 'system', 'stack'))) {
+      throw new Error('downloaded skeleton bundle is missing system/stack/');
+    }
+    // Atomically replace OP_HOME/system/ from the staged skeleton's system/ subtree.
+    const systemSrc = join(staging, 'system');
+    const systemDest = join(homeDir, 'system');
+    rmSync(systemDest, { recursive: true, force: true });
+    renameSync(systemSrc, systemDest);
+  } finally {
+    rmSync(tmpTar, { force: true });
+    rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+export interface SkeletonUpdateResult {
+  updated: boolean;
+  latestVersion: string | null;
+  error?: string;
+}
+
+/**
+ * Check npm for a newer `@openpalm/skeleton` and apply it if one exists.
+ *
+ * The skeleton is versioned on the same channel as the platform (prerelease →
+ * `next`, stable → `latest`). The version on disk is the `.skeleton-version`
+ * stamp in OP_HOME; the npm manifest provides the target version and integrity.
+ *
+ * When an update is available:
+ *   1. Move OP_HOME/system/ → data/backups/skeleton-{ts}/ (preserves the old tree)
+ *   2. Download and verify the npm bundle (integrity fail-closed)
+ *   3. Atomically rename the staged system/ into OP_HOME/system/
+ *   4. Stamp SKELETON_VERSION_STAMP with the exact npm version
+ *
+ * Never auto-crosses a major version. Non-fatal: network/extraction errors return
+ * { updated: false, error } so the caller proceeds with the existing skeleton.
+ */
+export async function checkAndUpdateSkeleton(
+  appVersion: string,
+  homeDir: string,
+  dataDir: string,
+  channelOverride?: UiUpdateChannel,
+): Promise<SkeletonUpdateResult> {
+  let skelBackupDir: string | undefined;
+  try {
+    const channel = uiUpdateChannel(appVersion, channelOverride);
+    const manifest = await fetchNpmSkeletonManifest(channel);
+    const latestVersion = manifest.version;
+
+    const currentVersion = readSkeletonVersion(homeDir);
+    const currentVersionForPolicy = currentVersion ?? appVersion;
+
+    if (!isSameMajorVersion(latestVersion, currentVersionForPolicy)) {
+      logger.debug('skeleton update blocked by major-version policy', {
+        current: currentVersion ?? '(unstamped)',
+        policyBase: currentVersionForPolicy,
+        latest: latestVersion,
+        channel,
+      });
+      return { updated: false, latestVersion };
+    }
+
+    if (currentVersion && compareComparableVersions(latestVersion, currentVersion) <= 0) {
+      logger.debug('skeleton is up to date', { current: currentVersion, latest: latestVersion, channel });
+      return { updated: false, latestVersion };
+    }
+    if (!currentVersion) {
+      logger.debug('skeleton is unstamped — refreshing from npm', { latest: latestVersion, channel });
+    }
+
+    // Back up the existing system/ tree before replacing it.
+    const systemDir = join(homeDir, 'system');
+    if (existsSync(systemDir)) {
+      skelBackupDir = join(resolveBackupsDir(), `skeleton-${Date.now()}`);
+      mkdirSync(resolveBackupsDir(), { recursive: true });
+      renameSync(systemDir, skelBackupDir);
+      logger.debug('backed up skeleton before update', { backup: skelBackupDir });
+    }
+
+    await downloadNpmSkeletonBundle(manifest, homeDir, dataDir);
+
+    // Stamp the exact npm version (bare, no `v`) so future checks compare correctly.
+    const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
+    writeFileSync(stampPath, `${normalizeVersion(latestVersion)}\n`);
+    logger.debug('skeleton updated', { from: currentVersion ?? '(unstamped)', to: latestVersion });
+
+    return { updated: true, latestVersion };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logger.debug('skeleton update check failed (non-fatal)', { error });
+    // If the backup was created before the download/extraction threw, restore it
+    // so the system/ tree is left in its previous working state (§6).
+    if (skelBackupDir && !existsSync(join(homeDir, 'system'))) {
+      try {
+        renameSync(skelBackupDir, join(homeDir, 'system'));
+        logger.debug('skeleton backup restored after failed update', { restored: skelBackupDir });
+      } catch (restoreErr) {
+        logger.debug('skeleton backup restore also failed', {
+          backup: skelBackupDir,
+          restoreError: restoreErr instanceof Error ? restoreErr.message : String(restoreErr),
+        });
+      }
+    }
     return { updated: false, latestVersion: null, error };
   }
 }

@@ -100,7 +100,10 @@ describe("buildComposeFileList", () => {
 
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
-    writeFileSync(join(state.stackDir, "custom.compose.yml"), "services: {}");
+    // custom.compose.yml is USER-owned → config/stack, not system/stack.
+    const userStackDir = join(state.homeDir, "config", "stack");
+    mkdirSync(userStackDir, { recursive: true });
+    writeFileSync(join(userStackDir, "custom.compose.yml"), "services: {}");
 
     const files = buildComposeFileList(state);
     expect(files).toHaveLength(2);
@@ -213,10 +216,9 @@ describe("applyInstall", () => {
     // Create required dirs and seed core compose for writeRuntimeFiles
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
-    // applyInstall now runs the OP_HOME reconcile (reconcileHome → ensureMigrated).
-    // ensureMigrated throws UnrecognizedLayoutError on a home that has data/ but no
-    // current-layout marker; a stack.env makes it a recognized, already-current layout.
-    seedSecretsEnv(state.stackDir, "OP_IMAGE_NAMESPACE=openpalm\nOP_LAYOUT_VERSION=2\n");
+    // applyInstall runs applyHome (dirs, secrets, overwrite system/, seed once).
+    // A stack.env supplies OP_IMAGE_NAMESPACE for image resolution.
+    seedSecretsEnv(state.homeDir, "OP_IMAGE_NAMESPACE=openpalm\n");
 
     await applyInstall(state);
 
@@ -243,8 +245,8 @@ describe("applyUpdate", () => {
 
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
-    // See applyInstall note: reconcileHome → ensureMigrated needs a recognized layout.
-    seedSecretsEnv(state.stackDir, "OP_IMAGE_NAMESPACE=openpalm\nOP_LAYOUT_VERSION=2\n");
+    // A stack.env supplies OP_IMAGE_NAMESPACE for image resolution.
+    seedSecretsEnv(state.homeDir, "OP_IMAGE_NAMESPACE=openpalm\n");
 
     const result = await applyUpdate(state);
     // Already-running services are reported as restarted...
@@ -276,8 +278,8 @@ describe("applyUninstall", () => {
 
     mkdirSync(state.stackDir, { recursive: true });
     writeFileSync(join(state.stackDir, "core.compose.yml"), "services: {}");
-    // See applyInstall note: reconcileHome → ensureMigrated needs a recognized layout.
-    seedSecretsEnv(state.stackDir, "OP_IMAGE_NAMESPACE=openpalm\nOP_LAYOUT_VERSION=2\n");
+    // A stack.env supplies OP_IMAGE_NAMESPACE for image resolution.
+    seedSecretsEnv(state.homeDir, "OP_IMAGE_NAMESPACE=openpalm\n");
 
     const result = await applyUninstall(state);
     expect(result.stopped).toContain("admin");

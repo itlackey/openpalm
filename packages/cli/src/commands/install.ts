@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureDirectoryTree, seedOpenPalmDir, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
+import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
 import {
   backupOpenPalmHome,
   buildComposeOptions,
@@ -16,8 +16,6 @@ import {
   createLogger,
   resolveRequestedImageTag,
   ensureAkmUserEnv,
-  ensureMigrated,
-  MigrationError,
   PLATFORM_VERSION,
   runDeploy,
   writeSystemEnv,
@@ -170,33 +168,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const dataDir = `${homeDir}/data`;
   const workDir = defaultWorkDir();
 
-  // Auto-migrate an old (0.10.x) layout BEFORE the already-installed check —
-  // a 0.10.x home has no knowledge/env/stack.env, so without this it would be
-  // treated as a fresh install and the vault/ data ignored. Backs up first;
-  // no-ops on a fresh or already-current home.
-  //
-  // This is a PRE-STATE gate, NOT redundant with reconcileHome's ensureMigrated:
-  // it must run before the stack.env-based install detection below (and before
-  // createState assumes the current layout). reconcileHome (inside applyInstall,
-  // reached later via runDeploy / the wizard's UI install endpoint) runs
-  // ensureMigrated again idempotently — both are required.
-  try {
-    const report = ensureMigrated({ log: (m) => console.log(`  ${m}`) });
-    if (report.migrated) {
-      console.log(`Migrated layout ${report.from} → ${report.to} (backup: ${report.backupDir}).`);
-      for (const note of report.notes) console.log(`  NOTE: ${note}`);
-    }
-  } catch (err) {
-    if (err instanceof MigrationError) {
-      console.error(`\nAutomatic migration aborted: ${err.message}\n${err.guidance}`);
-      if (err.backupDir) {
-        console.error(`If something went wrong, your previous state is backed up at ${err.backupDir} — run \`openpalm rollback\`.`);
-      }
-      process.exit(1);
-    }
-    throw err;
-  }
-
   // Use knowledge/env/stack.env (always present after a successful install) as the
   // canonical "already installed" indicator.
   const alreadyInstalled = await Bun.file(join(homeDir, 'knowledge', 'env', 'stack.env')).exists();
@@ -284,22 +255,20 @@ async function prepareInstallFiles(
   // Seed OP_HOME from the bundled .openpalm/ source (skeleton data/ + managed
   // compose, stamp-gated/skip-existing). This is the PRE-WIZARD seed and is
   // load-bearing: the wizard's `openpalm ui serve` child reads seeded
-  // config/stack assets at boot (runStartupApply -> resolveRuntimeFiles), and
+  // system/stack assets at boot (runStartupApply -> resolveRuntimeFiles), and
   // the bundled-asset fallback does not survive into the packaged UI build, so
   // the live seeded copy must exist before /setup is served.
   //
-  // NOT redundant with reconcileHome: the deploy paths (runFileInstall and the
-  // update-mode redeploy) reach reconcileHome via runDeploy -> applyInstall,
+  // NOT redundant with applyInstall's applyHome: the deploy paths (runFileInstall
+  // and the update-mode redeploy) reach applyHome via runDeploy -> applyInstall,
   // which re-seeds idempotently; but the interactive wizard serves BEFORE any
-  // applyInstall runs (deploy happens later from inside the UI), so this
-  // explicit seed is the only one that runs before the wizard comes up.
+  // applyInstall runs (deploy happens later from inside the UI), so this explicit
+  // seed is the only one that runs before the wizard comes up.
   //
   // Stamp with PLATFORM_VERSION (not `version`, the GitHub install ref like
-  // "v0.12.5"/"main"): the .skeleton-version stamp is compared against
-  // PLATFORM_VERSION by isSkeletonStale, and reconcileHome also stamps
-  // PLATFORM_VERSION — both seed writers must agree or a fresh install would be
-  // flagged stale and bounced to /splash.
-  await seedOpenPalmDir(PLATFORM_VERSION, homeDir, configDir, dataDir);
+  // "v0.12.5"/"main") so this pre-wizard seed and applyHome's seed agree on the
+  // stamp written into .skeleton-version.
+  await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather

@@ -2,7 +2,7 @@
  * Runtime configuration validation for the OpenPalm control plane.
  *
  * Validation is a presence check on the canonical env keys we expect in
- * the live config/stack files. The
+ * the live system/stack files. The
  * historical schema files and external validation binary were retired in
  * #391; everything advisory is surfaced as a non-blocking warning. The
  * function never shells out and never reads schemas.
@@ -45,7 +45,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     return { ok: false, errors, warnings };
   }
 
-  const runtimeEnv = readStackRuntimeEnv(state.stackDir);
+  const runtimeEnv = readStackRuntimeEnv(state.homeDir);
 
   for (const key of REQUIRED_SECRET_KEYS) {
     const value = runtimeEnv[key];

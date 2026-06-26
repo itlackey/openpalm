@@ -41,7 +41,7 @@ export const POST: RequestHandler = async (event) => {
   // even when voice was fully configured (the "voice broken after install"
   // bug). process.env stays a fallback/override for dev. OP_ prefix only — a
   // leaked unprefixed shell STT_* var must never override the saved selection.
-  const stackEnv = readStackEnv(getState().stackDir);
+  const stackEnv = readStackEnv(getState().homeDir);
   // `||` not `??`: an empty value on disk (`OP_STT_BASE_URL=`) must fall back to
   // process.env, not shadow it — otherwise a blank disk entry silently breaks a
   // desktop install whose env already carries the working value.

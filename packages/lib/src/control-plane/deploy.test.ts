@@ -124,7 +124,8 @@ mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
 }));
 
 mock.module(${JSON.stringify(moduleUrls.coreAssets)}, () => ({
-  refreshCoreAssetsFromSource: () => ({ backupDir: null, updated: [] }),
+  overwriteSystemTree: () => ({ backupDir: null, updated: [] }),
+  ensureOpenCodeSystemConfig: () => {},
 }));
 
 mock.module(${JSON.stringify(moduleUrls.lifecycle)}, () => ({

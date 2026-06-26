@@ -126,7 +126,7 @@ describe('PUT /admin/voice', () => {
 		expect(res.status).toBe(200);
 
 		const state = getState();
-		const env = readStackEnv(state.stackDir);
+		const env = readStackEnv(state.homeDir);
 		expect(env['OP_TTS_ENGINE']).toBe('openpalm-voice');
 		expect(env['OP_STT_ENGINE']).toBe('openpalm-voice');
 		// Preset URL points at the loopback host port the voice addon
@@ -145,7 +145,7 @@ describe('PUT /admin/voice', () => {
 		expect(res.status).toBe(200);
 
 		const state = getState();
-		const env = readStackEnv(state.stackDir);
+		const env = readStackEnv(state.homeDir);
 		expect(env['OP_TTS_BASE_URL']).toBe('http://elsewhere:9999');
 		expect(env['OP_TTS_VOICE']).toBe('af_heart');
 		// Model still defaults since the user didn't override.

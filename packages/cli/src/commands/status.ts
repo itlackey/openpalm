@@ -28,7 +28,7 @@ export default defineCommand({
   async run() {
     try {
       const state = createState();
-      const installState = classifyLocalInstall(state.stackDir);
+      const installState = classifyLocalInstall(state.stackDir, state.homeDir);
       const ps = await composePs(buildComposeOptions(state));
       const launchStatus = deriveLaunchStatus({
         local: {

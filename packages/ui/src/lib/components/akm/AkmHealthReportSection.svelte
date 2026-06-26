@@ -68,7 +68,7 @@
 			<label class="control-field" for="akm-report-window">
 				<span>Time frame</span>
 				<select id="akm-report-window" class="control-input" bind:value={reportWindow} onchange={handleWindowChange} {disabled}>
-					{#each WINDOW_OPTIONS as option}
+					{#each WINDOW_OPTIONS as option (option.value)}
 						<option value={option.value}>{option.label}</option>
 					{/each}
 				</select>

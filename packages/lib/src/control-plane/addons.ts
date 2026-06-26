@@ -13,11 +13,11 @@ import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persistence.js';
 import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
-import { readBundledStackAsset } from './core-assets.js';
+import { readBundledStackAsset, readBundledCustomCompose } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
 import { parseEnabledAddons } from './env.js';
 import type { ControlPlaneState } from './types.js';
-import { resolveStashDir } from './home.js';
+import { resolveStashDir, composeFilePath, customComposeFilePath } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS } from './addon-ids.js';
 
@@ -65,7 +65,7 @@ export function listAvailableAddonIds(): string[] {
 }
 
 export function listEnabledAddonIds(homeDir: string): string[] {
-  const env = readStackEnv(join(homeDir, 'config', 'stack'));
+  const env = readStackEnv(homeDir);
   const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
   const profiles = new Set<string>();
   for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
@@ -112,9 +112,9 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "config", "stack", "portals.compose.yml"),
-    join(homeDir, "config", "stack", "services.compose.yml"),
-    join(homeDir, "config", "stack", "custom.compose.yml"),
+    composeFilePath(homeDir, "portals.compose.yml"),
+    composeFilePath(homeDir, "services.compose.yml"),
+    customComposeFilePath(homeDir),
   ];
 
   for (const composePath of composeCandidates) {
@@ -122,10 +122,12 @@ export function getAddonServiceNames(homeDir: string, name: string): string[] {
     if (services.length > 0) return services;
   }
 
-  for (const assetName of ["portals.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+  for (const assetName of ["portals.compose.yml", "services.compose.yml"]) {
     const services = readAddonServiceNamesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`, name);
     if (services.length > 0) return services;
   }
+  const customServices = readAddonServiceNamesFromContent(readBundledCustomCompose(), 'bundled:custom.compose.yml', name);
+  if (customServices.length > 0) return customServices;
 
   return [];
 }
@@ -438,16 +440,16 @@ export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] 
   if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
 
   const composeCandidates = [
-    join(homeDir, "config", "stack", "portals.compose.yml"),
-    join(homeDir, "config", "stack", "services.compose.yml"),
-    join(homeDir, "config", "stack", "custom.compose.yml"),
+    composeFilePath(homeDir, "portals.compose.yml"),
+    composeFilePath(homeDir, "services.compose.yml"),
+    customComposeFilePath(homeDir),
   ];
 
 	const localOpenpalmDir = resolveLocalOpenpalmDir();
 	if (localOpenpalmDir) {
-		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'portals.compose.yml'));
-		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'services.compose.yml'));
-		composeCandidates.push(join(localOpenpalmDir, 'config', 'stack', 'custom.compose.yml'));
+		composeCandidates.push(composeFilePath(localOpenpalmDir, 'portals.compose.yml'));
+		composeCandidates.push(composeFilePath(localOpenpalmDir, 'services.compose.yml'));
+		composeCandidates.push(customComposeFilePath(localOpenpalmDir));
 	}
 
   for (const composePath of composeCandidates) {
@@ -455,11 +457,14 @@ export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] 
     if (profiles.length > 0) return profiles;
   }
 
-  for (const assetName of ["portals.compose.yml", "services.compose.yml", "custom.compose.yml"]) {
+  for (const assetName of ["portals.compose.yml", "services.compose.yml"]) {
     const profiles = readAddonProfilesFromContent(readBundledStackAsset(assetName), `bundled:${assetName}`)
       .filter((profile) => profile.id.startsWith(`addon.${name}`));
     if (profiles.length > 0) return profiles;
   }
+  const customProfiles = readAddonProfilesFromContent(readBundledCustomCompose(), 'bundled:custom.compose.yml')
+    .filter((profile) => profile.id.startsWith(`addon.${name}`));
+  if (customProfiles.length > 0) return customProfiles;
 
   return [];
 }
@@ -469,50 +474,50 @@ function profileEnvKey(name: string): string {
   return `OP_${name.replace(/-/g, '_').toUpperCase()}_PROFILE`;
 }
 
-export function getAddonProfileSelection(stackDir: string, name: string): string | null {
-  const env = readStackEnv(stackDir);
+export function getAddonProfileSelection(homeDir: string, name: string): string | null {
+  const env = readStackEnv(homeDir);
   const value = env[profileEnvKey(name)];
   const normalized = value ? canonicalAddonProfileSelection(name, value) : '';
   return normalized ? normalized : null;
 }
 
-export function setAddonProfileSelection(stackDir: string, name: string, profile: string): void {
+export function setAddonProfileSelection(homeDir: string, name: string, profile: string): void {
   const trimmed = canonicalAddonProfileSelection(name, profile);
   if (!trimmed) throw new Error(`Invalid canonical profile id for addon ${name}: ${profile}`);
-  patchSecretsEnvFile(stackDir, { [profileEnvKey(name)]: trimmed });
+  patchSecretsEnvFile(homeDir, { [profileEnvKey(name)]: trimmed });
 }
 
 /** Add/remove an addon id in the OP_ENABLED_ADDONS list in stack.env. */
-function setEnabledAddonState(stackDir: string, name: string, enabled: boolean): void {
-  const current = new Set(parseEnabledAddons(readStackEnv(stackDir).OP_ENABLED_ADDONS));
+function setEnabledAddonState(homeDir: string, name: string, enabled: boolean): void {
+  const current = new Set(parseEnabledAddons(readStackEnv(homeDir).OP_ENABLED_ADDONS));
   if (enabled) current.add(name);
   else current.delete(name);
-  patchSecretsEnvFile(stackDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
+  patchSecretsEnvFile(homeDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
 }
 
-function enableAddon(stackDir: string, name: string): MutationResult {
+function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-    setEnabledAddonState(stackDir, name, true);
-    if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '1' });
+    setEnabledAddonState(homeDir, name, true);
+    if (name === 'ssh') patchSecretsEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '1' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-function disableAddonByName(stackDir: string, name: string): MutationResult {
+function disableAddonByName(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
-    setEnabledAddonState(stackDir, name, false);
-    if (name === 'ssh') patchSecretsEnvFile(stackDir, { OPENCODE_ENABLE_SSH: '0' });
+    setEnabledAddonState(homeDir, name, false);
+    if (name === 'ssh') patchSecretsEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '0' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-export function setAddonEnabled(homeDir: string, stackDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {
+export function setAddonEnabled(homeDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid addon name: ${name}` };
   }
@@ -533,13 +538,13 @@ export function setAddonEnabled(homeDir: string, stackDir: string, name: string,
     };
   }
 
-  const mutation = enabled ? enableAddon(stackDir, name) : disableAddonByName(stackDir, name);
+  const mutation = enabled ? enableAddon(homeDir, name) : disableAddonByName(homeDir, name);
   if (!mutation.ok) return mutation;
 
   if (enabled) {
     if (['api', 'chat', 'discord', 'slack'].includes(name)) {
       for (const portal of ['api', 'chat', 'discord', 'slack']) {
-        ensurePortalSecret(stackDir, portal);
+        ensurePortalSecret(homeDir, portal);
       }
     }
 

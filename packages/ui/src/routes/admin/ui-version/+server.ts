@@ -19,7 +19,7 @@ export const POST: RequestHandler = async (event) => {
 
   const tag = typeof body.tag === "string" ? body.tag.trim() : "";
   if (!tag) return errorResponse(400, "tag_required", "tag is required", {}, requestId);
-  if (!/^[a-zA-Z0-9._\-]+$/.test(tag)) return errorResponse(400, "invalid_tag", "Tag must be alphanumeric with . _ or - only", {}, requestId);
+  if (!/^[a-zA-Z0-9._-]+$/.test(tag)) return errorResponse(400, "invalid_tag", "Tag must be alphanumeric with . _ or - only", {}, requestId);
 
   const dataDir = resolveDataDir();
   // UI builds resolve from the npm registry by bare version; strip any legacy `v`.

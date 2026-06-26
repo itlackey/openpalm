@@ -41,12 +41,8 @@
 </script>
 
 {#if href}
-  <a
-    class="icon-btn"
-    class:has-label={label}
-    class:selected
-    class:tone-danger={tone === 'danger'}
-    {href}
+  <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+  <a class="icon-btn" class:has-label={label} class:selected class:tone-danger={tone === 'danger'} {href}
     title={title ?? ariaLabel ?? label}
     aria-label={ariaLabel ?? label}
     aria-disabled={disabled || undefined}

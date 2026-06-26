@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolveStackDir, resolveSecretsDir, listSecretNames } from '@openpalm/lib';
+import { resolveStackDir, resolveOpenPalmHome, resolveSecretsDir, listSecretNames } from '@openpalm/lib';
 import { parseEnvFile, isSensitiveEnvKey } from '@openpalm/lib';
 
 /**
@@ -59,8 +59,8 @@ export default defineCommand({
         }
       }
 
-      for (const name of listSecretNames(stackDir)) {
-        const path = join(resolveSecretsDir(stackDir), name);
+      for (const name of listSecretNames(resolveOpenPalmHome())) {
+        const path = join(resolveSecretsDir(resolveOpenPalmHome()), name);
         if (!existsSync(path)) continue;
         results.push({
           path,

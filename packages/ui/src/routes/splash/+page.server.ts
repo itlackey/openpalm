@@ -1,7 +1,6 @@
 import { deriveLaunchStatus, deriveLocalStackState, classifyLocalInstall, composePs, buildComposeOptions, detectRuntime } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { listRemoteStatuses } from '$lib/server/endpoints.js';
-import { detectMigration } from '$lib/server/migration-status.js';
 
 function parseComposePsServices(stdout: string) {
   return stdout
@@ -24,7 +23,7 @@ function parseComposePsServices(stdout: string) {
 
 export async function load() {
   const state = getState();
-  const installState = classifyLocalInstall(state.stackDir);
+  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
   const composeResult = await composePs(buildComposeOptions(state));
   const localState = deriveLocalStackState(installState, composeResult.ok ? parseComposePsServices(composeResult.stdout) : []);
   return {
@@ -36,6 +35,5 @@ export async function load() {
       },
       remotes: await listRemoteStatuses(),
     }),
-    migration: detectMigration(state.homeDir),
   };
 }

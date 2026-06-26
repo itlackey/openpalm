@@ -26,11 +26,6 @@
     onhostimport?: () => void;
     onoauthstart?: (id: string, methodIndex: number) => void;
     onoauthcancel?: (id: string) => void;
-    // Accepted for backward compatibility with the parent; intentionally unused
-    // (custom endpoint / key entry moved out of the wizard).
-    onbaseurl?: (id: string, url: string) => void;
-    onapikey?: (id: string, key: string) => void;
-    onverify?: (id: string) => void;
   }
 
   let {

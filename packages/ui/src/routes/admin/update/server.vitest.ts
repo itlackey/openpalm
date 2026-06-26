@@ -1,50 +1,42 @@
 /**
  * Route-level tests for POST /admin/update.
  *
- * Verifies the silent-swallow fix: when `docker compose up` reports a
- * per-service failure on stderr, the route must return 502 with a
- * structured `failed[]` list (not 200 with `restarted: [...]` that
- * pretends everything worked).
+ * Phase 3: the route is now a thin wrapper over applyUpdate() (files) +
+ * applyStack() (containers). Pull failure is FATAL (§6) — no "restarted
+ * from local cache" fallthrough. These tests verify the correct behaviour
+ * at the route boundary.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Mock @openpalm/lib BEFORE importing the route. The route imports a bunch
-// of heavyweight functions; we only care about the apply / compose flow.
-type ComposeUpFn = (args: unknown) => Promise<{
+// Mock @openpalm/lib BEFORE importing the route.
+type ApplyStackFn = (scope: unknown, opts: unknown) => Promise<{
   ok: boolean;
-  stdout: string;
-  stderr: string;
-  code: number;
+  started: string[];
+  failed: { service: string; reason: string }[];
+  error?: string;
 }>;
-const composeUpMock = vi.fn<ComposeUpFn>();
-const composePullMock = vi.fn<ComposeUpFn>();
+const applyStackMock = vi.fn<ApplyStackFn>();
 const checkDockerMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
 const applyUpdateMock = vi.fn<() => Promise<{ restarted: string[] }>>();
-const buildManagedServicesMock = vi.fn<() => Promise<string[]>>();
 
 vi.mock('@openpalm/lib', async () => {
   const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
   return {
     ...actual,
     applyUpdate: (...args: unknown[]) => applyUpdateMock(...(args as [])),
-    composeUp: (...args: unknown[]) => composeUpMock(...(args as [unknown])),
-    composePull: (...args: unknown[]) => composePullMock(...(args as [unknown])),
+    applyStack: (...args: unknown[]) => applyStackMock(...(args as [unknown, unknown])),
     checkDocker: (...args: unknown[]) => checkDockerMock(...(args as [])),
-    buildManagedServices: (...args: unknown[]) => buildManagedServicesMock(...(args as [])),
     ensureHomeDirs: () => undefined,
     ensureOpenCodeConfig: () => undefined,
     ensureOpenCodeSystemConfig: () => undefined,
-    // Pre-state migration gate: no-op (already-current layout) so the route's
-    // compose orchestration is exercised. MigrationError handling has its own path.
-    ensureMigrated: () => ({ migrated: false, from: 2, to: 2, applied: [], backupDir: null, notes: [], releaseFrom: null, releaseTo: '', releaseApplied: [] }),
-    buildComposeOptions: () => ({ files: ['/tmp/fake/compose.yml'], envFiles: [] }),
+    buildComposeOptions: () => ({ files: ['/tmp/fake/compose.yml'], envFiles: [], profiles: [] }),
   };
 });
 
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
+function makePostEvent(token = 'admin-token', body: unknown = {}): Parameters<typeof POST>[0] {
   return {
     request: new Request('http://localhost/admin/update', {
       method: 'POST',
@@ -53,23 +45,21 @@ function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
         'x-request-id': 'req-update-test',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     }),
   } as Parameters<typeof POST>[0];
 }
 
 beforeEach(() => {
   resetState('admin-token');
-  composeUpMock.mockReset();
-  composePullMock.mockReset();
-  composePullMock.mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+  applyStackMock.mockReset();
   checkDockerMock.mockReset();
   applyUpdateMock.mockReset();
-  buildManagedServicesMock.mockReset();
 
   applyUpdateMock.mockResolvedValue({ restarted: [] });
-  buildManagedServicesMock.mockResolvedValue(['assistant', 'guardian', 'voice']);
   checkDockerMock.mockResolvedValue({ ok: true, stdout: '24.0.0', stderr: '', code: 0 });
+  // Default: stack comes up cleanly
+  applyStackMock.mockResolvedValue({ ok: true, started: ['assistant', 'guardian', 'voice'], failed: [] });
 });
 
 afterEach(() => {
@@ -82,9 +72,7 @@ describe('POST /admin/update', () => {
     expect(res.status).toBe(401);
   });
 
-  test('returns 200 with all services when compose succeeds', async () => {
-    composeUpMock.mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
-
+  test('returns 200 with all services when applyStack succeeds', async () => {
     const res = await POST(makePostEvent());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -101,17 +89,14 @@ describe('POST /admin/update', () => {
     expect(body.dockerAvailable).toBe(true);
   });
 
-  test('returns 502 with structured failed[] when compose pull denied for one service', async () => {
-    composeUpMock.mockResolvedValue({
+  test('returns 502 with structured failed[] when pull is denied for one service (fatal)', async () => {
+    // In Phase 3, a pull failure is FATAL — applyStack returns ok:false immediately
+    // with the failure attributed to the failing image/service (no partial success).
+    applyStackMock.mockResolvedValue({
       ok: false,
-      stdout: '',
-      stderr: [
-        ' Network openpalm_default  Created',
-        ' voice Pulling',
-        " voice Error pull access denied for openpalm/voice, repository does not exist or may require 'docker login'",
-        "Error response from daemon: pull access denied for openpalm/voice: denied: requested access to the resource is denied",
-      ].join('\n'),
-      code: 1,
+      started: [],
+      failed: [{ service: 'voice', reason: "pull access denied for openpalm/voice (openpalm/voice)" }],
+      error: "pull access denied for openpalm/voice (openpalm/voice)",
     });
 
     const res = await POST(makePostEvent());
@@ -133,20 +118,19 @@ describe('POST /admin/update', () => {
     expect(body.failed[0].service).toBe('voice');
     expect(body.failed[0].reason).toMatch(/pull access denied/);
 
-    // Unaffected services should still appear in restarted
-    expect(body.restarted.sort()).toEqual(['assistant', 'guardian']);
-    expect(body.restarted).not.toContain('voice');
+    // Pull failure is fatal — no partial "restarted" set
+    expect(body.restarted).toEqual([]);
 
     // error summary should be populated
     expect(body.error).toBeTruthy();
   });
 
-  test('returns 502 with stack-level failure when stderr is unattributable', async () => {
-    composeUpMock.mockResolvedValue({
+  test('returns 502 with stack-level failure when compose up fails with unattributable error', async () => {
+    applyStackMock.mockResolvedValue({
       ok: false,
-      stdout: '',
-      stderr: 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock',
-      code: 1,
+      started: [],
+      failed: [{ service: 'stack', reason: 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock' }],
+      error: 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock',
     });
 
     const res = await POST(makePostEvent());
@@ -164,13 +148,13 @@ describe('POST /admin/update', () => {
     expect(body.failed[0].reason).toMatch(/Cannot connect to the Docker daemon/);
   });
 
-  test('returns 200 with empty restarted when docker is unavailable', async () => {
+  test('returns 200 with overallSuccess:false when docker is unavailable (§6 fail loudly)', async () => {
+    // User pressed "update now" but Docker is down. Per §6: a user-triggered update
+    // that can't reach the daemon fails loudly (overallSuccess:false, 200 status so
+    // the client can distinguish from an HTTP-level error).
     checkDockerMock.mockResolvedValue({ ok: false, stdout: '', stderr: 'docker not found', code: 1 });
 
     const res = await POST(makePostEvent());
-    // dockerAvailable=false is NOT a partial-failure state for the update
-    // route — the route is still able to write the artifacts; compose just
-    // didn't run. Today this returns 200; preserve that contract.
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       restarted: string[];
@@ -180,9 +164,75 @@ describe('POST /admin/update', () => {
     };
     expect(body.dockerAvailable).toBe(false);
     expect(body.overallSuccess).toBe(false);
-    // Note: overallSuccess=false because dockerCheck.ok was false; no
-    // services were restarted.
     expect(body.restarted).toEqual([]);
     expect(body.failed).toEqual([]);
+    // applyStack must NOT have been called when docker is unavailable
+    expect(applyStackMock).not.toHaveBeenCalled();
+  });
+
+  // ── Scoped single-service update (§4, §7 "Update <container>") ──────────────
+  //
+  // Acceptance criterion: "updating one container MUST NOT touch the others."
+  // The route calls applyStack({ kind: "service", service }) which pulls + recreates
+  // ONLY that service with --force-recreate --no-deps.  applyUpdate (managed-file
+  // apply) must NOT be called — no file changes happen on a scoped update.
+
+  test('scoped service update: calls applyStack with kind:service and does NOT call applyUpdate', async () => {
+    applyStackMock.mockResolvedValue({ ok: true, started: ['assistant'], failed: [] });
+
+    const res = await POST(makePostEvent('admin-token', { service: 'assistant' }));
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as {
+      ok: boolean;
+      restarted: string[];
+      failed: { service: string; reason: string }[];
+      overallSuccess: boolean;
+      dockerAvailable: boolean;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.overallSuccess).toBe(true);
+    expect(body.restarted).toEqual(['assistant']);
+    expect(body.failed).toEqual([]);
+    expect(body.dockerAvailable).toBe(true);
+
+    // Must have called applyStack with the scoped shape — NOT kind:"all"
+    expect(applyStackMock).toHaveBeenCalledOnce();
+    expect(applyStackMock).toHaveBeenCalledWith(
+      { kind: 'service', service: 'assistant' },
+      expect.objectContaining({ files: expect.any(Array) }),
+    );
+
+    // applyUpdate must NOT be called — scoped update has no managed-file phase
+    expect(applyUpdateMock).not.toHaveBeenCalled();
+  });
+
+  test('scoped service update: pull failure returns 502 with the service name in failed[]', async () => {
+    applyStackMock.mockResolvedValue({
+      ok: false,
+      started: [],
+      failed: [{ service: 'guardian', reason: 'pull access denied for openpalm/guardian' }],
+      error: 'pull access denied for openpalm/guardian',
+    });
+
+    const res = await POST(makePostEvent('admin-token', { service: 'guardian' }));
+    expect(res.status).toBe(502);
+
+    const body = (await res.json()) as {
+      ok: boolean;
+      restarted: string[];
+      failed: { service: string; reason: string }[];
+      overallSuccess: boolean;
+      error?: string;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.overallSuccess).toBe(false);
+    expect(body.restarted).toEqual([]);
+    expect(body.failed).toHaveLength(1);
+    expect(body.failed[0].service).toBe('guardian');
+    expect(body.failed[0].reason).toMatch(/pull access denied/);
+
+    // applyUpdate must NOT be called even on failure — no managed-file phase
+    expect(applyUpdateMock).not.toHaveBeenCalled();
   });
 });

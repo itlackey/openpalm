@@ -7,10 +7,10 @@
  * and is resolved at compile time.
  */
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, renameSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret,
-  checkAndUpdateUiBuild, PLATFORM_VERSION,
+  checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
 } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -42,23 +42,34 @@ export interface UIServerOptions {
 }
 
 /**
- * Self-update the control plane (npm `@openpalm/ui` → data/ui), then resolve and
- * spawn the SvelteKit Node child. Re-callable so a UI-build update can respawn
- * the child against the freshly downloaded data/ui without restarting the whole
- * `openpalm ui serve` supervisor (design §6.2).
+ * Self-update the control plane (npm `@openpalm/ui` → data/ui) and skeleton
+ * (npm `@openpalm/skeleton` → system/), then resolve and spawn the SvelteKit
+ * Node child. Re-callable so a UI-build update can respawn the child against the
+ * freshly downloaded data/ui without restarting the whole `openpalm ui serve`
+ * supervisor (design §6.2).
  *
- * Non-fatal update: any network/registry error leaves the existing build in
- * place. Resolution happens AFTER the update so a strictly-newer data/ui wins.
+ * Non-fatal update: any network/registry error leaves the existing build/skeleton
+ * in place. Resolution happens AFTER the update so a strictly-newer data/ui wins.
+ * Returns the UI backup path so the supervisor can restore on restart failure (§4.4).
  */
 async function spawnUiChild(
   port: number,
   homeDir: string,
   state: ReturnType<typeof ensureValidState>,
-): Promise<Bun.Subprocess> {
+): Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }> {
+  // Hot-swap the skeleton (managed system/ tree) before spawning.
+  console.log('Checking for skeleton update...');
+  const skelResult = await checkAndUpdateSkeleton(PLATFORM_VERSION, homeDir, state.dataDir);
+  if (skelResult.updated) {
+    console.log(`Skeleton updated to v${skelResult.latestVersion}.`);
+  } else if (skelResult.error) {
+    console.warn(`Warning: skeleton update skipped — ${skelResult.error}. Existing skeleton still active.`);
+  }
+
   // Self-update the control plane BEFORE spawning, matching the Electron harness
   // (main.ts: checkAndUpdateUiBuild before resolveUiBuildDir). `openpalm ui serve`
-  // is a long-lived supervisor too, so without this the served UI/lib (and its
-  // RELEASE_MIGRATIONS) would only ever update via the `openpalm update` command.
+  // is a long-lived supervisor too, so without this the served UI/lib would only
+  // ever update via the `openpalm update` command.
   console.log('Checking for UI build update...');
   const uiResult = await checkAndUpdateUiBuild(PLATFORM_VERSION, state.dataDir);
   if (uiResult.updated) {
@@ -80,11 +91,11 @@ async function spawnUiChild(
   // it. Don't short-circuit here, or the install wizard can never come up.
   const uiLoginPassword =
     process.env.OP_UI_LOGIN_PASSWORD
-      ?? readSecret(state.stackDir, 'op_ui_login_password')?.trimEnd()
+      ?? readSecret(state.homeDir, 'op_ui_login_password')?.trimEnd()
       ?? '';
 
   console.log('Starting UI server...');
-  return Bun.spawn(
+  const proc = Bun.spawn(
     ['node', join(uiBuildDir, 'index.js')],
     {
       cwd: uiBuildDir,
@@ -107,6 +118,7 @@ async function spawnUiChild(
       stderr: 'inherit',
     }
   );
+  return { proc, uiBackupDir: uiResult.backupDir };
 }
 
 /**
@@ -124,7 +136,8 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   const state = ensureValidState();
 
-  let uiProc = await spawnUiChild(port, homeDir, state);
+  let spawnResult = await spawnUiChild(port, homeDir, state);
+  let uiProc = spawnResult.proc;
 
   if (!await waitForReady(port)) {
     uiProc.kill('SIGTERM');
@@ -139,10 +152,11 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   let shuttingDown = false;
   let restarting = false;
 
-  // Supervisor restart: the UI child (admin "install UI version" route) sends
-  // SIGHUP to this parent after seeding a newer data/ui. Kill the current child
-  // and respawn it against the freshly downloaded build — the new @openpalm/lib
-  // (and its RELEASE_MIGRATIONS) only takes effect once the Node child restarts.
+  // Supervisor restart (§4.4): the UI child (admin "install UI version" route)
+  // sends SIGUSR2/SIGHUP to this parent after seeding a newer data/ui. Kill the
+  // current child and respawn against the freshly downloaded build — the new
+  // @openpalm/lib only takes effect once the Node child restarts (automatic,
+  // no "apply" click needed). On restart failure, restore the backup (§6).
   async function restartUiServer(): Promise<void> {
     if (shuttingDown || restarting) return;
     restarting = true;
@@ -154,9 +168,24 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
         new Promise(r => setTimeout(r, STOP_TIMEOUT_MS)),
       ]);
       if (!uiProc.killed) uiProc.kill('SIGKILL');
-      uiProc = await spawnUiChild(port, homeDir, state);
+      spawnResult = await spawnUiChild(port, homeDir, state);
+      uiProc = spawnResult.proc;
       if (!await waitForReady(port)) {
         console.error('UI server did not become ready after restart.');
+        // Post-swap failure → restore backup (§4.4 / §6). Reinstate the prior
+        // data/ui with a local rename — no registry needed.
+        const uiBackup = spawnResult.uiBackupDir;
+        if (uiBackup && existsSync(uiBackup)) {
+          try {
+            const dataUiDir = join(state.dataDir, 'ui');
+            const failedDir = join(state.dataDir, `.ui-failed-${Date.now()}`);
+            if (existsSync(dataUiDir)) renameSync(dataUiDir, failedDir);
+            renameSync(uiBackup, dataUiDir);
+            console.error(`UI build restore: reinstated backup from ${uiBackup}; failed build at ${failedDir}`);
+          } catch (restoreErr) {
+            console.error('UI backup restore failed:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
+          }
+        }
         process.exit(1);
       }
       console.log(`UI server restarted at ${uiUrl}`);

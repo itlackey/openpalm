@@ -9,7 +9,5 @@
 </script>
 
 <SelectableCard title="OpenAI" description="1 model" expanded onToggle={onToggle}>
-  {#snippet children()}
-    <button data-testid="inner" type="button">Connect</button>
-  {/snippet}
+  <button data-testid="inner" type="button">Connect</button>
 </SelectableCard>

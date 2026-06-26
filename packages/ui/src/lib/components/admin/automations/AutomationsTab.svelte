@@ -211,7 +211,7 @@
   <div class="panel-body">
     {#if hasAutomations && data}
       <div class="automation-list">
-        {#each data.automations as automation}
+        {#each data.automations as automation (automation.name)}
           <div class="automation-card">
             <div class="automation-row">
               <div class="automation-main">

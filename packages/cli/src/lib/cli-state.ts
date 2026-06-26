@@ -16,13 +16,13 @@ import type { ControlPlaneState } from '@openpalm/lib';
  *
  * Pure read: resolves core assets/artifacts from OP_HOME and does NOT persist
  * anything. Secrets and other OP_HOME assets are written ONLY by
- * install/update/apply (reconcileHome) — no self-healing on a plain command.
+ * install/update/apply (applyHome) — no self-healing on a plain command.
  *
  * Returns a ControlPlaneState usable with buildComposeCliArgs().
  */
 export function ensureValidState(): ControlPlaneState {
   const state = createState();
-  if (classifyLocalInstall(state.stackDir) === 'not_installed') {
+  if (classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
     throw new Error('OpenPalm is not installed in this OP_HOME yet. Run `openpalm install` first.');
   }
   state.artifacts = resolveRuntimeFiles();

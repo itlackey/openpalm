@@ -8,10 +8,13 @@
 #       mutating control-plane / migration symbols. The harness is bootstrap-only;
 #       every state-mutating op runs in the updatable data/ui control plane.
 #   (b) packages/ui/build/server/chunks/* (the updatable control plane) DOES
-#       contain those symbols — proving the migration code travels with the
-#       npm-published @openpalm/ui build, not the frozen harness.
+#       contain performUpgrade — proving the upgrade/control-plane code travels
+#       with the npm-published @openpalm/ui build, not the frozen harness.
+#       (ensureReleaseMigrated and RELEASE_MIGRATIONS were removed in Phase 2
+#       of the install/update rebuild; performUpgrade is the surviving upgrade
+#       entry point that the updatable plane must carry.)
 #   (c) packages/electron/src/main.ts imports from @openpalm/lib ONLY the
-#       bootstrap allowlist (path resolvers + seed + ui-build download +
+#       bootstrap allowlist (path resolvers + seed + ui-build/skeleton download +
 #       parseEnvFile + uiUpdateChannel + ensureHomeDirs + PLATFORM_VERSION +
 #       checkDocker/checkDockerCompose). Any mutating control-plane symbol added
 #       to that import set fails CI.
@@ -26,21 +29,24 @@ MAIN_BUNDLE="packages/electron/dist/main.js"
 UI_CHUNKS_DIR="packages/ui/build/server/chunks"
 MAIN_SRC="packages/electron/src/main.ts"
 
-# Mutating control-plane / migration symbols that MUST NOT be inlined into the
-# frozen harness bundle (they run only in the updatable data/ui control plane).
-FORBIDDEN_SYMBOLS=(ensureReleaseMigrated RELEASE_MIGRATIONS performUpgrade applyTagChange)
+# Mutating control-plane symbols that MUST NOT be inlined into the frozen harness
+# bundle (they run only in the updatable data/ui control plane).
+# Note: ensureReleaseMigrated and RELEASE_MIGRATIONS were deleted in Phase 2
+# (install/update rebuild); they are no longer forbidden because they no longer exist.
+FORBIDDEN_SYMBOLS=(performUpgrade applyTagChange)
 
 # The ONLY @openpalm/lib symbols main.ts may import (design §2.1 bootstrap allowlist,
-# extended in 0.12.0 with PLATFORM_VERSION + the Docker preflight probes §6.5/§5).
+# extended in 0.12.0 with PLATFORM_VERSION + the Docker preflight probes §6.5/§5,
+# and in Phase 4 with checkAndUpdateSkeleton for skeleton self-update bootstrap).
 ALLOWED_IMPORTS=(
   resolveOpenPalmHome
   resolveDataDir
   resolveConfigDir
   resolveUiBuildDir
   seedUiBuild
-  seedOpenPalmDir
   ensureHomeDirs
   checkAndUpdateUiBuild
+  checkAndUpdateSkeleton
   uiUpdateChannel
   parseEnvFile
   PLATFORM_VERSION
@@ -63,7 +69,7 @@ for sym in "${FORBIDDEN_SYMBOLS[@]}"; do
   fi
 done
 
-# ── (b) updatable control plane (UI build) DOES carry the migration symbols ────
+# ── (b) updatable control plane (UI build) DOES carry the upgrade entry point ──
 # Build the UI first if the server build is absent so the guard is meaningful.
 if [ ! -d "$UI_CHUNKS_DIR" ]; then
   echo "UI server build absent; building (npm run build) so the boundary can be verified…"
@@ -72,9 +78,9 @@ if [ ! -d "$UI_CHUNKS_DIR" ]; then
     exit 1
   }
 fi
-for sym in ensureReleaseMigrated RELEASE_MIGRATIONS; do
+for sym in performUpgrade; do
   if ! grep -rq "$sym" "$UI_CHUNKS_DIR"; then
-    echo "::error::'$sym' NOT found in $UI_CHUNKS_DIR — the migration/control-plane code must travel with the @openpalm/ui build"
+    echo "::error::'$sym' NOT found in $UI_CHUNKS_DIR — the upgrade/control-plane code must travel with the @openpalm/ui build"
     errors=$((errors + 1))
   fi
 done
@@ -116,4 +122,4 @@ if [ "$errors" -gt 0 ]; then
   exit 1
 fi
 
-echo "Thin-harness boundary intact: frozen harness carries 0 migration symbols, the UI build carries them, and main.ts imports only the bootstrap allowlist."
+echo "Thin-harness boundary intact: frozen harness carries 0 mutating control-plane symbols, the UI build carries performUpgrade, and main.ts imports only the bootstrap allowlist."

@@ -188,7 +188,7 @@ export async function performSetup(
       }
       updateSecretsEnv(state, updates);
       updateSecretsEnv(state, portalSecretUpdates);
-      patchSecretsEnvFile(state.stackDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
+      patchSecretsEnvFile(state.homeDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);
@@ -293,24 +293,24 @@ export async function performSetup(
 
       // Write TTS/STT vars to stack.env for the voice channel
       if (tts || stt) {
-        writeVoiceVars({ tts, stt }, state.stackDir);
+        writeVoiceVars({ tts, stt }, state.homeDir);
       }
 
       // Enable requested addons (portals like discord, slack, etc.)
       // setAddonEnabled records explicit activation state and ensures portal secret files.
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
-          if (enabled) setAddonEnabled(state.homeDir, state.stackDir, name, true, state);
+          if (enabled) setAddonEnabled(state.homeDir, name, true, state);
         }
       }
 
 
       if (voiceProfile?.trim()) {
-        setAddonProfileSelection(state.stackDir, 'voice', voiceProfile.trim());
+        setAddonProfileSelection(state.homeDir, 'voice', voiceProfile.trim());
       }
 
       if (ollamaProfile?.trim()) {
-        setAddonProfileSelection(state.stackDir, 'ollama', ollamaProfile.trim());
+        setAddonProfileSelection(state.homeDir, 'ollama', ollamaProfile.trim());
       }
 
       ensureOpenCodeConfig();

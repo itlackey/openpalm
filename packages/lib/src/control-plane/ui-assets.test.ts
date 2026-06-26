@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, spyOn, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,8 +6,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import {
   resolveUiBuildDir, readUiBuildVersion, UI_VERSION_STAMP,
-  seedOpenPalmDir, SKELETON_VERSION_STAMP,
-  uiUpdateChannel, checkAndUpdateUiBuild, declaredUiChannel,
+  applyHomeSeed, SKELETON_VERSION_STAMP,
+  uiUpdateChannel, checkAndUpdateUiBuild, checkAndUpdateSkeleton,
+  readSkeletonVersion, declaredUiChannel,
 } from "./ui-assets.js";
 
 let root = "";
@@ -147,25 +148,25 @@ describe("resolveUiBuildDir — de-route visibility (§6.1 / Risk #1)", () => {
   });
 });
 
-describe("seedOpenPalmDir — version guard (P2)", () => {
-  const seededFile = () => join(opHome, "config", "stack", "x.txt");
-  const stamp = () => join(opHome, SKELETON_VERSION_STAMP);
+describe("applyHomeSeed — unconditional seed (§1/§8)", () => {
+  // A USER-tree seed marker: config/ files are seeded create-if-missing on every
+  // call (no stamp gate). system/ files are ALWAYS overwritten by overwriteSystemTree.
+  const seededFile = () => join(opHome, "config", "marker.txt");
 
   beforeEach(() => {
     // Local skeleton source at OPENPALM_REPO_ROOT/packages/skeleton (candidate 1).
+    mkdirSync(join(repoRoot, "packages", "skeleton", "system", "stack"), { recursive: true });
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "x.txt"), "seed\n");
+    // overwriteSystemTree blind-copies ALL of system/ from the source; populate it.
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "services.compose.yml"), "services: {}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "portals.compose.yml"), "services: {}\n");
+    // USER-owned seeds (create-if-missing via copyTree({skipExisting})): the custom overlay + a marker.
     mkdirSync(join(repoRoot, "packages", "skeleton", "config", "stack"), { recursive: true });
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "x.txt"), "seed\n");
-    // refreshCoreAssetsFromSource reads all MANAGED_ASSETS from the source; populate stubs.
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "core.compose.yml"), "services: {}\n");
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "services.compose.yml"), "services: {}\n");
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "portals.compose.yml"), "services: {}\n");
-    // Seeded once by the skip-existing copyTree (custom.compose.yml, opencode.jsonc).
     writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "custom.compose.yml"), "services: {}\n");
-    mkdirSync(join(repoRoot, "packages", "skeleton", "config", "assistant"), { recursive: true });
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "assistant", "opencode.jsonc"), "{}\n");
+    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "marker.txt"), "user-seed\n");
     // Skeleton ships per-service tool manifests under data/<svc>/tools/package.json.
-    // These are seeded ONLY by the full copyTree(skipExisting) on a version change,
-    // NOT by refreshCoreAssetsFromSource (which only covers config/stack/*).
+    // These are always seeded by copyTree({skipExisting}) on every applyHomeSeed call.
     for (const svc of ["guardian", "assistant", "portal"]) {
       mkdirSync(join(repoRoot, "packages", "skeleton", "data", svc, "tools"), { recursive: true });
       writeFileSync(
@@ -178,74 +179,71 @@ describe("seedOpenPalmDir — version guard (P2)", () => {
 
   const toolsPkg = (svc: string) => join(opHome, "data", svc, "tools", "package.json");
 
-  it("seeds once and stamps the version", async () => {
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+  it("seeds user files on first call", async () => {
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
     expect(existsSync(seededFile())).toBe(true);
-    expect(readFileSync(stamp(), "utf-8").trim()).toBe("v1");
   });
 
-  it("does NOT re-seed (or re-materialize a removed file) for the same version", async () => {
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
-    rmSync(seededFile(), { force: true });
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
-    expect(existsSync(seededFile())).toBe(false); // guard skipped the copy
+  it("does NOT overwrite a user-edited file (skipExisting preserves user edits)", async () => {
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // User edits the seeded file.
+    writeFileSync(seededFile(), "user-edit\n");
+    // Re-seed (same or different version — no stamp gate).
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    expect(readFileSync(seededFile(), "utf-8")).toBe("user-edit\n");
   });
 
-  it("re-seeds on a version change", async () => {
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+  it("unconditionally re-seeds missing user files on every call (create-if-missing, §1)", async () => {
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
     rmSync(seededFile(), { force: true });
-    await seedOpenPalmDir("v2", opHome, join(opHome, "config"), join(opHome, "data"));
+    // Re-seed — no stamp gate; copyTree({skipExisting}) re-creates absent files.
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
     expect(existsSync(seededFile())).toBe(true);
-    expect(readFileSync(stamp(), "utf-8").trim()).toBe("v2");
   });
 
-  it("REFRESHES system-managed stack assets on every seed (even same version), preserving user files (#472)", async () => {
-    const core = join(opHome, "config", "stack", "core.compose.yml");
-    const custom = join(opHome, "config", "stack", "custom.compose.yml");
-    // Skeleton ships the CURRENT managed compose. (custom.compose.yml is user-owned
-    // and intentionally not part of the skeleton refresh.)
-    writeFileSync(join(repoRoot, "packages", "skeleton", "config", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
+  it("OVERWRITES the managed system/ tree on every call, preserving user files (#472)", async () => {
+    const core = join(opHome, "system", "stack", "core.compose.yml");
+    const custom = join(opHome, "config", "stack", "custom.compose.yml"); // USER-owned
+    // Skeleton ships the CURRENT managed compose.
+    writeFileSync(join(repoRoot, "packages", "skeleton", "system", "stack", "core.compose.yml"), "services:\n  assistant:\n    image: current\n");
 
-    // First seed materializes everything + stamps the version.
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // First call materializes everything.
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
-    // Simulate an OLD OP_HOME: a STALE managed compose + a user-owned overlay.
+    // Simulate a STALE managed compose + user-owned overlay edit.
     writeFileSync(core, "services:\n  assistant:\n    image: STALE\n");
     writeFileSync(custom, "services:\n  my-thing:\n    image: user\n");
 
-    // Re-seed the SAME version (stamp matches → the old code skipped entirely).
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // Re-seed — overwriteSystemTree always fires; user files never overwritten.
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
-    // Managed asset is refreshed to the shipped version; user file is untouched.
+    // Managed system/ asset is overwritten to the shipped version; the user file
+    // in config/ is untouched (skipExisting).
     expect(readFileSync(core, "utf-8")).toContain("image: current");
     expect(readFileSync(core, "utf-8")).not.toContain("STALE");
     expect(readFileSync(custom, "utf-8")).toContain("image: user");
   });
 
-  it("seeds data/<svc>/tools/package.json into an OP_HOME stamped at an OLDER skeleton version (regression)", async () => {
-    // Reproduces the bug that started the reconcile refactor: data/<svc>/tools/
-    // package.json is materialized ONLY by the version-gated full copyTree, never
-    // by the always-on refreshCoreAssetsFromSource. So an OP_HOME stamped at an
-    // older skeleton version (an upgraded install) never received these files —
-    // the guardian container then failed with "opencode not on PATH".
+  it("seeds data/<svc>/tools/package.json on every call (regression: old stamp gate blocked this)", async () => {
+    // Previously: data/<svc>/tools/package.json was only seeded on a version change
+    // (stamp gate). An OP_HOME stamped at the current version but missing these
+    // files stayed broken forever. Now: copyTree({skipExisting}) always runs.
 
-    // 1. Seed at the OLD version, then DELETE the tool manifests to simulate an
-    //    OP_HOME that predates them (older skeleton shipped no data/<svc>/tools).
-    await seedOpenPalmDir("v0", opHome, join(opHome, "config"), join(opHome, "data"));
+    // 1. Seed once, then delete the tool manifests to simulate a partially-seeded home.
+    await applyHomeSeed("v0", opHome, join(opHome, "config"), join(opHome, "data"));
     for (const svc of ["guardian", "assistant", "portal"]) {
       rmSync(toolsPkg(svc), { force: true });
       expect(existsSync(toolsPkg(svc))).toBe(false);
     }
 
-    // 2. Reconcile to the NEW platform version (stamp changes → full seed runs).
-    await seedOpenPalmDir("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    // 2. Re-seed (same or different version — no gate).
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
 
-    // 3. The missing tool manifests are now materialized for every service.
+    // 3. The missing tool manifests are re-materialized for every service.
     for (const svc of ["guardian", "assistant", "portal"]) {
       expect(existsSync(toolsPkg(svc)), `data/${svc}/tools/package.json must be seeded`).toBe(true);
       expect(readFileSync(toolsPkg(svc), "utf-8")).toContain(`${svc}-tools`);
     }
-    expect(readFileSync(stamp(), "utf-8").trim()).toBe("v1");
   });
 });
 
@@ -645,5 +643,212 @@ describe("checkAndUpdateUiBuild", () => {
       expect(result.redownloadRequired).toBeUndefined();
       expect(result.error).toMatch(/no integrity hash/i); // proceeded past the gate to the download
     });
+  });
+});
+
+// ── checkAndUpdateSkeleton ────────────────────────────────────────────────────
+
+describe("checkAndUpdateSkeleton", () => {
+  let savedFetch: typeof globalThis.fetch;
+  let skelOpHome = "";
+  let skelDataDir = "";
+  let savedEnvOpHome: string | undefined;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+    // Fresh isolated home for each test
+    skelOpHome = mkdtempSync(join(tmpdir(), "skel-test-"));
+    skelDataDir = join(skelOpHome, "data");
+    mkdirSync(join(skelDataDir, "backups"), { recursive: true });
+    mkdirSync(join(skelOpHome, "system", "stack"), { recursive: true });
+    savedEnvOpHome = process.env.OP_HOME;
+    process.env.OP_HOME = skelOpHome;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+    rmSync(skelOpHome, { recursive: true, force: true });
+    if (savedEnvOpHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = savedEnvOpHome;
+  });
+
+  function manifestResponse(version: string, integrity?: string) {
+    return new Response(
+      JSON.stringify({
+        version,
+        dist: {
+          tarball: "https://registry.npmjs.org/skel.tgz",
+          ...(integrity !== undefined ? { integrity } : {}),
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  it("returns {updated:false} when the skeleton is already up to date", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    globalThis.fetch = async () => manifestResponse("0.12.0");
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("0.12.0");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns {updated:false} when npm has an older version", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    globalThis.fetch = async () => manifestResponse("0.11.0");
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("0.11.0");
+  });
+
+  it("never auto-crosses a major version boundary", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    let tarballFetched = false;
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) return manifestResponse("1.0.0", "sha512-abc");
+      tarballFetched = true;
+      return new Response("", { status: 200 });
+    };
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBe("1.0.0");
+    expect(result.error).toBeUndefined();
+    expect(tarballFetched).toBe(false);
+  });
+
+  it("returns {updated:false, error} when the manifest fetch rejects (non-fatal)", async () => {
+    globalThis.fetch = async () => { throw new Error("network failure"); };
+    const result = await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.latestVersion).toBeNull();
+    expect(result.error).toMatch(/network failure/i);
+  });
+
+  it("fails closed when the manifest has no integrity hash", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) return manifestResponse("0.12.0"); // no integrity
+      return new Response("", { status: 200 });
+    };
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.error).toMatch(/no integrity hash/i);
+  });
+
+  it("fails closed when the tarball bytes do not match the stated integrity hash", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    const wrongSri = `sha512-${Buffer.from("wrong").toString("base64")}`;
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org") && !u.includes("tarball")) {
+        return manifestResponse("0.12.0", wrongSri);
+      }
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    };
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+    expect(result.updated).toBe(false);
+    expect(result.error).toMatch(/integrity mismatch/i);
+  });
+
+  it("readSkeletonVersion returns the stamped version or null when absent", () => {
+    expect(readSkeletonVersion(skelOpHome)).toBeNull();
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.12.0\n");
+    expect(readSkeletonVersion(skelOpHome)).toBe("0.12.0");
+  });
+
+  it("uses the `latest` channel for stable versions and `next` for prerelease", async () => {
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    const channels: string[] = [];
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("@openpalm/skeleton/")) {
+        channels.push(u.split("@openpalm/skeleton/")[1]);
+        return manifestResponse("0.11.0"); // up to date, no download
+      }
+      return new Response("", { status: 200 });
+    };
+    await checkAndUpdateSkeleton("0.12.0", skelOpHome, skelDataDir);
+    await checkAndUpdateSkeleton("0.12.0-rc.1", skelOpHome, skelDataDir);
+    expect(channels[0]).toBe("latest");
+    expect(channels[1]).toBe("next");
+  });
+
+  it("happy-path: stages, verifies integrity, atomically swaps system/, stamps version", async () => {
+    // Plant an old skeleton stamp and compose file.
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    writeFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "services:\n  a:\n    image: old\n");
+
+    // Build a minimal valid skeleton tarball (npm wraps under package/).
+    const pkgRoot = mkdtempSync(join(tmpdir(), "skel-happy-pkg-"));
+    const pkgSystemStack = join(pkgRoot, "package", "system", "stack");
+    mkdirSync(pkgSystemStack, { recursive: true });
+    writeFileSync(join(pkgSystemStack, "core.compose.yml"), "services:\n  a:\n    image: new\n");
+    const tarPath = join(pkgRoot, "skel.tgz");
+    const { exited } = Bun.spawn(["tar", "-czf", tarPath, "-C", pkgRoot, "package"], { stdout: "pipe", stderr: "pipe" });
+    await exited;
+    const skelBytes = new Uint8Array(await Bun.file(tarPath).arrayBuffer());
+    const integrity = `sha512-${createHash("sha512").update(skelBytes).digest("base64")}`;
+    rmSync(pkgRoot, { recursive: true, force: true });
+
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) {
+        return new Response(
+          JSON.stringify({ version: "0.12.0", dist: { tarball: "https://r.npm/skel.tgz", integrity } }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(skelBytes, { status: 200 });
+    };
+
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+
+    expect(result.updated).toBe(true);
+    expect(result.latestVersion).toBe("0.12.0");
+    expect(result.error).toBeUndefined();
+    // New compose is in place
+    expect(existsSync(join(skelOpHome, "system", "stack", "core.compose.yml"))).toBe(true);
+    expect(readFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "utf8")).toContain("image: new");
+    // Stamp written
+    expect(readSkeletonVersion(skelOpHome)).toBe("0.12.0");
+    // Backup of the OLD system/ tree exists in data/backups/skeleton-<ts>/
+    const { readdirSync } = await import("node:fs");
+    const backupsDir = join(skelDataDir, "backups");
+    const skelBackups = existsSync(backupsDir) ? readdirSync(backupsDir).filter((n: string) => n.startsWith("skeleton-")) : [];
+    expect(skelBackups.length).toBeGreaterThan(0);
+    const backup = join(backupsDir, skelBackups[0]!);
+    expect(existsSync(join(backup, "stack", "core.compose.yml"))).toBe(true);
+    expect(readFileSync(join(backup, "stack", "core.compose.yml"), "utf8")).toContain("image: old");
+  });
+
+  it("restores system/ from backup when download fails after the pre-swap (§6)", async () => {
+    // Plant an old skeleton with a sentinel compose file.
+    writeFileSync(join(skelOpHome, SKELETON_VERSION_STAMP), "0.11.0\n");
+    writeFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "services:\n  a:\n    image: sentinel\n");
+
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const u = String(typeof url === "string" ? url : (url as Request).url ?? String(url));
+      if (u.includes("registry.npmjs.org")) {
+        // Manifest says a newer version exists with a valid integrity field.
+        return new Response(
+          JSON.stringify({ version: "0.12.0", dist: { tarball: "https://r.npm/skel.tgz", integrity: "sha512-AAAA" } }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      // Tarball download succeeds but returns bytes that won't match the integrity hash.
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    };
+
+    const result = await checkAndUpdateSkeleton("0.11.0", skelOpHome, skelDataDir);
+
+    // Must be non-fatal.
+    expect(result.updated).toBe(false);
+    expect(result.error).toBeTruthy();
+    // system/ must be restored to the previous working state (§6).
+    expect(existsSync(join(skelOpHome, "system", "stack", "core.compose.yml"))).toBe(true);
+    expect(readFileSync(join(skelOpHome, "system", "stack", "core.compose.yml"), "utf8")).toContain("image: sentinel");
   });
 });

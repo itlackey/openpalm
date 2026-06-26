@@ -17,7 +17,7 @@ import { SESSION_COOKIE_NAME } from '$lib/server/session-cookie.js';
 // Make launch routing DETERMINISTIC: stub the three host probes so the tests don't
 // depend on whether docker / an assistant happens to be running on the dev machine
 // (a reachable assistant on :3800 used to flip the not_installed case to /chat).
-// Everything else from these modules stays real (migration detection, secret/config
+// Everything else from these modules stays real (secret/config
 // startup, the pure routing derivations).
 vi.mock('$lib/server/endpoints.js', async (orig) => ({
   ...(await orig<typeof import('$lib/server/endpoints.js')>()),
@@ -130,31 +130,13 @@ describe('hooks.server — sliding renewal', () => {
     await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
   });
 
-  test('a pending migration forces /chat to /splash (migration outranks stack health)', async () => {
-    // Seed a layout-v1 home with an inert channels.compose.yml → a real pending
-    // 1→2 migration. Even if the stack were healthy (chat would normally be the
-    // destination), the migration gate must route /chat → /splash.
-    const state = resetState('test-admin-pw');
-    const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
-    mkdirSync(kvDir, { recursive: true });
-    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\nOP_LAYOUT_VERSION=1\n');
-    mkdirSync(state.stackDir, { recursive: true });
-    writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
-    writeFileSync(join(state.stackDir, 'channels.compose.yml'), 'services: {}\n');
-
-    const event = makeEvent('/chat', null, 'text/html');
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
-  });
-
-  test('not_installed + an accessible remote (no migration) skips splash → /chat', async () => {
+  test('not_installed + an accessible remote skips splash → /chat', async () => {
     // Fresh home, nothing installed, but a reachable remote assistant is configured:
     // the user should land in chat, not on the splash.
-    // OP_LAYOUT_VERSION=2 prevents the version-1→2 migration from being detected as
-    // pending (a stack.env with no stamp is treated as layout 1, which triggers migration).
     const state = resetState('test-admin-pw');
     const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
     mkdirSync(kvDir, { recursive: true });
-    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\nOP_LAYOUT_VERSION=2\n');
+    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
     vi.mocked(listRemoteStatuses).mockResolvedValue([
       { id: 'r1', name: 'Remote', url: 'http://example/', state: 'accessible' },
     ]);

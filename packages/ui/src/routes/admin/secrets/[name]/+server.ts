@@ -37,7 +37,7 @@ export const GET: RequestHandler = async (event) => {
   const bad = guardName(name, requestId);
   if (bad) return bad;
 
-  const value = readSecretFile(getState().stackDir, name);
+  const value = readSecretFile(getState().homeDir, name);
   if (value === null) return errorResponse(404, 'not_found', `Secret file not found: ${name}`, {}, requestId);
   return jsonResponse(200, { name, value }, requestId);
 };
@@ -55,7 +55,7 @@ export const PUT: RequestHandler = async (event) => {
   const value = result.data.value;
   if (typeof value !== 'string') return errorResponse(400, 'bad_request', 'value must be a string', {}, requestId);
 
-  writeSecretFile(getState().stackDir, name, value);
+  writeSecretFile(getState().homeDir, name, value);
   return jsonResponse(200, { ok: true, name }, requestId);
 };
 
@@ -67,6 +67,6 @@ export const DELETE: RequestHandler = async (event) => {
   const bad = guardName(name, requestId);
   if (bad) return bad;
 
-  removeSecretFile(getState().stackDir, name);
+  removeSecretFile(getState().homeDir, name);
   return jsonResponse(200, { ok: true, name }, requestId);
 };

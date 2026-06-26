@@ -5,8 +5,8 @@ const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
 /**
  * The canonical control-plane / platform version.
  *
- * This is the ONE source of truth for "which @openpalm/lib (and therefore which
- * RELEASE_MIGRATIONS + lifecycle) is running." It travels with the data/ui
+ * This is the ONE source of truth for "which @openpalm/lib + lifecycle is
+ * running." It travels with the data/ui
  * build (the published @openpalm/ui inlines this lib), so it self-updates in
  * place — it is NOT the Electron harness version (see
  * packages/electron/src/harness-contract.ts: HARNESS_CONTRACT_VERSION).

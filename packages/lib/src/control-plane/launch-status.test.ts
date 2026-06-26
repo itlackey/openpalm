@@ -102,19 +102,19 @@ describe("classifyLocalInstall (disk markers)", () => {
   }
 
   it("not_installed when no compose and not complete", () => {
-    expect(classifyLocalInstall(stackDir())).toBe("not_installed");
+    expect(classifyLocalInstall(stackDir(), dir)).toBe("not_installed");
   });
 
   it("setup_incomplete when compose exists but OP_SETUP_COMPLETE is unset", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
-    expect(classifyLocalInstall(sd)).toBe("setup_incomplete");
+    expect(classifyLocalInstall(sd, dir)).toBe("setup_incomplete");
   });
 
   it("installed when OP_SETUP_COMPLETE=true (even without compose on disk yet)", () => {
     const sd = stackDir();
     writeStackEnv("OP_SETUP_COMPLETE=true\n");
-    expect(classifyLocalInstall(sd)).toBe("installed");
+    expect(classifyLocalInstall(sd, dir)).toBe("installed");
   });
 });
 

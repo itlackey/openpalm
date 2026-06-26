@@ -74,7 +74,6 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="drawer-scrim" onclick={onClose}></div>
 
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="drawer"
     style="--drawer-width: {width}"

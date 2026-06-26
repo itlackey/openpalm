@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, openSync, ftruncateSync, writeSync, closeSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as dotenvParse } from "dotenv";
@@ -14,22 +14,6 @@ const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/knowled
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 
-/**
- * Write to a file in-place (truncate + write) to preserve the inode.
- * Docker bind mounts track the inode — writeFileSync creates a new file
- * with a new inode, making the mounted file invisible to containers.
- * This function modifies the existing file, keeping the same inode so
- * containers with bind mounts continue to see the updated content.
- */
-function writeInPlace(path: string, data: string): void {
-	const fd = openSync(path, "r+");
-	try {
-		ftruncateSync(fd, 0);
-		writeSync(fd, data, 0);
-	} finally {
-		closeSync(fd);
-	}
-}
 
 export default async function globalSetup() {
 	// Backfill the admin login from the file-based stack secret (via lib's

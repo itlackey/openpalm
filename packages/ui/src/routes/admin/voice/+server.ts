@@ -27,6 +27,7 @@ import {
   readStackEnv,
   setAddonEnabled,
   setAddonProfileSelection,
+  stackDirFor,
   writeVoiceVars,
 } from '@openpalm/lib';
 import type { AddonProfile } from '@openpalm/lib';
@@ -138,7 +139,7 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const env = readStackEnv(state.stackDir);
+  const env = readStackEnv(state.homeDir);
 
   const ttsBaseURL = env['OP_TTS_BASE_URL'] ?? '';
   const sttBaseURL = env['OP_STT_BASE_URL'] ?? '';
@@ -146,7 +147,7 @@ export const GET: RequestHandler = async (event) => {
   const rawProfiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
   const profiles = await annotateAddonProfileAvailability(rawProfiles);
   const selectedProfile =
-    getAddonProfileSelection(state.stackDir, VOICE_ADDON) ?? resolveDefaultProfile(profiles);
+    getAddonProfileSelection(state.homeDir, VOICE_ADDON) ?? resolveDefaultProfile(profiles);
 
   const [sttReachable, ttsReachable] = await Promise.all([
     probeReachable(sttBaseURL),
@@ -420,7 +421,7 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
  * voice compose overlay to patch.
  */
 function writeCdiOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = join(homeDir, 'config', 'stack');
+  const stackDir = stackDirFor(homeDir);
   if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
   const overlayPath = join(stackDir, 'voice.compose.cdi.yml');
   const yaml = [
@@ -492,7 +493,7 @@ async function detectRootlessDocker(): Promise<boolean> {
  * doesn't blow up on a missing -f arg).
  */
 function writeRootlessOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = join(homeDir, 'config', 'stack');
+  const stackDir = stackDirFor(homeDir);
   if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
   const overlayPath = join(stackDir, 'voice.compose.rootless.yml');
   // `user: null` in YAML drops the directive when compose merges files.
@@ -580,7 +581,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     };
   }
 
-  writeVoiceVars(config, state.stackDir);
+  writeVoiceVars(config, state.homeDir);
 
   // If either side targets OpenPalm Voice, make sure the addon is
   // enabled + running before we tell the operator "saved". This is the
@@ -632,10 +633,10 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
       );
     }
     activeProfile = requestedProfile;
-    setAddonProfileSelection(state.stackDir, VOICE_ADDON, activeProfile);
+    setAddonProfileSelection(state.homeDir, VOICE_ADDON, activeProfile);
   } else {
     activeProfile =
-      getAddonProfileSelection(state.stackDir, VOICE_ADDON) ??
+      getAddonProfileSelection(state.homeDir, VOICE_ADDON) ??
       resolveDefaultProfile(availableProfiles);
   }
 
@@ -647,7 +648,7 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
 
   if (!wasAlreadyEnabled) {
     try {
-      setAddonEnabled(state.homeDir, state.stackDir, VOICE_ADDON, true, state);
+      setAddonEnabled(state.homeDir, VOICE_ADDON, true, state);
       steps.push({ step: 'enable', ok: true });
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
@@ -897,7 +898,7 @@ type BringUpOutcome = {
 async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
   const { state, services, activeProfile, extraFiles, availableProfiles, steps } = input;
 
-  let composeOk = true;
+  let composeOk: boolean;
   let composeErr: string | undefined;
   try {
     // Profile switch: stop services from OTHER profiles so they release

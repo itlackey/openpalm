@@ -50,6 +50,7 @@ import {
 	type StepUpdate,
 } from './oc-events.js';
 import type { ToolStripEntry } from './tool-strip.js';
+import { SvelteMap } from 'svelte/reactivity';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
@@ -97,7 +98,7 @@ class ChatService {
 	 * Per-endpoint session cache. Reassigned on every mutation so Svelte 5
 	 * picks up the change. Never mutate the existing Map in place.
 	 */
-	byEndpoint = $state<Map<EndpointId, EndpointChatState>>(new Map());
+	byEndpoint = $state<SvelteMap<EndpointId, EndpointChatState>>(new SvelteMap());
 
 	/**
 	 * Mirrored from `endpointsService.activeId` via `onEndpointChanged()`
@@ -144,7 +145,7 @@ class ChatService {
 		const prev = this.byEndpoint.get(id) ?? emptyEndpointState();
 		const next: EndpointChatState = { ...prev, ...patch };
 		// Assignment site: this is the only place byEndpoint is reassigned.
-		this.byEndpoint = new Map(this.byEndpoint).set(id, next);
+		this.byEndpoint = new SvelteMap(this.byEndpoint).set(id, next);
 		return next;
 	}
 
@@ -816,7 +817,7 @@ class ChatService {
 		this.error = '';
 		this._resetPendingRenderState();
 		// Reassign to a fresh Map so subscribers re-render to empty state.
-		this.byEndpoint = new Map();
+		this.byEndpoint = new SvelteMap();
 		// Tear down the SSE subscription on logout / state wipe.
 		if (this._unsubscribeEvents) {
 			try {

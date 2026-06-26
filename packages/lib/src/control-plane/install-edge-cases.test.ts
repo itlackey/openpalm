@@ -179,7 +179,7 @@ describe("Fresh Install", () => {
     const stackContent = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackContent).not.toContain("OPENAI_API_KEY=");
     expect(stackContent).toContain("OP_SETUP_COMPLETE=false");
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBeNull();
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBeNull();
   });
 
   // Scenario 2: isSetupComplete returns false before setup
@@ -190,7 +190,7 @@ describe("Fresh Install", () => {
       "OP_SETUP_COMPLETE=false\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   // Scenario 3: performSetup succeeds from completely empty state
@@ -259,7 +259,7 @@ describe("Existing Install", () => {
 
     const afterContent = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     expect(afterContent).not.toContain("OP_UI_LOGIN_PASSWORD=");
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBeNull();
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBeNull();
   });
 
   // Scenario 6: performSetup re-run rewrites OP_UI_LOGIN_PASSWORD when the
@@ -269,11 +269,11 @@ describe("Existing Install", () => {
   it("performSetup re-run rewrites OP_UI_LOGIN_PASSWORD secret file when spec changes", async () => {
     await performSetup(makeValidSpec({ security: { uiLoginPassword: "first-password-12345" } }));
 
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBe("first-password-12345\n");
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBe("first-password-12345\n");
 
     await performSetup(makeValidSpec({ security: { uiLoginPassword: "second-password-12345" } }));
 
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBe("second-password-12345\n");
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBe("second-password-12345\n");
   });
 
   // Scenario 7: performSetup must NOT mark OP_SETUP_COMPLETE — see scenario
@@ -389,7 +389,7 @@ describe("Broken/Corrupt State", () => {
       "OP_IMAGE_TAG=latest\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   it("isSetupComplete returns false when OP_UI_LOGIN_PASSWORD is set but OP_SETUP_COMPLETE is missing", () => {
@@ -401,7 +401,7 @@ describe("Broken/Corrupt State", () => {
 
     // Password alone is no longer a proxy for setup completion.
     // Only OP_SETUP_COMPLETE=true counts.
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   // Scenario 12: API key with special characters round-trips
@@ -466,7 +466,7 @@ describe("Environment Edge Cases", () => {
       "SOME_OTHER_KEY=value\nexport OP_UI_LOGIN_PASSWORD=real-password-here\n"
     );
 
-    expect(isSetupComplete(stackDir)).toBe(false);
+    expect(isSetupComplete(homeDir)).toBe(false);
   });
 
   // Scenario 17: export prefix on env vars
@@ -632,7 +632,7 @@ describe("performSetup end-to-end artifacts", () => {
   it("writes the UI login password to a secret file", async () => {
     await performSetup(makeValidSpec());
 
-    expect(readSecret(stackDir, 'op_ui_login_password')).toBe("test-admin-token-12345\n");
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBe("test-admin-token-12345\n");
   });
 
   it("writes akm config with llm provider and model", async () => {

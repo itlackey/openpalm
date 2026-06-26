@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import { parse as yamlParse } from "yaml";
 import type { PortalInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
+import { composeFilePath, customComposeFilePath } from "./home.js";
 
 // ── Portal Name Validation ────────────────────────────────────────────
 
@@ -21,10 +22,12 @@ function isValidPortalName(name: string): boolean {
 function addonComposePaths(homeDir: string): string[] {
   const paths: string[] = [];
 
-  for (const name of ['portals.compose.yml', 'services.compose.yml', 'custom.compose.yml']) {
-    const composePath = `${homeDir}/config/stack/${name}`;
+  for (const name of ['portals.compose.yml', 'services.compose.yml']) {
+    const composePath = composeFilePath(homeDir, name);
     if (existsSync(composePath)) paths.push(composePath);
   }
+  const custom = customComposeFilePath(homeDir);
+  if (existsSync(custom)) paths.push(custom);
 
   return paths;
 }

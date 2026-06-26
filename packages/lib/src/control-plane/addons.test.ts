@@ -41,7 +41,7 @@ describe('builtin addon metadata', () => {
   it('returns static built-in addon ids', () => {
     // Canonical list from BUILTIN_ADDON_IDS (addon-ids.ts — single source of truth).
     // chat, gateway, ssh were previously missing from BUILTIN_ADDONS in addons.ts
-    // but present in KNOWN_ADDON_IDS in migrations.ts; H6 unified them.
+    // but present in the builtin addon id set; H6 unified them.
     expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'ssh', 'voice']);
   });
 
@@ -82,6 +82,7 @@ describe('addon runtime state', () => {
   });
 
   it('returns addon service names from fixed compose files', () => {
+    // custom.compose.yml is USER-owned → config/stack, not system/stack.
     const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, 'custom.compose.yml'), 'services:\n  proxy-test:\n    profiles: ["addon.proxy-test"]\n    image: image-a\n  proxy-test-worker:\n    profiles: ["addon.proxy-test"]\n    image: image-b\n');
@@ -90,18 +91,18 @@ describe('addon runtime state', () => {
   });
 
   it('toggles addons and generates channel secrets for channel addons', () => {
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackDir = join(process.env.OP_HOME!, 'system', 'stack');
     mkdirSync(stackDir, { recursive: true });
 
-    const enabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'discord', true);
+    const enabled = setAddonEnabled(process.env.OP_HOME!, 'discord', true);
     expect(enabled.ok).toBe(true);
     expect(enabled.enabled).toBe(true);
     expect(enabled.changed).toBe(true);
     expect(enabled.services).toEqual(expect.arrayContaining(['guardian']));
     expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['discord']);
-    expect(readSecret(stackDir, 'portal_discord_secret')).toBeTruthy();
+    expect(readSecret(process.env.OP_HOME!, 'portal_discord_secret')).toBeTruthy();
 
-    const disabled = setAddonEnabled(process.env.OP_HOME!, stackDir, 'discord', false);
+    const disabled = setAddonEnabled(process.env.OP_HOME!, 'discord', false);
     expect(disabled.ok).toBe(true);
     expect(disabled.enabled).toBe(false);
     expect(disabled.changed).toBe(true);
@@ -118,15 +119,15 @@ describe('addon runtime state', () => {
   });
 
   it('round-trips addon profile selection through stack.env', () => {
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackDir = join(process.env.OP_HOME!, 'system', 'stack');
     const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
     writeFileSync(stackEnv, '');
 
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBeNull();
-    setAddonProfileSelection(stackDir, 'voice', 'addon.voice.cuda');
-    expect(getAddonProfileSelection(stackDir, 'voice')).toBe('addon.voice.cuda');
+    expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBeNull();
+    setAddonProfileSelection(process.env.OP_HOME!, 'voice', 'addon.voice.cuda');
+    expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBe('addon.voice.cuda');
     expect(readFileSync(stackEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
   });
 });

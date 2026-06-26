@@ -16,7 +16,7 @@
 </script>
 
 <datalist id="llm-profiles-list">
-	{#each llmProfileNames as name}<option value={name}></option>{/each}
+	{#each llmProfileNames as name (name)}<option value={name}></option>{/each}
 </datalist>
 
 <div class="drawer-scrim" role="presentation" onclick={oncancel}></div>

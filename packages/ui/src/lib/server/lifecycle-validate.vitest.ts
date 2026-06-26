@@ -15,14 +15,14 @@ import { makeTestState, trackDir, registerCleanup, stackEnvFor } from "./test-he
 
 registerCleanup();
 
-function seedStack(stackDir: string, env: string): void {
-  const path = stackEnvFor(stackDir);
+function seedStack(homeDir: string, env: string): void {
+  const path = stackEnvFor(homeDir);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, env);
 }
 
-function seedLoginSecret(stackDir: string, value: string): void {
-  const secretDir = join(stackDir, '..', '..', 'knowledge', 'secrets');
+function seedLoginSecret(homeDir: string, value: string): void {
+  const secretDir = join(homeDir, 'knowledge', 'secrets');
   mkdirSync(secretDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(secretDir, 'op_ui_login_password'), value, { mode: 0o600 });
 }
@@ -31,8 +31,8 @@ describe("validateProposedState", () => {
   test("ok=true when required keys are present", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_SETUP_COMPLETE=true\n");
-    seedLoginSecret(state.stackDir, "abc\n");
+    seedStack(state.homeDir, "OP_SETUP_COMPLETE=true\n");
+    seedLoginSecret(state.homeDir, "abc\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);
@@ -51,8 +51,8 @@ describe("validateProposedState", () => {
   test("ok=false when OP_UI_LOGIN_PASSWORD is empty", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_SETUP_COMPLETE=true\n");
-    seedLoginSecret(state.stackDir, "\n");
+    seedStack(state.homeDir, "OP_SETUP_COMPLETE=true\n");
+    seedLoginSecret(state.homeDir, "\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(false);
@@ -62,8 +62,8 @@ describe("validateProposedState", () => {
   test("warns about missing optional canonical slots", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
-    seedStack(state.stackDir, "OP_SETUP_COMPLETE=true\n");
-    seedLoginSecret(state.stackDir, "abc\n");
+    seedStack(state.homeDir, "OP_SETUP_COMPLETE=true\n");
+    seedLoginSecret(state.homeDir, "abc\n");
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);

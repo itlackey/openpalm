@@ -17,7 +17,7 @@ import {
 import { readSecret } from './secrets-files.js';
 
 // Each test gets a fresh temp dir shaped like an OP_HOME config/stack directory.
-// The secrets module resolves OP_HOME from the stackDir path: home/config/stack → home.
+// The secrets functions take the OP_HOME root directly (knowledge/secrets is derived from it).
 let home: string;
 let stackDir: string;
 
@@ -60,7 +60,7 @@ describe('patchSecretsEnvFile sensitivity routing', () => {
   it('writes non-sensitive keys to stack.env', () => {
     writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), '# config\n');
 
-    patchSecretsEnvFile(stackDir, { DISCORD_ALLOWED_GUILDS: '12345' });
+    patchSecretsEnvFile(home, { DISCORD_ALLOWED_GUILDS: '12345' });
 
     const content = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
     expect(content).toContain('DISCORD_ALLOWED_GUILDS=12345');
@@ -70,13 +70,13 @@ describe('patchSecretsEnvFile sensitivity routing', () => {
     writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), '# config\n');
 
     // patchSecretsEnvFile splits by SECRET_ENV_KEY_RE (token/secret/password/api_key)
-    patchSecretsEnvFile(stackDir, { OP_UI_LOGIN_PASSWORD: 'hunter2' });
+    patchSecretsEnvFile(home, { OP_UI_LOGIN_PASSWORD: 'hunter2' });
 
     const stackContent = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
     expect(stackContent).not.toContain('hunter2');
     expect(stackContent).not.toContain('OP_UI_LOGIN_PASSWORD');
 
-    const secretValue = readSecret(stackDir, 'op_ui_login_password');
+    const secretValue = readSecret(home, 'op_ui_login_password');
     expect(secretValue?.trim()).toBe('hunter2');
   });
 
@@ -84,7 +84,7 @@ describe('patchSecretsEnvFile sensitivity routing', () => {
     writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
       'DISCORD_ALLOWED_GUILDS=old\n');
 
-    patchSecretsEnvFile(stackDir, {
+    patchSecretsEnvFile(home, {
       DISCORD_ALLOWED_GUILDS: 'new',
       OP_VOICE_WHISPER_MODEL: 'large',
     });
@@ -102,7 +102,7 @@ describe('readStackEnv excludes secret-like keys', () => {
     writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
       'DISCORD_ALLOWED_GUILDS=123\nOP_SETUP_COMPLETE=true\n');
 
-    const env = readStackEnv(stackDir);
+    const env = readStackEnv(home);
     expect(env.DISCORD_ALLOWED_GUILDS).toBe('123');
     expect(env.OP_SETUP_COMPLETE).toBe('true');
   });
@@ -111,9 +111,29 @@ describe('readStackEnv excludes secret-like keys', () => {
     writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
       'DISCORD_BOT_TOKEN=secret-leak\nDISCORD_ALLOWED_GUILDS=ok\n');
 
-    const env = readStackEnv(stackDir);
+    const env = readStackEnv(home);
     expect(env.DISCORD_BOT_TOKEN).toBeUndefined();
     expect(env.DISCORD_ALLOWED_GUILDS).toBe('ok');
+  });
+
+  it('merges the state/ tree OVER legacy stack.env (matches compose --env-file precedence)', () => {
+    // The app-written state/ tree wins — so host reads see the SAME effective
+    // value the running stack uses, never a stale legacy pin (current ≠ running).
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+      'OP_ASSISTANT_VERSION=0.12.0\nOP_OWNER_NAME=alice\n');
+    mkdirSync(join(home, 'state'), { recursive: true });
+    writeFileSync(join(home, 'state', 'stack.state.env'),
+      'OP_ASSISTANT_VERSION=0.13.0\n');
+
+    const env = readStackEnv(home);
+    expect(env.OP_ASSISTANT_VERSION).toBe('0.13.0'); // state wins
+    expect(env.OP_OWNER_NAME).toBe('alice');          // legacy-only key preserved
+  });
+
+  it('falls back to legacy when no state/ file exists', () => {
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_ENABLED_ADDONS=discord\n');
+    const env = readStackEnv(home);
+    expect(env.OP_ENABLED_ADDONS).toBe('discord');
   });
 });
 
@@ -121,7 +141,7 @@ describe('readStackSecretEnv reads from secret files', () => {
   it('reads back a written secret', () => {
     writeFileSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'), 'tok-abc\n');
 
-    const env = readStackSecretEnv(stackDir);
+    const env = readStackSecretEnv(home);
     expect(env.DISCORD_BOT_TOKEN).toBe('tok-abc');
   });
 
@@ -129,7 +149,7 @@ describe('readStackSecretEnv reads from secret files', () => {
     // listSecretNames uses SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/ which
     // excludes dots/dashes — so auth.json is never returned as a secret name.
     writeFileSync(join(home, 'knowledge', 'secrets', 'auth.json'), '{}');
-    const env = readStackSecretEnv(stackDir);
+    const env = readStackSecretEnv(home);
     // auth.json should not appear as AUTH.JSON or any key
     expect(Object.keys(env).some((k) => k.includes('.'))).toBe(false);
     expect(env['AUTH.JSON']).toBeUndefined();

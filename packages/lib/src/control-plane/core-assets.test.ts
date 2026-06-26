@@ -1,23 +1,33 @@
 /**
- * refreshCoreAssetsFromSource — refreshes the system-owned stack compose files
- * from the bundled skeleton on every reconcile (overwrite, backing up a changed
- * copy first). Everything else is seeded once by seedOpenPalmDir's skip-existing
- * skeleton copy (covered in ui-assets.test.ts), so it is intentionally NOT here.
+ * overwriteSystemTree — blind-overwrites the entire managed `system/` tree from
+ * the release skeleton on every install/update (constitution §1), backing up a
+ * changed copy first. Unchanged files are skipped. User trees, data/, and state/
+ * are NEVER touched here — they are seeded once by applyHomeSeed's
+ * skip-existing copy (covered in ui-assets.test.ts), so they are not tested here.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
-import { refreshCoreAssetsFromSource, MANAGED_ASSETS } from "./core-assets.js";
+import { overwriteSystemTree } from "./core-assets.js";
 
 let tmpRoot = "";
 let opHome = "";
 let sourceRoot = "";
 
+// A representative slice of the managed system/ tree: the compose stack plus a
+// nested system OpenCode config file (the two managed asset classes §1 names).
+const MANAGED_FILES = [
+  "system/stack/core.compose.yml",
+  "system/stack/services.compose.yml",
+  "system/stack/portals.compose.yml",
+  "system/assistant/opencode.jsonc",
+];
+
 function seedSource(content: string): void {
-  for (const { relPath } of MANAGED_ASSETS) {
-    const p = join(sourceRoot, relPath);
+  for (const rel of MANAGED_FILES) {
+    const p = join(sourceRoot, rel);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, content);
   }
@@ -36,24 +46,24 @@ afterEach(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-describe("refreshCoreAssetsFromSource", () => {
-  const first = MANAGED_ASSETS[0]!.relPath;
+describe("overwriteSystemTree", () => {
+  const first = MANAGED_FILES[0]!;
 
-  it("seeds each managed compose file when absent", () => {
+  it("writes every managed system/ file when absent", () => {
     seedSource("# fresh\n");
-    const { updated, backupDir } = refreshCoreAssetsFromSource(sourceRoot, opHome);
-    for (const { relPath } of MANAGED_ASSETS) {
-      expect(existsSync(join(opHome, relPath))).toBe(true);
-      expect(updated).toContain(relPath);
+    const { updated, backupDir } = overwriteSystemTree(sourceRoot, opHome);
+    for (const rel of MANAGED_FILES) {
+      expect(existsSync(join(opHome, rel))).toBe(true);
+      expect(updated).toContain(rel);
     }
     expect(backupDir).toBeNull();
   });
 
   it("overwrites a changed file and backs up the old copy", () => {
     seedSource("old\n");
-    refreshCoreAssetsFromSource(sourceRoot, opHome);
+    overwriteSystemTree(sourceRoot, opHome);
     seedSource("new\n");
-    const { updated, backupDir } = refreshCoreAssetsFromSource(sourceRoot, opHome);
+    const { updated, backupDir } = overwriteSystemTree(sourceRoot, opHome);
     expect(readFileSync(join(opHome, first), "utf-8")).toBe("new\n");
     expect(updated).toContain(first);
     expect(backupDir).not.toBeNull();
@@ -62,8 +72,14 @@ describe("refreshCoreAssetsFromSource", () => {
 
   it("skips when on-disk content already matches the source", () => {
     seedSource("same\n");
-    refreshCoreAssetsFromSource(sourceRoot, opHome);
-    const { updated, backupDir } = refreshCoreAssetsFromSource(sourceRoot, opHome);
+    overwriteSystemTree(sourceRoot, opHome);
+    const { updated, backupDir } = overwriteSystemTree(sourceRoot, opHome);
+    expect(updated).toHaveLength(0);
+    expect(backupDir).toBeNull();
+  });
+
+  it("no-ops when the source has no system/ tree", () => {
+    const { updated, backupDir } = overwriteSystemTree(sourceRoot, opHome);
     expect(updated).toHaveLength(0);
     expect(backupDir).toBeNull();
   });

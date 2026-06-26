@@ -13,5 +13,5 @@ export const GET: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  return jsonResponse(200, { files: listSecretFiles(getState().stackDir) }, requestId);
+  return jsonResponse(200, { files: listSecretFiles(getState().homeDir) }, requestId);
 };

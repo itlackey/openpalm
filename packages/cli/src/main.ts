@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 import { defineCommand, runCommand, runMain } from 'citty';
 import cliPkg from '../package.json' with { type: 'json' };
-import { classifyLocalInstall, resolveStackDir } from '@openpalm/lib';
+import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome } from '@openpalm/lib';
 
 // Re-export public API used by tests and external consumers
 export { detectHostInfo } from './lib/host-info.ts';
 export type { HostInfo } from './lib/host-info.ts';
 
 const SUBCOMMAND_NAMES = new Set([
-  'install', 'uninstall', 'update', 'migrate', 'self-update', 'addon',
+  'install', 'uninstall', 'update', 'self-update', 'addon',
   'start', 'stop', 'restart', 'logs', 'status', 'backups',
   'validate', 'scan', 'audit-secrets', 'rollback', 'automations', 'unlock',
   '--help', '-h', 'help',
@@ -51,7 +51,7 @@ async function isAssistantHealthy(): Promise<boolean> {
  * subcommand.
  */
 async function autoRun(opts: BareRunOpts = {}): Promise<void> {
-  const isInstalled = classifyLocalInstall(resolveStackDir()) !== 'not_installed';
+  const isInstalled = classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed';
 
   if (!isInstalled) {
     const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts') as any;
@@ -105,7 +105,6 @@ export const mainCommand = defineCommand({
     install: () => import('./commands/install.ts').then((m) => m.default),
     uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
     update: () => import('./commands/update.ts').then((m) => m.default),
-    migrate: () => import('./commands/migrate.ts').then((m) => m.default),
     'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
     addon: () => import('./commands/addon.ts').then((m) => m.default),
     start: () => import('./commands/start.ts').then((m) => m.default),

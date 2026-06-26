@@ -33,7 +33,11 @@ services:
       - "host.docker.internal:host-gateway"
 
     environment:
-      # OpenCode reads its operator-managed config from OP_HOME/config/assistant.
+      # MANAGED OpenCode config (plugins/permissions/instructions) lives in
+      # OP_HOME/system/assistant, mounted here as the global OPENCODE_CONFIG_DIR
+      # (overwritten on update; plugin node_modules install here, never in the
+      # user tree). The USER's model/provider config is OpenCode's own global
+      # config under HOME (~/.config/opencode), so no extra mount is needed.
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
       # Auth is disabled because the assistant is only reachable via the
@@ -69,9 +73,14 @@ services:
       # when that flag is 0.
       - "127.0.0.1:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
-      - ${OP_HOME}/config/assistant:/etc/opencode
-      - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
+      # data/assistant is HOME (runtime). config/assistant is the power-user's
+      # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).
+      # system/assistant is the MANAGED config (OPENCODE_CONFIG_DIR) — plugins,
+      # permissions, instructions; overwritten on update.
       - ${OP_HOME}/data/assistant:/home/opencode
+      - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
+      - ${OP_HOME}/system/assistant:/etc/opencode
+      - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
       # Primary stash + config are ALWAYS OpenPalm-managed.
       - ${OP_HOME}/knowledge:/stash
       - ${OP_HOME}/config/akm:/etc/akm

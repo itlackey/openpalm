@@ -32,6 +32,7 @@
       // destination's loads fresh with the new cookie, so the hook admits us.
       // (No invalidateAll: re-running this page's load would fire its own
       // already-authed redirect and race this goto.)
+      // eslint-disable-next-line svelte/no-navigation-without-resolve -- redirectTo is a server-validated internal path, not a static route id
       await goto(target);
       return true;
     } catch {

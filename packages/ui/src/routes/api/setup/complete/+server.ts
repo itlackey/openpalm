@@ -2,8 +2,8 @@ import { json } from "@sveltejs/kit";
 import { performSetup, checkDocker, mapDockerError, type SetupSpec } from "@openpalm/lib";
 import { resetState, getState } from "$lib/server/state.js";
 import { prepareSetupRestorePoint, startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
-import { getUiLoginPassword, requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
-import { isSetupComplete, resolveStackDir } from "@openpalm/lib";
+import { getUiLoginPassword, requireAdmin, getRequestId } from "$lib/server/helpers.js";
+import { isSetupComplete, resolveOpenPalmHome } from "@openpalm/lib";
 import { createSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader } from "$lib/server/session-cookie.js";
 import type { RequestHandler } from "./$types";
@@ -17,7 +17,7 @@ interface CompleteBody extends SetupSpec {
 
 export const POST: RequestHandler = async (event) => {
   // S2: Once setup is complete, re-running it is an admin-only action.
-  if (isSetupComplete(resolveStackDir())) {
+  if (isSetupComplete(resolveOpenPalmHome())) {
     const requestId = getRequestId(event);
     const authError = requireAdmin(event, requestId);
     if (authError) return authError;

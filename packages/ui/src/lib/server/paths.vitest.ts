@@ -58,16 +58,19 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "data", "rollback"))).toBe(true);
     expect(existsSync(join(home, "data", "registry"))).toBe(false);
 
-    // knowledge/, workspace/, config/stack/
+    // knowledge/, workspace/, system/stack/
     expect(existsSync(join(home, "knowledge", "tasks"))).toBe(true);
     expect(existsSync(join(home, "knowledge"))).toBe(true);
     expect(existsSync(join(home, "workspace"))).toBe(true);
+    expect(existsSync(join(home, "system", "stack"))).toBe(true);
+    expect(existsSync(join(home, "system", "stack", "addons"))).toBe(false);
+    // config/stack holds the USER-owned custom.compose.yml overlay (created, seeded once)
     expect(existsSync(join(home, "config", "stack"))).toBe(true);
-    expect(existsSync(join(home, "config", "stack", "addons"))).toBe(false);
 
     // removed top-levels must NOT exist
     expect(existsSync(join(home, "vault"))).toBe(false);
-    expect(existsSync(join(home, "state"))).toBe(false);
+    // state/ is now a created managed tree (app-written pins/addons/setup)
+    expect(existsSync(join(home, "state"))).toBe(true);
     expect(existsSync(join(home, "logs"))).toBe(false);
     expect(existsSync(join(home, "registry"))).toBe(false);
     expect(existsSync(join(home, "services"))).toBe(false);

@@ -1,7 +1,7 @@
 /**
  * Filesystem and HTTP helpers used by the CLI install/upgrade flows.
  *
- * Asset seeding (seedOpenPalmDir, seedUiBuild) and path resolution
+ * Asset seeding (applyHomeSeed, seedUiBuild) and path resolution
  * (resolveLocalUiBuild, resolveUiBuildDir) now live in @openpalm/lib
  * so both the CLI and any future Electron shell can import them directly.
  */
@@ -73,4 +73,4 @@ export async function copyTree(
 }
 
 // Re-export from lib so existing imports in CLI commands keep working.
-export { seedOpenPalmDir, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
+export { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';

@@ -21,6 +21,7 @@
       if (onChat) {
         await chat.startNewSession();
       } else {
+        // eslint-disable-next-line svelte/no-navigation-without-resolve -- internal chat path with a query string, not a static route id
         await goto('/chat?new=1');
       }
     } finally {
