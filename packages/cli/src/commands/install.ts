@@ -27,7 +27,7 @@ import { ensureValidState } from '../lib/cli-state.ts';
 
 const logger = createLogger('cli:install');
 
-async function resolveDefaultInstallRef(): Promise<string> {
+export async function resolveDefaultInstallRef(): Promise<string> {
   try {
     const res = await fetch('https://github.com/itlackey/openpalm/releases/latest', { redirect: 'manual', signal: AbortSignal.timeout(10000) });
     // Release tags are bare semver since the 0.12.41 v-prefix retirement (e.g.
