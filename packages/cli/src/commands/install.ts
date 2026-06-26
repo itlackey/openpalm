@@ -30,10 +30,12 @@ const logger = createLogger('cli:install');
 async function resolveDefaultInstallRef(): Promise<string> {
   try {
     const res = await fetch('https://github.com/itlackey/openpalm/releases/latest', { redirect: 'manual', signal: AbortSignal.timeout(10000) });
-    const match = (res.headers.get('location') ?? '').match(/\/tag\/(v[0-9]+\.[0-9]+\.[0-9]+[^\s]*)$/);
+    // Release tags are bare semver since the 0.12.41 v-prefix retirement (e.g.
+    // /tag/0.12.43); the optional `v?` still matches a legacy v-tagged release.
+    const match = (res.headers.get('location') ?? '').match(/\/tag\/(v?[0-9]+\.[0-9]+\.[0-9]+[^\s]*)$/);
     if (match?.[1]) return match[1];
   } catch { /* fall through */ }
-  return cliPkg.version ? `v${cliPkg.version}` : 'main';
+  return cliPkg.version ?? 'main';
 }
 
 export default defineCommand({
