@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { defineCommand, runCommand, runMain } from 'citty';
 import cliPkg from '../package.json' with { type: 'json' };
-import { classifyLocalInstall, resolveStackDir } from '@openpalm/lib';
+import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome } from '@openpalm/lib';
 
 // Re-export public API used by tests and external consumers
 export { detectHostInfo } from './lib/host-info.ts';
