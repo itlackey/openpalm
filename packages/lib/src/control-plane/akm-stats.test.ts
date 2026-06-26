@@ -1,6 +1,15 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { getAkmStats, parseAkmStats } from './akm-stats.js';
 import type { ControlPlaneState } from './types.js';
+import * as realAssistantAkm from './assistant-akm.js';
+
+// bun's mock.restore() does NOT undo mock.module(), so the module mocked below would
+// otherwise leak into every other test file in the shared `bun test` process. Re-point
+// it back to the real implementation after each test.
+afterEach(() => {
+  mock.restore();
+  mock.module('./assistant-akm.js', () => ({ ...realAssistantAkm }));
+});
 
 const state: ControlPlaneState = {
   homeDir: '/tmp/openpalm',

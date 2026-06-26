@@ -57,7 +57,7 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
     const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts') as any;
     const version: string = typeof resolveDefaultInstallRef === 'function'
       ? await resolveDefaultInstallRef()
-      : (cliPkg.version ? `v${cliPkg.version}` : 'main');
+      : (cliPkg.version ?? 'main');
     await bootstrapInstall({
       force: false,
       version,

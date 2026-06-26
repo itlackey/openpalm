@@ -6,11 +6,17 @@
  * the common `running` and `not_installed` scenarios.
  */
 import { describe, expect, test, mock, afterEach } from 'bun:test';
+import * as realLib from '@openpalm/lib';
 
 const libUrl = '@openpalm/lib';
 
 afterEach(() => {
   mock.restore();
+  // mock.restore() does NOT undo mock.module(), so the @openpalm/lib mock below
+  // would otherwise leak into every other test file in the shared `bun test`
+  // process (other CLI tests get a partial lib → undefined fns → flaky rejection).
+  // Re-point it back to the real package.
+  mock.module(libUrl, () => ({ ...realLib }));
 });
 
 // Helper that captures what was logged to stdout/stderr during the command run.
