@@ -326,12 +326,14 @@ describe('cli main', () => {
     console.warn = mock((message?: unknown) => { logs.push(String(message ?? '')); }) as typeof console.warn;
 
     try {
+      // OP_ENABLED_ADDONS is app-written addon state → state/ (constitution §1).
+      const stateEnv = () => readFileSync(join(base, 'state', 'stack.state.env'), 'utf-8');
       await main(['addon', 'enable', 'discord']);
-      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).toContain('OP_ENABLED_ADDONS=discord');
+      expect(stateEnv()).toContain('OP_ENABLED_ADDONS=discord');
       expect(readSecret(base, 'portal_discord_secret')).toBeTruthy();
 
       await main(['addon', 'disable', 'discord']);
-      expect(readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8')).not.toContain('discord');
+      expect(stateEnv()).not.toContain('discord');
     } finally {
       delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       rmSync(base, { recursive: true, force: true });

@@ -12,7 +12,7 @@ import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persistence.js';
-import { patchSecretsEnvFile, readStackEnv } from './secrets.js';
+import { patchStateEnvFile, readStackEnv } from './secrets.js';
 import { readBundledStackAsset, readBundledCustomCompose } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
 import { parseEnabledAddons } from './env.js';
@@ -484,22 +484,22 @@ export function getAddonProfileSelection(homeDir: string, name: string): string 
 export function setAddonProfileSelection(homeDir: string, name: string, profile: string): void {
   const trimmed = canonicalAddonProfileSelection(name, profile);
   if (!trimmed) throw new Error(`Invalid canonical profile id for addon ${name}: ${profile}`);
-  patchSecretsEnvFile(homeDir, { [profileEnvKey(name)]: trimmed });
+  patchStateEnvFile(homeDir, { [profileEnvKey(name)]: trimmed });
 }
 
-/** Add/remove an addon id in the OP_ENABLED_ADDONS list in stack.env. */
+/** Add/remove an addon id in the OP_ENABLED_ADDONS list (app-written → state/). */
 function setEnabledAddonState(homeDir: string, name: string, enabled: boolean): void {
   const current = new Set(parseEnabledAddons(readStackEnv(homeDir).OP_ENABLED_ADDONS));
   if (enabled) current.add(name);
   else current.delete(name);
-  patchSecretsEnvFile(homeDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
+  patchStateEnvFile(homeDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
 }
 
 function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(homeDir, name, true);
-    if (name === 'ssh') patchSecretsEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '1' });
+    if (name === 'ssh') patchStateEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '1' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -510,7 +510,7 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(homeDir, name, false);
-    if (name === 'ssh') patchSecretsEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '0' });
+    if (name === 'ssh') patchStateEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '0' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

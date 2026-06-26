@@ -8,7 +8,8 @@ import { applyInstall } from './lifecycle.js';
 import { buildManagedServices } from './lifecycle.js';
 import { composeDown, composePs, composePull, composeUp, detectExistingProject, resolveComposeProjectName } from './docker.js';
 import { mapDockerError } from './compose-errors.js';
-import { mergeEnvContent, parseEnvFile } from './env.js';
+import { parseEnvFile } from './env.js';
+import { patchStateEnvFile } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 
@@ -235,9 +236,10 @@ async function pollContainerHealth(state: ControlPlaneState, progress: DeployPro
 }
 
 export function markSetupComplete(state: ControlPlaneState): void {
-  const path = `${state.stashDir}/env/stack.env`;
-  const existing = existsSync(path) ? readFileSync(path, 'utf-8') : '';
-  writeFileAtomic(path, mergeEnvContent(existing, { OP_SETUP_COMPLETE: 'true' }), 0o600);
+  // OP_SETUP_COMPLETE is an app-written record → state/ (constitution §1), not the
+  // operator-facing knowledge/env/stack.env. isSetupComplete/classifyLocalInstall
+  // merge state over legacy, so installs that recorded it in stack.env still read complete.
+  patchStateEnvFile(state.homeDir, { OP_SETUP_COMPLETE: 'true' });
 }
 
 export function backupSetupInputs(state: ControlPlaneState): string | null {

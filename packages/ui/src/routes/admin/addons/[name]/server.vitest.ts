@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -53,7 +53,9 @@ function seedEnabledAddons(homeDir: string, csv: string): void {
 }
 
 function readStackEnvFile(homeDir: string): string {
-  return readFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), 'utf-8');
+  // OP_ENABLED_ADDONS is app-written addon state → state/ (constitution §1).
+  const p = join(homeDir, 'state', 'stack.state.env');
+  return existsSync(p) ? readFileSync(p, 'utf-8') : '';
 }
 
 let originalHome: string | undefined;

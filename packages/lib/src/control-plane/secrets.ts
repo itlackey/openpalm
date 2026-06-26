@@ -327,6 +327,36 @@ export function patchSecretsEnvFile(
   writeVaultFile(stackEnvPath, result);
 }
 
+/**
+ * Patch app-written records into OP_HOME/state/stack.state.env.
+ *
+ * Constitution §1: state/ is the app-written tree (setup record, enabled add-ons,
+ * version pins, channel). readStackEnv / buildEnvFiles merge this OVER the legacy
+ * knowledge/env/stack.env, so values written here win. This is the symmetric
+ * counterpart to patchSecretsEnvFile: use it for records the app owns, so the app
+ * never writes into the operator-facing stack.env. Non-secret keys only.
+ */
+export function patchStateEnvFile(homeDir: string, patches: Record<string, string>): void {
+  if (Object.keys(patches).length === 0) return;
+  assertNoSecretLikeStackEnvKeys(patches);
+
+  const path = stateEnvFile(homeDir);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+
+  let existing = "";
+  try {
+    if (existsSync(path)) existing = readFileSync(path, "utf-8");
+  } catch {
+    // start fresh
+  }
+
+  let result = mergeEnvContent(existing, patches);
+  if (!result.endsWith("\n")) result += "\n";
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, result, { mode: 0o600 });
+  renameSync(tmp, path);
+}
+
 
 export function maskSecretValue(key: string, value: string): string {
   if (!value) return "";
