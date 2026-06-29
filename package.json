@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.12.46",
+  "version": "0.12.47",
   "private": true,
   "license": "MPL-2.0",
   "workspaces": [
