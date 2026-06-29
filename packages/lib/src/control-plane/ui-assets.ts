@@ -146,28 +146,43 @@ export async function applyHomeSeed(
   repoRef: string,
   homeDir: string,
   _configDir: string,
-  _dataDir: string,
+  dataDir: string,
 ): Promise<{ updated: string[]; backupDir: string | null }> {
-  const local = resolveLocalOpenpalmDir();
-  if (local) {
+  let local = resolveLocalOpenpalmDir();
+  let staged: string | null = null;
+
+  // No local skeleton found — this is a cold start without @openpalm/skeleton on
+  // disk (a compiled CLI binary or npm-global without the dep, and without
+  // OPENPALM_REPO_ROOT / OPENPALM_SKELETON_DIR set). Download it from npm rather
+  // than forcing the user to `npm install @openpalm/skeleton` by hand — the same
+  // local-or-download model seedUiBuild already uses for the UI bundle.
+  if (!local) {
+    logger.debug('no local skeleton found — downloading @openpalm/skeleton from npm', { repoRef });
+    try {
+      staged = await fetchRemoteSkeleton(repoRef, dataDir);
+    } catch (err) {
+      throw new Error(
+        `Could not obtain @openpalm/skeleton: ${err instanceof Error ? err.message : String(err)}. ` +
+        'Check network access, or set OPENPALM_REPO_ROOT to a source checkout for development.',
+      );
+    }
+    local = staged;
+  }
+
+  try {
     // ALWAYS overwrite the entire MANAGED system/ tree (compose stack + system
     // OpenCode config) from the release skeleton — changed files are backed up first.
     const { updated, backupDir } = overwriteSystemTree(local, homeDir);
     if (updated.length) logger.debug('overwrote managed system/ tree', { refreshed: updated });
     // Seed user/data trees once — skipExisting preserves any existing file so
     // user edits, removed files, and service-generated data are never touched.
-    logger.debug('seeding .openpalm from local source', { src: local, repoRef });
+    logger.debug('seeding .openpalm from skeleton source', { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
     return { updated, backupDir };
+  } finally {
+    // Clean up the staged download (no-op when seeding from a local checkout).
+    if (staged) rmSync(staged, { recursive: true, force: true });
   }
-
-  // No local skeleton found — this is a cold start without @openpalm/skeleton
-  // installed (and without OPENPALM_REPO_ROOT or OPENPALM_SKELETON_DIR set).
-  // Throw a helpful error so the caller can surface an actionable message.
-  throw new Error(
-    'Cannot locate @openpalm/skeleton. Set OPENPALM_REPO_ROOT (dev) or install @openpalm/skeleton: ' +
-    'npm install @openpalm/skeleton@' + (process.env.OP_SKELETON_VERSION ?? process.env.PLATFORM_VERSION ?? '<version>')
-  );
 }
 
 // ── UI build ─────────────────────────────────────────────────────────────────
@@ -664,15 +679,17 @@ async function fetchNpmSkeletonManifest(versionOrTag: string): Promise<NpmSkelet
 }
 
 /**
- * Download `@openpalm/skeleton` from npm, verify integrity, and install its
- * contents into `homeDir/system/`. The tarball wraps the skeleton tree under
- * `package/` (npm standard); we strip 1 path component and extract everything
- * that is NOT `package/system/` into the staging dir, then validate and rename.
+ * Download `@openpalm/skeleton` from npm, verify integrity, and extract the FULL
+ * skeleton tree into a fresh staging dir under `dataDir`, returning that path.
+ * The tarball wraps the tree under `package/` (npm standard), so we strip 1 path
+ * component to land config/, data/, knowledge/, system/, workspace/ directly in
+ * staging.
  *
- * FAIL-CLOSED + non-destructive: throws if integrity is missing or wrong.
- * Extracts into a staging dir, validates, then atomically renames into system/.
+ * FAIL-CLOSED: throws if integrity is missing or wrong, or if the bundle is
+ * missing system/stack/. On any failure the staging dir is removed; on success
+ * the CALLER owns cleanup of the returned path.
  */
-async function downloadNpmSkeletonBundle(manifest: NpmSkeletonManifest, homeDir: string, dataDir: string): Promise<void> {
+async function stageSkeletonDownload(manifest: NpmSkeletonManifest, dataDir: string): Promise<string> {
   const res = await fetchWithRetry(manifest.tarball);
   if (!res.ok) throw new Error(`Failed to download skeleton bundle (HTTP ${res.status})`);
   const data = new Uint8Array(await res.arrayBuffer());
@@ -687,9 +704,9 @@ async function downloadNpmSkeletonBundle(manifest: NpmSkeletonManifest, homeDir:
 
   const tmpTar  = join(dataDir, '.skeleton.tgz.tmp');
   const staging = join(dataDir, '.skeleton.staging');
+  rmSync(staging, { recursive: true, force: true });
+  mkdirSync(staging, { recursive: true });
   try {
-    rmSync(staging, { recursive: true, force: true });
-    mkdirSync(staging, { recursive: true });
     writeFileSync(tmpTar, data);
     // npm wraps under `package/`; strip 1 component to land the skeleton tree directly in staging.
     await tarExtract({ file: tmpTar, cwd: staging, strip: 1 });
@@ -697,15 +714,44 @@ async function downloadNpmSkeletonBundle(manifest: NpmSkeletonManifest, homeDir:
     if (!existsSync(join(staging, 'system', 'stack'))) {
       throw new Error('downloaded skeleton bundle is missing system/stack/');
     }
-    // Atomically replace OP_HOME/system/ from the staged skeleton's system/ subtree.
-    const systemSrc = join(staging, 'system');
-    const systemDest = join(homeDir, 'system');
-    rmSync(systemDest, { recursive: true, force: true });
-    renameSync(systemSrc, systemDest);
+    return staging;
+  } catch (err) {
+    rmSync(staging, { recursive: true, force: true });
+    throw err;
   } finally {
     rmSync(tmpTar, { force: true });
+  }
+}
+
+/**
+ * Update path: download the skeleton and atomically replace OP_HOME/system/ from
+ * the staged tree's system/ subtree. Non-destructive — the staged copy is
+ * validated before the live system/ is touched.
+ */
+async function downloadNpmSkeletonBundle(manifest: NpmSkeletonManifest, homeDir: string, dataDir: string): Promise<void> {
+  const staging = await stageSkeletonDownload(manifest, dataDir);
+  try {
+    const systemDest = join(homeDir, 'system');
+    rmSync(systemDest, { recursive: true, force: true });
+    renameSync(join(staging, 'system'), systemDest);
+  } finally {
     rmSync(staging, { recursive: true, force: true });
   }
+}
+
+/**
+ * Seed-path remote fallback for applyHomeSeed: resolve the skeleton on the
+ * platform's release channel, download it, and stage the FULL tree, returning
+ * that path. Mirrors seedUiBuild's local-or-download model so a packaged binary
+ * never asks the user to `npm install @openpalm/skeleton` by hand. The caller
+ * owns cleanup of the returned staging dir.
+ */
+async function fetchRemoteSkeleton(repoRef: string, dataDir: string): Promise<string> {
+  const channel  = uiUpdateChannel(repoRef);
+  const ref      = await resolveChannelRef(SKELETON_PACKAGE, channel);
+  const manifest = await fetchNpmSkeletonManifest(ref);
+  logger.debug('fetching @openpalm/skeleton from npm for cold-start seed', { version: manifest.version, channel });
+  return stageSkeletonDownload(manifest, dataDir);
 }
 
 export interface SkeletonUpdateResult {
