@@ -6,7 +6,7 @@
  * The build artifact lives at packages/ui/build/ relative to the repo root
  * and is resolved at compile time.
  */
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { existsSync, renameSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret,
@@ -95,8 +95,17 @@ async function spawnUiChild(
       ?? '';
 
   console.log('Starting UI server...');
+  // Spawn the UI child on THIS binary's embedded runtime (no system `node`
+  // required): re-invoke `openpalm ui`, which imports the adapter-node build
+  // in-process via runUiBuild(). Mirrors the Electron harness, which spawns its
+  // UI child with Electron's own Node rather than a system one.
+  //   compiled binary → [binary, 'ui']
+  //   dev (bun src/main.ts) → [bun, <entry>, 'ui']
+  const execName = basename(process.execPath).toLowerCase();
+  const runningAsBun = execName === 'bun' || execName === 'bun.exe';
+  const childArgs = runningAsBun ? [Bun.main, 'ui'] : ['ui'];
   const proc = Bun.spawn(
-    ['node', join(uiBuildDir, 'index.js')],
+    [process.execPath, ...childArgs],
     {
       cwd: uiBuildDir,
       env: {
@@ -119,6 +128,30 @@ async function spawnUiChild(
     }
   );
   return { proc, uiBackupDir: uiResult.backupDir };
+}
+
+/**
+ * Run the SvelteKit adapter-node build in THIS process. Backs the `openpalm ui`
+ * command: the supervisor (startUIServer) spawns `openpalm ui` as its killable/
+ * respawnable child, and a user can run it directly to serve the UI standalone
+ * (no auto-update). Importing the build runs it on the embedded Bun runtime, so
+ * no system `node` is required. The adapter-node entry reads HOST/PORT/ORIGIN
+ * from the environment and self-starts; the listening socket keeps us alive.
+ */
+export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
+  const uiBuildDir = resolveUiBuildDir();
+  const indexPath = join(uiBuildDir, 'index.js');
+  if (!existsSync(indexPath)) {
+    console.error(`UI build not found at ${uiBuildDir}`);
+    console.error('Run: bun run ui:build');
+    process.exit(1);
+  }
+  const port = opts.port ?? (Number(process.env.PORT) || DEFAULT_PORT);
+  process.env.HOST ??= '127.0.0.1';
+  process.env.PORT = String(port);
+  process.env.ORIGIN ??= `http://127.0.0.1:${port}`;
+  process.chdir(uiBuildDir);
+  await import(indexPath);
 }
 
 /**

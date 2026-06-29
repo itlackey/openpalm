@@ -618,12 +618,27 @@ describe('cli entrypoint (subprocess)', () => {
   }, 60_000);
 });
 
-describe('UI host server (no subcommand)', () => {
-  it("startUIServer is exported from lib/ui-server.ts", async () => {
-    // v0.11.0: there is no separate `admin`/`ui` subcommand.
-    // The bare `openpalm` command starts the UI host server via startUIServer().
+describe('UI host server', () => {
+  it("startUIServer (supervisor) is exported from lib/ui-server.ts", async () => {
+    // The bare `openpalm` command starts the long-lived UI supervisor, which
+    // spawns `openpalm ui` as its killable/respawnable child.
     const mod = await import("./lib/ui-server.ts");
     expect(typeof mod.startUIServer).toBe("function");
+  });
+
+  it("runUiBuild (child) is exported from lib/ui-server.ts", async () => {
+    // `openpalm ui` runs the adapter-node build in-process on the embedded Bun
+    // runtime via runUiBuild — no system `node` is required.
+    const mod = await import("./lib/ui-server.ts");
+    expect(typeof mod.runUiBuild).toBe("function");
+  });
+
+  it("the `ui` subcommand is registered", async () => {
+    const { mainCommand } = await import("./main.ts");
+    const sub = (mainCommand.subCommands as Record<string, () => Promise<unknown>>).ui;
+    expect(typeof sub).toBe("function");
+    const cmd = (await sub()) as { meta?: { name?: string } };
+    expect(cmd.meta?.name).toBe("ui");
   });
 });
 

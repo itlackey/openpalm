@@ -10,7 +10,7 @@ export type { HostInfo } from './lib/host-info.ts';
 const SUBCOMMAND_NAMES = new Set([
   'install', 'uninstall', 'update', 'self-update', 'addon',
   'start', 'stop', 'restart', 'logs', 'status', 'backups',
-  'validate', 'scan', 'audit-secrets', 'rollback', 'automations', 'unlock',
+  'validate', 'scan', 'audit-secrets', 'rollback', 'automations', 'unlock', 'ui',
   '--help', '-h', 'help',
 ]);
 
@@ -119,6 +119,7 @@ export const mainCommand = defineCommand({
     rollback: () => import('./commands/rollback.ts').then((m) => m.default),
     automations: () => import('./commands/automations.ts').then((m) => m.default),
     unlock: () => import('./commands/unlock.ts').then((m) => m.default),
+    ui: () => import('./commands/ui.ts').then((m) => m.default),
   },
 });
 
