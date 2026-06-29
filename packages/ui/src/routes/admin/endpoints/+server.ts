@@ -57,19 +57,8 @@ export const POST: RequestHandler = async (event) =>
     const url = typeof body.url === 'string' ? body.url : '';
     const password = typeof body.password === 'string' && body.password.length > 0 ? body.password : undefined;
 
-    // Validate URL up-front so we can surface the HTTPS-for-remote rule
-    // with a specific error code (Phase 6 of the auth/proxy refactor plan).
     const urlCheck = validateEndpointUrl(url);
     if (!urlCheck.ok) {
-      if (urlCheck.reason === 'http_not_allowed') {
-        return errorResponse(
-          400,
-          'http_not_allowed',
-          'Plain HTTP is only allowed for loopback addresses. Use https:// for remote OpenPalm instances.',
-          {},
-          requestId,
-        );
-      }
       return errorResponse(400, 'invalid_endpoint', 'URL must be a valid http(s) URL', {}, requestId);
     }
 

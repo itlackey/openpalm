@@ -26,19 +26,8 @@ export const PATCH: RequestHandler = async (event) =>
     const patch: EndpointPatch = {};
     if (typeof body.label === 'string') patch.label = body.label;
     if (typeof body.url === 'string') {
-      // Validate up-front so the HTTPS-for-remote rule (Phase 6) surfaces a
-      // specific error code, not a generic "URL must be a valid http(s) URL".
       const urlCheck = validateEndpointUrl(body.url);
       if (!urlCheck.ok) {
-        if (urlCheck.reason === 'http_not_allowed') {
-          return errorResponse(
-            400,
-            'http_not_allowed',
-            'Plain HTTP is only allowed for loopback addresses. Use https:// for remote OpenPalm instances.',
-            {},
-            requestId,
-          );
-        }
         return errorResponse(400, 'invalid_endpoint', 'URL must be a valid http(s) URL', {}, requestId);
       }
       patch.url = urlCheck.url;

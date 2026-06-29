@@ -55,9 +55,9 @@ describe('normalizeEndpointUrl', () => {
       'http://host.docker.internal:3800',
     );
   });
-  it('rejects plain http for non-loopback hosts (Phase 6: HTTPS-for-remote)', () => {
-    expect(normalizeEndpointUrl('http://10.0.0.5:3800')).toBeNull();
-    expect(normalizeEndpointUrl('http://remote.example:3800')).toBeNull();
+  it('accepts plain http for remote LAN hosts (LAN-first)', () => {
+    expect(normalizeEndpointUrl('http://10.0.0.5:3800')).toBe('http://10.0.0.5:3800');
+    expect(normalizeEndpointUrl('http://remote.example:3800')).toBe('http://remote.example:3800');
   });
   it('accepts https URLs (any host)', () => {
     expect(normalizeEndpointUrl('https://api.example.test')).toBe('https://api.example.test');
@@ -73,15 +73,15 @@ describe('normalizeEndpointUrl', () => {
   });
 });
 
-describe('validateEndpointUrl (Phase 6: discriminated reasons)', () => {
-  it('reports http_not_allowed for plain http on remote hosts', () => {
+describe('validateEndpointUrl (discriminated reasons)', () => {
+  it('accepts plain http on remote LAN hosts (LAN-first)', () => {
     expect(validateEndpointUrl('http://10.0.0.5:3800')).toEqual({
-      ok: false,
-      reason: 'http_not_allowed',
+      ok: true,
+      url: 'http://10.0.0.5:3800',
     });
     expect(validateEndpointUrl('http://remote.example:3800')).toEqual({
-      ok: false,
-      reason: 'http_not_allowed',
+      ok: true,
+      url: 'http://remote.example:3800',
     });
   });
   it('reports invalid_url for garbage', () => {
