@@ -191,7 +191,7 @@ Notes:
 
 Admin is a host-only Bun.serve server started by `openpalm`. It has no container, no Docker socket mount, and no `$OP_HOME` volume bind — it accesses everything directly as a host process.
 
-Bind address: `127.0.0.1:${OP_HOST_UI_PORT:-3880}` (loopback only — never reachable from containers or LAN)
+Bind address: `127.0.0.1:${OP_HOST_UI_PORT:-3880}` (loopback only — never reachable from containers or LAN). Reach it remotely over an SSH tunnel (`ssh -L 3880:localhost:3880 host`) or a reverse proxy. To bind all interfaces for genuine LAN access (including the first-run setup wizard), set `OP_ALLOW_REMOTE_SETUP=1` — this relaxes the Host/Origin allowlist and the setup-localhost-only gate, so only enable it on a trusted network behind a firewall.
 
 Key env (host process, not container):
 
@@ -200,6 +200,7 @@ Key env (host process, not container):
 | `PORT` | `OP_HOST_UI_PORT` or `3880` | Admin HTTP listen port |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
 | `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/knowledge/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
+| `OP_ALLOW_REMOTE_SETUP` | unset (`0`) | When `1`/`true`/`yes`: bind `0.0.0.0`, allow any Host/same-origin, and permit remote access to the setup wizard. Off by default (loopback-only). |
 
 ---
 

@@ -4,7 +4,7 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getActiveEndpoint } from "./endpoints.js";
-import { createOpenCodeClient } from "@openpalm/lib";
+import { createOpenCodeClient, isRemoteSetupAllowed } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
 
 /**
@@ -192,17 +192,33 @@ export async function withAdminBody(
  * @param port     The port this server is bound to (e.g. 3880 or 8100)
  * @returns        A 400 Response if the host is rejected; null if allowed
  */
-export function checkHostHeader(request: Request, port: number): Response | null {
+/**
+ * True for loopback hostnames on ANY port. DNS-rebinding protection only cares
+ * that the hostname is loopback — the port is whatever the client used, which
+ * differs from the server's port when reached through an SSH tunnel
+ * (`ssh -L 5880:localhost:3880` → Host: localhost:5880).
+ */
+function isLoopbackHost(hostHeader: string): boolean {
+  const normalized = hostHeader.trim().replace(/\.$/, "");
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${normalized}`).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  } catch {
+    return false;
+  }
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+export function checkHostHeader(request: Request, _port?: number): Response | null {
   const host = request.headers.get("host") ?? "";
-  // Strip any trailing dot or extra whitespace
-  const normalized = host.trim().replace(/\.$/, "");
-  const allowed = [`localhost:${port}`, `127.0.0.1:${port}`];
-  if (allowed.includes(normalized)) return null;
+  // Allow any loopback host (any port, e.g. via SSH tunnel), or any host when
+  // the operator has explicitly opted into remote access.
+  if (isLoopbackHost(host) || isRemoteSetupAllowed()) return null;
   return new Response(
     JSON.stringify({
       error: "invalid_host",
-      host: normalized,
-      message: "Request rejected: Host header does not match allowed hosts. The admin UI binds to loopback (127.0.0.1) only; reach it via localhost or front it with a reverse proxy/tunnel for remote access.",
+      host: host.trim().replace(/\.$/, ""),
+      message: "Request rejected: Host header does not match allowed hosts. The UI binds to loopback (127.0.0.1) only; reach it via localhost or an SSH tunnel/reverse proxy, or set OP_ALLOW_REMOTE_SETUP=1 to allow remote access.",
     }),
     { status: 400, headers: { "content-type": "application/json" } }
   );
@@ -218,7 +234,7 @@ export function checkHostHeader(request: Request, port: number): Response | null
  * @param port     The port this server is bound to
  * @returns        A 403 Response if the origin is rejected; null if allowed
  */
-export function checkOriginHeader(request: Request, port: number): Response | null {
+export function checkOriginHeader(request: Request, _port?: number): Response | null {
   const method = request.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
 
@@ -227,8 +243,11 @@ export function checkOriginHeader(request: Request, port: number): Response | nu
 
   try {
     const u = new URL(origin);
-    const allowed = [`localhost:${port}`, `127.0.0.1:${port}`];
-    if (allowed.includes(u.host)) return null;
+    // Loopback origin on any port (e.g. via SSH tunnel) is always allowed.
+    if (isLoopbackHost(u.host)) return null;
+    // With remote access opted in, accept same-origin requests — the Origin's
+    // host matches the Host the request was served on (standard CSRF defense).
+    if (isRemoteSetupAllowed() && u.host === (request.headers.get("host") ?? "").trim()) return null;
   } catch {
     // Unparseable Origin is treated as hostile
   }

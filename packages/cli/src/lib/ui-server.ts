@@ -11,6 +11,7 @@ import { existsSync, renameSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
+  isRemoteSetupAllowed,
 } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -104,6 +105,14 @@ async function spawnUiChild(
   const execName = basename(process.execPath).toLowerCase();
   const runningAsBun = execName === 'bun' || execName === 'bun.exe';
   const childArgs = runningAsBun ? [Bun.main, 'ui'] : ['ui'];
+  // Default: bind loopback with a pinned ORIGIN. With OP_ALLOW_REMOTE_SETUP the
+  // server binds all interfaces and lets adapter-node derive the origin from the
+  // request Host header (HOST_HEADER), so it works under whatever LAN host/IP the
+  // operator reaches it by.
+  const remote = isRemoteSetupAllowed();
+  const networkEnv = remote
+    ? { HOST: '0.0.0.0', PORT: String(port), HOST_HEADER: 'host', PROTOCOL_HEADER: 'x-forwarded-proto' }
+    : { HOST: '127.0.0.1', PORT: String(port), ORIGIN: `http://127.0.0.1:${port}` };
   const proc = Bun.spawn(
     [process.execPath, ...childArgs],
     {
@@ -114,9 +123,7 @@ async function spawnUiChild(
         // relative value (e.g. `.dev` from a repo-root .env) against its
         // own cwd (packages/ui/build/).
         OP_HOME:                homeDir,
-        HOST:                   '127.0.0.1',
-        PORT:                   String(port),
-        ORIGIN:                 `http://127.0.0.1:${port}`,
+        ...networkEnv,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
         // Tell the UI child it has a supervisor that can respawn it on demand
         // (design §6.2). The admin "install UI version" route signals SIGUSR2 to
@@ -147,9 +154,16 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
     process.exit(1);
   }
   const port = opts.port ?? (Number(process.env.PORT) || DEFAULT_PORT);
-  process.env.HOST ??= '127.0.0.1';
   process.env.PORT = String(port);
-  process.env.ORIGIN ??= `http://127.0.0.1:${port}`;
+  if (isRemoteSetupAllowed()) {
+    // Bind all interfaces; let adapter-node derive the origin from the request
+    // Host header rather than pinning it to loopback (do NOT set ORIGIN).
+    process.env.HOST ??= '0.0.0.0';
+    process.env.HOST_HEADER ??= 'host';
+  } else {
+    process.env.HOST ??= '127.0.0.1';
+    process.env.ORIGIN ??= `http://127.0.0.1:${port}`;
+  }
   process.chdir(uiBuildDir);
   await import(indexPath);
 }

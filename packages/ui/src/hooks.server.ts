@@ -29,6 +29,7 @@ import {
   detectRuntime,
   buildComposeOptions,
   collectBindAddressWarnings,
+  isRemoteSetupAllowed,
   type ComposeServiceStatus,
 } from "@openpalm/lib";
 import { listRemoteStatuses } from "$lib/server/endpoints.js";
@@ -179,7 +180,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   const setupComplete = setupCompleteMemo || isSetupComplete(resolveOpenPalmHome());
   if (setupComplete) setupCompleteMemo = true;
 
-  if (isSetupPath && !setupComplete) {
+  if (isSetupPath && !setupComplete && !isRemoteSetupAllowed()) {
     const clientIp = event.getClientAddress();
     if (!isLocalhostAddress(clientIp)) {
       return new Response(

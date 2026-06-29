@@ -24,6 +24,22 @@ function isLoopback(value: string): boolean {
 }
 
 /**
+ * Opt-in: allow the web UI (including the first-run setup wizard) to be reached
+ * from a remote machine. When set, the UI server binds all interfaces and the
+ * Host/Origin allowlist + the setup-localhost-only gate are relaxed.
+ *
+ * This deliberately reopens the owner-race the setup gate normally prevents, so
+ * it is OFF by default and must be explicitly enabled by the operator. Reach the
+ * UI over an SSH tunnel or a reverse proxy instead when you can.
+ */
+export function isRemoteSetupAllowed(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const v = env["OP_ALLOW_REMOTE_SETUP"]?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/**
  * Inspect `env` for non-loopback bind address settings and return one warning
  * line per problematic variable.  Returns an empty array when everything is
  * loopback (or unset, since the compose default is 127.0.0.1).
@@ -50,6 +66,13 @@ export function collectBindAddressWarnings(
         `${key} is set to "${val}" — this service will be exposed on the host network interface.`,
       );
     }
+  }
+
+  if (isRemoteSetupAllowed(env)) {
+    warnings.push(
+      `OP_ALLOW_REMOTE_SETUP is enabled — the web UI is reachable from remote machines and the ` +
+        `setup wizard is no longer restricted to the host. Only use this on a trusted network behind a firewall.`,
+    );
   }
 
   return warnings;

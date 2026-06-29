@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { collectBindAddressWarnings } from "./bind-warning.js";
+import { collectBindAddressWarnings, isRemoteSetupAllowed } from "./bind-warning.js";
 
 describe("collectBindAddressWarnings", () => {
   test("returns [] when env is empty (compose default is 127.0.0.1)", () => {
@@ -74,5 +74,26 @@ describe("collectBindAddressWarnings", () => {
     };
     const warnings = collectBindAddressWarnings(env);
     expect(warnings).toHaveLength(4);
+  });
+
+  test("warns when OP_ALLOW_REMOTE_SETUP is enabled", () => {
+    const warnings = collectBindAddressWarnings({ OP_ALLOW_REMOTE_SETUP: "1" });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("OP_ALLOW_REMOTE_SETUP");
+  });
+});
+
+describe("isRemoteSetupAllowed", () => {
+  test("false when unset", () => {
+    expect(isRemoteSetupAllowed({})).toBe(false);
+  });
+  test("true for 1 / true / yes (case-insensitive)", () => {
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "1" })).toBe(true);
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "true" })).toBe(true);
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "YES" })).toBe(true);
+  });
+  test("false for other values", () => {
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "0" })).toBe(false);
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "off" })).toBe(false);
   });
 });
