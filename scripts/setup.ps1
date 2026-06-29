@@ -20,11 +20,13 @@ function Normalize-Version {
         [string] $Value
     )
 
+    # Release tags are bare semver (the `v` prefix was retired). Strip any
+    # leading `v` so a user-supplied "v0.12.45" still resolves to "0.12.45".
     if ($Value.StartsWith('v')) {
-        return $Value
+        return $Value.Substring(1)
     }
 
-    return "v$Value"
+    return $Value
 }
 
 # Version resolution

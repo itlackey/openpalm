@@ -17,12 +17,10 @@ warn() { printf "${YELLOW}!${NC} %s\n" "$*"; }
 die()  { printf "${RED}✗${NC} %s\n" "$*" >&2; exit 1; }
 
 # ── Helpers ───────────────────────────────────────────────────────────
+# Release tags are bare semver (the `v` prefix was retired). Strip any leading
+# `v` so a user-supplied "v0.12.45" still resolves to the "0.12.45" release tag.
 normalize_version() {
-  if [ "${1#v}" != "$1" ]; then
-    printf '%s\n' "$1"
-  else
-    printf 'v%s\n' "$1"
-  fi
+  printf '%s\n' "${1#v}"
 }
 
 # ── Platform detection ────────────────────────────────────────────────

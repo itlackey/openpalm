@@ -907,6 +907,11 @@ jobs:
               create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}"
             done
             create_release "${VERSION}" "OpenPalm ${VERSION} (all units)"
+          elif [ "${UNIT}" = 'platform' ]; then
+            # Mirror the tag step: platform also publishes the bare X.Y.Z release —
+            # setup.sh / setup.ps1 download CLI assets from the bare-tag release.
+            create_release "platform-${VERSION}" "OpenPalm platform ${VERSION}"
+            create_release "${VERSION}" "OpenPalm platform ${VERSION}"
           elif [ "${UNIT}" = 'images' ]; then
             create_release "images-${VERSION}" "OpenPalm images ${VERSION}"
           else
