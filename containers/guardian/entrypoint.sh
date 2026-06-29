@@ -35,6 +35,21 @@ if [ "$IS_ROOT" = "1" ]; then
   mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian
   chown "${TARGET_UID}:${TARGET_GID}" /opt/openpalm /opt/openpalm/guardian 2>/dev/null || true
   chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm/tools /opt/openpalm/skeleton 2>/dev/null || true
+  # The moderator OpenCode (gosu'd to the target uid) stores its SQLite DB under
+  # $HOME/.local/share/opencode. Docker pre-creates that path as ROOT to satisfy
+  # the nested :ro auth.json sub-path mount (before this entrypoint runs), so the
+  # moderator otherwise can't open its DB ("unable to open database file"). chown
+  # the storage dirs to the target uid — NON-recursively, so the :ro auth.json
+  # file is never targeted and host-owned files under the bind mount aren't
+  # rewritten every boot.
+  mkdir -p /opt/openpalm/guardian/.local/share/opencode \
+           /opt/openpalm/guardian/.local/state/opencode 2>/dev/null || true
+  chown "${TARGET_UID}:${TARGET_GID}" \
+    /opt/openpalm/guardian/.local \
+    /opt/openpalm/guardian/.local/share \
+    /opt/openpalm/guardian/.local/share/opencode \
+    /opt/openpalm/guardian/.local/state \
+    /opt/openpalm/guardian/.local/state/opencode 2>/dev/null || true
 fi
 
 export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
