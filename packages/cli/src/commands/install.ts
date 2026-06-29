@@ -7,6 +7,7 @@ import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
 import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
 import {
   backupOpenPalmHome,
+  pruneBackupDirs,
   buildComposeOptions,
   composeDown,
   initializeStateSecrets,
@@ -216,6 +217,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const backupDir = backupOpenPalmHome(homeDir);
     if (backupDir) {
       console.log(`Backed up existing OP_HOME to ${backupDir}`);
+      // Bounded retention: keep the most recent few snapshots so repeated
+      // --force runs can't accumulate unbounded and fill the disk.
+      pruneBackupDirs(homeDir, 3);
     }
   }
 

@@ -147,18 +147,22 @@ describe('automation install helpers', () => {
 });
 
 describe('backup helpers', () => {
-  it('backs up OP_HOME without recursively copying backups', () => {
+  it('backs up config/state trees but EXCLUDES the regenerable data/ tree', () => {
     mkdirSync(join(process.env.OP_HOME!, 'config'), { recursive: true });
     mkdirSync(join(process.env.OP_HOME!, 'data', 'backups', 'old-backup'), { recursive: true });
+    mkdirSync(join(process.env.OP_HOME!, 'data', 'assistant'), { recursive: true });
     writeFileSync(join(process.env.OP_HOME!, 'config', 'stack.yml'), 'llm: test\n');
     writeFileSync(join(process.env.OP_HOME!, 'data', 'backups', 'old-backup', 'marker.txt'), 'old\n');
+    writeFileSync(join(process.env.OP_HOME!, 'data', 'assistant', 'cache.bin'), 'big\n');
 
     const backupDir = backupOpenPalmHome(process.env.OP_HOME!);
 
     expect(backupDir).not.toBeNull();
     expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
     expect(existsSync(join(backupDir!, 'cache'))).toBe(false);
-    expect(existsSync(join(backupDir!, 'data', 'backups'))).toBe(false);
+    // The whole data/ tree is excluded — it's large, regenerable runtime state
+    // (this is the fix for snapshots ballooning to GBs and filling the disk).
+    expect(existsSync(join(backupDir!, 'data'))).toBe(false);
   });
 
   it('writes backups under the provided homeDir even when OP_HOME points elsewhere', () => {

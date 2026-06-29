@@ -110,8 +110,15 @@ export function describeBackupSpaceShortfall(check: BackupSpaceCheck): string {
 /**
  * Create a durable backup snapshot of the current OP_HOME contents.
  *
- * The backup is written under OP_HOME/data/backups/<timestamp>/ and excludes
- * existing backups to avoid recursive copies.
+ * The backup is written under OP_HOME/data/backups/<timestamp>/ and captures the
+ * user/config/state trees (config/, system/, state/, knowledge/) that a
+ * destructive operation (e.g. `install --force`) could clobber.
+ *
+ * The whole `data/` tree is intentionally EXCLUDED: it is large, regenerable
+ * runtime state — `data/assistant` (node_modules, caches, opencode SQLite) and
+ * `data/guardian` are GBs and are re-created/re-downloaded on container boot, so
+ * snapshotting them buys nothing for recovery (the rollback/restore path never
+ * reads these snapshots) and previously filled the disk (~5 GB per snapshot).
  */
 export function backupOpenPalmHome(homeDir: string): string | null {
   if (!existsSync(homeDir)) return null;
@@ -121,18 +128,8 @@ export function backupOpenPalmHome(homeDir: string): string | null {
 
   let copiedAny = false;
   for (const entry of readdirSync(homeDir, { withFileTypes: true })) {
+    if (entry.name === "data") continue;
     const sourcePath = join(homeDir, entry.name);
-    if (entry.name === "data") {
-      const dataTarget = join(backupDir, entry.name);
-      mkdirSync(dataTarget, { recursive: true });
-      for (const dataEntry of readdirSync(sourcePath, { withFileTypes: true })) {
-        if (dataEntry.name === "backups") continue;
-        cpSync(join(sourcePath, dataEntry.name), join(dataTarget, dataEntry.name), { recursive: true });
-        copiedAny = true;
-      }
-      continue;
-    }
-
     const targetPath = join(backupDir, entry.name);
     cpSync(sourcePath, targetPath, { recursive: true });
     copiedAny = true;
