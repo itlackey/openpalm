@@ -83,6 +83,27 @@ describe("buildComposeOptions", () => {
     expect(opts.profiles).toContain("addon.chat");
   });
 
+  it("activates the profile when OP_ENABLED_ADDONS is in state/ (not legacy stack.env)", () => {
+    // Regression: `openpalm addon enable` writes OP_ENABLED_ADDONS to
+    // state/stack.state.env, but resolveActiveProfiles used to read only
+    // knowledge/env/stack.env — so the addon's compose profile never activated
+    // and its service was never started. resolveActiveProfiles must read the
+    // SAME merged source (state over legacy) as listEnabledAddonIds.
+    seedCoreCompose();
+    const stackDir = join(tempDir, "system", "stack");
+    writeFileSync(
+      join(stackDir, "portals.compose.yml"),
+      'services:\n  discord:\n    profiles: ["addon.discord"]\n    image: test\n',
+    );
+    const stateDir = join(tempDir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, "stack.state.env"), "OP_ENABLED_ADDONS=discord\n");
+    // legacy stack.env intentionally absent / without the addon
+
+    const opts = buildComposeOptions(makeState());
+    expect(opts.profiles).toContain("addon.discord");
+  });
+
   it("includes the user custom compose file", () => {
     seedCoreCompose();
     // custom.compose.yml is USER-owned → config/stack (not system/stack).

@@ -5,12 +5,12 @@
  * construction into a single shared module. Both CLI and admin
  * routes use these functions instead of assembling args inline.
  */
-import { existsSync } from "node:fs";
 import type { ControlPlaneState } from "./types.js";
 import { buildComposeFileList } from "./lifecycle.js";
 import { buildEnvFiles } from "./config-persistence.js";
 import { buildComposeCommandArgs } from "./docker.js";
-import { parseEnvFile, parseEnabledAddons } from "./env.js";
+import { parseEnabledAddons } from "./env.js";
+import { readStackEnv } from "./secrets.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -30,15 +30,16 @@ export type ComposeOptions = {
  */
 export function resolveActiveProfiles(state: ControlPlaneState): string[] {
   const profiles: string[] = [];
-  const stackEnvPath = `${state.stashDir}/env/stack.env`;
-  let env: Record<string, string> = {};
-  if (existsSync(stackEnvPath)) {
-    env = parseEnvFile(stackEnvPath);
-    const voiceProfile = canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '');
-    if (voiceProfile) profiles.push(voiceProfile);
-    const ollamaProfile = canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '');
-    if (ollamaProfile) profiles.push(ollamaProfile);
-  }
+  // Read the EFFECTIVE stack env (state/stack.state.env merged OVER the legacy
+  // knowledge/env/stack.env) — the same source listEnabledAddonIds uses. The app
+  // writes OP_ENABLED_ADDONS to state/ via `openpalm addon enable`; reading only
+  // the legacy file here missed it, so an enabled addon never activated its
+  // compose profile and its service was never started.
+  const env = readStackEnv(state.homeDir);
+  const voiceProfile = canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '');
+  if (voiceProfile) profiles.push(voiceProfile);
+  const ollamaProfile = canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '');
+  if (ollamaProfile) profiles.push(ollamaProfile);
 
   for (const addon of parseEnabledAddons(env.OP_ENABLED_ADDONS)) {
     if (addon === 'voice') {
