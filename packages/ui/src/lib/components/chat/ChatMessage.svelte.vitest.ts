@@ -2,8 +2,11 @@
  * ChatMessage component tests.
  *
  * Every message the user sees passes through this component.
- * Tests: user/assistant rendering, markdown for assistant only, divider,
- * assistant message with tool strip, orphan tool-group.
+ * Tests: user/assistant rendering, markdown for assistant only, divider.
+ *
+ * Tool activity is NOT rendered inline by this component — it lives only in
+ * the chat-page tool accordion (ToolLog). These tests assert the thread stays
+ * free of inline tool strips even when entries carry toolStates.
  */
 import { describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -98,44 +101,29 @@ describe('ChatMessage — divider', () => {
   });
 });
 
-describe('ChatMessage — assistant with tool strip', () => {
-  test('renders tool strip inside the assistant bubble when toolStates present', async () => {
+describe('ChatMessage — tool activity is panel-only (not inline)', () => {
+  test('assistant text renders but tools do NOT appear inline when toolStates present', async () => {
     const tools = [makeTool('c1', 'bash'), makeTool('c2', 'read')];
     const { container } = await render(ChatMessage, {
       props: { entry: assistantMsgWithTools('Here is the result.', tools) },
     });
     await expect.element(page.getByText('Here is the result.')).toBeVisible();
-    // ToolStrip renders emoji buttons; there should be 2.
-    const toolBtns = container.querySelectorAll('.tool-icon-btn');
-    expect(toolBtns.length).toBe(2);
+    // Tool activity lives in the left rail / drawer (ToolLog), never inline.
+    expect(container.querySelector('.tool-icon-btn')).toBeNull();
+    expect(container.querySelector('.tool-log')).toBeNull();
   });
 
-  test('does NOT render tool strip when toolStates is absent', async () => {
+  test('renders no tool markup when toolStates is absent', async () => {
     const { container } = await render(ChatMessage, { props: { entry: assistantMsg('No tools.') } });
     await expect.element(page.getByText('No tools.')).toBeVisible();
     expect(container.querySelector('.tool-icon-btn')).toBeNull();
   });
 
-  test('does NOT render tool strip for user messages even if toolStates were somehow set', async () => {
-    // TypeScript prevents this but the component must be robust.
-    const entry = { id: '1', role: 'user' as const, text: 'hi', timestamp: NOW, toolStates: [makeTool('c1', 'bash')] };
-    const { container } = await render(ChatMessage, { props: { entry } });
-    expect(container.querySelector('.tool-icon-btn')).toBeNull();
-  });
-});
-
-describe('ChatMessage — orphan tool-group', () => {
-  test('renders tool-group as a single bubble with all tools', async () => {
+  test('orphan tool-group renders nothing in the thread', async () => {
     const tools = [makeTool('c1', 'bash'), makeTool('c2', 'grep'), makeTool('c3', 'read')];
     const { container } = await render(ChatMessage, { props: { entry: toolGroup(tools) } });
-    const toolBtns = container.querySelectorAll('.tool-icon-btn');
-    expect(toolBtns.length).toBe(3);
-  });
-
-  test('tool-group has accessible aria-label on strip', async () => {
-    const tools = [makeTool('c1', 'bash')];
-    const { container } = await render(ChatMessage, { props: { entry: toolGroup(tools) } });
-    // The tool-strip div has the ariaLabel passed in.
-    expect(container.querySelector('[aria-label="Assistant tool activity"]')).not.toBeNull();
+    expect(container.querySelector('.tool-icon-btn')).toBeNull();
+    expect(container.querySelector('[aria-label="Assistant tool activity"]')).toBeNull();
+    expect(container.textContent?.trim()).toBe('');
   });
 });

@@ -174,7 +174,7 @@ export async function withAdminBody(
   handler: (ctx: { requestId: string; body: Record<string, unknown> }) => Promise<Response>
 ): Promise<Response> {
   const requestId = getRequestId(event);
-  const originError = checkOriginHeader(event.request, UI_PORT);
+  const originError = checkOriginHeader(event.request);
   if (originError) return originError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
@@ -209,7 +209,7 @@ function isLoopbackHost(hostHeader: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
-export function checkHostHeader(request: Request, _port?: number): Response | null {
+export function checkHostHeader(request: Request): Response | null {
   const host = request.headers.get("host") ?? "";
   // Allow any loopback host (any port, e.g. via SSH tunnel), or any host when
   // the operator has explicitly opted into remote access.
@@ -231,10 +231,9 @@ export function checkHostHeader(request: Request, _port?: number): Response | nu
  * are always allowed.
  *
  * @param request  Incoming Request
- * @param port     The port this server is bound to
  * @returns        A 403 Response if the origin is rejected; null if allowed
  */
-export function checkOriginHeader(request: Request, _port?: number): Response | null {
+export function checkOriginHeader(request: Request): Response | null {
   const method = request.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
 

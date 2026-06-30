@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import type { ChatEntry } from '$lib/types.js';
   import { renderMarkdown } from '$lib/markdown.js';
-  import ToolStrip from '$lib/components/chat/ToolStrip.svelte';
 
   interface Props {
     entry: ChatEntry;
@@ -35,9 +34,8 @@
     <span class="s-note-text">{entry.text}</span>
   </div>
 {:else if entry.type === 'tool-group'}
-  <div class="s-deed-group">
-    <ToolStrip items={entry.toolStates} />
-  </div>
+  <!-- Orphan tool activity is surfaced in the chat-page tool accordion (ToolLog),
+       not inline. Nothing to render in the thread. -->
 {:else if entry.role === 'user'}
   <div class="turn you">
     <div class="you-words">{entry.text}</div>
@@ -56,10 +54,6 @@
       </div>
     {/if}
     <div class="mark">Assistant</div>
-
-    {#if entry.toolStates && entry.toolStates.length > 0}
-      <ToolStrip items={entry.toolStates} bordered />
-    {/if}
   </div>
 {/if}
 
@@ -91,14 +85,6 @@
     letter-spacing: var(--s-track-label);
     text-transform: uppercase;
     color: var(--s-ink-3);
-  }
-
-  .s-deed-group {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    padding: calc(var(--s-breath) * 0.25) 0;
-    border-left: var(--s-hair) solid var(--s-line);
   }
 
   /* ── Two-voice treatment ── */

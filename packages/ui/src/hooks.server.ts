@@ -12,7 +12,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { checkHostHeader, checkOriginHeader, UI_PORT, identifyCallerByToken } from "$lib/server/helpers.js";
+import { checkHostHeader, checkOriginHeader, identifyCallerByToken } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
 import { computeFeatureFlags } from '$lib/server/features.js';
@@ -159,9 +159,9 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const hostError = checkHostHeader(event.request, UI_PORT);
+  const hostError = checkHostHeader(event.request);
   if (hostError) return hostError;
-  const originError = checkOriginHeader(event.request, UI_PORT);
+  const originError = checkOriginHeader(event.request);
   if (originError) return originError;
 
   const path = event.url.pathname;

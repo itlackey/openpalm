@@ -135,6 +135,30 @@ class ChatService {
 	);
 
 	/**
+	 * Flattened running list of every tool/step in the rendered session — the
+	 * captured tool activity from each assistant turn followed by the live
+	 * activity of the in-flight turn. Drives the chat-page tool accordion
+	 * (ToolLog). Deduped by id so a keyed `{#each}` never collides.
+	 */
+	toolLog: LiveToolState[] = $derived.by(() => {
+		const seen: Record<string, true> = {};
+		const out: LiveToolState[] = [];
+		const push = (states?: LiveToolState[]): void => {
+			if (!states) return;
+			for (const tool of states) {
+				if (seen[tool.id]) continue;
+				seen[tool.id] = true;
+				out.push(tool);
+			}
+		};
+		for (const entry of this.entries) {
+			push((entry as { toolStates?: LiveToolState[] }).toolStates);
+		}
+		push(this.pendingToolStates);
+		return out;
+	});
+
+	/**
 	 * Reassign byEndpoint with a new Map so `$state` fires. Patches an
 	 * existing entry or seeds a fresh one when missing.
 	 */

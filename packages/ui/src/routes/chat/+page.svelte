@@ -6,6 +6,7 @@
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import SessionList from '$lib/components/chat/SessionList.svelte';
+	import ToolLog from '$lib/components/chat/ToolLog.svelte';
 	import Presence from '$lib/components/chat/Presence.svelte';
 	import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
 	import { probeChatBackend } from '$lib/api.js';
@@ -24,6 +25,7 @@
 	import IconSoundOn from '$lib/components/icons/IconSoundOn.svelte';
 	import IconSoundOff from '$lib/components/icons/IconSoundOff.svelte';
 	import IconConversations from '$lib/components/icons/IconConversations.svelte';
+	import IconActivity from '$lib/components/icons/IconActivity.svelte';
 	import IconClose from '$lib/components/icons/IconClose.svelte';
 	import IconThemeSystem from '$lib/components/icons/IconThemeSystem.svelte';
 	import IconThemeLight from '$lib/components/icons/IconThemeLight.svelte';
@@ -45,6 +47,18 @@
 	}
 	function closeGarden(): void {
 		gardenOpen = false;
+	}
+
+	// ── Tool activity sidebar (small screens) ──────────────────────────
+	// On wide screens the activity list is a persistent left rail. Below the
+	// breakpoint it collapses into this togglable drawer.
+	let toolDrawerOpen = $state(false);
+
+	function toggleToolDrawer(): void {
+		toolDrawerOpen = !toolDrawerOpen;
+	}
+	function closeToolDrawer(): void {
+		toolDrawerOpen = false;
 	}
 
 	// ── Helpers ──────────────────────────────────────────────────────────
@@ -160,7 +174,10 @@
 		document.body.classList.add('chat-locked', 'stillness-mode');
 
 		function onKey(e: KeyboardEvent): void {
-			if (e.key === 'Escape') closeGarden();
+			if (e.key === 'Escape') {
+				closeGarden();
+				closeToolDrawer();
+			}
 		}
 		document.addEventListener('keydown', onKey);
 
@@ -297,8 +314,25 @@
 	</div>
 </div>
 
-<!-- bottom-right: conversations / close (toggles when veil is open) -->
+<!-- bottom-right: activity (small screens) + conversations / close -->
 <div class="s-corner s-corner-bottom-right">
+	<div class="s-glyph-cell s-tool-toggle-cell">
+		<span class="s-glyph-label">{toolDrawerOpen ? 'close' : 'activity'}</span>
+		<button
+			class="s-glyph-btn"
+			type="button"
+			aria-pressed={toolDrawerOpen}
+			aria-controls="s-tool-drawer"
+			aria-label={toolDrawerOpen ? 'Close activity' : 'Activity'}
+			onclick={toggleToolDrawer}
+		>
+			{#if toolDrawerOpen}
+				<IconClose size={20} />
+			{:else}
+				<IconActivity size={20} />
+			{/if}
+		</button>
+	</div>
 	<div class="s-glyph-cell">
 		<span class="s-glyph-label">{gardenOpen ? 'close' : 'conversations'}</span>
 		<button
@@ -315,6 +349,11 @@
 		</button>
 	</div>
 </div>
+
+<!-- left rail: running tool activity (wide screens) -->
+<aside class="s-tool-rail" class:has-items={chat.toolLog.length > 0} aria-label="Assistant activity">
+	<ToolLog items={chat.toolLog} />
+</aside>
 
 <!-- conversation thread -->
 <main class="s-scroll" id="s-scroll" aria-label="Chat history">
@@ -340,16 +379,6 @@
 				{:else if !chat.pendingPermission && !chat.pendingQuestion}
 					<div class="s-thinking">
 						<span class="s-thinking-text">thinking…</span>
-					</div>
-				{/if}
-
-				{#if chat.pendingToolStates.length > 0}
-					<div class="s-live-deeds">
-						<div class="deeds-inner">
-							{#each chat.pendingToolStates as tool (tool.id)}
-								<div class="deed">{tool.title || tool.tool || 'step'}</div>
-							{/each}
-						</div>
 					</div>
 				{/if}
 
@@ -615,6 +644,39 @@
 	</div>
 </div>
 
+<!-- tool activity drawer (small screens) -->
+{#if toolDrawerOpen}
+	<button class="s-tool-scrim" type="button" aria-label="Close activity" onclick={closeToolDrawer}
+	></button>
+{/if}
+<aside
+	id="s-tool-drawer"
+	class="s-tool-drawer"
+	class:open={toolDrawerOpen}
+	inert={!toolDrawerOpen}
+	aria-hidden={!toolDrawerOpen}
+	aria-label="Assistant activity"
+>
+	<div class="s-tool-drawer-head">
+		<div class="s-veil-section-label">activity</div>
+		<button
+			class="s-glyph-btn"
+			type="button"
+			onclick={closeToolDrawer}
+			aria-label="Close activity"
+		>
+			<IconClose size={20} />
+		</button>
+	</div>
+	<div class="s-tool-drawer-body">
+		{#if chat.toolLog.length > 0}
+			<ToolLog items={chat.toolLog} />
+		{:else}
+			<p class="s-tool-drawer-empty">No activity yet.</p>
+		{/if}
+	</div>
+</aside>
+
 <style>
 	/* Hide the global navbar on the Stillness chat page */
 	:global(body.stillness-mode .navbar) {
@@ -860,35 +922,6 @@
 		margin-bottom: 0;
 	}
 
-	:global(.deed) {
-		font-family: var(--s-font-mono);
-		font-weight: 400;
-		font-size: var(--s-type-deed);
-		line-height: 1.5;
-		color: var(--s-ink-2);
-		padding-left: 1rem;
-		position: relative;
-		margin: 0.32rem 0;
-	}
-
-	:global(.deed::before) {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0.55em;
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--s-seal);
-		opacity: 0.85;
-	}
-
-	:global(.deeds-inner) {
-		border-left: var(--s-hair) solid var(--s-line);
-		margin: 1rem 0 0 14px;
-		padding: 0.3rem 0 0.3rem 1.1rem;
-	}
-
 	.s-loading {
 		display: flex;
 		justify-content: center;
@@ -927,12 +960,6 @@
 		letter-spacing: var(--s-track-label);
 		text-transform: uppercase;
 		color: var(--s-ink-3);
-	}
-
-	.s-live-deeds {
-		display: flex;
-		flex-direction: column;
-		border-left: var(--s-hair) solid var(--s-line);
 	}
 
 	/* ── Action cards (permission / question) ─────────────────────────── */
@@ -1373,6 +1400,124 @@
 
 	.s-endpoint-manage:hover {
 		color: var(--s-seal);
+	}
+
+	/* ── Tool activity: left rail (wide) + drawer (small) ─────────────── */
+
+	.s-tool-rail {
+		position: fixed;
+		z-index: 20;
+		left: 0;
+		top: clamp(76px, 11vh, 120px);
+		bottom: clamp(96px, 13vh, 150px);
+		width: clamp(220px, 23vw, 300px);
+		box-sizing: border-box;
+		padding-left: var(--s-chrome-pad);
+		padding-right: var(--s-sp-4);
+		overflow-y: auto;
+		scrollbar-width: none;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity var(--s-t-theme) var(--s-ease);
+	}
+
+	.s-tool-rail::-webkit-scrollbar {
+		display: none;
+	}
+
+	.s-tool-rail.has-items {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.s-tool-toggle-cell {
+		display: none;
+	}
+
+	/* Drawer + scrim are small-screen only — re-enabled in the narrow media
+	   query below so they can never coexist with the persistent left rail. */
+	.s-tool-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 64;
+		display: none;
+		appearance: none;
+		border: 0;
+		padding: 0;
+		margin: 0;
+		background: color-mix(in srgb, var(--s-ink) 22%, transparent);
+		cursor: pointer;
+	}
+
+	.s-tool-drawer {
+		position: fixed;
+		z-index: 65;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: clamp(260px, 82vw, 360px);
+		display: none;
+		flex-direction: column;
+		background: var(--s-paper);
+		border-left: var(--s-hair) solid var(--s-line);
+		transform: translateX(100%);
+		transition:
+			transform 0.4s var(--s-ease),
+			background var(--s-t-theme) var(--s-ease);
+	}
+
+	.s-tool-drawer.open {
+		transform: translateX(0);
+	}
+
+	.s-tool-drawer-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 18px 20px 14px;
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
+		flex-shrink: 0;
+	}
+
+	.s-tool-drawer-head .s-veil-section-label {
+		margin-bottom: 0;
+	}
+
+	.s-tool-drawer-body {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		scrollbar-width: none;
+		padding: 1rem 16px 2rem;
+	}
+
+	.s-tool-drawer-body::-webkit-scrollbar {
+		display: none;
+	}
+
+	.s-tool-drawer-empty {
+		margin: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-ink-3);
+	}
+
+	@media (max-width: 900px) {
+		.s-tool-rail {
+			display: none;
+		}
+		.s-tool-toggle-cell {
+			display: flex;
+		}
+		.s-tool-scrim {
+			display: block;
+		}
+		.s-tool-drawer {
+			display: flex;
+		}
 	}
 
 	@media (max-width: 520px) {
