@@ -1,7 +1,15 @@
+<script lang="ts" module>
+  // Unique-id counter so each ToolLog instance gets a stable, non-colliding
+  // heading id (the component renders in both the wide rail and the drawer).
+  let uid = 0;
+</script>
+
 <script lang="ts">
   import {
     type ToolStripEntry,
     timelineTitle,
+    displayTitle,
+    relativeTimeLabel,
     toolIconType,
     toolAriaLabel,
     toolStatusLabel,
@@ -21,10 +29,13 @@
 
   interface Props {
     items: ToolStripEntry[];
-    ariaLabel?: string;
   }
 
-  let { items, ariaLabel = 'Assistant activity' }: Props = $props();
+  let { items }: Props = $props();
+
+  // Stable heading id for aria-labelledby (UX-05).
+  uid += 1;
+  const headingId = `tool-log-heading-${uid}`;
 
   // Expanded rows keyed by tool id. Survives the pending→captured transition
   // because the id is stable (OpenCode callID).
@@ -37,60 +48,102 @@
   function isRunning(status: string): boolean {
     return status !== 'completed' && status !== 'error' && status !== 'failed';
   }
+
+  function isFailed(status: string): boolean {
+    return status === 'error' || status === 'failed';
+  }
+
+  // True when this item begins a new assistant turn (different turnKey from the
+  // previous item). Graceful no-op when turnKeys are absent (UX-26).
+  function startsNewTurn(index: number): boolean {
+    if (index <= 0) return false;
+    const current = items[index].turnKey;
+    const previous = items[index - 1].turnKey;
+    if (current === undefined || previous === undefined) return false;
+    return current !== previous;
+  }
+
+  // Terse live-region text announcing failures only (UX-29).
+  const failedAnnouncement = $derived(
+    items
+      .filter((t) => isFailed(t.status))
+      .map((t) => `${displayTitle(t)} failed`)
+      .join(', '),
+  );
 </script>
 
 {#if items.length > 0}
-  <section class="tool-log" aria-label={ariaLabel}>
-    <h2 class="tool-log-heading">activity</h2>
+  <section class="tool-log" aria-labelledby={headingId}>
+    <h2 class="tool-log-heading" id={headingId}>activity</h2>
+
+    <div class="tool-log-live" aria-live="polite" aria-atomic="true">
+      {failedAnnouncement}
+    </div>
+
     <ul class="tool-log-list">
-      {#each items as tool (tool.id)}
+      {#each items as tool, i (tool.id)}
         {@const iconType = toolIconType(tool.tool, tool.status)}
         {@const open = !!expanded[tool.id]}
+        {@const running = isRunning(tool.status)}
+        {@const failed = isFailed(tool.status)}
+        {@const when = relativeTimeLabel(tool.updatedAt)}
         <li
           class="tool-log-item"
-          class:running={isRunning(tool.status)}
-          class:failed={tool.status === 'error' || tool.status === 'failed'}
+          class:running
+          class:failed
+          class:new-turn={startsNewTurn(i)}
         >
           <button
             class="tool-log-summary"
             type="button"
             aria-expanded={open}
             aria-label={toolAriaLabel(tool)}
+            title={timelineTitle(tool)}
             onclick={() => toggle(tool.id)}
           >
             <span class="tool-log-icon" aria-hidden="true">
               {#if iconType === 'alert'}
-                <IconAlert size={13} />
+                <IconAlert size={15} />
               {:else if iconType === 'done-circle'}
-                <IconDoneCircle size={13} />
+                <IconDoneCircle size={15} />
               {:else if iconType === 'refresh'}
-                <IconRefresh size={13} />
+                <IconRefresh size={15} />
               {:else if iconType === 'terminal'}
-                <IconTerminal size={13} />
+                <IconTerminal size={15} />
               {:else if iconType === 'search'}
-                <IconSearch size={13} />
+                <IconSearch size={15} />
               {:else if iconType === 'file'}
-                <IconFile size={13} />
+                <IconFile size={15} />
               {:else if iconType === 'edit'}
-                <IconEdit size={13} />
+                <IconEdit size={15} />
               {:else if iconType === 'link'}
-                <IconLink size={13} />
+                <IconLink size={15} />
               {:else if iconType === 'agent'}
-                <IconAgent size={13} />
+                <IconAgent size={15} />
               {:else if iconType === 'done'}
-                <IconDone size={13} />
+                <IconDone size={15} />
               {:else}
-                <IconClock size={13} />
+                <IconClock size={15} />
               {/if}
             </span>
-            <span class="tool-log-title">{timelineTitle(tool)}</span>
-            <span class="tool-log-status">{toolStatusLabel(tool.status)}</span>
+
+            <span class="tool-log-main">
+              <span class="tool-log-title">{displayTitle(tool)}</span>
+              {#if when}
+                <span class="tool-log-time">{when}</span>
+              {/if}
+            </span>
+
+            {#if running || failed}
+              <span class="tool-log-status">{toolStatusLabel(tool.status)}</span>
+            {/if}
+
             <span class="tool-log-chevron" class:open aria-hidden="true">
-              <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                 <path
                   d="M3 4.5 6 7.5 9 4.5"
                   stroke="currentColor"
-                  stroke-width="1.2"
+                  stroke-width="1.4"
                   stroke-linecap="round"
                   stroke-linejoin="round"
                 />
@@ -134,7 +187,21 @@
     font-weight: 400;
     letter-spacing: 0.26em;
     text-transform: uppercase;
-    color: var(--s-ink-3);
+    color: var(--s-ink-2);
+  }
+
+  /* Visually-hidden live region for failure announcements (UX-29). */
+  .tool-log-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   .tool-log-list {
@@ -150,12 +217,20 @@
     transition: border-color var(--s-t-quick) var(--s-ease);
   }
 
+  /* Per-turn separator: a small gap + hairline above a new turn (UX-26). */
+  .tool-log-item.new-turn {
+    margin-top: var(--s-sp-2);
+    border-top: var(--s-hair) solid var(--s-line-soft);
+    padding-top: var(--s-sp-1);
+  }
+
   .tool-log-item.running {
     border-left-color: var(--s-seal);
   }
 
+  /* Failure is the most prominent state (UX-11). */
   .tool-log-item.failed {
-    border-left-color: var(--s-seal);
+    border-left-color: var(--s-error);
   }
 
   .tool-log-summary {
@@ -163,6 +238,7 @@
     align-items: center;
     gap: var(--s-sp-2);
     width: 100%;
+    min-height: 44px; /* comfortable touch target (UX-21) */
     appearance: none;
     border: 0;
     background: none;
@@ -170,11 +246,16 @@
     text-align: left;
     padding: var(--s-sp-2) var(--s-sp-2) var(--s-sp-2) var(--s-sp-3);
     color: var(--s-ink-2);
-    transition: color var(--s-t-quick) var(--s-ease);
+    border-radius: var(--s-radius-sm, 4px);
+    transition:
+      color var(--s-t-quick) var(--s-ease),
+      background-color var(--s-t-quick) var(--s-ease);
   }
 
+  /* Rows read as interactive (UX-23). */
   .tool-log-summary:hover {
     color: var(--s-ink);
+    background-color: var(--s-bg-hover, rgba(127, 127, 127, 0.08));
   }
 
   .tool-log-summary:focus-visible {
@@ -186,24 +267,61 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--s-ink-3);
+    color: var(--s-ink-2); /* lifted from ink-3 (UX-24) */
     flex-shrink: 0;
   }
 
-  .tool-log-item.running .tool-log-icon,
-  .tool-log-item.failed .tool-log-icon {
+  .tool-log-item.running .tool-log-icon {
     color: var(--s-seal);
   }
 
-  .tool-log-title {
+  .tool-log-item.failed .tool-log-icon {
+    color: var(--s-error);
+  }
+
+  /* Subtle pulse on the running icon (UX-11). */
+  .tool-log-item.running .tool-log-icon {
+    animation: tool-log-pulse 1.4s var(--s-ease) infinite;
+  }
+
+  @keyframes tool-log-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  .tool-log-main {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tool-log-title {
     min-width: 0;
     font-family: var(--s-font-mono);
     font-size: var(--s-type-deed);
     line-height: 1.4;
+    /* Wrap up to two lines instead of truncating to identical prefixes (UX-04). */
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
+
+  /* Unobtrusive relative timestamp under the title (UX-14). */
+  .tool-log-time {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
   }
 
   .tool-log-status {
@@ -211,20 +329,26 @@
     font-size: var(--s-type-mark-sm);
     letter-spacing: var(--s-track-label);
     text-transform: uppercase;
-    color: var(--s-ink-3);
+    color: var(--s-ink-2);
     flex-shrink: 0;
   }
 
-  .tool-log-item.running .tool-log-status,
-  .tool-log-item.failed .tool-log-status {
+  .tool-log-item.running .tool-log-status {
     color: var(--s-seal);
   }
 
+  .tool-log-item.failed .tool-log-status {
+    color: var(--s-error);
+  }
+
+  /* Fixed-width trailing column so the chevron forms a clean vertical edge
+     regardless of the (now rare) status badge width (UX-27). */
   .tool-log-chevron {
     display: flex;
     align-items: center;
-    justify-content: center;
-    color: var(--s-ink-3);
+    justify-content: flex-end;
+    width: 16px;
+    color: var(--s-ink-2); /* higher contrast affordance (UX-23) */
     flex-shrink: 0;
     transition: transform var(--s-t-quick) var(--s-ease);
   }
@@ -259,7 +383,7 @@
     font-size: var(--s-type-mark-sm);
     text-transform: uppercase;
     letter-spacing: var(--s-track-label);
-    color: var(--s-ink-3);
+    color: var(--s-ink-2); /* lifted from ink-3 for AA contrast (UX-12) */
   }
 
   .tool-log-value {
@@ -284,6 +408,16 @@
   }
 
   .tool-log-error {
-    color: var(--s-seal);
+    color: var(--s-error);
+  }
+
+  /* Respect reduced-motion: disable chevron rotation + running pulse (UX-22). */
+  @media (prefers-reduced-motion: reduce) {
+    .tool-log-chevron {
+      transition: none;
+    }
+    .tool-log-item.running .tool-log-icon {
+      animation: none;
+    }
   }
 </style>

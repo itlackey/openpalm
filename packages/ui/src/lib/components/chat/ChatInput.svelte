@@ -95,6 +95,15 @@
     gap: 0.125rem;
   }
 
+  /* UX-09: keep the composer (and its right-side send button) clear of the
+     fixed bottom-right corner glyphs on narrow screens by reserving symmetric
+     horizontal breathing room. Symmetric padding preserves the centered look. */
+  @media (max-width: 32rem) {
+    .s-composer {
+      padding-inline: clamp(1rem, 6vw, 2.5rem);
+    }
+  }
+
   .s-composer textarea {
     width: 100%;
     resize: none;
@@ -113,12 +122,14 @@
     transition: color var(--s-t-theme) var(--s-ease);
   }
 
-  /* Footer row: rule line + optional mic button, sharing the same horizontal band */
+  /* Footer row: rule line + optional mic/send buttons.
+     UX-25: span the full composer (textarea) width so the action buttons read
+     as part of the input rather than floating at the end of a short rule. */
   .s-footer {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    width: clamp(8rem, 60%, 20rem);
+    width: 100%;
   }
 
   .s-mic-btn,
@@ -129,6 +140,12 @@
     background: none;
     cursor: pointer;
     color: var(--s-ink-3);
+    /* UX-21: >= 44x44px hit area while the visual icon stays 16px.
+       Negative block margin keeps the taller target from inflating the
+       footer's vertical rhythm. */
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: -0.6rem;
     padding: 0.25rem;
     display: flex;
     align-items: center;
@@ -200,5 +217,22 @@
 
   .s-composer.sending .s-rule::after {
     animation: s-ripple 1s var(--s-ease);
+  }
+
+  /* UX-22: respect reduced-motion — no infinite mic pulse, no active-scale. */
+  @media (prefers-reduced-motion: reduce) {
+    .s-mic-btn.active {
+      animation: none;
+    }
+
+    .s-mic-btn:active,
+    .s-send-btn:active {
+      transform: none;
+    }
+
+    .s-mic-btn,
+    .s-send-btn {
+      transition: none;
+    }
   }
 </style>

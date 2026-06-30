@@ -105,10 +105,78 @@
 	// — no $effect or afterUpdate needed.
 	function autoscroll(node: HTMLElement): { destroy(): void } {
 		const observer = new MutationObserver(() => {
-			queueMicrotask(() => scrollAnchorEl?.scrollIntoView({ behavior: 'smooth' }));
+			const reduceMotion =
+				typeof window !== 'undefined' &&
+				window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			queueMicrotask(() =>
+				scrollAnchorEl?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' })
+			);
 		});
 		observer.observe(node, { childList: true, subtree: true, characterData: true });
 		return { destroy() { observer.disconnect(); } };
+	}
+
+	// ── Modal focus management (mirrors ToolStrip.svelte) ──────────────────
+	// The drawer and Conversations veil are persistent in the DOM and toggle via
+	// an `open` boolean. These attachments read that boolean so they re-run when
+	// it flips: on open they move focus inside and capture the opener; on close
+	// the returned cleanup restores focus to the opener. Tab is trapped via the
+	// keydown handlers below. No $effect — {@attach} owns the side effect.
+	const FOCUSABLE =
+		'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+	function focusables(root: HTMLElement): HTMLElement[] {
+		return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+			(el) => !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true'
+		);
+	}
+
+	// Restore focus to the opener AFTER the next paint: on close the opener's
+	// corner cell un-hides (display flips back), and focusing a still-hidden
+	// element silently no-ops to <body>. rAF defers past the DOM update.
+	function restoreFocus(el: HTMLElement | null): void {
+		requestAnimationFrame(() => el?.focus?.());
+	}
+
+	function attachDrawerFocus(node: HTMLElement): (() => void) | void {
+		if (!toolDrawerOpen) return;
+		const previouslyFocused = document.activeElement as HTMLElement | null;
+		(focusables(node)[0] ?? node).focus();
+		return () => restoreFocus(previouslyFocused);
+	}
+
+	function attachGardenFocus(node: HTMLElement): (() => void) | void {
+		if (!gardenOpen) return;
+		const previouslyFocused = document.activeElement as HTMLElement | null;
+		(focusables(node)[0] ?? node).focus();
+		return () => restoreFocus(previouslyFocused);
+	}
+
+	function trapTab(
+		event: KeyboardEvent & { currentTarget: HTMLElement },
+		close: () => void
+	): void {
+		if (event.key === 'Escape') {
+			close();
+			return;
+		}
+		if (event.key !== 'Tab') return;
+		const items = focusables(event.currentTarget);
+		if (items.length === 0) {
+			event.preventDefault();
+			event.currentTarget.focus();
+			return;
+		}
+		const first = items[0]!;
+		const last = items[items.length - 1]!;
+		const active = document.activeElement;
+		if (event.shiftKey && (active === first || active === event.currentTarget)) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && active === last) {
+			event.preventDefault();
+			first.focus();
+		}
 	}
 
 	function clamp(text: string, max = 160): string {
@@ -234,6 +302,8 @@
 	<title>{endpointsService.active?.label ?? 'OpenPalm'}</title>
 </svelte:head>
 
+<h1 class="sr-only">Chat</h1>
+
 <!-- atmosphere -->
 <div class="s-field"></div>
 <div class="s-moon"></div>
@@ -252,7 +322,7 @@
 </div>
 
 <!-- top-right: advanced -->
-<div class="s-corner s-corner-right">
+<div class="s-corner s-corner-right" class:drawer-hidden={toolDrawerOpen}>
 	<div class="s-glyph-cell">
 		<button
 			class="s-glyph-btn"
@@ -314,23 +384,22 @@
 	</div>
 </div>
 
-<!-- bottom-right: activity (small screens) + conversations / close -->
-<div class="s-corner s-corner-bottom-right">
+<!-- bottom-right: activity (small screens) + conversations -->
+<!-- Hidden while the drawer is open: the drawer owns the top layer (its close X,
+     the scrim and Escape close it), so this cluster must not bleed through. -->
+<div class="s-corner s-corner-bottom-right" class:drawer-hidden={toolDrawerOpen}>
 	<div class="s-glyph-cell s-tool-toggle-cell">
-		<span class="s-glyph-label">{toolDrawerOpen ? 'close' : 'activity'}</span>
+		<span class="s-glyph-label">activity</span>
 		<button
 			class="s-glyph-btn"
 			type="button"
-			aria-pressed={toolDrawerOpen}
+			aria-haspopup="dialog"
+			aria-expanded={toolDrawerOpen}
 			aria-controls="s-tool-drawer"
-			aria-label={toolDrawerOpen ? 'Close activity' : 'Activity'}
+			aria-label="Activity"
 			onclick={toggleToolDrawer}
 		>
-			{#if toolDrawerOpen}
-				<IconClose size={20} />
-			{:else}
-				<IconActivity size={20} />
-			{/if}
+			<IconActivity size={20} />
 		</button>
 	</div>
 	<div class="s-glyph-cell">
@@ -338,6 +407,9 @@
 		<button
 			class="s-glyph-btn"
 			type="button"
+			aria-haspopup="dialog"
+			aria-expanded={gardenOpen}
+			aria-controls="s-garden-veil"
 			onclick={gardenOpen ? closeGarden : openGarden}
 			aria-label={gardenOpen ? 'Return to the conversation' : 'Conversations'}
 		>
@@ -356,7 +428,12 @@
 </aside>
 
 <!-- conversation thread -->
-<main class="s-scroll" id="s-scroll" aria-label="Chat history">
+<main
+	class="s-scroll"
+	id="s-scroll"
+	aria-label="Chat history"
+	inert={toolDrawerOpen || gardenOpen}
+>
 	<div class="s-thread" id="s-thread" use:autoscroll>
 		{#if sessionsLoading || entriesLoading}
 			<div class="s-loading" aria-live="polite">
@@ -539,7 +616,7 @@
 {/if}
 
 <!-- composer -->
-<div class="s-base">
+<div class="s-base" inert={toolDrawerOpen || gardenOpen}>
 	<ChatInput
 		sending={chat.sending}
 		questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
@@ -552,12 +629,16 @@
 
 <!-- garden veil -->
 <div
+	id="s-garden-veil"
 	class="s-veil"
 	class:open={gardenOpen}
 	inert={!gardenOpen}
 	aria-hidden={!gardenOpen}
 	role="dialog"
+	aria-modal="true"
 	aria-label="Conversations and assistant"
+	onkeydown={(event) => trapTab(event, closeGarden)}
+	{@attach attachGardenFocus}
 >
 	<div class="s-veil-head">
 		<div>
@@ -566,6 +647,14 @@
 				<div class="s-veil-sub">{endpointsService.active.label}</div>
 			{/if}
 		</div>
+		<button
+			class="s-head-close"
+			type="button"
+			onclick={closeGarden}
+			aria-label="Close conversations"
+		>
+			<IconClose size={20} />
+		</button>
 	</div>
 
 	<div class="s-veil-body">
@@ -646,21 +735,29 @@
 
 <!-- tool activity drawer (small screens) -->
 {#if toolDrawerOpen}
-	<button class="s-tool-scrim" type="button" aria-label="Close activity" onclick={closeToolDrawer}
+	<button
+		class="s-tool-scrim"
+		type="button"
+		tabindex={-1}
+		aria-label="Close activity overlay"
+		onclick={closeToolDrawer}
 	></button>
 {/if}
-<aside
+<div
 	id="s-tool-drawer"
 	class="s-tool-drawer"
 	class:open={toolDrawerOpen}
 	inert={!toolDrawerOpen}
 	aria-hidden={!toolDrawerOpen}
+	role="dialog"
+	aria-modal="true"
 	aria-label="Assistant activity"
+	onkeydown={(event) => trapTab(event, closeToolDrawer)}
+	{@attach attachDrawerFocus}
 >
 	<div class="s-tool-drawer-head">
-		<div class="s-veil-section-label">activity</div>
 		<button
-			class="s-glyph-btn"
+			class="s-head-close"
 			type="button"
 			onclick={closeToolDrawer}
 			aria-label="Close activity"
@@ -672,15 +769,30 @@
 		{#if chat.toolLog.length > 0}
 			<ToolLog items={chat.toolLog} />
 		{:else}
-			<p class="s-tool-drawer-empty">No activity yet.</p>
+			<p class="s-tool-drawer-empty">
+				Steps the assistant takes — searches, edits, commands — will show up here as it works.
+			</p>
 		{/if}
 	</div>
-</aside>
+</div>
 
 <style>
 	/* Hide the global navbar on the Stillness chat page */
 	:global(body.stillness-mode .navbar) {
 		display: none !important;
+	}
+
+	/* Visually hidden but available to assistive tech (document outline / h1). */
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	/* ── Atmosphere ───────────────────────────────────────────────────── */
@@ -774,8 +886,13 @@
 		background: none;
 		cursor: pointer;
 		color: var(--s-ink-2);
+		/* >= 44x44 hit area without enlarging the 20px icon and without the old
+		   negative margin that pushed the focus ring off the viewport edge. The
+		   surrounding --s-chrome-pad provides safe edge clearance. */
+		min-width: 44px;
+		min-height: 44px;
 		padding: 0.4rem;
-		margin: -0.4rem;
+		margin: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -823,8 +940,32 @@
 		transform: none;
 	}
 
+	/* Touch devices have no hover — keep glyph labels persistently visible so the
+	   cryptic icons (e.g. the ">_" advanced glyph) are never unlabelled. */
+	@media (hover: none) {
+		.s-glyph-label {
+			opacity: 1;
+			transform: none;
+		}
+	}
+
 	.s-glyph-btn[aria-pressed='true'] {
 		color: var(--s-seal);
+	}
+
+	/* While the activity drawer owns the top layer, hide the corner clusters that
+	   would otherwise bleed over it (corners sit above the drawer otherwise). */
+	.s-corner.drawer-hidden {
+		display: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.s-glyph-btn {
+			transition: color var(--s-t-quick) var(--s-ease);
+		}
+		.s-glyph-btn:active {
+			transform: none;
+		}
 	}
 
 	/* ── Conversation ─────────────────────────────────────────────────── */
@@ -1419,6 +1560,21 @@
 		opacity: 0;
 		pointer-events: none;
 		transition: opacity var(--s-t-theme) var(--s-ease);
+		/* Fade long lists at top/bottom to signal scrollability (mirrors .s-scroll). */
+		-webkit-mask-image: linear-gradient(
+			to bottom,
+			transparent 0,
+			var(--s-paper) 8%,
+			var(--s-paper) 92%,
+			transparent 100%
+		);
+		mask-image: linear-gradient(
+			to bottom,
+			transparent 0,
+			var(--s-paper) 8%,
+			var(--s-paper) 92%,
+			transparent 100%
+		);
 	}
 
 	.s-tool-rail::-webkit-scrollbar {
@@ -1428,6 +1584,8 @@
 	.s-tool-rail.has-items {
 		opacity: 1;
 		pointer-events: auto;
+		/* Faint separator so the rail reads as a distinct panel beside the thread. */
+		border-right: var(--s-hair) solid var(--s-line-soft);
 	}
 
 	.s-tool-toggle-cell {
@@ -1439,19 +1597,19 @@
 	.s-tool-scrim {
 		position: fixed;
 		inset: 0;
-		z-index: 64;
+		z-index: 80;
 		display: none;
 		appearance: none;
 		border: 0;
 		padding: 0;
 		margin: 0;
-		background: color-mix(in srgb, var(--s-ink) 22%, transparent);
+		background: color-mix(in srgb, var(--s-ink) 55%, transparent);
 		cursor: pointer;
 	}
 
 	.s-tool-drawer {
 		position: fixed;
-		z-index: 65;
+		z-index: 85;
 		top: 0;
 		right: 0;
 		bottom: 0;
@@ -1473,15 +1631,44 @@
 	.s-tool-drawer-head {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: flex-end;
 		gap: 1rem;
 		padding: 18px 20px 14px;
 		border-bottom: var(--s-hair) solid var(--s-line-soft);
 		flex-shrink: 0;
 	}
 
-	.s-tool-drawer-head .s-veil-section-label {
-		margin-bottom: 0;
+	/* Shared head close button (drawer + veil), styled like the glyph buttons. */
+	.s-head-close {
+		appearance: none;
+		border: 0;
+		background: none;
+		cursor: pointer;
+		color: var(--s-ink-2);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 44px;
+		min-height: 44px;
+		padding: 0.4rem;
+		border-radius: 50%;
+		transition: color var(--s-t-quick) var(--s-ease);
+	}
+
+	.s-head-close:hover {
+		color: var(--s-ink);
+	}
+
+	.s-head-close:focus-visible {
+		outline: none;
+		box-shadow:
+			0 0 0 1px var(--s-paper),
+			0 0 0 2px var(--s-ink-3);
+		border-radius: var(--s-radius-focus);
+	}
+
+	.s-veil-head {
+		justify-content: space-between;
 	}
 
 	.s-tool-drawer-body {
@@ -1489,7 +1676,24 @@
 		min-height: 0;
 		overflow-y: auto;
 		scrollbar-width: none;
-		padding: 1rem 16px 2rem;
+		/* Generous bottom padding (plus safe-area inset) so the last rows never end
+		   flush against the bottom edge / floating chrome. */
+		padding: 1rem 16px calc(4rem + env(safe-area-inset-bottom));
+		/* Fade long lists at top/bottom to signal scrollability (mirrors .s-scroll). */
+		-webkit-mask-image: linear-gradient(
+			to bottom,
+			transparent 0,
+			var(--s-paper) 6%,
+			var(--s-paper) 90%,
+			transparent 100%
+		);
+		mask-image: linear-gradient(
+			to bottom,
+			transparent 0,
+			var(--s-paper) 6%,
+			var(--s-paper) 90%,
+			transparent 100%
+		);
 	}
 
 	.s-tool-drawer-body::-webkit-scrollbar {
@@ -1503,6 +1707,15 @@
 		letter-spacing: var(--s-track-label);
 		text-transform: uppercase;
 		color: var(--s-ink-3);
+	}
+
+	/* Wide screens: reserve the rail's width so the centered thread lives in the
+	   REMAINING space and can never paint underneath the fixed rail. The reserved
+	   padding MUST match .s-tool-rail width exactly (same clamp). */
+	@media (min-width: 901px) {
+		.s-scroll {
+			padding-left: clamp(220px, 23vw, 300px);
+		}
 	}
 
 	@media (max-width: 900px) {
@@ -1524,6 +1737,13 @@
 		.s-thread {
 			padding-top: 30vh;
 			padding-bottom: 44vh;
+		}
+	}
+
+	/* Very small screens: let the drawer span the full viewport width. */
+	@media (max-width: 360px) {
+		.s-tool-drawer {
+			width: 100vw;
 		}
 	}
 </style>

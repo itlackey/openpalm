@@ -50,6 +50,7 @@ import {
 	type StepUpdate,
 } from './oc-events.js';
 import type { ToolStripEntry } from './tool-strip.js';
+import { isUserFacingTool } from './tool-strip.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
@@ -143,18 +144,19 @@ class ChatService {
 	toolLog: LiveToolState[] = $derived.by(() => {
 		const seen: Record<string, true> = {};
 		const out: LiveToolState[] = [];
-		const push = (states?: LiveToolState[]): void => {
+		const push = (states: LiveToolState[] | undefined, turnKey: string): void => {
 			if (!states) return;
 			for (const tool of states) {
 				if (seen[tool.id]) continue;
+				if (!isUserFacingTool(tool)) continue;
 				seen[tool.id] = true;
-				out.push(tool);
+				out.push({ ...tool, turnKey });
 			}
 		};
 		for (const entry of this.entries) {
-			push((entry as { toolStates?: LiveToolState[] }).toolStates);
+			push((entry as { toolStates?: LiveToolState[] }).toolStates, entry.id);
 		}
-		push(this.pendingToolStates);
+		push(this.pendingToolStates, 'pending');
 		return out;
 	});
 
