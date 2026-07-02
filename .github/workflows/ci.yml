@@ -173,6 +173,10 @@ jobs:
         continue-on-error: true
         run: ./scripts/rootless-ownership-smoke.sh stack
 
+      - name: Expected-fail rootless ownership smoke (portal-discord)
+        continue-on-error: true
+        run: ./scripts/rootless-ownership-smoke.sh portal-discord
+
       - name: Assert deleted scripts are absent
         run: |
           set -euo pipefail

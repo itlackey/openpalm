@@ -14,11 +14,14 @@ PLATFORM_VERSION="$(node -p "require('./package.json').version")"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/rootless-ownership-smoke.sh [stack]
+Usage: ./scripts/rootless-ownership-smoke.sh [stack|portal-discord]
 
 Targets:
   stack   Build and boot the assistant+guardian dev stack in an isolated OP_HOME,
           then assert no host files under that tree are root-owned.
+  portal-discord
+          Build and boot assistant+guardian+discord in an isolated OP_HOME,
+          then assert no host files under data/portal are root-owned.
 
 Environment:
   COMPOSE_PROJECT_NAME        Override docker compose project name.
@@ -33,7 +36,7 @@ if [[ "$TARGET" == "-h" || "$TARGET" == "--help" ]]; then
   exit 0
 fi
 
-if [[ "$TARGET" != "stack" ]]; then
+if [[ "$TARGET" != "stack" && "$TARGET" != "portal-discord" ]]; then
   echo "Unknown smoke target: $TARGET" >&2
   usage >&2
   exit 1
@@ -81,6 +84,7 @@ OP_GID=$(id -g)
 OP_IMAGE_NAMESPACE=openpalm
 OP_ASSISTANT_VERSION=dev
 OP_GUARDIAN_VERSION=dev
+OP_PORTAL_VERSION=dev
 OP_GUARDIAN_NPM_VERSION=${PLATFORM_VERSION}
 OP_UI_VERSION=${PLATFORM_VERSION}
 OP_SKELETON_VERSION=${PLATFORM_VERSION}
@@ -99,6 +103,7 @@ openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_chat_secret"
 openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_api_secret"
 openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_discord_secret"
 openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_slack_secret"
+printf '%s\n' 'discord-smoke-token' > "$SMOKE_HOME/knowledge/secrets/discord_bot_token"
 chmod 700 "$SMOKE_HOME/knowledge/secrets"
 chmod 600 "$SMOKE_HOME/knowledge/secrets/"*
 touch "$SMOKE_HOME/knowledge/env/user.env"
@@ -118,18 +123,46 @@ EOF
 echo "Building UI..."
 bun run ui:build >/dev/null
 
+if [[ "$TARGET" == "portal-discord" ]]; then
+  SMOKE_HOME_PATH="$SMOKE_HOME" python3 - <<'PY'
+import os
+from pathlib import Path
+path = Path(os.environ['SMOKE_HOME_PATH']) / 'knowledge' / 'env' / 'stack.env'
+content = path.read_text()
+if 'OP_ENABLED_ADDONS=' in content:
+    content = content.replace('OP_ENABLED_ADDONS=\n', 'OP_ENABLED_ADDONS=discord\n')
+else:
+    content += 'OP_ENABLED_ADDONS=discord\n'
+path.write_text(content)
+PY
+fi
+
 echo "Building assistant+guardian images..."
 dev_compose --profile addon.chat build assistant guardian >/dev/null
 
+if [[ "$TARGET" == "portal-discord" ]]; then
+  echo "Building portal image..."
+  dev_compose --profile addon.discord build portal >/dev/null
+fi
+
 echo "Starting isolated stack..."
-dev_compose --profile addon.chat up -d assistant guardian >/dev/null
+if [[ "$TARGET" == "portal-discord" ]]; then
+  dev_compose --profile addon.discord up -d assistant guardian discord >/dev/null
+else
+  dev_compose --profile addon.chat up -d assistant guardian >/dev/null
+fi
 
 echo "Waiting for assistant and guardian healthchecks..."
 health_ok=1
 for _ in $(seq 1 60); do
   assistant_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-assistant-1" 2>/dev/null || echo missing)
   guardian_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-guardian-1" 2>/dev/null || echo missing)
-  if [[ "$assistant_status" == "healthy" && "$guardian_status" == "healthy" ]]; then
+  if [[ "$TARGET" == "portal-discord" ]]; then
+    discord_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-discord-1" 2>/dev/null || echo missing)
+    if [[ "$assistant_status" == "healthy" && "$guardian_status" == "healthy" && "$discord_status" == "healthy" ]]; then
+      break
+    fi
+  elif [[ "$assistant_status" == "healthy" && "$guardian_status" == "healthy" ]]; then
     break
   fi
   sleep 2
@@ -137,15 +170,33 @@ done
 
 assistant_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-assistant-1" 2>/dev/null || echo missing)
 guardian_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-guardian-1" 2>/dev/null || echo missing)
-if [[ "$assistant_status" != "healthy" || "$guardian_status" != "healthy" ]]; then
+discord_status="skipped"
+if [[ "$TARGET" == "portal-discord" ]]; then
+  discord_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-discord-1" 2>/dev/null || echo missing)
+fi
+if [[ "$assistant_status" != "healthy" || "$guardian_status" != "healthy" || ( "$TARGET" == "portal-discord" && "$discord_status" != "healthy" ) ]]; then
   health_ok=0
   echo "assistant health: ${assistant_status}" >&2
   echo "guardian health: ${guardian_status}" >&2
+  if [[ "$TARGET" == "portal-discord" ]]; then
+    echo "discord health: ${discord_status}" >&2
+  fi
   dev_compose logs assistant guardian --tail 80 >&2 || true
+  if [[ "$TARGET" == "portal-discord" ]]; then
+    dev_compose logs discord --tail 80 >&2 || true
+  fi
 fi
 
 echo "Checking for root-owned files under ${SMOKE_HOME}..."
-root_files=$(find "$SMOKE_HOME" -uid 0 2>/dev/null || true)
+if [[ "$TARGET" == "portal-discord" ]]; then
+  if [[ ! -d "$SMOKE_HOME/data/portal/tools/node_modules" ]]; then
+    echo "Portal smoke expected host bind-mount writes under data/portal/tools/node_modules, but none were created." >&2
+    exit 1
+  fi
+  root_files=$(find "$SMOKE_HOME/data/portal" -uid 0 2>/dev/null || true)
+else
+  root_files=$(find "$SMOKE_HOME" -uid 0 2>/dev/null || true)
+fi
 if [[ -n "$root_files" ]]; then
   echo "Root-owned files found:" >&2
   printf '%s\n' "$root_files" | sed -n '1,20p' >&2

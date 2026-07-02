@@ -50,19 +50,24 @@ fi
 
 require_service_user_directive() {
   local service="$1"
+  local file="$2"
   if ! awk -v service="$service" '
     $0 ~ "^  " service ":$" { in_service=1; next }
     in_service && $0 ~ "^  [^[:space:]]" { exit found ? 0 : 1 }
     in_service && $0 ~ "^    user: \"\\$\\{OP_UID:-1000\\}:\\$\\{OP_GID:-1000\\}\"$" { found=1 }
     END { if (in_service && found) exit 0; exit found ? 0 : 1 }
-  ' packages/skeleton/system/stack/services.compose.yml; then
-    echo "::error file=packages/skeleton/system/stack/services.compose.yml::${service} must keep user: \"\${OP_UID:-1000}:\${OP_GID:-1000}\""
+  ' "$file"; then
+    echo "::error file=${file}::${service} must keep user: \"\${OP_UID:-1000}:\${OP_GID:-1000}\""
     errors=$((errors + 1))
   fi
 }
 
 for service in ollama ollama-cuda ollama-rocm voice voice-cuda voice-rocm; do
-  require_service_user_directive "$service"
+  require_service_user_directive "$service" packages/skeleton/system/stack/services.compose.yml
+done
+
+for service in discord slack; do
+  require_service_user_directive "$service" packages/skeleton/system/stack/portals.compose.yml
 done
 
 portal_root_user_overrides=$(awk '

@@ -12,13 +12,18 @@ describe('rootless phase-0 script guardrails', () => {
     expect(ciWorkflow).toContain('./scripts/validate-rootless-guardrails.sh');
   });
 
+  test('CI also exercises the portal-specific ownership smoke path', () => {
+    expect(ciWorkflow).toContain('./scripts/rootless-ownership-smoke.sh portal-discord');
+  });
+
   test('guardrail script scans for ownership-changing helper commands', () => {
     expect(guardrailScript).toContain('gosu|usermod|groupmod|chown|chmod');
   });
 
-  test('ownership smoke harness checks for root-owned files in isolated OP_HOME', () => {
+  test('ownership smoke harness validates root ownership and host bind-mount writes', () => {
     expect(smokeScript).toContain('system/stack/portals.compose.yml');
     expect(smokeScript).toContain('--profile addon.chat');
+    expect(smokeScript).toContain('data/portal/tools/node_modules');
     expect(smokeScript).toContain('find "$SMOKE_HOME" -uid 0');
     expect(smokeScript).toContain('Rootless ownership smoke passed');
   });

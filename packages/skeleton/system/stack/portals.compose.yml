@@ -8,6 +8,7 @@ services:
     profiles: ["addon.discord"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-latest}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8184"
       PORTAL_NAME: "Discord Bot"
@@ -48,6 +49,7 @@ services:
     profiles: ["addon.slack"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-latest}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8185"
       PORTAL_NAME: "Slack Bot"
