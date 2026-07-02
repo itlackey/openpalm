@@ -495,31 +495,35 @@ export async function getDockerEvents(
  *
  * No-op on Windows or when no directories need fixing.
  */
-export async function repairRootOwnedBindMounts(homeDir: string): Promise<void> {
+export async function repairRootOwnedBindMounts(homeDir: string, candidates?: string[], opts?: { strict?: boolean }): Promise<void> {
   if (process.platform === 'win32') return;
 
-  const candidates = [
+  const repairCandidates = candidates ?? [
     join(homeDir, 'data', 'guardian'),
     join(homeDir, 'data', 'logs'),
   ];
 
-  const rootOwned = candidates.filter((dir) => {
+  const mismatched = repairCandidates.filter((dir) => {
     try {
-      return existsSync(dir) && statSync(dir).uid === 0;
+      if (!existsSync(dir)) return false;
+      const stat = statSync(dir);
+      const ids = resolveOperatorIds(homeDir);
+      if (!ids) return false;
+      return stat.uid !== ids.uid || stat.gid !== ids.gid;
     } catch {
       return false;
     }
   });
 
-  if (rootOwned.length === 0) return;
+  if (mismatched.length === 0) return;
 
   const ids = resolveOperatorIds(homeDir);
   if (!ids) return;
 
-  const volumeArgs = rootOwned.flatMap((dir, i) => ['-v', `${dir}:/chown_target_${i}`]);
-  const targets = rootOwned.map((_, i) => `/chown_target_${i}`).join(' ');
+  const volumeArgs = mismatched.flatMap((dir, i) => ['-v', `${dir}:/chown_target_${i}`]);
+  const targets = mismatched.map((_, i) => `/chown_target_${i}`).join(' ');
 
-  logger.info(`Repairing root-owned bind mounts: ${rootOwned.map(d => d.split('/').slice(-2).join('/')).join(', ')}`);
+  logger.info(`Repairing mismatched bind mounts: ${mismatched.map(d => d.split('/').slice(-2).join('/')).join(', ')}`);
   const result = await run([
     'run', '--rm',
     ...volumeArgs,
@@ -528,7 +532,9 @@ export async function repairRootOwnedBindMounts(homeDir: string): Promise<void> 
   ], undefined, 30_000);
 
   if (!result.ok) {
-    logger.warn(`Could not repair root-owned bind mounts: ${result.stderr.trim()}`);
+    const message = `Could not repair mismatched bind mounts: ${result.stderr.trim()}`;
+    if (opts?.strict) throw new Error(message);
+    logger.warn(message);
   }
 }
 

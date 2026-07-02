@@ -264,6 +264,7 @@ export {
   buildEnvFiles,
   writeSystemEnv,
   discoverStackOverlays,
+  discoverHomeBindMountSources,
   resolveRuntimeFiles,
   buildRuntimeFileMeta,
   writeRuntimeFiles,
@@ -326,6 +327,7 @@ export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope
 export {
   checkDocker,
   checkDockerCompose,
+  repairRootOwnedBindMounts,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
@@ -426,6 +428,7 @@ export {
   ownershipCanaryPaths,
   readCanaryOwners,
   decideOwnershipFromCanaries,
+  ownershipRepairPaths,
   buildReconcileDecision,
 } from './control-plane/ownership-reconcile.js';
 

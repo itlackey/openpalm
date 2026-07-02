@@ -1,8 +1,10 @@
 import { existsSync, statSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { ControlPlaneState } from './types.js';
-import { stateEnvFile, userEnvFile } from './home.js';
+import { stateEnvFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
 import { hostIdentityMatches } from './host-identity.js';
+import { discoverHomeBindMountSources } from './config-persistence.js';
 
 export type ReconcileDecision = {
   decision: OwnershipDecision;
@@ -11,11 +13,21 @@ export type ReconcileDecision = {
   currentIdentity: HostIdentity;
 };
 
+export function ownershipRepairPaths(state: ControlPlaneState): string[] {
+  const discovered = discoverHomeBindMountSources(state).map((mount) => mount.isFile ? dirname(mount.path) : mount.path);
+  const deduped = [...new Set(discovered)];
+  const base = [
+    `${state.homeDir}/state`,
+    `${state.homeDir}/knowledge`,
+    state.workspaceDir,
+  ];
+  return [...new Set([...base, ...deduped])];
+}
+
 export function ownershipCanaryPaths(state: ControlPlaneState): string[] {
   return [
     stateEnvFile(state.homeDir),
-    userEnvFile(state.homeDir),
-    state.workspaceDir,
+    ...ownershipRepairPaths(state),
   ];
 }
 

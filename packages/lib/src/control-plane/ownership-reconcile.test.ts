@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   buildReconcileDecision,
   decideOwnershipFromCanaries,
+  ownershipRepairPaths,
   ownershipCanaryPaths,
   readCanaryOwners,
 } from './ownership-reconcile.js';
@@ -41,9 +42,17 @@ describe('ownership canary paths', () => {
     const paths = ownershipCanaryPaths(state);
     expect(paths).toEqual([
       join(homeDir, 'state', 'stack.state.env'),
-      join(homeDir, 'knowledge', 'env', 'user.env'),
+      join(homeDir, 'state'),
+      join(homeDir, 'knowledge'),
       join(homeDir, 'workspace'),
     ]);
+  });
+
+  test('repair paths cover the user-owned bind-mount roots', () => {
+    const state = makeState();
+    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'knowledge'));
+    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'state'));
+    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'workspace'));
   });
 });
 
@@ -55,7 +64,7 @@ describe('canary owner detection', () => {
     writeFileSync(stateEnv, 'OP_SETUP_COMPLETE=true\n');
     writeFileSync(userEnv, '');
     const owners = readCanaryOwners(ownershipCanaryPaths(state));
-    expect(owners.map((owner) => owner.path)).toEqual([stateEnv, userEnv, join(homeDir, 'workspace')]);
+    expect(owners.map((owner) => owner.path)).toEqual([stateEnv, join(homeDir, 'state'), join(homeDir, 'knowledge'), join(homeDir, 'workspace')]);
   });
 });
 
@@ -71,7 +80,7 @@ describe('reconcile decision building', () => {
       previousIdentity: null,
     });
     expect(decision.decision).toBe('match');
-    expect(decision.canaries.some((canary) => canary.path === userEnv)).toBe(true);
+    expect(decision.canaries.some((canary) => canary.path === join(homeDir, 'knowledge'))).toBe(true);
   });
 
   test('returns swap when previous identity differs and canary mismatches current ids', () => {
