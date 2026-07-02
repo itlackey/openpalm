@@ -166,6 +166,13 @@ jobs:
           mkdir -p "${OP_HOME}/system/stack" "${OP_HOME}/config/stack" "${OP_HOME}/knowledge/env" "${OP_HOME}/knowledge/secrets" "${OP_HOME}/data"
           docker compose -f packages/skeleton/system/stack/core.compose.yml -f compose.dev.yml config -q
 
+      - name: Validate current rootless non-regression guardrails
+        run: ./scripts/validate-rootless-guardrails.sh
+
+      - name: Expected-fail rootless ownership smoke (assistant+guardian)
+        continue-on-error: true
+        run: ./scripts/rootless-ownership-smoke.sh stack
+
       - name: Assert deleted scripts are absent
         run: |
           set -euo pipefail
