@@ -66,6 +66,7 @@ export function listAvailableAddonIds(): string[] {
 
 export function listEnabledAddonIds(homeDir: string): string[] {
   const env = readStackEnv(homeDir);
+  const available = new Set(BUILTIN_ADDON_IDS);
   const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
   const profiles = new Set<string>();
   for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
@@ -76,7 +77,7 @@ export function listEnabledAddonIds(homeDir: string): string[] {
     const match = profile.match(/^addon\.([a-z0-9-]+)(?:\.|$)/);
     if (match?.[1]) enabled.add(match[1]);
   }
-  return [...enabled].sort();
+  return [...enabled].filter((name) => available.has(name)).sort();
 }
 
 function readAddonServiceNamesFromContent(composeContent: string, composePath: string, addonName?: string): string[] {
@@ -499,7 +500,6 @@ function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(homeDir, name, true);
-    if (name === 'ssh') patchStateEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '1' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -510,7 +510,6 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(homeDir, name, false);
-    if (name === 'ssh') patchStateEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '0' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

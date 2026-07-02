@@ -11,12 +11,13 @@ describe('assistant rootless entrypoint regressions', () => {
     expect(assistantEntrypoint).toContain('local root_bun_cache="/tmp/openpalm-bun-cache/install"');
   });
 
-  test('seed_default_agents_md hands bind-mounted AGENTS.md to the target uid', () => {
-    expect(assistantEntrypoint).toContain('chown "$TARGET_UID:$TARGET_GID" "$dest"');
+  test('seed_default_agents_md only seeds the default file when absent', () => {
+    expect(assistantEntrypoint).toContain('cp "$src" "$dest"');
   });
 
-  test('akm task sync runs as the target user when the container is still root', () => {
-    expect(assistantEntrypoint).toContain('run_as_target_user akm tasks sync');
+  test('akm task sync uses the rootless crontab wrapper path', () => {
+    expect(assistantEntrypoint).toContain("printf '#!/usr/bin/env sh\\nexec busybox crontab -c %s \"\\$@\"\\n'");
+    expect(assistantEntrypoint).toContain('if ! akm tasks sync >&2; then');
   });
 
   test('tool updates and install hooks run as the target user', () => {
@@ -24,7 +25,19 @@ describe('assistant rootless entrypoint regressions', () => {
     expect(assistantEntrypoint).toContain('run_as_target_user node "$claude_install"');
   });
 
-  test('bun cache ownership repair targets the cache root, not only the install leaf', () => {
-    expect(assistantEntrypoint).toContain('bun_cache_root="$(dirname "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}")"');
+  test('rootless assistant no longer mutates ownership before starting opencode', () => {
+    expect(assistantEntrypoint).not.toContain('chown -R "$TARGET_UID:$TARGET_GID"');
+  });
+
+  test('rootless assistant synthesizes a passwd entry for arbitrary numeric uids', () => {
+    expect(assistantEntrypoint).toContain('maybe_prepare_nss_wrapper');
+    expect(assistantEntrypoint).toContain('NSS_WRAPPER_PASSWD');
+  });
+
+  test('rootless assistant uses busybox crond with a user-owned spool mirror', () => {
+    expect(assistantEntrypoint).toContain('local spool_dir="/tmp/openpalm-crontabs"');
+    expect(assistantEntrypoint).toContain('local wrapper_dir="/tmp/openpalm-bin"');
+    expect(assistantEntrypoint).toContain('crontab "$crontab_file" 2>/dev/null || true');
+    expect(assistantEntrypoint).toContain('busybox crond -c "$spool_dir" -L /dev/stderr');
   });
 });

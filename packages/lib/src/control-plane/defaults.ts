@@ -7,7 +7,6 @@ export const STACK_DEFAULTS = {
   ports: {
     assistant: 3800,
     hostUi: 3880,
-    assistantSsh: 2222,
   },
   image: {
     namespace: "openpalm",

@@ -26,13 +26,14 @@ check_final_user_non_root() {
   fi
 }
 
+check_final_user_non_root containers/assistant/Dockerfile assistant
 check_final_user_non_root containers/portal/Dockerfile portal
 check_final_user_non_root containers/voice/Dockerfile voice
 check_final_user_non_root containers/guardian/Dockerfile guardian
 
 unexpected_root_dockerfile_helpers=$(grep -RInE '\b(gosu|usermod|groupmod)\b' containers \
   --include='Dockerfile' \
-  | grep -vE '^containers/assistant/Dockerfile:' || true)
+  || true)
 if [ -n "$unexpected_root_dockerfile_helpers" ]; then
   echo "::error::Dockerfile root-only helper commands are only allowed in the temporary assistant/guardian exceptions"
   printf '%s\n' "$unexpected_root_dockerfile_helpers"
@@ -42,7 +43,7 @@ fi
 unexpected_root_entrypoint_helpers=$(grep -RInE '\b(gosu|usermod|groupmod|chown|chmod)\b' containers \
   --include='*.sh' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -vE '^containers/assistant/entrypoint\.sh:' || true)
+  || true)
 if [ -n "$unexpected_root_entrypoint_helpers" ]; then
   echo "::error::Entrypoint root-only ownership helper commands are only allowed in the temporary assistant/guardian exceptions"
   printf '%s\n' "$unexpected_root_entrypoint_helpers"
@@ -66,6 +67,8 @@ require_service_user_directive() {
 for service in ollama ollama-cuda ollama-rocm voice voice-cuda voice-rocm; do
   require_service_user_directive "$service" packages/skeleton/system/stack/services.compose.yml
 done
+
+require_service_user_directive assistant packages/skeleton/system/stack/core.compose.yml
 
 for service in discord slack; do
   require_service_user_directive "$service" packages/skeleton/system/stack/portals.compose.yml

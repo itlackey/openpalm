@@ -56,14 +56,16 @@ ARG PLATFORM_VERSION
 ENV BUN_VERSION=${BUN_VERSION} \
     PLATFORM_VERSION=${PLATFORM_VERSION}
 
-# Combined OS packages: base tools (tini, gosu) + assistant-specific
-# (openssh-server, sudo, cron, python3, jq, gh) + DB clients (sqlite3,
+# Combined OS packages: base tools (tini) + assistant-specific
+# (busybox crond/crontab tooling, python3, jq, gh) + DB clients (sqlite3,
 # postgresql-client) so agents can query SQLite and Postgres directly.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        tini curl git ca-certificates bash gosu unzip \
+        tini curl git ca-certificates bash unzip \
         libglib2.0-0 \
-        openssh-server sudo cron python3 jq \
+        libnss-wrapper \
+        busybox \
+        python3 jq \
         sqlite3 postgresql-client \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -116,15 +118,10 @@ RUN cd /opt/openpalm/tools/node_modules \
     && node --input-type=module -e "import { env, pipeline } from '@huggingface/transformers'; env.allowRemoteModels = false; const embed = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5'); const out = await embed('warmup', { pooling: 'mean', normalize: true }); if (!out?.data?.length) { console.error('local embedder produced no vector'); process.exit(1); } console.log('akm local embedder OK offline (' + out.data.length + ' dims)');" \
     && chmod -R a+rX /opt/openpalm/tools/node_modules/@huggingface/transformers/.cache
 
-# Rename the base "node" user (UID 1000) to "opencode" for clarity.
-# Passwordless sudo lets agents run root operations; the entrypoint's gosu
-# drop keeps normal file I/O at the host user's UID.
-RUN usermod -l opencode -d /home/opencode node \
-    && groupmod -n opencode node \
-    && mkdir -p /home/opencode \
-    && chown opencode:opencode /home/opencode \
-    && echo "opencode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/opencode \
-    && chmod 0440 /etc/sudoers.d/opencode
+# Keep the image-baked runtime user simple: the base `node` user remains UID 1000,
+# while `/home/opencode` stays the stable home path used by mounts and runtime env.
+RUN mkdir -p /home/opencode \
+    && chown node:node /home/opencode
 
 # uv (Python package manager for apprise venv).
 RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh \
@@ -136,7 +133,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 
 RUN uv venv /opt/assistant-tools \
     && uv pip install --python /opt/assistant-tools/bin/python apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
-ENV APPRISE_CONFIG="/etc/openpalm/apprise.conf"
+ENV APPRISE_NOTIFY_CONFIG="/stash/env/apprise.conf"
 ENV CLOUDSDK_CONFIG="/etc/openpalm/gcloud"
 # GOOGLE_APPLICATION_CREDENTIALS is NOT set here — it must be supplied at
 # runtime via stack.env or user.env if Google Cloud tools are needed.
@@ -160,18 +157,13 @@ RUN set -e; \
     && chmod +x /usr/local/bin/gws
 
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
-    && chmod 755 /home/opencode /home/opencode/.cache /home/opencode/.local /home/opencode/.local/bin /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin /opt/openpalm/tools \
-    && chown -R opencode:opencode /home/opencode /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin \
-    && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
-    && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
-    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
+    && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
+    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm \
+    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin
 
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
-# Container starts as root intentionally. The entrypoint uses gosu to drop to
-# the "opencode" user (UID/GID from OP_UID/OP_GID, default 1000:1000) after
-# root-only setup (sshd, uid/gid adjustment).
 WORKDIR /work
 
 # Point Bun's user-writable paths at the opencode user's home.
@@ -200,9 +192,10 @@ RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.b
 # OPENCODE_CONFIG_DIR only if the operator has not placed their own copy there.
 COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
-EXPOSE 4096 3000 22
+EXPOSE 4096 3000
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
   CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-4096}' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
+USER node

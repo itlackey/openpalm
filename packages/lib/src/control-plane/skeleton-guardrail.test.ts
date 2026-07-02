@@ -113,7 +113,7 @@ describe("skeleton: config/ structure", () => {
     expect(channelsCompose).toContain('${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182');
     expect(channelsCompose).toContain('${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182');
     expect(servicesCompose).toContain('${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880');
-    expect(coreCompose).toContain('127.0.0.1:${OP_ASSISTANT_SSH_PORT:-2222}:22');
+    expect(coreCompose).not.toContain('OP_ASSISTANT_SSH_PORT');
     expect(coreCompose).not.toContain('OP_ASSISTANT_SSH_BIND_ADDRESS');
   });
 

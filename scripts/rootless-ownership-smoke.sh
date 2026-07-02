@@ -75,15 +75,13 @@ cleanup() {
   fi
 
   dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-  docker run --rm -v "${SMOKE_HOME}:/cleanup" alpine rm -rf /cleanup >/dev/null 2>&1 || true
-  rm -rf "$SMOKE_HOME"
+  docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 echo "Preparing isolated smoke OP_HOME at ${SMOKE_HOME}..."
 dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-docker run --rm -v "${SMOKE_HOME}:/cleanup" alpine rm -rf /cleanup >/dev/null 2>&1 || true
-rm -rf "$SMOKE_HOME"
+docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 mkdir -p "$SMOKE_HOME"
 cp -r packages/skeleton/. "$SMOKE_HOME/"
 
@@ -101,7 +99,6 @@ OP_UI_VERSION=${PLATFORM_VERSION}
 OP_SKELETON_VERSION=${PLATFORM_VERSION}
 OP_HOST_UI_PORT=${UI_PORT}
 OP_ASSISTANT_PORT=${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-3896}
-OP_ASSISTANT_SSH_PORT=${OP_ROOTLESS_SMOKE_ASSISTANT_SSH_PORT:-3922}
 OP_GUARDIAN_PORT=${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}
 OP_GUARDIAN_ADMIN_PORT=${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}
 OP_CHAT_PORT=${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}
@@ -123,6 +120,10 @@ chmod 700 "$SMOKE_HOME/knowledge/secrets"
 chmod 600 "$SMOKE_HOME/knowledge/secrets/"*
 touch "$SMOKE_HOME/knowledge/env/user.env"
 chmod 600 "$SMOKE_HOME/knowledge/env/user.env"
+
+if [[ "$TARGET" == "portal-discord" && ! -f "$SMOKE_HOME/data/portal/tools/package.json" ]]; then
+  docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" -v "${ROOT_DIR}:/rootdir" alpine sh -c "mkdir -p /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools && cp /rootdir/containers/portal/tools/package.json /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools/package.json && chown $(id -u):$(id -g) /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools/package.json"
+fi
 
 OP_HOME="$SMOKE_HOME" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
 
@@ -208,6 +209,12 @@ echo "Checking for root-owned files under ${SMOKE_HOME}..."
 expected_uid="$(id -u)"
 expected_gid="$(id -g)"
 if [[ "$TARGET" == "portal-discord" ]]; then
+  for _ in $(seq 1 30); do
+    if [[ -d "$SMOKE_HOME/data/portal/tools/node_modules" ]]; then
+      break
+    fi
+    sleep 1
+  done
   if [[ ! -d "$SMOKE_HOME/data/portal/tools/node_modules" ]]; then
     echo "Portal smoke expected host bind-mount writes under data/portal/tools/node_modules, but none were created." >&2
     exit 1

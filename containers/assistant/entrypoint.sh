@@ -2,33 +2,32 @@
 set -euo pipefail
 
 PORT="${OPENCODE_PORT:-4096}"
-ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 TARGET_UID="${OP_UID:-1000}"
 TARGET_GID="${OP_GID:-1000}"
 IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
 
 run_as_target_user() {
-  if [ "$IS_ROOT" = "1" ]; then
-    gosu opencode env HOME=/home/opencode "$@"
-  else
-    "$@"
-  fi
+  "$@"
 }
 
-maybe_adjust_uid_gid() {
-  # Only when running as root (first entrypoint before gosu).
-  if [ "$IS_ROOT" = "0" ]; then return 0; fi
+maybe_prepare_nss_wrapper() {
+  if getent passwd "$(id -u)" >/dev/null 2>&1; then return 0; fi
 
-  local current_uid current_gid
-  current_uid="$(id -u opencode 2>/dev/null || echo 1000)"
-  current_gid="$(id -g opencode 2>/dev/null || echo 1000)"
+  local nss_wrapper_lib
+  nss_wrapper_lib="$(find /usr/lib /lib -name libnss_wrapper.so 2>/dev/null | head -n 1)"
+  if [ -z "$nss_wrapper_lib" ]; then
+    echo "warning: current uid has no passwd entry and libnss_wrapper is unavailable; continuing" >&2
+    return 0
+  fi
 
-  if [ "$current_gid" != "$TARGET_GID" ]; then
-    groupmod -g "$TARGET_GID" opencode 2>/dev/null || true
-  fi
-  if [ "$current_uid" != "$TARGET_UID" ]; then
-    usermod -u "$TARGET_UID" -g "$TARGET_GID" opencode 2>/dev/null || true
-  fi
+  local passwd_file group_file
+  passwd_file="/tmp/openpalm-passwd"
+  group_file="/tmp/openpalm-group"
+  printf 'opencode:x:%s:%s:OpenPalm Assistant:%s:/bin/bash\n' "$(id -u)" "$(id -g)" "/home/opencode" > "$passwd_file"
+  printf 'opencode:x:%s:\n' "$(id -g)" > "$group_file"
+  export NSS_WRAPPER_PASSWD="$passwd_file"
+  export NSS_WRAPPER_GROUP="$group_file"
+  export LD_PRELOAD="$nss_wrapper_lib${LD_PRELOAD:+:$LD_PRELOAD}"
 }
 
 ensure_home_layout() {
@@ -47,47 +46,10 @@ ensure_home_layout() {
     /opt/akm/data \
     /stash
 
-  if [ "$IS_ROOT" = "1" ]; then
-    # Chown ONLY container-private paths. NEVER chown bind-mounted host stashes
-    # (/stash = OP_HOME/knowledge, and /host-stash = the user's personal ~/akm
-    # when host-akm sharing is enabled) or /work (= OP_HOME/workspace). The host
-    # owns those files and the container runs as OP_UID:OP_GID (the host owner)
-    # via gosu, so it reads/writes them directly. Recursively chowning a bind
-    # mount rewrites host file ownership on every boot — a data-ownership hazard,
-    # especially for /host-stash. Container-private cache/data are safe to chown.
-    chown -R "$TARGET_UID:$TARGET_GID" /home/opencode /opt/akm/cache /opt/akm/data 2>/dev/null || true
-
-    mkdir -p /var/run/sshd
-  fi
-}
-
-maybe_enable_ssh() {
-  if [ "$ENABLE_SSH" != "1" ] && [ "$ENABLE_SSH" != "true" ]; then
-    return 0
-  fi
-
-  mkdir -p /var/run/sshd /home/opencode/.ssh
-  touch /home/opencode/.ssh/authorized_keys
-  chown -R "$TARGET_UID:$TARGET_GID" /home/opencode/.ssh 2>/dev/null || true
-  chmod 700 /home/opencode/.ssh
-  chmod 600 /home/opencode/.ssh/authorized_keys 2>/dev/null || true
-
-  if [ "$IS_ROOT" = "1" ] && [ ! -f /etc/ssh/sshd_config ]; then
-    return 0
-  fi
-
-  if [ "$IS_ROOT" = "1" ]; then
-    ssh-keygen -A 2>/dev/null || true
-    /usr/sbin/sshd 2>/dev/null || true
-  fi
 }
 
 maybe_source_akm_user_env() {
   # Source the akm env:user file (knowledge/env/user.env) so user-managed
-  # values land in the process environment. Must run before start_cron so
-  # the keys appear in the crontab preamble. Only possible as root (0600 file).
-  if [ "$IS_ROOT" = "0" ]; then return 0; fi
-
   local env_path="${AKM_STASH_DIR:-}/env/user.env"
   if [ -z "${AKM_STASH_DIR:-}" ] || [ ! -f "$env_path" ]; then return 0; fi
 
@@ -156,15 +118,9 @@ start_ui() {
   local ui_port="${OP_UI_PORT:-3000}"
   echo "entrypoint: starting UI co-process on port ${ui_port}..." >&2
 
-  # Run the UI server as the opencode user (same uid as OpenCode) so file access
-  # on bind-mounted OP_HOME volumes is consistent. The gosu drop happens in
-  # start_opencode; we start the UI BEFORE that drop so we can use gosu here too.
   local ui_cmd=(
     node "$ui_build"
   )
-  if [ "$IS_ROOT" = "1" ] && command -v gosu >/dev/null 2>&1; then
-    ui_cmd=(gosu opencode env HOME=/home/opencode "${ui_cmd[@]}")
-  fi
 
   OPENCODE_API_URL="http://127.0.0.1:${PORT}" \
   PORT="$ui_port" \
@@ -179,9 +135,6 @@ seed_default_agents_md() {
   local dest="${OPENCODE_CONFIG_DIR:-/etc/opencode}/AGENTS.md"
   if [ -f "$src" ] && [ ! -f "$dest" ]; then
     cp "$src" "$dest" 2>/dev/null || true
-    if [ "$IS_ROOT" = "1" ] && [ -f "$dest" ]; then
-      chown "$TARGET_UID:$TARGET_GID" "$dest" 2>/dev/null || true
-    fi
   fi
 }
 
@@ -234,12 +187,19 @@ start_cron_and_sync_tasks() {
   }
 
   local crontab_file="/tmp/crontab"
+  local spool_dir="/tmp/openpalm-crontabs"
+  local wrapper_dir="/tmp/openpalm-bin"
+  local crontab_wrapper="${wrapper_dir}/crontab"
   local existing_crontab=""
   local preserved_crontab=""
+  mkdir -p "$spool_dir" "$wrapper_dir"
+  install -m 755 /dev/null "$crontab_wrapper"
+  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "\$@"\n' "$spool_dir" > "$crontab_wrapper"
+  export PATH="$wrapper_dir:$PATH"
   echo "# openpalm:cron-preamble BEGIN" > "$crontab_file"
   echo "# Auto-generated by entrypoint — do not edit" >> "$crontab_file"
   echo "SHELL=/bin/bash" >> "$crontab_file"
-  echo "PATH=/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:/usr/bin:/bin" >> "$crontab_file"
+  echo "PATH=$wrapper_dir:/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:/usr/bin:/bin" >> "$crontab_file"
 
   # Forward selected env vars into cron jobs
   for var in HOME AKM_STASH_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR \
@@ -250,7 +210,7 @@ start_cron_and_sync_tasks() {
   done
   echo "# openpalm:cron-preamble END" >> "$crontab_file"
 
-  if existing_crontab="$(run_as_target_user crontab -l 2>/dev/null)"; then
+  if existing_crontab="$(crontab -l 2>/dev/null)"; then
     preserved_crontab="$(strip_managed_cron_preamble "$existing_crontab")"
     if [ -n "$preserved_crontab" ]; then
       printf '\n%s\n' "$preserved_crontab" >> "$crontab_file"
@@ -259,19 +219,21 @@ start_cron_and_sync_tasks() {
 
   # Install the managed preamble before syncing so akm preserves it when it
   # writes task blocks into the same per-user crontab.
-  run_as_target_user crontab "$crontab_file" 2>/dev/null || true
+  crontab "$crontab_file" 2>/dev/null || true
 
   # Sync automation tasks from the akm stash into cron, then start cron.
   local tasks_dir="${AKM_STASH_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! run_as_target_user akm tasks sync >&2; then
+    if ! akm tasks sync >&2; then
       echo "warning: initial akm tasks sync failed; continuing startup" >&2
     fi
   fi
 
   if [ -f "$crontab_file" ]; then
     rm -f "$crontab_file"
-    cron 2>/dev/null || true
+    if ! busybox crond -c "$spool_dir" -L /dev/stderr; then
+      echo "warning: busybox crond failed to start; scheduled automations will not run" >&2
+    fi
   fi
 
   # Background re-sync loop: picks up task file changes without restart
@@ -279,7 +241,7 @@ start_cron_and_sync_tasks() {
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! run_as_target_user akm tasks sync >&2; then
+        if ! akm tasks sync >&2; then
           echo "warning: background akm tasks sync failed; retrying in 60s" >&2
         fi
       fi
@@ -294,34 +256,15 @@ start_opencode() {
   mkdir -p "${BUN_INSTALL:-/home/opencode/.bun}/bin" \
            "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
 
-  # Fix ownership of bun dirs if we're still root (before gosu).
-  if [ "$IS_ROOT" = "1" ]; then
-    local bun_cache_root
-    bun_cache_root="$(dirname "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}")"
-    chown -R "$TARGET_UID:$TARGET_GID" \
-      "${BUN_INSTALL:-/home/opencode/.bun}" \
-      "$bun_cache_root" \
-      2>/dev/null || true
-  fi
-
   # --print-logs sends OpenCode's logs to stderr (docker logs) instead of a file;
   # --log-level sets verbosity (override via OPENCODE_LOG_LEVEL).
   local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
-  if [ "$IS_ROOT" = "1" ]; then
-    if ! command -v gosu >/dev/null 2>&1; then
-      echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
-      exit 1
-    fi
-    export HOME=/home/opencode
-    cmd=(gosu opencode env HOME=/home/opencode "${cmd[@]}")
-  fi
 
   exec "${cmd[@]}"
 }
 
-maybe_adjust_uid_gid
 ensure_home_layout
-maybe_enable_ssh
+maybe_prepare_nss_wrapper
 maybe_source_akm_user_env
 install_runtime_artifacts
 seed_default_agents_md
