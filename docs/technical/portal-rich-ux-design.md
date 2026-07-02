@@ -417,7 +417,7 @@ docker build -f containers/assistant/Dockerfile -t openpalm/assistant:smoke-<new
 # Mount the actual assistant config (copy it OUTSIDE /tmp — see the trap below) and boot:
 SMOKE=~/.cache/op-smoke-cfg; rm -rf "$SMOKE"; mkdir -p "$SMOKE"
 cp -r .openpalm/config/assistant/. "$SMOKE"/; chmod -R a+rX "$SMOKE"
-docker run -d --name op-smoke -e OPENCODE_CONFIG_DIR=/etc/opencode -e OPENCODE_ENABLE_SSH=0 \
+docker run -d --name op-smoke -e OPENCODE_CONFIG_DIR=/etc/opencode \
   -v "$SMOKE":/etc/opencode -p 24096:4096 openpalm/assistant:smoke-<new>
 # Then assert, in order:
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:24096/doc        # 200 = serves

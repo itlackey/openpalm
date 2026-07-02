@@ -237,7 +237,6 @@ These variables are consumed by Compose and service env blocks.
 | `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
 | `OP_HOST_UI_PORT` | Admin UI host port (default `3880`); the admin UI runs as a host process, not a container |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
-| `OP_ASSISTANT_SSH_BIND_ADDRESS`, `OP_ASSISTANT_SSH_PORT` | Assistant SSH host bind |
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
