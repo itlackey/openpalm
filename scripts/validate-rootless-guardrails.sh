@@ -28,10 +28,11 @@ check_final_user_non_root() {
 
 check_final_user_non_root containers/portal/Dockerfile portal
 check_final_user_non_root containers/voice/Dockerfile voice
+check_final_user_non_root containers/guardian/Dockerfile guardian
 
 unexpected_root_dockerfile_helpers=$(grep -RInE '\b(gosu|usermod|groupmod)\b' containers \
   --include='Dockerfile' \
-  | grep -vE '^containers/(assistant|guardian)/Dockerfile:' || true)
+  | grep -vE '^containers/assistant/Dockerfile:' || true)
 if [ -n "$unexpected_root_dockerfile_helpers" ]; then
   echo "::error::Dockerfile root-only helper commands are only allowed in the temporary assistant/guardian exceptions"
   printf '%s\n' "$unexpected_root_dockerfile_helpers"
@@ -41,7 +42,7 @@ fi
 unexpected_root_entrypoint_helpers=$(grep -RInE '\b(gosu|usermod|groupmod|chown|chmod)\b' containers \
   --include='*.sh' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
-  | grep -vE '^containers/(assistant|guardian)/entrypoint\.sh:' || true)
+  | grep -vE '^containers/assistant/entrypoint\.sh:' || true)
 if [ -n "$unexpected_root_entrypoint_helpers" ]; then
   echo "::error::Entrypoint root-only ownership helper commands are only allowed in the temporary assistant/guardian exceptions"
   printf '%s\n' "$unexpected_root_entrypoint_helpers"
@@ -69,6 +70,8 @@ done
 for service in discord slack; do
   require_service_user_directive "$service" packages/skeleton/system/stack/portals.compose.yml
 done
+
+require_service_user_directive guardian packages/skeleton/system/stack/portals.compose.yml
 
 portal_root_user_overrides=$(awk '
   $0 ~ "^  (discord|slack):$" { service=$1; gsub(":", "", service); in_service=1; next }

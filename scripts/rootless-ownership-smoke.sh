@@ -5,12 +5,23 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 TARGET="${1:-stack}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-rootless-smoke}"
-SMOKE_HOME="${OP_ROOTLESS_SMOKE_HOME:-${ROOT_DIR}/.rootless-smoke}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-rootless-smoke-${TARGET}}"
+SMOKE_HOME="${OP_ROOTLESS_SMOKE_HOME:-${ROOT_DIR}/.rootless-smoke-${TARGET}}"
 UI_PORT="${OP_ROOTLESS_SMOKE_UI_PORT:-3895}"
 KEEP="${OP_ROOTLESS_SMOKE_KEEP:-0}"
 UI_PID=""
 PLATFORM_VERSION="$(node -p "require('./package.json').version")"
+
+guardian_port_default=3930
+guardian_admin_port_default=3931
+chat_port_default=3920
+api_port_default=3921
+if [[ "$TARGET" == "portal-discord" ]]; then
+  guardian_port_default=3940
+  guardian_admin_port_default=3941
+  chat_port_default=3942
+  api_port_default=3943
+fi
 
 usage() {
   cat <<'EOF'
@@ -91,6 +102,10 @@ OP_SKELETON_VERSION=${PLATFORM_VERSION}
 OP_HOST_UI_PORT=${UI_PORT}
 OP_ASSISTANT_PORT=${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-3896}
 OP_ASSISTANT_SSH_PORT=${OP_ROOTLESS_SMOKE_ASSISTANT_SSH_PORT:-3922}
+OP_GUARDIAN_PORT=${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}
+OP_GUARDIAN_ADMIN_PORT=${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}
+OP_CHAT_PORT=${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}
+OP_API_PORT=${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}
 OP_SETUP_COMPLETE=true
 EOF
 chmod 600 "$SMOKE_HOME/knowledge/env/stack.env"
@@ -160,8 +175,8 @@ for _ in $(seq 1 60); do
   assistant_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-assistant-1" 2>/dev/null || echo missing)
   guardian_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-guardian-1" 2>/dev/null || echo missing)
   if [[ "$TARGET" == "portal-discord" ]]; then
-    discord_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-discord-1" 2>/dev/null || echo missing)
-    if [[ "$assistant_status" == "healthy" && "$guardian_status" == "healthy" && "$discord_status" == "healthy" ]]; then
+    discord_status=$(docker inspect --format '{{.State.Status}}' "${COMPOSE_PROJECT_NAME}-discord-1" 2>/dev/null || echo missing)
+    if [[ "$assistant_status" == "healthy" && "$guardian_status" == "healthy" && "$discord_status" == "running" ]]; then
       break
     fi
   elif [[ "$assistant_status" == "healthy" && "$guardian_status" == "healthy" ]]; then
@@ -174,14 +189,14 @@ assistant_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE
 guardian_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-guardian-1" 2>/dev/null || echo missing)
 discord_status="skipped"
 if [[ "$TARGET" == "portal-discord" ]]; then
-  discord_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-discord-1" 2>/dev/null || echo missing)
+  discord_status=$(docker inspect --format '{{.State.Status}}' "${COMPOSE_PROJECT_NAME}-discord-1" 2>/dev/null || echo missing)
 fi
-if [[ "$assistant_status" != "healthy" || "$guardian_status" != "healthy" || ( "$TARGET" == "portal-discord" && "$discord_status" != "healthy" ) ]]; then
+if [[ "$assistant_status" != "healthy" || "$guardian_status" != "healthy" || ( "$TARGET" == "portal-discord" && "$discord_status" != "running" ) ]]; then
   health_ok=0
   echo "assistant health: ${assistant_status}" >&2
   echo "guardian health: ${guardian_status}" >&2
   if [[ "$TARGET" == "portal-discord" ]]; then
-    echo "discord health: ${discord_status}" >&2
+    echo "discord state: ${discord_status}" >&2
   fi
   dev_compose logs assistant guardian --tail 80 >&2 || true
   if [[ "$TARGET" == "portal-discord" ]]; then
@@ -190,14 +205,16 @@ if [[ "$assistant_status" != "healthy" || "$guardian_status" != "healthy" || ( "
 fi
 
 echo "Checking for root-owned files under ${SMOKE_HOME}..."
+expected_uid="$(id -u)"
+expected_gid="$(id -g)"
 if [[ "$TARGET" == "portal-discord" ]]; then
   if [[ ! -d "$SMOKE_HOME/data/portal/tools/node_modules" ]]; then
     echo "Portal smoke expected host bind-mount writes under data/portal/tools/node_modules, but none were created." >&2
     exit 1
   fi
-  root_files=$(find "$SMOKE_HOME/data/portal" -uid 0 2>/dev/null || true)
+  root_files=$(find "$SMOKE_HOME/data/portal" \( ! -uid "$expected_uid" -o ! -gid "$expected_gid" \) 2>/dev/null || true)
 else
-  root_files=$(find "$SMOKE_HOME" -uid 0 2>/dev/null || true)
+  root_files=$(find "$SMOKE_HOME" \( ! -uid "$expected_uid" -o ! -gid "$expected_gid" \) 2>/dev/null || true)
 fi
 if [[ -n "$root_files" ]]; then
   echo "Root-owned files found:" >&2

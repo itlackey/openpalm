@@ -328,6 +328,7 @@ export {
   checkDocker,
   checkDockerCompose,
   repairRootOwnedBindMounts,
+  repairNamedVolumeOwnership,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,

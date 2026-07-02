@@ -2,7 +2,7 @@ FROM oven/bun:1.3-slim
 
 # nodejs provides npm, required for opencode-ai's postinstall (binary download).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl bash ca-certificates gosu nodejs && rm -rf /var/lib/apt/lists/*
+    curl bash ca-certificates nodejs && rm -rf /var/lib/apt/lists/*
 
 COPY containers/guardian/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -22,14 +22,13 @@ ENV HOME=/opt/openpalm/guardian \
 # can edit package.json directly.
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 RUN bun install --cwd /opt/openpalm/tools --production \
-    && chmod -R a+rX /opt/openpalm/tools/node_modules
+    && mkdir -p /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/skeleton \
+    && chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/skeleton /opt/openpalm/tools
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD curl -sf http://localhost:8080/health/ready || exit 1
 
-# Container starts as root so the entrypoint can chown /opt/openpalm and then
-# drop to OP_UID:OP_GID via gosu before starting the server.
-USER root
+USER bun
 
 CMD ["/entrypoint.sh"]

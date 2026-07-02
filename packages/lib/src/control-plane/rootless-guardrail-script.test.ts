@@ -24,7 +24,7 @@ describe('rootless phase-0 script guardrails', () => {
     expect(smokeScript).toContain('system/stack/portals.compose.yml');
     expect(smokeScript).toContain('--profile addon.chat');
     expect(smokeScript).toContain('data/portal/tools/node_modules');
-    expect(smokeScript).toContain('find "$SMOKE_HOME" -uid 0');
+    expect(smokeScript).toContain('! -uid "$expected_uid" -o ! -gid "$expected_gid"');
     expect(smokeScript).toContain('Rootless ownership smoke passed');
   });
 });

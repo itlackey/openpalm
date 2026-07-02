@@ -169,12 +169,10 @@ jobs:
       - name: Validate current rootless non-regression guardrails
         run: ./scripts/validate-rootless-guardrails.sh
 
-      - name: Expected-fail rootless ownership smoke (assistant+guardian)
-        continue-on-error: true
+      - name: Rootless ownership smoke (assistant+guardian)
         run: ./scripts/rootless-ownership-smoke.sh stack
 
-      - name: Expected-fail rootless ownership smoke (portal-discord)
-        continue-on-error: true
+      - name: Rootless ownership smoke (portal-discord)
         run: ./scripts/rootless-ownership-smoke.sh portal-discord
 
       - name: Assert deleted scripts are absent

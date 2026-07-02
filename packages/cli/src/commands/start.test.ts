@@ -86,4 +86,31 @@ describe('runStartAction', () => {
     expect(repaired).toBe(false);
     expect(wrote).toBe(false);
   });
+
+  test('repairs guardian-cache named volume before starting guardian', async () => {
+    let volumeName = '';
+
+    mock.module('@openpalm/lib', () => ({
+      ...realLib,
+      detectHostIdentity: () => ({ kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }),
+      hostIdentityFile: () => '/tmp/op-home/state/host-identity.json',
+      readHostIdentity: () => null,
+      buildReconcileDecision: () => ({ decision: 'match', currentIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }, previousIdentity: null, canaries: [] }),
+      readStackEnv: () => ({ OP_PROJECT_NAME: 'custom-project' }),
+      resolveComposeProjectName: () => 'custom-project',
+      resolveOperatorIds: () => ({ uid: 1000, gid: 1000 }),
+      repairNamedVolumeOwnership: async (name: string) => {
+        volumeName = name;
+      },
+      buildManagedServices: async () => ['assistant', 'guardian'],
+      writeHostIdentity: () => {},
+    }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
+    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
+
+    const { runStartAction } = await import(startModuleUrl + `?t=${Math.random()}`);
+    await runStartAction([]);
+
+    expect(volumeName).toBe('custom-project_guardian-cache');
+  });
 });

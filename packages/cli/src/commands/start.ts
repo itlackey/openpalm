@@ -5,8 +5,12 @@ import {
   detectHostIdentity,
   hostIdentityFile,
   ownershipRepairPaths,
+  readStackEnv,
+  repairNamedVolumeOwnership,
   readHostIdentity,
   repairRootOwnedBindMounts,
+  resolveComposeProjectName,
+  resolveOperatorIds,
   writeHostIdentity,
 } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
@@ -69,15 +73,25 @@ export async function runStartAction(
     await repairRootOwnedBindMounts(state.homeDir, ownershipRepairPaths(state), { strict: !!options.adoptHost });
   }
 
+  const maybeRepairGuardianVolume = async (targetServices: string[]) => {
+    if (!targetServices.includes('guardian') || options.readOnly) return;
+    const ids = resolveOperatorIds(state.homeDir);
+    if (!ids) return;
+    const projectName = resolveComposeProjectName(readStackEnv(state.homeDir));
+    await repairNamedVolumeOwnership(`${projectName}_guardian-cache`, ids, { strict: true });
+  };
+
   if (services.length === 0) {
     // Stage artifacts and start all managed services (admin included if enabled)
     const managedServices = await buildManagedServices(state);
+    await maybeRepairGuardianVolume(managedServices);
     await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
     if (!options.readOnly) writeHostIdentity(hostIdentityFile(state.homeDir), currentIdentity);
     return;
   }
 
   // Start specific services
+  await maybeRepairGuardianVolume(services);
   for (const service of services) {
     await runComposeWithPreflight(state, ['up', '-d', service]);
   }

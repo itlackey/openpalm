@@ -538,6 +538,21 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
   }
 }
 
+export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid: number; gid: number }, opts?: { strict?: boolean }): Promise<void> {
+  const result = await run([
+    'run', '--rm',
+    '-v', `${volumeName}:/repair_target`,
+    'alpine',
+    'sh', '-c', `chown -R ${ids.uid}:${ids.gid} /repair_target`,
+  ], undefined, 30_000);
+
+  if (!result.ok) {
+    const message = `Could not repair named volume ${volumeName}: ${result.stderr.trim()}`;
+    if (opts?.strict) throw new Error(message);
+    logger.warn(message);
+  }
+}
+
 /**
  * Full runtime image info for a single container (§5 truthful state).
  *
