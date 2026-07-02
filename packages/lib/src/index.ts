@@ -87,6 +87,7 @@ export {
   composeFilePath,
   customComposeFilePath,
   stateEnvFile,
+  hostIdentityFile,
   legacyStackEnvFile,
   userEnvFile,
   secretsDir,
@@ -410,6 +411,15 @@ export {
   resolveOperatorIds,
   hasUsableOperatorId,
 } from "./control-plane/operator-ids.js";
+
+export type { HostIdentity, OwnershipDecision } from './control-plane/host-identity.js';
+export {
+  detectHostIdentity,
+  hostIdentityMatches,
+  classifyOwnershipDecision,
+  readHostIdentity,
+  writeHostIdentity,
+} from './control-plane/host-identity.js';
 
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {

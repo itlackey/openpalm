@@ -89,6 +89,9 @@ export function customComposeFilePath(home: string): string {
 export function stateEnvFile(home: string): string {
   return `${home}/state/stack.state.env`;
 }
+export function hostIdentityFile(home: string): string {
+  return `${home}/state/host-identity.json`;
+}
 /** Pre-split system env; read only as a transition fallback, then deleted. */
 export function legacyStackEnvFile(home: string): string {
   return `${home}/knowledge/env/stack.env`;
