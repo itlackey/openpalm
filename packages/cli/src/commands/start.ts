@@ -32,16 +32,11 @@ export default defineCommand({
       description: 'Repair bind-mount ownership for the current host before start',
       default: false,
     },
-    readOnly: {
-      type: 'boolean',
-      description: 'Start without ownership repair when a host swap is detected',
-      default: false,
-    },
   },
   async run({ args }) {
     try {
       const services = args._ ?? [];
-      await runStartAction(services, { adoptHost: !!args.adoptHost, readOnly: !!args.readOnly });
+      await runStartAction(services, { adoptHost: !!args.adoptHost });
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -51,30 +46,32 @@ export default defineCommand({
 
 export async function runStartAction(
   services: string[],
-  options: { adoptHost?: boolean; readOnly?: boolean } = {},
+  options: { adoptHost?: boolean } = {},
 ): Promise<void> {
   const state = ensureValidState();
   const currentIdentity = detectHostIdentity(state.homeDir);
   const previousIdentity = readHostIdentity(hostIdentityFile(state.homeDir));
   const reconcile = buildReconcileDecision({ state, currentIdentity, previousIdentity });
 
-  if (reconcile.decision === 'swap' && !options.adoptHost && !options.readOnly) {
+  if (reconcile.decision === 'swap' && !options.adoptHost) {
     const prev = previousIdentity
       ? `${previousIdentity.kind} ${previousIdentity.host} uid=${previousIdentity.uid ?? 'unknown'} gid=${previousIdentity.gid ?? 'unknown'}`
       : 'unknown host';
     const curr = `${currentIdentity.kind} ${currentIdentity.host} uid=${currentIdentity.uid ?? 'unknown'} gid=${currentIdentity.gid ?? 'unknown'}`;
     throw new Error(
       `Host swap detected for OP_HOME. Previous: ${prev}. Current: ${curr}. ` +
-      'Re-run with `--adopt-host` to repair ownership for this host, or `--read-only` to start without repair.',
+      'Re-run with `--adopt-host` to repair ownership for this host before starting.',
     );
   }
 
-  if (!options.readOnly && (reconcile.decision === 'drift' || (reconcile.decision === 'swap' && options.adoptHost))) {
-    await repairRootOwnedBindMounts(state.homeDir, ownershipRepairPaths(state), { strict: !!options.adoptHost });
+  const repairPaths = ownershipRepairPaths(state, { includeServices: services });
+
+  if (reconcile.decision === 'drift' || (reconcile.decision === 'swap' && options.adoptHost)) {
+    await repairRootOwnedBindMounts(state.homeDir, repairPaths, { strict: !!options.adoptHost });
   }
 
   const maybeRepairGuardianVolume = async (targetServices: string[]) => {
-    if (!targetServices.includes('guardian') || options.readOnly) return;
+    if (!targetServices.includes('guardian')) return;
     const ids = resolveOperatorIds(state.homeDir);
     if (!ids) return;
     const projectName = resolveComposeProjectName(readStackEnv(state.homeDir));
@@ -86,7 +83,7 @@ export async function runStartAction(
     const managedServices = await buildManagedServices(state);
     await maybeRepairGuardianVolume(managedServices);
     await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
-    if (!options.readOnly) writeHostIdentity(hostIdentityFile(state.homeDir), currentIdentity);
+    writeHostIdentity(hostIdentityFile(state.homeDir), currentIdentity);
     return;
   }
 
@@ -95,5 +92,5 @@ export async function runStartAction(
   for (const service of services) {
     await runComposeWithPreflight(state, ['up', '-d', service]);
   }
-  if (!options.readOnly) writeHostIdentity(hostIdentityFile(state.homeDir), currentIdentity);
+  writeHostIdentity(hostIdentityFile(state.homeDir), currentIdentity);
 }

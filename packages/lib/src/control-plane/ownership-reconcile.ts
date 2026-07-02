@@ -13,8 +13,8 @@ export type ReconcileDecision = {
   currentIdentity: HostIdentity;
 };
 
-export function ownershipRepairPaths(state: ControlPlaneState): string[] {
-  const discovered = discoverHomeBindMountSources(state).map((mount) => mount.isFile ? dirname(mount.path) : mount.path);
+export function ownershipRepairPaths(state: ControlPlaneState, opts?: { includeServices?: string[] }): string[] {
+  const discovered = discoverHomeBindMountSources(state, opts).map((mount) => mount.isFile ? dirname(mount.path) : mount.path);
   const deduped = [...new Set(discovered)];
   const base = [
     `${state.homeDir}/state`,

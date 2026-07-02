@@ -5,6 +5,7 @@ import { join } from 'node:path';
 const REPO_ROOT = join(import.meta.dir, '../../../..');
 const guardrailScript = readFileSync(join(REPO_ROOT, 'scripts/validate-rootless-guardrails.sh'), 'utf8');
 const smokeScript = readFileSync(join(REPO_ROOT, 'scripts/rootless-ownership-smoke.sh'), 'utf8');
+const hostSwapSmokeScript = readFileSync(join(REPO_ROOT, 'scripts/rootless-host-swap-smoke.sh'), 'utf8');
 const ciWorkflow = readFileSync(join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
 
 describe('rootless phase-0 script guardrails', () => {
@@ -14,6 +15,10 @@ describe('rootless phase-0 script guardrails', () => {
 
   test('CI also exercises the portal-specific ownership smoke path', () => {
     expect(ciWorkflow).toContain('./scripts/rootless-ownership-smoke.sh portal-discord');
+  });
+
+  test('CI exercises the host-swap smoke path', () => {
+    expect(ciWorkflow).toContain('./scripts/rootless-host-swap-smoke.sh');
   });
 
   test('guardrail script scans for ownership-changing helper commands', () => {
@@ -26,5 +31,10 @@ describe('rootless phase-0 script guardrails', () => {
     expect(smokeScript).toContain('data/portal/tools/node_modules');
     expect(smokeScript).toContain('! -uid "$expected_uid" -o ! -gid "$expected_gid"');
     expect(smokeScript).toContain('Rootless ownership smoke passed');
+  });
+
+  test('host-swap smoke harness covers block and adopt-host flows', () => {
+    expect(hostSwapSmokeScript).toContain('Expecting default start to block on host swap');
+    expect(hostSwapSmokeScript).toContain('Verifying adopt-host repairs ownership and starts');
   });
 });

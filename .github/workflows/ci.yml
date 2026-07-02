@@ -175,6 +175,9 @@ jobs:
       - name: Rootless ownership smoke (portal-discord)
         run: ./scripts/rootless-ownership-smoke.sh portal-discord
 
+      - name: Rootless host-swap smoke
+        run: ./scripts/rootless-host-swap-smoke.sh
+
       - name: Assert deleted scripts are absent
         run: |
           set -euo pipefail

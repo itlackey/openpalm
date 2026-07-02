@@ -41,4 +41,62 @@ describe('discoverHomeBindMountSources', () => {
     expect(authMount).toBeDefined();
     expect(authMount?.isFile).toBe(true);
   });
+
+  test('skips mounts from inactive profiled services', () => {
+    homeDir = mkdtempSync(join(tmpdir(), 'openpalm-mounts-'));
+    const state = {
+      homeDir,
+      configDir: join(homeDir, 'config'),
+      stashDir: join(homeDir, 'knowledge'),
+      workspaceDir: join(homeDir, 'workspace'),
+      dataDir: join(homeDir, 'data'),
+      stackDir: join(homeDir, 'system', 'stack'),
+      services: {},
+      artifacts: { compose: '' },
+      artifactMeta: [],
+    };
+
+    mkdirSync(join(homeDir, 'system', 'stack'), { recursive: true });
+    mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), `OP_HOME=${homeDir}\n`);
+    writeFileSync(join(homeDir, 'system', 'stack', 'services.compose.yml'), [
+      'services:',
+      '  voice:',
+      '    profiles: ["addon.voice.cpu"]',
+      '    volumes:',
+      `      - ${homeDir}/data/voice/models:/models`,
+    ].join('\n'));
+
+    const mounts = discoverHomeBindMountSources(state);
+    expect(mounts.find((mount) => mount.path.endsWith('/data/voice/models'))).toBeUndefined();
+  });
+
+  test('includes mounts for explicitly requested profiled services', () => {
+    homeDir = mkdtempSync(join(tmpdir(), 'openpalm-mounts-'));
+    const state = {
+      homeDir,
+      configDir: join(homeDir, 'config'),
+      stashDir: join(homeDir, 'knowledge'),
+      workspaceDir: join(homeDir, 'workspace'),
+      dataDir: join(homeDir, 'data'),
+      stackDir: join(homeDir, 'system', 'stack'),
+      services: {},
+      artifacts: { compose: '' },
+      artifactMeta: [],
+    };
+
+    mkdirSync(join(homeDir, 'system', 'stack'), { recursive: true });
+    mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), `OP_HOME=${homeDir}\n`);
+    writeFileSync(join(homeDir, 'system', 'stack', 'services.compose.yml'), [
+      'services:',
+      '  voice:',
+      '    profiles: ["addon.voice.cpu"]',
+      '    volumes:',
+      `      - ${homeDir}/data/voice/models:/models`,
+    ].join('\n'));
+
+    const mounts = discoverHomeBindMountSources(state, { includeServices: ['voice'] });
+    expect(mounts.find((mount) => mount.path.endsWith('/data/voice/models'))).toBeDefined();
+  });
 });
