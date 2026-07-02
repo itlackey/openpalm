@@ -5,6 +5,14 @@ TARGET_UID="${OP_UID:-1000}"
 TARGET_GID="${OP_GID:-1000}"
 IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
 
+run_as_target_user() {
+  if [ "$IS_ROOT" = "1" ]; then
+    gosu "${TARGET_UID}:${TARGET_GID}" env HOME=/opt/openpalm/guardian "$@"
+  else
+    "$@"
+  fi
+}
+
 # ── Version resolution ────────────────────────────────────────────────────────
 # GUARDIAN_VERSION is baked into the image at build time (Dockerfile ARG → ENV),
 # so the thin host boots with no operator configuration. Operators may override
@@ -33,7 +41,8 @@ OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
 # read/write the bind mounts directly.
 if [ "$IS_ROOT" = "1" ]; then
   mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian
-  chown "${TARGET_UID}:${TARGET_GID}" /opt/openpalm /opt/openpalm/guardian 2>/dev/null || true
+  chown "${TARGET_UID}:${TARGET_GID}" /opt/openpalm 2>/dev/null || true
+  chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm/guardian 2>/dev/null || true
   chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm/tools /opt/openpalm/skeleton 2>/dev/null || true
   # The moderator OpenCode (gosu'd to the target uid) stores its SQLite DB under
   # $HOME/.local/share/opencode. Docker pre-creates that path as ROOT to satisfy
@@ -94,7 +103,7 @@ install_artifact() {
   for attempt in 1 2 3; do
     echo "Installing ${pkg}@${version} (attempt ${attempt})..."
     mkdir -p "$prefix"
-    ( cd "$prefix" && bun add "${pkg}@${version}" --production ) && return 0
+    run_as_target_user env INSTALL_PREFIX="$prefix" PKG_SPEC="${pkg}@${version}" /bin/sh -lc 'cd "$INSTALL_PREFIX" && bun add "$PKG_SPEC" --production' && return 0
     [ "$attempt" -lt 3 ] && echo "  Install failed, retrying in 5s..." && sleep 5
   done
   echo "ERROR: Failed to install ${pkg}@${version} after 3 attempts" >&2
@@ -115,7 +124,7 @@ if [ "$IS_ROOT" = "1" ]; then
   # image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
   # bun update installs missing packages and advances within declared ranges.
   if [ -f "/opt/openpalm/tools/package.json" ]; then
-    bun update --cwd /opt/openpalm/tools --production \
+    run_as_target_user env TOOLS_DIR="/opt/openpalm/tools" /bin/sh -lc 'cd "$TOOLS_DIR" && bun update --production' \
       || echo "WARN: tool update had errors; check logs above" >&2
   else
     echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool update" >&2

@@ -5,7 +5,7 @@
  * edit in home.ts with this test as the guard).
  */
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, existsSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -42,6 +42,10 @@ describe("OP_HOME layout (single source of truth)", () => {
       expect(resolveStateDir()).toBe(join(home, "state"));
       expect(existsSync(join(home, "system"))).toBe(true);
       expect(existsSync(join(home, "state"))).toBe(true);
+      expect(existsSync(join(home, 'data/assistant/.config/opencode'))).toBe(true);
+      expect(existsSync(join(home, 'data/guardian/.config/opencode'))).toBe(true);
+      expect(statSync(join(home, 'data/assistant/.local/share/opencode/auth.json')).isFile()).toBe(true);
+      expect(statSync(join(home, 'data/guardian/.local/share/opencode/auth.json')).isFile()).toBe(true);
     } finally {
       if (prev === undefined) delete process.env.OP_HOME;
       else process.env.OP_HOME = prev;

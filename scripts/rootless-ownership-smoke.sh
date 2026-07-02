@@ -109,6 +109,8 @@ chmod 600 "$SMOKE_HOME/knowledge/secrets/"*
 touch "$SMOKE_HOME/knowledge/env/user.env"
 chmod 600 "$SMOKE_HOME/knowledge/env/user.env"
 
+OP_HOME="$SMOKE_HOME" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
+
 cat >"$SMOKE_HOME/rootless-smoke.override.yml" <<EOF
 services:
   assistant:

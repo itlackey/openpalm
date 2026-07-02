@@ -7,6 +7,14 @@ TARGET_UID="${OP_UID:-1000}"
 TARGET_GID="${OP_GID:-1000}"
 IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
 
+run_as_target_user() {
+  if [ "$IS_ROOT" = "1" ]; then
+    gosu opencode env HOME=/home/opencode "$@"
+  else
+    "$@"
+  fi
+}
+
 maybe_adjust_uid_gid() {
   # Only when running as root (first entrypoint before gosu).
   if [ "$IS_ROOT" = "0" ]; then return 0; fi
@@ -108,12 +116,15 @@ install_runtime_artifacts() {
     exit 1
   fi
 
+  local root_npm_cache="/tmp/openpalm-npm-cache"
+  local root_bun_cache="/tmp/openpalm-bun-cache/install"
+
   echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
-  npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
+  npm_config_cache="$root_npm_cache" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
     --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || true
 
   echo "entrypoint: installing @openpalm/skeleton@${skeleton_version}..." >&2
-  npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${skeleton_version}" \
+  npm_config_cache="$root_npm_cache" npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${skeleton_version}" \
     --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || true
 
   # ── Range-versioned tools via bun update ────────────────────────────────────
@@ -124,13 +135,13 @@ install_runtime_artifacts() {
   local tools_dir="/opt/openpalm/tools"
   if [ -f "${tools_dir}/package.json" ]; then
     echo "entrypoint: updating tools in ${tools_dir}..." >&2
-    bun update --cwd "${tools_dir}" --production \
+    run_as_target_user env BUN_INSTALL_CACHE_DIR="$root_bun_cache" bun update --cwd "${tools_dir}" --production \
       || echo "warning: tool update had errors; check logs above" >&2
     # @anthropic-ai/claude-code ships a node install script that must be run
     # after install/update to set up the native binary.
     local claude_install="${tools_dir}/node_modules/@anthropic-ai/claude-code/install.cjs"
     if [ -f "$claude_install" ]; then
-      node "$claude_install" 2>/dev/null || true
+      run_as_target_user node "$claude_install" 2>/dev/null || true
     fi
   fi
 }
@@ -166,7 +177,12 @@ start_ui() {
 seed_default_agents_md() {
   local src="/usr/local/share/openpalm/AGENTS.md"
   local dest="${OPENCODE_CONFIG_DIR:-/etc/opencode}/AGENTS.md"
-  [ -f "$src" ] && [ ! -f "$dest" ] && cp "$src" "$dest" 2>/dev/null || true
+  if [ -f "$src" ] && [ ! -f "$dest" ]; then
+    cp "$src" "$dest" 2>/dev/null || true
+    if [ "$IS_ROOT" = "1" ] && [ -f "$dest" ]; then
+      chown "$TARGET_UID:$TARGET_GID" "$dest" 2>/dev/null || true
+    fi
+  fi
 }
 
 run_akm_schema_migration() {
@@ -181,15 +197,11 @@ run_akm_schema_migration() {
   if ! command -v akm >/dev/null 2>&1; then return 0; fi
 
   echo "entrypoint: running akm schema migration (akm health)..." >&2
-  local cmd=(akm health)
-  if [ "$IS_ROOT" = "1" ]; then
-    cmd=(gosu opencode env HOME=/home/opencode "${cmd[@]}")
-  fi
   # akm health exit codes: 0 = ok, 4 = health warn (db still opened + migrated).
   # Anything else means the db could not be opened/migrated — surface it loudly
   # but keep booting.
   local rc=0
-  "${cmd[@]}" >&2 || rc=$?
+  run_as_target_user akm health >&2 || rc=$?
   if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
     echo "entrypoint: akm schema migration check complete (exit $rc)" >&2
   else
@@ -238,7 +250,7 @@ start_cron_and_sync_tasks() {
   done
   echo "# openpalm:cron-preamble END" >> "$crontab_file"
 
-  if existing_crontab="$(crontab -l 2>/dev/null)"; then
+  if existing_crontab="$(run_as_target_user crontab -l 2>/dev/null)"; then
     preserved_crontab="$(strip_managed_cron_preamble "$existing_crontab")"
     if [ -n "$preserved_crontab" ]; then
       printf '\n%s\n' "$preserved_crontab" >> "$crontab_file"
@@ -247,12 +259,12 @@ start_cron_and_sync_tasks() {
 
   # Install the managed preamble before syncing so akm preserves it when it
   # writes task blocks into the same per-user crontab.
-  crontab "$crontab_file" 2>/dev/null || true
+  run_as_target_user crontab "$crontab_file" 2>/dev/null || true
 
   # Sync automation tasks from the akm stash into cron, then start cron.
   local tasks_dir="${AKM_STASH_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! akm tasks sync >&2; then
+    if ! run_as_target_user akm tasks sync >&2; then
       echo "warning: initial akm tasks sync failed; continuing startup" >&2
     fi
   fi
@@ -267,7 +279,7 @@ start_cron_and_sync_tasks() {
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! akm tasks sync >&2; then
+        if ! run_as_target_user akm tasks sync >&2; then
           echo "warning: background akm tasks sync failed; retrying in 60s" >&2
         fi
       fi
@@ -284,9 +296,11 @@ start_opencode() {
 
   # Fix ownership of bun dirs if we're still root (before gosu).
   if [ "$IS_ROOT" = "1" ]; then
+    local bun_cache_root
+    bun_cache_root="$(dirname "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}")"
     chown -R "$TARGET_UID:$TARGET_GID" \
       "${BUN_INSTALL:-/home/opencode/.bun}" \
-      "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun}" \
+      "$bun_cache_root" \
       2>/dev/null || true
   fi
 
