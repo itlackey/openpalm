@@ -44,7 +44,6 @@ Primary runtime sources:
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | OpenPalm-managed OpenCode config root |
 | `OPENCODE_PORT` | `4096` | Assistant OpenCode HTTP port |
 | `OPENCODE_AUTH` | `false` | Disabled by default because host exposure is loopback-only |
-| `OPENCODE_ENABLE_SSH` | from `stack.env` | Optional SSH server toggle |
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_STASH_DIR` | `/stash` | Shared akm stash bind-mounted from `${OP_HOME}/knowledge` (memory + skills) |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config directory |
@@ -56,7 +55,8 @@ Primary runtime sources:
 - The assistant starts in `/work`.
 - The assistant has no Docker socket mount.
 - Memory + skills are served via the bind-mounted akm stash; there is no separate memory service.
-- The entrypoint normalizes permissions, optionally enables SSH, then drops privileges to `OP_UID:OP_GID`.
+- The assistant now runs directly as `OP_UID:OP_GID` with no in-container privilege drop path.
+- Scheduled task execution uses a rootless BusyBox `crond` path instead of a root-owned cron setup.
 - The assistant can consume external MCP servers via the top-level `mcp` block in `config/assistant/opencode.jsonc`; this is consume-only. OpenCode does not expose its own MCP server.
 - Treat MCP config edits like any other OpenCode startup config change: restart the assistant container after changing `opencode.jsonc` so the new server list is loaded.
 

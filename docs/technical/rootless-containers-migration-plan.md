@@ -541,7 +541,7 @@ Every phase is gated on: tests green AND the diff deletes/simplifies more than i
 
 - **Phase 3 — Data-relocation migration script + host-swap reconciliation.** Ships the
   copy-then-mark-migrated-never-auto-delete data mover (§7.2), the on-disk-canary-stat
-  comparison and `--adopt-host`/`--readonly` gate (§6.2–6.5), and the Docker-Desktop-aware
+  comparison and `--adopt-host` gate (§6.2–6.5), and the Docker-Desktop-aware
   host-identity fingerprinting (§6.8). This phase now owns most of the filesystem-specific UX:
   targeted warnings, degraded-mode behavior, same-host repair, and cross-host prompts across the
   supported Linux/macOS/Windows storage environments. This is the riskiest phase for existing
@@ -592,8 +592,7 @@ Every phase is gated on: tests green AND the diff deletes/simplifies more than i
 5. Host-identity comparison unit test, pure logic: fixture JSON in, decision out
    (match/drift/swap), no containers needed (Phase 3).
 6. Drift-vs-swap simulation test: same-host mismatch auto-repairs silently; cross-host
-   mismatch blocks and requires `--adopt-host`; assert `--readonly` proceeds without
-   re-owning and subsequent writes fail as expected (Phase 3).
+   mismatch blocks and requires `--adopt-host` before start proceeds (Phase 3).
 7. Data-relocation migration tests: dry-run reporting accuracy, checksum-verified copy,
    resumability after simulated partial failure (kill mid-copy, re-run only touches
    incomplete paths), never-auto-delete-of-`.migrated-*` assertion (Phase 3).
