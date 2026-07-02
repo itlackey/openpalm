@@ -26,7 +26,10 @@ export function detectHostIdentity(homeDir: string): HostIdentity {
 
 export function hostIdentityMatches(a: HostIdentity | null, b: HostIdentity | null): boolean {
   if (!a || !b) return false;
-  if (a.uid === null || a.gid === null || b.uid === null || b.gid === null) {
+  const aIdsMissing = a.uid === null || a.gid === null;
+  const bIdsMissing = b.uid === null || b.gid === null;
+  if (aIdsMissing !== bIdsMissing) return false;
+  if (aIdsMissing && bIdsMissing) {
     return a.kind === b.kind && a.host === b.host;
   }
   return a.kind === b.kind && a.uid === b.uid && a.gid === b.gid;

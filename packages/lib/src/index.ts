@@ -421,6 +421,14 @@ export {
   writeHostIdentity,
 } from './control-plane/host-identity.js';
 
+export type { ReconcileDecision } from './control-plane/ownership-reconcile.js';
+export {
+  ownershipCanaryPaths,
+  readCanaryOwners,
+  decideOwnershipFromCanaries,
+  buildReconcileDecision,
+} from './control-plane/ownership-reconcile.js';
+
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {
   SetupSpec,

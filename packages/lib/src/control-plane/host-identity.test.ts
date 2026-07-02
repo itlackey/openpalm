@@ -45,6 +45,13 @@ describe('host identity matching', () => {
       { kind: 'win32', host: 'host-b', uid: null, gid: null },
     )).toBe(false);
   });
+
+  test('does not match when only one side has concrete ids', () => {
+    expect(hostIdentityMatches(
+      { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
+      { kind: 'linux', host: 'host-a', uid: null, gid: null },
+    )).toBe(false);
+  });
 });
 
 describe('ownership decision classification', () => {
