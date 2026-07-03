@@ -33,7 +33,7 @@ interface PostCall {
   hasBlocks: boolean;
 }
 
-function harness(events: AsyncGenerator<unknown>) {
+function harness(events: AsyncGenerator<unknown>, opts: { rejectQuestionThrows?: boolean } = {}) {
   const posts: PostCall[] = [];
   const updates: UpdateCall[] = [];
 
@@ -50,12 +50,22 @@ function harness(events: AsyncGenerator<unknown>) {
     },
   };
 
+  // Slack's onQuestion awaits `client.rejectQuestion(...).catch(...)`; the `.catch`
+  // only guards an async rejection, so a SYNCHRONOUS throw here propagates out of
+  // the dispatched frame — the one un-self-guarded sink call, used to prove the
+  // 'throw' knob terminates the turn.
+  const rejectQuestion = opts.rejectQuestionThrows
+    ? (): Promise<void> => {
+        throw new Error("slack question boom");
+      }
+    : async (): Promise<void> => {};
+
   const client = {
     async createSession() {
       return { id: SID };
     },
     async prompt() {},
-    async rejectQuestion() {},
+    rejectQuestion,
     async replyPermission() {
       return true;
     },
@@ -113,5 +123,23 @@ describe("Slack streamTurn — shared skeleton + throttle (characterization)", (
     await streamTurn(h.args);
     // Placeholder + tool status = 2 posts, both with blocks.
     expect(h.posts.filter((p) => p.hasBlocks)).toHaveLength(2);
+  });
+});
+
+describe("Slack streamTurn — a throwing frame ENDS the turn (onFrameError: throw)", () => {
+  test("a dispatched sink call that throws propagates, so streamTurn rejects and later deltas never render", async () => {
+    // Symmetric to the Discord test that proves Discord SWALLOWS a throwing frame:
+    // Slack's loop is NOT wrapped, so a throw ends the turn. The question-reject
+    // sink call is the one dispatch path Slack does not self-guard (§4.3).
+    const question = {
+      type: "question.asked",
+      properties: { sessionID: SID, id: "q1", questions: [{ question: "pick", options: [{ label: "a" }] }] },
+    };
+    const h = harness(frames(question, delta("SHOULD-NOT-RENDER"), turnEnd), { rejectQuestionThrows: true });
+
+    // The throw is NOT caught: the turn terminates by rejecting.
+    await expect(streamTurn(h.args)).rejects.toThrow("slack question boom");
+    // Proof the turn did not continue: the delta after the throwing frame never rendered.
+    expect(h.updates.some((u) => u.text.includes("SHOULD-NOT-RENDER"))).toBe(false);
   });
 });
