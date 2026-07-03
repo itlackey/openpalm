@@ -35,6 +35,7 @@ declare global {
         enabled: boolean;
       }>;
       setTrayMicRecording?: (recording: boolean) => Promise<void>;
+      // biome-ignore lint/suspicious/noConfusingVoidType: registration may return an unsubscribe fn or nothing (void); switching to undefined would reject void-returning implementations.
       onGlobalMicToggle?: (callback: () => void) => (() => void) | void;
     };
   }

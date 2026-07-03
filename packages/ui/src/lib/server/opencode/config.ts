@@ -53,7 +53,7 @@ export async function patchConfig(config: RawConfig): Promise<RawConfig> {
 		};
 	}
 
-	writeFileSync(configPath(), JSON.stringify(merged, null, 2) + '\n');
+	writeFileSync(configPath(), `${JSON.stringify(merged, null, 2)}\n`);
 
 	// Also notify OpenCode to reload (best-effort)
 	await opencodeFetch<RawConfig>('/config', {

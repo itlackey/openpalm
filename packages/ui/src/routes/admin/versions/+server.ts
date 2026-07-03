@@ -268,7 +268,7 @@ export const GET: RequestHandler = async (event) => {
     // They miss the running/pinned/available distinction — acceptable during the
     // mixed-version window (Phase 6 UpdatesTab rebuild consumes the new shape).
     versions,
-    autoUpdate: env["OP_AUTO_UPDATE"] !== "false",
+    autoUpdate: env.OP_AUTO_UPDATE !== "false",
   });
 };
 

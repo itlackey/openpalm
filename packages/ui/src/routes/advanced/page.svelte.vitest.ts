@@ -1,3 +1,4 @@
+import type { AfterNavigate } from '@sveltejs/kit';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
@@ -11,9 +12,8 @@ vi.mock('$app/state', () => ({ page: mockPage }));
 vi.mock('$app/navigation', () => ({
   goto: vi.fn(),
   // Call the callback immediately to simulate the initial load navigation event.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  afterNavigate: vi.fn((cb: (nav: any) => void) =>
-    cb({ to: mockPage, from: null, type: 'goto', complete: Promise.resolve(), delta: 0, willUnload: false })
+  afterNavigate: vi.fn((cb: (nav: AfterNavigate) => void) =>
+    cb({ to: mockPage, from: null, type: 'goto', complete: Promise.resolve(), delta: 0, willUnload: false } as unknown as AfterNavigate)
   ),
 }));
 

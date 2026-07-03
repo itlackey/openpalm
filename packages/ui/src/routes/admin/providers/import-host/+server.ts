@@ -119,7 +119,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		// File-level import (durable)
-		let result;
+		let result: ReturnType<typeof importHostOpenCode>;
 		try {
 			result = importHostOpenCode(state, { overwriteConflicts });
 		} catch (err) {

@@ -40,7 +40,7 @@ const REACHABILITY_TIMEOUT_MS = 1_500;
 
 async function probeReachable(baseURL: string): Promise<boolean> {
   if (!baseURL) return false;
-  const url = baseURL.replace(/\/+$/, '') + '/v1/models';
+  const url = `${baseURL.replace(/\/+$/, '')}/v1/models`;
   try {
     // Use GET, not HEAD. FastAPI (openpalm/voice's framework) doesn't
     // auto-derive a HEAD handler from a GET route — Starlette would
@@ -67,8 +67,8 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
   const env = readStackEnv(state.homeDir);
 
-  const ttsBaseURL = env['OP_TTS_BASE_URL'] ?? '';
-  const sttBaseURL = env['OP_STT_BASE_URL'] ?? '';
+  const ttsBaseURL = env.OP_TTS_BASE_URL ?? '';
+  const sttBaseURL = env.OP_STT_BASE_URL ?? '';
 
   const rawProfiles = getAddonProfiles(state.homeDir, VOICE_ADDON);
   const profiles = await annotateAddonProfileAvailability(rawProfiles);
@@ -83,19 +83,19 @@ export const GET: RequestHandler = async (event) => {
   return jsonResponse(200, {
     tts: {
       enabled: true,
-      engine: env['OP_TTS_ENGINE'] ?? '',
-      provider: env['OP_TTS_PROVIDER'] ?? '',
+      engine: env.OP_TTS_ENGINE ?? '',
+      provider: env.OP_TTS_PROVIDER ?? '',
       baseURL: ttsBaseURL,
-      model: env['OP_TTS_MODEL'] ?? '',
-      voice: env['OP_TTS_VOICE'] ?? '',
+      model: env.OP_TTS_MODEL ?? '',
+      voice: env.OP_TTS_VOICE ?? '',
     },
     stt: {
       enabled: true,
-      engine: env['OP_STT_ENGINE'] ?? '',
-      provider: env['OP_STT_PROVIDER'] ?? '',
+      engine: env.OP_STT_ENGINE ?? '',
+      provider: env.OP_STT_PROVIDER ?? '',
       baseURL: sttBaseURL,
-      model: env['OP_STT_MODEL'] ?? '',
-      language: env['OP_STT_LANGUAGE'] ?? '',
+      model: env.OP_STT_MODEL ?? '',
+      language: env.OP_STT_LANGUAGE ?? '',
     },
     availability: {
       stt: {
@@ -152,17 +152,17 @@ const OPENPALM_VOICE_DEFAULT_VOICE = 'bf_isabella';
  */
 function applyOpenPalmVoicePreset(section: VoiceSection, kind: 'tts' | 'stt'): void {
   if (section.engine !== 'openpalm-voice') return;
-  if (!section.baseURL || !section.baseURL.trim()) section.baseURL = openpalmVoiceBaseURL();
-  if (!section.model || !section.model.trim()) {
+  if (!section.baseURL?.trim()) section.baseURL = openpalmVoiceBaseURL();
+  if (!section.model?.trim()) {
     section.model = kind === 'tts' ? OPENPALM_VOICE_TTS_MODEL : OPENPALM_VOICE_STT_MODEL;
   }
-  if (kind === 'tts' && (!section.voice || !section.voice.trim())) {
+  if (kind === 'tts' && !section.voice?.trim()) {
     section.voice = OPENPALM_VOICE_DEFAULT_VOICE;
   }
 }
 
 function validateSection(section: VoiceSection | null, kind: 'tts' | 'stt'): string | null {
-  if (!section || !section.engine) return null;
+  if (!section?.engine) return null;
   // `browser` engines store no server-side URL — fine.
   if (section.engine === 'browser' || section.engine === 'browser-stt' || section.engine === 'browser-tts') {
     return null;
@@ -172,7 +172,7 @@ function validateSection(section: VoiceSection | null, kind: 'tts' | 'stt'): str
   // before validation runs, so it always satisfies the remote check.
   // Any remote (including openpalm-voice with a user-supplied URL) must
   // end up with a non-empty baseURL.
-  if (!section.baseURL || !section.baseURL.trim()) {
+  if (!section.baseURL?.trim()) {
     return `Remote ${kind.toUpperCase()} requires an endpoint URL.`;
   }
   return null;

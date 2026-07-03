@@ -170,7 +170,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (path.startsWith('/admin') && !computeFeatureFlags().admin) {
     redirect(302, '/chat');
   }
-  const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(p + "/"));
+  const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
 
   // SEC-4: While setup is not yet complete the /setup routes are unauthenticated
   // by design (first-run). Restrict them to the local machine so a remote actor

@@ -24,7 +24,7 @@ export const GET: RequestHandler = async (event) => {
 		const headers: Record<string, string> = {};
 		if (endpoint.password) {
 			const user = endpoint.username || 'openpalm';
-			headers['authorization'] = `Basic ${btoa(`${user}:${endpoint.password}`)}`;
+			headers.authorization = `Basic ${btoa(`${user}:${endpoint.password}`)}`;
 		}
 		const res = await fetch(`${endpoint.url}/health`, {
 			headers,

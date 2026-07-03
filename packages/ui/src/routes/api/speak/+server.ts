@@ -92,9 +92,9 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  const upstreamUrl = ttsBaseURL.replace(/\/+$/, '') + '/v1/audio/speech';
+  const upstreamUrl = `${ttsBaseURL.replace(/\/+$/, '')}/v1/audio/speech`;
   const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (ttsApiKey) headers['authorization'] = `Bearer ${ttsApiKey}`;
+  if (ttsApiKey) headers.authorization = `Bearer ${ttsApiKey}`;
 
   let upstream: Response;
   try {

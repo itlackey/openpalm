@@ -40,7 +40,7 @@ beforeEach(async () => {
   _seedSession('test-admin-token');
 
   // Stand up an SSE emitter that writes 4 chunks with 80ms gaps between them.
-  sseServer = createServer((req, res) => {
+  sseServer = createServer((_req, res) => {
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',

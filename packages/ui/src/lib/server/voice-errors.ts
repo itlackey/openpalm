@@ -49,6 +49,6 @@ export function translateDockerError(stderr: string | undefined | null): string 
 
   // Default: include the first ~300 chars verbatim so the operator at
   // least has something searchable.
-  const slice = raw.length > 300 ? raw.slice(0, 297) + '…' : raw;
+  const slice = raw.length > 300 ? `${raw.slice(0, 297)}…` : raw;
   return slice;
 }

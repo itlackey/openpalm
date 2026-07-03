@@ -54,7 +54,7 @@ function makeGetEvent(token = "admin-token"): Parameters<typeof GET>[0] {
   };
   // Phase 2: x-admin-token header fallback removed; auth flows via op_session cookie.
   if (token) {
-    headers["cookie"] = `op_session=${token}`;
+    headers.cookie = `op_session=${token}`;
   }
   return {
     request: new Request("http://localhost/admin/config/validate", {

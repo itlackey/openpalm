@@ -158,7 +158,7 @@ describe('listRemoteStatuses — probe TTL (in-memory only)', () => {
     const first = await listRemoteStatuses();
     // Mutate an element in the returned array.
     if (first.length > 0) {
-      (first[0] as unknown as Record<string, unknown>)['state'] = 'MUTATED' as never;
+      (first[0] as unknown as Record<string, unknown>).state = 'MUTATED' as never;
     }
 
     const second = await listRemoteStatuses();
