@@ -7,35 +7,18 @@
  * and is resolved at compile time.
  */
 import { join, basename } from 'node:path';
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  isRemoteSetupAllowed,
+  isRemoteSetupAllowed, waitForReady, restoreUiBackup,
 } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
 
 const logger = createLogger('cli:ui');
 const DEFAULT_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
-const READY_TIMEOUT_MS = 15_000;
 const STOP_TIMEOUT_MS  = 5_000;
-
-async function waitForReady(port: number): Promise<boolean> {
-  const deadline = Date.now() + READY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/health`, {
-        signal: AbortSignal.timeout(1000),
-      });
-      if (res.ok || res.status === 401) return true;
-    } catch {
-      // not ready yet
-    }
-    await new Promise(r => setTimeout(r, 300));
-  }
-  return false;
-}
 
 export interface UIServerOptions {
   port?: number;
@@ -220,19 +203,8 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
       if (!await waitForReady(port)) {
         console.error('UI server did not become ready after restart.');
         // Post-swap failure → restore backup (§4.4 / §6). Reinstate the prior
-        // data/ui with a local rename — no registry needed.
-        const uiBackup = spawnResult.uiBackupDir;
-        if (uiBackup && existsSync(uiBackup)) {
-          try {
-            const dataUiDir = join(state.dataDir, 'ui');
-            const failedDir = join(state.dataDir, `.ui-failed-${Date.now()}`);
-            if (existsSync(dataUiDir)) renameSync(dataUiDir, failedDir);
-            renameSync(uiBackup, dataUiDir);
-            console.error(`UI build restore: reinstated backup from ${uiBackup}; failed build at ${failedDir}`);
-          } catch (restoreErr) {
-            console.error('UI backup restore failed:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
-          }
-        }
+        // data/ui with a local rename — no registry needed (shared lib routine).
+        restoreUiBackup(state.dataDir, spawnResult.uiBackupDir);
         process.exit(1);
       }
       console.log(`UI server restarted at ${uiUrl}`);

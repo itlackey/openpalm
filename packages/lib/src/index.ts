@@ -514,6 +514,18 @@ export {
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";
 
+// ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
+export type {
+  WaitForReadyDeps,
+  RestoreUiBackupDeps,
+  RestoreUiBackupOutcome,
+} from "./control-plane/ui-supervisor.js";
+export {
+  DEFAULT_READY_TIMEOUT_MS,
+  waitForReady,
+  restoreUiBackup,
+} from "./control-plane/ui-supervisor.js";
+
 // ── Canonical version vocabulary (Docker `v`-tag / npm version / dist-tag) ───
 export {
   PLATFORM_VERSION,

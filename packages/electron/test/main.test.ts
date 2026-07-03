@@ -141,6 +141,23 @@ vi.mock('@openpalm/lib', () => ({
   PLATFORM_VERSION: 'v0.11.0',
   checkDocker: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
+  // Faithful reimplementation of lib's waitForReady (poll /health; 200 or 401 ==
+  // ready) so the harness wrapper still exercises the real ready-poll contract
+  // under the test's stubbed global fetch + fake timers.
+  waitForReady: vi.fn(async (port: number, timeoutMs = 60_000): Promise<boolean> => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1000) });
+        if (res.ok || res.status === 401) return true;
+      } catch {
+        // not ready yet
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return false;
+  }),
+  restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
 }));
 
 vi.mock('../src/local-opencode.js', () => ({

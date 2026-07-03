@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences, type NativeImage } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, renameSync, createWriteStream, type WriteStream } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 
@@ -22,6 +22,8 @@ import {
   PLATFORM_VERSION,
   checkDocker,
   checkDockerCompose,
+  waitForReady as libWaitForReady,
+  restoreUiBackup,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
@@ -331,20 +333,13 @@ async function killStaleUIServer(pidFile: string): Promise<void> {
   killProcessTree(pid, 'SIGKILL');
 }
 
-export async function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/health`, {
-        signal: AbortSignal.timeout(1000),
-      });
-      if (res.ok || res.status === 401) return true;
-    } catch {
-      // not ready yet
-    }
-    await new Promise(r => setTimeout(r, 300));
-  }
-  return false;
+/**
+ * Poll the UI server's /health until ready. Thin re-export of the shared lib
+ * supervisor primitive (SSOT); kept as an exported wrapper so the harness's own
+ * READY_TIMEOUT_MS default applies and existing tests import it from here.
+ */
+export function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promise<boolean> {
+  return libWaitForReady(port, timeoutMs);
 }
 
 async function startUIServer(): Promise<void> {
@@ -593,17 +588,9 @@ async function restartUIServer(): Promise<boolean> {
     if (!ready) {
       console.error('UI server did not become ready after restart.');
       // Post-swap failure → restore backup (§4.4 / §6). Swap the failed data/ui
-      // out and reinstate the backup with a local rename — no registry needed.
-      if (uiBackup && existsSync(uiBackup)) {
-        try {
-          const failedDir = join(dataDir, `.ui-failed-${Date.now()}`);
-          if (existsSync(join(dataDir, 'ui'))) renameSync(join(dataDir, 'ui'), failedDir);
-          renameSync(uiBackup, join(dataDir, 'ui'));
-          console.error(`UI build restore: reinstated backup from ${uiBackup}; failed build at ${failedDir}`);
-        } catch (restoreErr) {
-          console.error('UI backup restore failed:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
-        }
-      }
+      // out and reinstate the backup with a local rename — no registry needed
+      // (shared lib routine).
+      restoreUiBackup(dataDir, uiBackup);
       return false;
     }
     console.log('UI server restarted.');
