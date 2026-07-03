@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PORTALS, PROVIDERS } from '$lib/client/constants.js';
+  import { PORTALS, friendlyProviderName } from '$lib/client/constants.js';
   import IconAgent from '$lib/components/icons/IconAgent.svelte';
   import IconMic from '$lib/components/icons/IconMic.svelte';
   import type { Provider, ModelSelection, PortalState } from '$lib/client/types.js';
@@ -42,21 +42,6 @@
     oneditextras,
   }: Props = $props();
 
-  // ── Local provider ids (for friendly name lookup) ────────────────────
-  const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner']);
-
-  function friendlyProviderName(connId: string): string {
-    if (!connId) return '';
-    if (connId === 'openai') return 'ChatGPT (OpenAI)';
-    if (connId === 'google') return 'Gemini (Google)';
-    if (connId === 'github-copilot') return 'GitHub Copilot';
-    if (connId === 'groq') return 'Groq';
-    if (LOCAL_PROVIDER_IDS.has(connId)) return 'Runs on this computer';
-    // Fall back to the static PROVIDERS list display name
-    const found = PROVIDERS.find((p) => p.id === connId);
-    return found?.name ?? connId;
-  }
-
   function isPortalEnabled(chId: string, locked?: boolean): boolean {
     return _isPortalEnabled(portalSelection, chId, locked);
   }
@@ -65,7 +50,7 @@
   const aiLabel = $derived.by(() => {
     const connId = modelSelection.llm?.connId;
     if (!connId) return '';
-    return friendlyProviderName(connId);
+    return friendlyProviderName(connId, { localLabel: 'Runs on this computer' });
   });
 
   // Voice is active when either side has an actual engine (not skip/empty)

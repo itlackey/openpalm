@@ -3,6 +3,7 @@
   import { resolve } from '$app/paths';
   import {
     PROVIDERS, LOCAL_PROVIDERS, PORTALS, OLLAMA_DEFAULT_CHAT_MODEL,
+    LOCAL_PROVIDER_IDS, friendlyProviderName,
   } from '$lib/client/constants.js';
   import { buildModelOptions, selectAddonProfileId, resolveVoiceSide } from '$lib/client/helpers.js';
   import type {
@@ -454,7 +455,6 @@
   }
 
   // ── Connect-step row selection: cloud ↔ local actually switches the model ──
-  const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner']);
   let savedCloudLlm = $state<ModelSelection | undefined>(undefined);
   // Stable "detected cloud service" connId — captured once so the cloud row stays
   // visible even after the user switches to local (lets them switch back).
@@ -1563,9 +1563,9 @@
                 onclick={() => goToStep(2)}
                 disabled={!canComplete}
               >
-                {#if modelSelection.llm?.connId && !(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner'].includes(modelSelection.llm.connId))}
-                  Use {modelSelection.llm.connId === 'openai' ? 'ChatGPT' : modelSelection.llm.connId === 'google' ? 'Gemini' : modelSelection.llm.connId === 'github-copilot' ? 'GitHub Copilot' : modelSelection.llm.connId === 'groq' ? 'Groq' : (opencodeProviders.find((p) => p.id === modelSelection.llm!.connId)?.name ?? modelSelection.llm.connId)} — Continue
-                {:else if ollamaEnabled || detectedHostProviders.length > 0 || (modelSelection.llm?.connId && ['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner'].includes(modelSelection.llm.connId))}
+                {#if modelSelection.llm?.connId && !LOCAL_PROVIDER_IDS.has(modelSelection.llm.connId)}
+                  Use {friendlyProviderName(modelSelection.llm.connId, { extraProviders: opencodeProviders })} — Continue
+                {:else if ollamaEnabled || detectedHostProviders.length > 0 || (modelSelection.llm?.connId && LOCAL_PROVIDER_IDS.has(modelSelection.llm.connId))}
                   Use local AI — Continue
                 {:else}
                   Continue

@@ -1,5 +1,6 @@
 import type { PortalState, Provider, ProviderState, VoiceEngineValue } from './types.js';
 import { addonProfileId, KNOWN_EMBEDDING_MODEL_DIMS } from '@openpalm/lib/provider-constants';
+import { LOCAL_PROVIDER_IDS } from './constants.js';
 
 // ── Shared GPU-aware addon hardware-profile selection ────────────────────────
 // One implementation for voice/ollama profile picking, previously copy-pasted
@@ -67,10 +68,10 @@ export type RoleModelOption = {
   dims: number;
 };
 
-// Local provider ids whose models rank AFTER host/cloud providers for chat/small
+// LOCAL_PROVIDER_IDS (imported from ./constants) are the "runs on this computer"
+// runtimes whose models rank AFTER host/cloud providers for chat/small
 // auto-selection: an imported host OpenCode provider (or a cloud key) should win
 // over the bundled in-stack Ollama for the default chat model (bug #4).
-const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'model-runner']);
 
 /**
  * Build the ranked list of model options for a role across all verified

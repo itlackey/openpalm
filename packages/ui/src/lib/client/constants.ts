@@ -25,6 +25,51 @@ export const PROVIDERS: Provider[] = [
   { id: 'openai-compatible', name: 'Custom API server', kind: 'cloud', group: 'advanced', order: 3, icon: '~', desc: 'Connect any AI server that uses the standard OpenAI API format.', needsKey: false, needsUrl: true, optionalKey: true, placeholder: 'API key (optional)', baseUrl: '', llmModel: '', embModel: '', embDims: 0 },
 ];
 
+// ── Local ("runs on this computer") provider ids ─────────────────────────────
+// Single source of truth: previously duplicated across five sites with three
+// different, drifting sets. Derived from the PROVIDERS catalog (kind === 'local')
+// so adding a local provider there keeps this in sync, plus a small set of host-
+// only runtimes that are detected on the machine (via host-info / OpenCode) but
+// aren't offered as selectable wizard providers, so they never appear in PROVIDERS.
+const HOST_ONLY_LOCAL_PROVIDER_IDS = ['llamacpp', 'localai'] as const;
+
+/** Provider connIds whose models run on the user's own machine. */
+export const LOCAL_PROVIDER_IDS: ReadonlySet<string> = new Set<string>([
+  ...PROVIDERS.filter((p) => p.kind === 'local').map((p) => p.id),
+  ...HOST_ONLY_LOCAL_PROVIDER_IDS,
+]);
+
+// ── Friendly provider display names ──────────────────────────────────────────
+/** Curated, human-facing labels for well-known cloud provider connIds. */
+export const FRIENDLY_PROVIDER_NAMES: Record<string, string> = {
+  openai: 'ChatGPT (OpenAI)',
+  google: 'Gemini (Google)',
+  'github-copilot': 'GitHub Copilot',
+  groq: 'Groq',
+  anthropic: 'Claude (Anthropic)',
+  mistral: 'Mistral',
+  cohere: 'Cohere',
+};
+
+/**
+ * Human-facing display name for a provider connId. Prefers a curated friendly
+ * name, then (for local runtimes) the caller's `localLabel`, then a name from
+ * `extraProviders` (e.g. live OpenCode providers) or the static PROVIDERS
+ * catalog, finally falling back to the raw connId.
+ */
+export function friendlyProviderName(
+  connId: string,
+  opts: { localLabel?: string; extraProviders?: readonly { id: string; name: string }[] } = {},
+): string {
+  if (!connId) return '';
+  const friendly = FRIENDLY_PROVIDER_NAMES[connId];
+  if (friendly) return friendly;
+  if (opts.localLabel && LOCAL_PROVIDER_IDS.has(connId)) return opts.localLabel;
+  const dynamic = opts.extraProviders?.find((p) => p.id === connId)?.name;
+  if (dynamic) return dynamic;
+  return PROVIDERS.find((p) => p.id === connId)?.name ?? connId;
+}
+
 export const STEP_LABELS = ['Models', 'Extras', 'Review'];
 
 /** Provider IDs excluded from the setup wizard's OAuth provider list. */

@@ -49,6 +49,7 @@
   import CloudAttachPanel from './CloudAttachPanel.svelte';
   import LocalModelsStatus from './LocalModelsStatus.svelte';
   import type { OpenCodeProvider, AuthMethod, ProviderState } from '$lib/client/types.js';
+  import { LOCAL_PROVIDER_IDS, FRIENDLY_PROVIDER_NAMES } from '$lib/client/constants.js';
 
   export type ModelMode = 'cloud' | 'local' | 'both';
 
@@ -108,17 +109,6 @@
 
   const MIN_LOCAL_GPU_VRAM_MB = 8192;
 
-  // Friendly display names for well-known cloud connIds.
-  const SERVICE_LABELS: Record<string, string> = {
-    openai: 'ChatGPT (OpenAI)',
-    google: 'Gemini (Google)',
-    'github-copilot': 'GitHub Copilot',
-    groq: 'Groq',
-    anthropic: 'Claude (Anthropic)',
-    mistral: 'Mistral',
-    cohere: 'Cohere',
-  };
-
   let {
     detectionLoading = false,
     detectionTimedOut = false,
@@ -159,13 +149,11 @@
 
   // Resolve a friendly display name for a provider connId.
   function friendlyServiceLabel(connId: string): string {
-    if (SERVICE_LABELS[connId]) return SERVICE_LABELS[connId];
+    if (FRIENDLY_PROVIDER_NAMES[connId]) return FRIENDLY_PROVIDER_NAMES[connId];
     const fromProviders = opencodeProviders.find((p) => p.id === connId)?.name;
     if (fromProviders) return fromProviders;
     return connId;
   }
-
-  const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner']);
 
   // The "detected" cloud service — a STABLE value so this row stays visible even
   // after the user switches to local (so they can switch back). Falls back to the
