@@ -40,7 +40,7 @@ import {
   forgetSession,
   ownedSessionIds,
 } from "./ownership";
-import { resolveSessionTarget } from "./forward";
+import { resolveSessionTarget } from "./session-target.ts";
 import { openEventStream } from "./event-fanout";
 import { audit } from "./audit";
 import { moderateMessage, type ModerationResult } from "./moderation";
