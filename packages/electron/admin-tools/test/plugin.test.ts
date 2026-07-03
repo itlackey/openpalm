@@ -8,7 +8,7 @@ describe("admin-tools-plugin", () => {
       {} as Parameters<typeof plugin>[1],
     );
     expect(hooks.tool).toBeDefined();
-    const names = Object.keys(hooks.tool!);
+    const names = Object.keys(hooks.tool as NonNullable<typeof hooks.tool>);
     expect(names).toContain("compose.up");
     expect(names).toContain("compose.down");
     expect(names).toContain("compose.ps");
@@ -22,7 +22,7 @@ describe("admin-tools-plugin", () => {
       {} as Parameters<typeof plugin>[0],
       {} as Parameters<typeof plugin>[1],
     );
-    for (const [name, def] of Object.entries(hooks.tool!)) {
+    for (const [name, def] of Object.entries(hooks.tool as NonNullable<typeof hooks.tool>)) {
       expect(typeof def.description).toBe("string");
       expect(def.description.length).toBeGreaterThan(20);
       expect(def.args).toBeDefined();

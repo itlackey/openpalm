@@ -63,7 +63,7 @@ export function saveSettings(dataDir: string, patch: Partial<DesktopSettings>): 
   try {
     const file = settingsPath(dataDir);
     mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify(next, null, 2) + '\n', 'utf-8');
+    writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf-8');
   } catch (err) {
     console.warn(
       'Failed to persist desktop settings (non-fatal):',

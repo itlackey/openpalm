@@ -17,10 +17,10 @@
     </div>
     <script>
       const op = window.openpalm;
-      document.getElementById('install').addEventListener('click', ()=> { op && op.openDockerInstall(); });
-      document.getElementById('retry').addEventListener('click', ()=> {
+      document.getElementById('install').addEventListener('click', () => { op?.openDockerInstall(); });
+      document.getElementById('retry').addEventListener('click', () => {
         var b=document.getElementById('retry'); b.textContent='Checking…'; b.disabled=true;
-        op && op.retryDockerPreflight();
+        op?.retryDockerPreflight();
       });
     </script>
   </body></html>

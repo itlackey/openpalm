@@ -123,7 +123,13 @@ function resolveAdminToolsPluginPath(): string {
   return '@openpalm/admin-tools-plugin';
 }
 
-const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
+// Default host ports used when the corresponding env override is unset. Named
+// here so the magic numbers live in one place (mirrors the CLI port-constant
+// dedup). DEFAULT_ASSISTANT_PORT is a string because it flows straight into a
+// URL and OP_ASSISTANT_PORT is read as an env string.
+const DEFAULT_UI_PORT = 3880;
+const DEFAULT_ASSISTANT_PORT = '3800';
+const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
 const READY_TIMEOUT_MS = 60_000;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 const APP_USER_MODEL_ID = 'com.openpalm.app';
@@ -174,7 +180,7 @@ export function resolveAssistantUrl(homeDir: string): string {
   if (userOverride) return userOverride;
   const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
   const bind = stackEnv.OP_ASSISTANT_BIND_ADDRESS || '127.0.0.1';
-  const port = stackEnv.OP_ASSISTANT_PORT || '3800';
+  const port = stackEnv.OP_ASSISTANT_PORT || DEFAULT_ASSISTANT_PORT;
   return `http://${bind}:${port}`;
 }
 
@@ -368,7 +374,7 @@ async function startUIServer(): Promise<void> {
   const uiPidFile = join(dataDir, '.ui-server.pid');
   await killStaleUIServer(uiPidFile);
 
-  spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate);
+  spawnUIServer(uiBuildDir, homeDir, uiPidFile, appUpdate);
   // Hand the bespoke initial child to the shared supervisor so a later
   // SIGUSR2/IPC restart knows which handle to stop (§6.2).
   if (uiProcess) uiSupervisor.adopt(uiProcess);
@@ -400,7 +406,6 @@ async function startUIServer(): Promise<void> {
 function spawnUIServer(
   uiBuildDir: string,
   homeDir: string,
-  dataDir: string,
   uiPidFile: string,
   appUpdate?: UpdateInfo | null,
 ): void {
@@ -537,7 +542,7 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
         console.error('UI restart aborted: build not found at', uiBuildDir);
         throw new UiRestartAbortError();
       }
-      spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
+      spawnUIServer(uiBuildDir, homeDir, uiPidFile, getCachedUpdateInfo());
       if (!uiProcess) throw new Error('UI server failed to spawn');
       return uiProcess;
     },

@@ -346,6 +346,7 @@ describe('resolveAssistantUrl', () => {
     expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:1234');
   });
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${homeDir} documents the path template in the test name, not an interpolation.
   it('reads stack.env from ${homeDir}/knowledge/env/stack.env', () => {
     vi.mocked(lib.parseEnvFile).mockReturnValue({});
     delete process.env.OP_OPENCODE_URL;
@@ -413,7 +414,7 @@ describe('restart-ui-server reloads the renderer', () => {
     const handler = ipcMainHandleHandlers.get('restart-ui-server');
     expect(handler).toBeTypeOf('function');
 
-    const ok = await handler!();
+    const ok = await handler?.();
 
     expect(ok).toBe(true);
     expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/');
@@ -429,7 +430,7 @@ describe('restart-ui-server reloads the renderer', () => {
     vi.mocked(app.quit).mockClear();
 
     const handler = ipcMainHandleHandlers.get('restart-ui-server');
-    const ok = await handler!();
+    const ok = await handler?.();
 
     expect(ok).toBe(false);
     expect(lib.restoreUiBackup).toHaveBeenCalled();            // §4.4 backup restored
@@ -446,9 +447,9 @@ describe('restart-ui-server reloads the renderer', () => {
     const { spawn } = await import('node:child_process');
     vi.mocked(spawn).mockClear();
 
-    const handler = ipcMainHandleHandlers.get('restart-ui-server')!;
-    const inFlight = handler();       // sets uiServerRestarting = true before its first await
-    const second = await handler();   // guarded out immediately
+    const handler = ipcMainHandleHandlers.get('restart-ui-server');
+    const inFlight = handler?.();       // sets uiServerRestarting = true before its first await
+    const second = await handler?.();   // guarded out immediately
     const first = await inFlight;
 
     expect(second).toBe(false);
@@ -616,7 +617,7 @@ describe('Docker preflight', () => {
     // Simulate the renderer's "I've installed it — retry" click.
     const retry = ipcMainOnHandlers.get('retry-docker-preflight');
     expect(retry, 'retry-docker-preflight handler must be registered').toBeDefined();
-    retry!();
+    retry?.();
 
     await pending;
     expect(resolved).toBe(true);
@@ -628,7 +629,7 @@ describe('Docker preflight', () => {
     const open = ipcMainOnHandlers.get('open-docker-install');
     expect(open, 'open-docker-install handler must be registered').toBeDefined();
     vi.mocked(shell.openExternal).mockClear();
-    open!();
+    open?.();
     expect(shell.openExternal).toHaveBeenCalledWith('https://docs.docker.com/get-docker/');
   });
 });
@@ -643,13 +644,13 @@ describe('before-quit handler', () => {
   it('handler is synchronous', () => {
     const entry = vi.mocked(app.on).mock.calls.find(([e]) => e === 'before-quit');
     expect(entry, 'before-quit handler must be registered').toBeDefined();
-    const handler = entry![1] as (...args: unknown[]) => unknown;
+    const handler = entry?.[1] as (...args: unknown[]) => unknown;
     expect(handler.constructor.name, 'handler must not be AsyncFunction').not.toBe('AsyncFunction');
   });
 
   it('first call: prevents default and calls app.exit(0); second call: passes through', () => {
     const entry = vi.mocked(app.on).mock.calls.find(([e]) => e === 'before-quit');
-    const handler = entry![1] as (event: { preventDefault: () => void }) => void;
+    const handler = entry?.[1] as (event: { preventDefault: () => void }) => void;
 
     vi.mocked(app.exit).mockClear();
     vi.mocked(app.quit).mockClear();
