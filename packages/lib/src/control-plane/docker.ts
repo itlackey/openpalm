@@ -1,5 +1,5 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseEnvFile } from "./env.js";
@@ -206,6 +206,59 @@ export async function composePreflight(
 }
 
 /**
+ * Build the human-facing error message for a failed compose preflight
+ * (`docker compose config --quiet`). SINGLE SOURCE OF TRUTH: lib's own
+ * {@link runPreflight} and the CLI's compose path both call this so the two
+ * never diverge again.
+ *
+ * The message includes, in order:
+ *   - the raw preflight stderr,
+ *   - the resolved `docker compose … config --quiet` command (WITH `--profile`
+ *     args) so the failure is reproducible,
+ *   - the file / env-file / project breakdown,
+ *   - repair guidance when the failure looks like a missing secret/asset file.
+ *     A missing secret means OP_HOME is incomplete — usually a home behind the
+ *     running platform (secrets are written only by install/update, not
+ *     self-healed on a plain command) — so we point the user at `openpalm
+ *     update` instead of leaving them with a raw compose "file not found".
+ */
+export function buildComposePreflightError(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  stderr: string,
+): string {
+  const project = resolveComposeProjectName(collectComposeEnvOverrides(options.envFiles));
+  const files = options.files;
+  const envFiles = options.envFiles ?? [];
+  const profiles = options.profiles ?? [];
+  const fileArgs = files.map((f) => `-f ${f}`).join(" ");
+  const envArgs = envFiles.map((f) => `--env-file ${f}`).join(" ");
+  const profileArgs = profiles.map((p) => `--profile ${p}`).join(" ");
+  const resolvedCommand = [
+    "docker compose",
+    fileArgs,
+    `--project-name ${project}`,
+    envArgs,
+    profileArgs,
+    "config --quiet",
+  ].filter(Boolean).join(" ");
+
+  const looksLikeMissingFile = /secret/i.test(stderr)
+    && /(not found|no such file|does not exist|cannot find)/i.test(stderr);
+  const guidance = looksLikeMissingFile
+    ? "\n\nThis usually means your OpenPalm home is missing files. Run `openpalm update` to repair it, then try again."
+    : "";
+
+  return (
+    `Compose preflight failed: ${stderr}\n` +
+    `Resolved command: ${resolvedCommand}\n` +
+    `Files: ${files.join(", ")}\n` +
+    `Env files: ${envFiles.join(", ")}\n` +
+    `Project: ${project}` +
+    guidance
+  );
+}
+
+/**
  * Run compose config preflight validation before any mutation.
  * Skipped when OP_SKIP_COMPOSE_PREFLIGHT is set (tests, CI).
  */
@@ -213,14 +266,7 @@ async function runPreflight(options: { files: string[]; envFiles?: string[]; pro
   if (options.files.length === 0 || process.env.OP_SKIP_COMPOSE_PREFLIGHT) return;
   const result = await composePreflight(options);
   if (!result.ok) {
-    const project = resolveComposeProjectName(collectComposeEnvOverrides(options.envFiles));
-    const fileArgs = options.files.map((f) => `-f ${f}`).join(" ");
-    const envArgs = (options.envFiles ?? []).map((f) => `--env-file ${f}`).join(" ");
-    const profileArgs = (options.profiles ?? []).map((p) => `--profile ${p}`).join(" ");
-    throw new Error(
-      `Compose preflight failed: ${result.stderr}\n` +
-      `Resolved command: docker compose ${fileArgs} --project-name ${project} ${envArgs} ${profileArgs} config --quiet`
-    );
+    throw new Error(buildComposePreflightError(options, result.stderr));
   }
 }
 
@@ -267,12 +313,52 @@ export async function composeUp(
  * SIGTERM-killed the start mid-extraction and surfaced as an empty/opaque
  * error. Default 30 min, override with OP_COMPOSE_UP_TIMEOUT_MS. Kept bounded
  * (never removed) so a genuinely hung start still eventually fails.
+ *
+ * Exported so interactive callers that stream stdio (the CLI's `up` path via
+ * {@link runComposeStreaming}) apply the SAME budget as the capturing
+ * {@link composeUp} — the two must not diverge.
  */
-function composeUpTimeoutMs(): number {
+export function composeUpTimeoutMs(): number {
   const raw = process.env.OP_COMPOSE_UP_TIMEOUT_MS?.trim();
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed > 0) return parsed;
   return 30 * 60_000;
+}
+
+/**
+ * Run `docker compose <args>` streaming stdio to the parent (interactive).
+ *
+ * The capturing {@link run} helper is wrong for user-facing CLI commands (`up`,
+ * `logs`, `down`): those need live progress/log output on the terminal. This is
+ * the ONE stdio-inheriting compose runner — the CLI shares it instead of
+ * re-implementing the spawn. Node-compatible (`node:child_process` spawn), so it
+ * works under both Bun and Node.
+ *
+ * Rejects on a spawn error or non-zero exit. `timeoutMs`, when set, SIGTERM-kills
+ * a run that exceeds the budget (pass {@link composeUpTimeoutMs} for `up`, which
+ * may extract multi-GB images on a first install); omit it for interactive
+ * follows like `logs -f` that legitimately run unbounded.
+ */
+export function runComposeStreaming(
+  args: string[],
+  opts: { timeoutMs?: number } = {},
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("docker", ["compose", ...args], { stdio: "inherit" });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (opts.timeoutMs && opts.timeoutMs > 0) {
+      timer = setTimeout(() => { child.kill("SIGTERM"); }, opts.timeoutMs);
+    }
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      if (timer) clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`docker compose ${args.join(" ")} failed with exit code ${code}`));
+    });
+  });
 }
 
 /**
