@@ -201,3 +201,30 @@ behavior-preserving.
 shared boundaries and missing enforcement*, not bad code. The single most valuable action is adding a
 repo-wide linter/formatter with a CI gate; after that, the reference patterns already present in-repo
 just need to be applied uniformly and the copies deleted.
+
+---
+
+## Implementation progress
+
+**Wave 1 — Critical correctness + enforcement (DONE, merged & pushed):**
+- [x] 1. rate-limit `oc:` classification fixed
+- [x] 2. one secure `constantTimeEqual`; admin token now constant-time
+- [x] 3. moderation block-vs-rewrite made explicit; policy errors logged
+- [x] 4. portal addon ids → two named single-source constants (`GUARDIAN_INGRESS_ADDON_IDS` vs `PORTAL_SECRET_ADDON_IDS`; `gateway` correctly belongs only to the former); `handleHostImport` failure now surfaced
+- [x] 5. `containers/portal/start.sh` hardened to `set -euo pipefail`
+- [x] 6. Biome linter + root scripts + CI gate (additive, green on current tree)
+
+**Wave 2 — High-priority deduplication (DONE, merged & pushed):**
+- [x] 7. `@openpalm/portal-sdk` extracted (~1420 duplicated lines removed; `BasePortal`). `renderTurn` sink deferred — the two stream loops diverge in per-frame error handling & message lifecycle.
+- [x] 8. UI-supervisor pure primitives (`waitForReady`, `restoreUiBackup`) moved to `@openpalm/lib`; CLI/Electron consume them; drifted 15s/60s timeout unified to 60s. Full `UiSupervisor` class deferred — CLI (`Bun.Subprocess`) and Electron (`child_process`+pid files+renderer reload) shells genuinely diverge.
+- [x] 10. `buildSetupPayload`/`parseSetupConfig` (round-trip tested), 5 pure helpers, and typed `setup-api.ts` extracted from the 1674-line setup page (→1377). Full `setup-state.svelte.ts` store + prop-drilling refactor deferred.
+
+**Remaining (not yet started):**
+- [ ] 9. Unify compose preflight on lib; remove the `globalThis.Bun` logger shim.
+- [ ] 11–14. Guardian `runTurn`/session-reuse split; `admin/voice` route → service, `api.ts` domain clients, `voice-state` audio controller; lib splits (`volume-ownership.ts`, `addon-availability.ts`, `NpmPackageUpdater`); electron/CLI splits.
+- [ ] 15. Hygiene utils (`errMessage`, `retry`, guardian `config.ts`, centralized constants).
+- Deferred sub-steps from items 7/8/10 above.
+
+All landed changes preserve behavior, add tests, and keep the lint gate green. Pre-existing test
+failures unrelated to this work: 12 root-uid ownership tests (sandbox runs as uid 0), 1 guardian IPv6
+sandbox bind, 1 stale portal Dockerfile-bake test.
