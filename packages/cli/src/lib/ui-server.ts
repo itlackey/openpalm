@@ -15,9 +15,10 @@ import {
 } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
+import { DEFAULT_UI_PORT } from './ports.ts';
 
 const logger = createLogger('cli:ui');
-const DEFAULT_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
+const DEFAULT_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
 const STOP_TIMEOUT_MS  = 5_000;
 
 export interface UIServerOptions {
@@ -249,7 +250,7 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
  */
 export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const port = opts.port ?? DEFAULT_PORT;
-  if (isNaN(port) || port < 1 || port > 65535) {
+  if (Number.isNaN(port) || port < 1 || port > 65535) {
     console.error(`Invalid port: ${port}`);
     process.exit(1);
   }

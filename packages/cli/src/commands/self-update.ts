@@ -75,7 +75,7 @@ async function downloadVerifiedBinary(version: string, artifact: string): Promis
 async function schedulePosixReplacement(sourcePath: string, targetPath: string): Promise<void> {
   const scriptDir = await mkdtemp(join(tmpdir(), 'openpalm-self-update-script-'));
   const scriptPath = join(scriptDir, 'replace.sh');
-  const script = [
+  const script = `${[
     '#!/usr/bin/env sh',
     'set -eu',
     'sleep 1',
@@ -84,7 +84,7 @@ async function schedulePosixReplacement(sourcePath: string, targetPath: string):
     'chmod +x "$tmp"',
     'mv "$tmp" "$dest"',
     `rm -rf ${posixShellQuote(scriptDir)}`,
-  ].join('\n') + '\n';
+  ].join('\n')}\n`;
 
   await Bun.write(scriptPath, script);
   await chmod(scriptPath, 0o755);

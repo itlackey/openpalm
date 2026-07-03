@@ -37,7 +37,7 @@ describe('runUpgradeAction', () => {
       ensureValidState: () => ({ dataDir: '/tmp/openpalm-data' }),
     }));
 
-    const { runUpgradeAction } = await import(updateModuleUrl + `?t=${Math.random()}`);
+    const { runUpgradeAction } = await import(`${updateModuleUrl}?t=${Math.random()}`);
     await runUpgradeAction();
 
     expect(currentVersionArg).toBe('v0.12.0-rc.1');
@@ -58,7 +58,7 @@ describe('runUpgradeAction', () => {
       ensureValidState: () => ({ dataDir: '/tmp/openpalm-data' }),
     }));
 
-    const { runUpgradeAction } = await import(updateModuleUrl + `?t=${Math.random()}`);
+    const { runUpgradeAction } = await import(`${updateModuleUrl}?t=${Math.random()}`);
 
     await runUpgradeAction();                       // default: stable only
     await runUpgradeAction({ allowPrerelease: true }); // --pre

@@ -5,6 +5,7 @@ import { defaultWorkDir } from '../lib/paths.ts';
 import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
+import { DEFAULT_UI_PORT } from '../lib/ports.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
 import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
 import {
@@ -233,7 +234,7 @@ async function prepareInstallFiles(
   console.log('Preparing directories...');
   await ensureDirectoryTree(homeDir, workDir);
 
-  try { await Bun.write(join(dataDir, 'host.json'), JSON.stringify(await detectHostInfo(), null, 2) + '\n'); }
+  try { await Bun.write(join(dataDir, 'host.json'), `${JSON.stringify(await detectHostInfo(), null, 2)}\n`); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
 
   // Seed OP_HOME from the bundled .openpalm/ source (skeleton data/ + managed
@@ -290,7 +291,7 @@ async function prepareInstallFiles(
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
   await requireDocker();
-  const port = Number(process.env.OP_HOST_UI_PORT) || 3880;
+  const port = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
   console.log(`Setup wizard: http://localhost:${port}/setup`);
   const { startUIServer } = await import('../lib/ui-server.ts');
   await startUIServer({ open: !noOpen, port });

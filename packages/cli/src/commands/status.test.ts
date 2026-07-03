@@ -32,7 +32,7 @@ async function runStatusCommand(): Promise<{ stdout: string; stderr: string }> {
     err.push(args.map(String).join(' '));
   };
   try {
-    const mod = await import('./status.ts?t=' + Math.random());
+    const mod = await import(`./status.ts?t=${Math.random()}`);
     await mod.default.run?.({} as never);
   } finally {
     console.log = origLog;
