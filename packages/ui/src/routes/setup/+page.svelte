@@ -2,10 +2,15 @@
   import { onMount } from 'svelte';
   import { resolve } from '$app/paths';
   import {
-    PROVIDERS, LOCAL_PROVIDERS, PORTALS, OLLAMA_DEFAULT_CHAT_MODEL,
+    PROVIDERS, LOCAL_PROVIDERS, OLLAMA_DEFAULT_CHAT_MODEL,
     LOCAL_PROVIDER_IDS, friendlyProviderName,
   } from '$lib/client/constants.js';
-  import { buildModelOptions, selectAddonProfileId, resolveVoiceSide } from '$lib/client/helpers.js';
+  import {
+    buildModelOptions, selectAddonProfileId, resolveVoiceSide,
+    generatePassword, buildVerifiedProviders,
+    computeAutoModelSelection, resolvePreferredModelSelection,
+  } from '$lib/client/helpers.js';
+  import { buildSetupPayload, parseSetupConfig } from '$lib/setup/payload.js';
   import type {
     ProviderState, ModelSelection, DetectedProvider, PortalState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
@@ -158,40 +163,9 @@
   // no usable/selected model, e.g. providers detected but no model resolved.)
   const hasUsableAI = $derived(!!modelSelection.llm?.model);
 
-  const verifiedProviders = $derived.by(() => {
-    if (opencodeAvailable) {
-      const fromOpenCode = opencodeProviders
-        .filter((p) => providerState[p.id]?.verified)
-        .map((p) => {
-          const st = providerState[p.id];
-          // Inherit llmModel/embModel/embDims from the fallback list for local providers
-          // (Ollama → nomic-embed-text, model-runner → mxbai-embed-large, etc.)
-          const fallback = PROVIDERS.find((fp) => fp.id === p.id);
-          return {
-            id: p.id, name: p.name ?? p.id, kind: 'cloud' as const, group: '', order: 0,
-            icon: '', desc: '', baseUrl: st?.baseUrl ?? '',
-            llmModel: fallback?.llmModel ?? '',
-            embModel: fallback?.embModel ?? '',
-            embDims: fallback?.embDims ?? 0,
-          };
-        });
-      // Also include verified static providers not already in the OpenCode list
-      // (e.g. Ollama added by the wizard's "Include Ollama" toggle)
-      const openCodeIds = new Set(fromOpenCode.map((p) => p.id));
-      const fromStatic = PROVIDERS
-        .filter((p) => !openCodeIds.has(p.id) && providerState[p.id]?.verified)
-        .map((p) => {
-          const st = providerState[p.id];
-          return {
-            id: p.id, name: p.name, kind: p.kind, group: p.group, order: p.order,
-            icon: p.icon, desc: p.desc, baseUrl: st?.baseUrl ?? p.baseUrl,
-            llmModel: p.llmModel, embModel: p.embModel, embDims: p.embDims,
-          };
-        });
-      return [...fromOpenCode, ...fromStatic];
-    }
-    return PROVIDERS.filter((p) => providerState[p.id]?.verified);
-  });
+  const verifiedProviders = $derived(
+    buildVerifiedProviders(opencodeAvailable, opencodeProviders, providerState),
+  );
 
   // ── Single source of truth for "can the user finish setup?" ──────────────
   // Once a provider is verified you must pick a chat model; the empty-install
@@ -225,148 +199,25 @@
   const persistedVoiceStt = $derived(resolveVoiceSide(voiceStt, enableVoice, ''));
 
 
-  // Build the install payload for /api/setup/complete
-  const payload = $derived.by(() => {
-    const llm = modelSelection.llm;
-    const emb = modelSelection.embedding;
-    const small = modelSelection.small;
-
-    const capabilityProviderIds: Record<string, boolean> = {};
-    if (llm) capabilityProviderIds[llm.connId] = true;
-    if (emb) capabilityProviderIds[emb.connId] = true;
-    if (small?.model) capabilityProviderIds[small.connId] = true;
-
-    const capabilities = verifiedProviders
-      .filter((p) => capabilityProviderIds[p.id])
-      .map((p) => {
-        const st = providerState[p.id];
-        return { id: p.id, name: p.name, provider: p.id, baseUrl: st?.baseUrl ?? p.baseUrl, apiKey: st?.apiKey ?? '' };
-      });
-
-    const llmConnId = llm?.connId ?? '';
-    const embConnId = emb?.connId ?? '';
-    const llmCap = capabilities.find((c) => c.id === llmConnId);
-    const embCap = capabilities.find((c) => c.id === embConnId);
-    const llmProvider = llmCap?.provider ?? '';
-    const embProvider = embCap?.provider ?? '';
-
-    const addons: Record<string, boolean> = {};
-    // Suppress the in-stack Ollama addon when a host Ollama/LM Studio is running
-    // (redundant; the toggle is disabled in that case).
-    if (ollamaEnabled && !hostLocalLlmRunning) addons.ollama = true;
-    // Enable the bundled voice addon when either side targets it.
-    // performSetup -> setAddonEnabled copies the compose overlay, then
-    // startDeploy's composePull picks up the openpalm/voice image so
-    // it lands in the same first-install pull cycle as the rest of the
-    // stack.
-    if (persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice') {
-      addons.voice = true;
-    }
-
-    const portalCredentials: Record<string, Record<string, string>> = {};
-    const portalsConfig = buildPortalsConfig();
-    for (const chId of Object.keys(portalsConfig)) {
-      const chVal = portalsConfig[chId];
-      if (chVal === true) {
-        addons[chId] = true;
-      } else if (typeof chVal === 'object' && chVal !== null) {
-        addons[chId] = true;
-        const creds: Record<string, string> = {};
-        for (const key of Object.keys(chVal)) {
-          if (key !== 'enabled' && chVal[key]) {
-            creds[key] = String(chVal[key]);
-          }
-        }
-        if (Object.keys(creds).length > 0) portalCredentials[chId] = creds;
-      }
-    }
-
-    const result: Record<string, unknown> = {
-      version: 2,
-      addons,
-      security: { uiLoginPassword },
-      connections: capabilities,
-    };
-
-    // LLM and embedding go directly to akm config (config/akm/config.json)
-    if (llmProvider && llm?.model) {
-      result.llm = { provider: llmProvider, model: llm.model, baseUrl: llmCap?.baseUrl ?? '' };
-    }
-    if (embProvider && emb?.model) {
-      result.embedding = { provider: embProvider, model: emb.model, dims: emb.dims ?? 1536, baseUrl: embCap?.baseUrl ?? '' };
-    }
-
-    // Voice engines — only persist if the user picked something explicit
-    // and it isn't the "skip" sentinel.
-    // If engine is empty (not yet chosen, or rerun with missing engine),
-    // omit the field entirely to leave any existing server config intact.
-    const voicePayload = (v: VoiceEngineValue) => {
-      if (!v.engine || v.engine.startsWith('skip-')) return undefined;
-      const out: Record<string, unknown> = { enabled: true, engine: v.engine };
-      if (v.provider) out.provider = v.provider;
-      if (v.baseURL) out.baseURL = v.baseURL;
-      if (v.model) out.model = v.model;
-      if (v.voice) out.voice = v.voice;
-      if (v.language) out.language = v.language;
-      if (v.apiKey) out.apiKey = v.apiKey;
-      return out;
-    };
-    const ttsCap = voicePayload(persistedVoiceTts);
-    if (ttsCap) result.tts = ttsCap;
-    const sttCap = voicePayload(persistedVoiceStt);
-    if (sttCap) result.stt = sttCap;
-
-    // Include the selected hardware profile when using the bundled voice addon
-    if ((persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice') && selectedVoiceProfile) {
-      result.voiceProfile = selectedVoiceProfile;
-    }
-
-    // Include the Ollama hardware profile when Ollama is enabled in-stack
-    if (ollamaEnabled && selectedOllamaProfile) {
-      result.ollamaProfile = selectedOllamaProfile;
-    }
-
-    if (Object.keys(portalCredentials).length > 0) {
-      result.portalCredentials = portalCredentials;
-    }
-
-    if (imageTag.trim()) result.imageTag = imageTag.trim();
-    if (hostAkmEnabled) result.hostAkm = true;
-
-    return result;
-  });
+  // Build the install payload for /api/setup/complete. The pure builder lives
+  // in $lib/setup/payload.ts (round-trip tested against parseSetupConfig).
+  const payload = $derived(buildSetupPayload({
+    modelSelection,
+    verifiedProviders,
+    providerState,
+    ollamaEnabled,
+    hostLocalLlmRunning,
+    persistedVoiceTts,
+    persistedVoiceStt,
+    selectedVoiceProfile,
+    selectedOllamaProfile,
+    portalSelection,
+    uiLoginPassword,
+    imageTag,
+    hostAkmEnabled,
+  }));
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-
-  function generatePassword(): string {
-    const arr = new Uint8Array(16);
-    crypto.getRandomValues(arr);
-    return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  function buildPortalsConfig(): Record<string, boolean | Record<string, string | boolean>> {
-    const result: Record<string, boolean | Record<string, string | boolean>> = {};
-    for (const ch of PORTALS) {
-      const sel = portalSelection[ch.id];
-      if (ch.locked) {
-        result[ch.id] = true;
-      } else if (typeof sel === 'object' && sel !== null) {
-        if (sel.enabled) {
-          const entry: Record<string, string | boolean> = { enabled: true };
-          if (ch.credentials) {
-            for (const cred of ch.credentials) {
-              const v = sel[cred.key];
-              if (v) entry[cred.key] = v;
-            }
-          }
-          result[ch.id] = entry;
-        }
-      } else if (sel) {
-        result[ch.id] = true;
-      }
-    }
-    return result;
-  }
 
   async function loadVoiceProfiles(): Promise<void> {
     try {
@@ -590,68 +441,21 @@
     }
   }
 
+  // Fill unset chat/small roles with the best-ranked option. Pure logic lives in
+  // computeAutoModelSelection (helpers.ts); apply it in-place so already-set
+  // roles are preserved (embedding is never auto-selected).
   function autoSelectModels(): void {
-    const roles = ['llm', 'embedding', 'small'] as const;
-    for (const roleId of roles) {
-      if (modelSelection[roleId]) continue;
-      // Embedding is never auto-selected — akm self-embeds locally, so the
-      // wizard leaves modelSelection.embedding unset unless a user explicitly
-      // picks one in the advanced Models step.
-      if (roleId === 'embedding') continue;
-      const options = getModelOptionsForRole(roleId);
-      if (options.length === 0) continue;
-      // options are returned best-first (host/cloud > local, declared default,
-      // then role score), so options[0] is the sensible pick. This is what
-      // stops "first Ollama tag" (which could be an embedding model) from
-      // becoming the chat model, and lets an imported host provider win.
-      const best = options[0];
-      modelSelection[roleId] = { connId: best.connId, model: best.id, dims: best.dims };
+    const next = computeAutoModelSelection(modelSelection, verifiedProviders, providerState);
+    for (const roleId of ['llm', 'small'] as const) {
+      if (!modelSelection[roleId] && next[roleId]) modelSelection[roleId] = next[roleId];
     }
   }
 
-  // Shared, ranked, embedding-filtered option builder (wizard/helpers.ts) — the
-  // SAME implementation the Models step uses, so auto-select and the dropdown
-  // can never disagree.
+  // Shared, ranked, embedding-filtered option builder (helpers.ts) — the SAME
+  // implementation the Models step uses, so auto-select and the dropdown can
+  // never disagree.
   function getModelOptionsForRole(roleId: 'llm' | 'embedding' | 'small'): Array<{ id: string; connId: string; isDefault: boolean; dims: number }> {
     return buildModelOptions(roleId, verifiedProviders, providerState);
-  }
-
-  function resolvePreferredModelSelection(
-    roleId: 'llm' | 'small',
-    preferredModel: string | undefined,
-  ): { connId: string; model: string; dims: number } | undefined {
-    if (!preferredModel) return undefined;
-
-    const slashIdx = preferredModel.indexOf('/');
-    const providerHint = slashIdx > 0 ? preferredModel.slice(0, slashIdx) : '';
-    const modelIdPart = slashIdx > 0 ? preferredModel.slice(slashIdx + 1) : preferredModel;
-
-    const options = getModelOptionsForRole(roleId);
-
-    // Exact match on full id (e.g. "openai/gpt-4o")
-    const exactFull = options.find((o) => o.id === preferredModel);
-    if (exactFull) return { connId: exactFull.connId, model: exactFull.id, dims: exactFull.dims };
-
-    // Match by provider hint + model name part (e.g. "github-copilot" + "gpt-5.4")
-    const providerMatch = providerHint
-      ? options.find((o) => o.connId === providerHint && o.id === modelIdPart)
-      : undefined;
-    if (providerMatch) return { connId: providerMatch.connId, model: providerMatch.id, dims: providerMatch.dims };
-
-    // Match by model name part alone
-    const nameMatch = options.find((o) => o.id === modelIdPart);
-    if (nameMatch) return { connId: nameMatch.connId, model: nameMatch.id, dims: nameMatch.dims };
-
-    // Offline fallback (#5): the host preference names a provider that IS
-    // verified, but its model list hasn't loaded (OpenCode unreachable during
-    // setup, so providerState[provider].models is empty). Trust the host
-    // preference directly rather than silently dropping it and letting Ollama
-    // win — the model id is exactly what the host had configured.
-    if (providerHint && verifiedProviders.some((p) => p.id === providerHint)) {
-      return { connId: providerHint, model: modelIdPart, dims: 0 };
-    }
-
-    return undefined;
   }
 
   function applyImportedOpenCodeModelSelections(selectedModels?: { llm?: string; small?: string }): void {
@@ -666,12 +470,12 @@
 
   function applyImportedModelPreferences(): void {
     if (importedLlmModel) {
-      const llmSelection = resolvePreferredModelSelection('llm', importedLlmModel);
+      const llmSelection = resolvePreferredModelSelection('llm', importedLlmModel, verifiedProviders, providerState);
       if (llmSelection) modelSelection.llm = llmSelection;
     }
 
     if (importedSmallModel) {
-      const smallSelection = resolvePreferredModelSelection('small', importedSmallModel);
+      const smallSelection = resolvePreferredModelSelection('small', importedSmallModel, verifiedProviders, providerState);
       if (smallSelection) modelSelection.small = smallSelection;
     }
   }
@@ -1249,65 +1053,31 @@
           // old image instead of resetting to `latest`. Leaving the field blank
           // lets the reconcile default to `latest`; a power user can still re-pin
           // in the Advanced field.
-          if (typeof data.hostAkm === 'boolean') hostAkmEnabled = data.hostAkm;
-
-          // Models — store saved selections; the connId resolves once the
-          // matching provider is verified by the host-import / OpenCode flow.
-          if (data.llm?.provider && data.llm?.model) {
-            modelSelection.llm = { connId: data.llm.provider, model: data.llm.model };
-          }
-          if (data.embedding?.provider && data.embedding?.model) {
-            modelSelection.embedding = {
-              connId: data.embedding.provider,
-              model: data.embedding.model,
-              dims: data.embedding.dims,
-            };
-          }
-
-          // Voice — pre-fill connection fields only when the stored
-          // config explicitly names the engine. No URL sniffing.
-          if (data.voice?.tts) {
-            const storedTts = data.voice.tts as { baseURL?: string; model?: string; voice?: string; engine?: string };
-            if (storedTts.engine) {
-              voiceTts = { ...storedTts, engine: storedTts.engine };
-            } else {
-              voiceTts = { engine: '' };
-            }
-          }
-          if (data.voice?.stt) {
-            const storedStt = data.voice.stt as { baseURL?: string; model?: string; voice?: string; language?: string; engine?: string };
-            if (storedStt.engine) {
-              voiceStt = { ...storedStt, engine: storedStt.engine };
-            } else {
-              voiceStt = { engine: '' };
-            }
-          }
-
-          if (data.voice?.selectedProfile && typeof data.voice.selectedProfile === 'string') {
-            selectedVoiceProfile = data.voice.selectedProfile;
-          }
-
+          //
+          // parseSetupConfig ($lib/setup/payload.ts) is the inverse of the
+          // install payload builder — round-trip tested so the two can't drift.
+          const parsed = parseSetupConfig(data);
+          if (parsed.hostAkmEnabled !== undefined) hostAkmEnabled = parsed.hostAkmEnabled;
+          if (parsed.llm) modelSelection.llm = parsed.llm;
+          if (parsed.embedding) modelSelection.embedding = parsed.embedding;
+          if (parsed.voiceTts) voiceTts = parsed.voiceTts;
+          if (parsed.voiceStt) voiceStt = parsed.voiceStt;
+          if (parsed.selectedVoiceProfile) selectedVoiceProfile = parsed.selectedVoiceProfile;
           // Restore host-imported model preferences so a rerun keeps the chat /
-          // small model the user configured on their host OpenCode (otherwise
-          // they had to re-import or re-pick). importedModelPreferences is added
-          // by /api/setup/current-config; applyImportedModelPreferences() runs
-          // when the Models step is entered (and after host import).
-          const imp = data.importedModelPreferences as { model?: string; small_model?: string } | null | undefined;
-          if (imp?.model) importedLlmModel = imp.model;
-          if (imp?.small_model) importedSmallModel = imp.small_model;
+          // small model the user configured on their host OpenCode.
+          // applyImportedModelPreferences() runs when the Models step is entered.
+          if (parsed.importedLlmModel) importedLlmModel = parsed.importedLlmModel;
+          if (parsed.importedSmallModel) importedSmallModel = parsed.importedSmallModel;
+          if (parsed.ollamaEnabled) ollamaEnabled = true;
+          if (parsed.selectedOllamaProfile) selectedOllamaProfile = parsed.selectedOllamaProfile;
 
-          // Enabled addons + portal credentials
-          const enabled: string[] = Array.isArray(data.enabledAddons) ? data.enabledAddons : [];
-          if (enabled.includes('ollama')) ollamaEnabled = true;
-          if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
-            selectedOllamaProfile = data.ollama.selectedProfile;
-          }
-          const creds = data.portalCredentials ?? {};
+          // Enabled addons + portal credentials — mutate the existing portal
+          // selection objects so credential fields land on reactive state.
           for (const chId of ['discord', 'slack']) {
             const sel = portalSelection[chId];
             if (typeof sel === 'object' && sel !== null) {
-              if (enabled.includes(chId)) sel.enabled = true;
-              const c = creds[chId];
+              if (parsed.enabledAddons.includes(chId)) sel.enabled = true;
+              const c = parsed.portalCredentials[chId];
               if (c && typeof c === 'object') Object.assign(sel, c);
             }
           }
