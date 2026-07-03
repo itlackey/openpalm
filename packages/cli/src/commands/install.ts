@@ -1,8 +1,10 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
+import { defineAction } from '../lib/action.ts';
+import { promptYesNo } from '../lib/prompt.ts';
+import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
 import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
 import {
@@ -29,14 +31,9 @@ import { ensureValidState } from '../lib/cli-state.ts';
 const logger = createLogger('cli:install');
 
 export async function resolveDefaultInstallRef(): Promise<string> {
-  try {
-    const res = await fetch('https://github.com/itlackey/openpalm/releases/latest', { redirect: 'manual', signal: AbortSignal.timeout(10000) });
-    // Release tags are bare semver since the 0.12.41 v-prefix retirement (e.g.
-    // /tag/0.12.43); the optional `v?` still matches a legacy v-tagged release.
-    const match = (res.headers.get('location') ?? '').match(/\/tag\/(v?[0-9]+\.[0-9]+\.[0-9]+[^\s]*)$/);
-    if (match?.[1]) return match[1];
-  } catch { /* fall through */ }
-  return cliPkg.version ?? 'main';
+  // Prefer the latest published release tag; fall back to the packaged CLI
+  // version (then `main`) when the network lookup fails.
+  return (await resolveLatestReleaseTag()) ?? cliPkg.version ?? 'main';
 }
 
 export default defineCommand({
@@ -76,8 +73,8 @@ export default defineCommand({
       default: false,
     },
   },
-  async run({ args }) {
-    try {
+  run: defineAction(
+    async ({ args }) => {
       const version = args.version || await resolveDefaultInstallRef();
       // Only a user-supplied --version pins the Docker image tag. Otherwise the
       // images track `latest`: the host (CLI/UI) and the service images version
@@ -85,21 +82,19 @@ export default defineCommand({
       // the image to the resolved host version stranded installs on a stale
       // assistant. The install REF (GitHub assets) still falls back to the CLI
       // version above; only OP_IMAGE_TAG is decoupled.
-      const explicitImageTag = args.version ? (resolveRequestedImageTag(args.version) ?? undefined) : undefined;
+      const explicitImageTag = args.version ? (resolveRequestedImageTag(String(args.version)) ?? undefined) : undefined;
       await bootstrapInstall({
-        force: args.force,
-        version,
+        force: !!args.force,
+        version: String(version),
         explicitImageTag,
         noStart: !args.start,
         noOpen: !args.open,
-        file: args.file,
-        assumeYes: args.yes,
+        file: args.file ? String(args.file) : undefined,
+        assumeYes: !!args.yes,
       });
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
-  },
+    },
+    (message) => console.error(`Error: ${message}`),
+  ),
 });
 
 type InstallOptions = {
@@ -112,23 +107,6 @@ type InstallOptions = {
   file?: string;
   assumeYes: boolean;
 };
-
-/**
- * Prompt the user for a y/N confirmation on stdin/stdout. Returns false in
- * any non-interactive context (no TTY) so CI runs do not hang waiting on
- * input — callers must pair this with an explicit `--yes` flag for
- * unattended invocations.
- */
-async function promptYesNo(question: string): Promise<boolean> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = await new Promise<string>((resolve) => rl.question(`${question} `, resolve));
-    return /^y(es)?$/i.test(answer.trim());
-  } finally {
-    rl.close();
-  }
-}
 
 async function requireCmd(cmd: string[], msg: string): Promise<void> {
   if ((await Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' }).exited) !== 0) throw new Error(msg);

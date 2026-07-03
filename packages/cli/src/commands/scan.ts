@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolveStackDir, resolveOpenPalmHome, resolveSecretsDir, listSecretNames } from '@openpalm/lib';
 import { parseEnvFile, isSensitiveEnvKey } from '@openpalm/lib';
+import { parseOutputFormat } from '../lib/output-format.ts';
 
 /**
  * `openpalm scan` — list sensitive env keys that carry a non-empty value
@@ -31,8 +32,8 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const format = String(args.format ?? 'json').toLowerCase();
-    if (format !== 'json' && format !== 'human') {
+    const format = parseOutputFormat(args.format);
+    if (!format) {
       console.error(`Unknown --format value: ${args.format}. Expected 'json' or 'human'.`);
       process.exit(2);
     }

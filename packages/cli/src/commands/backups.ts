@@ -1,17 +1,6 @@
 import { defineCommand } from 'citty';
 import { listBackupDirs, pruneBackupDirs, resolveOpenPalmHome } from '@openpalm/lib';
-import { createInterface } from 'node:readline';
-
-async function promptYesNo(question: string): Promise<boolean> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = await new Promise<string>((resolve) => rl.question(`${question} `, resolve));
-    return /^y(es)?$/i.test(answer.trim());
-  } finally {
-    rl.close();
-  }
-}
+import { promptYesNo } from '../lib/prompt.ts';
 
 export default defineCommand({
   meta: {
