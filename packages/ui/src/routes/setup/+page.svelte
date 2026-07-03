@@ -165,22 +165,8 @@
 
           {:else if s.currentStep === 3}
             <section class="step-content" id="step-3" data-testid="step-review">
-              <ReviewStep
-                uiLoginPassword={s.uiLoginPassword}
-                verifiedProviders={s.verifiedProviders}
-                modelSelection={s.modelSelection}
-                activeTts={s.voiceEnabled ? s.displayedVoiceTts.engine : ''}
-                activeStt={s.voiceEnabled ? s.displayedVoiceStt.engine : ''}
-                portalSelection={s.portalSelection}
-                ollamaEnabled={s.ollamaEnabled}
-                hostProviderLabel={s.detectedHostProviders.length > 0 ? (s.detectedHostProviders[0].provider) : ''}
-                payload={s.payload}
-                installError={s.installError}
-                isRerun={s.isRerun}
-                systemCheckPassed={s.systemCheckPassed}
-                oneditmodels={() => s.goToStep(1)}
-                oneditextras={() => s.goToStep(2)}
-              />
+              <!-- ReviewStep reads the setup-state store directly. -->
+              <ReviewStep />
             </section>
           {/if}
         </div><!-- /wiz-content-scroll -->
