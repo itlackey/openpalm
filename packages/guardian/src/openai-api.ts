@@ -4,7 +4,7 @@ import { asRaw, extractTextDelta, isTurnEnd, partSnapshotType } from './openai-a
 import { OcClient } from './openai-api-oc-client.ts';
 import { loadPermissionPolicy, type PermissionPolicy } from './openai-api-permissions.ts';
 import { readOptionalSecretFile } from './openai-api-secret-file.ts';
-import { streamTurn, openAiChatFramer, openAiLegacyFramer, anthropicFramer } from './openai-api-stream.ts';
+import { streamTurn, openAiChatFramer, openAiLegacyFramer, anthropicFramer, type SseFramer } from './openai-api-stream.ts';
 import { asRecord, extractChatText } from './openai-api-utils.ts';
 
 type ErrorFormatter = (message: string, type?: string) => Record<string, unknown>;
@@ -28,6 +28,61 @@ function guardianErrorResponse(err: unknown, formatError: ErrorFormatter, jsonRe
   const upstreamStatus = statusMatch ? Number(statusMatch[1]) : NaN;
   const status = Number.isFinite(upstreamStatus) && upstreamStatus < 500 ? upstreamStatus : 502;
   return jsonResp(status, formatError(`Guardian error: ${message}`));
+}
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+/**
+ * Per-endpoint variation for the shared turn handler. Everything the three
+ * OpenAI-compatible endpoints do identically (auth gate, JSON parse, model/user
+ * defaulting, stream-vs-forward branch, guardian error handling) lives in
+ * {@link GuardianOpenAiApi.handleTurn}; only these hooks differ per endpoint.
+ */
+interface EndpointSpec {
+  path: string;
+  /** Prefix for the generated response/stream id, e.g. `chatcmpl-`. */
+  idPrefix: string;
+  /** Error returned when no usable input text is present. */
+  missingTextMessage: string;
+  authCheck: (req: Request) => boolean;
+  formatError: ErrorFormatter;
+  extractText: (body: Record<string, unknown>) => string | null;
+  resolveRawUser: (body: Record<string, unknown>) => string;
+  makeFramer: (id: string, model: string) => SseFramer;
+  makeEnvelope: (id: string, model: string, answer: string) => Record<string, unknown>;
+}
+
+function extractPromptText(prompt: unknown): string | null {
+  if (typeof prompt === 'string' && prompt.trim()) return prompt;
+  if (Array.isArray(prompt)) {
+    const parts = prompt.filter((part): part is string | number => typeof part === 'string' || typeof part === 'number');
+    if (parts.length === prompt.length) {
+      const joined = parts.map((part) => String(part)).join(' ');
+      return joined.trim() ? joined : null;
+    }
+  }
+  return null;
+}
+
+function openAiRawUser(body: Record<string, unknown>): string {
+  return typeof body.user === 'string' && body.user.trim() ? body.user : 'api-user';
+}
+
+function anthropicRawUser(body: Record<string, unknown>): string {
+  const meta = asRecord(body.metadata);
+  return meta && typeof meta.user_id === 'string' && meta.user_id.trim() ? meta.user_id : 'api-user';
+}
+
+function chatCompletionEnvelope(id: string, model: string, answer: string): Record<string, unknown> {
+  return { id, object: 'chat.completion', created: nowSeconds(), model, choices: [{ index: 0, message: { role: 'assistant', content: answer }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } };
+}
+
+function textCompletionEnvelope(id: string, model: string, answer: string): Record<string, unknown> {
+  return { id, object: 'text_completion', created: nowSeconds(), model, choices: [{ text: answer, index: 0, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } };
+}
+
+function anthropicMessageEnvelope(id: string, model: string, answer: string): Record<string, unknown> {
+  return { id, type: 'message', role: 'assistant', content: [{ type: 'text', text: answer }], model, stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } };
 }
 
 const log = createLogger('guardian:openai-api');
@@ -91,32 +146,78 @@ export class GuardianOpenAiApi {
   async route(req: Request, url: URL): Promise<Response | null> {
     const requestId = crypto.randomUUID();
     if (url.pathname === '/v1/models' && req.method === 'GET') return this.handleModels();
-    if (url.pathname === '/v1/chat/completions' && req.method === 'POST') return this.handleChatCompletions(req, requestId);
-    if (url.pathname === '/v1/completions' && req.method === 'POST') return this.handleCompletions(req, requestId);
-    if (url.pathname === '/v1/messages' && req.method === 'POST') return this.handleAnthropicMessages(req, requestId);
+    if (url.pathname === '/v1/chat/completions' && req.method === 'POST') return this.handleTurn(req, requestId, this.chatCompletionsSpec());
+    if (url.pathname === '/v1/completions' && req.method === 'POST') return this.handleTurn(req, requestId, this.completionsSpec());
+    if (url.pathname === '/v1/messages' && req.method === 'POST') return this.handleTurn(req, requestId, this.anthropicMessagesSpec());
     return json(404, openAIError('Not found'));
   }
 
   private handleModels(): Response {
-    const now = Math.floor(Date.now() / 1000);
-    return json(200, { object: 'list', data: [{ id: 'openpalm', object: 'model', created: now, owned_by: 'openpalm' }] });
+    return json(200, { object: 'list', data: [{ id: 'openpalm', object: 'model', created: nowSeconds(), owned_by: 'openpalm' }] });
   }
 
-  private async handleChatCompletions(req: Request, requestId: string): Promise<Response> {
-    if (!this.checkOpenAIAuth(req)) {
-      this.logMessage('warn', 'auth_failure', { requestId, path: '/v1/chat/completions' });
-      return json(401, openAIError('Unauthorized', 'authentication_error'));
+  private chatCompletionsSpec(): EndpointSpec {
+    return {
+      path: '/v1/chat/completions',
+      idPrefix: 'chatcmpl-',
+      missingTextMessage: 'messages with user content is required',
+      authCheck: (req) => this.checkOpenAIAuth(req),
+      formatError: openAIError,
+      extractText: (body) => extractChatText(body.messages),
+      resolveRawUser: openAiRawUser,
+      makeFramer: openAiChatFramer,
+      makeEnvelope: chatCompletionEnvelope,
+    };
+  }
+
+  private completionsSpec(): EndpointSpec {
+    return {
+      path: '/v1/completions',
+      idPrefix: 'cmpl-',
+      missingTextMessage: 'prompt is required',
+      authCheck: (req) => this.checkOpenAIAuth(req),
+      formatError: openAIError,
+      extractText: (body) => extractPromptText(body.prompt),
+      resolveRawUser: openAiRawUser,
+      makeFramer: openAiLegacyFramer,
+      makeEnvelope: textCompletionEnvelope,
+    };
+  }
+
+  private anthropicMessagesSpec(): EndpointSpec {
+    return {
+      path: '/v1/messages',
+      idPrefix: 'msg_',
+      missingTextMessage: 'messages with user content is required',
+      authCheck: (req) => this.checkAnthropicAuth(req),
+      formatError: anthropicError,
+      extractText: (body) => extractChatText(body.messages),
+      resolveRawUser: anthropicRawUser,
+      makeFramer: anthropicFramer,
+      makeEnvelope: anthropicMessageEnvelope,
+    };
+  }
+
+  /**
+   * Shared turn handler for all three OpenAI-compatible endpoints. The security
+   * gate (auth check) runs first and fails closed; per-endpoint request parsing
+   * and response shaping are supplied via {@link EndpointSpec}.
+   */
+  private async handleTurn(req: Request, requestId: string, spec: EndpointSpec): Promise<Response> {
+    if (!spec.authCheck(req)) {
+      this.logMessage('warn', 'auth_failure', { requestId, path: spec.path });
+      return json(401, spec.formatError('Unauthorized', 'authentication_error'));
     }
     let body: Record<string, unknown>;
-    try { body = await req.json(); } catch { return json(400, openAIError('Invalid JSON')); }
-    const text = extractChatText(body.messages);
-    if (!text) return json(400, openAIError('messages with user content is required'));
+    try { body = await req.json(); } catch { return json(400, spec.formatError('Invalid JSON')); }
+    const text = spec.extractText(body);
+    if (!text) return json(400, spec.formatError(spec.missingTextMessage));
     const model = typeof body.model === 'string' && body.model.trim() ? body.model : 'openpalm';
-    const rawUser = typeof body.user === 'string' && body.user.trim() ? body.user : 'api-user';
-    const userId = `${this.name}:${rawUser}`;
+    const userId = `${this.name}:${spec.resolveRawUser(body)}`;
+    const id = `${spec.idPrefix}${crypto.randomUUID()}`;
     if (body.stream === true) {
-      this.logMessage('info', 'request_streamed', { requestId, userId, path: '/v1/chat/completions' });
-      return streamTurn({ client: this.ocClient, policy: this.permissionPolicy, userId, sessionKey: userId, text, framer: openAiChatFramer(`chatcmpl-${crypto.randomUUID()}`, model) }, req.signal);
+      this.logMessage('info', 'request_streamed', { requestId, userId, path: spec.path });
+      return streamTurn({ client: this.ocClient, policy: this.permissionPolicy, userId, sessionKey: userId, text, framer: spec.makeFramer(id, model) }, req.signal);
     }
     let answer = '';
     try {
@@ -126,80 +227,10 @@ export class GuardianOpenAiApi {
       answer = data.answer ?? '';
     } catch (err) {
       this.logMessage('error', 'guardian_error', { requestId, error: err instanceof Error ? err.message : String(err) });
-      return guardianErrorResponse(err, openAIError, json);
+      return guardianErrorResponse(err, spec.formatError, json);
     }
-    this.logMessage('info', 'request_forwarded', { requestId, userId, path: '/v1/chat/completions' });
-    return json(200, { id: `chatcmpl-${crypto.randomUUID()}`, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, message: { role: 'assistant', content: answer }, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } });
-  }
-
-  private async handleCompletions(req: Request, requestId: string): Promise<Response> {
-    if (!this.checkOpenAIAuth(req)) {
-      this.logMessage('warn', 'auth_failure', { requestId, path: '/v1/completions' });
-      return json(401, openAIError('Unauthorized', 'authentication_error'));
-    }
-    let body: Record<string, unknown>;
-    try { body = await req.json(); } catch { return json(400, openAIError('Invalid JSON')); }
-    const prompt = body.prompt;
-    let text: string | null = null;
-    if (typeof prompt === 'string' && prompt.trim()) text = prompt;
-    else if (Array.isArray(prompt)) {
-      const parts = prompt.filter((part): part is string | number => typeof part === 'string' || typeof part === 'number');
-      if (parts.length === prompt.length) {
-        const joined = parts.map((part) => String(part)).join(' ');
-        text = joined.trim() ? joined : null;
-      }
-    }
-    if (!text) return json(400, openAIError('prompt is required'));
-    const model = typeof body.model === 'string' && body.model.trim() ? body.model : 'openpalm';
-    const rawUser = typeof body.user === 'string' && body.user.trim() ? body.user : 'api-user';
-    const userId = `${this.name}:${rawUser}`;
-    if (body.stream === true) {
-      this.logMessage('info', 'request_streamed', { requestId, userId, path: '/v1/completions' });
-      return streamTurn({ client: this.ocClient, policy: this.permissionPolicy, userId, sessionKey: userId, text, framer: openAiLegacyFramer(`cmpl-${crypto.randomUUID()}`, model) }, req.signal);
-    }
-    let answer = '';
-    try {
-      const guardResp = await this.forward({ userId, text, metadata: { model } });
-      if (!guardResp.ok) throw new Error(`Guardian returned status ${guardResp.status}`);
-      const data = await guardResp.json() as { answer?: string };
-      answer = data.answer ?? '';
-    } catch (err) {
-      this.logMessage('error', 'guardian_error', { requestId, error: err instanceof Error ? err.message : String(err) });
-      return guardianErrorResponse(err, openAIError, json);
-    }
-    this.logMessage('info', 'request_forwarded', { requestId, userId, path: '/v1/completions' });
-    return json(200, { id: `cmpl-${crypto.randomUUID()}`, object: 'text_completion', created: Math.floor(Date.now() / 1000), model, choices: [{ text: answer, index: 0, finish_reason: 'stop' }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } });
-  }
-
-  private async handleAnthropicMessages(req: Request, requestId: string): Promise<Response> {
-    if (!this.checkAnthropicAuth(req)) {
-      this.logMessage('warn', 'auth_failure', { requestId, path: '/v1/messages' });
-      return json(401, anthropicError('Unauthorized', 'authentication_error'));
-    }
-    let body: Record<string, unknown>;
-    try { body = await req.json(); } catch { return json(400, anthropicError('Invalid JSON')); }
-    const text = extractChatText(body.messages);
-    if (!text) return json(400, anthropicError('messages with user content is required'));
-    const model = typeof body.model === 'string' && body.model.trim() ? body.model : 'openpalm';
-    const meta = asRecord(body.metadata);
-    const rawUser = meta && typeof meta.user_id === 'string' && meta.user_id.trim() ? meta.user_id : 'api-user';
-    const userId = `${this.name}:${rawUser}`;
-    if (body.stream === true) {
-      this.logMessage('info', 'request_streamed', { requestId, userId, path: '/v1/messages' });
-      return streamTurn({ client: this.ocClient, policy: this.permissionPolicy, userId, sessionKey: userId, text, framer: anthropicFramer(`msg_${crypto.randomUUID()}`, model) }, req.signal);
-    }
-    let answer = '';
-    try {
-      const guardResp = await this.forward({ userId, text, metadata: { model } });
-      if (!guardResp.ok) throw new Error(`Guardian returned status ${guardResp.status}`);
-      const data = await guardResp.json() as { answer?: string };
-      answer = data.answer ?? '';
-    } catch (err) {
-      this.logMessage('error', 'guardian_error', { requestId, error: err instanceof Error ? err.message : String(err) });
-      return guardianErrorResponse(err, anthropicError, json);
-    }
-    this.logMessage('info', 'request_forwarded', { requestId, userId, path: '/v1/messages' });
-    return json(200, { id: `msg_${crypto.randomUUID()}`, type: 'message', role: 'assistant', content: [{ type: 'text', text: answer }], model, stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } });
+    this.logMessage('info', 'request_forwarded', { requestId, userId, path: spec.path });
+    return json(200, spec.makeEnvelope(id, model, answer));
   }
 
   createFetch(fetchFn: typeof fetch = fetch): (req: Request) => Promise<Response> {
