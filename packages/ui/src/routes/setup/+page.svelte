@@ -145,22 +145,8 @@
 
           {:else if s.currentStep === 2}
             <section class="step-content" id="step-2">
-              <Screen2ExtrasStep
-                modelMode={s.modelMode}
-                voiceEnabled={s.voiceEnabled}
-                voiceTts={s.displayedVoiceTts}
-                voiceStt={s.displayedVoiceStt}
-                hasOpenAI={s.hasOpenAI}
-                portalSelection={s.portalSelection}
-                onvoiceenabledchange={(v) => {
-                  s.voiceEnabled = v;
-                  s.handleEnableVoiceChange(v);
-                }}
-                onchangetts={(v) => { s.voiceTts = v; }}
-                onchangestt={(v) => { s.voiceStt = v; }}
-                onportaltoggle={(id) => s.handlePortalToggle(id)}
-                oncredentialchange={(chId, credKey, value) => s.handleCredentialChange(chId, credKey, value)}
-              />
+              <!-- Screen2ExtrasStep reads the setup-state store directly. -->
+              <Screen2ExtrasStep />
             </section>
 
           {:else if s.currentStep === 3}
