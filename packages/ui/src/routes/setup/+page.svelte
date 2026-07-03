@@ -139,32 +139,8 @@
           <!-- Step body -->
           {#if s.currentStep === 1}
             <section class="step-content" id="step-1">
-              <Screen1ModelsStep
-                detectionLoading={s.autoModeImporting}
-                systemCheckError={s.systemCheckPassed ? '' : (s.step0Error || '')}
-                hostProviders={s.detectedHostProviders}
-                opencodeProviders={s.opencodeProviders}
-                opencodeAuth={s.opencodeAuth}
-                providerState={s.providerState}
-                ollamaEnabled={s.ollamaEnabled}
-                selectedOllamaProfile={s.selectedOllamaProfile}
-                hostImporting={s.hostImporting}
-                verifiedCount={s.verifiedCount}
-                allowEmptyInstall={s.allowEmptyInstall}
-                llmModel={s.modelSelection.llm?.model ?? ''}
-                llmProvider={s.modelSelection.llm?.connId ?? ''}
-                detectedCloudConn={s.detectedCloudConn}
-                gpuVramMb={s.detectedGpuVramMb}
-                gpuVendor={s.detectedGpuVendor}
-                gpuName={s.detectedGpuName}
-                onmodelmodechange={(m) => s.handleConnectModeChange(m)}
-                onhostimport={() => void s.handleHostImport()}
-                onoauthstart={(id, methodIndex) => void s.startOpenCodeOAuth(id, methodIndex)}
-                onoauthcancel={(id) => s.cancelOAuth(id)}
-                onrecheck={() => void s.fetchAndApplyRecommendation()}
-                onsystemcheckretry={() => s.goToStep(0)}
-                onallowemptyinstallchange={(v) => { s.allowEmptyInstall = v; }}
-              />
+              <!-- Screen1ModelsStep reads the setup-state store directly. -->
+              <Screen1ModelsStep />
             </section>
 
           {:else if s.currentStep === 2}

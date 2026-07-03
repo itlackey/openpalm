@@ -8,135 +8,61 @@
    *   2. Run on this computer (local AI — co-equal primary option)
    *   3. Sign in to a cloud service (expands ProviderOAuthList inline)
    *
-   * Props:
-   *   modelMode               — currently selected mode ('cloud'|'local'|'both')
-   *   detectionLoading        — true while /api/setup/recommend is in flight
-   *   detectionTimedOut       — true when detection did not complete within 3s
-   *   systemCheckError        — non-empty string when SystemCheck failed (shows inline alert)
-   *   systemCheckRetrying     — true while system check retry is in progress
-   *   gpuVramMb               — VRAM in MiB (0 = not detected)
-   *   gpuVendor               — 'apple' | 'nvidia' | 'amd' | '' (empty = none detected)
-   *   gpuName                 — human-readable GPU name
-   *   hostProviders           — local runtimes running on host
-   *   credentialCount         — importable host credential count
-   *   cloudProviders          — provider ids configured on host
-   *   opencodeProviders       — all OpenCode providers (for OAuth list)
-   *   opencodeAuth            — auth methods per provider id
-   *   providerState           — verification state per provider id
-   *   ollamaEnabled           — whether in-stack Ollama is active
-   *   selectedOllamaProfile   — ollama profile id (cuda/rocm/cpu)
-   *   hostImporting           — true while host import is in flight
-   *   verifiedCount           — number of providers currently verified
-   *   allowEmptyInstall       — whether "install without provider" escape is active
-   *   llmModel                — selected chat model id
-   *   llmProvider             — provider name for selected chat model
-   *
-   * Events:
-   *   onmodelmodechange       — user picked a different model mode
-   *   onhostimport            — trigger host provider import
-   *   onoauthstart            — OAuth flow start
-   *   onoauthcancel           — OAuth flow cancel
-   *   onbaseurl               — custom base URL changed
-   *   onapikey                — custom API key changed
-   *   onverify                — verify custom endpoint
-   *   onrecheck               — re-call /api/setup/recommend
-   *   onsystemcheckretry      — retry the system check
-   *   onallowemptyinstallchange — toggle empty install escape
-   *   onnext                  — proceed to Screen 2
+   * Takes NO props: this step reads the setup-state store
+   * ($lib/setup/setup-state.svelte.ts) directly for its reactive inputs
+   * (providerState, verifiedCount, detected GPU/host info, model selection, …)
+   * and calls the store's methods for actions (handleConnectModeChange,
+   * handleHostImport, startOpenCodeOAuth/cancelOAuth, fetchAndApplyRecommendation,
+   * goToStep, allowEmptyInstall). Local aliases near the top of the script map
+   * those store members to the names the template uses.
    */
 
   import { untrack } from 'svelte';
   import CloudAttachPanel from './CloudAttachPanel.svelte';
   import LocalModelsStatus from './LocalModelsStatus.svelte';
-  import type { OpenCodeProvider, AuthMethod, ProviderState } from '$lib/client/types.js';
   import { LOCAL_PROVIDER_IDS, FRIENDLY_PROVIDER_NAMES } from '$lib/client/constants.js';
+  import { setupState } from '$lib/setup/setup-state.svelte.js';
 
-  export type ModelMode = 'cloud' | 'local' | 'both';
-
-  interface HostProvider {
-    provider: string;
-    url: string;
-  }
-
-  interface Props {
-    /** True while Phase-0 detection is in flight. */
-    detectionLoading?: boolean;
-    /** True when the 3-second detection timeout elapsed. */
-    detectionTimedOut?: boolean;
-    /** Non-empty string = SystemCheck failed; shown as inline alert on this screen. */
-    systemCheckError?: string;
-    /** True while the system check retry is running. */
-    systemCheckRetrying?: boolean;
-    /** VRAM in MiB from detection (0 = not detected). */
-    gpuVramMb?: number;
-    /** GPU vendor from detection ('apple'|'nvidia'|'amd'|''). */
-    gpuVendor?: string;
-    /** Human-readable GPU name. */
-    gpuName?: string;
-    /** Local runtimes already running on the host. */
-    hostProviders?: HostProvider[];
-    /** Full OpenCode provider list (for OAuth sub-panel). */
-    opencodeProviders?: OpenCodeProvider[];
-    /** Auth methods per provider id. */
-    opencodeAuth?: Record<string, AuthMethod[]>;
-    /** Verification state per provider id. */
-    providerState?: Record<string, ProviderState>;
-    /** Whether in-stack Ollama will be added. */
-    ollamaEnabled?: boolean;
-    /** Selected Ollama profile (cuda/rocm/cpu). */
-    selectedOllamaProfile?: string;
-    /** True while host-import is in flight. */
-    hostImporting?: boolean;
-    /** Number of currently verified providers. */
-    verifiedCount?: number;
-    /** Whether the "install without provider" escape is checked. */
-    allowEmptyInstall?: boolean;
-    /** Currently selected chat model id. */
-    llmModel?: string;
-    /** Provider name for the selected chat model (connId). */
-    llmProvider?: string;
-    /** Stable connId of the detected cloud service (persists across local↔cloud switches). */
-    detectedCloudConn?: string;
-
-    onmodelmodechange: (mode: ModelMode) => void;
-    onhostimport?: () => void;
-    onoauthstart?: (id: string, methodIndex: number) => void;
-    onoauthcancel?: (id: string) => void;
-    onrecheck?: () => void;
-    onsystemcheckretry?: () => void;
-    onallowemptyinstallchange?: (v: boolean) => void;
-  }
+  type ModelMode = 'cloud' | 'local' | 'both';
 
   const MIN_LOCAL_GPU_VRAM_MB = 8192;
 
-  let {
-    detectionLoading = false,
-    detectionTimedOut = false,
-    systemCheckError = '',
-    systemCheckRetrying = false,
-    gpuVramMb = 0,
-    gpuVendor = '',
-    gpuName = '',
-    hostProviders = [],
-    opencodeProviders = [],
-    opencodeAuth = {},
-    providerState = {},
-    ollamaEnabled = false,
-    selectedOllamaProfile = '',
-    hostImporting = false,
-    verifiedCount = 0,
-    allowEmptyInstall = false,
-    llmModel = '',
-    llmProvider = '',
-    detectedCloudConn = '',
-    onmodelmodechange,
-    onhostimport,
-    onoauthstart,
-    onoauthcancel,
-    onrecheck,
-    onsystemcheckretry,
-    onallowemptyinstallchange,
-  }: Props = $props();
+  // This step reads the wizard store directly instead of receiving ~20 drilled
+  // props from +page.svelte. Local aliases keep the rest of the component body
+  // unchanged: state aliases are `$derived` off the store; the action aliases
+  // wrap the store's methods.
+  const s = setupState;
+
+  const detectionLoading = $derived(s.autoModeImporting);
+  // detectionTimedOut / systemCheckRetrying have no store backing — the page
+  // never set them (always false). Kept as inert constants so the dead
+  // timeout / retrying UI paths behave exactly as before.
+  const detectionTimedOut = false;
+  const systemCheckRetrying = false;
+  const systemCheckError = $derived(s.systemCheckPassed ? '' : (s.step0Error || ''));
+  const gpuVramMb = $derived(s.detectedGpuVramMb);
+  const gpuVendor = $derived(s.detectedGpuVendor);
+  const gpuName = $derived(s.detectedGpuName);
+  const hostProviders = $derived(s.detectedHostProviders);
+  const opencodeProviders = $derived(s.opencodeProviders);
+  const opencodeAuth = $derived(s.opencodeAuth);
+  const providerState = $derived(s.providerState);
+  const ollamaEnabled = $derived(s.ollamaEnabled);
+  const selectedOllamaProfile = $derived(s.selectedOllamaProfile);
+  const hostImporting = $derived(s.hostImporting);
+  const verifiedCount = $derived(s.verifiedCount);
+  const allowEmptyInstall = $derived(s.allowEmptyInstall);
+  const llmModel = $derived(s.modelSelection.llm?.model ?? '');
+  const llmProvider = $derived(s.modelSelection.llm?.connId ?? '');
+  const detectedCloudConn = $derived(s.detectedCloudConn);
+
+  const onmodelmodechange = (mode: ModelMode): void => s.handleConnectModeChange(mode);
+  const onhostimport = (): void => void s.handleHostImport();
+  const onoauthstart = (id: string, methodIndex: number): void => void s.startOpenCodeOAuth(id, methodIndex);
+  const onoauthcancel = (id: string): void => s.cancelOAuth(id);
+  const onrecheck = (): void => void s.fetchAndApplyRecommendation();
+  const onsystemcheckretry = (): void => s.goToStep(0);
+  const onallowemptyinstallchange = (v: boolean): void => { s.allowEmptyInstall = v; };
 
   // Local-models gate: available when GPU >= 8 GiB, Apple Silicon, or runtime running.
   const localAvailable = $derived(
