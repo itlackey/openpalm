@@ -124,6 +124,7 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
 
   let activeAssistant: ActiveAssistant = null;
   if (recommendedRoute === "chat") {
+    // biome-ignore lint/style/noNonNullAssertion: reached only when recommendedRoute==='chat' && !hasHealthyLocal, which requires (state==='not_installed' && hasAccessibleRemote), so accessibleRemotes is non-empty.
     activeAssistant = hasHealthyLocal ? { kind: "local" } : { kind: "remote", id: accessibleRemotes[0]!.id };
   }
 

@@ -41,7 +41,10 @@ import {
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
-  while (cleanups.length) cleanups.pop()!();
+  while (cleanups.length) {
+    const cleanup = cleanups.pop();
+    cleanup?.();
+  }
 }, 60_000); // docker compose down can take a few seconds; don't let teardown time out
 
 describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () => {
@@ -120,11 +123,11 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
     expect(proj.up(envA).ok).toBe(true);
     const running = proj.runningImage("svc");
     expect(running).not.toBeNull();
-    expect(running!.tag).toBe("alpine:3.19");
-    expect(running!.digest).toMatch(/^sha256:/);
+    expect(running?.tag).toBe("alpine:3.19");
+    expect(running?.digest).toMatch(/^sha256:/);
     // The "pin" now says 3.22 but we DON'T recreate — the container is still 3.19.
     writeFileSync(join(proj.dir, "b.env"), "SVC_TAG=3.22\n");
-    expect(running!.tag).toBe("alpine:3.19"); // reality, not the pin
+    expect(running?.tag).toBe("alpine:3.19"); // reality, not the pin
   });
 
   // ── INV4 [MODEL/docker] — a pin to a missing image fails loudly on pull ─────
@@ -164,9 +167,9 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
     const after = await getRunningImages({ files: [proj.file], envFiles: [envFile], profiles: [] });
     const svcInfo = after.svc;
     expect(svcInfo).not.toBeUndefined();
-    expect(svcInfo!.state).toBe("running");
-    expect(svcInfo!.digest).toMatch(/^sha256:/);
-    expect(svcInfo!.tag).toContain("alpine");
+    expect(svcInfo?.state).toBe("running");
+    expect(svcInfo?.digest).toMatch(/^sha256:/);
+    expect(svcInfo?.tag).toContain("alpine");
 
     // A separate inspect of a non-existent container returns not_installed
     const { inspectContainerImage } = await import("./docker.js");
@@ -264,8 +267,9 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
     expect(readFileSync(join(dataUi, UI_VERSION_STAMP), "utf8").trim()).toBe("0.12.0");
     // Backup of the OLD build exists
     expect(result.backupDir).toBeTruthy();
-    expect(existsSync(join(result.backupDir!, "index.js"))).toBe(true);
-    expect(readFileSync(join(result.backupDir!, "index.js"), "utf8")).toContain("old build");
+    if (!result.backupDir) return; // narrow for TS; the expect above already failed the test if falsy
+    expect(existsSync(join(result.backupDir, "index.js"))).toBe(true);
+    expect(readFileSync(join(result.backupDir, "index.js"), "utf8")).toContain("old build");
   });
 
   test("INV8b UI build hot-swap: bad integrity aborts and prior build is untouched", async () => {
@@ -389,7 +393,9 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
       ? readdirSync(backupsDir).filter((n: string) => n.startsWith("skeleton-"))
       : [];
     expect(skelBackups.length).toBeGreaterThan(0);
-    const skelBackupDir = join(backupsDir, skelBackups[0]!);
+    const firstSkelBackup = skelBackups[0];
+    if (firstSkelBackup === undefined) return; // narrow for TS; the expect above already failed the test if empty
+    const skelBackupDir = join(backupsDir, firstSkelBackup);
     expect(existsSync(join(skelBackupDir, "stack", "core.compose.yml"))).toBe(true);
     expect(readFileSync(join(skelBackupDir, "stack", "core.compose.yml"), "utf8")).toContain("image: old");
   });
@@ -440,7 +446,10 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
 describe("install/update invariants (filesystem-only, always runs)", () => {
   const cleanups: Array<() => void> = [];
   afterEach(() => {
-    while (cleanups.length) cleanups.pop()!();
+    while (cleanups.length) {
+      const cleanup = cleanups.pop();
+      cleanup?.();
+    }
   });
 
   // INV7 [Phase 2] — apply() overwrites system/, seeds user trees once, is idempotent.

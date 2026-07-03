@@ -68,7 +68,7 @@ describe('secrets-dir file browser API (admin Secrets tab)', () => {
     const names = files.map((f) => f.name);
     expect(names).toContain('auth.json');           // included (strict listSecretNames would exclude it)
     expect(names).toContain('portal_api_secret');
-    expect(files.find((f) => f.name === 'auth.json')!.size).toBe('{"k":1}'.length);
+    expect(files.find((f) => f.name === 'auth.json')?.size).toBe('{"k":1}'.length);
     // strict API still excludes the dotted file
     expect(listSecretNames(stackDir)).not.toContain('auth.json');
   });

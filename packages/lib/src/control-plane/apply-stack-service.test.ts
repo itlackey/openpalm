@@ -129,7 +129,7 @@ describe("applyStack({ kind: 'service' }) — scoped single-service update", () 
     expect(pullCall).toContain("assistant");
     // Must NOT be a bare `pull` (which would pull all images)
     // The pull args end with the service name, not empty.
-    expect(pullCall!.trim().endsWith("assistant")).toBe(true);
+    expect(pullCall?.trim().endsWith("assistant")).toBe(true);
   });
 
   it("(b) issues up with --force-recreate --no-deps <service> (not --remove-orphans)", () => {

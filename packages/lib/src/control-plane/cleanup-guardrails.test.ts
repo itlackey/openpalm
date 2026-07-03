@@ -35,7 +35,7 @@ describe("guardrail: no config/components runtime references", () => {
     const violations: string[] = [];
 
     for (const { path, content } of files) {
-      const filename = path.split("/").pop()!;
+      const filename = path.slice(path.lastIndexOf("/") + 1);
       // Skip this test file itself
       if (filename === "cleanup-guardrails.test.ts") continue;
 
@@ -177,7 +177,7 @@ describe("guardrail: no deprecated OP_CONFIG_HOME/OP_STATE_HOME/OP_DATA_HOME", (
     const violations: string[] = [];
 
     for (const { path, content } of files) {
-      const filename = path.split("/").pop()!;
+      const filename = path.slice(path.lastIndexOf("/") + 1);
       if (filename === "cleanup-guardrails.test.ts") continue;
       // home.ts may contain backward-compat resolution — skip it
       if (filename === "home.ts") continue;
@@ -206,7 +206,7 @@ describe("guardrail: no secrets.env references", () => {
     const violations: string[] = [];
 
     for (const { path, content } of files) {
-      const filename = path.split("/").pop()!;
+      const filename = path.slice(path.lastIndexOf("/") + 1);
       if (filename === "cleanup-guardrails.test.ts") continue;
 
       const lines = content.split("\n");
@@ -249,7 +249,7 @@ describe("guardrail: .openpalm/stack/start.sh is absent", () => {
     const violations: string[] = [];
 
     for (const { path, content } of files) {
-      const filename = path.split("/").pop()!;
+      const filename = path.slice(path.lastIndexOf("/") + 1);
       if (filename === "cleanup-guardrails.test.ts") continue;
 
       const lines = content.split("\n");

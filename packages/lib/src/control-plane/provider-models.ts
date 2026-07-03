@@ -32,7 +32,8 @@ function resolveApiKey(apiKeyRef: string, homeDir: string): string {
   if (!apiKeyRef.startsWith("env:")) return apiKeyRef;
 
   const varName = apiKeyRef.slice(4);
-  if (process.env[varName]) return process.env[varName]!;
+  const fromProcessEnv = process.env[varName];
+  if (fromProcessEnv) return fromProcessEnv;
 
   const secrets = readStackRuntimeEnv(homeDir);
   return secrets[varName] ?? "";

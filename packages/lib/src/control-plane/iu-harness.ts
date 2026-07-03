@@ -83,6 +83,7 @@ export function makeHome(): Home {
     "data/logs/app.log": "log line\n",
     "state/stack.state.env": "OP_ASSISTANT_VERSION=0.11.0\nOP_ENABLED_ADDONS=discord\n",
   };
+  // biome-ignore lint/style/noNonNullAssertion: seed defines an entry for every relative path enumerated in files (the two literals are kept in sync above).
   for (const rels of Object.values(files)) for (const rel of rels) write(join(dir, rel), seed[rel]!);
   return {
     dir,

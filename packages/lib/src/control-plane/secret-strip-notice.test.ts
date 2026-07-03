@@ -38,10 +38,10 @@ describe('#502 secret-strip notice', () => {
 
     const notice = readSecretStripNotice(state);
     expect(notice).not.toBeNull();
-    expect(notice!.keys).toContain('OPENAI_API_KEY');
-    expect(notice!.keys).toContain('DISCORD_BOT_TOKEN');
-    expect(notice!.keys).not.toContain('OP_LOG_LEVEL');
-    expect(typeof notice!.at).toBe('string');
+    expect(notice?.keys).toContain('OPENAI_API_KEY');
+    expect(notice?.keys).toContain('DISCORD_BOT_TOKEN');
+    expect(notice?.keys).not.toContain('OP_LOG_LEVEL');
+    expect(typeof notice?.at).toBe('string');
   });
 
   it('does not create a notice when there are no secret-like keys', () => {
@@ -71,8 +71,9 @@ describe('#502 secret-strip notice', () => {
     writeSystemEnv(state);
 
     const notice = readSecretStripNotice(state);
-    expect(notice!.keys).toContain('OPENAI_API_KEY');
-    expect(notice!.keys).toContain('GROQ_API_KEY');
+    expect(notice).not.toBeNull();
+    expect(notice?.keys).toContain('OPENAI_API_KEY');
+    expect(notice?.keys).toContain('GROQ_API_KEY');
 
     dismissSecretStripNotice(state);
     expect(readSecretStripNotice(state)).toBeNull();

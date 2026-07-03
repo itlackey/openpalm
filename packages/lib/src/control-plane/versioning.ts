@@ -55,6 +55,7 @@ function comparePrerelease(a: string, b: string): number {
       continue;
     }
     if (aIsNum !== bIsNum) return aIsNum ? -1 : 1;
+    // biome-ignore lint/style/noNonNullAssertion: the two guards above (i >= aParts.length / i >= bParts.length) prove i is in bounds for both arrays here.
     if (aParts[i] !== bParts[i]) return aParts[i]! > bParts[i]! ? 1 : -1;
   }
   return 0;
@@ -75,8 +76,8 @@ export function compareComparableVersions(a: string, b: string): number {
 }
 
 export function majorVersionOf(version: string | null | undefined): number | null {
-  if (!isComparableSemver(version)) return null;
-  return parseComparableVersion(version!).major;
+  if (version == null || !isComparableSemver(version)) return null;
+  return parseComparableVersion(version).major;
 }
 
 export function isSameMajorVersion(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -107,8 +108,8 @@ export function normalizeVersion(version: string | null | undefined): string {
  * Build metadata (`+build.5`) is NOT a pre-release. Non-semver → false.
  */
 export function isPrerelease(version: string | null | undefined): boolean {
-  if (!isComparableSemver(version)) return false;
-  return parseComparableVersion(version!).prerelease !== null;
+  if (version == null || !isComparableSemver(version)) return false;
+  return parseComparableVersion(version).prerelease !== null;
 }
 
 /**

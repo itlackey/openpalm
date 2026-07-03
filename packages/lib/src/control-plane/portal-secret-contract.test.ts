@@ -80,8 +80,8 @@ describe("portal verification-secret contract (compose ↔ portalSecretName ↔ 
         expect(decl, `top-level secrets: must declare ${expectedSecret}`).toBeDefined();
         // The container reads the file the migration/seeder writes — the basename
         // MUST equal the secret name, under knowledge/secrets/.
-        expect(basename(decl!.file ?? "")).toBe(expectedSecret);
-        expect(decl!.file).toContain("/knowledge/secrets/");
+        expect(basename(decl?.file ?? "")).toBe(expectedSecret);
+        expect(decl?.file).toContain("/knowledge/secrets/");
       });
     });
   }

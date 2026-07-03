@@ -202,7 +202,10 @@ describe('reconcileHostOwnership swap block + fast path (R2/R4)', () => {
   test('skips the repair walk (no docker) when the marker already matches the session', async () => {
     if (process.platform === 'win32') return;
     const state = makeState();
+    // process.getuid/getgid are defined on POSIX (win32 returned early above).
+    // biome-ignore lint/style/noNonNullAssertion: process.getuid is defined on POSIX (win32 returned early).
     const sessionUid = process.getuid!();
+    // biome-ignore lint/style/noNonNullAssertion: process.getgid is defined on POSIX (win32 returned early).
     const sessionGid = process.getgid!();
     // Marker present + match decision → needsRepair false → no docker invoked.
     writeOwnershipRepairMarker(state.homeDir, { uid: sessionUid, gid: sessionGid });

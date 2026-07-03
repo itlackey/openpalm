@@ -98,7 +98,9 @@ describe('detectHostIdentity', () => {
     }
     // Session identity from resolveSessionIdentity — the live process uid — so a
     // moved drive whose files are owned by a stale uid cannot mask a host swap.
+    // biome-ignore lint/style/noNonNullAssertion: process.getuid is defined on POSIX (win32 returned early).
     expect(identity.uid).toBe(process.getuid!());
+    // biome-ignore lint/style/noNonNullAssertion: process.getgid is defined on POSIX (win32 returned early).
     expect(identity.gid).toBe(process.getgid!());
   });
 });

@@ -135,10 +135,11 @@ export function mergeEnvContent(
     const eq = testLine.indexOf('=');
     if (eq <= 0) continue;
     const key = testLine.slice(0, eq).trim();
-    if (remaining.has(key)) {
+    const value = remaining.get(key);
+    if (value !== undefined) {
       // Preserve the export prefix if the original line had one
       const prefix = hadExport ? 'export ' : '';
-      lines[i] = `${prefix}${key}=${quoteEnvValue(remaining.get(key)!)}`;
+      lines[i] = `${prefix}${key}=${quoteEnvValue(value)}`;
       remaining.delete(key);
     }
   }
