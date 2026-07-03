@@ -15,7 +15,7 @@
           const stored = window.localStorage.getItem(storageKey);
           const preference = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
           const resolved = preference === 'system'
-            ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+            ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
             : preference;
           const root = document.documentElement;
           root.setAttribute('data-theme', resolved);

@@ -264,7 +264,6 @@ export default class SlackChannel extends BasePortal {
         : `slack:channel:${event.channel}:user:${event.user}`;
 
     if (inTrackedThread) {
-      // biome-ignore lint/style/noNonNullAssertion: inTrackedThread implies event.thread_ts != null
       this.touchThread(event.channel, event.thread_ts!);
     }
 

@@ -24,7 +24,6 @@ describe('portal image bake contract', () => {
     expect(startScript).not.toMatch(/^set -e\s*$/m);
     // Under `-u`, the optional PORTAL_PACKAGE check must not trip on an unset var —
     // it must fall back to empty so the friendly error path still runs.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: this is a literal bash snippet we assert is present in start.sh, not a JS template placeholder
     expect(startScript).toContain('[ -z "${PORTAL_PACKAGE:-}" ]');
     expect(startScript).not.toContain('[ -z "$PORTAL_PACKAGE" ]');
   });

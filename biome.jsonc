@@ -21,6 +21,8 @@
       "!**/*.min.js",
       // SVGs are checked-in diagram assets, not source; skip them (avoids a11y/noSvgWithoutTitle on docs).
       "!**/*.svg",
+      // Large checked-in data blob (4.3 MiB provider catalog) — not lintable source.
+      "!docs/providers.json",
       // Biome's Svelte support is incomplete: it parses the <script> block but not the
       // template, so template-referenced vars/imports are mis-flagged as unused
       // (noUnusedVariables/noUnusedImports) — ~1000 false positives. Svelte files are

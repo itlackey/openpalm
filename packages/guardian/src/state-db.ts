@@ -133,7 +133,6 @@ export function upsertPrincipal(input: { id: string; kind: PrincipalKind; label?
       token_hash = excluded.token_hash,
       enabled = excluded.enabled
   `).run(input.id, input.kind, label, hashToken(input.token), input.enabled === false ? 0 : 1, createdAt);
-  // biome-ignore lint/style/noNonNullAssertion: the row was just upserted above, so getPrincipalRecord always returns it.
   return getPrincipalRecord(input.id)!;
 }
 

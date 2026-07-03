@@ -578,7 +578,6 @@ describe("/oc proxy — /event filtered stream (§3.2)", () => {
  * instead of hanging the suite.
  */
 async function readStreamUntil(resp: Response, needle: string, maxMs = 2000): Promise<string> {
-  // biome-ignore lint/style/noNonNullAssertion: streaming test responses always have a body.
   const reader = resp.body!.getReader();
   const decoder = new TextDecoder();
   let out = "";

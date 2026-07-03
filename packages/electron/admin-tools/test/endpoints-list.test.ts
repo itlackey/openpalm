@@ -15,7 +15,6 @@ afterEach(() => {
 });
 
 describe("endpointsPath", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${OP_HOME} documents the path template in the test name, not an interpolation.
   it("resolves to ${OP_HOME}/config/endpoints.json", () => {
     expect(endpointsPath("/some/home")).toBe("/some/home/config/endpoints.json");
   });

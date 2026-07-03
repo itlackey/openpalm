@@ -346,7 +346,6 @@ describe('resolveAssistantUrl', () => {
     expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:1234');
   });
 
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${homeDir} documents the path template in the test name, not an interpolation.
   it('reads stack.env from ${homeDir}/knowledge/env/stack.env', () => {
     vi.mocked(lib.parseEnvFile).mockReturnValue({});
     delete process.env.OP_OPENCODE_URL;

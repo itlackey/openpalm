@@ -454,7 +454,6 @@ describe("parseCustomCommands", () => {
     }]);
     const commands = parseCustomCommands(json);
     expect(commands.length).toBe(1);
-    // biome-ignore lint/style/noNonNullAssertion: parsed command is asserted to have options
     const opts = commands[0].options!;
     expect(opts.length).toBe(4);
     expect(opts[0].type).toBe(CommandOptionType.STRING);
@@ -1099,7 +1098,6 @@ describe("command validation edge cases", () => {
     }]);
     const commands = parseCustomCommands(json);
     expect(commands.length).toBe(1);
-    // biome-ignore lint/style/noNonNullAssertion: parsed command is asserted to have a promptTemplate
     const resolved = resolvePromptTemplate(commands[0].promptTemplate!, { text: "hello", lang: "Spanish" });
     expect(resolved).toBe("Translate 'hello' to Spanish");
   });
@@ -1124,7 +1122,6 @@ describe("full command flow", () => {
     expect(cmd).toBeDefined();
     expect(cmd?.promptTemplate).toBeDefined();
 
-    // biome-ignore lint/style/noNonNullAssertion: cmd and its promptTemplate are asserted defined above
     const prompt = resolvePromptTemplate(cmd!.promptTemplate!, { topic: "recursion" });
     expect(prompt).toBe("Explain recursion in simple terms");
   });

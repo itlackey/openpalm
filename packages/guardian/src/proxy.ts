@@ -280,7 +280,6 @@ async function routeAllowed(
   search: string,
   body: string,
 ): Promise<Response> {
-  // biome-ignore lint/style/noNonNullAssertion: routeAllowed is only invoked after a successful allowlist match, so route is always present.
   const template = match.route!.template;
   const params = match.params ?? {};
   const sessionId = params.id;
