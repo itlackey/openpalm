@@ -1,5 +1,5 @@
 import { createLogger } from './logger.ts';
-import { constantTimeEqual } from './openai-api-crypto.ts';
+import { constantTimeEqual } from './crypto.ts';
 import { asRaw, extractTextDelta, isTurnEnd, partSnapshotType } from './openai-api-oc-events.ts';
 import { OcClient } from './openai-api-oc-client.ts';
 import { loadPermissionPolicy, type PermissionPolicy } from './openai-api-permissions.ts';
