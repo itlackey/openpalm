@@ -61,6 +61,7 @@ import {
   setTurnAbortFn,
 } from "./oc-bounds";
 import { getPolicyProvider, type PolicyDecision } from "./policy";
+import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS } from "./config";
 
 const logger = createLogger("guardian:proxy");
 
@@ -69,7 +70,6 @@ const logger = createLogger("guardian:proxy");
 /** Base path under which the native OpenCode proxy is served. */
 export const OC_PREFIX = "/oc";
 
-const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
 
 // Wire the stale-turn reaper's abort side-effect (§3.6 per-turn wall-clock cap).
@@ -548,7 +548,6 @@ function extractPromptText(body: string): string {
 // (the durable component is the guardian); a guardian restart re-creates once
 // then reuses. Evicted on DELETE /session. Title unified to the buffered `/`
 // form so the two paths are consistent.
-const SESSION_REUSE_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
 const SESSION_REUSE_MAX = 10_000;
 const ocSessionByKey = new Map<string, { sessionId: string; lastUsed: number }>();
 const ocSessionCreateLocks = new Map<string, Promise<string>>();

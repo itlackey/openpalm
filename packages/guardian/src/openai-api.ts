@@ -6,6 +6,7 @@ import { loadPermissionPolicy, type PermissionPolicy } from './openai-api-permis
 import { readOptionalSecretFile } from './openai-api-secret-file.ts';
 import { streamTurn, openAiChatFramer, openAiLegacyFramer, anthropicFramer, type SseFramer } from './openai-api-stream.ts';
 import { asRecord, extractChatText } from './openai-api-utils.ts';
+import { resolveGuardianUrl } from './config.ts';
 
 type ErrorFormatter = (message: string, type?: string) => Record<string, unknown>;
 type ForwardResult = { userId: string; text: string; metadata?: Record<string, unknown> };
@@ -90,7 +91,7 @@ const log = createLogger('guardian:openai-api');
 export class GuardianOpenAiApi {
   name = Bun.env.PRINCIPAL_ID ?? 'api';
   port: number = Number(Bun.env.PORT) || 8182;
-  guardianUrl = Bun.env.GUARDIAN_URL ?? 'http://guardian:8080';
+  guardianUrl = resolveGuardianUrl();
   private _fetchFn: typeof fetch = fetch;
   private permissionPolicy: PermissionPolicy = loadPermissionPolicy();
   private ocClientInstance: OcClient | null = null;

@@ -1,6 +1,8 @@
+import { resolveGuardianUrl } from './config.ts';
+
 type Event = Record<string, unknown>;
 
-const DEFAULT_GUARDIAN_OC_BASE_URL = `${Bun.env.GUARDIAN_URL ?? 'http://guardian:8080'}/oc`;
+const DEFAULT_GUARDIAN_OC_BASE_URL = `${resolveGuardianUrl()}/oc`;
 const H_USER = 'x-openpalm-user';
 const H_SESSION_KEY = 'x-openpalm-session-key';
 

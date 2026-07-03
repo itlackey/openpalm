@@ -7,13 +7,13 @@ import { readFileSync } from 'node:fs';
 import { constantTimeEqual } from './crypto.ts';
 import { moderateMessage } from './moderation';
 import { upsertPrincipal } from './state-db';
+import { DIRECT_PORT } from './config.ts';
 
 const logger = createLogger('guardian:mcp');
 
 const MCP_PRINCIPAL_ID = 'mcp';
 const MCP_LABEL = 'guardian-mcp';
 const MCP_TOKEN_FILE = Bun.env.GUARDIAN_MCP_TOKEN_FILE ?? '';
-const DIRECT_PORT = Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830);
 const DIRECT_BASE_URL = `http://127.0.0.1:${DIRECT_PORT}`;
 
 type JsonObject = Record<string, unknown>;
