@@ -60,18 +60,31 @@ export function allow(key: string, limit: number, windowMs: number): boolean {
   return true;
 }
 
+/**
+ * Classify a rate-limit bucket key as per-user vs per-principal (portal).
+ *
+ * Proxy keys are `oc:<kind>:<id>` (portal / per-principal) or
+ * `oc:<kind>:<id>:<userId>` (per-user) — see proxy.ts gate 1c. The trailing
+ * userId segment is what distinguishes a per-user bucket, so classify by the
+ * colon-segment count: 4+ segments → per-user, exactly 3 → per-principal.
+ */
+function isUserBucketKey(key: string): boolean {
+  return key.split(":").length >= 4;
+}
+
 /** Returns counts of active user and portal rate limiters for /stats. */
 export function activeRateLimiters(): { activeUserLimiters: number; activePortalLimiters: number } {
   const now = Date.now();
   let activeUserLimiters = 0;
   let activePortalLimiters = 0;
   for (const [key, b] of buckets) {
-    const windowMs = key.startsWith("ch:") ? PORTAL_RATE_WINDOW_MS : USER_RATE_WINDOW_MS;
+    const isUser = isUserBucketKey(key);
+    const windowMs = isUser ? USER_RATE_WINDOW_MS : PORTAL_RATE_WINDOW_MS;
     if (now - b.start > windowMs) continue; // expired
-    if (key.startsWith("ch:")) {
-      activePortalLimiters++;
-    } else {
+    if (isUser) {
       activeUserLimiters++;
+    } else {
+      activePortalLimiters++;
     }
   }
   return { activeUserLimiters, activePortalLimiters };
