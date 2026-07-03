@@ -962,9 +962,118 @@ export class SetupState {
     }
   }
 
+  // ── Reset ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * Restore EVERY wizard field to the same default the original
+   * component-scoped `$state` had on a fresh mount. Because `setupState` is a
+   * module singleton, a second SPA entry to /setup (client-side pushState nav —
+   * no full reload, so the module is not re-initialized) would otherwise reopen
+   * a STALE wizard (stale step, bypassed system check, stale selections). This
+   * runs at the START of `init()` (which fires once per mount) so every mount
+   * begins clean; the rerun-prefill and in-flight-deploy pickup in `init()`
+   * then re-apply the appropriate non-default state AFTER this reset.
+   *
+   * NOT to be called mid-flow — only at mount, where there is no in-flight work
+   * to clobber (any prior mount's polling/OAuth was already torn down by
+   * `dispose()` on unmount; this also defensively tears it down again).
+   */
+  reset(): void {
+    // Tear down any leftover background work first.
+    this.stopDeployPolling();
+    for (const id of Object.keys(this.oauthAbortControllers)) {
+      try { this.oauthAbortControllers[id].abort(); } catch { /* ignore */ }
+      delete this.oauthAbortControllers[id];
+    }
+    this.verifyGeneration = {};
+
+    // Navigation
+    this.currentStep = 0;
+    this.maxVisitedStep = 0;
+    this.showDeploy = false;
+    this.systemCheckPassed = false;
+
+    // Model mode + voice toggle
+    this.modelMode = 'cloud';
+    this.voiceEnabled = false;
+
+    // Step 0
+    this.uiLoginPassword = '';
+    this.step0Error = '';
+    this.autoModeImporting = false;
+    this.gpuDetected = false;
+
+    // Step 1
+    this.providerState = {};
+    this.detectedHostProviders = [];
+    this.detectedProviders = [];
+    this.opencodeAvailable = false;
+    this.opencodeProviders = [];
+    this.opencodeAuth = {};
+    this.hostProviderCount = 0;
+    this.allowEmptyInstall = false;
+    this.recommendation = null;
+    this.recommendationAlert = '';
+    this.recommendationApplied = false;
+    this.detectedGpuVramMb = 0;
+    this.detectedGpuVendor = '';
+    this.detectedGpuName = '';
+
+    // Step 2
+    this.modelSelection = {};
+
+    // Step 3 (voice)
+    this.voiceTts = { engine: '' };
+    this.voiceStt = { engine: '' };
+    this.voiceProfiles = [];
+    this.selectedVoiceProfile = '';
+    this.importedLlmModel = undefined;
+    this.importedSmallModel = undefined;
+
+    // Step 4 (options) — fresh portal objects so a prior mount's credentials
+    // don't linger (the rerun path mutates these in place).
+    this.portalSelection = {
+      discord: { enabled: false, botToken: '', applicationId: '' },
+      slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
+    };
+    this.ollamaEnabled = false;
+    this.ollamaProfiles = [];
+    this.selectedOllamaProfile = '';
+    this.imageTag = '';
+    this.hostAkmEnabled = false;
+
+    // Step 5 (review + install)
+    this.installError = '';
+    this.installing = false;
+    this.emptyAiAck = false;
+
+    // Deploy
+    this.deployData = {};
+    this.deployDone = false;
+    this.deployHasWarnings = false;
+    this.deployError = null;
+    this.deployPollErrors = 0;
+
+    // Connect-step row selection
+    this.savedCloudLlm = undefined;
+    this.detectedCloudConn = '';
+
+    // Host import
+    this.hostImportTriggered = false;
+    this.hostImporting = false;
+    this.hostImportError = '';
+
+    this.isRerun = false;
+  }
+
   // ── Mount: generate token, check status, start discovery ─────────────────────
 
   init(): void {
+    // Start every mount from a clean slate. init() runs once per mount, so a
+    // second SPA entry to /setup gets a fresh wizard instead of the singleton's
+    // stale state. The rerun-prefill / deploy-pickup below re-apply state AFTER
+    // this reset.
+    this.reset();
     this.initProviderState();
 
     const params = new URLSearchParams(window.location.search);

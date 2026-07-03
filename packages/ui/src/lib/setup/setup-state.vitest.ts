@@ -14,9 +14,37 @@
  * autoSelectModels). Fetch/window-dependent methods are exercised elsewhere by
  * the e2e wizard tests.
  */
-import { describe, it, expect } from 'vitest';
-import { SetupState } from './setup-state.svelte.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { SetupState, setupState } from './setup-state.svelte.js';
 import type { ProviderState } from '$lib/client/types.js';
+
+// Stub the data-access layer so the exported singleton's init() discovery
+// fetches resolve to benign values instead of hitting the network (or throwing
+// on a relative URL in node). Only the singleton reset test drives init(); the
+// pure-logic tests below never touch these.
+vi.mock('$lib/setup-api.js', () => ({
+  fetchVoiceProfiles: vi.fn(async () => null),
+  fetchOllamaProfiles: vi.fn(async () => null),
+  fetchRecommendation: vi.fn(async () => null),
+  ensureOpenCode: vi.fn(async () => null),
+  fetchOpenCodeStatus: vi.fn(async () => null),
+  fetchOpenCodeProviders: vi.fn(async () => null),
+  fetchDetectedProviders: vi.fn(async () => null),
+  fetchProviderModels: vi.fn(async () => ({ models: [] })),
+  authorizeOpenCodeOAuth: vi.fn(async () => ({})),
+  pollOpenCodeOAuthCallback: vi.fn(async () => ({ ok: false, data: null })),
+  completeSetup: vi.fn(async () => ({ ok: true, data: { ok: true } })),
+  fetchDeployStatus: vi.fn(async () => ({ ok: false, data: null })),
+  retryDeploy: vi.fn(async () => ({ ok: true, data: { ok: true } })),
+  fetchHostStatus: vi.fn(async () => null),
+  importHost: vi.fn(async () => ({ ok: true, data: { ok: true } })),
+  fetchCurrentConfig: vi.fn(async () => null),
+  fetchSetupStatus: vi.fn(async () => ({ setupComplete: false })),
+}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function providerEntry(patch: Partial<ProviderState> = {}): ProviderState {
   return {
@@ -223,5 +251,82 @@ describe('SetupState — payload derivation delegates to buildSetupPayload', () 
     s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
     expect(s.payload.llm).toBeDefined();
     expect(s.payload.llm?.model).toBe('gpt-4o');
+  });
+});
+
+describe('SetupState — module singleton is reset on a fresh (non-rerun) mount', () => {
+  // This exercises the EXPORTED singleton + init()/reset() path (the pure-logic
+  // tests above use `new SetupState()`, which is always fresh, so they can't
+  // catch singleton persistence). Regression guard: a second SPA entry to
+  // /setup (client-side pushState nav — no full reload, so the module is not
+  // re-initialized) must reopen a FRESH wizard, not the stale one left behind.
+  it('a dirtied singleton returns to defaults after init() for a non-rerun mount', () => {
+    // Non-rerun URL; init() reads window.location.search.
+    vi.stubGlobal('window', { location: { search: '' } });
+
+    // Dirty the singleton the way an interrupted first visit would leave it:
+    // advanced past System Check to Step 2 with a model + voice selected.
+    setupState.currentStep = 2;
+    setupState.maxVisitedStep = 2;
+    setupState.systemCheckPassed = true;
+    setupState.modelMode = 'local';
+    setupState.voiceEnabled = true;
+    setupState.voiceTts = { engine: 'openpalm-voice' };
+    setupState.voiceStt = { engine: 'openpalm-voice' };
+    setupState.selectedVoiceProfile = 'voice-cuda';
+    setupState.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
+    setupState.ollamaEnabled = true;
+    setupState.allowEmptyInstall = true;
+    setupState.emptyAiAck = true;
+    setupState.installError = 'boom';
+    setupState.showDeploy = true;
+    setupState.deployDone = true;
+    setupState.hostImportTriggered = true;
+    setupState.recommendationApplied = true;
+    setupState.savedCloudLlm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
+    setupState.detectedCloudConn = 'openai';
+    const discord = setupState.portalSelection['discord'];
+    if (typeof discord === 'object') discord.enabled = true;
+
+    // Remount (init() runs once per mount and resets first).
+    setupState.init();
+
+    // Fresh wizard: System Check no longer bypassed, back on the hidden step 0.
+    expect(setupState.currentStep).toBe(0);
+    expect(setupState.maxVisitedStep).toBe(0);
+    expect(setupState.systemCheckPassed).toBe(false);
+    expect(setupState.isRerun).toBe(false);
+
+    // Selections cleared.
+    expect(setupState.modelMode).toBe('cloud');
+    expect(setupState.voiceEnabled).toBe(false);
+    expect(setupState.voiceTts.engine).toBe('');
+    expect(setupState.voiceStt.engine).toBe('');
+    expect(setupState.selectedVoiceProfile).toBe('');
+    expect(setupState.modelSelection.llm).toBeUndefined();
+    expect(setupState.ollamaEnabled).toBe(false);
+    expect(setupState.savedCloudLlm).toBeUndefined();
+    expect(setupState.detectedCloudConn).toBe('');
+
+    // Gating / one-shot flags cleared.
+    expect(setupState.allowEmptyInstall).toBe(false);
+    expect(setupState.emptyAiAck).toBe(false);
+    expect(setupState.installError).toBe('');
+    expect(setupState.showDeploy).toBe(false);
+    expect(setupState.deployDone).toBe(false);
+    expect(setupState.hostImportTriggered).toBe(false);
+    expect(setupState.recommendationApplied).toBe(false);
+
+    // Fresh portal objects (no lingering enabled/credentials).
+    expect(setupState.portalSelection['discord']).toEqual({ enabled: false, botToken: '', applicationId: '' });
+
+    // Derived predicates recompute clean.
+    expect(setupState.canComplete).toBe(false);
+    expect(setupState.hasUsableAI).toBe(false);
+    expect(setupState.verifiedCount).toBe(0);
+
+    // Tidy up the background work init() kicked off so it can't leak into
+    // other tests.
+    setupState.dispose();
   });
 });
