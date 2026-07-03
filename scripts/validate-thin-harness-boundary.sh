@@ -38,6 +38,10 @@ FORBIDDEN_SYMBOLS=(performUpgrade applyTagChange)
 # The ONLY @openpalm/lib symbols main.ts may import (design §2.1 bootstrap allowlist,
 # extended in 0.12.0 with PLATFORM_VERSION + the Docker preflight probes §6.5/§5,
 # and in Phase 4 with checkAndUpdateSkeleton for skeleton self-update bootstrap).
+# waitForReady + restoreUiBackup are the shared UI-supervisor primitives (§6.2/§6.3):
+# waiting on the spawned UI's /health, and rolling back a failed checkAndUpdateUiBuild
+# swap. Both are bootstrap/ui-build-lifecycle only — neither runs an upgrade/migration
+# (performUpgrade/applyTagChange remain forbidden below).
 ALLOWED_IMPORTS=(
   resolveOpenPalmHome
   resolveDataDir
@@ -52,6 +56,8 @@ ALLOWED_IMPORTS=(
   PLATFORM_VERSION
   checkDocker
   checkDockerCompose
+  waitForReady
+  restoreUiBackup
 )
 
 errors=0
