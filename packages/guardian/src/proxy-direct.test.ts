@@ -235,6 +235,7 @@ describe("/oc proxy — direct tier: moderation block → prompt-rewrite (not 40
     expect(messageHits).toBe(before + 1);
     // The rewritten body sent to upstream contains the refusal instruction.
     expect(lastMessageBody).not.toBeNull();
+    // biome-ignore lint/style/noNonNullAssertion: asserted non-null on the line above.
     const parsed = JSON.parse(lastMessageBody!);
     const firstText = parsed?.parts?.[0]?.text as string | undefined;
     expect(typeof firstText).toBe("string");
@@ -256,6 +257,7 @@ describe("/oc proxy — direct tier: moderation block → prompt-rewrite (not 40
     expect(resp.status).not.toBe(403);
     expect(messageHits).toBe(before + 1);
     expect(lastMessageBody).not.toBeNull();
+    // biome-ignore lint/style/noNonNullAssertion: asserted non-null on the line above.
     const parsed = JSON.parse(lastMessageBody!);
     const firstText = parsed?.parts?.[0]?.text as string | undefined;
     expect(typeof firstText).toBe("string");
@@ -279,6 +281,7 @@ describe("/oc proxy — direct tier: moderation block → prompt-rewrite (not 40
     // Upstream IS contacted with the rewritten body.
     expect(messageHits).toBe(before + 1);
     expect(lastMessageBody).not.toBeNull();
+    // biome-ignore lint/style/noNonNullAssertion: asserted non-null on the line above.
     const parsed = JSON.parse(lastMessageBody!);
     const firstText = parsed?.parts?.[0]?.text as string | undefined;
     expect(typeof firstText).toBe("string");

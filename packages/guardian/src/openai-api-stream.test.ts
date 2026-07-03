@@ -40,6 +40,7 @@ function stubGuardian(opts: StubOpts): void {
 }
 
 async function readAll(resp: Response): Promise<string> {
+  // biome-ignore lint/style/noNonNullAssertion: streaming test responses always have a body.
   const reader = resp.body!.getReader();
   const decoder = new TextDecoder();
   let out = '';
@@ -176,6 +177,7 @@ describe('streamTurn — non-interactive permission policy', () => {
     await readAll(resp);
     const reply = calls.find((call) => call.path === '/permission/per_42/reply');
     expect(reply).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: reply is asserted defined immediately above.
     expect(JSON.parse(reply!.body).reply).toBe('reject');
   });
 
@@ -193,6 +195,7 @@ describe('streamTurn — non-interactive permission policy', () => {
     const resp = streamTurn({ client, policy: loadPermissionPolicy({ OP_API_PERMISSION_MODE: 'auto', OP_API_PERMISSION_ALLOWLIST: 'bash' }), userId: 'api:u1', sessionKey: 'api:u1', text: 'run bash', framer: openAiChatFramer('chatcmpl-test', 'gpt-4') });
     await readAll(resp);
     const reply = calls.find((call) => call.path === '/permission/per_99/reply');
+    // biome-ignore lint/style/noNonNullAssertion: the matching permission reply is guaranteed to have been recorded.
     expect(JSON.parse(reply!.body).reply).toBe('once');
   });
 });

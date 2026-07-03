@@ -31,7 +31,7 @@
 import { matchAllowlist, type AllowlistMatch } from './oc-allowlist.ts';
 import { createLogger } from './logger.ts';
 
-import { authenticate, type AuthenticatedPrincipal } from "./auth";
+import { authenticate } from "./auth";
 import {
   type Principal,
   ownsSession,
@@ -280,6 +280,7 @@ async function routeAllowed(
   search: string,
   body: string,
 ): Promise<Response> {
+  // biome-ignore lint/style/noNonNullAssertion: routeAllowed is only invoked after a successful allowlist match, so route is always present.
   const template = match.route!.template;
   const params = match.params ?? {};
   const sessionId = params.id;
@@ -753,7 +754,7 @@ function rawOcPath(rawUrl: string): string | null {
   const noScheme = rawUrl.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/]*/, "");
   const pathOnly = noScheme.split("?")[0].split("#")[0];
   if (pathOnly === OC_PREFIX) return "/"; // "/oc" alone → "/"
-  if (!pathOnly.startsWith(OC_PREFIX + "/")) return null;
+  if (!pathOnly.startsWith(`${OC_PREFIX}/`)) return null;
   return pathOnly.slice(OC_PREFIX.length); // keep the leading "/"
 }
 

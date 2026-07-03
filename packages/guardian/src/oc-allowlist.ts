@@ -45,7 +45,7 @@ function canonicalize(path: string): string {
     }
     out.push(seg);
   }
-  return '/' + out.join('/');
+  return `/${out.join('/')}`;
 }
 
 function matchTemplate(template: string, path: string): Record<string, string> | null {

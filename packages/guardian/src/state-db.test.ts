@@ -62,7 +62,7 @@ describe('state-db — kind migration (channel → portal)', () => {
 
     expect(row).not.toBeNull();
     // Old schema should still contain 'channel' in the CHECK.
-    expect(row!.sql).toContain("'channel'");
+    expect(row?.sql).toContain("'channel'");
 
     // Run migration.
     database.exec(`
@@ -125,7 +125,7 @@ describe('state-db — kind migration (channel → portal)', () => {
     ).get();
 
     // New schema does NOT contain 'channel' in the CHECK — migration is skipped.
-    expect(row!.sql).not.toContain("'channel'");
+    expect(row?.sql).not.toContain("'channel'");
 
     type Row = { id: string; kind: string };
     const rows = database.query<Row, []>('SELECT id, kind FROM principals').all();

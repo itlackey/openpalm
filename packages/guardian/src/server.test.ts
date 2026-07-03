@@ -19,7 +19,6 @@ let guardianPort = 0;
 let directPort = 0;
 let adminPort = 0;
 let sessionCreateCount = 0;
-let messageCount = 0;
 let lastCreateBody: unknown = null;
 
 function getAvailablePort(): Promise<number> {
@@ -83,7 +82,6 @@ function startMockAssistant(): ReturnType<typeof Bun.serve> {
         return Response.json([]);
       }
       if (url.pathname.startsWith('/session/') && url.pathname.endsWith('/message') && req.method === 'POST') {
-        messageCount += 1;
         const sessionId = url.pathname.split('/')[2] ?? 'unknown-session';
         return Response.json({ parts: [{ type: 'text', text: `mock answer from ${sessionId}` }] });
       }

@@ -252,13 +252,14 @@ export function broadcastUpstreamReset(error: { name: string; message: string })
  */
 export function consumeSseBuffer(buffer: string): string {
   let working = buffer;
-  let boundary: number;
   // Frames are separated by a blank line: "\n\n" (tolerate "\r\n\r\n").
-  while ((boundary = nextFrameBoundary(working)) !== -1) {
+  let boundary = nextFrameBoundary(working);
+  while (boundary !== -1) {
     const rawFrame = working.slice(0, boundary);
     working = working.slice(advancePastBoundary(working, boundary));
     const dataPayload = extractData(rawFrame);
     if (dataPayload !== null) routeFrame(dataPayload);
+    boundary = nextFrameBoundary(working);
   }
   return working;
 }

@@ -64,7 +64,7 @@ process.on("beforeExit", onShutdown);
 
 export function audit(event: Record<string, unknown>): void {
   try {
-    getAuditWriter().write(JSON.stringify({ ts: new Date().toISOString(), ...event }) + "\n");
+    getAuditWriter().write(`${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`);
     dirty = true;
   } catch (err) {
     logger.error("Audit write failed", { error: err instanceof Error ? err.message : String(err) });

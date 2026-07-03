@@ -102,7 +102,6 @@ describe("assertDocCompatible (pure, §5)", () => {
 
 describe("runDriftCheck — reconnect re-assertion is not boot-only (D2a item 5)", () => {
   let mockServer: ReturnType<typeof Bun.serve> | null = null;
-  const mockDocPath = "/doc";
   const serveGoodDoc = true;
 
   const getPort = (): Promise<number> =>

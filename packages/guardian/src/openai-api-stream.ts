@@ -60,7 +60,7 @@ export function openAiChatFramer(id: string, model: string): SseFramer {
 }
 
 export function openAiLegacyFramer(id: string, model: string): SseFramer {
-  return { contentType: 'text/event-stream', open: () => '', delta: (text) => openAiLegacyChunk(id, model, text, null), close: () => openAiLegacyChunk(id, model, '', 'stop') + 'data: [DONE]\n\n' };
+  return { contentType: 'text/event-stream', open: () => '', delta: (text) => openAiLegacyChunk(id, model, text, null), close: () => `${openAiLegacyChunk(id, model, '', 'stop')}data: [DONE]\n\n` };
 }
 
 export function anthropicFramer(id: string, model: string): SseFramer {
