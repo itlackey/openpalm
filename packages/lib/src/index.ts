@@ -329,9 +329,6 @@ export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope
 export {
   checkDocker,
   checkDockerCompose,
-  repairRootOwnedBindMounts,
-  repairNamedVolumeOwnership,
-  repairManagedNamedVolumes,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
@@ -355,6 +352,13 @@ export {
   waitForContainerHealthy,
   applyStack,
 } from "./control-plane/docker.js";
+
+// ── Volume ownership repair (privileged chown subsystem) ─────────────────
+export {
+  repairRootOwnedBindMounts,
+  repairNamedVolumeOwnership,
+  repairManagedNamedVolumes,
+} from "./control-plane/volume-ownership.js";
 
 // ── Scheduler ───────────────────────────────────────────────────────────
 export type {

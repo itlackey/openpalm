@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url';
 // reconcileHostOwnership drives docker chown side effects (repairRootOwnedBindMounts,
 // repairManagedNamedVolumes). To assert the orchestration (deep flag, strict on
 // adopt, named-volume service set, OP_UID/OP_GID patch, marker) WITHOUT running
-// real `docker run`, we mock docker.js in a fresh subprocess — the only reliable
-// isolation, since an in-process mock.module can't override docker.js once a
-// sibling test file has statically imported it (bun cross-file module cache).
+// real `docker run`, we mock volume-ownership.js in a fresh subprocess — the only
+// reliable isolation, since an in-process mock.module can't override the module
+// once a sibling test file has statically imported it (bun cross-file module cache).
 
-const dockerUrl = new URL('./docker.js', import.meta.url).href;
+const volumeOwnershipUrl = new URL('./volume-ownership.js', import.meta.url).href;
 const reconcileUrl = new URL('./ownership-reconcile.js', import.meta.url).href;
 const harnessDir = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -26,11 +26,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const dockerUrl = ${JSON.stringify(dockerUrl)};
+const volumeOwnershipUrl = ${JSON.stringify(volumeOwnershipUrl)};
 const reconcileUrl = ${JSON.stringify(reconcileUrl)};
 
 const calls = { deep: undefined, strict: undefined, services: null };
-mock.module(dockerUrl, () => ({
+mock.module(volumeOwnershipUrl, () => ({
   repairRootOwnedBindMounts: async (_h, _paths, opts) => { calls.deep = opts?.deep; calls.strict = opts?.strict; },
   repairManagedNamedVolumes: async (_h, services) => { calls.services = services; },
 }));
