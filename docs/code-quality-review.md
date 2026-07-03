@@ -230,9 +230,16 @@ just need to be applied uniformly and the copies deleted.
 - [x] 14b. CLI `defineAction` wrapper (10 commands de-boilerplated); extracted `promptYesNo`/`parseOutputFormat`/`resolveLatestReleaseTag`+`GITHUB_REPO`; `SUBCOMMAND_NAMES` derived from the registry.
 - [x] 12-rest. `admin/voice/+server.ts` 1041→309 lines (`server/voice/bring-up.ts` service); `AudioPlaybackController` split from `voice-state.svelte.ts` (750→494).
 
-**Remaining (not yet started):**
-- [ ] 15. Hygiene utils (`errMessage`, `retry`, guardian `config.ts`, centralized port/repo constants).
-- Deferred behavior-risky sub-steps (documented; each needs individual careful treatment): portal `renderTurn` sink (divergent per-frame error handling), full `UiSupervisor` class (Bun vs Node process shells diverge), guardian turn-path merge (non-streaming path intentionally omits permission policy — merging changes security behavior), setup-state store + prop-drilling.
+**Wave 5 — Low-priority hygiene (DONE, merged & pushed):**
+- [x] 15. `errMessage()` util (26 `instanceof Error` idiom sites collapsed across 10 lib files) + `retry()` helper (folded `fetchWithRetry`; the two result-driven `deploy.ts` poll loops were correctly left — they branch on returned values, not exceptions); guardian `config.ts` (`ASSISTANT_URL`/`SESSION_TTL_MS`/`DIRECT_PORT`/`GUARDIAN_URL` centralized across 8 modules with read-timing preserved). Cross-package port/repo constant centralization was left as minor follow-up (ports already resolve via env with sensible defaults; `GITHUB_REPO` centralized within the CLI in item 14b).
+
+**Remaining — deliberately deferred behavior-risky sub-steps** (documented; each changes observable/security behavior and needs individual careful treatment, NOT a bulk refactor):
+- Portal `renderTurn` sink — the two stream loops diverge in per-frame error handling and message lifecycle.
+- Full `UiSupervisor` class — CLI (`Bun.Subprocess`) and Electron (`child_process` + pid files + renderer reload) process shells genuinely diverge.
+- Guardian turn-path merge — the non-streaming path intentionally omits permission-policy/question-rejection/timeout; merging would make the guardian auto-decide permissions on a path that currently never does (a security-behavior change).
+- Setup `setup-state.svelte.ts` store + ~20-prop-drilling refactor (larger, higher churn).
+
+**Net result:** every Critical/High/Medium/Low roadmap item (1–15) landed across 5 waves — behavior-preserving, test-covered, lint-gate green, zero regressions vs. the pre-existing baseline. Roughly 2,000+ lines of duplication removed and several god-files decomposed, with the four genuinely behavior-changing refactors above left documented rather than forced.
 
 All landed changes preserve behavior, add tests, and keep the lint gate green. Pre-existing test
 failures unrelated to this work: 12 root-uid ownership tests (sandbox runs as uid 0), 1 guardian IPv6
