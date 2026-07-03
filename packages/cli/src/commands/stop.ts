@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { defineAction } from '../lib/action.ts';
 
 export default defineCommand({
   meta: {
@@ -14,15 +15,10 @@ export default defineCommand({
       required: false,
     },
   },
-  async run({ args }) {
-    try {
-      const services = args._ ?? [];
-      await runStopAction(services);
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-  },
+  run: defineAction(async ({ args }) => {
+    const services = args._ ?? [];
+    await runStopAction(services);
+  }),
 });
 
 export async function runStopAction(services: string[]): Promise<void> {

@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
 import { classifyLocalInstall, composePs, buildComposeOptions, createState, deriveLaunchStatus, deriveLocalStackState, detectRuntime } from '@openpalm/lib';
+import { defineAction } from '../lib/action.ts';
 
 function parseComposePsServices(stdout: string) {
   return stdout
@@ -25,23 +26,18 @@ export default defineCommand({
     name: 'status',
     description: 'Show container status',
   },
-  async run() {
-    try {
-      const state = createState();
-      const installState = classifyLocalInstall(state.stackDir, state.homeDir);
-      const ps = await composePs(buildComposeOptions(state));
-      const launchStatus = deriveLaunchStatus({
-        local: {
-          state: deriveLocalStackState(installState, ps.ok ? parseComposePsServices(ps.stdout) : []),
-          runtime: installState === 'not_installed' ? await detectRuntime() : undefined,
-          detail: { installState },
-        },
-        remotes: [],
-      });
-      console.log(JSON.stringify(launchStatus, null, 2));
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-  },
+  run: defineAction(async () => {
+    const state = createState();
+    const installState = classifyLocalInstall(state.stackDir, state.homeDir);
+    const ps = await composePs(buildComposeOptions(state));
+    const launchStatus = deriveLaunchStatus({
+      local: {
+        state: deriveLocalStackState(installState, ps.ok ? parseComposePsServices(ps.stdout) : []),
+        runtime: installState === 'not_installed' ? await detectRuntime() : undefined,
+        detail: { installState },
+      },
+      remotes: [],
+    });
+    console.log(JSON.stringify(launchStatus, null, 2));
+  }),
 });
