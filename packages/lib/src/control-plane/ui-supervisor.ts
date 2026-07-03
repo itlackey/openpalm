@@ -180,11 +180,12 @@ export interface UiSupervisorCallbacks<Handle> {
   waitForReady(port: number): Promise<boolean>;
   /**
    * The INITIAL start never became ready. The lib does NOT exit — the adapter
-   * decides: CLI kills the child + `process.exit(1)`; Electron surfaces the
-   * captured stderr in a dialog + `app.quit()`. Receives the spawned handle so
-   * the adapter can kill it if it wants to.
+   * decides: CLI kills the child + `process.exit(1)`. Receives the spawned
+   * handle so the adapter can kill it if it wants to. Optional: harnesses that
+   * drive their own bespoke initial spawn and {@link UiSupervisor.adopt} the
+   * child (e.g. Electron) never call {@link UiSupervisor.start} and omit this.
    */
-  onStartFailure(handle: Handle): void | Promise<void>;
+  onStartFailure?(handle: Handle): void | Promise<void>;
   /**
    * A RESTART's respawn never became ready. Called AFTER {@link restoreBackup}.
    * CLI: `process.exit(1)`. Electron: omitted (no-op) — the app stays running
@@ -246,6 +247,17 @@ export class UiSupervisor<Handle> {
     return this.restarting;
   }
 
+  /**
+   * Adopt a child that was spawned OUTSIDE the supervisor so a subsequent
+   * {@link restart} knows which handle to stop. Use this when a harness owns a
+   * bespoke initial-spawn path (e.g. Electron's seed-or-quit + splash + stderr
+   * ring-buffer prelude) but still wants the shared restart state machine.
+   * The alternative to {@link start} for the first child.
+   */
+  adopt(handle: Handle): void {
+    this.handle = handle;
+  }
+
   private log(...args: unknown[]): void {
     (this.cb.log ?? console.log)(...args);
   }
@@ -259,7 +271,7 @@ export class UiSupervisor<Handle> {
   async start(): Promise<boolean> {
     this.handle = await this.strategy.spawn();
     if (!(await this.cb.waitForReady(this.port))) {
-      await this.cb.onStartFailure(this.handle);
+      await this.cb.onStartFailure?.(this.handle);
       return false;
     }
     return true;

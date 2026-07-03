@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  isRemoteSetupAllowed, waitForReady, restoreUiBackup,
+  isRemoteSetupAllowed, waitForReady, restoreUiBackup, UiSupervisor,
 } from '@openpalm/lib';
 import { ensureValidState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -165,66 +165,74 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
 
   const state = ensureValidState();
-
-  let spawnResult = await spawnUiChild(port, homeDir, state);
-  let uiProc = spawnResult.proc;
-
-  if (!await waitForReady(port)) {
-    uiProc.kill('SIGTERM');
-    console.error('UI server did not become ready in time.');
-    process.exit(1);
-  }
-
   const uiUrl = `http://localhost:${port}`;
+
+  // Tracks the LAST spawn's backup path so a post-restart ready-failure restores
+  // the build that just failed (spawnUiChild re-runs the update check on each
+  // respawn, so this is reassigned per spawn — matching the pre-refactor flow).
+  let lastUiBackupDir: string | undefined;
+
+  // Graceful-then-force stop of a Bun.Subprocess UI child: SIGTERM, race its
+  // exit against STOP_TIMEOUT_MS, then SIGKILL only if it hasn't died. Shared by
+  // the supervisor's restart path and the signal-shutdown handler below.
+  const stopUiProc = async (proc: Bun.Subprocess): Promise<void> => {
+    proc.kill('SIGTERM');
+    await Promise.race([
+      proc.exited,
+      new Promise(r => setTimeout(r, STOP_TIMEOUT_MS)),
+    ]);
+    if (!proc.killed) proc.kill('SIGKILL');
+  };
+
+  // Thin CLI adapter over the shared UiSupervisor state machine. The CLI supplies
+  // the Bun.Subprocess spawn/kill strategy and its exit-based failure policy
+  // (process.exit(1)); it has no renderer, so onReloadRenderer is omitted.
+  const supervisor = new UiSupervisor<Bun.Subprocess>({
+    port,
+    strategy: {
+      spawn: async () => {
+        const spawnResult = await spawnUiChild(port, homeDir, state);
+        lastUiBackupDir = spawnResult.uiBackupDir;
+        return spawnResult.proc;
+      },
+      stop: stopUiProc,
+    },
+    callbacks: {
+      waitForReady: (p) => waitForReady(p),
+      // Ready-timeout on first start → kill the child and exit non-zero (the lib
+      // never exits; this policy hook does).
+      onStartFailure: (proc) => {
+        proc.kill('SIGTERM');
+        console.error('UI server did not become ready in time.');
+        process.exit(1);
+      },
+      // Post-swap failure → restore the prior data/ui (§4.4 / §6) with a local
+      // rename — no registry needed (shared lib routine)…
+      restoreBackup: () => { restoreUiBackup(state.dataDir, lastUiBackupDir); },
+      // …then exit non-zero, as the pre-refactor CLI supervisor did.
+      onRestartFailure: () => process.exit(1),
+      onRestartError: (err) => logger.error('Error restarting UI server', { error: String(err) }),
+    },
+  });
+
+  if (!await supervisor.start()) return; // onStartFailure already exited
+
   console.log(`UI server running at ${uiUrl}`);
   if (opts.open !== false) await openBrowser(uiUrl);
 
-  let shuttingDown = false;
-  let restarting = false;
-
   // Supervisor restart (§4.4): the UI child (admin "install UI version" route)
-  // sends SIGUSR2/SIGHUP to this parent after seeding a newer data/ui. Kill the
-  // current child and respawn against the freshly downloaded build — the new
-  // @openpalm/lib only takes effect once the Node child restarts (automatic,
-  // no "apply" click needed). On restart failure, restore the backup (§6).
-  async function restartUiServer(): Promise<void> {
-    if (shuttingDown || restarting) return;
-    restarting = true;
-    console.log('UI update detected — restarting UI server...');
-    try {
-      uiProc.kill('SIGTERM');
-      await Promise.race([
-        uiProc.exited,
-        new Promise(r => setTimeout(r, STOP_TIMEOUT_MS)),
-      ]);
-      if (!uiProc.killed) uiProc.kill('SIGKILL');
-      spawnResult = await spawnUiChild(port, homeDir, state);
-      uiProc = spawnResult.proc;
-      if (!await waitForReady(port)) {
-        console.error('UI server did not become ready after restart.');
-        // Post-swap failure → restore backup (§4.4 / §6). Reinstate the prior
-        // data/ui with a local rename — no registry needed (shared lib routine).
-        restoreUiBackup(state.dataDir, spawnResult.uiBackupDir);
-        process.exit(1);
-      }
-      console.log(`UI server restarted at ${uiUrl}`);
-    } catch (err) {
-      logger.error('Error restarting UI server', { error: String(err) });
-    } finally {
-      restarting = false;
-    }
-  }
+  // sends SIGUSR2/SIGHUP to this parent after seeding a newer data/ui. The
+  // supervisor kills the current child and respawns against the freshly
+  // downloaded build — the new @openpalm/lib only takes effect once the Node
+  // child restarts (automatic, no "apply" click needed). On restart failure it
+  // restores the backup and exits (§6).
 
   async function shutdown(signal: string): Promise<void> {
-    shuttingDown = true;
+    supervisor.markShuttingDown();
     console.log(`\nReceived ${signal}. Shutting down...`);
     try {
-      uiProc.kill('SIGTERM');
-      await Promise.race([
-        uiProc.exited,
-        new Promise(r => setTimeout(r, STOP_TIMEOUT_MS)),
-      ]);
-      if (!uiProc.killed) uiProc.kill('SIGKILL');
+      const proc = supervisor.current;
+      if (proc) await stopUiProc(proc);
       console.log('Shutdown complete.');
     } catch (err) {
       logger.error('Error during shutdown', { error: String(err) });
@@ -236,8 +244,8 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   // SIGUSR2: sent by the UI child's admin/ui-version route after seeding a new build.
   // SIGHUP:  kept for backward compatibility / manual use.
-  process.on('SIGUSR2', () => { void restartUiServer(); });
-  process.on('SIGHUP',  () => { void restartUiServer(); });
+  process.on('SIGUSR2', () => { void supervisor.restart(); });
+  process.on('SIGHUP',  () => { void supervisor.restart(); });
 
   // Keep the process alive
   await new Promise<never>(() => {});

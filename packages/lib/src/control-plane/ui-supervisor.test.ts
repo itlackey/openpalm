@@ -264,6 +264,27 @@ describe("UiSupervisor.restart", () => {
     expect(sup.isRestarting).toBe(false);
   });
 
+  test("adopt seeds the handle so the first restart stops the externally-spawned child", async () => {
+    // Electron-shaped: the harness owns the initial spawn and hands the child to
+    // the supervisor via adopt(); the first restart must still stop that child.
+    const { strategy, events } = fakeStrategy();
+    const external = { id: 99 };
+    const sup = new UiSupervisor<FakeHandle>({
+      port: 3880,
+      strategy,
+      callbacks: {
+        waitForReady: () => Promise.resolve(true),
+        onStartFailure: () => {},
+        log: () => {},
+      },
+    });
+    sup.adopt(external);
+    expect(sup.current).toBe(external);
+    expect(await sup.restart()).toBe(true);
+    // The adopted child is stopped, then a fresh one is spawned.
+    expect(events).toEqual(["stop#99", "spawn#1"]);
+  });
+
   test("re-entrant restart is guarded: a second call while one is in flight no-ops", async () => {
     let releaseReady!: () => void;
     const gate = new Promise<void>((r) => {

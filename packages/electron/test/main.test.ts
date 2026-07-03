@@ -158,6 +158,58 @@ vi.mock('@openpalm/lib', () => ({
     return false;
   }),
   restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
+  // Faithful reimplementation of lib's UiSupervisor state machine (same style as
+  // the waitForReady mock above) so the restart path the harness drives — stop →
+  // respawn → wait-for-ready → restoreBackup/onReloadRenderer — actually runs its
+  // injected strategy + callbacks under the test.
+  UiSupervisor: class {
+    private handle: unknown = null;
+    private restarting = false;
+    private shuttingDown = false;
+    private readonly port: number;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
+    private readonly strategy: any;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
+    private readonly cb: any;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
+    constructor(opts: any) {
+      this.port = opts.port;
+      this.strategy = opts.strategy;
+      this.cb = opts.callbacks;
+    }
+    get current() { return this.handle; }
+    get isRestarting() { return this.restarting; }
+    adopt(handle: unknown) { this.handle = handle; }
+    async start() {
+      this.handle = await this.strategy.spawn();
+      if (!(await this.cb.waitForReady(this.port))) {
+        await this.cb.onStartFailure?.(this.handle);
+        return false;
+      }
+      return true;
+    }
+    async restart() {
+      if (this.shuttingDown || this.restarting) return false;
+      this.restarting = true;
+      try {
+        if (this.handle) await this.strategy.stop(this.handle);
+        this.handle = await this.strategy.spawn();
+        if (!(await this.cb.waitForReady(this.port))) {
+          this.cb.restoreBackup?.();
+          await this.cb.onRestartFailure?.();
+          return false;
+        }
+        this.cb.onReloadRenderer?.();
+        return true;
+      } catch (err) {
+        this.cb.onRestartError?.(err);
+        return false;
+      } finally {
+        this.restarting = false;
+      }
+    }
+    markShuttingDown() { this.shuttingDown = true; }
+  },
 }));
 
 vi.mock('../src/local-opencode.js', () => ({

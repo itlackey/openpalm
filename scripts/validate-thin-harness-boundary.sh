@@ -56,8 +56,14 @@ ALLOWED_IMPORTS=(
   PLATFORM_VERSION
   checkDocker
   checkDockerCompose
+  # UI-server supervisor family (design §6.2 / §4.4): bootstrap-only lifecycle
+  # helpers for the UI child — poll /health, restore the prior data/ui backup on
+  # a failed restart, and the shared UiSupervisor state machine (spawn → ready,
+  # SIGUSR2/IPC restart → kill/respawn/restore). They run the UI child; they do
+  # NOT mutate control-plane state or run migrations, so they stay bootstrap-side.
   waitForReady
   restoreUiBackup
+  UiSupervisor
 )
 
 errors=0

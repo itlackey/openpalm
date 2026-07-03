@@ -17,6 +17,7 @@ import {
   PLATFORM_VERSION,
   waitForReady as libWaitForReady,
   restoreUiBackup,
+  UiSupervisor,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
@@ -368,6 +369,9 @@ async function startUIServer(): Promise<void> {
   await killStaleUIServer(uiPidFile);
 
   spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate);
+  // Hand the bespoke initial child to the shared supervisor so a later
+  // SIGUSR2/IPC restart knows which handle to stop (§6.2).
+  if (uiProcess) uiSupervisor.adopt(uiProcess);
 
   const ready = await waitForReady(UI_PORT);
   if (!ready) {
@@ -482,65 +486,92 @@ function spawnUIServer(
 // supervisor to respawn the UI child so the new @openpalm/lib loads without a
 // full app relaunch (design §6.2). The downloaded build does nothing until the
 // Node child is respawned.
+// Set true for the duration of a supervisor-driven restart. Read by the UI
+// child's 'exit' handler so an intentional kill/respawn does NOT null out the
+// handle the restart path just reassigned (the coupling predates this module and
+// is preserved here). The UiSupervisor has its own internal `restarting` guard;
+// this module-level flag exists ONLY to gate that exit handler.
 let uiServerRestarting = false;
 // Backup of the previous data/ui set by checkAndUpdateUiBuild; used by the
 // supervisor to restore on startup failure (§4.4 / §6). Null = no backup available.
 let pendingUiBackupDir: string | null = null;
+// The backup captured (and consumed) at the start of the in-flight restart — the
+// UiSupervisor's restoreBackup hook reads it on a post-restart ready-failure.
+let restartBackupDir: string | null = null;
 
-async function restartUIServer(): Promise<boolean> {
-  if (uiServerRestarting) return false;
-  uiServerRestarting = true;
-  console.log('UI update detected — restarting UI server...');
-  // Capture the backup path before clearing it; we consume it exactly once here.
-  const uiBackup = pendingUiBackupDir;
-  pendingUiBackupDir = null;
-  try {
-    const homeDir = resolveOpenPalmHome();
-    const dataDir = resolveDataDir();
-    const uiPidFile = join(dataDir, '.ui-server.pid');
-
-    // Kill the current child (group-kill: it runs detached and may have its own
-    // children). Then re-resolve data/ui so a freshly seeded, strictly-newer
-    // build wins, and respawn.
-    const prev = uiProcess;
-    uiProcess = null;
-    if (prev?.pid) {
-      killProcessTree(prev.pid, 'SIGTERM');
-      await new Promise(r => setTimeout(r, 1500));
-      killProcessTree(prev.pid, 'SIGKILL');
-    }
-
-    const uiBuildDir = resolveUiBuildDir();
-    if (!existsSync(join(uiBuildDir, 'index.js'))) {
-      console.error('UI restart aborted: build not found at', uiBuildDir);
-      return false;
-    }
-    spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
-
-    const ready = await waitForReady(UI_PORT);
-    if (!ready) {
-      console.error('UI server did not become ready after restart.');
-      // Post-swap failure → restore backup (§4.4 / §6). Swap the failed data/ui
-      // out and reinstate the backup with a local rename — no registry needed
-      // (shared lib routine).
-      restoreUiBackup(dataDir, uiBackup);
-      return false;
-    }
-    console.log('UI server restarted.');
+// Thin Electron adapter over the shared UiSupervisor state machine (design §6.2 /
+// §4.4). The bespoke INITIAL start (seed-or-quit + splash + stderr ring-buffer +
+// dialog) stays in startUIServer, which then adopt()s the spawned child; the
+// supervisor owns the RESTART state machine (kill → respawn → wait → restore /
+// reload). Every harness-scoped effect is an adapter closure: the Node
+// child_process + killProcessTree spawn/kill strategy, the renderer reload, and
+// the restart-failure policy (Electron stays up — onRestartFailure is omitted).
+const uiSupervisor = new UiSupervisor<ChildProcess>({
+  port: UI_PORT,
+  strategy: {
+    // Respawn against the freshly-seeded data/ui (restart path). Aborts if the
+    // build vanished — the throw routes to onRestartError, so restart() returns
+    // false and the app stays up, matching the pre-refactor `return false` guard.
+    spawn: () => {
+      const homeDir = resolveOpenPalmHome();
+      const dataDir = resolveDataDir();
+      const uiPidFile = join(dataDir, '.ui-server.pid');
+      const uiBuildDir = resolveUiBuildDir();
+      if (!existsSync(join(uiBuildDir, 'index.js'))) {
+        throw new Error(`UI restart aborted: build not found at ${uiBuildDir}`);
+      }
+      spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
+      if (!uiProcess) throw new Error('UI server failed to spawn');
+      return uiProcess;
+    },
+    // Group-kill the current child (it runs detached and may have its own
+    // children, e.g. the wizard's `opencode serve`): SIGTERM → fixed 1.5s delay
+    // → SIGKILL. Also consumes the pending backup here — the START of the restart
+    // — exactly-once, mirroring the pre-refactor "capture then clear".
+    stop: async (handle) => {
+      restartBackupDir = pendingUiBackupDir;
+      pendingUiBackupDir = null;
+      uiProcess = null;
+      if (handle.pid) {
+        killProcessTree(handle.pid, 'SIGTERM');
+        await new Promise(r => setTimeout(r, 1500));
+        killProcessTree(handle.pid, 'SIGKILL');
+      }
+    },
+  },
+  callbacks: {
+    waitForReady: (p) => waitForReady(p),
+    // Post-swap failure → restore the prior data/ui with a local rename — no
+    // registry needed (shared lib routine). onRestartFailure is omitted, so the
+    // app stays running and restart() returns false (Electron never exits here).
+    restoreBackup: () => { restoreUiBackup(resolveDataDir(), restartBackupDir); },
     // Reload the renderer onto the freshly-restarted control plane. Respawning the
     // server child is not enough on its own: the window keeps showing the OLD
     // build's page (and its stale "control plane vX" / cached state), so an update
     // looks like it did nothing. Load the root so the launch guard re-routes
     // (→ /splash to apply a pending home update, then onward; → /chat when healthy).
     // Covers both restart triggers: the IPC path and the SIGUSR2 supervisor path.
-    const win = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
-    if (win && !win.isDestroyed()) {
-      void win.loadURL(`http://127.0.0.1:${UI_PORT}/`);
-    }
-    return true;
-  } catch (err) {
-    console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
-    return false;
+    onReloadRenderer: () => {
+      const win = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+      if (win && !win.isDestroyed()) {
+        void win.loadURL(`http://127.0.0.1:${UI_PORT}/`);
+      }
+    },
+    onRestartError: (err) => {
+      console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
+    },
+  },
+});
+
+// SIGUSR2/IPC restart trigger. Wraps the shared supervisor so the module-level
+// `uiServerRestarting` flag (which gates the child's 'exit' handler) stays true
+// for the whole restart, and re-entrant triggers no-op — preserving the exact
+// pre-refactor guard semantics.
+async function restartUIServer(): Promise<boolean> {
+  if (uiServerRestarting) return false;
+  uiServerRestarting = true;
+  try {
+    return await uiSupervisor.restart();
   } finally {
     uiServerRestarting = false;
   }
