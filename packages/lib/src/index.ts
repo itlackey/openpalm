@@ -531,11 +531,15 @@ export type {
   WaitForReadyDeps,
   RestoreUiBackupDeps,
   RestoreUiBackupOutcome,
+  UiChildStrategy,
+  UiSupervisorCallbacks,
+  UiSupervisorOptions,
 } from "./control-plane/ui-supervisor.js";
 export {
   DEFAULT_READY_TIMEOUT_MS,
   waitForReady,
   restoreUiBackup,
+  UiSupervisor,
 } from "./control-plane/ui-supervisor.js";
 
 // ── Canonical version vocabulary (Docker `v`-tag / npm version / dist-tag) ───

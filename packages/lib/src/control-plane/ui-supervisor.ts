@@ -132,3 +132,180 @@ export function restoreUiBackup(
     return { status: 'error', error: restoreErr };
   }
 }
+
+// ── UiSupervisor state machine ────────────────────────────────────────────────
+// The CLI (`openpalm ui serve`) and the Electron desktop shell run the SAME
+// supervisor STATE MACHINE around the UI child — spawn → wait-for-ready, and, on
+// a SIGUSR2/IPC restart trigger, kill → respawn → wait-for-ready → (on failure)
+// restore-backup — but they differ in every harness-scoped DETAIL:
+//
+//   • how the child is spawned/killed (Bun.Subprocess + proc.exited race vs
+//     node child_process + killProcessTree + fixed delay),
+//   • what happens on a ready-failure (CLI process.exit(1) vs Electron
+//     dialog.showErrorBox + app.quit(), and on RESTART failure CLI exits while
+//     Electron stays up),
+//   • whether the renderer is reloaded afterwards (Electron yes, CLI no renderer).
+//
+// This class owns ONLY the state machine (ordering + the `restarting`/
+// `shuttingDown` guards). Every harness-scoped effect is an injected strategy
+// method or callback, so the lib stays `process.exit`-free (design §6.2 / §4.4).
+
+/**
+ * Per-harness process strategy: abstracts the Bun.Subprocess vs
+ * node:child_process + killProcessTree divergence behind spawn/stop. `Handle` is
+ * the opaque child handle the harness understands (never inspected by the
+ * supervisor).
+ */
+export interface UiChildStrategy<Handle> {
+  /**
+   * Spawn a fresh UI child and return its handle. The harness owns everything
+   * around the spawn (update-checks, env-building, pid-file, stdio/log wiring).
+   */
+  spawn(): Promise<Handle> | Handle;
+  /**
+   * Graceful-then-force stop of a running child. The harness owns the EXACT
+   * kill sequence — CLI: `kill('SIGTERM')` → race `proc.exited` against a
+   * timeout → conditional `kill('SIGKILL')`; Electron: `killProcessTree('SIGTERM')`
+   * → fixed delay → `killProcessTree('SIGKILL')`.
+   */
+  stop(handle: Handle): Promise<void>;
+}
+
+/**
+ * Harness-scoped callbacks. The supervisor stays `process.exit`-free: the exit /
+ * quit / dialog / renderer-reload decisions all live in these adapter hooks.
+ */
+export interface UiSupervisorCallbacks<Handle> {
+  /** Readiness poll (adapter injects its own timeout wrapper around {@link waitForReady}). */
+  waitForReady(port: number): Promise<boolean>;
+  /**
+   * The INITIAL start never became ready. The lib does NOT exit — the adapter
+   * decides: CLI kills the child + `process.exit(1)`; Electron surfaces the
+   * captured stderr in a dialog + `app.quit()`. Receives the spawned handle so
+   * the adapter can kill it if it wants to.
+   */
+  onStartFailure(handle: Handle): void | Promise<void>;
+  /**
+   * A RESTART's respawn never became ready. Called AFTER {@link restoreBackup}.
+   * CLI: `process.exit(1)`. Electron: omitted (no-op) — the app stays running
+   * and `restart()` returns false.
+   */
+  onRestartFailure?(): void | Promise<void>;
+  /**
+   * Restore the previous `data/ui` after a post-restart ready-failure (§4.4).
+   * Bound by the adapter to its own `dataDir` + backup path (via
+   * {@link restoreUiBackup}) so the supervisor stays free of fs/backup provenance.
+   */
+  restoreBackup?(): void;
+  /**
+   * Fired after a SUCCESSFUL restart. Electron reloads the BrowserWindow onto
+   * the freshly-restarted control plane; the CLI has no renderer, so it omits
+   * this (no-op).
+   */
+  onReloadRenderer?(): void;
+  /** A restart threw. CLI logs via its structured logger; Electron via console.error. */
+  onRestartError?(err: unknown): void;
+  /** Log sink for the shared state-machine lines (defaults to console.log). */
+  log?(...args: unknown[]): void;
+}
+
+export interface UiSupervisorOptions<Handle> {
+  /** UI-server port the readiness poll targets. */
+  port: number;
+  strategy: UiChildStrategy<Handle>;
+  callbacks: UiSupervisorCallbacks<Handle>;
+}
+
+/**
+ * Shared supervisor state machine for the UI child. Both harnesses construct one
+ * with their own {@link UiChildStrategy} + {@link UiSupervisorCallbacks}; the CLI
+ * and Electron entry points become thin adapters that supply the divergent
+ * spawn/kill/exit/dialog/reload behavior.
+ */
+export class UiSupervisor<Handle> {
+  private handle: Handle | null = null;
+  private restarting = false;
+  private shuttingDown = false;
+  private readonly port: number;
+  private readonly strategy: UiChildStrategy<Handle>;
+  private readonly cb: UiSupervisorCallbacks<Handle>;
+
+  constructor(opts: UiSupervisorOptions<Handle>) {
+    this.port = opts.port;
+    this.strategy = opts.strategy;
+    this.cb = opts.callbacks;
+  }
+
+  /** The current child handle (null before the first start / after a failed spawn). */
+  get current(): Handle | null {
+    return this.handle;
+  }
+
+  /** True while a restart is in flight (mirrors the old `uiServerRestarting`/`restarting` flags). */
+  get isRestarting(): boolean {
+    return this.restarting;
+  }
+
+  private log(...args: unknown[]): void {
+    (this.cb.log ?? console.log)(...args);
+  }
+
+  /**
+   * Spawn the UI child and wait for it to become ready. On a ready-timeout the
+   * {@link UiSupervisorCallbacks.onStartFailure} hook runs (the lib never exits).
+   *
+   * @returns true once the child is ready; false if it timed out (after the hook ran).
+   */
+  async start(): Promise<boolean> {
+    this.handle = await this.strategy.spawn();
+    if (!(await this.cb.waitForReady(this.port))) {
+      await this.cb.onStartFailure(this.handle);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * SIGUSR2/IPC-triggered restart: kill the current child, respawn against the
+   * freshly-seeded build, and wait for ready. On failure, restore the backup and
+   * run the restart-failure hook; on success, reload the renderer (Electron).
+   *
+   * Guarded by the `restarting` flag (re-entrant calls no-op) and `shuttingDown`
+   * (set by the CLI's signal-shutdown; Electron never sets it, so the guard
+   * reduces to `restarting` there — preserving each harness's original guard).
+   *
+   * @returns true on a successful restart; false if guarded out, aborted, or failed.
+   */
+  async restart(): Promise<boolean> {
+    if (this.shuttingDown || this.restarting) return false;
+    this.restarting = true;
+    this.log('UI update detected — restarting UI server...');
+    try {
+      if (this.handle) await this.strategy.stop(this.handle);
+      this.handle = await this.strategy.spawn();
+      if (!(await this.cb.waitForReady(this.port))) {
+        this.log('UI server did not become ready after restart.');
+        this.cb.restoreBackup?.();
+        await this.cb.onRestartFailure?.();
+        return false;
+      }
+      this.log('UI server restarted.');
+      this.cb.onReloadRenderer?.();
+      return true;
+    } catch (err) {
+      this.cb.onRestartError?.(err);
+      return false;
+    } finally {
+      this.restarting = false;
+    }
+  }
+
+  /**
+   * Mark the supervisor as shutting down so an in-flight or subsequent
+   * {@link restart} no-ops (the CLI's SIGINT/SIGTERM path sets this before it
+   * kills the child and exits).
+   */
+  markShuttingDown(): void {
+    this.shuttingDown = true;
+  }
+}
