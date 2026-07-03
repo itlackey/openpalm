@@ -51,7 +51,6 @@ export type { BackupSpaceCheck, BackupSummary, BackupEntry } from "./control-pla
 export type {
   AddonMutationResult,
   AddonProfile,
-  AddonProfileAvailability,
   RegistryAddonConfig,
 } from "./control-plane/addons.js";
 export { BUILTIN_ADDON_IDS } from "./control-plane/addon-ids.js";
@@ -60,7 +59,6 @@ export {
   getRegistryAddonConfig,
   getAddonServiceNames,
   getAddonProfiles,
-  getAddonProfileAvailability,
   annotateAddonProfileAvailability,
   getAddonProfileSelection,
   setAddonProfileSelection,
@@ -71,6 +69,10 @@ export {
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/addons.js";
+
+// ── Addon host-capability availability ───────────────────────────────────
+export type { AddonProfileAvailability } from "./control-plane/addon-availability.js";
+export { getAddonProfileAvailability } from "./control-plane/addon-availability.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {
