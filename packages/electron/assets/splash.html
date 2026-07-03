@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{height:100%;margin:0;background:#0f172a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+    .logo{font-size:22px;font-weight:600;letter-spacing:0.5px}
+    .hint{font-size:13px;color:#94a3b8}
+    .spinner{width:24px;height:24px;border:3px solid #1e293b;border-top-color:#60a5fa;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style></head><body>
+    <div class="logo">OpenPalm</div>
+    <div class="spinner"></div>
+    <div class="hint" id="hint">Starting…</div>
+    <script>
+      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Still starting (first launch may take a minute)…';},15000);
+      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Almost there…';},40000);
+    </script>
+  </body></html>
