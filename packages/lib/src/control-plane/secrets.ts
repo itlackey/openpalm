@@ -1,5 +1,6 @@
 /** Secrets and capability key management. */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync } from "node:fs";
+import { errMessage } from './errors.js';
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
@@ -60,7 +61,7 @@ function enforceVaultDirMode(vaultDir: string): void {
   } catch (error) {
     logger.warn("failed to enforce vault directory permissions", {
       vaultDir,
-      error: error instanceof Error ? error.message : String(error),
+      error: errMessage(error),
     });
   }
 }
@@ -72,7 +73,7 @@ function writeVaultFile(path: string, content: string): void {
   } catch (error) {
     logger.warn("failed to enforce vault file permissions", {
       path,
-      error: error instanceof Error ? error.message : String(error),
+      error: errMessage(error),
     });
   }
 }
@@ -170,7 +171,7 @@ function ensureAuthJson(state: ControlPlaneState): void {
     } catch (error) {
       logger.warn("failed to repair auth.json path", {
         path: authJsonPath,
-        error: error instanceof Error ? error.message : String(error),
+        error: errMessage(error),
       });
       throw error;
     }
@@ -232,7 +233,7 @@ export function writeAuthJsonProviderKeys(
       } catch (renameErr) {
         logger.warn("could not rename corrupt auth.json; starting fresh", {
           path: authJsonPath,
-          error: renameErr instanceof Error ? renameErr.message : String(renameErr),
+          error: errMessage(renameErr),
         });
       }
       current = {};

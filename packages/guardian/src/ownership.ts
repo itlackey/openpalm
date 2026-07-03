@@ -18,6 +18,8 @@
  * size getter for /stats. It is guardian-local on purpose — NOT @openpalm/lib.
  */
 
+import { SESSION_TTL_MS as OWNERSHIP_TTL_MS } from './config';
+
 /** The identity that owns a session/permission request. */
 export interface Principal {
   id: string;
@@ -33,9 +35,8 @@ export function principalKey(p: Principal): string {
   return JSON.stringify([p.kind, p.id, p.userId]);
 }
 
-// TTL mirrors the buffered session cache (forward.ts: GUARDIAN_SESSION_TTL_MS,
-// default 15 min). Entries are pruned on TTL, on hard-cap, and on explicit delete.
-const OWNERSHIP_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
+// TTL mirrors the buffered session cache (GUARDIAN_SESSION_TTL_MS, default 15
+// min). Entries are pruned on TTL, on hard-cap, and on explicit delete.
 
 /** Hard caps — same discipline as replay.ts (50k) / sessions (10k). */
 const SESSION_OWNERS_MAX = 50_000;

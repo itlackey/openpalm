@@ -7,13 +7,6 @@ import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome } from '@ope
 export { detectHostInfo } from './lib/host-info.ts';
 export type { HostInfo } from './lib/host-info.ts';
 
-const SUBCOMMAND_NAMES = new Set([
-  'install', 'uninstall', 'update', 'self-update', 'addon',
-  'start', 'stop', 'restart', 'logs', 'status', 'backups',
-  'validate', 'scan', 'audit-secrets', 'rollback', 'automations', 'unlock', 'ui',
-  '--help', '-h', 'help',
-]);
-
 interface BareRunOpts {
   port?: number;
   open?: boolean;
@@ -84,6 +77,30 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
   await startUIServer({ port: opts.port, open: opts.open });
 }
 
+// Single source of truth for the registered subcommands. SUBCOMMAND_NAMES is
+// derived from these keys below so adding a subcommand here can never drift
+// out of sync with the bare-command routing table.
+const subCommands = {
+  install: () => import('./commands/install.ts').then((m) => m.default),
+  uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
+  update: () => import('./commands/update.ts').then((m) => m.default),
+  'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
+  addon: () => import('./commands/addon.ts').then((m) => m.default),
+  start: () => import('./commands/start.ts').then((m) => m.default),
+  stop: () => import('./commands/stop.ts').then((m) => m.default),
+  restart: () => import('./commands/restart.ts').then((m) => m.default),
+  logs: () => import('./commands/logs.ts').then((m) => m.default),
+  status: () => import('./commands/status.ts').then((m) => m.default),
+  backups: () => import('./commands/backups.ts').then((m) => m.default),
+  validate: () => import('./commands/validate.ts').then((m) => m.default),
+  scan: () => import('./commands/scan.ts').then((m) => m.default),
+  'audit-secrets': () => import('./commands/audit-secrets.ts').then((m) => m.default),
+  rollback: () => import('./commands/rollback.ts').then((m) => m.default),
+  automations: () => import('./commands/automations.ts').then((m) => m.default),
+  unlock: () => import('./commands/unlock.ts').then((m) => m.default),
+  ui: () => import('./commands/ui.ts').then((m) => m.default),
+};
+
 export const mainCommand = defineCommand({
   meta: {
     name: 'openpalm',
@@ -101,27 +118,26 @@ export const mainCommand = defineCommand({
       default: true,
     },
   },
-  subCommands: {
-    install: () => import('./commands/install.ts').then((m) => m.default),
-    uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
-    update: () => import('./commands/update.ts').then((m) => m.default),
-    'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
-    addon: () => import('./commands/addon.ts').then((m) => m.default),
-    start: () => import('./commands/start.ts').then((m) => m.default),
-    stop: () => import('./commands/stop.ts').then((m) => m.default),
-    restart: () => import('./commands/restart.ts').then((m) => m.default),
-    logs: () => import('./commands/logs.ts').then((m) => m.default),
-    status: () => import('./commands/status.ts').then((m) => m.default),
-    backups: () => import('./commands/backups.ts').then((m) => m.default),
-    validate: () => import('./commands/validate.ts').then((m) => m.default),
-    scan: () => import('./commands/scan.ts').then((m) => m.default),
-    'audit-secrets': () => import('./commands/audit-secrets.ts').then((m) => m.default),
-    rollback: () => import('./commands/rollback.ts').then((m) => m.default),
-    automations: () => import('./commands/automations.ts').then((m) => m.default),
-    unlock: () => import('./commands/unlock.ts').then((m) => m.default),
-    ui: () => import('./commands/ui.ts').then((m) => m.default),
-  },
+  subCommands,
 });
+
+// Derived from the command registry (plus citty's built-in help/version
+// aliases) so `main()` and the bare-command entrypoint route identically and
+// never mis-route a newly added subcommand.
+const SUBCOMMAND_NAMES = new Set<string>([
+  ...Object.keys(subCommands),
+  '--help', '-h', 'help',
+]);
+
+/** A lone `--version`/`-v` flag prints the version and does nothing else. */
+function isVersionFlag(argv: string[]): boolean {
+  return argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v');
+}
+
+/** True when the first arg names a registered subcommand (or help alias). */
+function hasSubcommand(argv: string[]): boolean {
+  return argv.length > 0 && SUBCOMMAND_NAMES.has(argv[0]!);
+}
 
 /** Parse `--port`/`--no-open` from a bare-command argv. */
 function parseBareArgs(argv: string[]): BareRunOpts {
@@ -145,28 +161,26 @@ function parseBareArgs(argv: string[]): BareRunOpts {
  * Subcommand: route through citty.
  */
 export async function main(argv = process.argv.slice(2)): Promise<void> {
-  if (argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v')) {
+  if (isVersionFlag(argv)) {
     console.log(cliPkg.version);
     return;
   }
-
-  const hasSubcommand = argv.length > 0 && SUBCOMMAND_NAMES.has(argv[0]!);
-  if (!hasSubcommand) {
+  if (!hasSubcommand(argv)) {
     await autoRun(parseBareArgs(argv));
     return;
   }
-
   await runCommand(mainCommand, { rawArgs: argv });
 }
 
 if (import.meta.main) {
   const argv = process.argv.slice(2);
-  if (argv.length === 0 || !SUBCOMMAND_NAMES.has(argv[0]!)) {
-    if (argv[0] === '--version' || argv[0] === '-v') {
-      console.log(cliPkg.version);
-    } else {
-      await autoRun(parseBareArgs(argv));
-    }
+  // Same routing decision as main(), but subcommands go through citty's
+  // runMain so its error formatting + exit handling surface command failures
+  // (main() uses runCommand so tests can drive it programmatically).
+  if (isVersionFlag(argv)) {
+    console.log(cliPkg.version);
+  } else if (!hasSubcommand(argv)) {
+    await autoRun(parseBareArgs(argv));
   } else {
     await runMain(mainCommand);
   }

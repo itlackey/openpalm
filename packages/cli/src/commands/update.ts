@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
 import { performUpgrade, checkAndUpdateUiBuild } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
+import { defineAction } from '../lib/action.ts';
 
 export default defineCommand({
   meta: {
@@ -14,15 +15,15 @@ export default defineCommand({
       default: false,
     },
   },
-  async run({ args }) {
-    try {
+  run: defineAction(
+    async ({ args }) => {
       await runUpgradeAction({ allowPrerelease: !!args.pre });
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
+    },
+    (message) => {
+      console.error(message);
       console.error('If something went wrong, your previous state was backed up before this update — run `openpalm rollback` to restore it.');
-      process.exit(1);
-    }
-  },
+    },
+  ),
 });
 
 export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {}): Promise<void> {

@@ -1,13 +1,8 @@
-import { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, globalShortcut, nativeImage, Notification, session, systemPreferences, type NativeImage } from 'electron';
+import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, renameSync, createWriteStream, type WriteStream } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
-
-// Compatibility shim — @openpalm/lib logger reads globalThis.Bun.env in some paths
-if (!(globalThis as Record<string, unknown>).Bun) {
-  (globalThis as Record<string, unknown>).Bun = { env: process.env };
-}
 
 import {
   resolveOpenPalmHome,
@@ -20,18 +15,29 @@ import {
   uiUpdateChannel,
   parseEnvFile,
   PLATFORM_VERSION,
-  checkDocker,
-  checkDockerCompose,
+  waitForReady as libWaitForReady,
+  restoreUiBackup,
+  UiSupervisor,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
+import { resolveAssetPath } from './assets.js';
+import { SplashWindow } from './splash.js';
+import { DockerPreflight } from './docker-preflight.js';
+import { TrayController } from './tray.js';
+import { configureMediaPermissions, requestMicrophoneAccess } from './permissions.js';
+import {
+  getLaunchOnLoginStatus,
+  setLaunchOnLogin,
+  supportsLaunchOnLogin,
+  type LaunchOnLoginStatus,
+} from './launch-on-login.js';
 
-export type LaunchOnLoginStatus = {
-  supported: boolean;
-  enabled: boolean;
-};
+// Re-export the pure launch-on-login helpers so existing importers (and tests)
+// keep resolving them from `main.ts` after the extraction.
+export { getLaunchOnLoginStatus, setLaunchOnLogin, supportsLaunchOnLogin, type LaunchOnLoginStatus };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -120,24 +126,22 @@ function resolveAdminToolsPluginPath(): string {
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || 3880;
 const READY_TIMEOUT_MS = 60_000;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
-// Target menu-bar/tray icon size (points). The source asset is much larger;
-// macOS otherwise renders it at full bitmap height (#455).
-const TRAY_ICON_SIZE = 18;
 const APP_USER_MODEL_ID = 'com.openpalm.app';
 
 let mainWindow: BrowserWindow | null = null;
-let splashWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
 let uiProcess: ChildProcess | null = null;
 let localOpencode: LocalOpencodeHandle | null = null;
 let registeredMicShortcut: string | null = null;
-let trayIcon: NativeImage | null = null;
-let trayRecordingIcons: NativeImage[] = [];
-let trayAnimationTimer: ReturnType<typeof setInterval> | null = null;
-let trayAnimationFrame = 0;
 // Whether the GitHub update check should surface prereleases (#504). Loaded from
 // desktop settings at boot; toggled live from the tray. Notify-only.
 let checkPrereleaseUpdates = false;
+
+// Owned handles for the extracted UI concerns. The splash window is shared with
+// the Docker preflight screen (which reuses it); the tray owns its own icon +
+// animation state.
+const splash = new SplashWindow();
+const dockerPreflight = new DockerPreflight(splash);
+const trayController = new TrayController();
 
 // ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
 const STDERR_RING_SIZE = 200;
@@ -241,74 +245,6 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
   return env;
 }
 
-function resolveAssetPath(fileName: string): string | null {
-  const assetPath = join(__dirname, '..', 'assets', fileName);
-  return existsSync(assetPath) ? assetPath : null;
-}
-
-function createTrayIconVariant(icon: NativeImage, alpha = 1): NativeImage {
-  // Rebuild the recording-animation frame at the menu-bar target size. Without
-  // this resize the variant would reintroduce the oversized source bitmap and
-  // undo the menu-bar sizing applied to the base icon (#455).
-  const base = icon.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
-  const bitmap = base.toBitmap();
-  const variant = Buffer.from(bitmap);
-
-  for (let i = 3; i < variant.length; i += 4) {
-    variant[i] = Math.round(variant[i] * alpha);
-  }
-
-  const size = base.getSize();
-  const result = nativeImage.createFromBitmap(variant, {
-    width: size.width,
-    height: size.height,
-    scaleFactor: 1,
-  });
-  if (process.platform === 'darwin') {
-    result.setTemplateImage(true);
-  }
-  return result;
-}
-
-function stopTrayRecordingAnimation(): void {
-  if (trayAnimationTimer) {
-    clearInterval(trayAnimationTimer);
-    trayAnimationTimer = null;
-  }
-  trayAnimationFrame = 0;
-  if (tray && trayIcon) {
-    tray.setImage(trayIcon);
-    tray.setToolTip('OpenPalm');
-  }
-}
-
-function startTrayRecordingAnimation(): void {
-  if (!tray || trayRecordingIcons.length === 0) {
-    return;
-  }
-
-  stopTrayRecordingAnimation();
-  tray.setToolTip('OpenPalm — recording');
-  tray.setImage(trayRecordingIcons[0]);
-  trayAnimationTimer = setInterval(() => {
-    if (!tray || trayRecordingIcons.length === 0) {
-      stopTrayRecordingAnimation();
-      return;
-    }
-
-    trayAnimationFrame = (trayAnimationFrame + 1) % trayRecordingIcons.length;
-    tray.setImage(trayRecordingIcons[trayAnimationFrame]);
-  }, 280);
-}
-
-function setTrayMicRecording(recording: boolean): void {
-  if (recording) {
-    startTrayRecordingAnimation();
-    return;
-  }
-  stopTrayRecordingAnimation();
-}
-
 // ── UI server lifecycle ──────────────────────────────────────────────────────
 
 /** Kill an orphaned UI server left by a previous crashed Electron instance. */
@@ -331,20 +267,13 @@ async function killStaleUIServer(pidFile: string): Promise<void> {
   killProcessTree(pid, 'SIGKILL');
 }
 
-export async function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/health`, {
-        signal: AbortSignal.timeout(1000),
-      });
-      if (res.ok || res.status === 401) return true;
-    } catch {
-      // not ready yet
-    }
-    await new Promise(r => setTimeout(r, 300));
-  }
-  return false;
+/**
+ * Poll the UI server's /health until ready. Thin re-export of the shared lib
+ * supervisor primitive (SSOT); kept as an exported wrapper so the harness's own
+ * READY_TIMEOUT_MS default applies and existing tests import it from here.
+ */
+export function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promise<boolean> {
+  return libWaitForReady(port, timeoutMs);
 }
 
 async function startUIServer(): Promise<void> {
@@ -440,6 +369,9 @@ async function startUIServer(): Promise<void> {
   await killStaleUIServer(uiPidFile);
 
   spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, appUpdate);
+  // Hand the bespoke initial child to the shared supervisor so a later
+  // SIGUSR2/IPC restart knows which handle to stop (§6.2).
+  if (uiProcess) uiSupervisor.adopt(uiProcess);
 
   const ready = await waitForReady(UI_PORT);
   if (!ready) {
@@ -454,7 +386,7 @@ async function startUIServer(): Promise<void> {
       `See the log file for full logs:\n${logFilePath()}`,
     ].join('\n');
     console.error('UI server did not become ready in time');
-    closeSplashWindow();
+    splash.close();
     dialog.showErrorBox('OpenPalm failed to start', detail);
     app.quit();
   }
@@ -526,7 +458,7 @@ function spawnUIServer(
   // ready-poll spin out its full 60s timeout with a useless splash (#456).
   uiProcess.on('error', (err) => {
     console.error('UI server process error:', err.message);
-    closeSplashWindow();
+    splash.close();
     dialog.showErrorBox(
       'OpenPalm failed to start',
       [
@@ -546,6 +478,11 @@ function spawnUIServer(
       console.error(`UI server exited with code ${code}`);
     }
     uiProcess = null;
+    // Keep the supervisor's handle in sync: this child died UNSUPERVISED, so a
+    // later restart must NOT stop() a dead handle (pid-reuse hazard + a needless
+    // 1.5s SIGTERM→SIGKILL wait). Matches the pre-refactor `prev = uiProcess`
+    // (null) → skip-kill behavior.
+    uiSupervisor.detachHandle();
   });
 }
 
@@ -554,73 +491,114 @@ function spawnUIServer(
 // supervisor to respawn the UI child so the new @openpalm/lib loads without a
 // full app relaunch (design §6.2). The downloaded build does nothing until the
 // Node child is respawned.
+
+/**
+ * Marker thrown by the restart spawn strategy when the seeded build vanished.
+ * The strategy logs the exact "UI restart aborted: build not found at …"
+ * message itself; this marker just tells onRestartError to skip its generic
+ * "restart failed" log. restart() still returns false and the app stays up.
+ */
+class UiRestartAbortError extends Error {}
+
+// Set true for the duration of a supervisor-driven restart. Read by the UI
+// child's 'exit' handler so an intentional kill/respawn does NOT null out the
+// handle the restart path just reassigned (the coupling predates this module and
+// is preserved here). The UiSupervisor has its own internal `restarting` guard;
+// this module-level flag exists ONLY to gate that exit handler.
 let uiServerRestarting = false;
 // Backup of the previous data/ui set by checkAndUpdateUiBuild; used by the
 // supervisor to restore on startup failure (§4.4 / §6). Null = no backup available.
 let pendingUiBackupDir: string | null = null;
+// The backup captured (and consumed) at the start of the in-flight restart — the
+// UiSupervisor's restoreBackup hook reads it on a post-restart ready-failure.
+let restartBackupDir: string | null = null;
 
-async function restartUIServer(): Promise<boolean> {
-  if (uiServerRestarting) return false;
-  uiServerRestarting = true;
-  console.log('UI update detected — restarting UI server...');
-  // Capture the backup path before clearing it; we consume it exactly once here.
-  const uiBackup = pendingUiBackupDir;
-  pendingUiBackupDir = null;
-  try {
-    const homeDir = resolveOpenPalmHome();
-    const dataDir = resolveDataDir();
-    const uiPidFile = join(dataDir, '.ui-server.pid');
-
-    // Kill the current child (group-kill: it runs detached and may have its own
-    // children). Then re-resolve data/ui so a freshly seeded, strictly-newer
-    // build wins, and respawn.
-    const prev = uiProcess;
-    uiProcess = null;
-    if (prev?.pid) {
-      killProcessTree(prev.pid, 'SIGTERM');
-      await new Promise(r => setTimeout(r, 1500));
-      killProcessTree(prev.pid, 'SIGKILL');
-    }
-
-    const uiBuildDir = resolveUiBuildDir();
-    if (!existsSync(join(uiBuildDir, 'index.js'))) {
-      console.error('UI restart aborted: build not found at', uiBuildDir);
-      return false;
-    }
-    spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
-
-    const ready = await waitForReady(UI_PORT);
-    if (!ready) {
-      console.error('UI server did not become ready after restart.');
-      // Post-swap failure → restore backup (§4.4 / §6). Swap the failed data/ui
-      // out and reinstate the backup with a local rename — no registry needed.
-      if (uiBackup && existsSync(uiBackup)) {
-        try {
-          const failedDir = join(dataDir, `.ui-failed-${Date.now()}`);
-          if (existsSync(join(dataDir, 'ui'))) renameSync(join(dataDir, 'ui'), failedDir);
-          renameSync(uiBackup, join(dataDir, 'ui'));
-          console.error(`UI build restore: reinstated backup from ${uiBackup}; failed build at ${failedDir}`);
-        } catch (restoreErr) {
-          console.error('UI backup restore failed:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
-        }
+// Thin Electron adapter over the shared UiSupervisor state machine (design §6.2 /
+// §4.4). The bespoke INITIAL start (seed-or-quit + splash + stderr ring-buffer +
+// dialog) stays in startUIServer, which then adopt()s the spawned child; the
+// supervisor owns the RESTART state machine (kill → respawn → wait → restore /
+// reload). Every harness-scoped effect is an adapter closure: the Node
+// child_process + killProcessTree spawn/kill strategy, the renderer reload, and
+// the restart-failure policy (Electron stays up — onRestartFailure is omitted).
+const uiSupervisor = new UiSupervisor<ChildProcess>({
+  port: UI_PORT,
+  strategy: {
+    // Respawn against the freshly-seeded data/ui (restart path). Aborts if the
+    // build vanished — the throw routes to onRestartError, so restart() returns
+    // false and the app stays up, matching the pre-refactor `return false` guard.
+    spawn: () => {
+      const homeDir = resolveOpenPalmHome();
+      const dataDir = resolveDataDir();
+      const uiPidFile = join(dataDir, '.ui-server.pid');
+      const uiBuildDir = resolveUiBuildDir();
+      if (!existsSync(join(uiBuildDir, 'index.js'))) {
+        // Log the EXACT pre-refactor message on stderr, then throw a marker the
+        // catch path recognizes so it does NOT re-log a generic "restart failed".
+        console.error('UI restart aborted: build not found at', uiBuildDir);
+        throw new UiRestartAbortError();
       }
-      return false;
-    }
-    console.log('UI server restarted.');
+      spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
+      if (!uiProcess) throw new Error('UI server failed to spawn');
+      return uiProcess;
+    },
+    // Group-kill the current child (it runs detached and may have its own
+    // children, e.g. the wizard's `opencode serve`): SIGTERM → fixed 1.5s delay
+    // → SIGKILL.
+    stop: async (handle) => {
+      uiProcess = null;
+      if (handle.pid) {
+        killProcessTree(handle.pid, 'SIGTERM');
+        await new Promise(r => setTimeout(r, 1500));
+        killProcessTree(handle.pid, 'SIGKILL');
+      }
+    },
+  },
+  callbacks: {
+    waitForReady: (p) => waitForReady(p),
+    // Consume the pending backup at the START of every restart, exactly-once and
+    // UNCONDITIONALLY — before the conditional stop(). This must NOT live in
+    // stop(): after an unsupervised crash the handle is detached (null) so stop()
+    // is skipped, but the pending backup must still be captured so a failed
+    // respawn restores the correct build (mirrors the pre-refactor capture-then-
+    // clear at restartUIServer's top).
+    beforeRestart: () => {
+      restartBackupDir = pendingUiBackupDir;
+      pendingUiBackupDir = null;
+    },
+    // Post-swap failure → restore the prior data/ui with a local rename — no
+    // registry needed (shared lib routine). onRestartFailure is omitted, so the
+    // app stays running and restart() returns false (Electron never exits here).
+    restoreBackup: () => { restoreUiBackup(resolveDataDir(), restartBackupDir); },
     // Reload the renderer onto the freshly-restarted control plane. Respawning the
     // server child is not enough on its own: the window keeps showing the OLD
     // build's page (and its stale "control plane vX" / cached state), so an update
     // looks like it did nothing. Load the root so the launch guard re-routes
     // (→ /splash to apply a pending home update, then onward; → /chat when healthy).
     // Covers both restart triggers: the IPC path and the SIGUSR2 supervisor path.
-    const win = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
-    if (win && !win.isDestroyed()) {
-      void win.loadURL(`http://127.0.0.1:${UI_PORT}/`);
-    }
-    return true;
-  } catch (err) {
-    console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
-    return false;
+    onReloadRenderer: () => {
+      const win = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+      if (win && !win.isDestroyed()) {
+        void win.loadURL(`http://127.0.0.1:${UI_PORT}/`);
+      }
+    },
+    onRestartError: (err) => {
+      // The build-not-found abort already logged its exact message in spawn();
+      // don't double-log a generic failure for it.
+      if (err instanceof UiRestartAbortError) return;
+      console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
+    },
+  },
+});
+
+// SIGUSR2/IPC restart trigger. Wraps the shared supervisor so the module-level
+// `uiServerRestarting` flag (which gates the child's 'exit' handler) stays true
+// for the whole restart, and re-entrant triggers no-op — preserving the exact
+// pre-refactor guard semantics.
+async function restartUIServer(): Promise<boolean> {
+  if (uiServerRestarting) return false;
+  uiServerRestarting = true;
+  try {
+    return await uiSupervisor.restart();
   } finally {
     uiServerRestarting = false;
   }
@@ -642,167 +620,6 @@ function stopUIServer(): void {
 }
 
 // ── Window management ────────────────────────────────────────────────────────
-
-function createSplashWindow(): void {
-  const icon = resolveAssetPath('icon.png') ?? undefined;
-  splashWindow = new BrowserWindow({
-    width: 380,
-    height: 200,
-    frame: false,
-    resizable: false,
-    movable: true,
-    alwaysOnTop: true,
-    show: true,
-    icon,
-    backgroundColor: '#0f172a',
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
-  });
-  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-    html,body{height:100%;margin:0;background:#0f172a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
-    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
-    .logo{font-size:22px;font-weight:600;letter-spacing:0.5px}
-    .hint{font-size:13px;color:#94a3b8}
-    .spinner{width:24px;height:24px;border:3px solid #1e293b;border-top-color:#60a5fa;border-radius:50%;animation:spin 0.8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-  </style></head><body>
-    <div class="logo">OpenPalm</div>
-    <div class="spinner"></div>
-    <div class="hint" id="hint">Starting…</div>
-    <script>
-      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Still starting (first launch may take a minute)…';},15000);
-      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Almost there…';},40000);
-    </script>
-  </body></html>`;
-  void splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-  splashWindow.on('closed', () => { splashWindow = null; });
-}
-
-function closeSplashWindow(): void {
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.close();
-    splashWindow = null;
-  }
-}
-
-// ── Docker preflight ──────────────────────────────────────────────────────────
-// The desktop app drives the assistant via Docker Compose (the UI server's admin
-// routes shell out to `docker compose`). Without a running Docker daemon the
-// first thing a brand-new user would otherwise hit is an opaque `503
-// docker_unavailable` ~60s into the splash spinner (deployment-review P0 #493).
-// Run the SAME checks the CLI's requireDocker() uses (lib's checkDocker /
-// checkDockerCompose — never duplicate the logic) BEFORE starting the UI, and
-// replace the spinner with a friendly, actionable screen if Docker is absent.
-
-const GET_DOCKER_URL = 'https://docs.docker.com/get-docker/';
-
-type DockerPreflightResult = { ok: true } | { ok: false; title: string; message: string };
-
-/**
- * Mirror the CLI's `requireDocker()` (install.ts:135-138) using lib's shared
- * Docker probes. Returns a friendly title/message on failure so the harness can
- * render it; never throws.
- */
-async function dockerPreflight(): Promise<DockerPreflightResult> {
-  const docker = await checkDocker();
-  if (!docker.ok) {
-    return {
-      ok: false,
-      title: 'OpenPalm needs Docker Desktop',
-      message:
-        'OpenPalm runs your assistant in Docker, but Docker isn’t running. ' +
-        'Install Docker Desktop (or start it if it’s already installed), then retry.',
-    };
-  }
-  const compose = await checkDockerCompose();
-  if (!compose.ok) {
-    return {
-      ok: false,
-      title: 'Docker Compose v2 is required',
-      message:
-        'Docker is running, but Docker Compose v2 isn’t available. ' +
-        'Update Docker Desktop (it bundles Compose v2), then retry.',
-    };
-  }
-  return { ok: true };
-}
-
-let dockerRetryResolve: (() => void) | null = null;
-
-/**
- * Replace the splash spinner with a friendly Docker-missing screen. The screen
- * offers an "Install Docker" button (opens the official install page in the
- * system browser) and an "I've installed it — retry" button that re-runs the
- * preflight. Resolves when the user clicks retry.
- */
-function showDockerErrorScreen(result: { title: string; message: string }): Promise<void> {
-  // Reuse the splash window if it's still open; otherwise create one. Either
-  // way we replace its contents with the Docker-error UI (no spinner).
-  if (!splashWindow || splashWindow.isDestroyed()) {
-    const icon = resolveAssetPath('icon.png') ?? undefined;
-    splashWindow = new BrowserWindow({
-      width: 460,
-      height: 320,
-      frame: false,
-      resizable: false,
-      movable: true,
-      alwaysOnTop: true,
-      show: true,
-      icon,
-      backgroundColor: '#0f172a',
-      webPreferences: { nodeIntegration: false, contextIsolation: true, preload: join(__dirname, 'preload.cjs') },
-    });
-    splashWindow.on('closed', () => { splashWindow = null; });
-  } else {
-    splashWindow.setSize(460, 320);
-  }
-
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-    html,body{height:100%;margin:0;background:#0f172a;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
-    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;box-sizing:border-box;text-align:center}
-    .title{font-size:18px;font-weight:600}
-    .msg{font-size:13px;line-height:1.5;color:#cbd5e1;max-width:380px}
-    .row{display:flex;gap:10px;margin-top:6px}
-    button{font:inherit;font-size:13px;padding:9px 16px;border-radius:8px;border:1px solid #334155;cursor:pointer}
-    .primary{background:#2563eb;border-color:#2563eb;color:#fff}
-    .secondary{background:#1e293b;color:#e2e8f0}
-    button:hover{filter:brightness(1.1)}
-  </style></head><body>
-    <div class="title">${esc(result.title)}</div>
-    <div class="msg">${esc(result.message)}</div>
-    <div class="row">
-      <button class="primary" id="install">Install Docker</button>
-      <button class="secondary" id="retry">I’ve installed it — retry</button>
-    </div>
-    <script>
-      const op = window.openpalm;
-      document.getElementById('install').addEventListener('click', function(){ op && op.openDockerInstall(); });
-      document.getElementById('retry').addEventListener('click', function(){
-        var b=document.getElementById('retry'); b.textContent='Checking…'; b.disabled=true;
-        op && op.retryDockerPreflight();
-      });
-    </script>
-  </body></html>`;
-  void splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-
-  return new Promise<void>((resolve) => { dockerRetryResolve = resolve; });
-}
-
-/**
- * Block until Docker is available, showing the friendly install/retry screen
- * whenever the preflight fails. Returns once Docker (and Compose v2) are ready.
- */
-export async function ensureDockerReady(): Promise<void> {
-  // eslint-disable-next-line no-constant-condition
-  for (;;) {
-    const result = await dockerPreflight();
-    if (result.ok) return;
-    console.warn(`Docker preflight failed: ${result.message}`);
-    await showDockerErrorScreen(result);
-    // loop: user clicked retry — re-run the preflight.
-  }
-}
 
 async function resolveInitialUrl(): Promise<string> {
   // Try to read setup status so we can land directly on the right page.
@@ -850,7 +667,7 @@ async function createWindow(): Promise<void> {
   mainWindow.loadURL(initialUrl);
 
   mainWindow.once('ready-to-show', () => {
-    closeSplashWindow();
+    splash.close();
     mainWindow?.show();
   });
 
@@ -885,83 +702,14 @@ function showWindow(): void {
   }
 }
 
-// The navbar mic records via getUserMedia in the renderer. Two layers must both
-// grant access or the captured audio is SILENT (not an error) — and silence is
-// what makes Whisper transcribe a phantom "You":
-//   1. Electron's session permission layer must approve the `media` request from
-//      our trusted local UI origin (127.0.0.1/localhost). We deny everything else.
-//   2. macOS TCC must have granted the app mic access. That requires
-//      NSMicrophoneUsageDescription in the app's Info.plist (set in
-//      electron-builder.yml) AND askForMediaAccess() — BUT the OS only shows the
-//      prompt in response to an actual user interaction (clicking the mic button),
-//      not at app startup. We therefore expose this as an IPC call so the renderer
-//      can request it precisely when the user first clicks the mic.
-function isTrustedLocalOrigin(url: string): boolean {
-  return url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost');
+// ── Docker preflight (deployment-review P0 #493) ──────────────────────────────
+// Thin wrapper around the extracted DockerPreflight so existing importers/tests
+// keep calling `ensureDockerReady()` from main.ts.
+export function ensureDockerReady(): Promise<void> {
+  return dockerPreflight.ensureReady();
 }
 
-function configureMediaPermissions(): void {
-  const ses = session.defaultSession;
-
-  // Async grant (Chromium asks once per origin). Approve audio capture only for
-  // our own UI; deny anything unexpected.
-  ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
-    if (permission === 'media' && isTrustedLocalOrigin(details.requestingUrl ?? '')) {
-      callback(true);
-      return;
-    }
-    callback(false);
-  });
-
-  // Some getUserMedia paths consult the synchronous check handler — grant media
-  // there for the same trusted origin.
-  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
-    return permission === 'media' && isTrustedLocalOrigin(requestingOrigin ?? '');
-  });
-}
-
-// Called from the renderer via IPC when the user clicks the mic button.
-// Returns the access status ('granted' | 'denied' | 'restricted' | 'unknown').
-// On Windows/Linux the Electron permission handler above is sufficient; this
-// is only a meaningful prompt on macOS (the OS ignores non-user-gesture calls).
-//
-// IMPORTANT (the 0.11.3 "OpenPalm never appears in the Microphone list" bug):
-// askForMediaAccess() can resolve false WITHOUT macOS ever showing a prompt or
-// registering the app under Privacy & Security → Microphone. That happens when
-// the app's code signature has the Hardened Runtime flag but is missing the
-// com.apple.security.device.audio-input entitlement — the runtime denies the
-// request before TCC is consulted. The entitlement is shipped via
-// assets/entitlements.mac.plist (see electron-builder.yml). We detect the
-// "denied without prompt" signature here (status was not-determined, ask
-// resolved false) and report it distinctly so the UI doesn't send the user to
-// a Settings list the app isn't in.
-async function requestMicrophoneAccess(): Promise<string> {
-  if (process.platform !== 'darwin') return 'granted';
-  try {
-    const before = systemPreferences.getMediaAccessStatus('microphone');
-    console.log('Microphone TCC status before request:', before);
-    if (before === 'granted') return 'granted';
-    if (before === 'denied' || before === 'restricted') {
-      // The app IS registered with TCC but switched off (or MDM-restricted).
-      // Open the exact Settings pane so "enable OpenPalm" is one click away.
-      void shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone');
-      return before;
-    }
-    // not-determined → this ask should trigger the OS prompt.
-    const granted = await systemPreferences.askForMediaAccess('microphone');
-    const after = systemPreferences.getMediaAccessStatus('microphone');
-    console.log('Microphone TCC status after request:', after, '(askForMediaAccess →', granted, ')');
-    if (granted) return 'granted';
-    // Denied with no prompt and still not-determined afterwards = the OS never
-    // consulted TCC (entitlement/signature problem) — Settings won't list us,
-    // so don't tell the user to flip a toggle that doesn't exist.
-    if (after === 'not-determined') return 'denied-no-prompt';
-    return 'denied';
-  } catch (err) {
-    console.warn('Microphone access request failed:', err instanceof Error ? err.message : String(err));
-    return 'unknown';
-  }
-}
+// ── Global mic shortcut ───────────────────────────────────────────────────────
 
 function triggerGlobalMicToggle(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -996,30 +744,6 @@ export function showNotification(title: string, body?: string): void {
   n.show();
 }
 
-export function supportsLaunchOnLogin(platform = process.platform): boolean {
-  return platform === 'darwin' || platform === 'win32';
-}
-
-export function getLaunchOnLoginStatus(platform = process.platform): LaunchOnLoginStatus {
-  if (!supportsLaunchOnLogin(platform)) {
-    return { supported: false, enabled: false };
-  }
-
-  return {
-    supported: true,
-    enabled: !!app.getLoginItemSettings().openAtLogin,
-  };
-}
-
-export function setLaunchOnLogin(enabled: boolean, platform = process.platform): LaunchOnLoginStatus {
-  if (!supportsLaunchOnLogin(platform)) {
-    return { supported: false, enabled: false };
-  }
-
-  app.setLoginItemSettings({ openAtLogin: enabled });
-  return getLaunchOnLoginStatus(platform);
-}
-
 // ── Prerelease update opt-in (#504) ───────────────────────────────────────────
 // Toggle the desktop-local "check for prerelease versions" setting, persist it,
 // re-run the GitHub update check in the new mode, rebuild the tray (so the menu
@@ -1034,7 +758,7 @@ async function setCheckPrerelease(enabled: boolean): Promise<void> {
     const appVersion = app.getVersion();
     const update = await checkForElectronUpdate(appVersion, enabled);
     // Rebuild the tray menu so the checkbox state (and any update label) refresh.
-    rebuildTrayMenu();
+    trayController.rebuildMenu();
     if (enabled && update.updateAvailable && update.latestVersion) {
       const kind = update.isPrerelease ? 'prerelease' : 'version';
       showNotification(
@@ -1052,85 +776,24 @@ async function setCheckPrerelease(enabled: boolean): Promise<void> {
 
 // ── Tray ─────────────────────────────────────────────────────────────────────
 
+/** Wire the tray context-menu callbacks to the app's window/settings actions. */
 function createTray(): void {
-  const iconPath = resolveAssetPath('tray-icon.png');
-  if (!iconPath) {
-    return;
-  }
-
-  // The source asset is 128×122 RGBA; passing it straight to Tray renders it
-  // ~128pt tall in the macOS menu bar (#455). Resize to a menu-bar-appropriate
-  // size, and on macOS mark it as a template image so it adopts the menu bar's
-  // monochrome light/dark treatment. Follow-up polish: ship a dedicated
-  // monochrome trayTemplate.png/@2x asset rather than recolouring this one.
-  trayIcon = nativeImage.createFromPath(iconPath).resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
-  if (process.platform === 'darwin') {
-    trayIcon.setTemplateImage(true);
-  }
-  trayRecordingIcons = [1, 0.72, 0.42, 0.72].map((alpha) => createTrayIconVariant(trayIcon as NativeImage, alpha));
-  // Reuse an existing Tray (e.g. a menu rebuild after a settings toggle) so we
-  // never leak a duplicate menu-bar icon or reset the recording animation.
-  if (!tray) {
-    tray = new Tray(trayIcon);
-  }
-
-  rebuildTrayMenu();
-
-  tray.setToolTip('OpenPalm');
-  // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
-  // NOT open/restore the window.  The window is always accessible via the
-  // "Open OpenPalm" item in the context menu (right-click or left-click the
-  // tray icon to see it, depending on the OS).  Removing the click handler
-  // prevents the surprise "tray icon pops my window" behavior reported in #427.
-}
-
-/** (Re)build the tray context menu from current settings/state. */
-function rebuildTrayMenu(): void {
-  if (!tray) return;
-  const loginSettings = getLaunchOnLoginStatus();
-  const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open OpenPalm', click: showWindow },
-    { label: 'Show Logs', click: () => { void shell.openPath(app.getPath('logs')); } },
-    { type: 'separator' },
-    {
-      // "Start at Login" checkbox — reads and writes Electron's cross-platform
-      // login-item API (macOS LaunchAgent, Windows Run registry key).
-      // Default OFF; the user's current setting drives the initial checked state.
-      label: 'Start at Login',
-      type: 'checkbox',
-      checked: loginSettings.enabled,
-      enabled: loginSettings.supported,
-      click: (menuItem) => {
-        setLaunchOnLogin(menuItem.checked);
-      },
+  trayController.create({
+    onOpen: showWindow,
+    onShowLogs: () => { void shell.openPath(app.getPath('logs')); },
+    getLaunchOnLoginStatus: () => getLaunchOnLoginStatus(),
+    onSetLaunchOnLogin: (enabled) => { setLaunchOnLogin(enabled); },
+    isPrereleaseEnabled: () => checkPrereleaseUpdates,
+    onTogglePrerelease: (enabled) => { void setCheckPrerelease(enabled); },
+    onQuit: () => {
+      // Set isQuitting here so the window 'close' handler (which hides to
+      // tray when !isQuitting) does not re-hide during teardown.
+      // before-quit also sets this, but the tray handler fires before
+      // before-quit, so the early set avoids a transient re-hide on macOS.
+      (app as unknown as Record<string, unknown>).isQuitting = true;
+      app.quit();
     },
-    {
-      // "Check for prerelease versions" opt-in (#504). When on, the GitHub
-      // update check surfaces rc's matching the user's channel. Notify-only —
-      // it never auto-installs. Persisted to desktop settings and re-checked
-      // immediately so the user gets feedback without restarting.
-      label: 'Check for prerelease versions',
-      type: 'checkbox',
-      checked: checkPrereleaseUpdates,
-      click: (menuItem) => {
-        void setCheckPrerelease(menuItem.checked);
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        // Set isQuitting here so the window 'close' handler (which hides to
-        // tray when !isQuitting) does not re-hide during teardown.
-        // before-quit also sets this, but the tray handler fires before
-        // before-quit, so the early set avoids a transient re-hide on macOS.
-        (app as unknown as Record<string, unknown>).isQuitting = true;
-        app.quit();
-      },
-    },
-  ]);
-
-  tray.setContextMenu(contextMenu);
+  });
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
@@ -1139,7 +802,7 @@ app.whenReady().then(async () => {
   initFileLogger();
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   console.log(`OpenPalm starting (v${app.getVersion?.() ?? '?'}); logs at ${logFilePath()}`);
-  createSplashWindow();
+  splash.showStartup();
   // Fail early and legibly if Docker isn't running (deployment-review P0 #493).
   // Blocks (showing a friendly install/retry screen) until Docker + Compose v2
   // are available, so the user never hits the opaque 60s `503 docker_unavailable`.
@@ -1147,7 +810,7 @@ app.whenReady().then(async () => {
   try {
     await startUIServer();
   } catch (err) {
-    closeSplashWindow();
+    splash.close();
     console.error('Failed to start UI server:', err instanceof Error ? err.message : String(err));
     app.quit();
     return;
@@ -1169,7 +832,7 @@ app.whenReady().then(async () => {
     );
   }
 
-  await configureMediaPermissions();
+  configureMediaPermissions();
   await createWindow();
   createTray();
   registerGlobalMicShortcut();
@@ -1204,15 +867,13 @@ process.on('SIGUSR2', () => { void restartUIServer(); });
 
 // Open the official Docker install page (Docker-missing preflight screen).
 ipcMain.on('open-docker-install', () => {
-  void shell.openExternal(GET_DOCKER_URL);
+  dockerPreflight.openInstallPage();
 });
 
 // The Docker-missing screen's "retry" button resolves the pending preflight
 // promise so ensureDockerReady() re-runs checkDocker/checkDockerCompose.
 ipcMain.on('retry-docker-preflight', () => {
-  const resolve = dockerRetryResolve;
-  dockerRetryResolve = null;
-  resolve?.();
+  dockerPreflight.retry();
 });
 
 ipcMain.handle('launch-on-login-status', (): LaunchOnLoginStatus => {
@@ -1234,7 +895,7 @@ ipcMain.on('notify', (_event, payload: { title?: string; body?: string } | null)
 });
 
 ipcMain.handle('set-tray-mic-recording', (_event, recording: boolean) => {
-  setTrayMicRecording(recording);
+  trayController.setMicRecording(recording);
 });
 
 // Request microphone access from the OS (macOS TCC). Called by the renderer
@@ -1266,7 +927,7 @@ app.on('before-quit', (event) => {
   cleanupStarted = true;
   event.preventDefault();
   globalShortcut.unregisterAll();
-  stopTrayRecordingAnimation();
+  trayController.stopAnimation();
   stopUIServer();
   const handle = localOpencode;
   localOpencode = null;

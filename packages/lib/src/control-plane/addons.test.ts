@@ -4,9 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { backupOpenPalmHome } from './backup.js';
 import {
-  __addonAvailabilityTestHooks,
   annotateAddonProfileAvailability,
-  getAddonProfileAvailability,
   getAddonProfileSelection,
   getAddonProfiles,
   getAddonServiceNames,
@@ -20,6 +18,11 @@ import {
   setAddonProfileSelection,
   uninstallAutomation,
 } from './addons.js';
+import {
+  execFileNoThrow,
+  getAddonProfileAvailability,
+  resetAvailabilityCache,
+} from './addon-availability.js';
 import { readSecret } from './secrets-files.js';
 
 let tempDir = '';
@@ -35,7 +38,7 @@ afterEach(() => {
   if (originalHome === undefined) delete process.env.OP_HOME;
   else process.env.OP_HOME = originalHome;
   rmSync(tempDir, { recursive: true, force: true });
-  __addonAvailabilityTestHooks.reset();
+  resetAvailabilityCache();
 });
 
 describe('builtin addon metadata', () => {
@@ -297,7 +300,7 @@ describe('getAddonProfileAvailability', () => {
 
 describe('execFileNoThrow (ENOENT capture)', () => {
   it('captures ENOENT for a missing binary', async () => {
-    const result = await __addonAvailabilityTestHooks.execFileNoThrow(
+    const result = await execFileNoThrow(
       '/nonexistent/path/to/openpalm-test-no-such-binary-zzz',
       ['--help'],
       2_000,
@@ -308,7 +311,7 @@ describe('execFileNoThrow (ENOENT capture)', () => {
   });
 
   it('formats ENOENT for docker-style matching', async () => {
-    const result = await __addonAvailabilityTestHooks.execFileNoThrow(
+    const result = await execFileNoThrow(
       'docker-not-installed-zzz',
       ['info'],
       2_000,

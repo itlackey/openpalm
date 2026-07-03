@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, writeFileSync, mkdtempSync, readFileSync, readdi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
+import * as nodeChildProcess from 'node:child_process';
 import { detectHostInfo, main } from './main.ts';
 import { readSecret, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
 import { canReplaceCurrentExecutable, resolveCliArtifactName } from './commands/self-update.ts';
@@ -83,6 +85,25 @@ async function readPackedPackageJson(tarballPath: string): Promise<{ dependencie
 const originalBunSpawn = Bun.spawn;
 const originalBunWhich = Bun.which;
 
+/**
+ * A ChildProcess-like stub that immediately "succeeds": emits `close` with exit
+ * code 0 on the next microtask so callers that attach `close`/`error` listeners
+ * first (e.g. lib's `runComposeStreaming`) resolve without touching a real
+ * `docker` binary or daemon.
+ */
+function makeFakeChildProcess(code = 0): EventEmitter {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: null; stderr: null; stdin: null; pid: number; kill: () => boolean;
+  };
+  child.stdout = null;
+  child.stderr = null;
+  child.stdin = null;
+  child.pid = 0;
+  child.kill = () => true;
+  queueMicrotask(() => child.emit('close', code));
+  return child;
+}
+
 function mockDockerCli(): void {
   Bun.which = mock((_cmd: string) => '/usr/bin/docker') as typeof Bun.which;
   Bun.spawn = mock((_cmd: string[] | readonly string[], _opts?: unknown) => ({
@@ -100,6 +121,14 @@ function mockDockerCli(): void {
     [Symbol.asyncDispose]: async () => {},
     resourceUsage: () => undefined,
   })) as unknown as typeof Bun.spawn;
+  // lib's stdio-inheriting compose runner (runComposeStreaming) spawns via
+  // node:child_process, NOT Bun.spawn — stub that seam too so compose mutations
+  // (e.g. `addon disable` → `compose stop`) never shell out to real docker.
+  // execFile and the rest of the module stay real (only `spawn` is replaced).
+  mock.module('node:child_process', () => ({
+    ...nodeChildProcess,
+    spawn: mock(() => makeFakeChildProcess(0)),
+  }));
 }
 
 function restoreDockerCli(): void {

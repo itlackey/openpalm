@@ -1,6 +1,7 @@
 import { createLogger } from './logger.ts';
 
 import { invalidatePrincipalCache } from './auth';
+import { constantTimeEqual } from './crypto.ts';
 import {
   listPrincipals,
   rotatePrincipal,
@@ -25,10 +26,27 @@ async function readBody(req: Request): Promise<JsonObject> {
   }
 }
 
+// Cache the admin token file read, keyed by path, so we don't hit the
+// filesystem on every admin request. A changed env path re-reads.
+let cachedTokenPath: string | undefined;
+let cachedToken = '';
+
+async function readAdminToken(): Promise<string> {
+  const path = Bun.env.GUARDIAN_ADMIN_TOKEN_FILE ?? '';
+  if (path === cachedTokenPath) return cachedToken;
+  const raw = await Bun.file(path).text().catch(() => '');
+  cachedToken = raw.replace(/[\r\n]+$/, '');
+  cachedTokenPath = path;
+  return cachedToken;
+}
+
 async function authorize(req: Request): Promise<boolean> {
-  const expected = await Bun.file(Bun.env.GUARDIAN_ADMIN_TOKEN_FILE ?? '').text().catch(() => '');
+  const expected = await readAdminToken();
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() ?? '';
-  return expected.replace(/[\r\n]+$/, '') !== '' && token === expected.replace(/[\r\n]+$/, '');
+  // Constant-time compare to avoid a timing side-channel on the admin token.
+  // An empty configured token denies all (fail-closed), even if the request
+  // also omits the token.
+  return expected !== '' && constantTimeEqual(token, expected);
 }
 
 export async function handleAdminRequest(req: Request, requestId: string): Promise<Response> {

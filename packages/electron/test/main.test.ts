@@ -141,6 +141,77 @@ vi.mock('@openpalm/lib', () => ({
   PLATFORM_VERSION: 'v0.11.0',
   checkDocker: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
+  // Faithful reimplementation of lib's waitForReady (poll /health; 200 or 401 ==
+  // ready) so the harness wrapper still exercises the real ready-poll contract
+  // under the test's stubbed global fetch + fake timers.
+  waitForReady: vi.fn(async (port: number, timeoutMs = 60_000): Promise<boolean> => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1000) });
+        if (res.ok || res.status === 401) return true;
+      } catch {
+        // not ready yet
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return false;
+  }),
+  restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
+  // Faithful reimplementation of lib's UiSupervisor state machine (same style as
+  // the waitForReady mock above) so the restart path the harness drives — stop →
+  // respawn → wait-for-ready → restoreBackup/onReloadRenderer — actually runs its
+  // injected strategy + callbacks under the test.
+  UiSupervisor: class {
+    private handle: unknown = null;
+    private restarting = false;
+    private shuttingDown = false;
+    private readonly port: number;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
+    private readonly strategy: any;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
+    private readonly cb: any;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
+    constructor(opts: any) {
+      this.port = opts.port;
+      this.strategy = opts.strategy;
+      this.cb = opts.callbacks;
+    }
+    get current() { return this.handle; }
+    get isRestarting() { return this.restarting; }
+    adopt(handle: unknown) { this.handle = handle; }
+    detachHandle() { this.handle = null; }
+    async start() {
+      this.handle = await this.strategy.spawn();
+      if (!(await this.cb.waitForReady(this.port))) {
+        await this.cb.onStartFailure?.(this.handle);
+        return false;
+      }
+      return true;
+    }
+    async restart() {
+      if (this.shuttingDown || this.restarting) return false;
+      this.restarting = true;
+      try {
+        this.cb.beforeRestart?.();
+        if (this.handle) await this.strategy.stop(this.handle);
+        this.handle = await this.strategy.spawn();
+        if (!(await this.cb.waitForReady(this.port))) {
+          this.cb.restoreBackup?.();
+          await this.cb.onRestartFailure?.();
+          return false;
+        }
+        this.cb.onReloadRenderer?.();
+        return true;
+      } catch (err) {
+        this.cb.onRestartError?.(err);
+        return false;
+      } finally {
+        this.restarting = false;
+      }
+    }
+    markShuttingDown() { this.shuttingDown = true; }
+  },
 }));
 
 vi.mock('../src/local-opencode.js', () => ({
@@ -346,6 +417,44 @@ describe('restart-ui-server reloads the renderer', () => {
 
     expect(ok).toBe(true);
     expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/');
+  });
+
+  it('restart ready-FAILURE keeps the app up, restores the backup, and does NOT reload', async () => {
+    // Locks the Electron divergence: unlike the CLI (which process.exit(1)s on a
+    // failed restart), Electron stays running — it restores the prior data/ui and
+    // leaves the window on the old page (no reload). onRestartFailure is omitted.
+    vi.mocked(lib.waitForReady).mockResolvedValueOnce(false); // respawn never becomes ready
+    vi.mocked(lib.restoreUiBackup).mockClear();
+    mockBrowserWindow.loadURL.mockClear();
+    vi.mocked(app.quit).mockClear();
+
+    const handler = ipcMainHandleHandlers.get('restart-ui-server');
+    const ok = await handler!();
+
+    expect(ok).toBe(false);
+    expect(lib.restoreUiBackup).toHaveBeenCalled();            // §4.4 backup restored
+    expect(mockBrowserWindow.loadURL).not.toHaveBeenCalled();  // renderer NOT reloaded on failure
+    expect(app.quit).not.toHaveBeenCalled();                   // app STAYS UP (no exit/quit)
+  });
+
+  it('re-entrant restart is guarded (uiServerRestarting): the second trigger no-ops with a single respawn', async () => {
+    // The IPC/SIGUSR2 wrapper sets uiServerRestarting for the whole restart so a
+    // concurrent trigger is dropped — preserving the pre-refactor guard and the
+    // exit-handler coupling. Prove only ONE respawn happens across two triggers.
+    vi.mocked(lib.waitForReady).mockResolvedValue(true);
+    mockBrowserWindow.isDestroyed.mockReturnValue(false);
+    const { spawn } = await import('node:child_process');
+    vi.mocked(spawn).mockClear();
+
+    const handler = ipcMainHandleHandlers.get('restart-ui-server')!;
+    const inFlight = handler();       // sets uiServerRestarting = true before its first await
+    const second = await handler();   // guarded out immediately
+    const first = await inFlight;
+
+    expect(second).toBe(false);
+    expect(first).toBe(true);
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1); // only the first trigger respawned
+    vi.mocked(lib.waitForReady).mockReset();
   });
 });
 

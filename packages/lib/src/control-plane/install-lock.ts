@@ -17,6 +17,7 @@
  * caller surfaces "install_in_progress" rather than silently fake-acquiring.
  */
 import { openSync, writeSync, closeSync, readFileSync, statSync, rmSync, mkdirSync, constants } from "node:fs";
+import { errMessage } from "./errors.js";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
 
@@ -109,7 +110,7 @@ export function acquireInstallLock(dataDir: string): InstallLockHandle | null {
   } catch (err) {
     logger.warn("failed to ensure data dir for install lock", {
       dataDir,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
     return null;
   }
@@ -120,7 +121,7 @@ export function acquireInstallLock(dataDir: string): InstallLockHandle | null {
   } catch (err) {
     logger.warn("unexpected error acquiring install lock", {
       path,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
     return null;
   }
@@ -146,7 +147,7 @@ export function acquireInstallLock(dataDir: string): InstallLockHandle | null {
   } catch (err) {
     logger.warn("failed to remove stale install lock", {
       path,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
     return null;
   }
@@ -156,7 +157,7 @@ export function acquireInstallLock(dataDir: string): InstallLockHandle | null {
   } catch (err) {
     logger.warn("unexpected error re-acquiring install lock", {
       path,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
     return null;
   }
@@ -244,7 +245,7 @@ export function unlockInstallLock(dataDir: string): UnlockResult {
   } catch (err) {
     logger.warn("failed to remove stale install lock during unlock", {
       path: status.path,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
     throw err;
   }
@@ -260,7 +261,7 @@ export function releaseInstallLock(handle: InstallLockHandle | null): void {
   } catch (err) {
     logger.warn("failed to release install lock", {
       path: handle.path,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
   }
 }

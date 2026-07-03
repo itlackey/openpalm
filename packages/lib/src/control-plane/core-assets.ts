@@ -11,6 +11,7 @@
  * historical `.env.schema` files (varlock format) were retired in #391.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, readdirSync } from "node:fs";
+import { errMessage } from "./errors.js";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,7 +72,7 @@ export function readBundledStackAsset(name: string): string {
   } catch (err) {
     logger.warn('bundled stack asset unavailable (returning empty)', {
       name,
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
     return '';
   }
@@ -87,7 +88,7 @@ export function readBundledCustomCompose(): string {
     return readFileSync(bundledAssetPath('config/stack/custom.compose.yml'), 'utf-8');
   } catch (err) {
     logger.warn('bundled custom.compose.yml unavailable (returning empty)', {
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage(err),
     });
     return '';
   }

@@ -1,14 +1,8 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
-import { execFile } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { execFile, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
-import { createLogger } from "../logger.js";
-import { resolveSessionIdentity } from "./operator-ids.js";
-import { readStackEnv } from "./secrets.js";
 import { mapDockerError, parseComposeStderr } from "./compose-errors.js";
-
-const logger = createLogger("lib:docker");
 
 export type DockerResult = {
   ok: boolean;
@@ -17,8 +11,14 @@ export type DockerResult = {
   code: number;
 };
 
-/** Execute docker with an argument array — no shell interpolation. */
-function run(
+/**
+ * Execute docker with an argument array — no shell interpolation.
+ *
+ * Exported (package-internal — not surfaced through the barrel) so the
+ * volume-ownership repair subsystem reuses the exact same execFile wrapper
+ * instead of re-implementing it.
+ */
+export function run(
   args: string[],
   cwd?: string,
   timeoutMs = 120_000,
@@ -206,6 +206,59 @@ export async function composePreflight(
 }
 
 /**
+ * Build the human-facing error message for a failed compose preflight
+ * (`docker compose config --quiet`). SINGLE SOURCE OF TRUTH: lib's own
+ * {@link runPreflight} and the CLI's compose path both call this so the two
+ * never diverge again.
+ *
+ * The message includes, in order:
+ *   - the raw preflight stderr,
+ *   - the resolved `docker compose … config --quiet` command (WITH `--profile`
+ *     args) so the failure is reproducible,
+ *   - the file / env-file / project breakdown,
+ *   - repair guidance when the failure looks like a missing secret/asset file.
+ *     A missing secret means OP_HOME is incomplete — usually a home behind the
+ *     running platform (secrets are written only by install/update, not
+ *     self-healed on a plain command) — so we point the user at `openpalm
+ *     update` instead of leaving them with a raw compose "file not found".
+ */
+export function buildComposePreflightError(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  stderr: string,
+): string {
+  const project = resolveComposeProjectName(collectComposeEnvOverrides(options.envFiles));
+  const files = options.files;
+  const envFiles = options.envFiles ?? [];
+  const profiles = options.profiles ?? [];
+  const fileArgs = files.map((f) => `-f ${f}`).join(" ");
+  const envArgs = envFiles.map((f) => `--env-file ${f}`).join(" ");
+  const profileArgs = profiles.map((p) => `--profile ${p}`).join(" ");
+  const resolvedCommand = [
+    "docker compose",
+    fileArgs,
+    `--project-name ${project}`,
+    envArgs,
+    profileArgs,
+    "config --quiet",
+  ].filter(Boolean).join(" ");
+
+  const looksLikeMissingFile = /secret/i.test(stderr)
+    && /(not found|no such file|does not exist|cannot find)/i.test(stderr);
+  const guidance = looksLikeMissingFile
+    ? "\n\nThis usually means your OpenPalm home is missing files. Run `openpalm update` to repair it, then try again."
+    : "";
+
+  return (
+    `Compose preflight failed: ${stderr}\n` +
+    `Resolved command: ${resolvedCommand}\n` +
+    `Files: ${files.join(", ")}\n` +
+    `Env files: ${envFiles.join(", ")}\n` +
+    `Project: ${project}` +
+    guidance
+  );
+}
+
+/**
  * Run compose config preflight validation before any mutation.
  * Skipped when OP_SKIP_COMPOSE_PREFLIGHT is set (tests, CI).
  */
@@ -213,14 +266,7 @@ async function runPreflight(options: { files: string[]; envFiles?: string[]; pro
   if (options.files.length === 0 || process.env.OP_SKIP_COMPOSE_PREFLIGHT) return;
   const result = await composePreflight(options);
   if (!result.ok) {
-    const project = resolveComposeProjectName(collectComposeEnvOverrides(options.envFiles));
-    const fileArgs = options.files.map((f) => `-f ${f}`).join(" ");
-    const envArgs = (options.envFiles ?? []).map((f) => `--env-file ${f}`).join(" ");
-    const profileArgs = (options.profiles ?? []).map((p) => `--profile ${p}`).join(" ");
-    throw new Error(
-      `Compose preflight failed: ${result.stderr}\n` +
-      `Resolved command: docker compose ${fileArgs} --project-name ${project} ${envArgs} ${profileArgs} config --quiet`
-    );
+    throw new Error(buildComposePreflightError(options, result.stderr));
   }
 }
 
@@ -267,12 +313,52 @@ export async function composeUp(
  * SIGTERM-killed the start mid-extraction and surfaced as an empty/opaque
  * error. Default 30 min, override with OP_COMPOSE_UP_TIMEOUT_MS. Kept bounded
  * (never removed) so a genuinely hung start still eventually fails.
+ *
+ * Exported so interactive callers that stream stdio (the CLI's `up` path via
+ * {@link runComposeStreaming}) apply the SAME budget as the capturing
+ * {@link composeUp} — the two must not diverge.
  */
-function composeUpTimeoutMs(): number {
+export function composeUpTimeoutMs(): number {
   const raw = process.env.OP_COMPOSE_UP_TIMEOUT_MS?.trim();
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed > 0) return parsed;
   return 30 * 60_000;
+}
+
+/**
+ * Run `docker compose <args>` streaming stdio to the parent (interactive).
+ *
+ * The capturing {@link run} helper is wrong for user-facing CLI commands (`up`,
+ * `logs`, `down`): those need live progress/log output on the terminal. This is
+ * the ONE stdio-inheriting compose runner — the CLI shares it instead of
+ * re-implementing the spawn. Node-compatible (`node:child_process` spawn), so it
+ * works under both Bun and Node.
+ *
+ * Rejects on a spawn error or non-zero exit. `timeoutMs`, when set, SIGTERM-kills
+ * a run that exceeds the budget (pass {@link composeUpTimeoutMs} for `up`, which
+ * may extract multi-GB images on a first install); omit it for interactive
+ * follows like `logs -f` that legitimately run unbounded.
+ */
+export function runComposeStreaming(
+  args: string[],
+  opts: { timeoutMs?: number } = {},
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("docker", ["compose", ...args], { stdio: "inherit" });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (opts.timeoutMs && opts.timeoutMs > 0) {
+      timer = setTimeout(() => { child.kill("SIGTERM"); }, opts.timeoutMs);
+    }
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      if (timer) clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`docker compose ${args.join(" ")} failed with exit code ${code}`));
+    });
+  });
 }
 
 /**
@@ -484,127 +570,6 @@ export async function getDockerEvents(
   return run(args, undefined, 15_000);
 }
 
-
-/**
- * Fix root-owned bind-mount directories under OP_HOME by running a temporary
- * Docker container as root to chown them back to the operator UID:GID.
- *
- * Needed because the guardian container historically ran as root (no `user:`
- * directive), leaving data/guardian and data/logs owned by root on the host.
- * The host process cannot chown root-owned files without being root itself,
- * so we delegate to Docker — which has root access via the daemon.
- *
- * No-op on Windows or when no directories need fixing.
- */
-export async function repairRootOwnedBindMounts(homeDir: string, candidates?: string[], opts?: { strict?: boolean; deep?: boolean }): Promise<void> {
-  if (process.platform === 'win32') return;
-
-  const repairCandidates = candidates ?? [
-    join(homeDir, 'data', 'guardian'),
-    join(homeDir, 'data', 'logs'),
-  ];
-
-  const ids = resolveSessionIdentity(homeDir);
-  if (!ids) return;
-
-  // `strict` (explicit --adopt-host) and `deep` (one-time reconcile after a
-  // session-uid change) both repair every existing candidate: the chown is
-  // always `-R`, so including a top-level-matching candidate is how nested
-  // root-owned files (e.g. node_modules written by a pre-rootless container)
-  // get fixed — the stat filter below only sees the top level and would skip
-  // them otherwise (R3).
-  const repairAll = opts?.strict || opts?.deep;
-  const mismatched = repairCandidates.filter((dir) => {
-    try {
-      if (!existsSync(dir)) return false;
-      if (repairAll) return true;
-      const stat = statSync(dir);
-      return stat.uid !== ids.uid || stat.gid !== ids.gid;
-    } catch {
-      return false;
-    }
-  });
-
-  if (mismatched.length === 0) return;
-
-  const volumeArgs = mismatched.flatMap((dir, i) => ['-v', `${dir}:/chown_target_${i}`]);
-  const targets = mismatched.map((_, i) => `/chown_target_${i}`);
-
-  logger.info(`Repairing mismatched bind mounts: ${mismatched.map(d => d.split('/').slice(-2).join('/')).join(', ')}`);
-  const result = await run([
-    'run', '--rm',
-    ...volumeArgs,
-    'alpine',
-    'chown', '-R', `${ids.uid}:${ids.gid}`, ...targets,
-  ], undefined, 30_000);
-
-  if (!result.ok) {
-    const message = `Could not repair mismatched bind mounts: ${result.stderr.trim()}`;
-    if (opts?.strict) throw new Error(message);
-    logger.warn(message);
-  }
-}
-
-export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid: number; gid: number }, opts?: { strict?: boolean }): Promise<void> {
-  // Only repair volumes that already exist (pre-rootless installs whose
-  // containers wrote into them as root). A `docker run -v` against a missing
-  // volume would create it WITHOUT compose labels — compose then warns
-  // "already exists but was not created by Docker Compose" on every up —
-  // and a fresh volume gets seeded from the (already uid-agnostic) image
-  // content on first mount, so it needs no repair.
-  const inspect = await run(['volume', 'inspect', volumeName], undefined, 15_000);
-  if (!inspect.ok) return;
-
-  const result = await run([
-    'run', '--rm',
-    '-v', `${volumeName}:/repair_target`,
-    'alpine',
-    'chown', '-R', `${ids.uid}:${ids.gid}`, '/repair_target',
-  ], undefined, 30_000);
-
-  if (!result.ok) {
-    const message = `Could not repair named volume ${volumeName}: ${result.stderr.trim()}`;
-    if (opts?.strict) throw new Error(message);
-    logger.warn(message);
-  }
-}
-
-/**
- * Named volumes written by pre-rootless (root-entrypoint) images, keyed by the
- * compose service that mounts them. Rootless containers cannot fix these
- * themselves, so both orchestrators (CLI start and lib lifecycle reconcile)
- * repair them before compose up. Volumes that do not exist yet are skipped.
- */
-const SERVICE_NAMED_VOLUMES: Record<string, string[]> = {
-  guardian: ['guardian-cache'],
-  assistant: ['assistant-artifacts', 'assistant-persistent'],
-  // Both portal adapters mount the shared `portal-cache` at /opt/openpalm. On an
-  // upgraded install that volume is root-owned from the old rootful portal, so
-  // the now-rootless portal can't write it. Same volume for both services — the
-  // dedup below repairs it once per call.
-  discord: ['portal-cache'],
-  slack: ['portal-cache'],
-};
-
-export async function repairManagedNamedVolumes(
-  homeDir: string,
-  services: string[],
-  opts?: { strict?: boolean },
-): Promise<void> {
-  const ids = resolveSessionIdentity(homeDir);
-  if (!ids) return;
-  const projectName = resolveComposeProjectName(readStackEnv(homeDir));
-  const repaired = new Set<string>();
-  for (const [service, volumes] of Object.entries(SERVICE_NAMED_VOLUMES)) {
-    if (!services.includes(service)) continue;
-    for (const volume of volumes) {
-      const qualified = `${projectName}_${volume}`;
-      if (repaired.has(qualified)) continue;
-      repaired.add(qualified);
-      await repairNamedVolumeOwnership(qualified, ids, opts);
-    }
-  }
-}
 
 /**
  * Full runtime image info for a single container (§5 truthful state).

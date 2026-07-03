@@ -12,10 +12,18 @@ import {
 } from "@openpalm/lib";
 import { getOpenCodeClient, getRequestId, requireAdmin } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
+import { LOCAL_PROVIDER_IDS } from "$lib/client/constants.js";
 import type { RequestHandler } from "./$types";
 
-/** Local providers are detected separately as host providers — exclude from "cloud". */
-const LOCAL_PROVIDER_IDS = new Set(["ollama", "lmstudio", "model-runner", "openai-compatible"]);
+/**
+ * Providers to exclude from the detected "cloud" list: everything that runs on
+ * this computer (LOCAL_PROVIDER_IDS) plus `openai-compatible`. Custom
+ * openai-compatible endpoints are detected separately as host providers, so
+ * counting them as cloud would double-count them here — this is a server-side
+ * recommendation concern only, which is why it stays a superset rather than
+ * being folded into the shared LOCAL_PROVIDER_IDS.
+ */
+const CLOUD_EXCLUDED_PROVIDER_IDS = new Set<string>([...LOCAL_PROVIDER_IDS, "openai-compatible"]);
 
 /** Providers that have credentials stored in OP_HOME auth.json (API key or OAuth). */
 function authJsonConnected(): string[] {
@@ -54,7 +62,7 @@ async function detectCloudProviders(): Promise<string[]> {
 	} catch {
 		connected = Array.from(new Set([...authJsonConnected(), ...envKeyConnected()]));
 	}
-	return connected.filter((id) => !LOCAL_PROVIDER_IDS.has(id));
+	return connected.filter((id) => !CLOUD_EXCLUDED_PROVIDER_IDS.has(id));
 }
 
 export const GET: RequestHandler = async (event) => {

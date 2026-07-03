@@ -17,7 +17,7 @@
 
 import { startRecording, type RecordingSession } from './media-recorder.js';
 import { transcribeAudio, fetchVoiceConfig } from '$lib/api.js';
-import { notifications } from '$lib/notifications.svelte.js';
+import { AudioPlaybackController } from './audio-playback.js';
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
@@ -70,6 +70,14 @@ class VoiceState {
 
 export const voiceState = new VoiceState();
 
+/**
+ * The imperative TTS audio engine (speak queue, blob-URL lifecycle,
+ * autoplay fallback, playOne). The reactive store composes it and
+ * delegates the exported speak/resume/stop wrappers below to it; the
+ * controller mutates `voiceState`'s reactive fields in place.
+ */
+const audioPlayback = new AudioPlaybackController(voiceState);
+
 const TTS_AUTO_STORAGE_KEY = 'openpalm.tts.auto';
 
 // Private session/recognition handles — never exposed on the reactive class.
@@ -77,7 +85,6 @@ let activeRecording: RecordingSession | null = null;
 let activeRecognition: SpeechRecognitionInstance | null = null;
 let recordingTimeout: ReturnType<typeof setTimeout> | null = null;
 let activeOnResult: ((transcript: string) => void) | null = null;
-type SpeakQueueEntry = { text: string; options?: SpeakTextOptions };
 
 /** Toggle the global auto-TTS flag and persist to localStorage. */
 export function setTtsAutoEnabled(value: boolean): void {
@@ -101,36 +108,7 @@ export function setTtsAutoEnabled(value: boolean): void {
 	// browser's autoplay policy. No-op if AudioContext isn't available or
 	// the toggle was already on.
 	if (!wasEnabled) {
-		primeAudioForAutoplay();
-	}
-}
-
-/**
- * Play a 1-frame silent AudioBuffer through a transient AudioContext to
- * register the current user gesture with the browser's autoplay policy.
- * Safe to call repeatedly; failures are swallowed.
- */
-function primeAudioForAutoplay(): void {
-	if (typeof window === 'undefined') return;
-	const Ctor =
-		(window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ??
-		(window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-	if (!Ctor) return;
-	try {
-		const ctx = new Ctor();
-		const buffer = ctx.createBuffer(1, 1, 22050);
-		const source = ctx.createBufferSource();
-		source.buffer = buffer;
-		source.connect(ctx.destination);
-		source.start(0);
-		// Close shortly after — the gesture is captured the moment we play.
-		setTimeout(() => {
-			void ctx.close().catch(() => {
-				/* already closed */
-			});
-		}, 100);
-	} catch {
-		/* AudioContext blocked — nothing we can do without a fresh gesture */
+		audioPlayback.primeForAutoplay();
 	}
 }
 
@@ -438,66 +416,11 @@ export function stopListening(): void {
 	}
 }
 
-// Holds the currently-playing server-TTS audio element so stopSpeaking()
-// can cancel it. Browser TTS is cancelled via window.speechSynthesis.
-let activeAudio: HTMLAudioElement | null = null;
-let activeAudioUrl: string | null = null;
-
-// Cap on queued utterances. Three replies in flight = drop the oldest.
-// Keeps memory bounded if the assistant streams a flurry of short messages.
-const SPEAK_QUEUE_MAX = 3;
-const speakQueue: SpeakQueueEntry[] = [];
-
-// Have we already toasted the user about an overflow drop in the current
-// burst? Reset back to false when the queue drains so a NEW burst can
-// surface a fresh notification (rather than the user getting spammed
-// once per dropped utterance).
-let overflowNoticed = false;
-
-// Autoplay retry — when the browser rejects audio.play(), we stash the
-// audio and wait for the user to click the dedicated "click to resume"
-// banner (rendered in VoiceControl). Listening on `document` is what
-// caused arbitrary clicks elsewhere on the page to trigger stale audio.
-let pendingAutoplayAudio: HTMLAudioElement | null = null;
-let pendingAutoplayUrl: string | null = null;
-
-function teardownActiveAudio(): void {
-	if (activeAudio) {
-		// Detach handlers BEFORE clearing src. Setting `audio.src = ''`
-		// synthesizes a MediaError code 4 (SRC_NOT_SUPPORTED) on most
-		// browsers; if onerror is still wired, it fires and surfaces
-		// "Audio playback failed." even though playback completed
-		// successfully (onended just ran and called us).
-		activeAudio.onerror = null;
-		activeAudio.onended = null;
-		try { activeAudio.pause(); } catch { /* noop */ }
-		activeAudio.src = '';
-		activeAudio = null;
-	}
-	if (activeAudioUrl) {
-		URL.revokeObjectURL(activeAudioUrl);
-		activeAudioUrl = null;
-	}
-}
-
-function teardownPendingAutoplay(): void {
-	if (pendingAutoplayAudio) {
-		// Same handler-clear-before-src=''-trick as teardownActiveAudio:
-		// the assignment fires a phantom MediaError on cleanup, and any
-		// onerror handler attached later (resumeAutoplay reuses this
-		// element) would receive it.
-		pendingAutoplayAudio.onerror = null;
-		pendingAutoplayAudio.onended = null;
-		try { pendingAutoplayAudio.pause(); } catch { /* noop */ }
-		pendingAutoplayAudio.src = '';
-		pendingAutoplayAudio = null;
-	}
-	if (pendingAutoplayUrl) {
-		URL.revokeObjectURL(pendingAutoplayUrl);
-		pendingAutoplayUrl = null;
-	}
-	voiceState.autoplayBlocked = false;
-}
+// ── TTS playback ─────────────────────────────────────────────────────
+// The imperative audio engine (speak queue, blob-URL lifecycle, autoplay
+// fallback, playOne) lives in AudioPlaybackController. These exported
+// functions are thin wrappers so the public API and component import
+// sites stay unchanged.
 
 /**
  * User clicked the "click to resume" banner — promote the stashed audio
@@ -506,24 +429,7 @@ function teardownPendingAutoplay(): void {
  * requirement.
  */
 export function resumeAutoplay(): void {
-	const a = pendingAutoplayAudio;
-	if (!a) {
-		voiceState.autoplayBlocked = false;
-		return;
-	}
-	voiceState.autoplayBlocked = false;
-	voiceState.errorMessage = '';
-	voiceState.status = 'speaking';
-	// Promote pending → active so onended/onerror/teardown work.
-	activeAudio = a;
-	activeAudioUrl = pendingAutoplayUrl;
-	pendingAutoplayAudio = null;
-	pendingAutoplayUrl = null;
-	a.play().catch(() => {
-		voiceState.status = 'idle';
-		voiceState.errorMessage = 'Audio playback failed.';
-		teardownActiveAudio();
-	});
+	audioPlayback.resume();
 }
 
 /**
@@ -534,175 +440,13 @@ export function resumeAutoplay(): void {
  * If a previous utterance is still playing, queues this one (FIFO, cap 3)
  * instead of cutting it off mid-sentence.
  */
-export async function speakText(text: string, options?: SpeakTextOptions): Promise<void> {
-	if (typeof window === 'undefined' || !text.trim()) return;
-
-	// Queue if something else is already speaking. The onended handler
-	// drains the queue.
-	if (voiceState.status === 'speaking') {
-		speakQueue.push({ text, options });
-		// Drop oldest if over cap, and let the user know once per burst
-		// so they understand WHY they're missing replies.
-		let dropped = 0;
-		while (speakQueue.length > SPEAK_QUEUE_MAX) {
-			speakQueue.shift();
-			dropped += 1;
-		}
-		if (dropped > 0 && !overflowNoticed) {
-			overflowNoticed = true;
-			notifications.push(
-				'info',
-				`Skipped ${dropped} spoken ${dropped === 1 ? 'reply' : 'replies'} — too much overlap. Lower the auto-speak chat rate.`,
-			);
-		}
-		return;
-	}
-
-	await playOne(text, options);
-}
-
-/** Internal: actually trigger the audio for one text chunk. */
-async function playOne(text: string, options?: SpeakTextOptions): Promise<void> {
-	if (typeof window === 'undefined' || !text.trim()) return;
-
-	// We're about to start fresh — any pending autoplay-retry from a
-	// previous reply is now stale.
-	teardownPendingAutoplay();
-	teardownActiveAudio();
-	if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-	voiceState.errorMessage = '';
-
-	const engine = voiceState.ttsEngine;
-	const useServer = engine === 'openpalm-voice' || engine === 'remote';
-
-	if (useServer) {
-		let res: Response | undefined;
-		try {
-			res = await fetch('/api/speak', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				credentials: 'include',
-				body: JSON.stringify({
-					text,
-					...(options?.mode && options.mode !== 'plain' ? { mode: options.mode } : {}),
-					...(options?.userText ? { userText: options.userText } : {}),
-					...(options?.assistantText ? { assistantText: options.assistantText } : {}),
-				}),
-			});
-		} catch {
-			// Network/CORS — fall through to browser TTS if available.
-		}
-
-		if (res && res.ok && res.headers.get('content-type')?.startsWith('audio/')) {
-			const blob = await res.blob();
-			const url = URL.createObjectURL(blob);
-			const audio = new Audio(url);
-			activeAudio = audio;
-			activeAudioUrl = url;
-				audio.onended = () => {
-					voiceState.status = 'idle';
-					teardownActiveAudio();
-					// Drain the queue.
-					const next = speakQueue.shift();
-					if (next) void playOne(next.text, next.options);
-					else overflowNoticed = false;
-				};
-				audio.onerror = () => {
-					voiceState.status = 'idle';
-					voiceState.errorMessage = 'Audio playback failed.';
-					teardownActiveAudio();
-					const next = speakQueue.shift();
-					if (next) void playOne(next.text, next.options);
-					else overflowNoticed = false;
-				};
-			voiceState.status = 'speaking';
-			try {
-				await audio.play();
-			} catch {
-				// Autoplay was blocked (Safari, Firefox autoplay off, fresh
-				// Chrome profile with no prior gesture). Stash the audio
-				// and surface a scoped "click to resume" banner via
-				// `voiceState.autoplayBlocked`. The VoiceControl renders
-				// the banner; clicking it calls resumeAutoplay(). We
-				// deliberately do NOT register a document-wide click
-				// handler — any click anywhere would otherwise trigger
-				// stale audio at the wrong moment (Save buttons, tabs,
-				// etc.).
-				voiceState.status = 'idle';
-				// Hand ownership of the blob to the pending-autoplay slot.
-				pendingAutoplayAudio = audio;
-				pendingAutoplayUrl = url;
-				activeAudio = null;
-				activeAudioUrl = null;
-				voiceState.autoplayBlocked = true;
-			}
-			return;
-		}
-
-		// Server-TTS path didn't yield audio — surface the reason before
-		// considering browser fallback.
-		if (res && !res.ok) {
-			const errMsg = await extractSpeakError(res);
-			voiceState.errorMessage = errMsg;
-		}
-	}
-
-	if (!('speechSynthesis' in window)) {
-		// No browser TTS available — keep whatever errorMessage we already
-		// set so the user understands why nothing happened.
-		return;
-	}
-	// Clear the error if we have a viable browser fallback.
-	if (useServer) voiceState.errorMessage = '';
-	const utterance = new SpeechSynthesisUtterance(text);
-	utterance.onstart = () => { voiceState.status = 'speaking'; };
-	utterance.onend = () => {
-		voiceState.status = 'idle';
-		const next = speakQueue.shift();
-		if (next) void playOne(next.text, next.options);
-		else overflowNoticed = false;
-	};
-	utterance.onerror = () => {
-		voiceState.status = 'idle';
-		const next = speakQueue.shift();
-		if (next) void playOne(next.text, next.options);
-		else overflowNoticed = false;
-	};
-	window.speechSynthesis.speak(utterance);
-}
-
-/**
- * Convert a non-OK /api/speak response into a human-readable string.
- * Recognises the two common shapes the route returns; falls back to a
- * generic message keyed off the HTTP status.
- */
-async function extractSpeakError(res: Response): Promise<string> {
-	let code: string | undefined;
-	try {
-		const data = (await res.clone().json()) as { error?: string; message?: string };
-		if (typeof data.error === 'string') code = data.error;
-	} catch {
-		/* non-JSON body */
-	}
-	if (code === 'tts_not_configured') {
-		return 'TTS is not configured.';
-	}
-	if (code === 'upstream_error' || res.status === 502 || res.status === 503) {
-		return 'Voice engine is warming up — try again in a moment.';
-	}
-	return `TTS failed (HTTP ${res.status}).`;
+export function speakText(text: string, options?: SpeakTextOptions): Promise<void> {
+	return audioPlayback.speak(text, options);
 }
 
 /** Cancel speech synthesis. Drops the entire queue. */
 export function stopSpeaking(): void {
-	speakQueue.length = 0;
-	overflowNoticed = false;
-	teardownPendingAutoplay();
-	teardownActiveAudio();
-	if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-		window.speechSynthesis.cancel();
-	}
-	voiceState.status = 'idle';
+	audioPlayback.stop();
 }
 
 /**

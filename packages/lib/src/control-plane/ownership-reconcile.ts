@@ -8,7 +8,7 @@ import { discoverHomeBindMountSources } from './config-persistence.js';
 import { resolveSessionIdentity } from './operator-ids.js';
 import { patchStateEnvFile } from './secrets.js';
 import { writeFileAtomic } from './fs-atomic.js';
-import { repairRootOwnedBindMounts, repairManagedNamedVolumes } from './docker.js';
+import { repairRootOwnedBindMounts, repairManagedNamedVolumes } from './volume-ownership.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('lib:ownership-reconcile');

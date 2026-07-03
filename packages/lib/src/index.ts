@@ -15,6 +15,9 @@ export {
   lookupEmbeddingDims,
 } from "./provider-constants.js";
 
+// ── Error utilities ──────────────────────────────────────────────────────
+export { errMessage } from "./control-plane/errors.js";
+
 // ── Logger ──────────────────────────────────────────────────────────────
 export {
   createLogger,
@@ -51,7 +54,6 @@ export type { BackupSpaceCheck, BackupSummary, BackupEntry } from "./control-pla
 export type {
   AddonMutationResult,
   AddonProfile,
-  AddonProfileAvailability,
   RegistryAddonConfig,
 } from "./control-plane/addons.js";
 export { BUILTIN_ADDON_IDS } from "./control-plane/addon-ids.js";
@@ -60,7 +62,6 @@ export {
   getRegistryAddonConfig,
   getAddonServiceNames,
   getAddonProfiles,
-  getAddonProfileAvailability,
   annotateAddonProfileAvailability,
   getAddonProfileSelection,
   setAddonProfileSelection,
@@ -71,6 +72,10 @@ export {
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/addons.js";
+
+// ── Addon host-capability availability ───────────────────────────────────
+export type { AddonProfileAvailability } from "./control-plane/addon-availability.js";
+export { getAddonProfileAvailability } from "./control-plane/addon-availability.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {
@@ -329,12 +334,12 @@ export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope
 export {
   checkDocker,
   checkDockerCompose,
-  repairRootOwnedBindMounts,
-  repairNamedVolumeOwnership,
-  repairManagedNamedVolumes,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
+  buildComposePreflightError,
+  composeUpTimeoutMs,
+  runComposeStreaming,
   composeUp,
   composeDown,
   composeRestart,
@@ -352,6 +357,13 @@ export {
   waitForContainerHealthy,
   applyStack,
 } from "./control-plane/docker.js";
+
+// ── Volume ownership repair (privileged chown subsystem) ─────────────────
+export {
+  repairRootOwnedBindMounts,
+  repairNamedVolumeOwnership,
+  repairManagedNamedVolumes,
+} from "./control-plane/volume-ownership.js";
 
 // ── Scheduler ───────────────────────────────────────────────────────────
 export type {
@@ -513,6 +525,22 @@ export {
   uiUpdateChannel,
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";
+
+// ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
+export type {
+  WaitForReadyDeps,
+  RestoreUiBackupDeps,
+  RestoreUiBackupOutcome,
+  UiChildStrategy,
+  UiSupervisorCallbacks,
+  UiSupervisorOptions,
+} from "./control-plane/ui-supervisor.js";
+export {
+  DEFAULT_READY_TIMEOUT_MS,
+  waitForReady,
+  restoreUiBackup,
+  UiSupervisor,
+} from "./control-plane/ui-supervisor.js";
 
 // ── Canonical version vocabulary (Docker `v`-tag / npm version / dist-tag) ───
 export {

@@ -1,5 +1,6 @@
 import type { PrincipalKind, PrincipalRecord } from './state-db';
 import { createHash } from 'node:crypto';
+import { constantTimeEqual } from './crypto.ts';
 import { getPrincipalRecord } from './state-db';
 
 export type AuthenticatedPrincipal = {
@@ -10,17 +11,6 @@ export type AuthenticatedPrincipal = {
 };
 
 const principalCache = new Map<string, PrincipalRecord | null>();
-
-function constantTimeEqual(a: string, b: string): boolean {
-  const aBytes = new TextEncoder().encode(a);
-  const bBytes = new TextEncoder().encode(b);
-  const max = Math.max(aBytes.length, bBytes.length);
-  let diff = aBytes.length === bBytes.length ? 0 : 1;
-  for (let i = 0; i < max; i++) {
-    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
-  }
-  return diff === 0;
-}
 
 function readCachedPrincipal(id: string): PrincipalRecord | null {
   if (principalCache.has(id)) return principalCache.get(id) ?? null;

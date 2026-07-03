@@ -5,6 +5,7 @@
   "license": "MPL-2.0",
   "workspaces": [
     "packages/lib",
+    "packages/portal-sdk",
     "packages/ui",
     "packages/skeleton",
     "packages/guardian",
@@ -49,10 +50,13 @@
     "dev:build": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/core.compose.yml -f .dev/system/stack/services.compose.yml -f .dev/system/stack/portals.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/knowledge/env/stack.env up --build -d",
     "_dev:stack:note": "Intentional dev shortcut: 4-file compose list mirrors the CLI overlay discovery for the dev layout — MANAGED core/services/portals from .dev/system/stack/, USER custom from .dev/config/stack/. --project-name openpalm-dev is required to avoid colliding with a production stack under ~/.openpalm/.",
     "electron:test": "bun run --cwd packages/electron test",
-    "test": "bun test --no-orphans portals/discord portals/slack packages/cli packages/lib packages/electron/admin-tools packages/guardian/ scripts/",
+    "test": "bun test --no-orphans portals/discord portals/slack packages/portal-sdk packages/cli packages/lib packages/electron/admin-tools packages/guardian/ scripts/",
     "analysis:fta": "npx -y fta-cli . -c .fta.json --json | python3 -c \"import json,sys;d=sorted(json.load(sys.stdin),key=lambda x:x['fta_score'],reverse=True);c={};[c.__setitem__(f['assessment'],c.get(f['assessment'],0)+1) for f in d];s=[f['fta_score'] for f in d];print(f'\\n=== FTA Code Complexity Report ({len(d)} files) ===');print(f'Mean: {sum(s)/len(s):.1f} | Median: {sorted(s)[len(s)//2]:.1f} | Max: {max(s):.1f}');print();[print(f'  {a}: {n}') for a,n in sorted(c.items(),key=lambda x:-x[1])];print(f'\\n=== Top 20 Most Complex Files ===');print(f\\\"{'Score':>7}  {'Cyclo':>5}  {'Lines':>5}  {'Assessment':<20}  File\\\");print('-'*100);[print(f\\\"{f['fta_score']:7.1f}  {f['cyclo']:5d}  {f['line_count']:5d}  {f['assessment']:<20}  {f['file_name']}\\\") for f in d[:20]];ni=[f for f in d if f['fta_score']>60];print(f'\\n=== Needs Improvement ({len(ni)} files) ===');[print(f\\\"  {f['fta_score']:6.1f}  {f['file_name']}\\\") for f in ni]\"",
     "analysis:fta:json": "npx -y fta-cli . -c fta.json --json",
     "check": "bun run ui:check",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
     "test:t1": "./scripts/test-tier.sh 1",
     "test:t2": "./scripts/test-tier.sh 2",
     "test:t3": "./scripts/test-tier.sh 3",
@@ -60,5 +64,7 @@
     "test:t5": "./scripts/test-tier.sh 5",
     "test:t6": "./scripts/test-tier.sh 6"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.2"
+  }
 }

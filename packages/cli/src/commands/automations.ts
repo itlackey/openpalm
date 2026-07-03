@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveOpenPalmHome } from '@openpalm/lib';
+import { defineAction } from '../lib/action.ts';
 
 async function automationsCheck(): Promise<void> {
   const home = resolveOpenPalmHome();
@@ -55,14 +56,9 @@ export default defineCommand({
         name: 'check',
         description: 'Report automation task registration status',
       },
-      async run() {
-        try {
-          await automationsCheck();
-        } catch (err) {
-          console.error(err instanceof Error ? err.message : String(err));
-          process.exit(1);
-        }
-      },
+      run: defineAction(async () => {
+        await automationsCheck();
+      }),
     }),
   },
 });

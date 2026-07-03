@@ -9,69 +9,45 @@
    *   2. Discord — botToken + applicationId credential fields
    *   3. Slack  — slackBotToken + slackAppToken credential fields
    *
-   * Props:
-   *   modelMode               — 'cloud' | 'local' | 'both' — drives voice default selection
-   *   voiceEnabled            — explicit voice on/off toggle state (OFF by default)
-   *   voiceTts                — current TTS engine value
-   *   voiceStt                — current STT engine value
-   *   hasOpenAI               — true if OpenAI is a verified provider (affects voice default)
-   *   voiceProfiles           — available voice addon hardware profiles
-   *   selectedVoiceProfile    — currently selected voice profile id
-   *   portalSelection         — current portal enable + credential state
-   *   onvoiceenabledchange    — called when voice toggle flips
-   *   onchangetts             — called when TTS engine/config changes
-   *   onchangestt             — called when STT engine/config changes
-   *   onvoiceprofilechange    — called when voice hardware profile changes
-   *   onportaltoggle          — called when a portal toggle flips
-   *   oncredentialchange      — called when a portal credential field changes
-   *   onnext                  — proceed to Screen 3 (always enabled)
+   * Takes NO props: this step reads the setup-state store
+   * ($lib/setup/setup-state.svelte.ts) directly for modelMode / voiceEnabled /
+   * displayed voice engines / hasOpenAI / portalSelection, and writes back
+   * through the store (handleEnableVoiceChange, voice engine setters,
+   * handlePortalToggle, handleCredentialChange). Local aliases near the top of
+   * the script map those store members to the names the template uses.
    */
 
-  import type { VoiceEngineValue, PortalState } from '$lib/client/types.js';
+  import type { VoiceEngineValue } from '$lib/client/types.js';
   import { PORTALS } from '$lib/client/constants.js';
   import { isPortalEnabled as _isPortalEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
+  import { setupState } from '$lib/setup/setup-state.svelte.js';
 
-  type ModelMode = 'cloud' | 'local' | 'both';
+  // Takes NO props: this step reads the setup-state store directly. Local
+  // aliases (`$derived` off the store) keep the rest of the component body
+  // unchanged; the change handlers write back through the store.
+  //
+  // voiceEnabled is deliberately the store's explicit on/off $state — NOT
+  // derived from engine selection. Only when it is true is the voice addon
+  // included in the payload. `voiceTts`/`voiceStt` mirror the store's DISPLAY
+  // values (displayedVoice*), matching what the page previously threaded here.
+  const s = setupState;
 
-  interface Props {
-    /** Which model mode was chosen on Screen 1. Drives voice default logic. */
-    modelMode: ModelMode;
-    /**
-     * Explicit voice on/off state — OFF by default.
-     * CRITICAL: must not be derived from engine selection. The parent owns this
-     * as $state(false) and passes it down. Only when this is true should voice
-     * addon be included in the payload.
-     */
-    voiceEnabled: boolean;
-    /** Current TTS engine value. */
-    voiceTts: VoiceEngineValue;
-    /** Current STT engine value. */
-    voiceStt: VoiceEngineValue;
-    /** True when OpenAI is a verified provider (affects default engine). */
-    hasOpenAI?: boolean;
-    /** Portal enable + credential state (discord, slack). */
-    portalSelection?: Record<string, boolean | PortalState>;
+  const modelMode = $derived(s.modelMode);
+  const voiceEnabled = $derived(s.voiceEnabled);
+  const voiceTts = $derived(s.displayedVoiceTts);
+  const voiceStt = $derived(s.displayedVoiceStt);
+  const hasOpenAI = $derived(s.hasOpenAI);
+  const portalSelection = $derived(s.portalSelection);
 
-    onvoiceenabledchange: (enabled: boolean) => void;
-    onchangetts: (v: VoiceEngineValue) => void;
-    onchangestt: (v: VoiceEngineValue) => void;
-    onportaltoggle: (id: string) => void;
-    oncredentialchange: (chId: string, credKey: string, value: string) => void;
-  }
-
-  let {
-    modelMode,
-    voiceEnabled,
-    voiceTts,
-    voiceStt,
-    hasOpenAI = false,
-    portalSelection = {},
-    onvoiceenabledchange,
-    onchangetts,
-    onchangestt,
-    onportaltoggle,
-    oncredentialchange,
-  }: Props = $props();
+  const onvoiceenabledchange = (enabled: boolean): void => {
+    s.voiceEnabled = enabled;
+    s.handleEnableVoiceChange(enabled);
+  };
+  const onchangetts = (v: VoiceEngineValue): void => { s.voiceTts = v; };
+  const onchangestt = (v: VoiceEngineValue): void => { s.voiceStt = v; };
+  const onportaltoggle = (id: string): void => s.handlePortalToggle(id);
+  const oncredentialchange = (chId: string, credKey: string, value: string): void =>
+    s.handleCredentialChange(chId, credKey, value);
 
   // Determine default TTS/STT engine based on modelMode and hasOpenAI.
   // Called by the toggle handler when voice is turned ON to initialize engines.

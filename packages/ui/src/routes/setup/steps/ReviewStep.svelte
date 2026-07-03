@@ -1,61 +1,32 @@
 <script lang="ts">
-  import { PORTALS, PROVIDERS } from '$lib/client/constants.js';
+  import { PORTALS, friendlyProviderName } from '$lib/client/constants.js';
   import IconAgent from '$lib/components/icons/IconAgent.svelte';
   import IconMic from '$lib/components/icons/IconMic.svelte';
-  import type { Provider, ModelSelection, PortalState } from '$lib/client/types.js';
   import { isPortalEnabled as _isPortalEnabled } from '$lib/client/helpers.js';
   import FriendlyError from '$lib/components/common/FriendlyError.svelte';
   import { friendlyError } from '$lib/client/error-messages.js';
+  import { setupState } from '$lib/setup/setup-state.svelte.js';
 
-  interface Props {
-    uiLoginPassword: string;
-    verifiedProviders: Provider[];
-    modelSelection: { llm?: ModelSelection };
-    activeTts: string;
-    activeStt: string;
-    portalSelection: Record<string, boolean | PortalState>;
-    ollamaEnabled: boolean;
-    /** Label for the running host provider (e.g. "Ollama"). Shown when ollamaEnabled is false. */
-    hostProviderLabel?: string;
-    payload: unknown;
-    installError: string;
-    isRerun?: boolean;
-    systemCheckPassed?: boolean;
-    oneditmodels: () => void;
-    oneditextras: () => void;
-  }
+  // Takes NO props: this step reads the setup-state store directly. Local
+  // aliases (`$derived` off the store) keep the rest of the component body
+  // unchanged; the edit actions call the store's navigation.
+  const s = setupState;
 
-  let {
-    uiLoginPassword,
-    verifiedProviders,
-    modelSelection,
-    activeTts,
-    activeStt,
-    portalSelection,
-    ollamaEnabled,
-    hostProviderLabel = '',
-    payload,
-    installError,
-    isRerun = false,
-    systemCheckPassed = true,
-    oneditmodels,
-    oneditextras,
-  }: Props = $props();
-
-  // ── Local provider ids (for friendly name lookup) ────────────────────
-  const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'llamacpp', 'localai', 'model-runner']);
-
-  function friendlyProviderName(connId: string): string {
-    if (!connId) return '';
-    if (connId === 'openai') return 'ChatGPT (OpenAI)';
-    if (connId === 'google') return 'Gemini (Google)';
-    if (connId === 'github-copilot') return 'GitHub Copilot';
-    if (connId === 'groq') return 'Groq';
-    if (LOCAL_PROVIDER_IDS.has(connId)) return 'Runs on this computer';
-    // Fall back to the static PROVIDERS list display name
-    const found = PROVIDERS.find((p) => p.id === connId);
-    return found?.name ?? connId;
-  }
+  const uiLoginPassword = $derived(s.uiLoginPassword);
+  const verifiedProviders = $derived(s.verifiedProviders);
+  const modelSelection = $derived(s.modelSelection);
+  const activeTts = $derived(s.voiceEnabled ? s.displayedVoiceTts.engine : '');
+  const activeStt = $derived(s.voiceEnabled ? s.displayedVoiceStt.engine : '');
+  const portalSelection = $derived(s.portalSelection);
+  const ollamaEnabled = $derived(s.ollamaEnabled);
+  // Label for the running host provider (e.g. "Ollama"). Shown when ollamaEnabled is false.
+  const hostProviderLabel = $derived(s.detectedHostProviders.length > 0 ? s.detectedHostProviders[0].provider : '');
+  const payload = $derived(s.payload);
+  const installError = $derived(s.installError);
+  const isRerun = $derived(s.isRerun);
+  const systemCheckPassed = $derived(s.systemCheckPassed);
+  const oneditmodels = (): void => s.goToStep(1);
+  const oneditextras = (): void => s.goToStep(2);
 
   function isPortalEnabled(chId: string, locked?: boolean): boolean {
     return _isPortalEnabled(portalSelection, chId, locked);
@@ -65,7 +36,7 @@
   const aiLabel = $derived.by(() => {
     const connId = modelSelection.llm?.connId;
     if (!connId) return '';
-    return friendlyProviderName(connId);
+    return friendlyProviderName(connId, { localLabel: 'Runs on this computer' });
   });
 
   // Voice is active when either side has an actual engine (not skip/empty)

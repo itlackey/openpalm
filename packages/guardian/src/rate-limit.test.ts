@@ -58,18 +58,24 @@ describe("Rate limiting (allow)", () => {
 });
 
 describe("activeRateLimiters", () => {
-  it("counts active user and channel limiters", () => {
-    // Insert a user key and a channel key with fresh windows
-    const userKey = uniqueKey("user");
-    const channelKey = `ch:${crypto.randomUUID()}`;
+  it("classifies real oc: keys: per-user (4 segments) vs per-principal (3 segments)", () => {
+    // Mirror the exact keys proxy.ts gate 1c emits:
+    //   per-user      → oc:<kind>:<id>:<userId>  (4 colon-segments)
+    //   per-principal → oc:<kind>:<id>           (3 colon-segments)
+    const id = crypto.randomUUID();
+    const userId = crypto.randomUUID();
+    const userKey = `oc:portal:${id}:${userId}`;
+    const portalKey = `oc:portal:${id}`;
 
     const before = activeRateLimiters();
 
     allow(userKey, USER_RATE_LIMIT, USER_RATE_WINDOW_MS);
-    allow(channelKey, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS);
+    allow(portalKey, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS);
 
     const after = activeRateLimiters();
 
+    // The per-user key must count as a user limiter and the per-principal key as
+    // a portal limiter — the classification bug counted both as user limiters.
     expect(after.activeUserLimiters).toBe(before.activeUserLimiters + 1);
     expect(after.activePortalLimiters).toBe(before.activePortalLimiters + 1);
   });

@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeReadOnly } from '../lib/cli-compose.ts';
+import { defineAction } from '../lib/action.ts';
 
 export async function runLogsAction(services: string[]): Promise<void> {
   const state = ensureValidState();
@@ -19,12 +20,7 @@ export default defineCommand({
       required: false,
     },
   },
-  async run({ args }) {
-    try {
-      await runLogsAction(args._ ?? []);
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-  },
+  run: defineAction(async ({ args }) => {
+    await runLogsAction(args._ ?? []);
+  }),
 });

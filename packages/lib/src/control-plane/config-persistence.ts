@@ -6,6 +6,7 @@
  * the rollback module (snapshot to OP_HOME/data/rollback/).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync, rmSync } from "node:fs";
+import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { createLogger } from "../logger.js";
@@ -14,6 +15,7 @@ import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secre
 import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
+import { PORTAL_SECRET_ADDON_IDS } from "./addon-ids.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
@@ -163,7 +165,7 @@ function recordSecretStripNotice(state: ControlPlaneState, newlyRemoved: string[
     mkdirSync(state.dataDir, { recursive: true });
     writeFileSync(path, JSON.stringify(notice, null, 2));
   } catch (e) {
-    logger.warn("Could not persist secret-strip notice", { error: e instanceof Error ? e.message : String(e) });
+    logger.warn("Could not persist secret-strip notice", { error: errMessage(e) });
   }
 }
 
@@ -189,7 +191,7 @@ export function dismissSecretStripNotice(state: ControlPlaneState): void {
     try {
       rmSync(path);
     } catch (e) {
-      logger.warn("Could not dismiss secret-strip notice", { error: e instanceof Error ? e.message : String(e) });
+      logger.warn("Could not dismiss secret-strip notice", { error: errMessage(e) });
     }
   }
 }
@@ -400,7 +402,7 @@ function chownVolumeTarget(path: string, operatorIds: OperatorIds | null): void 
     chownSync(path, operatorIds.uid, operatorIds.gid);
   } catch (error) {
     logger.warn(
-      `Could not chown volume target ${path} to ${operatorIds.uid}:${operatorIds.gid}: ${error instanceof Error ? error.message : String(error)}`
+      `Could not chown volume target ${path} to ${operatorIds.uid}:${operatorIds.gid}: ${errMessage(error)}`
     );
   }
 }
@@ -428,8 +430,8 @@ export function writeRuntimeFiles(
   }
 
   for (const addon of listEnabledAddonIds(state.homeDir)) {
-    if (['api', 'chat', 'discord', 'slack'].includes(addon)) {
-      for (const portal of ['api', 'chat', 'discord', 'slack']) {
+    if (PORTAL_SECRET_ADDON_IDS.includes(addon)) {
+      for (const portal of PORTAL_SECRET_ADDON_IDS) {
         ensurePortalSecret(state.homeDir, portal);
       }
       break;

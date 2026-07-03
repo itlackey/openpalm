@@ -22,34 +22,26 @@ import {
   writeFileSync, readFileSync, rmSync, realpathSync, renameSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
+import { errMessage } from './errors.js';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
-import { x as tarExtract } from 'tar';
 
 const _require = createRequire(import.meta.url);
-import { resolveBackupsDir, resolveDataDir } from './home.js';
+import { resolveDataDir } from './home.js';
 import { createLogger } from '../logger.js';
-import { compareComparableVersions, isSameMajorVersion, normalizeVersion, distTagForVersion } from './versioning.js';
+import { compareComparableVersions, normalizeVersion, distTagForVersion } from './versioning.js';
 import { overwriteSystemTree } from './core-assets.js';
+import {
+  NPM_REGISTRY,
+  fetchWithRetry,
+  stageNpmBundle,
+  checkAndUpdateNpmBundle,
+  type NpmBundleManifest,
+} from './npm-bundle-updater.js';
 
 const logger = createLogger('lib:ui-assets');
 
 // ── Private helpers ──────────────────────────────────────────────────────────
-
-async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-      if (res.ok || res.status < 500) return res;
-      if (i < retries - 1) await new Promise(r => setTimeout(r, 200 * 2 ** i));
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, 200 * 2 ** i));
-    }
-  }
-  throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
-}
 
 function copyTree(
   src: string,
@@ -162,7 +154,7 @@ export async function applyHomeSeed(
       staged = await fetchRemoteSkeleton(repoRef, dataDir);
     } catch (err) {
       throw new Error(
-        `Could not obtain @openpalm/skeleton: ${err instanceof Error ? err.message : String(err)}. ` +
+        `Could not obtain @openpalm/skeleton: ${errMessage(err)}. ` +
         'Check network access, or set OPENPALM_REPO_ROOT to a source checkout for development.',
       );
     }
@@ -305,14 +297,9 @@ export function resolveUiBuildDir(): string {
  * aware — unlike `releases/latest`, which silently excludes prereleases),
  * immutable versions, and a sha512 integrity we verify fail-closed.
  */
-const NPM_REGISTRY = 'https://registry.npmjs.org';
 const UI_PACKAGE   = '@openpalm/ui';
 
-interface NpmUiManifest {
-  version: string;
-  tarball: string;
-  /** Subresource-integrity string ("sha512-<base64>"); null if the registry omitted it. */
-  integrity: string | null;
+interface NpmUiManifest extends NpmBundleManifest {
   /**
    * Minimum native harness contract this UI build requires (design §5.3). A
    * `@openpalm/ui` build that uses an IPC method / env key introduced at
@@ -401,68 +388,35 @@ async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise
 }
 
 /**
- * Verify a Subresource-Integrity string against the bytes. FAIL-CLOSED: a
- * present-but-wrong hash throws (the corruption / tamper case). A registry that
- * omits the hash entirely (legacy metadata) is logged and allowed — modern npm
- * always provides one, so this only affects pathological registry responses.
- */
-function verifyNpmIntegrity(data: Uint8Array, integrity: string): void {
-  const entries = integrity.trim().split(/\s+/);
-  const entry = entries.find(e => e.startsWith('sha512-')) ?? entries.find(e => e.startsWith('sha256-'));
-  if (!entry) throw new Error(`unrecognized integrity format: ${integrity}`);
-  const dash = entry.indexOf('-');
-  const algo = entry.slice(0, dash);
-  const expected = entry.slice(dash + 1);
-  const actual = createHash(algo).update(data).digest('base64');
-  if (actual !== expected) throw new Error(`UI bundle integrity mismatch (${algo})`);
-}
-
-/**
  * Download `@openpalm/ui`'s npm tarball, verify integrity, and install its
  * `build/` contents into `uiDir`. npm tarballs nest everything under `package/`
  * and we publish `files: ["build"]`, so the bundle lives at `package/build/**` —
  * strip 2 path components and filter to that subtree.
  *
- * FAIL-CLOSED + non-destructive: we throw if integrity is missing or mismatched
- * (the contract is that npm always provides a sha512), and we extract into a
- * STAGING dir and validate it has a runnable `index.js` before swapping it over
- * `uiDir` — so a truncated download or bad tarball never leaves `uiDir` empty.
+ * FAIL-CLOSED + non-destructive: stageNpmBundle throws if integrity is missing or
+ * mismatched (the contract is that npm always provides a sha512) and validates the
+ * staged build has a runnable `index.js` before we swap it over `uiDir` — so a
+ * truncated download or bad tarball never leaves `uiDir` empty.
  */
 async function downloadNpmUiBundle(manifest: NpmUiManifest, uiDir: string, dataDir: string): Promise<void> {
-  const res = await fetchWithRetry(manifest.tarball);
-  if (!res.ok) throw new Error(`Failed to download UI bundle (HTTP ${res.status})`);
-  const data = new Uint8Array(await res.arrayBuffer());
-
-  // Verify BEFORE touching anything. Fail closed: a missing hash is treated as a
-  // verification failure, not a warning — modern npm always supplies dist.integrity,
-  // so its absence means a non-canonical/altered registry response.
-  if (!manifest.integrity) {
-    throw new Error(`npm manifest for ${UI_PACKAGE}@${manifest.version} has no integrity hash — refusing to install unverified`);
-  }
-  verifyNpmIntegrity(data, manifest.integrity);
-  logger.debug('UI bundle integrity verified', { version: manifest.version });
-
-  const tmpTar  = join(dataDir, '.ui-build.tgz.tmp');
-  const staging = join(dataDir, '.ui-build.staging');
+  const staging = await stageNpmBundle(manifest, dataDir, {
+    packageName: UI_PACKAGE,
+    label: 'UI',
+    tmpTarName: '.ui-build.tgz.tmp',
+    stagingName: '.ui-build.staging',
+    strip: 2,
+    filter: (p) => p.startsWith('package/build/'),
+    validate: (s) => {
+      if (!existsSync(join(s, 'index.js'))) {
+        throw new Error('downloaded UI bundle is missing build/index.js');
+      }
+    },
+  });
   try {
-    rmSync(staging, { recursive: true, force: true });
-    mkdirSync(staging, { recursive: true });
-    writeFileSync(tmpTar, data);
-    await tarExtract({
-      file: tmpTar,
-      cwd: staging,
-      strip: 2,
-      filter: (p) => p.startsWith('package/build/'),
-    });
-    // Validate the staged build is runnable before destroying the live one.
-    if (!existsSync(join(staging, 'index.js'))) {
-      throw new Error('downloaded UI bundle is missing build/index.js');
-    }
-    // Swap: only now do we remove the existing build and move staging into place.
+    // Swap: the staged build IS the artifact — remove the live build and move it in.
     rmSync(uiDir, { recursive: true, force: true });
     renameSync(staging, uiDir);
   } finally {
-    rmSync(tmpTar, { force: true });
     rmSync(staging, { recursive: true, force: true });
   }
 }
@@ -556,83 +510,47 @@ export async function checkAndUpdateUiBuild(
    */
   harnessContract?: number | null,
 ): Promise<UiBuildUpdateResult> {
-  // Hoisted outside try so the catch block can return it for supervisor restore (§4.4/§6).
-  let uiBuildBackupDir: string | undefined;
-  try {
-    const channel  = uiUpdateChannel(appVersion, channelOverride);
-    const manifest = await fetchNpmUiManifest(await resolveChannelRef(UI_PACKAGE, channel));
-    const latestVersion = manifest.version;
-
+  const uiDir = join(dataDir, 'ui');
+  return checkAndUpdateNpmBundle<NpmUiManifest, UiBuildUpdateResult>({
+    appVersion,
+    logLabel: 'UI build',
+    resolveManifest: async () =>
+      fetchNpmUiManifest(await resolveChannelRef(UI_PACKAGE, uiUpdateChannel(appVersion, channelOverride))),
+    // Compare against the UI build currently on disk, NOT the app version — the
+    // UI floats on its own version line. The app version is only the fallback
+    // major-version guard when the on-disk build is unstamped.
+    readCurrentVersion: () => readUiBuildVersion(resolveUiBuildDir()),
     // §5.3 self-update-vs-redownload gate. Only meaningful when a native harness
     // contract is supplied (Electron). If the newer build needs a contract this
     // harness does not provide, refuse the pull and ask the user to re-download
     // the app — never run newer-UI-on-older-harness (undefined IPC → TypeError;
     // missing env → 503).
-    if (
-      typeof harnessContract === 'number' &&
-      manifest.minHarnessContract > harnessContract
-    ) {
-      logger.warn('UI build requires a newer harness — re-download required', {
-        latest: latestVersion,
-        minHarnessContract: manifest.minHarnessContract,
-        harnessContract,
-        channel,
-      });
-      return {
-        updated: false,
-        latestVersion,
-        redownloadRequired: true,
-        requiredHarnessContract: manifest.minHarnessContract,
-      };
-    }
-
-    // Compare against the UI build currently on disk, NOT the app version — the
-    // UI floats on its own version line, so the platform/app version is not
-    // directly comparable for freshness. We DO use the app version as a fallback
-    // major-version guard when the current UI build is unstamped: that preserves
-    // the current release lane without guessing across majors.
-    const currentUiVersion = readUiBuildVersion(resolveUiBuildDir());
-    const currentVersionForPolicy = currentUiVersion ?? appVersion;
-
-    if (!isSameMajorVersion(latestVersion, currentVersionForPolicy)) {
-      logger.debug('UI build update blocked by major-version policy', {
-        currentUi: currentUiVersion ?? '(unstamped)',
-        policyBase: currentVersionForPolicy,
-        latest: latestVersion,
-        channel,
-      });
-      return { updated: false, latestVersion };
-    }
-
-    if (currentUiVersion && compareComparableVersions(latestVersion, currentUiVersion) <= 0) {
-      logger.debug('UI build is up to date', { currentUi: currentUiVersion, latest: latestVersion, channel });
-      return { updated: false, latestVersion };
-    }
-    if (!currentUiVersion) {
-      logger.debug('UI build is unstamped — refreshing from npm to re-establish a known version', { latest: latestVersion, channel });
-    }
-
-    // Back up the existing UI build before replacing it. The supervisor uses
-    // uiBuildBackupDir to restore the old build if the new one fails to start (§4.4/§6).
-    const uiDir = join(dataDir, 'ui');
-    if (existsSync(join(uiDir, 'index.js'))) {
-      uiBuildBackupDir = join(resolveBackupsDir(), `ui-${Date.now()}`);
-      mkdirSync(resolveBackupsDir(), { recursive: true });
-      renameSync(uiDir, uiBuildBackupDir);
-      logger.debug('backed up UI build before update', { backup: uiBuildBackupDir });
-    }
-
-    await downloadNpmUiBundle(manifest, uiDir, dataDir);
-    logger.debug('UI build updated', { from: currentUiVersion ?? '(unstamped)', to: latestVersion });
-
-    return { updated: true, latestVersion, backupDir: uiBuildBackupDir };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    logger.debug('UI build update check failed (non-fatal)', { error });
-    // Include backupDir even on failure: if the backup was created before the
-    // download threw, the supervisor can restore the old build (§4.4 / §6).
-    return { updated: false, latestVersion: null, error, backupDir: uiBuildBackupDir };
-  }
+    preflight: (manifest) => {
+      if (typeof harnessContract === 'number' && manifest.minHarnessContract > harnessContract) {
+        logger.warn('UI build requires a newer harness — re-download required', {
+          latest: manifest.version,
+          minHarnessContract: manifest.minHarnessContract,
+          harnessContract,
+        });
+        return {
+          updated: false,
+          latestVersion: manifest.version,
+          redownloadRequired: true,
+          requiredHarnessContract: manifest.minHarnessContract,
+        };
+      }
+      return null;
+    },
+    backup: { dir: uiDir, gate: join(uiDir, 'index.js'), prefix: 'ui' },
+    install: (manifest) => downloadNpmUiBundle(manifest, uiDir, dataDir),
+    // UI does NOT restore on failure: it hands the backup dir back so the
+    // supervisor can restore the old build if the new one fails to start (§4.4/§6).
+    restoreOnFailure: false,
+    onBlockedMajor: (latestVersion) => ({ updated: false, latestVersion }),
+    onUpToDate: (latestVersion) => ({ updated: false, latestVersion }),
+    onSuccess: (latestVersion, backupDir) => ({ updated: true, latestVersion, backupDir }),
+    onError: (error, backupDir) => ({ updated: false, latestVersion: null, error, backupDir }),
+  });
 }
 
 // ── Skeleton npm hot-swap ────────────────────────────────────────────────────
@@ -690,37 +608,20 @@ async function fetchNpmSkeletonManifest(versionOrTag: string): Promise<NpmSkelet
  * the CALLER owns cleanup of the returned path.
  */
 async function stageSkeletonDownload(manifest: NpmSkeletonManifest, dataDir: string): Promise<string> {
-  const res = await fetchWithRetry(manifest.tarball);
-  if (!res.ok) throw new Error(`Failed to download skeleton bundle (HTTP ${res.status})`);
-  const data = new Uint8Array(await res.arrayBuffer());
-
-  if (!manifest.integrity) {
-    throw new Error(
-      `npm manifest for ${SKELETON_PACKAGE}@${manifest.version} has no integrity hash — refusing to install unverified`,
-    );
-  }
-  verifyNpmIntegrity(data, manifest.integrity);
-  logger.debug('skeleton bundle integrity verified', { version: manifest.version });
-
-  const tmpTar  = join(dataDir, '.skeleton.tgz.tmp');
-  const staging = join(dataDir, '.skeleton.staging');
-  rmSync(staging, { recursive: true, force: true });
-  mkdirSync(staging, { recursive: true });
-  try {
-    writeFileSync(tmpTar, data);
-    // npm wraps under `package/`; strip 1 component to land the skeleton tree directly in staging.
-    await tarExtract({ file: tmpTar, cwd: staging, strip: 1 });
-    // Validate: the skeleton must contain system/stack/
-    if (!existsSync(join(staging, 'system', 'stack'))) {
-      throw new Error('downloaded skeleton bundle is missing system/stack/');
-    }
-    return staging;
-  } catch (err) {
-    rmSync(staging, { recursive: true, force: true });
-    throw err;
-  } finally {
-    rmSync(tmpTar, { force: true });
-  }
+  // npm wraps the tree under `package/`; strip 1 component to land config/, data/,
+  // knowledge/, system/, workspace/ directly in staging.
+  return stageNpmBundle(manifest, dataDir, {
+    packageName: SKELETON_PACKAGE,
+    label: 'skeleton',
+    tmpTarName: '.skeleton.tgz.tmp',
+    stagingName: '.skeleton.staging',
+    strip: 1,
+    validate: (s) => {
+      if (!existsSync(join(s, 'system', 'stack'))) {
+        throw new Error('downloaded skeleton bundle is missing system/stack/');
+      }
+    },
+  });
 }
 
 /**
@@ -782,66 +683,25 @@ export async function checkAndUpdateSkeleton(
   dataDir: string,
   channelOverride?: UiUpdateChannel,
 ): Promise<SkeletonUpdateResult> {
-  let skelBackupDir: string | undefined;
-  try {
-    const channel = uiUpdateChannel(appVersion, channelOverride);
-    const manifest = await fetchNpmSkeletonManifest(await resolveChannelRef(SKELETON_PACKAGE, channel));
-    const latestVersion = manifest.version;
-
-    const currentVersion = readSkeletonVersion(homeDir);
-    const currentVersionForPolicy = currentVersion ?? appVersion;
-
-    if (!isSameMajorVersion(latestVersion, currentVersionForPolicy)) {
-      logger.debug('skeleton update blocked by major-version policy', {
-        current: currentVersion ?? '(unstamped)',
-        policyBase: currentVersionForPolicy,
-        latest: latestVersion,
-        channel,
-      });
-      return { updated: false, latestVersion };
-    }
-
-    if (currentVersion && compareComparableVersions(latestVersion, currentVersion) <= 0) {
-      logger.debug('skeleton is up to date', { current: currentVersion, latest: latestVersion, channel });
-      return { updated: false, latestVersion };
-    }
-    if (!currentVersion) {
-      logger.debug('skeleton is unstamped — refreshing from npm', { latest: latestVersion, channel });
-    }
-
-    // Back up the existing system/ tree before replacing it.
-    const systemDir = join(homeDir, 'system');
-    if (existsSync(systemDir)) {
-      skelBackupDir = join(resolveBackupsDir(), `skeleton-${Date.now()}`);
-      mkdirSync(resolveBackupsDir(), { recursive: true });
-      renameSync(systemDir, skelBackupDir);
-      logger.debug('backed up skeleton before update', { backup: skelBackupDir });
-    }
-
-    await downloadNpmSkeletonBundle(manifest, homeDir, dataDir);
-
+  const systemDir = join(homeDir, 'system');
+  return checkAndUpdateNpmBundle<NpmSkeletonManifest, SkeletonUpdateResult>({
+    appVersion,
+    logLabel: 'skeleton',
+    resolveManifest: async () =>
+      fetchNpmSkeletonManifest(await resolveChannelRef(SKELETON_PACKAGE, uiUpdateChannel(appVersion, channelOverride))),
+    readCurrentVersion: () => readSkeletonVersion(homeDir),
+    backup: { dir: systemDir, gate: systemDir, prefix: 'skeleton' },
+    install: (manifest) => downloadNpmSkeletonBundle(manifest, homeDir, dataDir),
     // Stamp the exact npm version (bare, no `v`) so future checks compare correctly.
-    const stampPath = join(homeDir, SKELETON_VERSION_STAMP);
-    writeFileSync(stampPath, `${normalizeVersion(latestVersion)}\n`);
-    logger.debug('skeleton updated', { from: currentVersion ?? '(unstamped)', to: latestVersion });
-
-    return { updated: true, latestVersion };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    logger.debug('skeleton update check failed (non-fatal)', { error });
-    // If the backup was created before the download/extraction threw, restore it
-    // so the system/ tree is left in its previous working state (§6).
-    if (skelBackupDir && !existsSync(join(homeDir, 'system'))) {
-      try {
-        renameSync(skelBackupDir, join(homeDir, 'system'));
-        logger.debug('skeleton backup restored after failed update', { restored: skelBackupDir });
-      } catch (restoreErr) {
-        logger.debug('skeleton backup restore also failed', {
-          backup: skelBackupDir,
-          restoreError: restoreErr instanceof Error ? restoreErr.message : String(restoreErr),
-        });
-      }
-    }
-    return { updated: false, latestVersion: null, error };
-  }
+    afterInstall: (manifest) => {
+      writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${normalizeVersion(manifest.version)}\n`);
+    },
+    // The skeleton restores its own backup on failure so OP_HOME/system/ is left
+    // in its previous working state (§6) — there is no supervisor to hand it to.
+    restoreOnFailure: true,
+    onBlockedMajor: (latestVersion) => ({ updated: false, latestVersion }),
+    onUpToDate: (latestVersion) => ({ updated: false, latestVersion }),
+    onSuccess: (latestVersion) => ({ updated: true, latestVersion }),
+    onError: (error) => ({ updated: false, latestVersion: null, error }),
+  });
 }

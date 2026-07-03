@@ -1,5 +1,7 @@
-import type { PortalState, Provider, ProviderState, VoiceEngineValue } from './types.js';
+import type { ModelSelection, OpenCodeProvider, PortalState, Provider, ProviderState, VoiceEngineValue } from './types.js';
+import { PORTALS, PROVIDERS } from './constants.js';
 import { addonProfileId, KNOWN_EMBEDDING_MODEL_DIMS } from '@openpalm/lib/provider-constants';
+import { LOCAL_PROVIDER_IDS } from './constants.js';
 
 // ── Shared GPU-aware addon hardware-profile selection ────────────────────────
 // One implementation for voice/ollama profile picking, previously copy-pasted
@@ -67,10 +69,10 @@ export type RoleModelOption = {
   dims: number;
 };
 
-// Local provider ids whose models rank AFTER host/cloud providers for chat/small
+// LOCAL_PROVIDER_IDS (imported from ./constants) are the "runs on this computer"
+// runtimes whose models rank AFTER host/cloud providers for chat/small
 // auto-selection: an imported host OpenCode provider (or a cloud key) should win
 // over the bundled in-stack Ollama for the default chat model (bug #4).
-const LOCAL_PROVIDER_IDS = new Set(['ollama', 'lmstudio', 'model-runner']);
 
 /**
  * Build the ranked list of model options for a role across all verified
@@ -147,4 +149,159 @@ export function getCredValue(portalSelection: Record<string, boolean | PortalSta
   const sel = portalSelection[chId];
   if (typeof sel === 'object' && sel !== null) return String(sel[key] ?? '');
   return '';
+}
+
+// ── Random UI-login password ─────────────────────────────────────────────────
+/** 32-hex-char (128-bit) random password used as the OP_UI_LOGIN_PASSWORD default. */
+export function generatePassword(): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Portals config assembly ──────────────────────────────────────────────────
+/**
+ * Collapse the wizard's `portalSelection` state into the enabled-portals config
+ * consumed by the install payload. Locked portals (e.g. the API endpoint) are
+ * always `true`; toggled portals with credentials become `{ enabled, ...creds }`;
+ * a plain-boolean selection becomes `true`. Disabled portals are omitted.
+ */
+export function buildPortalsConfig(
+  portalSelection: Record<string, boolean | PortalState>,
+): Record<string, boolean | Record<string, string | boolean>> {
+  const result: Record<string, boolean | Record<string, string | boolean>> = {};
+  for (const ch of PORTALS) {
+    const sel = portalSelection[ch.id];
+    if (ch.locked) {
+      result[ch.id] = true;
+    } else if (typeof sel === 'object' && sel !== null) {
+      if (sel.enabled) {
+        const entry: Record<string, string | boolean> = { enabled: true };
+        if (ch.credentials) {
+          for (const cred of ch.credentials) {
+            const v = sel[cred.key];
+            if (v) entry[cred.key] = v;
+          }
+        }
+        result[ch.id] = entry;
+      }
+    } else if (sel) {
+      result[ch.id] = true;
+    }
+  }
+  return result;
+}
+
+// ── Verified-provider list ───────────────────────────────────────────────────
+/**
+ * Build the list of verified providers used to assemble capabilities/models.
+ *
+ * When OpenCode is available: start from the verified OpenCode providers
+ * (inheriting llmModel/embModel/embDims from the static fallback for local
+ * providers), then append any verified static providers not already in the
+ * OpenCode list (e.g. Ollama added by the wizard's "Include Ollama" toggle).
+ * When OpenCode is unavailable: just the verified static providers.
+ */
+export function buildVerifiedProviders(
+  opencodeAvailable: boolean,
+  opencodeProviders: OpenCodeProvider[],
+  providerState: Record<string, ProviderState>,
+): Provider[] {
+  if (opencodeAvailable) {
+    const fromOpenCode: Provider[] = opencodeProviders
+      .filter((p) => providerState[p.id]?.verified)
+      .map((p) => {
+        const st = providerState[p.id];
+        const fallback = PROVIDERS.find((fp) => fp.id === p.id);
+        return {
+          id: p.id, name: p.name ?? p.id, kind: 'cloud' as const, group: '', order: 0,
+          icon: '', desc: '', baseUrl: st?.baseUrl ?? '',
+          llmModel: fallback?.llmModel ?? '',
+          embModel: fallback?.embModel ?? '',
+          embDims: fallback?.embDims ?? 0,
+        };
+      });
+    const openCodeIds = new Set(fromOpenCode.map((p) => p.id));
+    const fromStatic: Provider[] = PROVIDERS
+      .filter((p) => !openCodeIds.has(p.id) && providerState[p.id]?.verified)
+      .map((p) => {
+        const st = providerState[p.id];
+        return {
+          id: p.id, name: p.name, kind: p.kind, group: p.group, order: p.order,
+          icon: p.icon, desc: p.desc, baseUrl: st?.baseUrl ?? p.baseUrl,
+          llmModel: p.llmModel, embModel: p.embModel, embDims: p.embDims,
+        };
+      });
+    return [...fromOpenCode, ...fromStatic];
+  }
+  return PROVIDERS.filter((p) => providerState[p.id]?.verified);
+}
+
+// ── Auto model selection ─────────────────────────────────────────────────────
+/**
+ * Fill any unset chat ('llm') / 'small' role with the best-ranked option from
+ * the verified providers. Embedding is never auto-selected — akm self-embeds
+ * locally, so the wizard leaves it unset unless the user picks one explicitly.
+ * Returns a NEW selection object; already-set roles are preserved untouched.
+ */
+export function computeAutoModelSelection(
+  current: { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection },
+  verifiedProviders: Provider[],
+  providerState: Record<string, ProviderState>,
+): { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection } {
+  const next = { ...current };
+  const roles = ['llm', 'embedding', 'small'] as const;
+  for (const roleId of roles) {
+    if (next[roleId]) continue;
+    if (roleId === 'embedding') continue;
+    const options = buildModelOptions(roleId, verifiedProviders, providerState);
+    if (options.length === 0) continue;
+    // options are best-first, so options[0] is the sensible pick.
+    const best = options[0];
+    next[roleId] = { connId: best.connId, model: best.id, dims: best.dims };
+  }
+  return next;
+}
+
+// ── Preferred (host/imported) model resolution ───────────────────────────────
+/**
+ * Resolve an imported host preference (e.g. "github-copilot/gpt-5.4") to a
+ * concrete selection using a 4-tier match against the role's options:
+ *   1. exact full id ("openai/gpt-4o")
+ *   2. provider-hint + model-name-part
+ *   3. model-name-part alone
+ *   4. offline fallback: provider verified but model list not yet loaded —
+ *      trust the host preference directly rather than dropping it (#5).
+ * Returns undefined when nothing matches (or no preference given).
+ */
+export function resolvePreferredModelSelection(
+  roleId: 'llm' | 'small',
+  preferredModel: string | undefined,
+  verifiedProviders: Provider[],
+  providerState: Record<string, ProviderState>,
+): ModelSelection | undefined {
+  if (!preferredModel) return undefined;
+
+  const slashIdx = preferredModel.indexOf('/');
+  const providerHint = slashIdx > 0 ? preferredModel.slice(0, slashIdx) : '';
+  const modelIdPart = slashIdx > 0 ? preferredModel.slice(slashIdx + 1) : preferredModel;
+
+  const options = buildModelOptions(roleId, verifiedProviders, providerState);
+
+  const exactFull = options.find((o) => o.id === preferredModel);
+  if (exactFull) return { connId: exactFull.connId, model: exactFull.id, dims: exactFull.dims };
+
+  const providerMatch = providerHint
+    ? options.find((o) => o.connId === providerHint && o.id === modelIdPart)
+    : undefined;
+  if (providerMatch) return { connId: providerMatch.connId, model: providerMatch.id, dims: providerMatch.dims };
+
+  const nameMatch = options.find((o) => o.id === modelIdPart);
+  if (nameMatch) return { connId: nameMatch.connId, model: nameMatch.id, dims: nameMatch.dims };
+
+  if (providerHint && verifiedProviders.some((p) => p.id === providerHint)) {
+    return { connId: providerHint, model: modelIdPart, dims: 0 };
+  }
+
+  return undefined;
 }

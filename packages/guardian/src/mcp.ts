@@ -4,15 +4,16 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { createLogger } from './logger.ts';
 import { readFileSync } from 'node:fs';
 
+import { constantTimeEqual } from './crypto.ts';
 import { moderateMessage } from './moderation';
 import { upsertPrincipal } from './state-db';
+import { DIRECT_PORT } from './config.ts';
 
 const logger = createLogger('guardian:mcp');
 
 const MCP_PRINCIPAL_ID = 'mcp';
 const MCP_LABEL = 'guardian-mcp';
 const MCP_TOKEN_FILE = Bun.env.GUARDIAN_MCP_TOKEN_FILE ?? '';
-const DIRECT_PORT = Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830);
 const DIRECT_BASE_URL = `http://127.0.0.1:${DIRECT_PORT}`;
 
 type JsonObject = Record<string, unknown>;
@@ -23,15 +24,6 @@ type AskAssistantResult =
 
 function json(status: number, data: unknown): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  const aBytes = new TextEncoder().encode(a);
-  const bBytes = new TextEncoder().encode(b);
-  const max = Math.max(aBytes.length, bBytes.length);
-  let diff = aBytes.length === bBytes.length ? 0 : 1;
-  for (let i = 0; i < max; i++) diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
-  return diff === 0;
 }
 
 function readMcpToken(): string {

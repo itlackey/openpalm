@@ -150,6 +150,52 @@ describe('guardian openai api auth', () => {
   });
 });
 
+// --- CHARACTERIZATION: non-streaming path is a pure text accumulator ----------
+// The non-streaming collector (collectTurnAnswer, reached via the forward path)
+// MUST NOT apply permission policy, MUST NOT reject questions, and MUST NOT
+// break on session.error. It only accumulates text deltas until turn end.
+function policyEventStub(calls: CapturedCall[]) {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const call: CapturedCall = { url: String(input), method: init?.method ?? 'GET', headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? init.body : '' };
+    calls.push(call);
+    const path = call.url.replace('http://guardian:8080/oc', '');
+    if (call.method === 'POST' && path === '/session') return Response.json({ id: 's1' });
+    if (call.method === 'GET' && path === '/event') {
+      const sse = [
+        JSON.stringify({ type: 'permission.asked', properties: { id: 'per_ns', sessionID: 's1', permission: 'bash', patterns: ['echo x'] } }),
+        JSON.stringify({ type: 'question.asked', properties: { id: 'q_ns', sessionID: 's1', questions: [{ question: 'ok?', header: 'h', options: [{ label: 'yes', description: '' }] }] } }),
+        JSON.stringify({ type: 'message.part.delta', properties: { sessionID: 's1', delta: 'accum' } }),
+        JSON.stringify({ type: 'session.error', properties: { sessionID: 's1' } }),
+        JSON.stringify({ type: 'message.part.delta', properties: { sessionID: 's1', delta: 'ulated' } }),
+        JSON.stringify({ type: 'session.idle', properties: { sessionID: 's1' } }),
+      ].map((frame) => `data: ${frame}\n\n`).join('');
+      return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    }
+    if (call.method === 'POST' && path === '/session/s1/message') return new Response(JSON.stringify({ parts: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response('not found', { status: 404 });
+  };
+}
+
+describe('guardian openai api non-streaming policy characterization', () => {
+  it('does NOT apply permission policy, reject questions, or break on session.error', async () => {
+    const calls: CapturedCall[] = [];
+    const api = new GuardianOpenAiApi();
+    Object.defineProperty(api, 'secret', { get: () => 'test-secret' });
+    Object.defineProperty(api, 'apiKey', { get: () => '' });
+    const handler = api.createFetch(policyEventStub(calls) as typeof fetch);
+    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hi' }] }) }));
+    expect(resp.status).toBe(200);
+    const body = await resp.json() as Record<string, unknown>;
+    const content = (((body.choices as Array<Record<string, unknown>>)[0].message as Record<string, unknown>).content);
+    // Accumulated text spans the delta AFTER session.error -> the collector did
+    // not break on session.error (unlike the streaming path).
+    expect(content).toBe('accumulated');
+    // No permission reply and no question rejection were ever sent.
+    expect(calls.some((call) => call.url.includes('/permission/'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/question/'))).toBe(false);
+  });
+});
+
 describe('guardian openai api error handling', () => {
   it('returns 404 for unknown paths', async () => {
     const handler = createHandler();

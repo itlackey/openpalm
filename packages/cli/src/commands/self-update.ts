@@ -3,23 +3,11 @@ import { chmod, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { defineCommand } from 'citty';
-
-const REPO = 'itlackey/openpalm';
+import { GITHUB_REPO, resolveLatestReleaseTag } from '../lib/github.ts';
 
 async function resolveLatestVersion(): Promise<string> {
-  try {
-    const res = await fetch(`https://github.com/${REPO}/releases/latest`, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(10_000),
-    });
-    // Release tags are bare semver (0.12.41+); pre-cutover releases carry a
-    // legacy leading `v`, so `v?` keeps resolving the latest across both.
-    const match = (res.headers.get('location') ?? '').match(/\/tag\/(v?[0-9]+\.[0-9]+\.[0-9]+[^\s]*)$/);
-    if (match?.[1]) return match[1];
-  } catch {
-    // fall through
-  }
-
+  const tag = await resolveLatestReleaseTag();
+  if (tag) return tag;
   throw new Error('Unable to resolve the latest OpenPalm release.');
 }
 
@@ -61,8 +49,8 @@ function posixShellQuote(value: string): string {
 async function downloadVerifiedBinary(version: string, artifact: string): Promise<string> {
   const tempDir = await mkdtemp(join(tmpdir(), 'openpalm-self-update-'));
   const artifactPath = join(tempDir, artifact);
-  const binaryUrl = `https://github.com/${REPO}/releases/download/${version}/${artifact}`;
-  const checksumUrl = `https://github.com/${REPO}/releases/download/${version}/checksums-sha256.txt`;
+  const binaryUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/${artifact}`;
+  const checksumUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/checksums-sha256.txt`;
 
   const [binaryRes, checksumRes] = await Promise.all([
     fetch(binaryUrl, { signal: AbortSignal.timeout(60_000) }),

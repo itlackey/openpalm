@@ -1,6 +1,5 @@
 /**
- * Regression test for the 0.12.0 "portal stopped working" bug (Slack mirror of
- * the Discord case — both adapters share the same OcClient shape).
+ * Regression test for the 0.12.0 "Discord portal stopped working" bug.
  *
  * The @opencode-ai/sdk client (1.17.x) resolves every session.* call to a
  * { data, error } envelope. The adapter used to read the session object off the
@@ -14,7 +13,7 @@
  * the path is `/session/<real-id>/message`, never the literal `{id}` / `%7Bid%7D`.
  */
 import { describe, it, expect } from 'bun:test';
-import { OcClient } from './opencode.js';
+import { OcClient } from './opencode.ts';
 
 const REAL_SESSION_ID = 'ses_real_abc123';
 
@@ -41,22 +40,22 @@ function makeFakeTransport() {
   return { urls, fetchFn };
 }
 
-describe('OcClient (slack) — SDK envelope handling', () => {
+describe('OcClient — SDK envelope handling', () => {
   it('createSession returns the real session id from the { data } envelope', async () => {
     const { fetchFn } = makeFakeTransport();
-    const client = new OcClient({ principalId: 'slack', secret: 's', baseUrl: 'http://guardian:8080/oc', fetch: fetchFn });
+    const client = new OcClient({ principalId: 'discord', secret: 's', baseUrl: 'http://guardian:8080/oc', fetch: fetchFn });
 
-    const session = await client.createSession('slack:U123');
+    const session = await client.createSession('discord:123');
     // Pre-fix this was `undefined` (read off the envelope instead of `.data`).
     expect(session.id).toBe(REAL_SESSION_ID);
   });
 
   it('prompt substitutes the session id into the path (never the literal {id})', async () => {
     const { urls, fetchFn } = makeFakeTransport();
-    const client = new OcClient({ principalId: 'slack', secret: 's', baseUrl: 'http://guardian:8080/oc', fetch: fetchFn });
+    const client = new OcClient({ principalId: 'discord', secret: 's', baseUrl: 'http://guardian:8080/oc', fetch: fetchFn });
 
-    const session = await client.createSession('slack:U123');
-    await client.prompt('slack:U123', session.id, 'hello');
+    const session = await client.createSession('discord:123');
+    await client.prompt('discord:123', session.id, 'hello');
 
     const promptUrl = urls.find((u) => u.includes('/message'));
     expect(promptUrl, 'a /message request must have been made').toBeDefined();
@@ -72,8 +71,8 @@ describe('OcClient (slack) — SDK envelope handling', () => {
         status: 403,
         headers: { 'content-type': 'application/json' },
       })) as unknown as typeof fetch;
-    const client = new OcClient({ principalId: 'slack', secret: 's', baseUrl: 'http://guardian:8080/oc', fetch: fetchFn });
+    const client = new OcClient({ principalId: 'discord', secret: 's', baseUrl: 'http://guardian:8080/oc', fetch: fetchFn });
 
-    await expect(client.createSession('slack:U123')).rejects.toThrow(/createSession failed/);
+    await expect(client.createSession('discord:123')).rejects.toThrow(/createSession failed/);
   });
 });

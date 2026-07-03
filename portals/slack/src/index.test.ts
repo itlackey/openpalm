@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
-import { ConversationQueue } from './runtime.ts';
+import { ConversationQueue } from '@openpalm/portal-sdk';
 import type { PermissionConfig, PermissionResult, UserInfo } from "./types.ts";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

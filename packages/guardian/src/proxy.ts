@@ -40,10 +40,10 @@ import {
   forgetSession,
   ownedSessionIds,
 } from "./ownership";
-import { resolveSessionTarget } from "./forward";
+import { resolveSessionTarget } from "./session-target.ts";
 import { openEventStream } from "./event-fanout";
 import { audit } from "./audit";
-import { moderateMessage } from "./moderation";
+import { moderateMessage, type ModerationResult } from "./moderation";
 import {
   allow,
   USER_RATE_LIMIT,
@@ -61,6 +61,7 @@ import {
   setTurnAbortFn,
 } from "./oc-bounds";
 import { getPolicyProvider, type PolicyDecision } from "./policy";
+import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS } from "./config";
 
 const logger = createLogger("guardian:proxy");
 
@@ -69,7 +70,6 @@ const logger = createLogger("guardian:proxy");
 /** Base path under which the native OpenCode proxy is served. */
 export const OC_PREFIX = "/oc";
 
-const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
 
 // Wire the stale-turn reaper's abort side-effect (§3.6 per-turn wall-clock cap).
@@ -205,7 +205,16 @@ export async function handleProxy(
       resource: match.route?.template ?? rawPath,
       attributes: { userId: authenticated.userId, path: rawPath },
     });
-  } catch {
+  } catch (err) {
+    // Fail closed on a policy-provider error, but never swallow the cause: log it
+    // structured so an operator can see WHY the gate tripped (a bare `catch {}`
+    // here previously collapsed every policy crash to an opaque 403).
+    logger.error('oc_policy_error', {
+      requestId: rid,
+      principalId: authenticated.id,
+      userId: authenticated.userId,
+      error: String(err),
+    });
     return deny(rid, 403, 'forbidden_policy', {
       principalId: authenticated.id,
       userId: authenticated.userId,
@@ -329,9 +338,29 @@ async function routeAllowed(
       req.method === "POST" &&
       (template === "/session/{id}/message" || template === "/session/{id}/prompt_async")
     ) {
-      const screened = await screenPromptBody(rid, principal, template, body);
-      if (screened instanceof Response) return screened;
-      const promptBody = typeof screened === 'string' ? screened : body;
+      // Screen the prompt, then apply the block-vs-rewrite decision HERE so the
+      // per-principal-kind policy is explicit at the call site (§3.5):
+      //   - portal principals → hard 403 block (assistant never contacted);
+      //   - direct principals → deliberate prompt-REWRITE into a refusal
+      //     instruction, forwarded upstream so the caller gets a safe answer
+      //     rather than a raw error. See the note on screenPromptBody.
+      const moderation = await screenPromptBody(rid, principal, template, body);
+      let promptBody = body;
+      if (moderation.verdict === "block") {
+        if (principal.kind === "direct") {
+          promptBody = rewritePromptBody(body);
+        } else {
+          return deny(rid, 403, "content_blocked", {
+            principalId: principal.id,
+            userId: principal.userId,
+            template,
+            source: moderation.source,
+            reason: moderation.reason,
+            signals: moderation.signals,
+            score: moderation.score,
+          });
+        }
+      }
       // §3.6 in-flight-turn cap: a prompt turn holds assistant compute until the
       // session goes idle. Bound how many a principal can hold concurrently; the
       // (cap+1)th is 429'd.
@@ -413,8 +442,19 @@ async function routeAllowed(
  *
  * Parses the `message`/`prompt_async` body, extracts every `parts[].text`,
  * concatenates them, and runs the EXISTING heuristic-screen → local-moderator
- * pipeline (moderation.ts) fail-closed. Returns a 403 Response to BLOCK, or
- * null to let the caller forward.
+ * pipeline (moderation.ts) fail-closed. Returns the {@link ModerationResult}; the
+ * caller (routeAllowed) owns the block-vs-rewrite decision so that policy stays
+ * EXPLICIT at the call site. `flag` verdicts are logged here and treated as
+ * forward by the caller.
+ *
+ * DELIBERATE POLICY — block vs rewrite by principal kind:
+ *   - portal principals: a `block` verdict is a hard 403 (assistant never
+ *     contacted);
+ *   - direct principals: a `block` verdict is instead REWRITTEN via
+ *     {@link rewritePromptBody} into a refusal instruction and forwarded upstream,
+ *     so a first-party/direct caller receives a coherent safe answer rather than a
+ *     raw 403. This preserves the same security outcome (the original prompt never
+ *     reaches the model) while giving the direct tier a better UX.
  *
  * ── OPENCODE REQUEST-BODY SCHEMA COUPLING — pinned to OPENCODE_VERSION ──
  * This is the SINGLE place the proxy reaches inside an OpenCode request body
@@ -428,30 +468,16 @@ async function routeAllowed(
  * text and screened as "" — moderation of empty text allows, so the upstream
  * still validates the actual shape. A `block` verdict (incl. the moderator being
  * unreachable/unparseable — moderateMessage collapses those to a fail-closed
- * block internally) short-circuits before the assistant is ever contacted.
+ * block internally) is handled by the caller before the assistant is contacted.
  */
 async function screenPromptBody(
   rid: string,
   principal: Principal,
   template: string,
   body: string,
-): Promise<Response | string | null> {
+): Promise<ModerationResult> {
   const text = extractPromptText(body);
   const moderation = await moderateMessage(text, undefined);
-  if (moderation.verdict === "block") {
-    if (principal.kind === 'direct') {
-      return rewritePromptBody(body);
-    }
-    return deny(rid, 403, "content_blocked", {
-      principalId: principal.id,
-      userId: principal.userId,
-      template,
-      source: moderation.source,
-      reason: moderation.reason,
-      signals: moderation.signals,
-      score: moderation.score,
-    });
-  }
   if (moderation.verdict === "flag") {
     logger.warn("oc_content_flagged", {
       requestId: rid,
@@ -463,7 +489,7 @@ async function screenPromptBody(
       score: moderation.score,
     });
   }
-  return null;
+  return moderation;
 }
 
 function rewritePromptBody(body: string): string {
@@ -522,7 +548,6 @@ function extractPromptText(body: string): string {
 // (the durable component is the guardian); a guardian restart re-creates once
 // then reuses. Evicted on DELETE /session. Title unified to the buffered `/`
 // form so the two paths are consistent.
-const SESSION_REUSE_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
 const SESSION_REUSE_MAX = 10_000;
 const ocSessionByKey = new Map<string, { sessionId: string; lastUsed: number }>();
 const ocSessionCreateLocks = new Map<string, Promise<string>>();
@@ -562,9 +587,7 @@ async function forwardSessionCreate(
   // sessionKey rides as a header so multi-thread portals keep their grouping;
   // absent → falls back to userId inside resolveSessionTarget. The portal can
   // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
-  const sessionKeyHeader = req.headers.get(H_SESSION_KEY) ?? undefined;
-  const directSessionKeyHeader = req.headers.get(H_SESSION_KEY) ?? undefined;
-  const sessionKey = sessionKeyHeader ?? directSessionKeyHeader;
+  const sessionKey = req.headers.get(H_SESSION_KEY) ?? undefined;
   const metadata = sessionKey ? { sessionKey } : undefined;
   const target = resolveSessionTarget(principal.userId, principal.id, metadata);
   const cacheKey = `${principal.id}:${target.sessionKey}`;

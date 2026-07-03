@@ -40,10 +40,9 @@ import {
 } from "./ownership";
 import { endTurnsForSession } from "./oc-bounds";
 import { runDriftCheck } from './drift';
+import { ASSISTANT_URL } from './config';
 
 const logger = createLogger("guardian:event");
-
-const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 
 // ── A connected principal stream ───────────────────────────────────────────
 

@@ -25,10 +25,10 @@
 
 import { OC_ALLOWLIST } from './oc-allowlist.ts';
 import { createLogger } from './logger.ts';
+import { ASSISTANT_URL } from './config.ts';
 
 const logger = createLogger("guardian:drift");
 
-const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 const DRIFT_DOC_TIMEOUT_MS = Number(Bun.env.GUARDIAN_DRIFT_DOC_TIMEOUT_MS ?? 5_000);
 const DRIFT_RETRY_MAX_ATTEMPTS = Number(Bun.env.GUARDIAN_DRIFT_RETRY_MAX_ATTEMPTS ?? 5);
 const DRIFT_RETRY_INITIAL_MS = Number(Bun.env.GUARDIAN_DRIFT_RETRY_INITIAL_MS ?? 2_000);

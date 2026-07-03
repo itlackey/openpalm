@@ -25,6 +25,7 @@ import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
 const deployUrl = new URL('./deploy.ts', import.meta.url).href;
 const moduleUrls = {
   docker: new URL('./docker.js', import.meta.url).href,
+  volumeOwnership: new URL('./volume-ownership.js', import.meta.url).href,
   composeArgs: new URL('./compose-args.js', import.meta.url).href,
   configPersistence: new URL('./config-persistence.js', import.meta.url).href,
   coreAssets: new URL('./core-assets.js', import.meta.url).href,
@@ -109,7 +110,11 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composePullRetry: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   resolveComposeProjectName: () => 'openpalm',
   isProjectOurs: (workingDir, expected) => workingDir === '' || workingDir === expected,
+}));
+
+mock.module(${JSON.stringify(moduleUrls.volumeOwnership)}, () => ({
   repairRootOwnedBindMounts: async () => {},
+  repairManagedNamedVolumes: async () => {},
 }));
 
 mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({

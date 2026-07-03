@@ -29,6 +29,7 @@ import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from "./addons.js";
+import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { PLATFORM_VERSION, formatForDisplay } from "./versioning.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -471,11 +472,10 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
   return discoverStackOverlays(state.homeDir);
 }
 
-// Portal addons that require the guardian ingress. Mirrors the profile gate on
-// the guardian service in portals.compose.yml (profiles: addon.{chat,api,
-// discord,slack}) and the built-in portal id list used in registry.ts /
-// config-persistence.ts. Guardian is shared infra for these, not an addon
-// service of its own (getAddonServiceNames deliberately excludes it).
+// Guardian is shared ingress for these addons, not an addon service of its own
+// (getAddonServiceNames deliberately excludes it). The id set lives in
+// addon-ids.ts (GUARDIAN_INGRESS_ADDON_IDS) and mirrors the profile gate on the
+// guardian service in portals.compose.yml.
 //
 // Deploy dependency contract (one place to read it):
 //   • assistant — ALWAYS deployed; depends on nothing.
@@ -486,7 +486,6 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 // A zero-portal install therefore deploys assistant alone and must NOT
 // include or health-wait on guardian. The integration test in
 // guardian-gating.test.ts pins this.
-const PORTAL_ADDON_IDS = ["api", "chat", "discord", "slack", "gateway"];
 
 /**
  * Guardian is portal ingress: it is both DEPLOYED and treated as an EXPECTED
@@ -498,7 +497,7 @@ const PORTAL_ADDON_IDS = ["api", "chat", "discord", "slack", "gateway"];
  * callers that already have it don't re-read stack.env.
  */
 function hasEnabledPortal(enabledAddons: string[]): boolean {
-  return enabledAddons.some((a) => PORTAL_ADDON_IDS.includes(a));
+  return enabledAddons.some((a) => GUARDIAN_INGRESS_ADDON_IDS.includes(a));
 }
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {

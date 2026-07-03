@@ -37,20 +37,21 @@ import {
   type ThreadChannel,
 } from "discord.js";
 import {
-  OcClient,
+  ThrottledEditBuffer,
   asRaw,
   createLogger,
   extractPermissionAsk,
-  extractQuestionAsk,
   extractTextDelta,
   extractToolUpdate,
-  isSessionError,
   isTurnEnd,
-  partSnapshotType,
+  renderTurn,
   splitMessage,
+  type OcClient,
   type PermissionAsk,
   type QuestionAsk,
-} from './runtime.ts';
+  type RenderSink,
+  type ToolUpdate,
+} from '@openpalm/portal-sdk';
 
 /** Adapter-owned hook so a pending question can also be answered by the user
  * typing a normal message in the thread. `resolve(answer)` is the SINGLE
@@ -158,10 +159,10 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
   // placeholder/Stop clutter. Cleared in finally (and auto-expires on Discord).
   const stopTyping = startTyping(thread);
   const ac = new AbortController();
-  let active: ActiveMessage | null = null; // the currently-streaming assistant message
   // Shared per-principal /event subscription (OcEventHub) when provided, else a
   // dedicated stream. close()d in finally so the hub can refcount/idle-close.
   const subscription = subscribeEvents ? subscribeEvents() : null;
+  const sink = new DiscordRenderSink(thread, client, userId, requestingUserId, triggerMessage, setPendingQuestion);
 
   try {
     // Guardian dedupes create per (channel, sessionKey) → one thread, one session.
@@ -174,79 +175,86 @@ export async function streamTurn(args: StreamTurnArgs): Promise<void> {
       ac.abort();
     });
 
-    const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never shown
-    const reactedEmojis = new Set<string>(); // tool emojis already reacted on the trigger message
-    const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
-    for await (const ev of eventsIter) {
-      if (Date.now() > deadline) {
-        log.warn("turn_render_timeout", { sessionId });
-        break;
-      }
-      const e = asRaw(ev);
-
-      // Learn part types from snapshots so reasoning is filtered (a delta alone
-      // can't be told apart — both stream field:"text").
-      const snap = partSnapshotType(e);
-      if (snap && snap.type === "reasoning") reasoningParts.add(snap.partID);
-
-      if (isTurnEnd(e, sessionId)) break;
-      if (isSessionError(e, sessionId)) {
-        await thread.send("⚠️ The assistant connection reset. Please try again.").catch(() => {});
-        break;
-      }
-
-      // Per-frame rendering is RESILIENT: one malformed frame must not abort the turn.
-      try {
-        const delta = extractTextDelta(e, sessionId, reasoningParts);
-        if (delta) {
-          // Each assistant message in the agent's sequence becomes its OWN Discord
-          // message (sent when its first useful text arrives) — NOT one edited
-          // placeholder, so the conversation reads naturally.
-          const mid = typeof e.properties?.messageID === "string" ? e.properties.messageID : "";
-          if (!active || (mid && active.messageId !== mid)) {
-            await active?.finalize();
-            active = new ActiveMessage(thread, mid);
-          }
-          await active.append(delta);
-          continue;
-        }
-
-        const tool = extractToolUpdate(e, sessionId);
-        if (tool && tool.callID) {
-          // Tool use shows as a lightweight EMOJI REACTION on the user's message
-          // (one per distinct tool kind) — no noisy embeds. The `question` tool
-          // renders its own interactive prompt below.
-          if (tool.tool !== "question") {
-            const emoji = toolEmoji(tool.tool);
-            if (!reactedEmojis.has(emoji)) {
-              reactedEmojis.add(emoji);
-              await triggerMessage.react(emoji).catch(() => {});
-            }
-          }
-          continue;
-        }
-
-        const ask = extractPermissionAsk(e, sessionId);
-        if (ask) {
-          await renderPermissionPrompt(thread, client, userId, requestingUserId, ask);
-          continue;
-        }
-
-        const question = extractQuestionAsk(e, sessionId);
-        if (question) {
-          await renderQuestionPrompt(thread, client, userId, requestingUserId, question, setPendingQuestion);
-          continue;
-        }
-      } catch (err) {
-        log.warn("frame_render_failed", { error: String(err), type: e.type, sessionId });
-      }
-    }
+    // Discord divergence (§4.1): per-frame dispatch is RESILIENT (one malformed
+    // frame must not abort the turn) and turn-end/session-error are checked BEFORE
+    // the dispatch — both are preserved via renderTurn's options.
+    await renderTurn(eventsIter, sink, {
+      sessionId,
+      turnRenderTimeoutMs: TURN_RENDER_TIMEOUT_MS,
+      onFrameError: "catch",
+      checkTurnEndBefore: true,
+      onFrameErrorLog: (err, e) => log.warn("frame_render_failed", { error: String(err), type: e.type, sessionId }),
+      onTimeout: () => log.warn("turn_render_timeout", { sessionId }),
+    });
   } finally {
     stopTyping();
     setPendingQuestion?.(null); // clear any unanswered pending question for this thread
     subscription?.close?.(); // decref the shared /event stream (hub idle-closes)
     ac.abort();
-    await active?.finalize().catch(() => {});
+    await sink.finalize();
+  }
+}
+
+/**
+ * Discord platform sink for the shared `renderTurn` loop: rolls a NEW message per
+ * assistant `messageID` (ActiveMessage), reacts tool emojis on the trigger
+ * message, and renders permission/question prompts as interactive ActionRows. The
+ * `active` message is owned here so `streamTurn`'s finally can finalize it.
+ */
+class DiscordRenderSink implements RenderSink {
+  private active: ActiveMessage | null = null; // the currently-streaming assistant message
+  private readonly reactedEmojis = new Set<string>(); // tool emojis already reacted on the trigger message
+
+  constructor(
+    private readonly thread: ThreadChannel,
+    private readonly client: OcClient,
+    private readonly userId: string,
+    private readonly requestingUserId: string,
+    private readonly triggerMessage: Message,
+    private readonly setPendingQuestion?: (pending: PendingQuestion | null) => void,
+  ) {}
+
+  async onText(delta: string, messageID: string): Promise<void> {
+    // Each assistant message in the agent's sequence becomes its OWN Discord
+    // message (sent when its first useful text arrives) — NOT one edited
+    // placeholder, so the conversation reads naturally.
+    let msg = this.active;
+    if (!msg || (messageID && msg.messageId !== messageID)) {
+      await msg?.finalize();
+      msg = new ActiveMessage(this.thread, messageID);
+      this.active = msg;
+    }
+    await msg.append(delta);
+  }
+
+  async onTool(tool: ToolUpdate): Promise<void> {
+    // Tool use shows as a lightweight EMOJI REACTION on the user's message (one
+    // per distinct tool kind) — no noisy embeds. The `question` tool renders its
+    // own interactive prompt below.
+    if (tool.tool !== "question") {
+      const emoji = toolEmoji(tool.tool);
+      if (!this.reactedEmojis.has(emoji)) {
+        this.reactedEmojis.add(emoji);
+        await this.triggerMessage.react(emoji).catch(() => {});
+      }
+    }
+  }
+
+  async onPermission(ask: PermissionAsk): Promise<void> {
+    await renderPermissionPrompt(this.thread, this.client, this.userId, this.requestingUserId, ask);
+  }
+
+  async onQuestion(ask: QuestionAsk): Promise<void> {
+    await renderQuestionPrompt(this.thread, this.client, this.userId, this.requestingUserId, ask, this.setPendingQuestion);
+  }
+
+  async onSessionError(): Promise<void> {
+    await this.thread.send("⚠️ The assistant connection reset. Please try again.").catch(() => {});
+  }
+
+  /** Flush the in-flight assistant message on turn-end (called from finally). */
+  async finalize(): Promise<void> {
+    await this.active?.finalize().catch(() => {});
   }
 }
 
@@ -288,32 +296,20 @@ class ActiveMessage {
   readonly messageId: string;
   private readonly thread: ThreadChannel;
   private msg: Message | null = null;
-  private buffer = "";
-  private lastEdit = 0;
-  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly buf: ThrottledEditBuffer;
 
   constructor(thread: ThreadChannel, messageId: string) {
     this.thread = thread;
     this.messageId = messageId;
+    this.buf = new ThrottledEditBuffer(EDIT_THROTTLE_MS, () => this.flush());
   }
 
-  async append(delta: string): Promise<void> {
-    this.buffer += delta;
-    const now = Date.now();
-    if (now - this.lastEdit >= EDIT_THROTTLE_MS) {
-      this.lastEdit = now;
-      await this.flush();
-    } else if (!this.pendingTimer) {
-      this.pendingTimer = setTimeout(() => {
-        this.pendingTimer = null;
-        this.lastEdit = Date.now();
-        void this.flush();
-      }, EDIT_THROTTLE_MS);
-    }
+  append(delta: string): void | Promise<void> {
+    return this.buf.append(delta);
   }
 
   private async flush(): Promise<void> {
-    const head = splitMessage(this.buffer, MAX_MESSAGE_LENGTH)[0] ?? "";
+    const head = splitMessage(this.buf.text, MAX_MESSAGE_LENGTH)[0] ?? "";
     if (!head) return; // nothing renderable yet
     try {
       if (!this.msg) this.msg = await this.thread.send(head);
@@ -324,12 +320,9 @@ class ActiveMessage {
   }
 
   async finalize(): Promise<void> {
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
-      this.pendingTimer = null;
-    }
-    if (!this.buffer.trim()) return; // produced no text → no message
-    const chunks = splitMessage(this.buffer, MAX_MESSAGE_LENGTH);
+    this.buf.cancelPending();
+    if (!this.buf.text.trim()) return; // produced no text → no message
+    const chunks = splitMessage(this.buf.text, MAX_MESSAGE_LENGTH);
     try {
       if (!this.msg) this.msg = await this.thread.send(chunks[0] ?? "");
       else await this.msg.edit(chunks[0] ?? "");
