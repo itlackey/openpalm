@@ -126,16 +126,38 @@ describe('reconcile decision building', () => {
     expect(decision).toBe('drift');
   });
 
-  test('degrades to match (never spurious swap) when the session identity has no uid', () => {
-    // Root session over a root-owned OP_HOME (uid null) or win32: comparing null
-    // against numeric canary owners would otherwise never match → spurious swap
-    // that blocks `sudo openpalm start`.
+  test('null session on the SAME recorded host is match, not a spurious swap', () => {
+    // Root session over a root-owned OP_HOME (uid null) or win32 on the original
+    // host — e.g. `sudo openpalm start`. Comparing null against numeric canary
+    // owners would never match, so decide on the host fingerprint: same kind+host
+    // → match (no spurious block).
     const decision = decideOwnershipFromCanaries({
       currentIdentity: { kind: 'linux', host: 'host-a', uid: null, gid: null },
       previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
       canaries: [{ path: '/tmp/canary', uid: 1000, gid: 1000 }],
     });
     expect(decision).toBe('match');
+  });
+
+  test('null session on a DIFFERENT recorded host is a swap (moved drive started as root)', () => {
+    // A drive moved to a new host and started as root (or on a root runner):
+    // uid is null, but the recorded host differs — this must still block so the
+    // stack is not silently started against foreign-owned files.
+    const decision = decideOwnershipFromCanaries({
+      currentIdentity: { kind: 'linux', host: 'host-b', uid: null, gid: null },
+      previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
+      canaries: [{ path: '/tmp/canary', uid: 0, gid: 0 }],
+    });
+    expect(decision).toBe('swap');
+  });
+
+  test('null session with no recorded previous host is drift, never a block', () => {
+    const decision = decideOwnershipFromCanaries({
+      currentIdentity: { kind: 'linux', host: 'host-a', uid: null, gid: null },
+      previousIdentity: null,
+      canaries: [{ path: '/tmp/canary', uid: 0, gid: 0 }],
+    });
+    expect(decision).toBe('drift');
   });
 });
 

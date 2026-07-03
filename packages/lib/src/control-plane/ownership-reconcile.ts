@@ -59,13 +59,21 @@ export function decideOwnershipFromCanaries(input: {
 }): OwnershipDecision {
   const { currentIdentity, previousIdentity, canaries } = input;
 
-  // Root session with a root-owned OP_HOME (uid resolves to null via
+  // Root session on a root-owned OP_HOME (uid resolves to null via
   // resolveSessionIdentity's fallback), or win32: there is no usable session uid
-  // to compare canary owners against. Comparing null against numeric owners
-  // would never match and produce a spurious `swap` block on `sudo openpalm
-  // start`. Degrade to `match` — ownership repair is a no-op on these platforms
-  // anyway (repairRootOwnedBindMounts short-circuits on win32 / null ids).
-  if (currentIdentity.uid === null || currentIdentity.gid === null) return 'match';
+  // to compare canary owners against, so decide on the HOST fingerprint instead.
+  // The same recorded machine (kind + host) — e.g. `sudo openpalm start` on the
+  // original host — is not a swap and must not spuriously block. A DIFFERENT
+  // recorded host still IS a swap and must block, so a drive moved to a new host
+  // and started as root isn't silently run against foreign-owned files. (Repair
+  // is a no-op under a null session — repairRootOwnedBindMounts short-circuits —
+  // so the block, not a chown, is the protection here.)
+  if (currentIdentity.uid === null || currentIdentity.gid === null) {
+    if (!previousIdentity) return 'drift';
+    const sameMachine = currentIdentity.kind === previousIdentity.kind
+      && currentIdentity.host === previousIdentity.host;
+    return sameMachine ? 'match' : 'swap';
+  }
 
   const allMatch = canaries.length > 0 && canaries.every((canary) =>
     canary.uid === currentIdentity.uid && canary.gid === currentIdentity.gid,
