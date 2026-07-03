@@ -478,6 +478,11 @@ function spawnUIServer(
       console.error(`UI server exited with code ${code}`);
     }
     uiProcess = null;
+    // Keep the supervisor's handle in sync: this child died UNSUPERVISED, so a
+    // later restart must NOT stop() a dead handle (pid-reuse hazard + a needless
+    // 1.5s SIGTERM→SIGKILL wait). Matches the pre-refactor `prev = uiProcess`
+    // (null) → skip-kill behavior.
+    uiSupervisor.detachHandle();
   });
 }
 
@@ -486,6 +491,15 @@ function spawnUIServer(
 // supervisor to respawn the UI child so the new @openpalm/lib loads without a
 // full app relaunch (design §6.2). The downloaded build does nothing until the
 // Node child is respawned.
+
+/**
+ * Marker thrown by the restart spawn strategy when the seeded build vanished.
+ * The strategy logs the exact "UI restart aborted: build not found at …"
+ * message itself; this marker just tells onRestartError to skip its generic
+ * "restart failed" log. restart() still returns false and the app stays up.
+ */
+class UiRestartAbortError extends Error {}
+
 // Set true for the duration of a supervisor-driven restart. Read by the UI
 // child's 'exit' handler so an intentional kill/respawn does NOT null out the
 // handle the restart path just reassigned (the coupling predates this module and
@@ -518,7 +532,10 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
       const uiPidFile = join(dataDir, '.ui-server.pid');
       const uiBuildDir = resolveUiBuildDir();
       if (!existsSync(join(uiBuildDir, 'index.js'))) {
-        throw new Error(`UI restart aborted: build not found at ${uiBuildDir}`);
+        // Log the EXACT pre-refactor message on stderr, then throw a marker the
+        // catch path recognizes so it does NOT re-log a generic "restart failed".
+        console.error('UI restart aborted: build not found at', uiBuildDir);
+        throw new UiRestartAbortError();
       }
       spawnUIServer(uiBuildDir, homeDir, dataDir, uiPidFile, getCachedUpdateInfo());
       if (!uiProcess) throw new Error('UI server failed to spawn');
@@ -558,6 +575,9 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
       }
     },
     onRestartError: (err) => {
+      // The build-not-found abort already logged its exact message in spawn();
+      // don't double-log a generic failure for it.
+      if (err instanceof UiRestartAbortError) return;
       console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
     },
   },

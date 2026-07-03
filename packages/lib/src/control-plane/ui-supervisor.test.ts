@@ -285,6 +285,37 @@ describe("UiSupervisor.restart", () => {
     expect(events).toEqual(["stop#99", "spawn#1"]);
   });
 
+  test("detachHandle: an unsupervised child exit clears the handle so the next restart skips stop()", async () => {
+    // Repro of the stale-handle bug: Electron's child dies on its own (no restart
+    // in flight); the exit handler calls detachHandle(). A later restart must NOT
+    // stop() the dead handle — matching the pre-refactor `prev = uiProcess` (null)
+    // → skip-kill behavior (avoids a 1.5s wait + a killProcessTree pid-reuse race).
+    const { sup, events } = makeSupervisor([true, true]);
+    await sup.start();
+    expect(sup.current).toEqual({ id: 1 });
+    // Child #1 crashes unsupervised → the harness detaches it.
+    sup.detachHandle();
+    expect(sup.current).toBeNull();
+    expect(await sup.restart()).toBe(true);
+    // No stop#1 — the dead handle was never killed; restart spawns a fresh child.
+    expect(events).toEqual(["spawn#1", "ready:true", "spawn#2", "ready:true"]);
+    expect(events).not.toContain("stop#1");
+  });
+
+  test("the restart ready-failure line goes to logError (stderr), not log (stdout)", async () => {
+    const out: unknown[][] = [];
+    const err: unknown[][] = [];
+    const { sup } = makeSupervisor([true, false], {
+      log: (...a) => out.push(a),
+      logError: (...a) => err.push(a),
+    });
+    await sup.start();
+    expect(await sup.restart()).toBe(false);
+    // "UI update detected…" is informational (stdout); the failure line is stderr.
+    expect(out).toEqual([["UI update detected — restarting UI server..."]]);
+    expect(err).toEqual([["UI server did not become ready after restart."]]);
+  });
+
   test("re-entrant restart is guarded: a second call while one is in flight no-ops", async () => {
     let releaseReady!: () => void;
     const gate = new Promise<void>((r) => {

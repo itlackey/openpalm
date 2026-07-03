@@ -180,6 +180,7 @@ vi.mock('@openpalm/lib', () => ({
     get current() { return this.handle; }
     get isRestarting() { return this.restarting; }
     adopt(handle: unknown) { this.handle = handle; }
+    detachHandle() { this.handle = null; }
     async start() {
       this.handle = await this.strategy.spawn();
       if (!(await this.cb.waitForReady(this.port))) {
@@ -415,6 +416,44 @@ describe('restart-ui-server reloads the renderer', () => {
 
     expect(ok).toBe(true);
     expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/');
+  });
+
+  it('restart ready-FAILURE keeps the app up, restores the backup, and does NOT reload', async () => {
+    // Locks the Electron divergence: unlike the CLI (which process.exit(1)s on a
+    // failed restart), Electron stays running — it restores the prior data/ui and
+    // leaves the window on the old page (no reload). onRestartFailure is omitted.
+    vi.mocked(lib.waitForReady).mockResolvedValueOnce(false); // respawn never becomes ready
+    vi.mocked(lib.restoreUiBackup).mockClear();
+    mockBrowserWindow.loadURL.mockClear();
+    vi.mocked(app.quit).mockClear();
+
+    const handler = ipcMainHandleHandlers.get('restart-ui-server');
+    const ok = await handler!();
+
+    expect(ok).toBe(false);
+    expect(lib.restoreUiBackup).toHaveBeenCalled();            // §4.4 backup restored
+    expect(mockBrowserWindow.loadURL).not.toHaveBeenCalled();  // renderer NOT reloaded on failure
+    expect(app.quit).not.toHaveBeenCalled();                   // app STAYS UP (no exit/quit)
+  });
+
+  it('re-entrant restart is guarded (uiServerRestarting): the second trigger no-ops with a single respawn', async () => {
+    // The IPC/SIGUSR2 wrapper sets uiServerRestarting for the whole restart so a
+    // concurrent trigger is dropped — preserving the pre-refactor guard and the
+    // exit-handler coupling. Prove only ONE respawn happens across two triggers.
+    vi.mocked(lib.waitForReady).mockResolvedValue(true);
+    mockBrowserWindow.isDestroyed.mockReturnValue(false);
+    const { spawn } = await import('node:child_process');
+    vi.mocked(spawn).mockClear();
+
+    const handler = ipcMainHandleHandlers.get('restart-ui-server')!;
+    const inFlight = handler();       // sets uiServerRestarting = true before its first await
+    const second = await handler();   // guarded out immediately
+    const first = await inFlight;
+
+    expect(second).toBe(false);
+    expect(first).toBe(true);
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1); // only the first trigger respawned
+    vi.mocked(lib.waitForReady).mockReset();
   });
 });
 

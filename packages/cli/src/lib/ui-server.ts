@@ -151,6 +151,98 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   await import(indexPath);
 }
 
+/** Minimal Bun.Subprocess surface the CLI supervisor adapter drives (injectable for tests). */
+export type CliChildProc = Pick<Bun.Subprocess, 'kill' | 'exited' | 'killed'>;
+
+/** Injectable dependencies for {@link createCliUiSupervisor} (real process/fs/exit by default). */
+export interface CliUiSupervisorDeps {
+  /** UI-server port the readiness poll targets. */
+  port: number;
+  /** Spawn the UI child (self-updates data/ui, returns handle + backup path). */
+  spawnChild: () => Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }>;
+  /** Readiness poll (defaults to the shared lib waitForReady). */
+  waitForReadyFn?: (port: number) => Promise<boolean>;
+  /** Restore the previous data/ui after a post-restart ready-failure. */
+  restoreBackup: (backupDir: string | undefined) => void;
+  /** Process exit (defaults to process.exit) — the exit-based failure policy. */
+  exit?: (code: number) => void;
+  /** Structured restart-error logger (defaults to the cli:ui logger). */
+  logRestartError?: (err: unknown) => void;
+  /** Force-kill grace window, ms (defaults to STOP_TIMEOUT_MS). */
+  stopTimeoutMs?: number;
+  /** Sleep for the stop race (defaults to a real setTimeout-backed delay). */
+  sleep?: (ms: number) => Promise<void>;
+  /** Stderr sink for the "did not become ready in time." line (defaults to console.error). */
+  logError?: (...args: unknown[]) => void;
+}
+
+/**
+ * Build the CLI's thin adapter over the shared {@link UiSupervisor}. The CLI
+ * supplies the Bun.Subprocess spawn/kill strategy and its exit-based failure
+ * policy (process.exit(1) on BOTH start- and restart-ready-failure); it has no
+ * renderer, so onReloadRenderer is omitted. Exported (with injectable deps) so
+ * the stop sequence and exit policy are testable without spawning real processes.
+ *
+ * @returns the supervisor plus the shared `stop` (reused by the signal-shutdown handler).
+ */
+export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
+  supervisor: UiSupervisor<Bun.Subprocess>;
+  stop: (proc: CliChildProc) => Promise<void>;
+} {
+  const { port, spawnChild, restoreBackup } = deps;
+  const waitForReadyFn = deps.waitForReadyFn ?? ((p: number) => waitForReady(p));
+  const exit = deps.exit ?? ((code: number) => process.exit(code));
+  const logRestartError = deps.logRestartError
+    ?? ((err: unknown) => logger.error('Error restarting UI server', { error: String(err) }));
+  const stopTimeoutMs = deps.stopTimeoutMs ?? STOP_TIMEOUT_MS;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
+  const logError = deps.logError ?? console.error;
+
+  // Tracks the LAST spawn's backup path so a post-restart ready-failure restores
+  // the build that just failed (spawnUiChild re-runs the update check on each
+  // respawn, so this is reassigned per spawn — matching the pre-refactor flow).
+  let lastUiBackupDir: string | undefined;
+
+  // Graceful-then-force stop of a Bun.Subprocess UI child: SIGTERM, race its
+  // exit against the grace window, then SIGKILL only if it hasn't died. Shared by
+  // the supervisor's restart path and the signal-shutdown handler.
+  const stop = async (proc: CliChildProc): Promise<void> => {
+    proc.kill('SIGTERM');
+    await Promise.race([proc.exited, sleep(stopTimeoutMs)]);
+    if (!proc.killed) proc.kill('SIGKILL');
+  };
+
+  const supervisor = new UiSupervisor<Bun.Subprocess>({
+    port,
+    strategy: {
+      spawn: async () => {
+        const spawnResult = await spawnChild();
+        lastUiBackupDir = spawnResult.uiBackupDir;
+        return spawnResult.proc;
+      },
+      stop,
+    },
+    callbacks: {
+      waitForReady: waitForReadyFn,
+      // Ready-timeout on first start → kill the child and exit non-zero (the lib
+      // never exits; this policy hook does).
+      onStartFailure: (proc) => {
+        proc.kill('SIGTERM');
+        logError('UI server did not become ready in time.');
+        exit(1);
+      },
+      // Post-swap failure → restore the prior data/ui (§4.4 / §6) with a local
+      // rename — no registry needed (shared lib routine)…
+      restoreBackup: () => { restoreBackup(lastUiBackupDir); },
+      // …then exit non-zero, as the pre-refactor CLI supervisor did.
+      onRestartFailure: () => { exit(1); },
+      onRestartError: logRestartError,
+    },
+  });
+
+  return { supervisor, stop };
+}
+
 /**
  * Start the UI host server. Blocks until shutdown (SIGINT/SIGTERM).
  * Exits the process on error.
@@ -167,52 +259,10 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const state = ensureValidState();
   const uiUrl = `http://localhost:${port}`;
 
-  // Tracks the LAST spawn's backup path so a post-restart ready-failure restores
-  // the build that just failed (spawnUiChild re-runs the update check on each
-  // respawn, so this is reassigned per spawn — matching the pre-refactor flow).
-  let lastUiBackupDir: string | undefined;
-
-  // Graceful-then-force stop of a Bun.Subprocess UI child: SIGTERM, race its
-  // exit against STOP_TIMEOUT_MS, then SIGKILL only if it hasn't died. Shared by
-  // the supervisor's restart path and the signal-shutdown handler below.
-  const stopUiProc = async (proc: Bun.Subprocess): Promise<void> => {
-    proc.kill('SIGTERM');
-    await Promise.race([
-      proc.exited,
-      new Promise(r => setTimeout(r, STOP_TIMEOUT_MS)),
-    ]);
-    if (!proc.killed) proc.kill('SIGKILL');
-  };
-
-  // Thin CLI adapter over the shared UiSupervisor state machine. The CLI supplies
-  // the Bun.Subprocess spawn/kill strategy and its exit-based failure policy
-  // (process.exit(1)); it has no renderer, so onReloadRenderer is omitted.
-  const supervisor = new UiSupervisor<Bun.Subprocess>({
+  const { supervisor, stop: stopUiProc } = createCliUiSupervisor({
     port,
-    strategy: {
-      spawn: async () => {
-        const spawnResult = await spawnUiChild(port, homeDir, state);
-        lastUiBackupDir = spawnResult.uiBackupDir;
-        return spawnResult.proc;
-      },
-      stop: stopUiProc,
-    },
-    callbacks: {
-      waitForReady: (p) => waitForReady(p),
-      // Ready-timeout on first start → kill the child and exit non-zero (the lib
-      // never exits; this policy hook does).
-      onStartFailure: (proc) => {
-        proc.kill('SIGTERM');
-        console.error('UI server did not become ready in time.');
-        process.exit(1);
-      },
-      // Post-swap failure → restore the prior data/ui (§4.4 / §6) with a local
-      // rename — no registry needed (shared lib routine)…
-      restoreBackup: () => { restoreUiBackup(state.dataDir, lastUiBackupDir); },
-      // …then exit non-zero, as the pre-refactor CLI supervisor did.
-      onRestartFailure: () => process.exit(1),
-      onRestartError: (err) => logger.error('Error restarting UI server', { error: String(err) }),
-    },
+    spawnChild: () => spawnUiChild(port, homeDir, state),
+    restoreBackup: (backupDir) => restoreUiBackup(state.dataDir, backupDir),
   });
 
   if (!await supervisor.start()) return; // onStartFailure already exited

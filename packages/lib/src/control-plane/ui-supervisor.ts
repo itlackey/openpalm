@@ -206,8 +206,14 @@ export interface UiSupervisorCallbacks<Handle> {
   onReloadRenderer?(): void;
   /** A restart threw. CLI logs via its structured logger; Electron via console.error. */
   onRestartError?(err: unknown): void;
-  /** Log sink for the shared state-machine lines (defaults to console.log). */
+  /** Log sink for the shared informational state-machine lines (defaults to console.log — stdout). */
   log?(...args: unknown[]): void;
+  /**
+   * Log sink for the shared FAILURE lines (defaults to console.error — stderr).
+   * Kept distinct from {@link log} so the "did not become ready after restart"
+   * message stays on stderr, exactly as both pre-refactor harnesses emitted it.
+   */
+  logError?(...args: unknown[]): void;
 }
 
 export interface UiSupervisorOptions<Handle> {
@@ -258,8 +264,22 @@ export class UiSupervisor<Handle> {
     this.handle = handle;
   }
 
+  /**
+   * Forget the current child WITHOUT stopping it. The Electron adapter calls this
+   * from the UI child's `exit` handler when the child dies UNSUPERVISED (not
+   * during a restart), so a later {@link restart} does not `stop()` a dead handle
+   * — matching the pre-refactor `prev = uiProcess` (null) → skip-kill behavior.
+   */
+  detachHandle(): void {
+    this.handle = null;
+  }
+
   private log(...args: unknown[]): void {
     (this.cb.log ?? console.log)(...args);
+  }
+
+  private logError(...args: unknown[]): void {
+    (this.cb.logError ?? console.error)(...args);
   }
 
   /**
@@ -296,7 +316,7 @@ export class UiSupervisor<Handle> {
       if (this.handle) await this.strategy.stop(this.handle);
       this.handle = await this.strategy.spawn();
       if (!(await this.cb.waitForReady(this.port))) {
-        this.log('UI server did not become ready after restart.');
+        this.logError('UI server did not become ready after restart.');
         this.cb.restoreBackup?.();
         await this.cb.onRestartFailure?.();
         return false;
