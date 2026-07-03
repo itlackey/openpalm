@@ -511,8 +511,11 @@
           detectedGpuVendor = data.gpu.vendor ?? '';
           detectedGpuName = data.gpu.name ?? '';
         }
-      } catch {
-        return; // non-critical — user can configure manually
+      } catch (e) {
+        // non-critical — user can configure manually, but warn so a broken
+        // recommend endpoint (which would suppress auto host-import) is visible.
+        console.warn('fetchAndApplyRecommendation failed', e);
+        return;
       }
     }
     recommendationApplied = true;
@@ -1084,6 +1087,10 @@
 
   let hostImportTriggered = $state(false);
   let hostImporting = $state(false);
+  // Surfaced on the Providers step when a host import fails so the user isn't
+  // left staring at a silently-reset button (bug: the !res.ok path used to
+  // clear hostImporting and return without ever setting a message).
+  let hostImportError = $state('');
 
   async function loadHostStatus(): Promise<void> {
     try {
@@ -1109,8 +1116,10 @@
           void handleHostImport();
         }
       }
-    } catch {
-      // non-critical
+    } catch (e) {
+      // non-critical — the wizard still works without host status, but warn so
+      // a broken host-status endpoint (which suppresses auto-import) is visible.
+      console.warn('loadHostStatus failed', e);
     }
   }
 
@@ -1133,12 +1142,14 @@
 
   async function handleHostImport(): Promise<void> {
     hostImporting = true;
+    hostImportError = '';
     try {
       // Use setup-namespace endpoint — no admin auth needed during setup
       const res = await fetch('/api/setup/import-host', { method: 'POST' });
       const data = (await res.json().catch(() => null)) as {
         ok?: boolean;
         error?: string;
+        message?: string;
         importedProviders?: string[];
         pushedProviders?: string[];
       } | null;
@@ -1146,6 +1157,8 @@
       if (!res.ok || !data?.ok) {
         // Hard failure (could not copy host config). Keep the user on the
         // Providers step with a clear message instead of silently doing nothing.
+        hostImportError =
+          data?.error ?? data?.message ?? `Couldn't import providers from this computer (HTTP ${res.status}). You can sign in or add a provider manually instead.`;
         hostImporting = false;
         return;
       }
@@ -1161,7 +1174,13 @@
       // Reload providers when OpenCode is reachable so the full catalog +
       // env-detected credentials are reflected. Non-fatal if it can't run.
       if (opencodeAvailable) {
-        try { await loadOpenCodeProviders(); } catch { /* keep import-marked verified state */ }
+        try {
+          await loadOpenCodeProviders();
+        } catch (e) {
+          // Non-fatal: the import already marked providers verified. Warn so the
+          // degraded state (full catalog not reloaded) isn't fully silent.
+          console.warn('handleHostImport: reloading OpenCode providers failed', e);
+        }
       }
 
       // First pass: apply imported model preferences from whatever models are
@@ -1189,7 +1208,12 @@
       // After host import, ensure we stay on Screen 1 (index 1).
       // goToStep(1) is a no-op if already there.
       if (!isRerun) goToStep(1);
-    } catch {
+    } catch (e) {
+      // Network / unexpected failure — surface it instead of swallowing so the
+      // user knows the import didn't happen and can pick another path.
+      hostImportError =
+        'Network error importing providers from this computer: '
+        + (e instanceof Error ? e.message : 'unable to reach the server.');
       hostImporting = false;
     }
   }
@@ -1428,6 +1452,13 @@
           {#if recommendationAlert && currentStep === 1}
             <div class="feedback feedback--warning" role="alert" data-testid="recommendation-alert">
               <span>{recommendationAlert}</span>
+            </div>
+          {/if}
+
+          <!-- Host-import failure (step 1 only) -->
+          {#if hostImportError && currentStep === 1}
+            <div class="feedback feedback--error" role="alert" data-testid="host-import-error">
+              <span>{hostImportError}</span>
             </div>
           {/if}
 
