@@ -42,9 +42,9 @@ const FORBIDDEN: string[] = [
 function isForbidden(p: string): boolean {
   try {
     const real = realpathSync(p);
-    return FORBIDDEN.some((f) => real === f || real.startsWith(f + "/"));
+    return FORBIDDEN.some((f) => real === f || real.startsWith(`${f}/`));
   } catch {
-    return FORBIDDEN.some((f) => p === f || p.startsWith(f + "/"));
+    return FORBIDDEN.some((f) => p === f || p.startsWith(`${f}/`));
   }
 }
 

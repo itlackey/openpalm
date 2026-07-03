@@ -5,7 +5,7 @@ import { join } from "node:path";
 import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
 import { ConversationQueue } from '@openpalm/portal-sdk';
-import type { PermissionConfig, PermissionResult, UserInfo } from "./types.ts";
+import type { PermissionConfig, UserInfo } from "./types.ts";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1418,7 +1418,7 @@ describe("runConversation", () => {
     const client = createMockClient();
     // First postMessage (thinking) fails, second (response) succeeds
     let callCount = 0;
-    client.chat.postMessage = mock(async (args: Record<string, unknown>) => {
+    client.chat.postMessage = mock(async (_args: Record<string, unknown>) => {
       callCount++;
       if (callCount === 1) throw new Error("no permission");
       return { ts: "1234567890.123456" };

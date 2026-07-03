@@ -71,17 +71,17 @@ describe("extractToolUpdate — colored by state.status (§4.1)", () => {
       SID,
     );
     expect(t).not.toBeNull();
-    expect(t!.callID).toBe("c1");
-    expect(t!.tool).toBe("bash");
-    expect(t!.status).toBe("running");
-    expect(t!.title).toBe("echo hi");
+    expect(t?.callID).toBe("c1");
+    expect(t?.tool).toBe("bash");
+    expect(t?.status).toBe("running");
+    expect(t?.title).toBe("echo hi");
   });
 
   test("session.next.tool.called yields a running update", () => {
     const t = extractToolUpdate(ev("session.next.tool.called", { sessionID: SID, callID: "c2", tool: "edit" }), SID);
     expect(t).not.toBeNull();
-    expect(t!.callID).toBe("c2");
-    expect(t!.status).toBe("running");
+    expect(t?.callID).toBe("c2");
+    expect(t?.status).toBe("running");
   });
 
   test("a tool update for a foreign session is ignored", () => {
@@ -104,9 +104,9 @@ describe("extractPermissionAsk — surfaces requestID for our session (§4.1)", 
       SID,
     );
     expect(ask).not.toBeNull();
-    expect(ask!.requestID).toBe("per_1");
-    expect(ask!.permission).toBe("bash");
-    expect(ask!.patterns).toEqual(["echo *"]);
+    expect(ask?.requestID).toBe("per_1");
+    expect(ask?.permission).toBe("bash");
+    expect(ask?.patterns).toEqual(["echo *"]);
   });
 
   test("permission.asked for a foreign session is ignored", () => {

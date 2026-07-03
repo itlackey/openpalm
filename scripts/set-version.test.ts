@@ -10,10 +10,15 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 function write(pkg: unknown): string {
   const f = join(dir, "package.json");
-  writeFileSync(f, JSON.stringify(pkg, null, 2) + "\n");
+  writeFileSync(f, `${JSON.stringify(pkg, null, 2)}\n`);
   return f;
 }
-function read(f: string): any {
+type Pkg = {
+  version: string;
+  dependencies: Record<string, string>;
+  peerDependencies: Record<string, string>;
+};
+function read(f: string): Pkg {
   return JSON.parse(readFileSync(f, "utf-8"));
 }
 

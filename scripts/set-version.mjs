@@ -38,7 +38,7 @@ export function setVersion(file, version) {
       pkg[field]['@openpalm/skeleton'] = version;
     }
   }
-  writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+  writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
   return version;
 }
 

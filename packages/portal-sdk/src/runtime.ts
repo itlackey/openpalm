@@ -113,7 +113,7 @@ export function splitMessage(content: string, maxLength: number): string[] {
       chunk += '\n```';
       const match = chunk.match(/```(\w+)?/);
       const lang = match?.[1] || '';
-      remaining = '```' + lang + '\n' + remaining;
+      remaining = `\`\`\`${lang}\n${remaining}`;
     }
 
     chunks.push(chunk.trim());
