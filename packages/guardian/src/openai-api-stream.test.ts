@@ -196,3 +196,78 @@ describe('streamTurn — non-interactive permission policy', () => {
     expect(JSON.parse(reply!.body).reply).toBe('once');
   });
 });
+
+// --- CHARACTERIZATION: streaming path security divergence ---------------------
+// These pin the behaviors the streaming path MUST keep and that the
+// non-streaming path (openai-api.test.ts) MUST NOT have.
+
+describe('streamTurn — CHARACTERIZATION: rejects interactive questions', () => {
+  test('question.asked is rejected via a signed guardian reject call', async () => {
+    const calls: StubOpts['calls'] = [];
+    stubGuardian({
+      sessionId: SESSION_ID,
+      calls,
+      events: [
+        { type: 'question.asked', properties: { id: 'q_1', sessionID: SESSION_ID, questions: [{ question: 'proceed?', header: 'h', options: [{ label: 'yes', description: '' }] }] } },
+        { type: 'session.status', properties: { sessionID: SESSION_ID, status: 'idle' } },
+      ],
+    });
+    const client = createGatewayClient('http://guardian:8080/oc', 'api', 's');
+    const resp = streamTurn({ client, policy: loadPermissionPolicy({}), userId: 'api:u1', sessionKey: 'api:u1', text: 'ask me', framer: openAiChatFramer('chatcmpl-test', 'gpt-4') });
+    await readAll(resp);
+    const reject = calls.find((call) => call.method === 'POST' && call.path === '/question/q_1/reject');
+    expect(reject).toBeDefined();
+  });
+});
+
+describe('streamTurn — CHARACTERIZATION: breaks on session.error', () => {
+  test('a session.error terminates the turn; deltas after it are not emitted', async () => {
+    const calls: StubOpts['calls'] = [];
+    stubGuardian({
+      sessionId: SESSION_ID,
+      calls,
+      events: [
+        { type: 'message.part.delta', properties: { sessionID: SESSION_ID, delta: 'BEFORE' } },
+        { type: 'session.error', properties: { sessionID: SESSION_ID } },
+        { type: 'message.part.delta', properties: { sessionID: SESSION_ID, delta: 'AFTER' } },
+        { type: 'session.status', properties: { sessionID: SESSION_ID, status: 'idle' } },
+      ],
+    });
+    const client = createGatewayClient('http://guardian:8080/oc', 'api', 's');
+    const resp = streamTurn({ client, policy: loadPermissionPolicy({}), userId: 'api:u1', sessionKey: 'api:u1', text: 'go', framer: openAiChatFramer('chatcmpl-test', 'gpt-4') });
+    const out = await readAll(resp);
+    expect(out).toContain('"content":"BEFORE"');
+    expect(out).not.toContain('AFTER');
+    expect(out.trimEnd().endsWith('data: [DONE]')).toBe(true);
+  });
+});
+
+describe('streamTurn — CHARACTERIZATION: enforces the render timeout', () => {
+  test('an already-expired deadline breaks before any delta is emitted', async () => {
+    const realNow = Date.now;
+    let clock = 0;
+    // Every Date.now() reading jumps far past the previous one. The deadline is
+    // computed before the loop, so the loop's first `Date.now() > deadline`
+    // guard is always a later (larger) reading and fires immediately —
+    // regardless of how many intervening Date.now() calls occur.
+    (Date as unknown as { now: () => number }).now = () => (clock += 10 ** 15);
+    try {
+      const calls: StubOpts['calls'] = [];
+      stubGuardian({
+        sessionId: SESSION_ID,
+        calls,
+        events: [
+          { type: 'message.part.delta', properties: { sessionID: SESSION_ID, delta: 'NEVER' } },
+          { type: 'session.status', properties: { sessionID: SESSION_ID, status: 'idle' } },
+        ],
+      });
+      const client = createGatewayClient('http://guardian:8080/oc', 'api', 's');
+      const resp = streamTurn({ client, policy: loadPermissionPolicy({}), userId: 'api:u1', sessionKey: 'api:u1', text: 'go', framer: openAiChatFramer('chatcmpl-test', 'gpt-4') });
+      const out = await readAll(resp);
+      expect(out).not.toContain('NEVER');
+      expect(out.trimEnd().endsWith('data: [DONE]')).toBe(true);
+    } finally {
+      (Date as unknown as { now: () => number }).now = realNow;
+    }
+  });
+});
