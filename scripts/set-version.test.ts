@@ -19,7 +19,11 @@ type Pkg = {
   peerDependencies: Record<string, string>;
 };
 function read(f: string): Pkg {
-  return JSON.parse(readFileSync(f, "utf-8"));
+  // Normalize missing maps to {} so the return value actually matches Pkg at
+  // runtime (a package.json may omit dependencies/peerDependencies); keeps the
+  // type sound for tests that read those keys.
+  const raw = JSON.parse(readFileSync(f, "utf-8")) as Pkg;
+  return { dependencies: {}, peerDependencies: {}, ...raw };
 }
 
 describe("set-version", () => {
