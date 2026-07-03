@@ -226,3 +226,21 @@ describe('createLogger', () => {
     expect(logged[0]).not.toContain('12345');
   });
 });
+
+// Regression guard for the removed electron `globalThis.Bun = { env: process.env }`
+// shim (lib abstraction leak). The shared logger must run under plain Node —
+// where there is no `Bun` global — without any compatibility shim. The `Bun`
+// global is a readonly, non-configurable property under the Bun runtime, so we
+// cannot delete it at runtime to simulate Node; instead we assert at the source
+// level that the logger reads NO Bun global. If a future change reintroduces a
+// `Bun.env`/`globalThis.Bun` read, the electron main process would silently
+// break — keep the logger env-agnostic (or read from `process.env`, which
+// exists in both runtimes).
+describe('logger is Bun-global-free (electron needs no shim)', () => {
+  test('logger.ts source never references a Bun global', async () => {
+    const url = new URL('./logger.ts', import.meta.url);
+    const source = await Bun.file(url).text();
+    expect(source).not.toMatch(/\bBun\s*\./);
+    expect(source).not.toMatch(/globalThis\.Bun/);
+  });
+});

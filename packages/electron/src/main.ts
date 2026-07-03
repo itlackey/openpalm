@@ -4,11 +4,6 @@ import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWrite
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 
-// Compatibility shim — @openpalm/lib logger reads globalThis.Bun.env in some paths
-if (!(globalThis as Record<string, unknown>).Bun) {
-  (globalThis as Record<string, unknown>).Bun = { env: process.env };
-}
-
 import {
   resolveOpenPalmHome,
   resolveDataDir,
