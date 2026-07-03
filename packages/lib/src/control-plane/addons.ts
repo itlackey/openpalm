@@ -19,7 +19,7 @@ import { parseEnabledAddons, removeEnvKey } from './env.js';
 import type { ControlPlaneState } from './types.js';
 import { resolveStashDir, composeFilePath, customComposeFilePath, stateEnvFile, legacyStackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
-import { BUILTIN_ADDON_IDS } from './addon-ids.js';
+import { BUILTIN_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
@@ -617,8 +617,8 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   if (!mutation.ok) return mutation;
 
   if (enabled) {
-    if (['api', 'chat', 'discord', 'slack'].includes(name)) {
-      for (const portal of ['api', 'chat', 'discord', 'slack']) {
+    if (PORTAL_SECRET_ADDON_IDS.includes(name)) {
+      for (const portal of PORTAL_SECRET_ADDON_IDS) {
         ensurePortalSecret(homeDir, portal);
       }
     }

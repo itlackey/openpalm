@@ -14,6 +14,7 @@ import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secre
 import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
+import { PORTAL_SECRET_ADDON_IDS } from "./addon-ids.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
@@ -428,8 +429,8 @@ export function writeRuntimeFiles(
   }
 
   for (const addon of listEnabledAddonIds(state.homeDir)) {
-    if (['api', 'chat', 'discord', 'slack'].includes(addon)) {
-      for (const portal of ['api', 'chat', 'discord', 'slack']) {
+    if (PORTAL_SECRET_ADDON_IDS.includes(addon)) {
+      for (const portal of PORTAL_SECRET_ADDON_IDS) {
         ensurePortalSecret(state.homeDir, portal);
       }
       break;
