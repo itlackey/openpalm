@@ -195,7 +195,7 @@ export function importHostOpenCode(
 
       const mergedProviders: Record<string, unknown> = { ...existingProviders };
       for (const [id, entry] of Object.entries(hostProviders)) {
-        if (Object.prototype.hasOwnProperty.call(existingProviders, id) && !overwriteConflicts) {
+        if (Object.hasOwn(existingProviders, id) && !overwriteConflicts) {
           conflicts.push(id);
         } else {
           mergedProviders[id] = entry;
@@ -234,7 +234,7 @@ export function importHostOpenCode(
       const merged: Record<string, unknown> = { ...existingAuth };
       for (const [id, value] of Object.entries(hostAuth)) {
         if (id === 'anthropic') continue;
-        if (!Object.prototype.hasOwnProperty.call(existingAuth, id)) {
+        if (!Object.hasOwn(existingAuth, id)) {
           merged[id] = value;
           importedCredentials++;
         }

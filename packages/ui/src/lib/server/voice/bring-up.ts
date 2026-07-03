@@ -20,7 +20,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { join } from 'node:path';
-import { getState } from '$lib/server/state.js';
+import type { getState } from '$lib/server/state.js';
 import {
   annotateAddonProfileAvailability,
   addonProfileId,

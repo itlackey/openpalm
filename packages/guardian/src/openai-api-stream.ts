@@ -1,5 +1,5 @@
 import { createLogger } from './logger.ts';
-import { OcClient } from './openai-api-oc-client.ts';
+import type { OcClient } from './openai-api-oc-client.ts';
 import {
   extractPermissionAsk,
   extractQuestionAsk,

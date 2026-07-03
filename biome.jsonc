@@ -8,19 +8,25 @@
   "files": {
     "includes": [
       "**",
-      "!**/node_modules/**",
-      "!**/.svelte-kit/**",
-      "!**/build/**",
-      "!**/dist/**",
-      "!**/.dev/**",
-      "!**/.openpalm/**",
-      "!**/coverage/**",
-      "!**/test-results/**",
+      "!**/node_modules",
+      "!**/.svelte-kit",
+      "!**/build",
+      "!**/dist",
+      "!**/.dev",
+      "!**/.openpalm",
+      "!**/coverage",
+      "!**/test-results",
       "!**/bun.lock",
       "!**/bun.lockb",
       "!**/*.min.js",
       // SVGs are checked-in diagram assets, not source; skip them (avoids a11y/noSvgWithoutTitle on docs).
-      "!**/*.svg"
+      "!**/*.svg",
+      // Biome's Svelte support is incomplete: it parses the <script> block but not the
+      // template, so template-referenced vars/imports are mis-flagged as unused
+      // (noUnusedVariables/noUnusedImports) — ~1000 false positives. Svelte files are
+      // linted properly by svelte-check + eslint-plugin-svelte in packages/ui; Biome
+      // owns the .ts/.js/.json surface only.
+      "!**/*.svelte"
     ]
   },
   "json": {
@@ -41,7 +47,19 @@
         // warnings (documented cleanup follow-up); new code should still avoid them.
         "noImplicitAnyLet": "warn",
         "noAssignInExpressions": "warn",
-        "noDuplicateProperties": "warn"
+        "noDuplicateProperties": "warn",
+        // Off: every hit is a test/fixture asserting on a LITERAL `${VAR}` string — the
+        // Docker-Compose / env-var substitution syntax the whole stack is built on
+        // (skeleton-guardrail, *-rootless-entrypoint, AkmTab roundtrip, …). These are
+        // intentional literal strings, not mis-typed template literals.
+        "noTemplateCurlyInString": "off"
+      },
+      "style": {
+        // Off: non-null assertions (`x!`) are idiomatic, deliberate TypeScript used
+        // throughout this codebase (~234 sites) where the author has already narrowed
+        // the value. Mechanically rewriting each to a runtime guard would add noise and
+        // risk with no correctness benefit; TS's strict null checks remain the real gate.
+        "noNonNullAssertion": "off"
       }
     }
   },

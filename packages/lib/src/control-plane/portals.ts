@@ -136,7 +136,6 @@ export function isAllowedService(value: string, configDir?: string): boolean {
           }
         }
       } catch {
-        continue;
       }
     }
   }

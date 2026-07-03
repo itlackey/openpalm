@@ -15,7 +15,7 @@
  * - No shell interpolation: every external command uses execFile with
  *   an argument array (repo rule).
  */
-import { type Plugin } from "@opencode-ai/plugin";
+import type { Plugin } from "@opencode-ai/plugin";
 
 import composeUp from "./tools/compose-up.js";
 import composeDown from "./tools/compose-down.js";

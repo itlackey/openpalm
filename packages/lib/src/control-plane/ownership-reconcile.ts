@@ -46,7 +46,6 @@ export function readCanaryOwners(paths: string[]): Array<{ path: string; uid: nu
       const stat = statSync(path);
       owners.push({ path, uid: stat.uid, gid: stat.gid });
     } catch {
-      continue;
     }
   }
   return owners;

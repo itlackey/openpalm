@@ -134,7 +134,6 @@ function parseComposePsOutput(stdout: string): ComposeContainerState[] {
         health: String(obj.Health ?? ''),
       });
     } catch {
-      continue;
     }
   }
   return results;

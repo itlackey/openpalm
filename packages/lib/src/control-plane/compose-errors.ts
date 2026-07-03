@@ -111,7 +111,6 @@ export function parseComposeStderr(stderr: string): ComposeServiceFailure[] {
         service: notFound[1],
         reason: `no such service: ${notFound[1]}`,
       });
-      continue;
     }
   }
 

@@ -10,7 +10,7 @@
     <div class="spinner"></div>
     <div class="hint" id="hint">Starting…</div>
     <script>
-      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Still starting (first launch may take a minute)…';},15000);
-      setTimeout(function(){var h=document.getElementById('hint');if(h)h.textContent='Almost there…';},40000);
+      setTimeout(()=> {var h=document.getElementById('hint');if(h)h.textContent='Still starting (first launch may take a minute)…';},15000);
+      setTimeout(()=> {var h=document.getElementById('hint');if(h)h.textContent='Almost there…';},40000);
     </script>
   </body></html>

@@ -105,7 +105,6 @@ export function groupReleasesByUnit(raw: RawGitHubRelease[]): GroupedReleases {
         seenPlatform.add(tag);
         releases.push({ tag, ...base });
       }
-      continue;
     }
 
     // Non-matching tag — skip.
@@ -155,7 +154,6 @@ export function selectInstallableReleases(raw: RawGitHubRelease[]): ReleaseEntry
         seen.add(tag);
         releases.push({ tag, prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild });
       }
-      continue;
     }
     // Per-unit tags (assistant-*, guardian-*, portals-*) and non-matching tags — skip.
   }

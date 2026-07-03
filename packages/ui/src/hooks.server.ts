@@ -132,7 +132,6 @@ function parseComposePsServices(stdout: string): ComposeServiceStatus[] {
         health: String(parsed.Health ?? ''),
       });
     } catch {
-      continue;
     }
   }
   return services;

@@ -19,7 +19,7 @@
  * gaps without churning opens). If the upstream errors/closes, all subscribers
  * are ended so their turns finalize, and the next subscribe reopens.
  */
-import { OcClient } from '@openpalm/portal-sdk';
+import type { OcClient } from '@openpalm/portal-sdk';
 
 /** Grace period to keep the upstream open after the last turn unsubscribes, so
  * back-to-back turns in a thread don't churn open/close (and re-pay the 429

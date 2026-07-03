@@ -102,7 +102,7 @@ export const PATCH: RequestHandler = async (event) => {
   if (kind === 'register-local') {
     // Register a detected local provider
     try {
-      if (!Object.prototype.hasOwnProperty.call(LOCAL_PROVIDER_LABELS, providerId)) {
+      if (!Object.hasOwn(LOCAL_PROVIDER_LABELS, providerId)) {
         return errorResponse(400, 'bad_request', 'provider must be one of: ollama, lmstudio, model-runner', {}, requestId);
       }
       const detected = await detectLocalProviders();
