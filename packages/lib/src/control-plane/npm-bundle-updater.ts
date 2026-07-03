@@ -16,6 +16,7 @@
  */
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { errMessage } from './errors.js';
+import { retry } from './retry.js';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
@@ -40,17 +41,14 @@ export interface NpmBundleManifest {
  * returned as-is (the caller decides). Throws only after exhausting retries.
  */
 export async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-      if (res.ok || res.status < 500) return res;
-      if (i < retries - 1) await new Promise(r => setTimeout(r, 200 * 2 ** i));
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, 200 * 2 ** i));
-    }
-  }
-  throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
+  // Exponential backoff between attempts (200ms, 400ms, …), no wait before the first.
+  const delays = Array.from({ length: retries }, (_, i) => (i === 0 ? 0 : 200 * 2 ** (i - 1)));
+  return retry(async () => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+    // A 4xx (or any <500) is returned as-is; a 5xx is a retryable failure.
+    if (res.ok || res.status < 500) return res;
+    throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
+  }, { delays });
 }
 
 /**
