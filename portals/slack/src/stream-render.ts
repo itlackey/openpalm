@@ -33,18 +33,14 @@
  */
 
 import {
-  OcClient,
-  asRaw,
+  ThrottledEditBuffer,
   createLogger,
-  extractPermissionAsk,
-  extractQuestionAsk,
-  extractTextDelta,
-  extractToolUpdate,
-  isSessionError,
-  isTurnEnd,
-  partSnapshotType,
+  renderTurn,
   splitMessage,
+  type OcClient,
   type PermissionAsk,
+  type QuestionAsk,
+  type RenderSink,
   type ToolUpdate,
 } from '@openpalm/portal-sdk';
 
@@ -321,57 +317,19 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
   });
 
   const renderer = new TurnRenderer(slack, channel, threadTs, answerTs, sessionId);
-  const toolTs = new Map<string, string>(); // callID → message ts
-  const reasoningParts = new Set<string>(); // partIDs typed "reasoning" → never rendered
+  const sink = new SlackRenderSink(renderer, slack, registry, client, channel, threadTs, userId, requestingUserId);
 
-  const deadline = Date.now() + TURN_RENDER_TIMEOUT_MS;
   try {
-    for await (const ev of eventsIter) {
-      if (Date.now() > deadline) {
-        log.warn("turn_render_timeout", { sessionId });
-        break;
-      }
-      const e = asRaw(ev);
-      const snap = partSnapshotType(e);
-      if (snap && snap.type === "reasoning") reasoningParts.add(snap.partID);
-
-      const delta = extractTextDelta(e, sessionId, reasoningParts);
-      if (delta) {
-        await renderer.appendText(delta);
-        continue;
-      }
-
-      const tool = extractToolUpdate(e, sessionId);
-      if (tool && tool.callID) {
-        await renderToolMessage(slack, channel, threadTs, toolTs, tool);
-        continue;
-      }
-
-      const ask = extractPermissionAsk(e, sessionId);
-      if (ask) {
-        await renderPermissionPrompt(slack, registry, channel, threadTs, userId, requestingUserId, ask);
-        continue;
-      }
-
-      const question = extractQuestionAsk(e, sessionId);
-      if (question) {
-        // Interactive question UI for Slack is not implemented yet (Block Kit
-        // select TODO); reject so the turn doesn't hang awaiting an answer.
-        log.info("question_rejected_unsupported", { requestID: question.requestID });
-        await client.rejectQuestion(userId, question.requestID).catch((err) =>
-          log.warn("question_reject_failed", { error: String(err), requestID: question.requestID }),
-        );
-        continue;
-      }
-
-      if (isTurnEnd(e, sessionId)) break;
-
-      // Upstream reset (guardian synthetic session.error) → surface + stop.
-      if (isSessionError(e, sessionId)) {
-        await slack.chat.postMessage({ channel, thread_ts: threadTs, text: "The assistant connection reset. Please try again." });
-        break;
-      }
-    }
+    // Slack divergence (§4.3): per-frame dispatch is NOT wrapped (a throw ends the
+    // turn) and turn-end/session-error are checked AFTER the dispatch — both
+    // preserved via renderTurn's options.
+    await renderTurn(eventsIter, sink, {
+      sessionId,
+      turnRenderTimeoutMs: TURN_RENDER_TIMEOUT_MS,
+      onFrameError: "throw",
+      checkTurnEndBefore: false,
+      onTimeout: () => log.warn("turn_render_timeout", { sessionId }),
+    });
   } finally {
     ac.abort();
     registry.clearStop(sessionId);
@@ -379,12 +337,58 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
   }
 }
 
+/**
+ * Slack platform sink for the shared `renderTurn` loop: edits the ONE pre-posted
+ * Block Kit placeholder (via TurnRenderer), posts tool status blocks keyed by
+ * callID, records permission prompts in the registry, and rejects unsupported
+ * questions. Slack renders a single answer message, so `onText` ignores the
+ * per-message `messageID`.
+ */
+class SlackRenderSink implements RenderSink {
+  private readonly toolTs = new Map<string, string>(); // callID → message ts
+
+  constructor(
+    private readonly renderer: TurnRenderer,
+    private readonly slack: StreamSlackClient,
+    private readonly registry: SlackPermissionRegistry,
+    private readonly client: OcClient,
+    private readonly channel: string,
+    private readonly threadTs: string,
+    private readonly userId: string,
+    private readonly requestingUserId: string,
+  ) {}
+
+  async onText(delta: string): Promise<void> {
+    await this.renderer.appendText(delta);
+  }
+
+  async onTool(tool: ToolUpdate): Promise<void> {
+    await renderToolMessage(this.slack, this.channel, this.threadTs, this.toolTs, tool);
+  }
+
+  async onPermission(ask: PermissionAsk): Promise<void> {
+    await renderPermissionPrompt(this.slack, this.registry, this.channel, this.threadTs, this.userId, this.requestingUserId, ask);
+  }
+
+  async onQuestion(ask: QuestionAsk): Promise<void> {
+    // Interactive question UI for Slack is not implemented yet (Block Kit select
+    // TODO); reject so the turn doesn't hang awaiting an answer.
+    log.info("question_rejected_unsupported", { requestID: ask.requestID });
+    await this.client.rejectQuestion(this.userId, ask.requestID).catch((err) =>
+      log.warn("question_reject_failed", { error: String(err), requestID: ask.requestID }),
+    );
+  }
+
+  async onSessionError(): Promise<void> {
+    // Upstream reset (guardian synthetic session.error) → surface + stop.
+    await this.slack.chat.postMessage({ channel: this.channel, thread_ts: this.threadTs, text: "The assistant connection reset. Please try again." });
+  }
+}
+
 // ── Incremental text renderer (throttled chat.update + 4000-char roll) ──────
 
 class TurnRenderer {
-  private buffer = "";
-  private lastEdit = 0;
-  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly buf: ThrottledEditBuffer;
 
   constructor(
     private readonly slack: StreamSlackClient,
@@ -392,28 +396,18 @@ class TurnRenderer {
     private readonly threadTs: string,
     private readonly answerTs: string | undefined,
     private readonly sessionId: string,
-  ) {}
+  ) {
+    this.buf = new ThrottledEditBuffer(EDIT_THROTTLE_MS, () => this.flush());
+  }
 
-  async appendText(delta: string): Promise<void> {
-    this.buffer += delta;
-    const now = Date.now();
-    if (now - this.lastEdit >= EDIT_THROTTLE_MS) {
-      this.lastEdit = now;
-      await this.flush();
-    } else if (!this.pendingTimer) {
-      // Schedule a trailing flush so the final partial chunk isn't dropped.
-      this.pendingTimer = setTimeout(() => {
-        this.pendingTimer = null;
-        this.lastEdit = Date.now();
-        void this.flush();
-      }, EDIT_THROTTLE_MS);
-    }
+  appendText(delta: string): void | Promise<void> {
+    return this.buf.append(delta);
   }
 
   /** Update the placeholder with the head chunk; never exceed the Slack limit. */
   private async flush(): Promise<void> {
     if (!this.answerTs) return;
-    const chunks = splitMessage(this.buffer, MAX_MESSAGE_LENGTH);
+    const chunks = splitMessage(this.buf.text, MAX_MESSAGE_LENGTH);
     const head = chunks[0] ?? "…";
     try {
       await this.slack.chat.update({
@@ -429,11 +423,8 @@ class TurnRenderer {
 
   /** On turn-end: write the final head chunk (drop the Stop button) + thread the rest. */
   async finalize(): Promise<void> {
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
-      this.pendingTimer = null;
-    }
-    const chunks = splitMessage(this.buffer || "No response received.", MAX_MESSAGE_LENGTH);
+    this.buf.cancelPending();
+    const chunks = splitMessage(this.buf.text || "No response received.", MAX_MESSAGE_LENGTH);
     const head = chunks[0] ?? "No response received.";
     if (this.answerTs) {
       try {
