@@ -67,6 +67,7 @@ export {
   listAvailableAddonIds,
   listEnabledAddonIds,
   setAddonEnabled,
+  pruneRemovedAddonState,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/addons.js";
@@ -87,6 +88,7 @@ export {
   composeFilePath,
   customComposeFilePath,
   stateEnvFile,
+  hostIdentityFile,
   legacyStackEnvFile,
   userEnvFile,
   secretsDir,
@@ -132,6 +134,7 @@ export {
   readStackRuntimeEnv,
   writeStackSecretEnv,
   patchSecretsEnvFile,
+  patchStateEnvFile,
   maskSecretValue,
   ensureOpenCodeConfig,
   assertNoSecretLikeStackEnvKeys,
@@ -263,6 +266,7 @@ export {
   buildEnvFiles,
   writeSystemEnv,
   discoverStackOverlays,
+  discoverHomeBindMountSources,
   resolveRuntimeFiles,
   buildRuntimeFileMeta,
   writeRuntimeFiles,
@@ -325,6 +329,9 @@ export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope
 export {
   checkDocker,
   checkDockerCompose,
+  repairRootOwnedBindMounts,
+  repairNamedVolumeOwnership,
+  repairManagedNamedVolumes,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
@@ -408,8 +415,32 @@ export {
 export type { OperatorIds } from "./control-plane/operator-ids.js";
 export {
   resolveOperatorIds,
+  resolveSessionIdentity,
   hasUsableOperatorId,
 } from "./control-plane/operator-ids.js";
+
+export type { HostIdentity, OwnershipDecision, HostRuntime } from './control-plane/host-identity.js';
+export {
+  detectHostIdentity,
+  describeHostRuntime,
+  hostIdentityMatches,
+  readHostIdentity,
+  writeHostIdentity,
+} from './control-plane/host-identity.js';
+
+export type { ReconcileDecision } from './control-plane/ownership-reconcile.js';
+export {
+  ownershipCanaryPaths,
+  readCanaryOwners,
+  decideOwnershipFromCanaries,
+  ownershipRepairPaths,
+  buildReconcileDecision,
+  ownershipRepairMarkerFile,
+  ownershipRepairMarkerMatches,
+  writeOwnershipRepairMarker,
+  reconcileHostOwnership,
+  HostSwapBlockedError,
+} from './control-plane/ownership-reconcile.js';
 
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {

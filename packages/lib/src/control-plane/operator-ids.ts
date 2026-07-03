@@ -77,6 +77,38 @@ export function resolveOperatorIds(homeDir: string): OperatorIds | null {
 }
 
 /**
+ * Resolve the LIVE SESSION identity — the uid/gid this process is actually
+ * running as — for host-swap detection and ownership repair.
+ *
+ * This deliberately does NOT prefer the OP_HOME directory owner the way
+ * `resolveOperatorIds` does. After a real drive move the on-disk owner is the
+ * STALE previous uid; preferring it would make the "current identity" equal the
+ * stale disk owner, every canary would match, and the swap gate would never
+ * fire (the tautology this fixes). So:
+ *   • Non-root session (uid !== 0): the process IS the operator. Return its
+ *     real uid/gid directly — a moved drive's stale owner cannot mask the swap.
+ *   • Root session (uid 0, e.g. `sudo openpalm start`) or getuid unavailable:
+ *     fall back to `resolveOperatorIds` (disk-owner-preferring) so a
+ *     sudo-install-for-service-user still resolves the intended service account.
+ *   • Windows: null (no meaningful host uid).
+ */
+export function resolveSessionIdentity(homeDir: string): OperatorIds | null {
+  if (process.platform === "win32") return null;
+
+  const processUid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  const processGid = typeof process.getgid === "function" ? process.getgid() : undefined;
+
+  if (processUid !== undefined && processUid !== 0) {
+    if (processGid === undefined) return null;
+    return { uid: processUid, gid: processGid };
+  }
+
+  // Root session or process ids unavailable — defer to the disk-owner-preferring
+  // resolver (which itself never returns 0).
+  return resolveOperatorIds(homeDir);
+}
+
+/**
  * Returns true if the parsed stack.env already has a usable
  * (non-zero, numeric) operator ID for the given key.
  * Operator may have hand-set OP_UID/OP_GID; respect that.

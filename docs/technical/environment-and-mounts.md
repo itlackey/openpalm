@@ -95,8 +95,6 @@ Ports and networks:
 |---|---|
 | Container port | `4096` |
 | Host bind | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}` |
-| SSH container port | `22` |
-| SSH host bind | `${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}` |
 | Networks | `assistant_net` |
 
 Key env:
@@ -106,13 +104,12 @@ Key env:
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | OpenPalm-managed OpenCode config root |
 | `OPENCODE_PORT` | `4096` | OpenCode web server listen port |
 | `OPENCODE_AUTH` | `false` | Auth disabled because host binding is loopback-only by default |
-| `OPENCODE_ENABLE_SSH` | `stack.env` | Optional SSH enablement |
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_STASH_DIR` | `/stash` | AKM stash location hint |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config directory |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache directory |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data directory |
-| `OP_UID` / `OP_GID` | `stack.env` | Entrypoint privilege drop target |
+| `OP_UID` / `OP_GID` | `stack.env` | Direct runtime uid/gid mapping |
 
 Notes:
 
@@ -240,7 +237,6 @@ These variables are consumed by Compose and service env blocks.
 | `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
 | `OP_HOST_UI_PORT` | Admin UI host port (default `3880`); the admin UI runs as a host process, not a container |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
-| `OP_ASSISTANT_SSH_BIND_ADDRESS`, `OP_ASSISTANT_SSH_PORT` | Assistant SSH host bind |
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |

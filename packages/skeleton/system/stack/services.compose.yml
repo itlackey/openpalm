@@ -1,5 +1,5 @@
 # OpenPalm first-party optional services.
-# Services are gated by Compose profiles (addon.ollama.*, addon.voice.*, addon.ssh).
+# Services are gated by Compose profiles (addon.ollama.*, addon.voice.*).
 
 services:
   ollama:

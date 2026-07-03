@@ -29,6 +29,7 @@ services:
   assistant:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-latest}
     restart: unless-stopped
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -50,7 +51,6 @@ services:
       # no longer loopback-only. Guardian-side upstream auth plumbing has been
       # removed, so enabling assistant auth is not a supported hardening path.
       OPENCODE_AUTH: "false"
-      OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       TERM: xterm-256color
       HOME: /home/opencode
       # akm-cli layout: user-managed config and stash are separate from
@@ -59,6 +59,7 @@ services:
       AKM_CONFIG_DIR: /etc/akm
       AKM_CACHE_DIR: /opt/akm/cache
       AKM_DATA_DIR: /opt/akm/data
+      APPRISE_NOTIFY_CONFIG: /stash/env/apprise.conf
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096
@@ -68,10 +69,6 @@ services:
       # the key up via OpenCode at call time.
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
-      # SSH remains loopback-bound. The port is always declared so enabling
-      # SSH only needs OPENCODE_ENABLE_SSH=1 in stack.env; sshd is not started
-      # when that flag is 0.
-      - "127.0.0.1:${OP_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
       # data/assistant is HOME (runtime). config/assistant is the power-user's
       # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).

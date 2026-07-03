@@ -82,7 +82,6 @@ Key env:
 - `OPENCODE_CONFIG_DIR=/etc/opencode`
 - `OPENCODE_PORT=4096`
 - `OPENCODE_AUTH=false` (safe because host bind defaults to 127.0.0.1; see § Security invariants #4 in core-principles.md)
-- `OPENCODE_ENABLE_SSH`
 - `AKM_STASH_DIR=/stash`, `AKM_CONFIG_DIR=/etc/akm`, `AKM_CACHE_DIR=/opt/akm/cache`, and `AKM_DATA_DIR=/opt/akm/data`
 - `OP_UID`, `OP_GID`
 
@@ -100,22 +99,12 @@ Mounts:
 Ports and network:
 
 - host: `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}`
-- host SSH: `${OP_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_SSH_PORT:-2222}`
 - container: `4096`
-- container SSH: `22`
 - network: `assistant_net`
 
 Security — provider secrets:
 
 Provider keys are not stored in `stack.env`. They are stored as file-based secrets or OpenCode auth state and exposed to services through narrow grants. Secret-like environment variables must be `*_FILE` paths.
-
-SSH (optional, gated by `OPENCODE_ENABLE_SSH=1`):
-
-- Key-based authentication only (`PasswordAuthentication no`, `PubkeyAuthentication yes`)
-- Root login disabled (`PermitRootLogin no`)
-- TCP forwarding, X11 forwarding, and tunnels disabled
-- PAM disabled; strict modes enforced
-- Host keys auto-generated if missing (`ssh-keygen -A`)
 
 Secret redaction (in-process logger):
 

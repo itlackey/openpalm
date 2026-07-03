@@ -42,3 +42,6 @@ packages/electron/dist/
 .dev_*/*
 # UX validation gate artifacts (skill:web-ux/ux-dom-audit)
 .reviews/
+# Rootless smoke-test scratch OP_HOME trees (scripts/rootless-*-smoke.sh)
+/.rootless-smoke-*/
+/.rootless-host-swap*/

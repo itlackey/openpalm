@@ -1,10 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-TARGET_UID="${OP_UID:-1000}"
-TARGET_GID="${OP_GID:-1000}"
-IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
-
 # ── Version resolution ────────────────────────────────────────────────────────
 # GUARDIAN_VERSION is baked into the image at build time (Dockerfile ARG → ENV),
 # so the thin host boots with no operator configuration. Operators may override
@@ -23,44 +19,16 @@ fi
 OP_GUARDIAN_PACKAGE="${OP_GUARDIAN_PACKAGE:-@openpalm/guardian}"
 OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
 
-# ── Privilege setup: chown the artifact volume then drop to OP_UID:OP_GID ──────
-# The container starts as root (no `user:` in compose). /opt/openpalm is the
-# guardian-cache named volume, root-owned on first boot. Chown ONLY the
-# named-volume paths — the nested bind mounts (guardian/ -> data/guardian,
-# logs/ -> data/logs, and the :ro auth.json) are host-owned, so recursively
-# chowning them would rewrite host ownership every boot (and the :ro chown
-# would fail). The host owner is OP_UID:OP_GID, so the gosu'd process can
-# read/write the bind mounts directly.
-if [ "$IS_ROOT" = "1" ]; then
-  mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian
-  chown "${TARGET_UID}:${TARGET_GID}" /opt/openpalm /opt/openpalm/guardian 2>/dev/null || true
-  chown -R "${TARGET_UID}:${TARGET_GID}" /opt/openpalm/tools /opt/openpalm/skeleton 2>/dev/null || true
-  # The moderator OpenCode (gosu'd to the target uid) stores its SQLite DB under
-  # $HOME/.local/share/opencode. Docker pre-creates that path as ROOT to satisfy
-  # the nested :ro auth.json sub-path mount (before this entrypoint runs), so the
-  # moderator otherwise can't open its DB ("unable to open database file"). chown
-  # the storage dirs to the target uid — NON-recursively, so the :ro auth.json
-  # file is never targeted and host-owned files under the bind mount aren't
-  # rewritten every boot.
-  mkdir -p /opt/openpalm/guardian/.local/share/opencode \
-           /opt/openpalm/guardian/.local/state/opencode 2>/dev/null || true
-  chown "${TARGET_UID}:${TARGET_GID}" \
-    /opt/openpalm/guardian/.local \
-    /opt/openpalm/guardian/.local/share \
-    /opt/openpalm/guardian/.local/share/opencode \
-    /opt/openpalm/guardian/.local/state \
-    /opt/openpalm/guardian/.local/state/opencode 2>/dev/null || true
-fi
+mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian \
+         /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode 2>/dev/null || true
 
 export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
 
 # ── Optional private-registry auth ────────────────────────────────────────────
 # To install OP_GUARDIAN_PACKAGE from a private registry, supply an .npmrc. Bun
 # reads $HOME/.npmrc for registry + auth. Prefer a mounted secret file
-# (OP_GUARDIAN_NPMRC_FILE); OP_GUARDIAN_NPMRC is an inline convenience. Runs on
-# the root pass and again after the gosu drop, so on the root pass hand the file
-# to the target uid:gid for the second (non-privileged) pass. The token is
-# never logged.
+# (OP_GUARDIAN_NPMRC_FILE); OP_GUARDIAN_NPMRC is an inline convenience. The
+# token is never logged.
 NPMRC_DEST="${HOME:-/opt/openpalm/guardian}/.npmrc"
 if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
   if [ ! -f "${OP_GUARDIAN_NPMRC_FILE}" ]; then
@@ -68,12 +36,10 @@ if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
     exit 1
   fi
   install -m 600 "${OP_GUARDIAN_NPMRC_FILE}" "$NPMRC_DEST"
-  [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$NPMRC_DEST" 2>/dev/null || true
   echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC_FILE"
 elif [ -n "${OP_GUARDIAN_NPMRC:-}" ]; then
+  install -m 600 /dev/null "$NPMRC_DEST"
   printf '%s\n' "${OP_GUARDIAN_NPMRC}" > "$NPMRC_DEST"
-  chmod 600 "$NPMRC_DEST"
-  [ "$IS_ROOT" = "1" ] && chown "${TARGET_UID}:${TARGET_GID}" "$NPMRC_DEST" 2>/dev/null || true
   echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC"
 fi
 
@@ -101,25 +67,20 @@ install_artifact() {
   exit 1
 }
 
-# Install and update only on the root pass. The gosu re-exec preserves the
-# installed artifacts (named volume + bind-mount persist), so a second install
-# cycle on the non-root pass is redundant and wastes ~5s per boot.
-if [ "$IS_ROOT" = "1" ]; then
-  # Guardian and skeleton are co-released, so the skeleton follows the same
-  # version by default; OP_SKELETON_VERSION overrides if they ever diverge.
-  install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
-  install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
+# Guardian and skeleton are co-released, so the skeleton follows the same
+# version by default; OP_SKELETON_VERSION overrides if they ever diverge.
+install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
+install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
-  # ── Range-versioned tools via bun update ──────────────────────────────────
-  # /opt/openpalm/tools/package.json declares tool semver ranges (baked as
-  # image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
-  # bun update installs missing packages and advances within declared ranges.
-  if [ -f "/opt/openpalm/tools/package.json" ]; then
-    bun update --cwd /opt/openpalm/tools --production \
-      || echo "WARN: tool update had errors; check logs above" >&2
-  else
-    echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool update" >&2
-  fi
+# ── Range-versioned tools via bun update ──────────────────────────────────
+# /opt/openpalm/tools/package.json declares tool semver ranges (baked as
+# image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
+# bun update installs missing packages and advances within declared ranges.
+if [ -f "/opt/openpalm/tools/package.json" ]; then
+  bun update --cwd /opt/openpalm/tools --production \
+    || echo "WARN: tool update had errors; check logs above" >&2
+else
+  echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool update" >&2
 fi
 
 # ── Hard-fail when content validation is enabled but opencode is missing ───────
@@ -130,19 +91,6 @@ esac
 if [ "$enabled" = "1" ] && ! command -v opencode >/dev/null 2>&1; then
   echo "ERROR: GUARDIAN_CONTENT_VALIDATION=1 but opencode is not on PATH after tool install. Cannot start." >&2
   exit 1
-fi
-
-# ── Drop privileges before starting servers ───────────────────────────────────
-# Installs ran as root (to write /opt/openpalm on a fresh named volume). Re-exec
-# as the target uid:gid for the server processes; the marker prevents a loop.
-if [ "$IS_ROOT" = "1" ] && [ "${GUARDIAN_ENTRYPOINT_DROPPED:-0}" != "1" ]; then
-  if ! command -v gosu >/dev/null 2>&1; then
-    echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
-    exit 1
-  fi
-  exec gosu "${TARGET_UID}:${TARGET_GID}" \
-    env HOME=/opt/openpalm/guardian GUARDIAN_ENTRYPOINT_DROPPED=1 \
-    "$0" "$@"
 fi
 
 # ── Start OpenCode moderator (when content validation is enabled) ─────────────

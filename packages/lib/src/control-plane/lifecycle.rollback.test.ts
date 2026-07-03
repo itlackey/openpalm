@@ -107,12 +107,14 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
   repairRootOwnedBindMounts: async () => {},
+  repairManagedNamedVolumes: async () => {},
 }));
 mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   resolveRuntimeFiles: () => ({ compose: '' }),
   writeRuntimeFiles: () => {},
   discoverStackOverlays: () => [],
   ensureComposeVolumeTargets: () => {},
+  discoverHomeBindMountSources: () => [],
 }));
 mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
   applyHomeSeed: async () => {
@@ -127,6 +129,7 @@ mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
+  pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
 }));
 ${PIN_PLATFORM_VERSION_SNIPPET}
 
@@ -297,12 +300,14 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
   repairRootOwnedBindMounts: async () => {},
+  repairManagedNamedVolumes: async () => {},
 }));
 mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   resolveRuntimeFiles: () => ({ compose: '' }),
   writeRuntimeFiles: () => {},
   discoverStackOverlays: () => [],
   ensureComposeVolumeTargets: () => {},
+  discoverHomeBindMountSources: () => [],
 }));
 mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
   applyHomeSeed: async () => ({ updated: [], backupDir: null }),
@@ -314,6 +319,7 @@ mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
+  pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
 }));
 
 async function main() {
@@ -420,12 +426,14 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
   repairRootOwnedBindMounts: async () => {},
+  repairManagedNamedVolumes: async () => {},
 }));
 mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   resolveRuntimeFiles: () => ({ compose: '' }),
   writeRuntimeFiles: () => {},
   discoverStackOverlays: () => [],
   ensureComposeVolumeTargets: () => {},
+  discoverHomeBindMountSources: () => [],
 }));
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),
@@ -434,6 +442,7 @@ mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
+  pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
 }));
 
 function makeState(home) {

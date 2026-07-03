@@ -15,9 +15,9 @@ import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persist
 import { patchStateEnvFile, readStackEnv } from './secrets.js';
 import { readBundledStackAsset, readBundledCustomCompose } from './core-assets.js';
 import { canonicalAddonProfileSelection, resolveHardwareProfileVariant } from './profile-ids.js';
-import { parseEnabledAddons } from './env.js';
+import { parseEnabledAddons, removeEnvKey } from './env.js';
 import type { ControlPlaneState } from './types.js';
-import { resolveStashDir, composeFilePath, customComposeFilePath } from './home.js';
+import { resolveStashDir, composeFilePath, customComposeFilePath, stateEnvFile, legacyStackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS } from './addon-ids.js';
 
@@ -66,6 +66,7 @@ export function listAvailableAddonIds(): string[] {
 
 export function listEnabledAddonIds(homeDir: string): string[] {
   const env = readStackEnv(homeDir);
+  const available = new Set(BUILTIN_ADDON_IDS);
   const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
   const profiles = new Set<string>();
   for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
@@ -76,7 +77,7 @@ export function listEnabledAddonIds(homeDir: string): string[] {
     const match = profile.match(/^addon\.([a-z0-9-]+)(?:\.|$)/);
     if (match?.[1]) enabled.add(match[1]);
   }
-  return [...enabled].sort();
+  return [...enabled].filter((name) => available.has(name)).sort();
 }
 
 function readAddonServiceNamesFromContent(composeContent: string, composePath: string, addonName?: string): string[] {
@@ -487,11 +488,14 @@ export function setAddonProfileSelection(homeDir: string, name: string, profile:
   patchStateEnvFile(homeDir, { [profileEnvKey(name)]: trimmed });
 }
 
-/** Add/remove an addon id in the OP_ENABLED_ADDONS list (app-written → state/). */
-function setEnabledAddonState(homeDir: string, name: string, enabled: boolean): void {
+/** Add/remove one or more addon ids in the OP_ENABLED_ADDONS list (app-written → state/). */
+function setEnabledAddonState(homeDir: string, name: string | string[], enabled: boolean): void {
+  const names = Array.isArray(name) ? name : [name];
   const current = new Set(parseEnabledAddons(readStackEnv(homeDir).OP_ENABLED_ADDONS));
-  if (enabled) current.add(name);
-  else current.delete(name);
+  for (const n of names) {
+    if (enabled) current.add(n);
+    else current.delete(n);
+  }
   patchStateEnvFile(homeDir, { OP_ENABLED_ADDONS: [...current].sort().join(',') });
 }
 
@@ -499,7 +503,6 @@ function enableAddon(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(homeDir, name, true);
-    if (name === 'ssh') patchStateEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '1' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -510,11 +513,70 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(homeDir, name, false);
-    if (name === 'ssh') patchStateEnvFile(homeDir, { OPENCODE_ENABLE_SSH: '0' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * Env keys that only a now-removed built-in addon ever wrote. Stripped alongside
+ * the addon id so upgraded installs don't carry the stale value forever.
+ * `ssh` (OPENCODE_ENABLE_SSH) is the only removed addon that shipped an env key.
+ */
+const REMOVED_ADDON_ENV_KEYS = ['OPENCODE_ENABLE_SSH'] as const;
+
+/** Remove a key from an env file if present. Returns whether the file changed. */
+function removeEnvKeyFromFile(path: string, key: string): boolean {
+  if (!existsSync(path)) return false;
+  const before = readFileSync(path, 'utf-8');
+  const after = removeEnvKey(before, key);
+  if (after === before) return false;
+  writeFileSync(path, after.endsWith('\n') || after.length === 0 ? after : `${after}\n`, { mode: 0o600 });
+  return true;
+}
+
+/** Strip every removed-addon env key from both env files. Returns the keys removed. */
+function removeRemovedAddonEnvKeys(homeDir: string): string[] {
+  const removed = new Set<string>();
+  for (const path of [stateEnvFile(homeDir), legacyStackEnvFile(homeDir)]) {
+    for (const key of REMOVED_ADDON_ENV_KEYS) {
+      if (removeEnvKeyFromFile(path, key)) removed.add(key);
+    }
+  }
+  return [...removed];
+}
+
+/**
+ * One-time cleanup of addon state left behind by addons that were removed from
+ * BUILTIN_ADDON_IDS (currently `ssh`). On an upgraded install OP_ENABLED_ADDONS
+ * can still list a removed addon — `resolveActiveProfiles` then emits its stale
+ * `--profile addon.<id>` on every compose call — and a prior `openpalm addon
+ * enable ssh` may have left OPENCODE_ENABLE_SSH in the env.
+ *
+ * Idempotent and skip-if-absent: strips any OP_ENABLED_ADDONS entry that is no
+ * longer built in and drops the removed-addon env keys. A no-op that writes
+ * nothing (`changed: false`) when the state is already clean, so it is safe to
+ * run unconditionally on every reconcile — no version gate needed.
+ */
+export function pruneRemovedAddonState(
+  homeDir: string,
+): { changed: boolean; removedAddons: string[]; removedEnvKeys: string[] } {
+  const builtin = new Set(BUILTIN_ADDON_IDS);
+  const enabled = parseEnabledAddons(readStackEnv(homeDir).OP_ENABLED_ADDONS);
+  const removedAddons = enabled.filter((id) => !builtin.has(id));
+
+  if (removedAddons.length > 0) {
+    setEnabledAddonState(homeDir, removedAddons, false);
+  }
+
+  const removedEnvKeys = removeRemovedAddonEnvKeys(homeDir);
+
+  return {
+    changed: removedAddons.length > 0 || removedEnvKeys.length > 0,
+    removedAddons,
+    removedEnvKeys,
+  };
 }
 
 export function setAddonEnabled(homeDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {
@@ -523,7 +585,20 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   }
 
   if (!listAvailableAddonIds().includes(name)) {
-    return { ok: false, error: `Addon "${name}" is not built in` };
+    // Enabling an unknown addon is always rejected — validation is unchanged.
+    if (enabled) {
+      return { ok: false, error: `Addon "${name}" is not built in` };
+    }
+    // Disabling: allow cleanup of an addon that was removed from the built-in
+    // set but still lingers in OP_ENABLED_ADDONS on an upgraded install, so a
+    // stale entry can be stripped via CLI/UI rather than only by pruneRemovedAddonState.
+    const lingering = parseEnabledAddons(readStackEnv(homeDir).OP_ENABLED_ADDONS).includes(name);
+    if (!lingering) {
+      return { ok: true, enabled: false, changed: false, services: [] };
+    }
+    setEnabledAddonState(homeDir, name, false);
+    removeRemovedAddonEnvKeys(homeDir);
+    return { ok: true, enabled: false, changed: true, services: [] };
   }
 
   const wasEnabled = listEnabledAddonIds(homeDir).includes(name);

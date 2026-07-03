@@ -5,7 +5,7 @@
  * edit in home.ts with this test as the guard).
  */
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, existsSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,6 +13,7 @@ import {
   resolveStateDir,
   composeFilePath,
   stateEnvFile,
+  hostIdentityFile,
   legacyStackEnvFile,
   userEnvFile,
   secretsDir,
@@ -25,6 +26,7 @@ const H = "/op/home";
 describe("OP_HOME layout (single source of truth)", () => {
   test("well-known files derive from the home root, defined once", () => {
     expect(stateEnvFile(H)).toBe("/op/home/state/stack.state.env");
+    expect(hostIdentityFile(H)).toBe("/op/home/state/host-identity.json");
     expect(legacyStackEnvFile(H)).toBe("/op/home/knowledge/env/stack.env");
     expect(userEnvFile(H)).toBe("/op/home/knowledge/env/user.env");
     expect(secretsDir(H)).toBe("/op/home/knowledge/secrets");
@@ -42,6 +44,10 @@ describe("OP_HOME layout (single source of truth)", () => {
       expect(resolveStateDir()).toBe(join(home, "state"));
       expect(existsSync(join(home, "system"))).toBe(true);
       expect(existsSync(join(home, "state"))).toBe(true);
+      expect(existsSync(join(home, 'data/assistant/.config/opencode'))).toBe(true);
+      expect(existsSync(join(home, 'data/guardian/.config/opencode'))).toBe(true);
+      expect(statSync(join(home, 'data/assistant/.local/share/opencode/auth.json')).isFile()).toBe(true);
+      expect(statSync(join(home, 'data/guardian/.local/share/opencode/auth.json')).isFile()).toBe(true);
     } finally {
       if (prev === undefined) delete process.env.OP_HOME;
       else process.env.OP_HOME = prev;

@@ -23,11 +23,12 @@ import {
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
-import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName, repairRootOwnedBindMounts } from "./docker.js";
+import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
+import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
-import { getAddonServiceNames, listEnabledAddonIds } from "./addons.js";
+import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from "./addons.js";
 import { PLATFORM_VERSION, formatForDisplay } from "./versioning.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -158,6 +159,10 @@ async function applyHome(
 ): Promise<{ assetsUpdated: string[]; backupDir: string | null }> {
   ensureHomeDirs();
   ensureSecrets(state);
+  // Strip stale state for addons that no longer exist (e.g. `ssh`, removed on
+  // the rootless branch). Idempotent no-op when clean; runs on every reconcile
+  // so an upgraded install self-heals without the user touching an addon.
+  pruneRemovedAddonState(state.homeDir);
   const seed = await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
@@ -215,11 +220,19 @@ function reconcileStack(
     // work on activation so uninstall stays a pure file/state reconcile.
     const activating = !opts.deactivate;
 
-    // Repair any root-owned bind-mount directories before writing/recreating.
-    // Guardian historically ran without a `user:` directive, leaving data/guardian
-    // and data/logs owned by root. The host process can't chown them directly;
-    // a temporary root Docker container fixes ownership.
-    if (activating && opts.compose) await repairRootOwnedBindMounts(state.homeDir);
+    // Host-ownership reconcile BEFORE writing/recreating — the SAME shared lib
+    // step `openpalm start` runs, so UI/electron upgrades get host-swap
+    // detection, the deep bind-mount + named-volume ownership repair, and the
+    // identity record (R2). Pre-rootless containers ran as root, leaving
+    // bind-mount trees + named volumes owned by root; the host process can't
+    // chown them directly, so a temporary root Docker container fixes ownership.
+    // No adopt flag here (the UI has none): an un-adopted host swap throws
+    // HostSwapBlockedError, which withStackEnvRollback surfaces to the route.
+    let managedServices: string[] | undefined;
+    if (activating && opts.compose) {
+      managedServices = await buildManagedServices(state);
+      await reconcileHostOwnership(state, { services: managedServices });
+    }
 
     const home = await applyHome(state);
 
@@ -241,7 +254,9 @@ function reconcileStack(
 
       // forceRecreate is REQUIRED so portal containers restart onto a newly
       // pulled baked image even when the managed compose config is unchanged (#450).
-      const services = await buildManagedServices(state);
+      // Named-volume ownership was already repaired by reconcileHostOwnership
+      // above (keyed by this same managed set).
+      const services = managedServices ?? await buildManagedServices(state);
       const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
       if (!upResult.ok) {
         throw new Error(`Failed to recreate containers: ${upResult.stderr}`);

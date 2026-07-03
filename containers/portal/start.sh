@@ -6,6 +6,10 @@ if [ -z "$PORTAL_PACKAGE" ]; then
 	exit 1
 fi
 
+export HOME="/tmp/openpalm-portal"
+mkdir -p "$HOME"
+export BUN_INSTALL_CACHE_DIR="${BUN_INSTALL_CACHE_DIR:-$HOME/.cache/bun/install}"
+
 # Install or update adapter packages from the operator-managed package.json
 # (bind-mounted at /opt/openpalm/tools from OP_HOME/data/portal/tools).
 # Use bun install on cold start (node_modules absent) and bun update on warm

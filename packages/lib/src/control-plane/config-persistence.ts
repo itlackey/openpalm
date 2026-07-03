@@ -306,9 +306,6 @@ export function ensurePortalSecret(homeDir: string, addon: string): string {
  * explicit OP_HOME paths.
  */
 export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
-  const composeFiles = discoverStackOverlays(state.homeDir);
-  if (composeFiles.length === 0) return;
-
   // Resolve the operator UID/GID compose runs containers as (`user:`), so we
   // can chown the dirs we pre-create to match. Without this, dirs created by
   // a root-running install (or a host UID that differs from the forced
@@ -316,11 +313,33 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
   // real UIDs are preserved, so e.g. ollama's mkdir is denied (issue #452).
   const operatorIds = resolveOperatorIds(state.homeDir);
 
+  for (const mount of discoverHomeBindMountSources(state)) {
+    if (existsSync(mount.path)) continue;
+
+    if (mount.isFile) {
+      const parent = dirname(mount.path);
+      mkdirSync(parent, { recursive: true });
+      writeFileSync(mount.path, '');
+      chownVolumeTarget(parent, operatorIds);
+      chownVolumeTarget(mount.path, operatorIds);
+    } else {
+      mkdirSync(mount.path, { recursive: true });
+      chownVolumeTarget(mount.path, operatorIds);
+    }
+  }
+}
+
+export function discoverHomeBindMountSources(state: ControlPlaneState): Array<{ path: string; isFile: boolean }> {
+  const composeFiles = discoverStackOverlays(state.homeDir);
+  if (composeFiles.length === 0) return [];
+
   const envVars: Record<string, string> = {
     ...(process.env as Record<string, string>),
     ...parseEnvFile(`${state.stashDir}/env/stack.env`),
   };
   const homeRoot = resolvePath(state.homeDir);
+  const seen = new Set<string>();
+  const mounts: Array<{ path: string; isFile: boolean }> = [];
 
   for (const file of composeFiles) {
     let doc: Record<string, unknown>;
@@ -332,6 +351,10 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
     const services = doc?.services;
     if (!services || typeof services !== 'object') continue;
 
+    // Every service's mounts are included, profiled or not: an empty dir for a
+    // disabled addon costs nothing, while a missing dir when the addon is later
+    // enabled (hand-edited stack.env, `openpalm start voice`) gets created
+    // root-owned by dockerd and the rootless container EACCESes (issue #452).
     for (const svc of Object.values(services as Record<string, unknown>)) {
       if (!svc || typeof svc !== 'object') continue;
       const svcRecord = svc as Record<string, unknown>;
@@ -349,26 +372,17 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
         if (!hostPath || !hostPath.startsWith('/')) continue;
         const resolvedHostPath = resolvePath(hostPath);
         if (!resolvedHostPath.startsWith(`${homeRoot}/`) && resolvedHostPath !== homeRoot) continue;
-        if (existsSync(resolvedHostPath)) continue;
 
-        // Only create mounts under OP_HOME. For now, treat existing explicit
-        // file paths as files and directory paths as directories.
         const basename = resolvedHostPath.split('/').pop() ?? '';
         const isFile = basename.includes('.');
-
-        if (isFile) {
-          const parent = dirname(resolvedHostPath);
-          mkdirSync(parent, { recursive: true });
-          writeFileSync(resolvedHostPath, '');
-          chownVolumeTarget(parent, operatorIds);
-          chownVolumeTarget(resolvedHostPath, operatorIds);
-        } else {
-          mkdirSync(resolvedHostPath, { recursive: true });
-          chownVolumeTarget(resolvedHostPath, operatorIds);
-        }
+        if (seen.has(resolvedHostPath)) continue;
+        seen.add(resolvedHostPath);
+        mounts.push({ path: resolvedHostPath, isFile });
       }
     }
   }
+
+  return mounts;
 }
 
 /**

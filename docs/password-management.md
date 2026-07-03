@@ -54,7 +54,6 @@ Important keys include:
 | `OP_CHAT_PORT` | Chat addon host port, default `3820` |
 | `OP_API_PORT` | API addon host port, default `3821` |
 | `OP_VOICE_PORT_HOST` | Voice addon host port, default `8880` |
-| `OP_ASSISTANT_SSH_PORT` | Optional assistant SSH port, default `2222` |
 | `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
 
 > **Note:** LLM and embedding configuration lives in `config/akm/config.json`, not in `stack.env`.

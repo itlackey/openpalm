@@ -13,7 +13,7 @@
  *                stack.state.env is merged OVER legacy stack.env at compose time, so
  *                pins/channel/add-ons live here, not in knowledge/env/stack.env
  */
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
 
@@ -89,6 +89,9 @@ export function customComposeFilePath(home: string): string {
 export function stateEnvFile(home: string): string {
   return `${home}/state/stack.state.env`;
 }
+export function hostIdentityFile(home: string): string {
+  return `${home}/state/host-identity.json`;
+}
 /** Pre-split system env; read only as a transition fallback, then deleted. */
 export function legacyStackEnvFile(home: string): string {
   return `${home}/knowledge/env/stack.env`;
@@ -136,11 +139,15 @@ export function ensureHomeDirs(): void {
     `${home}/data`,
     `${home}/data/assistant`,      // assistant HOME bind mount
     `${home}/data/assistant/.cache`,
+    `${home}/data/assistant/.config/opencode`,
     `${home}/data/assistant/.local/bin`,
     `${home}/data/assistant/.local/share/opencode`,
     `${home}/data/assistant/.local/state/opencode`,
     `${home}/data/assistant/tools`, // runtime tools managed via package.json
     `${home}/data/guardian`,       // guardian runtime data
+    `${home}/data/guardian/.config/opencode`,
+    `${home}/data/guardian/.local/share/opencode`,
+    `${home}/data/guardian/.local/state/opencode`,
     `${home}/data/guardian/tools`, // runtime tools managed via package.json
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
@@ -164,5 +171,12 @@ export function ensureHomeDirs(): void {
     `${home}/state`,
   ]) {
     mkdirSync(dir, { recursive: true });
+  }
+
+  for (const file of [
+    `${home}/data/assistant/.local/share/opencode/auth.json`,
+    `${home}/data/guardian/.local/share/opencode/auth.json`,
+  ]) {
+    if (!existsSync(file)) writeFileSync(file, '');
   }
 }
