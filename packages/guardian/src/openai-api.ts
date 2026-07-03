@@ -1,6 +1,6 @@
 import { createLogger } from './logger.ts';
 import { constantTimeEqual } from './crypto.ts';
-import { asRaw, extractTextDelta, isTurnEnd, partSnapshotType } from './openai-api-oc-events.ts';
+import { runTurn } from './openai-api-oc-events.ts';
 import { OcClient } from './openai-api-oc-client.ts';
 import { loadPermissionPolicy, type PermissionPolicy } from './openai-api-permissions.ts';
 import { readOptionalSecretFile } from './openai-api-secret-file.ts';
@@ -250,15 +250,10 @@ export class GuardianOpenAiApi {
 }
 
 async function collectTurnAnswer(client: OcClient, userId: string, sessionId: string, signal: AbortSignal): Promise<string> {
-  const reasoningPartIds = new Set<string>();
+  // Non-streaming path: a pure text accumulator. It supplies ONLY `onDelta`, so
+  // it applies no permission policy, rejects no questions, and does not break on
+  // session errors — preserving the deliberate divergence from streamTurn.
   let answer = '';
-  for await (const event of client.events(userId, signal)) {
-    const raw = asRaw(event);
-    const snapshot = partSnapshotType(raw);
-    if (snapshot?.type === 'reasoning') reasoningPartIds.add(snapshot.partID);
-    const delta = extractTextDelta(raw, sessionId, reasoningPartIds);
-    if (delta) answer += delta;
-    if (isTurnEnd(raw, sessionId)) break;
-  }
+  await runTurn(client.events(userId, signal), sessionId, { onDelta: (delta) => { answer += delta; } });
   return answer || '(no response)';
 }

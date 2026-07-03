@@ -82,6 +82,69 @@ export function isSessionError(e: RawEvent, sessionId: string): boolean {
   return e.type === 'session.error' && propStr(e.properties, 'sessionID') === sessionId;
 }
 
+/** Outcome of a per-event handler within {@link runTurn}. */
+export type TurnEventAction = 'pass' | 'continue' | 'break';
+
+export interface RunTurnHandlers {
+  /**
+   * Checked at the top of every iteration, before the pending event is
+   * inspected. Return true to end the turn WITHOUT processing that event. Only
+   * the streaming path supplies this (to enforce the render-timeout deadline);
+   * the non-streaming path omits it and therefore never times out.
+   */
+  shouldStop?: () => boolean;
+  /** Invoked for each text delta belonging to this turn's session. */
+  onDelta: (delta: string) => void;
+  /**
+   * Invoked for every NON-delta event, before the shared turn-end check. Only
+   * the streaming path supplies this — it is where the permission policy is
+   * applied, interactive questions are rejected, and session errors end the
+   * turn. The non-streaming path omits it entirely and so is provably a pure
+   * text accumulator that applies no policy of any kind.
+   *
+   * Return 'continue' to advance to the next event, 'break' to end the turn, or
+   * 'pass' to fall through to the shared turn-end check.
+   */
+  onNonDelta?: (raw: RawEvent) => Promise<TurnEventAction> | TurnEventAction;
+}
+
+/**
+ * Shared turn-execution skeleton for both OpenAI-compatible endpoints. It owns
+ * ONLY the logic both paths perform identically and in the same relative order:
+ * reasoning-part bookkeeping, text-delta extraction, and the turn-end check.
+ * Everything security-relevant (permission policy, question rejection, session
+ * errors, render timeout) is injected via {@link RunTurnHandlers}, so the
+ * non-streaming caller — which supplies none of those handlers — cannot apply
+ * any of it.
+ *
+ * Note on ordering: the streaming path historically checked session errors
+ * AFTER the turn-end check. Folding that check into {@link
+ * RunTurnHandlers.onNonDelta} (which runs BEFORE the turn-end check) is
+ * behavior-identical because permission, question, and session-error events are
+ * disjoint from both delta events and turn-end events — no single event is ever
+ * matched by two of these predicates.
+ */
+export async function runTurn(events: AsyncIterable<Record<string, unknown>>, sessionId: string, handlers: RunTurnHandlers): Promise<void> {
+  const reasoningPartIds = new Set<string>();
+  for await (const event of events) {
+    if (handlers.shouldStop?.()) break;
+    const raw = asRaw(event);
+    const snapshot = partSnapshotType(raw);
+    if (snapshot?.type === 'reasoning') reasoningPartIds.add(snapshot.partID);
+    const delta = extractTextDelta(raw, sessionId, reasoningPartIds);
+    if (delta) {
+      handlers.onDelta(delta);
+      continue;
+    }
+    if (handlers.onNonDelta) {
+      const action = await handlers.onNonDelta(raw);
+      if (action === 'break') break;
+      if (action === 'continue') continue;
+    }
+    if (isTurnEnd(raw, sessionId)) break;
+  }
+}
+
 export interface QuestionOption {
   label: string;
   description: string;
