@@ -13,33 +13,21 @@
 
   import ProviderOAuthList from './ProviderOAuthList.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
-  import type { OpenCodeProvider, AuthMethod, ProviderState } from '$lib/client/types.js';
+  import { setupState } from '$lib/setup/setup-state.svelte.js';
 
-  interface Props {
-    credentialCount?: number;
-    cloudProviders?: string[];
-    opencodeProviders?: OpenCodeProvider[];
-    opencodeAuth?: Record<string, AuthMethod[]>;
-    providerState?: Record<string, ProviderState>;
-    hostImporting?: boolean;
-    verifiedCount?: number;
-    onhostimport?: () => void;
-    onoauthstart?: (id: string, methodIndex: number) => void;
-    onoauthcancel?: (id: string) => void;
-  }
+  // Takes NO props: reads the setup-state store directly (hostImporting /
+  // verifiedCount) and calls its host-import method, mirroring Screen1ModelsStep
+  // / ReviewStep. The nested ProviderOAuthList likewise reads the store.
+  const s = setupState;
 
-  let {
-    credentialCount = 0,
-    cloudProviders = [],
-    opencodeProviders = [],
-    opencodeAuth = {},
-    providerState = {},
-    hostImporting = false,
-    verifiedCount = 0,
-    onhostimport,
-    onoauthstart,
-    onoauthcancel,
-  }: Props = $props();
+  // The wizard always drove these as 0 / [] — the "account already found on this
+  // computer" path is inert in the current flow but kept for behavior parity.
+  const credentialCount = 0;
+  const cloudProviders: string[] = [];
+
+  const hostImporting = $derived(s.hostImporting);
+  const verifiedCount = $derived(s.verifiedCount);
+  const onhostimport = (): void => void s.handleHostImport();
 
   const hasFoundAccount = $derived(credentialCount > 0 || cloudProviders.length > 0);
   const connected = $derived(verifiedCount > 0);
@@ -74,13 +62,7 @@
   {:else}
     <!-- Sign in to a cloud AI service -->
     <p class="lead">Sign in to your AI service:</p>
-    <ProviderOAuthList
-      {opencodeProviders}
-      {opencodeAuth}
-      {providerState}
-      onoauthstart={(id, idx) => onoauthstart?.(id, idx)}
-      onoauthcancel={(id) => onoauthcancel?.(id)}
-    />
+    <ProviderOAuthList />
     {#if hasFoundAccount}
       <button type="button" class="account-link" onclick={() => (signInInstead = false)}>
         Use the account on this computer instead

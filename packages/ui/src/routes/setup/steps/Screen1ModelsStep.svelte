@@ -42,13 +42,8 @@
   const systemCheckError = $derived(s.systemCheckPassed ? '' : (s.step0Error || ''));
   const gpuVramMb = $derived(s.detectedGpuVramMb);
   const gpuVendor = $derived(s.detectedGpuVendor);
-  const gpuName = $derived(s.detectedGpuName);
   const hostProviders = $derived(s.detectedHostProviders);
   const opencodeProviders = $derived(s.opencodeProviders);
-  const opencodeAuth = $derived(s.opencodeAuth);
-  const providerState = $derived(s.providerState);
-  const ollamaEnabled = $derived(s.ollamaEnabled);
-  const selectedOllamaProfile = $derived(s.selectedOllamaProfile);
   const hostImporting = $derived(s.hostImporting);
   const verifiedCount = $derived(s.verifiedCount);
   const allowEmptyInstall = $derived(s.allowEmptyInstall);
@@ -57,9 +52,6 @@
   const detectedCloudConn = $derived(s.detectedCloudConn);
 
   const onmodelmodechange = (mode: ModelMode): void => s.handleConnectModeChange(mode);
-  const onhostimport = (): void => void s.handleHostImport();
-  const onoauthstart = (id: string, methodIndex: number): void => void s.startOpenCodeOAuth(id, methodIndex);
-  const onoauthcancel = (id: string): void => s.cancelOAuth(id);
   const onrecheck = (): void => void s.fetchAndApplyRecommendation();
   const onsystemcheckretry = (): void => s.goToStep(0);
   const onallowemptyinstallchange = (v: boolean): void => { s.allowEmptyInstall = v; };
@@ -245,15 +237,7 @@
       <!-- Local AI expansion panel (accordion below local row) -->
       {#if showLocalPanel}
         <div class="s1-local-panel" aria-live="polite">
-          <LocalModelsStatus
-            {hostProviders}
-            {gpuVramMb}
-            {gpuVendor}
-            {gpuName}
-            {ollamaEnabled}
-            {selectedOllamaProfile}
-            {onrecheck}
-          />
+          <LocalModelsStatus />
         </div>
       {/if}
 
@@ -278,18 +262,7 @@
       <!-- Sign-in panel expands inline below the cloud row -->
       {#if showSignInPanel}
         <div class="s1-signin-panel" aria-live="polite">
-          <CloudAttachPanel
-            credentialCount={0}
-            cloudProviders={[]}
-            {opencodeProviders}
-            {opencodeAuth}
-            {providerState}
-            {hostImporting}
-            {verifiedCount}
-            {onhostimport}
-            onoauthstart={(id, idx) => onoauthstart?.(id, idx)}
-            onoauthcancel={(id) => onoauthcancel?.(id)}
-          />
+          <CloudAttachPanel />
         </div>
       {/if}
 

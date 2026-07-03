@@ -2,40 +2,22 @@
   /**
    * LocalModelsStatus — shows the local model runtime state for Screen 1.
    *
-   * Props:
-   *   hostProviders      — runtimes already running on the host (ollama / lmstudio / model-runner)
-   *   gpuVramMb          — detected VRAM in MiB (0 = not detected)
-   *   gpuVendor          — 'apple' | 'nvidia' | 'amd' | '' (empty = not detected)
-   *   gpuName            — human-readable GPU name from detection
-   *   ollamaEnabled      — true when in-stack Ollama will be added
-   *   selectedOllamaProfile — Ollama profile id (cuda / rocm / cpu)
-   *   onrecheck          — called when the user clicks Re-check (re-calls GET /api/setup/recommend)
+   * Takes NO props: reads the setup-state store directly (detected host runtimes,
+   * GPU info, in-stack Ollama selection) and calls its recommendation re-check,
+   * mirroring Screen1ModelsStep / ReviewStep.
    */
 
-  interface HostProvider {
-    provider: string;
-    url: string;
-  }
+  import { setupState } from '$lib/setup/setup-state.svelte.js';
 
-  interface Props {
-    hostProviders?: HostProvider[];
-    gpuVramMb?: number;
-    gpuVendor?: string;
-    gpuName?: string;
-    ollamaEnabled?: boolean;
-    selectedOllamaProfile?: string;
-    onrecheck?: () => void;
-  }
+  const s = setupState;
 
-  let {
-    hostProviders = [],
-    gpuVramMb = 0,
-    gpuVendor = '',
-    gpuName = '',
-    ollamaEnabled = false,
-    selectedOllamaProfile = '',
-    onrecheck,
-  }: Props = $props();
+  const hostProviders = $derived(s.detectedHostProviders);
+  const gpuVramMb = $derived(s.detectedGpuVramMb);
+  const gpuVendor = $derived(s.detectedGpuVendor);
+  const gpuName = $derived(s.detectedGpuName);
+  const ollamaEnabled = $derived(s.ollamaEnabled);
+  const selectedOllamaProfile = $derived(s.selectedOllamaProfile);
+  const onrecheck = (): void => void s.fetchAndApplyRecommendation();
 
   const isAppleSilicon = $derived(gpuVendor === 'apple');
   const hasRunningRuntime = $derived(hostProviders.length > 0);

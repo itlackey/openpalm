@@ -42,12 +42,8 @@
   {#if s.currentStep === 0 && !s.showDeploy}
     <div style="display:none" aria-hidden="true">
       <section class="step-content step-content--hidden" id="step-0" data-testid="step-system-check">
-        <SystemCheckStep
-          isRerun={s.isRerun}
-          onpass={() => s.handleSystemCheckPass()}
-          onnext={() => s.handleSystemCheckPass()}
-          ongpudetected={() => s.handleGpuDetected()}
-        />
+        <!-- SystemCheckStep reads the setup-state store directly. -->
+        <SystemCheckStep />
       </section>
     </div>
   {/if}

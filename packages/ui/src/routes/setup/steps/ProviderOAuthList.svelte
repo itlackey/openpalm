@@ -5,33 +5,23 @@
    * Renders a compact vertical list of OAuth-capable providers,
    * filtered through WIZARD_EXCLUDED_PROVIDERS (no Anthropic).
    *
-   * Props:
-   *   opencodeProviders  — full list from /api/setup/recommend
-   *   opencodeAuth       — auth methods per provider id
-   *   providerState      — current verification state per provider id
-   *   onoauthstart       — called when the user clicks "Sign in" for a provider
-   *   onoauthcancel      — called when OAuth poll should be aborted
+   * Takes NO props: reads the setup-state store directly (opencodeProviders /
+   * opencodeAuth / providerState) and calls its OAuth methods
+   * (startOpenCodeOAuth / cancelOAuth), mirroring Screen1ModelsStep / ReviewStep.
    */
 
   import { WIZARD_EXCLUDED_PROVIDERS } from '$lib/client/constants.js';
-  import type { OpenCodeProvider, AuthMethod, ProviderState } from '$lib/client/types.js';
+  import type { ProviderState } from '$lib/client/types.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import { setupState } from '$lib/setup/setup-state.svelte.js';
 
-  interface Props {
-    opencodeProviders: OpenCodeProvider[];
-    opencodeAuth: Record<string, AuthMethod[]>;
-    providerState: Record<string, ProviderState>;
-    onoauthstart: (id: string, methodIndex: number) => void;
-    onoauthcancel: (id: string) => void;
-  }
+  const s = setupState;
 
-  let {
-    opencodeProviders,
-    opencodeAuth,
-    providerState,
-    onoauthstart,
-    onoauthcancel,
-  }: Props = $props();
+  const opencodeProviders = $derived(s.opencodeProviders);
+  const opencodeAuth = $derived(s.opencodeAuth);
+  const providerState = $derived(s.providerState);
+  const onoauthstart = (id: string, methodIndex: number): void => void s.startOpenCodeOAuth(id, methodIndex);
+  const onoauthcancel = (id: string): void => s.cancelOAuth(id);
 
   // Order recognizable consumer providers first; obscure ones fall to the end.
   const RECOGNIZABLE_FIRST = ['openai', 'google', 'github-copilot', 'groq', 'mistral', 'huggingface'];
