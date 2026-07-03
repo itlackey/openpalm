@@ -6,6 +6,7 @@
  * — those happen separately in the caller after setup completes.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { errMessage } from "./errors.js";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
 import { writeFileAtomic } from "./fs-atomic.js";
@@ -193,7 +194,7 @@ export async function performSetup(
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errMessage(err);
       logger.error("failed to persist setup outputs", { error: message });
       return { ok: false, error: `Failed to persist setup outputs: ${message}` };
     }
@@ -339,7 +340,7 @@ export async function performSetup(
       // setup-deploy.ts:startDeploy AFTER pollContainerHealth confirms every
       // container is healthy.
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errMessage(err);
       logger.error("failed to complete setup persistence", { error: message });
       return { ok: false, error: `Setup persistence failed: ${message}` };
     }

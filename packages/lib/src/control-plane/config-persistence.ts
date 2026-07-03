@@ -6,6 +6,7 @@
  * the rollback module (snapshot to OP_HOME/data/rollback/).
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync, rmSync } from "node:fs";
+import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { createLogger } from "../logger.js";
@@ -164,7 +165,7 @@ function recordSecretStripNotice(state: ControlPlaneState, newlyRemoved: string[
     mkdirSync(state.dataDir, { recursive: true });
     writeFileSync(path, JSON.stringify(notice, null, 2));
   } catch (e) {
-    logger.warn("Could not persist secret-strip notice", { error: e instanceof Error ? e.message : String(e) });
+    logger.warn("Could not persist secret-strip notice", { error: errMessage(e) });
   }
 }
 
@@ -190,7 +191,7 @@ export function dismissSecretStripNotice(state: ControlPlaneState): void {
     try {
       rmSync(path);
     } catch (e) {
-      logger.warn("Could not dismiss secret-strip notice", { error: e instanceof Error ? e.message : String(e) });
+      logger.warn("Could not dismiss secret-strip notice", { error: errMessage(e) });
     }
   }
 }
@@ -401,7 +402,7 @@ function chownVolumeTarget(path: string, operatorIds: OperatorIds | null): void 
     chownSync(path, operatorIds.uid, operatorIds.gid);
   } catch (error) {
     logger.warn(
-      `Could not chown volume target ${path} to ${operatorIds.uid}:${operatorIds.gid}: ${error instanceof Error ? error.message : String(error)}`
+      `Could not chown volume target ${path} to ${operatorIds.uid}:${operatorIds.gid}: ${errMessage(error)}`
     );
   }
 }

@@ -7,6 +7,7 @@
  * shell) and never throws — errors collapse to `{ available: false, reason }`.
  */
 import { existsSync } from 'node:fs';
+import { errMessage } from './errors.js';
 import { execFile } from 'node:child_process';
 import { resolveHardwareProfileVariant } from './profile-ids.js';
 import type { AddonProfile } from './addons.js';
@@ -190,7 +191,7 @@ export async function getAddonProfileAvailability(
     }
   } catch (err) {
     // Belt-and-braces: any unexpected throw collapses to unavailable.
-    const reason = err instanceof Error ? err.message : String(err);
+    const reason = errMessage(err);
     result = { available: false, reason: `probe failed: ${reason}` };
   }
 

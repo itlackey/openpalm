@@ -15,6 +15,7 @@
  * Node.js-compatible only (no Bun.* APIs) — consumed by the CLI and Electron.
  */
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { errMessage } from './errors.js';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
@@ -223,7 +224,7 @@ export async function checkAndUpdateNpmBundle<M extends NpmBundleManifest, R>(
 
     return cfg.onSuccess(latestVersion, backupDir);
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errMessage(err);
     logger.debug(`${cfg.logLabel} update check failed (non-fatal)`, { error });
     // Restore-on-failure flows (skeleton) put the previous tree back if the
     // backup was taken before the download threw; return-the-backup flows (UI)
@@ -235,7 +236,7 @@ export async function checkAndUpdateNpmBundle<M extends NpmBundleManifest, R>(
       } catch (restoreErr) {
         logger.debug(`${cfg.logLabel} backup restore also failed`, {
           backup: backupDir,
-          restoreError: restoreErr instanceof Error ? restoreErr.message : String(restoreErr),
+          restoreError: errMessage(restoreErr),
         });
       }
     }

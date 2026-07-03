@@ -15,6 +15,7 @@
  * entry points decide exit behavior.
  */
 import { existsSync as nodeExistsSync, renameSync as nodeRenameSync } from 'node:fs';
+import { errMessage } from './errors.js';
 import { join } from 'node:path';
 
 /**
@@ -127,7 +128,7 @@ export function restoreUiBackup(
     log(`UI build restore: reinstated backup from ${uiBackupDir}; failed build at ${failedDir}`);
     return { status: 'restored', failedDir };
   } catch (restoreErr) {
-    log('UI backup restore failed:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
+    log('UI backup restore failed:', errMessage(restoreErr));
     return { status: 'error', error: restoreErr };
   }
 }

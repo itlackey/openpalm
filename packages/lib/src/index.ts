@@ -15,6 +15,9 @@ export {
   lookupEmbeddingDims,
 } from "./provider-constants.js";
 
+// ── Error utilities ──────────────────────────────────────────────────────
+export { errMessage } from "./control-plane/errors.js";
+
 // ── Logger ──────────────────────────────────────────────────────────────
 export {
   createLogger,

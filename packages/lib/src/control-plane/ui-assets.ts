@@ -22,6 +22,7 @@ import {
   writeFileSync, readFileSync, rmSync, realpathSync, renameSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
+import { errMessage } from './errors.js';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -153,7 +154,7 @@ export async function applyHomeSeed(
       staged = await fetchRemoteSkeleton(repoRef, dataDir);
     } catch (err) {
       throw new Error(
-        `Could not obtain @openpalm/skeleton: ${err instanceof Error ? err.message : String(err)}. ` +
+        `Could not obtain @openpalm/skeleton: ${errMessage(err)}. ` +
         'Check network access, or set OPENPALM_REPO_ROOT to a source checkout for development.',
       );
     }

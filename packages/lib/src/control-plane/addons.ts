@@ -6,6 +6,7 @@
  * the runtime source of truth.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { errMessage } from './errors.js';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { createLogger } from '../logger.js';
@@ -98,7 +99,7 @@ function readAddonServiceNamesFromContent(composeContent: string, composePath: s
   } catch (error) {
     logger.warn("failed to parse addon compose services", {
       composePath,
-      error: error instanceof Error ? error.message : String(error),
+      error: errMessage(error),
     });
     return [];
   }
@@ -175,7 +176,7 @@ function readAddonProfilesFromContent(composeContent: string, composePath: strin
   } catch (error) {
     logger.warn("failed to parse addon compose profiles", {
       composePath,
-      error: error instanceof Error ? error.message : String(error),
+      error: errMessage(error),
     });
     return [];
   }
@@ -310,7 +311,7 @@ function enableAddon(homeDir: string, name: string): MutationResult {
     setEnabledAddonState(homeDir, name, true);
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: errMessage(error) };
   }
 }
 
@@ -320,7 +321,7 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
     setEnabledAddonState(homeDir, name, false);
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: errMessage(error) };
   }
 }
 
