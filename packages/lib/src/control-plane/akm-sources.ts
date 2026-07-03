@@ -75,14 +75,6 @@ function upsertSource(config: AkmConfigObject, entry: FilesystemSourceEntry): Ak
   return { ...config, sources };
 }
 
-function removeSource(config: AkmConfigObject, name: string): AkmConfigObject {
-  if (!Array.isArray(config.sources)) return config;
-  const sources = (config.sources as unknown[]).filter(
-    (s) => !(s && typeof s === "object" && (s as Record<string, unknown>).name === name),
-  );
-  return { ...config, sources };
-}
-
 function assertNoPrimaryEscalation(entry: FilesystemSourceEntry): void {
   // Defense in depth: the type forbids `primary`, but assert at runtime too —
   // a secondary that became primary would change the write target.

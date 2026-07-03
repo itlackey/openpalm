@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from './types.js';
@@ -10,7 +10,7 @@ import { composeDown, composePs, composePull, composeUp, detectExistingProject, 
 import { mapDockerError } from './compose-errors.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile } from './secrets.js';
-import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from './install-lock.js';
+import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 
 export type DeployEntry = {

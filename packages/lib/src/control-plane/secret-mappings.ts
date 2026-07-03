@@ -126,7 +126,7 @@ export function readPlaintextSecretIndex(state: ControlPlaneState): SecretIndexF
 export function writePlaintextSecretIndex(state: ControlPlaneState, index: SecretIndexFile): void {
   const dir = `${state.dataDir}/secrets`;
   mkdirSync(dir, { recursive: true });
-  writeFileSync(secretIndexPath(state), JSON.stringify(index, null, 2) + '\n');
+  writeFileSync(secretIndexPath(state), `${JSON.stringify(index, null, 2)}\n`);
 }
 
 export function ensurePlaintextSecretEntry(

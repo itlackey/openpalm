@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, afterEach } from "bun:test";
 import { createOpenCodeClient } from "./opencode-client.ts";
 
 // ── Test server helper ──────────────────────────────────────────────────
@@ -99,7 +99,7 @@ describe("createOpenCodeClient", () => {
   });
 
   test("setProviderApiKey sends PUT with correct body", async () => {
-    let receivedBody: any = null;
+    let receivedBody: unknown = null;
     let receivedMethod = "";
     let receivedPath = "";
 

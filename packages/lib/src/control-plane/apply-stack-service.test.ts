@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import {
-  mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync, readFileSync,
+  mkdtempSync, writeFileSync, rmSync, chmodSync, readFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

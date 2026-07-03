@@ -217,7 +217,7 @@ export async function performSetup(
       // to an old release kept deploying a months-old image. Each image now has
       // its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade); the Advanced
       // field pins all four to the same tag.
-      const requestedTag = imageTag && imageTag.trim() ? imageTag.trim() : "latest";
+      const requestedTag = imageTag?.trim() ? imageTag.trim() : "latest";
       for (const key of SERVICE_VERSION_KEYS) {
         akmUpdates[key] = requestedTag;
       }

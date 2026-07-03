@@ -317,12 +317,6 @@ describe("declaredUiChannel", () => {
 // missing-integrity and mismatch cases) and through checkAndUpdateUiBuild
 // returning {updated:false} early (for the up-to-date case).
 
-/** Build a correct sha512 SRI string for the given bytes. */
-function makeSri(data: Uint8Array): string {
-  const digest = createHash("sha512").update(data).digest("base64");
-  return `sha512-${digest}`;
-}
-
 describe("npm integrity verification (fail-closed)", () => {
   let savedFetch: typeof globalThis.fetch;
 

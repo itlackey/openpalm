@@ -55,7 +55,7 @@ export function snapshotCurrentState(state: ControlPlaneState, opts: { arm?: boo
   // Write a timestamp marker
   writeFileSync(
     join(rollbackDir, SNAPSHOT_TS_FILE),
-    new Date().toISOString() + "\n",
+    `${new Date().toISOString()}\n`,
   );
 
   if (opts.arm) {

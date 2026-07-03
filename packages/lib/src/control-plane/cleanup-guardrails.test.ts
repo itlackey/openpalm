@@ -286,7 +286,7 @@ describe("guardrail: component/instance system removed", () => {
 
   test("no source file references data/components or data/catalog", () => {
     const sources = readSourceFiles();
-    for (const { path, content } of sources) {
+    for (const { content } of sources) {
       expect(content).not.toContain("data/components");
       expect(content).not.toContain("data/catalog");
     }

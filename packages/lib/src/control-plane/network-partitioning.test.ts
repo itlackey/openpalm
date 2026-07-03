@@ -109,11 +109,11 @@ describe("network partitioning — assistant_net membership", () => {
   const PORTAL_ADAPTERS = ["discord", "slack"];
 
   test("assistant is on assistant_net", () => {
-    expect(allServices["assistant"]?.networks).toContain("assistant_net");
+    expect(allServices.assistant?.networks).toContain("assistant_net");
   });
 
   test("guardian is on assistant_net", () => {
-    expect(allServices["guardian"]?.networks).toContain("assistant_net");
+    expect(allServices.guardian?.networks).toContain("assistant_net");
   });
 
   test("no portal adapter is on assistant_net", () => {
@@ -139,13 +139,13 @@ describe("network partitioning — assistant_net membership", () => {
   });
 
   test("guardian is on portal_net (the ingress bridge)", () => {
-    expect(allServices["guardian"]?.networks).toContain("portal_net");
+    expect(allServices.guardian?.networks).toContain("portal_net");
   });
 });
 
 describe("network partitioning — assistant host port defaults", () => {
   test("assistant host port defaults to loopback (127.0.0.1)", () => {
-    const assistantPorts = allServices["assistant"]?.ports ?? [];
+    const assistantPorts = allServices.assistant?.ports ?? [];
     // The port entry must contain the loopback default.
     // Pattern: "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:..."
     const hasLoopbackDefault = assistantPorts.some((p) =>

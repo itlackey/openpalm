@@ -132,7 +132,7 @@ export function ownershipRepairMarkerMatches(homeDir: string, ids: { uid: number
 export function writeOwnershipRepairMarker(homeDir: string, ids: { uid: number; gid: number }): void {
   const file = ownershipRepairMarkerFile(homeDir);
   mkdirSync(dirname(file), { recursive: true });
-  writeFileAtomic(file, JSON.stringify({ uid: ids.uid, gid: ids.gid }) + '\n');
+  writeFileAtomic(file, `${JSON.stringify({ uid: ids.uid, gid: ids.gid })}\n`);
 }
 
 // ── Composed host-ownership reconcile (R2) ───────────────────────────────────

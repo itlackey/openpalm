@@ -16,7 +16,7 @@
  *   - Conflict detection compares provider IDs; existing credentials are
  *     preserved unless overwriteConflicts=true.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
@@ -217,7 +217,7 @@ export function importHostOpenCode(
          }
        }
 
-       writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n");
+       writeFileSync(destPath, `${JSON.stringify(merged, null, 2)}\n`);
      }
   }
 
@@ -239,7 +239,7 @@ export function importHostOpenCode(
           importedCredentials++;
         }
       }
-      writeFileSync(destPath, JSON.stringify(merged, null, 2) + "\n");
+      writeFileSync(destPath, `${JSON.stringify(merged, null, 2)}\n`);
     } else {
       // No existing file or overwrite requested — parse, filter, then write.
       // Belt-and-suspenders: never write anthropic credentials into OP_HOME.
@@ -250,7 +250,7 @@ export function importHostOpenCode(
         filtered[id] = value;
         importedCredentials++;
       }
-      writeFileSync(destPath, JSON.stringify(filtered, null, 2) + "\n");
+      writeFileSync(destPath, `${JSON.stringify(filtered, null, 2)}\n`);
     }
 
     try {

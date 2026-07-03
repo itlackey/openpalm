@@ -35,7 +35,7 @@ function isLoopback(value: string): boolean {
 export function isRemoteSetupAllowed(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  const v = env["OP_ALLOW_REMOTE_SETUP"]?.trim().toLowerCase();
+  const v = env.OP_ALLOW_REMOTE_SETUP?.trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
@@ -51,7 +51,7 @@ export function collectBindAddressWarnings(
 ): string[] {
   const warnings: string[] = [];
 
-  const globalBind = env["OP_BIND_ADDRESS"];
+  const globalBind = env.OP_BIND_ADDRESS;
   if (globalBind && !isLoopback(globalBind)) {
     warnings.push(
       `OP_BIND_ADDRESS is set to "${globalBind}" — services will be exposed on the host network interface, not just loopback. ` +

@@ -9,7 +9,7 @@ import { authJsonPath as resolveAuthJsonPath } from "./paths.js";
 import { dirname } from "node:path";
 import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
 
-const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
+const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
 const logger = createLogger("secrets");
 
 
@@ -142,7 +142,7 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
         "OP_SETUP_COMPLETE=false",
       "",
     ].join("\n");
-    writeVaultFile(systemEnvPath, header.endsWith("\n") ? header : header + "\n");
+    writeVaultFile(systemEnvPath, header.endsWith("\n") ? header : `${header}\n`);
     return;
   }
 }
@@ -248,7 +248,7 @@ export function writeAuthJsonProviderKeys(
     }
   }
 
-  writeVaultFile(authJsonPath, JSON.stringify(current, null, 2) + "\n");
+  writeVaultFile(authJsonPath, `${JSON.stringify(current, null, 2)}\n`);
 }
 
 /** Read and parse knowledge/env/stack.env. Returns {} if the file does not exist. */

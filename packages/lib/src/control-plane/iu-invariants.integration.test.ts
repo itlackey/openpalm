@@ -89,7 +89,7 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
       }
       if (existsSync(dst) && readFileSync(dst, "utf8").includes("OP_ENABLED_ADDONS")) return "skip";
       mkdirSync(join(dst, ".."), { recursive: true });
-      writeFileSync(`${dst}.tmp`, picked.join("\n") + "\n");
+      writeFileSync(`${dst}.tmp`, `${picked.join("\n")}\n`);
       renameSync(`${dst}.tmp`, dst);
       return "written";
     };
@@ -162,7 +162,7 @@ describe.skipIf(SKIP_DOCKER)("install/update invariants (Phase 0 baseline)", () 
 
     // Now getRunningImages should show a running container with a real digest
     const after = await getRunningImages({ files: [proj.file], envFiles: [envFile], profiles: [] });
-    const svcInfo = after["svc"];
+    const svcInfo = after.svc;
     expect(svcInfo).not.toBeUndefined();
     expect(svcInfo!.state).toBe("running");
     expect(svcInfo!.digest).toMatch(/^sha256:/);
