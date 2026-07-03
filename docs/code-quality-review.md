@@ -224,11 +224,15 @@ just need to be applied uniformly and the copies deleted.
 - [x] 11. Guardian: dead `forward.ts` deleted (`resolveSessionTarget` → `session-target.ts`); the three OpenAI-compatible handlers unified into one templated `handleTurn`. The two turn-execution paths were deliberately NOT merged — the non-streaming path intentionally omits permission-policy/question-rejection/timeout, so unifying would change security behavior (documented).
 - [x] 12. `api.ts` (975 L) split into 11 domain client modules + a transport `core.ts`, behind a barrel that preserves all 31 existing import sites; DTOs co-located; `getSessionMessages` flattening parser extracted to `lib/chat/session-messages.ts` with tests.
 
+**Wave 4 — Medium god-file splits (DONE, merged & pushed):**
+- [x] 13. lib splits: `volume-ownership.ts` from docker.ts, `addon-availability.ts` from addons.ts (the `__addonAvailabilityTestHooks` internal export was removed — probes now test in isolation), and a generic `NpmPackageUpdater` deduping the two ui-assets npm pipelines.
+- [x] 14a. `electron/main.ts` 1274→895 lines; extracted `tray.ts`, `splash.ts`, `docker-preflight.ts`, `permissions.ts`, `launch-on-login.ts`, `assets.ts` (inline HTML moved to packaged `assets/*.html`).
+- [x] 14b. CLI `defineAction` wrapper (10 commands de-boilerplated); extracted `promptYesNo`/`parseOutputFormat`/`resolveLatestReleaseTag`+`GITHUB_REPO`; `SUBCOMMAND_NAMES` derived from the registry.
+- [x] 12-rest. `admin/voice/+server.ts` 1041→309 lines (`server/voice/bring-up.ts` service); `AudioPlaybackController` split from `voice-state.svelte.ts` (750→494).
+
 **Remaining (not yet started):**
-- [ ] 13. lib splits (`volume-ownership.ts` from docker.ts, `addon-availability.ts` from addons.ts, `NpmPackageUpdater` from ui-assets.ts).
-- [ ] 12-rest / 14. `admin/voice` route → service module, `voice-state` audio-controller split; `electron/main.ts` module split; CLI `defineAction` wrapper + shared command helpers.
 - [ ] 15. Hygiene utils (`errMessage`, `retry`, guardian `config.ts`, centralized port/repo constants).
-- Deferred sub-steps from items 7/8/10 (portal `renderTurn` sink, full `UiSupervisor` class, setup-state store + prop-drilling) and the guardian `runTurn`/`session-reuse` extraction (11 step 3-4).
+- Deferred behavior-risky sub-steps (documented; each needs individual careful treatment): portal `renderTurn` sink (divergent per-frame error handling), full `UiSupervisor` class (Bun vs Node process shells diverge), guardian turn-path merge (non-streaming path intentionally omits permission policy — merging changes security behavior), setup-state store + prop-drilling.
 
 All landed changes preserve behavior, add tests, and keep the lint gate green. Pre-existing test
 failures unrelated to this work: 12 root-uid ownership tests (sandbox runs as uid 0), 1 guardian IPv6
