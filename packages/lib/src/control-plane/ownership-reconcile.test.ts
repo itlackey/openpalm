@@ -104,7 +104,7 @@ describe('reconcile decision building', () => {
     expect(decision.canaries.some((canary) => canary.path === join(homeDir, 'knowledge'))).toBe(true);
   });
 
-  test('returns swap when previous identity differs and canary mismatches current ids', () => {
+  test('a different recorded host is a swap (regardless of canary ownership)', () => {
     const decision = decideOwnershipFromCanaries({
       currentIdentity: { kind: 'linux', host: 'host-b', uid: 99999, gid: 99999 },
       previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
@@ -113,7 +113,9 @@ describe('reconcile decision building', () => {
     expect(decision).toBe('swap');
   });
 
-  test('returns drift when previous identity differs but at least one canary already matches current ids', () => {
+  test('a different recorded host is STILL a swap even when a canary is owned by the current uid', () => {
+    // The bug this guards: a coincidentally current-uid-owned path must not
+    // downgrade a real host swap to drift and silently skip the block.
     const current = { kind: 'linux', host: 'host-b', uid: process.getuid?.() ?? 1000, gid: process.getgid?.() ?? 1000 };
     const decision = decideOwnershipFromCanaries({
       currentIdentity: current,
@@ -123,14 +125,23 @@ describe('reconcile decision building', () => {
         { path: '/tmp/mismatch', uid: current.uid + 1, gid: current.gid + 1 },
       ],
     });
+    expect(decision).toBe('swap');
+  });
+
+  test('same recorded host with some root-owned canaries is drift (repair), not swap', () => {
+    const current = { kind: 'linux', host: 'host-a', uid: process.getuid?.() ?? 1000, gid: process.getgid?.() ?? 1000 };
+    const decision = decideOwnershipFromCanaries({
+      currentIdentity: current,
+      previousIdentity: { kind: 'linux', host: 'host-a', uid: current.uid, gid: current.gid },
+      canaries: [{ path: '/tmp/rootowned', uid: 0, gid: 0 }],
+    });
     expect(decision).toBe('drift');
   });
 
   test('null session on the SAME recorded host is match, not a spurious swap', () => {
     // Root session over a root-owned OP_HOME (uid null) or win32 on the original
-    // host — e.g. `sudo openpalm start`. Comparing null against numeric canary
-    // owners would never match, so decide on the host fingerprint: same kind+host
-    // → match (no spurious block).
+    // host — e.g. `sudo openpalm start`. Same kind+host → not a swap; no usable
+    // uid to repair against → match (no spurious block).
     const decision = decideOwnershipFromCanaries({
       currentIdentity: { kind: 'linux', host: 'host-a', uid: null, gid: null },
       previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
@@ -140,7 +151,7 @@ describe('reconcile decision building', () => {
   });
 
   test('null session on a DIFFERENT recorded host is a swap (moved drive started as root)', () => {
-    // A drive moved to a new host and started as root (or on a root runner):
+    // A drive moved to a new host and started as root (or on a root CI runner):
     // uid is null, but the recorded host differs — this must still block so the
     // stack is not silently started against foreign-owned files.
     const decision = decideOwnershipFromCanaries({
@@ -151,13 +162,13 @@ describe('reconcile decision building', () => {
     expect(decision).toBe('swap');
   });
 
-  test('null session with no recorded previous host is drift, never a block', () => {
+  test('null session with no recorded previous host is match, never a block', () => {
     const decision = decideOwnershipFromCanaries({
       currentIdentity: { kind: 'linux', host: 'host-a', uid: null, gid: null },
       previousIdentity: null,
       canaries: [{ path: '/tmp/canary', uid: 0, gid: 0 }],
     });
-    expect(decision).toBe('drift');
+    expect(decision).toBe('match');
   });
 });
 

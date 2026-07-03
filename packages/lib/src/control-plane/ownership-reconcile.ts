@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import { stateEnvFile, hostIdentityFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
-import { hostIdentityMatches, detectHostIdentity, describeHostRuntime, readHostIdentity, writeHostIdentity } from './host-identity.js';
+import { detectHostIdentity, describeHostRuntime, readHostIdentity, writeHostIdentity } from './host-identity.js';
 import { discoverHomeBindMountSources } from './config-persistence.js';
 import { resolveSessionIdentity } from './operator-ids.js';
 import { patchStateEnvFile } from './secrets.js';
@@ -59,32 +59,36 @@ export function decideOwnershipFromCanaries(input: {
 }): OwnershipDecision {
   const { currentIdentity, previousIdentity, canaries } = input;
 
-  // Root session on a root-owned OP_HOME (uid resolves to null via
-  // resolveSessionIdentity's fallback), or win32: there is no usable session uid
-  // to compare canary owners against, so decide on the HOST fingerprint instead.
-  // The same recorded machine (kind + host) — e.g. `sudo openpalm start` on the
-  // original host — is not a swap and must not spuriously block. A DIFFERENT
-  // recorded host still IS a swap and must block, so a drive moved to a new host
-  // and started as root isn't silently run against foreign-owned files. (Repair
-  // is a no-op under a null session — repairRootOwnedBindMounts short-circuits —
-  // so the block, not a chown, is the protection here.)
-  if (currentIdentity.uid === null || currentIdentity.gid === null) {
-    if (!previousIdentity) return 'drift';
-    const sameMachine = currentIdentity.kind === previousIdentity.kind
-      && currentIdentity.host === previousIdentity.host;
-    return sameMachine ? 'match' : 'swap';
+  // A SWAP is defined by the machine fingerprint alone: OP_HOME was last recorded
+  // on a different host (kind + hostname) than the one now running. This decision
+  // must NOT depend on canary ownership — a moved drive can coincidentally have a
+  // path or two owned by the new uid (freshly-created dirs, a colliding uid), and
+  // letting that downgrade a real swap to `drift` silently starts the stack
+  // against foreign-owned files (the host-swap block never fires). Hostname is the
+  // machine identity; the session uid is a within-machine attribute used only to
+  // pick match-vs-drift below, never to decide swap.
+  if (previousIdentity && !isSameMachine(currentIdentity, previousIdentity)) {
+    return 'swap';
   }
+
+  // Same machine (or first run, no recorded identity): not a swap. Decide whether
+  // ownership is already correct (match) or needs a repair pass (drift).
+  //
+  // No usable session uid (root session on a root-owned OP_HOME, or win32): there
+  // is nothing to compare canary owners against and repair is a no-op anyway
+  // (repairRootOwnedBindMounts short-circuits on null ids / win32) — treat as
+  // match so `sudo openpalm start` on the original host never spuriously blocks.
+  if (currentIdentity.uid === null || currentIdentity.gid === null) return 'match';
 
   const allMatch = canaries.length > 0 && canaries.every((canary) =>
     canary.uid === currentIdentity.uid && canary.gid === currentIdentity.gid,
   );
-  const anyMatch = canaries.some((canary) =>
-    canary.uid === currentIdentity.uid && canary.gid === currentIdentity.gid,
-  );
+  return allMatch ? 'match' : 'drift';
+}
 
-  if (allMatch) return 'match';
-  if (!previousIdentity || hostIdentityMatches(currentIdentity, previousIdentity)) return 'drift';
-  return anyMatch ? 'drift' : 'swap';
+/** Same physical machine = same platform kind and hostname (the machine identity). */
+function isSameMachine(a: HostIdentity, b: HostIdentity): boolean {
+  return a.kind === b.kind && a.host === b.host;
 }
 
 export function buildReconcileDecision(input: {
