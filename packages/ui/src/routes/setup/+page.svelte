@@ -11,6 +11,14 @@
     computeAutoModelSelection, resolvePreferredModelSelection,
   } from '$lib/client/helpers.js';
   import { buildSetupPayload, parseSetupConfig } from '$lib/setup/payload.js';
+  import {
+    fetchVoiceProfiles, fetchOllamaProfiles, fetchRecommendation,
+    ensureOpenCode, fetchOpenCodeStatus, fetchOpenCodeProviders,
+    fetchDetectedProviders, fetchProviderModels,
+    authorizeOpenCodeOAuth, pollOpenCodeOAuthCallback,
+    completeSetup, fetchDeployStatus, retryDeploy,
+    fetchHostStatus, importHost, fetchCurrentConfig, fetchSetupStatus,
+  } from '$lib/setup-api.js';
   import type {
     ProviderState, ModelSelection, DetectedProvider, PortalState,
     OpenCodeProvider, AuthMethod, VoiceEngineValue,
@@ -24,13 +32,6 @@
   import ReviewStep from './steps/ReviewStep.svelte';
   import DeployStep from './steps/DeployStep.svelte';
   import IconLogo from '$lib/components/icons/IconLogo.svelte';
-
-  interface OAuthAuthorizeResponse {
-    url?: string;
-    method?: 'auto' | 'code';
-    instructions?: string;
-    message?: string;
-  }
 
   // ── Navigation state ─────────────────────────────────────────────────────
   let currentStep = $state(0);
@@ -221,13 +222,8 @@
 
   async function loadVoiceProfiles(): Promise<void> {
     try {
-      const res = await fetch('/api/setup/voice-profiles');
-      if (!res.ok) return;
-      const data = await res.json() as {
-        ok?: boolean;
-        profiles?: VoiceAddonProfile[];
-        selectedProfile?: string | null;
-      };
+      const data = await fetchVoiceProfiles();
+      if (!data) return;
       if (!Array.isArray(data.profiles)) return;
       voiceProfiles = data.profiles;
 
@@ -247,13 +243,8 @@
 
   async function loadOllamaProfiles(): Promise<void> {
     try {
-      const res = await fetch('/api/setup/ollama-profiles');
-      if (!res.ok) return;
-      const data = await res.json() as {
-        ok?: boolean;
-        profiles?: VoiceAddonProfile[];
-        selectedProfile?: string | null;
-      };
+      const data = await fetchOllamaProfiles();
+      if (!data) return;
       if (!Array.isArray(data.profiles)) return;
       ollamaProfiles = data.profiles;
 
@@ -345,15 +336,8 @@
       rec = recommendation;
     } else {
       try {
-        const res = await fetch('/api/setup/recommend');
-        if (!res.ok) return;
-        const data = await res.json() as {
-          ok?: boolean;
-          recommendation?: SetupRecommendation;
-          hostProviders?: { provider: string; url: string }[];
-          gpu?: { vramMb?: number; vendor?: string; name?: string } | null;
-          cloudProviders?: string[];
-        };
+        const data = await fetchRecommendation();
+        if (!data) return;
         if (!data.ok || !data.recommendation) return;
         rec = data.recommendation;
         if (Array.isArray(data.hostProviders)) detectedHostProviders = data.hostProviders;
@@ -485,27 +469,21 @@
   async function checkOpenCodeAndInit(): Promise<void> {
     try {
       // Ensure OpenCode is running — starts a dedicated instance if not already up
-      const ensureRes = await fetch('/api/setup/opencode/ensure', { method: 'POST' });
-      if (ensureRes.ok) {
-        const { ok } = (await ensureRes.json()) as { ok: boolean };
-        if (ok) {
-          opencodeAvailable = true;
-          await loadOpenCodeProviders();
-          return;
-        }
+      const ensured = await ensureOpenCode();
+      if (ensured?.ok) {
+        opencodeAvailable = true;
+        await loadOpenCodeProviders();
+        return;
       }
     } catch {
       // fall through to status check
     }
     // Fallback: check if OpenCode is reachable at the configured URL
     try {
-      const res = await fetch('/api/setup/opencode/status');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.available) {
-          opencodeAvailable = true;
-          await loadOpenCodeProviders();
-        }
+      const data = await fetchOpenCodeStatus();
+      if (data?.available) {
+        opencodeAvailable = true;
+        await loadOpenCodeProviders();
       }
     } catch {
       // fall back to hardcoded providers
@@ -513,9 +491,8 @@
   }
 
   async function loadOpenCodeProviders(): Promise<void> {
-    const res = await fetch('/api/setup/opencode/providers');
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await fetchOpenCodeProviders();
+    if (!data) return;
     if (!data.available || !Array.isArray(data.providers)) return;
 
     const providers: OpenCodeProvider[] = data.providers;
@@ -557,9 +534,8 @@
 
   async function detectProviders(): Promise<void> {
     try {
-      const res = await fetch('/api/setup/detect-providers');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await fetchDetectedProviders();
+      if (data) {
         detectedProviders = data.providers ?? [];
         for (const dp of detectedProviders) {
           if (!dp.available) continue;
@@ -579,20 +555,6 @@
     } catch {
       detectedProviders = [];
     }
-  }
-
-  async function apiFetchModels(provider: string, baseUrl: string, apiKey: string): Promise<{ models: string[] }> {
-    const url = '/api/setup/models/' + encodeURIComponent(provider);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: apiKey ?? '', baseUrl: baseUrl ?? '' }),
-    });
-    const data = await res.json();
-    if (!res.ok || data.status === 'recoverable_error') {
-      throw new Error(data.error ?? ('Failed to fetch models (HTTP ' + res.status + ')'));
-    }
-    return data;
   }
 
   async function verifyProvider(id: string): Promise<void> {
@@ -618,7 +580,7 @@
     const apiKey = (st.apiKey ?? '').trim();
 
     try {
-      const result = await apiFetchModels(id, baseUrl, apiKey);
+      const result = await fetchProviderModels(id, { baseUrl, apiKey });
       if (verifyGeneration[id] !== gen) return;
       st.verified = true;
       st.error = false;
@@ -644,13 +606,7 @@
     st.error = false;
 
     try {
-      const res = await fetch('/api/setup/opencode/provider/' + encodeURIComponent(providerId) + '/oauth/authorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: methodIndex }),
-      });
-      const oauthRes = await res.json() as OAuthAuthorizeResponse;
-      if (!res.ok) throw new Error(oauthRes.message ?? 'OAuth failed');
+      const oauthRes = await authorizeOpenCodeOAuth(providerId, methodIndex);
 
       st.oauthPolling = true;
       st.oauthUrl = oauthRes.url ?? '';
@@ -682,19 +638,13 @@
 
     try {
       // The callback is a long-poll — make one call and wait (up to 10 minutes)
-      const res = await fetch('/api/setup/opencode/provider/' + encodeURIComponent(providerId) + '/oauth/callback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: methodIndex }),
-        signal: combinedSignal,
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && (data as { ok?: boolean })?.ok) {
+      const { ok, data } = await pollOpenCodeOAuthCallback(providerId, methodIndex, combinedSignal);
+      if (ok && data?.ok) {
         st.verified = true;
         st.error = false;
       } else {
         st.error = true;
-        st.errorMessage = (data as { message?: string })?.message ?? 'Authorization failed';
+        st.errorMessage = data?.message ?? 'Authorization failed';
       }
     } catch (e) {
       // AbortError from user cancel — don't show an error
@@ -724,7 +674,7 @@
     // require one explicit acknowledgment before installing — this replaces the
     // scattered soft warnings on Providers/Models/Review. Rerun keeps existing
     // config, so don't re-prompt there.
-    const payloadHasLlm = !!(payload as { llm?: unknown }).llm;
+    const payloadHasLlm = !!payload.llm;
     if (!payloadHasLlm && !isRerun && !emptyAiAck) {
       const ok = window.confirm(
         'No AI is set up here. You can connect this app to an assistant running on another computer, or add a provider later from your dashboard.\n\nInstall now?',
@@ -749,14 +699,9 @@
     }
 
     try {
-      const res = await fetch('/api/setup/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
+      const { ok, data } = await completeSetup(payload);
 
-      if (!res.ok || !data.ok) {
+      if (!ok || !data.ok) {
         // Docker-down (HTTP 503 { error:'docker_unavailable', message }) and any
         // other failure: surface the human-readable message and STOP. Do not
         // flip into showDeploy / the polling "Preparing…" spinner — there's no
@@ -787,8 +732,8 @@
 
   async function pollDeployStatus(): Promise<void> {
     try {
-      const res = await fetch('/api/setup/deploy-status');
-      if (!res.ok) {
+      const { ok, data } = await fetchDeployStatus();
+      if (!ok || !data) {
         deployPollErrors++;
         if (deployPollErrors >= 5) {
           // Lost contact with the installer — surface a real error instead of
@@ -799,7 +744,6 @@
         }
         return;
       }
-      const data = await res.json();
       deployPollErrors = 0;
 
       deployData = data;
@@ -865,10 +809,9 @@
     deployHasWarnings = false;
     deployData = {};
     deployPollErrors = 0;
-    const res = await fetch('/api/setup/retry-deploy', { method: 'POST' });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload?.ok === false) {
-      deployError = payload?.message ?? 'Retry failed.';
+    const { ok, data } = await retryDeploy();
+    if (!ok || data?.ok === false) {
+      deployError = data?.message ?? 'Retry failed.';
       return;
     }
     installing = true;
@@ -899,9 +842,8 @@
   async function loadHostStatus(): Promise<void> {
     try {
       // Use setup-namespace endpoint — no admin auth needed during setup
-      const res = await fetch('/api/setup/host-status');
-      if (res.ok) {
-        const data = (await res.json()) as { providerCount: number; credentialCount?: number; modelPreferences?: { model?: string; small_model?: string }; imageTag?: string; hostAkmAvailable?: boolean; warning?: string };
+      const data = await fetchHostStatus();
+      if (data) {
         hostProviderCount = Math.max(data.providerCount ?? 0, data.credentialCount ?? 0);
         if (data.imageTag && !imageTag) imageTag = data.imageTag;
         if (typeof data.hostAkmAvailable === 'boolean') {
@@ -949,20 +891,13 @@
     hostImportError = '';
     try {
       // Use setup-namespace endpoint — no admin auth needed during setup
-      const res = await fetch('/api/setup/import-host', { method: 'POST' });
-      const data = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-        message?: string;
-        importedProviders?: string[];
-        pushedProviders?: string[];
-      } | null;
+      const { ok, data } = await importHost();
 
-      if (!res.ok || !data?.ok) {
+      if (!ok || !data?.ok) {
         // Hard failure (could not copy host config). Keep the user on the
         // Providers step with a clear message instead of silently doing nothing.
         hostImportError =
-          data?.error ?? data?.message ?? `Couldn't import providers from this computer (HTTP ${res.status}). You can sign in or add a provider manually instead.`;
+          data?.error ?? `Couldn't import providers from this computer. You can sign in or add a provider manually instead.`;
         hostImporting = false;
         return;
       }
@@ -1038,8 +973,7 @@
       maxVisitedStep = 3;
       uiLoginPassword = generatePassword(); // fallback; replaced if API returns existing
 
-      fetch('/api/setup/current-config')
-        .then((r) => r.ok ? r.json() : null)
+      fetchCurrentConfig()
         .then((data) => {
           if (!data) return;
           // S3: current-config no longer returns the plaintext password.
@@ -1085,18 +1019,16 @@
         .catch((e) => { console.error('[setup] failed to load existing config:', e); });
     } else {
       uiLoginPassword = generatePassword();
-      fetch('/api/setup/status')
-        .then((r) => r.json())
+      fetchSetupStatus()
         .then((data) => { if (data.setupComplete) window.location.href = '/'; })
         .catch((e) => { console.error('[setup] failed to check setup status:', e); });
     }
 
     // If a previous deploy is still running (or errored), pick it up
     // without re-triggering /api/setup/complete.
-    fetch('/api/setup/deploy-status')
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (!data) return;
+    fetchDeployStatus()
+      .then(({ ok, data }) => {
+        if (!ok || !data) return;
         if (data.deploying || data.deployError) {
           deployData = data;
           showDeploy = true;
