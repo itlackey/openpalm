@@ -46,7 +46,7 @@ import {
   splitMessage,
   type PermissionAsk,
   type ToolUpdate,
-} from './runtime.ts';
+} from '@openpalm/portal-sdk';
 
 const log = createLogger("channel-slack:stream");
 

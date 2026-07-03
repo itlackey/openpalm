@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ConversationQueue } from './runtime.ts';
+import { ConversationQueue } from '@openpalm/portal-sdk';
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve = () => {};

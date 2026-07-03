@@ -24,7 +24,7 @@ import {
   ACTION_PERM_ALWAYS,
   ACTION_PERM_DENY,
 } from "./stream-render.ts";
-import type { OcClient } from './runtime.ts';
+import type { OcClient } from '@openpalm/portal-sdk';
 
 // A hand-written OcClient stub recording the calls the registry makes.
 function stubClient(): { client: OcClient; replies: Array<{ userId: string; requestID: string; reply: string }>; aborts: Array<{ userId: string; sessionId: string }>; fail?: boolean } {

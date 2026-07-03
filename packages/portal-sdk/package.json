@@ -1,0 +1,31 @@
+{
+  "name": "@openpalm/portal-sdk",
+  "description": "Shared portal SDK for OpenPalm chat adapters (Discord, Slack) — OpenCode client, event interpreters, runtime helpers, and the BasePortal base class",
+  "version": "0.12.52",
+  "type": "module",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm.git",
+    "directory": "packages/portal-sdk"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "src"
+  ],
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "1.17.7"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14"
+  }
+}

@@ -1,4 +1,4 @@
-import { createLogger, parseIdList } from './runtime.ts';
+import { createLogger, parseIdList } from '@openpalm/portal-sdk';
 import type { PermissionResult } from './types.ts';
 import type { PermissionConfig, UserInfo } from "./types.ts";
 

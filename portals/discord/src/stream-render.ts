@@ -50,7 +50,7 @@ import {
   splitMessage,
   type PermissionAsk,
   type QuestionAsk,
-} from './runtime.ts';
+} from '@openpalm/portal-sdk';
 
 /** Adapter-owned hook so a pending question can also be answered by the user
  * typing a normal message in the thread. `resolve(answer)` is the SINGLE

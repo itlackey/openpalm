@@ -18,7 +18,7 @@
   ],
   "main": "src/index.ts",
   "dependencies": {
-    "@opencode-ai/sdk": "1.17.7",
+    "@openpalm/portal-sdk": "workspace:*",
     "discord.js": "^14.16.3"
   }
 }

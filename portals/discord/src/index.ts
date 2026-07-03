@@ -1,15 +1,10 @@
 import {
-  asRaw,
-  ConversationQueue,
-  extractTextDelta,
-  isTurnEnd,
-  OcClient,
-  partSnapshotType,
-  SecretFileError,
+  BasePortal,
   createLogger,
+  OcClient,
   readRequiredSecretFile,
   splitMessage,
-} from './runtime.ts';
+} from '@openpalm/portal-sdk';
 import {
   Client,
   Events,
@@ -34,41 +29,26 @@ const log = createLogger("channel-discord");
 
 const MAX_MESSAGE_LENGTH = 2000;
 
-type ForwardResult = {
-  userId: string;
-  text: string;
-  metadata?: Record<string, unknown>;
-};
+export default class DiscordChannel extends BasePortal {
+  readonly name = "discord";
+  protected readonly maxMessageLength = MAX_MESSAGE_LENGTH;
 
-function json(status: number, data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
-
-export default class DiscordChannel {
-  name = "discord";
-  port: number = Number(Bun.env.PORT) || 8080;
-  guardianUrl = 'http://guardian:8080';
-  private _fetchFn: typeof fetch = fetch;
+  constructor() {
+    super(log);
+  }
 
   private client: Client | null = null;
   private permissions: PermissionConfig = loadPermissionConfig();
   private commandRegistry = buildCommandRegistry(
     parseCustomCommands(Bun.env.DISCORD_CUSTOM_COMMANDS),
   );
-  private conversationQueue = new ConversationQueue();
 
   /**
-   * Thread IDs the bot is actively participating in.
-   * Map of threadId → last activity timestamp (ms).
-   * Threads expire after threadTtlMs of inactivity.
+   * Thread IDs the bot is actively participating in (`activeThreads`, keyed by
+   * threadId, and the TTL/prune logic live in BasePortal). Threads expire after
+   * threadTtlMs of inactivity.
    */
-  private activeThreads = new Map<string, number>();
-
-  /** Thread inactivity TTL in ms. Default: 24 hours. */
-  private threadTtlMs = (Number(Bun.env.DISCORD_THREAD_TTL_HOURS) || 24) * 3_600_000;
+  protected readonly threadTtlMs = (Number(Bun.env.DISCORD_THREAD_TTL_HOURS) || 24) * 3_600_000;
 
   /**
    * Forward timeout in ms. Default: 0 (no timeout).
@@ -138,70 +118,10 @@ export default class DiscordChannel {
     return Bun.env.DISCORD_APPLICATION_ID ?? "";
   }
 
-  get secret(): string {
-    return readRequiredSecretFile('PRINCIPAL_SECRET_FILE');
-  }
-
-  async handleRequest(_req: Request): Promise<null> {
-    return null;
-  }
-
-  private async forward(result: ForwardResult, fetchFn?: typeof fetch, timeoutMs?: number): Promise<Response> {
-    const fn = fetchFn ?? this._fetchFn;
-    const controller = timeoutMs && timeoutMs > 0 ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-    try {
-      const client = new OcClient({
-        principalId: Bun.env.PRINCIPAL_ID ?? this.name,
-        secret: this.secret,
-        baseUrl: `${this.guardianUrl}/oc`,
-        fetch: fn,
-      });
-      const sessionKey = typeof result.metadata?.sessionKey === 'string' ? result.metadata.sessionKey : result.userId;
-      const session = await client.createSession(result.userId, sessionKey);
-      const answerPromise = collectTurnAnswer(client, result.userId, session.id, controller?.signal ?? new AbortController().signal);
-      await client.prompt(result.userId, session.id, result.text);
-      const answer = await answerPromise;
-      return json(200, { userId: result.userId, sessionId: session.id, answer });
-    } finally {
-      if (timer) clearTimeout(timer);
-      controller?.abort();
-    }
-  }
-
-  createFetch(fetchFn: typeof fetch = fetch): (req: Request) => Promise<Response> {
-    this._fetchFn = fetchFn;
-    return async (req: Request): Promise<Response> => {
-      const url = new URL(req.url);
-      if (url.pathname === '/health') {
-        return json(200, { ok: true, service: `channel-${this.name}` });
-      }
-      return json(404, { error: 'not_found' });
-    };
-  }
-
   start(): void {
-    try {
-      this.secret;
-    } catch (err) {
-      log.error('startup_error', {
-        reason: err instanceof SecretFileError ? err.message : 'PRINCIPAL_SECRET_FILE could not be read',
-      });
-      process.exit(1);
-    }
-
-    try {
-      Bun.serve({ port: this.port, fetch: this.createFetch() });
-      log.info('started', { port: this.port });
-    } catch (err) {
-      log.error('failed to start server', {
-        port: this.port,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      process.exit(1);
-    }
-
-    // Connect to Discord Gateway
+    // Verify the principal secret and bind the health server (BasePortal),
+    // then connect to the Discord Gateway.
+    this.startServer();
     void this.connectGateway();
   }
 
@@ -296,27 +216,12 @@ export default class DiscordChannel {
 
   /** Check if a thread has recent activity (within TTL). */
   private isThreadActive(threadId: string): boolean {
-    const lastActivity = this.activeThreads.get(threadId);
-    if (lastActivity === undefined) return false;
-    if (Date.now() - lastActivity > this.threadTtlMs) {
-      this.activeThreads.delete(threadId);
-      return false;
-    }
-    return true;
+    return this.isThreadKeyActive(threadId);
   }
 
   /** Mark a thread as active (update timestamp). Prunes stale entries. */
   private touchThread(threadId: string): void {
-    this.activeThreads.set(threadId, Date.now());
-    // Prune stale entries when map grows large
-    if (this.activeThreads.size > 100) {
-      const now = Date.now();
-      for (const [id, ts] of this.activeThreads) {
-        if (now - ts > this.threadTtlMs) {
-          this.activeThreads.delete(id);
-        }
-      }
-    }
+    this.touchThreadKey(threadId);
   }
 
   /** Stop tracking a thread (used by /clear). */
@@ -697,7 +602,7 @@ export default class DiscordChannel {
           if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
           const { answer = "No response received." } = await resp.json() as { answer?: string };
 
-          const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
+          const chunks = splitMessage(answer, this.maxMessageLength);
           const firstChunk = chunks[0] ?? "No response received.";
 
           if (shouldQueue) {
@@ -789,7 +694,7 @@ export default class DiscordChannel {
   // ── Discord Message Utilities ───────────────────────────────────────────
 
   private async sendSplitMessage(channel: ThreadChannel, text: string): Promise<void> {
-    const chunks = splitMessage(text, MAX_MESSAGE_LENGTH);
+    const chunks = splitMessage(text, this.maxMessageLength);
     for (const chunk of chunks) {
       await channel.send(chunk);
       if (chunks.length > 1) {
@@ -797,18 +702,4 @@ export default class DiscordChannel {
       }
     }
   }
-}
-
-async function collectTurnAnswer(client: OcClient, userId: string, sessionId: string, signal: AbortSignal): Promise<string> {
-  const reasoningPartIds = new Set<string>();
-  let answer = '';
-  for await (const event of client.events(userId, signal)) {
-    const raw = asRaw(event);
-    const snapshot = partSnapshotType(raw);
-    if (snapshot?.type === 'reasoning') reasoningPartIds.add(snapshot.partID);
-    const delta = extractTextDelta(raw, sessionId, reasoningPartIds);
-    if (delta) answer += delta;
-    if (isTurnEnd(raw, sessionId)) break;
-  }
-  return answer || '(no response)';
 }
