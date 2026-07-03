@@ -261,7 +261,7 @@ This ensures each service's local runtime dependencies are available at runtime.
 **Rules:**
 
 - Every Dockerfile that bakes a service from the workspace must install that service's declared runtime dependencies during the image build.
-- Guardian-local helpers stay in `containers/guardian/src/`; adapter-local helpers stay inside the adapter package that uses them.
+- Guardian-local helpers stay in `packages/guardian/src/` (`@openpalm/guardian`); adapter-local helpers stay inside the adapter package that uses them.
 - The assistant **and the guardian** images install the OpenCode binary (the guardian uses it for content validation). Keep `OPENCODE_VERSION` in lockstep between `containers/assistant/Dockerfile` and `containers/guardian/Dockerfile`.
 
 ---

@@ -35,6 +35,13 @@ The current package model is close to publishable, but not actually published.
 - `portals/slack/package.json:2-5` is named `@openpalm/slack-portal`, versioned, and marked `private: true`.
 - Both packages already have `repository`, `license`, `files`, and `main` metadata (`portals/discord/package.json:7-20`, `portals/slack/package.json:7-20`).
 
+> **Update (superseded):** The duplicated runtime/helper layer described in this
+> section has since been extracted into the shared `@openpalm/portal-sdk`
+> package (`packages/portal-sdk/`, exporting `BasePortal`, `OcClient`, the event
+> interpreters, and `renderTurn`). The per-portal `runtime.ts`/`oc-events.ts`
+> copies referenced below no longer exist; both adapters now build on the SDK.
+> The distribution/publication analysis below is retained as a historical record.
+
 The current repo no longer contains the `packages/channels-sdk/` path requested in the research brief. In the current tree, the portal packages do not depend on a shared internal SDK package. Instead, they duplicate a small runtime/helper layer.
 
 - `portals/discord/src/runtime.ts:1-211` and `portals/slack/src/runtime.ts:1-211` are effectively parallel copies.
@@ -336,7 +343,7 @@ Guardian is a strong candidate for the same pattern, but not all of it should mo
 
 What can become runtime-installed later:
 
-- The Bun application code under `containers/guardian/src/`.
+- The Bun application code under `packages/guardian/src/`.
 
 What likely stays baked:
 

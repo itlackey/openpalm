@@ -1,6 +1,6 @@
 # Portal Rich-UX Design — Guardian as a Filtering OpenCode Proxy
 
-**Status:** Design / validation (pre-implementation). Incorporates a three-perspective expert review (security, OpenPalm architecture, OpenCode-API correctness); §11 records what changed.
+**Status:** Implemented (historical design record). The guardian proxy fan-out and the shared portal renderers described here have shipped — the shared code now lives in the `@openpalm/portal-sdk` package (`packages/portal-sdk/`: `oc-events.ts`, `render-turn.ts`, `OcClient`, `BasePortal`). Incorporates a three-perspective expert review (security, OpenPalm architecture, OpenCode-API correctness); §11 records what changed. File/line citations below reflect the pre-implementation tree and may no longer resolve.
 **Scope:** Give portal conversations (Discord first, then Slack, the API portal, and future add-ons) the native OpenCode experience — live streaming output, tool-call visibility, and **interactive permission prompts** — by making the guardian a **transparent OpenCode API reverse proxy with security gates that short-circuit malicious requests**, rather than inventing a custom portal contract.
 **Audience:** Implementers of the guardian proxy and the portal renderers, and reviewers of the security posture.
 
@@ -177,7 +177,7 @@ Everything else denied. Dedicated deny-tests: `/shell`, `/pty`, `/share`, `/fork
 
 ### 3.4 Session- and permission-ownership authorization
 
-- **Session create rewrites the body (security review F5a):** on `POST /session` the guardian **constructs** the body itself — `{ title: "${portal}:${sessionKey}" }` — and **discards** any client-supplied title/body. `sessionKey` derives from validated metadata as today (`forward.ts:79-93`), but the portal can no longer inject an arbitrary session title (a prompt-injection / moderation-bypass surface). It then records `sessionId → principal` (TTL mirroring the existing session cache; pruned on delete/TTL/hard-cap).
+- **Session create rewrites the body (security review F5a):** on `POST /session` the guardian **constructs** the body itself — `{ title: "${portal}:${sessionKey}" }` — and **discards** any client-supplied title/body. `sessionKey` derives from validated metadata as today (`resolveSessionTarget` in `packages/guardian/src/session-target.ts`; the old `forward.ts` was deleted), but the portal can no longer inject an arbitrary session title (a prompt-injection / moderation-bypass surface). It then records `sessionId → principal` (TTL mirroring the existing session cache; pruned on delete/TTL/hard-cap).
 - **Session calls** (`GET/DELETE /session/{id}`, `message`, `prompt_async`, `abort`): assert the principal owns `{id}`, else `403`. Replaces the implicit server-side derivation with an explicit ownership check — same isolation guarantee.
 - **`GET /session`** response is filtered to the principal's own sessions (the raw list must not leak other principals' titles).
 - **Permission replies are ownership-checked by `requestID` (API review, authz consequence of the corrected endpoint):** because `POST /permission/{requestID}/reply` is keyed by `requestID` (not `sessionID`), the guardian records `requestID → principal` **when it relays the `permission.asked` frame** to that principal, and authorizes the reply against that record. Prevents principal A answering principal B's permission request.
@@ -305,8 +305,8 @@ Each stage ships independently; the buffered path is the safe default throughout
 ## 10. References
 
 - `packages/ui/src/routes/proxy/assistant/[...path]/+server.ts` — the transparent streaming proxy precedent.
-- `containers/guardian/src/{server,forward,replay,rate-limit,signature}.ts` — current pipeline and guardian-local runtime state pattern.
-- `packages/portals-sdk/src/crypto.ts` — signing primitives to generalize.
+- `packages/guardian/src/{server,proxy,rate-limit,session-target}.ts` — current pipeline and guardian-local runtime state pattern (the old `forward.ts` was deleted; session targeting now lives in `session-target.ts`).
+- `packages/guardian/src/crypto.ts` — signing/verification primitives (kept guardian-local, not in a shared `portal-sdk` package).
 - `.openpalm/config/assistant/opencode.jsonc` — assistant permission config (§1.2).
 - Live OpenCode OpenAPI: `curl http://127.0.0.1:3800/doc` (assistant on :3800 → OpenCode :4096).
 
