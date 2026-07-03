@@ -1,0 +1,64 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules/**",
+      "!**/.svelte-kit/**",
+      "!**/build/**",
+      "!**/dist/**",
+      "!**/.dev/**",
+      "!**/.openpalm/**",
+      "!**/coverage/**",
+      "!**/test-results/**",
+      "!**/bun.lock",
+      "!**/bun.lockb",
+      "!**/*.min.js",
+      // SVGs are checked-in diagram assets, not source; skip them (avoids a11y/noSvgWithoutTitle on docs).
+      "!**/*.svg"
+    ]
+  },
+  "json": {
+    "parser": {
+      // Skeleton ships JSONC templates (e.g. config/guardian/opencode.json) with
+      // // comments and trailing commas; allow both so they don't raise parse errors.
+      "allowComments": true,
+      "allowTrailingCommas": true
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        // Downgraded error -> warn: each already fires on existing source, so keeping
+        // them as errors would fail the gate on legacy code. They stay visible as
+        // warnings (documented cleanup follow-up); new code should still avoid them.
+        "noImplicitAnyLet": "warn",
+        "noAssignInExpressions": "warn",
+        "noDuplicateProperties": "warn"
+      }
+    }
+  },
+  // The formatter matches packages/ui/.prettierrc (tabs, width 100, single quotes, no
+  // trailing commas) so `bun run format` is a no-op on the UI package and does not fight
+  // its Prettier/ESLint setup. The CI gate runs `biome lint` ONLY (see package.json), so
+  // the formatter is NOT part of the gate and CI never reformats existing files. A full
+  // `biome format --write .` pass (non-UI packages currently use spaces) is a follow-up.
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "tab",
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "none"
+    }
+  }
+}
