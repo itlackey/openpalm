@@ -193,6 +193,7 @@ vi.mock('@openpalm/lib', () => ({
       if (this.shuttingDown || this.restarting) return false;
       this.restarting = true;
       try {
+        this.cb.beforeRestart?.();
         if (this.handle) await this.strategy.stop(this.handle);
         this.handle = await this.strategy.spawn();
         if (!(await this.cb.waitForReady(this.port))) {

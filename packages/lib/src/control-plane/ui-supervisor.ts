@@ -179,6 +179,15 @@ export interface UiSupervisorCallbacks<Handle> {
   /** Readiness poll (adapter injects its own timeout wrapper around {@link waitForReady}). */
   waitForReady(port: number): Promise<boolean>;
   /**
+   * Invoked ONCE at the very start of {@link restart}, BEFORE the (conditional)
+   * stop — so it runs UNCONDITIONALLY, even when there is no live child to stop
+   * (`handle === null` after an unsupervised crash + {@link detachHandle}).
+   * Electron uses it to capture-and-clear its pending `data/ui` backup
+   * exactly-once, so a failed respawn still restores the CORRECT backup rather
+   * than a null/stale one. CLI omits it (its backup is captured on each spawn).
+   */
+  beforeRestart?(): void;
+  /**
    * The INITIAL start never became ready. The lib does NOT exit — the adapter
    * decides: CLI kills the child + `process.exit(1)`. Receives the spawned
    * handle so the adapter can kill it if it wants to. Optional: harnesses that
@@ -313,6 +322,9 @@ export class UiSupervisor<Handle> {
     this.restarting = true;
     this.log('UI update detected — restarting UI server...');
     try {
+      // Capture-and-clear the pending backup UNCONDITIONALLY, before the
+      // conditional stop below — a detached (null) handle must NOT skip it.
+      this.cb.beforeRestart?.();
       if (this.handle) await this.strategy.stop(this.handle);
       this.handle = await this.strategy.spawn();
       if (!(await this.cb.waitForReady(this.port))) {

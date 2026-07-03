@@ -543,11 +543,8 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
     },
     // Group-kill the current child (it runs detached and may have its own
     // children, e.g. the wizard's `opencode serve`): SIGTERM → fixed 1.5s delay
-    // → SIGKILL. Also consumes the pending backup here — the START of the restart
-    // — exactly-once, mirroring the pre-refactor "capture then clear".
+    // → SIGKILL.
     stop: async (handle) => {
-      restartBackupDir = pendingUiBackupDir;
-      pendingUiBackupDir = null;
       uiProcess = null;
       if (handle.pid) {
         killProcessTree(handle.pid, 'SIGTERM');
@@ -558,6 +555,16 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
   },
   callbacks: {
     waitForReady: (p) => waitForReady(p),
+    // Consume the pending backup at the START of every restart, exactly-once and
+    // UNCONDITIONALLY — before the conditional stop(). This must NOT live in
+    // stop(): after an unsupervised crash the handle is detached (null) so stop()
+    // is skipped, but the pending backup must still be captured so a failed
+    // respawn restores the correct build (mirrors the pre-refactor capture-then-
+    // clear at restartUIServer's top).
+    beforeRestart: () => {
+      restartBackupDir = pendingUiBackupDir;
+      pendingUiBackupDir = null;
+    },
     // Post-swap failure → restore the prior data/ui with a local rename — no
     // registry needed (shared lib routine). onRestartFailure is omitted, so the
     // app stays running and restart() returns false (Electron never exits here).

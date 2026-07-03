@@ -302,6 +302,49 @@ describe("UiSupervisor.restart", () => {
     expect(events).not.toContain("stop#1");
   });
 
+  test("beforeRestart captures the backup UNCONDITIONALLY even when stop is skipped (handle detached)", async () => {
+    // Regression: the pending-backup capture must run at restart start regardless
+    // of whether a live child exists to stop. Repro the Electron path — a startup
+    // update set a pending backup; the child crashed unsupervised (detachHandle →
+    // handle null) so stop() is skipped; the respawn then fails readiness. The
+    // CAPTURED backup (not null) must still be restored, and pending cleared.
+    let pending: string | null = "/data/.ui-backup"; // set by a prior startup update
+    let captured: string | null = null;
+    const restored: Array<string | null> = [];
+    const { strategy, events } = fakeStrategy();
+    const sup = new UiSupervisor<FakeHandle>({
+      port: 3880,
+      strategy,
+      callbacks: {
+        waitForReady: () => Promise.resolve(false), // respawn never becomes ready
+        // Electron's beforeRestart: capture-and-clear pendingUiBackupDir.
+        beforeRestart: () => {
+          captured = pending;
+          pending = null;
+        },
+        restoreBackup: () => restored.push(captured),
+        onStartFailure: () => {},
+        log: () => {},
+        logError: () => {},
+      },
+    });
+    // Child adopted, then it crashes unsupervised → detached (handle null).
+    sup.adopt({ id: 1 });
+    sup.detachHandle();
+    expect(sup.current).toBeNull();
+
+    expect(await sup.restart()).toBe(false);
+
+    // stop() was SKIPPED (no live child) — the exact path that previously lost
+    // the capture — yet beforeRestart still ran…
+    expect(events.filter((e) => e.startsWith("stop")).length).toBe(0);
+    // …so the backup was captured, pending cleared, and restore used the
+    // CAPTURED dir (not null/stale).
+    expect(captured).toBe("/data/.ui-backup");
+    expect(pending).toBeNull();
+    expect(restored).toEqual(["/data/.ui-backup"]);
+  });
+
   test("the restart ready-failure line goes to logError (stderr), not log (stdout)", async () => {
     const out: unknown[][] = [];
     const err: unknown[][] = [];
