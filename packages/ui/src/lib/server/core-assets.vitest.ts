@@ -37,6 +37,7 @@ describe("readCoreCompose", () => {
   });
 
   test("readCoreCompose returns file content when file exists", () => {
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const stackDir = join(process.env.OP_HOME!, "system", "stack");
     mkdirSync(stackDir, { recursive: true });
     const composeContent = "services:\n  memory:\n    image: test\n";
@@ -69,6 +70,7 @@ describe("ensureOpenCodeSystemConfig", () => {
 
   test("creates data/assistant/ directory", () => {
     ensureOpenCodeSystemConfig();
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
     expect(existsSync(assistantDir)).toBe(true);
   });
@@ -76,11 +78,13 @@ describe("ensureOpenCodeSystemConfig", () => {
   test("is idempotent", () => {
     ensureOpenCodeSystemConfig();
     ensureOpenCodeSystemConfig();
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
     expect(existsSync(assistantDir)).toBe(true);
   });
 
   test("does not overwrite existing files", () => {
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const assistantDir = join(process.env.OP_HOME!, "data", "assistant");
     mkdirSync(assistantDir, { recursive: true });
     writeFileSync(join(assistantDir, "opencode.jsonc"), "user-config");

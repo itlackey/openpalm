@@ -78,6 +78,7 @@ export function groupReleasesByUnit(raw: RawGitHubRelease[]): GroupedReleases {
     // Per-unit tags first (assistant/guardian/portals) — never carry Electron.
     const unitMatch = UNIT_TAG_PATTERNS.find((p) => p.re.test(rawTag));
     if (unitMatch) {
+      // biome-ignore lint/style/noNonNullAssertion: unitMatch was found via re.test(rawTag), so rawTag.match(unitMatch.re) is non-null and every UNIT_TAG_PATTERN has one capture group, so [1] is defined.
       const tag = rawTag.match(unitMatch.re)![1];
       if (!seenUnit[unitMatch.unit].has(tag)) {
         seenUnit[unitMatch.unit].add(tag);

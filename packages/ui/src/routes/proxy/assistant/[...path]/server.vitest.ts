@@ -60,6 +60,7 @@ beforeEach(async () => {
     };
     tick();
   });
+  // biome-ignore lint/style/noNonNullAssertion: sseServer was assigned via createServer directly above; TS drops that narrowing inside this Promise-executor closure.
   await new Promise<void>((resolve) => sseServer!.listen(0, '127.0.0.1', resolve));
   const port = (sseServer.address() as AddressInfo).port;
   sseUrl = `http://127.0.0.1:${port}`;
@@ -108,7 +109,9 @@ describe('proxy/assistant streaming passthrough', () => {
 
     // Read chunks with timestamps so we can confirm they arrive over time
     // rather than as one buffered blob.
-    const reader = res.body!.getReader();
+    const body = res.body;
+    if (!body) throw new Error('response body must be a ReadableStream');
+    const reader = body.getReader();
     const decoder = new TextDecoder();
     const arrivals: { t: number; text: string }[] = [];
     const start = Date.now();

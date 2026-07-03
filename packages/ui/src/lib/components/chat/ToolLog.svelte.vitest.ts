@@ -44,7 +44,9 @@ describe('ToolLog', () => {
   test('clicking a summary expands its details, clicking again collapses', async () => {
     const items = [makeTool('c1', 'bash', { detail: 'ls -la', output: 'file.txt' })];
     const { container } = await render(ToolLog, { props: { items } });
-    const summary = container.querySelector<HTMLButtonElement>('.tool-log-summary')!;
+    const summary = container.querySelector<HTMLButtonElement>('.tool-log-summary');
+    expect(summary).not.toBeNull();
+    if (!summary) return;
 
     expect(summary.getAttribute('aria-expanded')).toBe('false');
     summary.click();

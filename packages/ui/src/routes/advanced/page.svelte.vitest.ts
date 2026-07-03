@@ -129,7 +129,7 @@ describe('/advanced/+page.svelte', () => {
 
     const iframe = page.getByTitle('OpenCode — Advanced Chat');
     await expect.element(iframe).toBeVisible();
-    const src = document.querySelector('iframe[title="OpenCode — Advanced Chat"]')!.getAttribute('src')!;
+    const src = document.querySelector('iframe[title="OpenCode — Advanced Chat"]')?.getAttribute('src');
     // base64('/work') = 'L3dvcms' — the workspace segment must encode the real dir.
     expect(src).toContain('/L3dvcms/session/ses_known');
     // Never the old hardcoded path base64('/work/itlackey/openpalm').
@@ -143,7 +143,7 @@ describe('/advanced/+page.svelte', () => {
 
     const iframe = page.getByTitle('OpenCode — Advanced Chat');
     await expect.element(iframe).toBeVisible();
-    const src = document.querySelector('iframe[title="OpenCode — Advanced Chat"]')!.getAttribute('src')!;
+    const src = document.querySelector('iframe[title="OpenCode — Advanced Chat"]')?.getAttribute('src');
     // No broken /session/ deep link — just the endpoint base.
     expect(src).not.toContain('/session/');
     expect(src).toBe('http://127.0.0.1:3800');

@@ -140,8 +140,8 @@ describe("requireAdmin", () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
     const result = requireAdmin(event as never, "req-1-header");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
-    const body = await result!.json();
+    expect(result?.status).toBe(401);
+    const body = await result?.json();
     expect(body.error).toBe("unauthorized");
   });
 
@@ -149,15 +149,15 @@ describe("requireAdmin", () => {
     const event = makeEvent({ authorization: "Bearer test-admin-token-12345" });
     const result = requireAdmin(event as never, "req-1-bearer");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
+    expect(result?.status).toBe(401);
   });
 
   test("returns 401 for missing token", async () => {
     const event = makeEvent({});
     const result = requireAdmin(event as never, "req-2");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
-    const body = await result!.json();
+    expect(result?.status).toBe(401);
+    const body = await result?.json();
     expect(body.error).toBe("unauthorized");
   });
 
@@ -165,27 +165,27 @@ describe("requireAdmin", () => {
     const event = makeEvent({ cookie: "op_session=wrong-token" });
     const result = requireAdmin(event as never, "req-3");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
+    expect(result?.status).toBe(401);
   });
 
   test("returns 401 for empty cookie value", async () => {
     const event = makeEvent({ cookie: "op_session=" });
     const result = requireAdmin(event as never, "req-4");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
+    expect(result?.status).toBe(401);
   });
 
   test("rejects token that differs only in length (timing-safe)", async () => {
     const event = makeEvent({ cookie: "op_session=test-admin-token-1234" }); // one char shorter
     const result = requireAdmin(event as never, "req-5");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
+    expect(result?.status).toBe(401);
   });
 
   test("includes requestId in error response", async () => {
     const event = makeEvent({});
     const result = requireAdmin(event as never, "my-request-id");
-    const body = await result!.json();
+    const body = await result?.json();
     expect(body.requestId).toBe("my-request-id");
   });
 });
@@ -218,14 +218,14 @@ describe("identifyCallerByToken / requireAdmin (cookie-only after Phase 2)", () 
     const event = makeEvent({ cookie: "op_session=some-stale-value" });
     const result = requireAdmin(event as never, "req-stale");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
+    expect(result?.status).toBe(401);
   });
 
   test("requireAdmin rejects admin token presented via x-admin-token header", async () => {
     const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
     const result = requireAdmin(event as never, "req-header");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
+    expect(result?.status).toBe(401);
   });
 
   test("requireAdmin passes for admin token via cookie", () => {
@@ -237,8 +237,8 @@ describe("identifyCallerByToken / requireAdmin (cookie-only after Phase 2)", () 
     const event = makeEvent({ cookie: "op_session=nope" });
     const result = requireAdmin(event as never, "req-bad");
     expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
-    const body = await result!.json();
+    expect(result?.status).toBe(401);
+    const body = await result?.json();
     expect(body.requestId).toBe("req-bad");
   });
 });

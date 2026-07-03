@@ -103,7 +103,7 @@ describe('hooks.server — sliding renewal', () => {
     // Extract the new token value from the Set-Cookie header.
     const match = setCookie.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
     expect(match, 'Set-Cookie must contain a session token').toBeTruthy();
-    const newToken = match![1];
+    const newToken = match?.[1];
 
     // The new token must be DIFFERENT from the original.
     // If it were the same, the sliding window would never extend the expiry.

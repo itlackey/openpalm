@@ -128,11 +128,11 @@ export function validateCron(cron: string): string | null {
     [1, 12],   // month
     [0, 7],    // day-of-week (0 and 7 are both Sunday)
   ] as const;
-  for (let i = 0; i < 5; i++) {
-    const field = parts[i]!;
+  for (const [i, field] of parts.entries()) {
     if (field === '*' || /^\*\/\d+$/.test(field)) continue;
     const n = parseInt(field, 10);
     if (Number.isNaN(n)) return `Field ${i + 1} is not a valid number or wildcard`;
+    // biome-ignore lint/style/noNonNullAssertion: parts.length === 5 checked above and ranges is a fixed 5-element tuple, so ranges[i] is defined for every i.
     const [min, max] = ranges[i]!;
     if (n < min || n > max) return `Field ${i + 1} must be ${min}–${max}`;
   }

@@ -307,9 +307,9 @@ describe('tool grouping — finalized turn', () => {
 
     const assistantEntry = assistantEntries[0] as ChatMessage;
     expect(assistantEntry.toolStates).toBeDefined();
-    expect(assistantEntry.toolStates!.length).toBe(2);
-    expect(assistantEntry.toolStates![0].id).toBe('c1');
-    expect(assistantEntry.toolStates![1].id).toBe('c2');
+    expect(assistantEntry.toolStates?.length).toBe(2);
+    expect(assistantEntry.toolStates?.[0].id).toBe('c1');
+    expect(assistantEntry.toolStates?.[1].id).toBe('c2');
 
     // No standalone tool-group entries in the transcript.
     const toolEntries = chat.entries.filter(
@@ -340,7 +340,7 @@ describe('tool grouping — finalized turn', () => {
       (e) => !e.type && (e as ChatMessage).role === 'assistant'
     ) as ChatMessage | undefined;
     expect(assistantEntry).toBeDefined();
-    expect(assistantEntry!.toolStates).toBeUndefined();
+    expect(assistantEntry?.toolStates).toBeUndefined();
   });
 });
 
@@ -372,7 +372,7 @@ describe('tool grouping — session reload (getSessionMessages)', () => {
     const entry = chat.entries[0] as ChatMessage;
     expect(entry.role).toBe('assistant');
     expect(entry.toolStates).toBeDefined();
-    expect(entry.toolStates![0].id).toBe('c1');
+    expect(entry.toolStates?.[0].id).toBe('c1');
   });
 });
 
