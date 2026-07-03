@@ -31,7 +31,7 @@ dev_compose() {
 
 cleanup() {
   dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-  docker run --rm -v "$(dirname "$SWAP_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SWAP_HOME")" >/dev/null 2>&1 || true
+  docker run --rm -v "$(dirname "$SWAP_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SWAP_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 

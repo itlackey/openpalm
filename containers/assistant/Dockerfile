@@ -157,17 +157,22 @@ RUN set -e; \
     && chmod +x /usr/local/bin/gws
 
 # Seed the runtime dirs and make them group-writable so a container entered with
-# `--user ${OP_UID}:${OP_GID}` can write them (the "arbitrary uid" convention:
-# g=u mirrors owner bits, and the base `node` group owns the trees). Scope the
-# chmod/chown to these freshly created seed dirs ONLY — deliberately excluding
-# /opt/openpalm/tools, whose baked node_modules + @huggingface model cache is a
-# multi-hundred-MB tree split across COPY layers (Docker Hub rejects giant
-# blobs); a recursive chmod over it would materialize a duplicate overlay layer.
-# The tools tree is bind-mounted (host-owned) at runtime, so its baked mode is moot.
+# `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container
+# runs as the host operator's ARBITRARY uid:gid (not 1000), and Docker seeds a
+# fresh `assistant-artifacts`/`assistant-persistent` named volume from these
+# image paths WITH their ownership — so a fixed owner/group (the g=u "arbitrary
+# uid" convention needs gid 0, which OpenPalm does not use) is not guaranteed to
+# match the runtime ids; world-writable is the only image-side mode that works.
+# Scope the chmod to these freshly created seed dirs ONLY — deliberately
+# excluding /opt/openpalm/tools, whose baked node_modules + @huggingface model
+# cache is a multi-hundred-MB tree split across COPY layers (Docker Hub rejects
+# giant blobs); a recursive chmod over it would materialize a duplicate overlay
+# layer. The tools tree is bind-mounted (host-owned) at runtime, so its baked
+# mode is moot. Secrets (knowledge/secrets, 0600) are a separate bind-mount tree.
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
     && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
     && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton \
-    && chmod -R g=u /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
+    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
 
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

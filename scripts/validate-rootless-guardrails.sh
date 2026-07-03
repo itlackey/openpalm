@@ -44,7 +44,7 @@ check_final_user_non_root containers/guardian/Dockerfile guardian
 # guarantee is enforced by scripts/rootless-ownership-smoke.sh, which boots the
 # stack and fails on any root-owned bind-mount file. That behavior test is the
 # guard; a static token grep would be evadable theater.
-unexpected_root_dockerfile_helpers=$(grep -RInE '\b(gosu|usermod|groupmod)\b' containers \
+unexpected_root_dockerfile_helpers=$(grep -RInwE '(gosu|usermod|groupmod)' containers \
   --include='Dockerfile' \
   || true)
 if [ -n "$unexpected_root_dockerfile_helpers" ]; then
@@ -53,7 +53,7 @@ if [ -n "$unexpected_root_dockerfile_helpers" ]; then
   errors=$((errors + 1))
 fi
 
-unexpected_root_entrypoint_helpers=$(grep -RInE '\b(gosu|usermod|groupmod)\b' containers \
+unexpected_root_entrypoint_helpers=$(grep -RInwE '(gosu|usermod|groupmod)' containers \
   --include='*.sh' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   || true)

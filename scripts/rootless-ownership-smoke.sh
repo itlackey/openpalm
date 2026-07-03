@@ -90,7 +90,7 @@ cleanup() {
   fi
 
   dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-  docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
+  docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -108,7 +108,7 @@ printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/knowledge/env/stack.env
 smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
 
 if [[ "$TARGET" == "portal-discord" && ! -f "$SMOKE_HOME/data/portal/tools/package.json" ]]; then
-  docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" -v "${ROOT_DIR}:/rootdir" alpine sh -c "mkdir -p /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools && cp /rootdir/containers/portal/tools/package.json /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools/package.json && chown $(id -u):$(id -g) /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools/package.json"
+  docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" -v "${ROOT_DIR}:/rootdir" alpine sh -c 'mkdir -p "/smoke-parent/$1/data/portal/tools" && cp /rootdir/containers/portal/tools/package.json "/smoke-parent/$1/data/portal/tools/package.json" && chown "$2:$3" "/smoke-parent/$1/data/portal/tools/package.json"' _ "$(basename "$SMOKE_HOME")" "$(id -u)" "$(id -g)"
 fi
 
 smoke_ensure_home_dirs "$SMOKE_HOME"
