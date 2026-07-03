@@ -16,6 +16,18 @@ describe('portal image bake contract', () => {
     expect(startScript).toContain('PORTAL_PACKAGE must name a baked adapter package');
   });
 
+  test('startup script runs under strict bash and guards optional vars', () => {
+    const startScript = readRelative('containers/portal/start.sh');
+
+    // Matches sibling entrypoints (voice/guardian/assistant) for fail-fast behaviour.
+    expect(startScript).toContain('set -euo pipefail');
+    expect(startScript).not.toMatch(/^set -e\s*$/m);
+    // Under `-u`, the optional PORTAL_PACKAGE check must not trip on an unset var —
+    // it must fall back to empty so the friendly error path still runs.
+    expect(startScript).toContain('[ -z "${PORTAL_PACKAGE:-}" ]');
+    expect(startScript).not.toContain('[ -z "$PORTAL_PACKAGE" ]');
+  });
+
   test('docker image bakes the first-party adapters from the workspace', () => {
     const dockerfile = readRelative('containers/portal/Dockerfile');
 

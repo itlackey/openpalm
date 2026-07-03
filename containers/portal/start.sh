@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-if [ -z "$PORTAL_PACKAGE" ]; then
+if [ -z "${PORTAL_PACKAGE:-}" ]; then
 	echo "PORTAL_PACKAGE must name a baked adapter package" >&2
 	exit 1
 fi
