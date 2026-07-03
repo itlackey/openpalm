@@ -233,11 +233,12 @@ just need to be applied uniformly and the copies deleted.
 **Wave 5 — Low-priority hygiene (DONE, merged & pushed):**
 - [x] 15. `errMessage()` util (26 `instanceof Error` idiom sites collapsed across 10 lib files) + `retry()` helper (folded `fetchWithRetry`; the two result-driven `deploy.ts` poll loops were correctly left — they branch on returned values, not exceptions); guardian `config.ts` (`ASSISTANT_URL`/`SESSION_TTL_MS`/`DIRECT_PORT`/`GUARDIAN_URL` centralized across 8 modules with read-timing preserved). Cross-package port/repo constant centralization was left as minor follow-up (ports already resolve via env with sensible defaults; `GITHUB_REPO` centralized within the CLI in item 14b).
 
-**Remaining — deliberately deferred behavior-risky sub-steps** (documented; each changes observable/security behavior and needs individual careful treatment, NOT a bulk refactor):
-- Portal `renderTurn` sink — the two stream loops diverge in per-frame error handling and message lifecycle.
-- Full `UiSupervisor` class — CLI (`Bun.Subprocess`) and Electron (`child_process` + pid files + renderer reload) process shells genuinely diverge.
-- Guardian turn-path merge — the non-streaming path intentionally omits permission-policy/question-rejection/timeout; merging would make the guardian auto-decide permissions on a path that currently never does (a security-behavior change).
-- Setup `setup-state.svelte.ts` store + ~20-prop-drilling refactor (larger, higher churn).
+**Deferred behavior-risky sub-steps — DONE (test-first + independent adversarial review gate each, merged & pushed):**
+Each was implemented characterization-tests-first, then put through an independent adversarial review whose job was to *refute* "no behavior change." Three needed a fix-and-re-review cycle before passing; nothing merged until its review confirmed behavior preservation.
+- [x] Guardian turn-path merge — one parameterized `runTurn` core; the non-streaming path supplies no policy/timeout handlers so it *structurally cannot* apply permission policy (security divergence preserved). Review: CONFIRMED SAFE (predicates provably disjoint; reorder inert).
+- [x] Portal `renderTurn` sink — shared loop + `ThrottledEditBuffer` hoisted to the SDK; per-frame-error (`catch` vs `throw`) and check-ordering divergences are options. Review found the Slack `throw` knob wasn't portal-level tested → added a discrimination-verified test; then CONFIRMED SAFE.
+- [x] Full `UiSupervisor` class — unified restart state machine in lib with a process-strategy seam; CLI/Electron are adapters. Review caught a real stale-handle divergence (kills a dead pid after an unsupervised crash) → fixed via `detachHandle()`; a follow-up review caught the fix's own side-effect (backup-capture skipped on the detach path) → fixed via an unconditional `beforeRestart` hook; final review CONFIRMED FIXED.
+- [x] Setup `setup-state.svelte.ts` store + prop-drilling — 49 drilled props eliminated across all 3 steps; `+page.svelte` 1407→322 lines. Review caught a real singleton-persistence regression (stale wizard on SPA re-entry) → fixed with a per-mount `reset()`; re-review CONFIRMED FIXED (all 51 fields reset to original defaults).
 
 **Net result:** every Critical/High/Medium/Low roadmap item (1–15) landed across 5 waves — behavior-preserving, test-covered, lint-gate green, zero regressions vs. the pre-existing baseline. Roughly 2,000+ lines of duplication removed and several god-files decomposed, with the four genuinely behavior-changing refactors above left documented rather than forced.
 
