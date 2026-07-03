@@ -67,6 +67,7 @@ export {
   listAvailableAddonIds,
   listEnabledAddonIds,
   setAddonEnabled,
+  pruneRemovedAddonState,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/addons.js";
@@ -133,6 +134,7 @@ export {
   readStackRuntimeEnv,
   writeStackSecretEnv,
   patchSecretsEnvFile,
+  patchStateEnvFile,
   maskSecretValue,
   ensureOpenCodeConfig,
   assertNoSecretLikeStackEnvKeys,
@@ -329,6 +331,7 @@ export {
   checkDockerCompose,
   repairRootOwnedBindMounts,
   repairNamedVolumeOwnership,
+  repairManagedNamedVolumes,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
@@ -412,14 +415,15 @@ export {
 export type { OperatorIds } from "./control-plane/operator-ids.js";
 export {
   resolveOperatorIds,
+  resolveSessionIdentity,
   hasUsableOperatorId,
 } from "./control-plane/operator-ids.js";
 
-export type { HostIdentity, OwnershipDecision } from './control-plane/host-identity.js';
+export type { HostIdentity, OwnershipDecision, HostRuntime } from './control-plane/host-identity.js';
 export {
   detectHostIdentity,
+  describeHostRuntime,
   hostIdentityMatches,
-  classifyOwnershipDecision,
   readHostIdentity,
   writeHostIdentity,
 } from './control-plane/host-identity.js';
@@ -431,6 +435,11 @@ export {
   decideOwnershipFromCanaries,
   ownershipRepairPaths,
   buildReconcileDecision,
+  ownershipRepairMarkerFile,
+  ownershipRepairMarkerMatches,
+  writeOwnershipRepairMarker,
+  reconcileHostOwnership,
+  HostSwapBlockedError,
 } from './control-plane/ownership-reconcile.js';
 
 // ── Setup ────────────────────────────────────────────────────────────────

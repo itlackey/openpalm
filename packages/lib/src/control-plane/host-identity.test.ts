@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  classifyOwnershipDecision,
+  detectHostIdentity,
+  describeHostRuntime,
   hostIdentityMatches,
   readHostIdentity,
   writeHostIdentity,
@@ -11,6 +12,37 @@ import {
 } from './host-identity.js';
 
 let tempDir = '';
+
+describe('describeHostRuntime (Docker Desktop seam)', () => {
+  const realPlatform = process.platform;
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+  });
+
+  const setPlatform = (value: NodeJS.Platform) =>
+    Object.defineProperty(process, 'platform', { value, configurable: true });
+
+  test('native Linux is host-uid authoritative', () => {
+    setPlatform('linux');
+    const runtime = describeHostRuntime();
+    expect(runtime.hostUidAuthoritative).toBe(true);
+    expect(runtime.id).toBe('linux-native');
+  });
+
+  test('macOS (Docker Desktop VM) is not host-uid authoritative', () => {
+    setPlatform('darwin');
+    const runtime = describeHostRuntime();
+    expect(runtime.hostUidAuthoritative).toBe(false);
+    expect(runtime.id).toContain('darwin');
+  });
+
+  test('Windows (Docker Desktop VM) is not host-uid authoritative', () => {
+    setPlatform('win32');
+    const runtime = describeHostRuntime();
+    expect(runtime.hostUidAuthoritative).toBe(false);
+    expect(runtime.id).toContain('win32');
+  });
+});
 
 afterEach(() => {
   if (tempDir) rmSync(tempDir, { recursive: true, force: true });
@@ -54,31 +86,20 @@ describe('host identity matching', () => {
   });
 });
 
-describe('ownership decision classification', () => {
-  const current: HostIdentity = { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 };
-
-  test('returns match when canary owner matches current operator ids', () => {
-    expect(classifyOwnershipDecision({
-      current,
-      previous: null,
-      canaryOwner: { uid: 1000, gid: 1000 },
-    })).toBe('match');
-  });
-
-  test('returns drift when canary mismatches and prior host is absent', () => {
-    expect(classifyOwnershipDecision({
-      current,
-      previous: null,
-      canaryOwner: { uid: 0, gid: 0 },
-    })).toBe('drift');
-  });
-
-  test('returns swap when canary mismatches and prior host differs', () => {
-    expect(classifyOwnershipDecision({
-      current,
-      previous: { kind: 'darwin', host: 'host-b', uid: 501, gid: 20 },
-      canaryOwner: { uid: 0, gid: 0 },
-    })).toBe('swap');
+describe('detectHostIdentity', () => {
+  test('reports the LIVE session uid/gid, not the OP_HOME disk owner', () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'openpalm-detect-identity-'));
+    const identity = detectHostIdentity(tempDir);
+    expect(identity.kind).toBe(process.platform);
+    if (process.platform === 'win32') {
+      expect(identity.uid).toBeNull();
+      expect(identity.gid).toBeNull();
+      return;
+    }
+    // Session identity from resolveSessionIdentity — the live process uid — so a
+    // moved drive whose files are owned by a stale uid cannot mask a host swap.
+    expect(identity.uid).toBe(process.getuid!());
+    expect(identity.gid).toBe(process.getgid!());
   });
 });
 

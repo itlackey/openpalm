@@ -4,13 +4,28 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=scripts/rootless-smoke-fixture.sh
+source "${ROOT_DIR}/scripts/rootless-smoke-fixture.sh"
+
 TARGET="${1:-stack}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-rootless-smoke-${TARGET}}"
 SMOKE_HOME="${OP_ROOTLESS_SMOKE_HOME:-${ROOT_DIR}/.rootless-smoke-${TARGET}}"
+
+# Cleanup runs `rm -rf` on this path as ROOT inside a container — refuse any
+# location outside the repo root so a mistyped override can never delete real
+# user data (matches the guard in rootless-host-swap-smoke.sh).
+case "$SMOKE_HOME" in
+  "$ROOT_DIR"/*) ;;
+  *)
+    echo "OP_ROOTLESS_SMOKE_HOME must stay under the repo root for safe cleanup: $SMOKE_HOME" >&2
+    exit 1
+    ;;
+esac
+
 UI_PORT="${OP_ROOTLESS_SMOKE_UI_PORT:-3895}"
 KEEP="${OP_ROOTLESS_SMOKE_KEEP:-0}"
 UI_PID=""
-PLATFORM_VERSION="$(node -p "require('./package.json').version")"
+PLATFORM_VERSION="$(smoke_platform_version)"
 
 guardian_port_default=3930
 guardian_admin_port_default=3931
@@ -82,64 +97,23 @@ trap cleanup EXIT
 echo "Preparing isolated smoke OP_HOME at ${SMOKE_HOME}..."
 dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
 docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
-mkdir -p "$SMOKE_HOME"
-cp -r packages/skeleton/. "$SMOKE_HOME/"
-
-mkdir -p "$SMOKE_HOME/knowledge/secrets" "$SMOKE_HOME/knowledge/env"
-cat >"$SMOKE_HOME/knowledge/env/stack.env" <<EOF
-OP_HOME=${SMOKE_HOME}
-OP_UID=$(id -u)
-OP_GID=$(id -g)
-OP_IMAGE_NAMESPACE=openpalm
-OP_ASSISTANT_VERSION=dev
-OP_GUARDIAN_VERSION=dev
-OP_PORTAL_VERSION=dev
-OP_GUARDIAN_NPM_VERSION=${PLATFORM_VERSION}
-OP_UI_VERSION=${PLATFORM_VERSION}
-OP_SKELETON_VERSION=${PLATFORM_VERSION}
-OP_HOST_UI_PORT=${UI_PORT}
-OP_ASSISTANT_PORT=${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-3896}
-OP_GUARDIAN_PORT=${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}
-OP_GUARDIAN_ADMIN_PORT=${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}
-OP_CHAT_PORT=${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}
-OP_API_PORT=${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}
-OP_SETUP_COMPLETE=true
-EOF
-chmod 600 "$SMOKE_HOME/knowledge/env/stack.env"
-
-printf '%s\n' 'rootless-smoke-password' > "$SMOKE_HOME/knowledge/secrets/op_ui_login_password"
-printf '%s\n' '{}' > "$SMOKE_HOME/knowledge/secrets/auth.json"
-openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/op_guardian_admin_token"
-openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/op_guardian_mcp_token"
-openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_chat_secret"
-openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_api_secret"
-openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_discord_secret"
-openssl rand -hex 16 > "$SMOKE_HOME/knowledge/secrets/portal_slack_secret"
-printf '%s\n' 'discord-smoke-token' > "$SMOKE_HOME/knowledge/secrets/discord_bot_token"
-chmod 700 "$SMOKE_HOME/knowledge/secrets"
-chmod 600 "$SMOKE_HOME/knowledge/secrets/"*
-touch "$SMOKE_HOME/knowledge/env/user.env"
-chmod 600 "$SMOKE_HOME/knowledge/env/user.env"
+smoke_copy_skeleton "$SMOKE_HOME"
+smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
+  "${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-3896}" \
+  "${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}" \
+  "${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}" \
+  "${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}" \
+  "${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}"
+printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/knowledge/env/stack.env"
+smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
 
 if [[ "$TARGET" == "portal-discord" && ! -f "$SMOKE_HOME/data/portal/tools/package.json" ]]; then
   docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" -v "${ROOT_DIR}:/rootdir" alpine sh -c "mkdir -p /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools && cp /rootdir/containers/portal/tools/package.json /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools/package.json && chown $(id -u):$(id -g) /smoke-parent/$(basename "$SMOKE_HOME")/data/portal/tools/package.json"
 fi
 
-OP_HOME="$SMOKE_HOME" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
+smoke_ensure_home_dirs "$SMOKE_HOME"
 
-cat >"$SMOKE_HOME/rootless-smoke.override.yml" <<EOF
-services:
-  assistant:
-    environment:
-      OP_UI_VERSION: "${PLATFORM_VERSION}"
-      OP_SKELETON_VERSION: "${PLATFORM_VERSION}"
-  guardian:
-    environment:
-      OP_GUARDIAN_NPM_VERSION: "${PLATFORM_VERSION}"
-EOF
-
-echo "Building UI..."
-bun run ui:build >/dev/null
+smoke_write_version_override "$SMOKE_HOME/rootless-smoke.override.yml" "$PLATFORM_VERSION"
 
 if [[ "$TARGET" == "portal-discord" ]]; then
   SMOKE_HOME_PATH="$SMOKE_HOME" python3 - <<'PY'
@@ -155,12 +129,11 @@ path.write_text(content)
 PY
 fi
 
-echo "Building assistant+guardian images..."
-dev_compose --profile addon.chat build assistant guardian >/dev/null
-
+# Build (or, under OP_ROOTLESS_SMOKE_SKIP_BUILD=1 in CI, reuse) the dev images.
 if [[ "$TARGET" == "portal-discord" ]]; then
-  echo "Building portal image..."
-  dev_compose --profile addon.discord build portal >/dev/null
+  smoke_build_images assistant guardian portal
+else
+  smoke_build_images assistant guardian
 fi
 
 echo "Starting isolated stack..."

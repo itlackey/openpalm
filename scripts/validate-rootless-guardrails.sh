@@ -31,21 +31,34 @@ check_final_user_non_root containers/portal/Dockerfile portal
 check_final_user_non_root containers/voice/Dockerfile voice
 check_final_user_non_root containers/guardian/Dockerfile guardian
 
+# Static invariant: no container image or entrypoint may reintroduce the
+# root+privilege-drop re-exec pattern the rootless conversion deleted. `gosu`,
+# `usermod`, and `groupmod` have no legitimate use in a rootless container and no
+# spelling synonym, so a token grep is a meaningful guard here.
+#
+# NOTE: we deliberately do NOT grep entrypoints for `chown`/`chmod`. That check
+# policed spelling, not behavior — it never caught the ownership-mutating
+# equivalents (`install -m`, `mkdir -m`, `cp --preserve`) an entrypoint can use,
+# and those same builtins have legitimate non-root uses (writing a 0600 npmrc,
+# a crontab wrapper). The real "no root-owned files under OP_HOME after boot"
+# guarantee is enforced by scripts/rootless-ownership-smoke.sh, which boots the
+# stack and fails on any root-owned bind-mount file. That behavior test is the
+# guard; a static token grep would be evadable theater.
 unexpected_root_dockerfile_helpers=$(grep -RInE '\b(gosu|usermod|groupmod)\b' containers \
   --include='Dockerfile' \
   || true)
 if [ -n "$unexpected_root_dockerfile_helpers" ]; then
-  echo "::error::Dockerfile root-only helper commands are only allowed in the temporary assistant/guardian exceptions"
+  echo "::error::Dockerfiles must not use gosu/usermod/groupmod (root+privilege-drop re-exec is banned in rootless images)"
   printf '%s\n' "$unexpected_root_dockerfile_helpers"
   errors=$((errors + 1))
 fi
 
-unexpected_root_entrypoint_helpers=$(grep -RInE '\b(gosu|usermod|groupmod|chown|chmod)\b' containers \
+unexpected_root_entrypoint_helpers=$(grep -RInE '\b(gosu|usermod|groupmod)\b' containers \
   --include='*.sh' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   || true)
 if [ -n "$unexpected_root_entrypoint_helpers" ]; then
-  echo "::error::Entrypoint root-only ownership helper commands are only allowed in the temporary assistant/guardian exceptions"
+  echo "::error::Entrypoints must not use gosu/usermod/groupmod (root+privilege-drop re-exec is banned in rootless containers)"
   printf '%s\n' "$unexpected_root_entrypoint_helpers"
   errors=$((errors + 1))
 fi

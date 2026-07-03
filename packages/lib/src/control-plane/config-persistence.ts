@@ -9,8 +9,8 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSyn
 import { dirname, resolve as resolvePath } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { createLogger } from "../logger.js";
-import { parseEnvContent, parseEnvFile, parseEnabledAddons, mergeEnvContent, expandEnvVars } from './env.js';
-import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey, readStackEnv } from './secrets.js';
+import { parseEnvContent, parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
+import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { ensureSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
@@ -18,7 +18,6 @@ import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePat
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
-import { canonicalAddonProfileSelection } from './profile-ids.js';
 
 import {
   readCoreCompose,
@@ -330,7 +329,7 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
   }
 }
 
-export function discoverHomeBindMountSources(state: ControlPlaneState, opts?: { includeServices?: string[] }): Array<{ path: string; isFile: boolean }> {
+export function discoverHomeBindMountSources(state: ControlPlaneState): Array<{ path: string; isFile: boolean }> {
   const composeFiles = discoverStackOverlays(state.homeDir);
   if (composeFiles.length === 0) return [];
 
@@ -341,26 +340,6 @@ export function discoverHomeBindMountSources(state: ControlPlaneState, opts?: { 
   const homeRoot = resolvePath(state.homeDir);
   const seen = new Set<string>();
   const mounts: Array<{ path: string; isFile: boolean }> = [];
-  const activeProfiles = new Set<string>();
-  const effectiveEnv = readStackEnv(state.homeDir);
-  const voiceProfile = canonicalAddonProfileSelection('voice', effectiveEnv.OP_VOICE_PROFILE ?? '');
-  if (voiceProfile) activeProfiles.add(voiceProfile);
-  const ollamaProfile = canonicalAddonProfileSelection('ollama', effectiveEnv.OP_OLLAMA_PROFILE ?? '');
-  if (ollamaProfile) activeProfiles.add(ollamaProfile);
-  for (const addon of parseEnabledAddons(effectiveEnv.OP_ENABLED_ADDONS)) {
-    if (addon === 'voice') {
-      activeProfiles.add(voiceProfile || 'addon.voice.cpu');
-    } else if (addon === 'ollama') {
-      activeProfiles.add(ollamaProfile || 'addon.ollama.cpu');
-    } else {
-      activeProfiles.add(`addon.${addon}`);
-    }
-  }
-  for (const source of [effectiveEnv.COMPOSE_PROFILES, process.env.COMPOSE_PROFILES]) {
-    for (const profile of (source ?? '').split(',').map((value) => value.trim()).filter(Boolean)) {
-      activeProfiles.add(profile);
-    }
-  }
 
   for (const file of composeFiles) {
     let doc: Record<string, unknown>;
@@ -372,13 +351,13 @@ export function discoverHomeBindMountSources(state: ControlPlaneState, opts?: { 
     const services = doc?.services;
     if (!services || typeof services !== 'object') continue;
 
-    for (const [serviceName, svc] of Object.entries(services as Record<string, unknown>)) {
+    // Every service's mounts are included, profiled or not: an empty dir for a
+    // disabled addon costs nothing, while a missing dir when the addon is later
+    // enabled (hand-edited stack.env, `openpalm start voice`) gets created
+    // root-owned by dockerd and the rootless container EACCESes (issue #452).
+    for (const svc of Object.values(services as Record<string, unknown>)) {
       if (!svc || typeof svc !== 'object') continue;
       const svcRecord = svc as Record<string, unknown>;
-      const profiles = Array.isArray(svcRecord.profiles)
-        ? svcRecord.profiles.filter((profile): profile is string => typeof profile === 'string')
-        : [];
-      if (profiles.length > 0 && !profiles.some((profile) => activeProfiles.has(profile)) && !opts?.includeServices?.includes(serviceName)) continue;
       if (!Array.isArray(svcRecord.volumes)) continue;
       for (const vol of svcRecord.volumes as unknown[]) {
         const volRecord = typeof vol === 'object' && vol !== null

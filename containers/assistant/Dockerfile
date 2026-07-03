@@ -156,10 +156,18 @@ RUN set -e; \
          | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
     && chmod +x /usr/local/bin/gws
 
+# Seed the runtime dirs and make them group-writable so a container entered with
+# `--user ${OP_UID}:${OP_GID}` can write them (the "arbitrary uid" convention:
+# g=u mirrors owner bits, and the base `node` group owns the trees). Scope the
+# chmod/chown to these freshly created seed dirs ONLY — deliberately excluding
+# /opt/openpalm/tools, whose baked node_modules + @huggingface model cache is a
+# multi-hundred-MB tree split across COPY layers (Docker Hub rejects giant
+# blobs); a recursive chmod over it would materialize a duplicate overlay layer.
+# The tools tree is bind-mounted (host-owned) at runtime, so its baked mode is moot.
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
     && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
-    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm \
-    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/akm/cache /opt/akm/data /opt/persistent /opt/persistent/bin
+    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton \
+    && chmod -R g=u /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
 
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

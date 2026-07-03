@@ -12,12 +12,23 @@ Where a decision depends on a fact, this plan now reads the real files in this c
 `packages/lib/src/control-plane/*`) and calls out each verification directly (line-cited in
 the affected sections), rather than leaving the assumption unresolved.
 
-Current implementation status:
-- Phase 0 landed only partially.
-- The current shipped Phase 0 work is limited to rootless non-regression CI guardrails.
+Current implementation status (updated to match the shipped `feature/rootless` branch):
+- Phase 0 (CI guardrails + boot smoke tests) is shipped, and the container conversions have
+  landed well past it: portal, guardian, and assistant all run rootless today
+  (`user:` directives + non-root final `USER`, no gosu/usermod/groupmod anywhere), and the
+  host-swap block/`--adopt-host` reconcile flow is implemented in the CLI start path.
+- The static guardrail (`scripts/validate-rootless-guardrails.sh`) now enforces only the
+  invariants a static grep can honestly enforce (final non-root `USER`; no
+  gosu/usermod/groupmod; compose `user:` directives present; portals not root-overridden).
+  The "no root-owned files under OP_HOME after boot" guarantee is enforced by the behavior
+  smoke tests (`scripts/rootless-ownership-smoke.sh`, `scripts/rootless-host-swap-smoke.sh`),
+  which boot the real stack — not by a chown/chmod token grep (dropped as evadable theater).
 - The originally-implemented filesystem startup/install hard gate was intentionally removed.
-- The remaining plan has been updated so filesystem handling is a cross-platform compatibility,
+- The remaining plan treats filesystem handling as a cross-platform compatibility,
   warning, testing, and ownership-reconciliation concern rather than a blanket block.
+- Still outstanding (not yet shipped): the data-relocation migration to named volumes (§7.2),
+  Docker-Desktop-aware host-identity fingerprinting (§6.8), and moving the host-swap gate out
+  of the CLI into a shared lib pre-compose step so UI/electron start paths get it too.
 
 ## 1. Non-negotiable constraints (restated, checked against every decision below)
 
@@ -180,17 +191,20 @@ declaration so a fresh named volume inherits usable permissions). containers pro
 further: bake dependencies at build time and eliminate the runtime install path entirely,
 making the ownership question moot for the common case.
 
-**Decision: adopt containers' recommendation — bake at build time, delete the runtime
-install.** This is strictly less machinery (subtraction bias). Current code is not yet there:
-Dockerfile forces root startup (`containers/guardian/Dockerfile:31-33`) and entrypoint does
-root-time dependency install plus `gosu` re-exec (`containers/guardian/entrypoint.sh:104-123`,
-`containers/guardian/entrypoint.sh:136-145`) before server start, so this remains migration
-work.
+**Decision: adopt containers' recommendation — bake at build time, keep a non-root runtime
+install only for the residual dynamic-version case.** This is strictly less machinery
+(subtraction bias).
 
-**Residual case, named volume kept:** guardian still performs runtime `bun update`/install paths today
-and uses `gosu` handoff (`containers/guardian/entrypoint.sh:104-123`, `136-145`), so the
-dynamic-runtime case is confirmed as real today and should be tracked explicitly as a fallback
-only if unavoidable.
+**Shipped state (`feature/rootless`):** guardian now runs fully rootless. The Dockerfile
+bakes deps at build time (`bun install --cwd /opt/openpalm/tools --production`,
+`containers/guardian/Dockerfile:30`) and declares a non-root final `USER bun`
+(`containers/guardian/Dockerfile:39`) — the old root startup and the `gosu` re-exec are
+gone (guardrail-enforced). The entrypoint still performs a **non-root** runtime `bun add`
+of the pinned guardian tool version when it differs from the baked one
+(`containers/guardian/entrypoint.sh:63`), writing an npmrc via `install -m 600`
+(`containers/guardian/entrypoint.sh:38,41`). So the runtime install was **not deleted** —
+it was retained for the dynamic-version case and moved to run as the non-root user against
+the `op_guardian_cache` named volume, which is why that volume is kept.
 
 Docker's preservation of pre-baked ownership/permission bits when initializing a fresh
 named volume from an image path is flagged by containers as needing engine-by-engine
@@ -262,9 +276,20 @@ with:
    containers' two options) is designed and reviewed as its own follow-up PR, explicitly
    out of scope for the phase that removes the blanket grant.
 
-**Verification status (current code):** passwordless sudo is currently configured in the assistant
-image at build time (`containers/assistant/Dockerfile:120-127`), and no direct `sudo` callsites
-were found in the checked-in entrypoint script (`containers/assistant/entrypoint.sh`) for this checkout.
+**Verification status (shipped `feature/rootless`):** passwordless sudo has been **removed**
+from the assistant image — there is no sudoers/`NOPASSWD` line in
+`containers/assistant/Dockerfile`, and the image ends with a non-root `USER node`
+(`containers/assistant/Dockerfile:209`). No `sudo`/`gosu` callsites remain in
+`containers/assistant/entrypoint.sh` (guardrail-enforced). The interim behavior is therefore
+as decided above: the blanket host-root grant is gone and agent-initiated root operations are
+disabled pending the redesign follow-up.
+
+**Release-note sign-off (required by point 3 above, recorded here for the shipping release):**
+
+> This release removes host-root capability from the assistant container; agent-initiated
+> root operations are disabled pending redesign (tracking issue: TBD).
+
+This is a known, named, deliberately-accepted temporary regression — not a silent one.
 
 ### 2.11 Filesystem compatibility guidance and Docker Desktop host-identity handling — unassigned phase homes
 **Gap:** portability's original exFAT/NTFS hard-block (§4) and Docker-Desktop-synthetic-uid
@@ -282,11 +307,23 @@ handling (§5) appeared in no other draft's phase plan.
   `docker_context`, so Docker Desktop restarts don't spuriously look like a host-swap) →
   **Phase 3**, alongside the on-disk canary-stat comparison logic and the `--adopt-host`
   gate, since it's the same mechanism.
-- **Resolution:** `resolveOperatorIds()` currently does **not** implement Docker Desktop synthetic
-  uid/gid handling. It only prefers `OP_HOME` owner (if non-root), then process ids, and returns
-  null if both are root (`packages/lib/src/control-plane/operator-ids.ts:36-74`). The
-  "voice/ollama already on the target pattern" claim is therefore currently validated only by
-  native Linux path behavior in this function, not by any desktop-context mapping.
+- **Resolution (SHIPPED):** rather than synthesizing a per-`docker_context` uid — which the
+  drafts themselves deferred as needing real-hardware verification we can't do in CI — the seam
+  is `describeHostRuntime()` in `packages/lib/src/control-plane/host-identity.ts`. Docker (and
+  OrbStack/Colima/Podman machine) on macOS and Windows **always** run containers in a Linux VM,
+  so `process.platform` alone is a reliable, dependency-free signal: `linux → hostUidAuthoritative:
+  true`; `darwin`/`win32 → false`. `reconcileHostOwnership` consults that single seam and, on a
+  VM-mediated runtime, **skips host-swap detection and the host-side bind-mount adopt chown**
+  (where the VirtioFS/gRPC-FUSE uid translation would make a host-uid comparison a false-positive
+  swap and a host-side chown target the wrong uid) while **still repairing named volumes** (those
+  run inside the VM's own uid namespace via `docker run … chown` and ARE authoritative — a
+  root-era `guardian-cache` still gets fixed). This makes Docker Desktop restarts impossible to
+  misread as a host-swap and keeps the aggressive host-side chown off the environments this
+  section flags as lower-confidence, without speculative synthetic-uid arithmetic. All
+  runtime-specific ownership reasoning lives in that one seam, not scattered as `if (dockerDesktop)`
+  branches. `resolveOperatorIds()` is unchanged (still the disk-owner-preferring resolver used
+  only for writing OP_UID/OP_GID into stack.env); detection uses `resolveSessionIdentity()` (live
+  process uid when non-root, disk-owner only under sudo).
 
 ### 2.12 Canonical bind-mount list feeding three different consumers
 **Gap:** containers' smoke tests, bindmounts' classification table, and portability's
@@ -343,7 +380,7 @@ new host by construction, and are explicitly out of scope for any chown logic.
 | `data/akm/` embeddings cache (split from `akm.db`) | `op_akm_embeddings_cache` | Local re-embedding is cheap and has no external dependency (unlike LLM/voice model downloads which hit an external registry) — firm decision, not hedged. |
 | container-private `/opt/akm/cache`, `/opt/akm/data` | `op_akm_cache` (existing) | Current compose+entrypoint mounts create a confirmed duplicate with bind-mounted `OP_HOME/data/akm/*` (`packages/skeleton/system/stack/core.compose.yml:87-88`, `containers/assistant/entrypoint.sh:38-40`). Planned migration should resolve to a single canonical side explicitly. |
 | guardian `.local/share/opencode`, `.local/state/opencode` | existing named volume (already fixed narrowly in 8b0c3a00) | Moderator's OpenCode scratch storage; never a portability requirement. Once host-side pre-create+chown (§5) exists, the narrow non-recursive 8b0c3a00 fix becomes redundant and should be deleted, not kept alongside the new mechanism. |
-| `/opt/openpalm` guardian-cache | existing named volume, `op_guardian_cache` | Current target is to keep build-time artifacts and remove runtime install (`containers/guardian/Dockerfile:31-33`, `containers/guardian/entrypoint.sh:104-123`, `136-145`), with this volume retained only for any residual dynamic-install case. |
+| `/opt/openpalm` guardian-cache | existing named volume, `op_guardian_cache` | **Shipped:** deps are baked at build time (`containers/guardian/Dockerfile:30`) under non-root `USER bun` (`:39`); the volume is retained only for the residual non-root runtime `bun add` of a pinned dynamic version (`containers/guardian/entrypoint.sh:63`). |
 
 ---
 
@@ -404,21 +441,23 @@ ordering itself, only what happens within guardian/assistant's phases)
    grow), fixes openpalm#541 (`akm tasks sync` un-gosu'd write — becomes structurally
    impossible once there's no root phase to skip gosu from), and carries the
    passwordless-sudo redesign (§2.10) as an explicitly-flagged, signed-off interim
-   regression rather than a silent one. Cron replacement decision (forced now, not left
-   open for Phase 5 implementation to relitigate): **non-root user-crontab** (`crontab`
-   under the app user) if the assistant genuinely needs calendar-style scheduling beyond a
-   fixed interval; otherwise **a plain in-process sleep-loop** for the single known case
-   (`akm tasks sync` on an interval) — no root crond either way. Default to the sleep-loop
-   unless Phase 0's audit finds another cron consumer that needs real crontab semantics.
+   regression rather than a silent one. Cron replacement — **as shipped**: the assistant does
+   need calendar-style scheduling (akm task files carry real cron expressions), so the plan's
+   "default to a plain in-process sleep-loop" was **not** the path taken. The shipped
+   entrypoint runs a **non-root user-crontab under busybox**: it installs a `crontab` wrapper
+   pinned to a per-user spool (`containers/assistant/entrypoint.sh:213,217`), lets
+   `akm tasks sync` write task blocks into that crontab, and starts `busybox crond -c <spool>`
+   as the non-root user (`containers/assistant/entrypoint.sh:254`). No root crond, no gosu —
+   the "non-root user-crontab" branch of the decision, not the sleep-loop branch.
 
 ### 5.3 Runtime-root-only steps → build-time or install-time
 
 | Step | Today | Target |
 |---|---|---|
 | sshd host-key gen (assistant, if applicable) | runtime, root | build-time bake, or install-time host-side pre-generation into a bind-mounted secrets-style path before first boot |
-| guardian `bun install` at `/opt/openpalm` | first-boot, root-then-gosu | build-time bake (default); runtime-as-non-root against pre-chowned dir only for the confirmed residual dynamic-plugin case (§2.7) |
+| guardian `bun install` at `/opt/openpalm` | ~~first-boot, root-then-gosu~~ **shipped: build-time bake under `USER bun`** | build-time bake (`Dockerfile:30`); runtime-as-non-root `bun add` against the named volume only for the residual dynamic-version case (§2.7) |
 | akm schema migration | presumably runtime | run once at install/update time via host-side control-plane tooling invoking the container's migration command as the non-root target user, not on every boot as root |
-| cron setup (assistant) | runtime, likely root crond | build-time: no crond in image; runtime: non-root sleep-loop (default) or non-root user-crontab, decided per §5.2 |
+| cron setup (assistant) | runtime, likely root crond | **shipped:** no root crond; runtime non-root busybox `crond` against a per-user spool + a `crontab` wrapper (`containers/assistant/entrypoint.sh:213,217,254`) — the non-root user-crontab option from §5.2 |
 | `akm tasks sync` writing `config/akm/config.json` | runtime, un-gosu'd (bug #541) | runtime, always as the single non-root user — bug disappears structurally |
 
 ---
@@ -509,9 +548,10 @@ Every phase is gated on: tests green AND the diff deletes/simplifies more than i
   - `OP_HOME/data/akm` ↔ `/opt/akm/{cache,data}` duplicate is already confirmed in current code
     (`core.compose.yml:87-88`, `containers/assistant/entrypoint.sh:38-40`), so Phase 0
     focuses on migration execution rather than discovery.
-  - Guardian runtime install + `gosu` flow is confirmed active (`containers/guardian/Dockerfile:31-33`,
-    `containers/guardian/entrypoint.sh:104-123`, `136-145`) and should be explicitly folded into the
-    conversion plan in Phase 4.
+  - Guardian's root+`gosu` flow has since been **removed** (Phase 4 landed): the image bakes
+    deps at build time and runs as non-root `USER bun` (`containers/guardian/Dockerfile:30,39`),
+    keeping only a non-root runtime `bun add` for the dynamic-version case
+    (`containers/guardian/entrypoint.sh:63`).
   - Name the concrete `data/voice/` models-vs-runtime split (§2.5) if one exists.
   - Confirm `resolveOperatorIds()` remains non-desktop-aware (`packages/lib/src/control-plane/operator-ids.ts:36-74`) so Phase 3 can
     implement synthetic desktop handling deliberately.

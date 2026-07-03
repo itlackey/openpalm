@@ -1,14 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-TARGET_UID="${OP_UID:-1000}"
-TARGET_GID="${OP_GID:-1000}"
-IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
-
-run_as_target_user() {
-  "$@"
-}
-
 # ── Version resolution ────────────────────────────────────────────────────────
 # GUARDIAN_VERSION is baked into the image at build time (Dockerfile ARG → ENV),
 # so the thin host boots with no operator configuration. Operators may override
@@ -35,10 +27,8 @@ export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
 # ── Optional private-registry auth ────────────────────────────────────────────
 # To install OP_GUARDIAN_PACKAGE from a private registry, supply an .npmrc. Bun
 # reads $HOME/.npmrc for registry + auth. Prefer a mounted secret file
-# (OP_GUARDIAN_NPMRC_FILE); OP_GUARDIAN_NPMRC is an inline convenience. Runs on
-# the root pass and again after the gosu drop, so on the root pass hand the file
-# to the target uid:gid for the second (non-privileged) pass. The token is
-# never logged.
+# (OP_GUARDIAN_NPMRC_FILE); OP_GUARDIAN_NPMRC is an inline convenience. The
+# token is never logged.
 NPMRC_DEST="${HOME:-/opt/openpalm/guardian}/.npmrc"
 if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
   if [ ! -f "${OP_GUARDIAN_NPMRC_FILE}" ]; then
@@ -70,7 +60,7 @@ install_artifact() {
   for attempt in 1 2 3; do
     echo "Installing ${pkg}@${version} (attempt ${attempt})..."
     mkdir -p "$prefix"
-    run_as_target_user env INSTALL_PREFIX="$prefix" PKG_SPEC="${pkg}@${version}" /bin/sh -lc 'cd "$INSTALL_PREFIX" && bun add "$PKG_SPEC" --production' && return 0
+    ( cd "$prefix" && bun add "${pkg}@${version}" --production ) && return 0
     [ "$attempt" -lt 3 ] && echo "  Install failed, retrying in 5s..." && sleep 5
   done
   echo "ERROR: Failed to install ${pkg}@${version} after 3 attempts" >&2
@@ -87,7 +77,7 @@ install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/op
 # image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
 # bun update installs missing packages and advances within declared ranges.
 if [ -f "/opt/openpalm/tools/package.json" ]; then
-  run_as_target_user env TOOLS_DIR="/opt/openpalm/tools" /bin/sh -lc 'cd "$TOOLS_DIR" && bun update --production' \
+  bun update --cwd /opt/openpalm/tools --production \
     || echo "WARN: tool update had errors; check logs above" >&2
 else
   echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool update" >&2

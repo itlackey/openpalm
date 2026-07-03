@@ -15,6 +15,7 @@ import {
   installAutomationFromRegistry,
   listAvailableAddonIds,
   listEnabledAddonIds,
+  pruneRemovedAddonState,
   setAddonEnabled,
   setAddonProfileSelection,
   uninstallAutomation,
@@ -132,6 +133,85 @@ describe('addon runtime state', () => {
     // App-written addon state lands in state/, and never in the operator-facing stack.env.
     expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
     expect(readFileSync(stackEnv, 'utf-8')).not.toContain('OP_VOICE_PROFILE');
+  });
+});
+
+describe('removed-addon state cleanup (R8: stale ssh)', () => {
+  function seedStateEnv(contents: string): string {
+    const stateEnv = join(process.env.OP_HOME!, 'state', 'stack.state.env');
+    mkdirSync(join(process.env.OP_HOME!, 'state'), { recursive: true });
+    writeFileSync(stateEnv, contents);
+    return stateEnv;
+  }
+
+  it('strips a lingering ssh addon and OPENCODE_ENABLE_SSH from an upgraded install', () => {
+    const stateEnv = seedStateEnv('OP_ENABLED_ADDONS=ssh,voice\nOPENCODE_ENABLE_SSH=1\n');
+
+    // ssh is no longer built in, so it is hidden from the effective set but
+    // still present in the raw env until pruned.
+    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['voice']);
+    expect(readFileSync(stateEnv, 'utf-8')).toContain('ssh');
+
+    const result = pruneRemovedAddonState(process.env.OP_HOME!);
+    expect(result.changed).toBe(true);
+    expect(result.removedAddons).toEqual(['ssh']);
+    expect(result.removedEnvKeys).toEqual(['OPENCODE_ENABLE_SSH']);
+
+    const after = readFileSync(stateEnv, 'utf-8');
+    expect(after).toContain('OP_ENABLED_ADDONS=voice');
+    expect(after).not.toContain('ssh');
+    expect(after).not.toContain('OPENCODE_ENABLE_SSH');
+  });
+
+  it('is idempotent — a second prune is a no-op that writes nothing', () => {
+    seedStateEnv('OP_ENABLED_ADDONS=ssh\nOPENCODE_ENABLE_SSH=1\n');
+    expect(pruneRemovedAddonState(process.env.OP_HOME!).changed).toBe(true);
+
+    const stateEnv = join(process.env.OP_HOME!, 'state', 'stack.state.env');
+    const contentAfterFirst = readFileSync(stateEnv, 'utf-8');
+    const second = pruneRemovedAddonState(process.env.OP_HOME!);
+    expect(second.changed).toBe(false);
+    expect(second.removedAddons).toEqual([]);
+    expect(second.removedEnvKeys).toEqual([]);
+    expect(readFileSync(stateEnv, 'utf-8')).toBe(contentAfterFirst);
+  });
+
+  it('leaves a clean install untouched (skip-if-absent no-op)', () => {
+    const stateEnv = seedStateEnv('OP_ENABLED_ADDONS=voice\n');
+    const before = readFileSync(stateEnv, 'utf-8');
+
+    const result = pruneRemovedAddonState(process.env.OP_HOME!);
+    expect(result).toEqual({ changed: false, removedAddons: [], removedEnvKeys: [] });
+    expect(readFileSync(stateEnv, 'utf-8')).toBe(before);
+  });
+
+  it('is a no-op when there is no state env at all', () => {
+    const result = pruneRemovedAddonState(process.env.OP_HOME!);
+    expect(result.changed).toBe(false);
+  });
+
+  it('disables a lingering ssh entry via setAddonEnabled', () => {
+    const stateEnv = seedStateEnv('OP_ENABLED_ADDONS=ssh,voice\nOPENCODE_ENABLE_SSH=1\n');
+
+    const disabled = setAddonEnabled(process.env.OP_HOME!, 'ssh', false);
+    expect(disabled.ok).toBe(true);
+    if (disabled.ok) expect(disabled.changed).toBe(true);
+
+    const after = readFileSync(stateEnv, 'utf-8');
+    expect(after).toContain('OP_ENABLED_ADDONS=voice');
+    expect(after).not.toContain('ssh');
+    expect(after).not.toContain('OPENCODE_ENABLE_SSH');
+  });
+
+  it('still rejects ENABLING a non-built-in addon (validation unchanged)', () => {
+    const result = setAddonEnabled(process.env.OP_HOME!, 'ssh', true);
+    expect(result).toEqual({ ok: false, error: 'Addon "ssh" is not built in' });
+  });
+
+  it('treats disabling an absent removed addon as a no-op success', () => {
+    seedStateEnv('OP_ENABLED_ADDONS=voice\n');
+    const result = setAddonEnabled(process.env.OP_HOME!, 'ssh', false);
+    expect(result).toEqual({ ok: true, enabled: false, changed: false, services: [] });
   });
 });
 

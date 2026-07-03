@@ -8,7 +8,7 @@ import {
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import { withSerialQueue } from "$lib/server/serial-queue.js";
-import { isAllowedService, buildComposeOptions, createLogger } from "@openpalm/lib";
+import { isAllowedService, buildComposeOptions, createLogger, reconcileHostOwnership, HostSwapBlockedError } from "@openpalm/lib";
 import { composeRestart, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -34,6 +34,23 @@ export const POST: RequestHandler = async (event) => {
     // Try real Docker — only update state based on actual result
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
+      // Shared host-ownership reconcile (swap detection + ownership repair)
+      // before touching containers — same lib step the CLI runs. An un-adopted
+      // host swap surfaces as an actionable error (the UI has no adopt flag).
+      try {
+        await reconcileHostOwnership(state, { services: [service] });
+      } catch (err) {
+        if (err instanceof HostSwapBlockedError) {
+          return errorResponse(
+            409,
+            "host_swap_blocked",
+            "OP_HOME appears to have moved from another host. Ownership must be adopted for this host before starting. Run `openpalm start --adopt-host` from the host CLI, then retry.",
+            { service, previousHost: err.previousIdentity?.host ?? null, currentHost: err.currentIdentity.host },
+            requestId,
+          );
+        }
+        throw err;
+      }
       const result = await composeRestart([service], buildComposeOptions(state));
       if (result.ok) {
         state.services[service] = "running";

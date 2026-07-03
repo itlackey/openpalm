@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=scripts/rootless-smoke-fixture.sh
+source "${ROOT_DIR}/scripts/rootless-smoke-fixture.sh"
+
 SWAP_HOME="${OP_ROOTLESS_SWAP_HOME:-${ROOT_DIR}/.rootless-host-swap}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-rootless-swap-$$}"
 export COMPOSE_PROJECT_NAME
@@ -46,54 +49,17 @@ wait_for_stack_health() {
 }
 
 cleanup
-mkdir -p "$SWAP_HOME"
-cp -r packages/skeleton/. "$SWAP_HOME/"
-mkdir -p "$SWAP_HOME/knowledge/secrets" "$SWAP_HOME/knowledge/env"
+PLATFORM_VERSION="$(smoke_platform_version)"
 
-cat >"$SWAP_HOME/knowledge/env/stack.env" <<EOF
-OP_HOME=${SWAP_HOME}
-OP_UID=$(id -u)
-OP_GID=$(id -g)
-OP_IMAGE_NAMESPACE=openpalm
-OP_ASSISTANT_VERSION=dev
-OP_GUARDIAN_VERSION=dev
-OP_PORTAL_VERSION=dev
-OP_GUARDIAN_NPM_VERSION=$(node -p "require('./package.json').version")
-OP_UI_VERSION=$(node -p "require('./package.json').version")
-OP_SKELETON_VERSION=$(node -p "require('./package.json').version")
-OP_ASSISTANT_PORT=3996
-OP_GUARDIAN_PORT=3990
-OP_GUARDIAN_ADMIN_PORT=3991
-OP_CHAT_PORT=3992
-OP_API_PORT=3993
-OP_ENABLED_ADDONS=chat
-OP_SETUP_COMPLETE=true
-EOF
-chmod 600 "$SWAP_HOME/knowledge/env/stack.env"
-printf '%s\n' '{}' > "$SWAP_HOME/knowledge/secrets/auth.json"
-printf '%s\n' 'swap-smoke-password' > "$SWAP_HOME/knowledge/secrets/op_ui_login_password"
-openssl rand -hex 16 > "$SWAP_HOME/knowledge/secrets/op_guardian_admin_token"
-openssl rand -hex 16 > "$SWAP_HOME/knowledge/secrets/op_guardian_mcp_token"
-openssl rand -hex 16 > "$SWAP_HOME/knowledge/secrets/portal_chat_secret"
-openssl rand -hex 16 > "$SWAP_HOME/knowledge/secrets/portal_api_secret"
-openssl rand -hex 16 > "$SWAP_HOME/knowledge/secrets/portal_discord_secret"
-openssl rand -hex 16 > "$SWAP_HOME/knowledge/secrets/portal_slack_secret"
-touch "$SWAP_HOME/knowledge/env/user.env"
-chmod 700 "$SWAP_HOME/knowledge/secrets"
-chmod 600 "$SWAP_HOME/knowledge/secrets/"* "$SWAP_HOME/knowledge/env/user.env"
+smoke_copy_skeleton "$SWAP_HOME"
+smoke_write_stack_env "$SWAP_HOME" "$PLATFORM_VERSION" \
+  3996 3990 3991 3992 3993
+printf 'OP_ENABLED_ADDONS=%s\n' 'chat' >> "$SWAP_HOME/knowledge/env/stack.env"
+smoke_seed_secrets "$SWAP_HOME" 'swap-smoke-password'
 
-OP_HOME="$SWAP_HOME" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
+smoke_ensure_home_dirs "$SWAP_HOME"
 
-cat >"$SWAP_HOME/config/stack/custom.compose.yml" <<EOF
-services:
-  assistant:
-    environment:
-      OP_UI_VERSION: "$(node -p "require('./package.json').version")"
-      OP_SKELETON_VERSION: "$(node -p "require('./package.json').version")"
-  guardian:
-    environment:
-      OP_GUARDIAN_NPM_VERSION: "$(node -p "require('./package.json').version")"
-EOF
+smoke_write_version_override "$SWAP_HOME/config/stack/custom.compose.yml" "$PLATFORM_VERSION"
 
 mkdir -p "$SWAP_HOME/state"
 cat >"$SWAP_HOME/state/host-identity.json" <<EOF
@@ -107,9 +73,8 @@ EOF
 
 docker run --rm -v "$SWAP_HOME:/smoke-home" alpine sh -c "chown -R 0:0 /smoke-home/state /smoke-home/config /smoke-home/system /smoke-home/knowledge /smoke-home/workspace /smoke-home/data/assistant /smoke-home/data/guardian /smoke-home/data/akm /smoke-home/data/logs && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type d -exec chmod 755 {} + && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type f -exec chmod 644 {} +"
 
-echo "Building assistant+guardian images for host-swap smoke..."
-bun run ui:build >/dev/null
-dev_compose --profile addon.chat build assistant guardian >/dev/null
+# Build (or, under OP_ROOTLESS_SMOKE_SKIP_BUILD=1 in CI, reuse) the dev images.
+smoke_build_images assistant guardian
 
 echo "Expecting default start to block on host swap..."
 if OP_HOME="$SWAP_HOME" bun -e "import { runStartAction } from './packages/cli/src/commands/start.ts'; await runStartAction([]);" >/tmp/rootless-swap.out 2>/tmp/rootless-swap.err; then

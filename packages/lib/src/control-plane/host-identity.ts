@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname } from 'node:path';
-import type { OperatorIds } from './operator-ids.js';
-import { resolveOperatorIds } from './operator-ids.js';
+import { resolveSessionIdentity } from './operator-ids.js';
 import { writeFileAtomic } from './fs-atomic.js';
 
 export type HostIdentity = {
@@ -14,8 +13,46 @@ export type HostIdentity = {
 
 export type OwnershipDecision = 'match' | 'drift' | 'swap';
 
+export type HostRuntime = {
+  /** Stable, human-readable identifier for the container runtime environment. */
+  id: string;
+  /**
+   * True when the host process's own uid/gid authoritatively describe bind-mount
+   * ownership as the container sees it — i.e. a native Linux container runtime,
+   * where containers share the host kernel and uid namespace.
+   *
+   * False on VM-mediated runtimes (Docker Desktop / OrbStack / Colima / Podman
+   * machine on macOS or Windows), where containers run inside a Linux VM and the
+   * file-sharing layer (VirtioFS / gRPC-FUSE) translates uids. There, comparing
+   * or chowning bind-mount ownership from the host side is not reliable, so
+   * host-swap detection and the host-side adopt chown are unsafe (false-positive
+   * swaps, wrong-uid chowns). Named-volume repair is unaffected — it runs inside
+   * the VM's own uid namespace.
+   */
+  hostUidAuthoritative: boolean;
+};
+
+/**
+ * The single seam that classifies the container runtime for ownership reasoning.
+ * Docker (and OrbStack / Colima / Podman machine) on macOS and Windows ALWAYS run
+ * containers in a Linux VM; only native Linux runs them in the host kernel with
+ * the host's own uid namespace. So `process.platform` alone is a reliable,
+ * dependency-free signal — no `docker context inspect` on the hot start path, and
+ * all runtime-specific ownership reasoning lives here rather than scattered as
+ * `if (dockerDesktop)` checks through the reconcile logic.
+ */
+export function describeHostRuntime(): HostRuntime {
+  if (process.platform === 'linux') {
+    return { id: 'linux-native', hostUidAuthoritative: true };
+  }
+  return { id: `vm-mediated-${process.platform}`, hostUidAuthoritative: false };
+}
+
 export function detectHostIdentity(homeDir: string): HostIdentity {
-  const ids = resolveOperatorIds(homeDir);
+  // Session identity — NOT resolveOperatorIds. The latter prefers the on-disk
+  // OP_HOME owner, which after a real drive move is the stale previous uid;
+  // using it here made swap detection tautological (canaries always matched).
+  const ids = resolveSessionIdentity(homeDir);
   return {
     kind: process.platform,
     host: hostname(),
@@ -33,21 +70,6 @@ export function hostIdentityMatches(a: HostIdentity | null, b: HostIdentity | nu
     return a.kind === b.kind && a.host === b.host;
   }
   return a.kind === b.kind && a.uid === b.uid && a.gid === b.gid;
-}
-
-export function classifyOwnershipDecision(input: {
-  current: HostIdentity;
-  previous: HostIdentity | null;
-  canaryOwner: OperatorIds | null;
-}): OwnershipDecision {
-  const { current, previous, canaryOwner } = input;
-  if (canaryOwner && canaryOwner.uid === current.uid && canaryOwner.gid === current.gid) {
-    return 'match';
-  }
-  if (!previous || hostIdentityMatches(current, previous)) {
-    return 'drift';
-  }
-  return 'swap';
 }
 
 export function readHostIdentity(path: string): HostIdentity | null {

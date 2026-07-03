@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -8,14 +8,35 @@ import {
   ownershipRepairPaths,
   ownershipCanaryPaths,
   readCanaryOwners,
+  ownershipRepairMarkerFile,
+  ownershipRepairMarkerMatches,
+  writeOwnershipRepairMarker,
+  reconcileHostOwnership,
+  HostSwapBlockedError,
 } from './ownership-reconcile.js';
+import { writeHostIdentity, readHostIdentity } from './host-identity.js';
+import { hostIdentityFile } from './home.js';
 
 let homeDir = '';
+let restoreIds: (() => void) | null = null;
 
 afterEach(() => {
+  if (restoreIds) { restoreIds(); restoreIds = null; }
   if (homeDir) rmSync(homeDir, { recursive: true, force: true });
   homeDir = '';
 });
+
+/** Stub the live session uid/gid (restored in afterEach). */
+function stubSessionIds(uid: number, gid: number): void {
+  const origUid = process.getuid;
+  const origGid = process.getgid;
+  (process as unknown as { getuid: () => number }).getuid = () => uid;
+  (process as unknown as { getgid: () => number }).getgid = () => gid;
+  restoreIds = () => {
+    (process as unknown as { getuid: typeof origUid }).getuid = origUid;
+    (process as unknown as { getgid: typeof origGid }).getgid = origGid;
+  };
+}
 
 function makeState() {
   homeDir = mkdtempSync(join(tmpdir(), 'openpalm-reconcile-'));
@@ -103,5 +124,57 @@ describe('reconcile decision building', () => {
       ],
     });
     expect(decision).toBe('drift');
+  });
+
+  test('degrades to match (never spurious swap) when the session identity has no uid', () => {
+    // Root session over a root-owned OP_HOME (uid null) or win32: comparing null
+    // against numeric canary owners would otherwise never match → spurious swap
+    // that blocks `sudo openpalm start`.
+    const decision = decideOwnershipFromCanaries({
+      currentIdentity: { kind: 'linux', host: 'host-a', uid: null, gid: null },
+      previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
+      canaries: [{ path: '/tmp/canary', uid: 1000, gid: 1000 }],
+    });
+    expect(decision).toBe('match');
+  });
+});
+
+describe('ownership repair marker (R4)', () => {
+  test('marker round-trips and matches only the recorded session ids', () => {
+    const state = makeState();
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 })).toBe(false);
+    writeOwnershipRepairMarker(state.homeDir, { uid: 1000, gid: 1000 });
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 })).toBe(true);
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1001, gid: 1001 })).toBe(false);
+    expect(existsSync(ownershipRepairMarkerFile(state.homeDir))).toBe(true);
+  });
+});
+
+describe('reconcileHostOwnership swap block + fast path (R2/R4)', () => {
+  // Docker-dependent repair orchestration (deep flag, strict, named volumes,
+  // env patch) is covered in ownership-reconcile-repair.test.ts, which mocks the
+  // docker chown side effects. These two paths invoke NO docker.
+
+  test('throws HostSwapBlockedError on an un-adopted host swap (before any repair)', async () => {
+    if (process.platform === 'win32') return;
+    const state = makeState();
+    writeFileSync(join(state.homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeHostIdentity(hostIdentityFile(state.homeDir), { kind: 'linux', host: 'old-host', uid: 1234, gid: 1234 });
+    // Live session is a uid that does NOT own the canaries → swap. The block
+    // throws before any docker chown, so this needs no docker.
+    stubSessionIds(999999, 999999);
+    await expect(reconcileHostOwnership(state, {})).rejects.toBeInstanceOf(HostSwapBlockedError);
+  });
+
+  test('skips the repair walk (no docker) when the marker already matches the session', async () => {
+    if (process.platform === 'win32') return;
+    const state = makeState();
+    const sessionUid = process.getuid!();
+    const sessionGid = process.getgid!();
+    // Marker present + match decision → needsRepair false → no docker invoked.
+    writeOwnershipRepairMarker(state.homeDir, { uid: sessionUid, gid: sessionGid });
+    await reconcileHostOwnership(state, { services: ['assistant'] });
+    // Identity is still recorded even on the fast path.
+    expect(readHostIdentity(hostIdentityFile(state.homeDir))?.uid).toBe(sessionUid);
   });
 });

@@ -2,19 +2,19 @@
 set -euo pipefail
 
 PORT="${OPENCODE_PORT:-4096}"
-TARGET_UID="${OP_UID:-1000}"
-TARGET_GID="${OP_GID:-1000}"
-IS_ROOT=$([ "$(id -u)" = "0" ] && echo 1 || echo 0)
-
-run_as_target_user() {
-  "$@"
-}
 
 maybe_prepare_nss_wrapper() {
   if getent passwd "$(id -u)" >/dev/null 2>&1; then return 0; fi
 
-  local nss_wrapper_lib
-  nss_wrapper_lib="$(find /usr/lib /lib -name libnss_wrapper.so 2>/dev/null | head -n 1)"
+  # libnss-wrapper installs to the fixed Debian multiarch dir
+  # (/usr/lib/<triple>/libnss_wrapper.so). Glob those known locations instead of
+  # an unbounded recursive `find` over the whole library tree on every boot; the
+  # bare /usr/lib and /lib paths remain as a fallback if the layout differs.
+  local nss_wrapper_lib="" candidate
+  for candidate in /usr/lib/*/libnss_wrapper.so /lib/*/libnss_wrapper.so \
+                   /usr/lib/libnss_wrapper.so /lib/libnss_wrapper.so; do
+    if [ -e "$candidate" ]; then nss_wrapper_lib="$candidate"; break; fi
+  done
   if [ -z "$nss_wrapper_lib" ]; then
     echo "warning: current uid has no passwd entry and libnss_wrapper is unavailable; continuing" >&2
     return 0
@@ -78,16 +78,33 @@ install_runtime_artifacts() {
     exit 1
   fi
 
-  local root_npm_cache="/tmp/openpalm-npm-cache"
-  local root_bun_cache="/tmp/openpalm-bun-cache/install"
+  # Cache under the persistent bind-mounted HOME (/home/opencode is
+  # OP_HOME/data/assistant) so warm restarts reuse downloaded packages and
+  # --prefer-offline actually hits a cache instead of re-fetching from the
+  # registry. The bun path matches the Dockerfile's BUN_INSTALL_CACHE_DIR ENV.
+  local npm_cache_dir="/home/opencode/.cache/openpalm-npm"
+  local bun_cache_dir="/home/opencode/.cache/bun/install"
 
+  # `grep -v` exits 1 when npm produced only warnings (or nothing), so the
+  # pipeline's own exit code can't distinguish "npm failed" from "no output".
+  # Capture npm's exit via PIPESTATUS and surface real failures — a silent
+  # EACCES here would leave the stack serving stale ui/skeleton forever.
+  local npm_rc
   echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
-  npm_config_cache="$root_npm_cache" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
-    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || true
+  npm_rc=0
+  npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
+    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
+  if [ "$npm_rc" != "0" ]; then
+    echo "ERROR: @openpalm/ui@${ui_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
+  fi
 
   echo "entrypoint: installing @openpalm/skeleton@${skeleton_version}..." >&2
-  npm_config_cache="$root_npm_cache" npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${skeleton_version}" \
-    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || true
+  npm_rc=0
+  npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${skeleton_version}" \
+    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
+  if [ "$npm_rc" != "0" ]; then
+    echo "ERROR: @openpalm/skeleton@${skeleton_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
+  fi
 
   # ── Range-versioned tools via bun update ────────────────────────────────────
   # /opt/openpalm/tools/package.json declares tool semver ranges (baked as
@@ -97,13 +114,13 @@ install_runtime_artifacts() {
   local tools_dir="/opt/openpalm/tools"
   if [ -f "${tools_dir}/package.json" ]; then
     echo "entrypoint: updating tools in ${tools_dir}..." >&2
-    run_as_target_user env BUN_INSTALL_CACHE_DIR="$root_bun_cache" bun update --cwd "${tools_dir}" --production \
+    BUN_INSTALL_CACHE_DIR="$bun_cache_dir" bun update --cwd "${tools_dir}" --production \
       || echo "warning: tool update had errors; check logs above" >&2
     # @anthropic-ai/claude-code ships a node install script that must be run
     # after install/update to set up the native binary.
     local claude_install="${tools_dir}/node_modules/@anthropic-ai/claude-code/install.cjs"
     if [ -f "$claude_install" ]; then
-      run_as_target_user node "$claude_install" 2>/dev/null || true
+      node "$claude_install" 2>/dev/null || true
     fi
   fi
 }
@@ -154,7 +171,7 @@ run_akm_schema_migration() {
   # Anything else means the db could not be opened/migrated — surface it loudly
   # but keep booting.
   local rc=0
-  run_as_target_user akm health >&2 || rc=$?
+  akm health >&2 || rc=$?
   if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
     echo "entrypoint: akm schema migration check complete (exit $rc)" >&2
   else
@@ -194,7 +211,10 @@ start_cron_and_sync_tasks() {
   local preserved_crontab=""
   mkdir -p "$spool_dir" "$wrapper_dir"
   install -m 755 /dev/null "$crontab_wrapper"
-  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "\$@"\n' "$spool_dir" > "$crontab_wrapper"
+  # NOTE: the format string is single-quoted, so `$@` must NOT be escaped —
+  # bash printf passes `\$` through literally, which would bake the literal
+  # string `$@` into the wrapper and break every crontab invocation.
+  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "$@"\n' "$spool_dir" > "$crontab_wrapper"
   export PATH="$wrapper_dir:$PATH"
   echo "# openpalm:cron-preamble BEGIN" > "$crontab_file"
   echo "# Auto-generated by entrypoint — do not edit" >> "$crontab_file"

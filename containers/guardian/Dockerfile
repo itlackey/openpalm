@@ -21,9 +21,16 @@ ENV HOME=/opt/openpalm/guardian \
 # OP_HOME/data/guardian/tools is bind-mounted over this path so operators
 # can edit package.json directly.
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
+# Group-own the app trees by the base `bun` user and make them group-writable
+# (g=u, "arbitrary uid" convention) so a container entered with
+# `--user ${OP_UID}:${OP_GID}` can write them. chown + g=u must combine: g=u
+# alone leaves the group as root (gid 0), which the runtime gid is not — the
+# chown to bun:bun (gid 1000, the default OP_GID) is what makes the writable bit
+# reachable. All in one RUN so no duplicate layer is produced.
 RUN bun install --cwd /opt/openpalm/tools --production \
     && mkdir -p /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/skeleton \
-    && chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/skeleton /opt/openpalm/tools
+    && chown -R bun:bun /opt/openpalm/guardian /opt/openpalm/skeleton /opt/openpalm/tools \
+    && chmod -R g=u /opt/openpalm/guardian /opt/openpalm/skeleton /opt/openpalm/tools
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveOperatorIds, hasUsableOperatorId } from "./operator-ids.js";
+import { resolveOperatorIds, resolveSessionIdentity, hasUsableOperatorId } from "./operator-ids.js";
 
 let tempDir = "";
 
@@ -102,6 +102,65 @@ describe("resolveOperatorIds", () => {
     } else {
       // No-op: confirms the test compiles and the helper is callable.
       expect(typeof resolveOperatorIds).toBe("function");
+    }
+  });
+});
+
+describe("resolveSessionIdentity", () => {
+  test("returns the LIVE process uid/gid for a non-root session, NOT the disk owner", () => {
+    if (process.platform === "win32") {
+      expect(resolveSessionIdentity(tempDir)).toBeNull();
+      return;
+    }
+    // Crucial swap-detection property: even when homeDir is owned by a
+    // DIFFERENT (stale) uid, a non-root session reports its own live uid — so a
+    // moved drive's stale owner cannot mask a host swap. We can't chown to a
+    // foreign uid without root, so assert the general contract: for a non-root
+    // session the result is the process uid regardless of homeDir.
+    const ids = resolveSessionIdentity(tempDir);
+    expect(ids).not.toBeNull();
+    expect(ids!.uid).toBe(process.getuid!());
+    expect(ids!.gid).toBe(process.getgid!());
+  });
+
+  test("ignores a missing homeDir for a non-root session (uses process ids)", () => {
+    if (process.platform === "win32") return;
+    const ids = resolveSessionIdentity(join(tempDir, "does-not-exist"));
+    expect(ids).not.toBeNull();
+    expect(ids!.uid).toBe(process.getuid!());
+  });
+
+  test("falls back to the disk-owner-preferring resolver for a root session", () => {
+    if (process.platform === "win32") return;
+    const origGetuid = process.getuid;
+    const origGetgid = process.getgid;
+    try {
+      (process as unknown as { getuid: () => number }).getuid = () => 0;
+      (process as unknown as { getgid: () => number }).getgid = () => 0;
+      // Root session over a non-root-owned OP_HOME (tempDir owned by the test
+      // user): defer to resolveOperatorIds, which prefers the disk owner — this
+      // preserves the sudo-install-for-service-user case.
+      const expected = statSync(tempDir);
+      const ids = resolveSessionIdentity(tempDir);
+      expect(ids).toEqual({ uid: expected.uid, gid: expected.gid });
+    } finally {
+      (process as unknown as { getuid: typeof origGetuid }).getuid = origGetuid;
+      (process as unknown as { getgid: typeof origGetgid }).getgid = origGetgid;
+    }
+  });
+
+  test("returns null for a root session over a root-owned OP_HOME", () => {
+    if (process.platform === "win32") return;
+    const origGetuid = process.getuid;
+    const origGetgid = process.getgid;
+    try {
+      (process as unknown as { getuid: () => number }).getuid = () => 0;
+      (process as unknown as { getgid: () => number }).getgid = () => 0;
+      // "/" is root-owned; both signals root → resolveOperatorIds returns null.
+      expect(resolveSessionIdentity("/")).toBeNull();
+    } finally {
+      (process as unknown as { getuid: typeof origGetuid }).getuid = origGetuid;
+      (process as unknown as { getgid: typeof origGetgid }).getgid = origGetgid;
     }
   });
 });

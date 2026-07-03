@@ -17,13 +17,18 @@ afterEach(() => {
 });
 
 describe('runStartAction', () => {
-  test('blocks cross-host swap without adoptHost', async () => {
+  test('propagates a host-swap block from the shared lib reconcile', async () => {
+    // The CLI is a thin caller: all swap detection/blocking lives in
+    // reconcileHostOwnership. HostSwapBlockedError.message contains the
+    // actionable "--adopt-host" hint the command wrapper prints.
     mock.module('@openpalm/lib', () => ({
       ...realLib,
-      detectHostIdentity: () => ({ kind: 'linux', host: 'host-b', uid: 1000, gid: 1000 }),
-      hostIdentityFile: () => '/tmp/op-home/state/host-identity.json',
-      readHostIdentity: () => ({ kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }),
-      buildReconcileDecision: () => ({ decision: 'swap', currentIdentity: { kind: 'linux', host: 'host-b', uid: 1000, gid: 1000 }, previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }, canaries: [] }),
+      reconcileHostOwnership: async () => {
+        throw new realLib.HostSwapBlockedError(
+          { kind: 'linux', host: 'host-a', uid: 501, gid: 501 },
+          { kind: 'linux', host: 'host-b', uid: 1000, gid: 1000 },
+        );
+      },
       buildManagedServices: async () => ['assistant'],
     }));
     mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
@@ -33,57 +38,44 @@ describe('runStartAction', () => {
     await expect(runStartAction([])).rejects.toThrow(/Host swap detected/);
   });
 
-  test('repairs and records identity on adoptHost', async () => {
-    let repaired = false;
-    let wrote = false;
+  test('reconciles ownership for all managed services, then composes up', async () => {
+    let reconcileArgs: { adoptHost?: boolean; services?: string[] } | null = null;
+    const composedArgs: string[][] = [];
     mock.module('@openpalm/lib', () => ({
       ...realLib,
-      detectHostIdentity: () => ({ kind: 'linux', host: 'host-b', uid: 1000, gid: 1000 }),
-      hostIdentityFile: () => '/tmp/op-home/state/host-identity.json',
-      readHostIdentity: () => ({ kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }),
-      buildReconcileDecision: () => ({ decision: 'swap', currentIdentity: { kind: 'linux', host: 'host-b', uid: 1000, gid: 1000 }, previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }, canaries: [] }),
-      ownershipRepairPaths: () => ['/tmp/op-home/knowledge'],
-      repairRootOwnedBindMounts: async () => {
-        repaired = true;
-      },
-      writeHostIdentity: () => {
-        wrote = true;
-      },
-      buildManagedServices: async () => ['assistant'],
-    }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
-    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
-
-    const { runStartAction } = await import(startModuleUrl + `?t=${Math.random()}`);
-    await runStartAction([], { adoptHost: true });
-    expect(repaired).toBe(true);
-    expect(wrote).toBe(true);
-  });
-
-  test('repairs guardian-cache named volume before starting guardian', async () => {
-    let volumeName = '';
-
-    mock.module('@openpalm/lib', () => ({
-      ...realLib,
-      detectHostIdentity: () => ({ kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }),
-      hostIdentityFile: () => '/tmp/op-home/state/host-identity.json',
-      readHostIdentity: () => null,
-      buildReconcileDecision: () => ({ decision: 'match', currentIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 }, previousIdentity: null, canaries: [] }),
-      readStackEnv: () => ({ OP_PROJECT_NAME: 'custom-project' }),
-      resolveComposeProjectName: () => 'custom-project',
-      resolveOperatorIds: () => ({ uid: 1000, gid: 1000 }),
-      repairNamedVolumeOwnership: async (name: string) => {
-        volumeName = name;
+      reconcileHostOwnership: async (_state: unknown, opts: { adoptHost?: boolean; services?: string[] }) => {
+        reconcileArgs = opts;
       },
       buildManagedServices: async () => ['assistant', 'guardian'],
-      writeHostIdentity: () => {},
     }));
     mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
-    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
+    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
 
     const { runStartAction } = await import(startModuleUrl + `?t=${Math.random()}`);
     await runStartAction([]);
 
-    expect(volumeName).toBe('custom-project_guardian-cache');
+    expect(reconcileArgs).toEqual({ adoptHost: false, services: ['assistant', 'guardian'] });
+    expect(composedArgs).toEqual([['up', '-d', 'assistant', 'guardian']]);
+  });
+
+  test('passes adoptHost through and reconciles the explicit service set', async () => {
+    let reconcileArgs: { adoptHost?: boolean; services?: string[] } | null = null;
+    const composedArgs: string[][] = [];
+    mock.module('@openpalm/lib', () => ({
+      ...realLib,
+      reconcileHostOwnership: async (_state: unknown, opts: { adoptHost?: boolean; services?: string[] }) => {
+        reconcileArgs = opts;
+      },
+      buildManagedServices: async () => ['assistant'],
+    }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
+    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
+
+    const { runStartAction } = await import(startModuleUrl + `?t=${Math.random()}`);
+    await runStartAction(['guardian'], { adoptHost: true });
+
+    // Explicit services are passed straight through (no buildManagedServices).
+    expect(reconcileArgs).toEqual({ adoptHost: true, services: ['guardian'] });
+    expect(composedArgs).toEqual([['up', '-d', 'guardian']]);
   });
 });

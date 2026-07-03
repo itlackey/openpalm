@@ -169,13 +169,28 @@ jobs:
       - name: Validate current rootless non-regression guardrails
         run: ./scripts/validate-rootless-guardrails.sh
 
+      # Build UI + assistant/guardian/portal images ONCE, then run all three
+      # rootless smokes against the shared openpalm/*:dev images (each script
+      # skips its own build via OP_ROOTLESS_SMOKE_SKIP_BUILD). Previously each
+      # smoke rebuilt UI + images, tripling the build wall-clock.
+      - name: Build rootless smoke images (once)
+        run: |
+          source scripts/rootless-smoke-fixture.sh
+          smoke_build_images assistant guardian portal
+
       - name: Rootless ownership smoke (assistant+guardian)
+        env:
+          OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
         run: ./scripts/rootless-ownership-smoke.sh stack
 
       - name: Rootless ownership smoke (portal-discord)
+        env:
+          OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
         run: ./scripts/rootless-ownership-smoke.sh portal-discord
 
       - name: Rootless host-swap smoke
+        env:
+          OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
         run: ./scripts/rootless-host-swap-smoke.sh
 
       - name: Assert deleted scripts are absent
