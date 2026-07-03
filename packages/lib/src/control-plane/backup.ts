@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, statfsSync } from "node:fs";
+import { cpSync, type Dirent, existsSync, mkdirSync, readdirSync, rmSync, statSync, statfsSync } from "node:fs";
 import { join } from "node:path";
 
 export function timestampDirName(now = new Date()): string {
@@ -17,7 +17,7 @@ export function estimateHomeBackupBytes(homeDir: string): number {
   const backupsDir = join(homeDir, "data", "backups");
   let total = 0;
   const walk = (dir: string): void => {
-    let entries;
+    let entries: Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -150,7 +150,7 @@ export function listBackupDirs(homeDir: string): string[] {
 
 function dirSizeBytes(dir: string): number {
   let total = 0;
-  let entries;
+  let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {

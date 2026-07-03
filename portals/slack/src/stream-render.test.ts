@@ -26,6 +26,11 @@ import {
 } from "./stream-render.ts";
 import type { OcClient } from '@openpalm/portal-sdk';
 
+// Structural shape of the Block Kit JSON the builders emit — enough to assert on
+// in these tests (the builders themselves are typed `unknown[]`).
+type KitEl = { action_id?: string; value?: string; text?: string };
+type KitBlock = { type?: string; text?: { text?: string }; elements?: KitEl[] };
+
 // A hand-written OcClient stub recording the calls the registry makes.
 function stubClient(): { client: OcClient; replies: Array<{ userId: string; requestID: string; reply: string }>; aborts: Array<{ userId: string; sessionId: string }>; fail?: boolean } {
   const replies: Array<{ userId: string; requestID: string; reply: string }> = [];
@@ -46,15 +51,15 @@ function stubClient(): { client: OcClient; replies: Array<{ userId: string; requ
 
 describe("buildPermissionBlocks — buttons route by value (§4.3)", () => {
   test("each button carries the requestID in value", () => {
-    const blocks = buildPermissionBlocks({ requestID: "per_9", permission: "bash", patterns: ["echo *"] }) as any[];
+    const blocks = buildPermissionBlocks({ requestID: "per_9", permission: "bash", patterns: ["echo *"] }) as KitBlock[];
     const actions = blocks.find((b) => b.type === "actions");
-    const ids = actions.elements.map((e: any) => e.action_id);
+    const ids = actions.elements.map((e: KitEl) => e.action_id);
     expect(ids).toEqual([ACTION_PERM_ONCE, ACTION_PERM_ALWAYS, ACTION_PERM_DENY]);
     for (const el of actions.elements) expect(el.value).toBe("per_9");
   });
 
   test("the prompt section names the permission + patterns", () => {
-    const blocks = buildPermissionBlocks({ requestID: "per_1", permission: "bash", patterns: ["echo *"] }) as any[];
+    const blocks = buildPermissionBlocks({ requestID: "per_1", permission: "bash", patterns: ["echo *"] }) as KitBlock[];
     expect(blocks[0].text.text).toContain("bash");
     expect(blocks[0].text.text).toContain("echo *");
   });
@@ -62,7 +67,7 @@ describe("buildPermissionBlocks — buttons route by value (§4.3)", () => {
 
 describe("buildAnswerBlocks — Stop button carries the sessionId", () => {
   test("stop button value is the sessionId", () => {
-    const blocks = buildAnswerBlocks("hello", "ses_42") as any[];
+    const blocks = buildAnswerBlocks("hello", "ses_42") as KitBlock[];
     const actions = blocks.find((b) => b.type === "actions");
     expect(actions.elements[0].value).toBe("ses_42");
   });
@@ -70,7 +75,7 @@ describe("buildAnswerBlocks — Stop button carries the sessionId", () => {
 
 describe("buildToolBlocks — context block names the tool + status", () => {
   test("renders tool + status", () => {
-    const blocks = buildToolBlocks({ callID: "c1", tool: "bash", status: "running", title: "echo hi" }) as any[];
+    const blocks = buildToolBlocks({ callID: "c1", tool: "bash", status: "running", title: "echo hi" }) as KitBlock[];
     expect(blocks[0].type).toBe("context");
     expect(blocks[0].elements[0].text).toContain("bash");
     expect(blocks[0].elements[0].text).toContain("echo hi");
@@ -80,7 +85,7 @@ describe("buildToolBlocks — context block names the tool + status", () => {
     // Regression: a tool frame with empty status/title must not yield empty text.
     // The Discord equivalent (empty footer/description) threw shapeshift's
     // "Received one or more errors" and aborted the whole turn.
-    const blocks = buildToolBlocks({ callID: "c1", tool: "", status: "", title: "" }) as any[];
+    const blocks = buildToolBlocks({ callID: "c1", tool: "", status: "", title: "" }) as KitBlock[];
     const text = blocks[0].elements[0].text as string;
     expect(text.length).toBeGreaterThan(0);
     expect(text).toContain("tool"); // name fallback
@@ -97,7 +102,7 @@ describe("SlackPermissionRegistry — interaction identity + reply relay (§4.3)
     const out = await reg.handlePermissionClick("per_1", ACTION_PERM_ONCE, "U1");
     expect(out).not.toBeNull();
     expect(replies).toEqual([{ userId: "slack:U1", requestID: "per_1", reply: "once" }]);
-    expect(out!.text).toContain("once");
+    expect(out?.text).toContain("once");
   });
 
   test("Always → reply:always; Deny → reply:reject", async () => {
@@ -139,7 +144,7 @@ describe("SlackPermissionRegistry — interaction identity + reply relay (§4.3)
     reg.registerPermission("per_1", { userId: "slack:U1", requestingUserId: "U1", permission: "bash", channel: "C1", ts: "1.1" });
     const out = await reg.handlePermissionClick("per_1", ACTION_PERM_ONCE, "U1");
     expect(out).not.toBeNull();
-    expect(out!.text).toContain("Could not record");
+    expect(out?.text).toContain("Could not record");
     // second click finds nothing (entry cleared)
     expect(await reg.handlePermissionClick("per_1", ACTION_PERM_ONCE, "U1")).toBeNull();
     expect(replies).toHaveLength(0);

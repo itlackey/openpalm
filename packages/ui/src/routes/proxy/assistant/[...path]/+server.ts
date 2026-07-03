@@ -36,7 +36,7 @@ function buildForwardHeaders(
     // local) with `"openpalm"`, so that's our fallback when the endpoint
     // entry doesn't specify one.
     const user = username || 'openpalm';
-    headers['authorization'] = `Basic ${btoa(`${user}:${password}`)}`;
+    headers.authorization = `Basic ${btoa(`${user}:${password}`)}`;
   }
   return headers;
 }

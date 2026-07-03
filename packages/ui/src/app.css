@@ -929,6 +929,7 @@ body.chat-locked {
 /* ── Setup wizard: light editorial layout ───────────────────────── */
 .setup-page {
   min-height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: intentional progressive-enhancement fallback — 100vh for browsers without dvh support, 100dvh where available. */
   min-height: 100dvh;
   display: flex;
   flex-direction: column;

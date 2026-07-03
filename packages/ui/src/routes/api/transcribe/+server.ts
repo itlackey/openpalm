@@ -92,9 +92,9 @@ export const POST: RequestHandler = async (event) => {
     outForm.append('prompt', promptReq.trim());
   }
 
-  const upstreamUrl = sttBaseURL.replace(/\/+$/, '') + '/v1/audio/transcriptions';
+  const upstreamUrl = `${sttBaseURL.replace(/\/+$/, '')}/v1/audio/transcriptions`;
   const headers: Record<string, string> = {};
-  if (sttApiKey) headers['authorization'] = `Bearer ${sttApiKey}`;
+  if (sttApiKey) headers.authorization = `Bearer ${sttApiKey}`;
 
   let upstream: Response;
   try {

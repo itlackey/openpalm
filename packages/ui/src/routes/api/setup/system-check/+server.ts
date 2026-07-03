@@ -26,8 +26,8 @@ async function portHeldByOurContainer(port: number): Promise<"held" | "free" | "
           const lines = stdout.toString().split("\n").map((l) => l.trim()).filter(Boolean);
           for (const line of lines) {
             const [name, ports] = line.split("\t");
-            if (!name || !name.startsWith("openpalm-")) continue;
-            if (ports && ports.includes(`:${port}->`)) {
+            if (!name?.startsWith("openpalm-")) continue;
+            if (ports?.includes(`:${port}->`)) {
               return resolve("held");
             }
           }

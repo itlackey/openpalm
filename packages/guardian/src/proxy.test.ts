@@ -147,7 +147,6 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-proxy-test-"));
   secretPath = join(tmpDir, "test-secret");
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
-  const auditPath = join(tmpDir, "audit.log");
 
   mockAssistant = Bun.serve({
     port: assistantPort,

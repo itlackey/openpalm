@@ -95,5 +95,5 @@ export function readHostIdentity(path: string): HostIdentity | null {
 
 export function writeHostIdentity(path: string, identity: HostIdentity): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileAtomic(path, JSON.stringify(identity, null, 2) + '\n');
+  writeFileAtomic(path, `${JSON.stringify(identity, null, 2)}\n`);
 }

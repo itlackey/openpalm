@@ -113,7 +113,7 @@ export async function fetchProviderModels(
 
     const headers: Record<string, string> = {};
     if (resolvedKey) {
-      headers["Authorization"] = `Bearer ${resolvedKey}`;
+      headers.Authorization = `Bearer ${resolvedKey}`;
     }
 
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });

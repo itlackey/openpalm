@@ -5,7 +5,7 @@
  *   - readStackEnv excludes secret-like keys that somehow ended up in stack.env
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -19,7 +19,6 @@ import { readSecret } from './secrets-files.js';
 // Each test gets a fresh temp dir shaped like an OP_HOME config/stack directory.
 // The secrets functions take the OP_HOME root directly (knowledge/secrets is derived from it).
 let home: string;
-let stackDir: string;
 
 function makeHome(): { home: string; stackDir: string } {
   const h = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
@@ -31,7 +30,7 @@ function makeHome(): { home: string; stackDir: string } {
 }
 
 beforeEach(() => {
-  ({ home, stackDir } = makeHome());
+  ({ home } = makeHome());
 });
 
 afterEach(() => {

@@ -212,8 +212,8 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
 
     const handle = await startLocalOpenCode({ dataDir, pluginPath: '/test/admin-tools-plugin/index.js' });
     expect(handle).not.toBeNull();
-    expect(handle!.url).toBe('http://127.0.0.1:54321');
-    expect(handle!.username).toBe('openpalm');
+    expect(handle?.url).toBe('http://127.0.0.1:54321');
+    expect(handle?.username).toBe('openpalm');
     // No Basic auth — admin OpenCode mirrors the no-auth assistant so the
     // cross-origin Advanced iframe can load it.
     expect(spawnEnv?.OPENCODE_AUTH).toBe('false');
@@ -234,7 +234,7 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     expect(rt.url).toBe('http://127.0.0.1:54321');
     expect('password' in rt).toBe(false);
 
-    await handle!.stop();
+    await handle?.stop();
     expect(existsSync(runtimePath(dataDir))).toBe(false);
     expect(existsSync(pidfilePath(dataDir))).toBe(false);
   }, 10_000);
@@ -266,6 +266,6 @@ describe('startLocalOpenCode (SDK stubbed)', () => {
     expect(rt.url).toBe('http://127.0.0.1:9999');
     expect(existsSync(unavailableSentinelPath(dataDir))).toBe(false);
 
-    await handle!.stop();
+    await handle?.stop();
   }, 10_000);
 });

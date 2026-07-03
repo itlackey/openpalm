@@ -36,7 +36,7 @@ function seedTaskLogs(dataDir: string, id: string, entries: Array<{ ts: string; 
   const logDir = join(dataDir, 'akm', 'cache', 'tasks', 'logs', id);
   mkdirSync(logDir, { recursive: true });
   for (const { ts, content } of entries) {
-    writeFileSync(join(logDir, `${ts}.log`), content + '\n');
+    writeFileSync(join(logDir, `${ts}.log`), `${content}\n`);
   }
 }
 

@@ -74,15 +74,15 @@ export const DEFAULT_ENABLED: Record<ProcKey, boolean> = {
 };
 
 export function optNum(s: string | number): number | undefined {
-	if (typeof s === 'number') return isNaN(s) ? undefined : s;
+	if (typeof s === 'number') return Number.isNaN(s) ? undefined : s;
 	const n = parseFloat(s);
-	return s.trim() === '' || isNaN(n) ? undefined : n;
+	return s.trim() === '' || Number.isNaN(n) ? undefined : n;
 }
 
 export function optInt(s: string | number): number | undefined {
-	if (typeof s === 'number') return isNaN(s) ? undefined : Math.trunc(s);
+	if (typeof s === 'number') return Number.isNaN(s) ? undefined : Math.trunc(s);
 	const n = parseInt(s, 10);
-	return s.trim() === '' || isNaN(n) ? undefined : n;
+	return s.trim() === '' || Number.isNaN(n) ? undefined : n;
 }
 
 export function emptyFEntry(enabled: boolean): FEntry {

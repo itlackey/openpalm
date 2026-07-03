@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { getAkmStats, parseAkmStats } from './akm-stats.js';
+import { parseAkmStats } from './akm-stats.js';
 import type { ControlPlaneState } from './types.js';
 import * as realAssistantAkm from './assistant-akm.js';
 

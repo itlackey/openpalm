@@ -46,7 +46,7 @@ function seedEnvFiles(files: { stack?: boolean } = {}): void {
 function seedAddon(name: string): void {
   const stackDir = join(tempDir, "system", "stack");
   mkdirSync(stackDir, { recursive: true });
-  writeFileSync(join(stackDir, "portals.compose.yml"), `services:\n  ${name}:\n    profiles: [\"addon.${name}\"]\n    image: test\n`);
+  writeFileSync(join(stackDir, "portals.compose.yml"), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
   const envDir = join(tempDir, "knowledge", "env");
   mkdirSync(envDir, { recursive: true });
   writeFileSync(join(envDir, "stack.env"), `OP_ENABLED_ADDONS=${name}\n`);

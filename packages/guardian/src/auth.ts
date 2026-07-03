@@ -64,7 +64,7 @@ export const basicTokenAuthStrategy: AuthStrategy = {
     if (!basic) return null;
 
     const record = readCachedPrincipal(basic.id);
-    if (!record || !record.enabled) return null;
+    if (!record?.enabled) return null;
 
     const tokenHash = createHash('sha256').update(basic.secret).digest('hex');
     if (!constantTimeEqual(record.tokenHash, tokenHash)) return null;

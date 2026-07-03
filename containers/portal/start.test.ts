@@ -28,18 +28,22 @@ describe('portal image bake contract', () => {
     expect(startScript).not.toContain('[ -z "$PORTAL_PACKAGE" ]');
   });
 
-  test('docker image bakes the first-party adapters from the workspace', () => {
+  test('docker image bakes the first-party adapters from npm via tools/package.json', () => {
     const dockerfile = readRelative('containers/portal/Dockerfile');
+    const tools = readRelative('containers/portal/tools/package.json');
 
-    expect(dockerfile).toContain('COPY portals/discord /app/portals/discord');
-    expect(dockerfile).toContain('COPY portals/slack /app/portals/slack');
+    // Adapters are published npm packages installed at build time under
+    // /opt/openpalm/tools — no workspace source is copied into the image.
+    expect(dockerfile).toContain('COPY containers/portal/tools/package.json /opt/openpalm/tools/package.json');
+    expect(dockerfile).toContain('bun install --cwd /opt/openpalm/tools --production');
     expect(dockerfile).toContain('COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts');
-    // Each adapter installs its OWN deps in place — no workspace root, no symlinked
-    // package, no generated manifest (those left @openpalm/* unresolvable at runtime).
-    expect(dockerfile).toContain('cd /app/portals/discord && bun install --production');
-    expect(dockerfile).toContain('cd /app/portals/slack && bun install --production');
-    expect(dockerfile).not.toContain('printf');
+    expect(dockerfile).not.toContain('COPY portals/discord');
+    expect(dockerfile).not.toContain('COPY portals/slack');
     expect(dockerfile).not.toContain('workspaces');
+
+    // The baked tools manifest declares the first-party adapter packages.
+    expect(tools).toContain('@openpalm/discord-portal');
+    expect(tools).toContain('@openpalm/slack-portal');
   });
 
   test('managed portal compose uses baked package names, not dist-tags', () => {

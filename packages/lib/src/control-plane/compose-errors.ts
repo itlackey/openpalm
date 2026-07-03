@@ -111,7 +111,6 @@ export function parseComposeStderr(stderr: string): ComposeServiceFailure[] {
         service: notFound[1],
         reason: `no such service: ${notFound[1]}`,
       });
-      continue;
     }
   }
 
@@ -142,7 +141,7 @@ export function summarizeComposeStderr(stderr: string, maxLen = 500): string {
     .split(/\r?\n/)
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? "";
-  return first.length > maxLen ? first.slice(0, maxLen - 1) + "…" : first;
+  return first.length > maxLen ? `${first.slice(0, maxLen - 1)}…` : first;
 }
 
 export function mapDockerError(stderr: string): DockerErrorMapping {

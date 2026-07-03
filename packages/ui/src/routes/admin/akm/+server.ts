@@ -380,7 +380,7 @@ export const PATCH: RequestHandler = async (event) => {
         if (f in embBody) merged[f] = embBody[f];
       }
       if (isRec(embBody.ollamaOptions) && 'num_ctx' in embBody.ollamaOptions) {
-        merged.ollamaOptions = { ...(existing.embedding as Rec | undefined)?.['ollamaOptions'] as Rec ?? {}, num_ctx: (embBody.ollamaOptions as Rec).num_ctx };
+        merged.ollamaOptions = { ...(existing.embedding as Rec | undefined)?.ollamaOptions as Rec ?? {}, num_ctx: (embBody.ollamaOptions as Rec).num_ctx };
       }
       updated.embedding = merged;
     }

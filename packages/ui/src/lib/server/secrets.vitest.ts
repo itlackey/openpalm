@@ -268,7 +268,7 @@ describe("maskSecretValue", () => {
 
   test("masks secret keys, showing last 4 chars", () => {
     expect(maskSecretValue("OPENAI_API_KEY", "sk-test-1234abcd")).toBe(
-      "*".repeat("sk-test-1234abcd".length - 4) + "abcd"
+      `${"*".repeat("sk-test-1234abcd".length - 4)}abcd`
     );
   });
 

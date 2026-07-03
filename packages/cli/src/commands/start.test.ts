@@ -34,7 +34,7 @@ describe('runStartAction', () => {
     mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
 
-    const { runStartAction } = await import(startModuleUrl + `?t=${Math.random()}`);
+    const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
     await expect(runStartAction([])).rejects.toThrow(/Host swap detected/);
   });
 
@@ -51,7 +51,7 @@ describe('runStartAction', () => {
     mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
 
-    const { runStartAction } = await import(startModuleUrl + `?t=${Math.random()}`);
+    const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
     await runStartAction([]);
 
     expect(reconcileArgs).toEqual({ adoptHost: false, services: ['assistant', 'guardian'] });
@@ -71,7 +71,7 @@ describe('runStartAction', () => {
     mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
 
-    const { runStartAction } = await import(startModuleUrl + `?t=${Math.random()}`);
+    const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
     await runStartAction(['guardian'], { adoptHost: true });
 
     // Explicit services are passed straight through (no buildManagedServices).

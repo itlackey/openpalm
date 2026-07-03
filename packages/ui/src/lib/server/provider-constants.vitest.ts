@@ -34,9 +34,9 @@ describe("PROVIDER_LABELS", () => {
 
   test("label values are human-readable (not raw slugs)", () => {
     // Spot-check a few known labels
-    expect(PROVIDER_LABELS['openai']).toBe('OpenAI');
+    expect(PROVIDER_LABELS.openai).toBe('OpenAI');
     expect(PROVIDER_LABELS['model-runner']).toBe('Docker Model Runner');
-    expect(PROVIDER_LABELS['lmstudio']).toBe('LM Studio');
+    expect(PROVIDER_LABELS.lmstudio).toBe('LM Studio');
   });
 });
 
@@ -56,8 +56,8 @@ describe("LOCAL_PROVIDER_HELP", () => {
   test("help text contains actionable guidance", () => {
     // Each help string should mention how to add models
     expect(LOCAL_PROVIDER_HELP['model-runner']).toContain('docker model');
-    expect(LOCAL_PROVIDER_HELP['ollama']).toContain('ollama pull');
-    expect(LOCAL_PROVIDER_HELP['lmstudio']).toContain('LM Studio');
+    expect(LOCAL_PROVIDER_HELP.ollama).toContain('ollama pull');
+    expect(LOCAL_PROVIDER_HELP.lmstudio).toContain('LM Studio');
   });
 });
 
@@ -70,13 +70,13 @@ describe("PROVIDER_DEFAULT_URLS", () => {
   });
 
   test("has a base URL for lmstudio", () => {
-    expect(PROVIDER_DEFAULT_URLS['lmstudio']).toBeDefined();
-    expect(PROVIDER_DEFAULT_URLS['lmstudio']).toContain('1234');
+    expect(PROVIDER_DEFAULT_URLS.lmstudio).toBeDefined();
+    expect(PROVIDER_DEFAULT_URLS.lmstudio).toContain('1234');
   });
 
   test("has a base URL for ollama", () => {
-    expect(PROVIDER_DEFAULT_URLS['ollama']).toBeDefined();
-    expect(PROVIDER_DEFAULT_URLS['ollama']).toContain('11434');
+    expect(PROVIDER_DEFAULT_URLS.ollama).toBeDefined();
+    expect(PROVIDER_DEFAULT_URLS.ollama).toContain('11434');
   });
 
   test("cloud provider URLs use HTTPS", () => {
@@ -100,7 +100,7 @@ describe("PROVIDER_DEFAULT_URLS", () => {
 
 describe("PROVIDER_KEY_MAP", () => {
   test("maps openai to OPENAI_API_KEY", () => {
-    expect(PROVIDER_KEY_MAP['openai']).toBe('OPENAI_API_KEY');
+    expect(PROVIDER_KEY_MAP.openai).toBe('OPENAI_API_KEY');
   });
 
   test('maps additional supported providers', () => {

@@ -70,8 +70,8 @@ function isEmbeddingModel(provider: string, model: string): boolean {
 
 function compareModelPreference(provider: string, left: string, right: string): number {
   const preferred = PREFERRED_EMBEDDING_MODELS[provider] ?? [];
-  const leftIdx = preferred.findIndex((entry) => entry === left);
-  const rightIdx = preferred.findIndex((entry) => entry === right);
+  const leftIdx = preferred.indexOf(left);
+  const rightIdx = preferred.indexOf(right);
   if (leftIdx >= 0 || rightIdx >= 0) {
     if (leftIdx < 0) return 1;
     if (rightIdx < 0) return -1;

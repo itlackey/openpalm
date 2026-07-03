@@ -10,11 +10,20 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 function write(pkg: unknown): string {
   const f = join(dir, "package.json");
-  writeFileSync(f, JSON.stringify(pkg, null, 2) + "\n");
+  writeFileSync(f, `${JSON.stringify(pkg, null, 2)}\n`);
   return f;
 }
-function read(f: string): any {
-  return JSON.parse(readFileSync(f, "utf-8"));
+type Pkg = {
+  version: string;
+  dependencies: Record<string, string>;
+  peerDependencies: Record<string, string>;
+};
+function read(f: string): Pkg {
+  // Normalize missing maps to {} so the return value actually matches Pkg at
+  // runtime (a package.json may omit dependencies/peerDependencies); keeps the
+  // type sound for tests that read those keys.
+  const raw = JSON.parse(readFileSync(f, "utf-8")) as Pkg;
+  return { dependencies: {}, peerDependencies: {}, ...raw };
 }
 
 describe("set-version", () => {

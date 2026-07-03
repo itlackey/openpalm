@@ -169,7 +169,7 @@ export class SetupState {
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   hostLocalLlmRunning = $derived(
-    this.providerState['ollama']?.ollamaMode === 'running' ||
+    this.providerState.ollama?.ollamaMode === 'running' ||
       this.detectedHostProviders.some((p) => p.provider === 'ollama' || p.provider === 'lmstudio'),
   );
 
@@ -299,7 +299,7 @@ export class SetupState {
 
   enableRecommendedOllama(variant?: 'cuda' | 'rocm' | 'cpu'): void {
     this.ollamaEnabled = true;
-    const st = this.providerState['ollama'];
+    const st = this.providerState.ollama;
     if (st) {
       st.selected = true;
       st.verified = true;
@@ -721,7 +721,7 @@ export class SetupState {
       this.showDeploy = true;
       this.startDeployPolling();
     } catch (e) {
-      this.installError = 'Network error: ' + (e instanceof Error ? e.message : 'unable to reach server.');
+      this.installError = `Network error: ${e instanceof Error ? e.message : 'unable to reach server.'}`;
       this.installing = false;
     }
   }

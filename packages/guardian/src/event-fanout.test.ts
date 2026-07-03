@@ -244,7 +244,7 @@ describe("consumeSseBuffer — SSE frame parsing", () => {
     expect(tail).toBe(partialStart);
     // Second chunk: the rest of frame 2 + its boundary → routes f2.
     const rest = `data: ${f2}`.slice(15);
-    const tail2 = consumeSseBuffer(tail + rest + "\n\n");
+    const tail2 = consumeSseBuffer(`${tail}${rest}\n\n`);
     expect(tail2).toBe("");
     expect(payloads(a.frames)).toEqual([f1, f2]);
     a.drop();

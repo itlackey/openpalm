@@ -55,21 +55,21 @@ export function cronToPresetId(cron: string): SchedulePresetId {
 export function cronToHour(cron: string): number {
   const m = cron.trim().match(/^0 (\d{1,2})/);
   const h = m ? parseInt(m[1] ?? '0', 10) : 0;
-  return isNaN(h) ? 0 : Math.min(23, Math.max(0, h));
+  return Number.isNaN(h) ? 0 : Math.min(23, Math.max(0, h));
 }
 
 /** Extract day-of-week (0-6) from a weekly cron expression. */
 export function cronToDow(cron: string): number {
   const m = cron.trim().match(/^0 \d{1,2} \* \* (\d)$/);
   const d = m ? parseInt(m[1] ?? '0', 10) : 0;
-  return isNaN(d) ? 0 : Math.min(6, Math.max(0, d));
+  return Number.isNaN(d) ? 0 : Math.min(6, Math.max(0, d));
 }
 
 /** Extract day-of-month (1-31) from a monthly cron expression. */
 export function cronToDom(cron: string): number {
   const m = cron.trim().match(/^0 \d{1,2} (\d{1,2}) \* \*$/);
   const d = m ? parseInt(m[1] ?? '1', 10) : 1;
-  return isNaN(d) ? 1 : Math.min(31, Math.max(1, d));
+  return Number.isNaN(d) ? 1 : Math.min(31, Math.max(1, d));
 }
 
 /** Build a cron string from preset parameters. */
@@ -132,7 +132,7 @@ export function validateCron(cron: string): string | null {
     const field = parts[i]!;
     if (field === '*' || /^\*\/\d+$/.test(field)) continue;
     const n = parseInt(field, 10);
-    if (isNaN(n)) return `Field ${i + 1} is not a valid number or wildcard`;
+    if (Number.isNaN(n)) return `Field ${i + 1} is not a valid number or wildcard`;
     const [min, max] = ranges[i]!;
     if (n < min || n > max) return `Field ${i + 1} must be ${min}–${max}`;
   }

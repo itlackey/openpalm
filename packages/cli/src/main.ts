@@ -2,6 +2,7 @@
 import { defineCommand, runCommand, runMain } from 'citty';
 import cliPkg from '../package.json' with { type: 'json' };
 import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome } from '@openpalm/lib';
+import { DEFAULT_ASSISTANT_PORT } from './lib/ports.ts';
 
 // Re-export public API used by tests and external consumers
 export { detectHostInfo } from './lib/host-info.ts';
@@ -20,7 +21,7 @@ interface BareRunOpts {
  * active.
  */
 async function isAssistantHealthy(): Promise<boolean> {
-  const port = process.env.OP_ASSISTANT_PORT ?? '3800';
+  const port = process.env.OP_ASSISTANT_PORT ?? String(DEFAULT_ASSISTANT_PORT);
   try {
     const res = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: AbortSignal.timeout(1500),
@@ -47,7 +48,7 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
   const isInstalled = classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed';
 
   if (!isInstalled) {
-    const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts') as any;
+    const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts');
     const version: string = typeof resolveDefaultInstallRef === 'function'
       ? await resolveDefaultInstallRef()
       : (cliPkg.version ?? 'main');
@@ -56,6 +57,7 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
       version,
       noStart: false,
       noOpen: opts.open === false,
+      assumeYes: false,
     });
     return;
   }
@@ -136,7 +138,8 @@ function isVersionFlag(argv: string[]): boolean {
 
 /** True when the first arg names a registered subcommand (or help alias). */
 function hasSubcommand(argv: string[]): boolean {
-  return argv.length > 0 && SUBCOMMAND_NAMES.has(argv[0]!);
+  const first = argv[0];
+  return first !== undefined && SUBCOMMAND_NAMES.has(first);
 }
 
 /** Parse `--port`/`--no-open` from a bare-command argv. */
@@ -146,7 +149,7 @@ function parseBareArgs(argv: string[]): BareRunOpts {
     if (argv[i] === '--port' && argv[i + 1]) {
       opts.port = Number(argv[++i]);
     } else if (argv[i]?.startsWith('--port=')) {
-      opts.port = Number(argv[i]!.split('=')[1]);
+      opts.port = Number(argv[i]?.split('=')[1]);
     } else if (argv[i] === '--no-open') {
       opts.open = false;
     }

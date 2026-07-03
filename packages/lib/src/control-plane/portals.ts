@@ -119,7 +119,7 @@ export function discoverPortals(configDir: string): PortalInfo[] {
  * content is checked, not directory naming conventions.
  */
 export function isAllowedService(value: string, configDir?: string): boolean {
-  if (!value || !value.trim() || value !== value.toLowerCase()) return false;
+  if (!value?.trim() || value !== value.toLowerCase()) return false;
   if ((CORE_SERVICES as string[]).includes(value)) return true;
 
   if (configDir) {
@@ -136,7 +136,6 @@ export function isAllowedService(value: string, configDir?: string): boolean {
           }
         }
       } catch {
-        continue;
       }
     }
   }
@@ -148,7 +147,7 @@ export function isAllowedService(value: string, configDir?: string): boolean {
  * Accepts enabled first-party portals and custom portal overlays.
  */
 export function isValidPortal(value: string, configDir?: string): boolean {
-  if (!value || !value.trim()) return false;
+  if (!value?.trim()) return false;
   if (!isValidPortalName(value)) return false;
   if (configDir) {
     return discoverPortals(configDir).some((portal) => portal.name === value);

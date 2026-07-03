@@ -16,7 +16,7 @@ import {
   reconnectBucketCount,
 } from './oc-bounds';
 import { handleProxy, OC_PREFIX } from './proxy';
-import { allow, activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
+import { activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
 import { runDriftCheckWithRetry, startProxyRecovery, stopProxyRecovery, isProxyEnabled } from './drift';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { matchTransport, registerTransport, type Transport } from './transport';

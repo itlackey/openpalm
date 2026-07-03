@@ -58,7 +58,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   // the env files so the operator sees the slot. Missing slots warn (not
   // error) since not every provider is in use on every install.
   for (const mapping of STATIC_CORE_MAPPINGS) {
-    const inRuntime = Object.prototype.hasOwnProperty.call(runtimeEnv, mapping.envKey);
+    const inRuntime = Object.hasOwn(runtimeEnv, mapping.envKey);
     if (!inRuntime) {
       warnings.push(
         `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in knowledge/secrets/${mapping.envKey.toLowerCase()}`,

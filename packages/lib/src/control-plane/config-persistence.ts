@@ -371,7 +371,7 @@ export function discoverHomeBindMountSources(state: ControlPlaneState): Array<{ 
         if (!rawSource) continue;
 
         const hostPath = expandEnvVars(rawSource, envVars);
-        if (!hostPath || !hostPath.startsWith('/')) continue;
+        if (!hostPath?.startsWith('/')) continue;
         const resolvedHostPath = resolvePath(hostPath);
         if (!resolvedHostPath.startsWith(`${homeRoot}/`) && resolvedHostPath !== homeRoot) continue;
 

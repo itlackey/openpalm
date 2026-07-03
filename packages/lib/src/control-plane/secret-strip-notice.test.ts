@@ -31,7 +31,7 @@ describe('#502 secret-strip notice', () => {
     const state = createState();
     writeFileSync(
       join(homeDir, 'knowledge', 'env', 'stack.env'),
-      'OP_HOME=' + homeDir + '\nOPENAI_API_KEY=sk-leak\nDISCORD_BOT_TOKEN=tok\nOP_LOG_LEVEL=info\n',
+      `OP_HOME=${homeDir}\nOPENAI_API_KEY=sk-leak\nDISCORD_BOT_TOKEN=tok\nOP_LOG_LEVEL=info\n`,
     );
 
     writeSystemEnv(state);
@@ -48,7 +48,7 @@ describe('#502 secret-strip notice', () => {
     const state = createState();
     writeFileSync(
       join(homeDir, 'knowledge', 'env', 'stack.env'),
-      'OP_HOME=' + homeDir + '\nOP_LOG_LEVEL=info\n',
+      `OP_HOME=${homeDir}\nOP_LOG_LEVEL=info\n`,
     );
 
     writeSystemEnv(state);

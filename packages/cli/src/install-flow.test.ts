@@ -20,7 +20,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parse as yamlParse } from 'yaml';
-import { parseEnvFile, expandEnvVars } from '@openpalm/lib';
+import { parseEnvFile, expandEnvVars, type SetupSpec } from '@openpalm/lib';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ function seedFromLocal(homeDir: string, enabledAddons: string[] = []): void {
   }
 }
 
-function makeSetupSpec(): Record<string, unknown> {
+function makeSetupSpec(): SetupSpec {
   return {
     version: 2,
     llm: { provider: 'ollama', model: 'qwen2.5-coder:3b', baseUrl: 'http://host.docker.internal:11434' },
@@ -120,6 +120,11 @@ function makeSetupSpec(): Record<string, unknown> {
   };
 }
 
+/** Minimal shape of a compose document needed to walk volume mounts. */
+type ComposeVolume = string | { source?: string };
+type ComposeService = { volumes?: ComposeVolume[] } | null | undefined;
+type ComposeDoc = { services?: Record<string, ComposeService> };
+
 /** Extract all host-side volume mount paths from compose files. */
 function extractVolumeMountPaths(
   composeFiles: string[],
@@ -128,12 +133,13 @@ function extractVolumeMountPaths(
   const results: { path: string; isFile: boolean }[] = [];
   for (const file of composeFiles) {
     if (!existsSync(file)) continue;
-    let doc: any;
-    try { doc = yamlParse(readFileSync(file, 'utf-8')); } catch { continue; }
+    let doc: ComposeDoc | undefined;
+    try { doc = yamlParse(readFileSync(file, 'utf-8')) as ComposeDoc; } catch { continue; }
     if (!doc?.services) continue;
-    for (const svc of Object.values(doc.services) as any[]) {
-      if (!Array.isArray(svc?.volumes)) continue;
-      for (const vol of svc.volumes) {
+    for (const svc of Object.values(doc.services)) {
+      const volumes = svc?.volumes;
+      if (!Array.isArray(volumes)) continue;
+      for (const vol of volumes) {
         const raw = typeof vol === 'string' ? vol.split(':')[0] : (vol?.source ?? '');
         if (!raw || typeof raw !== 'string') continue;
         const resolved = expandEnvVars(raw, vars);
@@ -172,7 +178,7 @@ describe('install flow — tier 1 (file validation)', () => {
     // Step 2: Run performSetup
     const { performSetup } = await import('@openpalm/lib');
     const spec = makeSetupSpec();
-    const result = await performSetup(spec as any);
+    const result = await performSetup(spec);
     expect(result.ok).toBe(true);
 
     // ── Validate enabled addons via stack.env ─────────────────────────
@@ -242,7 +248,7 @@ describe('install flow — tier 1 (file validation)', () => {
         expect(stat.isDirectory()).toBe(true);
       }
       // Must be owned by current user, not root
-      expect(stat.uid).toBe(process.getuid!());
+      expect(stat.uid).toBe((process.getuid as () => number)());
     }
 
     // ── Validate no root-owned files ─────────────────────────────────
@@ -272,7 +278,7 @@ describe('install flow — tier 1 (file validation)', () => {
     // ── Re-run setup: user edits to akm-improve.yml must survive ─────
     const userEdited = 'schedule: "0 9 * * *"\nenabled: false\ncommand: ["akm","improve","--auto-accept","safe"]\n';
     writeFileSync(akmImprovePath, userEdited);
-    const reSetup = await performSetup(spec as any);
+    const reSetup = await performSetup(spec);
     expect(reSetup.ok).toBe(true);
     expect(readFileSync(akmImprovePath, 'utf-8')).toBe(userEdited);
   }, 30_000);
@@ -286,7 +292,7 @@ describe('install flow — tier 1 (file validation)', () => {
     seedFromLocal(homeDir, ['chat']);
 
     const { performSetup } = await import('@openpalm/lib');
-    const result = await performSetup(makeSetupSpec() as any);
+    const result = await performSetup(makeSetupSpec());
     expect(result.ok).toBe(true);
 
     // Ensure all volume mount targets exist so compose doesn't complain
@@ -367,7 +373,7 @@ describe('install flow — tier 1 (file validation)', () => {
     seedFromLocal(homeDir);
 
     const { performSetup } = await import('@openpalm/lib');
-    const result = await performSetup(makeSetupSpec() as any);
+    const result = await performSetup(makeSetupSpec());
     expect(result.ok).toBe(true);
 
     expect(existsSync(join(homeDir, 'knowledge', 'env', 'stack.env'))).toBe(true);

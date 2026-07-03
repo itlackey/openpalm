@@ -35,7 +35,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const enabled = listEnabledAddonIds(state.homeDir).includes(name);
-  let config;
+  let config: ReturnType<typeof getRegistryAddonConfig>;
   try {
     config = getRegistryAddonConfig(name);
   } catch (error) {

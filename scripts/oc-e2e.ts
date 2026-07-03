@@ -59,7 +59,7 @@ while (Date.now() < deadline) {
     const d = extractTextDelta(e, session.id, reasoningParts);
     if (d) { text += d; continue; }
     const t = extractToolUpdate(e, session.id);
-    if (t && t.callID) { tool = `${t.tool}:${t.status}`; continue; }
+    if (t?.callID) { tool = `${t.tool}:${t.status}`; continue; }
     const ask = extractPermissionAsk(e, session.id);
     if (ask && expectTool && !permissionReplied) {
       log("permission.asked:", JSON.stringify(ask));

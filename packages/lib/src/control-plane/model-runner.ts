@@ -118,7 +118,7 @@ function parsePortEnv(raw: string | undefined): number | null {
  */
 function getProbeTimeoutMs(): number {
   const floor = 1000;
-  const envRaw = process.env["OP_LOCAL_PROBE_TIMEOUT_MS"];
+  const envRaw = process.env.OP_LOCAL_PROBE_TIMEOUT_MS;
   if (envRaw) {
     const n = parseInt(envRaw, 10);
     if (Number.isFinite(n) && n >= floor) return n;
@@ -149,7 +149,7 @@ function buildModelRunnerProbes(): ProviderProbe[] {
     },
   ];
 
-  const port = parsePortEnv(process.env["MODEL_RUNNER_PORT"]);
+  const port = parsePortEnv(process.env.MODEL_RUNNER_PORT);
   if (port !== null) {
     return [
       {
@@ -183,7 +183,7 @@ function buildOllamaProbes(): ProviderProbe[] {
     },
   ];
 
-  const base = parseOllamaHostEnv(process.env["OLLAMA_HOST"]);
+  const base = parseOllamaHostEnv(process.env.OLLAMA_HOST);
   if (base !== null) {
     return [
       {
@@ -210,7 +210,7 @@ function buildLmStudioProbes(): ProviderProbe[] {
     },
   ];
 
-  const port = parsePortEnv(process.env["LMSTUDIO_PORT"] ?? process.env["LM_STUDIO_PORT"]);
+  const port = parsePortEnv(process.env.LMSTUDIO_PORT ?? process.env.LM_STUDIO_PORT);
   if (port !== null) {
     return [
       {

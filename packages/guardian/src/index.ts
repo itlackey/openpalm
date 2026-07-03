@@ -18,7 +18,7 @@
 import { startGuardian, type GuardianServers, type StartGuardianOptions } from './server.ts';
 import { setAuthStrategy, type AuthStrategy } from './auth.ts';
 import { setPolicyProvider, type PolicyProvider } from './policy.ts';
-import { type Transport } from './transport.ts';
+import type { Transport } from './transport.ts';
 
 // --- composition root ---
 export { startGuardian };

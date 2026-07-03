@@ -148,15 +148,15 @@ describe("Gate 2b: PolicyProvider seam", () => {
     await handleProxy(makeRequest("/session/abc-123"), "rid-capture");
 
     expect(captured).not.toBeNull();
-    expect(captured!.principalId).toBe("stub-portal");
-    expect(captured!.kind).toBe("portal");
-    expect(captured!.action).toBe("oc:GET");
+    expect(captured?.principalId).toBe("stub-portal");
+    expect(captured?.kind).toBe("portal");
+    expect(captured?.action).toBe("oc:GET");
     // resource is the route template or raw path
-    expect(typeof captured!.resource).toBe("string");
-    expect(captured!.resource!.length).toBeGreaterThan(0);
+    expect(typeof captured?.resource).toBe("string");
+    expect(captured?.resource?.length).toBeGreaterThan(0);
     // attributes carry userId and path
-    expect(captured!.attributes?.userId).toBe("stub-user");
-    expect(String(captured!.attributes?.path)).toContain("/session/abc-123");
+    expect(captured?.attributes?.userId).toBe("stub-user");
+    expect(String(captured?.attributes?.path)).toContain("/session/abc-123");
   });
 
   it("resetPolicyProvider restores default-allow behavior", async () => {

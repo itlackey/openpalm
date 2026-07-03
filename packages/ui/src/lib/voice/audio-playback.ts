@@ -223,7 +223,7 @@ export class AudioPlaybackController {
         // Network/CORS — fall through to browser TTS if available.
       }
 
-      if (res && res.ok && res.headers.get('content-type')?.startsWith('audio/')) {
+      if (res?.ok && res.headers.get('content-type')?.startsWith('audio/')) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);

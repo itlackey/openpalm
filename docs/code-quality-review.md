@@ -245,3 +245,28 @@ Each was implemented characterization-tests-first, then put through an independe
 All landed changes preserve behavior, add tests, and keep the lint gate green. Pre-existing test
 failures unrelated to this work: 12 root-uid ownership tests (sandbox runs as uid 0), 1 guardian IPv6
 sandbox bind, 1 stale portal Dockerfile-bake test.
+
+---
+
+## Follow-up: lint-warning cleanup (post-merge)
+
+After the first PR merged, a cleanup pass drove the Biome warning count from **1,448 → 0**:
+
+- **~1,062 were `.svelte` false positives** — Biome parses the `<script>` block but not
+  the template, so template-referenced vars/imports were mis-flagged as unused. Fixed by
+  **excluding `.svelte` from Biome** (Svelte quality is owned by `svelte-check` +
+  `eslint-plugin-svelte`), not by deleting live code.
+- **Rule policy (documented in `biome.jsonc`):** `noNonNullAssertion` off (idiomatic TS,
+  ~234 deliberate sites) and `noTemplateCurlyInString` off (every hit is a test/fixture
+  asserting on a literal `${VAR}` compose-substitution string).
+- **Safe auto-fixes** applied (`useOptionalChain`, `useImportType`, `useArrowFunction`, …).
+- **The remaining ~88 real warnings** (unused `.ts` code, `any`-types, `useOptionalChain`,
+  `isNaN`→`Number.isNaN`, misc) were fixed per-package via a fan-out workflow, plus a few
+  edge cases (a 4.3 MiB data blob excluded; an intentional `100vh/100dvh` CSS fallback
+  suppressed; one `matchMedia` optional-chain).
+- Tech debt done alongside: hardened the setup-state reset test to a full-store snapshot,
+  deduped default-port constants in CLI/Electron, and refreshed the stale portal
+  Dockerfile-bake test to the current npm-install reality.
+
+**Result:** `bun run lint` reports **0 warnings** (1 informational Biome self-deprecation
+notice remains). All per-package suites green; svelte-check 0 errors; zero behavior change.

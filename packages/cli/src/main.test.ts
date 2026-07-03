@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -638,7 +638,7 @@ describe('cli entrypoint (subprocess)', () => {
       });
       const stdout = await new Response(proc.stdout).text();
       const stderr = await new Response(proc.stderr).text();
-      const code = await proc.exited;
+      await proc.exited;
       // The process must produce output — silent exit 0 was the bug
       expect(stdout.length + stderr.length).toBeGreaterThan(0);
     } finally {

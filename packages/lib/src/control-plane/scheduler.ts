@@ -6,7 +6,7 @@
  * Execution is handled by `akm tasks run <id>`.
  */
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
 import { loadMarkdownTasks, taskToAutomationConfig } from "./markdown-task.js";

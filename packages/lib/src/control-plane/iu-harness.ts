@@ -118,8 +118,9 @@ export interface ComposeProject {
 function docker(args: string[]): { ok: boolean; out: string; err: string } {
   try {
     return { ok: true, out: execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }), err: "" };
-  } catch (e: any) {
-    return { ok: false, out: e.stdout?.toString() ?? "", err: e.stderr?.toString() ?? String(e) };
+  } catch (e) {
+    const err = e as { stdout?: { toString(): string }; stderr?: { toString(): string } };
+    return { ok: false, out: err.stdout?.toString() ?? "", err: err.stderr?.toString() ?? String(e) };
   }
 }
 

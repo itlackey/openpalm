@@ -109,7 +109,7 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
 
-  let config;
+  let config: ReturnType<typeof getRegistryAddonConfig>;
   try {
     config = getRegistryAddonConfig(name);
   } catch (error) {
@@ -155,7 +155,7 @@ export const POST: RequestHandler = async (event) => {
   if ("error" in parsed) return jsonBodyError(parsed, requestId);
   const valuesRaw = (parsed.data.values as Record<string, unknown> | undefined) ?? {};
 
-  let config;
+  let config: ReturnType<typeof getRegistryAddonConfig>;
   try {
     config = getRegistryAddonConfig(name);
   } catch (error) {

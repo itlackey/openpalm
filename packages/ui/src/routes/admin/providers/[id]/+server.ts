@@ -102,17 +102,17 @@ export const PATCH: RequestHandler = async (event) => {
   if (kind === 'register-local') {
     // Register a detected local provider
     try {
-      if (!Object.prototype.hasOwnProperty.call(LOCAL_PROVIDER_LABELS, providerId)) {
+      if (!Object.hasOwn(LOCAL_PROVIDER_LABELS, providerId)) {
         return errorResponse(400, 'bad_request', 'provider must be one of: ollama, lmstudio, model-runner', {}, requestId);
       }
       const detected = await detectLocalProviders();
       const match = detected.find((d) => d.provider === providerId);
-      if (!match || !match.available) {
+      if (!match?.available) {
         return jsonResponse(200, { ok: false, message: `No reachable ${LOCAL_PROVIDER_LABELS[providerId] ?? providerId} endpoint found.`, selectedProviderId: providerId } satisfies ProviderActionResult, requestId);
       }
 
       const config = await getCurrentConfig();
-      const existingEntry = (config.provider ?? {})[providerId] as Record<string, unknown> | undefined;
+      const existingEntry = config.provider?.[providerId] as Record<string, unknown> | undefined;
       const existingOptions = (existingEntry?.options as Record<string, unknown> | undefined) ?? {};
       await registerProvider(providerId, {
         npm: typeof existingEntry?.npm === 'string' ? existingEntry.npm : '@ai-sdk/openai-compatible',

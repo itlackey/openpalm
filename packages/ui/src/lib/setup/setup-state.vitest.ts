@@ -89,7 +89,7 @@ describe('SetupState — canComplete', () => {
     s.allowEmptyInstall = true;
     // Simulate a background verification landing (the historical bug had an
     // $effect flip allowEmptyInstall off here, silently moving the checkbox).
-    s.providerState['openai'].verified = true;
+    s.providerState.openai.verified = true;
     expect(s.allowEmptyInstall).toBe(true);
     expect(s.canComplete).toBe(true);
   });
@@ -139,12 +139,12 @@ describe('SetupState — verified providers derivations', () => {
     expect(s.verifiedCount).toBe(0);
     expect(s.hasOpenAI).toBe(false);
 
-    s.providerState['openai'].verified = true;
+    s.providerState.openai.verified = true;
     expect(s.verifiedCount).toBe(1);
     expect(s.hasOpenAI).toBe(true);
     expect(s.verifiedProviders.map((p) => p.id)).toContain('openai');
 
-    s.providerState['groq'].verified = true;
+    s.providerState.groq.verified = true;
     expect(s.verifiedCount).toBe(2);
   });
 
@@ -152,7 +152,7 @@ describe('SetupState — verified providers derivations', () => {
     const s = new SetupState();
     s.initProviderState();
     expect(s.voiceDefaults).toEqual({ tts: 'browser-tts', stt: 'browser-stt' });
-    s.providerState['openai'].verified = true;
+    s.providerState.openai.verified = true;
     expect(s.voiceDefaults).toEqual({ tts: 'openai-tts', stt: 'openai-stt' });
   });
 });
@@ -188,7 +188,7 @@ describe('SetupState — autoSelectModels', () => {
   it('fills the unset chat role from a verified provider, preserving set roles', () => {
     const s = new SetupState();
     s.initProviderState();
-    s.providerState['openai'] = providerEntry({ verified: true, models: ['gpt-4o', 'gpt-4o-mini'] });
+    s.providerState.openai = providerEntry({ verified: true, models: ['gpt-4o', 'gpt-4o-mini'] });
 
     s.autoSelectModels();
     expect(s.modelSelection.llm?.connId).toBe('openai');
@@ -247,7 +247,7 @@ describe('SetupState — payload derivation delegates to buildSetupPayload', () 
     expect(s.payload.llm).toBeUndefined();
 
     // Verify a provider and select its chat model — the payload picks it up.
-    s.providerState['openai'] = providerEntry({ verified: true, models: ['gpt-4o'] });
+    s.providerState.openai = providerEntry({ verified: true, models: ['gpt-4o'] });
     s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
     expect(s.payload.llm).toBeDefined();
     expect(s.payload.llm?.model).toBe('gpt-4o');
@@ -285,42 +285,52 @@ describe('SetupState — module singleton is reset on a fresh (non-rerun) mount'
     setupState.recommendationApplied = true;
     setupState.savedCloudLlm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
     setupState.detectedCloudConn = 'openai';
-    const discord = setupState.portalSelection['discord'];
+    const discord = setupState.portalSelection.discord;
     if (typeof discord === 'object') discord.enabled = true;
 
     // Remount (init() runs once per mount and resets first).
     setupState.init();
 
-    // Fresh wizard: System Check no longer bypassed, back on the hidden step 0.
-    expect(setupState.currentStep).toBe(0);
-    expect(setupState.maxVisitedStep).toBe(0);
-    expect(setupState.systemCheckPassed).toBe(false);
+    // Whole-store snapshot: EVERY reactive field must return to its constructor
+    // default. A pristine `new SetupState()` is the source of truth for those
+    // defaults; init() additionally re-seeds `providerState` and mints a fresh
+    // login token, so we mirror those two deterministic mutations on the
+    // reference before comparing. This guards all ~51 fields (including any
+    // added later) against a reset() that forgets one — not just a spot-check.
+    const fresh = new SetupState();
+    fresh.initProviderState(); // init() re-seeds providerState right after reset()
+    fresh.uiLoginPassword = setupState.uiLoginPassword; // random per mount — normalize
+
+    // Public reactive fields only (derived getters + private internals excluded).
+    const FIELDS = [
+      'currentStep', 'maxVisitedStep', 'showDeploy', 'systemCheckPassed',
+      'modelMode', 'voiceEnabled', 'uiLoginPassword', 'step0Error',
+      'autoModeImporting', 'gpuDetected', 'providerState', 'detectedHostProviders',
+      'detectedProviders', 'opencodeAvailable', 'opencodeProviders', 'opencodeAuth',
+      'hostProviderCount', 'allowEmptyInstall', 'recommendation', 'recommendationAlert',
+      'recommendationApplied', 'detectedGpuVramMb', 'detectedGpuVendor', 'detectedGpuName',
+      'modelSelection', 'voiceTts', 'voiceStt', 'voiceProfiles', 'selectedVoiceProfile',
+      'importedLlmModel', 'importedSmallModel', 'portalSelection', 'ollamaEnabled',
+      'ollamaProfiles', 'selectedOllamaProfile', 'imageTag', 'hostAkmEnabled',
+      'installError', 'installing', 'emptyAiAck', 'deployData', 'deployDone',
+      'deployHasWarnings', 'deployError', 'deployPollErrors', 'savedCloudLlm',
+      'detectedCloudConn', 'hostImportTriggered', 'hostImporting', 'hostImportError',
+      'isRerun',
+    ] as const;
+    // structuredClone flattens Svelte's $state proxies to plain objects so the
+    // deep-equality diff reads cleanly (and preserves undefined/null fields).
+    const snapshot = (s: SetupState): Record<string, unknown> => {
+      const rec = s as unknown as Record<string, unknown>;
+      return structuredClone(Object.fromEntries(FIELDS.map((k) => [k, rec[k]])));
+    };
+    expect(snapshot(setupState)).toEqual(snapshot(fresh));
+
+    // A fresh (non-rerun) mount does not bypass System Check, and init() always
+    // mints a login token (the one field the snapshot deliberately normalizes).
     expect(setupState.isRerun).toBe(false);
+    expect(setupState.uiLoginPassword).not.toBe('');
 
-    // Selections cleared.
-    expect(setupState.modelMode).toBe('cloud');
-    expect(setupState.voiceEnabled).toBe(false);
-    expect(setupState.voiceTts.engine).toBe('');
-    expect(setupState.voiceStt.engine).toBe('');
-    expect(setupState.selectedVoiceProfile).toBe('');
-    expect(setupState.modelSelection.llm).toBeUndefined();
-    expect(setupState.ollamaEnabled).toBe(false);
-    expect(setupState.savedCloudLlm).toBeUndefined();
-    expect(setupState.detectedCloudConn).toBe('');
-
-    // Gating / one-shot flags cleared.
-    expect(setupState.allowEmptyInstall).toBe(false);
-    expect(setupState.emptyAiAck).toBe(false);
-    expect(setupState.installError).toBe('');
-    expect(setupState.showDeploy).toBe(false);
-    expect(setupState.deployDone).toBe(false);
-    expect(setupState.hostImportTriggered).toBe(false);
-    expect(setupState.recommendationApplied).toBe(false);
-
-    // Fresh portal objects (no lingering enabled/credentials).
-    expect(setupState.portalSelection['discord']).toEqual({ enabled: false, botToken: '', applicationId: '' });
-
-    // Derived predicates recompute clean.
+    // Derived predicates (getters, not part of the field snapshot) recompute clean.
     expect(setupState.canComplete).toBe(false);
     expect(setupState.hasUsableAI).toBe(false);
     expect(setupState.verifiedCount).toBe(0);

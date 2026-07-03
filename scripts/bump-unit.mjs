@@ -140,7 +140,7 @@ function stampSetupScripts(version) {
 
 function stampVersionFile(file, version) {
   if (!existsSync(file)) throw new Error(`Cannot stamp: file not found: ${file}`);
-  writeFileSync(file, version + '\n');
+  writeFileSync(file, `${version}\n`);
   console.log(`  ${file} → ${version}`);
 }
 
@@ -232,11 +232,11 @@ if (unit === 'images') {
   newVersion = currentVersion;
   console.log(`images: using current platform version ${newVersion} (no bump; use version override for a new tag)`);
   if (out) {
-    appendFileSync(out, [
+    appendFileSync(out, `${[
       `current_version=${currentVersion}`,
       `new_version=${newVersion}`,
       `tag_prefix=images`,
-    ].join('\n') + '\n');
+    ].join('\n')}\n`);
   }
 } else if (unit === 'all') {
   // All-units release: stamp every unit to the same version using the specified bump type.
@@ -261,12 +261,12 @@ if (unit === 'images') {
   // Emit per-unit tag list for the all-units release job
   const allTags = Object.keys(UNITS).filter(n => n !== 'images').map(n => `${n}-${newVersion}`);
   if (out) {
-    appendFileSync(out, [
+    appendFileSync(out, `${[
       `current_version=${currentVersion}`,
       `new_version=${newVersion}`,
       `tag_prefix=all`,
       `all_tags=${JSON.stringify(allTags)}`,
-    ].join('\n') + '\n');
+    ].join('\n')}\n`);
   }
 } else {
   const cfg = UNITS[unit];
@@ -283,11 +283,11 @@ if (unit === 'images') {
     console.log('  (STAMP=false — preview only)');
   }
   if (out) {
-    appendFileSync(out, [
+    appendFileSync(out, `${[
       `current_version=${currentVersion}`,
       `new_version=${newVersion}`,
       `tag_prefix=${unit}`,
-    ].join('\n') + '\n');
+    ].join('\n')}\n`);
   }
 }
 

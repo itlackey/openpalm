@@ -5,7 +5,7 @@
  * resolved to Compose profiles. The fixed compose files under config/stack are
  * the runtime source of truth.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { errMessage } from './errors.js';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';

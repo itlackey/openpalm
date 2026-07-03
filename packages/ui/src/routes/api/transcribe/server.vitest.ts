@@ -141,7 +141,7 @@ describe('POST /api/transcribe', () => {
 		expect(captured).not.toBeNull();
 		const c = captured as unknown as { url: string; init: RequestInit };
 		expect(String(c.url)).toBe('http://stt.local/v1/audio/transcriptions');
-		const auth = (c.init?.headers as Record<string, string>)?.['authorization'];
+		const auth = (c.init?.headers as Record<string, string>)?.authorization;
 		expect(auth).toBeUndefined();
 
 		const sentBody = c.init?.body as FormData;
@@ -155,7 +155,7 @@ describe('POST /api/transcribe', () => {
 		process.env.OP_STT_API_KEY = 'sk-secret-12345';
 		let capturedAuth: string | undefined;
 		fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-			capturedAuth = (init?.headers as Record<string, string>)?.['authorization'];
+			capturedAuth = (init?.headers as Record<string, string>)?.authorization;
 			return new Response(JSON.stringify({ text: 'ok' }), {
 				status: 200,
 				headers: { 'content-type': 'application/json' },

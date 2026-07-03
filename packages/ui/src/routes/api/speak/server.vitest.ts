@@ -61,7 +61,7 @@ describe('POST /api/speak speech prep', () => {
     writeFileSync(join(getState().configDir, 'assistant', 'persona.md'), 'Be warm and relaxed.\n');
     writeFileSync(
       join(getState().configDir, 'assistant', 'opencode.json'),
-      JSON.stringify({ small_model: 'openai/gpt-4.1-mini', model: 'openai/gpt-4.1' }) + '\n',
+      `${JSON.stringify({ small_model: 'openai/gpt-4.1-mini', model: 'openai/gpt-4.1' })}\n`,
     );
 
     const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -119,7 +119,7 @@ describe('POST /api/speak speech prep', () => {
     writeFileSync(join(getState().configDir, 'assistant', 'persona.md'), 'Be crisp and friendly.\n');
     writeFileSync(
       join(getState().configDir, 'assistant', 'opencode.json'),
-      JSON.stringify({ model: 'openai/gpt-4.1' }) + '\n',
+      `${JSON.stringify({ model: 'openai/gpt-4.1' })}\n`,
     );
 
     const calls: Array<{ url: string; init?: RequestInit }> = [];
