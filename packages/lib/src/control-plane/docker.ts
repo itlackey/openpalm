@@ -1,6 +1,6 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
 import { execFile, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
 import { mapDockerError, parseComposeStderr } from "./compose-errors.js";
 
@@ -9,6 +9,70 @@ export type DockerResult = {
   stdout: string;
   stderr: string;
   code: number;
+};
+
+// ── Injection seam (DockerClient + FileStore) ────────────────────────────────
+//
+// docker.ts hard-wires node:child_process (execFile) and node:fs at module
+// scope, so the §4.3 compose driver (applyStack) and its health/inspect helpers
+// could only be exercised against a real daemon + disk. These two narrow
+// interfaces let callers inject fakes — mirroring the DI already in
+// ui-supervisor.ts and install-lock.ts. Defaults are the real impls, so every
+// existing caller (which omits `deps`) is byte-identical.
+
+/** Options for a single {@link DockerClient.run} invocation. */
+export type DockerRunOptions = {
+  cwd?: string;
+  /** Kill budget in ms; omit for the {@link run} default (120s). */
+  timeoutMs?: number;
+  /** Extra env layered over process.env for this invocation. */
+  env?: Record<string, string>;
+};
+
+/**
+ * Narrow seam over the docker CLI: one `run(args, opts?)` method mirroring the
+ * module-level {@link run} execFile wrapper. Injecting a fake lets applyStack and
+ * the inspect/health helpers be unit-tested without spawning docker.
+ */
+export interface DockerClient {
+  run(args: string[], opts?: DockerRunOptions): Promise<DockerResult>;
+}
+
+/**
+ * Narrow seam over the fs the compose driver touches: `exists` gates the
+ * `--env-file` compose args; `read`/`write` are provided for the deploy/lifecycle
+ * consumers that share this contract. Injecting a fake removes the disk
+ * dependency from unit tests.
+ */
+export interface FileStore {
+  exists(path: string): boolean;
+  read(path: string): string;
+  write(path: string, data: string, mode?: number): void;
+}
+
+/** Injected dependencies for the compose driver. Defaults to the real impls. */
+export interface StackDeps {
+  docker: DockerClient;
+  files: FileStore;
+}
+
+/** Real DockerClient — thin adapter over the execFile-backed {@link run}. */
+export const realDockerClient: DockerClient = {
+  run: (args, opts) => run(args, opts?.cwd, opts?.timeoutMs, opts?.env),
+};
+
+/** Real FileStore — thin adapter over node:fs. */
+export const realFileStore: FileStore = {
+  exists: (path) => existsSync(path),
+  read: (path) => readFileSync(path, "utf-8"),
+  write: (path, data, mode) =>
+    writeFileSync(path, data, mode !== undefined ? { mode } : undefined),
+};
+
+/** The default (real) dependency bundle threaded when a caller omits `deps`. */
+export const defaultStackDeps: StackDeps = {
+  docker: realDockerClient,
+  files: realFileStore,
 };
 
 /**
@@ -152,19 +216,25 @@ export function collectComposeEnvOverrides(envFiles?: string[]): Record<string, 
 }
 
 /** Build common docker compose args: -f ... --project-name ... --env-file ... --profile ... */
-export function buildComposeCommandArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
+export function buildComposeCommandArgs(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  files: FileStore = realFileStore,
+): string[] {
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
   const args = ["--project-name", resolveComposeProjectName(envOverrides), ...options.files.flatMap((f) => ["-f", f])];
   for (const ef of options.envFiles ?? []) {
-    if (existsSync(ef)) args.push("--env-file", ef);
+    if (files.exists(ef)) args.push("--env-file", ef);
   }
   for (const p of options.profiles ?? []) args.push("--profile", p);
   return args;
 }
 
 /** Build common prefix: compose -f ... --project-name ... --env-file ... --profile ... */
-function buildComposeArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
-  return ["compose", ...buildComposeCommandArgs(options)];
+function buildComposeArgs(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  files: FileStore = realFileStore,
+): string[] {
+  return ["compose", ...buildComposeCommandArgs(options, files)];
 }
 
 /**
@@ -567,16 +637,18 @@ export type ContainerImageInfo = {
  * Inspect a single container by name and return its full image + health info.
  * "not_installed" when the container does not exist; "stopped" when it exists but is not running.
  */
-export async function inspectContainerImage(containerName: string): Promise<ContainerImageInfo> {
-  const result = await run(
+export async function inspectContainerImage(
+  containerName: string,
+  deps: StackDeps = defaultStackDeps,
+): Promise<ContainerImageInfo> {
+  const result = await deps.docker.run(
     [
       "inspect",
       "--format",
       "{{.State.Status}}\t{{.Image}}\t{{.Config.Image}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}",
       containerName,
     ],
-    undefined,
-    10_000,
+    { timeoutMs: 10_000 },
   );
   if (!result.ok) {
     // Container does not exist (exit code 1, "No such object")
@@ -653,10 +725,11 @@ export async function waitForContainerHealthy(
   containerName: string,
   timeoutMs = healthWaitTimeoutMs(),
   pollMs = HEALTH_WAIT_DEFAULTS.pollMs,
+  deps: StackDeps = defaultStackDeps,
 ): Promise<{ healthy: boolean; timedOut: boolean; reason: string }> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const info = await inspectContainerImage(containerName);
+    const info = await inspectContainerImage(containerName, deps);
     if (info.state === "not_installed") {
       return { healthy: false, timedOut: false, reason: `container ${containerName} does not exist` };
     }
@@ -716,15 +789,17 @@ export type ApplyStackResult = {
 export async function applyStack(
   scope: ApplyStackScope,
   options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  deps: StackDeps = defaultStackDeps,
 ): Promise<ApplyStackResult> {
+  const { docker, files } = deps;
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
-  const base = buildComposeArgs(options);
+  const base = buildComposeArgs(options, files);
 
   // ── 1. Pull the whole target set FIRST (§4.3 "Pull the whole target set first") ──
   const pullArgs = [...base, "pull"];
   if (scope.kind === "service") pullArgs.push(scope.service);
 
-  const pullResult = await run(pullArgs, undefined, PULL_TIMEOUT_MS, envOverrides);
+  const pullResult = await docker.run(pullArgs, { timeoutMs: PULL_TIMEOUT_MS, env: envOverrides });
   if (!pullResult.ok) {
     // Pull failure is FATAL (§6, constitution §8 "never swallowed").
     // Route through mapDockerError so the user sees a named, friendly message
@@ -747,7 +822,7 @@ export async function applyStack(
     upArgs.push("--remove-orphans");
   }
 
-  const upResult = await run(upArgs, undefined, composeUpTimeoutMs(), envOverrides);
+  const upResult = await docker.run(upArgs, { timeoutMs: composeUpTimeoutMs(), env: envOverrides });
 
   // ── 3. Parse per-service failures from stderr ─────────────────────────────
   if (!upResult.ok) {
@@ -778,7 +853,7 @@ export async function applyStack(
       ? [scope.service]
       : await (async () => {
           const configArgs = [...base, "config", "--services"];
-          const r = await run(configArgs, undefined, 15_000, envOverrides);
+          const r = await docker.run(configArgs, { timeoutMs: 15_000, env: envOverrides });
           return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
         })();
 
@@ -788,13 +863,13 @@ export async function applyStack(
   for (const svc of targetServices) {
     // Get the container name from compose ps
     const psArgs = [...base, "ps", "-q", svc];
-    const psResult = await run(psArgs, undefined, 10_000, envOverrides);
+    const psResult = await docker.run(psArgs, { timeoutMs: 10_000, env: envOverrides });
     const containerId = psResult.stdout.trim();
     if (!containerId) {
       failed.push({ service: svc, reason: `container for service ${svc} not found after up` });
       continue;
     }
-    const wait = await waitForContainerHealthy(containerId);
+    const wait = await waitForContainerHealthy(containerId, undefined, undefined, deps);
     if (wait.healthy) {
       started.push(svc);
     } else {
