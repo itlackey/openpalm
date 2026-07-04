@@ -146,6 +146,156 @@ function buildPortalCredentialEnvVars(
   return envVars;
 }
 
+// ── AKM Config Persistence ───────────────────────────────────────────────
+
+/**
+ * Typed shape of the assistant's akm config.json. This replaces the nested
+ * `as Record<string, unknown>` casts that used to hand-manipulate the JSON in
+ * performSetup. Every field is optional because we merge over whatever the
+ * operator (or a prior run) already wrote — extra/unknown keys are preserved
+ * verbatim via the index signature.
+ */
+export type AkmLlmProfile = {
+  endpoint: string;
+  model: string;
+  provider: string;
+  [key: string]: unknown;
+};
+
+export type AkmEmbeddingConfig = {
+  endpoint: string;
+  model: string;
+  provider: string;
+  dimension: number;
+  [key: string]: unknown;
+};
+
+export type AkmConfig = {
+  profiles?: { llm?: Record<string, AkmLlmProfile>; [key: string]: unknown };
+  defaults?: { llm?: string; [key: string]: unknown };
+  embedding?: AkmEmbeddingConfig;
+  stashDir?: string;
+  /** Legacy 0.7 top-level key — read for migration awareness, never persisted. */
+  llm?: unknown;
+  [key: string]: unknown;
+};
+
+/**
+ * Merge the setup wizard's LLM + embedding selections into the assistant's
+ * akm config.json (atomic write). Existing operator keys — sibling profiles,
+ * `sources`, custom fields — are preserved. No-op when neither llm nor
+ * embedding is supplied.
+ *
+ * Writes the CANONICAL akm 0.8.0 shape: profiles.llm.default + defaults.llm.
+ * The runtime resolver reads profiles.llm[defaults.llm] (akm config.ts).
+ * Do NOT write a top-level `llm` — akm's top-level schema is .strict() with no
+ * `llm` key (config-schema.ts AkmConfigShape). A top-level `llm` only loads
+ * today via akm's legacy 0.7→0.8 migration shim (config-migration.ts), which
+ * rewrites the file on load and is marked for removal — writing the native
+ * shape removes that dependency, so any pre-existing legacy key is dropped.
+ */
+export function persistAkmConfig(
+  state: ControlPlaneState,
+  opts: { llm?: SetupSpec["llm"]; embedding?: SetupSpec["embedding"] },
+): void {
+  const { llm, embedding } = opts;
+  if (!llm && !embedding) return;
+
+  const akmConfigDir = join(state.configDir, "akm");
+  mkdirSync(akmConfigDir, { recursive: true });
+  const akmConfigPath = join(akmConfigDir, "config.json");
+
+  let existing: AkmConfig = {};
+  if (existsSync(akmConfigPath)) {
+    try {
+      existing = JSON.parse(readFileSync(akmConfigPath, "utf-8")) as AkmConfig;
+    } catch {
+      /* ignore corrupt */
+    }
+  }
+  const updated: AkmConfig = { ...existing };
+
+  if (llm) {
+    const profiles = updated.profiles ?? {};
+    const llmProfiles = profiles.llm ?? {};
+    llmProfiles.default = {
+      ...(llmProfiles.default ?? {}),
+      endpoint: buildAkmEndpoint(llm.provider, llm.baseUrl, "/chat/completions"),
+      model: llm.model,
+      provider: llm.provider,
+    };
+    profiles.llm = llmProfiles;
+    updated.profiles = profiles;
+    const defaults = updated.defaults ?? {};
+    if (typeof defaults.llm !== "string") defaults.llm = "default";
+    updated.defaults = defaults;
+    delete updated.llm; // never persist the legacy key
+  }
+
+  if (embedding) {
+    updated.embedding = {
+      ...(existing.embedding ?? {}),
+      endpoint: buildAkmEndpoint(embedding.provider, embedding.baseUrl, "/embeddings"),
+      model: embedding.model,
+      provider: embedding.provider,
+      dimension: embedding.dims,
+    };
+  }
+
+  // The assistant's primary stash is ALWAYS /stash (the bind mount). Pin it in
+  // config so it is explicit and operator-edits can't repoint it; the UI does
+  // not expose stashDir. (The host task-runner still uses its own
+  // AKM_STASH_DIR env, which takes precedence over config.stashDir.)
+  updated.stashDir = "/stash";
+  writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
+}
+
+/**
+ * Persist portal (discord/slack/…) credentials into the vault secrets env.
+ * Credential values come from the setup spec first, falling back to the host
+ * process environment for any canonical env var not supplied in the spec.
+ * updateSecretsEnv routes secret-classified keys to their own files and the
+ * rest to stack.env.
+ */
+export function persistPortalCredentials(
+  state: ControlPlaneState,
+  portalCredentials?: Record<string, Record<string, string>>,
+): void {
+  const portalSecretUpdates = portalCredentials
+    ? buildPortalCredentialEnvVars(portalCredentials)
+    : {};
+  // Pick up portal credential env vars not already provided in the spec.
+  for (const mapping of Object.values(PORTAL_CREDENTIAL_ENV_MAP)) {
+    for (const envKey of Object.values(mapping)) {
+      if (!portalSecretUpdates[envKey] && process.env[envKey])
+        portalSecretUpdates[envKey] = process.env[envKey];
+    }
+  }
+  updateSecretsEnv(state, portalSecretUpdates);
+}
+
+/**
+ * Seed the default automation (akm-improve) into the AKM stash. Idempotent —
+ * an existing file is left untouched so operator edits survive re-install and
+ * upgrade. A no-op (with a warning) when the automation is missing from the
+ * registry.
+ */
+export function seedDefaultAutomation(state: ControlPlaneState): void {
+  const tasksDir = join(state.stashDir, "tasks");
+  mkdirSync(tasksDir, { recursive: true });
+  const akmImproveDest = join(tasksDir, "akm-improve.yml");
+  if (existsSync(akmImproveDest)) return;
+  const akmImproveTask = getRegistryAutomation("akm-improve");
+  if (akmImproveTask) {
+    writeFileSync(akmImproveDest, akmImproveTask);
+    logger.info("seeded default automation", { name: "akm-improve" });
+  } else {
+    logger.warn("default automation missing from registry; skipping seed", {
+      name: "akm-improve",
+    });
+  }
+}
+
 // ── Core Setup Orchestration ─────────────────────────────────────────────
 
 export async function performSetup(
@@ -181,15 +331,8 @@ export async function performSetup(
     try {
       ensureHomeDirs();
       ensureSecrets(state);
-      const portalSecretUpdates = portalCredentials ? buildPortalCredentialEnvVars(portalCredentials) : {};
-      // Pick up portal credential env vars not already provided in the spec
-      for (const mapping of Object.values(PORTAL_CREDENTIAL_ENV_MAP)) {
-        for (const envKey of Object.values(mapping)) {
-          if (!portalSecretUpdates[envKey] && process.env[envKey]) portalSecretUpdates[envKey] = process.env[envKey];
-        }
-      }
       updateSecretsEnv(state, updates);
-      updateSecretsEnv(state, portalSecretUpdates);
+      persistPortalCredentials(state, portalCredentials);
       patchSecretsEnvFile(state.homeDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
@@ -231,54 +374,7 @@ export async function performSetup(
       }
 
       // Write akm config with LLM and embedding settings from setup — atomic.
-      if (llm || embedding) {
-        const akmConfigDir = join(state.configDir, "akm");
-        mkdirSync(akmConfigDir, { recursive: true });
-        const akmConfigPath = join(akmConfigDir, "config.json");
-        let existing: Record<string, unknown> = {};
-        if (existsSync(akmConfigPath)) {
-          try { existing = JSON.parse(readFileSync(akmConfigPath, "utf-8")); } catch { /* ignore corrupt */ }
-        }
-        const updated = { ...existing };
-        if (llm) {
-          // Write the CANONICAL akm 0.8.0 shape: profiles.llm.default + defaults.llm.
-          // The runtime resolver reads profiles.llm[defaults.llm] (akm config.ts).
-          // Do NOT write a top-level `llm` — akm's top-level schema is .strict()
-          // with no `llm` key (config-schema.ts AkmConfigShape). A top-level `llm`
-          // only loads today via akm's legacy 0.7→0.8 migration shim
-          // (config-migration.ts), which rewrites the file on load and is marked
-          // for removal — writing the native shape removes that dependency.
-          const profiles = (updated.profiles as Record<string, unknown>) ?? {};
-          const llmProfiles = (profiles.llm as Record<string, unknown>) ?? {};
-          llmProfiles.default = {
-            ...((llmProfiles.default as Record<string, unknown>) ?? {}),
-            endpoint: buildAkmEndpoint(llm.provider, llm.baseUrl, "/chat/completions"),
-            model: llm.model,
-            provider: llm.provider,
-          };
-          profiles.llm = llmProfiles;
-          updated.profiles = profiles;
-          const defaults = (updated.defaults as Record<string, unknown>) ?? {};
-          if (typeof defaults.llm !== "string") defaults.llm = "default";
-          updated.defaults = defaults;
-          delete (updated as Record<string, unknown>).llm; // never persist the legacy key
-        }
-        if (embedding) {
-          updated.embedding = {
-            ...((existing.embedding as Record<string, unknown>) ?? {}),
-            endpoint: buildAkmEndpoint(embedding.provider, embedding.baseUrl, "/embeddings"),
-            model: embedding.model,
-            provider: embedding.provider,
-            dimension: embedding.dims,
-          };
-        }
-        // The assistant's primary stash is ALWAYS /stash (the bind mount). Pin it
-        // in config so it is explicit and operator-edits can't repoint it; the UI
-        // does not expose stashDir. (The host task-runner still uses its own
-        // AKM_STASH_DIR env, which takes precedence over config.stashDir.)
-        updated.stashDir = "/stash";
-        writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
-      }
+      persistAkmConfig(state, { llm, embedding });
 
       // Host AKM sharing. /host-stash is ALWAYS a secondary source in the akm
       // config — written once here, never removed. The compose bind-mount
@@ -319,20 +415,7 @@ export async function performSetup(
 
       // Seed default automation into the AKM stash. Idempotent — existing files
       // are left alone so user edits survive re-install and upgrade.
-      const tasksDir = join(state.stashDir, "tasks");
-      mkdirSync(tasksDir, { recursive: true });
-      const akmImproveDest = join(tasksDir, "akm-improve.yml");
-      if (!existsSync(akmImproveDest)) {
-        const akmImproveTask = getRegistryAutomation("akm-improve");
-        if (akmImproveTask) {
-          writeFileSync(akmImproveDest, akmImproveTask);
-          logger.info("seeded default automation", { name: "akm-improve" });
-        } else {
-          logger.warn("default automation missing from registry; skipping seed", {
-            name: "akm-improve",
-          });
-        }
-      }
+      seedDefaultAutomation(state);
 
       // NOTE: OP_SETUP_COMPLETE is intentionally NOT written here. Writing it
       // before the Docker deploy succeeds would mark setup "complete" even
