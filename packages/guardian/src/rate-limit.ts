@@ -18,6 +18,9 @@ export const USER_RATE_WINDOW_MS = 60_000;
 export const PORTAL_RATE_LIMIT = 200;
 export const PORTAL_RATE_WINDOW_MS = 60_000;
 
+const USER_BUCKET_PREFIX = "user:";
+const PORTAL_BUCKET_PREFIX = "portal:";
+
 /** Maximum number of rate-limit buckets before hard-cap eviction. */
 const MAX_BUCKETS = 10_000;
 
@@ -38,12 +41,17 @@ export function allow(key: string, limit: number, windowMs: number): boolean {
 /**
  * Classify a rate-limit bucket key as per-user vs per-principal (portal).
  *
- * Proxy keys are `oc:<kind>:<id>` (portal / per-principal) or
- * `oc:<kind>:<id>:<userId>` (per-user) — see proxy.ts gate 1c. The trailing
- * userId segment is what distinguishes a per-user bucket, so classify by the
- * colon-segment count: 4+ segments → per-user, exactly 3 → per-principal.
+ * New buckets use an explicit prefix (`user:` / `portal:`) so classification is
+ * not tied to the number of `:` segments in the bucket key. Legacy `oc:` keys
+ * keep working via the old segment-count heuristic.
  */
 function isUserBucketKey(key: string): boolean {
+  if (key.startsWith(USER_BUCKET_PREFIX)) {
+    return true;
+  }
+  if (key.startsWith(PORTAL_BUCKET_PREFIX)) {
+    return false;
+  }
   return key.split(":").length >= 4;
 }
 
