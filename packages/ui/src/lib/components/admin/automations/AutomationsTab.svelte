@@ -33,6 +33,11 @@
   let drawerError = $state('');
   let runningTaskName = $state('');
 
+  // Delete-confirmation prompt (in-DOM, mirrors RecoveryTab's prune prompt —
+  // testable and consistent with the app's own dialog components, unlike the
+  // untestable native confirm()).
+  let pendingDeleteFile = $state<string | null>(null);
+
   let logDrawerOpen = $state(false);
   let logTaskName = $state('');
   let logLines = $state<string[]>([]);
@@ -83,12 +88,23 @@
     }
   }
 
-  async function removeTask(fileName: string): Promise<void> {
-    if (drawerSaving || !confirm(`Delete task file "${fileName}"?`)) return;
+  function requestRemoveTask(fileName: string): void {
+    if (drawerSaving) return;
+    pendingDeleteFile = fileName;
+  }
+
+  function cancelRemoveTask(): void {
+    pendingDeleteFile = null;
+  }
+
+  async function confirmRemoveTask(): Promise<void> {
+    const fileName = pendingDeleteFile;
+    if (fileName === null || drawerSaving) return;
     drawerSaving = true;
     try {
       await deleteTaskFile(fileName);
       notifications.push('success', `Deleted ${fileName}.`);
+      pendingDeleteFile = null;
       onRefresh();
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to delete task file.');
@@ -208,6 +224,19 @@
   </div>
 
   <div class="panel-body">
+    {#if pendingDeleteFile !== null}
+      <div class="confirm-prompt" role="alertdialog" aria-label="Confirm delete task">
+        <p class="confirm-prompt-title">Delete task file?</p>
+        <p>Delete task file "{pendingDeleteFile}"? This cannot be undone.</p>
+        <div class="confirm-actions">
+          <button class="btn btn-sm btn-danger" onclick={() => void confirmRemoveTask()} disabled={drawerSaving}>
+            {#if drawerSaving}<Spinner /> Deleting…{:else}Delete task{/if}
+          </button>
+          <button class="btn btn-sm btn-secondary" onclick={cancelRemoveTask} disabled={drawerSaving}>Cancel</button>
+        </div>
+      </div>
+    {/if}
+
     {#if hasAutomations && data}
       <div class="automation-list">
         {#each data.automations as automation (automation.name)}
@@ -257,7 +286,7 @@
                 >Edit</button>
                 <button
                   class="btn btn-ghost btn-sm"
-                  onclick={() => void removeTask(automation.fileName)}
+                  onclick={() => requestRemoveTask(automation.fileName)}
                   disabled={drawerSaving}
                   aria-label="Delete {automation.fileName}"
                 >Delete</button>
@@ -523,6 +552,31 @@
 
   .text-danger {
     color: var(--s-seal);
+  }
+
+  .confirm-prompt {
+    margin: 0 clamp(1rem, 4vw, 2rem) var(--s-sp-4);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
+  }
+  .confirm-prompt-title {
+    margin: 0 0 var(--s-sp-1) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-seal);
+  }
+  .confirm-prompt p {
+    margin: 0 0 var(--s-sp-2) 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+  }
+  .confirm-actions {
+    display: flex;
+    gap: var(--s-sp-2);
   }
 
   .log-drawer-body {

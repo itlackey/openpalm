@@ -34,11 +34,6 @@
   const s = setupState;
 
   const detectionLoading = $derived(s.autoModeImporting);
-  // detectionTimedOut / systemCheckRetrying have no store backing — the page
-  // never set them (always false). Kept as inert constants so the dead
-  // timeout / retrying UI paths behave exactly as before.
-  const detectionTimedOut = false;
-  const systemCheckRetrying = false;
   const systemCheckError = $derived(s.systemCheckPassed ? '' : (s.step0Error || ''));
   const gpuVramMb = $derived(s.detectedGpuVramMb);
   const gpuVendor = $derived(s.detectedGpuVendor);
@@ -52,7 +47,6 @@
   const detectedCloudConn = $derived(s.detectedCloudConn);
 
   const onmodelmodechange = (mode: ModelMode): void => s.handleConnectModeChange(mode);
-  const onrecheck = (): void => void s.fetchAndApplyRecommendation();
   const onsystemcheckretry = (): void => s.goToStep(0);
   const onallowemptyinstallchange = (v: boolean): void => { s.allowEmptyInstall = v; };
 
@@ -62,8 +56,6 @@
     gpuVendor === 'apple' ||
     hostProviders.length > 0
   );
-
-  let timeoutBannerDismissed = $state(false);
 
   // Resolve a friendly display name for a provider connId.
   function friendlyServiceLabel(connId: string): string {
@@ -135,25 +127,10 @@
         type="button"
         class="s1-alert-btn"
         id="btn-syscheck-retry"
-        disabled={systemCheckRetrying}
         onclick={onsystemcheckretry}
       >
-        {systemCheckRetrying ? 'Checking…' : 'Retry'}
+        Retry
       </button>
-    </div>
-  {/if}
-
-  <!-- Detection timeout banner -->
-  {#if detectionTimedOut && !timeoutBannerDismissed}
-    <div class="s1-alert s1-alert--warn" role="alert">
-      <span class="s1-alert-text">Detection timed out — results may be incomplete.</span>
-      <button type="button" class="s1-alert-btn s1-alert-btn--warn" onclick={onrecheck}>Re-run detection</button>
-      <button
-        type="button"
-        class="s1-dismiss"
-        aria-label="Dismiss"
-        onclick={() => { timeoutBannerDismissed = true; }}
-      >✕</button>
     </div>
   {/if}
 
@@ -319,11 +296,6 @@
     border: 1px solid rgba(242, 92, 92, 0.3);
   }
 
-  .s1-alert--warn {
-    background: rgba(255, 157, 0, 0.08);
-    border: 1px solid rgba(255, 157, 0, 0.25);
-  }
-
   .s1-alert-text {
     flex: 1;
     color: var(--s-ink-2);
@@ -344,24 +316,7 @@
     transition: opacity 150ms;
   }
 
-  .s1-alert-btn--warn { color: var(--s-seal); }
   .s1-alert-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-
-  .s1-dismiss {
-    background: none;
-    border: none;
-    color: var(--s-ink-3);
-    cursor: pointer;
-    font-size: 15px;
-    min-width: 26px;
-    min-height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: color 150ms;
-  }
-  .s1-dismiss:hover { color: var(--s-ink-2); }
 
   /* ── Detection shimmer ───────────────────────────────────── */
   .s1-shimmer {

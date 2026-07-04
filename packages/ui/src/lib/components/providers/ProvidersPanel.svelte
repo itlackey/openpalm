@@ -96,6 +96,10 @@
 	let connectProvider = $state<ProviderView | null>(null);
 	let showCustomForm = $state(false);
 	let disconnectingId = $state<string | null>(null);
+	// Disconnect-confirmation prompt (in-DOM, mirrors RecoveryTab's prune prompt —
+	// testable and consistent with the app's own dialog components, unlike the
+	// untestable native confirm()).
+	let pendingDisconnect = $state<ProviderView | null>(null);
 
 	const BADGE_LABEL: Record<NonNullable<ProviderView['credentialType']>, string> = {
 		env: 'env',
@@ -125,12 +129,23 @@
 		void loadAssistantCliTools();
 	}
 
-	async function disconnect(p: ProviderView) {
-		if (!confirm(`Disconnect ${p.name}? Stored credentials will be removed.`)) return;
+	function requestDisconnect(p: ProviderView) {
+		if (disconnectingId) return;
+		pendingDisconnect = p;
+	}
+
+	function cancelDisconnect() {
+		pendingDisconnect = null;
+	}
+
+	async function confirmDisconnect() {
+		const p = pendingDisconnect;
+		if (!p || disconnectingId) return;
 		disconnectingId = p.id;
 		actionError = null;
 		try {
 			await disconnectProvider(p.id);
+			pendingDisconnect = null;
 			void load();
 			void loadAssistantCliTools();
 		} catch (err) {
@@ -327,7 +342,7 @@
 						<button
 							class="btn btn-outline btn-sm"
 							disabled={disconnectingId === p.id}
-							onclick={() => void disconnect(p)}
+							onclick={() => requestDisconnect(p)}
 						>
 							{#if disconnectingId === p.id}<Spinner />{/if}
 							Disconnect
@@ -409,6 +424,19 @@
 		onaction={handleAfterAction}
 		onclose={() => { showCustomForm = false; }}
 	/>
+{/if}
+
+{#if pendingDisconnect}
+	<div class="confirm-prompt" role="alertdialog" aria-label="Confirm disconnect provider">
+		<p class="confirm-prompt-title">Disconnect provider?</p>
+		<p>Disconnect {pendingDisconnect.name}? Stored credentials will be removed.</p>
+		<div class="confirm-actions">
+			<button class="btn btn-sm btn-danger" onclick={() => void confirmDisconnect()} disabled={disconnectingId !== null}>
+				{#if disconnectingId !== null}<Spinner /> Disconnecting…{:else}Disconnect{/if}
+			</button>
+			<button class="btn btn-sm btn-secondary" onclick={cancelDisconnect} disabled={disconnectingId !== null}>Cancel</button>
+		</div>
+	</div>
 {/if}
 
 {#if showImportSheet && hostStatus}
@@ -623,6 +651,31 @@
 
 	.empty-hint {
 		color: var(--s-ink-3);
+	}
+
+	.confirm-prompt {
+		margin: var(--s-sp-3) var(--s-sp-5);
+		padding: var(--s-sp-3);
+		border: var(--s-hair) solid var(--s-seal);
+		border-radius: 2px;
+	}
+	.confirm-prompt-title {
+		margin: 0 0 var(--s-sp-1) 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-seal);
+	}
+	.confirm-prompt p {
+		margin: 0 0 var(--s-sp-2) 0;
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
+	}
+	.confirm-actions {
+		display: flex;
+		gap: var(--s-sp-2);
 	}
 
 	@media (max-width: 720px) {
