@@ -242,6 +242,33 @@ describe('send', () => {
     await chat.send('hello');
     expect(mocked.sendChatMessage).not.toHaveBeenCalled();
   });
+
+	// finalizeTurn decision: an empty reply collapses to '(no response)' and
+	// must NOT be spoken even with auto-TTS on (only the ack is spoken). This
+	// is the same guard the streaming path uses, now shared via finalizeTurn.
+	it('renders (no response) and speaks only the ack for an empty non-streaming reply', async () => {
+		voice.voiceState.ttsSupported = true;
+		voice.voiceState.ttsAutoEnabled = true;
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockResolvedValueOnce({ parts: [] });
+
+		await chat.send('anything');
+
+		const assistantEntry = chat.entries.find(
+			(e) => !e.type && (e as ChatMessage).role === 'assistant'
+		) as ChatMessage | undefined;
+		expect(assistantEntry?.text).toBe('(no response)');
+
+		// Only the ack is spoken; the '(no response)' reply is suppressed.
+		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Working on it.', {
+			mode: 'chat_ack',
+			userText: 'anything',
+		});
+	});
 });
 
 describe('byEndpoint Map reactivity', () => {

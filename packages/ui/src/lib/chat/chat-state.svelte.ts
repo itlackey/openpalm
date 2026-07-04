@@ -53,8 +53,14 @@ import type { ToolStripEntry } from './tool-strip.js';
 import { isUserFacingTool } from './tool-strip.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
-import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
+import {
+	speakText,
+	stopSpeaking,
+	voiceState,
+	type SpeakTextOptions,
+} from '$lib/voice/voice-state.svelte.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
+import { mapAssistantError } from './assistant-error.js';
 
 type EndpointId = string;
 type SessionId = string;
@@ -335,10 +341,29 @@ class ChatService {
 		return pending;
 	}
 
-	private _finishPendingTurn(replyText?: string): void {
-		const pending = this._clearPendingTurn();
-		if (!pending) return;
-		const text = (replyText ?? this.pendingAssistantText).trim() || '(no response)';
+	/**
+	 * Speak `text` via auto-TTS iff the browser supports it and the operator
+	 * has enabled auto-speak. Single guard shared by the ack and the reply so
+	 * the `ttsSupported && ttsAutoEnabled` check lives in one place.
+	 */
+	private maybeSpeak(text: string, opts: SpeakTextOptions): void {
+		if (!voiceState.ttsSupported || !voiceState.ttsAutoEnabled) return;
+		void speakText(text, opts);
+	}
+
+	/**
+	 * Finalize a completed turn: append the assistant reply (with any captured
+	 * tool activity), clear the pending render state, bump the session to the
+	 * top, auto-speak the reply, and fire the reply notification. Shared by the
+	 * streaming (`_finishPendingTurn`) and non-streaming (`send`) paths so the
+	 * sequence — including the answered-question note preservation — exists once.
+	 */
+	private finalizeTurn(args: {
+		sessionId: SessionId;
+		userText: string;
+		replyText?: string;
+	}): void {
+		const text = (args.replyText ?? this.pendingAssistantText).trim() || '(no response)';
 
 		// Preserve answered-question acknowledgment as a transcript note so
 		// "Answer sent." isn't lost when pendingQuestion is cleared below.
@@ -358,15 +383,25 @@ class ChatService {
 			: undefined;
 		this._appendAssistantReply(text, capturedToolStates);
 		this._resetPendingRenderState();
-		this._bumpSession(pending.sessionId);
-		if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && text && text !== '(no response)') {
-			void speakText(text, {
+		this._bumpSession(args.sessionId);
+		if (text !== '(no response)') {
+			this.maybeSpeak(text, {
 				mode: 'chat_reply',
-				userText: pending.userText,
+				userText: args.userText,
 				assistantText: text,
 			});
 		}
 		notifyAssistantReply(text === '(no response)' ? '' : text);
+	}
+
+	private _finishPendingTurn(replyText?: string): void {
+		const pending = this._clearPendingTurn();
+		if (!pending) return;
+		this.finalizeTurn({
+			sessionId: pending.sessionId,
+			userText: pending.userText,
+			replyText,
+		});
 		pending.resolve();
 	}
 
@@ -553,14 +588,9 @@ class ChatService {
 				sessionsError: '',
 			});
 		} catch (e) {
-			const err = e as { message?: string; status?: number };
-			const message =
-				err.status === 503 || err.status === 502
-					? 'Assistant is not reachable.'
-					: err.message ?? 'Failed to load sessions.';
 			this.setEndpointState(id, {
 				sessionsLoading: false,
-				sessionsError: message,
+				sessionsError: mapAssistantError(e, { fallback: 'Failed to load sessions.' }),
 			});
 		}
 	}
@@ -587,14 +617,10 @@ class ChatService {
 				this.entries = messages;
 			}
 		} catch (e) {
-			const err = e as { message?: string; status?: number };
-			if (err.status === 503 || err.status === 502) {
-				this.error = 'Assistant is not reachable. Try reconnecting.';
-			} else if (err.status === 401) {
-				this.error = 'Sign-in required.';
-			} else {
-				this.error = err.message ?? 'Failed to load messages.';
-			}
+			this.error = mapAssistantError(e, {
+				fallback: 'Failed to load messages.',
+				reconnectHint: true,
+			});
 		} finally {
 			this.entriesLoading = false;
 		}
@@ -665,12 +691,10 @@ class ChatService {
 		this._resetPendingRenderState();
 		this.error = '';
 		this.sending = true;
-		if (voiceState.ttsSupported && voiceState.ttsAutoEnabled) {
-			void speakText('Working on it.', {
-				mode: 'chat_ack',
-				userText: trimmed,
-			});
-		}
+		this.maybeSpeak('Working on it.', {
+			mode: 'chat_ack',
+			userText: trimmed,
+		});
 
 		try {
 			if (this._unsubscribeEvents && this.liveConnected) {
@@ -697,34 +721,19 @@ class ChatService {
 					.filter((p) => p.type === 'text' && p.text)
 					.map((p) => p.text ?? '')
 					.join('');
-				const text = replyText.trim() || '(no response)';
-				const capturedTools = this.pendingToolStates.length > 0
-					? [...this.pendingToolStates]
-					: undefined;
-				this._appendAssistantReply(text, capturedTools);
-				this._resetPendingRenderState();
-				this._bumpSession(sessionId);
-				if (voiceState.ttsSupported && voiceState.ttsAutoEnabled && text !== '(no response)') {
-					void speakText(text, {
-						mode: 'chat_reply',
-						userText: trimmed,
-						assistantText: text,
-					});
-				}
-				notifyAssistantReply(text === '(no response)' ? '' : text);
+				this.finalizeTurn({ sessionId, userText: trimmed, replyText });
 			}
 		} catch (e) {
-			const err = e as { status?: number; message?: string };
 			this._resetPendingRenderState();
-			if (err.status === 503 || err.status === 502) {
-				this.error = 'Assistant is not reachable. Try reconnecting.';
+			const status = (e as { status?: number } | null)?.status;
+			if (status === 503 || status === 502) {
 				// Clear active session so a retry can re-establish.
 				this.setEndpointState(this.activeEndpointId, { activeSessionId: null });
-			} else if (err.status === 401) {
-				this.error = 'Sign-in required.';
-			} else {
-				this.error = err.message ?? 'Message failed.';
 			}
+			this.error = mapAssistantError(e, {
+				fallback: 'Message failed.',
+				reconnectHint: true,
+			});
 			notifyAssistantError();
 		} finally {
 			this.sending = false;
