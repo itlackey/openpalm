@@ -4,6 +4,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { createLogger } from './logger.ts';
 import { readFileSync } from 'node:fs';
 
+import { json } from './http-util.ts';
 import { constantTimeEqual } from './crypto.ts';
 import { moderateMessage } from './moderation';
 import { upsertPrincipal } from './state-db';
@@ -21,10 +22,6 @@ type JsonObject = Record<string, unknown>;
 type AskAssistantResult =
   | { ok: true; sessionId: string; answer: string }
   | { ok: false; error: string; status: number; details?: string };
-
-function json(status: number, data: unknown): Response {
-  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
-}
 
 function readMcpToken(): string {
   if (!MCP_TOKEN_FILE) return '';

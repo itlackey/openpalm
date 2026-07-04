@@ -7,7 +7,7 @@
  * to keep it usable as a map key and session title.
  */
 
-import { asRecord } from './utils.ts';
+import { asRecord } from './http-util.ts';
 
 const SESSION_KEY_MAX_LENGTH = 256;
 

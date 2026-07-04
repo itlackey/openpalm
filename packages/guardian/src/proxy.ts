@@ -31,6 +31,7 @@
 import { matchAllowlist, type AllowlistMatch } from './oc-allowlist.ts';
 import { createLogger } from './logger.ts';
 
+import { json } from './http-util.ts';
 import { authenticate } from "./auth";
 import {
   type Principal,
@@ -84,12 +85,6 @@ setTurnAbortFn((sessionId) => {
 });
 
 const H_SESSION_KEY = 'x-openpalm-session-key';
-
-// ── Result type ───────────────────────────────────────────────────────────
-
-function json(status: number, data: unknown): Response {
-  return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
-}
 
 // ── Upstream request header construction ───────────────────────────────────
 

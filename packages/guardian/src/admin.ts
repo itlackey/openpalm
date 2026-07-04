@@ -1,5 +1,6 @@
 import { createLogger } from './logger.ts';
 
+import { json } from './http-util.ts';
 import { invalidatePrincipalCache } from './auth';
 import { constantTimeEqual } from './crypto.ts';
 import {
@@ -12,10 +13,6 @@ import {
 const logger = createLogger('guardian:admin');
 
 type JsonObject = Record<string, unknown>;
-
-function json(status: number, data: unknown): Response {
-  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
-}
 
 async function readBody(req: Request): Promise<JsonObject> {
   try {

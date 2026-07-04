@@ -5,7 +5,8 @@ import { OcClient } from './openai-api-oc-client.ts';
 import { loadPermissionPolicy, type PermissionPolicy } from './openai-api-permissions.ts';
 import { readOptionalSecretFile } from './openai-api-secret-file.ts';
 import { streamTurn, openAiChatFramer, openAiLegacyFramer, anthropicFramer, type SseFramer } from './openai-api-stream.ts';
-import { asRecord, extractChatText } from './openai-api-utils.ts';
+import { extractChatText } from './openai-api-utils.ts';
+import { asRecord, json } from './http-util.ts';
 import { resolveGuardianUrl } from './config.ts';
 
 type ErrorFormatter = (message: string, type?: string) => Record<string, unknown>;
@@ -17,10 +18,6 @@ function openAIError(message: string, type = 'invalid_request_error') {
 
 function anthropicError(message: string, type = 'invalid_request_error') {
   return { type: 'error', error: { type, message } };
-}
-
-function json(status: number, data: unknown): Response {
-  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 }
 
 function guardianErrorResponse(err: unknown, formatError: ErrorFormatter, jsonResp: (status: number, data: unknown) => Response): Response {
