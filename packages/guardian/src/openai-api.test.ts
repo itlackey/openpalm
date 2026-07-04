@@ -1,4 +1,7 @@
 import { describe, expect, it, afterEach } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { GuardianOpenAiApi } from './openai-api.ts';
 
 const REAL_FETCH = globalThis.fetch;
@@ -193,6 +196,76 @@ describe('guardian openai api non-streaming policy characterization', () => {
     // No permission reply and no question rejection were ever sent.
     expect(calls.some((call) => call.url.includes('/permission/'))).toBe(false);
     expect(calls.some((call) => call.url.includes('/question/'))).toBe(false);
+  });
+});
+
+// --- injected client reaches BOTH paths + secret is cached ---------------------
+// Proves the injected fetch (passed to createFetch) is shared with the streaming
+// path (previously it only reached the non-streaming forward() path because the
+// streaming ocClient was built without _fetchFn), and that the secret file is
+// read from disk once and cached by path.
+describe('guardian openai api shared injectable client', () => {
+  it('routes BOTH streaming and non-streaming through the injected fetch, never globalThis', async () => {
+    const injectedCalls: string[] = [];
+    const injected = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      const path = String(input).replace('http://guardian:8080/oc', '');
+      injectedCalls.push(`${method} ${path}`);
+      if (method === 'POST' && path === '/session') return Promise.resolve(Response.json({ id: 's1' }));
+      if (method === 'GET' && path === '/event') {
+        const sse = [
+          JSON.stringify({ type: 'message.part.delta', properties: { sessionID: 's1', delta: 'hi' } }),
+          JSON.stringify({ type: 'session.idle', properties: { sessionID: 's1' } }),
+        ].map((frame) => `data: ${frame}\n\n`).join('');
+        return Promise.resolve(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }));
+      }
+      if (method === 'POST' && path === '/session/s1/message') return Promise.resolve(new Response(JSON.stringify({ parts: [] }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      return Promise.resolve(new Response('not found', { status: 404 }));
+    }) as typeof fetch;
+    // If either path falls back to globalThis.fetch it must surface as a failure.
+    (globalThis as { fetch: typeof fetch }).fetch = (() => { throw new Error('globalThis.fetch must not be used'); }) as typeof fetch;
+
+    const api = new GuardianOpenAiApi();
+    Object.defineProperty(api, 'secret', { get: () => 'test-secret' });
+    Object.defineProperty(api, 'apiKey', { get: () => '' });
+    const handler = api.createFetch(injected);
+
+    const nonStream = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hi' }] }) }));
+    expect(nonStream.status).toBe(200);
+    const nonStreamCount = injectedCalls.length;
+    expect(nonStreamCount).toBeGreaterThan(0);
+
+    const streamResp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', stream: true, messages: [{ role: 'user', content: 'hi' }] }) }));
+    expect(streamResp.status).toBe(200);
+    // Drain the stream so the underlying fetch calls actually execute.
+    await streamResp.text();
+
+    const streamingCalls = injectedCalls.slice(nonStreamCount);
+    expect(streamingCalls).toContain('POST /session');
+    expect(streamingCalls).toContain('GET /event');
+  });
+
+  it('reads the secret file from disk once and caches it by path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'op-secret-'));
+    const fileA = join(dir, 'a.secret');
+    const fileB = join(dir, 'b.secret');
+    writeFileSync(fileA, 'secret-A\n');
+    writeFileSync(fileB, 'secret-B\n');
+    const prev = Bun.env.PRINCIPAL_SECRET_FILE;
+    try {
+      Bun.env.PRINCIPAL_SECRET_FILE = fileA;
+      const api = new GuardianOpenAiApi();
+      expect(api.secret).toBe('secret-A');
+      // Mutate on disk; a cached read must NOT observe the change (proves one read).
+      writeFileSync(fileA, 'CHANGED\n');
+      expect(api.secret).toBe('secret-A');
+      // Switching the env path re-reads from disk.
+      Bun.env.PRINCIPAL_SECRET_FILE = fileB;
+      expect(api.secret).toBe('secret-B');
+    } finally {
+      if (prev === undefined) delete Bun.env.PRINCIPAL_SECRET_FILE; else Bun.env.PRINCIPAL_SECRET_FILE = prev;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

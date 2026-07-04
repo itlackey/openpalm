@@ -85,6 +85,19 @@ function anthropicMessageEnvelope(id: string, model: string, answer: string): Re
 
 const log = createLogger('guardian:openai-api');
 
+// Cache secret-file reads keyed by the resolved path, so the auth gate and the
+// forward/stream paths don't hit the filesystem on every request (mirrors
+// admin.ts's readAdminToken caching). A changed env path re-reads.
+const secretFileCache = new Map<string, string>();
+function readCachedSecretFile(envKey: string): string {
+  const path = Bun.env[envKey]?.trim() ?? '';
+  const cached = secretFileCache.get(path);
+  if (cached !== undefined) return cached;
+  const value = readOptionalSecretFile(envKey);
+  secretFileCache.set(path, value);
+  return value;
+}
+
 export class GuardianOpenAiApi {
   name = Bun.env.PRINCIPAL_ID ?? 'api';
   port: number = Number(Bun.env.PORT) || 8182;
@@ -94,16 +107,18 @@ export class GuardianOpenAiApi {
   private ocClientInstance: OcClient | null = null;
 
   get apiKey(): string {
-    return readOptionalSecretFile('OPENAI_COMPAT_API_KEY_FILE');
+    return readCachedSecretFile('OPENAI_COMPAT_API_KEY_FILE');
   }
 
   get secret(): string {
-    return readOptionalSecretFile('PRINCIPAL_SECRET_FILE');
+    return readCachedSecretFile('PRINCIPAL_SECRET_FILE');
   }
 
+  // Single OcClient shared by the streaming and non-streaming paths, built with
+  // the injected _fetchFn so both paths are testable through one fake fetch.
   private get ocClient(): OcClient {
     if (!this.ocClientInstance) {
-      this.ocClientInstance = new OcClient({ principalId: this.name, secret: this.secret, baseUrl: `${this.guardianUrl}/oc` });
+      this.ocClientInstance = new OcClient({ principalId: this.name, secret: this.secret, baseUrl: `${this.guardianUrl}/oc`, fetch: this._fetchFn });
     }
     return this.ocClientInstance;
   }
@@ -129,8 +144,8 @@ export class GuardianOpenAiApi {
     log[level](message, extra);
   }
 
-  private async forward(result: ForwardResult): Promise<Response> {
-    const client = new OcClient({ principalId: this.name, secret: this.secret, baseUrl: `${this.guardianUrl}/oc`, fetch: this._fetchFn });
+  private async forward(result: ForwardResult): Promise<{ answer: string }> {
+    const client = this.ocClient;
     const sessionKey = typeof result.metadata?.sessionKey === 'string' ? result.metadata.sessionKey : result.userId;
     const controller = new AbortController();
     const session = await client.createSession(result.userId, sessionKey);
@@ -138,7 +153,7 @@ export class GuardianOpenAiApi {
     await client.prompt(result.userId, session.id, result.text);
     const answer = await answerPromise;
     controller.abort();
-    return new Response(JSON.stringify({ userId: result.userId, sessionId: session.id, answer }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return { answer };
   }
 
   async route(req: Request, url: URL): Promise<Response | null> {
@@ -219,10 +234,8 @@ export class GuardianOpenAiApi {
     }
     let answer = '';
     try {
-      const guardResp = await this.forward({ userId, text, metadata: { model } });
-      if (!guardResp.ok) throw new Error(`Guardian returned status ${guardResp.status}`);
-      const data = await guardResp.json() as { answer?: string };
-      answer = data.answer ?? '';
+      const result = await this.forward({ userId, text, metadata: { model } });
+      answer = result.answer;
     } catch (err) {
       this.logMessage('error', 'guardian_error', { requestId, error: err instanceof Error ? err.message : String(err) });
       return guardianErrorResponse(err, spec.formatError, json);
