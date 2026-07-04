@@ -10,4 +10,5 @@
  */
 export * from './runtime.ts';
 export * from './base-portal.ts';
+export * from './deliver-buffered.ts';
 export * from './render-turn.ts';

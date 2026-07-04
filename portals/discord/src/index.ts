@@ -1,9 +1,10 @@
 import {
   BasePortal,
   createLogger,
+  deliverBufferedAnswer,
+  type DeliverySink,
   OcClient,
   readRequiredSecretFile,
-  splitMessage,
 } from '@openpalm/portal-sdk';
 import {
   Client,
@@ -315,27 +316,26 @@ export default class DiscordChannel extends BasePortal {
 
     const stopTyping = await this.sendTypingLoop(thread);
 
-    try {
-      const resp = await this.forward({ userId: `discord:${userInfo.userId}`, text, metadata }, undefined, this.forwardTimeoutMs || undefined);
-      if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
-      const { answer = "No response received." } = await resp.json() as { answer?: string };
-      stopTyping();
-      await this.sendSplitMessage(thread, answer);
+    const result = await deliverBufferedAnswer({
+      forward: () => this.forward({ userId: `discord:${userInfo.userId}`, text, metadata }, undefined, this.forwardTimeoutMs || undefined),
+      sink: { postChunk: (chunk) => thread.send(chunk) },
+      maxLength: this.maxMessageLength,
+      interChunkDelayMs: 300,
+      onSettled: stopTyping,
+    });
+    if (result.ok) {
       log.info("message_completed", {
         userId: userInfo.userId,
         guildId: userInfo.guildId,
         threadId: thread.id,
         sessionKey: metadata.sessionKey,
       });
-    } catch (error) {
-      stopTyping();
-      const errMsg = error instanceof Error ? error.message : String(error);
+    } else {
       log.error("message_error", {
-        error: errMsg,
+        error: result.error,
         userId: userInfo.userId,
         sessionKey: metadata.sessionKey,
       });
-      await thread.send(`Error: ${errMsg}`);
     }
   }
 
@@ -587,8 +587,11 @@ export default class DiscordChannel extends BasePortal {
 
     await this.conversationQueue.runOrQueue(sessionKey, {
       run: async () => {
-        try {
-          const resp = await this.forward({
+        const sink: DeliverySink = shouldQueue
+          ? { postChunk: (chunk) => interaction.followUp({ content: chunk, flags: MessageFlags.Ephemeral }) }
+          : { postChunk: (chunk) => interaction.followUp(chunk), editChunk: (chunk) => interaction.editReply(chunk) };
+        const result = await deliverBufferedAnswer({
+          forward: () => this.forward({
             userId: `discord:${userInfo.userId}`,
             text,
             metadata: {
@@ -598,39 +601,19 @@ export default class DiscordChannel extends BasePortal {
               channelId: interaction.channelId,
               sessionKey,
             },
-          }, undefined, this.forwardTimeoutMs || undefined);
-          if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
-          const { answer = "No response received." } = await resp.json() as { answer?: string };
-
-          const chunks = splitMessage(answer, this.maxMessageLength);
-          const firstChunk = chunks[0] ?? "No response received.";
-
-          if (shouldQueue) {
-            await interaction.followUp({ content: firstChunk, flags: MessageFlags.Ephemeral });
-            for (let i = 1; i < chunks.length; i++) {
-              await interaction.followUp({ content: chunks[i], flags: MessageFlags.Ephemeral });
-            }
-          } else {
-            await interaction.editReply(firstChunk);
-            for (let i = 1; i < chunks.length; i++) {
-              await interaction.followUp(chunks[i]);
-            }
-          }
-
+          }, undefined, this.forwardTimeoutMs || undefined),
+          sink,
+          maxLength: this.maxMessageLength,
+        });
+        if (result.ok) {
           log.info("command_completed", {
             command: commandName,
             userId: userInfo.userId,
             guildId: userInfo.guildId,
             sessionKey,
           });
-        } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error);
-          log.error("command_error", { command: commandName, error: errMsg, sessionKey });
-          if (shouldQueue) {
-            await interaction.followUp({ content: `Error: ${errMsg}`, flags: MessageFlags.Ephemeral });
-          } else {
-            await interaction.editReply(`Error: ${errMsg}`);
-          }
+        } else {
+          log.error("command_error", { command: commandName, error: result.error, sessionKey });
         }
       },
     });
@@ -693,13 +676,4 @@ export default class DiscordChannel extends BasePortal {
 
   // ── Discord Message Utilities ───────────────────────────────────────────
 
-  private async sendSplitMessage(channel: ThreadChannel, text: string): Promise<void> {
-    const chunks = splitMessage(text, this.maxMessageLength);
-    for (const chunk of chunks) {
-      await channel.send(chunk);
-      if (chunks.length > 1) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-    }
-  }
 }

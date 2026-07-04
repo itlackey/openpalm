@@ -1,9 +1,9 @@
 import {
   BasePortal,
   createLogger,
+  deliverBufferedAnswer,
   OcClient,
   readRequiredSecretFile,
-  splitMessage,
 } from '@openpalm/portal-sdk';
 import { App, type GenericMessageEvent, type KnownEventFromType } from "@slack/bolt";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
@@ -502,8 +502,8 @@ export default class SlackChannel extends BasePortal {
           });
           const thinkingTs = thinkingResult.ts;
 
-          try {
-            const resp = await this.forward({
+          const result = await deliverBufferedAnswer({
+            forward: () => this.forward({
               userId: `slack:${userInfo.userId}`,
               text,
               metadata: {
@@ -513,50 +513,30 @@ export default class SlackChannel extends BasePortal {
                 channelId,
                 sessionKey,
               },
-            }, undefined, this.forwardTimeoutMs);
-            if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
-            const { answer = "No response received." } = await resp.json() as { answer?: string };
-
-            const chunks = splitMessage(answer, this.maxMessageLength);
-            const firstChunk = chunks[0] ?? "No response received.";
-
-            if (thinkingTs) {
-              await client.chat.update({
-                channel: channelId,
-                ts: thinkingTs,
-                text: firstChunk,
-              });
-            }
-            for (let i = 1; i < chunks.length; i++) {
-              await client.chat.postMessage({
-                channel: channelId,
-                text: chunks[i],
-                thread_ts: thinkingTs,
-              });
-            }
-
+            }, undefined, this.forwardTimeoutMs),
+            sink: {
+              postChunk: (chunk) => client.chat.postMessage({ channel: channelId, text: chunk, thread_ts: thinkingTs }),
+              editChunk: async (chunk) => {
+                if (thinkingTs) await client.chat.update({ channel: channelId, ts: thinkingTs, text: chunk });
+              },
+            },
+            maxLength: this.maxMessageLength,
+          });
+          if (result.ok) {
             log.info("modal_submission_completed", {
               source: metadata.source,
               userId: userInfo.userId,
               channelId,
               sessionKey,
             });
-          } catch (error) {
-            const errMsg = error instanceof Error ? error.message : String(error);
+          } else {
             log.error("modal_submission_error", {
               source: metadata.source,
               userId: userInfo.userId,
               channelId,
               sessionKey,
-              error: errMsg,
+              error: result.error,
             });
-            if (thinkingTs) {
-              await client.chat.update({
-                channel: channelId,
-                ts: thinkingTs,
-                text: `Error: ${errMsg}`,
-              });
-            }
           }
         },
       });
@@ -655,8 +635,8 @@ export default class SlackChannel extends BasePortal {
         });
         const thinkingTs = thinkingResult.ts;
 
-        try {
-          const resp = await this.forward({
+        const result = await deliverBufferedAnswer({
+          forward: () => this.forward({
             userId: `slack:${userInfo.userId}`,
             text,
             metadata: {
@@ -666,45 +646,26 @@ export default class SlackChannel extends BasePortal {
               channelId: command.channel_id,
               sessionKey,
             },
-          }, undefined, this.forwardTimeoutMs);
-          if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
-          const { answer = "No response received." } = await resp.json() as { answer?: string };
-
-          // Replace thinking message with answer
-          const chunks = splitMessage(answer, this.maxMessageLength);
-          const firstChunk = chunks[0] ?? "No response received.";
-          if (thinkingTs) {
-            await client.chat.update({
-              channel: command.channel_id,
-              ts: thinkingTs,
-              text: firstChunk,
-            });
-          }
-          // Thread follow-up chunks under the initial message
-          for (let i = 1; i < chunks.length; i++) {
-            await client.chat.postMessage({
-              channel: command.channel_id,
-              text: chunks[i],
-              thread_ts: thinkingTs,
-            });
-          }
-
+          }, undefined, this.forwardTimeoutMs),
+          sink: {
+            // Thread follow-up chunks under the initial message
+            postChunk: (chunk) => client.chat.postMessage({ channel: command.channel_id, text: chunk, thread_ts: thinkingTs }),
+            // Replace thinking message with the first chunk / error
+            editChunk: async (chunk) => {
+              if (thinkingTs) await client.chat.update({ channel: command.channel_id, ts: thinkingTs, text: chunk });
+            },
+          },
+          maxLength: this.maxMessageLength,
+        });
+        if (result.ok) {
           log.info("command_completed", {
             command: "ask",
             userId: userInfo.userId,
             channelId: command.channel_id,
             sessionKey,
           });
-        } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error);
-          log.error("command_error", { command: "ask", error: errMsg, sessionKey });
-          if (thinkingTs) {
-            await client.chat.update({
-              channel: command.channel_id,
-              ts: thinkingTs,
-              text: `Error: ${errMsg}`,
-            });
-          }
+        } else {
+          log.error("command_error", { command: "ask", error: result.error, sessionKey });
         }
       },
     });
@@ -836,8 +797,8 @@ export default class SlackChannel extends BasePortal {
       // Best-effort indicator; continue even if it fails
     }
 
-    try {
-      const resp = await this.forward({
+    const result = await deliverBufferedAnswer({
+      forward: () => this.forward({
         userId: `slack:${userInfo.userId}`,
         text,
         metadata: {
@@ -846,49 +807,34 @@ export default class SlackChannel extends BasePortal {
           channelId: channel,
           sessionKey,
         },
-      }, undefined, this.forwardTimeoutMs);
-      if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
-      const { answer = "No response received." } = await resp.json() as { answer?: string };
-
-      // Replace thinking message with first chunk, post remaining as follow-ups
-      const chunks = splitMessage(answer, this.maxMessageLength);
-      const firstChunk = chunks[0] ?? "No response received.";
-
-      if (thinkingTs) {
-        try {
-          await client.chat.update({ channel, ts: thinkingTs, text: firstChunk });
-        } catch {
-          // If update fails, just post as new message
-          await client.chat.postMessage({ channel, text: firstChunk, thread_ts: threadTs });
-        }
-      } else {
-        await client.chat.postMessage({ channel, text: firstChunk, thread_ts: threadTs });
-      }
-
-      for (let i = 1; i < chunks.length; i++) {
-        await client.chat.postMessage({ channel, text: chunks[i], thread_ts: threadTs });
-      }
-
+      }, undefined, this.forwardTimeoutMs),
+      sink: {
+        postChunk: (chunk) => client.chat.postMessage({ channel, text: chunk, thread_ts: threadTs }),
+        // Replace thinking message with the first chunk / error, or post as a new
+        // message if there is no placeholder or the update fails.
+        editChunk: async (chunk) => {
+          if (thinkingTs) {
+            try {
+              await client.chat.update({ channel, ts: thinkingTs, text: chunk });
+              return;
+            } catch {
+              // fall through to post as new message
+            }
+          }
+          await client.chat.postMessage({ channel, text: chunk, thread_ts: threadTs });
+        },
+      },
+      maxLength: this.maxMessageLength,
+    });
+    if (result.ok) {
       log.info("message_completed", {
         userId: userInfo.userId,
         channelId: channel,
         threadTs,
         sessionKey,
       });
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      log.error("message_error", { error: errMsg, userId: userInfo.userId, sessionKey });
-
-      // Replace thinking message with error, or post error as new message
-      if (thinkingTs) {
-        try {
-          await client.chat.update({ channel, ts: thinkingTs, text: `Error: ${errMsg}` });
-          return;
-        } catch {
-          // fall through to post as new message
-        }
-      }
-      await client.chat.postMessage({ channel, text: `Error: ${errMsg}`, thread_ts: threadTs });
+    } else {
+      log.error("message_error", { error: result.error, userId: userInfo.userId, sessionKey });
     }
   }
 
