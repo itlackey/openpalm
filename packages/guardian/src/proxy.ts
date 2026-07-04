@@ -493,7 +493,7 @@ async function screenPromptBody(
   return moderation;
 }
 
-function rewritePromptBody(body: string): string {
+export function rewritePromptBody(body: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -503,13 +503,7 @@ function rewritePromptBody(body: string): string {
   const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? parsed as { parts?: unknown }
     : {};
-  const parts = Array.isArray(record.parts) ? record.parts : [];
-  const rewritten = parts.length > 0
-    ? parts.map((part, index) => index === 0 && part && typeof part === 'object'
-        ? { ...(part as Record<string, unknown>), text: refusalText() }
-        : part)
-    : [{ type: 'text', text: refusalText() }];
-  return JSON.stringify({ ...record, parts: rewritten });
+  return JSON.stringify({ ...record, parts: [{ type: 'text', text: refusalText() }] });
 }
 
 function refusalText(): string {
