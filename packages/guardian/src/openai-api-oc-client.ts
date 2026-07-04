@@ -1,4 +1,5 @@
 import { resolveGuardianUrl } from './config.ts';
+import { parseSseFrames, extractData } from './sse.ts';
 
 type Event = Record<string, unknown>;
 
@@ -90,18 +91,16 @@ export class OcClient {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        let boundary = buffer.indexOf('\n\n');
-        while (boundary !== -1) {
-          const frame = buffer.slice(0, boundary);
-          buffer = buffer.slice(boundary + 2);
-          const data = extractSseData(frame);
+        const { frames, rest } = parseSseFrames(buffer);
+        buffer = rest;
+        for (const frame of frames) {
+          const data = extractData(frame);
           if (data !== null) {
             try {
               yield JSON.parse(data) as Event;
             } catch {
             }
           }
-          boundary = buffer.indexOf('\n\n');
         }
       }
     } finally {
@@ -115,12 +114,4 @@ export class OcClient {
 
 export function createGatewayClient(baseUrl: string, principalId: string, secret: string, fetchFn?: typeof fetch): OcClient {
   return new OcClient({ baseUrl, principalId, secret, fetch: fetchFn });
-}
-
-function extractSseData(frame: string): string | null {
-  const dataLines: string[] = [];
-  for (const line of frame.split(/\r?\n/)) {
-    if (line.startsWith('data:')) dataLines.push(line.slice(line.startsWith('data: ') ? 6 : 5));
-  }
-  return dataLines.length === 0 ? null : dataLines.join('\n');
 }

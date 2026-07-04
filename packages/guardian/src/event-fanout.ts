@@ -41,6 +41,7 @@ import {
 import { endTurnsForSession } from "./oc-bounds";
 import { runDriftCheck } from './drift';
 import { ASSISTANT_URL } from './config';
+import { parseSseFrames, extractData } from './sse.ts';
 
 const logger = createLogger("guardian:event");
 
@@ -251,49 +252,12 @@ export function broadcastUpstreamReset(error: { name: string; message: string })
  * Exported for unit tests.
  */
 export function consumeSseBuffer(buffer: string): string {
-  let working = buffer;
-  // Frames are separated by a blank line: "\n\n" (tolerate "\r\n\r\n").
-  let boundary = nextFrameBoundary(working);
-  while (boundary !== -1) {
-    const rawFrame = working.slice(0, boundary);
-    working = working.slice(advancePastBoundary(working, boundary));
+  const { frames, rest } = parseSseFrames(buffer);
+  for (const rawFrame of frames) {
     const dataPayload = extractData(rawFrame);
     if (dataPayload !== null) routeFrame(dataPayload);
-    boundary = nextFrameBoundary(working);
   }
-  return working;
-}
-
-function nextFrameBoundary(s: string): number {
-  const lf = s.indexOf("\n\n");
-  const crlf = s.indexOf("\r\n\r\n");
-  if (lf === -1) return crlf;
-  if (crlf === -1) return lf;
-  return Math.min(lf, crlf);
-}
-
-function advancePastBoundary(s: string, boundary: number): number {
-  // Skip the blank-line separator itself.
-  if (s.startsWith("\r\n\r\n", boundary)) return boundary + 4;
-  return boundary + 2;
-}
-
-/**
- * Extract the concatenated `data:` field value from one SSE frame (per the SSE
- * spec a frame may have multiple `data:` lines joined by "\n"). Ignores comment
- * (":") lines and other fields (event:, id:). Returns null if the frame has no
- * data line (e.g. a heartbeat comment).
- */
-function extractData(rawFrame: string): string | null {
-  const dataLines: string[] = [];
-  for (const line of rawFrame.split(/\r?\n/)) {
-    if (line.startsWith("data:")) {
-      // Per spec a single leading space after the colon is stripped.
-      dataLines.push(line.slice(line.startsWith("data: ") ? 6 : 5));
-    }
-  }
-  if (dataLines.length === 0) return null;
-  return dataLines.join("\n");
+  return rest;
 }
 
 /**
