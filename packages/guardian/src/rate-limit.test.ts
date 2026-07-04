@@ -58,10 +58,24 @@ describe("Rate limiting (allow)", () => {
 });
 
 describe("activeRateLimiters", () => {
-  it("classifies real oc: keys: per-user (4 segments) vs per-principal (3 segments)", () => {
-    // Mirror the exact keys proxy.ts gate 1c emits:
-    //   per-user      → oc:<kind>:<id>:<userId>  (4 colon-segments)
-    //   per-principal → oc:<kind>:<id>           (3 colon-segments)
+  it("classifies explicit user/portal prefixes without relying on colon counts", () => {
+    const id = crypto.randomUUID();
+    const userId = `discord:${crypto.randomUUID()}`;
+    const userKey = `user:oc:portal:${id}:${userId}`;
+    const portalKey = `portal:oc:portal:${id}`;
+
+    const before = activeRateLimiters();
+
+    allow(userKey, USER_RATE_LIMIT, USER_RATE_WINDOW_MS);
+    allow(portalKey, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS);
+
+    const after = activeRateLimiters();
+
+    expect(after.activeUserLimiters).toBe(before.activeUserLimiters + 1);
+    expect(after.activePortalLimiters).toBe(before.activePortalLimiters + 1);
+  });
+
+  it("keeps the legacy oc: key behavior for existing buckets", () => {
     const id = crypto.randomUUID();
     const userId = crypto.randomUUID();
     const userKey = `oc:portal:${id}:${userId}`;
@@ -74,8 +88,6 @@ describe("activeRateLimiters", () => {
 
     const after = activeRateLimiters();
 
-    // The per-user key must count as a user limiter and the per-principal key as
-    // a portal limiter — the classification bug counted both as user limiters.
     expect(after.activeUserLimiters).toBe(before.activeUserLimiters + 1);
     expect(after.activePortalLimiters).toBe(before.activePortalLimiters + 1);
   });
