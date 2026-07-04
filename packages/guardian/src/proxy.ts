@@ -169,6 +169,10 @@ export async function handleProxy(
   // ── Gate 1c: per-user / per-portal rate limit (§3.6) — counts discrete ──
   // signed calls (a GET /event open counts as one). BEFORE the nonce check (H3
   // discipline: a rate-limited flood must not burn nonce-store capacity).
+  // Bucket keys carry an explicit `user:` / `portal:` prefix so rate-limit.ts
+  // classifies them by prefix rather than by counting `:` segments — userIds
+  // may themselves contain colons (e.g. `discord:<id>`), which broke the old
+  // segment-count heuristic.
   if (
     !allow(`user:oc:${authenticated.kind}:${authenticated.id}:${authenticated.userId}`, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) ||
     !allow(`portal:oc:${authenticated.kind}:${authenticated.id}`, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS)
