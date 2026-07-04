@@ -3,7 +3,6 @@ import {
   createLogger,
   deliverBufferedAnswer,
   type DeliverySink,
-  OcClient,
   readRequiredSecretFile,
 } from '@openpalm/portal-sdk';
 import {
@@ -23,7 +22,6 @@ import {
 import { buildCommandRegistry, parseCustomCommands, resolvePromptTemplate } from "./commands.ts";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
 import { streamTurn, DISCORD_SESSION_PREAMBLE, type PendingQuestion } from "./stream-render.ts";
-import { OcEventHub } from "./oc-event-hub.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -65,17 +63,6 @@ export default class DiscordChannel extends BasePortal {
    */
   private streamingEnabled = Bun.env.DISCORD_STREAMING === "true";
 
-  /** Lazily-built native OpenCode client through the guardian /oc/* proxy. */
-  private ocClientInstance: OcClient | null = null;
-
-  /**
-   * One shared /event subscription per principal. Concurrent threads from the
-   * same user fan out from a SINGLE upstream stream, so we never trip the
-   * guardian's per-principal concurrent-stream cap (the /event stream is already
-   * principal-scoped — opening one per thread was redundant).
-   */
-  private ocEventHubInstance: OcEventHub | null = null;
-
   /**
    * Pending interactive `question` per thread, so the user can answer by typing a
    * normal message in the thread (not only by clicking a button). Set by the
@@ -92,24 +79,6 @@ export default class DiscordChannel extends BasePortal {
    * for a session on /clear so a fresh OpenCode session gets primed again.
    */
   private primedSessions = new Set<string>();
-
-  private get ocClient(): OcClient {
-    if (!this.ocClientInstance) {
-      this.ocClientInstance = new OcClient({
-        principalId: this.name,
-        secret: this.secret,
-        baseUrl: `${this.guardianUrl}/oc`,
-      });
-    }
-    return this.ocClientInstance;
-  }
-
-  private get ocEventHub(): OcEventHub {
-    if (!this.ocEventHubInstance) {
-      this.ocEventHubInstance = new OcEventHub(this.ocClient);
-    }
-    return this.ocEventHubInstance;
-  }
 
   get botToken(): string {
     return readRequiredSecretFile("DISCORD_BOT_TOKEN_FILE");
@@ -297,7 +266,7 @@ export default class DiscordChannel extends BasePortal {
           sessionKey,
           text,
           sessionPreamble,
-          subscribeEvents: () => this.ocEventHub.subscribe(`discord:${userInfo.userId}`),
+          subscribeEvents: () => this.eventHub.subscribe(`discord:${userInfo.userId}`),
           triggerMessage,
           setPendingQuestion: (pending) => {
             if (pending) this.pendingQuestions.set(thread.id, pending);

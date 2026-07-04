@@ -2,7 +2,6 @@ import {
   BasePortal,
   createLogger,
   deliverBufferedAnswer,
-  OcClient,
   readRequiredSecretFile,
 } from '@openpalm/portal-sdk';
 import { App, type GenericMessageEvent, type KnownEventFromType } from "@slack/bolt";
@@ -68,21 +67,8 @@ export default class SlackChannel extends BasePortal {
    */
   private streamingEnabled = Bun.env.SLACK_STREAMING === "true";
 
-  /** Lazily-built native OpenCode client through the guardian /oc/* proxy. */
-  private ocClientInstance: OcClient | null = null;
   /** Lazily-built permission/stop interaction registry (wired to app.action). */
   private permissionRegistryInstance: SlackPermissionRegistry | null = null;
-
-  private get ocClient(): OcClient {
-    if (!this.ocClientInstance) {
-      this.ocClientInstance = new OcClient({
-        principalId: this.name,
-        secret: this.secret,
-        baseUrl: `${this.guardianUrl}/oc`,
-      });
-    }
-    return this.ocClientInstance;
-  }
 
   private get permissionRegistry(): SlackPermissionRegistry {
     if (!this.permissionRegistryInstance) {
@@ -774,6 +760,7 @@ export default class SlackChannel extends BasePortal {
           threadTs,
           sessionKey,
           text,
+          subscribeEvents: () => this.eventHub.subscribe(`slack:${userInfo.userId}`),
         });
         log.info("stream_completed", { userId: userInfo.userId, channelId: channel, threadTs, sessionKey });
       } catch (error) {

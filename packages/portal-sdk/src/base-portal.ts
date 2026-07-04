@@ -26,6 +26,7 @@ import {
   readRequiredSecretFile,
   SecretFileError,
 } from './runtime.ts';
+import { OcEventHub } from './oc-event-hub.ts';
 
 /** The structured logger shape produced by {@link createLogger}. */
 export type PortalLogger = ReturnType<typeof createLogger>;
@@ -47,20 +48,18 @@ export function json(status: number, data: unknown): Response {
 }
 
 /**
- * Drive one buffered turn to completion: subscribe to the principal's filtered
- * /event stream and accumulate assistant text deltas (skipping reasoning parts)
- * until the session reaches turn-end. Returns the assembled answer, or a
- * `(no response)` sentinel when the turn produced no text.
+ * Drive one buffered turn to completion: consume the principal's filtered /event
+ * stream (supplied as an already-open subscription — the per-principal
+ * {@link OcEventHub} fans ONE upstream stream out to concurrent turns) and
+ * accumulate assistant text deltas (skipping reasoning parts) until the session
+ * reaches turn-end. Returns the assembled answer, or a `(no response)` sentinel
+ * when the turn produced no text. The caller owns the subscription's lifecycle
+ * (close it when the turn ends).
  */
-export async function collectTurnAnswer(
-  client: OcClient,
-  userId: string,
-  sessionId: string,
-  signal: AbortSignal,
-): Promise<string> {
+export async function collectTurnAnswer(events: AsyncIterable<unknown>, sessionId: string): Promise<string> {
   const reasoningPartIds = new Set<string>();
   let answer = '';
-  for await (const event of client.events(userId, signal)) {
+  for await (const event of events) {
     const raw = asRaw(event);
     const snapshot = partSnapshotType(raw);
     if (snapshot?.type === 'reasoning') reasoningPartIds.add(snapshot.partID);
@@ -81,6 +80,20 @@ export abstract class BasePortal {
   guardianUrl = 'http://guardian:8080';
   protected _fetchFn: typeof fetch = fetch;
   protected conversationQueue = new ConversationQueue();
+
+  /**
+   * The ONE guardian /oc client and the ONE per-principal /event hub for this
+   * portal, shared by ALL three stream-opening paths — the buffered
+   * (non-streaming) turn here in {@link forward}, and each portal's streaming
+   * turn (which subscribes through {@link eventHub}). The guardian caps concurrent
+   * /event streams per principal at 1, so a second open 429s and silently loses
+   * its turn; funnelling every path through this single hub guarantees at most one
+   * upstream /event stream per principal even when a streamed turn and a buffered
+   * turn (e.g. a `/ask` slash command) run concurrently for the same user. Built
+   * lazily on first use so `_fetchFn` is already wired.
+   */
+  private _ocClient: OcClient | null = null;
+  private _eventHub: OcEventHub | null = null;
 
   /**
    * Threads the bot is actively participating in: key → last-activity ms. The
@@ -135,27 +148,63 @@ export abstract class BasePortal {
    * and collect the buffered answer. An optional positive `timeoutMs` aborts the
    * whole turn; `0`/undefined means no timeout.
    */
-  protected async forward(result: ForwardResult, fetchFn?: typeof fetch, timeoutMs?: number): Promise<Response> {
-    const fn = fetchFn ?? this._fetchFn;
+  protected async forward(result: ForwardResult, _fetchFn?: typeof fetch, timeoutMs?: number): Promise<Response> {
     const controller = timeoutMs && timeoutMs > 0 ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    const client = this.ocClient;
+    // Subscribe to the principal's shared /event stream FIRST (before prompting)
+    // so no frame is missed; the hub fans ONE upstream stream out to concurrent
+    // same-principal turns (streamed OR buffered). A per-turn timeout closes THIS
+    // subscription (ending the collect loop) without disturbing other turns on the
+    // shared stream.
+    const subscription = this.eventHub.subscribe(result.userId);
+    controller?.signal.addEventListener('abort', () => subscription.close(), { once: true });
     try {
-      const client = new OcClient({
-        principalId: Bun.env.PRINCIPAL_ID ?? this.name,
-        secret: this.secret,
-        baseUrl: `${this.guardianUrl}/oc`,
-        fetch: fn,
-      });
       const sessionKey = typeof result.metadata?.sessionKey === 'string' ? result.metadata.sessionKey : result.userId;
       const session = await client.createSession(result.userId, sessionKey);
-      const answerPromise = collectTurnAnswer(client, result.userId, session.id, controller?.signal ?? new AbortController().signal);
+      const answerPromise = collectTurnAnswer(subscription, session.id);
       await client.prompt(result.userId, session.id, result.text);
       const answer = await answerPromise;
       return json(200, { userId: result.userId, sessionId: session.id, answer });
     } finally {
       if (timer) clearTimeout(timer);
       controller?.abort();
+      subscription.close();
     }
+  }
+
+  /**
+   * The single guardian /oc client for this portal. Every path — buffered turns,
+   * streaming turns, permission/question replies — MUST route through this one
+   * instance so they all resolve to the same guardian principal (and share the
+   * one {@link eventHub} below). Built lazily so `_fetchFn` is already wired; the
+   * factory is overridable in tests via {@link createOcClient}.
+   */
+  protected get ocClient(): OcClient {
+    if (!this._ocClient) this._ocClient = this.createOcClient();
+    return this._ocClient;
+  }
+
+  /** Build the shared /oc client. Overridable so tests can inject a fake. */
+  protected createOcClient(): OcClient {
+    return new OcClient({
+      principalId: Bun.env.PRINCIPAL_ID ?? this.name,
+      secret: this.secret,
+      baseUrl: `${this.guardianUrl}/oc`,
+      fetch: this._fetchFn,
+    });
+  }
+
+  /**
+   * The single per-principal /event hub for this portal, built on {@link ocClient}.
+   * BOTH the buffered path ({@link forward}) and each portal's streaming path
+   * subscribe through this one instance, so concurrent same-principal turns split
+   * across the two paths still open only ONE upstream /event stream (guardian caps
+   * concurrent streams per principal at 1).
+   */
+  protected get eventHub(): OcEventHub {
+    if (!this._eventHub) this._eventHub = new OcEventHub(this.ocClient);
+    return this._eventHub;
   }
 
   /** Build the `/health` request handler and record the fetch impl for forwarding. */
