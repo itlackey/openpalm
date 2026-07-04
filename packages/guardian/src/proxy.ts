@@ -38,6 +38,7 @@ import {
   ownsSession,
   ownsPermission,
   recordSessionOwner,
+  sessionOwnedByOther,
   forgetSession,
   ownedSessionIds,
 } from "./ownership";
@@ -577,20 +578,26 @@ async function forwardSessionCreate(
   // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
   const sessionKey = req.headers.get(H_SESSION_KEY) ?? undefined;
   const metadata = sessionKey ? { sessionKey } : undefined;
-  const target = resolveSessionTarget(principal.userId, principal.id, metadata);
-  const cacheKey = `${principal.id}:${target.sessionKey}`;
-  const title = `${principal.id}/${target.sessionKey}`;
+  const target = resolveSessionTarget(principal.userId, principal.id, principal.kind, metadata);
+  // cacheKey binds the full principal identity (kind+portal+userId) + sessionKey
+  // so distinct users sharing a client-set sessionKey never collide. title is the
+  // upstream OpenCode session title (may still collide across users) — the
+  // ownership guard below refuses to reuse/rebind a foreign-owned match.
+  const { cacheKey, title } = target;
 
   let inflight = ocSessionCreateLocks.get(cacheKey);
   if (!inflight) {
     inflight = (async (): Promise<string> => {
       // get(_, true) returns a live cached sessionId (refreshing its TTL) or
-      // undefined if absent/expired.
+      // undefined if absent/expired. Refuse a cached id that some other principal
+      // now owns (defence-in-depth) — mint a fresh session instead of stealing it.
       const cached = ocSessionByKey.get(cacheKey, true);
-      if (cached !== undefined) return cached;
+      if (cached !== undefined && !sessionOwnedByOther(cached, principal)) return cached;
 
+      // Match by title can cross principals (same portal+sessionKey → same title);
+      // never reuse/rebind a session already owned by a different principal.
       const existing = await findExistingOcSessionId(req, title);
-      if (existing) {
+      if (existing && !sessionOwnedByOther(existing, principal)) {
         ocSessionByKey.set(cacheKey, existing);
         return existing;
       }
