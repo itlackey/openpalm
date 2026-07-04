@@ -11,6 +11,7 @@
     type InstallLockStatusView,
   } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import { formatBytes, formatDate } from '$lib/format-date.js';
 
   // #499 backup state
   let backups = $state<BackupSummaryView | null>(null);
@@ -107,23 +108,6 @@
     }
   }
 
-  function formatBytes(bytes: number): string {
-    if (!Number.isFinite(bytes)) return '—';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let value = bytes;
-    let i = 0;
-    while (value >= 1024 && i < units.length - 1) {
-      value /= 1024;
-      i += 1;
-    }
-    return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
-  }
-
-  function formatDate(iso: string | null): string {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
-  }
 </script>
 
 <div class="panel" role="tabpanel">

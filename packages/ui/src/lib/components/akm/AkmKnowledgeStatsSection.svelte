@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fetchAkmKnowledgeStats, type AkmKnowledgeStats } from '$lib/api.js';
+	import { formatDate } from '$lib/format-date.js';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	type Props = {
@@ -23,12 +24,6 @@
 		} finally {
 			loading = false;
 		}
-	}
-
-	function formatDate(value: string | null): string {
-		if (!value) return '—';
-		const parsed = new Date(value);
-		return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 	}
 
 	function formatFlag(value: boolean | null, onLabel = 'Yes', offLabel = 'No'): string {

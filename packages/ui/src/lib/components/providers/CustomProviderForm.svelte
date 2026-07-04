@@ -7,7 +7,8 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import FormField from '$lib/components/common/FormField.svelte';
 	import Drawer from '$lib/components/common/Drawer.svelte';
-	import { buildHeaders } from '$lib/api.js';
+	import { registerCustomProvider } from '$lib/api/providers.js';
+	import { toMessage } from '$lib/api/errors.js';
 	import type { ProviderActionResult } from '$lib/types/providers.js';
 
 	let {
@@ -38,27 +39,14 @@
 		submitting = true;
 		error = null;
 		try {
-			const res = await fetch(`/admin/providers/${encodeURIComponent(trimmedId)}`, {
-				method: 'PATCH',
-				headers: { ...buildHeaders(), 'content-type': 'application/json' },
-				body: JSON.stringify({
-					kind: 'register-custom',
-					displayName: trimmedName,
-					baseURL: trimmedURL,
-					apiKey: apiKey.trim() || undefined,
-					modelsJson: '[]',
-					headersJson: '[]',
-					confirmOverwrite: 'false',
-				})
+			const result = await registerCustomProvider(trimmedId, {
+				displayName: trimmedName,
+				baseURL: trimmedURL,
+				apiKey: apiKey.trim() || undefined,
 			});
-			const result = (await res.json()) as ProviderActionResult;
-			if (!res.ok || result.ok === false) {
-				error = result.message ?? 'Registration failed.';
-				return;
-			}
 			onaction?.(result);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Request failed.';
+			error = toMessage(err, 'Request failed.');
 		} finally {
 			submitting = false;
 		}

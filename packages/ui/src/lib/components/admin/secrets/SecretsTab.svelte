@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { fetchSecretFiles, fetchSecretFile, saveSecretFile, deleteSecretFile, type SecretFileInfo } from '$lib/api.js';
+  import { formatBytes } from '$lib/format-date.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import IconLock from '$lib/components/icons/IconLock.svelte';
 
@@ -21,11 +22,6 @@
   // New-file form.
   let newName = $state('');
   let newNameInput: HTMLInputElement | undefined = $state();
-
-  function fmtSize(n: number): string {
-    if (n < 1024) return `${n} B`;
-    return `${(n / 1024).toFixed(1)} KB`;
-  }
 
   async function loadFiles(): Promise<void> {
     loading = true;
@@ -137,7 +133,7 @@
         <div class="secret-row {selected === f.name ? 'active' : ''}">
           <button class="secret-name" onclick={() => void open(f.name)} disabled={busy} aria-label="Edit {f.name}">
             <span class="mono">{f.name}</span>
-            <span class="secret-size">{fmtSize(f.size)}</span>
+            <span class="secret-size">{formatBytes(f.size)}</span>
           </button>
           <button class="btn btn-ghost btn-sm" onclick={() => void remove(f.name)} disabled={busy} aria-label="Delete {f.name}">✕</button>
         </div>
