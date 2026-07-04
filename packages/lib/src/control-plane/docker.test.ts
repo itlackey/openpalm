@@ -4,6 +4,7 @@ import {
   detectExistingProject,
   isProjectOurs,
   resolveComposeProjectName,
+  toDockerResult,
 } from "./docker.js";
 
 describe("isProjectOurs (ours-vs-foreign decision)", () => {
@@ -136,5 +137,34 @@ describe("buildComposePreflightError (shared CLI + lib message)", () => {
     expect(msg).not.toContain("--env-file");
     // No double spaces from empty arg slots.
     expect(msg).not.toContain("  ");
+  });
+});
+
+describe("toDockerResult (execFile error → DockerResult code normalization)", () => {
+  it("does NOT store NaN when error.code is a STRING errno (ENOENT)", () => {
+    // docker binary missing → node spawn error carries a string `code`.
+    const err = Object.assign(new Error("spawn docker ENOENT"), { code: "ENOENT" });
+    const result = toDockerResult(err, "", "");
+    // The regression: Number("ENOENT") → NaN silently stored in a number field.
+    expect(Number.isNaN(result.code)).toBe(false);
+    expect(typeof result.code).toBe("number");
+    // Any error means the run failed and the numeric code must be non-zero.
+    expect(result.ok).toBe(false);
+    expect(result.code).not.toBe(0);
+    // The original string errno is preserved and accessible.
+    expect(result.errorCode).toBe("ENOENT");
+  });
+
+  it("passes a numeric exit status through unchanged (no errorCode)", () => {
+    const err = Object.assign(new Error("exited"), { code: 127 });
+    const result = toDockerResult(err, "out", "boom");
+    expect(result.code).toBe(127);
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBeUndefined();
+  });
+
+  it("reports code 0 and ok on a clean run", () => {
+    const result = toDockerResult(null, "hello", "");
+    expect(result).toEqual({ ok: true, stdout: "hello", stderr: "", code: 0 });
   });
 });

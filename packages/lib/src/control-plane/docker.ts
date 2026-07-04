@@ -9,7 +9,45 @@ export type DockerResult = {
   stdout: string;
   stderr: string;
   code: number;
+  /**
+   * Node's string error code (errno) for a spawn/OS failure, e.g. "ENOENT" when
+   * the docker binary is missing. Present ONLY when the underlying error carried
+   * a non-numeric `code` — for a normal non-zero process exit `code` holds the
+   * numeric exit status and this is absent.
+   */
+  errorCode?: string;
 };
+
+/**
+ * Build a {@link DockerResult} from a node:child_process callback.
+ *
+ * Node's `error.code` is OVERLOADED: for a process that exits non-zero it is the
+ * numeric exit status, but for a spawn/OS failure it is a STRING errno
+ * ("ENOENT", "EACCES", …). Blindly `Number(error.code)`-ing the string yields
+ * NaN silently stored in a `number` field, so callers branching on `result.code`
+ * (e.g. `allowExitCodes.includes(result.code)`) get garbage. This normalizes:
+ * numeric codes pass through unchanged; a string code surfaces via `errorCode`
+ * while `code` falls back to a non-zero sentinel (any error ⇒ non-zero).
+ *
+ * Pure and exported (package-internal) so the string-code path is unit-testable
+ * without spawning docker.
+ */
+export function toDockerResult(
+  error: (Error & { code?: unknown }) | null | undefined,
+  stdout: string | Buffer | undefined,
+  stderr: string | Buffer | undefined,
+): DockerResult {
+  const rawCode = error?.code;
+  const code = typeof rawCode === "number" ? rawCode : error ? 1 : 0;
+  const result: DockerResult = {
+    ok: !error,
+    stdout: stdout?.toString() ?? "",
+    stderr: stderr?.toString() ?? "",
+    code,
+  };
+  if (typeof rawCode === "string") result.errorCode = rawCode;
+  return result;
+}
 
 // ── Injection seam (DockerClient + FileStore) ────────────────────────────────
 //
@@ -94,12 +132,7 @@ export function run(
       args,
       { cwd, timeout: timeoutMs, env: { ...process.env, ...envOverrides } },
       (error, stdout, stderr) => {
-        resolve({
-          ok: !error,
-          stdout: stdout?.toString() ?? "",
-          stderr: stderr?.toString() ?? "",
-          code: error?.code ? Number(error.code) : 0
-        });
+        resolve(toDockerResult(error, stdout, stderr));
       }
     );
   });
