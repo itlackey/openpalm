@@ -175,8 +175,61 @@ function releaseLifecycleLock(lock: InstallLockHandle | null, opts?: LockedLifec
 }
 
 /**
+ * The four lifecycle operations, as a discriminated union. Each entry point
+ * constructs exactly one; there is no way to name an illegal mix of steps (the
+ * old flag bag let you build e.g. deactivate + compose, which is nonsense).
+ * `planLifecycleOp` is the single place that turns a kind into concrete steps.
+ */
+export type LifecycleOp =
+  | { kind: "install" }
+  | { kind: "update" }
+  | { kind: "uninstall" }
+  | { kind: "upgrade" };
+
+/**
+ * The concrete reconcile steps a LifecycleOp runs — the internal "decision
+ * object". Derived solely from `kind`, so only the four legal combinations exist.
+ */
+type ReconcilePlan = { activate: boolean; deactivate: boolean; pull: boolean; compose: boolean };
+
+/**
+ * Map a LifecycleOp to its exact reconcile steps. These are the flag values each
+ * entry point passed in the pre-refactor flag bag, kept identical:
+ *
+ *   • install   — activate services; the route owns the compose phase, so no
+ *                 in-wrapper pull/compose.
+ *   • update    — no activate (preserve each service's prior running/stopped
+ *                 state; the route drives the recreate); no in-wrapper compose.
+ *   • uninstall — deactivate only; a pure file/state reconcile (the route runs
+ *                 composeDown), so it never touches containers.
+ *   • upgrade   — the ONLY kind that pulls images and recreates containers inside
+ *                 the wrapper: its consumers (CLI update, the admin upgrade route)
+ *                 have no separate compose phase and want the full pull+recreate
+ *                 to happen here, with rollback on failure.
+ *
+ * `compose` is deliberately OFF for install/update/uninstall: those consumers
+ * (runDeploy, the admin install/update/uninstall routes) already own a bespoke
+ * compose phase — pulling images first, parsing per-service failures, polling
+ * health, and emitting progress. Letting the wrapper composeUp too would
+ * (a) double-recreate and (b) on a fresh install fatally `up` BEFORE images are
+ * pulled.
+ */
+export function planLifecycleOp(op: LifecycleOp): ReconcilePlan {
+  switch (op.kind) {
+    case "install":
+      return { activate: true, deactivate: false, pull: false, compose: false };
+    case "update":
+      return { activate: false, deactivate: false, pull: false, compose: false };
+    case "uninstall":
+      return { activate: false, deactivate: true, pull: false, compose: false };
+    case "upgrade":
+      return { activate: true, deactivate: false, pull: true, compose: true };
+  }
+}
+
+/**
  * The single idempotent stack reconcile. Every lifecycle entry point is a thin
- * flag variant of this:
+ * variant of this, selected by LifecycleOp `kind` (see planLifecycleOp):
  *   1. applyHome       — bring OP_HOME assets up to PLATFORM_VERSION (overwrite
  *                        the managed system/ tree, seed user/data once). No GitHub.
  *   2. reconcileCore   — preflight, snapshot (rollback), write runtime files,
@@ -189,29 +242,21 @@ function releaseLifecycleLock(lock: InstallLockHandle | null, opts?: LockedLifec
  * pre-reconcile state is armed for `openpalm rollback`. reconcileCore runs with
  * skipSnapshot:true so it never takes a second snapshot over that armed one.
  *
- * The `compose` flag is deliberately OFF for install/update/uninstall: those
- * consumers (runDeploy, the admin install/update/uninstall routes) already own a
- * bespoke compose phase — pulling images first, parsing per-service failures,
- * polling health, and emitting progress. Letting the wrapper composeUp too would
- * (a) double-recreate and (b) on a fresh install fatally `up` BEFORE images are
- * pulled. Only performUpgrade sets compose:true — its consumers (CLI update, the
- * admin upgrade route) have no separate compose phase and want the full
- * pull+recreate to happen inside the wrapper, with rollback on failure.
- *
  * Returns the services that were active (running) after the reconcile — the
  * "restarted" set for update/upgrade reporting — plus the OP_HOME assets it
  * changed and any backup dir a release migration created, for UpgradeResult.
  */
 function reconcileStack(
   state: ControlPlaneState,
-  opts: { activate?: boolean; deactivate?: boolean; pull?: boolean; compose?: boolean },
+  op: LifecycleOp,
 ): Promise<{ active: string[]; assetsUpdated: string[]; backupDir: string | null }> {
+  const plan = planLifecycleOp(op);
   return withStackEnvRollback(state, async () => {
     // Activation flows (install/update/upgrade) may recreate containers; the
     // deactivation flow (uninstall) only rewrites runtime files reflecting the
     // stopped state — the route does composeDown. Gate the container-touching
     // work on activation so uninstall stays a pure file/state reconcile.
-    const activating = !opts.deactivate;
+    const activating = !plan.deactivate;
 
     // Host-ownership reconcile BEFORE writing/recreating — the SAME shared lib
     // step `openpalm start` runs, so UI/electron upgrades get host-swap
@@ -222,7 +267,7 @@ function reconcileStack(
     // No adopt flag here (the UI has none): an un-adopted host swap throws
     // HostSwapBlockedError, which withStackEnvRollback surfaces to the route.
     let managedServices: string[] | undefined;
-    if (activating && opts.compose) {
+    if (activating && plan.compose) {
       managedServices = await buildManagedServices(state);
       await reconcileHostOwnership(state, { services: managedServices });
     }
@@ -231,14 +276,14 @@ function reconcileStack(
 
     // skipSnapshot: withStackEnvRollback already armed the pre-reconcile snapshot.
     const active = await reconcileCore(state, {
-      activateServices: opts.activate,
-      deactivateServices: opts.deactivate,
+      activateServices: plan.activate,
+      deactivateServices: plan.deactivate,
       skipSnapshot: true,
     });
 
-    if (activating && opts.compose) {
+    if (activating && plan.compose) {
       const composeOpts = buildComposeOptions(state);
-      if (opts.pull) {
+      if (plan.pull) {
         const pullResult = await composePull(composeOpts);
         if (!pullResult.ok) {
           throw new Error(`Failed to pull images: ${pullResult.stderr}`);
@@ -264,7 +309,7 @@ export async function applyInstall(state: ControlPlaneState, opts?: LockedLifecy
   const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
-    await reconcileStack(state, { activate: true });
+    await reconcileStack(state, { kind: "install" });
     // Pre-create host-side volume mount targets as the current user so
     // Docker doesn't create them root-owned (which causes EACCES inside
     // non-root containers).
@@ -283,7 +328,7 @@ export async function applyUpdate(state: ControlPlaneState, opts?: LockedLifecyc
     // state (matching HEAD's reconcileCore(state, {}) semantics). It must NOT
     // force-mark a deliberately-stopped core service as running. The route drives
     // the actual recreate from buildManagedServices; `restarted` is for reporting.
-    const { active } = await reconcileStack(state, {});
+    const { active } = await reconcileStack(state, { kind: "update" });
     return { restarted: active };
   } finally {
     releaseLifecycleLock(lock, opts);
@@ -294,7 +339,7 @@ export async function applyUninstall(state: ControlPlaneState, opts?: LockedLife
   const lock = resolveLifecycleLock(state, opts);
   if (!lock) throw new Error("Another install is already in progress");
   try {
-    const { active } = await reconcileStack(state, { deactivate: true });
+    const { active } = await reconcileStack(state, { kind: "uninstall" });
     return { stopped: active };
   } finally {
     releaseLifecycleLock(lock, opts);
@@ -443,7 +488,7 @@ export async function performUpgrade(
     // wrapper that drives compose itself — its consumers (CLI update, the admin
     // upgrade route) have no separate compose phase. withStackEnvRollback inside
     // reconcileStack restores stack.env + compose overlays if any step throws.
-    const { active, assetsUpdated, backupDir } = await reconcileStack(state, { activate: true, pull: true, compose: true });
+    const { active, assetsUpdated, backupDir } = await reconcileStack(state, { kind: "upgrade" });
 
     return {
       // The published Docker image is tagged with the bare version (0.12.41+);
