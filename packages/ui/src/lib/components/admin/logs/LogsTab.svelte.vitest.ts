@@ -19,7 +19,6 @@ vi.mock('$lib/api.js', () => ({
 import { fetchServiceLogs } from '$lib/api.js';
 
 const defaultProps = {
-  tokenStored: true,
   services: ['assistant', 'guardian'],
   automations: ['daily-summary'],
 };

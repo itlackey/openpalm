@@ -306,7 +306,6 @@
         {serviceEntries}
         loading={containersLoading}
         error={containerError}
-        tokenStored={true}
         {selectedContainerId}
         onToggleContainer={handleToggleContainer}
         onStart={(id) => handleContainerAction('start', id)}
@@ -322,7 +321,6 @@
         data={automationsData}
         loading={automationsLoading}
         error={automationsError}
-        tokenStored={true}
         onRefresh={loadAutomations}
       />
     {:else if activeTab === 'activity'}
@@ -330,19 +328,18 @@
     {:else if activeTab === 'connections'}
       <ProvidersPanel />
     {:else if activeTab === 'assistant'}
-      <AssistantTab tokenStored={true} />
+      <AssistantTab />
     {:else if activeTab === 'secrets'}
-      <SecretsTab tokenStored={true} />
+      <SecretsTab />
     {/if}
     {#if activeTab === 'voice'}
-      <VoiceTab tokenStored={true} />
+      <VoiceTab />
     {:else if activeTab === 'akm'}
-      <AkmTab tokenStored={true} />
+      <AkmTab />
     {:else if activeTab === 'host-sharing'}
-      <HostSharingSection tokenStored={true} />
+      <HostSharingSection />
     {:else if activeTab === 'logs'}
       <LogsTab
-        tokenStored={true}
         services={serviceNames}
         automations={automationsData?.automations.map((automation) => automation.name) ?? []}
       />

@@ -32,9 +32,6 @@
 		type VoiceSection,
 	} from '$lib/components/voice/voice-mappers.js';
 
-	interface Props { tokenStored: boolean; }
-	let { tokenStored }: Props = $props();
-
 	type Availability = {
 		stt: { remoteConfigured: boolean; remoteReachable: boolean };
 		tts: { remoteConfigured: boolean; remoteReachable: boolean };
@@ -416,7 +413,7 @@
 		// Probe Web Speech APIs (client-only).
 		browserSttAvailable = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
 		browserTtsAvailable = 'speechSynthesis' in window;
-		if (tokenStored) void load();
+		void load();
 	});
 </script>
 
@@ -427,11 +424,11 @@
 			<p class="panel-subtitle">Speech-to-text · text-to-speech</p>
 		</div>
 		<div class="panel-header-actions">
-			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || !tokenStored}>
+			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving}>
 				{#if loading}<Spinner size={12} />{/if}
 				Refresh
 			</button>
-			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored}>
+			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving}>
 				{#if saving}<Spinner size={12} />{/if}
 				Save
 			</button>
@@ -453,7 +450,7 @@
 						class="field-select"
 						value={stt.engine}
 						onchange={(e) => { stt.engine = (e.currentTarget as HTMLSelectElement).value as EngineId | ''; }}
-						disabled={loading || saving || !tokenStored}
+						disabled={loading || saving}
 					>
 						<option value="">— select engine —</option>
 						{#each ADMIN_STT_OPTIONS as o (o.id)}
@@ -480,7 +477,7 @@
 								placeholder={field.placeholder ?? ''}
 								value={field.key === 'baseURL' ? stt.baseURL : field.key === 'model' ? stt.model : stt.language}
 								oninput={(e) => updateSttField(field.key, (e.currentTarget as HTMLInputElement).value)}
-								disabled={loading || saving || !tokenStored}
+								disabled={loading || saving}
 								autocomplete="off"
 							/>
 							{#if field.hint}<p class="field-hint">{field.hint}</p>{/if}
@@ -503,7 +500,7 @@
 						class="field-select"
 						value={tts.engine}
 						onchange={(e) => { tts.engine = (e.currentTarget as HTMLSelectElement).value as EngineId | ''; }}
-						disabled={loading || saving || !tokenStored}
+						disabled={loading || saving}
 					>
 						<option value="">— select engine —</option>
 						{#each ADMIN_TTS_OPTIONS as o (o.id)}
@@ -530,7 +527,7 @@
 								placeholder={field.placeholder ?? ''}
 								value={field.key === 'baseURL' ? tts.baseURL : field.key === 'model' ? tts.model : tts.voice}
 								oninput={(e) => updateTtsField(field.key, (e.currentTarget as HTMLInputElement).value)}
-								disabled={loading || saving || !tokenStored}
+								disabled={loading || saving}
 								autocomplete="off"
 							/>
 							{#if field.hint}<p class="field-hint">{field.hint}</p>{/if}

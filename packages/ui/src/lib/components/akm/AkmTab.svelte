@@ -30,9 +30,6 @@
 	import { akmConfigToForm, formToAkmPayload } from '$lib/components/akm/akm-config';
 	import type { LlmProfile, AgentProfile, ImproveProfile } from '$lib/components/akm/profile-types';
 
-	interface Props { tokenStored: boolean; }
-	let { tokenStored }: Props = $props();
-
 	// ── Status ───────────────────────────────────────────────────────────────────
 	let loading = $state(false);
 	let saving = $state(false);
@@ -347,7 +344,7 @@
 		}
 	}
 
-	onMount(() => { if (tokenStored) { void load(); } });
+	onMount(() => { void load(); });
 </script>
 
 <div class="panel" role="tabpanel">
@@ -357,15 +354,15 @@
 			<p class="panel-header-sub">Memory · LLM · embedding config</p>
 		</div>
 		<div class="panel-header-actions">
-			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored}>
+			<button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing}>
 				{#if loading}<Spinner />{/if}
 				Refresh
 			</button>
-			<button class="btn btn-secondary btn-sm" onclick={() => void reindexKnowledge()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored}>
+			<button class="btn btn-secondary btn-sm" onclick={() => void reindexKnowledge()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing}>
 				{#if reindexing}<Spinner />{/if}
 				Re-index
 			</button>
-			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored}>
+			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing}>
 				{#if saving}<Spinner />{/if}
 				Save
 			</button>
@@ -403,7 +400,7 @@
 
 		<!-- ── AI Services group (model/agent/improve connections + embedding) ── -->
 		{#if knowledgeSection === 'ai-services'}
-		<AkmKnowledgeStatsSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored} />
+		<AkmKnowledgeStatsSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing} />
 
 		<p class="section-note section-note--lead">The AI services your assistant uses to build and search its memory — the language models that organize memories, the embedding provider for semantic search, and the maintenance pipeline.</p>
 
@@ -480,7 +477,7 @@
 		{/if}<!-- end behavior group -->
 
 		{#if knowledgeSection === 'health-report'}
-		<AkmHealthReportSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing || !tokenStored} />
+		<AkmHealthReportSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing} />
 		{/if}
 
 	</div>

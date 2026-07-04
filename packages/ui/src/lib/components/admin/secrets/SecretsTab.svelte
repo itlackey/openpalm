@@ -6,9 +6,6 @@
   import { notifications } from '$lib/notifications.svelte.js';
   import IconLock from '$lib/components/icons/IconLock.svelte';
 
-  interface Props { tokenStored: boolean; }
-  let { tokenStored }: Props = $props();
-
   let loading = $state(false);
   let busy = $state(false);
   let error = $state('');
@@ -104,7 +101,7 @@
     }
   }
 
-  onMount(() => { if (tokenStored) void loadFiles(); });
+  onMount(() => { void loadFiles(); });
 </script>
 
 <div class="panel" role="tabpanel">
@@ -114,7 +111,7 @@
       <p class="panel-subtitle">Encrypted key files under knowledge/secrets/</p>
     </div>
     <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={loading || busy || !tokenStored}>
+      <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={loading || busy}>
         {#if loading}<Spinner />{/if}
         Refresh
       </button>

@@ -17,11 +17,10 @@
     data: AutomationsResponse | null;
     loading: boolean;
     error: string;
-    tokenStored: boolean;
     onRefresh: () => void;
   }
 
-  let { data, loading, error, tokenStored, onRefresh }: Props = $props();
+  let { data, loading, error, onRefresh }: Props = $props();
 
   let hasAutomations = $derived(
     data !== null && Array.isArray(data.automations) && data.automations.length > 0
@@ -99,7 +98,7 @@
   }
 
   async function handleRunNow(name: string): Promise<void> {
-    if (runningTaskName || drawerSaving || !tokenStored) return;
+    if (runningTaskName || drawerSaving) return;
     runningTaskName = name;
     try {
       const result = await runAutomation(name);
@@ -198,8 +197,8 @@
       <p class="ph-sub">Scheduled tasks from knowledge/tasks/</p>
     </div>
     <div class="ph-actions">
-      <button class="btn btn-primary btn-outline btn-sm" onclick={openNewTask} disabled={drawerSaving || !tokenStored}>New task</button>
-      <button class="btn btn-primary btn-outline btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+      <button class="btn btn-primary btn-outline btn-sm" onclick={openNewTask} disabled={drawerSaving}>New task</button>
+      <button class="btn btn-primary btn-outline btn-sm" onclick={onRefresh} disabled={loading}>
         {#if loading}
           <Spinner />
         {/if}
@@ -237,7 +236,7 @@
                 <button
                   class="btn btn-secondary btn-sm"
                   onclick={() => void handleRunNow(automation.name)}
-                  disabled={!!runningTaskName || drawerSaving || !tokenStored}
+                  disabled={!!runningTaskName || drawerSaving}
                 >
                   {#if runningTaskName === automation.name}
                     <Spinner />
@@ -249,17 +248,17 @@
                 <button
                   class="btn btn-ghost btn-sm"
                   onclick={() => void openLogDrawer(automation.name)}
-                  disabled={logLoading || !tokenStored}
+                  disabled={logLoading}
                 >View latest log</button>
                 <button
                   class="btn btn-ghost btn-sm"
                   onclick={() => void openEditTask(automation.fileName)}
-                  disabled={drawerSaving || !tokenStored}
+                  disabled={drawerSaving}
                 >Edit</button>
                 <button
                   class="btn btn-ghost btn-sm"
                   onclick={() => void removeTask(automation.fileName)}
-                  disabled={drawerSaving || !tokenStored}
+                  disabled={drawerSaving}
                   aria-label="Delete {automation.fileName}"
                 >Delete</button>
               </div>
@@ -282,7 +281,7 @@
           <button class="btn btn-secondary btn-sm empty-state-btn" onclick={onRefresh}>Try Again</button>
         {:else}
           <p>No automations configured.</p>
-          <button class="btn btn-secondary btn-sm empty-state-btn" onclick={openNewTask} disabled={!tokenStored}>Create your first task</button>
+          <button class="btn btn-secondary btn-sm empty-state-btn" onclick={openNewTask}>Create your first task</button>
           <p class="empty-state-hint">Or drop <code>.md</code>/<code>.yml</code> files into <code>~/.openpalm/knowledge/tasks/</code>.</p>
         {/if}
       </EmptyState>

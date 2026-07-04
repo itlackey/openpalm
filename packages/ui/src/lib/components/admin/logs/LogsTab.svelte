@@ -6,12 +6,11 @@
   import { fetchServiceLogs, fetchAutomationLog } from '$lib/api.js';
 
   interface Props {
-    tokenStored: boolean;
     services: string[];
     automations: string[];
   }
 
-  let { tokenStored, services, automations }: Props = $props();
+  let { services, automations }: Props = $props();
 
   let logs = $state('');
   let logsLoaded = $state(false);
@@ -74,7 +73,7 @@
   }
 
   onMount(() => {
-    if (tokenStored) void loadLogs();
+    void loadLogs();
   });
 
   function switchSource(next: 'services' | 'routines'): void {
@@ -94,7 +93,7 @@
     <button class="btn btn-secondary btn-sm" onclick={() => void copyLogs()} disabled={!logs}>
       {copied ? 'Copied!' : 'Copy'}
     </button>
-    <button class="btn btn-secondary btn-sm" onclick={() => void loadLogs()} disabled={loading || !tokenStored}>
+    <button class="btn btn-secondary btn-sm" onclick={() => void loadLogs()} disabled={loading}>
       {#if loading}
         <Spinner />
       {/if}
@@ -170,7 +169,7 @@
       </div>
     {/if}
 
-    <button class="btn btn-primary btn-sm" onclick={() => void loadLogs()} disabled={loading || !tokenStored}>
+    <button class="btn btn-primary btn-sm" onclick={() => void loadLogs()} disabled={loading}>
       {#if loading}
         <Spinner />
       {/if}

@@ -6,11 +6,10 @@
     loading: boolean;
     error: string;
     containerData: ContainerListResponse | null;
-    tokenStored: boolean;
     onRefresh: () => void;
   }
 
-  let { loading, error, containerData, tokenStored, onRefresh }: Props = $props();
+  let { loading, error, containerData, onRefresh }: Props = $props();
 </script>
 
 <div class="empty-state">
@@ -19,7 +18,7 @@
     <p>Loading container status...</p>
   {:else if error}
     <p class="text-danger">{error}</p>
-    <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={!tokenStored}>
+    <button class="btn btn-secondary btn-sm" onclick={onRefresh}>
       Try Again
     </button>
   {:else if containerData && !containerData.dockerAvailable}
