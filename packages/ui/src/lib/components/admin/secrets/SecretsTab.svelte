@@ -4,12 +4,16 @@
   import { fetchSecretFiles, fetchSecretFile, saveSecretFile, deleteSecretFile, type SecretFileInfo } from '$lib/api.js';
   import { formatBytes } from '$lib/format-date.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import { resource } from '$lib/actions.svelte.js';
   import IconLock from '$lib/components/icons/IconLock.svelte';
 
-  let loading = $state(false);
+  // The file list loads through a resource; its inline banner renders the error.
+  const filesRes = resource<SecretFileInfo[]>(
+    async () => (await fetchSecretFiles()).files,
+    { fallback: 'Failed to list secret files.' },
+  );
+  let files = $derived(filesRes.data ?? []);
   let busy = $state(false);
-  let error = $state('');
-  let files = $state<SecretFileInfo[]>([]);
 
   // Editor state for the currently-open file.
   let selected = $state<string | null>(null);
@@ -21,21 +25,13 @@
   let newNameInput: HTMLInputElement | undefined = $state();
 
   async function loadFiles(): Promise<void> {
-    loading = true;
-    error = '';
-    try {
-      files = (await fetchSecretFiles()).files;
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to list secret files.';
-    } finally {
-      loading = false;
-    }
+    await filesRes.reload();
   }
 
   async function open(name: string): Promise<void> {
     if (busy) return;
     busy = true;
-    error = '';
+    filesRes.error = '';
     try {
       const res = await fetchSecretFile(name);
       selected = res.name;
@@ -111,19 +107,19 @@
       <p class="panel-subtitle">Encrypted key files under knowledge/secrets/</p>
     </div>
     <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={loading || busy}>
-        {#if loading}<Spinner />{/if}
+      <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={filesRes.loading || busy}>
+        {#if filesRes.loading}<Spinner />{/if}
         Refresh
       </button>
     </div>
   </div>
 
-  {#if error}<div class="error-banner"><span>{error}</span></div>{/if}
+  {#if filesRes.error}<div class="error-banner"><span>{filesRes.error}</span></div>{/if}
 
   <div class="secrets-layout">
     <!-- File list -->
     <div class="secrets-list">
-      {#if files.length === 0 && !loading}
+      {#if files.length === 0 && !filesRes.loading}
         <p class="empty-note">No secret files found.</p>
       {/if}
       {#each files as f (f.name)}

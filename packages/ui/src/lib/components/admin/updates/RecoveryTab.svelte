@@ -12,75 +12,44 @@
   } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { formatBytes, formatDate } from '$lib/format-date.js';
+  import { resource, runAction, type ActionHandle } from '$lib/actions.svelte.js';
 
-  // #499 backup state
-  let backups = $state<BackupSummaryView | null>(null);
-  let backupsLoading = $state(false);
-  let backupsError = $state('');
+  // #499 backup state — load into a resource; the inline banner renders its error.
+  const backupsRes = resource<BackupSummaryView>(fetchBackups, {
+    fallback: 'Failed to load backups.',
+  });
+  let backups = $derived(backupsRes.data);
   let prunePromptKeep = $state<number | null>(null);
-  let pruning = $state(false);
+  let pruning = $state<ActionHandle<unknown> | null>(null);
 
-  // #502 one-time secret-strip notice
-  let secretNotice = $state<{ keys: string[]; at: string } | null>(null);
+  // #502 one-time secret-strip notice — fails soft to null (error unrendered).
+  const secretNoticeRes = resource<{ keys: string[]; at: string } | null>(
+    async () => (await fetchSecretStripNotice()).notice,
+  );
+  let secretNotice = $derived(secretNoticeRes.data);
 
-  // #500 stuck-operation recovery
-  let installLock = $state<InstallLockStatusView | null>(null);
-  let unlocking = $state(false);
-  let unlockError = $state('');
+  // #500 stuck-operation recovery — fails soft to null (error unrendered).
+  const installLockRes = resource<InstallLockStatusView>(fetchInstallLockStatus);
+  let installLock = $derived(installLockRes.data);
+  let unlocking = $state<ActionHandle<{ removed: boolean }> | null>(null);
   let unlockCleared = $state(false);
 
   onMount(() => {
-    void loadBackups();
-    void loadSecretNotice();
-    void loadInstallLock();
+    void backupsRes.reload();
+    void secretNoticeRes.reload();
+    void installLockRes.reload();
   });
 
-  async function loadInstallLock(): Promise<void> {
-    try {
-      installLock = await fetchInstallLockStatus();
-    } catch {
-      installLock = null;
-    }
-  }
-
   async function onClearLock(): Promise<void> {
-    unlocking = true;
-    unlockError = '';
-    try {
-      const res = await clearInstallLock();
-      unlockCleared = res.removed;
-      await loadInstallLock();
-    } catch (e) {
-      unlockError = e instanceof Error ? e.message : String(e);
-      await loadInstallLock();
-    } finally {
-      unlocking = false;
-    }
-  }
-
-  async function loadBackups(): Promise<void> {
-    backupsLoading = true;
-    backupsError = '';
-    try {
-      backups = await fetchBackups();
-    } catch (e) {
-      backupsError = e instanceof Error ? e.message : String(e);
-    } finally {
-      backupsLoading = false;
-    }
-  }
-
-  async function loadSecretNotice(): Promise<void> {
-    try {
-      const res = await fetchSecretStripNotice();
-      secretNotice = res.notice;
-    } catch {
-      secretNotice = null;
-    }
+    const run = runAction(() => clearInstallLock(), { fallback: 'Failed to clear the lock.' });
+    unlocking = run;
+    const res = await run.result;
+    if (res) unlockCleared = res.removed;
+    await installLockRes.reload();
   }
 
   async function onDismissSecretNotice(): Promise<void> {
-    secretNotice = null;
+    secretNoticeRes.data = null;
     try {
       await apiDismissSecretStripNotice();
     } catch {
@@ -96,15 +65,14 @@
   }
   async function confirmPrune(): Promise<void> {
     if (prunePromptKeep === null) return;
-    pruning = true;
-    try {
-      await pruneBackups(prunePromptKeep);
+    const run = runAction(() => pruneBackups(prunePromptKeep as number), {
+      fallback: 'Failed to prune backups.',
+    });
+    pruning = run;
+    const ok = (await run.result) !== undefined;
+    if (ok) {
       prunePromptKeep = null;
-      await loadBackups();
-    } catch (e) {
-      backupsError = e instanceof Error ? e.message : String(e);
-    } finally {
-      pruning = false;
+      await backupsRes.reload();
     }
   }
 
@@ -145,12 +113,14 @@
             clear itself automatically after 30 minutes — or you can clear it now to run another
             update. Nothing else is changed.
           </p>
-          {#if unlockError}
-            <p class="stuck-notice-error" role="alert">{unlockError}</p>
-          {/if}
         </div>
-        <button class="btn btn-sm btn-primary" onclick={onClearLock} disabled={unlocking} aria-busy={unlocking}>
-          {#if unlocking}<Spinner /> Clearing…{:else}Clear it{/if}
+        <button
+          class="btn btn-sm btn-primary"
+          onclick={onClearLock}
+          disabled={unlocking?.loading ?? false}
+          aria-busy={unlocking?.loading ?? false}
+        >
+          {#if unlocking?.loading}<Spinner /> Clearing…{:else}Clear it{/if}
         </button>
       </div>
     {:else if unlockCleared}
@@ -178,7 +148,7 @@
           <button
             class="btn btn-sm btn-secondary"
             onclick={openPrunePrompt}
-            disabled={pruning || backupsLoading}
+            disabled={(pruning?.loading ?? false) || backupsRes.loading}
           >Prune…</button>
         {/if}
       </div>
@@ -188,10 +158,10 @@
         Nothing is ever deleted automatically.
       </p>
 
-      {#if backupsLoading}
+      {#if backupsRes.loading}
         <p class="backups-empty"><Spinner /> Loading backups…</p>
-      {:else if backupsError}
-        <p class="backups-error" role="alert">Couldn't load backups: {backupsError}</p>
+      {:else if backupsRes.error}
+        <p class="backups-error" role="alert">Couldn't load backups: {backupsRes.error}</p>
       {:else if !backups || backups.count === 0}
         <p class="backups-empty">No backups yet — one is created the first time you update.</p>
       {:else}
@@ -237,10 +207,10 @@
             and permanently delete the rest. This cannot be undone.
           </p>
           <div class="prune-actions">
-            <button class="btn btn-sm btn-danger" onclick={confirmPrune} disabled={pruning}>
-              {#if pruning}<Spinner /> Deleting…{:else}Delete older backups{/if}
+            <button class="btn btn-sm btn-danger" onclick={confirmPrune} disabled={pruning?.loading ?? false}>
+              {#if pruning?.loading}<Spinner /> Deleting…{:else}Delete older backups{/if}
             </button>
-            <button class="btn btn-sm btn-secondary" onclick={cancelPrune} disabled={pruning}>Cancel</button>
+            <button class="btn btn-sm btn-secondary" onclick={cancelPrune} disabled={pruning?.loading ?? false}>Cancel</button>
           </div>
         </div>
       {/if}
@@ -297,7 +267,6 @@
   }
   .stuck-notice-ok .stuck-notice-title { color: var(--s-moss); }
   .stuck-notice p { margin: 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); }
-  .stuck-notice-error { margin-top: var(--s-sp-1) !important; color: var(--s-seal); }
 
   /* #499 backups */
   .backups-section {
