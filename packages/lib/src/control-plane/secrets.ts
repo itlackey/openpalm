@@ -5,7 +5,7 @@ import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir, legacyStackEnvFile, stateEnvFile } from "./home.js";
-import { authJsonPath as resolveAuthJsonPath } from "./paths.js";
+import { authJsonPath as resolveAuthJsonPath, stackEnvPath } from "./paths.js";
 import { dirname } from "node:path";
 import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
 
@@ -118,7 +118,7 @@ function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomm
 }
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
-  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const systemEnvPath = stackEnvPath(state);
   enforceVaultDirMode(dirname(systemEnvPath));
   const updates: Record<string, string> = {};
 
@@ -279,7 +279,7 @@ export function updateSystemSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const systemEnvPath = stackEnvPath(state);
   enforceVaultDirMode(state.stackDir);
   if (!existsSync(systemEnvPath)) {
     ensureSystemSecrets(state);

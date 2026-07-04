@@ -98,76 +98,50 @@ export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: strin
  * detection is best-effort and never blocks the caller; a real failure surfaces
  * later through composeUp.
  */
-export function detectExistingProject(opts: {
+export async function detectExistingProject(opts: {
   projectName: string;
   expectedWorkingDir: string;
 }): Promise<ExistingProject> {
   const none: ExistingProject = { exists: false, isOurs: false, workingDir: "" };
-  return new Promise((resolve) => {
-    execFile(
-      "docker",
-      ["ps", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
-      { timeout: 10_000 },
-      (err, stdout) => {
-        if (err) return resolve(none);
-        const ids = stdout.toString().trim().split(/\s+/).filter(Boolean);
-        if (ids.length === 0) return resolve(none);
-        execFile(
-          "docker",
-          [
-            "inspect",
-            "--format",
-            '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}',
-            ids[0],
-          ],
-          { timeout: 10_000 },
-          (err2, stdout2) => {
-            if (err2) return resolve({ exists: true, isOurs: false, workingDir: "" });
-            const workingDir = stdout2.toString().trim();
-            resolve({ exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir });
-          },
-        );
-      },
-    );
-  });
+  const ps = await run(
+    ["ps", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
+    undefined,
+    10_000,
+  );
+  if (!ps.ok) return none;
+  const ids = ps.stdout.trim().split(/\s+/).filter(Boolean);
+  if (ids.length === 0) return none;
+  const inspect = await run(
+    [
+      "inspect",
+      "--format",
+      '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}',
+      ids[0],
+    ],
+    undefined,
+    10_000,
+  );
+  if (!inspect.ok) return { exists: true, isOurs: false, workingDir: "" };
+  const workingDir = inspect.stdout.trim();
+  return { exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir };
 }
 
 /** Check if Docker is available */
 export async function checkDocker(): Promise<DockerResult> {
-  return new Promise((resolve) => {
-    execFile(
-      "docker",
-      ["info", "--format", "{{.ServerVersion}}"],
-      (error, stdout, stderr) => {
-        const stdoutStr = stdout?.toString().trim() ?? "";
-        const stderrStr = stderr?.toString() ?? "";
-        // docker info may exit non-zero when the daemon reports warnings
-        // (e.g. "No swap limit support") even though it is fully functional.
-        // Treat Docker as available when stdout contains a version string.
-        const available = stdoutStr.length > 0 || !error;
-        resolve({
-          ok: available,
-          stdout: stdoutStr,
-          stderr: stderrStr,
-          code: error?.code ? Number(error.code) : 0
-        });
-      }
-    );
-  });
+  // No timeout (0) — `docker info` was historically unbounded here.
+  const result = await run(["info", "--format", "{{.ServerVersion}}"], undefined, 0);
+  const stdout = result.stdout.trim();
+  // docker info may exit non-zero when the daemon reports warnings
+  // (e.g. "No swap limit support") even though it is fully functional.
+  // Treat Docker as available when stdout contains a version string.
+  const available = stdout.length > 0 || result.ok;
+  return { ok: available, stdout, stderr: result.stderr, code: result.code };
 }
 
 /** Check if docker compose is available */
 export async function checkDockerCompose(): Promise<DockerResult> {
-  return new Promise((resolve) => {
-    execFile("docker", ["compose", "version"], (error, stdout, stderr) => {
-      resolve({
-        ok: !error,
-        stdout: stdout?.toString() ?? "",
-        stderr: stderr?.toString() ?? "",
-        code: error?.code ? Number(error.code) : 0
-      });
-    });
-  });
+  // No timeout (0) — historically unbounded here.
+  return run(["compose", "version"], undefined, 0);
 }
 
 /** Merge all env files into a single overrides object for process env. */
@@ -252,7 +226,8 @@ export function buildComposePreflightError(
     `Compose preflight failed: ${stderr}\n` +
     `Resolved command: ${resolvedCommand}\n` +
     `Files: ${files.join(", ")}\n` +
-    `Env files: ${envFiles.join(", ")}\n` +
+    `Env files: ${envFiles.filter(existsSync).join(", ")}\n` +
+    `Profiles: ${profiles.join(", ") || "(none)"}\n` +
     `Project: ${project}` +
     guidance
   );
@@ -592,32 +567,26 @@ export type ContainerImageInfo = {
  * Inspect a single container by name and return its full image + health info.
  * "not_installed" when the container does not exist; "stopped" when it exists but is not running.
  */
-export function inspectContainerImage(containerName: string): Promise<ContainerImageInfo> {
-  return new Promise((resolve) => {
-    execFile(
-      "docker",
-      [
-        "inspect",
-        "--format",
-        "{{.State.Status}}\t{{.Image}}\t{{.Config.Image}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}",
-        containerName,
-      ],
-      { timeout: 10_000 },
-      (error, stdout) => {
-        if (error) {
-          // Container does not exist (exit code 1, "No such object")
-          resolve({ digest: "", tag: "", healthStatus: "", state: "not_installed" });
-          return;
-        }
-        const [rawState = "", digest = "", tag = "", healthStatus = ""] = (stdout ?? "")
-          .toString()
-          .trim()
-          .split("\t");
-        const state = rawState === "running" ? "running" : "stopped";
-        resolve({ digest, tag, healthStatus, state });
-      }
-    );
-  });
+export async function inspectContainerImage(containerName: string): Promise<ContainerImageInfo> {
+  const result = await run(
+    [
+      "inspect",
+      "--format",
+      "{{.State.Status}}\t{{.Image}}\t{{.Config.Image}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}",
+      containerName,
+    ],
+    undefined,
+    10_000,
+  );
+  if (!result.ok) {
+    // Container does not exist (exit code 1, "No such object")
+    return { digest: "", tag: "", healthStatus: "", state: "not_installed" };
+  }
+  const [rawState = "", digest = "", tag = "", healthStatus = ""] = result.stdout
+    .trim()
+    .split("\t");
+  const state = rawState === "running" ? "running" : "stopped";
+  return { digest, tag, healthStatus, state };
 }
 
 /**

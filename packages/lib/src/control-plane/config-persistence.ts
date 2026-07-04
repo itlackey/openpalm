@@ -17,6 +17,7 @@ import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
 import { PORTAL_SECRET_ADDON_IDS } from "./addon-ids.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
+import { stackEnvPath } from "./paths.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
@@ -58,7 +59,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * Use ensurePortalSecret() for portal secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
-  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const systemEnvPath = stackEnvPath(state);
   mkdirSync(`${state.stashDir}/env`, { recursive: true, mode: 0o700 });
 
   let base = "";
@@ -337,7 +338,7 @@ export function discoverHomeBindMountSources(state: ControlPlaneState): Array<{ 
 
   const envVars: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    ...parseEnvFile(`${state.stashDir}/env/stack.env`),
+    ...parseEnvFile(stackEnvPath(state)),
   };
   const homeRoot = resolvePath(state.homeDir);
   const seen = new Set<string>();

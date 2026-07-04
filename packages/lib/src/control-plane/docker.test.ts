@@ -91,7 +91,11 @@ describe("buildComposePreflightError (shared CLI + lib message)", () => {
     expect(msg).toContain("--env-file /home/stack.env");
     expect(msg).toContain("config --quiet");
     expect(msg).toContain("Files: /home/base.yml, /home/addon.yml");
-    expect(msg).toContain("Env files: /home/stack.env");
+    // The Env files: breakdown line lists only files that exist on disk; the
+    // fictitious /home/stack.env is filtered out there (it still appears in the
+    // resolved command above for reproducibility).
+    const envLine = msg.split("\n").find((l) => l.startsWith("Env files:"));
+    expect(envLine).toBe("Env files: ");
     expect(msg).toContain("Project: openpalm");
   });
 

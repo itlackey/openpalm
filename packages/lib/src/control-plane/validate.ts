@@ -10,6 +10,7 @@
 import { existsSync } from "node:fs";
 import { readStackRuntimeEnv } from "./secrets.js";
 import { STATIC_CORE_MAPPINGS } from "./secret-mappings.js";
+import { stackEnvPath } from "./paths.js";
 import type { ControlPlaneState } from "./types.js";
 
 // Stack-scoped env keys that must always exist and carry a non-empty value
@@ -38,10 +39,10 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const stackEnvPath = `${state.stashDir}/env/stack.env`;
+  const stackEnvFile = stackEnvPath(state);
 
-  if (!existsSync(stackEnvPath)) {
-    errors.push(`ERROR: stack env file missing at ${stackEnvPath}`);
+  if (!existsSync(stackEnvFile)) {
+    errors.push(`ERROR: stack env file missing at ${stackEnvFile}`);
     return { ok: false, errors, warnings };
   }
 

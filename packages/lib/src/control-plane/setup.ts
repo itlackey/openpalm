@@ -19,6 +19,7 @@ import { buildAkmEndpoint } from './akm-endpoints.js';
 import { mergeEnvContent } from "./env.js";
 import { SERVICE_VERSION_KEYS } from "./versions.js";
 import { ensureHomeDirs } from "./home.js";
+import { stackEnvPath } from "./paths.js";
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "./install-lock.js";
 import {
   ensureSecrets,
@@ -205,8 +206,8 @@ export async function performSetup(
     try {
       // Write image tag and AKM mount paths to stack.env — atomic to avoid
       // partial writes if the process is interrupted mid-write.
-      const systemEnvForAkm = existsSync(`${state.stashDir}/env/stack.env`)
-        ? readFileSync(`${state.stashDir}/env/stack.env`, "utf-8")
+      const systemEnvForAkm = existsSync(stackEnvPath(state))
+        ? readFileSync(stackEnvPath(state), "utf-8")
         : "";
       const akmUpdates: Record<string, string> = {};
       // Reconcile the per-image version pins on EVERY setup run. A non-empty
@@ -226,7 +227,7 @@ export async function performSetup(
       // wired as a read-write SECONDARY source — see configureHostAkmSharing()
       // below (Phase 4) and the host-akm.compose.yml overlay.
       if (Object.keys(akmUpdates).length > 0) {
-        writeFileAtomic(`${state.stashDir}/env/stack.env`, mergeEnvContent(systemEnvForAkm, akmUpdates), 0o600);
+        writeFileAtomic(stackEnvPath(state), mergeEnvContent(systemEnvForAkm, akmUpdates), 0o600);
       }
 
       // Write akm config with LLM and embedding settings from setup — atomic.

@@ -110,6 +110,12 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composePullRetry: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   resolveComposeProjectName: () => 'openpalm',
   isProjectOurs: (workingDir, expected) => workingDir === '' || workingDir === expected,
+  buildComposeCommandArgs: (options) => [
+    '--project-name', 'openpalm',
+    ...options.files.flatMap((f) => ['-f', f]),
+    ...(options.envFiles ?? []).flatMap((ef) => ['--env-file', ef]),
+    ...(options.profiles ?? []).flatMap((p) => ['--profile', p]),
+  ],
 }));
 
 mock.module(${JSON.stringify(moduleUrls.volumeOwnership)}, () => ({

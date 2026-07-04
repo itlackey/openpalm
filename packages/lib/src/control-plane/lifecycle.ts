@@ -1,5 +1,5 @@
 /** Lifecycle helpers — state factory, apply transitions, compose file list. */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
@@ -23,7 +23,7 @@ import {
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
 import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
-import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, resolveComposeProjectName } from "./docker.js";
+import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, buildComposePreflightError } from "./docker.js";
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
@@ -31,6 +31,7 @@ import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from "./addons.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { PLATFORM_VERSION, formatForDisplay } from "./versioning.js";
+import { stackEnvPath } from "./paths.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
@@ -112,16 +113,7 @@ async function reconcileCore(
     }
     const preflight = await composePreflight({ files, envFiles, profiles });
     if (!preflight.ok) {
-      const projectName = resolveComposeProjectName(Object.assign({}, ...envFiles.map((f) => parseEnvFile(f))));
-      // List the inputs structurally — a joined shell-style command string is
-      // misleading for paths with spaces and invites copy-paste execution.
-      throw new Error(
-        `Compose preflight failed: ${preflight.stderr}\n` +
-        `Files: ${files.join(", ")}\n` +
-        `Env files: ${envFiles.filter(existsSync).join(", ")}\n` +
-        `Profiles: ${profiles.join(", ") || "(none)"}\n` +
-        `Project: ${projectName}`
-      );
+      throw new Error(buildComposePreflightError({ files, envFiles, profiles }, preflight.stderr));
     }
   }
 
@@ -339,7 +331,7 @@ export class DowngradeConfirmationRequired extends Error {
 }
 
 function resolveImageNamespace(state: ControlPlaneState): string {
-  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const systemEnvPath = stackEnvPath(state);
   const parsed = parseEnvFile(systemEnvPath);
   const namespace = (parsed.OP_IMAGE_NAMESPACE ?? process.env.OP_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 
@@ -359,7 +351,7 @@ export type UpgradeResult = {
 };
 
 async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Promise<T>): Promise<T> {
-  const stackEnvPath = `${state.stashDir}/env/stack.env`;
+  const stackEnvFile = stackEnvPath(state);
   // applyHome may overwrite these managed compose files from the skeleton, so
   // snapshot them alongside stack.env for full rollback coverage.
   const portalsComposePath = `${state.stackDir}/portals.compose.yml`;
@@ -369,7 +361,7 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   let originalPortalsCompose: string | null = null;
   let originalCustomCompose: string | null = null;
   try {
-    originalStackEnv = readFileSync(stackEnvPath, 'utf-8');
+    originalStackEnv = readFileSync(stackEnvFile, 'utf-8');
   } catch { /* stack.env may not exist yet */ }
   try {
     originalPortalsCompose = readFileSync(portalsComposePath, 'utf-8');
@@ -397,7 +389,7 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   } catch (e) {
     if (originalStackEnv !== null) {
       try {
-        writeFileSync(stackEnvPath, originalStackEnv);
+        writeFileSync(stackEnvFile, originalStackEnv);
       } catch { /* best effort */ }
     }
     if (originalPortalsCompose !== null) {
