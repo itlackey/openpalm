@@ -3,6 +3,7 @@ import {
   createLogger,
   deliverBufferedAnswer,
   type DeliverySink,
+  errMessage,
   readRequiredSecretFile,
 } from '@openpalm/portal-sdk';
 import {
@@ -120,7 +121,7 @@ export default class DiscordChannel extends BasePortal {
     // listener, the EventEmitter rethrows as an uncaught exception and kills the
     // process — log and keep the gateway alive so discord.js can auto-reconnect.
     this.client.on(Events.Error, (err) => {
-      log.error("discord_client_error", { error: err instanceof Error ? err.message : String(err) });
+      log.error("discord_client_error", { error: errMessage(err) });
     });
     this.client.once(Events.ClientReady, (c) => this.onReady(c));
     this.client.on(Events.MessageCreate, (msg) => void this.onMessage(msg));
@@ -177,7 +178,7 @@ export default class DiscordChannel extends BasePortal {
       }
     } catch (error) {
       log.error("command_registration_failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errMessage(error),
       });
     }
   }
@@ -276,7 +277,7 @@ export default class DiscordChannel extends BasePortal {
         log.info("stream_completed", { userId: userInfo.userId, threadId: thread.id, sessionKey });
       } catch (error) {
         this.pendingQuestions.delete(thread.id);
-        const errMsg = error instanceof Error ? error.message : String(error);
+        const errMsg = errMessage(error);
         log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey });
         await thread.send(`Error: ${errMsg}`).catch(() => {});
       }
@@ -394,7 +395,7 @@ export default class DiscordChannel extends BasePortal {
         },
       });
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("thread_error", { error: errMsg });
       try {
         await message.reply(`Error: ${errMsg}`);
@@ -465,7 +466,7 @@ export default class DiscordChannel extends BasePortal {
       // DiscordAPIError 10062/40060) would otherwise become an unhandled
       // rejection — the InteractionCreate listener fires this fire-and-forget —
       // and crash the Bun process. Log and best-effort notify the user instead.
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("slash_command_error", {
         command: commandName,
         userId: userInfo.userId,
@@ -631,7 +632,7 @@ export default class DiscordChannel extends BasePortal {
         droppedQueued > 0 ? "Conversation cleared. Dropped queued follow-ups." : "Conversation cleared.",
       );
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("clear_error", {
         error: errMsg,
         sessionKey,

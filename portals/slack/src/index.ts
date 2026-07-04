@@ -2,6 +2,7 @@ import {
   BasePortal,
   createLogger,
   deliverBufferedAnswer,
+  errMessage,
   readRequiredSecretFile,
 } from '@openpalm/portal-sdk';
 import { App, type GenericMessageEvent, type KnownEventFromType } from "@slack/bolt";
@@ -175,7 +176,7 @@ export default class SlackChannel extends BasePortal {
     }
 
     this.app.error(async (error) => {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("bolt_app_error", { error: errMsg });
     });
 
@@ -361,7 +362,7 @@ export default class SlackChannel extends BasePortal {
         view: this.buildAskModalView("", metadata),
       });
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("shortcut_modal_open_error", {
         source: "global-shortcut",
         userId: shortcut.user.id,
@@ -389,7 +390,7 @@ export default class SlackChannel extends BasePortal {
         view: this.buildAskModalView(initialPrompt, metadata),
       });
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("shortcut_modal_open_error", {
         source: "message-shortcut",
         userId: shortcut.user.id,
@@ -527,7 +528,7 @@ export default class SlackChannel extends BasePortal {
         },
       });
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("modal_submission_error", {
         source: metadata.source,
         userId: body.user.id,
@@ -575,7 +576,7 @@ export default class SlackChannel extends BasePortal {
         },
       });
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("app_home_publish_error", {
         userId: event.user,
         error: errMsg,
@@ -703,7 +704,7 @@ export default class SlackChannel extends BasePortal {
           : "Conversation cleared.",
       });
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("clear_error", { error: errMsg, sessionKey, userId: userInfo.userId });
       await say({ text: "Could not clear this conversation right now." });
     }
@@ -764,7 +765,7 @@ export default class SlackChannel extends BasePortal {
         });
         log.info("stream_completed", { userId: userInfo.userId, channelId: channel, threadTs, sessionKey });
       } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
+        const errMsg = errMessage(error);
         log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey });
         await client.chat.postMessage({ channel, text: `Error: ${errMsg}`, thread_ts: threadTs }).catch(() => {});
       }
@@ -849,7 +850,7 @@ export default class SlackChannel extends BasePortal {
     try {
       await client.chat.update({ channel: outcome.channel, ts: outcome.ts, text: outcome.text });
     } catch (error) {
-      log.warn("permission_action_update_failed", { error: error instanceof Error ? error.message : String(error), requestID });
+      log.warn("permission_action_update_failed", { error: errMessage(error), requestID });
     }
   }
 
