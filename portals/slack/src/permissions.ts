@@ -1,8 +1,6 @@
-import { createLogger, parseIdList } from '@openpalm/portal-sdk';
+import { checkPermissions as evaluatePermissions, createLogger, parseIdList } from '@openpalm/portal-sdk';
 import type { PermissionResult } from './types.ts';
 import type { PermissionConfig, UserInfo } from "./types.ts";
-
-export { parseIdList };
 
 const log = createLogger("channel-slack");
 
@@ -23,24 +21,14 @@ export function loadPermissionConfig(env: Record<string, string | undefined> = B
 }
 
 export function checkPermissions(config: PermissionConfig, user: UserInfo): PermissionResult {
-  const { userId, channelId, username } = user;
-
-  if (userId && config.blockedUsers.has(userId)) {
-    log.warn("permission_denied", { userId, username, reason: "blocked_user" });
-    return { allowed: false, reason: "user_blocked" };
-  }
-
-  if (config.allowedUsers.size > 0) {
-    if (!userId || !config.allowedUsers.has(userId)) {
-      return { allowed: false, reason: "user_not_allowed" };
-    }
-  }
-
-  if (config.allowedChannels.size > 0) {
-    if (!channelId || !config.allowedChannels.has(channelId)) {
-      return { allowed: false, reason: "channel_not_allowed" };
-    }
-  }
-
-  return { allowed: true };
+  return evaluatePermissions(
+    {
+      blocked: config.blockedUsers,
+      rules: [
+        { allowedSet: config.allowedUsers, actualValues: [user.userId], reason: "user_not_allowed" },
+        { allowedSet: config.allowedChannels, actualValues: [user.channelId], reason: "channel_not_allowed" },
+      ],
+    },
+    user,
+  );
 }

@@ -28,21 +28,20 @@ export type CustomCommandDef = {
   ephemeral?: boolean;
 };
 
-export type PermissionConfig = {
+import type {
+  PermissionConfig as BasePermissionConfig,
+  UserInfo as BaseUserInfo,
+} from "@openpalm/portal-sdk";
+
+export type { PermissionResult } from "@openpalm/portal-sdk";
+
+export type PermissionConfig = BasePermissionConfig & {
   allowedGuilds: Set<string>;
   allowedRoles: Set<string>;
-  allowedUsers: Set<string>;
-  blockedUsers: Set<string>;
-};
-
-export type PermissionResult = {
-  allowed: boolean;
-  reason?: string;
 };
 
 /** Simple user info extracted from discord.js Message or Interaction objects. */
-export type UserInfo = {
-  userId: string;
+export type UserInfo = BaseUserInfo & {
   guildId: string;
   roles: string[];
   username: string;
