@@ -26,8 +26,13 @@ import type { OcClient } from './opencode.ts';
 
 /** Grace period to keep the upstream open after the last turn unsubscribes, so
  * back-to-back turns in a thread don't churn open/close (and re-pay the 429
- * reconnect budget). Short — just bridges the gap between turns. */
-const IDLE_CLOSE_GRACE_MS = Number(Bun.env.DISCORD_EVENT_HUB_IDLE_MS) || 30_000;
+ * reconnect budget). Short — just bridges the gap between turns.
+ *
+ * Configured via the portal-agnostic `PORTAL_EVENT_HUB_IDLE_MS` (this hub is
+ * shared across portals). The legacy Discord-specific `DISCORD_EVENT_HUB_IDLE_MS`
+ * is still honored as a backwards-compatible fallback. */
+const IDLE_CLOSE_GRACE_MS =
+  Number(Bun.env.PORTAL_EVENT_HUB_IDLE_MS ?? Bun.env.DISCORD_EVENT_HUB_IDLE_MS) || 30_000;
 
 /** A single turn's view of the shared stream: a push-driven async iterator. */
 class Subscriber implements AsyncIterable<unknown> {
