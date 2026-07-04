@@ -22,16 +22,12 @@
 	import {
 		PROCESS_KEYS,
 		DEFAULT_ENABLED,
-		optNum,
-		optInt,
 		emptyFEntry,
-		readFEntry,
-		buildProcessConfig,
-		triFromEnabled,
 		type Tri,
 		type FEntry,
 		type ProcKey,
 	} from '$lib/components/akm/improve-process-helpers';
+	import { akmConfigToForm, formToAkmPayload } from '$lib/components/akm/akm-config';
 	import type { LlmProfile, AgentProfile, ImproveProfile } from '$lib/components/akm/profile-types';
 
 	interface Props { tokenStored: boolean; }
@@ -118,69 +114,6 @@
 		};
 	}
 
-	function profileFromRaw(raw: Record<string, unknown>): Omit<LlmProfile, 'name' | 'id'> {
-		return {
-			endpoint: (raw.endpoint as string) ?? '',
-			model: (raw.model as string) ?? '',
-			provider: (raw.provider as string) ?? '',
-			apiKey: (raw.apiKey as string) ?? '',
-			showApiKey: false,
-			temperature: raw.temperature != null ? String(raw.temperature) : '',
-			maxTokens: raw.maxTokens != null ? String(raw.maxTokens) : '',
-			timeoutMs: raw.timeoutMs != null ? String(raw.timeoutMs) : '',
-			concurrency: raw.concurrency != null ? String(raw.concurrency) : '',
-			contextLength: raw.contextLength != null ? String(raw.contextLength) : '',
-			judgeModel: (raw.judgeModel as string) ?? '',
-			supportsJsonSchema: (raw.supportsJsonSchema as boolean) ?? false,
-			enableThinking: (raw.enableThinking as boolean) ?? false,
-			structuredOutput: ((raw.capabilities as Record<string, unknown> | undefined)?.structuredOutput as boolean) ?? false,
-			extraParams: raw.extraParams && typeof raw.extraParams === 'object' ? JSON.stringify(raw.extraParams, null, 2) : '',
-		};
-	}
-
-	function buildLlmProfilePayload(p: LlmProfile): Record<string, unknown> {
-		const out: Record<string, unknown> = { endpoint: p.endpoint, model: p.model };
-		if (p.provider) out.provider = p.provider;
-		if (p.apiKey) out.apiKey = p.apiKey;
-		const t = optNum(p.temperature); if (t !== undefined) out.temperature = t;
-		const mt = optInt(p.maxTokens); if (mt !== undefined) out.maxTokens = mt;
-		const to = optInt(p.timeoutMs); if (to !== undefined) out.timeoutMs = to;
-		const co = optInt(p.concurrency); if (co !== undefined) out.concurrency = co;
-		const cl = optInt(p.contextLength); if (cl !== undefined) out.contextLength = cl;
-		if (p.judgeModel) out.judgeModel = p.judgeModel;
-		if (p.supportsJsonSchema) out.supportsJsonSchema = true;
-		if (p.enableThinking) out.enableThinking = true;
-		if (p.structuredOutput) out.capabilities = { structuredOutput: true };
-		if (p.extraParams.trim()) {
-			// Parse the JSON object; throw a friendly error so save() surfaces it
-			// rather than sending malformed data the schema would reject.
-			let parsed: unknown;
-			try { parsed = JSON.parse(p.extraParams); }
-			catch { throw new Error(`LLM profile "${p.name}": extraParams must be valid JSON`); }
-			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-				throw new Error(`LLM profile "${p.name}": extraParams must be a JSON object`);
-			out.extraParams = parsed;
-		}
-		return out;
-	}
-
-	function improveProfileFromRaw(name: string, raw: Record<string, unknown>): ImproveProfile {
-		const procs = (raw.processes as Record<string, unknown> | undefined) ?? {};
-		const processes = {} as Record<ProcKey, FEntry>;
-		for (const k of PROCESS_KEYS) processes[k] = readFEntry(procs[k], DEFAULT_ENABLED[k]);
-		const sync = raw.sync as Record<string, unknown> | undefined;
-		return {
-			id: crypto.randomUUID(), name,
-			description: (raw.description as string) ?? '',
-			limit: typeof raw.limit === 'number' ? raw.limit : 25,
-			autoAccept: typeof raw.autoAccept === 'number' ? raw.autoAccept : 0,
-			processes,
-			syncEnabled: triFromEnabled(sync ? { enabled: sync.enabled } : undefined),
-			syncPush: triFromEnabled(sync ? { enabled: sync.push } : undefined),
-			syncMessage: (sync?.message as string) ?? '',
-		};
-	}
-
 	// ── Drawer actions ────────────────────────────────────────────────────────────
 	function openLlmDrawer(p: LlmProfile) {
 		drawerLlm = { ...p };
@@ -259,63 +192,38 @@
 		error = '';
 		try {
 			const { config } = await fetchAkmConfig();
-			const rawProfiles = config.profiles as Record<string, unknown> | undefined;
+			const form = akmConfigToForm(config);
 
-			const rawLlm = rawProfiles?.llm as Record<string, unknown> | undefined;
-			llmProfiles = rawLlm
-				? Object.entries(rawLlm).map(([name, p]) => ({ id: crypto.randomUUID(), name, ...profileFromRaw(p as Record<string, unknown>) }))
-				: [];
+			llmProfiles = form.llmProfiles;
+			agentProfiles = form.agentProfiles;
+			improveProfiles = form.improveProfiles;
+			defaultLlmProfile = form.defaultLlmProfile;
+			defaultAgentProfile = form.defaultAgentProfile;
+			defaultImproveProfile = form.defaultImproveProfile;
 
-			const rawAgent = rawProfiles?.agent as Record<string, unknown> | undefined;
-			agentProfiles = rawAgent
-				? Object.entries(rawAgent).map(([name, p]) => {
-					const raw = p as Record<string, unknown>;
-					return { id: crypto.randomUUID(), name, platform: (raw.platform as 'opencode' | 'claude' | 'opencode-sdk') ?? 'opencode', bin: (raw.bin as string) ?? '', args: Array.isArray(raw.args) ? (raw.args as string[]).join(' ') : '', workspace: (raw.workspace as string) ?? '', model: (raw.model as string) ?? '' };
-				})
-				: [];
+			embEndpoint = form.embedding.endpoint;
+			embModel = form.embedding.model;
+			embProvider = form.embedding.provider;
+			embApiKey = form.embedding.apiKey;
+			embDimension = form.embedding.dimension;
+			embLocalModel = form.embedding.localModel;
+			embBatchSize = form.embedding.batchSize;
+			embChunkSize = form.embedding.chunkSize;
+			embContextLength = form.embedding.contextLength;
+			embOllamaNumCtx = form.embedding.ollamaNumCtx;
 
-			const rawImpProfiles = rawProfiles?.improve as Record<string, unknown> | undefined;
-			improveProfiles = rawImpProfiles
-				? Object.entries(rawImpProfiles).map(([name, p]) => improveProfileFromRaw(name, p as Record<string, unknown>))
-				: [];
+			semanticSearchMode = form.semanticSearchMode;
+			outputFormat = form.outputFormat;
+			outputDetail = form.outputDetail;
 
-			const rawDefaults = config.defaults as Record<string, unknown> | undefined;
-			defaultLlmProfile = (rawDefaults?.llm as string) ?? '';
-			defaultAgentProfile = (rawDefaults?.agent as string) ?? '';
-			defaultImproveProfile = (rawDefaults?.improve as string) ?? '';
-
-			const emb = config.embedding as Record<string, unknown> | undefined;
-			embEndpoint = (emb?.endpoint as string) ?? '';
-			embModel = (emb?.model as string) ?? '';
-			embProvider = (emb?.provider as string) ?? '';
-			embApiKey = (emb?.apiKey as string) ?? '';
-			embDimension = typeof emb?.dimension === 'number' ? emb.dimension : 1536;
-			embLocalModel = (emb?.localModel as string) ?? '';
-			embBatchSize = emb?.batchSize != null ? String(emb.batchSize) : '';
-			embChunkSize = emb?.chunkSize != null ? String(emb.chunkSize) : '';
-			embContextLength = emb?.contextLength != null ? String(emb.contextLength) : '';
-			const ollamaOpts = emb?.ollamaOptions as Record<string, unknown> | undefined;
-			embOllamaNumCtx = ollamaOpts?.num_ctx != null ? String(ollamaOpts.num_ctx) : '';
-
-			semanticSearchMode = (config.semanticSearchMode as 'auto' | 'off') ?? 'auto';
-			const output = config.output as Record<string, unknown> | undefined;
-			outputFormat = (output?.format as 'json' | 'yaml' | 'text') ?? 'json';
-			outputDetail = (output?.detail as 'brief' | 'normal' | 'full') ?? 'brief';
-
-			const num = (v: unknown): string => (typeof v === 'number' ? String(v) : '');
-			const triE = (o: unknown): Tri => (o && typeof o === 'object' && 'enabled' in (o as Record<string, unknown>) ? ((o as Record<string, unknown>).enabled ? 'on' : 'off') : '');
-			const improveTop = config.improve as Record<string, unknown> | undefined;
-			const decay = improveTop?.utilityDecay as Record<string, unknown> | undefined;
-			imHalfLife = num(decay?.halfLifeDays);
-			imFeedbackBoost = num(decay?.feedbackStabilityBoost);
-			imEventRetention = num(improveTop?.eventRetentionDays);
-			const search = config.search as Record<string, unknown> | undefined;
-			searchMinScore = num(search?.minScore);
-			searchCurateRerank = triE(search?.curateRerank);
-			const feedback = config.feedback as Record<string, unknown> | undefined;
-			fbRequireReason = typeof feedback?.requireReason === 'boolean' ? (feedback.requireReason ? 'on' : 'off') : '';
-			fbFailureModes = Array.isArray(feedback?.allowedFailureModes) ? (feedback!.allowedFailureModes as string[]).join(', ') : '';
-			indexJson = config.index && typeof config.index === 'object' ? JSON.stringify(config.index, null, 2) : '';
+			imHalfLife = form.imHalfLife;
+			imFeedbackBoost = form.imFeedbackBoost;
+			imEventRetention = form.imEventRetention;
+			searchMinScore = form.searchMinScore;
+			searchCurateRerank = form.searchCurateRerank;
+			fbRequireReason = form.fbRequireReason;
+			fbFailureModes = form.fbFailureModes;
+			indexJson = form.indexJson;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load AKM config.';
 		} finally {
@@ -328,91 +236,39 @@
 		saving = true;
 		error = '';
 		try {
-			const profilesLlm: Record<string, unknown> = {};
-			for (const p of llmProfiles) {
-				if (p.name.trim()) profilesLlm[p.name.trim()] = buildLlmProfilePayload(p);
-			}
-
-			const profilesAgent: Record<string, unknown> = {};
-			for (const p of agentProfiles) {
-				if (!p.name.trim()) continue;
-				const entry: Record<string, unknown> = { platform: p.platform };
-				if (p.bin) entry.bin = p.bin;
-				if (p.args) entry.args = p.args.split(/\s+/).filter(Boolean);
-				if (p.workspace) entry.workspace = p.workspace;
-				if (p.model) entry.model = p.model;
-				profilesAgent[p.name.trim()] = entry;
-			}
-
-			const profilesImprove: Record<string, unknown> = {};
-			for (const ip of improveProfiles) {
-				if (!ip.name.trim()) continue;
-				const processes: Record<string, unknown> = {};
-				for (const k of PROCESS_KEYS) processes[k] = buildProcessConfig(ip.processes[k]);
-				const entry: Record<string, unknown> = { limit: ip.limit, processes };
-				if (ip.description) entry.description = ip.description;
-				if (ip.autoAccept > 0) entry.autoAccept = ip.autoAccept;
-				// profile-level git sync (akm sync block) — emit only configured fields
-				const sync: Record<string, unknown> = {};
-				if (ip.syncEnabled) sync.enabled = ip.syncEnabled === 'on';
-				if (ip.syncPush) sync.push = ip.syncPush === 'on';
-				if (ip.syncMessage.trim()) sync.message = ip.syncMessage.trim();
-				if (Object.keys(sync).length) entry.sync = sync;
-				profilesImprove[ip.name.trim()] = entry;
-			}
-
-			const embPayload: Record<string, unknown> = { endpoint: embEndpoint, model: embModel, dimension: embDimension };
-			if (embProvider) embPayload.provider = embProvider;
-			if (embApiKey) embPayload.apiKey = embApiKey;
-			if (embLocalModel) embPayload.localModel = embLocalModel;
-			const bs = optInt(embBatchSize); if (bs !== undefined) embPayload.batchSize = bs;
-			const cs = optInt(embChunkSize); if (cs !== undefined) embPayload.chunkSize = cs;
-			const ecl = optInt(embContextLength); if (ecl !== undefined) embPayload.contextLength = ecl;
-			const numCtx = optInt(embOllamaNumCtx); if (numCtx !== undefined) embPayload.ollamaOptions = { num_ctx: numCtx };
-
-			const defaultsPayload: Record<string, unknown> = {};
-			if (defaultLlmProfile) defaultsPayload.llm = defaultLlmProfile;
-			if (defaultAgentProfile) defaultsPayload.agent = defaultAgentProfile;
-			if (defaultImproveProfile) defaultsPayload.improve = defaultImproveProfile;
-
-			// Advanced: top-level improve / search / feedback / index (emit only configured fields)
-			const improveTopPayload: Record<string, unknown> = {};
-			const decayPayload: Record<string, unknown> = {};
-			const hl = optNum(imHalfLife); if (hl !== undefined) decayPayload.halfLifeDays = hl;
-			const fb = optNum(imFeedbackBoost); if (fb !== undefined) decayPayload.feedbackStabilityBoost = fb;
-			if (Object.keys(decayPayload).length) improveTopPayload.utilityDecay = decayPayload;
-			const er = optNum(imEventRetention); if (er !== undefined) improveTopPayload.eventRetentionDays = er;
-
-			const searchPayload: Record<string, unknown> = {};
-			const ms = optNum(searchMinScore); if (ms !== undefined) searchPayload.minScore = ms;
-			if (searchCurateRerank) searchPayload.curateRerank = { enabled: searchCurateRerank === 'on' };
-
-			const feedbackPayload: Record<string, unknown> = {};
-			if (fbRequireReason) feedbackPayload.requireReason = fbRequireReason === 'on';
-			const modes = fbFailureModes.split(',').map((s) => s.trim()).filter(Boolean);
-			if (modes.length) feedbackPayload.allowedFailureModes = modes;
-
-			let indexPayload: unknown;
-			if (indexJson.trim()) {
-				let parsed: unknown;
-				try { parsed = JSON.parse(indexJson); }
-				catch { throw new Error('Index config must be valid JSON'); }
-				if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-					throw new Error('Index config must be a JSON object keyed by pass name');
-				indexPayload = parsed;
-			}
-
-			await saveAkmConfig({
-				profiles: { llm: profilesLlm, agent: profilesAgent, improve: profilesImprove },
-				defaults: defaultsPayload,
-				embedding: embPayload,
+			const payload = formToAkmPayload({
+				llmProfiles,
+				defaultLlmProfile,
+				agentProfiles,
+				defaultAgentProfile,
+				improveProfiles,
+				defaultImproveProfile,
+				embedding: {
+					endpoint: embEndpoint,
+					model: embModel,
+					provider: embProvider,
+					apiKey: embApiKey,
+					dimension: embDimension,
+					localModel: embLocalModel,
+					batchSize: embBatchSize,
+					chunkSize: embChunkSize,
+					contextLength: embContextLength,
+					ollamaNumCtx: embOllamaNumCtx,
+				},
 				semanticSearchMode,
-				output: { format: outputFormat, detail: outputDetail },
-				...(Object.keys(improveTopPayload).length ? { improve: improveTopPayload } : {}),
-				...(Object.keys(searchPayload).length ? { search: searchPayload } : {}),
-				...(Object.keys(feedbackPayload).length ? { feedback: feedbackPayload } : {}),
-				...(indexPayload !== undefined ? { index: indexPayload } : {}),
+				outputFormat,
+				outputDetail,
+				imHalfLife,
+				imFeedbackBoost,
+				imEventRetention,
+				searchMinScore,
+				searchCurateRerank,
+				fbRequireReason,
+				fbFailureModes,
+				indexJson,
 			});
+
+			await saveAkmConfig(payload);
 			notifications.push('success', 'AKM config saved.');
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Failed to save AKM config.';
