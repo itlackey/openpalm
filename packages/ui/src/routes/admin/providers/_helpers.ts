@@ -61,6 +61,7 @@ export function parseModels(modelsJson: string) {
 	return parsed
 		.filter((m) => typeof m.id === 'string' && m.id.trim().length > 0)
 		.map((m) => ({
+			// biome-ignore lint/style/noNonNullAssertion: the preceding .filter guarantees m.id is a non-empty string.
 			id: m.id!.trim(),
 			name: typeof m.name === 'string' ? m.name.trim() : '',
 			contextLimit: parseLimit(m.contextLimit),
@@ -91,6 +92,7 @@ export function parseHeaders(headersJson: string): Record<string, string> {
 	return Object.fromEntries(
 		parsed
 			.filter((h) => typeof h.key === 'string' && typeof h.value === 'string')
+			// biome-ignore lint/style/noNonNullAssertion: the preceding .filter guarantees both h.key and h.value are strings.
 			.map((h) => [h.key!.trim(), h.value!.trim()])
 			.filter((e) => e[0].length > 0 && e[1].length > 0)
 	);

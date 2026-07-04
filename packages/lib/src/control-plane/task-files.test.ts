@@ -22,7 +22,7 @@ describe('task-files', () => {
     expect(names).toContain('health-check.yml');
     expect(names).toContain('notes.md');
     expect(names).not.toContain('ignore.txt');
-    expect(files.find((f) => f.name === 'health-check.yml')!.size).toBe('enabled: false\n'.length);
+    expect(files.find((f) => f.name === 'health-check.yml')?.size).toBe('enabled: false\n'.length);
   });
 
   it('reads, writes (0644), and removes a task file', () => {

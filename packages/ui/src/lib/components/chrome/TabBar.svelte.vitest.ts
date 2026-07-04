@@ -8,8 +8,9 @@ describe('TabBar', () => {
 
     const sectionTablist = document.querySelector('[aria-label="Sections"]');
     expect(sectionTablist).not.toBeNull();
+    if (!sectionTablist) return;
     const sectionTabs = Array.from(
-      sectionTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
+      sectionTablist.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
     expect(sectionTabs).toEqual(['Health', 'Mind', 'Voice', 'Routines', 'Capabilities', 'Knowledge']);
   });
@@ -19,8 +20,9 @@ describe('TabBar', () => {
 
     const subtabTablist = document.querySelector('[aria-label="Health tabs"]');
     expect(subtabTablist).not.toBeNull();
+    if (!subtabTablist) return;
     const subtabLabels = Array.from(
-      subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
+      subtabTablist.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
     expect(subtabLabels).toEqual(['Overview', 'Activity', 'Systems', 'Journal', 'Check-up', 'Recovery']);
   });
@@ -30,8 +32,9 @@ describe('TabBar', () => {
 
     const subtabTablist = document.querySelector('[aria-label="Knowledge tabs"]');
     expect(subtabTablist).not.toBeNull();
+    if (!subtabTablist) return;
     const subtabLabels = Array.from(
-      subtabTablist!.querySelectorAll<HTMLElement>('[role="tab"]')
+      subtabTablist.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
     expect(subtabLabels).toEqual(['Memory', 'Assistant', 'Secrets', 'Sharing']);
   });
@@ -79,7 +82,7 @@ describe('TabBar', () => {
       document.querySelectorAll<HTMLElement>('[aria-label="Sections"] [role="tab"]')
     ).find((t) => t.textContent?.trim() === 'Knowledge');
     expect(knowledge).not.toBeUndefined();
-    knowledge!.click();
+    knowledge?.click();
     expect(onSelect).toHaveBeenCalledWith('akm');
   });
 
@@ -91,7 +94,7 @@ describe('TabBar', () => {
       document.querySelectorAll<HTMLElement>('[aria-label="Sections"] [role="tab"]')
     ).find((t) => t.textContent?.trim() === 'Routines');
     expect(routines).not.toBeUndefined();
-    routines!.click();
+    routines?.click();
     expect(onSelect).toHaveBeenCalledWith('automations');
   });
 
@@ -103,7 +106,7 @@ describe('TabBar', () => {
       document.querySelectorAll<HTMLElement>('[aria-label="Knowledge tabs"] [role="tab"]')
     ).find((t) => t.textContent?.trim() === 'Sharing');
     expect(sharing).not.toBeUndefined();
-    sharing!.click();
+    sharing?.click();
     expect(onSelect).toHaveBeenCalledWith('host-sharing');
   });
 });

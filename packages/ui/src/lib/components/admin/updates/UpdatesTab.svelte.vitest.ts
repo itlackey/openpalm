@@ -323,7 +323,7 @@ describe('UpdatesTab — UI update', () => {
     await vi.waitFor(() => {
       expect(downloadUiVersion).toHaveBeenCalledTimes(1);
     });
-    expect(window.openpalm!.restartUiServer).toHaveBeenCalledTimes(1);
+    expect(window.openpalm?.restartUiServer).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -32,7 +32,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   // Summarise the hard checks into pass/warn/fail counts.
-  const checks = Array.isArray(parsedHealth?.hardChecks) ? (parsedHealth!.hardChecks as Array<{ status?: string }>) : [];
+  const checks = Array.isArray(parsedHealth?.hardChecks) ? (parsedHealth?.hardChecks as Array<{ status?: string }>) : [];
   const checkCounts = { pass: 0, warn: 0, fail: 0 };
   for (const c of checks) {
     if (c.status === 'pass') checkCounts.pass++;

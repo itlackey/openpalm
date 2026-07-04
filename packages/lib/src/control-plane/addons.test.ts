@@ -26,12 +26,14 @@ import {
 import { readSecret } from './secrets-files.js';
 
 let tempDir = '';
+let homeDir = '';
 let originalHome: string | undefined;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'registry-test-'));
   originalHome = process.env.OP_HOME;
-  process.env.OP_HOME = join(tempDir, 'home');
+  homeDir = join(tempDir, 'home');
+  process.env.OP_HOME = homeDir;
 });
 
 afterEach(() => {
@@ -70,52 +72,52 @@ describe('builtin addon metadata', () => {
 
 describe('addon runtime state', () => {
   it('ignores COMPOSE_PROFILES when resolving enabled addons', () => {
-    const envDir = join(process.env.OP_HOME!, 'knowledge', 'env');
+    const envDir = join(homeDir, 'knowledge', 'env');
     mkdirSync(envDir, { recursive: true });
     writeFileSync(join(envDir, 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
 
-    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
+    expect(listEnabledAddonIds(homeDir)).toEqual([]);
   });
 
   it('treats canonical hardware profile selections as addon enablement', () => {
-    const envDir = join(process.env.OP_HOME!, 'knowledge', 'env');
+    const envDir = join(homeDir, 'knowledge', 'env');
     mkdirSync(envDir, { recursive: true });
     writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
 
-    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['voice']);
+    expect(listEnabledAddonIds(homeDir)).toEqual(['voice']);
   });
 
   it('returns addon service names from fixed compose files', () => {
     // custom.compose.yml is USER-owned → config/stack, not system/stack.
-    const stackDir = join(process.env.OP_HOME!, 'config', 'stack');
+    const stackDir = join(homeDir, 'config', 'stack');
     mkdirSync(stackDir, { recursive: true });
     writeFileSync(join(stackDir, 'custom.compose.yml'), 'services:\n  proxy-test:\n    profiles: ["addon.proxy-test"]\n    image: image-a\n  proxy-test-worker:\n    profiles: ["addon.proxy-test"]\n    image: image-b\n');
 
-    expect(getAddonServiceNames(process.env.OP_HOME!, 'proxy-test')).toEqual(['proxy-test', 'proxy-test-worker']);
+    expect(getAddonServiceNames(homeDir, 'proxy-test')).toEqual(['proxy-test', 'proxy-test-worker']);
   });
 
   it('toggles addons and generates channel secrets for channel addons', () => {
-    const stackDir = join(process.env.OP_HOME!, 'system', 'stack');
+    const stackDir = join(homeDir, 'system', 'stack');
     mkdirSync(stackDir, { recursive: true });
 
-    const enabled = setAddonEnabled(process.env.OP_HOME!, 'discord', true);
+    const enabled = setAddonEnabled(homeDir, 'discord', true);
     expect(enabled.ok).toBe(true);
     expect(enabled.enabled).toBe(true);
     expect(enabled.changed).toBe(true);
     expect(enabled.services).toEqual(expect.arrayContaining(['guardian']));
-    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['discord']);
-    expect(readSecret(process.env.OP_HOME!, 'portal_discord_secret')).toBeTruthy();
+    expect(listEnabledAddonIds(homeDir)).toEqual(['discord']);
+    expect(readSecret(homeDir, 'portal_discord_secret')).toBeTruthy();
 
-    const disabled = setAddonEnabled(process.env.OP_HOME!, 'discord', false);
+    const disabled = setAddonEnabled(homeDir, 'discord', false);
     expect(disabled.ok).toBe(true);
     expect(disabled.enabled).toBe(false);
     expect(disabled.changed).toBe(true);
     expect(disabled.services).toEqual(expect.arrayContaining(['guardian']));
-    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual([]);
+    expect(listEnabledAddonIds(homeDir)).toEqual([]);
   });
 
   it('reads bundled addon profiles from the shipped compose assets', () => {
-    expect(getAddonProfiles(process.env.OP_HOME!, 'voice')).toEqual([
+    expect(getAddonProfiles(homeDir, 'voice')).toEqual([
       { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },
       { id: 'addon.voice.cuda', services: ['voice-cuda'], label: 'NVIDIA (CUDA 12.1)', requires: 'nvidia-container-toolkit' },
       { id: 'addon.voice.rocm', services: ['voice-rocm'], label: 'AMD (ROCm 6.x)', requires: 'amdgpu kernel module' },
@@ -123,16 +125,16 @@ describe('addon runtime state', () => {
   });
 
   it('round-trips addon profile selection, written to state/ not stack.env (constitution §1)', () => {
-    const stackDir = join(process.env.OP_HOME!, 'system', 'stack');
-    const stackEnv = join(process.env.OP_HOME!, 'knowledge', 'env', 'stack.env');
-    const stateEnv = join(process.env.OP_HOME!, 'state', 'stack.state.env');
+    const stackDir = join(homeDir, 'system', 'stack');
+    const stackEnv = join(homeDir, 'knowledge', 'env', 'stack.env');
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
     mkdirSync(stackDir, { recursive: true });
-    mkdirSync(join(process.env.OP_HOME!, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
     writeFileSync(stackEnv, '');
 
-    expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBeNull();
-    setAddonProfileSelection(process.env.OP_HOME!, 'voice', 'addon.voice.cuda');
-    expect(getAddonProfileSelection(process.env.OP_HOME!, 'voice')).toBe('addon.voice.cuda');
+    expect(getAddonProfileSelection(homeDir, 'voice')).toBeNull();
+    setAddonProfileSelection(homeDir, 'voice', 'addon.voice.cuda');
+    expect(getAddonProfileSelection(homeDir, 'voice')).toBe('addon.voice.cuda');
     // App-written addon state lands in state/, and never in the operator-facing stack.env.
     expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
     expect(readFileSync(stackEnv, 'utf-8')).not.toContain('OP_VOICE_PROFILE');
@@ -141,8 +143,8 @@ describe('addon runtime state', () => {
 
 describe('removed-addon state cleanup (R8: stale ssh)', () => {
   function seedStateEnv(contents: string): string {
-    const stateEnv = join(process.env.OP_HOME!, 'state', 'stack.state.env');
-    mkdirSync(join(process.env.OP_HOME!, 'state'), { recursive: true });
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(stateEnv, contents);
     return stateEnv;
   }
@@ -152,10 +154,10 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
 
     // ssh is no longer built in, so it is hidden from the effective set but
     // still present in the raw env until pruned.
-    expect(listEnabledAddonIds(process.env.OP_HOME!)).toEqual(['voice']);
+    expect(listEnabledAddonIds(homeDir)).toEqual(['voice']);
     expect(readFileSync(stateEnv, 'utf-8')).toContain('ssh');
 
-    const result = pruneRemovedAddonState(process.env.OP_HOME!);
+    const result = pruneRemovedAddonState(homeDir);
     expect(result.changed).toBe(true);
     expect(result.removedAddons).toEqual(['ssh']);
     expect(result.removedEnvKeys).toEqual(['OPENCODE_ENABLE_SSH']);
@@ -168,11 +170,11 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
 
   it('is idempotent — a second prune is a no-op that writes nothing', () => {
     seedStateEnv('OP_ENABLED_ADDONS=ssh\nOPENCODE_ENABLE_SSH=1\n');
-    expect(pruneRemovedAddonState(process.env.OP_HOME!).changed).toBe(true);
+    expect(pruneRemovedAddonState(homeDir).changed).toBe(true);
 
-    const stateEnv = join(process.env.OP_HOME!, 'state', 'stack.state.env');
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
     const contentAfterFirst = readFileSync(stateEnv, 'utf-8');
-    const second = pruneRemovedAddonState(process.env.OP_HOME!);
+    const second = pruneRemovedAddonState(homeDir);
     expect(second.changed).toBe(false);
     expect(second.removedAddons).toEqual([]);
     expect(second.removedEnvKeys).toEqual([]);
@@ -183,20 +185,20 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
     const stateEnv = seedStateEnv('OP_ENABLED_ADDONS=voice\n');
     const before = readFileSync(stateEnv, 'utf-8');
 
-    const result = pruneRemovedAddonState(process.env.OP_HOME!);
+    const result = pruneRemovedAddonState(homeDir);
     expect(result).toEqual({ changed: false, removedAddons: [], removedEnvKeys: [] });
     expect(readFileSync(stateEnv, 'utf-8')).toBe(before);
   });
 
   it('is a no-op when there is no state env at all', () => {
-    const result = pruneRemovedAddonState(process.env.OP_HOME!);
+    const result = pruneRemovedAddonState(homeDir);
     expect(result.changed).toBe(false);
   });
 
   it('disables a lingering ssh entry via setAddonEnabled', () => {
     const stateEnv = seedStateEnv('OP_ENABLED_ADDONS=ssh,voice\nOPENCODE_ENABLE_SSH=1\n');
 
-    const disabled = setAddonEnabled(process.env.OP_HOME!, 'ssh', false);
+    const disabled = setAddonEnabled(homeDir, 'ssh', false);
     expect(disabled.ok).toBe(true);
     if (disabled.ok) expect(disabled.changed).toBe(true);
 
@@ -207,20 +209,20 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
   });
 
   it('still rejects ENABLING a non-built-in addon (validation unchanged)', () => {
-    const result = setAddonEnabled(process.env.OP_HOME!, 'ssh', true);
+    const result = setAddonEnabled(homeDir, 'ssh', true);
     expect(result).toEqual({ ok: false, error: 'Addon "ssh" is not built in' });
   });
 
   it('treats disabling an absent removed addon as a no-op success', () => {
     seedStateEnv('OP_ENABLED_ADDONS=voice\n');
-    const result = setAddonEnabled(process.env.OP_HOME!, 'ssh', false);
+    const result = setAddonEnabled(homeDir, 'ssh', false);
     expect(result).toEqual({ ok: true, enabled: false, changed: false, services: [] });
   });
 });
 
 describe('automation install helpers', () => {
   it('installs and uninstalls automations through knowledge/tasks', () => {
-    const stashDir = join(process.env.OP_HOME!, 'knowledge');
+    const stashDir = join(homeDir, 'knowledge');
     expect(installAutomationFromRegistry('akm-improve', stashDir)).toEqual({ ok: true });
     expect(readFileSync(join(stashDir, 'tasks', 'akm-improve.yml'), 'utf-8')).toContain('akm improve');
 
@@ -231,21 +233,22 @@ describe('automation install helpers', () => {
 
 describe('backup helpers', () => {
   it('backs up config/state trees but EXCLUDES the regenerable data/ tree', () => {
-    mkdirSync(join(process.env.OP_HOME!, 'config'), { recursive: true });
-    mkdirSync(join(process.env.OP_HOME!, 'data', 'backups', 'old-backup'), { recursive: true });
-    mkdirSync(join(process.env.OP_HOME!, 'data', 'assistant'), { recursive: true });
-    writeFileSync(join(process.env.OP_HOME!, 'config', 'stack.yml'), 'llm: test\n');
-    writeFileSync(join(process.env.OP_HOME!, 'data', 'backups', 'old-backup', 'marker.txt'), 'old\n');
-    writeFileSync(join(process.env.OP_HOME!, 'data', 'assistant', 'cache.bin'), 'big\n');
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    mkdirSync(join(homeDir, 'data', 'backups', 'old-backup'), { recursive: true });
+    mkdirSync(join(homeDir, 'data', 'assistant'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'stack.yml'), 'llm: test\n');
+    writeFileSync(join(homeDir, 'data', 'backups', 'old-backup', 'marker.txt'), 'old\n');
+    writeFileSync(join(homeDir, 'data', 'assistant', 'cache.bin'), 'big\n');
 
-    const backupDir = backupOpenPalmHome(process.env.OP_HOME!);
+    const backupDir = backupOpenPalmHome(homeDir);
 
     expect(backupDir).not.toBeNull();
-    expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
-    expect(existsSync(join(backupDir!, 'cache'))).toBe(false);
+    if (backupDir === null) return; // narrow for TS; the expect above already failed the test if null
+    expect(existsSync(join(backupDir, 'config', 'stack.yml'))).toBe(true);
+    expect(existsSync(join(backupDir, 'cache'))).toBe(false);
     // The whole data/ tree is excluded — it's large, regenerable runtime state
     // (this is the fix for snapshots ballooning to GBs and filling the disk).
-    expect(existsSync(join(backupDir!, 'data'))).toBe(false);
+    expect(existsSync(join(backupDir, 'data'))).toBe(false);
   });
 
   it('writes backups under the provided homeDir even when OP_HOME points elsewhere', () => {
@@ -261,8 +264,9 @@ describe('backup helpers', () => {
     const backupDir = backupOpenPalmHome(actualHome);
 
     expect(backupDir).not.toBeNull();
-    expect(backupDir!.startsWith(join(actualHome, 'data', 'backups'))).toBe(true);
-    expect(existsSync(join(backupDir!, 'config', 'stack.yml'))).toBe(true);
+    if (backupDir === null) return; // narrow for TS; the expect above already failed the test if null
+    expect(backupDir.startsWith(join(actualHome, 'data', 'backups'))).toBe(true);
+    expect(existsSync(join(backupDir, 'config', 'stack.yml'))).toBe(true);
     expect(existsSync(join(otherHome, 'data', 'backups', 'config', 'stack.yml'))).toBe(false);
   });
 });

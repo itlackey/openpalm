@@ -5,6 +5,7 @@
   import IconConnect from '$lib/components/icons/IconConnect.svelte';
   import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
+  import { setupState } from '$lib/setup/setup-state.svelte.js';
 
   interface CheckResult {
     ok: boolean;
@@ -43,16 +44,18 @@
 
   const KNOWN_PROVIDERS = new Set(['ollama', 'lmstudio', 'model-runner']);
 
-  interface Props {
-    onnext: () => void;
-    onpass: () => void;
-    ongpudetected?: (gpu: string) => void;
-    /** True when re-running an existing install; suppresses misleading
-     *  port-conflict warnings that just reflect the running stack itself. */
-    isRerun?: boolean;
-  }
+  // Takes NO props: reads the setup-state store directly (isRerun) and calls its
+  // navigation / GPU-detection methods, mirroring Screen1ModelsStep / ReviewStep.
+  // `onnext` and `onpass` both mapped to handleSystemCheckPass at the call site;
+  // `ongpudetected` ignored its gpu argument (the store re-derives it).
+  const s = setupState;
 
-  let { onnext, onpass, ongpudetected, isRerun = false }: Props = $props();
+  const onnext = (): void => s.handleSystemCheckPass();
+  const onpass = (): void => s.handleSystemCheckPass();
+  const ongpudetected = (): void => s.handleGpuDetected();
+  /** True when re-running an existing install; suppresses misleading
+   *  port-conflict warnings that just reflect the running stack itself. */
+  const isRerun = $derived(s.isRerun);
 
   let loading = $state(true);
   let result = $state<SystemCheckResponse | null>(null);
@@ -89,7 +92,7 @@
       const data = await res.json() as SystemCheckResponse;
       result = data;
       if (data.docker.ok && data.compose.ok) onpass();
-      if (data.gpu) ongpudetected?.(data.gpu);
+      if (data.gpu) ongpudetected();
     } catch (err) {
       errorView = friendlyError(err, 'system-check');
       result = null;

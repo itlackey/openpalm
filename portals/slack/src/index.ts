@@ -264,7 +264,8 @@ export default class SlackChannel extends BasePortal {
         : `slack:channel:${event.channel}:user:${event.user}`;
 
     if (inTrackedThread) {
-      this.touchThread(event.channel, event.thread_ts!);
+      // inTrackedThread implies event.thread_ts != null (see above), so threadTs === event.thread_ts here.
+      this.touchThread(event.channel, threadTs);
     }
 
     await this.conversationQueue.runOrQueue(sessionKey, {

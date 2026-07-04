@@ -104,17 +104,17 @@ async function resolveDockerLatestSilent(
     const candidates: string[] = [];
     for (const tag of data.results ?? []) {
       // Stable semver always accepted
-      const plain = tag.name.match(STABLE_SEMVER);
-      if (plain) { candidates.push(plain[1]!); continue; }
+      const plain = tag.name.match(STABLE_SEMVER)?.[1];
+      if (plain) { candidates.push(plain); continue; }
       // Voice variant tags (X.Y.Z-cpu etc.) — extract base version for the voice image
       if (isVoice) {
-        const voice = tag.name.match(VOICE_STABLE);
-        if (voice) { candidates.push(voice[1]!); continue; }
+        const voice = tag.name.match(VOICE_STABLE)?.[1];
+        if (voice) { candidates.push(voice); continue; }
       }
       // Prerelease tags accepted only on the "next" channel
       if (channel === "next") {
-        const pre = tag.name.match(PRERELEASE_SEMVER);
-        if (pre) candidates.push(pre[1]!);
+        const pre = tag.name.match(PRERELEASE_SEMVER)?.[1];
+        if (pre) candidates.push(pre);
       }
     }
     if (candidates.length === 0) return null;

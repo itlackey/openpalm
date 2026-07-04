@@ -25,8 +25,8 @@ describe("resolveOperatorIds", () => {
       return;
     }
     expect(ids).not.toBeNull();
-    expect(ids!.uid).toBe(expected.uid);
-    expect(ids!.gid).toBe(expected.gid);
+    expect(ids?.uid).toBe(expected.uid);
+    expect(ids?.gid).toBe(expected.gid);
   });
 
   test("falls back to process UID when homeDir does not exist", () => {
@@ -37,9 +37,12 @@ describe("resolveOperatorIds", () => {
       return;
     }
     expect(ids).not.toBeNull();
-    // process.getuid is guaranteed on POSIX runtimes used by this test
-    expect(ids!.uid).toBe(process.getuid!());
-    expect(ids!.gid).toBe(process.getgid!());
+    // process.getuid/getgid are guaranteed on the POSIX runtimes used by this
+    // test (the win32 branch returned early above), so the calls never throw.
+    // biome-ignore lint/style/noNonNullAssertion: process.getuid is defined on POSIX (win32 returned early).
+    expect(ids?.uid).toBe(process.getuid!());
+    // biome-ignore lint/style/noNonNullAssertion: process.getgid is defined on POSIX (win32 returned early).
+    expect(ids?.gid).toBe(process.getgid!());
   });
 
   test("never returns 0 (root) — falls back to process UID when homeDir is root-owned", () => {
@@ -57,8 +60,8 @@ describe("resolveOperatorIds", () => {
       return;
     }
     expect(ids).not.toBeNull();
-    expect(ids!.uid).toBeGreaterThan(0);
-    expect(ids!.gid).toBeGreaterThan(0);
+    expect(ids?.uid).toBeGreaterThan(0);
+    expect(ids?.gid).toBeGreaterThan(0);
   });
 
   test("returns null when BOTH homeDir owner and process UID/GID are 0 (root install on root-owned OP_HOME)", () => {
@@ -119,15 +122,19 @@ describe("resolveSessionIdentity", () => {
     // session the result is the process uid regardless of homeDir.
     const ids = resolveSessionIdentity(tempDir);
     expect(ids).not.toBeNull();
-    expect(ids!.uid).toBe(process.getuid!());
-    expect(ids!.gid).toBe(process.getgid!());
+    // process.getuid/getgid are defined on POSIX (win32 returned early above).
+    // biome-ignore lint/style/noNonNullAssertion: process.getuid is defined on POSIX (win32 returned early).
+    expect(ids?.uid).toBe(process.getuid!());
+    // biome-ignore lint/style/noNonNullAssertion: process.getgid is defined on POSIX (win32 returned early).
+    expect(ids?.gid).toBe(process.getgid!());
   });
 
   test("ignores a missing homeDir for a non-root session (uses process ids)", () => {
     if (process.platform === "win32") return;
     const ids = resolveSessionIdentity(join(tempDir, "does-not-exist"));
     expect(ids).not.toBeNull();
-    expect(ids!.uid).toBe(process.getuid!());
+    // biome-ignore lint/style/noNonNullAssertion: process.getuid is defined on POSIX (win32 returned early).
+    expect(ids?.uid).toBe(process.getuid!());
   });
 
   test("falls back to the disk-owner-preferring resolver for a root session", () => {

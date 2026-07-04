@@ -32,7 +32,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, portal discovery, connections, scheduler logic. Both CLI and UI import from this package.
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without UI.
 - **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
-- **Guardian** (`containers/guardian/`) — Bun HTTP server: principal auth, allowlisted `/oc/*` proxying, ownership checks, rate limiting, and opt-in fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
+- **Guardian** (`packages/guardian/`, `@openpalm/guardian`; image build assets in `containers/guardian/`) — Bun HTTP server: principal auth, allowlisted `/oc/*` proxying, ownership checks, rate limiting, and opt-in fail-closed content validation of inbound messages (`GUARDIAN_CONTENT_VALIDATION`, off by default).
 - **Assistant** (`containers/assistant/`) — OpenCode runtime with tools/skills. No Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
 - **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM YAML task files (`*.yml`) in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
 - **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
@@ -52,7 +52,7 @@ npm run build                                       # Production build
 npm run check                                       # svelte-check + TypeScript
 
 # Guardian (Bun)
-cd containers/guardian && bun install && bun run src/server.ts
+cd packages/guardian && bun install && bun run src/server.ts
 
 # Root shortcuts
 bun run ui:dev     # Runs UI dev from root
@@ -85,7 +85,7 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 | Runner | Command | Scope |
 |--------|---------|-------|
 | `bun test` (root) | `bun run test` | guardian, cli, all portal packages (excludes ui) |
-| `bun test` (guardian) | `bun run guardian:test` | containers/guardian security tests |
+| `bun test` (guardian) | `bun run guardian:test` | packages/guardian security tests |
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
 | Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
 | Playwright (UI integration) | `bun run ui:test:e2e` | packages/ui integration tests (no browser route mocks) |
@@ -95,10 +95,10 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 
 ```bash
 # Run guardian tests
-cd containers/guardian && bun test
+cd packages/guardian && bun test
 
 # Run a single test file
-cd containers/guardian && bun test src/server.test.ts
+cd packages/guardian && bun test src/server.test.ts
 
 # Run UI unit tests (Vitest, CI-friendly)
 bun run ui:test:unit
@@ -204,7 +204,11 @@ Read these before making significant changes. They are the authoritative sources
 
 ### Formatting
 
-No Prettier or ESLint configured. Match the existing file style:
+Biome is configured repo-wide (`biome.jsonc`) and enforced by a CI gate
+(`.github/workflows/lint.yml`). Run `bun run lint` (or `bun run lint:fix` /
+`bun run format`) before committing. `.svelte` files are excluded from Biome —
+they are linted by `svelte-check` + `eslint-plugin-svelte` in `packages/ui`.
+Match the existing file style:
 - 2-space indentation
 - Single quotes in JS/TS, double quotes in JSON
 - Trailing commas in multi-line arrays/objects
@@ -286,11 +290,11 @@ Before submitting any change:
 | `packages/ui/src/lib/server/helpers.ts` | Shared request/response utilities |
 | `packages/ui/src/lib/types.ts` | Shared TypeScript types |
 | `packages/ui/src/lib/auth.ts` | Auth utilities |
-| `packages/ui/src/lib/api.ts` | API call functions |
+| `packages/ui/src/lib/api.ts` | Barrel re-exporting the per-domain admin API clients in `packages/ui/src/lib/api/*` (`core`, `chat`, `voice`, `versions`, `akm`, …) |
 | `packages/cli/src/lib/cli-state.ts` | CLI state helpers (ensureValidState) |
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |
-| `containers/guardian/src/server.ts` | HMAC-signed message guardian |
-| `containers/guardian/src/logger.ts` | Guardian-local logger (createLogger factory) |
+| `packages/guardian/src/server.ts` | HMAC-signed message guardian (`@openpalm/guardian`; `containers/guardian/` holds only the Dockerfile + entrypoint) |
+| `packages/guardian/src/logger.ts` | Guardian-local logger (createLogger factory) |
 | `.openpalm/config/stack/core.compose.yml` | Core service definitions (assistant + guardian) |
 | `.openpalm/config/stack/` | Fixed stack compose files and enabled-addon state |
 | `.opencode/opencode.json` | OpenCode project configuration |

@@ -174,8 +174,8 @@ Field length validation is enforced by the active guardian and portal runtime re
 
 Content validation (opt-in, off by default):
 
-- The limits above are *structural* — they confirm a message is well-formed and signed, not that it is safe. When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian adds a semantic stage before forwarding (`containers/guardian/src/moderation.ts`).
-- A deterministic heuristic pre-screen (`containers/guardian/src/content-screen.ts`) scores prompt-injection / jailbreak / exfiltration / obfuscation signals. Clean traffic (score 0) forwards without touching a model.
+- The limits above are *structural* — they confirm a message is well-formed and signed, not that it is safe. When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian adds a semantic stage before forwarding (`packages/guardian/src/moderation.ts`).
+- A deterministic heuristic pre-screen (`packages/guardian/src/content-screen.ts`) scores prompt-injection / jailbreak / exfiltration / obfuscation signals. Clean traffic (score 0) forwards without touching a model.
 - Messages over `GUARDIAN_MODERATION_THRESHOLD` escalate to the guardian's local OpenCode moderator (loopback `:4097`, started by the guardian entrypoint, small model pinned in `config/guardian/opencode.jsonc`, shared `auth.json` provider creds), which returns an allow/flag/block JSON verdict.
 - **Fail-closed:** an escalated message the moderator cannot classify (down, timeout, unparseable) is blocked (`403 content_blocked`). The taxonomy + output contract live in `config/guardian/instructions/moderation.md`.
 

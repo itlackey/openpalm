@@ -24,6 +24,7 @@ describe("ensureHomeDirs", () => {
 
   test("creates full home directory tree", () => {
     ensureHomeDirs();
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const home = process.env.OP_HOME!;
 
     // config/ — user-editable + system config files
@@ -79,7 +80,9 @@ describe("ensureHomeDirs", () => {
   test("is idempotent — safe to call multiple times", () => {
     ensureHomeDirs();
     ensureHomeDirs();
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     expect(existsSync(join(process.env.OP_HOME!, "config"))).toBe(true);
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     expect(existsSync(join(process.env.OP_HOME!, "data"))).toBe(true);
   });
 });

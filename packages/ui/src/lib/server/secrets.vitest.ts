@@ -306,6 +306,7 @@ describe("ensureOpenCodeConfig", () => {
   test("seeds opencode.json with schema reference", () => {
     ensureOpenCodeConfig();
 
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const configFile = join(process.env.OP_HOME!, "config", "assistant", "opencode.json");
     expect(existsSync(configFile)).toBe(true);
     const content = JSON.parse(readFileSync(configFile, "utf-8"));
@@ -314,6 +315,7 @@ describe("ensureOpenCodeConfig", () => {
 
   test("creates tools, plugins, skills subdirs", () => {
     ensureOpenCodeConfig();
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const base = join(process.env.OP_HOME!, "config", "assistant");
     expect(existsSync(join(base, "tools"))).toBe(true);
     expect(existsSync(join(base, "plugins"))).toBe(true);
@@ -321,6 +323,7 @@ describe("ensureOpenCodeConfig", () => {
   });
 
   test("does not overwrite existing opencode.json", () => {
+    // biome-ignore lint/style/noNonNullAssertion: OP_HOME is assigned in beforeEach, so it is defined for every test in this suite.
     const configHome = join(process.env.OP_HOME!, "config");
     const opencodePath = join(configHome, "assistant");
     mkdirSync(opencodePath, { recursive: true });

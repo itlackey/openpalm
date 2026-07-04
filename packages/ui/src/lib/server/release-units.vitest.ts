@@ -24,7 +24,7 @@ describe('groupReleasesByUnit', () => {
     expect(result.unitReleases.guardian.map((r) => r.tag)).toEqual(['0.12.7']);
     expect(result.unitReleases.portals.map((r) => r.tag)).toEqual(['0.12.6']);
     // Unit releases never carry Electron assets.
-    expect(result.unitReleases.guardian[0]!.hasElectronBuild).toBe(false);
+    expect(result.unitReleases.guardian[0]?.hasElectronBuild).toBe(false);
     // Platform list stays empty when no platform/v tags are present.
     expect(result.releases).toEqual([]);
   });
@@ -36,8 +36,8 @@ describe('groupReleasesByUnit', () => {
     ]);
 
     expect(result.releases.map((r) => r.tag)).toEqual(['0.12.5', '0.12.4']);
-    expect(result.releases[0]!.hasElectronBuild).toBe(true);
-    expect(result.releases[1]!.hasElectronBuild).toBe(false);
+    expect(result.releases[0]?.hasElectronBuild).toBe(true);
+    expect(result.releases[1]?.hasElectronBuild).toBe(false);
   });
 
   test('deduplicates platform-X.Y.Z vs legacy vX.Y.Z for the same semver', () => {
@@ -49,7 +49,7 @@ describe('groupReleasesByUnit', () => {
     ]);
 
     expect(result.releases.map((r) => r.tag)).toEqual(['0.12.5']);
-    expect(result.releases[0]!.hasElectronBuild).toBe(true);
+    expect(result.releases[0]?.hasElectronBuild).toBe(true);
   });
 
   test('deduplicates within a unit list by semver', () => {
@@ -78,7 +78,7 @@ describe('groupReleasesByUnit', () => {
     ]);
 
     expect(result.unitReleases.assistant.map((r) => r.tag)).toEqual(['0.13.0-rc.1']);
-    expect(result.unitReleases.assistant[0]!.prerelease).toBe(true);
+    expect(result.unitReleases.assistant[0]?.prerelease).toBe(true);
   });
 
   test('returns empty lists for an empty input', () => {
@@ -98,7 +98,7 @@ describe('selectInstallableReleases', () => {
     ]);
 
     expect(releases.map((r) => r.tag)).toEqual(['0.12.5']);
-    expect(releases[0]!.hasElectronBuild).toBe(true);
+    expect(releases[0]?.hasElectronBuild).toBe(true);
   });
 
   test('skips platform releases without Electron assets', () => {
@@ -117,7 +117,7 @@ describe('selectInstallableReleases', () => {
     ]);
 
     expect(releases).toHaveLength(1);
-    expect(releases[0]!.tag).toBe('0.12.5');
+    expect(releases[0]?.tag).toBe('0.12.5');
   });
 
   test('skips per-unit tags (assistant-*, guardian-*, portals-*)', () => {

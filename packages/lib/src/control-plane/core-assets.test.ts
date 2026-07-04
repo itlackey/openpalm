@@ -23,7 +23,7 @@ const MANAGED_FILES = [
   "system/stack/services.compose.yml",
   "system/stack/portals.compose.yml",
   "system/assistant/opencode.jsonc",
-];
+] as const;
 
 function seedSource(content: string): void {
   for (const rel of MANAGED_FILES) {
@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 describe("overwriteSystemTree", () => {
-  const first = MANAGED_FILES[0]!;
+  const first = MANAGED_FILES[0];
 
   it("writes every managed system/ file when absent", () => {
     seedSource("# fresh\n");
@@ -67,7 +67,8 @@ describe("overwriteSystemTree", () => {
     expect(readFileSync(join(opHome, first), "utf-8")).toBe("new\n");
     expect(updated).toContain(first);
     expect(backupDir).not.toBeNull();
-    expect(readFileSync(join(backupDir!, first), "utf-8")).toBe("old\n");
+    if (backupDir === null) return; // narrow for TS; the expect above already failed the test if null
+    expect(readFileSync(join(backupDir, first), "utf-8")).toBe("old\n");
   });
 
   it("skips when on-disk content already matches the source", () => {

@@ -133,6 +133,7 @@ export function upsertPrincipal(input: { id: string; kind: PrincipalKind; label?
       token_hash = excluded.token_hash,
       enabled = excluded.enabled
   `).run(input.id, input.kind, label, hashToken(input.token), input.enabled === false ? 0 : 1, createdAt);
+  // biome-ignore lint/style/noNonNullAssertion: the INSERT ... ON CONFLICT DO UPDATE above guarantees a row with input.id exists, so the immediate re-read cannot be null.
   return getPrincipalRecord(input.id)!;
 }
 

@@ -280,6 +280,7 @@ async function routeAllowed(
   search: string,
   body: string,
 ): Promise<Response> {
+  // biome-ignore lint/style/noNonNullAssertion: routeAllowed is only reached after the `!match.allowed` guard in handle(); every allowed AllowlistMatch (from matchAllowlist and allowDirect/directRouteFor) sets `route`, so it is provably non-null here.
   const template = match.route!.template;
   const params = match.params ?? {};
   const sessionId = params.id;

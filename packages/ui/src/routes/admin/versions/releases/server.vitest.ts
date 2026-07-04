@@ -55,7 +55,7 @@ describe('GET /admin/versions/releases', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { releases: { tag: string; hasElectronBuild: boolean }[] };
     expect(body.releases.map((r) => r.tag)).toEqual(['0.12.5']);
-    expect(body.releases[0]!.hasElectronBuild).toBe(true);
+    expect(body.releases[0]?.hasElectronBuild).toBe(true);
   });
 
   test('skips platform releases without Electron assets', async () => {
@@ -80,7 +80,7 @@ describe('GET /admin/versions/releases', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { releases: { tag: string }[] };
     expect(body.releases).toHaveLength(1);
-    expect(body.releases[0]!.tag).toBe('0.12.5');
+    expect(body.releases[0]?.tag).toBe('0.12.5');
   });
 
   test('returns empty list with error when GitHub API returns an error status', async () => {

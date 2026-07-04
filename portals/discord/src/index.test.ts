@@ -454,13 +454,14 @@ describe("parseCustomCommands", () => {
     }]);
     const commands = parseCustomCommands(json);
     expect(commands.length).toBe(1);
-    const opts = commands[0].options!;
-    expect(opts.length).toBe(4);
-    expect(opts[0].type).toBe(CommandOptionType.STRING);
-    expect(opts[1].type).toBe(CommandOptionType.NUMBER);
-    expect(opts[2].type).toBe(CommandOptionType.BOOLEAN);
+    const opts = commands[0].options;
+    expect(opts).toBeDefined();
+    expect(opts?.length).toBe(4);
+    expect(opts?.[0].type).toBe(CommandOptionType.STRING);
+    expect(opts?.[1].type).toBe(CommandOptionType.NUMBER);
+    expect(opts?.[2].type).toBe(CommandOptionType.BOOLEAN);
     // Invalid type defaults to STRING
-    expect(opts[3].type).toBe(CommandOptionType.STRING);
+    expect(opts?.[3].type).toBe(CommandOptionType.STRING);
   });
 
   it("handles option choices", () => {
@@ -1098,7 +1099,8 @@ describe("command validation edge cases", () => {
     }]);
     const commands = parseCustomCommands(json);
     expect(commands.length).toBe(1);
-    const resolved = resolvePromptTemplate(commands[0].promptTemplate!, { text: "hello", lang: "Spanish" });
+    expect(commands[0].promptTemplate).toBeDefined();
+    const resolved = resolvePromptTemplate(commands[0].promptTemplate ?? "", { text: "hello", lang: "Spanish" });
     expect(resolved).toBe("Translate 'hello' to Spanish");
   });
 });
@@ -1122,7 +1124,7 @@ describe("full command flow", () => {
     expect(cmd).toBeDefined();
     expect(cmd?.promptTemplate).toBeDefined();
 
-    const prompt = resolvePromptTemplate(cmd!.promptTemplate!, { topic: "recursion" });
+    const prompt = resolvePromptTemplate(cmd?.promptTemplate ?? "", { topic: "recursion" });
     expect(prompt).toBe("Explain recursion in simple terms");
   });
 

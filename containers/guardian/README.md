@@ -1,5 +1,8 @@
 # containers/guardian — Message Guardian
 
+> Source code lives in the `@openpalm/guardian` workspace at `packages/guardian/`.
+> This directory holds only the image build assets (Dockerfile, entrypoint, baked tools).
+
 Bun HTTP server that acts as the security checkpoint for all inbound portal traffic. Every first-party portal adapter and direct MCP/API ingress path passes through the guardian before reaching the assistant.
 
 The image also ships the OpenCode binary (pinned to the same `OPENCODE_VERSION` as the assistant). Guardian-side OpenCode instances read their global config from `/etc/opencode` (bind-mounted from `OP_HOME/config/guardian`, set via `OPENCODE_CONFIG_DIR`) and share provider credentials with the assistant through the read-only `auth.json` mount (from `OP_HOME/knowledge/secrets/auth.json`).
@@ -24,7 +27,7 @@ that it is *safe*. When `GUARDIAN_CONTENT_VALIDATION` is enabled, step 6 adds a
 semantic layer that inspects what the message is actually trying to do, using a
 local OpenCode moderator. It is layered cheap → expensive:
 
-- **Heuristic pre-screen** (`containers/guardian/src/content-screen.ts`): pure,
+- **Heuristic pre-screen** (`packages/guardian/src/content-screen.ts`): pure,
   in-process pattern matching that scores prompt-injection / jailbreak /
   exfiltration / obfuscation signals. Most traffic scores 0 and is forwarded
   without ever touching a model.
@@ -71,7 +74,7 @@ contract live in `config/guardian/instructions/moderation.md`.
 ## Development
 
 ```bash
-bun run src/server.ts
+cd packages/guardian && bun run src/server.ts
 ```
 
 Or from the repo root:
@@ -84,5 +87,5 @@ bun run guardian:test
 ## Testing
 
 ```bash
-cd containers/guardian && bun test
+cd packages/guardian && bun test
 ```

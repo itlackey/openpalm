@@ -828,7 +828,9 @@ describe("checkAndUpdateSkeleton", () => {
     const backupsDir = join(skelDataDir, "backups");
     const skelBackups = existsSync(backupsDir) ? readdirSync(backupsDir).filter((n: string) => n.startsWith("skeleton-")) : [];
     expect(skelBackups.length).toBeGreaterThan(0);
-    const backup = join(backupsDir, skelBackups[0]!);
+    const firstSkelBackup = skelBackups[0];
+    if (firstSkelBackup === undefined) return; // narrow for TS; the expect above already failed the test if empty
+    const backup = join(backupsDir, firstSkelBackup);
     expect(existsSync(join(backup, "stack", "core.compose.yml"))).toBe(true);
     expect(readFileSync(join(backup, "stack", "core.compose.yml"), "utf8")).toContain("image: old");
   });

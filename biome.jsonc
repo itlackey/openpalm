@@ -42,7 +42,8 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      // The recommended preset is Biome's default when the linter is enabled, so it
+      // is not set explicitly (the old `recommended: true` field is deprecated).
       "suspicious": {
         // Downgraded error -> warn: each already fires on existing source, so keeping
         // them as errors would fail the gate on legacy code. They stay visible as
@@ -57,11 +58,11 @@
         "noTemplateCurlyInString": "off"
       },
       "style": {
-        // Off: non-null assertions (`x!`) are idiomatic, deliberate TypeScript used
-        // throughout this codebase (~234 sites) where the author has already narrowed
-        // the value. Mechanically rewriting each to a runtime guard would add noise and
-        // risk with no correctness benefit; TS's strict null checks remain the real gate.
-        "noNonNullAssertion": "off"
+        // Warn (enforced-visible, non-gating): non-null assertions are addressed
+        // per-site — converted to optional chaining / guards where that is a genuine,
+        // behavior-preserving improvement, and kept with a documented `biome-ignore`
+        // where `x!` is a deliberate, correct invariant. New violations stay visible.
+        "noNonNullAssertion": "warn"
       }
     }
   },

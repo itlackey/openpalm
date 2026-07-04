@@ -219,7 +219,7 @@ function load(config: Record<string, unknown>): Loaded {
 	const fbRequireReason: Tri =
 		typeof feedback?.requireReason === 'boolean' ? (feedback.requireReason ? 'on' : 'off') : '';
 	const fbFailureModes = Array.isArray(feedback?.allowedFailureModes)
-		? (feedback!.allowedFailureModes as string[]).join(', ')
+		? (feedback?.allowedFailureModes as string[]).join(', ')
 		: '';
 	const indexJson = config.index && typeof config.index === 'object' ? JSON.stringify(config.index, null, 2) : '';
 
