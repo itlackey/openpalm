@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { errMessage } from './errors.js';
 import { join } from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import { parseComposeServices, type ComposeService } from './compose-services.js';
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persistence.js';
@@ -83,19 +83,14 @@ export function listEnabledAddonIds(homeDir: string): string[] {
 
 function readAddonServiceNamesFromContent(composeContent: string, composePath: string, addonName?: string): string[] {
   try {
-    const parsed = parseYaml(composeContent);
-    const services = parsed && typeof parsed === "object" ? (parsed as { services?: unknown }).services : undefined;
-    if (!services || typeof services !== "object" || Array.isArray(services)) return [];
-    const entries = Object.entries(services as Record<string, unknown>);
-    if (!addonName) return entries.map(([name]) => name);
-    return entries
-      .filter(([serviceName, raw]) => {
-        if (serviceName === addonName || serviceName.startsWith(`${addonName}-`)) return true;
-        if (!raw || typeof raw !== 'object') return false;
-        const profiles = (raw as { profiles?: unknown }).profiles;
-        return Array.isArray(profiles) && profiles.some((p) => typeof p === 'string' && p.startsWith(`addon.${addonName}`));
+    const services = parseComposeServices(composeContent);
+    if (!addonName) return services.map((svc) => svc.name);
+    return services
+      .filter((svc) => {
+        if (svc.name === addonName || svc.name.startsWith(`${addonName}-`)) return true;
+        return svc.profiles.some((p) => p.startsWith(`addon.${addonName}`));
       })
-      .map(([serviceName]) => serviceName);
+      .map((svc) => svc.name);
   } catch (error) {
     logger.warn("failed to parse addon compose services", {
       composePath,
@@ -170,9 +165,9 @@ export async function annotateAddonProfileAvailability(
 }
 
 function readAddonProfilesFromContent(composeContent: string, composePath: string): AddonProfile[] {
-  let parsed: unknown;
+  let services: ComposeService[];
   try {
-    parsed = parseYaml(composeContent);
+    services = parseComposeServices(composeContent);
   } catch (error) {
     logger.warn("failed to parse addon compose profiles", {
       composePath,
@@ -181,33 +176,24 @@ function readAddonProfilesFromContent(composeContent: string, composePath: strin
     return [];
   }
 
-  const services = parsed && typeof parsed === "object"
-    ? (parsed as { services?: unknown }).services
-    : undefined;
-  if (!services || typeof services !== "object" || Array.isArray(services)) return [];
-
   const byProfile = new Map<string, AddonProfile>();
-  for (const [svcName, svcRaw] of Object.entries(services as Record<string, unknown>)) {
-    if (!svcRaw || typeof svcRaw !== "object") continue;
-    const svc = svcRaw as { profiles?: unknown; labels?: unknown };
-    if (!Array.isArray(svc.profiles)) continue;
-    const profileIds = svc.profiles.filter((p): p is string => typeof p === "string");
-    if (profileIds.length === 0) continue;
+  for (const svc of services) {
+    if (svc.profiles.length === 0) continue;
 
-    const labels = readServiceLabels(svc.labels);
+    const labels = svc.labels;
     const label = labels["openpalm.profile.label"];
     const requires = labels["openpalm.profile.requires"];
     const isDefault = labels["openpalm.profile.default"] === "true";
 
-    for (const id of profileIds) {
+    for (const id of svc.profiles) {
       const existing = byProfile.get(id);
       if (existing) {
-        existing.services.push(svcName);
+        existing.services.push(svc.name);
         if (!existing.label && label) existing.label = label;
         if (!existing.requires && requires) existing.requires = requires;
         if (!existing.default && isDefault) existing.default = true;
       } else {
-        const profile: AddonProfile = { id, services: [svcName] };
+        const profile: AddonProfile = { id, services: [svc.name] };
         if (label) profile.label = label;
         if (requires) profile.requires = requires;
         if (isDefault) profile.default = true;
@@ -222,25 +208,6 @@ function readAddonProfilesFromContent(composeContent: string, composePath: strin
 function readAddonProfiles(composePath: string): AddonProfile[] {
   if (!existsSync(composePath)) return [];
   return readAddonProfilesFromContent(readFileSync(composePath, "utf-8"), composePath);
-}
-
-function readServiceLabels(raw: unknown): Record<string, string> {
-  if (!raw) return {};
-  const out: Record<string, string> = {};
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      if (typeof entry !== "string") continue;
-      const eq = entry.indexOf("=");
-      if (eq < 0) continue;
-      out[entry.slice(0, eq)] = entry.slice(eq + 1);
-    }
-  } else if (typeof raw === "object") {
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (v == null) continue;
-      out[k] = String(v);
-    }
-  }
-  return out;
 }
 
 export function getAddonProfiles(homeDir: string, name: string): AddonProfile[] {
