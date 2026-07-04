@@ -31,12 +31,14 @@
 import { matchAllowlist, type AllowlistMatch } from './oc-allowlist.ts';
 import { createLogger } from './logger.ts';
 
+import { json } from './http-util.ts';
 import { authenticate } from "./auth";
 import {
   type Principal,
   ownsSession,
   ownsPermission,
   recordSessionOwner,
+  sessionOwnedByOther,
   forgetSession,
   ownedSessionIds,
 } from "./ownership";
@@ -62,6 +64,7 @@ import {
 } from "./oc-bounds";
 import { getPolicyProvider, type PolicyDecision } from "./policy";
 import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS } from "./config";
+import { BoundedTtlMap } from "./bounded-map";
 
 const logger = createLogger("guardian:proxy");
 
@@ -84,12 +87,6 @@ setTurnAbortFn((sessionId) => {
 });
 
 const H_SESSION_KEY = 'x-openpalm-session-key';
-
-// ── Result type ───────────────────────────────────────────────────────────
-
-function json(status: number, data: unknown): Response {
-  return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
-}
 
 // ── Upstream request header construction ───────────────────────────────────
 
@@ -493,7 +490,7 @@ async function screenPromptBody(
   return moderation;
 }
 
-function rewritePromptBody(body: string): string {
+export function rewritePromptBody(body: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -503,13 +500,7 @@ function rewritePromptBody(body: string): string {
   const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? parsed as { parts?: unknown }
     : {};
-  const parts = Array.isArray(record.parts) ? record.parts : [];
-  const rewritten = parts.length > 0
-    ? parts.map((part, index) => index === 0 && part && typeof part === 'object'
-        ? { ...(part as Record<string, unknown>), text: refusalText() }
-        : part)
-    : [{ type: 'text', text: refusalText() }];
-  return JSON.stringify({ ...record, parts: rewritten });
+  return JSON.stringify({ ...record, parts: [{ type: 'text', text: refusalText() }] });
 }
 
 function refusalText(): string {
@@ -550,22 +541,19 @@ function extractPromptText(body: string): string {
 // then reuses. Evicted on DELETE /session. Title unified to the buffered `/`
 // form so the two paths are consistent.
 const SESSION_REUSE_MAX = 10_000;
-const ocSessionByKey = new Map<string, { sessionId: string; lastUsed: number }>();
+// cacheKey → reused OpenCode sessionId. Per-entry TTL (SESSION_REUSE_TTL_MS),
+// oldest-first hard-cap eviction, and a 60s unref'd prune timer — the shared
+// BoundedTtlMap discipline (same as ownership.ts / rate-limit.ts).
+const ocSessionByKey = new BoundedTtlMap<string, string>({
+  ttlMs: SESSION_REUSE_TTL_MS,
+  maxSize: SESSION_REUSE_MAX,
+  pruneIntervalMs: 60_000,
+});
 const ocSessionCreateLocks = new Map<string, Promise<string>>();
-
-const ocSessionPruneTimer = setInterval(() => {
-  const cutoff = Date.now() - SESSION_REUSE_TTL_MS;
-  for (const [k, v] of ocSessionByKey) if (v.lastUsed < cutoff) ocSessionByKey.delete(k);
-  if (ocSessionByKey.size > SESSION_REUSE_MAX) {
-    const sorted = [...ocSessionByKey.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-    for (const [k] of sorted.slice(0, sorted.length - SESSION_REUSE_MAX)) ocSessionByKey.delete(k);
-  }
-}, 60_000);
-ocSessionPruneTimer.unref();
 
 /** Forget the reused session for a deleted sessionId (called on DELETE /session). */
 function evictOcSession(sessionId: string): void {
-  for (const [k, v] of ocSessionByKey) if (v.sessionId === sessionId) ocSessionByKey.delete(k);
+  for (const [k, v] of ocSessionByKey.entries()) if (v === sessionId) ocSessionByKey.delete(k);
 }
 
 /** Active reused-session count (for /stats). */
@@ -590,22 +578,27 @@ async function forwardSessionCreate(
   // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
   const sessionKey = req.headers.get(H_SESSION_KEY) ?? undefined;
   const metadata = sessionKey ? { sessionKey } : undefined;
-  const target = resolveSessionTarget(principal.userId, principal.id, metadata);
-  const cacheKey = `${principal.id}:${target.sessionKey}`;
-  const title = `${principal.id}/${target.sessionKey}`;
+  const target = resolveSessionTarget(principal.userId, principal.id, principal.kind, metadata);
+  // cacheKey binds the full principal identity (kind+portal+userId) + sessionKey
+  // so distinct users sharing a client-set sessionKey never collide. title is the
+  // upstream OpenCode session title (may still collide across users) — the
+  // ownership guard below refuses to reuse/rebind a foreign-owned match.
+  const { cacheKey, title } = target;
 
   let inflight = ocSessionCreateLocks.get(cacheKey);
   if (!inflight) {
     inflight = (async (): Promise<string> => {
-      const cached = ocSessionByKey.get(cacheKey);
-      if (cached && Date.now() - cached.lastUsed < SESSION_REUSE_TTL_MS) {
-        cached.lastUsed = Date.now();
-        return cached.sessionId;
-      }
+      // get(_, true) returns a live cached sessionId (refreshing its TTL) or
+      // undefined if absent/expired. Refuse a cached id that some other principal
+      // now owns (defence-in-depth) — mint a fresh session instead of stealing it.
+      const cached = ocSessionByKey.get(cacheKey, true);
+      if (cached !== undefined && !sessionOwnedByOther(cached, principal)) return cached;
 
+      // Match by title can cross principals (same portal+sessionKey → same title);
+      // never reuse/rebind a session already owned by a different principal.
       const existing = await findExistingOcSessionId(req, title);
-      if (existing) {
-        ocSessionByKey.set(cacheKey, { sessionId: existing, lastUsed: Date.now() });
+      if (existing && !sessionOwnedByOther(existing, principal)) {
+        ocSessionByKey.set(cacheKey, existing);
         return existing;
       }
 
@@ -616,7 +609,7 @@ async function forwardSessionCreate(
       const parsed = JSON.parse(text) as { id?: unknown };
       const id = typeof parsed.id === "string" ? parsed.id : "";
       if (!id) throw new Error("upstream_no_id");
-      ocSessionByKey.set(cacheKey, { sessionId: id, lastUsed: Date.now() });
+      ocSessionByKey.set(cacheKey, id);
       return id;
     })();
     ocSessionCreateLocks.set(cacheKey, inflight);

@@ -7,7 +7,15 @@
  * `BasePortal` base class and the buffered-turn helpers built on top of them.
  * `render-turn` adds the shared rich-UX turn loop (`renderTurn`) and the
  * `ThrottledEditBuffer` both portals' streaming renderers build on.
+ * `oc-event-hub` adds the per-principal shared /event subscription (`OcEventHub`)
+ * that keeps concurrent same-principal turns on ONE upstream stream.
+ * `permissions` adds the platform-agnostic `checkPermissions` engine and the
+ * shared `PermissionResult`/base `PermissionConfig`/`UserInfo` types.
  */
 export * from './runtime.ts';
+export * from './errors.ts';
+export * from './permissions.ts';
 export * from './base-portal.ts';
+export * from './deliver-buffered.ts';
 export * from './render-turn.ts';
+export * from './oc-event-hub.ts';

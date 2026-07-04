@@ -9,11 +9,6 @@
   import { notifications } from '$lib/notifications.svelte.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
 
-  interface Props {
-    tokenStored: boolean;
-  }
-  let { tokenStored }: Props = $props();
-
   let hostSharing = $state<HostAkmSharing | null>(null);
   let loading = $state(true);
   let busy = $state(false);
@@ -51,7 +46,7 @@
     }
   }
 
-  onMount(() => { if (tokenStored) void loadHostSharing(); });
+  onMount(() => { void loadHostSharing(); });
 </script>
 
 <div class="panel" role="tabpanel">
@@ -82,7 +77,7 @@
           <button
             class="btn btn-secondary btn-sm"
             onclick={() => void toggleHostSharing()}
-            disabled={busy || !tokenStored}
+            disabled={busy}
           >
             {#if busy}<Spinner />{/if}
             {hostSharing.enabled ? 'Disable host sharing' : 'Enable host sharing'}

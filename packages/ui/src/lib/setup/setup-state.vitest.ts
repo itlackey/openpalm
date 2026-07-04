@@ -15,7 +15,7 @@
  * the e2e wizard tests.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { SetupState, setupState } from './setup-state.svelte.js';
+import { SetupState, setupState, INITIAL } from './setup-state.svelte.js';
 import type { ProviderState } from '$lib/client/types.js';
 
 // Stub the data-access layer so the exported singleton's init() discovery
@@ -338,5 +338,45 @@ describe('SetupState — module singleton is reset on a fresh (non-rerun) mount'
     // Tidy up the background work init() kicked off so it can't leak into
     // other tests.
     setupState.dispose();
+  });
+});
+
+describe('SetupState — reset() restores every INITIAL field (single source)', () => {
+  // Guards the "forgot to reset X" class of bug at its root: reset() derives
+  // from the exported INITIAL template, so this test enumerates INITIAL's own
+  // keys instead of a hand-maintained field list. Any field added to INITIAL is
+  // automatically covered here — no third mirror to keep in sync.
+  it('after dirtying every resettable field, reset() returns each to its INITIAL default', () => {
+    const s = new SetupState();
+    const keys = Object.keys(INITIAL) as (keyof typeof INITIAL)[];
+
+    // Dirty EVERY resettable field to a sentinel guaranteed to differ from its
+    // default (numbers, bools, strings, null, undefined, empty {}/[], and the
+    // nested portal/voice objects all differ from this marker object).
+    const rec = s as unknown as Record<string, unknown>;
+    for (const k of keys) rec[k] = { __dirty: true };
+
+    // Sanity: the dirtying actually took (so a no-op reset couldn't pass).
+    for (const k of keys) expect(rec[k]).toEqual({ __dirty: true });
+
+    s.reset();
+
+    // Every field is back to its INITIAL value. structuredClone normalizes
+    // Svelte's $state proxies to plain objects and preserves undefined/null.
+    for (const k of keys) {
+      expect(structuredClone(rec[k])).toEqual(structuredClone(INITIAL[k]));
+    }
+
+    // Object/array fields must be FRESH instances, not aliases of the shared
+    // INITIAL template (a reset that assigned the template directly would let a
+    // later in-place mutation corrupt every future reset).
+    for (const k of keys) {
+      const def = INITIAL[k];
+      if (def !== null && typeof def === 'object') {
+        expect(rec[k]).not.toBe(def);
+      }
+    }
+
+    s.dispose();
   });
 });

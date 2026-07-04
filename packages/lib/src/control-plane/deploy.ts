@@ -6,12 +6,13 @@ import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall } from './lifecycle.js';
 import { buildManagedServices } from './lifecycle.js';
-import { composeDown, composePs, composePull, composeUp, detectExistingProject, resolveComposeProjectName } from './docker.js';
+import { buildComposeCommandArgs, composeDown, composePs, composePull, composeUp, detectExistingProject, resolveComposeProjectName } from './docker.js';
 import { mapDockerError } from './compose-errors.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
+import { stackEnvPath } from './paths.js';
 
 export type DeployEntry = {
   service: string;
@@ -118,7 +119,7 @@ function isPidAlive(pid: number): boolean {
 }
 
 function projectNameForState(state: ControlPlaneState): string {
-  return resolveComposeProjectName(parseEnvFile(`${state.stashDir}/env/stack.env`));
+  return resolveComposeProjectName(parseEnvFile(stackEnvPath(state)));
 }
 
 function parseComposePsOutput(stdout: string): ComposeContainerState[] {
@@ -144,7 +145,7 @@ function resolveImageTag(state: ControlPlaneState): string {
   // is the version-of-record image; its tag is representative for the "dev tag ⇒
   // skip remote pull" heuristic. Fall back to the legacy OP_IMAGE_TAG for an
   // install whose stack.env predates the version migration.
-  const env = parseEnvFile(`${state.stashDir}/env/stack.env`);
+  const env = parseEnvFile(stackEnvPath(state));
   return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
 }
 
@@ -152,9 +153,7 @@ async function missingServiceImages(composeOpts: ReturnType<typeof buildComposeO
   if (services.length === 0) return [];
   const args = [
     'compose',
-    ...composeOpts.files.flatMap((file) => ['-f', file]),
-    ...(composeOpts.envFiles ?? []).filter((file) => existsSync(file)).flatMap((file) => ['--env-file', file]),
-    ...composeOpts.profiles.flatMap((profile) => ['--profile', profile]),
+    ...buildComposeCommandArgs(composeOpts),
     'config', '--format', 'json',
   ];
   const config = await new Promise<{ services?: Record<string, { image?: string }> }>((resolve) => {
@@ -242,14 +241,14 @@ export function markSetupComplete(state: ControlPlaneState): void {
 }
 
 export function backupSetupInputs(state: ControlPlaneState): string | null {
-  const stackEnvPath = `${state.stashDir}/env/stack.env`;
+  const stackEnvFile = stackEnvPath(state);
   const secretsDir = `${state.stashDir}/secrets`;
-  if (!existsSync(stackEnvPath) && !existsSync(secretsDir)) return null;
+  if (!existsSync(stackEnvFile) && !existsSync(secretsDir)) return null;
   const backupDir = join(resolveBackupsDir(), `${new Date().toISOString().replace(/[:.]/g, '-')}-setup`);
-  if (existsSync(stackEnvPath)) {
+  if (existsSync(stackEnvFile)) {
     const dest = join(backupDir, 'knowledge/env/stack.env');
     mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(stackEnvPath, dest);
+    copyFileSync(stackEnvFile, dest);
   }
   if (existsSync(secretsDir)) {
     const copyDir = (sourceDir: string, targetDir: string) => {

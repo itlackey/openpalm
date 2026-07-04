@@ -34,6 +34,35 @@ export function formatDateTime(ts: number): string {
 }
 
 /**
+ * Absolute date + time from a date string (ISO-8601 or anything `Date` accepts),
+ * rendered with the runtime locale via `toLocaleString()`. Unlike the epoch-ms
+ * helpers above, this takes the string shape returned by admin/AKM endpoints.
+ * Returns `fallback` (default em dash) for null/empty or unparseable input.
+ */
+export function formatDate(value: string | null | undefined, fallback = '—'): string {
+  if (!value) return fallback;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? fallback : d.toLocaleString();
+}
+
+/**
+ * Human-readable byte size, e.g. "512 B", "1.5 KB", "2.0 MB". Scales through
+ * B/KB/MB/GB/TB (binary, 1024-based) with adaptive precision: whole numbers for
+ * bytes and for values ≥ 10, one decimal otherwise. Em dash for non-finite input.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes)) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/**
  * Compact relative time, e.g. "just now", "5m ago", "yesterday", "3w ago".
  * Empty string for a falsy input. No date-fns dependency — that would be ~30 KB
  * for these few cases.

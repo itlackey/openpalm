@@ -58,114 +58,203 @@ interface DeployData {
   ports?: { admin?: number; assistant?: number };
 }
 
+/**
+ * Single source of truth for every field `reset()` restores. Both the class
+ * field initializers and `reset()` derive their defaults from here via
+ * `Object.assign(this, structuredClone(INITIAL))`, so the two can never drift:
+ * adding a resettable field here auto-covers it in both places. This replaces
+ * the previous hand-maintained mirror in `reset()` — the "forgot to reset X"
+ * hazard the reset() docblock below warns about.
+ *
+ * Only genuinely-resettable reactive fields belong here — NOT `$derived`
+ * getters (recomputed, never assigned) nor private bookkeeping
+ * (`verifyGeneration`, OAuth abort controllers, the deploy timer), which
+ * `reset()` tears down explicitly. `structuredClone` per use hands each mount
+ * fresh object instances instead of aliasing this shared template.
+ */
+export const INITIAL = {
+  // Navigation
+  currentStep: 0,
+  maxVisitedStep: 0,
+  showDeploy: false,
+  systemCheckPassed: false,
+  // Model mode + explicit voice toggle
+  modelMode: 'cloud' as ModelMode,
+  voiceEnabled: false,
+  // Step 0: Welcome
+  uiLoginPassword: '',
+  step0Error: '',
+  autoModeImporting: false,
+  gpuDetected: false,
+  // Step 1: Providers
+  providerState: {} as Record<string, ProviderState>,
+  detectedHostProviders: [] as { provider: string; url: string }[],
+  detectedProviders: [] as DetectedProvider[],
+  opencodeAvailable: false,
+  opencodeProviders: [] as OpenCodeProvider[],
+  opencodeAuth: {} as Record<string, AuthMethod[]>,
+  hostProviderCount: 0,
+  allowEmptyInstall: false,
+  recommendation: null as SetupRecommendation | null,
+  recommendationAlert: '',
+  recommendationApplied: false,
+  detectedGpuVramMb: 0,
+  detectedGpuVendor: '',
+  detectedGpuName: '',
+  // Step 2: Models
+  modelSelection: {} as { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection },
+  // Step 3: Voice
+  voiceTts: { engine: '' } as VoiceEngineValue,
+  voiceStt: { engine: '' } as VoiceEngineValue,
+  voiceProfiles: [] as VoiceAddonProfile[],
+  selectedVoiceProfile: '',
+  importedLlmModel: undefined as string | undefined,
+  importedSmallModel: undefined as string | undefined,
+  // Step 4: Options
+  portalSelection: {
+    discord: { enabled: false, botToken: '', applicationId: '' },
+    slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
+  } as Record<string, boolean | PortalState>,
+  ollamaEnabled: false,
+  ollamaProfiles: [] as VoiceAddonProfile[],
+  selectedOllamaProfile: '',
+  imageTag: '',
+  hostAkmEnabled: false,
+  // Step 5: Review + Install
+  installError: '',
+  installing: false,
+  emptyAiAck: false,
+  // Deploy screen
+  deployData: {} as DeployData,
+  deployDone: false,
+  deployHasWarnings: false,
+  deployError: null as string | null,
+  deployPollErrors: 0,
+  // Connect-step row selection
+  savedCloudLlm: undefined as ModelSelection | undefined,
+  detectedCloudConn: '',
+  // Host import
+  hostImportTriggered: false,
+  hostImporting: false,
+  hostImportError: '',
+  isRerun: false,
+};
+
 export class SetupState {
+  // Defaults for every field below live in the single INITIAL source above; the
+  // constructor and reset() apply them via Object.assign(this,
+  // structuredClone(INITIAL)). The field initializers reference INITIAL so the
+  // reactive $state fields are declared (and typed) from that one source — the
+  // constructor immediately overwrites them with fresh clones, so no field ever
+  // aliases the shared template.
+
   // ── Navigation state ───────────────────────────────────────────────────────
-  currentStep = $state(0);
-  maxVisitedStep = $state(0);
-  showDeploy = $state(false);
-  systemCheckPassed = $state(false);
+  currentStep = $state(INITIAL.currentStep);
+  maxVisitedStep = $state(INITIAL.maxVisitedStep);
+  showDeploy = $state(INITIAL.showDeploy);
+  systemCheckPassed = $state(INITIAL.systemCheckPassed);
 
   // ── Model mode + explicit voice toggle (new 3-screen flow) ─────────────────
   // modelMode: which high-level option the user chose on Screen 1.
   // Pre-set to 'cloud'; detection may update it before Screen 1 renders.
-  modelMode = $state<ModelMode>('cloud');
+  modelMode = $state(INITIAL.modelMode);
   // voiceEnabled: explicit toggle state — OFF by default, always.
   // Separate from the `enableVoice` derived (which drives the payload).
   // Screen2ExtrasStep reads this and only sets engine values when true.
-  voiceEnabled = $state(false);
+  voiceEnabled = $state(INITIAL.voiceEnabled);
 
   // ── Step 0: Welcome ─────────────────────────────────────────────────────────
   // Operator UI login password — replaces the legacy "admin token" UI.
-  uiLoginPassword = $state('');
-  step0Error = $state('');
+  uiLoginPassword = $state(INITIAL.uiLoginPassword);
+  step0Error = $state(INITIAL.step0Error);
   // True while auto mode is performing a host provider import before jumping to Review
-  autoModeImporting = $state(false);
+  autoModeImporting = $state(INITIAL.autoModeImporting);
   // Set when System Check detects a GPU — used to auto-select CUDA voice profile
-  gpuDetected = $state(false);
+  gpuDetected = $state(INITIAL.gpuDetected);
 
   // ── Step 1: Providers ───────────────────────────────────────────────────────
-  providerState = $state<Record<string, ProviderState>>({});
+  providerState = $state(INITIAL.providerState);
   // Local LLM runtimes detected running on the host (ollama/lmstudio/model-runner).
-  detectedHostProviders = $state<{ provider: string; url: string }[]>([]);
-  detectedProviders = $state<DetectedProvider[]>([]);
-  opencodeAvailable = $state(false);
-  opencodeProviders = $state<OpenCodeProvider[]>([]);
-  opencodeAuth = $state<Record<string, AuthMethod[]>>({});
+  detectedHostProviders = $state(INITIAL.detectedHostProviders);
+  detectedProviders = $state(INITIAL.detectedProviders);
+  opencodeAvailable = $state(INITIAL.opencodeAvailable);
+  opencodeProviders = $state(INITIAL.opencodeProviders);
+  opencodeAuth = $state(INITIAL.opencodeAuth);
   // Host import detection
-  hostProviderCount = $state(0);
-  allowEmptyInstall = $state(false);
+  hostProviderCount = $state(INITIAL.hostProviderCount);
+  allowEmptyInstall = $state(INITIAL.allowEmptyInstall);
   // Setup recommendation (from /api/setup/recommend).
-  recommendation = $state<SetupRecommendation | null>(null);
-  recommendationAlert = $state('');
-  recommendationApplied = $state(false);
+  recommendation = $state(INITIAL.recommendation);
+  recommendationAlert = $state(INITIAL.recommendationAlert);
+  recommendationApplied = $state(INITIAL.recommendationApplied);
   // Raw detection data from /api/setup/recommend (stored separately for Screen1 props)
-  detectedGpuVramMb = $state(0);
-  detectedGpuVendor = $state('');
-  detectedGpuName = $state('');
+  detectedGpuVramMb = $state(INITIAL.detectedGpuVramMb);
+  detectedGpuVendor = $state(INITIAL.detectedGpuVendor);
+  detectedGpuName = $state(INITIAL.detectedGpuName);
   /** Generation counter per provider — discard stale verify results */
   private verifyGeneration: Record<string, number> = {};
   /** AbortControllers for in-flight OAuth long-poll requests */
   private oauthAbortControllers: Record<string, AbortController> = {};
 
   // ── Step 2: Models ──────────────────────────────────────────────────────────
-  modelSelection = $state<{ llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection }>({});
+  modelSelection = $state(INITIAL.modelSelection);
 
   // ── Step 3: Voice ───────────────────────────────────────────────────────────
   // VoiceEngineValue holds engine id + per-engine settings (model/voice/language).
-  voiceTts = $state<VoiceEngineValue>({ engine: '' });
-  voiceStt = $state<VoiceEngineValue>({ engine: '' });
+  voiceTts = $state(INITIAL.voiceTts);
+  voiceStt = $state(INITIAL.voiceStt);
   // Hardware profiles for the bundled OpenPalm Voice addon (CPU / CUDA / …)
-  voiceProfiles = $state<VoiceAddonProfile[]>([]);
-  selectedVoiceProfile = $state('');
+  voiceProfiles = $state(INITIAL.voiceProfiles);
+  selectedVoiceProfile = $state(INITIAL.selectedVoiceProfile);
   // Imported OpenCode model preferences (from host opencode.json)
-  importedLlmModel = $state<string | undefined>(undefined);
-  importedSmallModel = $state<string | undefined>(undefined);
+  importedLlmModel = $state(INITIAL.importedLlmModel);
+  importedSmallModel = $state(INITIAL.importedSmallModel);
 
   // ── Step 4: Options ─────────────────────────────────────────────────────────
-  portalSelection = $state<Record<string, boolean | PortalState>>({
-    discord: { enabled: false, botToken: '', applicationId: '' },
-    slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
-  });
-  ollamaEnabled = $state(false);
-  ollamaProfiles = $state<VoiceAddonProfile[]>([]);
-  selectedOllamaProfile = $state('');
-  imageTag = $state('');
-  hostAkmEnabled = $state(false);
+  portalSelection = $state(INITIAL.portalSelection);
+  ollamaEnabled = $state(INITIAL.ollamaEnabled);
+  ollamaProfiles = $state(INITIAL.ollamaProfiles);
+  selectedOllamaProfile = $state(INITIAL.selectedOllamaProfile);
+  imageTag = $state(INITIAL.imageTag);
+  hostAkmEnabled = $state(INITIAL.hostAkmEnabled);
 
   // ── Step 5: Review + Install ─────────────────────────────────────────────────
-  installError = $state('');
-  installing = $state(false);
+  installError = $state(INITIAL.installError);
+  installing = $state(INITIAL.installing);
   // Single explicit acknowledgment for an empty-AI install.
-  emptyAiAck = $state(false);
+  emptyAiAck = $state(INITIAL.emptyAiAck);
 
   // ── Deploy screen ────────────────────────────────────────────────────────────
-  deployData = $state<DeployData>({});
-  deployDone = $state(false);
+  deployData = $state(INITIAL.deployData);
+  deployDone = $state(INITIAL.deployDone);
   // Terminal state where remaining non-running rows are warnings (e.g. voice
   // still warming). Setup IS complete — "Done (with warnings)", not an error.
-  deployHasWarnings = $state(false);
-  deployError = $state<string | null>(null);
-  deployPollErrors = $state(0);
+  deployHasWarnings = $state(INITIAL.deployHasWarnings);
+  deployError = $state(INITIAL.deployError);
+  deployPollErrors = $state(INITIAL.deployPollErrors);
   private deployTimer: ReturnType<typeof setInterval> | null = null;
 
   // ── Connect-step row selection: cloud ↔ local actually switches the model ──
-  savedCloudLlm = $state<ModelSelection | undefined>(undefined);
+  savedCloudLlm = $state(INITIAL.savedCloudLlm);
   // Stable "detected cloud service" connId — captured once so the cloud row stays
   // visible even after the user switches to local (lets them switch back).
-  // NOTE: declared after modelSelection so its initializer can read it.
-  detectedCloudConn = $state(
-    this.modelSelection.llm && !LOCAL_PROVIDER_IDS.has(this.modelSelection.llm.connId)
-      ? this.modelSelection.llm.connId
-      : ''
-  );
+  detectedCloudConn = $state(INITIAL.detectedCloudConn);
 
   // ── Host import ──────────────────────────────────────────────────────────────
-  hostImportTriggered = $state(false);
-  hostImporting = $state(false);
+  hostImportTriggered = $state(INITIAL.hostImportTriggered);
+  hostImporting = $state(INITIAL.hostImporting);
   // Surfaced on the Providers step when a host import fails.
-  hostImportError = $state('');
+  hostImportError = $state(INITIAL.hostImportError);
 
-  isRerun = $state(false);
+  isRerun = $state(INITIAL.isRerun);
+
+  constructor() {
+    // Apply the single INITIAL source so construction and reset() share one set
+    // of defaults and can never drift. Object.assign fires each $state setter
+    // (reactive); structuredClone gives this instance fresh object fields
+    // instead of aliasing the shared INITIAL template.
+    Object.assign(this, structuredClone(INITIAL));
+  }
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   hostLocalLlmRunning = $derived(
@@ -987,83 +1076,14 @@ export class SetupState {
     }
     this.verifyGeneration = {};
 
-    // Navigation
-    this.currentStep = 0;
-    this.maxVisitedStep = 0;
-    this.showDeploy = false;
-    this.systemCheckPassed = false;
-
-    // Model mode + voice toggle
-    this.modelMode = 'cloud';
-    this.voiceEnabled = false;
-
-    // Step 0
-    this.uiLoginPassword = '';
-    this.step0Error = '';
-    this.autoModeImporting = false;
-    this.gpuDetected = false;
-
-    // Step 1
-    this.providerState = {};
-    this.detectedHostProviders = [];
-    this.detectedProviders = [];
-    this.opencodeAvailable = false;
-    this.opencodeProviders = [];
-    this.opencodeAuth = {};
-    this.hostProviderCount = 0;
-    this.allowEmptyInstall = false;
-    this.recommendation = null;
-    this.recommendationAlert = '';
-    this.recommendationApplied = false;
-    this.detectedGpuVramMb = 0;
-    this.detectedGpuVendor = '';
-    this.detectedGpuName = '';
-
-    // Step 2
-    this.modelSelection = {};
-
-    // Step 3 (voice)
-    this.voiceTts = { engine: '' };
-    this.voiceStt = { engine: '' };
-    this.voiceProfiles = [];
-    this.selectedVoiceProfile = '';
-    this.importedLlmModel = undefined;
-    this.importedSmallModel = undefined;
-
-    // Step 4 (options) — fresh portal objects so a prior mount's credentials
-    // don't linger (the rerun path mutates these in place).
-    this.portalSelection = {
-      discord: { enabled: false, botToken: '', applicationId: '' },
-      slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
-    };
-    this.ollamaEnabled = false;
-    this.ollamaProfiles = [];
-    this.selectedOllamaProfile = '';
-    this.imageTag = '';
-    this.hostAkmEnabled = false;
-
-    // Step 5 (review + install)
-    this.installError = '';
-    this.installing = false;
-    this.emptyAiAck = false;
-
-    // Deploy
-    this.deployData = {};
-    this.deployDone = false;
-    this.deployHasWarnings = false;
-    this.deployError = null;
-    this.deployPollErrors = 0;
-
-    // Connect-step row selection
-    this.savedCloudLlm = undefined;
-    this.detectedCloudConn = '';
-
-    // Host import
-    this.hostImportTriggered = false;
-    this.hostImporting = false;
-    this.hostImportError = '';
-
-    this.isRerun = false;
+    // Restore EVERY resettable field from the single INITIAL source. A fresh
+    // structuredClone per reset means object fields (providerState,
+    // portalSelection with its nested credentials, voiceTts/Stt, deployData, …)
+    // become brand-new instances — never aliases of INITIAL or of a prior
+    // mount's state (the rerun path mutates some of these in place). Because
+    // this is derived from INITIAL, adding a resettable field there auto-covers
+    // it here; there is no hand-maintained mirror left to forget.
+    Object.assign(this, structuredClone(INITIAL));
   }
 
   // ── Mount: generate token, check status, start discovery ─────────────────────

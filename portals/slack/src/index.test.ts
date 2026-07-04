@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import SlackChannel, { DEFAULT_FORWARD_TIMEOUT_MS, parseForwardTimeoutMs } from "./index.ts";
-import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
-import { ConversationQueue } from '@openpalm/portal-sdk';
+import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
+import { ConversationQueue, parseIdList } from '@openpalm/portal-sdk';
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

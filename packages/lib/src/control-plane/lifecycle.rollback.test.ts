@@ -106,6 +106,7 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   }),
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
+  buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
 }));
 mock.module(${JSON.stringify(moduleUrls.volumeOwnership)}, () => ({
   repairRootOwnedBindMounts: async () => {},
@@ -301,6 +302,7 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
+  buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
 }));
 mock.module(${JSON.stringify(moduleUrls.volumeOwnership)}, () => ({
   repairRootOwnedBindMounts: async () => {},
@@ -429,6 +431,7 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
+  buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
 }));
 mock.module(${JSON.stringify(moduleUrls.volumeOwnership)}, () => ({
   repairRootOwnedBindMounts: async () => {},

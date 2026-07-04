@@ -14,13 +14,17 @@ export function buildHeaders(): HeadersInit {
 export async function request(
   method: string,
   path: string,
-  body?: unknown
+  body?: unknown,
+  init?: RequestInit
 ): Promise<Response> {
   const headers: HeadersInit = {
     ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
     ...buildHeaders()
   };
   return fetch(`${apiBase}${path}`, {
+    // Caller-supplied fields (e.g. an AbortSignal) go first so the computed
+    // method/headers/credentials/body below stay authoritative.
+    ...init,
     method,
     headers,
     credentials: 'include',

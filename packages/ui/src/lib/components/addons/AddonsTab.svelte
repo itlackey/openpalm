@@ -9,6 +9,7 @@
     fetchSecretFile,
     type AddonCredentialField,
   } from '$lib/api.js';
+  import { isAuthError, toMessage } from '$lib/api/errors.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import SecretSelect from '$lib/components/common/SecretSelect.svelte';
@@ -72,9 +73,8 @@
     try {
       addons = await fetchAddons();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
-      error = msg;
+      if (isAuthError(err)) { onAuthError(); return; }
+      error = toMessage(err, String(err));
     } finally {
       loading = false;
     }
@@ -86,9 +86,8 @@
       await toggleAddon(name, enabled);
       await loadAddons();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
-      error = msg;
+      if (isAuthError(err)) { onAuthError(); return; }
+      error = toMessage(err, String(err));
     } finally {
       actionLoading = null;
     }
@@ -114,9 +113,8 @@
         credValues[name] = seed;
         credSecretRef[name] = refSeed;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
-        notifications.push('error', `Could not load credentials: ${msg}`);
+        if (isAuthError(err)) { onAuthError(); return; }
+        notifications.push('error', `Could not load credentials: ${toMessage(err, String(err))}`);
       } finally {
         credLoading = null;
       }
@@ -149,9 +147,8 @@
       for (const f of fresh) if (f.sensitive) reset[f.key] = '';
       credValues[name] = reset;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('401') || msg.includes('403')) { onAuthError(); return; }
-      notifications.push('error', `Save failed: ${msg}`);
+      if (isAuthError(err)) { onAuthError(); return; }
+      notifications.push('error', `Save failed: ${toMessage(err, String(err))}`);
     } finally {
       credSaving = null;
     }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { createLogger } from './logger.ts';
 
+import { json } from './http-util.ts';
 import { handleAdminRequest } from './admin';
 import { audit } from './audit';
 import { eventSubscriberCount } from './event-fanout';
@@ -38,10 +39,6 @@ const requestCounters = {
 function countRequest(status: string) {
   requestCounters.total += 1;
   requestCounters.byStatus.set(status, (requestCounters.byStatus.get(status) ?? 0) + 1);
-}
-
-function json(status: number, data: unknown): Response {
-  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 }
 
 function statsResponse(): Response {

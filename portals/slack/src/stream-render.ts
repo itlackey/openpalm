@@ -278,6 +278,15 @@ export interface SlackStreamTurnArgs {
   sessionKey: string;
   /** The user's prompt text. */
   text: string;
+  /**
+   * Open the /event subscription for this turn. Defaults to a fresh
+   * `client.events(userId)` stream, but the adapter passes a SHARED per-principal
+   * subscription (OcEventHub) so concurrent threads/DMs from one user don't each
+   * open a redundant stream and trip the guardian's per-principal
+   * concurrent-stream cap. Returns an async iterable with a `close()` the render
+   * loop calls on turn-end.
+   */
+  subscribeEvents?: () => AsyncIterable<unknown> & { close?: () => void };
 }
 
 /**
@@ -288,14 +297,17 @@ export interface SlackStreamTurnArgs {
  * sessionKey), or on timeout/abort.
  */
 export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
-  const { client, registry, slack, userId, requestingUserId, channel, threadTs, sessionKey, text } = args;
+  const { client, registry, slack, userId, requestingUserId, channel, threadTs, sessionKey, text, subscribeEvents } = args;
 
   const session = await client.createSession(userId, sessionKey);
   const sessionId = session.id;
 
-  // Subscribe BEFORE prompting (§4.2) so no frame is missed.
+  // Subscribe BEFORE prompting (§4.2) so no frame is missed. Use the SHARED
+  // per-principal /event subscription (OcEventHub) when provided, else a
+  // dedicated stream. close()d in finally so the hub can refcount/idle-close.
   const ac = new AbortController();
-  const eventsIter = client.events(userId, ac.signal);
+  const subscription = subscribeEvents ? subscribeEvents() : null;
+  const eventsIter = subscription ?? client.events(userId, ac.signal);
 
   // Post the live placeholder (carries the Stop button).
   const placeholder = await slack.chat.postMessage({
@@ -332,6 +344,7 @@ export async function streamTurn(args: SlackStreamTurnArgs): Promise<void> {
     });
   } finally {
     ac.abort();
+    subscription?.close?.(); // decref the shared /event stream (hub idle-closes)
     registry.clearStop(sessionId);
     await renderer.finalize().catch(() => {});
   }

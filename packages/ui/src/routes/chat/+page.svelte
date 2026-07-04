@@ -8,6 +8,9 @@
 	import SessionList from '$lib/components/chat/SessionList.svelte';
 	import ToolLog from '$lib/components/chat/ToolLog.svelte';
 	import Presence from '$lib/components/chat/Presence.svelte';
+	import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
+	import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
+	import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
 	import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
 	import { probeChatBackend } from '$lib/api.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
@@ -88,8 +91,8 @@
 		await chat.answerQuestion(answer);
 	}
 
-	function handleQuestionDraft(index: number, event: Event): void {
-		chat.setQuestionAnswer(index, (event.currentTarget as HTMLInputElement).value);
+	function handleQuestionDraft(index: number, value: string): void {
+		chat.setQuestionAnswer(index, value);
 	}
 
 	async function handleQuestionSubmit(): Promise<void> {
@@ -116,73 +119,11 @@
 		return { destroy() { observer.disconnect(); } };
 	}
 
-	// ── Modal focus management (mirrors ToolStrip.svelte) ──────────────────
+	// ── Modal focus management ─────────────────────────────────────────────
 	// The drawer and Conversations veil are persistent in the DOM and toggle via
-	// an `open` boolean. These attachments read that boolean so they re-run when
-	// it flips: on open they move focus inside and capture the opener; on close
-	// the returned cleanup restores focus to the opener. Tab is trapped via the
-	// keydown handlers below. No $effect — {@attach} owns the side effect.
-	const FOCUSABLE =
-		'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-	function focusables(root: HTMLElement): HTMLElement[] {
-		return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-			(el) => !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true'
-		);
-	}
-
-	// Restore focus to the opener AFTER the next paint: on close the opener's
-	// corner cell un-hides (display flips back), and focusing a still-hidden
-	// element silently no-ops to <body>. rAF defers past the DOM update.
-	function restoreFocus(el: HTMLElement | null): void {
-		requestAnimationFrame(() => el?.focus?.());
-	}
-
-	function attachDrawerFocus(node: HTMLElement): (() => void) | void {
-		if (!toolDrawerOpen) return;
-		const previouslyFocused = document.activeElement as HTMLElement | null;
-		(focusables(node)[0] ?? node).focus();
-		return () => restoreFocus(previouslyFocused);
-	}
-
-	function attachGardenFocus(node: HTMLElement): (() => void) | void {
-		if (!gardenOpen) return;
-		const previouslyFocused = document.activeElement as HTMLElement | null;
-		(focusables(node)[0] ?? node).focus();
-		return () => restoreFocus(previouslyFocused);
-	}
-
-	function trapTab(
-		event: KeyboardEvent & { currentTarget: HTMLElement },
-		close: () => void
-	): void {
-		if (event.key === 'Escape') {
-			close();
-			return;
-		}
-		if (event.key !== 'Tab') return;
-		const items = focusables(event.currentTarget);
-		if (items.length === 0) {
-			event.preventDefault();
-			event.currentTarget.focus();
-			return;
-		}
-		const first = items[0]!;
-		const last = items[items.length - 1]!;
-		const active = document.activeElement;
-		if (event.shiftKey && (active === first || active === event.currentTarget)) {
-			event.preventDefault();
-			last.focus();
-		} else if (!event.shiftKey && active === last) {
-			event.preventDefault();
-			first.focus();
-		}
-	}
-
-	function clamp(text: string, max = 160): string {
-		return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-	}
-
+	// an `open` boolean, so the trap runs only while open and restores focus on
+	// the next frame (the opener's corner cell un-hides on close). Tab-wrap and
+	// Escape are handled by the shared focus-trap primitives.
 
 	// ── Voice / TTS ───────────────────────────────────────────────────────
 
@@ -460,137 +401,22 @@
 				{/if}
 
 				{#if chat.pendingPermission}
-					<div class="s-action-card" role="group" aria-label="Permission request">
-						<div class="s-action-kicker">permission request</div>
-						<div class="s-action-title">{chat.pendingPermission.permission}</div>
-						{#if chat.pendingPermission.detail}
-							<p class="s-action-body">{clamp(chat.pendingPermission.detail)}</p>
-						{/if}
-						{#if chat.pendingPermission.patterns.length > 0}
-							<code class="s-action-code">{chat.pendingPermission.patterns.join(', ')}</code>
-						{/if}
-						{#if chat.pendingPermission.always.length > 0}
-							<code class="s-action-code">{chat.pendingPermission.always.join(', ')}</code>
-						{/if}
-						{#if chat.pendingPermission.message}
-							<p class="s-action-body">{chat.pendingPermission.message}</p>
-						{/if}
-						<div class="s-action-btns">
-							<button
-								class="s-action-btn s-action-btn-primary"
-								type="button"
-								onclick={() => void handlePermissionReply('once')}
-								disabled={chat.pendingPermission.status === 'submitting' ||
-									chat.pendingPermission.status === 'resolved'}
-							>
-								{permissionActionInFlight === 'once' ? 'sending…' : 'allow this once'}
-							</button>
-							<button
-								class="s-action-btn"
-								type="button"
-								onclick={() => void handlePermissionReply('always')}
-								disabled={chat.pendingPermission.status === 'submitting' ||
-									chat.pendingPermission.status === 'resolved'}
-							>
-								{permissionActionInFlight === 'always' ? 'sending…' : 'always allow'}
-							</button>
-							<button
-								class="s-action-btn s-action-btn-danger"
-								type="button"
-								onclick={() => void handlePermissionReply('reject')}
-								disabled={chat.pendingPermission.status === 'submitting' ||
-									chat.pendingPermission.status === 'resolved'}
-							>
-								{permissionActionInFlight === 'reject' ? 'sending…' : 'deny'}
-							</button>
-						</div>
-					</div>
+					<PermissionCard
+						permission={chat.pendingPermission}
+						actionInFlight={permissionActionInFlight}
+						onReply={handlePermissionReply}
+					/>
 				{/if}
 
 				{#if chat.pendingQuestion}
-					<div class="s-action-card" role="group" aria-label="Assistant question">
-						<div class="s-action-kicker">a question for you</div>
-						{#if chat.pendingQuestion.questions.length === 1 && chat.pendingQuestion.questions[0]}
-							<p class="s-action-question">{chat.pendingQuestion.questions[0].question}</p>
-							{#if chat.pendingQuestion.questions[0].options.length > 0}
-								<div class="s-action-options">
-									{#each chat.pendingQuestion.questions[0].options as option, index (`${chat.pendingQuestion.requestID}:${index}`)}
-										<button
-											class="s-action-btn"
-											type="button"
-											onclick={() => void handleQuestionOption(option.label)}
-											disabled={chat.pendingQuestion.status === 'submitting' ||
-												chat.pendingQuestion.status === 'answered' ||
-												chat.pendingQuestion.status === 'rejected'}
-										>
-											{option.label}
-										</button>
-									{/each}
-								</div>
-							{/if}
-							<p class="s-action-hint">or write your answer below</p>
-						{:else}
-							<div class="s-multi-questions">
-								{#each chat.pendingQuestion.questions as question, index (`${chat.pendingQuestion.requestID}:question:${index}`)}
-									<div class="s-question-item">
-										{#if question.header}
-											<div class="s-action-kicker">{question.header}</div>
-										{/if}
-										<p class="s-action-question">{question.question}</p>
-										{#if question.options.length > 0}
-											<div class="s-action-options">
-												{#each question.options as option, optionIndex (`${chat.pendingQuestion.requestID}:${index}:${optionIndex}`)}
-													<button
-														class="s-action-btn"
-														class:selected={chat.pendingQuestion.answers[index] === option.label}
-														type="button"
-														onclick={() => chat.setQuestionAnswer(index, option.label)}
-														disabled={chat.pendingQuestion.status === 'submitting' ||
-															chat.pendingQuestion.status === 'answered' ||
-															chat.pendingQuestion.status === 'rejected'}
-													>
-														{option.label}
-													</button>
-												{/each}
-											</div>
-										{/if}
-										<input
-											class="s-question-input"
-											type="text"
-											value={chat.pendingQuestion.answers[index]}
-											placeholder="Type an answer"
-											oninput={(event) => handleQuestionDraft(index, event)}
-											disabled={chat.pendingQuestion.status === 'submitting' ||
-												chat.pendingQuestion.status === 'answered' ||
-												chat.pendingQuestion.status === 'rejected'}
-										/>
-									</div>
-								{/each}
-							</div>
-							<div class="s-action-btns">
-								<button
-									class="s-action-btn s-action-btn-primary"
-									type="button"
-									onclick={() => void handleQuestionSubmit()}
-									disabled={chat.pendingQuestion.status === 'submitting' ||
-										chat.pendingQuestion.status === 'answered' ||
-										chat.pendingQuestion.status === 'rejected'}
-								>
-									submit answers
-								</button>
-								<button
-									class="s-action-btn"
-									type="button"
-									onclick={() => void handleQuestionReject()}
-									disabled={chat.pendingQuestion.status === 'submitting' ||
-										chat.pendingQuestion.status === 'answered' ||
-										chat.pendingQuestion.status === 'rejected'}
-								>
-									can't answer
-								</button>
-							</div>
-						{/if}
-					</div>
+					<QuestionCard
+						question={chat.pendingQuestion}
+						onOption={handleQuestionOption}
+						onSelect={(index, label) => chat.setQuestionAnswer(index, label)}
+						onDraft={handleQuestionDraft}
+						onSubmit={handleQuestionSubmit}
+						onReject={handleQuestionReject}
+					/>
 				{/if}
 			</div>
 		{/if}
@@ -637,8 +463,8 @@
 	role="dialog"
 	aria-modal="true"
 	aria-label="Conversations and assistant"
-	onkeydown={(event) => trapTab(event, closeGarden)}
-	{@attach attachGardenFocus}
+	onkeydown={(event) => handleTrapKeydown(event, closeGarden)}
+	{@attach createFocusTrap({ active: gardenOpen, deferRestore: true })}
 >
 	<div class="s-veil-head">
 		<div>
@@ -752,8 +578,8 @@
 	role="dialog"
 	aria-modal="true"
 	aria-label="Assistant activity"
-	onkeydown={(event) => trapTab(event, closeToolDrawer)}
-	{@attach attachDrawerFocus}
+	onkeydown={(event) => handleTrapKeydown(event, closeToolDrawer)}
+	{@attach createFocusTrap({ active: toolDrawerOpen, deferRestore: true })}
 >
 	<div class="s-tool-drawer-head">
 		<button
@@ -1100,143 +926,6 @@
 		font-size: var(--s-type-mark);
 		letter-spacing: var(--s-track-label);
 		text-transform: uppercase;
-		color: var(--s-ink-3);
-	}
-
-	/* ── Action cards (permission / question) ─────────────────────────── */
-
-	.s-action-card {
-		display: flex;
-		flex-direction: column;
-		gap: 0.65rem;
-		padding: 1rem 1.2rem;
-		border-left: var(--s-hair) solid var(--s-seal);
-		max-width: var(--s-measure-whisper);
-	}
-
-	.s-action-kicker {
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-seal);
-	}
-
-	.s-action-title {
-		font-family: var(--s-font-header);
-		font-size: var(--s-type-whisper);
-		color: var(--s-ink);
-	}
-
-	.s-action-question {
-		font-family: var(--s-font-header);
-		font-size: var(--s-type-whisper);
-		color: var(--s-ink);
-		margin: 0;
-	}
-
-	.s-action-body,
-	.s-action-hint {
-		font-family: var(--s-font-header);
-		font-size: var(--s-type-whisper);
-		color: var(--s-ink-2);
-		margin: 0;
-	}
-
-	.s-action-code {
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-deed);
-		color: var(--s-ink-2);
-		display: block;
-		word-break: break-all;
-	}
-
-	.s-action-btns {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-top: 0.2rem;
-	}
-
-	.s-action-options {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-	}
-
-	.s-action-btn {
-		appearance: none;
-		border: var(--s-hair) solid var(--s-line);
-		background: none;
-		cursor: pointer;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-deed);
-		letter-spacing: var(--s-track-label);
-		text-transform: lowercase;
-		color: var(--s-ink-2);
-		padding: 0.4rem 0.85rem;
-		border-radius: var(--s-radius-seal);
-		transition:
-			color var(--s-t-quick) var(--s-ease),
-			border-color var(--s-t-quick) var(--s-ease);
-	}
-
-	.s-action-btn:hover:not(:disabled) {
-		color: var(--s-ink);
-		border-color: var(--s-line);
-	}
-
-	.s-action-btn:disabled {
-		opacity: 0.4;
-		cursor: default;
-	}
-
-	.s-action-btn.selected {
-		border-color: var(--s-moss);
-		color: var(--s-moss);
-	}
-
-	.s-action-btn-primary {
-		border-color: var(--s-seal);
-		color: var(--s-seal);
-	}
-
-	.s-action-btn-danger {
-		color: var(--s-ink-3);
-	}
-
-	.s-multi-questions {
-		display: flex;
-		flex-direction: column;
-		gap: 0.8rem;
-	}
-
-	.s-question-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-		padding-top: 0.6rem;
-		border-top: var(--s-hair) solid var(--s-line-soft);
-	}
-
-	.s-question-item:first-child {
-		padding-top: 0;
-		border-top: 0;
-	}
-
-	.s-question-input {
-		width: 100%;
-		background: none;
-		border: 0;
-		border-bottom: var(--s-hair) solid var(--s-line);
-		outline: 0;
-		font-family: var(--s-font-header);
-		font-size: var(--s-type-whisper);
-		color: var(--s-ink);
-		padding: 0.3rem 0;
-	}
-
-	.s-question-input::placeholder {
 		color: var(--s-ink-3);
 	}
 

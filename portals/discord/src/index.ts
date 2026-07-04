@@ -1,9 +1,10 @@
 import {
   BasePortal,
   createLogger,
-  OcClient,
+  deliverBufferedAnswer,
+  type DeliverySink,
+  errMessage,
   readRequiredSecretFile,
-  splitMessage,
 } from '@openpalm/portal-sdk';
 import {
   Client,
@@ -22,7 +23,6 @@ import {
 import { buildCommandRegistry, parseCustomCommands, resolvePromptTemplate } from "./commands.ts";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
 import { streamTurn, DISCORD_SESSION_PREAMBLE, type PendingQuestion } from "./stream-render.ts";
-import { OcEventHub } from "./oc-event-hub.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -64,17 +64,6 @@ export default class DiscordChannel extends BasePortal {
    */
   private streamingEnabled = Bun.env.DISCORD_STREAMING === "true";
 
-  /** Lazily-built native OpenCode client through the guardian /oc/* proxy. */
-  private ocClientInstance: OcClient | null = null;
-
-  /**
-   * One shared /event subscription per principal. Concurrent threads from the
-   * same user fan out from a SINGLE upstream stream, so we never trip the
-   * guardian's per-principal concurrent-stream cap (the /event stream is already
-   * principal-scoped — opening one per thread was redundant).
-   */
-  private ocEventHubInstance: OcEventHub | null = null;
-
   /**
    * Pending interactive `question` per thread, so the user can answer by typing a
    * normal message in the thread (not only by clicking a button). Set by the
@@ -91,24 +80,6 @@ export default class DiscordChannel extends BasePortal {
    * for a session on /clear so a fresh OpenCode session gets primed again.
    */
   private primedSessions = new Set<string>();
-
-  private get ocClient(): OcClient {
-    if (!this.ocClientInstance) {
-      this.ocClientInstance = new OcClient({
-        principalId: this.name,
-        secret: this.secret,
-        baseUrl: `${this.guardianUrl}/oc`,
-      });
-    }
-    return this.ocClientInstance;
-  }
-
-  private get ocEventHub(): OcEventHub {
-    if (!this.ocEventHubInstance) {
-      this.ocEventHubInstance = new OcEventHub(this.ocClient);
-    }
-    return this.ocEventHubInstance;
-  }
 
   get botToken(): string {
     return readRequiredSecretFile("DISCORD_BOT_TOKEN_FILE");
@@ -150,7 +121,7 @@ export default class DiscordChannel extends BasePortal {
     // listener, the EventEmitter rethrows as an uncaught exception and kills the
     // process — log and keep the gateway alive so discord.js can auto-reconnect.
     this.client.on(Events.Error, (err) => {
-      log.error("discord_client_error", { error: err instanceof Error ? err.message : String(err) });
+      log.error("discord_client_error", { error: errMessage(err) });
     });
     this.client.once(Events.ClientReady, (c) => this.onReady(c));
     this.client.on(Events.MessageCreate, (msg) => void this.onMessage(msg));
@@ -207,7 +178,7 @@ export default class DiscordChannel extends BasePortal {
       }
     } catch (error) {
       log.error("command_registration_failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errMessage(error),
       });
     }
   }
@@ -296,7 +267,7 @@ export default class DiscordChannel extends BasePortal {
           sessionKey,
           text,
           sessionPreamble,
-          subscribeEvents: () => this.ocEventHub.subscribe(`discord:${userInfo.userId}`),
+          subscribeEvents: () => this.eventHub.subscribe(`discord:${userInfo.userId}`),
           triggerMessage,
           setPendingQuestion: (pending) => {
             if (pending) this.pendingQuestions.set(thread.id, pending);
@@ -306,7 +277,7 @@ export default class DiscordChannel extends BasePortal {
         log.info("stream_completed", { userId: userInfo.userId, threadId: thread.id, sessionKey });
       } catch (error) {
         this.pendingQuestions.delete(thread.id);
-        const errMsg = error instanceof Error ? error.message : String(error);
+        const errMsg = errMessage(error);
         log.error("stream_error", { error: errMsg, userId: userInfo.userId, sessionKey });
         await thread.send(`Error: ${errMsg}`).catch(() => {});
       }
@@ -315,27 +286,26 @@ export default class DiscordChannel extends BasePortal {
 
     const stopTyping = await this.sendTypingLoop(thread);
 
-    try {
-      const resp = await this.forward({ userId: `discord:${userInfo.userId}`, text, metadata }, undefined, this.forwardTimeoutMs || undefined);
-      if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
-      const { answer = "No response received." } = await resp.json() as { answer?: string };
-      stopTyping();
-      await this.sendSplitMessage(thread, answer);
+    const result = await deliverBufferedAnswer({
+      forward: () => this.forward({ userId: `discord:${userInfo.userId}`, text, metadata }, undefined, this.forwardTimeoutMs || undefined),
+      sink: { postChunk: (chunk) => thread.send(chunk) },
+      maxLength: this.maxMessageLength,
+      interChunkDelayMs: 300,
+      onSettled: stopTyping,
+    });
+    if (result.ok) {
       log.info("message_completed", {
         userId: userInfo.userId,
         guildId: userInfo.guildId,
         threadId: thread.id,
         sessionKey: metadata.sessionKey,
       });
-    } catch (error) {
-      stopTyping();
-      const errMsg = error instanceof Error ? error.message : String(error);
+    } else {
       log.error("message_error", {
-        error: errMsg,
+        error: result.error,
         userId: userInfo.userId,
         sessionKey: metadata.sessionKey,
       });
-      await thread.send(`Error: ${errMsg}`);
     }
   }
 
@@ -425,7 +395,7 @@ export default class DiscordChannel extends BasePortal {
         },
       });
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("thread_error", { error: errMsg });
       try {
         await message.reply(`Error: ${errMsg}`);
@@ -496,7 +466,7 @@ export default class DiscordChannel extends BasePortal {
       // DiscordAPIError 10062/40060) would otherwise become an unhandled
       // rejection — the InteractionCreate listener fires this fire-and-forget —
       // and crash the Bun process. Log and best-effort notify the user instead.
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("slash_command_error", {
         command: commandName,
         userId: userInfo.userId,
@@ -587,8 +557,11 @@ export default class DiscordChannel extends BasePortal {
 
     await this.conversationQueue.runOrQueue(sessionKey, {
       run: async () => {
-        try {
-          const resp = await this.forward({
+        const sink: DeliverySink = shouldQueue
+          ? { postChunk: (chunk) => interaction.followUp({ content: chunk, flags: MessageFlags.Ephemeral }) }
+          : { postChunk: (chunk) => interaction.followUp(chunk), editChunk: (chunk) => interaction.editReply(chunk) };
+        const result = await deliverBufferedAnswer({
+          forward: () => this.forward({
             userId: `discord:${userInfo.userId}`,
             text,
             metadata: {
@@ -598,39 +571,19 @@ export default class DiscordChannel extends BasePortal {
               channelId: interaction.channelId,
               sessionKey,
             },
-          }, undefined, this.forwardTimeoutMs || undefined);
-          if (!resp.ok) throw new Error(`Guardian returned status ${resp.status}`);
-          const { answer = "No response received." } = await resp.json() as { answer?: string };
-
-          const chunks = splitMessage(answer, this.maxMessageLength);
-          const firstChunk = chunks[0] ?? "No response received.";
-
-          if (shouldQueue) {
-            await interaction.followUp({ content: firstChunk, flags: MessageFlags.Ephemeral });
-            for (let i = 1; i < chunks.length; i++) {
-              await interaction.followUp({ content: chunks[i], flags: MessageFlags.Ephemeral });
-            }
-          } else {
-            await interaction.editReply(firstChunk);
-            for (let i = 1; i < chunks.length; i++) {
-              await interaction.followUp(chunks[i]);
-            }
-          }
-
+          }, undefined, this.forwardTimeoutMs || undefined),
+          sink,
+          maxLength: this.maxMessageLength,
+        });
+        if (result.ok) {
           log.info("command_completed", {
             command: commandName,
             userId: userInfo.userId,
             guildId: userInfo.guildId,
             sessionKey,
           });
-        } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error);
-          log.error("command_error", { command: commandName, error: errMsg, sessionKey });
-          if (shouldQueue) {
-            await interaction.followUp({ content: `Error: ${errMsg}`, flags: MessageFlags.Ephemeral });
-          } else {
-            await interaction.editReply(`Error: ${errMsg}`);
-          }
+        } else {
+          log.error("command_error", { command: commandName, error: result.error, sessionKey });
         }
       },
     });
@@ -679,7 +632,7 @@ export default class DiscordChannel extends BasePortal {
         droppedQueued > 0 ? "Conversation cleared. Dropped queued follow-ups." : "Conversation cleared.",
       );
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = errMessage(error);
       log.error("clear_error", {
         error: errMsg,
         sessionKey,
@@ -693,13 +646,4 @@ export default class DiscordChannel extends BasePortal {
 
   // ── Discord Message Utilities ───────────────────────────────────────────
 
-  private async sendSplitMessage(channel: ThreadChannel, text: string): Promise<void> {
-    const chunks = splitMessage(text, this.maxMessageLength);
-    for (const chunk of chunks) {
-      await channel.send(chunk);
-      if (chunks.length > 1) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-    }
-  }
 }

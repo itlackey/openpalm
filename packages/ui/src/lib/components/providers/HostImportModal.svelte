@@ -5,7 +5,8 @@
 <script lang="ts">
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Drawer from '$lib/components/common/Drawer.svelte';
-	import { buildHeaders } from '$lib/api.js';
+	import { importHostProviders, type HostImportResult } from '$lib/api/providers.js';
+	import { toMessage } from '$lib/api/errors.js';
 
 	let {
 		providerCount,
@@ -26,32 +27,15 @@
 	let importing = $state(false);
 	let error = $state<string | null>(null);
 
-	type ImportResult = {
-		ok: boolean;
-		imported: { providers: number; credentials: number };
-		conflicts: string[];
-		livePushed?: number;
-		livePushFailed?: string[];
-	};
-
-	let result = $state<ImportResult | null>(null);
+	let result = $state<HostImportResult | null>(null);
 
 	async function runImport() {
 		importing = true;
 		error = null;
 		try {
-			const res = await fetch('/admin/providers/import-host', {
-				method: 'POST',
-				headers: buildHeaders()
-			});
-			const body = (await res.json()) as ImportResult;
-			if (!res.ok) {
-				error = (body as unknown as { message?: string }).message ?? `Import failed (${res.status})`;
-				return;
-			}
-			result = body;
+			result = await importHostProviders();
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Import failed.';
+			error = toMessage(err, 'Import failed.');
 		} finally {
 			importing = false;
 		}

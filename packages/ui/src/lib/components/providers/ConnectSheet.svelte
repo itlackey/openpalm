@@ -17,7 +17,13 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import FormField from '$lib/components/common/FormField.svelte';
 	import Drawer from '$lib/components/common/Drawer.svelte';
-	import { buildHeaders } from '$lib/api.js';
+	import {
+		startProviderOauth,
+		oauthCallback,
+		submitProviderApiKey,
+		finishProviderOauth,
+	} from '$lib/api/providers.js';
+	import { toMessage } from '$lib/api/errors.js';
 	import type {
 		ProviderActionResult,
 		ProviderAuthMethod,
@@ -112,12 +118,7 @@
 		submitting = true;
 		error = null;
 		try {
-			const res = await fetch('/admin/providers/oauth/start', {
-				method: 'POST',
-				headers: { ...buildHeaders(), 'content-type': 'application/json' },
-				body: JSON.stringify({ providerId: provider.id, methodIndex: String(method.index) })
-			});
-			const result = (await res.json()) as ProviderActionResult;
+			const result = await startProviderOauth(provider.id, method.index);
 			if (!result.ok || !result.oauth) {
 				error = result.message ?? 'OAuth start failed.';
 				step = 'method-picker';
@@ -137,12 +138,7 @@
 				const pid = result.oauth.providerId;
 				const methodIndex = result.oauth.methodIndex;
 
-				void fetch(`/admin/providers/oauth/${encodeURIComponent(pid)}/callback`, {
-					method: 'POST',
-					headers: { ...buildHeaders(), 'content-type': 'application/json' },
-					body: JSON.stringify({ method: methodIndex }),
-					signal: abortController.signal,
-				})
+				void oauthCallback(pid, methodIndex, abortController.signal)
 					.then((r) => {
 						if (step !== 'oauth-auto') return; // sheet closed or back-arrow pressed
 						if (r.ok) {
@@ -155,14 +151,14 @@
 					.catch((err: unknown) => {
 						if (step !== 'oauth-auto') return;
 						if (err instanceof DOMException && err.name === 'AbortError') return;
-						error = err instanceof Error ? err.message : 'Authorization failed.';
+						error = toMessage(err, 'Authorization failed.');
 						step = 'method-picker';
 					});
 			} else {
 				step = 'oauth-code';
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'OAuth start failed.';
+			error = toMessage(err, 'OAuth start failed.');
 			step = 'method-picker';
 		} finally {
 			submitting = false;
@@ -177,19 +173,10 @@
 		submitting = true;
 		error = null;
 		try {
-			const res = await fetch(`/admin/opencode/providers/${encodeURIComponent(provider.id)}/auth`, {
-				method: 'POST',
-				headers: { ...buildHeaders(), 'content-type': 'application/json' },
-				body: JSON.stringify({ mode: 'api_key', apiKey: apiKey.trim() })
-			});
-			if (!res.ok) {
-				const body = (await res.json().catch(() => ({}))) as { message?: string };
-				error = body.message ?? `Save failed (${res.status})`;
-				return;
-			}
+			await submitProviderApiKey(provider.id, apiKey.trim());
 			finish('API key saved.');
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Request failed.';
+			error = toMessage(err, 'Request failed.');
 		} finally {
 			submitting = false;
 		}
@@ -203,23 +190,10 @@
 		submitting = true;
 		error = null;
 		try {
-			const res = await fetch('/admin/providers/oauth/finish', {
-				method: 'POST',
-				headers: { ...buildHeaders(), 'content-type': 'application/json' },
-				body: JSON.stringify({
-					providerId: provider.id,
-					methodIndex: selectedMethod.index,
-					code: authCode.trim()
-				})
-			});
-			if (!res.ok) {
-				const body = (await res.json().catch(() => ({}))) as { message?: string };
-				error = body.message ?? `Submission failed (${res.status})`;
-				return;
-			}
+			await finishProviderOauth(provider.id, selectedMethod.index, authCode.trim());
 			finish('Signed in successfully.');
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Request failed.';
+			error = toMessage(err, 'Request failed.');
 		} finally {
 			submitting = false;
 		}

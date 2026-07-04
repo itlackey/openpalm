@@ -9,7 +9,16 @@
 	import { onMount } from 'svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import EmptyState from '$lib/components/common/EmptyState.svelte';
-	import { buildHeaders } from '$lib/api.js';
+	import {
+		fetchProviders,
+		fetchAssistantCliTools,
+		saveOpencodeModel,
+		disconnectProvider,
+		fetchHostStatus,
+		useAssistantCliProvider,
+		type ProviderHostStatus,
+	} from '$lib/api/providers.js';
+	import { toMessage } from '$lib/api/errors.js';
 	import type { AssistantCliToolStatus, ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import AddProviderSheet from './AddProviderSheet.svelte';
 	import ConnectSheet from './ConnectSheet.svelte';
@@ -36,15 +45,12 @@
 	async function load(): Promise<void> {
 		loading = true;
 		try {
-			const res = await fetch('/admin/providers', { headers: buildHeaders() });
-			if (res.ok) {
-				pageState = (await res.json()) as ProviderPageState;
-				// Sync the model dropdowns to whatever the server says — only at
-				// load-time, never via a reactive $effect (which would stomp
-				// user-in-progress edits if a refresh raced a select change).
-				mainModelChoice = pageState.currentModel ?? '';
-				smallModelChoice = pageState.currentSmallModel ?? '';
-			}
+			pageState = await fetchProviders();
+			// Sync the model dropdowns to whatever the server says — only at
+			// load-time, never via a reactive $effect (which would stomp
+			// user-in-progress edits if a refresh raced a select change).
+			mainModelChoice = pageState.currentModel ?? '';
+			smallModelChoice = pageState.currentSmallModel ?? '';
 		} catch {
 			/* offline */
 		} finally {
@@ -57,11 +63,7 @@
 	async function loadAssistantCliTools(): Promise<void> {
 		assistantCliLoading = true;
 		try {
-			const res = await fetch('/admin/providers/assistant-clis', { headers: buildHeaders() });
-			if (res.ok) {
-				const body = await res.json() as { tools?: AssistantCliToolStatus[] };
-				assistantCliTools = body.tools ?? [];
-			}
+			assistantCliTools = await fetchAssistantCliTools();
 		} catch {
 			assistantCliTools = [];
 		} finally {
@@ -83,17 +85,9 @@
 	async function saveModel(target: 'model' | 'small_model', value: string) {
 		modelSaveError = null;
 		try {
-			const res = await fetch('/admin/opencode/model', {
-				method: 'POST',
-				headers: { ...buildHeaders(), 'content-type': 'application/json' },
-				body: JSON.stringify({ [target]: value || null }),
-			});
-			if (!res.ok) {
-				const body = (await res.json().catch(() => ({}))) as { message?: string };
-				modelSaveError = body.message ?? `Save failed (${res.status})`;
-			}
+			await saveOpencodeModel(target, value);
 		} catch (err) {
-			modelSaveError = err instanceof Error ? err.message : 'Request failed.';
+			modelSaveError = toMessage(err, 'Request failed.');
 		}
 	}
 
@@ -102,6 +96,10 @@
 	let connectProvider = $state<ProviderView | null>(null);
 	let showCustomForm = $state(false);
 	let disconnectingId = $state<string | null>(null);
+	// Disconnect-confirmation prompt (in-DOM, mirrors RecoveryTab's prune prompt —
+	// testable and consistent with the app's own dialog components, unlike the
+	// untestable native confirm()).
+	let pendingDisconnect = $state<ProviderView | null>(null);
 
 	const BADGE_LABEL: Record<NonNullable<ProviderView['credentialType']>, string> = {
 		env: 'env',
@@ -131,44 +129,39 @@
 		void loadAssistantCliTools();
 	}
 
-	async function disconnect(p: ProviderView) {
-		if (!confirm(`Disconnect ${p.name}? Stored credentials will be removed.`)) return;
+	function requestDisconnect(p: ProviderView) {
+		if (disconnectingId) return;
+		pendingDisconnect = p;
+	}
+
+	function cancelDisconnect() {
+		pendingDisconnect = null;
+	}
+
+	async function confirmDisconnect() {
+		const p = pendingDisconnect;
+		if (!p || disconnectingId) return;
 		disconnectingId = p.id;
 		actionError = null;
 		try {
-			const res = await fetch(
-				`/admin/opencode/providers/${encodeURIComponent(p.id)}/auth`,
-				{ method: 'DELETE', headers: buildHeaders() }
-			);
-			if (!res.ok) {
-				const body = (await res.json().catch(() => ({}))) as { message?: string };
-				actionError = body.message ?? `Disconnect failed (${res.status})`;
-			} else {
-				void load();
-				void loadAssistantCliTools();
-			}
+			await disconnectProvider(p.id);
+			pendingDisconnect = null;
+			void load();
+			void loadAssistantCliTools();
 		} catch (err) {
-			actionError = err instanceof Error ? err.message : 'Request failed.';
+			actionError = toMessage(err, 'Request failed.');
 		} finally {
 			disconnectingId = null;
 		}
 	}
 
 	// Host import
-	type HostStatus = {
-		detected: boolean;
-		providerCount: number;
-		credentialCount: number;
-		configPath: string | null;
-		authPath: string | null;
-	};
-	let hostStatus = $state<HostStatus | null>(null);
+	let hostStatus = $state<ProviderHostStatus | null>(null);
 	let showImportSheet = $state(false);
 
 	async function loadHostStatus(): Promise<void> {
 		try {
-			const res = await fetch('/admin/providers/host-status', { headers: buildHeaders() });
-			if (res.ok) hostStatus = (await res.json()) as HostStatus;
+			hostStatus = await fetchHostStatus();
 		} catch {
 			/* non-critical */
 		}
@@ -200,19 +193,10 @@
 		assistantCliWriting = `${toolId}:${providerId}`;
 		actionError = null;
 		try {
-			const res = await fetch(`/admin/providers/assistant-clis/${encodeURIComponent(toolId)}/use-provider`, {
-				method: 'POST',
-				headers: { ...buildHeaders(), 'content-type': 'application/json' },
-				body: JSON.stringify({ providerId }),
-			});
-			if (!res.ok) {
-				const body = (await res.json().catch(() => ({}))) as { message?: string };
-				actionError = body.message ?? `Write failed (${res.status})`;
-			} else {
-				await loadAssistantCliTools();
-			}
+			await useAssistantCliProvider(toolId, providerId);
+			await loadAssistantCliTools();
 		} catch (err) {
-			actionError = err instanceof Error ? err.message : 'Request failed.';
+			actionError = toMessage(err, 'Request failed.');
 		} finally {
 			assistantCliWriting = null;
 		}
@@ -358,7 +342,7 @@
 						<button
 							class="btn btn-outline btn-sm"
 							disabled={disconnectingId === p.id}
-							onclick={() => void disconnect(p)}
+							onclick={() => requestDisconnect(p)}
 						>
 							{#if disconnectingId === p.id}<Spinner />{/if}
 							Disconnect
@@ -440,6 +424,19 @@
 		onaction={handleAfterAction}
 		onclose={() => { showCustomForm = false; }}
 	/>
+{/if}
+
+{#if pendingDisconnect}
+	<div class="confirm-prompt" role="alertdialog" aria-label="Confirm disconnect provider">
+		<p class="confirm-prompt-title">Disconnect provider?</p>
+		<p>Disconnect {pendingDisconnect.name}? Stored credentials will be removed.</p>
+		<div class="confirm-actions">
+			<button class="btn btn-sm btn-danger" onclick={() => void confirmDisconnect()} disabled={disconnectingId !== null}>
+				{#if disconnectingId !== null}<Spinner /> Disconnecting…{:else}Disconnect{/if}
+			</button>
+			<button class="btn btn-sm btn-secondary" onclick={cancelDisconnect} disabled={disconnectingId !== null}>Cancel</button>
+		</div>
+	</div>
 {/if}
 
 {#if showImportSheet && hostStatus}
@@ -654,6 +651,31 @@
 
 	.empty-hint {
 		color: var(--s-ink-3);
+	}
+
+	.confirm-prompt {
+		margin: var(--s-sp-3) var(--s-sp-5);
+		padding: var(--s-sp-3);
+		border: var(--s-hair) solid var(--s-seal);
+		border-radius: 2px;
+	}
+	.confirm-prompt-title {
+		margin: 0 0 var(--s-sp-1) 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		color: var(--s-seal);
+	}
+	.confirm-prompt p {
+		margin: 0 0 var(--s-sp-2) 0;
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
+	}
+	.confirm-actions {
+		display: flex;
+		gap: var(--s-sp-2);
 	}
 
 	@media (max-width: 720px) {

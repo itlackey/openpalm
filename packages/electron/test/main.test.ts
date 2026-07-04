@@ -675,3 +675,27 @@ describe('before-quit handler', () => {
     expect(app.exit).toHaveBeenCalledOnce();
   });
 });
+
+// ── quit flag is single-sourced (typed module var, not stuffed on `app`) ──────
+// Pre-refactor the quit flag was written/read as `(app as any).isQuitting` — an
+// any-cast escape hatch that mutated the shared Electron `app` object. It now
+// lives in a typed module-scoped `isQuitting` var, so the quit handlers must NOT
+// mutate the app object. This pins that boundary: firing before-quit (a write
+// site) leaves the electron `app` object untouched. Placed AFTER the before-quit
+// describe so that suite fires the "first call" with fresh cleanupStarted state.
+describe('quit flag single-sourcing', () => {
+  it('before-quit does not stuff isQuitting onto the electron app object', () => {
+    const entry = vi.mocked(app.on).mock.calls.find(([e]) => e === 'before-quit');
+    expect(entry, 'before-quit handler must be registered').toBeDefined();
+    const handler = entry?.[1] as (event: { preventDefault: () => void }) => void;
+
+    // Seed the mock app's field to false so any write by the handler is detected.
+    // (Line 930's `isQuitting = true` runs BEFORE the cleanupStarted early-return,
+    // so this catches the write regardless of prior before-quit firings.)
+    (app as unknown as { isQuitting: boolean }).isQuitting = false;
+    handler({ preventDefault: vi.fn() });
+
+    // The typed module-scoped flag is the SSOT; the shared app object stays clean.
+    expect((app as unknown as { isQuitting: boolean }).isQuitting).toBe(false);
+  });
+});

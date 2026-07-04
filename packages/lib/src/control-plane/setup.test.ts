@@ -7,8 +7,11 @@ import {
   buildOwnerEnvFromSetup,
   buildAuthJsonFromSetup,
   performSetup,
+  persistAkmConfig,
+  seedDefaultAutomation,
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
+import type { ControlPlaneState } from "./types.js";
 import { readSecret } from './secrets-files.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -292,6 +295,181 @@ describe("buildAuthJsonFromSetup", () => {
   });
 });
 
+
+// ── Tests: persistAkmConfig (typed merge) ─────────────────────────────────
+
+describe("persistAkmConfig", () => {
+  let dir: string;
+  let configDir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "openpalm-akmcfg-"));
+    configDir = join(dir, "config");
+    mkdirSync(configDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const stateFor = (): ControlPlaneState => ({ configDir } as unknown as ControlPlaneState);
+  const cfgPath = () => join(configDir, "akm", "config.json");
+
+  it("writes the canonical typed shape for llm + embedding", () => {
+    persistAkmConfig(stateFor(), {
+      llm: { provider: "openai", model: "gpt-4o", baseUrl: "https://api.openai.com" },
+      embedding: {
+        provider: "openai",
+        model: "text-embedding-3-small",
+        dims: 1536,
+        baseUrl: "https://api.openai.com",
+      },
+    });
+    const cfg = JSON.parse(readFileSync(cfgPath(), "utf-8"));
+    expect(cfg.profiles.llm.default).toEqual({
+      endpoint: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-4o",
+      provider: "openai",
+    });
+    expect(cfg.defaults.llm).toBe("default");
+    expect(cfg.embedding).toEqual({
+      endpoint: "https://api.openai.com/v1/embeddings",
+      model: "text-embedding-3-small",
+      provider: "openai",
+      dimension: 1536,
+    });
+    expect(cfg.stashDir).toBe("/stash");
+    expect(cfg.llm).toBeUndefined();
+  });
+
+  it("round-trips: re-running over its own output is idempotent", () => {
+    const opts = {
+      llm: { provider: "openai", model: "gpt-4o", baseUrl: "https://api.openai.com" },
+      embedding: {
+        provider: "openai",
+        model: "text-embedding-3-small",
+        dims: 1536,
+        baseUrl: "https://api.openai.com",
+      },
+    };
+    persistAkmConfig(stateFor(), opts);
+    const first = readFileSync(cfgPath(), "utf-8");
+    persistAkmConfig(stateFor(), opts);
+    expect(readFileSync(cfgPath(), "utf-8")).toBe(first);
+  });
+
+  it("preserves existing user keys and nested profile/defaults fields", () => {
+    mkdirSync(join(configDir, "akm"), { recursive: true });
+    writeFileSync(
+      cfgPath(),
+      JSON.stringify({
+        customUserKey: "keep-me",
+        sources: [{ name: "host-akm" }],
+        profiles: { llm: { default: { temperature: 0.7 }, alt: { model: "x" } } },
+        defaults: { embedding: "myembed" },
+      }),
+    );
+    persistAkmConfig(stateFor(), {
+      llm: { provider: "ollama", model: "llama3.2", baseUrl: "http://localhost:11434" },
+    });
+    const cfg = JSON.parse(readFileSync(cfgPath(), "utf-8"));
+    // Untouched user keys survive the merge.
+    expect(cfg.customUserKey).toBe("keep-me");
+    expect(cfg.sources).toEqual([{ name: "host-akm" }]);
+    // Sibling profile and pre-existing default fields are preserved.
+    expect(cfg.profiles.llm.alt).toEqual({ model: "x" });
+    expect(cfg.profiles.llm.default.temperature).toBe(0.7);
+    // New llm values merge into profiles.llm.default.
+    expect(cfg.profiles.llm.default.model).toBe("llama3.2");
+    expect(cfg.profiles.llm.default.provider).toBe("ollama");
+    // Existing defaults key survives; defaults.llm is added.
+    expect(cfg.defaults.embedding).toBe("myembed");
+    expect(cfg.defaults.llm).toBe("default");
+  });
+
+  it("does nothing when neither llm nor embedding is provided", () => {
+    persistAkmConfig(stateFor(), {});
+    expect(existsSync(cfgPath())).toBe(false);
+  });
+
+  it("drops a legacy top-level llm key on write", () => {
+    mkdirSync(join(configDir, "akm"), { recursive: true });
+    writeFileSync(cfgPath(), JSON.stringify({ llm: { endpoint: "legacy", model: "old" } }));
+    persistAkmConfig(stateFor(), {
+      llm: { provider: "openai", model: "gpt-4o", baseUrl: "https://api.openai.com" },
+    });
+    const cfg = JSON.parse(readFileSync(cfgPath(), "utf-8"));
+    expect(cfg.llm).toBeUndefined();
+  });
+});
+
+// ── Tests: seedDefaultAutomation ──────────────────────────────────────────
+
+describe("seedDefaultAutomation", () => {
+  let dir: string;
+  let skeletonDir: string;
+  let opHome: string;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "openpalm-seed-"));
+    skeletonDir = join(dir, "skeleton");
+    opHome = join(dir, "ophome");
+    mkdirSync(skeletonDir, { recursive: true });
+    mkdirSync(join(opHome, "knowledge"), { recursive: true });
+
+    saved.OPENPALM_SKELETON_DIR = process.env.OPENPALM_SKELETON_DIR;
+    saved.OPENPALM_REPO_ROOT = process.env.OPENPALM_REPO_ROOT;
+    saved.OP_HOME = process.env.OP_HOME;
+    // Pin the registry lookup at our temp skeleton so the real repo skeleton
+    // (source-relative fallback) can't leak a real akm-improve.yml into tests.
+    delete process.env.OPENPALM_REPO_ROOT;
+    process.env.OPENPALM_SKELETON_DIR = skeletonDir;
+    process.env.OP_HOME = opHome;
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const stateFor = (stash: string): ControlPlaneState =>
+    ({ stashDir: stash } as unknown as ControlPlaneState);
+
+  const seedRegistry = (content: string) => {
+    mkdirSync(join(skeletonDir, "knowledge", "tasks"), { recursive: true });
+    writeFileSync(join(skeletonDir, "knowledge", "tasks", "akm-improve.yml"), content);
+  };
+
+  it("writes akm-improve.yml when it is missing", () => {
+    seedRegistry("schedule: daily\n");
+    const stash = join(dir, "stash1");
+    mkdirSync(stash, { recursive: true });
+    seedDefaultAutomation(stateFor(stash));
+    expect(readFileSync(join(stash, "tasks", "akm-improve.yml"), "utf-8")).toBe("schedule: daily\n");
+  });
+
+  it("does NOT overwrite an existing akm-improve.yml (user edits survive)", () => {
+    seedRegistry("schedule: from-registry\n");
+    const stash = join(dir, "stash2");
+    mkdirSync(join(stash, "tasks"), { recursive: true });
+    writeFileSync(join(stash, "tasks", "akm-improve.yml"), "schedule: user-edited\n");
+    seedDefaultAutomation(stateFor(stash));
+    expect(readFileSync(join(stash, "tasks", "akm-improve.yml"), "utf-8")).toBe(
+      "schedule: user-edited\n",
+    );
+  });
+
+  it("does nothing when the registry has no akm-improve automation", () => {
+    const stash = join(dir, "stash3");
+    mkdirSync(stash, { recursive: true });
+    seedDefaultAutomation(stateFor(stash));
+    expect(existsSync(join(stash, "tasks", "akm-improve.yml"))).toBe(false);
+  });
+});
 
 // ── Tests: performSetup ──────────────────────────────────────────────────
 

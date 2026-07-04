@@ -27,6 +27,7 @@
  */
 
 import { type Principal, principalKey } from "./ownership";
+import { FixedWindowLimiter } from "./bounded-map";
 
 // ── Named constants (with rationale) ───────────────────────────────────────
 
@@ -77,7 +78,13 @@ const PRINCIPAL_TURNS_MAX = 10_000;
 
 // ── 1. /event reconnect rate (fixed window per principal) ──────────────────
 
-const reconnectBuckets = new Map<string, { count: number; start: number }>();
+// Fixed-window per-principal reconnect budget — the shared FixedWindowLimiter
+// (same discipline as rate-limit.ts). Pruning is driven by the shared sweep
+// timer below, so no per-limiter prune interval is installed.
+const reconnectLimiter = new FixedWindowLimiter({
+  windowMs: OC_EVENT_RECONNECT_WINDOW_MS,
+  maxKeys: RECONNECT_BUCKETS_MAX,
+});
 
 /**
  * Record a /event open attempt and return true if it is within the reconnect
@@ -85,28 +92,7 @@ const reconnectBuckets = new Map<string, { count: number; start: number }>();
  */
 export function allowEventReconnect(principal: Principal): boolean {
   if (OC_EVENT_RECONNECT_LIMIT <= 0) return true; // cap disabled
-  const key = principalKey(principal);
-  const now = Date.now();
-  const b = reconnectBuckets.get(key);
-  if (!b || now - b.start > OC_EVENT_RECONNECT_WINDOW_MS) {
-    reconnectBuckets.set(key, { count: 1, start: now });
-    if (reconnectBuckets.size > RECONNECT_BUCKETS_MAX) pruneReconnect();
-    return true;
-  }
-  if (b.count >= OC_EVENT_RECONNECT_LIMIT) return false;
-  b.count++;
-  return true;
-}
-
-function pruneReconnect(): void {
-  const now = Date.now();
-  for (const [k, b] of reconnectBuckets) {
-    if (now - b.start > OC_EVENT_RECONNECT_WINDOW_MS) reconnectBuckets.delete(k);
-  }
-  if (reconnectBuckets.size > RECONNECT_BUCKETS_MAX) {
-    const sorted = [...reconnectBuckets.entries()].sort((a, b) => a[1].start - b[1].start);
-    for (const [k] of sorted.slice(0, sorted.length - RECONNECT_BUCKETS_MAX)) reconnectBuckets.delete(k);
-  }
+  return reconnectLimiter.allow(principalKey(principal), OC_EVENT_RECONNECT_LIMIT);
 }
 
 // ── 2. Concurrent /event streams per principal ─────────────────────────────
@@ -236,7 +222,7 @@ export function setTurnAbortFn(fn: (sessionId: string) => void): void {
 const sweepTimer = setInterval(() => {
   const stale = reapStaleTurns();
   if (abortFn) for (const sessionId of stale) abortFn(sessionId);
-  pruneReconnect();
+  reconnectLimiter.prune();
 }, 60_000);
 sweepTimer.unref();
 
@@ -244,7 +230,7 @@ sweepTimer.unref();
 
 /** Active /event reconnect buckets (for /stats). */
 export function reconnectBucketCount(): number {
-  return reconnectBuckets.size;
+  return reconnectLimiter.size;
 }
 
 /** Number of principals with at least one open /event stream (for /stats). */
@@ -259,7 +245,7 @@ export function inflightTurnCount(): number {
 
 /** Test-only: clear all bounds state between cases. */
 export function _resetBoundsForTest(): void {
-  reconnectBuckets.clear();
+  reconnectLimiter.clear();
   streamCounts.clear();
   inflightTurns.clear();
   turnCountByPrincipal.clear();

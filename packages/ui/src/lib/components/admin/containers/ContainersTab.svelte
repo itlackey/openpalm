@@ -11,7 +11,6 @@
     serviceEntries: ServiceEntry[];
     loading: boolean;
     error: string;
-    tokenStored: boolean;
     selectedContainerId: string | null;
     onToggleContainer: (id: string) => void;
     onStart: (id: string) => void;
@@ -28,7 +27,6 @@
     serviceEntries,
     loading,
     error,
-    tokenStored,
     selectedContainerId,
     onToggleContainer,
     onStart,
@@ -87,13 +85,13 @@
     {#if lastUpdated}
       <span class="last-updated">Updated {lastUpdated}</span>
     {/if}
-    <button class="btn btn-secondary btn-sm" onclick={onPullImages} disabled={pullLoading || !tokenStored}>
+    <button class="btn btn-secondary btn-sm" onclick={onPullImages} disabled={pullLoading}>
       {#if pullLoading}
         <Spinner />
       {/if}
       Pull Images
     </button>
-    <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+    <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading}>
       {#if loading}
         <Spinner />
       {/if}
@@ -128,7 +126,7 @@
         {/each}
       </div>
     {:else}
-      <ContainersEmptyState {loading} {error} {containerData} {tokenStored} {onRefresh} />
+      <ContainersEmptyState {loading} {error} {containerData} {onRefresh} />
     {/if}
   </div>
 </Panel>

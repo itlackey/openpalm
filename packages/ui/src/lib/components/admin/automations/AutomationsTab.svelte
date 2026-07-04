@@ -17,11 +17,10 @@
     data: AutomationsResponse | null;
     loading: boolean;
     error: string;
-    tokenStored: boolean;
     onRefresh: () => void;
   }
 
-  let { data, loading, error, tokenStored, onRefresh }: Props = $props();
+  let { data, loading, error, onRefresh }: Props = $props();
 
   let hasAutomations = $derived(
     data !== null && Array.isArray(data.automations) && data.automations.length > 0
@@ -33,6 +32,11 @@
   let drawerSaving = $state(false);
   let drawerError = $state('');
   let runningTaskName = $state('');
+
+  // Delete-confirmation prompt (in-DOM, mirrors RecoveryTab's prune prompt —
+  // testable and consistent with the app's own dialog components, unlike the
+  // untestable native confirm()).
+  let pendingDeleteFile = $state<string | null>(null);
 
   let logDrawerOpen = $state(false);
   let logTaskName = $state('');
@@ -84,12 +88,23 @@
     }
   }
 
-  async function removeTask(fileName: string): Promise<void> {
-    if (drawerSaving || !confirm(`Delete task file "${fileName}"?`)) return;
+  function requestRemoveTask(fileName: string): void {
+    if (drawerSaving) return;
+    pendingDeleteFile = fileName;
+  }
+
+  function cancelRemoveTask(): void {
+    pendingDeleteFile = null;
+  }
+
+  async function confirmRemoveTask(): Promise<void> {
+    const fileName = pendingDeleteFile;
+    if (fileName === null || drawerSaving) return;
     drawerSaving = true;
     try {
       await deleteTaskFile(fileName);
       notifications.push('success', `Deleted ${fileName}.`);
+      pendingDeleteFile = null;
       onRefresh();
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to delete task file.');
@@ -99,7 +114,7 @@
   }
 
   async function handleRunNow(name: string): Promise<void> {
-    if (runningTaskName || drawerSaving || !tokenStored) return;
+    if (runningTaskName || drawerSaving) return;
     runningTaskName = name;
     try {
       const result = await runAutomation(name);
@@ -198,8 +213,8 @@
       <p class="ph-sub">Scheduled tasks from knowledge/tasks/</p>
     </div>
     <div class="ph-actions">
-      <button class="btn btn-primary btn-outline btn-sm" onclick={openNewTask} disabled={drawerSaving || !tokenStored}>New task</button>
-      <button class="btn btn-primary btn-outline btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+      <button class="btn btn-primary btn-outline btn-sm" onclick={openNewTask} disabled={drawerSaving}>New task</button>
+      <button class="btn btn-primary btn-outline btn-sm" onclick={onRefresh} disabled={loading}>
         {#if loading}
           <Spinner />
         {/if}
@@ -209,6 +224,19 @@
   </div>
 
   <div class="panel-body">
+    {#if pendingDeleteFile !== null}
+      <div class="confirm-prompt" role="alertdialog" aria-label="Confirm delete task">
+        <p class="confirm-prompt-title">Delete task file?</p>
+        <p>Delete task file "{pendingDeleteFile}"? This cannot be undone.</p>
+        <div class="confirm-actions">
+          <button class="btn btn-sm btn-danger" onclick={() => void confirmRemoveTask()} disabled={drawerSaving}>
+            {#if drawerSaving}<Spinner /> Deleting…{:else}Delete task{/if}
+          </button>
+          <button class="btn btn-sm btn-secondary" onclick={cancelRemoveTask} disabled={drawerSaving}>Cancel</button>
+        </div>
+      </div>
+    {/if}
+
     {#if hasAutomations && data}
       <div class="automation-list">
         {#each data.automations as automation (automation.name)}
@@ -237,7 +265,7 @@
                 <button
                   class="btn btn-secondary btn-sm"
                   onclick={() => void handleRunNow(automation.name)}
-                  disabled={!!runningTaskName || drawerSaving || !tokenStored}
+                  disabled={!!runningTaskName || drawerSaving}
                 >
                   {#if runningTaskName === automation.name}
                     <Spinner />
@@ -249,17 +277,17 @@
                 <button
                   class="btn btn-ghost btn-sm"
                   onclick={() => void openLogDrawer(automation.name)}
-                  disabled={logLoading || !tokenStored}
+                  disabled={logLoading}
                 >View latest log</button>
                 <button
                   class="btn btn-ghost btn-sm"
                   onclick={() => void openEditTask(automation.fileName)}
-                  disabled={drawerSaving || !tokenStored}
+                  disabled={drawerSaving}
                 >Edit</button>
                 <button
                   class="btn btn-ghost btn-sm"
-                  onclick={() => void removeTask(automation.fileName)}
-                  disabled={drawerSaving || !tokenStored}
+                  onclick={() => requestRemoveTask(automation.fileName)}
+                  disabled={drawerSaving}
                   aria-label="Delete {automation.fileName}"
                 >Delete</button>
               </div>
@@ -282,7 +310,7 @@
           <button class="btn btn-secondary btn-sm empty-state-btn" onclick={onRefresh}>Try Again</button>
         {:else}
           <p>No automations configured.</p>
-          <button class="btn btn-secondary btn-sm empty-state-btn" onclick={openNewTask} disabled={!tokenStored}>Create your first task</button>
+          <button class="btn btn-secondary btn-sm empty-state-btn" onclick={openNewTask}>Create your first task</button>
           <p class="empty-state-hint">Or drop <code>.md</code>/<code>.yml</code> files into <code>~/.openpalm/knowledge/tasks/</code>.</p>
         {/if}
       </EmptyState>
@@ -524,6 +552,31 @@
 
   .text-danger {
     color: var(--s-seal);
+  }
+
+  .confirm-prompt {
+    margin: 0 clamp(1rem, 4vw, 2rem) var(--s-sp-4);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-seal);
+    border-radius: 2px;
+  }
+  .confirm-prompt-title {
+    margin: 0 0 var(--s-sp-1) 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-seal);
+  }
+  .confirm-prompt p {
+    margin: 0 0 var(--s-sp-2) 0;
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+  }
+  .confirm-actions {
+    display: flex;
+    gap: var(--s-sp-2);
   }
 
   .log-drawer-body {

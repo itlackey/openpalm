@@ -75,3 +75,39 @@ describe('ProvidersPanel — assistant available', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe('ProvidersPanel — disconnect confirmation', () => {
+  test('Disconnect shows an in-DOM confirm dialog instead of native confirm()', async () => {
+    // If the code still used window.confirm, this stub would throw when called.
+    const confirmSpy = vi.fn(() => {
+      throw new Error('native confirm() must not be used');
+    });
+    vi.stubGlobal('confirm', confirmSpy);
+    mockFetch(availableResponse);
+    render(ProvidersPanel);
+
+    await page.getByRole('button', { name: 'Disconnect' }).click();
+
+    await expect.element(
+      page.getByText(/Stored credentials will be removed/i),
+      { timeout: 5000 }
+    ).toBeVisible();
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  test('Cancel dismisses the confirm dialog without disconnecting', async () => {
+    mockFetch(availableResponse);
+    render(ProvidersPanel);
+
+    await page.getByRole('button', { name: 'Disconnect' }).click();
+    await expect.element(
+      page.getByText(/Stored credentials will be removed/i),
+      { timeout: 5000 }
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect.element(
+      page.getByText(/Stored credentials will be removed/i)
+    ).not.toBeInTheDocument();
+  });
+});

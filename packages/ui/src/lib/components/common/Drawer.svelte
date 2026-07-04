@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import IconClose from '$lib/components/icons/IconClose.svelte';
+  import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
 
   // Reusable slide-in drawer (right edge). The app-wide replacement for inline
   // expand-in-place forms: edit flows open here instead of pushing page content
@@ -18,53 +19,11 @@
   }
   let { open, title, onClose, children, footer, headerStart, width = '32rem' }: Props = $props();
 
-  const FOCUSABLE =
-    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-  function focusables(root: Element): HTMLElement[] {
-    return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-      (el) => !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true'
-    );
-  }
-
-  // Focus management for the modal dialog (WCAG 2.4.3 / APG dialog pattern),
-  // expressed as an element attachment so its lifecycle IS the dialog's:
-  // on mount, remember what had focus and move focus inside; on unmount,
-  // restore it so keyboard/SR users are not dropped to <body>. Prefer the
-  // first control in the body so the user doesn't land on the Close button.
-  function manageFocus(node: HTMLElement): () => void {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    const body = node.querySelector<HTMLElement>('.drawer-body');
-    const target = (body && focusables(body)[0]) ?? focusables(node)[0] ?? node;
-    target.focus();
-    return () => previouslyFocused?.focus?.();
-  }
-
-  function onPanelKey(e: KeyboardEvent & { currentTarget: HTMLElement }): void {
-    if (e.key === 'Escape') {
-      onClose();
-      return;
-    }
-    if (e.key !== 'Tab') return;
-    // Trap Tab focus within the dialog.
-    const panel = e.currentTarget;
-    const items = focusables(panel);
-    if (items.length === 0) {
-      e.preventDefault();
-      panel.focus();
-      return;
-    }
-    const first = items[0]!;
-    const last = items[items.length - 1]!;
-    const active = document.activeElement;
-    if (e.shiftKey && (active === first || active === panel)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
+  // Focus management for the modal dialog (WCAG 2.4.3 / APG dialog pattern) via
+  // the shared focus-trap primitives: on mount move focus into the body (so the
+  // user doesn't land on Close), on unmount restore it; Escape closes and Tab is
+  // trapped within the panel.
+  const manageFocus = createFocusTrap({ initialFocus: '.drawer-body' });
 </script>
 
 {#if open}
@@ -81,7 +40,7 @@
     aria-modal="true"
     aria-label={title}
     tabindex="-1"
-    onkeydown={onPanelKey}
+    onkeydown={(e) => handleTrapKeydown(e, onClose)}
     {@attach manageFocus}
   >
     <header class="drawer-header">

@@ -10,8 +10,9 @@ import {
   parseCustomCommands,
   resolvePromptTemplate,
 } from "./commands.ts";
+import { parseIdList } from "@openpalm/portal-sdk";
 import DiscordChannel from "./index.ts";
-import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
+import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
 import type { CustomCommandDef, PermissionConfig, UserInfo } from "./types.ts";
 import { CommandOptionType } from "./types.ts";
 

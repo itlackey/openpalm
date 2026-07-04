@@ -10,18 +10,36 @@ export type AuthenticatedPrincipal = {
   userId: string;
 };
 
+// Hard cap on cached principals. readCachedPrincipal negative-caches null keyed
+// by the client-supplied (attacker-controlled) Basic-auth id, so an unbounded
+// map would grow pre-auth under a flood of distinct unknown ids. Bound it with
+// oldest-first FIFO eviction — same size-cap discipline as ownership.ts.
+const PRINCIPAL_CACHE_MAX = 1024;
+
 const principalCache = new Map<string, PrincipalRecord | null>();
 
 function readCachedPrincipal(id: string): PrincipalRecord | null {
   if (principalCache.has(id)) return principalCache.get(id) ?? null;
   const record = getPrincipalRecord(id);
   principalCache.set(id, record);
+  // Map preserves insertion order, so the first key is the oldest entry.
+  if (principalCache.size > PRINCIPAL_CACHE_MAX) {
+    const oldest = principalCache.keys().next().value;
+    if (oldest !== undefined) principalCache.delete(oldest);
+  }
   return record;
 }
 
 export function invalidatePrincipalCache(id?: string): void {
   if (id) principalCache.delete(id);
   else principalCache.clear();
+}
+
+export { PRINCIPAL_CACHE_MAX };
+
+/** Test-only: current principal-cache entry count. */
+export function _principalCacheSizeForTest(): number {
+  return principalCache.size;
 }
 
 function parseBasicAuth(header: string): { id: string; secret: string } | null {

@@ -1,6 +1,6 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
 import { execFile, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
 import { mapDockerError, parseComposeStderr } from "./compose-errors.js";
 
@@ -9,6 +9,108 @@ export type DockerResult = {
   stdout: string;
   stderr: string;
   code: number;
+  /**
+   * Node's string error code (errno) for a spawn/OS failure, e.g. "ENOENT" when
+   * the docker binary is missing. Present ONLY when the underlying error carried
+   * a non-numeric `code` — for a normal non-zero process exit `code` holds the
+   * numeric exit status and this is absent.
+   */
+  errorCode?: string;
+};
+
+/**
+ * Build a {@link DockerResult} from a node:child_process callback.
+ *
+ * Node's `error.code` is OVERLOADED: for a process that exits non-zero it is the
+ * numeric exit status, but for a spawn/OS failure it is a STRING errno
+ * ("ENOENT", "EACCES", …). Blindly `Number(error.code)`-ing the string yields
+ * NaN silently stored in a `number` field, so callers branching on `result.code`
+ * (e.g. `allowExitCodes.includes(result.code)`) get garbage. This normalizes:
+ * numeric codes pass through unchanged; a string code surfaces via `errorCode`
+ * while `code` falls back to a non-zero sentinel (any error ⇒ non-zero).
+ *
+ * Pure and exported (package-internal) so the string-code path is unit-testable
+ * without spawning docker.
+ */
+export function toDockerResult(
+  error: (Error & { code?: unknown }) | null | undefined,
+  stdout: string | Buffer | undefined,
+  stderr: string | Buffer | undefined,
+): DockerResult {
+  const rawCode = error?.code;
+  const code = typeof rawCode === "number" ? rawCode : error ? 1 : 0;
+  const result: DockerResult = {
+    ok: !error,
+    stdout: stdout?.toString() ?? "",
+    stderr: stderr?.toString() ?? "",
+    code,
+  };
+  if (typeof rawCode === "string") result.errorCode = rawCode;
+  return result;
+}
+
+// ── Injection seam (DockerClient + FileStore) ────────────────────────────────
+//
+// docker.ts hard-wires node:child_process (execFile) and node:fs at module
+// scope, so the §4.3 compose driver (applyStack) and its health/inspect helpers
+// could only be exercised against a real daemon + disk. These two narrow
+// interfaces let callers inject fakes — mirroring the DI already in
+// ui-supervisor.ts and install-lock.ts. Defaults are the real impls, so every
+// existing caller (which omits `deps`) is byte-identical.
+
+/** Options for a single {@link DockerClient.run} invocation. */
+export type DockerRunOptions = {
+  cwd?: string;
+  /** Kill budget in ms; omit for the {@link run} default (120s). */
+  timeoutMs?: number;
+  /** Extra env layered over process.env for this invocation. */
+  env?: Record<string, string>;
+};
+
+/**
+ * Narrow seam over the docker CLI: one `run(args, opts?)` method mirroring the
+ * module-level {@link run} execFile wrapper. Injecting a fake lets applyStack and
+ * the inspect/health helpers be unit-tested without spawning docker.
+ */
+export interface DockerClient {
+  run(args: string[], opts?: DockerRunOptions): Promise<DockerResult>;
+}
+
+/**
+ * Narrow seam over the fs the compose driver touches: `exists` gates the
+ * `--env-file` compose args; `read`/`write` are provided for the deploy/lifecycle
+ * consumers that share this contract. Injecting a fake removes the disk
+ * dependency from unit tests.
+ */
+export interface FileStore {
+  exists(path: string): boolean;
+  read(path: string): string;
+  write(path: string, data: string, mode?: number): void;
+}
+
+/** Injected dependencies for the compose driver. Defaults to the real impls. */
+export interface StackDeps {
+  docker: DockerClient;
+  files: FileStore;
+}
+
+/** Real DockerClient — thin adapter over the execFile-backed {@link run}. */
+export const realDockerClient: DockerClient = {
+  run: (args, opts) => run(args, opts?.cwd, opts?.timeoutMs, opts?.env),
+};
+
+/** Real FileStore — thin adapter over node:fs. */
+export const realFileStore: FileStore = {
+  exists: (path) => existsSync(path),
+  read: (path) => readFileSync(path, "utf-8"),
+  write: (path, data, mode) =>
+    writeFileSync(path, data, mode !== undefined ? { mode } : undefined),
+};
+
+/** The default (real) dependency bundle threaded when a caller omits `deps`. */
+export const defaultStackDeps: StackDeps = {
+  docker: realDockerClient,
+  files: realFileStore,
 };
 
 /**
@@ -30,12 +132,7 @@ export function run(
       args,
       { cwd, timeout: timeoutMs, env: { ...process.env, ...envOverrides } },
       (error, stdout, stderr) => {
-        resolve({
-          ok: !error,
-          stdout: stdout?.toString() ?? "",
-          stderr: stderr?.toString() ?? "",
-          code: error?.code ? Number(error.code) : 0
-        });
+        resolve(toDockerResult(error, stdout, stderr));
       }
     );
   });
@@ -98,76 +195,50 @@ export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: strin
  * detection is best-effort and never blocks the caller; a real failure surfaces
  * later through composeUp.
  */
-export function detectExistingProject(opts: {
+export async function detectExistingProject(opts: {
   projectName: string;
   expectedWorkingDir: string;
 }): Promise<ExistingProject> {
   const none: ExistingProject = { exists: false, isOurs: false, workingDir: "" };
-  return new Promise((resolve) => {
-    execFile(
-      "docker",
-      ["ps", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
-      { timeout: 10_000 },
-      (err, stdout) => {
-        if (err) return resolve(none);
-        const ids = stdout.toString().trim().split(/\s+/).filter(Boolean);
-        if (ids.length === 0) return resolve(none);
-        execFile(
-          "docker",
-          [
-            "inspect",
-            "--format",
-            '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}',
-            ids[0],
-          ],
-          { timeout: 10_000 },
-          (err2, stdout2) => {
-            if (err2) return resolve({ exists: true, isOurs: false, workingDir: "" });
-            const workingDir = stdout2.toString().trim();
-            resolve({ exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir });
-          },
-        );
-      },
-    );
-  });
+  const ps = await run(
+    ["ps", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
+    undefined,
+    10_000,
+  );
+  if (!ps.ok) return none;
+  const ids = ps.stdout.trim().split(/\s+/).filter(Boolean);
+  if (ids.length === 0) return none;
+  const inspect = await run(
+    [
+      "inspect",
+      "--format",
+      '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}',
+      ids[0],
+    ],
+    undefined,
+    10_000,
+  );
+  if (!inspect.ok) return { exists: true, isOurs: false, workingDir: "" };
+  const workingDir = inspect.stdout.trim();
+  return { exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir };
 }
 
 /** Check if Docker is available */
 export async function checkDocker(): Promise<DockerResult> {
-  return new Promise((resolve) => {
-    execFile(
-      "docker",
-      ["info", "--format", "{{.ServerVersion}}"],
-      (error, stdout, stderr) => {
-        const stdoutStr = stdout?.toString().trim() ?? "";
-        const stderrStr = stderr?.toString() ?? "";
-        // docker info may exit non-zero when the daemon reports warnings
-        // (e.g. "No swap limit support") even though it is fully functional.
-        // Treat Docker as available when stdout contains a version string.
-        const available = stdoutStr.length > 0 || !error;
-        resolve({
-          ok: available,
-          stdout: stdoutStr,
-          stderr: stderrStr,
-          code: error?.code ? Number(error.code) : 0
-        });
-      }
-    );
-  });
+  // No timeout (0) — `docker info` was historically unbounded here.
+  const result = await run(["info", "--format", "{{.ServerVersion}}"], undefined, 0);
+  const stdout = result.stdout.trim();
+  // docker info may exit non-zero when the daemon reports warnings
+  // (e.g. "No swap limit support") even though it is fully functional.
+  // Treat Docker as available when stdout contains a version string.
+  const available = stdout.length > 0 || result.ok;
+  return { ok: available, stdout, stderr: result.stderr, code: result.code };
 }
 
 /** Check if docker compose is available */
 export async function checkDockerCompose(): Promise<DockerResult> {
-  return new Promise((resolve) => {
-    execFile("docker", ["compose", "version"], (error, stdout, stderr) => {
-      resolve({
-        ok: !error,
-        stdout: stdout?.toString() ?? "",
-        stderr: stderr?.toString() ?? "",
-        code: error?.code ? Number(error.code) : 0
-      });
-    });
-  });
+  // No timeout (0) — historically unbounded here.
+  return run(["compose", "version"], undefined, 0);
 }
 
 /** Merge all env files into a single overrides object for process env. */
@@ -178,19 +249,25 @@ export function collectComposeEnvOverrides(envFiles?: string[]): Record<string, 
 }
 
 /** Build common docker compose args: -f ... --project-name ... --env-file ... --profile ... */
-export function buildComposeCommandArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
+export function buildComposeCommandArgs(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  files: FileStore = realFileStore,
+): string[] {
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
   const args = ["--project-name", resolveComposeProjectName(envOverrides), ...options.files.flatMap((f) => ["-f", f])];
   for (const ef of options.envFiles ?? []) {
-    if (existsSync(ef)) args.push("--env-file", ef);
+    if (files.exists(ef)) args.push("--env-file", ef);
   }
   for (const p of options.profiles ?? []) args.push("--profile", p);
   return args;
 }
 
 /** Build common prefix: compose -f ... --project-name ... --env-file ... --profile ... */
-function buildComposeArgs(options: { files: string[]; envFiles?: string[]; profiles?: string[] }): string[] {
-  return ["compose", ...buildComposeCommandArgs(options)];
+function buildComposeArgs(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  files: FileStore = realFileStore,
+): string[] {
+  return ["compose", ...buildComposeCommandArgs(options, files)];
 }
 
 /**
@@ -252,7 +329,8 @@ export function buildComposePreflightError(
     `Compose preflight failed: ${stderr}\n` +
     `Resolved command: ${resolvedCommand}\n` +
     `Files: ${files.join(", ")}\n` +
-    `Env files: ${envFiles.join(", ")}\n` +
+    `Env files: ${envFiles.filter(existsSync).join(", ")}\n` +
+    `Profiles: ${profiles.join(", ") || "(none)"}\n` +
     `Project: ${project}` +
     guidance
   );
@@ -592,32 +670,28 @@ export type ContainerImageInfo = {
  * Inspect a single container by name and return its full image + health info.
  * "not_installed" when the container does not exist; "stopped" when it exists but is not running.
  */
-export function inspectContainerImage(containerName: string): Promise<ContainerImageInfo> {
-  return new Promise((resolve) => {
-    execFile(
-      "docker",
-      [
-        "inspect",
-        "--format",
-        "{{.State.Status}}\t{{.Image}}\t{{.Config.Image}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}",
-        containerName,
-      ],
-      { timeout: 10_000 },
-      (error, stdout) => {
-        if (error) {
-          // Container does not exist (exit code 1, "No such object")
-          resolve({ digest: "", tag: "", healthStatus: "", state: "not_installed" });
-          return;
-        }
-        const [rawState = "", digest = "", tag = "", healthStatus = ""] = (stdout ?? "")
-          .toString()
-          .trim()
-          .split("\t");
-        const state = rawState === "running" ? "running" : "stopped";
-        resolve({ digest, tag, healthStatus, state });
-      }
-    );
-  });
+export async function inspectContainerImage(
+  containerName: string,
+  deps: StackDeps = defaultStackDeps,
+): Promise<ContainerImageInfo> {
+  const result = await deps.docker.run(
+    [
+      "inspect",
+      "--format",
+      "{{.State.Status}}\t{{.Image}}\t{{.Config.Image}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}",
+      containerName,
+    ],
+    { timeoutMs: 10_000 },
+  );
+  if (!result.ok) {
+    // Container does not exist (exit code 1, "No such object")
+    return { digest: "", tag: "", healthStatus: "", state: "not_installed" };
+  }
+  const [rawState = "", digest = "", tag = "", healthStatus = ""] = result.stdout
+    .trim()
+    .split("\t");
+  const state = rawState === "running" ? "running" : "stopped";
+  return { digest, tag, healthStatus, state };
 }
 
 /**
@@ -684,10 +758,11 @@ export async function waitForContainerHealthy(
   containerName: string,
   timeoutMs = healthWaitTimeoutMs(),
   pollMs = HEALTH_WAIT_DEFAULTS.pollMs,
+  deps: StackDeps = defaultStackDeps,
 ): Promise<{ healthy: boolean; timedOut: boolean; reason: string }> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const info = await inspectContainerImage(containerName);
+    const info = await inspectContainerImage(containerName, deps);
     if (info.state === "not_installed") {
       return { healthy: false, timedOut: false, reason: `container ${containerName} does not exist` };
     }
@@ -747,15 +822,17 @@ export type ApplyStackResult = {
 export async function applyStack(
   scope: ApplyStackScope,
   options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  deps: StackDeps = defaultStackDeps,
 ): Promise<ApplyStackResult> {
+  const { docker, files } = deps;
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
-  const base = buildComposeArgs(options);
+  const base = buildComposeArgs(options, files);
 
   // ── 1. Pull the whole target set FIRST (§4.3 "Pull the whole target set first") ──
   const pullArgs = [...base, "pull"];
   if (scope.kind === "service") pullArgs.push(scope.service);
 
-  const pullResult = await run(pullArgs, undefined, PULL_TIMEOUT_MS, envOverrides);
+  const pullResult = await docker.run(pullArgs, { timeoutMs: PULL_TIMEOUT_MS, env: envOverrides });
   if (!pullResult.ok) {
     // Pull failure is FATAL (§6, constitution §8 "never swallowed").
     // Route through mapDockerError so the user sees a named, friendly message
@@ -778,7 +855,7 @@ export async function applyStack(
     upArgs.push("--remove-orphans");
   }
 
-  const upResult = await run(upArgs, undefined, composeUpTimeoutMs(), envOverrides);
+  const upResult = await docker.run(upArgs, { timeoutMs: composeUpTimeoutMs(), env: envOverrides });
 
   // ── 3. Parse per-service failures from stderr ─────────────────────────────
   if (!upResult.ok) {
@@ -809,7 +886,7 @@ export async function applyStack(
       ? [scope.service]
       : await (async () => {
           const configArgs = [...base, "config", "--services"];
-          const r = await run(configArgs, undefined, 15_000, envOverrides);
+          const r = await docker.run(configArgs, { timeoutMs: 15_000, env: envOverrides });
           return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
         })();
 
@@ -819,13 +896,13 @@ export async function applyStack(
   for (const svc of targetServices) {
     // Get the container name from compose ps
     const psArgs = [...base, "ps", "-q", svc];
-    const psResult = await run(psArgs, undefined, 10_000, envOverrides);
+    const psResult = await docker.run(psArgs, { timeoutMs: 10_000, env: envOverrides });
     const containerId = psResult.stdout.trim();
     if (!containerId) {
       failed.push({ service: svc, reason: `container for service ${svc} not found after up` });
       continue;
     }
-    const wait = await waitForContainerHealthy(containerId);
+    const wait = await waitForContainerHealthy(containerId, undefined, undefined, deps);
     if (wait.healthy) {
       started.push(svc);
     } else {

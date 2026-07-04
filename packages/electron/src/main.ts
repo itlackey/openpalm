@@ -141,6 +141,12 @@ let registeredMicShortcut: string | null = null;
 // Whether the GitHub update check should surface prereleases (#504). Loaded from
 // desktop settings at boot; toggled live from the tray. Notify-only.
 let checkPrereleaseUpdates = false;
+// True once the app is genuinely quitting (tray "Quit" or before-quit). The
+// window 'close' handler consults it to hide-to-tray while false and let the
+// close through while true. A typed module-scoped flag — the SSOT for quit
+// state — replacing the prior `(app as any).isQuitting` cast that stuffed this
+// onto the shared Electron app object.
+let isQuitting = false;
 
 // Owned handles for the extracted UI concerns. The splash window is shared with
 // the Docker preflight screen (which reuses it); the tray owns its own icon +
@@ -477,8 +483,10 @@ function spawnUIServer(
 
   uiProcess.on('exit', (code) => {
     // During a supervisor-driven UI restart we intentionally kill + respawn the
-    // child; don't null out the handle the restart path just reassigned.
-    if (uiServerRestarting) return;
+    // child; don't null out the handle the restart path just reassigned. The
+    // UiSupervisor owns the single restart guard — consult it directly rather
+    // than mirroring it into a module-local flag.
+    if (uiSupervisor.isRestarting) return;
     if (code !== 0 && code !== null) {
       console.error(`UI server exited with code ${code}`);
     }
@@ -505,12 +513,6 @@ function spawnUIServer(
  */
 class UiRestartAbortError extends Error {}
 
-// Set true for the duration of a supervisor-driven restart. Read by the UI
-// child's 'exit' handler so an intentional kill/respawn does NOT null out the
-// handle the restart path just reassigned (the coupling predates this module and
-// is preserved here). The UiSupervisor has its own internal `restarting` guard;
-// this module-level flag exists ONLY to gate that exit handler.
-let uiServerRestarting = false;
 // Backup of the previous data/ui set by checkAndUpdateUiBuild; used by the
 // supervisor to restore on startup failure (§4.4 / §6). Null = no backup available.
 let pendingUiBackupDir: string | null = null;
@@ -595,18 +597,13 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
   },
 });
 
-// SIGUSR2/IPC restart trigger. Wraps the shared supervisor so the module-level
-// `uiServerRestarting` flag (which gates the child's 'exit' handler) stays true
-// for the whole restart, and re-entrant triggers no-op — preserving the exact
-// pre-refactor guard semantics.
-async function restartUIServer(): Promise<boolean> {
-  if (uiServerRestarting) return false;
-  uiServerRestarting = true;
-  try {
-    return await uiSupervisor.restart();
-  } finally {
-    uiServerRestarting = false;
-  }
+// SIGUSR2/IPC restart trigger. Delegates to the shared supervisor, which owns
+// the single restart guard: its `restarting` flag both no-ops re-entrant
+// triggers (re-entrant calls return false) and gates the UI child's 'exit'
+// handler (via uiSupervisor.isRestarting) so an intentional kill/respawn does
+// NOT null out the handle the restart path just reassigned.
+function restartUIServer(): Promise<boolean> {
+  return uiSupervisor.restart();
 }
 
 function stopUIServer(): void {
@@ -687,7 +684,7 @@ async function createWindow(): Promise<void> {
 
   // Hide to tray instead of closing
   mainWindow.on('close', (event) => {
-    if (!(app as unknown as Record<string, unknown>).isQuitting) {
+    if (!isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
     }
@@ -795,7 +792,7 @@ function createTray(): void {
       // tray when !isQuitting) does not re-hide during teardown.
       // before-quit also sets this, but the tray handler fires before
       // before-quit, so the early set avoids a transient re-hide on macOS.
-      (app as unknown as Record<string, unknown>).isQuitting = true;
+      isQuitting = true;
       app.quit();
     },
   });
@@ -927,7 +924,7 @@ let cleanupStarted = false;
 //   5. The re-entrant call (cleanupStarted=true) does nothing — passes through
 //      so Electron completes the quit.
 app.on('before-quit', (event) => {
-  (app as unknown as Record<string, unknown>).isQuitting = true;
+  isQuitting = true;
   if (cleanupStarted) return;
   cleanupStarted = true;
   event.preventDefault();

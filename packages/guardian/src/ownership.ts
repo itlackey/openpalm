@@ -19,6 +19,7 @@
  */
 
 import { SESSION_TTL_MS as OWNERSHIP_TTL_MS } from './config';
+import { BoundedTtlMap } from './bounded-map';
 
 /** The identity that owns a session/permission request. */
 export interface Principal {
@@ -42,37 +43,25 @@ export function principalKey(p: Principal): string {
 const SESSION_OWNERS_MAX = 50_000;
 const PERMISSION_OWNERS_MAX = 50_000;
 
-type OwnerEntry = { key: string; lastUsed: number };
-
-const sessionOwners = new Map<string, OwnerEntry>();      // sessionId    → principalKey
-const permissionOwners = new Map<string, OwnerEntry>();   // requestID    → principalKey
-
-function pruneOwnerMap(map: Map<string, OwnerEntry>, max: number): void {
-  const cutoff = Date.now() - OWNERSHIP_TTL_MS;
-  for (const [k, v] of map) {
-    if (v.lastUsed < cutoff) map.delete(k);
-  }
-  if (map.size > max) {
-    const sorted = [...map.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-    const toRemove = sorted.slice(0, sorted.length - max);
-    for (const [k] of toRemove) map.delete(k);
-  }
-}
-
-// Periodic pruning every 60s. unref() so the timer never holds the event loop
-// open (cleaner test exit + shutdown) — same as replay.ts/rate-limit.ts.
-const pruneTimer = setInterval(() => {
-  pruneOwnerMap(sessionOwners, SESSION_OWNERS_MAX);
-  pruneOwnerMap(permissionOwners, PERMISSION_OWNERS_MAX);
-}, 60_000);
-pruneTimer.unref();
+// sessionId → principalKey, requestID → principalKey. Per-entry TTL
+// (OWNERSHIP_TTL_MS), oldest-first hard-cap eviction, and a 60s unref'd prune
+// timer each — the shared BoundedTtlMap discipline (same as rate-limit.ts).
+const sessionOwners = new BoundedTtlMap<string, string>({
+  ttlMs: OWNERSHIP_TTL_MS,
+  maxSize: SESSION_OWNERS_MAX,
+  pruneIntervalMs: 60_000,
+});
+const permissionOwners = new BoundedTtlMap<string, string>({
+  ttlMs: OWNERSHIP_TTL_MS,
+  maxSize: PERMISSION_OWNERS_MAX,
+  pruneIntervalMs: 60_000,
+});
 
 // ── Session ownership ─────────────────────────────────────────────────────
 
 /** Record that `principal` owns `sessionId`. Called on POST /session create. */
 export function recordSessionOwner(sessionId: string, principal: Principal): void {
-  sessionOwners.set(sessionId, { key: principalKey(principal), lastUsed: Date.now() });
-  if (sessionOwners.size > SESSION_OWNERS_MAX) pruneOwnerMap(sessionOwners, SESSION_OWNERS_MAX);
+  sessionOwners.set(sessionId, principalKey(principal));
 }
 
 /**
@@ -81,15 +70,25 @@ export function recordSessionOwner(sessionId: string, principal: Principal): voi
  * active sessions from being pruned mid-conversation.
  */
 export function ownsSession(sessionId: string, principal: Principal): boolean {
-  const entry = sessionOwners.get(sessionId);
-  if (!entry) return false;
-  if (Date.now() - entry.lastUsed > OWNERSHIP_TTL_MS) {
-    sessionOwners.delete(sessionId);
-    return false;
-  }
-  if (entry.key !== principalKey(principal)) return false;
-  entry.lastUsed = Date.now();
+  // get() lazily drops an expired entry and returns undefined.
+  const ownerKey = sessionOwners.get(sessionId);
+  if (ownerKey === undefined) return false;
+  if (ownerKey !== principalKey(principal)) return false;
+  sessionOwners.touch(sessionId);
   return true;
+}
+
+/**
+ * Returns true only if `sessionId` is currently owned by a DIFFERENT principal.
+ * Fail-open for reuse decisions: an unknown/unowned session returns false (safe
+ * to claim). Used by the create path to refuse re-pointing an already-owned
+ * session to a new principal (which would silently steal it). Read-only — does
+ * not touch lastUsed, so probing never extends the owner's lease.
+ */
+export function sessionOwnedByOther(sessionId: string, principal: Principal): boolean {
+  const ownerKey = sessionOwners.get(sessionId);
+  if (ownerKey === undefined) return false;
+  return ownerKey !== principalKey(principal);
 }
 
 /** Forget a session's ownership (called after a successful DELETE /session/{id}). */
@@ -100,10 +99,10 @@ export function forgetSession(sessionId: string): void {
 /** Returns the set of sessionIds owned by `principal` (for GET /session filtering). */
 export function ownedSessionIds(principal: Principal): Set<string> {
   const key = principalKey(principal);
-  const now = Date.now();
   const ids = new Set<string>();
-  for (const [sessionId, entry] of sessionOwners) {
-    if (entry.key === key && now - entry.lastUsed <= OWNERSHIP_TTL_MS) ids.add(sessionId);
+  // entries() yields only live (non-expired) [sessionId, ownerKey] pairs.
+  for (const [sessionId, ownerKey] of sessionOwners.entries()) {
+    if (ownerKey === key) ids.add(sessionId);
   }
   return ids;
 }
@@ -116,8 +115,7 @@ export function ownedSessionIds(principal: Principal): Set<string> {
  * now so the proxy can authorize POST /permission/{requestID}/reply.
  */
 export function recordPermissionOwner(requestID: string, principal: Principal): void {
-  permissionOwners.set(requestID, { key: principalKey(principal), lastUsed: Date.now() });
-  if (permissionOwners.size > PERMISSION_OWNERS_MAX) pruneOwnerMap(permissionOwners, PERMISSION_OWNERS_MAX);
+  permissionOwners.set(requestID, principalKey(principal));
 }
 
 /**
@@ -130,13 +128,11 @@ export function recordPermissionOwner(requestID: string, principal: Principal): 
  * /permission/{requestID}/reply.
  */
 export function ownsPermission(requestID: string, principal: Principal): boolean {
-  const entry = permissionOwners.get(requestID);
-  if (!entry) return false;
-  if (Date.now() - entry.lastUsed > OWNERSHIP_TTL_MS) {
-    permissionOwners.delete(requestID);
-    return false;
-  }
-  return entry.key === principalKey(principal);
+  // get() lazily drops an expired entry and returns undefined. No touch here —
+  // a permission-reply lookup does not extend the request's lifetime.
+  const ownerKey = permissionOwners.get(requestID);
+  if (ownerKey === undefined) return false;
+  return ownerKey === principalKey(principal);
 }
 
 // ── /stats + test helpers ──────────────────────────────────────────────────

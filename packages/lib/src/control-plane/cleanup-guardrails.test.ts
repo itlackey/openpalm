@@ -119,15 +119,23 @@ describe("guardrail: compose preflight before mutation", () => {
     expect(preflightIdx).toBeLessThan(snapshotIdx);
   });
 
-  test("preflight error lists the compose inputs structurally", () => {
-    // The error must surface the compose inputs, but as structured fields —
-    // not a joined shell-style command string (misleading for paths with
-    // spaces and invites copy-paste execution).
+  test("preflight error is routed through the shared structured-field helper", () => {
+    // reconcileCore must delegate the failed-preflight message to the single
+    // source of truth buildComposePreflightError so lib and the CLI never
+    // diverge, and that helper must surface the compose inputs as structured
+    // fields (Files / Env files / Profiles / Project) — no message content lost.
     const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
-    expect(lifecycleTs).not.toContain("Resolved command:");
-    expect(lifecycleTs).toContain("Files: ${files.join");
-    expect(lifecycleTs).toContain("Env files: ${envFiles");
-    expect(lifecycleTs).toContain("Project: ${projectName}");
+    expect(lifecycleTs).toContain(
+      "buildComposePreflightError({ files, envFiles, profiles }, preflight.stderr)"
+    );
+    // The reconcileCore path no longer hand-builds the message inline.
+    expect(lifecycleTs).not.toContain("Env files: ${envFiles.filter(existsSync)");
+
+    const dockerTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "docker.ts"), "utf-8");
+    expect(dockerTs).toContain("Files: ${files.join");
+    expect(dockerTs).toContain("Env files: ${envFiles.filter(existsSync)");
+    expect(dockerTs).toContain("Profiles: ${profiles.join");
+    expect(dockerTs).toContain("Project: ${project}");
   });
 });
 

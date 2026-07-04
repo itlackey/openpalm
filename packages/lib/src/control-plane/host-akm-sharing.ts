@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { mergeEnvContent, removeEnvKey, parseEnvFile } from "./env.js";
 import { importHostProfiles } from "./akm-sources.js";
+import { stackEnvPath } from "./paths.js";
 import type { ControlPlaneState } from "./types.js";
 import { createLogger } from "../logger.js";
 
@@ -35,10 +36,6 @@ export function hostAkmStashPath(): string {
 
 function hostAkmConfigPath(): string {
   return `${userHome()}/.config/akm/config.json`;
-}
-
-function stackEnvPath(state: ControlPlaneState): string {
-  return `${state.stashDir}/env/stack.env`;
 }
 
 export type HostAkmSharingStatus = {

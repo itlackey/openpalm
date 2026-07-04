@@ -7,6 +7,7 @@
     toolAriaLabel,
     toolDetailRows,
   } from '$lib/chat/tool-strip.js';
+  import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
   import IconClose from '$lib/components/icons/IconClose.svelte';
   import IconAlert from '$lib/components/icons/IconAlert.svelte';
   import IconRefresh from '$lib/components/icons/IconRefresh.svelte';
@@ -36,49 +37,9 @@
 
   let selectedToolId = $state<string | null>(null);
 
-  const FOCUSABLE =
-    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-  function focusables(root: Element): HTMLElement[] {
-    return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-      (el) => !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true',
-    );
-  }
-
-  function manageToolModalFocus(node: HTMLElement): () => void {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    const target = focusables(node)[0] ?? node;
-    target.focus();
-    return () => previouslyFocused?.focus?.();
-  }
-
-  function onToolModalKey(event: KeyboardEvent & { currentTarget: HTMLElement }): void {
-    if (event.key === 'Escape') {
-      closeToolDetails();
-      return;
-    }
-
-    if (event.key !== 'Tab') return;
-
-    const toolModalItems = focusables(event.currentTarget);
-    if (toolModalItems.length === 0) {
-      event.preventDefault();
-      event.currentTarget.focus();
-      return;
-    }
-
-    const first = toolModalItems[0]!;
-    const last = toolModalItems[toolModalItems.length - 1]!;
-    const active = document.activeElement;
-
-    if (event.shiftKey && (active === first || active === event.currentTarget)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
+  // Shared focus-trap primitives (WCAG 2.4.3 / APG dialog): move focus into the
+  // modal on open, restore it on close, and trap Tab / handle Escape.
+  const manageToolModalFocus = createFocusTrap();
 
   function openToolDetails(id: string): void {
     selectedToolId = id;
@@ -146,7 +107,7 @@
       aria-modal="true"
       aria-label={toolAriaLabel(activeTool)}
       tabindex="-1"
-      onkeydown={onToolModalKey}
+      onkeydown={(event) => handleTrapKeydown(event, closeToolDetails)}
       {@attach manageToolModalFocus}
     >
       <div class="tool-modal-header">

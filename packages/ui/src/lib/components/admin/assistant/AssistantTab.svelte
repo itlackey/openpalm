@@ -4,9 +4,6 @@
   import { fetchAssistantSettings, saveAssistantSettings } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
 
-  interface Props { tokenStored: boolean; }
-  let { tokenStored }: Props = $props();
-
   let loading = $state(false);
   let saving = $state(false);
   let error = $state('');
@@ -57,7 +54,7 @@
 
   let isDirty = $derived(personaContent !== savedPersonaContent);
 
-  onMount(() => { if (tokenStored) void load(); });
+  onMount(() => { void load(); });
 </script>
 
 <div class="panel" role="tabpanel">
@@ -67,14 +64,14 @@
       <p class="panel-subtitle">Persona · stack config</p>
     </div>
     <div class="panel-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving || !tokenStored}>
+      <button class="btn btn-secondary btn-sm" onclick={() => void load()} disabled={loading || saving}>
         {#if loading}<Spinner />{/if}
         Refresh
       </button>
       {#if isDirty}
         <span class="unsaved-hint" aria-live="polite">Unsaved changes</span>
       {/if}
-      <button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !tokenStored || !isDirty}>
+      <button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !isDirty}>
         {#if saving}<Spinner />{/if}
         Save
       </button>

@@ -1,17 +1,15 @@
-export type PermissionConfig = {
+import type {
+  PermissionConfig as BasePermissionConfig,
+  UserInfo as BaseUserInfo,
+} from "@openpalm/portal-sdk";
+
+export type { PermissionResult } from "@openpalm/portal-sdk";
+
+export type PermissionConfig = BasePermissionConfig & {
   allowedChannels: Set<string>;
-  allowedUsers: Set<string>;
-  blockedUsers: Set<string>;
 };
 
-export type PermissionResult = {
-  allowed: boolean;
-  reason?: string;
-};
-
-export type UserInfo = {
-  userId: string;
+export type UserInfo = BaseUserInfo & {
   teamId: string;
   channelId: string;
-  username?: string;
 };

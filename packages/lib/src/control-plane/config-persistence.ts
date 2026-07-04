@@ -8,7 +8,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync, rmSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
-import { parse as yamlParse } from "yaml";
+import { parseComposeServices, type ComposeService, type ComposeVolumeMount } from "./compose-services.js";
 import { createLogger } from "../logger.js";
 import { parseEnvContent, parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
@@ -17,6 +17,7 @@ import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
 import { PORTAL_SECRET_ADDON_IDS } from "./addon-ids.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
+import { stackEnvPath } from "./paths.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
@@ -58,7 +59,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * Use ensurePortalSecret() for portal secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
-  const systemEnvPath = `${state.stashDir}/env/stack.env`;
+  const systemEnvPath = stackEnvPath(state);
   mkdirSync(`${state.stashDir}/env`, { recursive: true, mode: 0o700 });
 
   let base = "";
@@ -337,54 +338,61 @@ export function discoverHomeBindMountSources(state: ControlPlaneState): Array<{ 
 
   const envVars: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    ...parseEnvFile(`${state.stashDir}/env/stack.env`),
+    ...parseEnvFile(stackEnvPath(state)),
   };
   const homeRoot = resolvePath(state.homeDir);
   const seen = new Set<string>();
   const mounts: Array<{ path: string; isFile: boolean }> = [];
 
   for (const file of composeFiles) {
-    let doc: Record<string, unknown>;
+    let services: ComposeService[];
     try {
-      doc = yamlParse(readFileSync(file, 'utf-8')) as Record<string, unknown>;
+      services = parseComposeServices(readFileSync(file, 'utf-8'));
     } catch {
       continue;
     }
-    const services = doc?.services;
-    if (!services || typeof services !== 'object') continue;
 
     // Every service's mounts are included, profiled or not: an empty dir for a
     // disabled addon costs nothing, while a missing dir when the addon is later
     // enabled (hand-edited stack.env, `openpalm start voice`) gets created
     // root-owned by dockerd and the rootless container EACCESes (issue #452).
-    for (const svc of Object.values(services as Record<string, unknown>)) {
-      if (!svc || typeof svc !== 'object') continue;
-      const svcRecord = svc as Record<string, unknown>;
-      if (!Array.isArray(svcRecord.volumes)) continue;
-      for (const vol of svcRecord.volumes as unknown[]) {
-        const volRecord = typeof vol === 'object' && vol !== null
-          ? (vol as Record<string, unknown>)
-          : null;
-        const rawSource = typeof vol === 'string'
-          ? vol.split(':')[0]
-          : String(volRecord?.source ?? '');
-        if (!rawSource) continue;
+    for (const svc of services) {
+      for (const vol of svc.volumes) {
+        if (!vol.source) continue;
 
-        const hostPath = expandEnvVars(rawSource, envVars);
+        const hostPath = expandEnvVars(vol.source, envVars);
         if (!hostPath?.startsWith('/')) continue;
         const resolvedHostPath = resolvePath(hostPath);
         if (!resolvedHostPath.startsWith(`${homeRoot}/`) && resolvedHostPath !== homeRoot) continue;
 
-        const basename = resolvedHostPath.split('/').pop() ?? '';
-        const isFile = basename.includes('.');
         if (seen.has(resolvedHostPath)) continue;
         seen.add(resolvedHostPath);
-        mounts.push({ path: resolvedHostPath, isFile });
+        mounts.push({ path: resolvedHostPath, isFile: isFileMount(vol, resolvedHostPath) });
       }
     }
   }
 
   return mounts;
+}
+
+/**
+ * Decide whether a bind-mount target should be pre-created as a file vs a
+ * directory.
+ *
+ * A compose long-form entry with `type: bind` carries explicit semantics:
+ * Docker creates a missing bind SOURCE as a directory (this is exactly what
+ * `bind.create_host_path` requests), so a typed bind mount is always a
+ * directory target — never a file. We trust that over any name-based guess.
+ *
+ * Short-form (`source:target`) entries carry no type, so we fall back to a
+ * last-resort heuristic: treat a basename containing a dot as a file. This is
+ * imperfect (it misclassifies dotted directory names like `data.v2`); prefer
+ * long-form `type: bind` in compose files to avoid relying on it.
+ */
+function isFileMount(vol: ComposeVolumeMount, resolvedHostPath: string): boolean {
+  if (vol.type === 'bind') return false;
+  const basename = resolvedHostPath.split('/').pop() ?? '';
+  return basename.includes('.');
 }
 
 /**

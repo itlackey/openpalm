@@ -1,8 +1,6 @@
-import { createLogger, parseIdList } from '@openpalm/portal-sdk';
+import { checkPermissions as evaluatePermissions, createLogger, parseIdList } from '@openpalm/portal-sdk';
 import type { PermissionResult } from './types.ts';
 import type { PermissionConfig, UserInfo } from "./types.ts";
-
-export { parseIdList };
 
 const log = createLogger("channel-discord");
 
@@ -25,31 +23,15 @@ export function loadPermissionConfig(env: Record<string, string | undefined> = B
 }
 
 export function checkPermissions(config: PermissionConfig, user: UserInfo): PermissionResult {
-  const { userId, guildId, roles, username } = user;
-
-  if (userId && config.blockedUsers.has(userId)) {
-    log.warn("permission_denied", { userId, username, reason: "blocked_user" });
-    return { allowed: false, reason: "user_blocked" };
-  }
-
-  if (config.allowedUsers.size > 0) {
-    if (!userId || !config.allowedUsers.has(userId)) {
-      return { allowed: false, reason: "user_not_allowed" };
-    }
-  }
-
-  if (config.allowedGuilds.size > 0) {
-    if (!guildId || !config.allowedGuilds.has(guildId)) {
-      return { allowed: false, reason: "guild_not_allowed" };
-    }
-  }
-
-  if (config.allowedRoles.size > 0) {
-    const hasMatchingRole = roles.some((r) => config.allowedRoles.has(r));
-    if (!hasMatchingRole) {
-      return { allowed: false, reason: "role_not_allowed" };
-    }
-  }
-
-  return { allowed: true };
+  return evaluatePermissions(
+    {
+      blocked: config.blockedUsers,
+      rules: [
+        { allowedSet: config.allowedUsers, actualValues: [user.userId], reason: "user_not_allowed" },
+        { allowedSet: config.allowedGuilds, actualValues: [user.guildId], reason: "guild_not_allowed" },
+        { allowedSet: config.allowedRoles, actualValues: user.roles, reason: "role_not_allowed" },
+      ],
+    },
+    user,
+  );
 }

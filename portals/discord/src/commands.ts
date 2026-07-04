@@ -1,4 +1,4 @@
-import { createLogger } from '@openpalm/portal-sdk';
+import { createLogger, errMessage } from '@openpalm/portal-sdk';
 import { CommandOptionType, type CustomCommandDef, type CustomCommandOption } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -98,7 +98,7 @@ export function parseCustomCommands(raw: string | undefined): CustomCommandDef[]
     parsed = JSON.parse(raw);
   } catch (error) {
     log.error("custom_commands_parse_error", {
-      error: error instanceof Error ? error.message : String(error),
+      error: errMessage(error),
     });
     return [];
   }
