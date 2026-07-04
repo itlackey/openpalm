@@ -12,7 +12,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchVoiceConfig, saveVoiceConfig, type VoiceAddonProfile } from '$lib/api.js';
+	import { fetchVoiceConfig, saveVoiceConfig, type VoiceAddonProfile, type VoiceActiveJob } from '$lib/api.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 	import {
 		voiceState,
@@ -22,19 +22,18 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import VoiceAddonProfileSection from '$lib/components/voice/VoiceAddonProfileSection.svelte';
 	import type { TtsOption, SttOption, VoiceEngineConfig } from '$lib/client/types.js';
+	import { pollUntil } from '$lib/poll-until.js';
+	import {
+		EMPTY_SECTION,
+		normalizeEngine,
+		readSection,
+		buildPayload,
+		type EngineId,
+		type VoiceSection,
+	} from '$lib/components/voice/voice-mappers.js';
 
 	interface Props { tokenStored: boolean; }
 	let { tokenStored }: Props = $props();
-
-	type EngineId = 'openpalm-voice' | 'remote' | 'browser';
-
-	type VoiceSection = {
-		engine: EngineId | '';
-		baseURL: string;
-		model: string;
-		voice: string; // tts only
-		language: string; // stt only
-	};
 
 	type Availability = {
 		stt: { remoteConfigured: boolean; remoteReachable: boolean };
@@ -129,8 +128,6 @@
 		},
 	};
 
-	const EMPTY_SECTION = (): VoiceSection => ({ engine: '', baseURL: '', model: '', voice: '', language: '' });
-
 	let loading = $state(false);
 	let saving = $state(false);
 	let error = $state('');
@@ -175,26 +172,6 @@
 		else if (key === 'voice') tts.voice = val;
 	}
 
-	function normalizeEngine(raw: unknown, kind: 'tts' | 'stt'): EngineId | '' {
-		if (typeof raw !== 'string') return '';
-		if (raw === 'openpalm-voice') return 'openpalm-voice';
-		if (raw === 'browser' || raw === (kind === 'tts' ? 'browser-tts' : 'browser-stt')) return 'browser';
-		if (!raw || raw.startsWith('skip-')) return '';
-		// Anything else (kokoro, openai-tts, whisper-local, openai-stt, …) is treated as remote.
-		return 'remote';
-	}
-
-	function readSection(raw: Record<string, unknown> | undefined, kind: 'tts' | 'stt'): VoiceSection {
-		const s = EMPTY_SECTION();
-		if (!raw || typeof raw !== 'object') return s;
-		s.engine = normalizeEngine(raw.engine, kind);
-		if (typeof raw.baseURL === 'string') s.baseURL = raw.baseURL;
-		if (typeof raw.model === 'string') s.model = raw.model;
-		if (kind === 'tts' && typeof raw.voice === 'string') s.voice = raw.voice;
-		if (kind === 'stt' && typeof raw.language === 'string') s.language = raw.language;
-		return s;
-	}
-
 	async function load(): Promise<void> {
 		loading = true;
 		error = '';
@@ -235,20 +212,6 @@
 		} finally {
 			loading = false;
 		}
-	}
-
-	function buildPayload(section: VoiceSection, kind: 'tts' | 'stt'): Record<string, unknown> | undefined {
-		if (!section.engine) return undefined;
-		const out: Record<string, unknown> = { enabled: true, engine: section.engine };
-		if (section.engine === 'remote') {
-			if (section.baseURL) out.baseURL = section.baseURL;
-			if (section.model) out.model = section.model;
-			if (kind === 'tts' && section.voice) out.voice = section.voice;
-			if (kind === 'stt' && section.language) out.language = section.language;
-		} else if (section.engine === 'browser' && kind === 'stt' && section.language) {
-			out.language = section.language;
-		}
-		return out;
 	}
 
 	async function save(): Promise<void> {
@@ -360,38 +323,24 @@
 	async function pollUntilVoiceJobFinishes(stickyToastId: string): Promise<void> {
 		const POLL_INTERVAL_MS = 3_000;
 		const POLL_DEADLINE_MS = 30 * 60_000;
-		const deadline = Date.now() + POLL_DEADLINE_MS;
+		// `undefined` = network blip (keep polling); `null` = job disappeared
+		// (server retention expired → treat as success); otherwise the job.
+		type PollValue = VoiceActiveJob | null | undefined;
 		let lastState: string = 'pulling';
-		while (Date.now() < deadline) {
-			await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-			try {
-				const cfg = await fetchVoiceConfig();
-				const job = cfg.addon?.activeJob;
-				if (!job) {
-					// Job disappeared (server retention expired). Treat as
-					// success — the addon probably finished healthy and aged out.
-					notifications.push('success', "Voice addon ready — let's chat!", {
-						replaceId: stickyToastId,
-					});
-					await load();
-					return;
+
+		const outcome = await pollUntil<PollValue>(
+			async () => {
+				try {
+					return (await fetchVoiceConfig()).addon?.activeJob ?? null;
+				} catch {
+					// Network blip / 401. Don't spam; just retry next tick.
+					return undefined;
 				}
-				if (job.state === 'healthy') {
-					notifications.push('success', "Voice addon ready — let's chat!", {
-						replaceId: stickyToastId,
-					});
-					await load();
-					return;
-				}
-				if (job.state === 'error') {
-					notifications.push(
-						'error',
-						job.error ?? 'Voice addon failed to start.',
-						{ replaceId: stickyToastId },
-					);
-					await load();
-					return;
-				}
+			},
+			(job) => {
+				if (job === undefined) return false; // blip → keep polling
+				if (job === null) return true; // disappeared → terminal (success)
+				if (job.state === 'healthy' || job.state === 'error') return true;
 				// Still pulling/starting. Update copy on state transition only
 				// so the toast doesn't churn.
 				if (job.state !== lastState) {
@@ -402,15 +351,28 @@
 							: 'Voice image still downloading…';
 					notifications.push('info', message, { sticky: true, replaceId: stickyToastId });
 				}
-			} catch {
-				// Network blip / 401. Don't spam; just retry next tick.
-			}
-		}
-		notifications.push(
-			'error',
-			'Voice addon is taking longer than 30 minutes. Check Docker logs for openpalm-voice.',
-			{ replaceId: stickyToastId },
+				return false;
+			},
+			{ intervalMs: POLL_INTERVAL_MS, deadlineMs: POLL_DEADLINE_MS },
 		);
+
+		if (outcome.timedOut) {
+			notifications.push(
+				'error',
+				'Voice addon is taking longer than 30 minutes. Check Docker logs for openpalm-voice.',
+				{ replaceId: stickyToastId },
+			);
+		} else if (!outcome.value || outcome.value.state === 'healthy') {
+			// null (disappeared) or healthy → the addon is ready.
+			notifications.push('success', "Voice addon ready — let's chat!", {
+				replaceId: stickyToastId,
+			});
+		} else {
+			// state === 'error'
+			notifications.push('error', outcome.value.error ?? 'Voice addon failed to start.', {
+				replaceId: stickyToastId,
+			});
+		}
 		await load();
 	}
 
