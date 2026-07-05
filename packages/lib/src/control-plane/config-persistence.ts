@@ -12,12 +12,13 @@ import { parseComposeServices, type ComposeService, type ComposeVolumeMount } fr
 import { createLogger } from "../logger.js";
 import { parseEnvContent, parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
-import { ensureSecret } from './secrets-files.js';
+import { ensureSecret, writeSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { listEnabledAddonIds } from "./addons.js";
 import { PORTAL_SECRET_ADDON_IDS } from "./addon-ids.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
+import { writeFileAtomic } from "./fs-atomic.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
@@ -97,14 +98,20 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   base = strippedBase;
   if (removed.length > 0) {
     // Correct per the secret-boundary contract (secrets belong in
-    // knowledge/secrets/, not stack.env) — but never do it silently. Log a
-    // structured note and drop a one-time notice the UI surfaces so the user
-    // knows where their value went and how to re-add it.
-    logger.warn("Removed secret-looking keys from stack.env (they belong in Connections/secrets)", {
-      removedKeys: removed,
+    // knowledge/secrets/, not stack.env) — but never do it silently, and
+    // never destroy the value: relocate it to knowledge/secrets/<key> (the
+    // same place ensurePortalSecret/writeStackSecretEnv write to) before
+    // dropping the line, then log + drop a one-time notice so the user knows
+    // where it went.
+    for (const { key, value } of removed) {
+      writeSecret(state.homeDir, key.toLowerCase(), value.endsWith("\n") ? value : `${value}\n`);
+    }
+    const removedKeys = removed.map((r) => r.key);
+    logger.warn("Removed secret-looking keys from stack.env; relocated values to knowledge/secrets/", {
+      removedKeys,
       stackEnvPath: systemEnvPath,
     });
-    recordSecretStripNotice(state, removed);
+    recordSecretStripNotice(state, removedKeys);
   }
   assertNoSecretLikeStackEnvKeys(parseEnvContent(base));
   assertNoSecretLikeStackEnvKeys(adminManaged);
@@ -113,12 +120,14 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
   });
 
-  writeFileSync(systemEnvPath, content, { mode: 0o600 });
+  writeFileAtomic(systemEnvPath, content, 0o600);
   chmodSync(systemEnvPath, 0o600);
 }
 
-function stripSecretLikeEnvKeys(content: string): { content: string; removed: string[] } {
-  const removed: string[] = [];
+function stripSecretLikeEnvKeys(
+  content: string,
+): { content: string; removed: { key: string; value: string }[] } {
+  const removed: { key: string; value: string }[] = [];
   const kept = content
     .split('\n')
     .filter((line) => {
@@ -128,7 +137,14 @@ function stripSecretLikeEnvKeys(content: string): { content: string; removed: st
       if (eq <= 0) return true;
       const key = trimmed.slice(0, eq).trim();
       if (isSecretLikeStackEnvKey(key)) {
-        removed.push(key);
+        let value = trimmed.slice(eq + 1).trim();
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
+        removed.push({ key, value });
         return false;
       }
       return true;
