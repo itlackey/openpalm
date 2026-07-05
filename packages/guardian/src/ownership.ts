@@ -39,7 +39,7 @@ export function principalKey(p: Principal): string {
 // TTL mirrors the buffered session cache (GUARDIAN_SESSION_TTL_MS, default 15
 // min). Entries are pruned on TTL, on hard-cap, and on explicit delete.
 
-/** Hard caps — same discipline as replay.ts (50k) / sessions (10k). */
+/** Hard caps — same discipline as rate-limit.ts's bucket cap (10k). */
 const SESSION_OWNERS_MAX = 50_000;
 const PERMISSION_OWNERS_MAX = 50_000;
 

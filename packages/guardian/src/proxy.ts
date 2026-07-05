@@ -167,8 +167,8 @@ export async function handleProxy(
   }
 
   // ── Gate 1c: per-user / per-portal rate limit (§3.6) — counts discrete ──
-  // signed calls (a GET /event open counts as one). BEFORE the nonce check (H3
-  // discipline: a rate-limited flood must not burn nonce-store capacity).
+  // signed calls (a GET /event open counts as one), enforced AFTER
+  // authenticate() so an unauthenticated flood is rejected by auth first.
   // Bucket keys carry an explicit `user:` / `portal:` prefix so rate-limit.ts
   // classifies them by prefix rather than by counting `:` segments — userIds
   // may themselves contain colons (e.g. `discord:<id>`), which broke the old
@@ -307,8 +307,8 @@ async function routeAllowed(
   // frame (event-fanout.ts), so only the principal that was SHOWN the request
   // can answer it. A reply for an unrelayed/foreign requestID is fail-closed
   // denied (principal A cannot answer principal B's request). The reply itself
-  // carries fresh per-call Basic auth verified above — never
-  // the originating prompt_async nonce (§3.1).
+  // carries fresh per-call Basic auth verified above (§3.1) — there is no
+  // token tied to the originating prompt_async call to check it against.
   if (template === "/permission/{requestID}/reply") {
     if (!requestID || !ownsPermission(requestID, principal)) {
       return deny(rid, 403, "forbidden_permission", { principalId: principal.id, userId: principal.userId, requestID });
@@ -415,7 +415,8 @@ async function routeAllowed(
   // requestID→principal so the reply gate can authorize it (§3.4).
   if (template === "/event") {
     // §3.6 reconnect cap: bound /event opens per principal per window so a
-    // reconnect loop cannot churn nonces and pressure the replay store.
+    // reconnect loop cannot grow the reconnect-tracking map without bound
+    // (oc-bounds.ts).
     if (!allowEventReconnect(principal)) {
       return deny(rid, 429, "event_reconnect_limited", { principalId: principal.id, userId: principal.userId });
     }

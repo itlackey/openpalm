@@ -8,7 +8,8 @@
  * NOTE: This is a fixed-window rate limiter. A client can send `limit` requests
  * at the end of one window and `limit` at the start of the next, achieving 2x burst
  * in a short span. This is acceptable for the guardian's use case (LAN-first,
- * secondary to HMAC auth), but could be upgraded to a sliding window if needed.
+ * secondary to HTTP Basic + sha256 auth), but could be upgraded to a sliding
+ * window if needed.
  */
 
 import { FixedWindowLimiter } from "./bounded-map";
