@@ -1,5 +1,11 @@
 # Fable remediation 3.3 — release-unit publish coupling (proposed diff, NOT applied)
 
+> **Update (Option B implemented):** the owner chose the client-side fix. `checkForElectronUpdate`
+> (`packages/electron/src/update-check.ts`) now, in stable mode, only reports `updateAvailable`
+> when the resolved release carries a matching installer asset (`ELECTRON_ASSET_PATTERN`, hoisted
+> to `@openpalm/lib` as the single source of truth). Option A below (the `release.yml` diff) remains
+> a documented, **unused** alternative — no workflow file was modified.
+
 **Status: proposal only. No file under `.github/workflows/` has been modified by this change.**
 
 Per the standing project rule (`CLAUDE.md`, "NEVER modify workflows without explicit approval")

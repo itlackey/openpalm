@@ -79,7 +79,11 @@ describe('checkForElectronUpdate', () => {
       expect(url).toContain('/releases/latest');
       return {
         ok: true,
-        json: async () => ({ tag_name: 'v0.11.6', html_url: 'u' }),
+        json: async () => ({
+          tag_name: 'v0.11.6',
+          html_url: 'u',
+          assets: [{ name: 'OpenPalm-0.11.6.AppImage' }],
+        }),
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -87,6 +91,57 @@ describe('checkForElectronUpdate', () => {
     expect(info.updateAvailable).toBe(true);
     expect(info.latestVersion).toBe('0.11.6');
     expect(info.isPrerelease).toBe(false);
+  });
+
+  it('stable mode treats a release WITH a matching installer asset as updateAvailable', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain('/releases/latest');
+      return {
+        ok: true,
+        json: async () => ({
+          tag_name: 'v0.11.6',
+          html_url: 'u',
+          assets: [{ name: 'OpenPalm-0.11.6.dmg' }, { name: 'openpalm-cli-linux' }],
+        }),
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const info = await checkForElectronUpdate('0.11.5', false);
+    expect(info.updateAvailable).toBe(true);
+    expect(info.latestVersion).toBe('0.11.6');
+  });
+
+  it('stable mode does NOT report an update for a bare release with NO installer assets', async () => {
+    // A platform patch published with include_electron=false creates a newer
+    // bare X.Y.Z release carrying only CLI/deploy assets — never an installer.
+    // The desktop app must not advertise an update it cannot download (plan 3.3).
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain('/releases/latest');
+      return {
+        ok: true,
+        json: async () => ({
+          tag_name: 'v0.11.6',
+          html_url: 'u',
+          assets: [{ name: 'openpalm-cli-linux' }, { name: 'deploy-bundle.tar.gz' }],
+        }),
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const info = await checkForElectronUpdate('0.11.5', false);
+    expect(info.updateAvailable).toBe(false);
+  });
+
+  it('stable mode does NOT report an update when the release has no assets array at all', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain('/releases/latest');
+      return {
+        ok: true,
+        json: async () => ({ tag_name: 'v0.11.6', html_url: 'u' }),
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const info = await checkForElectronUpdate('0.11.5', false);
+    expect(info.updateAvailable).toBe(false);
   });
 
   it('prerelease mode polls the full list and surfaces a matching rc', async () => {

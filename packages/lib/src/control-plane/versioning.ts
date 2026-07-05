@@ -3,6 +3,19 @@ import libPkg from "../../package.json" with { type: "json" };
 const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
 
 /**
+ * Matches an Electron desktop-app installer asset by filename. Anchored to
+ * `^OpenPalm-` so it excludes CLI binaries and deploy bundles; `.zip` is the
+ * Windows installer. This is the ONE definition shared by every consumer that
+ * asks "does this GitHub release actually ship an installer" — the UI's
+ * `selectInstallableReleases` (packages/ui) and the desktop app's notify-only
+ * update check (packages/electron). A release whose assets fail this pattern is
+ * NOT an installable app update, no matter how new its tag is (a platform patch
+ * published with include_electron=false ships a newer bare X.Y.Z release with
+ * CLI/deploy assets only).
+ */
+export const ELECTRON_ASSET_PATTERN = /^OpenPalm-.*\.(dmg|AppImage|zip|deb|rpm|pkg)$/i;
+
+/**
  * The canonical control-plane / platform version.
  *
  * This is the ONE source of truth for "which @openpalm/lib + lifecycle is

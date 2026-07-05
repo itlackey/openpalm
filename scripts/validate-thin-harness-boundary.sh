@@ -87,6 +87,9 @@ ALLOWED_IMPORTS=(
   compareComparableVersions
   isPrerelease
   isComparableSemver
+  # Pure constant (regex): update-check.ts filters release assets to real Electron
+  # installers before claiming an update is available. No state mutation.
+  ELECTRON_ASSET_PATTERN
 )
 
 errors=0

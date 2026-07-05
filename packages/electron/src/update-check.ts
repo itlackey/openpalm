@@ -20,6 +20,7 @@ import {
   compareComparableVersions,
   isPrerelease,
   isComparableSemver,
+  ELECTRON_ASSET_PATTERN,
 } from '@openpalm/lib';
 
 export interface UpdateInfo {
@@ -40,6 +41,12 @@ interface GitHubRelease {
   html_url?: string;
   draft?: boolean;
   prerelease?: boolean;
+  assets?: Array<{ name?: string }>;
+}
+
+/** True when a release carries at least one Electron installer asset. */
+function hasInstallerAsset(release: GitHubRelease): boolean {
+  return (release.assets ?? []).some((a) => ELECTRON_ASSET_PATTERN.test(a.name ?? ''));
 }
 
 const REPO_OWNER = "itlackey";
@@ -170,7 +177,12 @@ export async function checkForElectronUpdate(
     const data = (await res.json()) as GitHubRelease;
     const tag = data.tag_name ?? "";
     const latestVersion = normalizeVersion(tag);
-    const updateAvailable = latestVersion ? isNewerVersion(currentVersion, latestVersion) : false;
+    // A newer tag alone is not an installable update: a platform patch published
+    // with include_electron=false ships a newer bare X.Y.Z release carrying only
+    // CLI/deploy assets. Only advertise an update the desktop app can download —
+    // require a matching installer asset (plan 3.3 / R7-F5).
+    const updateAvailable =
+      !!latestVersion && hasInstallerAsset(data) && isNewerVersion(currentVersion, latestVersion);
     return setCacheSlot(includePrereleases, {
       currentVersion,
       latestVersion: latestVersion || null,
