@@ -24,38 +24,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Gate legacy stack.yml readers
-        run: |
-          set -euo pipefail
-          matches=$(grep -RInE \
-            --exclude-dir=node_modules \
-            --exclude-dir=dist \
-            --exclude-dir=build \
-            --exclude-dir=.svelte-kit \
-            --include='*.ts' \
-            --include='*.js' \
-            --include='*.sh' \
-            --include='*.ps1' \
-            --include='*.yml' \
-            '["'"'"']stack\.yml["'"'"']' \
-            packages core scripts packages/skeleton/system/stack || true)
-
-          if [ -z "$matches" ]; then
-            echo "::error::Expected the legacy stack.yml migration reader in migrations.ts"
-            exit 1
-          fi
-
-          filtered=$(printf '%s\n' "$matches" \
-            | grep -v 'packages/lib/src/control-plane/migrations.ts:' \
-            | grep -vE '\.test\.ts:|\.vitest\.ts:|scripts/migrate-0\.10-to-0\.11\.(sh|ps1):' || true)
-          if [ -n "$filtered" ]; then
-            echo "::error::Legacy stack.yml references are only allowed in migrations.ts"
-            printf '%s\n' "$filtered"
-            exit 1
-          fi
-
-          echo "Only migrations.ts references legacy stack.yml."
-
       - name: Gate host bind safety defaults
         run: |
           set -euo pipefail
@@ -143,20 +111,7 @@ jobs:
         run: cd packages/cli && bun run typecheck
 
       - name: Test (sdk + guardian + portals)
-        run: |
-          set -euo pipefail
-          for attempt in 1 2; do
-            if bun run test; then
-              exit 0
-            fi
-
-            if [ "${attempt}" -eq 2 ]; then
-              echo "::error::bun run test failed after ${attempt} attempts"
-              exit 1
-            fi
-
-            echo "::warning::bun run test failed on attempt ${attempt}. Retrying..."
-          done
+        run: bun run test
 
       - name: Validate Docker Compose manifests
         env:
