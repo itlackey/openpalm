@@ -259,21 +259,29 @@ function reconcileStack(
     // work on activation so uninstall stays a pure file/state reconcile.
     const activating = !plan.deactivate;
 
-    // Host-ownership reconcile BEFORE writing/recreating — the SAME shared lib
-    // step `openpalm start` runs, so UI/electron upgrades get host-swap
-    // detection, the deep bind-mount + named-volume ownership repair, and the
-    // identity record (R2). Pre-rootless containers ran as root, leaving
-    // bind-mount trees + named volumes owned by root; the host process can't
-    // chown them directly, so a temporary root Docker container fixes ownership.
-    // No adopt flag here (the UI has none): an un-adopted host swap throws
-    // HostSwapBlockedError, which withStackEnvRollback surfaces to the route.
+    const home = await applyHome(state);
+
+    // Host-ownership reconcile AFTER applyHome (R9 S6 Gap B) — the repair-path
+    // list is derived from the managed compose files on disk
+    // (ownershipRepairPaths -> discoverHomeBindMountSources), which are only
+    // guaranteed current once applyHome has written/refreshed them. Running
+    // this before applyHome under-reports mount sources on a partially-
+    // migrated home (crash mid-migration, or a first upgrade from a
+    // pre-`system/stack` layout), and the repair marker then suppresses any
+    // later, complete repair. Still runs BEFORE writing runtime files /
+    // recreating containers — the SAME shared lib step `openpalm start` runs,
+    // so UI/electron upgrades get host-swap detection, the deep bind-mount +
+    // named-volume ownership repair, and the identity record (R2).
+    // Pre-rootless containers ran as root, leaving bind-mount trees + named
+    // volumes owned by root; the host process can't chown them directly, so a
+    // temporary root Docker container fixes ownership. No adopt flag here
+    // (the UI has none): an un-adopted host swap throws HostSwapBlockedError,
+    // which withStackEnvRollback surfaces to the route.
     let managedServices: string[] | undefined;
     if (activating && plan.compose) {
       managedServices = await buildManagedServices(state);
       await reconcileHostOwnership(state, { services: managedServices });
     }
-
-    const home = await applyHome(state);
 
     // skipSnapshot: withStackEnvRollback already armed the pre-reconcile snapshot.
     const active = await reconcileCore(state, {
