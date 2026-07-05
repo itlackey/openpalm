@@ -106,7 +106,10 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
     return /^(assistant|opencode|provider|llm|embedding|akm|user)_/.test(secretId);
   }
   if (serviceName === 'guardian') {
-    return secretId.startsWith('guardian_') || secretId.startsWith('portal_') || secretId.startsWith('op_guardian_');
+    // op_api_key backs the guardian's OpenAI/Anthropic-compatible edge
+    // (OPENAI_COMPAT_API_KEY_FILE) — a guardian-hosted credential, so it is a
+    // legitimate grant to this service (S.1b).
+    return secretId.startsWith('guardian_') || secretId.startsWith('portal_') || secretId.startsWith('op_guardian_') || secretId === 'op_api_key';
   }
   if (serviceName === 'admin') {
     return /^(admin|ui|openpalm)_/.test(secretId);

@@ -48,6 +48,7 @@ import { audit } from "./audit";
 import { moderateMessage, type ModerationResult } from "./moderation";
 import {
   allow,
+  allowPreAuth,
   USER_RATE_LIMIT,
   USER_RATE_WINDOW_MS,
   PORTAL_RATE_LIMIT,
@@ -138,6 +139,7 @@ export async function handleProxy(
   req: Request,
   rid: string,
   expectedKind?: 'portal' | 'direct',
+  clientIp = '',
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -152,18 +154,30 @@ export async function handleProxy(
 
   const method = req.method;
 
-  // ── Read the body (bounded) BEFORE signature so SHA256(body) can be checked ──
+  // ── Gate 0: coarse per-IP pre-auth budget (rev3-F3) ──────────────────────
+  // Runs before authenticate() AND before the body is read, so a single source
+  // cannot credential-stuff or body-flood the pipeline. Generous by design; the
+  // authenticated per-user / per-portal limiter below stays authoritative.
+  if (!allowPreAuth(clientIp)) {
+    return deny(rid, 429, "rate_limited", { reason: "preauth_ip" });
+  }
+
+  const authenticated = await authenticate(req, expectedKind);
+  if (!authenticated) {
+    return deny(rid, 401, 'unauthorized', {});
+  }
+
+  // ── Read the body (bounded) AFTER authenticate() (rev3-F3) ────────────────
+  // An unauthenticated flood is rejected above without ever buffering a body.
+  // The old "read before signature" ordering existed for a SHA256(body) HMAC
+  // check that no longer exists (HMAC/nonce/replay machinery was removed), so
+  // nothing before this point consumes the body.
   let body = "";
   if (method !== "GET" && method !== "HEAD") {
     body = await req.text();
     if (body.length > OC_MAX_BODY_BYTES) {
       return deny(rid, 413, "payload_too_large", { bodyLength: body.length });
     }
-  }
-
-  const authenticated = await authenticate(req, expectedKind);
-  if (!authenticated) {
-    return deny(rid, 401, 'unauthorized', {});
   }
 
   // ── Gate 1c: per-user / per-portal rate limit (§3.6) — counts discrete ──

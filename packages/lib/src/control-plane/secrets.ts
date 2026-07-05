@@ -155,6 +155,9 @@ export function ensureSecrets(state: ControlPlaneState): void {
   ensureAuthJson(state);
   ensureSecret(state.homeDir, 'op_guardian_admin_token', () => crypto.randomUUID().replace(/-/g, ''));
   ensureSecret(state.homeDir, 'op_guardian_mcp_token', () => crypto.randomUUID().replace(/-/g, ''));
+  // The API key end users paste into OpenAI-compatible clients (guardian edge,
+  // OPENAI_COMPAT_API_KEY_FILE). Without it the shipped edge fails closed (401).
+  ensureSecret(state.homeDir, 'op_api_key', () => crypto.randomUUID().replace(/-/g, ''));
 }
 
 function ensureAuthJson(state: ControlPlaneState): void {

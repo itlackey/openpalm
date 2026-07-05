@@ -69,10 +69,48 @@ describe('ProvidersPanel — assistant available', () => {
     mockFetch(availableResponse);
     render(ProvidersPanel);
 
-    await expect.element(page.getByText(/OpenAI/i), { timeout: 5000 }).toBeVisible();
+    // `exact` disambiguates the provider-name <span>OpenAI</span> from the
+    // static "OpenAI-compatible API" edge section that always renders.
+    await expect.element(page.getByText('OpenAI', { exact: true }), { timeout: 5000 }).toBeVisible();
     await expect.element(
       page.getByText(/The assistant \(OpenCode server\) is not reachable/i)
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('ProvidersPanel — OpenAI-compatible edge API key (S.1b)', () => {
+  // URL-aware fetch: /admin/providers returns the provider list; the secret-file
+  // endpoint returns the op_api_key value only when explicitly requested.
+  function mockFetchWithSecret(secretValue: string) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((input: string | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/admin/secrets/op_api_key')) {
+          return Promise.resolve({ ok: true, json: async () => ({ name: 'op_api_key', value: secretValue }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => availableResponse });
+      }),
+    );
+  }
+
+  test('the key is not shown until the user reveals it', async () => {
+    mockFetchWithSecret('sk-secret-value-123\n');
+    render(ProvidersPanel);
+
+    await expect.element(page.getByText('OpenAI-compatible API'), { timeout: 5000 }).toBeVisible();
+    // The secret value must not be in the DOM before an explicit reveal.
+    await expect.element(page.getByText(/sk-secret-value-123/)).not.toBeInTheDocument();
+  });
+
+  test('Reveal API key fetches and displays the op_api_key value (trimmed)', async () => {
+    mockFetchWithSecret('sk-secret-value-123\n');
+    render(ProvidersPanel);
+
+    await page.getByRole('button', { name: 'Reveal API key' }).click();
+
+    const field = page.getByLabelText('OpenAI-compatible API key');
+    await expect.element(field, { timeout: 5000 }).toHaveValue('sk-secret-value-123');
   });
 });
 

@@ -282,6 +282,32 @@ describe("Existing Install", () => {
     expect(readSecret(homeDir, 'op_ui_login_password')).toBeNull();
   });
 
+  // S.1b: the guardian OpenAI-compatible edge reads OPENAI_COMPAT_API_KEY_FILE
+  // = /run/secrets/op_api_key. ensureSecrets must mint it (like the guardian
+  // admin/mcp tokens) so the shipped edge is authenticated, not fail-closed-empty.
+  it("ensureSecrets seeds a non-empty op_api_key for the OpenAI-compatible edge", () => {
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+
+    const state: ControlPlaneState = {
+      homeDir,
+      configDir,
+      stashDir: join(homeDir, "knowledge"),
+      workspaceDir: join(homeDir, "workspace"),
+      dataDir,
+      stackDir,
+      services: {},
+      artifacts: { compose: "" },
+      artifactMeta: [],
+    };
+
+    ensureSecrets(state);
+
+    const key = readSecret(homeDir, 'op_api_key');
+    expect(key).not.toBeNull();
+    expect((key ?? "").trim().length).toBeGreaterThan(0);
+  });
+
   // Scenario 6: performSetup re-run rewrites OP_UI_LOGIN_PASSWORD when the
   // operator supplies a new one in the spec. This is intentional — the
   // wizard "rerun" path is how an operator rotates the password. The
