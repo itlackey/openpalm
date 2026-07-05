@@ -105,6 +105,20 @@ describe("skeleton: config/ structure", () => {
     expect(channelsCompose).not.toContain('OP_IMAGE_TAG');
   });
 
+  test('third-party addon images (ollama) are pinned by exact version + digest, never :latest', () => {
+    // rev4-F1 (docs/reviews/fable-security-remediation-plan.md S.6): ollama sits
+    // inside the trust boundary (assistant_net) with no upstream auth. An
+    // unpinned :latest tag means a registry-side publish is a same-day
+    // code-execution path into the assistant's network — pin by tag@digest.
+    const servicesCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'services.compose.yml'), 'utf-8');
+
+    expect(servicesCompose).not.toContain('ollama/ollama:latest');
+    const pinnedOllamaImage = /image:\s*ollama\/ollama:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}/g;
+    const matches = servicesCompose.match(pinnedOllamaImage) ?? [];
+    // ollama, ollama-cuda, and ollama-rocm each declare their own pinned image.
+    expect(matches.length).toBe(3);
+  });
+
   test('host-published optional listeners use OP_BIND_ADDRESS nested defaults', () => {
     const channelsCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'portals.compose.yml'), 'utf-8');
     const servicesCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'services.compose.yml'), 'utf-8');
