@@ -27,9 +27,11 @@ describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', ()
     mock.module('@openpalm/lib', () => ({
       hasSnapshot: () => true,
       snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
-      createState: () => ({ homeDir: '/tmp/home' }),
+      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
       restoreSnapshot: () => { restoreCalled = true; },
       buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: '/tmp/home/data/.install.lock' }),
+      releaseInstallLock: () => {},
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({ homeDir: '/tmp/home' }),
@@ -52,9 +54,11 @@ describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', ()
     mock.module('@openpalm/lib', () => ({
       hasSnapshot: () => true,
       snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
-      createState: () => ({ homeDir: '/tmp/home' }),
+      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
       restoreSnapshot: () => { restoreCalled = true; },
       buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: '/tmp/home/data/.install.lock' }),
+      releaseInstallLock: () => {},
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({ homeDir: '/tmp/home' }),
@@ -78,9 +82,11 @@ describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', ()
     mock.module('@openpalm/lib', () => ({
       hasSnapshot: () => true,
       snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
-      createState: () => ({ homeDir: '/tmp/home' }),
+      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
       restoreSnapshot: () => { restoreCalled = true; },
       buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: '/tmp/home/data/.install.lock' }),
+      releaseInstallLock: () => {},
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({ homeDir: '/tmp/home' }),
@@ -97,5 +103,35 @@ describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', ()
 
     expect(restoreCalled).toBe(true);
     expect(promptCalled).toBe(false);
+  });
+
+  test('refuses with install_in_progress when the install lock is held (no restore, no compose up)', async () => {
+    let restoreCalled = false;
+    let composed = false;
+    mock.module('@openpalm/lib', () => ({
+      hasSnapshot: () => true,
+      snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
+      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
+      restoreSnapshot: () => { restoreCalled = true; },
+      buildManagedServices: async () => ['assistant'],
+      // Lock held by a concurrent install/update — acquire returns null.
+      acquireInstallLock: () => null,
+      releaseInstallLock: () => {},
+    }));
+    mock.module(moduleUrls.cliState, () => ({
+      ensureValidState: () => ({ homeDir: '/tmp/home' }),
+    }));
+    mock.module(moduleUrls.cliCompose, () => ({
+      runComposeWithPreflight: async () => { composed = true; },
+    }));
+    mock.module(moduleUrls.prompt, () => ({
+      promptYesNo: async () => true,
+    }));
+
+    const { runRollbackAction } = await import(`${rollbackModuleUrl}?t=${Math.random()}`);
+    await expect(runRollbackAction({ yes: true })).rejects.toThrow(/install_in_progress/);
+    // Neither the config swap nor the restart may run under contention.
+    expect(restoreCalled).toBe(false);
+    expect(composed).toBe(false);
   });
 });

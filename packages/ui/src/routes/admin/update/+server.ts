@@ -14,6 +14,8 @@ import {
   applyStack,
   patchSecretsEnvFile,
   isVersionKey,
+  acquireInstallLock,
+  releaseInstallLock,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -56,8 +58,27 @@ export const POST: RequestHandler = async (event) => {
   }
 
   return withSerialQueue("admin:update", async () => {
+    const state = getState();
+
+    // Hold the install lock across the file apply (applyUpdate) AND the container
+    // apply (applyStack), for both the full-update and scoped-service branches.
+    // Acquire once and pass {lock} to applyUpdate so it neither re-acquires nor
+    // early-releases — mirroring runDeploy's pattern. Without this, applyUpdate
+    // released the lock internally and a concurrent install could slip into the
+    // applyStack window.
+    const lock = acquireInstallLock(state.dataDir);
+    if (!lock) {
+      logger.info("update rejected — another install/update is in progress", { requestId });
+      return errorResponse(
+        409,
+        "install_in_progress",
+        "Another install or update is already running. Wait for it to finish, or run 'openpalm unlock' to clear a stale lock.",
+        {},
+        requestId,
+      );
+    }
+
     try {
-      const state = getState();
       const composeOpts = buildComposeOptions(state);
 
       const dockerCheck = await checkDocker();
@@ -128,7 +149,7 @@ export const POST: RequestHandler = async (event) => {
       // managed system/ tree, seed user/data once, OpenCode config — all idempotent)
       // and writes runtime files. It does NOT compose; the compose phase below is
       // the sole stack driver (pull-then-recreate; pull failure is FATAL per §6).
-      const result = await applyUpdate(state);
+      const result = await applyUpdate(state, { lock });
       logger.info("update applied, running applyStack", {
         requestId,
         intended: result.restarted,
@@ -171,6 +192,8 @@ export const POST: RequestHandler = async (event) => {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("update failed", { requestId, error: msg });
       return errorResponse(500, "update_failed", msg, {}, requestId);
+    } finally {
+      releaseInstallLock(lock);
     }
   });
 };

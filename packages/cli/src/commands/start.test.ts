@@ -30,8 +30,10 @@ describe('runStartAction', () => {
         );
       },
       buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: '/tmp/op-home/data/.install.lock' }),
+      releaseInstallLock: () => {},
     }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
 
     const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
@@ -47,8 +49,10 @@ describe('runStartAction', () => {
         reconcileArgs = opts;
       },
       buildManagedServices: async () => ['assistant', 'guardian'],
+      acquireInstallLock: () => ({ path: '/tmp/op-home/data/.install.lock' }),
+      releaseInstallLock: () => {},
     }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
 
     const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
@@ -67,8 +71,10 @@ describe('runStartAction', () => {
         reconcileArgs = opts;
       },
       buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: '/tmp/op-home/data/.install.lock' }),
+      releaseInstallLock: () => {},
     }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace' }) }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
 
     const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
@@ -77,5 +83,24 @@ describe('runStartAction', () => {
     // Explicit services are passed straight through (no buildManagedServices).
     expect(reconcileArgs).toEqual({ adoptHost: true, services: ['guardian'] });
     expect(composedArgs).toEqual([['up', '-d', 'guardian']]);
+  });
+
+  test('refuses with install_in_progress when the install lock is held (no compose up)', async () => {
+    let composed = false;
+    mock.module('@openpalm/lib', () => ({
+      ...realLib,
+      reconcileHostOwnership: async () => {},
+      buildManagedServices: async () => ['assistant'],
+      // Lock held by a concurrent install/update — acquire returns null.
+      acquireInstallLock: () => null,
+      releaseInstallLock: () => {},
+    }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
+    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => { composed = true; } }));
+
+    const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
+    await expect(runStartAction([])).rejects.toThrow(/install_in_progress/);
+    // The compose recreate must NOT run while another install holds the lock.
+    expect(composed).toBe(false);
   });
 });

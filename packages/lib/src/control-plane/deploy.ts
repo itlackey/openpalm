@@ -9,7 +9,7 @@ import { buildManagedServices } from './lifecycle.js';
 import { composeDown, composePs, composeUp, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile } from './secrets.js';
-import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
+import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 import { stackEnvPath } from './paths.js';
 import { discoverStackOverlays } from './config-persistence.js';
@@ -88,7 +88,7 @@ export function readDeployJournal(path: string): DeployProgress {
       startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : null,
       pid: typeof parsed.pid === 'number' ? parsed.pid : null,
     });
-    if (state.deploying && state.pid && !isPidAlive(state.pid)) {
+    if (state.deploying && state.pid && !isProcessAlive(state.pid)) {
       state.deploying = false;
       state.interrupted = true;
       state.deployError = state.deployError ?? 'Deployment was interrupted. Retry to resume Docker deploy.';
@@ -106,15 +106,6 @@ export function resolveDeployJournalPath(state: ControlPlaneState): string {
 function emitProgress(options: RunDeployOptions, state: DeployProgress): void {
   if (options.journalPath) writeJournal(options.journalPath, state);
   options.onUpdate?.(cloneProgress(state));
-}
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function projectNameForState(state: ControlPlaneState): string {

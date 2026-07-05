@@ -9,6 +9,8 @@ import {
   restoreSnapshot,
   hasSnapshot,
   snapshotTimestamp,
+  acquireInstallLock,
+  releaseInstallLock,
 } from '@openpalm/lib';
 
 export default defineCommand({
@@ -51,18 +53,31 @@ export async function runRollbackAction(opts: { yes?: boolean } = {}): Promise<v
   // Create state without persisting so we don't overwrite live config
   // before the snapshot is restored.
   const rollbackState = createState();
-  restoreSnapshot(rollbackState);
 
-  console.log('Snapshot restored. Rebuilding configuration...');
+  // Hold the install lock across the snapshot restore AND the compose recreate
+  // so a concurrent install/update can't race the config swap or the restart.
+  const lock = acquireInstallLock(rollbackState.dataDir);
+  if (!lock) {
+    throw new Error(
+      "install_in_progress: Another install or update is already running. Wait for it to finish, or run 'openpalm unlock' to clear a stale lock.",
+    );
+  }
+  try {
+    restoreSnapshot(rollbackState);
 
-  // Now validate and persist with the restored files in place
-  const state = ensureValidState();
+    console.log('Snapshot restored. Rebuilding configuration...');
 
-  const managedServices = await buildManagedServices(state);
+    // Now validate and persist with the restored files in place
+    const state = ensureValidState();
 
-  await runComposeWithPreflight(state, [
-    'up', '-d', '--remove-orphans', ...managedServices,
-  ]);
+    const managedServices = await buildManagedServices(state);
+
+    await runComposeWithPreflight(state, [
+      'up', '-d', '--remove-orphans', ...managedServices,
+    ]);
+  } finally {
+    releaseInstallLock(lock);
+  }
 
   console.log('Rollback complete.');
 }
