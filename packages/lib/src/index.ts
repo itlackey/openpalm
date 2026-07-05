@@ -332,7 +332,7 @@ export {
 export type { VersionKey, ChannelPreference } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
-export type { DockerResult, ExistingProject, ContainerImageInfo, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
+export type { DockerResult, ExistingProject, ContainerImageInfo, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
 export {
   checkDocker,
   checkDockerCompose,
@@ -341,6 +341,7 @@ export {
   composePreflight,
   buildComposePreflightError,
   composeUpTimeoutMs,
+  composeWaitTimeoutSec,
   runComposeStreaming,
   composeUp,
   composeDown,
@@ -348,6 +349,7 @@ export {
   composeStop,
   composeStart,
   composePs,
+  parseComposePsRows,
   composeLogs,
   composePullService,
   composePull,
@@ -356,7 +358,6 @@ export {
   getDockerEvents,
   inspectContainerImage,
   getRunningImages,
-  waitForContainerHealthy,
   applyStack,
 } from "./control-plane/docker.js";
 

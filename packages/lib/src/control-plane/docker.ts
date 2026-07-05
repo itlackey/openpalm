@@ -2,7 +2,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
-import { mapDockerError, parseComposeStderr } from "./compose-errors.js";
+import { mapDockerError } from "./compose-errors.js";
 
 export type DockerResult = {
   ok: boolean;
@@ -235,10 +235,46 @@ export async function checkDocker(): Promise<DockerResult> {
   return { ok: available, stdout, stderr: result.stderr, code: result.code };
 }
 
-/** Check if docker compose is available */
+/**
+ * Minimum Docker Compose version that supports `--wait`/`--wait-timeout`
+ * (added in Compose v2.14.0) — §2.1 makes these the single health gate for
+ * every `compose up`, so an older CLI must fail the preflight instead of
+ * silently rejecting the flag at runtime.
+ */
+const COMPOSE_WAIT_FLOOR = [2, 14, 0] as const;
+
+/**
+ * Decide whether a `docker compose version` output (e.g. "Docker Compose
+ * version v2.29.1") is new enough for `--wait`/`--wait-timeout`. An
+ * unparsable string is treated as new enough — fail open on a version-string
+ * format change rather than blocking every install.
+ */
+export function meetsComposeWaitFloor(versionOutput: string): boolean {
+  const match = /(\d+)\.(\d+)\.(\d+)/.exec(versionOutput);
+  if (!match) return true;
+  const actual = [Number(match[1]), Number(match[2]), Number(match[3])];
+  for (let i = 0; i < COMPOSE_WAIT_FLOOR.length; i++) {
+    if (actual[i] > COMPOSE_WAIT_FLOOR[i]) return true;
+    if (actual[i] < COMPOSE_WAIT_FLOOR[i]) return false;
+  }
+  return true;
+}
+
+/** Check if docker compose is available AND new enough for `--wait` (§2.1). */
 export async function checkDockerCompose(): Promise<DockerResult> {
   // No timeout (0) — historically unbounded here.
-  return run(["compose", "version"], undefined, 0);
+  const result = await run(["compose", "version"], undefined, 0);
+  if (!result.ok) return result;
+  if (!meetsComposeWaitFloor(result.stdout)) {
+    return {
+      ...result,
+      ok: false,
+      stderr:
+        result.stderr ||
+        `Docker Compose ${result.stdout.trim() || "(unknown version)"} is too old — v2.14.0 or newer is required.`,
+    };
+  }
+  return result;
 }
 
 /** Merge all env files into a single overrides object for process env. */
@@ -262,12 +298,16 @@ export function buildComposeCommandArgs(
   return args;
 }
 
-/** Build common prefix: compose -f ... --project-name ... --env-file ... --profile ... */
+/** Build common prefix: compose --progress plain -f ... --project-name ... --env-file ... --profile ... */
 function buildComposeArgs(
   options: { files: string[]; envFiles?: string[]; profiles?: string[] },
   files: FileStore = realFileStore,
 ): string[] {
-  return ["compose", ...buildComposeCommandArgs(options, files)];
+  // --progress plain on every non-interactive (captured, non-tty) invocation —
+  // deterministic line-oriented output, no braille spinner frames to parse (§2.1).
+  // The one EXCLUDED caller is runComposeStreaming (stdio-inherited, genuinely
+  // interactive), which keeps compose's default renderer.
+  return ["compose", "--progress", "plain", ...buildComposeCommandArgs(options, files)];
 }
 
 /**
@@ -360,8 +400,16 @@ export async function composeConfigServices(
 }
 
 /**
- * Run `docker compose up -d` with the generated compose file(s).
+ * Run `docker compose up -d --wait` with the generated compose file(s).
  * Pass `files` to merge multiple compose overlays (e.g. core + addon files).
+ *
+ * `--wait --wait-timeout` is the SINGLE health gate (§2.1): compose itself
+ * blocks until every targeted service is running+healthy (or the wait times
+ * out), so callers never need a separate health-poll loop. `pull` maps
+ * straight to compose's own `--pull` flag ("missing" — the compose default,
+ * pull only when the image isn't present locally; "never" — dev-tag images
+ * built locally, must not attempt a registry pull; "always" — force a fresh
+ * pull even if present locally).
  */
 export async function composeUp(
   options: {
@@ -371,6 +419,7 @@ export async function composeUp(
     envFiles?: string[];
     forceRecreate?: boolean;
     removeOrphans?: boolean;
+    pull?: "missing" | "never" | "always";
   }
 ): Promise<DockerResult> {
   await runPreflight(options);
@@ -378,7 +427,8 @@ export async function composeUp(
     return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
   const args = buildComposeArgs(options);
-  args.push("up", "-d");
+  args.push("up", "-d", "--wait", "--wait-timeout", String(composeWaitTimeoutSec()));
+  args.push("--pull", options.pull ?? "missing");
   if (options.forceRecreate) args.push("--force-recreate");
   if (options.removeOrphans) args.push("--remove-orphans");
   if (options.services?.length) args.push(...options.services);
@@ -401,6 +451,21 @@ export function composeUpTimeoutMs(): number {
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed > 0) return parsed;
   return 30 * 60_000;
+}
+
+/**
+ * Seconds budget for compose's OWN `--wait-timeout` (§2.1's single health
+ * gate) — how long compose itself waits for every targeted service to become
+ * healthy before `up` exits non-zero. Default 5 minutes, matching the
+ * health-poll deadline this replaces (the deleted deploy.ts pollContainerHealth
+ * loop) and comfortably above the voice addon's 180s start_period. Override
+ * with OP_COMPOSE_WAIT_TIMEOUT_MS (ms).
+ */
+export function composeWaitTimeoutSec(): number {
+  const raw = process.env.OP_COMPOSE_WAIT_TIMEOUT_MS?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  const ms = Number.isFinite(parsed) && parsed > 0 ? parsed : 5 * 60_000;
+  return Math.ceil(ms / 1000);
 }
 
 /**
@@ -544,6 +609,41 @@ export async function composePs(
   args.push("ps", "--format", "json");
 
   return run(args, undefined);
+}
+
+/** One row of `compose ps --format json` output, reduced to what callers need. */
+export type ComposePsRow = { service: string; state: string; health: string };
+
+/**
+ * Parse `compose ps --format json` stdout (one JSON object per line, or a
+ * JSON array on some Compose versions) into {@link ComposePsRow}s. Matches
+ * by the `Service` field — NEVER derive the service name from the container
+ * name (which carries a `-<n>` suffix, e.g. `assistant-1`).
+ *
+ * Single source of truth for this parse — used by {@link applyStack}'s
+ * post-failure diagnosis and by the deploy-journal's display refresh.
+ */
+export function parseComposePsRows(stdout: string): ComposePsRow[] {
+  const rows: ComposePsRow[] = [];
+  const trimmedStdout = stdout.trim();
+  if (!trimmedStdout) return rows;
+  for (const line of trimmedStdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      const entries = Array.isArray(parsed) ? parsed : [parsed];
+      for (const entry of entries) {
+        const obj = entry as Record<string, unknown>;
+        const service = String(obj.Service ?? obj.Name ?? "");
+        if (!service) continue;
+        rows.push({ service, state: String(obj.State ?? ""), health: String(obj.Health ?? "") });
+      }
+    } catch {
+      // Ignore unparsable lines.
+    }
+  }
+  return rows;
 }
 
 /**
@@ -734,62 +834,6 @@ export async function getRunningImages(options: {
   return out;
 }
 
-// ── Health-wait ─────────────────────────────────────────────────────────────
-
-/** Default health-wait parameters. Override via OP_HEALTH_WAIT_TIMEOUT_MS. */
-const HEALTH_WAIT_DEFAULTS = { timeoutMs: 120_000, pollMs: 3_000 } as const;
-
-function healthWaitTimeoutMs(): number {
-  const raw = process.env.OP_HEALTH_WAIT_TIMEOUT_MS?.trim();
-  const parsed = raw ? Number(raw) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : HEALTH_WAIT_DEFAULTS.timeoutMs;
-}
-
-/**
- * Poll `docker inspect` on `containerName` until its State.Health.Status is
- * "healthy" (or the container has no healthcheck, in which case "running" is
- * sufficient). Returns true on success; false on timeout with a log message.
- *
- * Containers with no healthcheck (`healthStatus === ""`) are declared healthy
- * immediately once they are in state "running" — compose started them, they
- * haven't crashed, that's the best signal we have.
- */
-export async function waitForContainerHealthy(
-  containerName: string,
-  timeoutMs = healthWaitTimeoutMs(),
-  pollMs = HEALTH_WAIT_DEFAULTS.pollMs,
-  deps: StackDeps = defaultStackDeps,
-): Promise<{ healthy: boolean; timedOut: boolean; reason: string }> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const info = await inspectContainerImage(containerName, deps);
-    if (info.state === "not_installed") {
-      return { healthy: false, timedOut: false, reason: `container ${containerName} does not exist` };
-    }
-    if (info.state === "stopped") {
-      // Container exited — fail immediately rather than burning the full timeout.
-      return { healthy: false, timedOut: false, reason: `container ${containerName} exited` };
-    }
-    if (info.state === "running") {
-      // No healthcheck → running is good enough
-      if (!info.healthStatus || info.healthStatus === "healthy") {
-        return { healthy: true, timedOut: false, reason: "healthy" };
-      }
-      if (info.healthStatus === "unhealthy") {
-        return { healthy: false, timedOut: false, reason: `container ${containerName} is unhealthy` };
-      }
-      // "starting" — keep polling
-    }
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-  const elapsed = Math.round(timeoutMs / 1000);
-  return {
-    healthy: false,
-    timedOut: true,
-    reason: `container ${containerName} did not become healthy within ${elapsed}s`,
-  };
-}
-
 // ── applyStack — the single compose driver (§4.3) ───────────────────────────
 
 export type ApplyStackScope =
@@ -811,7 +855,9 @@ export type ApplyStackResult = {
  *
  * pull-before-up, always. Pull failure is FATAL — never silently falls through
  * to a stale local image. Active profiles are always passed (§4.3 "profiles on
- * every command"). Success = running AND healthy (waitForContainerHealthy).
+ * every command"). Success = running AND healthy — `up -d --wait` IS the gate
+ * (§2.1): compose blocks until every targeted service reaches running+healthy
+ * or `--wait-timeout` elapses, so there is no separate per-container poll loop.
  *
  * scope = { kind:"service", service:"assistant" }  →  pull <svc> + up --force-recreate --no-deps <svc>
  * scope = { kind:"all" }                           →  pull + up --remove-orphans
@@ -835,9 +881,6 @@ export async function applyStack(
   const pullResult = await docker.run(pullArgs, { timeoutMs: PULL_TIMEOUT_MS, env: envOverrides });
   if (!pullResult.ok) {
     // Pull failure is FATAL (§6, constitution §8 "never swallowed").
-    // Route through mapDockerError so the user sees a named, friendly message
-    // (rate_limited / manifest_unknown / network_error / image_auth) instead of
-    // raw daemon stderr.
     const mapped = mapDockerError(pullResult.stderr || "image pull failed");
     return {
       ok: false,
@@ -847,8 +890,8 @@ export async function applyStack(
     };
   }
 
-  // ── 2. Compose up ────────────────────────────────────────────────────────
-  const upArgs = [...base, "up", "-d"];
+  // ── 2. Compose up — `--wait --wait-timeout` is the single health gate (§2.1) ──
+  const upArgs = [...base, "up", "-d", "--wait", "--wait-timeout", String(composeWaitTimeoutSec())];
   if (scope.kind === "service") {
     upArgs.push("--force-recreate", "--no-deps", scope.service);
   } else {
@@ -857,30 +900,6 @@ export async function applyStack(
 
   const upResult = await docker.run(upArgs, { timeoutMs: composeUpTimeoutMs(), env: envOverrides });
 
-  // ── 3. Parse per-service failures from stderr ─────────────────────────────
-  if (!upResult.ok) {
-    const failed = parseComposeStderr(upResult.stderr);
-    if (failed.length === 0) {
-      // No per-service parse succeeded — map the full stderr to a named friendly message (§6).
-      const mapped = mapDockerError(upResult.stderr || `docker compose exited with code ${upResult.code}`);
-      return {
-        ok: false,
-        started: [],
-        failed: [{ service: scope.kind === "service" ? scope.service : "stack", reason: mapped.message }],
-        error: mapped.message,
-      };
-    }
-    // Per-service failures parsed: map each reason through mapDockerError so
-    // individual service failures also surface friendly named messages (§6).
-    const friendlyFailed = failed.map((f) => ({
-      service: f.service,
-      reason: mapDockerError(f.reason).message,
-    }));
-    const topLevelMapped = mapDockerError(upResult.stderr);
-    return { ok: false, started: [], failed: friendlyFailed, error: topLevelMapped.message };
-  }
-
-  // ── 4. Success = running AND healthy (§4.3) ───────────────────────────────
   const targetServices =
     scope.kind === "service"
       ? [scope.service]
@@ -890,30 +909,45 @@ export async function applyStack(
           return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
         })();
 
-  const started: string[] = [];
-  const failed: { service: string; reason: string }[] = [];
-
-  for (const svc of targetServices) {
-    // Get the container name from compose ps
-    const psArgs = [...base, "ps", "-q", svc];
-    const psResult = await docker.run(psArgs, { timeoutMs: 10_000, env: envOverrides });
-    const containerId = psResult.stdout.trim();
-    if (!containerId) {
-      failed.push({ service: svc, reason: `container for service ${svc} not found after up` });
-      continue;
+  // ── 3. On failure, ONE `compose ps --format json` call names the failed
+  //      services (§2.1) — no per-container inspect polling.
+  if (!upResult.ok) {
+    const psArgs = [...base, "ps", "--format", "json"];
+    const psResult = await docker.run(psArgs, { timeoutMs: 15_000, env: envOverrides });
+    const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
+    if (rows.length === 0) {
+      // ps itself gave us nothing to work with — map the full stderr (§6).
+      const mapped = mapDockerError(upResult.stderr || `docker compose exited with code ${upResult.code}`);
+      return {
+        ok: false,
+        started: [],
+        failed: targetServices.map((service) => ({ service, reason: mapped.message })),
+        error: mapped.message,
+      };
     }
-    const wait = await waitForContainerHealthy(containerId, undefined, undefined, deps);
-    if (wait.healthy) {
-      started.push(svc);
-    } else {
-      failed.push({ service: svc, reason: wait.reason });
+    const started: string[] = [];
+    const failed: { service: string; reason: string }[] = [];
+    for (const svc of targetServices) {
+      const row = rows.find((r) => r.service === svc);
+      if (row && row.state === "running" && row.health !== "unhealthy") {
+        started.push(svc);
+        continue;
+      }
+      const rawReason = !row
+        ? `container for service ${svc} not found after up`
+        : row.health === "unhealthy"
+          ? `container ${svc} is unhealthy`
+          : `container ${svc} did not become healthy (state: ${row.state || "unknown"})`;
+      failed.push({ service: svc, reason: mapDockerError(rawReason).message });
     }
+    return {
+      ok: false,
+      started,
+      failed,
+      error: failed.map((f) => f.reason).join("; ") || mapDockerError(upResult.stderr).message,
+    };
   }
 
-  return {
-    ok: failed.length === 0,
-    started,
-    failed,
-    ...(failed.length > 0 ? { error: failed.map((f) => f.reason).join("; ") } : {}),
-  };
+  // ── 4. Success — `--wait` already confirmed every target service is healthy ──
+  return { ok: true, started: targetServices, failed: [] };
 }

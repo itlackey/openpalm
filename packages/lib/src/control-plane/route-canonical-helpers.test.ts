@@ -15,8 +15,9 @@ import type { ControlPlaneState } from "./types.js";
 // Regression locks for the DRY-onto-canonical-helpers refactor. These assert the
 // equivalences that make the routing behavior-preserving: the canonical
 // `stackEnvPath(state)` must reproduce the old inline `${stashDir}/env/stack.env`
-// literal, `buildComposeCommandArgs` must reproduce the arg array that
-// `deploy.ts` missingServiceImages hand-built (env files filtered by existsSync),
+// literal, `buildComposeCommandArgs` must reproduce the -f/--env-file/--profile
+// arg-building rules (env files filtered by existsSync) that deploy.ts's
+// deleted (§2.1) missingServiceImages helper used to hand-build,
 // and the run()-routed docker probes keep their ok/stdout/stderr/code semantics.
 
 describe("stackEnvPath is the canonical stashDir-based stack.env path", () => {
@@ -27,7 +28,7 @@ describe("stackEnvPath is the canonical stashDir-based stack.env path", () => {
   });
 });
 
-describe("buildComposeCommandArgs reproduces missingServiceImages' hand-built args", () => {
+describe("buildComposeCommandArgs reproduces the deleted missingServiceImages' hand-built args", () => {
   const savedProject = process.env.OP_PROJECT_NAME;
   const savedCompose = process.env.COMPOSE_PROJECT_NAME;
   let dir: string;
@@ -60,8 +61,8 @@ describe("buildComposeCommandArgs reproduces missingServiceImages' hand-built ar
     };
 
     // The exact -f/--env-file/--profile portion the old hand-built array
-    // produced (deploy.ts missingServiceImages), using the ORIGINAL existsSync
-    // env-file predicate.
+    // produced (deploy.ts's now-deleted missingServiceImages, §2.1), using the
+    // ORIGINAL existsSync env-file predicate.
     const handBuiltCore = [
       ...composeOpts.files.flatMap((file) => ["-f", file]),
       ...composeOpts.envFiles.filter((file) => existsSync(file)).flatMap((file) => ["--env-file", file]),
