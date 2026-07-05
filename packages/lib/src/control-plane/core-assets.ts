@@ -6,7 +6,7 @@
  *
  * This module manages runtime-owned core files only.
  * Addon compose bundle generation and registry catalog refresh are handled
- * separately in registry.ts.
+ * separately in addons.ts.
  * Env validation has moved to `akm vault` + the in-house redactor — the
  * historical `.env.schema` files (varlock format) were retired in #391.
  */
