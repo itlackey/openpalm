@@ -457,6 +457,7 @@
 		sending={chat.sending}
 		questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
 		onSend={handleSend}
+		onStop={() => void chat.stopTurn()}
 		{voiceEnabled}
 		{voiceActive}
 		onMicToggle={toggleVoice}

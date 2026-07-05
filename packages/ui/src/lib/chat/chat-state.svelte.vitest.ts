@@ -16,6 +16,7 @@ vi.mock('$lib/voice/voice-state.svelte.js', () => ({
 }));
 
 vi.mock('$lib/api.js', () => ({
+  abortChatTurn: vi.fn(),
   createSession: vi.fn(),
   getSessionMessages: vi.fn(),
   listSessions: vi.fn(),
@@ -49,6 +50,7 @@ import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 import { chat, ACK_PHRASES } from './chat-state.svelte.js';
 
 const mocked = {
+  abortChatTurn: vi.mocked(api.abortChatTurn),
   createSession: vi.mocked(api.createSession),
   getSessionMessages: vi.mocked(api.getSessionMessages),
   listSessions: vi.mocked(api.listSessions),
@@ -68,6 +70,7 @@ beforeEach(() => {
   chat.sending = false;
   chat.error = '';
   chat.entriesLoading = false;
+  mocked.abortChatTurn.mockReset();
   mocked.createSession.mockReset();
   mocked.getSessionMessages.mockReset();
   mocked.listSessions.mockReset();
@@ -299,6 +302,126 @@ describe('send', () => {
 		const ackCall = vi.mocked(voice.speakText).mock.calls[0];
 		expect(ACK_PHRASES).toContain(ackCall[0]);
 		expect(ackCall[1]).toBeUndefined();
+	});
+});
+
+describe('stopTurn', () => {
+	it('is a no-op when nothing is sending', async () => {
+		expect(chat.sending).toBe(false);
+		await chat.stopTurn();
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+		expect(chat.entries).toEqual([]);
+	});
+
+	it('finalizes partial streamed text unspoken and resolves the pending send', async () => {
+		voice.voiceState.ttsSupported = true;
+		voice.voiceState.ttsAutoEnabled = true;
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('tell me a long story');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'Once upon a time' },
+		});
+		expect(chat.pendingAssistantText).toBe('Once upon a time');
+
+		await chat.stopTurn();
+		// Never throws / rejects — a user-initiated stop is not an error.
+		await expect(sendPromise).resolves.toBeUndefined();
+
+		expect(mocked.abortChatTurn).toHaveBeenCalledWith('sess1');
+		expect(chat.sending).toBe(false);
+
+		const assistantEntry = chat.entries.find(
+			(e) => !e.type && (e as ChatMessage).role === 'assistant'
+		) as ChatMessage | undefined;
+		expect(assistantEntry?.text).toBe('Once upon a time');
+
+		// Only the ack was spoken — the partial reply is never sent to TTS.
+		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
+		const ackCall = vi.mocked(voice.speakText).mock.calls[0];
+		expect(ACK_PHRASES).toContain(ackCall[0]);
+	});
+
+	it('appends a "Stopped." note and drops no assistant entry when nothing streamed yet', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		expect(chat.pendingAssistantText).toBe('');
+		await chat.stopTurn();
+		await expect(sendPromise).resolves.toBeUndefined();
+
+		expect(chat.sending).toBe(false);
+		const assistantEntries = chat.entries.filter(
+			(e) => !e.type && (e as ChatMessage).role === 'assistant'
+		);
+		expect(assistantEntries.length).toBe(0);
+
+		const note = chat.entries.find((e) => (e as { type?: string }).type === 'note') as
+			| { type: 'note'; label: string; text: string }
+			| undefined;
+		expect(note?.label).toBe('Stopped');
+		expect(note?.text).toBe('Stopped.');
+	});
+
+	it('finishes locally even when the upstream abort call fails', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockRejectedValueOnce(new Error('endpoint unreachable'));
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		await chat.stopTurn();
+		await expect(sendPromise).resolves.toBeUndefined();
+		expect(chat.sending).toBe(false);
+	});
+
+	it('ignores a late turn-end SSE event for the already-stopped turn', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		await chat.stopTurn();
+		await sendPromise;
+		const entriesAfterStop = [...chat.entries];
+
+		// A turn-end event that arrives after the stop must be a no-op: the
+		// null-guard at the top of _onLiveEvent bails out once _pendingTurn
+		// has been cleared by stopTurn().
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.idle',
+			properties: { sessionID: 'sess1' },
+		});
+
+		expect(chat.entries).toEqual(entriesAfterStop);
 	});
 });
 

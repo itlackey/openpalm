@@ -19,6 +19,7 @@
  * reassignment is what fires re-renders in the SessionPicker.
  */
 import {
+	abortChatTurn,
 	createSession,
 	getSessionMessages,
 	listSessions,
@@ -397,6 +398,8 @@ class ChatService {
 		sessionId: SessionId;
 		userText: string;
 		replyText?: string;
+		/** Skip auto-TTS — used when the user stopped the turn mid-reply. */
+		suppressSpeech?: boolean;
 	}): void {
 		const text = (args.replyText ?? this.pendingAssistantText).trim() || '(no response)';
 
@@ -419,7 +422,7 @@ class ChatService {
 		this._appendAssistantReply(text, capturedToolStates);
 		this._resetPendingRenderState();
 		this._bumpSession(args.sessionId);
-		if (text !== '(no response)') {
+		if (text !== '(no response)' && !args.suppressSpeech) {
 			this.maybeSpeak(text, {
 				mode: 'chat_reply',
 				userText: args.userText,
@@ -775,6 +778,48 @@ class ChatService {
 		} finally {
 			this.sending = false;
 		}
+	}
+
+	/**
+	 * Stop the in-flight turn. No-op if nothing is sending. The upstream abort
+	 * is best-effort — OpenCode may have already finished or the endpoint may
+	 * be unreachable — the turn is always finished locally regardless so the
+	 * UI never gets stuck waiting on `sending`.
+	 *
+	 * Clearing `_pendingTurn` before resolving is what makes a late SSE
+	 * turn-end for the aborted turn a no-op: `_onLiveEvent` bails out as soon
+	 * as `_pendingTurn` is null.
+	 */
+	async stopTurn(): Promise<void> {
+		if (!this.sending) return;
+		const sessionId = this.activeSessionId;
+		if (sessionId) {
+			try {
+				await abortChatTurn(sessionId);
+			} catch {
+				// Best-effort — finish the turn locally below either way.
+			}
+		}
+		stopSpeaking();
+		const pending = this._clearPendingTurn();
+		if (this.pendingAssistantText) {
+			this.finalizeTurn({
+				sessionId: pending?.sessionId ?? sessionId ?? '',
+				userText: pending?.userText ?? '',
+				suppressSpeech: true,
+			});
+		} else {
+			this._resetPendingRenderState();
+			const stoppedNote = {
+				id: crypto.randomUUID(),
+				type: 'note' as const,
+				label: 'Stopped',
+				text: 'Stopped.',
+				timestamp: Date.now(),
+			};
+			this.entries = [...this.entries, stoppedNote];
+		}
+		pending?.resolve();
 	}
 
 	async answerPermission(reply: 'once' | 'always' | 'reject'): Promise<void> {

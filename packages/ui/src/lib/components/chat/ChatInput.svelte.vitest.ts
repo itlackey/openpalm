@@ -60,6 +60,35 @@ describe('ChatInput — draft while sending', () => {
   });
 });
 
+describe('ChatInput — stop button', () => {
+  test('shows a stop button instead of send while sending, when onStop is provided', async () => {
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn(), onStop: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: 'Stop generating' })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
+  });
+
+  test('calls onStop when the stop button is clicked', async () => {
+    const onStop = vi.fn();
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn(), onStop } });
+    await page.getByRole('button', { name: 'Stop generating' }).click();
+    expect(onStop).toHaveBeenCalledOnce();
+  });
+
+  test('falls back to the (disabled) send button while sending when onStop is not provided', async () => {
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    await expect.element(page.getByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument();
+  });
+
+  test('does not show the stop button for a single-question pending state (questionPending=true)', async () => {
+    await render(ChatInput, {
+      props: { sending: true, questionPending: true, onSend: vi.fn(), onStop: vi.fn() },
+    });
+    await expect.element(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument();
+  });
+});
+
 describe('ChatInput — send behaviour', () => {
   test('calls onSend with trimmed text when button is clicked', async () => {
     const onSend = vi.fn();

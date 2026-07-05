@@ -1,17 +1,19 @@
 <script lang="ts">
   import IconMic from '$lib/components/icons/IconMic.svelte';
   import IconSend from '$lib/components/icons/IconSend.svelte';
+  import IconStop from '$lib/components/icons/IconStop.svelte';
 
   interface Props {
     sending: boolean;
     questionPending?: boolean;
     onSend: (text: string) => void;
+    onStop?: () => void;
     voiceEnabled?: boolean;
     voiceActive?: boolean;
     onMicToggle?: () => void;
   }
 
-  let { sending, questionPending = false, onSend, voiceEnabled = false, voiceActive = false, onMicToggle }: Props = $props();
+  let { sending, questionPending = false, onSend, onStop, voiceEnabled = false, voiceActive = false, onMicToggle }: Props = $props();
 
   let inputText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
@@ -21,6 +23,9 @@
   // is blocked.
   const submitBlocked = $derived(sending && !questionPending);
   const isActive = $derived(inputText.trim().length > 0);
+  // While a turn is in flight (and no single-question ask needs the
+  // composer for its answer), swap the send button for a stop button.
+  const showStop = $derived(submitBlocked && !!onStop);
 
   function handleKeydown(e: KeyboardEvent): void {
     // IME composition (e.g. CJK input methods) commits candidates with
@@ -80,14 +85,25 @@
         <IconMic size={16} />
       </button>
     {/if}
-    <button
-      class="s-send-btn"
-      type="submit"
-      aria-label="Send message"
-      disabled={!isActive || submitBlocked}
-    >
-      <IconSend size={16} />
-    </button>
+    {#if showStop}
+      <button
+        class="s-send-btn"
+        type="button"
+        aria-label="Stop generating"
+        onclick={onStop}
+      >
+        <IconStop size={16} />
+      </button>
+    {:else}
+      <button
+        class="s-send-btn"
+        type="submit"
+        aria-label="Send message"
+        disabled={!isActive || submitBlocked}
+      >
+        <IconSend size={16} />
+      </button>
+    {/if}
   </div>
 </form>
 
