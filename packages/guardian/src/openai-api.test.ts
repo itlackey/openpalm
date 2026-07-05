@@ -9,6 +9,13 @@ afterEach(() => {
   (globalThis as { fetch: typeof fetch }).fetch = REAL_FETCH;
 });
 
+// Auth is fail-closed (S.1a): every functional test below configures a key and
+// sends the matching credential so it exercises behavior *past* the auth gate,
+// not the gate itself. The gate itself is covered by 'guardian openai api auth'.
+const TEST_API_KEY = 'test-api-key';
+const AUTH_HEADERS = { authorization: `Bearer ${TEST_API_KEY}` };
+const ANTHROPIC_AUTH_HEADERS = { 'x-api-key': TEST_API_KEY };
+
 function stubStreamingGuardian(): void {
   const encoder = new TextEncoder();
   const stub = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -53,7 +60,7 @@ function ocFetchStub(calls?: CapturedCall[]) {
 function createHandler(opts?: { apiKey?: string }) {
   const api = new GuardianOpenAiApi();
   Object.defineProperty(api, 'secret', { get: () => 'test-secret' });
-  if (opts?.apiKey !== undefined) Object.defineProperty(api, 'apiKey', { get: () => opts.apiKey });
+  Object.defineProperty(api, 'apiKey', { get: () => opts?.apiKey ?? TEST_API_KEY });
   return api.createFetch(ocFetchStub() as typeof fetch);
 }
 
@@ -61,7 +68,7 @@ function createHandlerWithCapture(opts?: { apiKey?: string }) {
   const calls: CapturedCall[] = [];
   const api = new GuardianOpenAiApi();
   Object.defineProperty(api, 'secret', { get: () => 'test-secret' });
-  if (opts?.apiKey !== undefined) Object.defineProperty(api, 'apiKey', { get: () => opts.apiKey });
+  Object.defineProperty(api, 'apiKey', { get: () => opts?.apiKey ?? TEST_API_KEY });
   const handler = api.createFetch(ocFetchStub(calls) as typeof fetch);
   return { handler, captured: () => calls };
 }
@@ -90,7 +97,7 @@ describe('guardian openai api models', () => {
 describe('guardian openai api chat completions', () => {
   it('returns chat.completion shape', async () => {
     const handler = createHandler();
-    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hello' }] }) }));
+    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', headers: AUTH_HEADERS, body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hello' }] }) }));
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     expect(body.object).toBe('chat.completion');
@@ -99,7 +106,7 @@ describe('guardian openai api chat completions', () => {
 
   it('forwards correct payload to guardian', async () => {
     const { handler, captured } = createHandlerWithCapture();
-    await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4o-mini', user: 'u1', messages: [{ role: 'user', content: 'hello' }] }) }));
+    await handler(new Request('http://api/v1/chat/completions', { method: 'POST', headers: AUTH_HEADERS, body: JSON.stringify({ model: 'gpt-4o-mini', user: 'u1', messages: [{ role: 'user', content: 'hello' }] }) }));
     const calls = captured();
     const createCall = calls.find((call) => call.method === 'POST' && call.url === 'http://guardian:8080/oc/session');
     const messageCall = calls.find((call) => call.method === 'POST' && call.url === 'http://guardian:8080/oc/session/s1/message');
@@ -113,7 +120,7 @@ describe('guardian openai api chat completions', () => {
   it('honors stream:true with an SSE chat.completion.chunk response', async () => {
     stubStreamingGuardian();
     const handler = createHandler();
-    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', stream: true, messages: [{ role: 'user', content: 'hi' }] }) }));
+    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', headers: AUTH_HEADERS, body: JSON.stringify({ model: 'gpt-4', stream: true, messages: [{ role: 'user', content: 'hi' }] }) }));
     expect(resp.status).toBe(200);
     expect(resp.headers.get('content-type')).toBe('text/event-stream');
   });
@@ -122,7 +129,7 @@ describe('guardian openai api chat completions', () => {
 describe('guardian openai api legacy completions', () => {
   it('returns text_completion shape', async () => {
     const handler = createHandler();
-    const resp = await handler(new Request('http://api/v1/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-3.5', prompt: 'hello' }) }));
+    const resp = await handler(new Request('http://api/v1/completions', { method: 'POST', headers: AUTH_HEADERS, body: JSON.stringify({ model: 'gpt-3.5', prompt: 'hello' }) }));
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     expect(body.object).toBe('text_completion');
@@ -132,7 +139,7 @@ describe('guardian openai api legacy completions', () => {
 describe('guardian openai api anthropic messages', () => {
   it('returns Anthropic message shape', async () => {
     const handler = createHandler();
-    const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hello' }] }) }));
+    const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', headers: ANTHROPIC_AUTH_HEADERS, body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hello' }] }) }));
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     expect(body.type).toBe('message');
@@ -150,6 +157,24 @@ describe('guardian openai api auth', () => {
     const handler = createHandler({ apiKey: 'key-123' });
     const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', headers: { 'x-api-key': 'key-123' }, body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hello' }] }) }));
     expect(resp.status).toBe(200);
+  });
+
+  it('rejects Anthropic messages with a wrong x-api-key', async () => {
+    const handler = createHandler({ apiKey: 'key-123' });
+    const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', headers: { 'x-api-key': 'wrong-key' }, body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hello' }] }) }));
+    expect(resp.status).toBe(401);
+  });
+
+  it('fails closed on chat completions when no API key is configured', async () => {
+    const handler = createHandler({ apiKey: '' });
+    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hello' }] }) }));
+    expect(resp.status).toBe(401);
+  });
+
+  it('fails closed on Anthropic messages when no API key is configured', async () => {
+    const handler = createHandler({ apiKey: '' });
+    const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hello' }] }) }));
+    expect(resp.status).toBe(401);
   });
 });
 
@@ -184,9 +209,9 @@ describe('guardian openai api non-streaming policy characterization', () => {
     const calls: CapturedCall[] = [];
     const api = new GuardianOpenAiApi();
     Object.defineProperty(api, 'secret', { get: () => 'test-secret' });
-    Object.defineProperty(api, 'apiKey', { get: () => '' });
+    Object.defineProperty(api, 'apiKey', { get: () => TEST_API_KEY });
     const handler = api.createFetch(policyEventStub(calls) as typeof fetch);
-    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hi' }] }) }));
+    const resp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', headers: AUTH_HEADERS, body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hi' }] }) }));
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     const content = (((body.choices as Array<Record<string, unknown>>)[0].message as Record<string, unknown>).content);
@@ -227,15 +252,15 @@ describe('guardian openai api shared injectable client', () => {
 
     const api = new GuardianOpenAiApi();
     Object.defineProperty(api, 'secret', { get: () => 'test-secret' });
-    Object.defineProperty(api, 'apiKey', { get: () => '' });
+    Object.defineProperty(api, 'apiKey', { get: () => TEST_API_KEY });
     const handler = api.createFetch(injected);
 
-    const nonStream = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hi' }] }) }));
+    const nonStream = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', headers: AUTH_HEADERS, body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hi' }] }) }));
     expect(nonStream.status).toBe(200);
     const nonStreamCount = injectedCalls.length;
     expect(nonStreamCount).toBeGreaterThan(0);
 
-    const streamResp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'gpt-4', stream: true, messages: [{ role: 'user', content: 'hi' }] }) }));
+    const streamResp = await handler(new Request('http://api/v1/chat/completions', { method: 'POST', headers: AUTH_HEADERS, body: JSON.stringify({ model: 'gpt-4', stream: true, messages: [{ role: 'user', content: 'hi' }] }) }));
     expect(streamResp.status).toBe(200);
     // Drain the stream so the underlying fetch calls actually execute.
     await streamResp.text();
@@ -280,9 +305,9 @@ describe('guardian openai api error handling', () => {
     const throwFetch = (async () => { throw new Error('network error'); }) as typeof fetch;
     const api = new GuardianOpenAiApi();
     Object.defineProperty(api, 'secret', { get: () => 'test-secret' });
-    Object.defineProperty(api, 'apiKey', { get: () => '' });
+    Object.defineProperty(api, 'apiKey', { get: () => TEST_API_KEY });
     const handler = api.createFetch(throwFetch);
-    const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hi' }] }) }));
+    const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', headers: ANTHROPIC_AUTH_HEADERS, body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hi' }] }) }));
     expect(resp.status).toBe(502);
   });
 });
