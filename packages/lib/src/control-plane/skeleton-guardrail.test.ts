@@ -74,6 +74,19 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "system", "stack", "addons"))).toBe(false);
   });
 
+  test("voice compose fallback overlays ship as STATIC skeleton files (2.2 — no generators)", () => {
+    // Materialized into every OP_HOME by applyHomeSeed (system/ is always
+    // overwritten wholesale), same as core/services/portals.compose.yml. The
+    // voice bring-up engine only decides whether to reference the file that's
+    // already there — nothing generates these at runtime.
+    const cdi = join(SKELETON_DIR, "system", "stack", "voice.compose.cdi.yml");
+    const rootless = join(SKELETON_DIR, "system", "stack", "voice.compose.rootless.yml");
+    expect(existsSync(cdi)).toBe(true);
+    expect(existsSync(rootless)).toBe(true);
+    expect(readFileSync(cdi, "utf-8")).toContain("voice-cuda:");
+    expect(readFileSync(rootless, "utf-8")).toContain("user: null");
+  });
+
   test("config/akm/ exists", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "akm"))).toBe(true);
   });

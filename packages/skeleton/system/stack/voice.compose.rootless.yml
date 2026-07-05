@@ -1,0 +1,14 @@
+# Static fallback overlay — removes the `user:` directive from voice services.
+# Applied only when `docker info` reports a rootless daemon (lib control-plane
+# /voice-host-probes.ts detectRootlessDocker). On rootless Docker the
+# compose-baked UID has no write access to the bind-mounted state directory;
+# letting Docker pick the namespaced UID restores it. Covers all three voice
+# service variants so the overlay works no matter which profile is active.
+# Setting the directive to YAML null drops it entirely when compose merges files.
+services:
+  voice:
+    user: null
+  voice-cuda:
+    user: null
+  voice-rocm:
+    user: null

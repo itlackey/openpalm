@@ -41,7 +41,7 @@ type DeployScenario = {
   composePsRows?: Array<{ Service: string; State: string; Health: string }>;
   /** Service names to expect in a successful deploy. */
   expectedServices?: string[];
-  /** Simulate a `--wait` health-gate failure: composeUp mock returns ok:false. */
+  /** Simulate a `--wait` health-gate failure: applyStack mock returns ok:false. */
   composeUpFails?: boolean;
   /** Seed a custom overlay that grants an unauthorized secret (S.2.2 refusal). */
   badOverlay?: boolean;
@@ -71,7 +71,7 @@ function makeState() {
   mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
   mkdirSync(join(home, 'config', 'stack'), { recursive: true });
   mkdirSync(join(home, 'data'), { recursive: true });
-  // Use a non-dev tag so composeUp is invoked with pull:'missing' (mocked).
+  // Use a non-dev tag so applyStack is invoked with pull:'missing' (mocked).
   writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.12.0\\n');
   // S.2.2: runDeploy now runs auditApplyState (validateProposedState) before
   // touching containers; a missing login password would block the deploy.
@@ -133,12 +133,15 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
     return rows;
   },
   composeDown: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composeUp: async () => {
-    if (scenario.composeUpFails) return { ok: false, stdout: '', stderr: 'up failed: container is unhealthy', code: 1 };
-    return { ok: true, stdout: '', stderr: '', code: 0 };
+  // applyStack is the single compose driver (plan 2.2). A composeUpFails
+  // scenario returns a partial failure (upFailed:false) — runDeploy then reads
+  // composePs via refreshDeployStatus to split the failure into core/optional.
+  applyStack: async () => {
+    if (scenario.composeUpFails) {
+      return { ok: false, started: [], failed: [], error: 'up failed: container is unhealthy', upFailed: false, rawStderr: 'up failed: container is unhealthy' };
+    }
+    return { ok: true, started: scenario.expectedServices ?? ['assistant'], failed: [] };
   },
-  composePull: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composePullRetry: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   resolveComposeProjectName: () => 'openpalm',
   isProjectOurs: (workingDir, expected) => workingDir === '' || workingDir === expected,
   buildComposeCommandArgs: (options) => [

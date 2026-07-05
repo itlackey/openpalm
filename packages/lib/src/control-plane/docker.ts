@@ -400,42 +400,6 @@ export async function composeConfigServices(
 }
 
 /**
- * Run `docker compose up -d --wait` with the generated compose file(s).
- * Pass `files` to merge multiple compose overlays (e.g. core + addon files).
- *
- * `--wait --wait-timeout` is the SINGLE health gate (§2.1): compose itself
- * blocks until every targeted service is running+healthy (or the wait times
- * out), so callers never need a separate health-poll loop. `pull` maps
- * straight to compose's own `--pull` flag ("missing" — the compose default,
- * pull only when the image isn't present locally; "never" — dev-tag images
- * built locally, must not attempt a registry pull; "always" — force a fresh
- * pull even if present locally).
- */
-export async function composeUp(
-  options: {
-    files: string[];
-    profiles?: string[];
-    services?: string[];
-    envFiles?: string[];
-    forceRecreate?: boolean;
-    removeOrphans?: boolean;
-    pull?: "missing" | "never" | "always";
-  }
-): Promise<DockerResult> {
-  await runPreflight(options);
-  if (!existsSync(options.files[0])) {
-    return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
-  }
-  const args = buildComposeArgs(options);
-  args.push("up", "-d", "--wait", "--wait-timeout", String(composeWaitTimeoutSec()));
-  args.push("--pull", options.pull ?? "missing");
-  if (options.forceRecreate) args.push("--force-recreate");
-  if (options.removeOrphans) args.push("--remove-orphans");
-  if (options.services?.length) args.push(...options.services);
-  return run(args, undefined, composeUpTimeoutMs(), collectComposeEnvOverrides(options.envFiles));
-}
-
-/**
  * Timeout budget for `compose up`. A first install extracts multi-GB images
  * (voice CUDA ~7.6 GB) onto slow disks; the previous hard 5-minute cap
  * SIGTERM-killed the start mid-extraction and surfaced as an empty/opaque
@@ -444,7 +408,7 @@ export async function composeUp(
  *
  * Exported so interactive callers that stream stdio (the CLI's `up` path via
  * {@link runComposeStreaming}) apply the SAME budget as the capturing
- * {@link composeUp} — the two must not diverge.
+ * {@link applyStack} — the two must not diverge.
  */
 export function composeUpTimeoutMs(): number {
   const raw = process.env.OP_COMPOSE_UP_TIMEOUT_MS?.trim();
@@ -678,28 +642,6 @@ export async function composeLogs(
 const PULL_TIMEOUT_MS = 60 * 60_000;
 
 /**
- * Pull image for a single service.
- */
-export async function composePullService(
-  service: string,
-  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
-): Promise<DockerResult> {
-  await runPreflight(options);
-  const args = buildComposeArgs(options);
-  args.push("pull", service);
-  return run(args, undefined, PULL_TIMEOUT_MS, collectComposeEnvOverrides(options.envFiles));
-}
-
-export async function composePull(
-  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
-): Promise<DockerResult> {
-  await runPreflight(options);
-  const args = buildComposeArgs(options);
-  args.push("pull");
-  return run(args, undefined, PULL_TIMEOUT_MS, collectComposeEnvOverrides(options.envFiles));
-}
-
-/**
  * Get resource usage stats for all containers in the project.
  */
 export async function composeStats(
@@ -838,79 +780,134 @@ export async function getRunningImages(options: {
 
 export type ApplyStackScope =
   | { kind: "service"; service: string }
+  | { kind: "services"; services: string[] }
   | { kind: "all" };
 
 export type ApplyStackResult = {
   ok: boolean;
   /** Services that were successfully brought up. */
   started: string[];
-  /** Per-service failures from compose stderr. */
+  /** Per-service failures. */
   failed: { service: string; reason: string }[];
-  /** Top-level error string (when compose itself fails and no per-service parse). */
+  /** Top-level error string (when compose itself fails). */
   error?: string;
+  /**
+   * True only when the `up` invocation itself failed (no service in scope
+   * ever started) — the early-return branch below. Undefined/false means
+   * `up` succeeded but at least one service failed its post-up health wait.
+   * Lets callers with their own domain-specific stderr translation (e.g. the
+   * voice addon's operator-facing hints) distinguish the two failure classes
+   * without string-sniffing `error`.
+   */
+  upFailed?: boolean;
+  /**
+   * Raw compose stderr from the `up` invocation, present only when
+   * `upFailed` is true. `error` is already {@link mapDockerError}-translated
+   * for the generic admin UI; this is for callers that need to run their own
+   * translation over the untouched stderr.
+   */
+  rawStderr?: string;
 };
 
 /**
- * The SINGLE Docker Compose driver for update (§4.3).
+ * Options for the single {@link applyStack} driver. Both fields are optional;
+ * omitting the param is byte-identical to the default apply.
  *
- * pull-before-up, always. Pull failure is FATAL — never silently falls through
- * to a stale local image. Active profiles are always passed (§4.3 "profiles on
- * every command"). Success = running AND healthy — `up -d --wait` IS the gate
- * (§2.1): compose blocks until every targeted service reaches running+healthy
- * or `--wait-timeout` elapses, so there is no separate per-container poll loop.
+ * - `pull` maps straight to compose's own `up --pull` flag. Default `"missing"`
+ *   (plan 2.2's single semantic): an image already present locally needs no
+ *   network call — a locally-built dev tag comes up without a doomed registry
+ *   pull, and an apply that changes no pin never touches the registry — while a
+ *   changed pin makes the new tag "missing", so compose pulls it as part of the
+ *   same `up` and that pull failure is FATAL. `"always"` force-refreshes even a
+ *   same-tag image (the manual "pull latest" button).
+ * - `healthTimeoutMs` widens compose's own `--wait-timeout` beyond the default
+ *   for a caller (e.g. the voice addon's slow cold boot) that tolerates a longer
+ *   start.
+ */
+export type ApplyStackOptions = {
+  pull?: "always" | "missing";
+  healthTimeoutMs?: number;
+};
+
+/**
+ * The SINGLE Docker Compose driver for install/update/upgrade/pull (§4.3, plan 2.2).
  *
- * scope = { kind:"service", service:"assistant" }  →  pull <svc> + up --force-recreate --no-deps <svc>
- * scope = { kind:"all" }                           →  pull + up --remove-orphans
+ * ONE `up -d --pull <mode> --wait --force-recreate` invocation — no separate
+ * `pull` step. `--pull missing` (the default) resolves the R1-R4 semantic fork
+ * the same way for every caller: an image already present locally needs no
+ * network call, so an apply that doesn't change any version pin never touches
+ * the registry and a locally-built dev tag comes up without a doomed registry
+ * pull; a pin that DID change makes the new tag "missing", so compose pulls it
+ * as part of `up` and a pull failure there is FATAL — surfaced via the same
+ * `!upResult.ok` path as any other `up` failure, never a silent fall-through to
+ * a stale local image. `--pull always` (the manual pull button) force-refreshes
+ * even a same-tag image. `--force-recreate` is REQUIRED on every scope so a
+ * container whose managed compose config is unchanged still restarts onto a
+ * freshly pulled same-tag image (#450). Active profiles are always passed
+ * (§4.3). Success = running AND healthy — `up -d --wait` IS the single health
+ * gate (§2.1): compose blocks until every targeted service reaches
+ * running+healthy or `--wait-timeout` elapses, so there is no separate
+ * per-container poll loop; on failure ONE `compose ps --format json` call names
+ * which services didn't come up.
  *
- * Callers (install and update endpoints) pass the resolved ComposeOptions so
- * this function never builds them itself — profiles are already resolved.
+ * scope = { kind:"service", service:"assistant" }    →  up --pull <mode> --wait --force-recreate --no-deps <svc>
+ * scope = { kind:"services", services:["a","b"] }     →  up --pull <mode> --wait --force-recreate --no-deps <a> <b>
+ * scope = { kind:"all" }                              →  up --pull <mode> --wait --force-recreate --remove-orphans
+ *
+ * `services` (plural) is the multi-service sibling of `service` — a named,
+ * pre-resolved subset (e.g. every service in one addon profile) recreated
+ * together with no `--remove-orphans`, exactly like the singular form. It
+ * exists so a caller that owns a named group of services (e.g. the voice
+ * addon's bring-up flow, or the manual pull button) can route through this
+ * single driver instead of reimplementing its own up + health-wait.
+ *
+ * Callers pass the resolved ComposeOptions so this function never builds them
+ * itself — profiles are already resolved.
  */
 export async function applyStack(
   scope: ApplyStackScope,
   options: { files: string[]; envFiles?: string[]; profiles?: string[] },
   deps: StackDeps = defaultStackDeps,
+  applyOpts: ApplyStackOptions = {},
 ): Promise<ApplyStackResult> {
   const { docker, files } = deps;
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
   const base = buildComposeArgs(options, files);
+  const pullMode = applyOpts.pull ?? "missing";
+  const waitTimeoutSec = applyOpts.healthTimeoutMs
+    ? Math.max(1, Math.ceil(applyOpts.healthTimeoutMs / 1000))
+    : composeWaitTimeoutSec();
 
-  // ── 1. Pull the whole target set FIRST (§4.3 "Pull the whole target set first") ──
-  const pullArgs = [...base, "pull"];
-  if (scope.kind === "service") pullArgs.push(scope.service);
-
-  const pullResult = await docker.run(pullArgs, { timeoutMs: PULL_TIMEOUT_MS, env: envOverrides });
-  if (!pullResult.ok) {
-    // Pull failure is FATAL (§6, constitution §8 "never swallowed").
-    const mapped = mapDockerError(pullResult.stderr || "image pull failed");
-    return {
-      ok: false,
-      started: [],
-      failed: [{ service: scope.kind === "service" ? scope.service : "stack", reason: mapped.message }],
-      error: mapped.message,
-    };
-  }
-
-  // ── 2. Compose up — `--wait --wait-timeout` is the single health gate (§2.1) ──
-  const upArgs = [...base, "up", "-d", "--wait", "--wait-timeout", String(composeWaitTimeoutSec())];
+  // ── 1. ONE `up` — pull, recreate, and the `--wait` health gate all together ──
+  const upArgs = [...base, "up", "-d", "--pull", pullMode, "--wait", "--wait-timeout", String(waitTimeoutSec), "--force-recreate"];
   if (scope.kind === "service") {
-    upArgs.push("--force-recreate", "--no-deps", scope.service);
+    upArgs.push("--no-deps", scope.service);
+  } else if (scope.kind === "services") {
+    upArgs.push("--no-deps", ...scope.services);
   } else {
     upArgs.push("--remove-orphans");
   }
 
-  const upResult = await docker.run(upArgs, { timeoutMs: composeUpTimeoutMs(), env: envOverrides });
+  // Budget covers both the (possible) pull and the recreate: a changed pin's
+  // image may need the full pull window (multi-GB, slow connection) AND the
+  // full up window (multi-GB extraction on slow disk) in the same call.
+  const upResult = await docker.run(upArgs, { timeoutMs: PULL_TIMEOUT_MS + composeUpTimeoutMs(), env: envOverrides });
 
   const targetServices =
     scope.kind === "service"
       ? [scope.service]
-      : await (async () => {
-          const configArgs = [...base, "config", "--services"];
-          const r = await docker.run(configArgs, { timeoutMs: 15_000, env: envOverrides });
-          return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
-        })();
+      : scope.kind === "services"
+        ? scope.services
+        : await (async () => {
+            const configArgs = [...base, "config", "--services"];
+            const r = await docker.run(configArgs, { timeoutMs: 15_000, env: envOverrides });
+            return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
+          })();
 
-  // ── 3. On failure, ONE `compose ps --format json` call names the failed
-  //      services (§2.1) — no per-container inspect polling.
+  // ── 2. On failure, ONE `compose ps --format json` call names the failed
+  //      services (§2.1) — no per-container inspect polling. `upFailed` +
+  //      `rawStderr` let a caller with its own stderr translation (the voice
+  //      addon) distinguish "up never came up" from "some service unhealthy".
   if (!upResult.ok) {
     const psArgs = [...base, "ps", "--format", "json"];
     const psResult = await docker.run(psArgs, { timeoutMs: 15_000, env: envOverrides });
@@ -923,6 +920,8 @@ export async function applyStack(
         started: [],
         failed: targetServices.map((service) => ({ service, reason: mapped.message })),
         error: mapped.message,
+        upFailed: true,
+        rawStderr: upResult.stderr,
       };
     }
     const started: string[] = [];
@@ -945,9 +944,11 @@ export async function applyStack(
       started,
       failed,
       error: failed.map((f) => f.reason).join("; ") || mapDockerError(upResult.stderr).message,
+      upFailed: started.length === 0,
+      rawStderr: upResult.stderr,
     };
   }
 
-  // ── 4. Success — `--wait` already confirmed every target service is healthy ──
+  // ── 3. Success — `--wait` already confirmed every target service is healthy ──
   return { ok: true, started: targetServices, failed: [] };
 }

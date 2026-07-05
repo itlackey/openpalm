@@ -321,13 +321,27 @@ braille-spinner stderr parser, and four compose drivers (the fourth, `voice/brin
   `OP_ENABLED_ADDONS` — otherwise installs that enabled voice/ollama only via profile vars
   silently lose them. Add an upgrade-path test (profile-var-only install → update → addon
   still enabled), per the standing test-the-upgrade-path rule.
+
+> **Scope note:** the compose-normalization bullet (route mutation-path consumers through
+> `compose config --format json`) was **carved out of 2.2 into its own item 2.3** below — it is
+> an independent refactor of `normalizeVolume`/`env.ts` interpolation with no dependency on the
+> driver collapse, and folding it in would have muddied the "one compose driver" exit gate. **2.2
+> explicitly excludes it.**
+
+**Phase 2 exit gate:** the repo has exactly one compose driver; diff is strongly net-negative;
+upgrade-path test green.
+
+### 2.3 Route compose normalization through `compose config --format json`
+
+*(carved out of 2.2; R1-F5/R2-B6; depends on 2.2)*
+
 - Route mutation-path consumers of the bespoke compose normalization through
   `compose config --format json` (the verified-precise form of R1-F5/R2-B6: the `yaml` library
   is real; only `normalizeVolume`'s `split(':')` and the `env.ts:25-27` interpolation subset
   are hand-rolled and fragile).
 
-**Phase 2 exit gate:** the repo has exactly one compose driver; diff is strongly net-negative;
-upgrade-path test green.
+**2.3 exit gate:** no consumer parses a raw compose file for volume/env-interpolation semantics
+that `compose config --format json` already resolves; diff is net-negative.
 
 ## Phase 3 — Lock, harness, coverage, deletions
 
