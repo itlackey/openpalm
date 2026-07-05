@@ -222,9 +222,10 @@ export async function reconcileHostOwnership(
   const needsRepair = sessionIds !== null && (adoptHost || decision === 'drift' || !alreadyRepaired);
 
   if (sessionIds && needsRepair) {
-    await repairRootOwnedBindMounts(homeDir, ownershipRepairPaths(state), { strict: adoptHost, deep: true });
+    const bindMountsOk = await repairRootOwnedBindMounts(homeDir, ownershipRepairPaths(state), { strict: adoptHost, deep: true });
+    let namedVolumesOk = true;
     if (services && services.length > 0) {
-      await repairManagedNamedVolumes(homeDir, services, { strict: adoptHost });
+      namedVolumesOk = await repairManagedNamedVolumes(homeDir, services, { strict: adoptHost });
     }
     if (decision === 'swap' && adoptHost) {
       // Compose interpolates `user: "${OP_UID}:${OP_GID}"` from the stack env,
@@ -232,7 +233,24 @@ export async function reconcileHostOwnership(
       // adopted (session) ids so containers run as the uid we just chowned to.
       patchStateEnvFile(homeDir, { OP_UID: String(sessionIds.uid), OP_GID: String(sessionIds.gid) });
     }
-    writeOwnershipRepairMarker(homeDir, sessionIds);
+    // Only record "repaired for this uid" when every repair actually
+    // succeeded (R9-F2/X15): both helpers swallow docker-chown failures in
+    // non-strict mode rather than throwing, so writing the marker
+    // unconditionally would wedge a failed repair as permanently "done" —
+    // the next start would skip the repair walk forever with no retry and no
+    // error. Skipping the marker on failure means the very next `openpalm
+    // start` simply retries (no new state, no new flag). If it keeps
+    // failing, `openpalm start --adopt-host` forces a strict repair that
+    // throws with the underlying docker error instead of failing silently.
+    if (bindMountsOk && namedVolumesOk) {
+      writeOwnershipRepairMarker(homeDir, sessionIds);
+    } else {
+      logger.warn(
+        `Ownership repair did not fully succeed for uid=${sessionIds.uid} — not recording it as done; ` +
+        'the next `openpalm start` will retry automatically. If it keeps failing, run ' +
+        '`openpalm start --adopt-host` to force a full repair and see the underlying error.',
+      );
+    }
   } else if (sessionIds) {
     logger.info(`Ownership already reconciled for uid=${sessionIds.uid} — skipping repair walk`);
   }
