@@ -14,6 +14,7 @@
  * from methods — never at construction — for SSR safety.
  */
 import { notifications } from '$lib/notifications.svelte.js';
+import { toSpeakableText } from './speakable-text.js';
 import type { SpeakTextOptions, TtsEngine, VoiceStatus } from './voice-state.svelte.js';
 
 /**
@@ -195,6 +196,21 @@ export class AudioPlaybackController {
   private async playOne(text: string, options?: SpeakTextOptions): Promise<void> {
     if (typeof window === 'undefined' || !text.trim()) return;
 
+    // Strip markdown once, up front, so neither the server request body nor
+    // the browser-TTS fallback ever speaks raw markdown syntax aloud. The
+    // server applies its own (LLM-based) speech prep on top of this when a
+    // mode is given, but falls back to the same deterministic stripping.
+    const speakableText = toSpeakableText(text);
+    if (!speakableText) {
+      // Nothing left to say (e.g. a reply that was pure markdown noise) —
+      // skip straight to the next queued utterance instead of stalling
+      // the queue on a chunk that would never fire onended/onerror.
+      const next = this.speakQueue.shift();
+      if (next) void this.playOne(next.text, next.options);
+      else this.overflowNoticed = false;
+      return;
+    }
+
     // We're about to start fresh — any pending autoplay-retry from a
     // previous reply is now stale.
     this.teardownPendingAutoplay();
@@ -213,7 +229,7 @@ export class AudioPlaybackController {
           headers: { 'content-type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            text,
+            text: speakableText,
             ...(options?.mode && options.mode !== 'plain' ? { mode: options.mode } : {}),
             ...(options?.userText ? { userText: options.userText } : {}),
             ...(options?.assistantText ? { assistantText: options.assistantText } : {}),
@@ -284,7 +300,7 @@ export class AudioPlaybackController {
     }
     // Clear the error if we have a viable browser fallback.
     if (useServer) this.host.errorMessage = '';
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(speakableText);
     utterance.onstart = () => { this.host.status = 'speaking'; };
     utterance.onend = () => {
       this.host.status = 'idle';

@@ -18,6 +18,7 @@ import {
   requireAdmin,
 } from '$lib/server/helpers.js';
 import { prepareSpeechText } from '$lib/server/speech-prep.js';
+import { toSpeakableText } from '$lib/voice/speakable-text.js';
 
 const DEFAULT_MODEL = 'kokoro';
 const DEFAULT_VOICE = 'bf_isabella';
@@ -82,7 +83,10 @@ export const POST: RequestHandler = async (event) => {
   const voice = typeof b.voice === 'string' && b.voice.trim() ? b.voice.trim() : ttsVoice;
   const format = typeof b.format === 'string' && b.format.trim() ? b.format.trim() : DEFAULT_FORMAT;
 
-  let speechText = text;
+  // Default to deterministic markdown stripping. LLM speech prep (below)
+  // overrides this on success — but any no-mode/failed/null-prep path must
+  // still never send raw markdown syntax upstream to be spoken aloud.
+  let speechText = toSpeakableText(text);
   if (mode) {
     try {
       const prepared = await prepareSpeechText({ mode, userText, assistantText });

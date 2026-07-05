@@ -172,3 +172,122 @@ describe('POST /api/speak speech prep', () => {
     expect(JSON.stringify(messageBody.parts)).toContain('Full agent answer.');
   });
 });
+
+describe('POST /api/speak markdown stripping fallback', () => {
+  test('no mode given: markdown is stripped before hitting the TTS endpoint', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      const target = String(url);
+      calls.push({ url: target, init });
+      if (target === 'http://tts.local/v1/audio/speech') {
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'audio/wav' },
+        });
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const res = await POST(makePostEvent({ text: '**Bold** reply with `code` and a [link](https://example.com).' }));
+    expect(res.status).toBe(200);
+
+    const ttsCall = calls.find((call) => call.url === 'http://tts.local/v1/audio/speech');
+    expect(ttsCall).toBeDefined();
+    const ttsBody = JSON.parse(String(ttsCall?.init?.body)) as Record<string, unknown>;
+    expect(ttsBody.input).toBe('Bold reply with code and a link.');
+  });
+
+  test('speech prep failure: falls back to stripped markdown, not raw text', async () => {
+    mkdirSync(join(getState().configDir, 'assistant'), { recursive: true });
+    writeFileSync(
+      join(getState().configDir, 'assistant', 'opencode.json'),
+      `${JSON.stringify({ model: 'openai/gpt-4.1' })}\n`,
+    );
+
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      const target = String(url);
+      calls.push({ url: target, init });
+      if (target === 'http://assistant.local/config') {
+        // Speech prep fails here, forcing the deterministic fallback.
+        return new Response('boom', { status: 500 });
+      }
+      if (target === 'http://tts.local/v1/audio/speech') {
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'audio/wav' },
+        });
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const res = await POST(makePostEvent({
+      text: '# Heading\n- one\n- two',
+      mode: 'chat_reply',
+      userText: 'Explain the plan.',
+      assistantText: '# Heading\n- one\n- two',
+    }));
+    expect(res.status).toBe(200);
+
+    const ttsCall = calls.find((call) => String(call.url) === 'http://tts.local/v1/audio/speech');
+    expect(ttsCall).toBeDefined();
+    const ttsBody = JSON.parse(String(ttsCall?.init?.body)) as Record<string, unknown>;
+    expect(ttsBody.input).toBe('Heading\none.\ntwo.');
+  });
+
+  test('speech prep returns null: falls back to stripped markdown', async () => {
+    mkdirSync(join(getState().configDir, 'assistant'), { recursive: true });
+    writeFileSync(
+      join(getState().configDir, 'assistant', 'opencode.json'),
+      `${JSON.stringify({ model: 'openai/gpt-4.1' })}\n`,
+    );
+
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      const target = String(url);
+      calls.push({ url: target, init });
+      if (target === 'http://assistant.local/config') {
+        return new Response(JSON.stringify({ model: 'openai/gpt-4.1' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (target === 'http://assistant.local/session') {
+        return new Response(JSON.stringify({ id: 'prep-3' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (target === 'http://assistant.local/session/prep-3/message') {
+        // Empty parts -> prepareSpeechText resolves to null.
+        return new Response(JSON.stringify({ parts: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (target === 'http://assistant.local/session/prep-3') {
+        return new Response(null, { status: 204 });
+      }
+      if (target === 'http://tts.local/v1/audio/speech') {
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'audio/wav' },
+        });
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const res = await POST(makePostEvent({
+      text: '**Full** agent answer.',
+      mode: 'chat_reply',
+      userText: 'Explain the plan.',
+      assistantText: '**Full** agent answer.',
+    }));
+    expect(res.status).toBe(200);
+
+    const ttsCall = calls.find((call) => call.url === 'http://tts.local/v1/audio/speech');
+    expect(ttsCall).toBeDefined();
+    const ttsBody = JSON.parse(String(ttsCall?.init?.body)) as Record<string, unknown>;
+    expect(ttsBody.input).toBe('Full agent answer.');
+  });
+});
