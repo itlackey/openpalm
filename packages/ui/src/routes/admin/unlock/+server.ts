@@ -51,13 +51,23 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
+  // Explicit opt-in only: `{ "force": true }` clears a lock whose recorded PID
+  // is still alive (the reused-PID case a liveness check cannot resolve). Absent
+  // or non-true → stale-only behaviour.
+  let force = false;
   try {
-    const result = unlockInstallLock(state.dataDir);
+    const body = await event.request.clone().json();
+    force = body?.force === true;
+  } catch {
+    /* no/invalid body — treat as a non-forced clear */
+  }
+  try {
+    const result = unlockInstallLock(state.dataDir, { force });
     if (!result.ok) {
       return errorResponse(
         409,
         "install_in_progress",
-        "An install or upgrade still appears to be running. The lock clears itself automatically once it finishes or after 30 minutes. Nothing was changed.",
+        "An install or upgrade still appears to be running. The lock clears itself automatically once it finishes or after 30 minutes. Nothing was changed. Send { \"force\": true } to clear it anyway if the recorded PID was reused by an unrelated process.",
         { status: result.status },
         requestId,
       );
@@ -65,6 +75,7 @@ export const POST: RequestHandler = async (event) => {
     logger.info("cleared install lock via admin", {
       requestId,
       removed: result.removed,
+      forced: force && result.status.present && !result.status.stale,
     });
     return jsonResponse(
       200,

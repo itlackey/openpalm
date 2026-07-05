@@ -228,24 +228,31 @@ export type UnlockResult =
   | { ok: false; reason: "live"; status: InstallLockStatus };
 
 /**
- * Remove the install lock ONLY if it is stale (dead holder PID, or an
- * unparseable file older than the mtime fallback window). Never blind-removes a
- * lock held by a live install, however old. Returns `{ ok: false, reason: "live" }`
- * when the lock is still active so the caller can surface a clear message instead
- * of forcing.
+ * Remove the install lock. By default removes ONLY a stale lock (dead holder
+ * PID, or an unparseable file older than the mtime fallback window) and returns
+ * `{ ok: false, reason: "live" }` for a live holder so the caller can surface a
+ * clear message instead of forcing.
+ *
+ * `opts.force` removes the lock regardless of holder liveness. This is the
+ * escape hatch for the one case a liveness check cannot resolve on its own: the
+ * recorded PID belonged to a crashed holder but the OS has since reused that PID
+ * for an unrelated live process, so `isStale` reports the lock as held forever.
+ * Forcing is an explicit operator action (`openpalm unlock --force`) — the
+ * caller owns the risk of clearing a lock a real install might still hold.
  */
-export function unlockInstallLock(dataDir: string): UnlockResult {
+export function unlockInstallLock(dataDir: string, opts?: { force?: boolean }): UnlockResult {
   const status = inspectInstallLock(dataDir);
   if (!status.present) {
     // Nothing to remove — treat as success (idempotent).
     return { ok: true, removed: false, status };
   }
-  if (!status.stale) {
+  if (!status.stale && !opts?.force) {
     return { ok: false, reason: "live", status };
   }
+  const forced = !status.stale && opts?.force === true;
   try {
     rmSync(status.path, { force: true });
-    logger.info("removed stale install lock via unlock", { path: status.path });
+    logger.info(forced ? "force-removed a live install lock via unlock" : "removed stale install lock via unlock", { path: status.path });
   } catch (err) {
     logger.warn("failed to remove stale install lock during unlock", {
       path: status.path,
