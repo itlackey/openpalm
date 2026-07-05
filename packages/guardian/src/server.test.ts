@@ -9,6 +9,7 @@ import { OC_DOC_FIXTURE } from './oc-doc-fixture';
 
 const TEST_SECRET = 'test-secret-value-1234';
 const TEST_PRINCIPAL = 'test';
+const TEST_ADMIN_TOKEN = 'test-admin-token-abcd';
 
 let guardianProc: Subprocess;
 let mockAssistantServer: ReturnType<typeof Bun.serve>;
@@ -55,9 +56,15 @@ function ocCall(
   return fetch(`${guardianUrl}/oc${path}`, { ...init, headers });
 }
 
+function statsRequest(): Promise<Response> {
+  return fetch(`${guardianUrl}/stats`, {
+    headers: { authorization: `Bearer ${TEST_ADMIN_TOKEN}` },
+  });
+}
+
 async function waitForProxyEnabled(): Promise<void> {
   for (let i = 0; i < 50; i++) {
-    const resp = await fetch(`${guardianUrl}/stats`);
+    const resp = await statsRequest();
     if (resp.ok && (await resp.json()).oc_proxy?.enabled === true) return;
     await Bun.sleep(100);
   }
@@ -110,6 +117,8 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'guardian-test-'));
   const secretPath = join(tmpDir, 'test-secret');
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
+  const adminTokenPath = join(tmpDir, 'admin-token');
+  writeFileSync(adminTokenPath, `${TEST_ADMIN_TOKEN}\n`);
 
   mockAssistantServer = startMockAssistant();
 
@@ -121,6 +130,8 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(directPort),
       GUARDIAN_ADMIN_PORT: String(adminPort),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, 'state.db'),
+      GUARDIAN_ADMIN_TOKEN_FILE: adminTokenPath,
+      GUARDIAN_INTERNAL_HOST: '127.0.0.1',
       PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
@@ -170,8 +181,14 @@ describe('Guardian server integration', () => {
     expect(data.ready).toBe(true);
   });
 
-  it('GET /stats reports current proxy and listener state', async () => {
+  it('GET /stats without the admin token returns 401 unauthorized', async () => {
     const resp = await fetch(`${guardianUrl}/stats`);
+    expect(resp.status).toBe(401);
+    expect((await resp.json()).error).toBe('unauthorized');
+  });
+
+  it('GET /stats with the admin token reports current proxy and listener state', async () => {
+    const resp = await statsRequest();
     expect(resp.status).toBe(200);
     const data = await resp.json();
     expect(Array.isArray(data.principals)).toBe(true);

@@ -3,7 +3,7 @@ import { createLogger } from './logger.ts';
 import guardianPkg from '../package.json' with { type: 'json' };
 
 import { json } from './http-util.ts';
-import { handleAdminRequest } from './admin';
+import { authorizeAdminToken, handleAdminRequest } from './admin';
 import { audit } from './audit';
 import { basicTokenAuthStrategy, getAuthStrategy } from './auth.ts';
 import { eventSubscriberCount } from './event-fanout';
@@ -28,6 +28,14 @@ import { DIRECT_PORT } from './config';
 const logger = createLogger('guardian');
 
 const INTERNAL_PORT = Number(Bun.env.PORT ?? 8080);
+// Interface the internal (portal-ingress) listener binds. Configurable so a
+// deployment can pin it to the portal-net interface instead of every interface
+// (e.g. keeping it off assistant_net). Unset ⇒ Bun binds all interfaces, which
+// the shipped container needs: the internal listener is reached over portal_net
+// (`guardian:8080/oc`) AND over loopback (the healthcheck and the in-container
+// OpenAI co-process both dial `localhost:8080`), two interfaces a single
+// hostname cannot cover.
+const INTERNAL_HOST = Bun.env.GUARDIAN_INTERNAL_HOST || undefined;
 const ADMIN_PORT = Number(Bun.env.GUARDIAN_ADMIN_PORT ?? 3831);
 const DIRECT_INGRESS_ENABLED = Bun.env.GUARDIAN_DIRECT_INGRESS === 'true';
 const MCP_ENABLED = Bun.env.GUARDIAN_MCP === 'true';
@@ -107,7 +115,14 @@ async function handleInternalRequest(req: Request, clientIp = ''): Promise<Respo
 
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
   if (url.pathname === '/health/ready' && req.method === 'GET') return handleHealthReady(requestId);
-  if (url.pathname === '/stats' && req.method === 'GET') return statsResponse();
+  if (url.pathname === '/stats' && req.method === 'GET') {
+    // /stats discloses the principal roster and rate-limit/ownership counters —
+    // useful for ops, but reconnaissance for anything on the guardian's bridge
+    // networks. Gate it on the same admin bearer token the admin listener
+    // enforces (fail-closed: no configured token denies all).
+    if (!(await authorizeAdminToken(req))) return json(401, { error: 'unauthorized', requestId });
+    return statsResponse();
+  }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
     return handleOcRequest(req, requestId, 'portal', clientIp);
   }
@@ -184,6 +199,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
 
   const internal = Bun.serve({
     port: INTERNAL_PORT,
+    hostname: INTERNAL_HOST,
     idleTimeout: 0,
     fetch: (req, server) => handleInternalRequest(req, server.requestIP(req)?.address ?? ''),
   });
