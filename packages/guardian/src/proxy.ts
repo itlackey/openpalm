@@ -456,12 +456,13 @@ async function routeAllowed(
 /**
  * Gate 4 — content moderation of a prompt-bearing body (§3.5). WRITE-PATH ONLY.
  *
- * Parses the `message`/`prompt_async` body, extracts every `parts[].text`,
- * concatenates them, and runs the EXISTING heuristic-screen → local-moderator
- * pipeline (moderation.ts) fail-closed. Returns the {@link ModerationResult}; the
- * caller (routeAllowed) owns the block-vs-rewrite decision so that policy stays
- * EXPLICIT at the call site. `flag` verdicts are logged here and treated as
- * forward by the caller.
+ * Parses the `message`/`prompt_async` body, extracts every `parts[].text` PLUS
+ * the optional `system` field (the only other free-text field the pinned body
+ * accepts — rev3-F2), concatenates them, and runs the EXISTING heuristic-screen
+ * → local-moderator pipeline (moderation.ts) fail-closed. Returns the
+ * {@link ModerationResult}; the caller (routeAllowed) owns the block-vs-rewrite
+ * decision so that policy stays EXPLICIT at the call site. `flag` verdicts are
+ * logged here and treated as forward by the caller.
  *
  * DELIBERATE POLICY — block vs rewrite by principal kind:
  *   - portal principals: a `block` verdict is a hard 403 (assistant never
@@ -474,11 +475,15 @@ async function routeAllowed(
  *
  * ── OPENCODE REQUEST-BODY SCHEMA COUPLING — pinned to OPENCODE_VERSION ──
  * This is the SINGLE place the proxy reaches inside an OpenCode request body
- * (design §3.5/§5). The shape is `{ parts: [{ type: "text", text: string }, …] }`
- * for both POST /session/{id}/message and POST /session/{id}/prompt_async on the
- * pinned OpenCode version. If OpenCode changes this shape on a version bump, the
- * drift guard (§5, Stage 7) fails the proxy route closed; keep this isolated and
- * update it in lockstep with OPENCODE_VERSION. Nothing else here parses bodies.
+ * (design §3.5/§5). The shape is
+ * `{ parts: [{ type: "text", text: string }, …], system?: string, … }` for both
+ * POST /session/{id}/message and POST /session/{id}/prompt_async on the pinned
+ * OpenCode version — `parts[].text` and `system` are the only free-text fields;
+ * the rest (`messageID`, `model`, `agent`, `noReply`) are routing values, not
+ * prose, so they are screened only for the rewrite whitelist, not moderated. If
+ * OpenCode changes this shape on a version bump, the drift guard (§5, Stage 7)
+ * fails the proxy route closed; keep this isolated and update it in lockstep
+ * with OPENCODE_VERSION. Nothing else here parses bodies.
  *
  * Fail-closed posture: an unparseable body is treated as having no extractable
  * text and screened as "" — moderation of empty text allows, so the upstream
@@ -508,6 +513,14 @@ async function screenPromptBody(
   return moderation;
 }
 
+// rev3-F5: only these fields may survive a moderation-block rewrite. Each is a
+// routing/selection value (which model/agent to use, an idempotency id, a
+// reply-suppression flag) — never free text that could carry an instruction.
+// `system` and any other field the pinned body accepts are deliberately dropped:
+// spreading the untrusted body would let attacker-controlled prose outside
+// `parts[]` survive the rewrite unscreened.
+const REWRITE_SAFE_FIELDS = ['messageID', 'model', 'agent', 'noReply'] as const;
+
 export function rewritePromptBody(body: string): string {
   let parsed: unknown;
   try {
@@ -516,9 +529,13 @@ export function rewritePromptBody(body: string): string {
     return JSON.stringify({ parts: [{ type: 'text', text: refusalText() }] });
   }
   const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? parsed as { parts?: unknown }
+    ? parsed as Record<string, unknown>
     : {};
-  return JSON.stringify({ ...record, parts: [{ type: 'text', text: refusalText() }] });
+  const safe: Record<string, unknown> = {};
+  for (const field of REWRITE_SAFE_FIELDS) {
+    if (record[field] !== undefined) safe[field] = record[field];
+  }
+  return JSON.stringify({ ...safe, parts: [{ type: 'text', text: refusalText() }] });
 }
 
 function refusalText(): string {
@@ -526,9 +543,11 @@ function refusalText(): string {
 }
 
 /**
- * Extract and concatenate the text of every `parts[].text` entry from a
- * message/prompt_async body. Returns "" for any body that is not the pinned
- * OpenCode shape (see the schema-coupling note on screenPromptBody).
+ * Extract and concatenate the text of every `parts[].text` entry AND the
+ * optional `system` field from a message/prompt_async body (rev3-F2 — `system`
+ * is the only other free-text field the pinned schema accepts; every remaining
+ * field is a routing value, not prose). Returns "" for any body that is not the
+ * pinned OpenCode shape (see the schema-coupling note on screenPromptBody).
  */
 function extractPromptText(body: string): string {
   let parsed: unknown;
@@ -537,9 +556,11 @@ function extractPromptText(body: string): string {
   } catch {
     return "";
   }
-  const parts = (parsed as { parts?: unknown })?.parts;
-  if (!Array.isArray(parts)) return "";
+  const record = parsed as { parts?: unknown; system?: unknown } | null;
   const texts: string[] = [];
+  if (typeof record?.system === "string" && record.system) texts.push(record.system);
+  const parts = record?.parts;
+  if (!Array.isArray(parts)) return texts.join("\n");
   for (const part of parts) {
     const t = (part as { text?: unknown })?.text;
     if (typeof t === "string" && t) texts.push(t);

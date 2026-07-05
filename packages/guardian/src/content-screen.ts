@@ -48,11 +48,17 @@ export function screenContent(text: string, metadata?: unknown): ContentScreenRe
   const metaStr = metadata === undefined ? '' : safeStringify(metadata).slice(0, 4_000);
   const haystack = metaStr ? `${text}\n${metaStr}` : text;
 
+  // rev3-F2 sub-threshold accumulation: sum EVERY matching pattern's weight
+  // rather than stopping at the first match. Several distinct phrasings that are
+  // each individually below the escalation threshold are, together, more
+  // suspicious than any one alone — capping at the first match let a message
+  // stuffed with multiple borderline injection/exfiltration phrasings stay
+  // sub-threshold and skip LLM escalation entirely.
   for (const [weight, re] of INJECTION_PATTERNS) {
-    if (re.test(haystack)) { risk += weight; signals.add('injection_phrase'); break; }
+    if (re.test(haystack)) { risk += weight; signals.add('injection_phrase'); }
   }
   for (const [weight, re] of EXFILTRATION_PATTERNS) {
-    if (re.test(haystack)) { risk += weight; signals.add('exfiltration_phrase'); break; }
+    if (re.test(haystack)) { risk += weight; signals.add('exfiltration_phrase'); }
   }
   if (CHAT_TEMPLATE_TOKENS.test(haystack)) { risk += 3; signals.add('chat_template_token'); }
   if (ROLE_MARKER.test(haystack)) { risk += 1; signals.add('role_marker'); }
