@@ -115,6 +115,18 @@ System-managed runtime configuration and secrets live under `knowledge/`:
 
 **Rule:** the assistant reads user secrets via `akm env:user` from its knowledge bind mount (host `knowledge/` at `/stash`). There is no separate `/etc/vault/` container mount. Guardian, portals, assistant, and any admin-adjacent service receive system secrets only as Compose secret files, never as broad env files or raw secret environment variables. The scheduler co-process inherits the assistant container's mounts and environment.
 
+**Secret-name authorization model.** Which secret a service may mount is not arbitrary: each service is only allowed to mount secrets whose names match its role. The secret audit (`auditComposeSecrets`) enforces these rules, and the apply path runs that audit before it touches any container — a compose overlay (including the user's `config/stack/custom.compose.yml`) that grants a service a secret outside its allowed set fails the apply with a boundary error. Secret names are normalized (lowercased, non-alphanumerics collapsed to `_`) before matching. The rules:
+
+| Service | Allowed secret names |
+|---|---|
+| `assistant` | `/^(assistant\|opencode\|provider\|llm\|embedding\|akm\|user)_/` |
+| `guardian` | `guardian_*`, `portal_*`, `op_guardian_*` |
+| `admin` | `/^(admin\|ui\|openpalm)_/` |
+| Portal services (`portal_*`, a `*/portal` image, or on `portal_net`) | `portal_<id>_*` or `<id>_*` (where `<id>` is the service name with a leading `portal[-_]` stripped) |
+| Any other service | `<serviceId>_*` (the normalized service name) |
+
+The `op_guardian_` prefix is accepted for the guardian because the shipped stack grants it `op_guardian_admin_token` and `op_guardian_mcp_token`; the `op_` prefix is a stack-scoped naming convention, not a different owner.
+
 ### 3) Data (service-managed, durable)
 
 **Location:** `~/.openpalm/data/`
