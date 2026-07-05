@@ -243,50 +243,6 @@ describe('Guardian server integration', () => {
 });
 
 describe('Guardian portal secret startup contract', () => {
-  it('ignores the legacy GUARDIAN_REQUIRE_PORTAL_SECRETS flag under principal seeding', async () => {
-    const port = await getAvailablePort();
-    const direct = await getAvailablePort();
-    const admin = await getAvailablePort();
-    const localTmpDir = mkdtempSync(join(tmpdir(), 'guardian-no-secrets-'));
-    const proc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
-      cwd: join(import.meta.dir, '..'),
-      env: {
-        PATH: process.env.PATH ?? '',
-        PORT: String(port),
-        GUARDIAN_DIRECT_PORT: String(direct),
-        GUARDIAN_ADMIN_PORT: String(admin),
-        GUARDIAN_STATE_DB_PATH: join(localTmpDir, 'state.db'),
-        OP_ASSISTANT_URL: 'http://127.0.0.1:1',
-        GUARDIAN_AUDIT_PATH: join(localTmpDir, 'audit.log'),
-        GUARDIAN_REQUIRE_PORTAL_SECRETS: 'true',
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-
-    try {
-      const url = `http://127.0.0.1:${port}`;
-      let ready = false;
-      for (let i = 0; i < 50; i++) {
-        if (proc.exitCode !== null) break;
-        try {
-          const resp = await fetch(`${url}/health`);
-          if (resp.ok) {
-            ready = true;
-            break;
-          }
-        } catch {
-          // not ready yet
-        }
-        await Bun.sleep(100);
-      }
-      expect(ready).toBe(true);
-    } finally {
-      proc.kill();
-      rmSync(localTmpDir, { recursive: true, force: true });
-    }
-  });
-
   it('allows zero portal grants for a core-only no-portal stack', async () => {
     const port = await getAvailablePort();
     const direct = await getAvailablePort();

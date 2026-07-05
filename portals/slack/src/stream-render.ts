@@ -44,7 +44,7 @@ import {
   type ToolUpdate,
 } from '@openpalm/portal-sdk';
 
-const log = createLogger("channel-slack:stream");
+const log = createLogger("portal-slack:stream");
 
 // ── Named tunables (design §4.3, §3.6 edit-throttle) ───────────────────────
 

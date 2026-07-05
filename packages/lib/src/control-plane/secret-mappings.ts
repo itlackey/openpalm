@@ -1,26 +1,14 @@
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import type { ControlPlaneState } from './types.js';
-
+/**
+ * Static mapping of the fixed set of core OpenPalm secrets (auth, LLM
+ * provider keys, portal credentials) to the env keys the stack reads them
+ * from. This is the only part of the secret-mapping surface with a live
+ * consumer (`validate.ts`, which checks each `envKey` is present in the
+ * runtime env). Everything else that used to live in this file — hashed
+ * env-key generation, the plaintext-secret-index CRUD, and the key
+ * classifiers for component/custom secrets — had zero consumers and was
+ * removed (fable-remediation-plan 3.5).
+ */
 export type SecretScope = 'user' | 'system';
-export type SecretKind = 'core' | 'component' | 'custom';
-
-export type SecretEntryMetadata = {
-  key: string;
-  scope: SecretScope;
-  kind: SecretKind;
-  provider: 'plaintext' | 'pass';
-  present: boolean;
-  envKey?: string;
-  updatedAt?: string;
-};
-
-export type IndexedSecretEntry = {
-  envKey: string;
-  scope: SecretScope;
-  kind: Exclude<SecretKind, 'core'>;
-  updatedAt: string;
-};
 
 type CoreSecretMapping = {
   secretKey: string;
@@ -52,110 +40,3 @@ export const STATIC_CORE_MAPPINGS: CoreSecretMapping[] = [
   { secretKey: 'openpalm/voice/stt-api-key', envKey: 'STT_API_KEY', scope: 'user' },
   { secretKey: 'openpalm/voice/tts-api-key', envKey: 'TTS_API_KEY', scope: 'user' },
 ];
-
-// 128 bits of the SHA-256 digest keeps collision risk negligible while
-// leaving enough room for the OP_SECRET_ prefix in env var names.
-const HASH_PREFIX_LENGTH = 32;
-
-type SecretIndexFile = {
-  entries: Record<string, IndexedSecretEntry>;
-};
-
-function secretIndexPath(state: ControlPlaneState): string {
-  return `${state.dataDir}/secrets/plaintext-index.json`;
-}
-
-function normalizeIndexedKey(key: string): string {
-  return key.trim().replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
-}
-
-export function sanitizeSecretSegment(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63);
-}
-
-export function secretKeyFromComponentField(instanceId: string, fieldName: string): string {
-  return `openpalm/component/${sanitizeSecretSegment(instanceId)}/${sanitizeSecretSegment(fieldName)}`;
-}
-
-export function classifySecretKey(key: string): SecretKind {
-  if (key.startsWith('openpalm/component/')) return 'component';
-  if (key.startsWith('openpalm/custom/')) return 'custom';
-  return 'core';
-}
-
-export function generatePlaintextEnvKey(secretKey: string): string {
-  const digest = createHash('sha256').update(secretKey).digest('hex').slice(0, HASH_PREFIX_LENGTH).toUpperCase();
-  return `OP_SECRET_${digest}`;
-}
-
-export function classifySecretScope(key: string): SecretScope {
-  if (key.startsWith('openpalm/component/')) return 'system';
-  if (key.startsWith('openpalm/custom/')) return 'user';
-  const coreMapping = STATIC_CORE_MAPPINGS.find((m) => m.secretKey === key);
-  if (coreMapping) return coreMapping.scope;
-  return 'system';
-}
-
-export function findCoreSecretByKey(key: string): CoreSecretMapping | null {
-  return STATIC_CORE_MAPPINGS.find((entry) => entry.secretKey === key) ?? null;
-}
-
-export function findCoreSecretByEnvKey(envKey: string): CoreSecretMapping | null {
-  return STATIC_CORE_MAPPINGS.find((entry) => entry.envKey === envKey) ?? null;
-}
-
-export function readPlaintextSecretIndex(state: ControlPlaneState): SecretIndexFile {
-  const path = secretIndexPath(state);
-  if (!existsSync(path)) {
-    return { entries: {} };
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as SecretIndexFile;
-    return parsed && typeof parsed === 'object' && parsed.entries ? parsed : { entries: {} };
-  } catch {
-    return { entries: {} };
-  }
-}
-
-export function writePlaintextSecretIndex(state: ControlPlaneState, index: SecretIndexFile): void {
-  const dir = `${state.dataDir}/secrets`;
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(secretIndexPath(state), `${JSON.stringify(index, null, 2)}\n`);
-}
-
-export function ensurePlaintextSecretEntry(
-  state: ControlPlaneState,
-  key: string,
-  scope?: SecretScope,
-): IndexedSecretEntry {
-  const normalizedKey = normalizeIndexedKey(key);
-  const index = readPlaintextSecretIndex(state);
-  const existing = index.entries[normalizedKey];
-  if (existing) {
-    return existing;
-  }
-
-  const entry: IndexedSecretEntry = {
-    envKey: generatePlaintextEnvKey(normalizedKey),
-    scope: scope ?? (normalizedKey.startsWith('openpalm/component/') ? 'system' : 'user'),
-    kind: classifySecretKey(normalizedKey) === 'component' ? 'component' : 'custom',
-    updatedAt: new Date().toISOString(),
-  };
-  index.entries[normalizedKey] = entry;
-  writePlaintextSecretIndex(state, index);
-  return entry;
-}
-
-export function removePlaintextSecretEntry(state: ControlPlaneState, key: string): void {
-  const normalizedKey = normalizeIndexedKey(key);
-  const index = readPlaintextSecretIndex(state);
-  if (!index.entries[normalizedKey]) return;
-  delete index.entries[normalizedKey];
-  writePlaintextSecretIndex(state, index);
-}

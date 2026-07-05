@@ -64,7 +64,7 @@ export type PendingQuestion = {
   resolve: (answer: string) => Promise<void>;
 };
 
-const log = createLogger("channel-discord:stream");
+const log = createLogger("portal-discord:stream");
 
 /**
  * Channel-level guidance prepended ONCE to the first prompt of a Discord session.

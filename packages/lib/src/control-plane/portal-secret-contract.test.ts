@@ -12,8 +12,8 @@
  *
  * Each is unit-tested in isolation, but nothing binds them together. If they
  * drift (e.g. the prefix is renamed in compose but not in portalSecretName), a
- * user's portal breaks — Compose can't materialise the secret, or the guardian
- * rejects the portal's HMAC auth (GUARDIAN_REQUIRE_PORTAL_SECRETS is true) —
+ * user's portal breaks — Compose can't materialise the secret, so the portal
+ * adapter never gets a HMAC secret to authenticate to the guardian with —
  * while every isolated unit test stays green. This test reproduces that coupling
  * so the drift is caught at build time, not in production.
  */

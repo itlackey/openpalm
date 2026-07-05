@@ -18,7 +18,7 @@ import {
 } from "./stream-render.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
-const log = createLogger("channel-slack");
+const log = createLogger("portal-slack");
 
 const MAX_MESSAGE_LENGTH = 4000;
 const DEFAULT_FORWARD_TIMEOUT_MS = 1_800_000;
