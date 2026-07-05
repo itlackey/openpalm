@@ -297,6 +297,8 @@ export {
 export {
   restoreSnapshot,
   hasSnapshot,
+  hasArmedSnapshot,
+  clearArmedSnapshot,
   snapshotTimestamp,
 } from "./control-plane/rollback.js";
 

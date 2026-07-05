@@ -388,6 +388,165 @@ describe('armed-snapshot protection via withStackEnvRollback (B5)', () => {
   });
 });
 
+// ── Disarm-on-success (0.2 / X1) ──────────────────────────────────────────────
+//
+// hasArmedSnapshot() gates the arm at withStackEnvRollback's entry, but nothing
+// previously cleared that arm on a SUCCESSFUL run() — so once the day-one op
+// armed the first snapshot, every later successful op saw hasArmedSnapshot()
+// still true and skipped re-arming forever. `openpalm rollback` then always
+// restored day-one state instead of the immediately-preceding operation's state.
+//
+// This scenario uses a STATEFUL mock of the rollback module (a real `armed`
+// flag flipped by snapshotCurrentState/clearArmedSnapshot) and runs applyUpdate
+// TWICE. If the success path disarms, the second run sees hasArmedSnapshot()
+// false and takes a FRESH snapshot (2 total calls). If it does not disarm, the
+// second run still sees the stale arm and skips re-arming (1 total call).
+function runDisarmOnSuccessScenario(): { stdout: string; stderr: string; exitCode: number } {
+  const tempDir = mkdtempSync(join(rollbackHarnessDir, '.tmp-openpalm-disarm-on-success-'));
+  const scriptPath = join(tempDir, 'disarm-on-success-scenario.ts');
+  const runnerPath = join(tempDir, 'run-bun.sh');
+
+  const script = `
+import { mock } from 'bun:test';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+const lifecycleUrl = ${JSON.stringify(lifecycleUrl)};
+
+function makeState(home) {
+  mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+  mkdirSync(join(home, 'config', 'stack'), { recursive: true });
+  mkdirSync(join(home, 'data', 'rollback'), { recursive: true });
+  writeFileSync(
+    join(home, 'knowledge', 'env', 'stack.env'),
+    'OP_IMAGE_NAMESPACE=openpalm\\nOP_ASSISTANT_VERSION=v0.11.5\\n',
+  );
+  process.env.OP_HOME = home;
+  process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+  return {
+    homeDir: home,
+    configDir: join(home, 'config'),
+    stashDir: join(home, 'knowledge'),
+    workspaceDir: join(home, 'workspace'),
+    dataDir: join(home, 'data'),
+    stackDir: join(home, 'config', 'stack'),
+    services: {},
+    artifacts: { compose: '' },
+    artifactMeta: [],
+  };
+}
+
+// Stateful fake: mirrors the real armed/disarm contract instead of a constant.
+let armed = false;
+let snapshotCallCount = 0;
+let clearCallCount = 0;
+const rollbackUrl = ${JSON.stringify(moduleUrls.rollback)};
+
+mock.module(rollbackUrl, () => ({
+  snapshotCurrentState: (_state, opts) => {
+    snapshotCallCount++;
+    if (opts && opts.arm) armed = true;
+  },
+  hasArmedSnapshot: () => armed,
+  clearArmedSnapshot: () => { clearCallCount++; armed = false; },
+  hasSnapshot: () => false,
+  snapshotTimestamp: () => null,
+  restoreSnapshot: () => {},
+}));
+mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
+  buildComposeOptions: () => ({ files: [], envFiles: [], profiles: [] }),
+}));
+mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
+  checkDocker: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composePreflight: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composePull: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  composeConfigServices: async () => ({ ok: true, services: [] }),
+  resolveComposeProjectName: () => 'openpalm',
+  buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
+}));
+mock.module(${JSON.stringify(moduleUrls.volumeOwnership)}, () => ({
+  repairRootOwnedBindMounts: async () => {},
+  repairManagedNamedVolumes: async () => {},
+}));
+mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
+  resolveRuntimeFiles: () => ({ compose: '' }),
+  writeRuntimeFiles: () => {},
+  discoverStackOverlays: () => [],
+  ensureComposeVolumeTargets: () => {},
+  discoverHomeBindMountSources: () => [],
+}));
+mock.module(${JSON.stringify(moduleUrls.uiAssets)}, () => ({
+  applyHomeSeed: async () => ({ updated: [], backupDir: null }),
+}));
+mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
+  acquireInstallLock: () => ({ path: 'test-lock' }),
+  releaseInstallLock: () => {},
+}));
+mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
+  getAddonServiceNames: () => [],
+  listEnabledAddonIds: () => [],
+  pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
+}));
+
+async function main() {
+  try {
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-disarm-on-success-'));
+    const state = makeState(home);
+    const lifecycle = await import(lifecycleUrl + '?disarm=' + Math.random());
+
+    await lifecycle.applyUpdate(state);
+    await lifecycle.applyUpdate(state);
+
+    if (snapshotCallCount !== 2) {
+      throw new Error(
+        'BUG: expected 2 snapshotCurrentState calls (one fresh arm per successful ' +
+        'run) but got ' + snapshotCallCount + '. A successful run must disarm so the ' +
+        'NEXT run takes a fresh snapshot instead of preserving the day-one one forever.',
+      );
+    }
+    if (clearCallCount !== 2) {
+      throw new Error(
+        'BUG: expected clearArmedSnapshot to be called once per successful run ' +
+        '(2 total) but got ' + clearCallCount + '.',
+      );
+    }
+    process.exit(0);
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
+  }
+}
+
+await main();
+`;
+  const runner = '#!/usr/bin/env bash\nexec bun "$1"\n';
+
+  try {
+    writeFileSync(scriptPath, script);
+    writeFileSync(runnerPath, runner);
+    const proc = spawnSync('bash', [runnerPath, scriptPath], {
+      cwd: rollbackHarnessDir,
+      encoding: 'utf8',
+    });
+    return {
+      stdout: proc.stdout ?? '',
+      stderr: proc.stderr ?? '',
+      exitCode: proc.status ?? 1,
+    };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+describe('disarm-on-success so a SECOND successful op takes a fresh snapshot (0.2)', () => {
+  test('applyUpdate disarms after success; a second successful applyUpdate re-arms', () => {
+    const result = runDisarmOnSuccessScenario();
+    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+});
+
 // ── Wired-path seed regression (the bug that started the refactor) ────────────
 //
 // The seed-layer test in ui-assets.test.ts proves applyHomeSeed re-materializes
