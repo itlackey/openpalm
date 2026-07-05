@@ -19,7 +19,7 @@ fi
 OP_GUARDIAN_PACKAGE="${OP_GUARDIAN_PACKAGE:-@openpalm/guardian}"
 OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
 
-mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian \
+mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian /opt/openpalm/guardian-pkg \
          /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode 2>/dev/null || true
 
 export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
@@ -69,7 +69,15 @@ install_artifact() {
 
 # Guardian and skeleton are co-released, so the skeleton follows the same
 # version by default; OP_SKELETON_VERSION overrides if they ever diverge.
-install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
+#
+# The guardian PACKAGE installs into /opt/openpalm/guardian-pkg, NOT
+# /opt/openpalm/guardian. The latter is $HOME, bind-mounted from
+# OP_HOME/data/guardian in compose for runtime state (nonce/rate-limit,
+# OpenCode auth.json/config) — an empty host dir bind-mounted there would
+# shadow a baked node_modules and force a network re-fetch every boot.
+# guardian-pkg has no bind-mount in the shipped compose, so the image-baked
+# install (or a prior boot's install) actually persists.
+install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian-pkg
 install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
 # ── Exact-pinned tools ──────────────────────────────────────────────────────
@@ -112,11 +120,11 @@ fi
 # @openpalm/guardian; when OP_GUARDIAN_PACKAGE is an alternate package the core
 # is still present (transitive dep), so resolve it via require.resolve. In the
 # default case this equals the guardian package dir.
-GUARDIAN_CORE_PKG=$(cd /opt/openpalm/guardian && bun -e "console.log(require('node:path').dirname(require.resolve('@openpalm/guardian/package.json')))" 2>/dev/null || echo "/opt/openpalm/guardian/node_modules/@openpalm/guardian")
+GUARDIAN_CORE_PKG=$(cd /opt/openpalm/guardian-pkg && bun -e "console.log(require('node:path').dirname(require.resolve('@openpalm/guardian/package.json')))" 2>/dev/null || echo "/opt/openpalm/guardian-pkg/node_modules/@openpalm/guardian")
 guardian_server_port="${PORT:-8080}"
 openai_port="${GUARDIAN_OPENAI_PORT:-8182}"
 PORT="${openai_port}" GUARDIAN_URL="http://localhost:${guardian_server_port}" \
   bun run "${GUARDIAN_CORE_PKG}/src/openai-api-server.ts" 2>&1 | sed -u 's/^/[openai-api] /' >&2 &
 
 # ── Start guardian ────────────────────────────────────────────────────────────
-exec bun run "/opt/openpalm/guardian/node_modules/${OP_GUARDIAN_PACKAGE}/${OP_GUARDIAN_ENTRY}"
+exec bun run "/opt/openpalm/guardian-pkg/node_modules/${OP_GUARDIAN_PACKAGE}/${OP_GUARDIAN_ENTRY}"

@@ -11,6 +11,16 @@
 # guardian package is genuinely baked into the image layers, boot is a
 # no-op install-skip and the server reaches healthy with no network at all.
 #
+# Critically, it also replicates the SHIPPED mount topology
+# (packages/skeleton/system/stack/portals.compose.yml): compose bind-mounts
+# OP_HOME/data/guardian over /opt/openpalm/guardian. A bind-mount never seeds
+# from the image, so an empty host directory mounted there unconditionally
+# shadows anything the image baked at that exact path — a bare `docker run`
+# with no such mount would miss that regression entirely. This script mounts
+# an empty host dir at /opt/openpalm/guardian, matching production, so the
+# baked-package invariant is only proven "green" when it actually survives
+# under the real deployment shape.
+#
 # Run locally: ./scripts/guardian-image-offline-smoke.sh
 set -euo pipefail
 
@@ -20,15 +30,32 @@ cd "$ROOT"
 GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
 IMAGE="openpalm-guardian-offline-smoke:test"
 CONTAINER="guardian-offline-smoke-$$"
+# NEVER use a /tmp source for a docker bind-mount here: when dockerd runs
+# with systemd PrivateTmp=true (or the daemon otherwise has a /tmp mount
+# namespace distinct from this shell's), `-v /tmp/x:/dest` silently mounts an
+# EMPTY directory from the daemon's own /tmp instead of this host path,
+# masking the very regression this script exists to catch. Use ~/.cache
+# instead (see project memory: docker-bind-mount-from-tmp-privatetmp-trap).
+mkdir -p "${HOME}/.cache/openpalm-guardian-smoke"
+GUARDIAN_DATA_DIR="$(mktemp -d "${HOME}/.cache/openpalm-guardian-smoke/data.XXXXXX")"
+# World-writable so the container's runtime user (an arbitrary OP_UID:OP_GID
+# in real deployments, adopted via host ownership) can populate it — mirrors
+# the image-side `chmod -R a+rwX` rationale in containers/guardian/Dockerfile.
+chmod 0777 "$GUARDIAN_DATA_DIR"
 
-cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
+cleanup() {
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  rm -rf "$GUARDIAN_DATA_DIR"
+}
 trap cleanup EXIT
 
 echo "Building guardian image (registry access permitted at build time) GUARDIAN_VERSION=${GUARDIAN_VERSION}..."
 docker build -f containers/guardian/Dockerfile --build-arg GUARDIAN_VERSION="${GUARDIAN_VERSION}" -t "$IMAGE" .
 
-echo "Booting with --network none (no DNS, no registry, no assistant reachability)..."
+echo "Booting with --network none (no DNS, no registry, no assistant reachability)"
+echo "and an empty host bind-mount at /opt/openpalm/guardian (production mount topology)..."
 docker run -d --network none --name "$CONTAINER" \
+  -v "${GUARDIAN_DATA_DIR}:/opt/openpalm/guardian" \
   -e GUARDIAN_AUDIT_PATH=/opt/openpalm/guardian/logs/audit.log \
   "$IMAGE" >/dev/null
 

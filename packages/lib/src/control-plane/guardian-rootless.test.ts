@@ -29,7 +29,7 @@ describe('guardian rootless conversion', () => {
     // g=u would only grant write when OP_GID == 1000; world-writable is required so
     // the arbitrary uid can `bun add` guardian/skeleton into /opt/openpalm on first
     // boot. Secrets live in a separate 0600 bind-mount tree.
-    expect(guardianDockerfile).toContain('chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/skeleton /opt/openpalm/tools');
+    expect(guardianDockerfile).toContain('chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/guardian-pkg /opt/openpalm/skeleton /opt/openpalm/tools');
     expect(guardianDockerfile).not.toContain('chmod -R g=u');
   });
 });
