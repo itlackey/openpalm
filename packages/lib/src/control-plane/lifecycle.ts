@@ -11,6 +11,7 @@ import {
   resolveDataDir,
   resolveStackDir,
   customComposeFilePath,
+  stateEnvFile,
   ensureHomeDirs,
 } from "./home.js";
 import { ensureSecrets, ensureOpenCodeConfig } from "./secrets.js";
@@ -22,7 +23,7 @@ import {
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
-import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
+import { hasArmedSnapshot, snapshotCurrentState, clearArmedSnapshot } from "./rollback.js";
 import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, buildComposePreflightError } from "./docker.js";
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
@@ -401,10 +402,19 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   // snapshot them alongside stack.env for full rollback coverage.
   const portalsComposePath = `${state.stackDir}/portals.compose.yml`;
   const customComposePath = customComposeFilePath(state.homeDir);
+  // state/stack.state.env is merged OVER the legacy stack.env and wins the
+  // compose merge (readStackEnv) — a crash-restore that reverted stack.env but
+  // left a migrated state.state.env in place would restore an inconsistent mix.
+  // Scope note (intentionally NOT unified with SNAPSHOT_FILES in rollback.ts):
+  // this in-memory set is the crash-restore scope (what a single lifecycle op
+  // can touch); SNAPSHOT_FILES is the manual-rollback scope (also covers
+  // services.compose.yml, core.compose.yml, auth.json backup).
+  const stateEnvPathValue = stateEnvFile(state.homeDir);
 
   let originalStackEnv: string | null = null;
   let originalPortalsCompose: string | null = null;
   let originalCustomCompose: string | null = null;
+  let originalStateEnv: string | null = null;
   try {
     originalStackEnv = readFileSync(stackEnvFile, 'utf-8');
   } catch { /* stack.env may not exist yet */ }
@@ -414,6 +424,9 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   try {
     originalCustomCompose = readFileSync(customComposePath, 'utf-8');
   } catch { /* custom.compose.yml may not exist yet */ }
+  try {
+    originalStateEnv = readFileSync(stateEnvPathValue, 'utf-8');
+  } catch { /* state.state.env may not exist yet */ }
 
   // Persist the PRE-reconcile state for `openpalm rollback`. Without this, the
   // snapshot taken later inside reconcileCore captures stack.env AFTER the
@@ -430,7 +443,14 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   if (!hasArmedSnapshot()) snapshotCurrentState(state, { arm: true });
 
   try {
-    return await run();
+    const result = await run();
+    // Disarm on success: without this, hasArmedSnapshot() above stays true
+    // forever after the very first lifecycle op, so every later successful op
+    // preserves the original (day-one) armed snapshot instead of taking a
+    // fresh pre-op one. `openpalm rollback` would then always restore day-one
+    // state instead of the immediately-preceding operation's state (X1).
+    clearArmedSnapshot();
+    return result;
   } catch (e) {
     if (originalStackEnv !== null) {
       try {
@@ -445,6 +465,11 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
     if (originalCustomCompose !== null) {
       try {
         writeFileSync(customComposePath, originalCustomCompose);
+      } catch { /* best effort */ }
+    }
+    if (originalStateEnv !== null) {
+      try {
+        writeFileSync(stateEnvPathValue, originalStateEnv);
       } catch { /* best effort */ }
     }
     throw e;

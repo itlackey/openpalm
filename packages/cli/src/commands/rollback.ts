@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { promptYesNo } from '../lib/prompt.ts';
 import { defineAction } from '../lib/action.ts';
 import {
   buildManagedServices,
@@ -15,30 +16,53 @@ export default defineCommand({
     name: 'rollback',
     description: 'Restore the most recent configuration snapshot and restart services',
   },
-  run: defineAction(async () => {
-    if (!hasSnapshot()) {
-      throw new Error('No rollback snapshot available.');
-    }
-
-    const ts = snapshotTimestamp();
-    console.log(`Restoring snapshot from ${ts ?? 'unknown'}...`);
-
-    // Create state without persisting so we don't overwrite live config
-    // before the snapshot is restored.
-    const rollbackState = createState();
-    restoreSnapshot(rollbackState);
-
-    console.log('Snapshot restored. Rebuilding configuration...');
-
-    // Now validate and persist with the restored files in place
-    const state = ensureValidState();
-
-    const managedServices = await buildManagedServices(state);
-
-    await runComposeWithPreflight(state, [
-      'up', '-d', '--remove-orphans', ...managedServices,
-    ]);
-
-    console.log('Rollback complete.');
+  args: {
+    yes: {
+      type: 'boolean',
+      alias: 'y',
+      description: 'Skip the confirmation prompt',
+      default: false,
+    },
+  },
+  run: defineAction(async ({ args }) => {
+    await runRollbackAction({ yes: !!args.yes });
   }),
 });
+
+export async function runRollbackAction(opts: { yes?: boolean } = {}): Promise<void> {
+  if (!hasSnapshot()) {
+    throw new Error('No rollback snapshot available.');
+  }
+
+  const ts = snapshotTimestamp();
+  console.log(`Rollback will overwrite live config with the snapshot from ${ts ?? 'unknown'}.`);
+  console.log('The files it overwrites are backed up first under data/backups/<timestamp>-pre-rollback/.');
+
+  if (!opts.yes) {
+    const ok = await promptYesNo('Restore this snapshot? [y/N]');
+    if (!ok) {
+      console.log('Rollback aborted. Re-run with --yes to skip confirmation.');
+      return;
+    }
+  }
+
+  console.log(`Restoring snapshot from ${ts ?? 'unknown'}...`);
+
+  // Create state without persisting so we don't overwrite live config
+  // before the snapshot is restored.
+  const rollbackState = createState();
+  restoreSnapshot(rollbackState);
+
+  console.log('Snapshot restored. Rebuilding configuration...');
+
+  // Now validate and persist with the restored files in place
+  const state = ensureValidState();
+
+  const managedServices = await buildManagedServices(state);
+
+  await runComposeWithPreflight(state, [
+    'up', '-d', '--remove-orphans', ...managedServices,
+  ]);
+
+  console.log('Rollback complete.');
+}
