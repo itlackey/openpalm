@@ -78,13 +78,13 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 Subtrees:
 
 - `assistant/` — user OpenCode extensions for the assistant (tools, plugins, skills); mounted at the assistant's `/etc/opencode`
-- `guardian/` — the guardian's OpenCode global config (`opencode.jsonc`, `instructions/moderation.md`); mounted at the guardian's `/etc/opencode` and used by the content-validation moderator
+- `guardian/` — the operator-tunable moderation **model** setting (`opencode.json`); mounted at the guardian's `~/.config/opencode` (`HOME=/opt/openpalm/guardian`)
 - `akm/` — AKM configuration (LLM, embedding, and related settings in `config.json`)
 - `endpoints.json` — OpenCode connection list (URL, label, optional password per endpoint) used by the admin UI's connection switcher; mode 0600. Survives `data/` wipes by design.
 
 **Rule:** allowed writers are: user direct edits and explicit admin UI/API config actions. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or make targeted updates.
 
-**Guardian config refresh (skip-if-user-modified):** Files under `config/guardian/` that ship with sensible defaults (currently `instructions/moderation.md`) are _managed_ but operator-editable. On a managed-asset refresh (install, upgrade, or explicit refresh), such a file is only overwritten when its on-disk content is byte-identical to one of the previously shipped defaults recorded in `SHIPPED_DEFAULT_HASHES` in `packages/lib/src/control-plane/core-assets.ts`. If the operator has edited the file, the refresh keeps the existing content and surfaces a structured log notice: _"guardian managed asset kept (user-modified); new default available"_. The list of kept paths is also returned as `kept[]` by `refreshCoreAssetsFromSource` / `refreshCoreAssets` so callers can display the notice to the operator. When a new shipped default is released, its sha256 hash must be appended to the corresponding `SHIPPED_DEFAULT_HASHES` entry so older unmodified installs can still be upgraded.
+**Guardian managed config (moderation.md is not user-editable):** the moderation classifier's instructions (`instructions/moderation.md`) and the guardian's `opencode.jsonc` live in the MANAGED `system/guardian/` tree, bind-mounted at the guardian's `OPENCODE_CONFIG_DIR=/etc/opencode` — the same managed tree as the rest of `system/`. Like every other file there, `overwriteSystemTree` (`packages/lib/src/control-plane/core-assets.ts`) overwrites it on every install/update/hot-swap refresh whenever its content differs from the shipped default, backing up the previous copy first; there is no skip-if-user-modified exception. It was deliberately **not** relocated to `config/guardian/` (the user tree): that directory mounts at the guardian's `~/.config/opencode`, a different path than `OPENCODE_CONFIG_DIR=/etc/opencode`, so relocating the file there would silently stop OpenCode from loading it. Operators who need different moderation behavior tune the **model** via `config/guardian/opencode.json` (the `guardian/` subtree above); the classifier instructions text itself is managed, not user-editable.
 
 ### 1b) Stack (system-managed runtime assembly)
 
@@ -174,7 +174,7 @@ The stack is defined by combining the fixed Compose file set with Compose's nati
 - The assistant container includes core extensions/config at **`/etc/opencode`**.
 - The assistant container sets **`OPENCODE_CONFIG_DIR=/etc/opencode`** so OpenCode discovers core agents/commands/tools/skills/plugins from that directory. ([OpenCode][1])
 - Advanced users *may* bind-mount a host directory over `/etc/opencode` to override core behavior, but this is discouraged because bind-mounting replaces/obscures the container's original contents. ([Docker Documentation][5])
-- The guardian image likewise reads OpenCode config from **`/etc/opencode`**, bind-mounted from `config/guardian/`. Its config pins the small moderation model and the malicious-message taxonomy used by the content-validation stage.
+- The guardian image likewise sets `OPENCODE_CONFIG_DIR=/etc/opencode`, bind-mounted from the MANAGED `system/guardian/` tree (instructions, permissions, plugin config — the malicious-message taxonomy the content-validation stage uses). The operator-tunable moderation **model** setting is separate: `config/guardian/opencode.json`, bind-mounted from the USER tree at the guardian's `~/.config/opencode`.
 
 ### C) Non-destructive lifecycle sync is enforced by directory boundaries
 
