@@ -16,10 +16,16 @@
   let inputText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
 
-  const inputDisabled = $derived(sending && !questionPending);
+  // Drafting the next message is always allowed; only submitting a turn
+  // while the assistant is replying (and no single-question ask is pending)
+  // is blocked.
+  const submitBlocked = $derived(sending && !questionPending);
   const isActive = $derived(inputText.trim().length > 0);
 
   function handleKeydown(e: KeyboardEvent): void {
+    // IME composition (e.g. CJK input methods) commits candidates with
+    // Enter — never treat that as a submit.
+    if (e.isComposing) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -28,7 +34,7 @@
 
   function submit(): void {
     const text = inputText.trim();
-    if (!text || inputDisabled) return;
+    if (!text || submitBlocked) return;
     onSend(text);
     inputText = '';
     if (textareaEl) {
@@ -54,9 +60,8 @@
     bind:value={inputText}
     onkeydown={handleKeydown}
     oninput={handleInput}
-    placeholder={sending && !questionPending ? '' : 'Write a message...'}
+    placeholder="Write a message..."
     rows="1"
-    disabled={inputDisabled}
     aria-label="Message input"
     autocomplete="off"
     spellcheck="false"
@@ -79,7 +84,7 @@
       class="s-send-btn"
       type="submit"
       aria-label="Send message"
-      disabled={!isActive || inputDisabled}
+      disabled={!isActive || submitBlocked}
     >
       <IconSend size={16} />
     </button>
@@ -185,11 +190,6 @@
   .s-composer textarea::placeholder {
     color: var(--s-ink-3);
     opacity: 1;
-  }
-
-  .s-composer textarea:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
 
   .s-rule {

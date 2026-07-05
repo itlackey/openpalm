@@ -44,9 +44,19 @@ describe('ChatInput — send button disabled state', () => {
 
   test('send button is disabled while sending=true regardless of input', async () => {
     await render(ChatInput, { props: { sending: true, onSend: vi.fn() } });
-    // Input is also disabled when sending=true, so we can't type into it here.
-    // The send button is disabled independently via the sending prop.
+    // The textarea stays enabled during sending (draft-while-sending) but the
+    // send button is disabled independently via the sending prop.
     await expect.element(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+});
+
+describe('ChatInput — draft while sending', () => {
+  test('textarea stays enabled and typable while sending=true', async () => {
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn() } });
+    const input = page.getByRole('textbox', { name: 'Message input' });
+    await expect.element(input).toBeEnabled();
+    await userEvent.type(input, 'drafting next message');
+    await expect.element(input).toHaveValue('drafting next message');
   });
 });
 
@@ -75,5 +85,18 @@ describe('ChatInput — send behaviour', () => {
     // Disabled button — verify state rather than clicking (Playwright waits for enabled before click)
     await expect.element(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test('Enter during IME composition does not submit', async () => {
+    const onSend = vi.fn();
+    const { container } = render(ChatInput, { props: { sending: false, onSend } });
+    const input = container.querySelector('textarea')!;
+    input.value = 'こんにちは';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true })
+    );
+    expect(onSend).not.toHaveBeenCalled();
+    await expect.element(input).toHaveValue('こんにちは');
   });
 });

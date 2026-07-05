@@ -118,6 +118,13 @@ class ChatService {
 	entriesLoading = $state(false);
 	sending = $state(false);
 	error = $state('');
+	/**
+	 * Text of the most recent send() call that failed before reaching the
+	 * assistant. Cleared at the start of every send() (success or not) so it
+	 * only ever reflects the latest failure. Drives the error banner's retry
+	 * button.
+	 */
+	lastFailedText = $state('');
 	pendingAssistantText = $state('');
 	pendingToolStates = $state<LiveToolState[]>([]);
 	pendingPermission = $state<PendingPermissionState | null>(null);
@@ -661,6 +668,7 @@ class ChatService {
 	async send(text: string): Promise<void> {
 		const trimmed = text.trim();
 		if (!trimmed) return;
+		this.lastFailedText = '';
 		if (this.pendingQuestion && this.pendingQuestion.questions.length === 1 && this.sending) {
 			await this.answerQuestion(trimmed);
 			return;
@@ -725,6 +733,10 @@ class ChatService {
 			}
 		} catch (e) {
 			this._resetPendingRenderState();
+			// The turn never reached the assistant — drop the optimistic user
+			// entry and remember the text so the error banner can offer retry.
+			this.entries = this.entries.filter((entry) => entry.id !== userEntry.id);
+			this.lastFailedText = trimmed;
 			const status = (e as { status?: number } | null)?.status;
 			if (status === 503 || status === 502) {
 				// Clear active session so a retry can re-establish.
@@ -850,6 +862,7 @@ class ChatService {
 		this._clearPendingTurn();
 		this.entries = [];
 		this.error = '';
+		this.lastFailedText = '';
 		this._resetPendingRenderState();
 		// Reassign to a fresh Map so subscribers re-render to empty state.
 		this.byEndpoint = new SvelteMap();

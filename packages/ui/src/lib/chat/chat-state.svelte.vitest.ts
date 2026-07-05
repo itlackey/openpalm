@@ -243,6 +243,39 @@ describe('send', () => {
     expect(mocked.sendChatMessage).not.toHaveBeenCalled();
   });
 
+	it('removes the optimistic user entry and records lastFailedText when the send fails', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockRejectedValueOnce(new Error('boom'));
+
+		await chat.send('will fail');
+
+		// The turn never reached the assistant — no optimistic user entry left behind.
+		expect(chat.entries).toEqual([]);
+		expect(chat.lastFailedText).toBe('will fail');
+		expect(chat.error).toBeTruthy();
+	});
+
+	it('clears lastFailedText on the next successful send', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockRejectedValueOnce(new Error('boom'));
+		await chat.send('will fail');
+		expect(chat.lastFailedText).toBe('will fail');
+
+		mocked.sendChatMessage.mockResolvedValueOnce({
+			parts: [{ type: 'text', text: 'pong' }],
+		});
+		await chat.send('will fail');
+
+		expect(chat.lastFailedText).toBe('');
+		expect(chat.entries.length).toBe(2); // user + assistant, no leftover failed entry
+	});
+
 	// finalizeTurn decision: an empty reply collapses to '(no response)' and
 	// must NOT be spoken even with auto-TTS on (only the ack is spoken). This
 	// is the same guard the streaming path uses, now shared via finalizeTurn.

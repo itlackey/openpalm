@@ -72,6 +72,13 @@
 		await chat.onEndpointChanged(endpointsService.activeId);
 	}
 
+	async function retryFailedSend(): Promise<void> {
+		const text = chat.lastFailedText;
+		if (!text) return;
+		chat.error = '';
+		await chat.send(text);
+	}
+
 	async function handleSend(text: string): Promise<void> {
 		await chat.send(text);
 	}
@@ -429,6 +436,9 @@
 {#if chat.error}
 	<div class="s-error-banner" role="alert">
 		<span class="s-error-msg">{chat.error}</span>
+		{#if chat.lastFailedText}
+			<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
+		{/if}
 		<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
 		<button
 			class="s-error-dismiss"
