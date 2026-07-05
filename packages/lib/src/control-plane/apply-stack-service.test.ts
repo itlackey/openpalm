@@ -3,12 +3,13 @@
  * update scope (constitution §4, §7 "updating one container MUST NOT touch others").
  *
  * Asserts:
- *   (a) pull is issued WITH the service name arg (not the whole stack)
+ *   (a) ONE `up --pull <mode>` invocation scoped to the service (no separate
+ *       pull command, no whole-stack pull)
  *   (b) up is issued WITH --force-recreate --no-deps <service> --wait (scoped
  *       recreate + §2.1's single health gate)
  *   (c) a SUCCESSFUL up needs NO follow-up ps/inspect call — `--wait` already
  *       confirmed health
- *   (d) pull failure is FATAL: up is NOT attempted, failed[0].service === service
+ *   (d) a pull failure surfaced by `up` is FATAL: failed[0].service === service
  *   (e) a FAILED up (the §2.1 health gate) triggers exactly ONE
  *       `ps --format json` call that names the failed service
  *
@@ -50,21 +51,18 @@ const FAKE_DOCKER_SCRIPT = [
   "    exit 0",
   "    ;;",
   "esac",
-  // up -> fail when FAKE_DOCKER_UP_FAIL=1 (simulates a --wait health-gate failure)
+  // up -> the SINGLE driver call (it carries `--pull <mode>`, plan 2.2). Fails
+  // with a pull-denied message when FAKE_DOCKER_PULL_FAIL=1 (the in-`up` pull is
+  // fatal) or with a health message when FAKE_DOCKER_UP_FAIL=1 (a --wait
+  // health-gate failure).
   'case "$*" in',
   '  *" up -d "*)',
-  '    if [ "${FAKE_DOCKER_UP_FAIL:-0}" = "1" ]; then',
-  '      echo "up failed: container is unhealthy" >&2',
-  "      exit 1",
-  "    fi",
-  "    exit 0",
-  "    ;;",
-  "esac",
-  // pull -> fail when FAKE_DOCKER_PULL_FAIL=1
-  'case "$*" in',
-  "  *pull*)",
   '    if [ "${FAKE_DOCKER_PULL_FAIL:-0}" = "1" ]; then',
   '      echo "pull access denied" >&2',
+  "      exit 1",
+  "    fi",
+  '    if [ "${FAKE_DOCKER_UP_FAIL:-0}" = "1" ]; then',
+  '      echo "up failed: container is unhealthy" >&2',
   "      exit 1",
   "    fi",
   "    exit 0",
@@ -143,14 +141,16 @@ console.log(JSON.stringify(result));
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("applyStack({ kind: 'service' }) — scoped single-service update", () => {
-  it("(a) issues pull with the service name arg (not the whole stack)", () => {
+  it("(a) issues ONE `up --pull` scoped to the service (no separate pull, no whole-stack pull)", () => {
     const { calls } = runApplyStack({ kind: "service", service: "assistant" });
-    const pullCall = calls.find((c) => /\bpull\b/.test(c));
-    expect(pullCall, `pull call not found in: ${JSON.stringify(calls)}`).toBeTruthy();
-    expect(pullCall).toContain("assistant");
-    // Must NOT be a bare `pull` (which would pull all images)
-    // The pull args end with the service name, not empty.
-    expect(pullCall?.trim().endsWith("assistant")).toBe(true);
+    // The single driver call carries `--pull` inline (plan 2.2) and is scoped
+    // to the service — there is NO separate `pull` command.
+    const upCall = calls.find((c) => /\bup\b/.test(c));
+    expect(upCall, `up call not found in: ${JSON.stringify(calls)}`).toBeTruthy();
+    expect(upCall).toContain("--pull");
+    expect(upCall).toContain("--no-deps");
+    expect(upCall?.trim().endsWith("assistant")).toBe(true);
+    expect(calls.some((c) => /\bpull\b/.test(c) && !/\bup\b/.test(c))).toBe(false);
   });
 
   it("(b) issues up with --force-recreate --no-deps <service> --wait (not --remove-orphans)", () => {
@@ -179,16 +179,17 @@ describe("applyStack({ kind: 'service' }) — scoped single-service update", () 
     expect(calls.some((c) => /\binspect\b/.test(c))).toBe(false);
   });
 
-  it("(d) pull failure is FATAL: up is NOT called, failed[0].service === service", () => {
+  it("(d) a pull failure surfaced by up is FATAL and maps to the scope", () => {
     const { result, calls } = runApplyStack({ kind: "service", service: "guardian" }, { pullFail: true });
     expect(result.ok).toBe(false);
     expect(result.started).toEqual([]);
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].service).toBe("guardian");
+    expect(result.upFailed).toBe(true);
 
-    // up must NOT have been called when pull failed
-    const upCall = calls.find((c) => /\bup\b/.test(c));
-    expect(upCall, "up must NOT be called after pull failure").toBeUndefined();
+    // The up (which carries `--pull`) IS the single invocation — there is no
+    // separate `pull` command to have failed first.
+    expect(calls.some((c) => /\bpull\b/.test(c) && !/\bup\b/.test(c))).toBe(false);
   });
 
   it("(e) a FAILED up (§2.1 health gate) triggers exactly ONE `ps --format json` call naming the failed service", () => {

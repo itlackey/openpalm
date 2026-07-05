@@ -90,8 +90,7 @@ mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   checkDocker: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   composePreflight: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composePull: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  applyStack: async () => ({ ok: true, started: ['assistant'], failed: [] }),
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
   buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
@@ -121,6 +120,7 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
   pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
+  migrateProfileOnlyAddonEnablement: () => ({ changed: false, migratedAddons: [] }),
 }));
 {
   const realVersioning = await import(${JSON.stringify(moduleUrls.versioning)});

@@ -7,7 +7,7 @@ import {
 import { getState } from "$lib/server/state.js";
 import { withSerialQueue } from "$lib/server/serial-queue.js";
 import { buildComposeOptions, buildManagedServices, createLogger } from "@openpalm/lib";
-import { composePull, composeUp, checkDocker } from "@openpalm/lib";
+import { applyStack, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("containers-pull");
@@ -28,31 +28,24 @@ export const POST: RequestHandler = async (event) => {
 
     const composeOpts = buildComposeOptions(state);
 
-    logger.info("pulling images", { requestId });
-    const pullResult = await composePull(composeOpts);
-    if (!pullResult.ok) {
-      logger.error("image pull failed", { requestId, stderr: pullResult.stderr });
-      return errorResponse(502, "pull_failed", "Failed to pull images", { stderr: pullResult.stderr }, requestId);
-    }
-
-    logger.info("recreating containers", { requestId });
+    logger.info("pulling and recreating containers", { requestId });
     const managedServices = await buildManagedServices(state);
-    // forceRecreate: a freshly-pulled image with the SAME tag (an updated
-    // :latest, or a re-pulled :vX.Y.Z) does not reliably make a plain `up`
-    // replace the running container — so it would keep running the OLD image
-    // (the akm-0.3.1 surprise). Force the swap.
-    const upResult = await composeUp({ ...composeOpts, services: managedServices, forceRecreate: true });
-    if (!upResult.ok) {
-      logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
-      return errorResponse(502, "up_failed", "Images pulled but failed to recreate containers", { stderr: upResult.stderr }, requestId);
+    // The single compose driver (§4.3, plan 2.2). `pull: "always"` is what this
+    // manual button is FOR: force a fresh pull even when the tag is unchanged
+    // (an updated :latest, or a re-pulled :vX.Y.Z) — a plain `up` would keep the
+    // OLD image (the akm-0.3.1 surprise). --force-recreate (always on in
+    // applyStack) then swaps the running container onto the freshly pulled image.
+    const result = await applyStack({ kind: "services", services: managedServices }, composeOpts, undefined, { pull: "always" });
+    if (!result.ok) {
+      logger.error("pull/recreate failed", { requestId, error: result.error });
+      return errorResponse(502, "up_failed", "Failed to pull and recreate containers", { stderr: result.rawStderr ?? result.error ?? "" }, requestId);
     }
 
-    logger.info("pull completed", { requestId, started: managedServices });
+    logger.info("pull completed", { requestId, started: result.started });
 
     return jsonResponse(200, {
       ok: true,
-      pulled: pullResult.stdout,
-      started: managedServices
+      started: result.started
     }, requestId);
   });
 };

@@ -6,7 +6,7 @@ import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall } from './lifecycle.js';
 import { buildManagedServices } from './lifecycle.js';
-import { composeDown, composePs, composeUp, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
+import { applyStack, composeDown, composePs, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
@@ -293,30 +293,28 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
       // Best-effort cleanup only.
     }
 
-    progress.phase = 'pulling-images';
+    progress.phase = 'starting';
     progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'pending', label: 'Starting...' }));
     emitProgress(options, progress);
 
-    // §2.1: no separate pull-then-check-missing-images pass — `compose up`'s
-    // own `--pull` policy decides. A dev tag is built locally and must never
-    // attempt a registry pull ("never"); everything else pulls only what's
-    // missing locally ("missing", compose's own default, explicit here).
+    // The single compose driver (§4.3, plan 2.2): ONE `up --pull missing --wait
+    // --force-recreate --remove-orphans` call — no separate pull step. `--pull
+    // missing` never makes a network call for a locally-built dev image (a
+    // present image is not "missing"); a changed pin makes its tag "missing" so
+    // compose pulls it in the same `up` and a pull failure is fatal. `--wait` is
+    // the health gate; a wider health timeout tolerates a first install's slow
+    // cold boot of multi-GB images.
     const imageTag = resolveImageTag(state);
     const isDevTag = imageTag.startsWith('dev');
+    const stackResult = await applyStack({ kind: 'all' }, composeOpts, undefined, { pull: 'missing', healthTimeoutMs: 5 * 60_000 });
 
-    progress.phase = 'starting';
-    emitProgress(options, progress);
-    const upResult = await composeUp({
-      ...composeOpts,
-      services,
-      forceRecreate: true,
-      removeOrphans: true,
-      pull: isDevTag ? 'never' : 'missing',
-    });
-
-    if (!upResult.ok) {
+    if (!stackResult.ok) {
+      // ONE `compose ps` refreshes the per-service display labels and splits the
+      // failures into CORE vs OPTIONAL — setup-completion gates on core only, so
+      // an addon/portal hiccup can't wedge a fresh install (§2.1). `upFailed`
+      // means nothing came up at all, always a hard failure.
       const { failedCore, failedOptional } = await refreshDeployStatus(state, progress, true);
-      if (failedCore.length > 0) {
+      if (failedCore.length > 0 || stackResult.upFailed) {
         const allFailed = [...failedCore, ...failedOptional];
         progress.deployError = isDevTag
           ? `Dev images not found locally or failed to start (tag: ${imageTag}): ${allFailed.join(', ')}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`

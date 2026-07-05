@@ -69,13 +69,17 @@ export {
   listEnabledAddonIds,
   setAddonEnabled,
   pruneRemovedAddonState,
+  migrateProfileOnlyAddonEnablement,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/addons.js";
 
 // ── Addon host-capability availability ───────────────────────────────────
 export type { AddonProfileAvailability } from "./control-plane/addon-availability.js";
-export { getAddonProfileAvailability } from "./control-plane/addon-availability.js";
+export { getAddonProfileAvailability, execFileNoThrow } from "./control-plane/addon-availability.js";
+
+// ── Voice addon host-fact probes (rootless docker, nvidia runtime) ───────
+export { detectRootlessDocker, dockerHasNvidiaRuntime } from "./control-plane/voice-host-probes.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {
@@ -344,7 +348,6 @@ export {
   composeUpTimeoutMs,
   composeWaitTimeoutSec,
   runComposeStreaming,
-  composeUp,
   composeDown,
   composeRestart,
   composeStop,
@@ -352,8 +355,6 @@ export {
   composePs,
   parseComposePsRows,
   composeLogs,
-  composePullService,
-  composePull,
   composeStats,
   composeExec,
   getDockerEvents,
@@ -414,10 +415,14 @@ export {
 } from "./control-plane/profile-ids.js";
 
 // ── Compose Error Parsing ────────────────────────────────────────────────
-export type { ComposeServiceFailure } from "./control-plane/compose-errors.js";
+// parseComposeStderr (the per-service stderr splitter) is deliberately NOT
+// re-exported here (plan 2.2): applyStack no longer needs a separate
+// pull-vs-up split (single `up --pull missing` call, one failure per scope)
+// and voice/bring-up.ts no longer calls it either — mapDockerError still uses
+// it internally (compose-errors.ts) to attribute a healthcheck failure to its
+// service, but that is compose-errors.ts's own concern, not a public seam.
 export {
   mapDockerError,
-  parseComposeStderr,
   summarizeComposeStderr,
 } from "./control-plane/compose-errors.js";
 

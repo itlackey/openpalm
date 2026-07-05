@@ -6,32 +6,42 @@
  *
  * Responsibilities:
  *   - Docker image inspection + resolution (dockerImagePresent / resolveServiceImage)
- *   - Host probes (TCP port, container health, rootless / nvidia-runtime detection)
- *   - Compose-overlay generation (CDI fallback, rootless fallback)
+ *   - UI-local host probes (TCP port, container health) — the rootless /
+ *     nvidia-runtime host-fact probes live in lib (control-plane/voice-host-probes.ts)
+ *     beside hardware-detect.ts, since they inspect the host, not addon/UI state.
+ *   - Fallback-overlay SELECTION only: voice.compose.cdi.yml and
+ *     voice.compose.rootless.yml ship as static files in the skeleton's
+ *     managed system/stack/ tree (packages/skeleton/system/stack/) — nothing
+ *     here generates compose YAML.
  *   - The in-memory background-job registry (activeJobs)
- *   - The compose-up + /health poll lifecycle (runBringUp / runBringUpJob)
- *   - The engageVoiceAddon orchestration that the route delegates to
+ *   - The engageVoiceAddon orchestration that the route delegates to; the
+ *     actual compose-up + health-wait lifecycle (runBringUp) is a thin
+ *     shim over `@openpalm/lib`'s single `applyStack` driver (plan 2.2) —
+ *     this file keeps only job registry + progress-step rendering, plus the
+ *     "warming" re-probe and voice-specific error-copy translation that
+ *     applyStack's generic result doesn't carry.
  *
  * Everything here is server-only (uses node:child_process / node:net /
  * node:fs) and returns plain data — the route maps the results to HTTP
  * responses.
  */
-import { execFile } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { getState } from '$lib/server/state.js';
 import {
   annotateAddonProfileAvailability,
   addonProfileId,
+  applyStack,
   buildComposeOptions,
   composeStop,
-  composeUp,
+  detectRootlessDocker,
+  dockerHasNvidiaRuntime,
+  execFileNoThrow,
   getAddonProfiles,
   getAddonProfileAvailability,
   getAddonProfileSelection,
   listEnabledAddonIds,
-  parseComposeStderr,
   setAddonEnabled,
   setAddonProfileSelection,
   stackDirFor,
@@ -40,10 +50,9 @@ import type { AddonProfile } from '@openpalm/lib';
 import { translateDockerError } from '$lib/server/voice-errors.js';
 
 export const VOICE_ADDON = 'voice';
-// compose.yml advertises start_period: 180s. The probe must wait at least
-// that long on a cold-disk first launch (model download + warm-up).
+// compose.yml advertises start_period: 180s. The health-wait must tolerate at
+// least that long on a cold-disk first launch (model download + warm-up).
 const VOICE_PROBE_TIMEOUT_MS = 180_000;
-const VOICE_PROBE_INTERVAL_MS = 1_000;
 const PORT_PROBE_TIMEOUT_MS = 750;
 
 // ── Background-pull job state ────────────────────────────────────────
@@ -52,7 +61,7 @@ const PORT_PROBE_TIMEOUT_MS = 750;
 // poll both fire long before a 2–8 GB pull finishes — operators end up
 // staring at a "network error" while the pull is still running. To
 // decouple, when we detect an absent large-tag image we kick off the
-// long work (composeUp + health poll) in the background, return 202
+// long work (the applyStack compose-up + health-wait) in the background, return 202
 // immediately, and have the UI poll GET /admin/voice for status.
 type VoiceJobState = 'pulling' | 'starting' | 'healthy' | 'error';
 export type VoiceJobStep = { step: string; ok: boolean; detail?: string };
@@ -130,35 +139,6 @@ export function openpalmVoiceBaseURL(): string {
 }
 
 // ── Helpers: docker image inspect, port probe, container probe ─────
-
-function execFileNoThrow(
-  cmd: string,
-  args: string[],
-  timeoutMs: number,
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
-      // ENOENT (binary missing) lands here with no stderr because the
-      // child never executed. Synthesise stderr that matches the
-      // translateDockerError ENOENT regex so the operator sees the
-      // "Docker isn't installed" copy rather than "unknown error".
-      let mergedStderr = stderr?.toString() ?? '';
-      const code = (error as NodeJS.ErrnoException | null)?.code;
-      if (code && !mergedStderr) {
-        if (code === 'ENOENT') {
-          mergedStderr = `spawn ${cmd} ENOENT: command not found`;
-        } else {
-          mergedStderr = `spawn ${cmd} ${code}`;
-        }
-      }
-      resolve({
-        ok: !error,
-        stdout: stdout?.toString() ?? '',
-        stderr: mergedStderr,
-      });
-    });
-  });
-}
 
 /**
  * True when the local docker daemon already has the named image cached.
@@ -266,145 +246,25 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
   return inspect.stdout.trim();
 }
 
-// ── CDI fallback overlay ─────────────────────────────────────────────
+// ── Host fallback overlays (CDI, rootless Docker) ─────────────────────
+//
+// voice.compose.cdi.yml / voice.compose.rootless.yml ship as STATIC files in
+// the skeleton's managed system/stack/ tree (packages/skeleton/system/stack/)
+// — applyHomeSeed materializes them into every OP_HOME on install/update, the
+// same as core/services/portals.compose.yml. There is nothing to generate
+// here; we only decide (via the lib host-fact probes) whether to include the
+// already-present file in this one applyStack call's file list.
 
-/**
- * The CDI overlay YAML — switches `voice-cuda` from the legacy
- * `runtime: nvidia` form to the CDI `driver: cdi` form. Pure string
- * builder so it can be unit-tested without touching the filesystem.
- */
-export function buildCdiOverlayYaml(): string {
-  return [
-    '# Generated overlay — switches voice-cuda from runtime:nvidia to CDI.',
-    '# Applied only when the host probe shows the legacy NVIDIA runtime is',
-    '# missing but /etc/cdi/nvidia.yaml is present.',
-    'services:',
-    '  voice-cuda:',
-    '    runtime: ""',
-    '    deploy:',
-    '      resources:',
-    '        reservations:',
-    '          devices:',
-    '            - driver: cdi',
-    '              device_ids:',
-    '                - nvidia.com/gpu=all',
-    '',
-  ].join('\n');
+/** Path of the static CDI overlay, or null when the managed tree isn't seeded yet. */
+function voiceCdiOverlayPath(homeDir: string): string | null {
+  const overlayPath = join(stackDirFor(homeDir), 'voice.compose.cdi.yml');
+  return existsSync(overlayPath) ? overlayPath : null;
 }
 
-/**
- * Write a sibling compose overlay that switches `voice-cuda` from the
- * legacy `runtime: nvidia` form to the CDI `driver: cdi` form. Caller
- * includes it in the composeUp file list ONLY when the host probe
- * indicates the runtime is missing but a CDI spec exists.
- *
- * The canonical compose.yml stays as the runtime-nvidia form (the case
- * that needs no manual setup beyond installing nvidia-container-toolkit).
- *
- * Returns the absolute path of the overlay, or null when there is no
- * voice compose overlay to patch.
- */
-function writeCdiOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = stackDirFor(homeDir);
-  if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
-  const overlayPath = join(stackDir, 'voice.compose.cdi.yml');
-  writeFileSync(overlayPath, buildCdiOverlayYaml());
-  return overlayPath;
-}
-
-// ── Rootless Docker fallback ─────────────────────────────────────────
-
-/**
- * Detect rootless Docker. The compose `user: "${OP_UID:-1000}:${OP_GID:-1000}"`
- * directive bakes the host UID into the container — but on a rootless
- * daemon the bind-mount UID inside the container is subuid-remapped, so
- * the resulting container UID has no write permission against
- * `${OP_HOME}/data/voice/models`. Removing the `user:` directive lets
- * Docker pick whatever UID the rootless mapping translates to inside the
- * user namespace, which DOES have write access to the bind-mount.
- *
- * `docker info` is the authoritative source: rootless daemons advertise
- * `SecurityOptions: ... name=rootless` and `CgroupDriver: ... rootless`.
- * We accept either signal.
- */
-async function detectRootlessDocker(): Promise<boolean> {
-  const res = await execFileNoThrow(
-    'docker',
-    ['info', '--format', '{{json .}}'],
-    5_000,
-  );
-  if (!res.ok || !res.stdout) return false;
-  try {
-    const parsed = JSON.parse(res.stdout) as {
-      SecurityOptions?: unknown;
-      CgroupDriver?: unknown;
-    };
-    const sec = Array.isArray(parsed.SecurityOptions)
-      ? parsed.SecurityOptions.map((s) => String(s))
-      : [];
-    if (sec.some((s) => /name=rootless/i.test(s))) return true;
-    if (typeof parsed.CgroupDriver === 'string' && /rootless/i.test(parsed.CgroupDriver)) {
-      return true;
-    }
-    return false;
-  } catch {
-    // Fall back to a stringy contains-check if the JSON shape changes.
-    return /name=rootless|cgroup\s*driver:.*rootless/i.test(res.stdout);
-  }
-}
-
-/**
- * The rootless overlay YAML — drops the `user:` directive from each voice
- * service. Pure string builder so it can be unit-tested without touching
- * the filesystem.
- */
-export function buildRootlessOverlayYaml(): string {
-  // `user: null` in YAML drops the directive when compose merges files.
-  // We cover all three voice service variants so the overlay works no
-  // matter which profile is active.
-  return [
-    '# Generated overlay — removes the `user:` directive from voice services.',
-    '# Applied only when `docker info` reports a rootless daemon. On rootless',
-    '# Docker the compose-baked UID has no write access to the bind-mounted',
-    '# state directory; letting Docker pick the namespaced UID restores it.',
-    'services:',
-    '  voice:',
-    '    user: null',
-    '  voice-cuda:',
-    '    user: null',
-    '  voice-rocm:',
-    '    user: null',
-    '',
-  ].join('\n');
-}
-
-/**
- * Write a sibling overlay that drops the `user:` directive from each
- * voice service. Mirrors writeCdiOverlayIfNeeded: caller includes the
- * returned path in composeUp's file list. Returns null when there is
- * no voice compose overlay to patch (so the file list stays valid and Docker
- * doesn't blow up on a missing -f arg).
- */
-function writeRootlessOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = stackDirFor(homeDir);
-  if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
-  const overlayPath = join(stackDir, 'voice.compose.rootless.yml');
-  writeFileSync(overlayPath, buildRootlessOverlayYaml());
-  return overlayPath;
-}
-
-/**
- * Lightweight wrapper around `docker info` to check whether the
- * `nvidia` runtime is registered. Used as a second signal alongside the
- * cached canonical CUDA profile availability result.
- */
-async function dockerHasNvidiaRuntime(): Promise<boolean> {
-  const res = await execFileNoThrow(
-    'docker',
-    ['info', '--format', '{{json .Runtimes}}'],
-    2_000,
-  );
-  return res.ok && res.stdout.includes('"nvidia"');
+/** Path of the static rootless overlay, or null when the managed tree isn't seeded yet. */
+function voiceRootlessOverlayPath(homeDir: string): string | null {
+  const overlayPath = join(stackDirFor(homeDir), 'voice.compose.rootless.yml');
+  return existsSync(overlayPath) ? overlayPath : null;
 }
 
 // ── Bring-up lifecycle ───────────────────────────────────────────────
@@ -427,15 +287,24 @@ type BringUpOutcome = {
 };
 
 /**
- * Inline composeStop-other-profiles + composeUp + /health poll. Returns
- * the terminal state. Pushed `steps` get mutated in place so the caller
- * (sync or background) can read progress as it happens.
+ * Stops services from OTHER profiles, then routes the actual compose-up +
+ * health-wait through `@openpalm/lib`'s single {@link applyStack} driver
+ * (plan 2.2) — this function no longer runs its own composeUp or /health
+ * poll. `applyStack`'s health-wait reads the SAME docker HEALTHCHECK every
+ * voice compose service already declares (`curl .../health` inside the
+ * container, `start_period: 180s`), so it observes exactly what the removed
+ * manual HTTP poll observed, just via `docker inspect` instead of a
+ * host-side fetch loop.
+ *
+ * Returns the terminal state. Pushed `steps` get mutated in place so the
+ * caller (sync or background) can read progress as it happens.
  */
 async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
   const { state, services, activeProfile, extraFiles, availableProfiles, steps } = input;
 
   let composeOk: boolean;
   let composeErr: string | undefined;
+  let healthy = false;
   try {
     // Profile switch: stop services from OTHER profiles so they release
     // their host port binding (all variants share 8880) before we bring
@@ -454,19 +323,32 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
     }
 
     const baseOpts = buildComposeOptions(state);
-    const result = await composeUp({
-      ...baseOpts,
-      files: [...baseOpts.files, ...extraFiles],
-      services,
-      forceRecreate: true,
-      ...(activeProfile ? { profiles: [activeProfile] } : {}),
-    });
-    composeOk = result.ok;
-    if (!result.ok) {
-      const failures = parseComposeStderr(result.stderr);
-      const voiceFailure = failures.find((f) => services.includes(f.service));
-      const rawDetail = voiceFailure?.reason ?? result.stderr ?? `compose up exited ${result.code}`;
-      composeErr = translateDockerError(rawDetail);
+    const result = await applyStack(
+      { kind: 'services', services },
+      {
+        files: [...baseOpts.files, ...extraFiles],
+        envFiles: baseOpts.envFiles,
+        profiles: activeProfile ? [activeProfile] : baseOpts.profiles,
+      },
+      undefined,
+      // 180s matches the voice compose services' own start_period, so a
+      // cold-disk first launch (model download + warm-up) gets the same
+      // grace window the removed manual poll used.
+      { healthTimeoutMs: VOICE_PROBE_TIMEOUT_MS },
+    );
+
+    if (result.upFailed) {
+      // Only an `up`-command failure carries raw stderr worth re-translating
+      // through voice's own operator-facing hints (CPU-profile suggestion,
+      // CDI/NVIDIA runtime copy, port-in-use) — applyStack's own `error` is
+      // already mapDockerError-translated for the generic admin UI, which
+      // doesn't know about voice profiles.
+      composeOk = false;
+      composeErr = translateDockerError(result.rawStderr || result.error || 'compose up failed');
+    } else {
+      // `up` succeeded; `result.ok` also folds in the post-up health wait.
+      composeOk = true;
+      healthy = result.ok;
     }
   } catch (e) {
     composeOk = false;
@@ -482,24 +364,11 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
     return { composeOk, composeErr, healthy: false, warming: false, steps };
   }
 
-  // Poll /health until ready (or timeout).
-  const probeBase = openpalmVoiceBaseURL();
-  const probeUrl = `${probeBase}/health`;
-  const deadline = Date.now() + VOICE_PROBE_TIMEOUT_MS;
-  let healthy = false;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1500) });
-      if (res.ok) {
-        healthy = true;
-        break;
-      }
-    } catch {
-      /* keep polling until deadline */
-    }
-    await new Promise((r) => setTimeout(r, VOICE_PROBE_INTERVAL_MS));
-  }
-
+  // applyStack's health-wait already timed out above if `healthy` is false
+  // here. Re-probe the container's OWN health status once more to tell a
+  // still-cold-booting container ("starting") from a harder failure — the
+  // same distinction the removed manual poll made, now sourced from Docker's
+  // healthcheck state instead of a duplicate HTTP probe.
   let warming = false;
   if (!healthy) {
     try {
@@ -517,7 +386,7 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
       ? {}
       : warming
         ? { detail: 'still warming up — refresh in a moment' }
-        : { detail: `did not respond at ${probeUrl} within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` }),
+        : { detail: `did not become healthy within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` }),
   });
 
   return { composeOk, healthy, warming, steps };
@@ -687,7 +556,7 @@ export async function engageVoiceAddon(input: {
 
   // ── Pre-flight image inspect ─────────────────────────────────────
   // If the image is missing locally AND its tag is a known large one,
-  // we'll fork the long work (composeUp + healthcheck) into a
+  // we'll fork the long work (the applyStack compose-up + healthcheck) into a
   // background job so the UI can return immediately and poll
   // GET /admin/voice for progress.
   const profileServices = activeProfile
@@ -715,10 +584,11 @@ export async function engageVoiceAddon(input: {
 
   // ── CDI fallback for canonical CUDA profile ─────────────────────
   // When the operator picks `cuda` but the host has only CDI (no
-  // legacy nvidia runtime), generate a sibling overlay that rewrites
-  // voice-cuda to use deploy.resources.reservations.devices+driver:cdi.
-  // The canonical compose stays the runtime-nvidia form (no manual
-  // setup case). Overlay is applied only for this one composeUp.
+  // legacy nvidia runtime), include the static voice.compose.cdi.yml
+  // overlay (ships in system/stack/, rewrites voice-cuda to use
+  // deploy.resources.reservations.devices+driver:cdi). The canonical
+  // compose stays the runtime-nvidia form (no manual setup case).
+  // Overlay is applied only for this one applyStack call.
   //
   // Skipped on Windows: the operator must use Docker Desktop with WSL2
   // GPU integration there, and CDI specs live inside WSL2 — the Node
@@ -731,7 +601,7 @@ export async function engageVoiceAddon(input: {
       || !await dockerHasNvidiaRuntime();
     const cdiSpecPresent = existsSync('/etc/cdi/nvidia.yaml');
     if (runtimeMissing && cdiSpecPresent) {
-      const overlay = writeCdiOverlayIfNeeded(state.homeDir);
+      const overlay = voiceCdiOverlayPath(state.homeDir);
       if (overlay) {
         extraFiles.push(overlay);
         steps.push({ step: 'cdi-fallback', ok: true, detail: 'using CDI device reservation' });
@@ -742,14 +612,15 @@ export async function engageVoiceAddon(input: {
   // ── Rootless Docker fallback ─────────────────────────────────────
   // On rootless Docker the compose-baked `user: ${OP_UID}:${OP_GID}`
   // directive resolves to a UID that the namespaced container can't use
-  // to write the bind-mounted models directory. Drop the directive via
-  // a sibling overlay; Docker then picks the in-namespace UID, which
-  // has the right permission against the subuid-remapped bind mount.
+  // to write the bind-mounted models directory. Include the static
+  // voice.compose.rootless.yml overlay (ships in system/stack/) to drop
+  // the directive; Docker then picks the in-namespace UID, which has the
+  // right permission against the subuid-remapped bind mount.
   if (!inVitest) {
     try {
       const rootless = await detectRootlessDocker();
       if (rootless) {
-        const overlay = writeRootlessOverlayIfNeeded(state.homeDir);
+        const overlay = voiceRootlessOverlayPath(state.homeDir);
         if (overlay) {
           extraFiles.push(overlay);
           steps.push({
@@ -770,7 +641,7 @@ export async function engageVoiceAddon(input: {
 
   // ── Background-pull short-circuit ────────────────────────────────
   // When the image is missing AND large, fork the rest of the work
-  // (composeStop, composeUp, /health poll) into a job that updates the
+  // (composeStop, then applyStack's compose-up + health-wait) into a job that updates the
   // module-level activeJobs map. Return so the route replies 202
   // immediately and the browser/SvelteKit fetch doesn't time out during
   // the multi-minute pull. UI polls GET /admin/voice for the activeJob.

@@ -1,14 +1,21 @@
 /**
  * Thin route tests for POST /admin/containers/pull (3.4 — mutating-endpoint coverage).
  *
- * Previously untested. Covers: auth gate, docker-unavailable 503, pull
- * failure (502), compose-up-after-pull failure (502), and the success path
- * (force-recreate against the managed-services set).
+ * Covers: auth gate, docker-unavailable 503, applyStack failure (502), and the
+ * success path — the button routes through the single compose driver applyStack
+ * with `pull: "always"` (force a fresh pull even on an unchanged tag).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-const composePullMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
-const composeUpMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
+type ApplyStackResult = {
+  ok: boolean;
+  started: string[];
+  failed: { service: string; reason: string }[];
+  error?: string;
+  rawStderr?: string;
+};
+
+const applyStackMock = vi.fn<() => Promise<ApplyStackResult>>();
 const checkDockerMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
 const buildManagedServicesMock = vi.fn<() => Promise<string[]>>();
 
@@ -16,8 +23,7 @@ vi.mock('@openpalm/lib', async () => {
   const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
   return {
     ...actual,
-    composePull: (...args: unknown[]) => composePullMock(...(args as [])),
-    composeUp: (...args: unknown[]) => composeUpMock(...(args as [])),
+    applyStack: (...args: unknown[]) => applyStackMock(...(args as [])),
     checkDocker: (...args: unknown[]) => checkDockerMock(...(args as [])),
     buildManagedServices: (...args: unknown[]) => buildManagedServicesMock(...(args as [])),
     buildComposeOptions: () => ({ files: ['/tmp/fake/compose.yml'], envFiles: [] }),
@@ -39,14 +45,12 @@ function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
 
 beforeEach(() => {
   resetState('admin-token');
-  composePullMock.mockReset();
-  composeUpMock.mockReset();
+  applyStackMock.mockReset();
   checkDockerMock.mockReset();
   buildManagedServicesMock.mockReset();
 
   checkDockerMock.mockResolvedValue({ ok: true, stdout: '24.0.0', stderr: '', code: 0 });
-  composePullMock.mockResolvedValue({ ok: true, stdout: 'pulled', stderr: '', code: 0 });
-  composeUpMock.mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+  applyStackMock.mockResolvedValue({ ok: true, started: ['assistant', 'guardian'], failed: [] });
   buildManagedServicesMock.mockResolvedValue(['assistant', 'guardian']);
 });
 
@@ -66,34 +70,30 @@ describe('POST /admin/containers/pull', () => {
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.error).toBe('docker_unavailable');
-    expect(composePullMock).not.toHaveBeenCalled();
+    expect(applyStackMock).not.toHaveBeenCalled();
   });
 
-  test('returns 502 pull_failed when the image pull fails', async () => {
-    composePullMock.mockResolvedValue({ ok: false, stdout: '', stderr: 'pull access denied', code: 1 });
-    const res = await POST(makePostEvent());
-    expect(res.status).toBe(502);
-    const body = await res.json();
-    expect(body.error).toBe('pull_failed');
-    expect(composeUpMock).not.toHaveBeenCalled();
-  });
-
-  test('returns 502 up_failed when recreate fails after a successful pull', async () => {
-    composeUpMock.mockResolvedValue({ ok: false, stdout: '', stderr: 'no such service', code: 1 });
+  test('returns 502 up_failed when applyStack (pull + recreate) fails', async () => {
+    applyStackMock.mockResolvedValue({ ok: false, started: [], failed: [{ service: 'assistant', reason: 'pull access denied' }], error: 'pull access denied', rawStderr: 'pull access denied' });
     const res = await POST(makePostEvent());
     expect(res.status).toBe(502);
     const body = await res.json();
     expect(body.error).toBe('up_failed');
   });
 
-  test('force-recreates every managed service on success', async () => {
+  test('force-pulls and recreates every managed service on success', async () => {
     const res = await POST(makePostEvent());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.started).toEqual(['assistant', 'guardian']);
-    expect(composeUpMock).toHaveBeenCalledWith(
-      expect.objectContaining({ services: ['assistant', 'guardian'], forceRecreate: true }),
+    // The single compose driver, scoped to the managed set, with pull: 'always'
+    // (the button's whole purpose: force a fresh same-tag pull).
+    expect(applyStackMock).toHaveBeenCalledWith(
+      { kind: 'services', services: ['assistant', 'guardian'] },
+      expect.anything(),
+      undefined,
+      { pull: 'always' },
     );
   });
 });

@@ -1,8 +1,8 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   _resetJobs,
-  buildCdiOverlayYaml,
-  buildRootlessOverlayYaml,
   getActiveJob,
   isLargeImageTag,
   resolveDefaultProfile,
@@ -14,29 +14,34 @@ afterEach(() => {
   _resetJobs();
 });
 
-describe('buildCdiOverlayYaml', () => {
-  test('rewrites voice-cuda to the CDI device reservation form', () => {
-    const yaml = buildCdiOverlayYaml();
+// (2.2) buildCdiOverlayYaml / buildRootlessOverlayYaml were deleted: the
+// overlays they generated now ship as static files in the skeleton's managed
+// tree, verified directly against packages/skeleton/system/stack/ below —
+// there is no generator left to unit-test here.
+describe('static voice fallback overlays (packages/skeleton/system/stack/)', () => {
+  const skeletonStackDir = join(import.meta.dirname, '..', '..', '..', '..', '..', 'skeleton', 'system', 'stack');
+
+  test('voice.compose.cdi.yml rewrites voice-cuda to the CDI device reservation form', () => {
+    const path = join(skeletonStackDir, 'voice.compose.cdi.yml');
+    expect(existsSync(path)).toBe(true);
+    const yaml = readFileSync(path, 'utf-8');
     expect(yaml).toContain('services:');
     expect(yaml).toContain('  voice-cuda:');
     // Legacy runtime is cleared and the CDI driver reservation is added.
     expect(yaml).toContain('    runtime: ""');
     expect(yaml).toContain('- driver: cdi');
     expect(yaml).toContain('- nvidia.com/gpu=all');
-    // Trailing newline so appending files stays valid YAML.
-    expect(yaml.endsWith('\n')).toBe(true);
   });
-});
 
-describe('buildRootlessOverlayYaml', () => {
-  test('drops the user: directive from all three voice variants', () => {
-    const yaml = buildRootlessOverlayYaml();
+  test('voice.compose.rootless.yml drops the user: directive from all three voice variants', () => {
+    const path = join(skeletonStackDir, 'voice.compose.rootless.yml');
+    expect(existsSync(path)).toBe(true);
+    const yaml = readFileSync(path, 'utf-8');
     for (const svc of ['voice', 'voice-cuda', 'voice-rocm']) {
       expect(yaml).toContain(`  ${svc}:`);
     }
     // `user: null` merges away the directive across compose files.
     expect(yaml.match(/user: null/g)?.length).toBe(3);
-    expect(yaml.endsWith('\n')).toBe(true);
   });
 });
 

@@ -5,8 +5,9 @@
  * compose-arg env-file existence probe.
  *
  * These pin the REAL orchestration rules of the §4.3 / §2.1 compose driver:
- *   (1) pull-before-up ordering (pull is issued strictly before up)
- *   (2) pull failure is FATAL — up is never attempted, failure maps to the scope
+ *   (1) ONE `up -d --pull <mode> --wait --force-recreate` invocation — no
+ *       separate `pull` step (plan 2.2)
+ *   (2) a pull failure during `up` is FATAL and maps to the scope
  *   (3) health-gate — `up -d --wait` IS the gate; a health-gate failure means
  *       `up` itself exits non-zero, and ONE `compose ps --format json` call
  *       (not a per-container inspect poll) names the failed service
@@ -69,9 +70,8 @@ function makeFiles(existsCalls: string[]): FileStore {
 const OPTS = { files: ["/fake/compose.yml"], envFiles: ["/fake/stack.env"], profiles: [] as string[] };
 
 describe("applyStack — DockerClient + FileStore seam", () => {
-  it("(1) pulls the service BEFORE up, with --wait, and reports started with NO follow-up ps/inspect call", async () => {
+  it("(1) brings the service up with --pull missing + --wait in ONE call (no separate pull step) and reports started with NO follow-up ps", async () => {
     const docker = new FakeDocker((args) => {
-      if (args.includes("pull")) return ok();
       if (args.includes("up")) return ok();
       return ok();
     });
@@ -84,13 +84,15 @@ describe("applyStack — DockerClient + FileStore seam", () => {
     expect(result.started).toEqual(["assistant"]);
     expect(result.failed).toEqual([]);
 
-    const pullIdx = docker.indexOfArg("pull");
-    const upIdx = docker.indexOfArg("up");
-    expect(pullIdx).toBeGreaterThanOrEqual(0);
-    expect(upIdx).toBeGreaterThan(pullIdx);
+    // ONE `up` invocation — NO separate `pull` command (plan 2.2).
+    const upCalls = docker.calls.filter((c) => c.includes("up"));
+    expect(upCalls).toHaveLength(1);
+    expect(docker.calls.some((c) => c.includes("pull") && !c.includes("up"))).toBe(false);
 
-    // Scoped recreate flags (§4.3) + the single health gate (§2.1).
-    const upCall = docker.calls[upIdx];
+    // Inline pull policy + scoped recreate flags (§4.3) + the single health gate (§2.1).
+    const upCall = upCalls[0];
+    expect(upCall).toContain("--pull");
+    expect(upCall).toContain("missing");
     expect(upCall).toContain("--force-recreate");
     expect(upCall).toContain("--no-deps");
     expect(upCall).toContain("assistant");
@@ -103,9 +105,20 @@ describe("applyStack — DockerClient + FileStore seam", () => {
     expect(docker.indexOfArg("inspect")).toBe(-1);
   });
 
+  it("(1b) honors pull: 'always' (the manual pull button) on the up call", async () => {
+    const docker = new FakeDocker((args) => (args.includes("up") ? ok() : ok()));
+    const deps: StackDeps = { docker, files: makeFiles([]) };
+
+    await applyStack({ kind: "service", service: "assistant" }, OPTS, deps, { pull: "always" });
+
+    const upCall = docker.calls[docker.indexOfArg("up")];
+    expect(upCall).toContain("--pull");
+    expect(upCall).toContain("always");
+    expect(upCall).not.toContain("missing");
+  });
+
   it("(4) gates --env-file through the injected FileStore, not real fs", async () => {
     const docker = new FakeDocker((args) => {
-      if (args.includes("pull")) return ok();
       if (args.includes("up")) return ok();
       return ok();
     });
@@ -115,14 +128,14 @@ describe("applyStack — DockerClient + FileStore seam", () => {
     await applyStack({ kind: "service", service: "assistant" }, OPTS, deps);
 
     expect(existsCalls).toContain("/fake/stack.env");
-    const pullCall = docker.calls[docker.indexOfArg("pull")];
-    expect(pullCall).toContain("--env-file");
-    expect(pullCall).toContain("/fake/stack.env");
+    const upCall = docker.calls[docker.indexOfArg("up")];
+    expect(upCall).toContain("--env-file");
+    expect(upCall).toContain("/fake/stack.env");
   });
 
-  it("(2) pull failure is FATAL — up is NEVER attempted and the failure maps to the scope", async () => {
+  it("(2) a pull failure during up is FATAL and maps to the scope", async () => {
     const docker = new FakeDocker((args) => {
-      if (args.includes("pull")) return fail("pull access denied");
+      if (args.includes("up")) return fail("pull access denied");
       return ok();
     });
     const deps: StackDeps = { docker, files: makeFiles([]) };
@@ -134,8 +147,8 @@ describe("applyStack — DockerClient + FileStore seam", () => {
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].service).toBe("guardian");
     expect(result.error).toBeTruthy();
-    // No `up` was ever issued.
-    expect(docker.indexOfArg("up")).toBe(-1);
+    // The `up` (which carries the pull) IS attempted, and its failure is fatal.
+    expect(result.upFailed).toBe(true);
   });
 
   it("(3) health-gate: `up --wait` fails, and ONE `compose ps --format json` call names the unhealthy service", async () => {
