@@ -40,6 +40,10 @@ smoke_seed_secrets() {
   openssl rand -hex 16 > "$home/knowledge/secrets/op_guardian_mcp_token"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_chat_secret"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_api_secret"
+  # op_api_key: the OpenAI-compat edge key (S.1b). Seeded on real installs by
+  # ensureSecrets(); the guardian container bind-mounts it, so the fixture must
+  # provide it too or the container fails to start.
+  openssl rand -hex 16 > "$home/knowledge/secrets/op_api_key"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_discord_secret"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_slack_secret"
   printf '%s\n' 'discord-smoke-token' > "$home/knowledge/secrets/discord_bot_token"
