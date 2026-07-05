@@ -17,12 +17,14 @@ import { OC_DOC_FIXTURE } from "./oc-doc-fixture";
 
 const TEST_SECRET = "test-secret-value-1234";
 const TEST_PORTAL = "test";
+const ADMIN_TOKEN = "admin-token-test-proxy";
 
 let guardianProc: Subprocess;
 let mockAssistant: ReturnType<typeof Bun.serve>;
 let guardianUrl: string;
 let tmpDir: string;
 let secretPath: string;
+let adminTokenPath: string;
 let guardianPort = 0;
 let assistantPort = 0;
 
@@ -54,7 +56,7 @@ async function waitForGuardianReady(): Promise<void> {
 
   let proxyOn = false;
   for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`);
+    const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
     if (r.ok && (await r.json()).oc_proxy?.enabled === true) {
       proxyOn = true;
       break;
@@ -73,6 +75,7 @@ function spawnGuardian(): Subprocess {
       GUARDIAN_DIRECT_PORT: String(Bun.env.GUARDIAN_DIRECT_PORT ?? "0"),
       GUARDIAN_ADMIN_PORT: String(Bun.env.GUARDIAN_ADMIN_PORT ?? "0"),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
+      GUARDIAN_ADMIN_TOKEN_FILE: adminTokenPath,
       PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
@@ -147,6 +150,8 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-proxy-test-"));
   secretPath = join(tmpDir, "test-secret");
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
+  adminTokenPath = join(tmpDir, "admin-token");
+  writeFileSync(adminTokenPath, `${ADMIN_TOKEN}\n`);
 
   mockAssistant = Bun.serve({
     port: assistantPort,

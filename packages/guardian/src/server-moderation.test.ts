@@ -9,6 +9,7 @@ import { OC_DOC_FIXTURE } from './oc-doc-fixture';
 
 const TEST_SECRET = 'moderation-secret-9876';
 const TEST_PRINCIPAL = 'test';
+const ADMIN_TOKEN = 'admin-token-test-server-mod';
 
 function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -56,6 +57,8 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'guardian-mod-'));
   const secretPath = join(tmpDir, 'secret');
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
+  const adminTokenPath = join(tmpDir, 'admin-token');
+  writeFileSync(adminTokenPath, `${ADMIN_TOKEN}\n`);
 
   const guardianPort = await getAvailablePort();
   const directPort = await getAvailablePort();
@@ -85,6 +88,7 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(directPort),
       GUARDIAN_ADMIN_PORT: String(adminPort),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, 'state.db'),
+      GUARDIAN_ADMIN_TOKEN_FILE: adminTokenPath,
       PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
@@ -114,7 +118,7 @@ beforeAll(async () => {
   if (!ready) throw new Error('guardian not ready');
 
   for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`);
+    const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
     if (r.ok && (await r.json()).oc_proxy?.enabled === true) return;
     await Bun.sleep(100);
   }
