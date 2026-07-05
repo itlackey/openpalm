@@ -115,10 +115,15 @@ export function describeBackupSpaceShortfall(check: BackupSpaceCheck): string {
  * destructive operation (e.g. `install --force`) could clobber.
  *
  * The whole `data/` tree is intentionally EXCLUDED: it is large, regenerable
- * runtime state — `data/assistant` (node_modules, caches, opencode SQLite) and
- * `data/guardian` are GBs and are re-created/re-downloaded on container boot, so
- * snapshotting them buys nothing for recovery (the rollback/restore path never
- * reads these snapshots) and previously filled the disk (~5 GB per snapshot).
+ * runtime state. `data/assistant` (node_modules, caches, opencode SQLite) is
+ * GBs and re-created/re-downloaded on container boot. `data/guardian` and
+ * `data/guardian/tools` hold guardian $HOME runtime state (nonce/rate-limit
+ * store, OpenCode auth/config) plus operator-editable tool packages — small,
+ * but still regenerable (the guardian's own code is baked into the image, not
+ * installed under `data/guardian`; see containers/guardian/Dockerfile). Either
+ * way, snapshotting `data/` buys nothing for recovery (the rollback/restore
+ * path never reads these snapshots) and previously filled the disk (~5 GB per
+ * snapshot).
  */
 export function backupOpenPalmHome(homeDir: string): string | null {
   if (!existsSync(homeDir)) return null;
