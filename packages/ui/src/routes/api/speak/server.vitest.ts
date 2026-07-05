@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 describe('POST /api/speak speech prep', () => {
-  test('uses the small model plus persona to generate a working-on-it acknowledgement', async () => {
+  test('uses the small model plus persona to generate a spoken reply summary', async () => {
     mkdirSync(join(getState().configDir, 'assistant'), { recursive: true });
     writeFileSync(join(getState().configDir, 'assistant', 'persona.md'), 'Be warm and relaxed.\n');
     writeFileSync(
@@ -81,7 +81,7 @@ describe('POST /api/speak speech prep', () => {
         });
       }
       if (target === 'http://assistant.local/session/prep-1/message') {
-        return new Response(JSON.stringify({ parts: [{ type: 'text', text: 'Sure, I am on it.' }] }), {
+        return new Response(JSON.stringify({ parts: [{ type: 'text', text: 'Sure, here you go.' }] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -98,7 +98,12 @@ describe('POST /api/speak speech prep', () => {
       throw new Error(`Unexpected fetch ${target}`);
     });
 
-    const res = await POST(makePostEvent({ text: 'Working on it.', mode: 'chat_ack', userText: 'Write a poem.' }));
+    const res = await POST(makePostEvent({
+      text: 'Full agent answer.',
+      mode: 'chat_reply',
+      userText: 'Write a poem.',
+      assistantText: 'Full agent answer.',
+    }));
     expect(res.status).toBe(200);
 
     const messageCall = calls.find((call) => call.url.endsWith('/session/prep-1/message'));
@@ -111,7 +116,7 @@ describe('POST /api/speak speech prep', () => {
     const ttsCall = calls.find((call) => call.url === 'http://tts.local/v1/audio/speech');
     expect(ttsCall).toBeDefined();
     const ttsBody = JSON.parse(String(ttsCall?.init?.body)) as Record<string, unknown>;
-    expect(ttsBody.input).toBe('Sure, I am on it.');
+    expect(ttsBody.input).toBe('Sure, here you go.');
   });
 
   test('falls back to the main chat model for final reply summaries', async () => {

@@ -46,7 +46,7 @@ import * as voice from '$lib/voice/voice-state.svelte.js';
 import * as sse from './session-events.js';
 import type { SessionSummary, ChatMessage } from '$lib/types.js';
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
-import { chat } from './chat-state.svelte.js';
+import { chat, ACK_PHRASES } from './chat-state.svelte.js';
 
 const mocked = {
   createSession: vi.mocked(api.createSession),
@@ -226,10 +226,9 @@ describe('send', () => {
 
 		await chat.send('Please help.');
 
-		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Working on it.', {
-			mode: 'chat_ack',
-			userText: 'Please help.',
-		});
+		const ackCall = vi.mocked(voice.speakText).mock.calls[0];
+		expect(ACK_PHRASES).toContain(ackCall[0]);
+		expect(ackCall[1]).toBeUndefined();
 		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(2, 'Here is the answer.', {
 			mode: 'chat_reply',
 			userText: 'Please help.',
@@ -297,10 +296,9 @@ describe('send', () => {
 
 		// Only the ack is spoken; the '(no response)' reply is suppressed.
 		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Working on it.', {
-			mode: 'chat_ack',
-			userText: 'anything',
-		});
+		const ackCall = vi.mocked(voice.speakText).mock.calls[0];
+		expect(ACK_PHRASES).toContain(ackCall[0]);
+		expect(ackCall[1]).toBeUndefined();
 	});
 });
 

@@ -23,7 +23,7 @@ export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 export type TtsEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 export type SpeakTextOptions = {
-	mode?: 'plain' | 'chat_ack' | 'chat_reply';
+	mode?: 'plain' | 'chat_reply';
 	userText?: string;
 	assistantText?: string;
 };

@@ -77,7 +77,7 @@ export const POST: RequestHandler = async (event) => {
   if (!text) {
     return errorResponse(400, 'bad_request', '"text" is required', {}, requestId);
   }
-  const mode = b.mode === 'chat_ack' || b.mode === 'chat_reply' ? b.mode : null;
+  const mode = b.mode === 'chat_reply' ? b.mode : null;
   const userText = typeof b.userText === 'string' ? b.userText.trim() : '';
   const assistantText = typeof b.assistantText === 'string' ? b.assistantText.trim() : '';
   const voice = typeof b.voice === 'string' && b.voice.trim() ? b.voice.trim() : ttsVoice;

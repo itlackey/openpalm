@@ -66,6 +66,34 @@ type EndpointId = string;
 type SessionId = string;
 const STREAM_TURN_TIMEOUT_MS = 150_000;
 
+/**
+ * Spoken acknowledgements read while a turn is in flight. Plain strings —
+ * no LLM round trip. Kept short so they finish well before the real reply.
+ */
+export const ACK_PHRASES = [
+	'On it.',
+	'Let me take a look.',
+	'One moment.',
+	'Sure — checking now.',
+	'Give me a second.',
+	'Looking into it.',
+	'Right — on it.',
+	'Let me work on that.',
+];
+
+let lastAckIndex = -1;
+
+/** Random ack phrase, never the same one twice in a row. */
+function nextAckPhrase(): string {
+	if (ACK_PHRASES.length === 1) return ACK_PHRASES[0];
+	let index = lastAckIndex;
+	while (index === lastAckIndex) {
+		index = Math.floor(Math.random() * ACK_PHRASES.length);
+	}
+	lastAckIndex = index;
+	return ACK_PHRASES[index];
+}
+
 export type LiveToolState = ToolStripEntry;
 
 export type PendingPermissionState = PermissionAsk & {
@@ -353,7 +381,7 @@ class ChatService {
 	 * has enabled auto-speak. Single guard shared by the ack and the reply so
 	 * the `ttsSupported && ttsAutoEnabled` check lives in one place.
 	 */
-	private maybeSpeak(text: string, opts: SpeakTextOptions): void {
+	private maybeSpeak(text: string, opts?: SpeakTextOptions): void {
 		if (!voiceState.ttsSupported || !voiceState.ttsAutoEnabled) return;
 		void speakText(text, opts);
 	}
@@ -699,10 +727,7 @@ class ChatService {
 		this._resetPendingRenderState();
 		this.error = '';
 		this.sending = true;
-		this.maybeSpeak('Working on it.', {
-			mode: 'chat_ack',
-			userText: trimmed,
-		});
+		this.maybeSpeak(nextAckPhrase());
 
 		try {
 			if (this._unsubscribeEvents && this.liveConnected) {

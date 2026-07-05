@@ -4,7 +4,7 @@ import { getState } from './state.js';
 import { getCurrentConfig, type RawConfig } from './opencode/config.js';
 import { opencodeFetch } from './opencode/http.js';
 
-export type SpeechPrepMode = 'chat_ack' | 'chat_reply';
+export type SpeechPrepMode = 'chat_reply';
 
 type OpenCodeSessionCreate = { id?: string };
 type OpenCodeMessagePart = { type?: string; text?: string };
@@ -33,7 +33,6 @@ function extractText(response: OpenCodeMessageResponse): string {
 }
 
 function buildPrompt(input: {
-  mode: SpeechPrepMode;
   userText: string;
   assistantText?: string;
   persona: string;
@@ -41,23 +40,6 @@ function buildPrompt(input: {
   const personaBlock = input.persona
     ? input.persona
     : 'No persona markdown is configured. Use a neutral, helpful, conversational tone.';
-
-  if (input.mode === 'chat_ack') {
-    return [
-      'You are preparing a short spoken acknowledgement for text-to-speech.',
-      'Return only the exact words to speak.',
-      'Keep it to one brief sentence.',
-      'Sound conversational and aligned with the persona context.',
-      'Do not use markdown, lists, or quotes.',
-      'Do not answer the full request. Just acknowledge that you are working on it.',
-      '',
-      'Persona markdown:',
-      personaBlock,
-      '',
-      'User request:',
-      input.userText,
-    ].join('\n');
-  }
 
   return [
     'You are preparing a spoken summary for text-to-speech.',
@@ -100,13 +82,12 @@ export async function prepareSpeechText(input: {
 }): Promise<string | null> {
   const userText = input.userText.trim();
   if (!userText) return null;
-  if (input.mode === 'chat_reply' && !input.assistantText?.trim()) return null;
+  if (!input.assistantText?.trim()) return null;
 
   const persona = readPersona();
   const config = await loadSpeechConfig();
   const model = resolveSpeechModel(config);
   const prompt = buildPrompt({
-    mode: input.mode,
     userText,
     assistantText: input.assistantText?.trim(),
     persona,

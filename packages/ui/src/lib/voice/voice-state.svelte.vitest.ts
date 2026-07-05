@@ -124,10 +124,14 @@ describe('voice-state speakText error surfacing', () => {
 		const ss = (window as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
 		try {
 			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
-			await speakText('Working on it.', { mode: 'chat_ack', userText: 'Plan the work.' });
+			await speakText('Here is the answer.', {
+				mode: 'chat_reply',
+				userText: 'Plan the work.',
+				assistantText: 'Here is the answer.',
+			});
 			const parsed = JSON.parse(capturedBody) as Record<string, unknown>;
-			expect(parsed.text).toBe('Working on it.');
-			expect(parsed.mode).toBe('chat_ack');
+			expect(parsed.text).toBe('Here is the answer.');
+			expect(parsed.mode).toBe('chat_reply');
 			expect(parsed.userText).toBe('Plan the work.');
 		} finally {
 			if (ss !== undefined) {
