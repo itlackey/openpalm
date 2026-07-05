@@ -414,10 +414,14 @@ export {
 } from "./control-plane/profile-ids.js";
 
 // ── Compose Error Parsing ────────────────────────────────────────────────
-export type { ComposeServiceFailure } from "./control-plane/compose-errors.js";
+// parseComposeStderr (the per-service stderr splitter) is deliberately NOT
+// re-exported here (plan 2.2): applyStack no longer needs a separate
+// pull-vs-up split (single `up --pull missing` call, one failure per scope)
+// and voice/bring-up.ts no longer calls it either — mapDockerError still uses
+// it internally (compose-errors.ts) to attribute a healthcheck failure to its
+// service, but that is compose-errors.ts's own concern, not a public seam.
 export {
   mapDockerError,
-  parseComposeStderr,
   summarizeComposeStderr,
 } from "./control-plane/compose-errors.js";
 

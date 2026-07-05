@@ -2,11 +2,12 @@
  * Lib-level tests for applyStack({ kind: "service" }) — the scoped single-service
  * update scope (constitution §4, §7 "updating one container MUST NOT touch others").
  *
- * Asserts:
- *   (a) pull is issued WITH the service name arg (not the whole stack)
+ * Asserts (plan 2.2 — single `up --pull missing` call, no separate pull step):
+ *   (a) up carries --pull missing WITH the service name arg (not the whole stack)
  *   (b) up is issued WITH --force-recreate --no-deps <service> (scoped recreate)
  *   (c) health-check polls only that one service (targetServices = [service])
- *   (d) pull failure is FATAL: up is NOT attempted, failed[0].service === service
+ *   (d) an up failure (the folded pull failing) is FATAL: failed[0].service === service,
+ *       no ps/inspect health-check calls follow
  *
  * Uses a fake docker shell script on PATH to intercept and record calls without
  * a running Docker daemon — no subprocess harness needed, no mock.module trickery.
@@ -43,8 +44,9 @@ const FAKE_DOCKER_SCRIPT = [
   '  echo "abc123"',
   "  exit 0",
   "fi",
-  // pull -> fail when FAKE_DOCKER_PULL_FAIL=1
-  'if echo "$@" | grep -q "pull"; then',
+  // up (carries --pull missing) -> fail when FAKE_DOCKER_PULL_FAIL=1, simulating
+  // the folded pull failing because the pinned image is genuinely missing.
+  'if echo "$@" | grep -q -- "--pull"; then',
   '  if [ "${FAKE_DOCKER_PULL_FAIL:-0}" = "1" ]; then',
   '    echo "pull access denied" >&2',
   "    exit 1",
@@ -122,14 +124,16 @@ console.log(JSON.stringify(result));
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("applyStack({ kind: 'service' }) — scoped single-service update", () => {
-  it("(a) issues pull with the service name arg (not the whole stack)", () => {
+  it("(a) issues up with --pull missing and the service name arg (not the whole stack)", () => {
     const { calls } = runApplyStack({ kind: "service", service: "assistant" });
-    const pullCall = calls.find((c) => /\bpull\b/.test(c));
-    expect(pullCall, `pull call not found in: ${JSON.stringify(calls)}`).toBeTruthy();
-    expect(pullCall).toContain("assistant");
-    // Must NOT be a bare `pull` (which would pull all images)
-    // The pull args end with the service name, not empty.
-    expect(pullCall?.trim().endsWith("assistant")).toBe(true);
+    const upCall = calls.find((c) => /\bup\b/.test(c));
+    expect(upCall, `up call not found in: ${JSON.stringify(calls)}`).toBeTruthy();
+    expect(upCall).toContain("--pull");
+    expect(upCall).toContain("missing");
+    expect(upCall).toContain("assistant");
+    // Exactly one compose invocation drives this scope — no separate `pull`.
+    const bareCalls = calls.filter((c) => /(^|\s)pull(\s|$)/.test(c) && !/--pull/.test(c));
+    expect(bareCalls, `unexpected bare pull call(s): ${JSON.stringify(bareCalls)}`).toEqual([]);
   });
 
   it("(b) issues up with --force-recreate --no-deps <service> (not --remove-orphans)", () => {
@@ -160,15 +164,16 @@ describe("applyStack({ kind: 'service' }) — scoped single-service update", () 
     expect(result.failed).toEqual([]);
   });
 
-  it("(d) pull failure is FATAL: up is NOT called, failed[0].service === service", () => {
+  it("(d) a failed up (folded pull missing) is FATAL: failed[0].service === service, " +
+    "no health-check calls follow", () => {
     const { result, calls } = runApplyStack({ kind: "service", service: "guardian" }, { pullFail: true });
     expect(result.ok).toBe(false);
     expect(result.started).toEqual([]);
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].service).toBe("guardian");
 
-    // up must NOT have been called when pull failed
-    const upCall = calls.find((c) => /\bup\b/.test(c));
-    expect(upCall, "up must NOT be called after pull failure").toBeUndefined();
+    // No ps -q / inspect calls — the failed up short-circuits before health-checking.
+    const inspectCall = calls.find((c) => /\binspect\b/.test(c));
+    expect(inspectCall, "inspect must NOT be called after a failed up").toBeUndefined();
   });
 });

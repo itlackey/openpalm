@@ -2,7 +2,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
-import { mapDockerError, parseComposeStderr } from "./compose-errors.js";
+import { mapDockerError } from "./compose-errors.js";
 
 export type DockerResult = {
   ok: boolean;
@@ -800,21 +800,42 @@ export type ApplyStackResult = {
   ok: boolean;
   /** Services that were successfully brought up. */
   started: string[];
-  /** Per-service failures from compose stderr. */
+  /** Per-service failures. */
   failed: { service: string; reason: string }[];
-  /** Top-level error string (when compose itself fails and no per-service parse). */
+  /** Top-level error string (when compose itself fails). */
   error?: string;
 };
 
 /**
- * The SINGLE Docker Compose driver for update (§4.3).
+ * Optional progress reporting for a long-running {@link applyStack} call and a
+ * per-service health-wait budget override. Both are OFF by default (every
+ * existing caller that omits this param is byte-identical): `onService` fires
+ * once with "pending" right before a service's health-wait starts and once
+ * more with its terminal "running"/"error" outcome; `healthTimeoutMs` widens
+ * the per-service wait beyond {@link HEALTH_WAIT_DEFAULTS} for callers (e.g.
+ * a first-time setup deploy) that need to tolerate a slower cold boot.
+ */
+export type ApplyStackProgress = {
+  onService?: (service: string, status: "pending" | "running" | "error", detail: string) => void;
+  healthTimeoutMs?: number;
+};
+
+/**
+ * The SINGLE Docker Compose driver for install/update/upgrade (§4.3, plan 2.2).
  *
- * pull-before-up, always. Pull failure is FATAL — never silently falls through
- * to a stale local image. Active profiles are always passed (§4.3 "profiles on
- * every command"). Success = running AND healthy (waitForContainerHealthy).
+ * ONE `up -d --pull missing --force-recreate` invocation — no separate `pull`
+ * step. `--pull missing` resolves the R1-R4 semantic fork the same way for
+ * every caller: an image already present locally needs no network call at
+ * all, so an apply that doesn't change any version pin never touches the
+ * registry; a pin that DID change makes the new tag "missing", so compose
+ * pulls it as part of `up` and a pull failure there is FATAL (surfaced via
+ * the same `!upResult.ok` path as any other `up` failure — never a silent
+ * fall-through to a stale local image). Active profiles are always passed
+ * (§4.3 "profiles on every command"). Success = running AND healthy
+ * (waitForContainerHealthy).
  *
- * scope = { kind:"service", service:"assistant" }  →  pull <svc> + up --force-recreate --no-deps <svc>
- * scope = { kind:"all" }                           →  pull + up --remove-orphans
+ * scope = { kind:"service", service:"assistant" }  →  up --pull missing --force-recreate --no-deps <svc>
+ * scope = { kind:"all" }                           →  up --pull missing --force-recreate --remove-orphans
  *
  * Callers (install and update endpoints) pass the resolved ComposeOptions so
  * this function never builds them itself — profiles are already resolved.
@@ -823,22 +844,35 @@ export async function applyStack(
   scope: ApplyStackScope,
   options: { files: string[]; envFiles?: string[]; profiles?: string[] },
   deps: StackDeps = defaultStackDeps,
+  progress?: ApplyStackProgress,
 ): Promise<ApplyStackResult> {
   const { docker, files } = deps;
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
   const base = buildComposeArgs(options, files);
 
-  // ── 1. Pull the whole target set FIRST (§4.3 "Pull the whole target set first") ──
-  const pullArgs = [...base, "pull"];
-  if (scope.kind === "service") pullArgs.push(scope.service);
+  // ── 1. Pull-then-up in ONE compose invocation ─────────────────────────────
+  // --force-recreate is REQUIRED on both scopes: a container whose managed
+  // compose config is unchanged would otherwise stay on its old image even
+  // after a fresh pull landed a new one (#450 — portal containers silently
+  // stayed stale across an update).
+  const upArgs = [...base, "up", "-d", "--pull", "missing", "--force-recreate"];
+  if (scope.kind === "service") {
+    upArgs.push("--no-deps", scope.service);
+  } else {
+    upArgs.push("--remove-orphans");
+  }
 
-  const pullResult = await docker.run(pullArgs, { timeoutMs: PULL_TIMEOUT_MS, env: envOverrides });
-  if (!pullResult.ok) {
-    // Pull failure is FATAL (§6, constitution §8 "never swallowed").
-    // Route through mapDockerError so the user sees a named, friendly message
-    // (rate_limited / manifest_unknown / network_error / image_auth) instead of
-    // raw daemon stderr.
-    const mapped = mapDockerError(pullResult.stderr || "image pull failed");
+  // Budget covers both the (possible) pull and the recreate: a changed pin's
+  // image may need the full pull window (multi-GB, slow connection) AND the
+  // full up window (multi-GB extraction on slow disk) in the same call.
+  const upResult = await docker.run(upArgs, { timeoutMs: PULL_TIMEOUT_MS + composeUpTimeoutMs(), env: envOverrides });
+
+  if (!upResult.ok) {
+    // Map the full stderr to a named, friendly message (§6) — rate_limited /
+    // manifest_unknown / network_error / image_auth / healthcheck_failed / etc.
+    // No per-service stderr parsing here: `up` failing outright means nothing
+    // in this scope came up, so there is exactly one failure to report.
+    const mapped = mapDockerError(upResult.stderr || `docker compose exited with code ${upResult.code}`);
     return {
       ok: false,
       started: [],
@@ -847,44 +881,7 @@ export async function applyStack(
     };
   }
 
-  // ── 2. Compose up ────────────────────────────────────────────────────────
-  // --force-recreate is REQUIRED on both scopes: a container whose managed
-  // compose config is unchanged would otherwise stay on its old image even
-  // after a fresh pull landed a new one (#450 — portal containers silently
-  // stayed stale across an update).
-  const upArgs = [...base, "up", "-d", "--force-recreate"];
-  if (scope.kind === "service") {
-    upArgs.push("--no-deps", scope.service);
-  } else {
-    upArgs.push("--remove-orphans");
-  }
-
-  const upResult = await docker.run(upArgs, { timeoutMs: composeUpTimeoutMs(), env: envOverrides });
-
-  // ── 3. Parse per-service failures from stderr ─────────────────────────────
-  if (!upResult.ok) {
-    const failed = parseComposeStderr(upResult.stderr);
-    if (failed.length === 0) {
-      // No per-service parse succeeded — map the full stderr to a named friendly message (§6).
-      const mapped = mapDockerError(upResult.stderr || `docker compose exited with code ${upResult.code}`);
-      return {
-        ok: false,
-        started: [],
-        failed: [{ service: scope.kind === "service" ? scope.service : "stack", reason: mapped.message }],
-        error: mapped.message,
-      };
-    }
-    // Per-service failures parsed: map each reason through mapDockerError so
-    // individual service failures also surface friendly named messages (§6).
-    const friendlyFailed = failed.map((f) => ({
-      service: f.service,
-      reason: mapDockerError(f.reason).message,
-    }));
-    const topLevelMapped = mapDockerError(upResult.stderr);
-    return { ok: false, started: [], failed: friendlyFailed, error: topLevelMapped.message };
-  }
-
-  // ── 4. Success = running AND healthy (§4.3) ───────────────────────────────
+  // ── 2. Success = running AND healthy (§4.3) ───────────────────────────────
   const targetServices =
     scope.kind === "service"
       ? [scope.service]
@@ -898,19 +895,24 @@ export async function applyStack(
   const failed: { service: string; reason: string }[] = [];
 
   for (const svc of targetServices) {
+    progress?.onService?.(svc, "pending", "Starting...");
     // Get the container name from compose ps
     const psArgs = [...base, "ps", "-q", svc];
     const psResult = await docker.run(psArgs, { timeoutMs: 10_000, env: envOverrides });
     const containerId = psResult.stdout.trim();
     if (!containerId) {
-      failed.push({ service: svc, reason: `container for service ${svc} not found after up` });
+      const reason = `container for service ${svc} not found after up`;
+      failed.push({ service: svc, reason });
+      progress?.onService?.(svc, "error", reason);
       continue;
     }
-    const wait = await waitForContainerHealthy(containerId, undefined, undefined, deps);
+    const wait = await waitForContainerHealthy(containerId, progress?.healthTimeoutMs, undefined, deps);
     if (wait.healthy) {
       started.push(svc);
+      progress?.onService?.(svc, "running", "Running");
     } else {
       failed.push({ service: svc, reason: wait.reason });
+      progress?.onService?.(svc, "error", wait.reason);
     }
   }
 

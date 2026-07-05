@@ -38,7 +38,6 @@ import {
   getAddonProfileAvailability,
   getAddonProfileSelection,
   listEnabledAddonIds,
-  parseComposeStderr,
   setAddonEnabled,
   setAddonProfileSelection,
   stackDirFor,
@@ -321,9 +320,10 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
     });
     composeOk = result.ok;
     if (!result.ok) {
-      const failures = parseComposeStderr(result.stderr);
-      const voiceFailure = failures.find((f) => services.includes(f.service));
-      const rawDetail = voiceFailure?.reason ?? result.stderr ?? `compose up exited ${result.code}`;
+      // No per-service stderr split needed here (plan 2.2 — parseComposeStderr
+      // is no longer a public seam): this composeUp only ever targets voice's
+      // OWN services, so the raw stderr is already scoped to this addon.
+      const rawDetail = result.stderr || `compose up exited ${result.code}`;
       composeErr = translateDockerError(rawDetail);
     }
   } catch (e) {

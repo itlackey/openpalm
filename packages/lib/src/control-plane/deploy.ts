@@ -1,13 +1,11 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
-import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall } from './lifecycle.js';
 import { buildManagedServices } from './lifecycle.js';
-import { buildComposeCommandArgs, composeDown, composePs, composePull, composeUp, detectExistingProject, resolveComposeProjectName } from './docker.js';
-import { mapDockerError } from './compose-errors.js';
+import { applyStack, composeDown, defaultStackDeps, detectExistingProject, resolveComposeProjectName, type ApplyStackResult } from './docker.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
@@ -35,12 +33,6 @@ export type DeployJournal = {
 };
 
 export type DeployProgress = DeployJournal;
-
-type ComposeContainerState = {
-  service: string;
-  state: string;
-  health: string;
-};
 
 type RunDeployOptions = {
   journalPath?: string;
@@ -122,24 +114,6 @@ function projectNameForState(state: ControlPlaneState): string {
   return resolveComposeProjectName(parseEnvFile(stackEnvPath(state)));
 }
 
-function parseComposePsOutput(stdout: string): ComposeContainerState[] {
-  const results: ComposeContainerState[] = [];
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const obj = JSON.parse(trimmed) as Record<string, unknown>;
-      results.push({
-        service: String(obj.Service ?? obj.Name ?? ''),
-        state: String(obj.State ?? ''),
-        health: String(obj.Health ?? ''),
-      });
-    } catch {
-    }
-  }
-  return results;
-}
-
 function resolveImageTag(state: ControlPlaneState): string {
   // Per-image versions replaced the single OP_IMAGE_TAG cascade. The assistant
   // is the version-of-record image; its tag is representative for the "dev tag ⇒
@@ -147,39 +121,6 @@ function resolveImageTag(state: ControlPlaneState): string {
   // install whose stack.env predates the version migration.
   const env = parseEnvFile(stackEnvPath(state));
   return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
-}
-
-async function missingServiceImages(composeOpts: ReturnType<typeof buildComposeOptions>, services: string[]): Promise<string[]> {
-  if (services.length === 0) return [];
-  const args = [
-    'compose',
-    ...buildComposeCommandArgs(composeOpts),
-    'config', '--format', 'json',
-  ];
-  const config = await new Promise<{ services?: Record<string, { image?: string }> }>((resolve) => {
-    execFile('docker', args, { timeout: 30_000 }, (error, stdout) => {
-      if (error) return resolve({});
-      try {
-        resolve(JSON.parse(stdout.toString()) as { services?: Record<string, { image?: string }> });
-      } catch {
-        resolve({});
-      }
-    });
-  });
-  const serviceConfig = config.services ?? {};
-  const missing: string[] = [];
-  for (const service of services) {
-    const image = serviceConfig[service]?.image;
-    if (!image) {
-      missing.push(`${service} (image unknown)`);
-      continue;
-    }
-    const present = await new Promise<boolean>((resolve) => {
-      execFile('docker', ['image', 'inspect', image], { timeout: 5_000 }, (error) => resolve(!error));
-    });
-    if (!present) missing.push(image);
-  }
-  return missing;
 }
 
 async function detectProjectCollision(state: ControlPlaneState): Promise<string | null> {
@@ -200,37 +141,36 @@ function buildLogHint(state: ControlPlaneState, services: string[]): string {
   return `Check logs: docker compose -p ${projectNameForState(state)} logs ${services.join(' ')}.`;
 }
 
-async function pollContainerHealth(state: ControlPlaneState, progress: DeployProgress, services: string[], options: RunDeployOptions): Promise<string | null> {
-  const composeOpts = buildComposeOptions(state);
-  const deadline = Date.now() + 5 * 60_000;
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-    const psResult = await composePs(composeOpts);
-    if (!psResult.ok) continue;
-    const containers = parseComposePsOutput(psResult.stdout);
-    progress.deployStatus = progress.deployStatus.map((entry) => {
-      const found = containers.find((container) => container.service === entry.service);
-      if (!found) return { ...entry, status: 'pending', label: 'Starting...' };
-      if (found.state === 'running') {
-        if (found.health === 'unhealthy') return { ...entry, status: 'error', label: 'Unhealthy' };
-        if (found.health === 'starting') return { ...entry, status: 'pending', label: 'Health check running...' };
-        return { ...entry, status: 'running', label: 'Running' };
-      }
-      if (found.state === 'exited' || found.state === 'dead') return { ...entry, status: 'error', label: `Exited (${found.state})` };
-      return { ...entry, status: 'pending', label: `Starting (${found.state})...` };
-    });
-    emitProgress(options, progress);
+// Same retry ladder the pre-2.2 pull step used: a first-time install's pull
+// (multi-GB voice/assistant images) can hit a transient network blip, worth
+// a couple of retries before giving up — but NOT when the failure is clearly
+// permanent (bad tag, auth denied), so those fail fast instead of burning 20s.
+const APPLY_STACK_RETRY_DELAYS_MS = [0, 5_000, 15_000];
+const NON_TRANSIENT_FAILURE_RE = /manifest unknown|manifest for .* not found|unauthorized|authentication required|access denied/i;
 
-    const failed = progress.deployStatus.filter((entry) => entry.status === 'error').map((entry) => entry.service);
-    if (failed.length > 0) {
-      return `Services started but the following did not become healthy: ${failed.join(', ')}. ${buildLogHint(state, failed)}`;
-    }
-    const allReady = services.every((service) => progress.deployStatus.find((entry) => entry.service === service)?.status === 'running');
-    if (allReady) return null;
+/**
+ * applyStack — the single compose driver (§4.3) — wrapped with the setup-time
+ * retry ladder a first install needs on a slow/flaky connection. Retrying the
+ * ONE driver call is not a second driver; it is the same reliability
+ * engineering `detectProjectCollision` above already does for the collision
+ * probe.
+ */
+async function applyStackWithRetry(
+  composeOpts: ReturnType<typeof buildComposeOptions>,
+  onService: NonNullable<Parameters<typeof applyStack>[3]>['onService'],
+): Promise<ApplyStackResult> {
+  let last: ApplyStackResult | undefined;
+  for (const delay of APPLY_STACK_RETRY_DELAYS_MS) {
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    last = await applyStack(
+      { kind: 'all' },
+      composeOpts,
+      defaultStackDeps,
+      { onService, healthTimeoutMs: 5 * 60_000 },
+    );
+    if (last.ok || NON_TRANSIENT_FAILURE_RE.test(last.error ?? '')) return last;
   }
-
-  const unhealthy = progress.deployStatus.filter((entry) => entry.status !== 'running').map((entry) => entry.service);
-  return `Services started but some did not become healthy in time: ${unhealthy.join(', ')}. ${buildLogHint(state, unhealthy)}`;
+  return last!;
 }
 
 export function markSetupComplete(state: ControlPlaneState): void {
@@ -307,52 +247,35 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
       // Best-effort cleanup only.
     }
 
-    progress.phase = 'pulling-images';
+    progress.phase = 'starting';
     emitProgress(options, progress);
+
+    // The single compose driver (§4.3, plan 2.2): ONE `up --pull missing
+    // --force-recreate --remove-orphans` call, retried a couple of times for
+    // a first install's transient network blips (a dev tag never needs a
+    // network call at all — --pull missing skips it once the locally-built
+    // image is present). onService reports each service's pending→terminal
+    // transition straight into deployStatus as it happens.
     const imageTag = resolveImageTag(state);
     const isDevTag = imageTag.startsWith('dev');
-    let pullResult: Awaited<ReturnType<typeof composePull>> | null = null;
-    if (!isDevTag) {
-      for (const delay of [0, 5_000, 15_000]) {
-        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-        pullResult = await composePull(composeOpts);
-        if (pullResult.ok) break;
-        if (/manifest unknown|manifest for .* not found|unauthorized|authentication required|access denied/i.test(pullResult.stderr ?? '')) break;
-      }
-    }
-
-    if (isDevTag || !pullResult || !pullResult.ok) {
-      const missing = await missingServiceImages(composeOpts, services);
-      if (missing.length > 0) {
-        progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'error', label: 'Image pull failed' }));
-        progress.deployError = isDevTag
-          ? `Dev images not found locally (tag: ${imageTag}): ${missing.join(', ')}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
-          : mapDockerError(pullResult?.stderr?.trim() || 'Image pull failed').message;
-        progress.deploying = false;
-        emitProgress(options, progress);
-        return progress;
-      }
-      if (!isDevTag && pullResult && !pullResult.ok) {
-        progress.imageWarning = `Couldn't download the latest images (network or registry issue), so the install used the images already on your machine — these may be out of date. Check your connection and re-run setup or Update to pull the newest versions.`;
-        emitProgress(options, progress);
-      }
-    }
-
-    progress.phase = 'starting';
-    progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'pending', label: 'Starting...' }));
-    emitProgress(options, progress);
-    const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
-    if (!upResult.ok) {
-      progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'error', label: mapDockerError(upResult.stderr ?? 'compose up failed').message }));
-      progress.deployError = mapDockerError(upResult.stderr ?? 'compose up failed').message;
-      progress.deploying = false;
+    const onService = (service: string, status: 'pending' | 'running' | 'error', detail: string): void => {
+      progress.deployStatus = progress.deployStatus.map((entry) =>
+        entry.service === service ? { ...entry, status, label: detail } : entry,
+      );
       emitProgress(options, progress);
-      return progress;
-    }
+    };
+    const stackResult = await applyStackWithRetry(composeOpts, onService);
 
-    const healthError = await pollContainerHealth(state, progress, services, options);
-    if (healthError) {
-      progress.deployError = healthError;
+    if (!stackResult.ok) {
+      progress.deployStatus = progress.deployStatus.map((entry) => {
+        const failure = stackResult.failed.find((f) => f.service === entry.service);
+        return failure ? { ...entry, status: 'error', label: failure.reason } : entry;
+      });
+      const failedServices = stackResult.failed.map((f) => f.service).filter((s) => services.includes(s));
+      const hint = failedServices.length > 0 ? ` ${buildLogHint(state, failedServices)}` : '';
+      progress.deployError = isDevTag
+        ? `Dev images not found locally (tag: ${imageTag}). Run \`bun run dev:build\` from the project root to build them, then retry setup. (${stackResult.error ?? ''})`
+        : `${stackResult.error ?? 'Deploy failed.'}${hint}`;
       progress.deploying = false;
       emitProgress(options, progress);
       return progress;

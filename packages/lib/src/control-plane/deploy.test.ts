@@ -3,7 +3,14 @@
  *
  * Three acceptance criteria:
  *   (a) Collision detection fails closed and retries [0,1s,1s] before refusing.
- *   (b) Health poll matches by com.docker.compose.service label (not -service-1 suffix).
+ *   (b) A successful applyStack outcome propagates per-service "running" status
+ *       into deployStatus via the onService progress hook (plan 2.2 — runDeploy
+ *       now routes through applyStack, the single compose driver; the
+ *       "assistant" vs "assistant-1" container-name-suffix bug class this used
+ *       to guard against can no longer occur — applyStack resolves each
+ *       service's container via `compose ps -q <service>`, an exact-match
+ *       lookup, not a JSON blob keyed by container name. That contract is
+ *       pinned directly in apply-stack-di.test.ts / apply-stack-service.test.ts).
  *   (c) Lock-held-through-deploy: a full runDeploy holding the lock does not
  *       false-refuse, while a SECOND concurrent runDeploy DOES refuse.
  *
@@ -37,8 +44,8 @@ const harnessDir = fileURLToPath(new URL('../../', import.meta.url));
 type DeployScenario = {
   /** How many calls to detectExistingProject should return a foreign project. */
   foreignCollisionCalls?: number;
-  /** If set, composePs returns these service rows (as JSON-per-line). */
-  composePsRows?: Array<{ Service: string; State: string; Health: string }>;
+  /** applyStack outcome — defaults to a clean success for the given services. */
+  applyStackOk?: boolean;
   /** Service names to expect in a successful deploy. */
   expectedServices?: string[];
 };
@@ -66,8 +73,8 @@ function makeState() {
   mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
   mkdirSync(join(home, 'config', 'stack'), { recursive: true });
   mkdirSync(join(home, 'data'), { recursive: true });
-  // Use a non-dev tag so composePull is attempted (mocked to succeed) and
-  // missingServiceImages is not called — avoids the docker-config subprocess.
+  // Use a non-dev tag so the (mocked) applyStack failure message path exercised
+  // below is the general one, not the dev-build-guidance one.
   writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.12.0\\n');
   process.env.OP_HOME = home;
   process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -99,23 +106,31 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
     }
     return { exists: false, isOurs: false, workingDir: '' };
   },
-  composePs: async () => {
-    if (!scenario.composePsRows) return { ok: false, stdout: '', stderr: '', code: 1 };
-    const lines = scenario.composePsRows.map((r) => JSON.stringify(r)).join('\\n');
-    return { ok: true, stdout: lines, stderr: '', code: 0 };
-  },
   composeDown: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composePull: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composePullRetry: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  // applyStack — the single compose driver (plan 2.2). Fire onService for
+  // every expected service so the deployStatus wiring in runDeploy is
+  // exercised the same way the real driver would drive it.
+  applyStack: async (_scope, _opts, _deps, progress) => {
+    const ok = scenario.applyStackOk ?? true;
+    const services = scenario.expectedServices ?? ['assistant'];
+    // "access denied" is a NON-transient failure per runDeploy's retry ladder,
+    // so a failing scenario exits after the first attempt instead of burning
+    // the real 0/5s/15s retry delays in this test.
+    const reason = 'compose up failed: access denied';
+    for (const service of services) {
+      progress?.onService?.(service, ok ? 'pending' : 'error', ok ? 'Starting...' : reason);
+      if (ok) progress?.onService?.(service, 'running', 'Running');
+    }
+    return {
+      ok,
+      started: ok ? services : [],
+      failed: ok ? [] : services.map((service) => ({ service, reason })),
+      ...(ok ? {} : { error: reason }),
+    };
+  },
+  defaultStackDeps: {},
   resolveComposeProjectName: () => 'openpalm',
   isProjectOurs: (workingDir, expected) => workingDir === '' || workingDir === expected,
-  buildComposeCommandArgs: (options) => [
-    '--project-name', 'openpalm',
-    ...options.files.flatMap((f) => ['-f', f]),
-    ...(options.envFiles ?? []).flatMap((ef) => ['--env-file', ef]),
-    ...(options.profiles ?? []).flatMap((p) => ['--profile', p]),
-  ],
 }));
 
 mock.module(${JSON.stringify(moduleUrls.volumeOwnership)}, () => ({
@@ -211,12 +226,10 @@ describe('A2b(a): collision detection fails closed with retry', () => {
 
   it('succeeds on the third attempt when the first two see a foreign project that clears', () => {
     // foreignCollisionCalls=2 → attempts 1+2 see foreign (empty workingDir → retry);
-    // attempt 3 sees nothing → deploy proceeds. Provide composePsRows so the
-    // health poll can resolve immediately without the 5-minute wait.
+    // attempt 3 sees nothing → deploy proceeds.
     const result = runDeployScenario({
       foreignCollisionCalls: 2,
       expectedServices: ['assistant'],
-      composePsRows: [{ Service: 'assistant', State: 'running', Health: '' }],
     });
     expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
 
@@ -229,59 +242,35 @@ describe('A2b(a): collision detection fails closed with retry', () => {
   });
 });
 
-// ── (b) Health poll matches by Service label, not container name suffix ───────
+// ── (b) applyStack outcome propagates into deployStatus via onService ────────
 
-describe('A2b(b): health poll matches containers by com.docker.compose.service label', () => {
-  it('marks service running when composePs returns Service:"assistant" (not "assistant-1")', () => {
-    // The composePs output uses the service name (e.g. "assistant"), NOT the
-    // container name suffix (e.g. "assistant-1"). The health poller must match
-    // by entry.service === row.Service, never by stripping a "-1" suffix.
-    //
-    // We make composePs immediately return running state so the health poll
-    // resolves in one iteration. The image tag starts with "dev" so no pull
-    // is attempted (avoids missingServiceImages docker call).
-    const result = runDeployScenario({
-      composePsRows: [
-        { Service: 'assistant', State: 'running', Health: '' },
-      ],
-      expectedServices: ['assistant'],
-    });
+describe('A2b(b): applyStack outcome propagates into deployStatus', () => {
+  it('marks a service "running" when applyStack reports it started', () => {
+    const result = runDeployScenario({ expectedServices: ['assistant'] });
     expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
 
     const output = JSON.parse(result.stdout.trim().split('\n').filter(l => l.startsWith('{')).at(-1) ?? '{}');
-    // Successful deploy: no error, phase ready.
     expect(output.deployError).toBeFalsy();
     expect(output.phase).toBe('ready');
 
-    // The status entry service name must match the deploy service list exactly.
     const entry = (output.deployStatus as Array<{ service: string; status: string }>)
       .find((e) => e.service === 'assistant');
     expect(entry).toBeTruthy();
     expect(entry?.status).toBe('running');
   });
 
-  it('does NOT match a container row named "assistant-1" to the "assistant" service entry', () => {
-    // If the parser matched by stripping "-1" suffix instead of using the
-    // Service label, this would incorrectly mark the service as running.
-    // The correct behaviour: "assistant-1" does not match "assistant" in the
-    // Service field — so the entry stays pending and the poll times out.
-    // We keep the timeout very short by using ONLY composePsRows with wrong name.
-    //
-    // Because a timeout takes 5 min we test the pure parsing logic directly:
-    // parse JSON with Service:"assistant-1" and verify it does NOT match service "assistant".
-    //
-    // This is a unit test of the parseComposePsOutput logic embedded in pollContainerHealth.
-    // We verify the contract: the poller uses container.service === entry.service.
-    // Since container.service comes from obj.Service (not the container name),
-    // a row with Service:"assistant-1" will NOT satisfy service === "assistant".
-    const row = { Service: 'assistant-1', State: 'running', Health: '' };
-    const serviceName = 'assistant';
-    const parsed = { service: String(row.Service), state: String(row.State), health: String(row.Health) };
-    expect(parsed.service === serviceName).toBe(false);
-    // The correct container row uses the service name without suffix.
-    const correctRow = { Service: 'assistant', State: 'running', Health: '' };
-    const parsedCorrect = { service: String(correctRow.Service), state: correctRow.State, health: correctRow.Health };
-    expect(parsedCorrect.service === serviceName).toBe(true);
+  it('marks a service "error" and surfaces deployError when applyStack fails', () => {
+    const result = runDeployScenario({ expectedServices: ['assistant'], applyStackOk: false });
+    expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
+
+    const output = JSON.parse(result.stdout.trim().split('\n').filter(l => l.startsWith('{')).at(-1) ?? '{}');
+    expect(output.deployError).toBeTruthy();
+    expect(output.deploying).toBe(false);
+
+    const entry = (output.deployStatus as Array<{ service: string; status: string }>)
+      .find((e) => e.service === 'assistant');
+    expect(entry).toBeTruthy();
+    expect(entry?.status).toBe('error');
   });
 });
 

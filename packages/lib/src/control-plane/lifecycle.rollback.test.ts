@@ -6,10 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 type RollbackScenario = {
   mode: 'performUpgrade';
-  composePullOk?: boolean;
-  composePullStderr?: string;
-  composeUpOk?: boolean;
-  composeUpStderr?: string;
+  /** applyStack — the single compose driver (plan 2.2) — succeeds/fails as one unit. */
+  applyStackOk?: boolean;
+  applyStackError?: string;
   /** Inject a failure from the bundled OP_HOME seed (reconcileHome → applyHomeSeed). */
   seedError?: string;
   expectedError: string;
@@ -92,18 +91,15 @@ mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   checkDocker: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   composePreflight: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composePull: async () => ({
-    ok: scenario.composePullOk ?? true,
-    stdout: '',
-    stderr: scenario.composePullStderr ?? '',
-    code: (scenario.composePullOk ?? true) ? 0 : 1,
-  }),
-  composeUp: async () => ({
-    ok: scenario.composeUpOk ?? true,
-    stdout: '',
-    stderr: scenario.composeUpStderr ?? '',
-    code: (scenario.composeUpOk ?? true) ? 0 : 1,
-  }),
+  applyStack: async () => {
+    const ok = scenario.applyStackOk ?? true;
+    return {
+      ok,
+      started: ok ? ['assistant'] : [],
+      failed: ok ? [] : [{ service: 'stack', reason: scenario.applyStackError ?? 'apply failed' }],
+      ...(ok ? {} : { error: scenario.applyStackError ?? 'apply failed' }),
+    };
+  },
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
   buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
@@ -189,23 +185,16 @@ await main();
 }
 
 describe('stack.env rollback during upgrade failures (#476)', () => {
-  test('performUpgrade restores stack.env when composePull fails', () => {
+  // Plan 2.2 collapsed the separate pull-then-up phases into ONE applyStack
+  // call (--pull missing folds a pull failure into the same up failure), so
+  // there is no longer a phase-specific error message to distinguish — a
+  // single scenario now covers "the compose driver failed for any reason".
+  test('performUpgrade restores stack.env when applyStack fails', () => {
     const result = runRollbackScenario({
       mode: 'performUpgrade',
-      composePullOk: false,
-      composePullStderr: 'pull failed',
-      expectedError: 'Failed to pull images: pull failed',
-    });
-
-    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
-  });
-
-  test('performUpgrade restores stack.env when composeUp fails after a successful pull', () => {
-    const result = runRollbackScenario({
-      mode: 'performUpgrade',
-      composeUpOk: false,
-      composeUpStderr: 'up failed',
-      expectedError: 'Failed to recreate containers: up failed',
+      applyStackOk: false,
+      applyStackError: 'up failed',
+      expectedError: 'Failed to apply stack: up failed',
     });
 
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -299,8 +288,7 @@ mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   checkDocker: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   composePreflight: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composePull: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  applyStack: async () => ({ ok: true, started: ['assistant'], failed: [] }),
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
   buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
@@ -429,8 +417,7 @@ mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   checkDocker: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
   composePreflight: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composePull: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
-  composeUp: async () => ({ ok: true, stdout: '', stderr: '', code: 0 }),
+  applyStack: async () => ({ ok: true, started: ['assistant'], failed: [] }),
   composeConfigServices: async () => ({ ok: true, services: [] }),
   resolveComposeProjectName: () => 'openpalm',
   buildComposePreflightError: (_opts, stderr) => \`Compose preflight failed: \${stderr}\`,
