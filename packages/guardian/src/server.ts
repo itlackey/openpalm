@@ -91,17 +91,17 @@ async function handleHealthReady(requestId: string): Promise<Response> {
   return json(200, { ok: true, ready: true, requestId, time: new Date().toISOString() });
 }
 
-async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct'): Promise<Response> {
+async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct', clientIp = ''): Promise<Response> {
   if (!isProxyEnabled()) {
     countRequest('oc:503');
     return json(503, { error: 'oc_proxy_disabled', requestId });
   }
-  const response = await handleProxy(req, requestId, expectedKind);
+  const response = await handleProxy(req, requestId, expectedKind, clientIp);
   countRequest(`oc:${response.status}`);
   return response;
 }
 
-async function handleInternalRequest(req: Request): Promise<Response> {
+async function handleInternalRequest(req: Request, clientIp = ''): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
@@ -109,12 +109,12 @@ async function handleInternalRequest(req: Request): Promise<Response> {
   if (url.pathname === '/health/ready' && req.method === 'GET') return handleHealthReady(requestId);
   if (url.pathname === '/stats' && req.method === 'GET') return statsResponse();
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    return handleOcRequest(req, requestId, 'portal');
+    return handleOcRequest(req, requestId, 'portal', clientIp);
   }
   return json(404, { error: 'not_found', requestId });
 }
 
-async function handleDirectRequest(req: Request): Promise<Response> {
+async function handleDirectRequest(req: Request, clientIp = ''): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
@@ -127,7 +127,7 @@ async function handleDirectRequest(req: Request): Promise<Response> {
     return response;
   }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    return handleOcRequest(req, requestId, 'direct');
+    return handleOcRequest(req, requestId, 'direct', clientIp);
   }
   const transport = matchTransport(url, req);
   if (transport) {
@@ -182,8 +182,16 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
       startProxyRecovery();
     });
 
-  const internal = Bun.serve({ port: INTERNAL_PORT, idleTimeout: 0, fetch: handleInternalRequest });
-  const direct = Bun.serve({ port: DIRECT_PORT, idleTimeout: 0, fetch: handleDirectRequest });
+  const internal = Bun.serve({
+    port: INTERNAL_PORT,
+    idleTimeout: 0,
+    fetch: (req, server) => handleInternalRequest(req, server.requestIP(req)?.address ?? ''),
+  });
+  const direct = Bun.serve({
+    port: DIRECT_PORT,
+    idleTimeout: 0,
+    fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
+  });
   const admin = Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });
 
   audit({

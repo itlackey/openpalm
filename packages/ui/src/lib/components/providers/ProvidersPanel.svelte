@@ -18,6 +18,7 @@
 		useAssistantCliProvider,
 		type ProviderHostStatus,
 	} from '$lib/api/providers.js';
+	import { fetchSecretFile } from '$lib/api/secrets.js';
 	import { toMessage } from '$lib/api/errors.js';
 	import type { AssistantCliToolStatus, ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import AddProviderSheet from './AddProviderSheet.svelte';
@@ -188,6 +189,43 @@
 		assistantCliTools.find((tool) => tool.id === activeSubtab)
 	);
 
+	// ── OpenAI-compatible edge API key (op_api_key) ─────────────────────────
+	// The credential end users paste into OpenAI-compatible clients to reach the
+	// guardian's OpenAI/Anthropic-compatible edge. Read-only, revealed on demand
+	// through the existing secret-file endpoint; the value is NEVER logged.
+	let apiKey = $state<string | null>(null);
+	let apiKeyLoading = $state(false);
+	let apiKeyError = $state('');
+	let apiKeyCopied = $state(false);
+
+	async function revealApiKey(): Promise<void> {
+		apiKeyLoading = true;
+		apiKeyError = '';
+		try {
+			const { value } = await fetchSecretFile('op_api_key');
+			apiKey = value.trim();
+		} catch (err) {
+			apiKeyError = toMessage(err, 'Could not read the API key.');
+		} finally {
+			apiKeyLoading = false;
+		}
+	}
+
+	function hideApiKey(): void {
+		apiKey = null;
+		apiKeyCopied = false;
+	}
+
+	async function copyApiKey(): Promise<void> {
+		if (!apiKey) return;
+		try {
+			await navigator.clipboard.writeText(apiKey);
+			apiKeyCopied = true;
+		} catch {
+			apiKeyError = 'Copy failed — select the value and copy manually.';
+		}
+	}
+
 	async function useExistingProvider(toolId: AssistantCliToolStatus['id'], providerId: string): Promise<void> {
 		if (assistantCliWriting) return;
 		assistantCliWriting = `${toolId}:${providerId}`;
@@ -243,6 +281,31 @@
 	{/if}
 
 	<div class="panel-body panel-body--flush">
+		<section class="api-edge" aria-labelledby="api-edge-title">
+			<div class="api-edge-head">
+				<div>
+					<h3 id="api-edge-title">OpenAI-compatible API</h3>
+					<p>Point any OpenAI- or Anthropic-compatible client at this host and paste the key below as its API key.</p>
+				</div>
+			</div>
+			<p class="api-edge-endpoint">Base URL <code>http://&lt;your-host&gt;:3821/v1</code></p>
+			{#if apiKey === null}
+				<button type="button" class="btn btn-secondary btn-sm" onclick={() => void revealApiKey()} disabled={apiKeyLoading}>
+					{#if apiKeyLoading}<Spinner />{/if}
+					Reveal API key
+				</button>
+			{:else}
+				<div class="api-edge-key">
+					<input type="text" readonly class="form-input" value={apiKey} aria-label="OpenAI-compatible API key" />
+					<button type="button" class="btn btn-secondary btn-sm" onclick={() => void copyApiKey()}>
+						{apiKeyCopied ? 'Copied' : 'Copy'}
+					</button>
+					<button type="button" class="btn btn-outline btn-sm" onclick={hideApiKey}>Hide</button>
+				</div>
+			{/if}
+			{#if apiKeyError}<p class="api-edge-error">{apiKeyError}</p>{/if}
+		</section>
+
 		<div class="connections-subtabs">
 			<button
 				type="button"
@@ -454,6 +517,58 @@
 	.feedback.inline {
 		margin: var(--s-sp-3) var(--s-sp-5);
 		justify-content: space-between;
+	}
+
+	.api-edge {
+		display: grid;
+		gap: var(--s-sp-3);
+		padding: var(--s-sp-4) var(--s-sp-5);
+		border-bottom: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper-deep);
+	}
+
+	.api-edge-head h3 {
+		margin: 0 0 var(--s-sp-1) 0;
+		font-family: var(--s-font-display);
+		font-size: var(--s-type-deed);
+		color: var(--s-ink);
+	}
+
+	.api-edge-head p,
+	.api-edge-endpoint {
+		margin: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
+	}
+
+	.api-edge-endpoint code,
+	.api-edge-key .form-input {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+	}
+
+	.api-edge-key {
+		display: flex;
+		gap: var(--s-sp-2);
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.api-edge-key .form-input {
+		flex: 1 1 16rem;
+		min-width: 0;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 2px;
+		background: none;
+		padding: 0.4em 0.6em;
+	}
+
+	.api-edge-error {
+		margin: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-seal);
 	}
 
 	.connections-subtabs {
