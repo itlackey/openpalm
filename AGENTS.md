@@ -41,7 +41,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM YAML task files (`*.yml`) in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
 - **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
 - **Portal adapters** (`portals/discord/`, `portals/slack/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
-- **Stack** (`.openpalm/config/stack/`) — Repo-shipped Docker Compose foundation. Contains core, services, portals, and custom compose files. Enabled first-party addons are tracked in `~/.openpalm/knowledge/env/stack.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
+- **Stack** (`packages/skeleton/`) — Repo-shipped skeleton that seeds `OP_HOME` on install/update. Managed compose files (`core.compose.yml`, `services.compose.yml`, `portals.compose.yml`) ship in `packages/skeleton/system/stack/` and materialize to `~/.openpalm/system/stack/` (overwritten on reconcile); the user overlay ships as `packages/skeleton/config/stack/custom.compose.yml` and materializes to `~/.openpalm/config/stack/` (seeded once). Enabled first-party addons are tracked in the app-written record `~/.openpalm/state/stack.state.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
 
 ---
 
@@ -71,7 +71,7 @@ bun run portal:slack:dev   # Runs slack portal dev server
 ./scripts/dev-setup.sh --seed-env       # Creates .dev/ dirs, seeds configs
 
 # Setup wizard (dev)
-bun run wizard:dev                      # Runs install --no-start --force with OP_HOME=.dev
+bun run wizard:dev                      # Runs `install --no-start` in a throwaway temp OP_HOME (OP_IMAGE_TAG=dev)
 ```
 
 ### Type Checking
@@ -125,9 +125,13 @@ bun run dev:build
 # Dev stack (pull images)
 bun run dev:stack
 
-# Manual equivalent with portal overlay:
-docker compose --project-directory . \
-  -f .openpalm/config/stack/core.compose.yml \
+# Manual equivalent (mirrors dev:build — MANAGED core/services/portals from
+# .dev/system/stack/, USER custom from .dev/config/stack/):
+docker compose --project-name openpalm-dev --project-directory . \
+  -f .dev/system/stack/core.compose.yml \
+  -f .dev/system/stack/services.compose.yml \
+  -f .dev/system/stack/portals.compose.yml \
+  -f .dev/config/stack/custom.compose.yml \
   -f compose.dev.yml \
   --env-file .dev/knowledge/env/stack.env \
   up --build -d
@@ -238,7 +242,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **Guardian-only ingress.** All portal traffic must enter through the guardian (`/oc/*` proxy, ownership checks, rate limiting).
 - **Assistant isolation.** Assistant has no Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
-- **Add a portal** by enabling its first-party addon name in `~/.openpalm/knowledge/env/stack.env` or adding a service block to `custom.compose.yml` (for custom portals) — no code changes.
+- **Add a portal** by enabling its first-party addon name in the app-written record `~/.openpalm/state/stack.state.env` (`OP_ENABLED_ADDONS`) or adding a service block to `config/stack/custom.compose.yml` (for custom portals) — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
 - **Docker dependency resolution pattern.** Guardian and portal Dockerfiles install each service's own deps directly. UI is a host binary — no Docker build needed.
 
@@ -248,16 +252,17 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
 
+The layout is split into trees by **ownership** so lifecycle sync can overwrite what it owns without touching a user file:
+
 | Directory | Owner | Purpose |
 |-----------|-------|---------|
-| `config/` | User | Non-secret config: assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`) |
-| `knowledge/env/` | User | User-managed secrets: `user.env` (LLM keys, owner info) |
-| `config/stack/` | Admin | System-managed compose files and runtime assembly |
-| `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/tasks/` holds scheduled automation task files |
-| `data/` | Services/System | Persistent data: assistant, guardian, akm, logs, backups, rollback |
-| `data/akm/cache/` | Services/System | AKM cache and task logs |
-| `data/akm/data/` | Services/System | AKM databases and durable data |
-| `~/.cache/openpalm/` | System | Ephemeral cache |
+| `config/` | User | Non-secret config: assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`); the `custom.compose.yml` overlay lives under `config/stack/` |
+| `system/` | Managed | Release-shipped assets overwritten wholesale on reconcile: managed compose files (`system/stack/`) + managed OpenCode config (`system/assistant/`, `system/guardian/`) |
+| `state/` | App | App-written records: version pins, enabled add-ons, channel, setup completion (`state/stack.state.env`, `state/host-identity.json`) |
+| `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/env/user.env` holds user-managed secrets; `knowledge/env/stack.env` is non-secret base config; `knowledge/tasks/` holds scheduled automation task files |
+| `data/` | Services/System | Persistent data: assistant, guardian, akm (`data/akm/cache/`, `data/akm/data/`), logs, backups, rollback |
+| `workspace/` | User | Shared assistant work area (bind-mounted at `/work`) |
+| `~/.cache/openpalm/` | System | Ephemeral cache (outside `OP_HOME`) |
 
 Dev mode uses `.dev/` with the same subdirectory structure.
 
@@ -268,7 +273,7 @@ Dev mode uses `.dev/` with the same subdirectory structure.
 Before submitting any change:
 
 - [ ] `cd packages/ui && npm run check` passes (UI type correctness)
-- [ ] `cd containers/guardian && bun test` passes (security-critical branches covered)
+- [ ] `cd packages/guardian && bun test` (or `bun run guardian:test`) passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
@@ -299,6 +304,6 @@ Before submitting any change:
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |
 | `packages/guardian/src/server.ts` | Guardian request pipeline: HTTP Basic auth + sha256 token compare (`auth.ts`), endpoint allowlist, ownership checks, rate limiting, content validation, forward (`@openpalm/guardian`; `containers/guardian/` holds only the Dockerfile + entrypoint, no `src/`) |
 | `packages/guardian/src/logger.ts` | Guardian-local logger (createLogger factory) |
-| `.openpalm/config/stack/core.compose.yml` | Core service definition — assistant only; the guardian is profile-gated in `portals.compose.yml`, not a core service |
-| `.openpalm/config/stack/` | Fixed stack compose files and enabled-addon state |
+| `packages/skeleton/system/stack/core.compose.yml` | Repo-shipped core service definition — assistant only; the guardian is profile-gated in `portals.compose.yml`, not a core service. Materializes to `~/.openpalm/system/stack/` on install/update |
+| `packages/skeleton/system/stack/` | Repo-shipped managed compose files (core/services/portals). The user overlay is `packages/skeleton/config/stack/custom.compose.yml`; enabled add-ons/pins live in the runtime `state/stack.state.env` |
 | `.opencode/opencode.json` | OpenCode project configuration |

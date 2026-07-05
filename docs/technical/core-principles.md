@@ -48,7 +48,7 @@ For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; 
   - Editor for addon configurations/environments
     - This is for the standard .env.schema and any specific configuration files needed by the addon.
 
-All of this functionality exists to simplify managing files under the OP_HOME directory. The base line is managing compose and schema files under OP_HOME/config/stack, non-secret runtime env in OP_HOME/knowledge/env/stack.env, file-based service secrets under OP_HOME/knowledge/secrets, user-managed AKM env data under OP_HOME/knowledge/env, configuration/automation files under OP_HOME/config, and service-specific files under OP_HOME/data. These tasks should be achievable by a technical user without the tooling by manually editing files and placing them in the proper locations.
+All of this functionality exists to simplify managing files under the OP_HOME directory. The base line is managing the managed compose files under OP_HOME/system/stack and the user overlay `custom.compose.yml` under OP_HOME/config/stack, non-secret runtime env in OP_HOME/knowledge/env/stack.env with the app-written pins/enabled-add-ons record in OP_HOME/state/stack.state.env, file-based service secrets under OP_HOME/knowledge/secrets, user-managed AKM env data under OP_HOME/knowledge/env, configuration/automation files under OP_HOME/config, and service-specific files under OP_HOME/data. These tasks should be achievable by a technical user without the tooling by manually editing files and placing them in the proper locations.
 
 ## Security invariants
 
@@ -67,7 +67,16 @@ These are hard constraints that must never be violated during development. See a
 
 Configuration is managed by **writing whole files** or **targeted edits** — never by string interpolation, template expansion, or dynamic code generation. The CLI or admin validates proposed changes, writes them to live paths, and uses Docker Compose natively for variable substitution. All control-plane logic lives in `@openpalm/lib` — both CLI and admin import from this shared library. OpenCode core config is image-baked at `/etc/opencode`, with user extensions mounted from `config/assistant/`.
 
-All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OP_HOME`). Ephemeral cache lives at `~/.cache/openpalm/`.
+All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OP_HOME`). Ephemeral cache lives at `~/.cache/openpalm/`. Under that root the layout is split into trees by **ownership**, so lifecycle sync can overwrite what it owns without ever touching a user file:
+
+| Tree | Owner | Contents |
+|---|---|---|
+| `config/` | User | User-editable non-secret config; the `custom.compose.yml` overlay under `config/stack/` |
+| `system/` | Managed (release-shipped) | Fixed compose files (`system/stack/`) + managed OpenCode config (`system/assistant/`, `system/guardian/`); overwritten wholesale on reconcile |
+| `state/` | App-written | Records the control plane writes and owns — version pins, enabled add-ons, channel, setup completion (`state/stack.state.env`) |
+| `knowledge/` | User / services | AKM knowledge, user env, and system-managed file secrets; bind-mounted into the assistant at `/stash` |
+| `data/` | Services | Persistent per-service runtime data, logs, backups, rollback |
+| `workspace/` | User | Shared assistant work area, bind-mounted at `/work` |
 
 ### 1) Config (user-owned, non-secret)
 
@@ -85,19 +94,19 @@ Subtrees:
 
 **Guardian managed config (moderation.md is not user-editable):** the moderation classifier's instructions (`instructions/moderation.md`) and the guardian's `opencode.jsonc` live in the MANAGED `system/guardian/` tree, bind-mounted at the guardian's `OPENCODE_CONFIG_DIR=/etc/opencode` — the same managed tree as the rest of `system/`. Like every other file there, `overwriteSystemTree` (`packages/lib/src/control-plane/core-assets.ts`) overwrites it on every install/update/hot-swap refresh whenever its content differs from the shipped default, backing up the previous copy first; there is no skip-if-user-modified exception. It was deliberately **not** relocated to `config/guardian/` (the user tree): that directory mounts at the guardian's `~/.config/opencode`, a different path than `OPENCODE_CONFIG_DIR=/etc/opencode`, so relocating the file there would silently stop OpenCode from loading it. Operators who need different moderation behavior tune the **model** via `config/guardian/opencode.json` (the `guardian/` subtree above); the classifier instructions text itself is managed, not user-editable.
 
-### 1b) Stack (system-managed runtime assembly)
+### 1b) Stack (managed assembly + user overlay + app-written record)
 
-**Location:** `~/.openpalm/config/stack/`
-**Purpose:** live Docker Compose assembly used to run the stack.
+The Docker Compose assembly is split across three owners so lifecycle sync can overwrite the managed files wholesale without ever clobbering the user's overlay or the app's own record.
 
-Subtrees:
+**Managed compose — `~/.openpalm/system/stack/`** (release-shipped, overwritten on every reconcile):
 
-- `core.compose.yml` — base compose definition for core assistant runtime services
-- `services.compose.yml` — system-managed first-party optional services, profile-gated
-- `portals.compose.yml` — system-managed first-party optional portals, profile-gated
-- `custom.compose.yml` — user-editable custom services and overlays, seeded once and never overwritten automatically
+- `core.compose.yml` — base compose definition for the core assistant runtime service
+- `services.compose.yml` — first-party optional services, profile-gated
+- `portals.compose.yml` — first-party optional portals (including the profile-gated guardian), profile-gated
 
-First-party optional services are enabled by updating `OP_ENABLED_ADDONS` in `knowledge/env/stack.env`; OpenPalm resolves those names to Compose profiles when it builds the Docker Compose command. Explicit manual `--profile` arguments remain valid for ad hoc Docker Compose use. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
+**User overlay — `~/.openpalm/config/stack/custom.compose.yml`**: user-editable custom services and overlays. Seeded once and never overwritten automatically. It is the ONE stack file in the user tree; co-locating it inside the wholesale-overwritten `system/stack/` is forbidden by the ownership model.
+
+**App-written record — `~/.openpalm/state/stack.state.env`**: the control plane's own record of enabled add-ons and per-image version pins (`state/` also holds `host-identity.json` and the `OP_SETUP_COMPLETE` flag). First-party optional services are enabled by updating `OP_ENABLED_ADDONS` here; OpenPalm resolves those names to Compose `--profile addon.<name>` arguments when it builds the Docker Compose command. During the current layout transition this file is passed to Compose as a later `--env-file` than the legacy `knowledge/env/stack.env`, so the state record wins on conflicting keys; the intended end state is a single app-owned operator file, so this two-file merge is a transitional detail, **not** a permanent contract to build on. Explicit manual `--profile` arguments remain valid for ad hoc Docker Compose use. OpenPalm does not generate `addons.compose.yml`, does not write `enabled-addons.json`, and does not use a runtime registry catalog.
 
 ### 2) Knowledge / Vaults (user-managed secrets and knowledge)
 
@@ -110,7 +119,7 @@ Subtrees:
 - `tasks/` — AKM YAML task files for scheduled automations. AKM owns task enablement state.
 
 System-managed runtime configuration and secrets live under `knowledge/`:
-- `knowledge/env/stack.env` — system-managed non-secret configuration: paths, ports, image tags, profiles, and feature flags. Written by CLI/admin. Advanced users may edit directly with understanding of the compose substitution model.
+- `knowledge/env/stack.env` — system-managed non-secret **base** configuration: paths, ports, image tags, and feature flags. Written by CLI/admin. Advanced users may edit directly with understanding of the compose substitution model. The app-written pins/enabled-add-ons record lives separately in `state/stack.state.env` (§ 1b) and is merged over this file at compose time; the transitional two-file split collapses to a single app-owned operator file as the intended end state.
 - `knowledge/secrets/` — system-managed file secrets. Compose grants each service only the files it needs; containers receive secret paths through `*_FILE` variables.
 
 **Rule:** the assistant reads user secrets via `akm env:user` from its knowledge bind mount (host `knowledge/` at `/stash`). There is no separate `/etc/vault/` container mount. Guardian, portals, assistant, and any admin-adjacent service receive system secrets only as Compose secret files, never as broad env files or raw secret environment variables. The scheduler co-process inherits the assistant container's mounts and environment.
@@ -191,11 +200,11 @@ The stack is defined by combining the fixed Compose file set with Compose's nati
 
 To guarantee lifecycle operations never clobber user configuration:
 
-- **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits and CLI/admin UI/API config actions — may create/update/remove files as requested. A **layout migration** is the one automatic path permitted to *remove* files, and only SYSTEM-managed inert ones (e.g. a renamed/retired compose overlay the control plane no longer loads) via an explicit allowlist in `migrations.ts` — never user data, never a heuristic sweep, and only because the layout-migration path takes a full OP_HOME backup first (abort-if-fails), so a stamped layout bump is always recoverable. An inert file that *holds* user data is relocated, not dropped.
-- **`config/stack/` is the live runtime assembly.** Automatic lifecycle sync may update `core.compose.yml`, `services.compose.yml`, and `portals.compose.yml`. `custom.compose.yml` is seeded once and user edits always win. Non-secret runtime configuration lives in `knowledge/env/stack.env`.
+- **`config/` is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults or does targeted updates and never overwrites existing user files. Explicit mutation paths — user direct edits and CLI/admin UI/API config actions — may create/update/remove files as requested. User data is never removed by an automatic path.
+- **`system/stack/` is the managed compose assembly.** Automatic lifecycle sync overwrites `core.compose.yml`, `services.compose.yml`, and `portals.compose.yml` wholesale from the release-shipped defaults. The user overlay `config/stack/custom.compose.yml` is seeded once and user edits always win. Non-secret base runtime configuration lives in `knowledge/env/stack.env`; app-written pins and enabled add-ons live in `state/stack.state.env`.
 - **`knowledge/env/` has strict access rules.** The assistant accesses user secrets via `akm env:user` from its `/stash` stash mount. There is no separate `/etc/vault/` mount. No container mounts `knowledge/env/` directly. Lifecycle operations never overwrite `knowledge/env/user.env`; they may update non-secret `knowledge/env/stack.env` and system-managed secret files in `knowledge/secrets/`.
 - **`data/` is service-writable within ownership boundaries.** Each container owns its designated data subdirectories. No container may access another service's data directories. Stack-wide data operations require the admin API.
-- **Apply uses validate-in-place with snapshot rollback.** Changes are validated against temp copies (in `/tmp/openpalm`) before writing to live paths (`$OP_HOME/config/stack`). A snapshot of the current stack configuration is saved to `$OP_HOME/data/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored. See § Rollback scope below for what is included in the snapshot.
+- **Apply validates before writing, with snapshot rollback.** Changes are validated (compose config check + secret audit) before the managed compose files are written to their live paths under `$OP_HOME/system/stack`. A snapshot of the current stack configuration is saved to `$OP_HOME/data/rollback/` before any write. If deployment fails health checks, the snapshot is automatically restored. See § Rollback scope below for what is included in the snapshot.
 
 ### D) Host authority rule for mounts
 
@@ -224,11 +233,11 @@ All portable control-plane logic — lifecycle management, addon operations, sec
 
 ## Thin-harness boundary (Electron) and harness-contract discipline
 
-The Electron desktop app is a **thin native harness**, not a copy of the control plane. Re-downloading the app is required **only when the native harness surface itself changes** — `BrowserWindow` / `Tray` / IPC channels / preload bridge / native modules / entitlements / PATH shims. Everything else self-updates in place over npm (`@openpalm/ui` → `data/ui`) and `compose pull` (stack images) with **no app re-download**: the admin UI build, the `@openpalm/lib` control plane (including `RELEASE_MIGRATIONS` and the lifecycle deploy path), and the CLI's view of the served UI.
+The Electron desktop app is a **thin native harness**, not a copy of the control plane. Re-downloading the app is required **only when the native harness surface itself changes** — `BrowserWindow` / `Tray` / IPC channels / preload bridge / native modules / entitlements / PATH shims. Everything else self-updates in place over npm (`@openpalm/ui` → `data/ui`) and `compose pull` (stack images) with **no app re-download**: the admin UI build, the `@openpalm/lib` control plane (including the lifecycle deploy and upgrade path), and the CLI's view of the served UI.
 
 **Hard rules:**
 
-- **The frozen harness bundle runs no migrations.** `packages/electron/dist/main.js` (inlined into the asar) MUST contain **zero** mutating control-plane symbols (`ensureReleaseMigrated`, `RELEASE_MIGRATIONS`, `performUpgrade`, `applyTagChange`). Every state-mutating operation runs in the spawned `data/ui` control plane, which carries its own inlined `@openpalm/lib`. The CI guard `scripts/validate-thin-harness-boundary.sh` enforces this (and that the UI build *does* carry those symbols).
+- **The frozen harness bundle runs no lifecycle mutations.** `packages/electron/dist/main.js` (inlined into the asar) MUST contain **zero** trace of the mutating lifecycle engine. Every state-mutating operation runs in the spawned `data/ui` control plane, which carries its own inlined `@openpalm/lib`. The CI guard `scripts/validate-thin-harness-boundary.sh` enforces this with a single categorical sentinel — `reconcileStack`, the private engine every mutating lifecycle op (`applyInstall`/`applyUpdate`/`applyUninstall`/`performUpgrade`) funnels through — requiring zero matches in the frozen bundle, while requiring `performUpgrade` to be present in the updatable `data/ui` build.
 - **`main.ts` imports only the bootstrap allowlist from `@openpalm/lib`** — path resolvers, `ensureHomeDirs`, `seedOpenPalmDir`, `seedUiBuild`, `checkAndUpdateUiBuild`, `uiUpdateChannel`, `parseEnvFile`, `PLATFORM_VERSION`, and the Docker preflight probes (`checkDocker`/`checkDockerCompose`). Adding any mutating control-plane symbol to that import set fails CI. This is the mechanical expression of "the harness is bootstrap-only."
 - **`data/ui` is the steady-state executor.** Supervisors (the Electron harness and `openpalm ui serve`) call `checkAndUpdateUiBuild` before resolving + spawning, so a strictly-newer `data/ui` always wins. A de-route back to the frozen bundled lib (missing/stale stamp) MUST be logged, never silent (`resolveUiBuildDir`).
 - **Two independent version lines.** `PLATFORM_VERSION` (in `@openpalm/lib`, travels with `data/ui`) bumps on every control-plane/migration/UI release and **never** forces a re-download. `HARNESS_CONTRACT_VERSION` (a single integer in `packages/electron/src/harness-contract.ts`) bumps **only** when the §5.1 contract surface — renderer IPC bridge, spawn-env keys, or FS/spawn conventions — changes name/argument/return/required-key, and **does** force a re-download. Never feed `app.getVersion()` into control-plane inputs.
@@ -306,9 +315,9 @@ Addon overlays may extend core services by injecting environment variables or vo
 
 When the CLI or admin performs an apply operation, a snapshot is saved to `$OP_HOME/data/rollback/` before any writes. The snapshot includes:
 
-- `config/stack/` — the full live compose assembly, non-secret runtime env, file-based system secrets, and compose files (`core.compose.yml`, `portals.compose.yml`, `services.compose.yml`, `custom.compose.yml`, `stack.env`, `secrets/`)
+- The live compose assembly and the env/secret files that drive it: the managed `system/stack/` compose files (`core.compose.yml`, `services.compose.yml`, `portals.compose.yml`), the user overlay `config/stack/custom.compose.yml`, the non-secret base env `knowledge/env/stack.env`, the app-written record `state/stack.state.env`, and `knowledge/secrets/auth.json`.
 
-The snapshot does **not** include `config/` user files outside `config/stack/` (non-destructive for user edits), `knowledge/env/user.env` (never overwritten by lifecycle operations), or `data/` (service-owned runtime data).
+The snapshot does **not** include `config/` user files outside `config/stack/custom.compose.yml` (non-destructive for user edits), `knowledge/env/user.env` (never overwritten by lifecycle operations), or `data/` (service-owned runtime data).
 
 On health check failure after deploy, the snapshot is automatically restored and the stack is restarted. Manual rollback is available via `openpalm rollback`.
 
@@ -316,10 +325,10 @@ On health check failure after deploy, the snapshot is automatically restored and
 
 ## Operational behavior
 
-- **Add an addon:** update `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` (for first-party addons) or add a service block to `custom.compose.yml` (for custom services), then rerun the compose command with the appropriate `--profile addon.<name>` arguments. ([Docker Documentation][3])
+- **Add an addon:** update `OP_ENABLED_ADDONS` in `~/.openpalm/state/stack.state.env` (for first-party addons) or add a service block to `config/stack/custom.compose.yml` (for custom services), then rerun the compose command with the appropriate `--profile addon.<name>` arguments. ([Docker Documentation][3])
 - **Add an extension (user):** copy OpenCode assets into `config/assistant/` following OpenCode's directory structure. ([OpenCode][1])
 - **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-- **Apply changes:** the CLI or admin validates proposed changes (compose config and secret-audit rules) before writing anything. If validation passes, a snapshot of current live files is saved to `$OP_HOME/data/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution for non-secret values. Compose is normally invoked with non-secret `knowledge/env/stack.env`; service secrets live under `knowledge/secrets/` and are granted via Compose `secrets:`. `knowledge/env/user.env` is not a Compose env-file. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` user files and `knowledge/env/user.env`; it may seed missing defaults, do targeted updates, and update system-managed files in `config/stack/`.
+- **Apply changes:** the CLI or admin validates proposed changes (compose config and secret-audit rules) before writing anything. If validation passes, a snapshot of current live files is saved to `$OP_HOME/data/rollback/` (see § Rollback scope), changes are written to live paths, and `docker compose up -d` is run. If services fail health checks, the snapshot is automatically restored. No string interpolation or template expansion — just whole-file writes and Compose native `--env-file` substitution for non-secret values. Compose is normally invoked with non-secret `knowledge/env/stack.env`; service secrets live under `knowledge/secrets/` and are granted via Compose `secrets:`. `knowledge/env/user.env` is not a Compose env-file. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is non-destructive for `config/` user files and `knowledge/env/user.env`; it may seed missing defaults, do targeted updates, and overwrite managed compose files in `system/stack/`.
 - **Addon overlays may extend core services.** Addon compose files can inject environment variables or volumes into core service definitions via Compose multi-file merge. For example, an addon can add environment entries to the assistant service by defining an `assistant:` block with additional `environment:` entries in its overlay. This is standard Docker Compose merge behavior — no custom merging logic is involved. See § Addon conflict detection for limitations.
 - **API key changes require restart:** provider API keys live as files under `knowledge/secrets/` or in OpenCode auth state, depending on the provider path, and containers receive file paths through `*_FILE` variables. Changing keys requires a stack restart (`docker compose up -d`) for services that read the file only at startup.
 - **Rollback:** `openpalm rollback` restores the most recent snapshot from `$OP_HOME/data/rollback/` and restarts the stack. Available both as an automated response to failed deploys and as a manual escape hatch. See § Rollback scope for snapshot contents.
