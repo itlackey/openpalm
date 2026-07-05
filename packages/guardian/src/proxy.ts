@@ -169,9 +169,8 @@ export async function handleProxy(
 
   // ── Read the body (bounded) AFTER authenticate() (rev3-F3) ────────────────
   // An unauthenticated flood is rejected above without ever buffering a body.
-  // The old "read before signature" ordering existed for a SHA256(body) HMAC
-  // check that no longer exists (HMAC/nonce/replay machinery was removed), so
-  // nothing before this point consumes the body.
+  // Auth is a Basic token compare (auth.ts) that does not read the body, so
+  // nothing before this point consumes it.
   let body = "";
   if (method !== "GET" && method !== "HEAD") {
     body = await req.text();
