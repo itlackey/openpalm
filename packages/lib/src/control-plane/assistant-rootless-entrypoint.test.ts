@@ -31,7 +31,14 @@ describe('assistant rootless entrypoint regressions', () => {
     // literal string `$@` into the wrapper and silently break crontab installs.
     expect(assistantEntrypoint).toContain("printf '#!/usr/bin/env sh\\nexec busybox crontab -c %s \"$@\"\\n'");
     expect(assistantEntrypoint).not.toContain('\\$@');
-    expect(assistantEntrypoint).toContain('if ! akm tasks sync >&2; then');
+    expect(assistantEntrypoint).toContain('if ! run_akm_command akm tasks sync >&2; then');
+  });
+
+  test('akm health and task sync use the shared assistant-home wrapper', () => {
+    expect(assistantEntrypoint).toContain('run_akm_command() {');
+    expect(assistantEntrypoint).toContain('env HOME="${HOME:-/home/opencode}" "$@"');
+    expect(assistantEntrypoint).toContain('run_akm_command akm health >&2 || rc=$?');
+    expect(assistantEntrypoint).toContain('run_akm_command akm tasks sync >&2');
   });
 
   test('tool updates and install hooks run directly as the container user', () => {
