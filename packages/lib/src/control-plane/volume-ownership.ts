@@ -28,9 +28,15 @@ const logger = createLogger("lib:volume-ownership");
  * so we delegate to Docker — which has root access via the daemon.
  *
  * No-op on Windows or when no directories need fixing.
+ *
+ * Returns whether the repair fully succeeded (true when nothing needed
+ * fixing, or the docker chown reported ok). In non-strict mode a failure is
+ * still swallowed (logged, not thrown) but now reported back via the return
+ * value so the caller can decide whether it is safe to record "repaired"
+ * state (see ownership-reconcile.ts).
  */
-export async function repairRootOwnedBindMounts(homeDir: string, candidates?: string[], opts?: { strict?: boolean; deep?: boolean }): Promise<void> {
-  if (process.platform === 'win32') return;
+export async function repairRootOwnedBindMounts(homeDir: string, candidates?: string[], opts?: { strict?: boolean; deep?: boolean }): Promise<boolean> {
+  if (process.platform === 'win32') return true;
 
   const repairCandidates = candidates ?? [
     join(homeDir, 'data', 'guardian'),
@@ -38,7 +44,7 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
   ];
 
   const ids = resolveSessionIdentity(homeDir);
-  if (!ids) return;
+  if (!ids) return true;
 
   // `strict` (explicit --adopt-host) and `deep` (one-time reconcile after a
   // session-uid change) both repair every existing candidate: the chown is
@@ -58,7 +64,7 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
     }
   });
 
-  if (mismatched.length === 0) return;
+  if (mismatched.length === 0) return true;
 
   const volumeArgs = mismatched.flatMap((dir, i) => ['-v', `${dir}:/chown_target_${i}`]);
   const targets = mismatched.map((_, i) => `/chown_target_${i}`);
@@ -75,10 +81,13 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
     const message = `Could not repair mismatched bind mounts: ${result.stderr.trim()}`;
     if (opts?.strict) throw new Error(message);
     logger.warn(message);
+    return false;
   }
+  return true;
 }
 
-export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid: number; gid: number }, opts?: { strict?: boolean }): Promise<void> {
+/** Returns whether the repair succeeded (see repairRootOwnedBindMounts doc). */
+export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid: number; gid: number }, opts?: { strict?: boolean }): Promise<boolean> {
   // Only repair volumes that already exist (pre-rootless installs whose
   // containers wrote into them as root). A `docker run -v` against a missing
   // volume would create it WITHOUT compose labels — compose then warns
@@ -86,7 +95,7 @@ export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid:
   // and a fresh volume gets seeded from the (already uid-agnostic) image
   // content on first mount, so it needs no repair.
   const inspect = await run(['volume', 'inspect', volumeName], undefined, 15_000);
-  if (!inspect.ok) return;
+  if (!inspect.ok) return true;
 
   const result = await run([
     'run', '--rm',
@@ -99,7 +108,9 @@ export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid:
     const message = `Could not repair named volume ${volumeName}: ${result.stderr.trim()}`;
     if (opts?.strict) throw new Error(message);
     logger.warn(message);
+    return false;
   }
+  return true;
 }
 
 /**
@@ -119,22 +130,30 @@ const SERVICE_NAMED_VOLUMES: Record<string, string[]> = {
   slack: ['portal-cache'],
 };
 
+/**
+ * Repairs every managed named volume for the given services. Always attempts
+ * all of them (a failure on one volume must not skip the rest); returns
+ * whether every attempted repair succeeded (see repairRootOwnedBindMounts doc).
+ */
 export async function repairManagedNamedVolumes(
   homeDir: string,
   services: string[],
   opts?: { strict?: boolean },
-): Promise<void> {
+): Promise<boolean> {
   const ids = resolveSessionIdentity(homeDir);
-  if (!ids) return;
+  if (!ids) return true;
   const projectName = resolveComposeProjectName(readStackEnv(homeDir));
   const repaired = new Set<string>();
+  let allOk = true;
   for (const [service, volumes] of Object.entries(SERVICE_NAMED_VOLUMES)) {
     if (!services.includes(service)) continue;
     for (const volume of volumes) {
       const qualified = `${projectName}_${volume}`;
       if (repaired.has(qualified)) continue;
       repaired.add(qualified);
-      await repairNamedVolumeOwnership(qualified, ids, opts);
+      const ok = await repairNamedVolumeOwnership(qualified, ids, opts);
+      if (!ok) allOk = false;
     }
   }
+  return allOk;
 }

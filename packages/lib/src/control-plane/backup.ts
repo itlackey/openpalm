@@ -220,12 +220,24 @@ export function summarizeBackups(homeDir: string): BackupSummary {
   };
 }
 
+/**
+ * `-pre-rollback`/`-pre-update` suffixed backups are safety snapshots taken
+ * right before a destructive restore/upgrade — they may be the only surviving
+ * copy of data lost elsewhere (a stripped secret value, a clobbered
+ * moderation.md edit). Pruning must never touch them, regardless of the
+ * `keep` count or how old they are.
+ */
+function isProtectedRecoveryBackup(dirPath: string): boolean {
+  return /-pre-(rollback|update)$/.test(dirPath);
+}
+
 export function pruneBackupDirs(homeDir: string, keep: number): string[] {
   if (!Number.isInteger(keep) || keep < 0) {
     throw new Error('keep must be a non-negative integer');
   }
 
-  const toDelete = listBackupDirs(homeDir).slice(keep);
+  const prunable = listBackupDirs(homeDir).filter((dir) => !isProtectedRecoveryBackup(dir));
+  const toDelete = prunable.slice(keep);
   for (const backupDir of toDelete) {
     rmSync(backupDir, { recursive: true, force: true });
   }

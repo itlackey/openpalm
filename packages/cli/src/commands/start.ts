@@ -20,7 +20,11 @@ export default defineCommand({
     },
     adoptHost: {
       type: 'boolean',
-      description: 'Repair bind-mount ownership for the current host before start',
+      description:
+        'Repair bind-mount ownership for the current host before start. Also the ' +
+        'recovery path if containers keep failing with permission errors after an ' +
+        'automatic repair silently failed — this forces a full repair and surfaces ' +
+        'the underlying error instead of retrying quietly.',
       default: false,
     },
   },
