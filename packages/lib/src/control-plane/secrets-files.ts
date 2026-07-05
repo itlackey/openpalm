@@ -45,7 +45,12 @@ export function writeSecret(homeDir: string, name: string, value: string): void 
 }
 
 export function ensureSecret(homeDir: string, name: string, valueFactory: () => string): string {
-  const existing = readSecret(homeDir, name);
+  const path = secretPath(homeDir, name);
+  // A torn write (process killed mid-write) can leave a 0-byte secret file.
+  // Treat that the same as missing so it gets re-seeded instead of being
+  // returned (and depended on) as a permanent empty string.
+  const torn = existsSync(path) && statSync(path).size === 0;
+  const existing = torn ? null : readSecret(homeDir, name);
   if (existing !== null) return existing;
   const value = valueFactory();
   writeSecret(homeDir, name, value);

@@ -115,10 +115,15 @@ export function describeBackupSpaceShortfall(check: BackupSpaceCheck): string {
  * destructive operation (e.g. `install --force`) could clobber.
  *
  * The whole `data/` tree is intentionally EXCLUDED: it is large, regenerable
- * runtime state — `data/assistant` (node_modules, caches, opencode SQLite) and
- * `data/guardian` are GBs and are re-created/re-downloaded on container boot, so
- * snapshotting them buys nothing for recovery (the rollback/restore path never
- * reads these snapshots) and previously filled the disk (~5 GB per snapshot).
+ * runtime state. `data/assistant` (node_modules, caches, opencode SQLite) is
+ * GBs and re-created/re-downloaded on container boot. `data/guardian` and
+ * `data/guardian/tools` hold guardian $HOME runtime state (nonce/rate-limit
+ * store, OpenCode auth/config) plus operator-editable tool packages — small,
+ * but still regenerable (the guardian's own code is baked into the image, not
+ * installed under `data/guardian`; see containers/guardian/Dockerfile). Either
+ * way, snapshotting `data/` buys nothing for recovery (the rollback/restore
+ * path never reads these snapshots) and previously filled the disk (~5 GB per
+ * snapshot).
  */
 export function backupOpenPalmHome(homeDir: string): string | null {
   if (!existsSync(homeDir)) return null;
@@ -220,12 +225,24 @@ export function summarizeBackups(homeDir: string): BackupSummary {
   };
 }
 
+/**
+ * `-pre-rollback`/`-pre-update` suffixed backups are safety snapshots taken
+ * right before a destructive restore/upgrade — they may be the only surviving
+ * copy of data lost elsewhere (a stripped secret value, a clobbered
+ * moderation.md edit). Pruning must never touch them, regardless of the
+ * `keep` count or how old they are.
+ */
+function isProtectedRecoveryBackup(dirPath: string): boolean {
+  return /-pre-(rollback|update)$/.test(dirPath);
+}
+
 export function pruneBackupDirs(homeDir: string, keep: number): string[] {
   if (!Number.isInteger(keep) || keep < 0) {
     throw new Error('keep must be a non-negative integer');
   }
 
-  const toDelete = listBackupDirs(homeDir).slice(keep);
+  const prunable = listBackupDirs(homeDir).filter((dir) => !isProtectedRecoveryBackup(dir));
+  const toDelete = prunable.slice(keep);
   for (const backupDir of toDelete) {
     rmSync(backupDir, { recursive: true, force: true });
   }

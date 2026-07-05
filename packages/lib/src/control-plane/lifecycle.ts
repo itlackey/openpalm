@@ -11,6 +11,7 @@ import {
   resolveDataDir,
   resolveStackDir,
   customComposeFilePath,
+  stateEnvFile,
   ensureHomeDirs,
 } from "./home.js";
 import { ensureSecrets, ensureOpenCodeConfig } from "./secrets.js";
@@ -22,13 +23,13 @@ import {
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
-import { hasArmedSnapshot, snapshotCurrentState } from "./rollback.js";
-import { checkDocker, composePreflight, composePull, composeUp, composeConfigServices, buildComposePreflightError } from "./docker.js";
+import { hasArmedSnapshot, snapshotCurrentState, clearArmedSnapshot } from "./rollback.js";
+import { checkDocker, composePreflight, applyStack, composeConfigServices, buildComposePreflightError } from "./docker.js";
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
-import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from "./addons.js";
+import { getAddonServiceNames, listEnabledAddonIds, migrateProfileOnlyAddonEnablement, pruneRemovedAddonState } from "./addons.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { PLATFORM_VERSION, formatForDisplay } from "./versioning.js";
 import { stackEnvPath } from "./paths.js";
@@ -156,6 +157,11 @@ async function applyHome(
   // the rootless branch). Idempotent no-op when clean; runs on every reconcile
   // so an upgraded install self-heals without the user touching an addon.
   pruneRemovedAddonState(state.homeDir);
+  // One-time upgrade guard (2.2): persist any addon enablement that today only
+  // exists as a derived OP_VOICE_PROFILE/OP_OLLAMA_PROFILE reverse-parse, so it
+  // survives once that reverse-parse is eventually removed. Idempotent no-op
+  // once migrated.
+  migrateProfileOnlyAddonEnablement(state.homeDir);
   const seed = await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
@@ -176,9 +182,13 @@ function releaseLifecycleLock(lock: InstallLockHandle | null, opts?: LockedLifec
 
 /**
  * The four lifecycle operations, as a discriminated union. Each entry point
- * constructs exactly one; there is no way to name an illegal mix of steps (the
- * old flag bag let you build e.g. deactivate + compose, which is nonsense).
- * `planLifecycleOp` is the single place that turns a kind into concrete steps.
+ * constructs exactly one; there is no way to name an illegal mix of steps.
+ * `reconcileStack` derives its exact reconcile steps straight from `kind`
+ * (see the inline `activate`/`deactivate`/`composes` derivation below) —
+ * there used to be a separate `planLifecycleOp` flag-table function here, but
+ * only ONE of the four kinds ("upgrade") ever composed, so the table added a
+ * layer of indirection over what is really a single `kind === "upgrade"`
+ * check (plan 2.2 — deleted rather than kept as dead ceremony).
  */
 export type LifecycleOp =
   | { kind: "install" }
@@ -187,55 +197,24 @@ export type LifecycleOp =
   | { kind: "upgrade" };
 
 /**
- * The concrete reconcile steps a LifecycleOp runs — the internal "decision
- * object". Derived solely from `kind`, so only the four legal combinations exist.
- */
-type ReconcilePlan = { activate: boolean; deactivate: boolean; pull: boolean; compose: boolean };
-
-/**
- * Map a LifecycleOp to its exact reconcile steps. These are the flag values each
- * entry point passed in the pre-refactor flag bag, kept identical:
- *
- *   • install   — activate services; the route owns the compose phase, so no
- *                 in-wrapper pull/compose.
- *   • update    — no activate (preserve each service's prior running/stopped
- *                 state; the route drives the recreate); no in-wrapper compose.
- *   • uninstall — deactivate only; a pure file/state reconcile (the route runs
- *                 composeDown), so it never touches containers.
- *   • upgrade   — the ONLY kind that pulls images and recreates containers inside
- *                 the wrapper: its consumers (CLI update, the admin upgrade route)
- *                 have no separate compose phase and want the full pull+recreate
- *                 to happen here, with rollback on failure.
- *
- * `compose` is deliberately OFF for install/update/uninstall: those consumers
- * (runDeploy, the admin install/update/uninstall routes) already own a bespoke
- * compose phase — pulling images first, parsing per-service failures, polling
- * health, and emitting progress. Letting the wrapper composeUp too would
- * (a) double-recreate and (b) on a fresh install fatally `up` BEFORE images are
- * pulled.
- */
-export function planLifecycleOp(op: LifecycleOp): ReconcilePlan {
-  switch (op.kind) {
-    case "install":
-      return { activate: true, deactivate: false, pull: false, compose: false };
-    case "update":
-      return { activate: false, deactivate: false, pull: false, compose: false };
-    case "uninstall":
-      return { activate: false, deactivate: true, pull: false, compose: false };
-    case "upgrade":
-      return { activate: true, deactivate: false, pull: true, compose: true };
-  }
-}
-
-/**
  * The single idempotent stack reconcile. Every lifecycle entry point is a thin
- * variant of this, selected by LifecycleOp `kind` (see planLifecycleOp):
+ * variant of this, selected by LifecycleOp `kind`:
  *   1. applyHome       — bring OP_HOME assets up to PLATFORM_VERSION (overwrite
  *                        the managed system/ tree, seed user/data once). No GitHub.
  *   2. reconcileCore   — preflight, snapshot (rollback), write runtime files,
  *                        flip service state per activate/deactivate.
- *   3. composePull     — (compose+pull only) fetch images per OP_*_VERSION pins.
- *   4. composeUp       — (compose only) recreate the managed service set.
+ *   3. applyStack      — (upgrade only) the single compose driver (§4.3):
+ *                        ONE `up --pull missing --force-recreate` call, fatal
+ *                        only when a pinned image is genuinely missing.
+ *
+ * `install`/`update`/`uninstall` never compose here: those consumers
+ * (runDeploy, the admin install/update/uninstall routes) already own a
+ * bespoke compose phase via applyStack directly — letting the wrapper apply
+ * the stack too would (a) double-recreate and (b) on a fresh install fatally
+ * `up` BEFORE the route has finished writing config. `upgrade` (CLI `openpalm
+ * update`, the admin upgrade route) is the ONLY kind whose consumers have no
+ * separate compose phase and want the full apply to happen here, with
+ * rollback on failure.
  *
  * The whole thing runs under withStackEnvRollback: stack.env + the portals/custom
  * compose files are snapshotted and restored if any step throws, and the
@@ -250,54 +229,56 @@ function reconcileStack(
   state: ControlPlaneState,
   op: LifecycleOp,
 ): Promise<{ active: string[]; assetsUpdated: string[]; backupDir: string | null }> {
-  const plan = planLifecycleOp(op);
+  const activate = op.kind === "install" || op.kind === "upgrade";
+  const deactivate = op.kind === "uninstall";
+  const composes = op.kind === "upgrade";
   return withStackEnvRollback(state, async () => {
     // Activation flows (install/update/upgrade) may recreate containers; the
     // deactivation flow (uninstall) only rewrites runtime files reflecting the
     // stopped state — the route does composeDown. Gate the container-touching
     // work on activation so uninstall stays a pure file/state reconcile.
-    const activating = !plan.deactivate;
-
-    // Host-ownership reconcile BEFORE writing/recreating — the SAME shared lib
-    // step `openpalm start` runs, so UI/electron upgrades get host-swap
-    // detection, the deep bind-mount + named-volume ownership repair, and the
-    // identity record (R2). Pre-rootless containers ran as root, leaving
-    // bind-mount trees + named volumes owned by root; the host process can't
-    // chown them directly, so a temporary root Docker container fixes ownership.
-    // No adopt flag here (the UI has none): an un-adopted host swap throws
-    // HostSwapBlockedError, which withStackEnvRollback surfaces to the route.
-    let managedServices: string[] | undefined;
-    if (activating && plan.compose) {
-      managedServices = await buildManagedServices(state);
-      await reconcileHostOwnership(state, { services: managedServices });
-    }
+    const activating = !deactivate;
 
     const home = await applyHome(state);
 
+    // Host-ownership reconcile AFTER applyHome (R9 S6 Gap B) — the repair-path
+    // list is derived from the managed compose files on disk
+    // (ownershipRepairPaths -> discoverHomeBindMountSources), which are only
+    // guaranteed current once applyHome has written/refreshed them. Running
+    // this before applyHome under-reports mount sources on a partially-
+    // migrated home (crash mid-migration, or a first upgrade from a
+    // pre-`system/stack` layout), and the repair marker then suppresses any
+    // later, complete repair. Still runs BEFORE writing runtime files /
+    // recreating containers — the SAME shared lib step `openpalm start` runs,
+    // so UI/electron upgrades get host-swap detection, the deep bind-mount +
+    // named-volume ownership repair, and the identity record (R2).
+    // Pre-rootless containers ran as root, leaving bind-mount trees + named
+    // volumes owned by root; the host process can't chown them directly, so a
+    // temporary root Docker container fixes ownership. No adopt flag here
+    // (the UI has none): an un-adopted host swap throws HostSwapBlockedError,
+    // which withStackEnvRollback surfaces to the route.
+    if (activating && composes) {
+      const managedServices = await buildManagedServices(state);
+      await reconcileHostOwnership(state, { services: managedServices });
+    }
+
     // skipSnapshot: withStackEnvRollback already armed the pre-reconcile snapshot.
     const active = await reconcileCore(state, {
-      activateServices: plan.activate,
-      deactivateServices: plan.deactivate,
+      activateServices: activate,
+      deactivateServices: deactivate,
       skipSnapshot: true,
     });
 
-    if (activating && plan.compose) {
+    if (activating && composes) {
+      // The single compose driver (§4.3, plan 2.2): ONE `up --pull missing
+      // --force-recreate --remove-orphans` call. --force-recreate is REQUIRED
+      // so portal containers restart onto a newly pulled baked image even
+      // when the managed compose config is unchanged (#450). Named-volume
+      // ownership was already repaired by reconcileHostOwnership above.
       const composeOpts = buildComposeOptions(state);
-      if (plan.pull) {
-        const pullResult = await composePull(composeOpts);
-        if (!pullResult.ok) {
-          throw new Error(`Failed to pull images: ${pullResult.stderr}`);
-        }
-      }
-
-      // forceRecreate is REQUIRED so portal containers restart onto a newly
-      // pulled baked image even when the managed compose config is unchanged (#450).
-      // Named-volume ownership was already repaired by reconcileHostOwnership
-      // above (keyed by this same managed set).
-      const services = managedServices ?? await buildManagedServices(state);
-      const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
-      if (!upResult.ok) {
-        throw new Error(`Failed to recreate containers: ${upResult.stderr}`);
+      const result = await applyStack({ kind: "all" }, composeOpts);
+      if (!result.ok) {
+        throw new Error(`Failed to apply stack: ${result.error ?? "unknown error"}`);
       }
     }
 
@@ -401,10 +382,19 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   // snapshot them alongside stack.env for full rollback coverage.
   const portalsComposePath = `${state.stackDir}/portals.compose.yml`;
   const customComposePath = customComposeFilePath(state.homeDir);
+  // state/stack.state.env is merged OVER the legacy stack.env and wins the
+  // compose merge (readStackEnv) — a crash-restore that reverted stack.env but
+  // left a migrated state.state.env in place would restore an inconsistent mix.
+  // Scope note (intentionally NOT unified with SNAPSHOT_FILES in rollback.ts):
+  // this in-memory set is the crash-restore scope (what a single lifecycle op
+  // can touch); SNAPSHOT_FILES is the manual-rollback scope (also covers
+  // services.compose.yml, core.compose.yml, auth.json backup).
+  const stateEnvPathValue = stateEnvFile(state.homeDir);
 
   let originalStackEnv: string | null = null;
   let originalPortalsCompose: string | null = null;
   let originalCustomCompose: string | null = null;
+  let originalStateEnv: string | null = null;
   try {
     originalStackEnv = readFileSync(stackEnvFile, 'utf-8');
   } catch { /* stack.env may not exist yet */ }
@@ -414,6 +404,9 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   try {
     originalCustomCompose = readFileSync(customComposePath, 'utf-8');
   } catch { /* custom.compose.yml may not exist yet */ }
+  try {
+    originalStateEnv = readFileSync(stateEnvPathValue, 'utf-8');
+  } catch { /* state.state.env may not exist yet */ }
 
   // Persist the PRE-reconcile state for `openpalm rollback`. Without this, the
   // snapshot taken later inside reconcileCore captures stack.env AFTER the
@@ -430,7 +423,14 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
   if (!hasArmedSnapshot()) snapshotCurrentState(state, { arm: true });
 
   try {
-    return await run();
+    const result = await run();
+    // Disarm on success: without this, hasArmedSnapshot() above stays true
+    // forever after the very first lifecycle op, so every later successful op
+    // preserves the original (day-one) armed snapshot instead of taking a
+    // fresh pre-op one. `openpalm rollback` would then always restore day-one
+    // state instead of the immediately-preceding operation's state (X1).
+    clearArmedSnapshot();
+    return result;
   } catch (e) {
     if (originalStackEnv !== null) {
       try {
@@ -445,6 +445,11 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
     if (originalCustomCompose !== null) {
       try {
         writeFileSync(customComposePath, originalCustomCompose);
+      } catch { /* best effort */ }
+    }
+    if (originalStateEnv !== null) {
+      try {
+        writeFileSync(stateEnvPathValue, originalStateEnv);
       } catch { /* best effort */ }
     }
     throw e;

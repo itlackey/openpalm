@@ -5,14 +5,16 @@
  * ~/.openpalm/ root layout (config, knowledge, data, logs), then runs the
  * actual library functions against it. No mocks of code under test.
  */
-import { describe, expect, it, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach, spyOn } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
   rmSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
   existsSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -280,6 +282,32 @@ describe("Existing Install", () => {
     expect(readSecret(homeDir, 'op_ui_login_password')).toBeNull();
   });
 
+  // S.1b: the guardian OpenAI-compatible edge reads OPENAI_COMPAT_API_KEY_FILE
+  // = /run/secrets/op_api_key. ensureSecrets must mint it (like the guardian
+  // admin/mcp tokens) so the shipped edge is authenticated, not fail-closed-empty.
+  it("ensureSecrets seeds a non-empty op_api_key for the OpenAI-compatible edge", () => {
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+
+    const state: ControlPlaneState = {
+      homeDir,
+      configDir,
+      stashDir: join(homeDir, "knowledge"),
+      workspaceDir: join(homeDir, "workspace"),
+      dataDir,
+      stackDir,
+      services: {},
+      artifacts: { compose: "" },
+      artifactMeta: [],
+    };
+
+    ensureSecrets(state);
+
+    const key = readSecret(homeDir, 'op_api_key');
+    expect(key).not.toBeNull();
+    expect((key ?? "").trim().length).toBeGreaterThan(0);
+  });
+
   // Scenario 6: performSetup re-run rewrites OP_UI_LOGIN_PASSWORD when the
   // operator supplies a new one in the spec. This is intentional — the
   // wizard "rerun" path is how an operator rotates the password. The
@@ -457,6 +485,56 @@ describe("Broken/Corrupt State", () => {
     );
     // knowledge/tasks dir should be recreated by ensureHomeDirs
     expect(existsSync(join(homeDir, "knowledge", "tasks"))).toBe(true);
+  });
+
+  // 0.4 (R6-F6b): auth.json is normally a file, but a previous bug could leave
+  // it as a directory. ensureSecrets repairs this on every call. Previously
+  // the successful repair path produced NO log at all (only the failure path
+  // warned) and the directory was simply rmSync'd, destroying whatever an
+  // operator had put there. The repair must now (a) log a structured warning
+  // even on success, and (b) move the directory into data/backups/ instead of
+  // deleting it outright, so its contents remain recoverable.
+  it("auth.json-as-directory repair logs on success and moves the directory into data/backups/ instead of deleting it", () => {
+    const authJsonPath = join(homeDir, "knowledge", "secrets", "auth.json");
+    rmSync(authJsonPath, { recursive: true, force: true });
+    mkdirSync(authJsonPath, { recursive: true });
+    writeFileSync(join(authJsonPath, "canary.txt"), "recover-me\n");
+
+    const state: ControlPlaneState = {
+      homeDir,
+      configDir,
+      stashDir: join(homeDir, "knowledge"),
+      workspaceDir: join(homeDir, "workspace"),
+      dataDir,
+      stackDir,
+      services: {},
+      artifacts: { compose: "" },
+      artifactMeta: [],
+    };
+
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      ensureSecrets(state);
+
+      // auth.json is now a normal file again.
+      expect(statSync(authJsonPath).isDirectory()).toBe(false);
+      expect(readFileSync(authJsonPath, "utf-8")).toBe("{}\n");
+
+      // The old directory was moved aside under data/backups/, not deleted —
+      // its contents (the canary file) must still be recoverable.
+      const backupEntries = readdirSync(join(dataDir, "backups"));
+      const movedDir = backupEntries.find((name) => name.startsWith("auth.json"));
+      expect(movedDir).toBeDefined();
+      expect(
+        readFileSync(join(dataDir, "backups", movedDir as string, "canary.txt"), "utf-8"),
+      ).toBe("recover-me\n");
+
+      // The repair must be logged even though nothing failed.
+      const logged = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(logged).toContain("auth.json");
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 
 });

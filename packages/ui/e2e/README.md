@@ -15,14 +15,24 @@ Unit/integration coverage (~1130 tests, no Docker required):
 
 ## File conventions
 
-### `*.pw.ts` — self-contained Playwright tests (default suite)
+### `*.pw.ts` — self-contained Playwright tests (mocked-lib subset)
 
-Collected by `testMatch: '*.pw.ts'`. Run via `bun run ui:test:e2e`.
-Must pass with no live stack and no host-side env vars.
+Collected by `testMatch: '*.pw.ts'`. Run via `bun run ui:test:e2e:mocked`.
+Must pass with no live stack and no host-side env vars — `playwright.config.ts`
+points the preview webServer at a throwaway `mkdtemp` OP_HOME with a fixed
+`OP_UI_LOGIN_PASSWORD` and `OP_ENABLE_ADMIN=1` so `/admin/*` and the auth
+routes are reachable without Docker or a real install. Routes under test
+either never reach the docker layer (auth checks run first) or degrade
+gracefully when docker/compose files are absent.
 
-The only current file is `_placeholder.pw.ts` — exists so `npx playwright test`
-doesn't exit non-zero with "no tests found". Replace it when a genuinely
-self-contained browser test is added.
+| File | What it covers |
+|------|---------------|
+| `auth-flow.pw.ts` | login → protected read → logout → protected read is 401 again; wrong password rejected; a mutating `/admin/containers/*` endpoint's auth gate (no-auth / forged-cookie → 401) |
+| `setup-guard.pw.ts` | `GET /` redirects a fresh not-yet-installed instance away from raw admin content; `/setup` is reachable unauthenticated from localhost; the wizard renders its System Check step |
+
+These do NOT progress past System Check or exercise a real container
+mutation — that needs a live Docker daemon and is covered by
+`install-flow.stack.ts` / `auth-boundary.stack.ts` below.
 
 ### `*.stack.ts` — stack integration tests (isolated environment)
 

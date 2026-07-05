@@ -30,9 +30,14 @@ const volumeOwnershipUrl = ${JSON.stringify(volumeOwnershipUrl)};
 const reconcileUrl = ${JSON.stringify(reconcileUrl)};
 
 const calls = { deep: undefined, strict: undefined, services: null };
+// Both repair helpers now report success/failure (0.4/X15) instead of always
+// resolving void; a scenario can force a failure by setting these before
+// calling reconcileHostOwnership, to verify the marker is only written when
+// both fully succeed.
+const repairResult = { bindMounts: true, namedVolumes: true };
 mock.module(volumeOwnershipUrl, () => ({
-  repairRootOwnedBindMounts: async (_h, _paths, opts) => { calls.deep = opts?.deep; calls.strict = opts?.strict; },
-  repairManagedNamedVolumes: async (_h, services) => { calls.services = services; },
+  repairRootOwnedBindMounts: async (_h, _paths, opts) => { calls.deep = opts?.deep; calls.strict = opts?.strict; return repairResult.bindMounts; },
+  repairManagedNamedVolumes: async (_h, services) => { calls.services = services; return repairResult.namedVolumes; },
 }));
 
 function makeState() {
@@ -94,6 +99,38 @@ describe('reconcileHostOwnership repair orchestration (R2/R3/R4)', () => {
     ${assert('JSON.stringify(calls.services) === JSON.stringify(["assistant","guardian"])')}
     ${assert('ownershipRepairMarkerMatches(state.homeDir, { uid, gid })')}
     ${assert('readHostIdentity(hostIdentityFile(state.homeDir)).uid === uid')}
+    `);
+    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
+  // 0.4 (X15 urgent half, R9-F2): a failed bind-mount repair must NOT write the
+  // "repaired for this uid" marker — writing it unconditionally wedges a
+  // failed repair as permanently "done" and the assistant/guardian containers
+  // stay broken forever with no retry. The next `openpalm start` should just
+  // retry automatically instead.
+  test('failed bind-mount repair does NOT record the marker, so the next start retries', () => {
+    const result = runScenario(`
+    const state = makeState();
+    const uid = process.getuid();
+    const gid = process.getgid();
+    repairResult.bindMounts = false;
+    await reconcileHostOwnership(state, { services: ['assistant', 'guardian'] });
+    ${assert('ownershipRepairMarkerMatches(state.homeDir, { uid, gid }) === false')}
+    `);
+    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stderr).toContain('--adopt-host');
+  });
+
+  // Same guarantee for a named-volume repair failure (the other half of the
+  // success condition) — the marker must be gated on BOTH repairs succeeding.
+  test('failed named-volume repair does NOT record the marker either', () => {
+    const result = runScenario(`
+    const state = makeState();
+    const uid = process.getuid();
+    const gid = process.getgid();
+    repairResult.namedVolumes = false;
+    await reconcileHostOwnership(state, { services: ['assistant', 'guardian'] });
+    ${assert('ownershipRepairMarkerMatches(state.homeDir, { uid, gid }) === false')}
     `);
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   });

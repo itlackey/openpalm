@@ -9,6 +9,7 @@ import { OC_DOC_FIXTURE } from './oc-doc-fixture';
 
 const TEST_SECRET = 'test-secret-value-1234';
 const TEST_PRINCIPAL = 'test';
+const TEST_ADMIN_TOKEN = 'test-admin-token-abcd';
 
 let guardianProc: Subprocess;
 let mockAssistantServer: ReturnType<typeof Bun.serve>;
@@ -55,9 +56,15 @@ function ocCall(
   return fetch(`${guardianUrl}/oc${path}`, { ...init, headers });
 }
 
+function statsRequest(): Promise<Response> {
+  return fetch(`${guardianUrl}/stats`, {
+    headers: { authorization: `Bearer ${TEST_ADMIN_TOKEN}` },
+  });
+}
+
 async function waitForProxyEnabled(): Promise<void> {
   for (let i = 0; i < 50; i++) {
-    const resp = await fetch(`${guardianUrl}/stats`);
+    const resp = await statsRequest();
     if (resp.ok && (await resp.json()).oc_proxy?.enabled === true) return;
     await Bun.sleep(100);
   }
@@ -110,6 +117,8 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'guardian-test-'));
   const secretPath = join(tmpDir, 'test-secret');
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
+  const adminTokenPath = join(tmpDir, 'admin-token');
+  writeFileSync(adminTokenPath, `${TEST_ADMIN_TOKEN}\n`);
 
   mockAssistantServer = startMockAssistant();
 
@@ -121,6 +130,8 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(directPort),
       GUARDIAN_ADMIN_PORT: String(adminPort),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, 'state.db'),
+      GUARDIAN_ADMIN_TOKEN_FILE: adminTokenPath,
+      GUARDIAN_INTERNAL_HOST: '127.0.0.1',
       PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
@@ -170,8 +181,14 @@ describe('Guardian server integration', () => {
     expect(data.ready).toBe(true);
   });
 
-  it('GET /stats reports current proxy and listener state', async () => {
+  it('GET /stats without the admin token returns 401 unauthorized', async () => {
     const resp = await fetch(`${guardianUrl}/stats`);
+    expect(resp.status).toBe(401);
+    expect((await resp.json()).error).toBe('unauthorized');
+  });
+
+  it('GET /stats with the admin token reports current proxy and listener state', async () => {
+    const resp = await statsRequest();
     expect(resp.status).toBe(200);
     const data = await resp.json();
     expect(Array.isArray(data.principals)).toBe(true);
@@ -243,50 +260,6 @@ describe('Guardian server integration', () => {
 });
 
 describe('Guardian portal secret startup contract', () => {
-  it('ignores the legacy GUARDIAN_REQUIRE_PORTAL_SECRETS flag under principal seeding', async () => {
-    const port = await getAvailablePort();
-    const direct = await getAvailablePort();
-    const admin = await getAvailablePort();
-    const localTmpDir = mkdtempSync(join(tmpdir(), 'guardian-no-secrets-'));
-    const proc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
-      cwd: join(import.meta.dir, '..'),
-      env: {
-        PATH: process.env.PATH ?? '',
-        PORT: String(port),
-        GUARDIAN_DIRECT_PORT: String(direct),
-        GUARDIAN_ADMIN_PORT: String(admin),
-        GUARDIAN_STATE_DB_PATH: join(localTmpDir, 'state.db'),
-        OP_ASSISTANT_URL: 'http://127.0.0.1:1',
-        GUARDIAN_AUDIT_PATH: join(localTmpDir, 'audit.log'),
-        GUARDIAN_REQUIRE_PORTAL_SECRETS: 'true',
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-
-    try {
-      const url = `http://127.0.0.1:${port}`;
-      let ready = false;
-      for (let i = 0; i < 50; i++) {
-        if (proc.exitCode !== null) break;
-        try {
-          const resp = await fetch(`${url}/health`);
-          if (resp.ok) {
-            ready = true;
-            break;
-          }
-        } catch {
-          // not ready yet
-        }
-        await Bun.sleep(100);
-      }
-      expect(ready).toBe(true);
-    } finally {
-      proc.kill();
-      rmSync(localTmpDir, { recursive: true, force: true });
-    }
-  });
-
   it('allows zero portal grants for a core-only no-portal stack', async () => {
     const port = await getAvailablePort();
     const direct = await getAvailablePort();
@@ -324,6 +297,80 @@ describe('Guardian portal secret startup contract', () => {
         await Bun.sleep(100);
       }
       expect(ready).toBe(true);
+    } finally {
+      proc.kill();
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('Guardian boot receipt (S.4 reproducibility receipt)', () => {
+  it('emits one structured boot line naming package@version + entry + auth strategy', async () => {
+    const port = await getAvailablePort();
+    const direct = await getAvailablePort();
+    const admin = await getAvailablePort();
+    const localTmpDir = mkdtempSync(join(tmpdir(), 'guardian-boot-receipt-'));
+    const proc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
+      cwd: join(import.meta.dir, '..'),
+      env: {
+        PATH: process.env.PATH ?? '',
+        PORT: String(port),
+        GUARDIAN_DIRECT_PORT: String(direct),
+        GUARDIAN_ADMIN_PORT: String(admin),
+        GUARDIAN_STATE_DB_PATH: join(localTmpDir, 'state.db'),
+        OP_ASSISTANT_URL: 'http://127.0.0.1:1',
+        GUARDIAN_AUDIT_PATH: join(localTmpDir, 'audit.log'),
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    try {
+      const url = `http://127.0.0.1:${port}`;
+      let stdout = '';
+      let ready = false;
+      for (let i = 0; i < 50; i++) {
+        if (proc.exitCode !== null) break;
+        try {
+          const resp = await fetch(`${url}/health`);
+          if (resp.ok) {
+            ready = true;
+            break;
+          }
+        } catch {
+          // not ready yet
+        }
+        await Bun.sleep(100);
+      }
+      expect(ready).toBe(true);
+
+      // Kill (SIGKILL) before reading stdout to EOF: the process is still
+      // running at this point, and awaiting the full stream would otherwise
+      // hang until process exit. SIGKILL, not the default SIGTERM, because
+      // audit.ts installs a SIGTERM/SIGINT handler that does not call
+      // process.exit() (pre-existing, unrelated to S.4) — SIGTERM is a no-op
+      // here. The boot line is written well before /health responds, so it
+      // is already flushed to the pipe.
+      proc.kill(9);
+      await proc.exited;
+      stdout = await new Response(proc.stdout).text();
+      const bootLine = stdout
+        .split('\n')
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .find((entry) => entry?.msg === 'started');
+
+      expect(bootLine).toBeTruthy();
+      expect(bootLine.extra.package).toBe('@openpalm/guardian');
+      expect(typeof bootLine.extra.version).toBe('string');
+      expect(bootLine.extra.version.length).toBeGreaterThan(0);
+      expect(typeof bootLine.extra.entry).toBe('string');
+      expect(bootLine.extra.authStrategy).toBe('basic-token');
     } finally {
       proc.kill();
       rmSync(localTmpDir, { recursive: true, force: true });

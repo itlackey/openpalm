@@ -1,7 +1,7 @@
 import { createLogger, errMessage } from '@openpalm/portal-sdk';
 import { CommandOptionType, type CustomCommandDef, type CustomCommandOption } from "./types.ts";
 
-const log = createLogger("channel-discord");
+const log = createLogger("portal-discord");
 
 export const BUILTIN_COMMANDS: CustomCommandDef[] = [
   {

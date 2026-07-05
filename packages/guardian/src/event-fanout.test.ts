@@ -157,6 +157,28 @@ describe("routeFrame — no-sessionID global frames are dropped for everyone", (
     expect(a.frames).toEqual([]);
     a.drop();
   });
+
+  // rev3-F8: no-sessionID global frames (server.heartbeat, server.connected,
+  // installation.*) used to be fanned out unfiltered to EVERY connected "direct"
+  // principal — a global broadcast, not scoped to any principal's stream. The
+  // HARD DROP RULE must hold for every principal kind uniformly: a frame with no
+  // owned sessionID reaches no subscriber, "direct" included, so principal A's
+  // (would-be) global frames never reach principal B's stream.
+  it("a direct principal never receives a no-sessionID global frame either (no fan-out)", () => {
+    const direct1: Principal = { id: "direct", kind: "direct", userId: "u1" };
+    const direct2: Principal = { id: "direct", kind: "direct", userId: "u2" };
+    const d1 = collector(direct1);
+    const d2 = collector(direct2);
+
+    routeFrame(JSON.stringify({ type: "server.heartbeat", properties: {} }));
+    routeFrame(JSON.stringify({ type: "server.connected", properties: {} }));
+    routeFrame(JSON.stringify({ type: "installation.updated", properties: { version: "1.2.3" } }));
+
+    expect(d1.frames).toEqual([]);
+    expect(d2.frames).toEqual([]);
+    d1.drop();
+    d2.drop();
+  });
 });
 
 describe("routeFrame — permission.asked ownership recording (§3.4)", () => {

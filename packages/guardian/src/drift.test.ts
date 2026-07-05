@@ -173,6 +173,7 @@ describe("runDriftCheck — reconnect re-assertion is not boot-only (D2a item 5)
 // ── Integration: drifted /doc disables the proxy only ─────────────────────
 
 const TEST_SECRET = "drift-secret-value-9876";
+const ADMIN_TOKEN = "admin-token-test-drift";
 const TEST_PORTAL = "test";
 
 let guardianProc: Subprocess;
@@ -207,6 +208,8 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "guardian-drift-"));
   const secretPath = join(tmpDir, "secret");
   writeFileSync(secretPath, `${TEST_SECRET}\n`);
+  const adminTokenPath = join(tmpDir, "admin-token");
+  writeFileSync(adminTokenPath, `${ADMIN_TOKEN}\n`);
 
   // A DRIFTED /doc: drop an allowlisted path (/event) so assertDocCompatible
   // fails → the boot-time guard disables the proxy.
@@ -246,6 +249,7 @@ beforeAll(async () => {
       GUARDIAN_DIRECT_PORT: String(directPort),
       GUARDIAN_ADMIN_PORT: String(adminPort),
       GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
+      GUARDIAN_ADMIN_TOKEN_FILE: adminTokenPath,
       PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
@@ -270,7 +274,7 @@ beforeAll(async () => {
   // Wait for the boot drift check to RESOLVE to disabled (it ran the /doc fetch).
   let settled = false;
   for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`);
+    const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
     if (r.ok) {
       const data = await r.json();
       // The check has run once the /doc fetch completed; enabled must be false.
@@ -289,7 +293,7 @@ afterAll(() => {
 
 describe("drift guard — proxy fail-closed (§5, Stage 7)", () => {
   it("/stats reports oc_proxy.enabled === false on drift", async () => {
-    const resp = await fetch(`${guardianUrl}/stats`);
+    const resp = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
     expect(resp.status).toBe(200);
     expect((await resp.json()).oc_proxy.enabled).toBe(false);
   });
@@ -341,6 +345,8 @@ describe("drift guard — boot-time retry recovers from transient /doc failure",
     tmpDir = mkdtempSync(join(tmpdir(), "guardian-retry-"));
     const secretPath = join(tmpDir, "secret");
     writeFileSync(secretPath, `${TEST_SECRET}\n`);
+    const adminTokenPath = join(tmpDir, "admin-token");
+    writeFileSync(adminTokenPath, `${ADMIN_TOKEN}\n`);
 
     const goodDoc = JSON.parse(JSON.stringify(OC_DOC_FIXTURE));
     let docRequestCount = 0;
@@ -377,6 +383,7 @@ describe("drift guard — boot-time retry recovers from transient /doc failure",
         GUARDIAN_DIRECT_PORT: String(directPort),
         GUARDIAN_ADMIN_PORT: String(adminPort),
         GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
+        GUARDIAN_ADMIN_TOKEN_FILE: adminTokenPath,
         PORTAL_TEST_SECRET_FILE: secretPath,
         OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
         GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
@@ -411,7 +418,7 @@ describe("drift guard — boot-time retry recovers from transient /doc failure",
   it("proxy eventually enables despite transient /doc failures at boot", async () => {
     let enabled = false;
     for (let i = 0; i < 100; i++) {
-      const resp = await fetch(`${guardianUrl}/stats`);
+      const resp = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
       if (resp.ok) {
         const data = await resp.json();
         if (data.oc_proxy?.enabled === true) { enabled = true; break; }
@@ -450,6 +457,8 @@ describe("drift guard — periodic recovery re-enables proxy", () => {
     tmpDir = mkdtempSync(join(tmpdir(), "guardian-recovery-"));
     const secretPath = join(tmpDir, "secret");
     writeFileSync(secretPath, `${TEST_SECRET}\n`);
+    const adminTokenPath = join(tmpDir, "admin-token");
+    writeFileSync(adminTokenPath, `${ADMIN_TOKEN}\n`);
 
     // Assistant is NOT started yet — the guardian's boot retry exhausts after 1
     // attempt (connection refused), then startProxyRecovery() begins periodic
@@ -462,6 +471,7 @@ describe("drift guard — periodic recovery re-enables proxy", () => {
         GUARDIAN_DIRECT_PORT: String(directPort),
         GUARDIAN_ADMIN_PORT: String(adminPort),
         GUARDIAN_STATE_DB_PATH: join(tmpDir, "state.db"),
+        GUARDIAN_ADMIN_TOKEN_FILE: adminTokenPath,
         PORTAL_TEST_SECRET_FILE: secretPath,
         OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
         GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
@@ -494,7 +504,7 @@ describe("drift guard — periodic recovery re-enables proxy", () => {
   it("proxy is disabled after boot retry exhausts (assistant unreachable)", async () => {
     let disabled = false;
     for (let i = 0; i < 30; i++) {
-      const resp = await fetch(`${guardianUrl}/stats`);
+      const resp = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
       if (resp.ok) {
         const data = await resp.json();
         if (data.oc_proxy?.enabled === false) { disabled = true; break; }
@@ -525,7 +535,7 @@ describe("drift guard — periodic recovery re-enables proxy", () => {
 
     let enabled = false;
     for (let i = 0; i < 100; i++) {
-      const resp = await fetch(`${guardianUrl}/stats`);
+      const resp = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
       if (resp.ok) {
         const data = await resp.json();
         if (data.oc_proxy?.enabled === true) { enabled = true; break; }

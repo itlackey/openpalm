@@ -25,7 +25,7 @@ import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
 import { streamTurn, DISCORD_SESSION_PREAMBLE, type PendingQuestion } from "./stream-render.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
-const log = createLogger("channel-discord");
+const log = createLogger("portal-discord");
 
 const MAX_MESSAGE_LENGTH = 2000;
 

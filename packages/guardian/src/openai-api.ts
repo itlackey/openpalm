@@ -124,7 +124,6 @@ export class GuardianOpenAiApi {
   }
 
   private checkOpenAIAuth(req: Request): boolean {
-    if (!this.apiKey) return true;
     const authHeader = req.headers.get('authorization');
     if (!authHeader) return false;
     const match = authHeader.trim().match(/^Bearer\s+(\S+)\s*$/i);
@@ -134,7 +133,6 @@ export class GuardianOpenAiApi {
   }
 
   private checkAnthropicAuth(req: Request): boolean {
-    if (!this.apiKey) return true;
     const apiKey = req.headers.get('x-api-key')?.trim();
     if (!apiKey) return false;
     return constantTimeEqual(apiKey, this.apiKey);

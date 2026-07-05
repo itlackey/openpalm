@@ -17,15 +17,6 @@ export function parseEnvFile(filePath: string): Record<string, string> {
   }
 }
 
-/**
- * Resolve `${VAR}` and `${VAR:-default}` patterns in a string against the
- * provided variable map. Unknown vars without a default expand to an empty
- * string — mirrors compose's variable substitution semantics.
- */
-export function expandEnvVars(input: string, vars: Record<string, string>): string {
-  return input.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_, name, def) => vars[name] ?? def ?? '');
-}
-
 export function quoteEnvValue(value: string): string {
   if (value.length === 0) return '';
   const needsQuoting = /[#"'\\\n\r$]/.test(value) || value !== value.trim();

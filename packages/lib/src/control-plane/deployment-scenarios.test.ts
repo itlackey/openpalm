@@ -18,8 +18,8 @@
  *   - voice configured but proxy blind → 200      packages/ui/.../api/transcribe/server.vitest.ts
  *   - guardian gated off → not_deployed (no 503)  packages/ui/.../guardian/health (+ guardian-gating.test.ts)
  *   - pull-fallback → imageWarning surfaced       packages/ui/.../setup-deploy (DeployState.imageWarning)
- *   - health-poll timeout → logs-command guidance pollContainerHealth() returns the
- *                                                  `docker compose -p <proj> logs <svc>` hint + per-service Exited state
+ *   - `compose up --wait` health-gate failure      §2.1: refreshDeployStatus() (deploy.ts) returns the
+ *     → logs-command guidance                      `docker compose -p <proj> logs <svc>` hint + per-service Exited state
  *   - Docker down / Compose v1 / no runtime → clear preflight message, not a stack
  *                                                  trace:  packages/cli/.../install.ts requireDocker()
  *                                                  ("Docker is not installed…/not running…/Compose v2 is required…")

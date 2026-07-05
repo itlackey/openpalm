@@ -111,7 +111,6 @@ services:
       GUARDIAN_MODERATION_TIMEOUT_MS: ${GUARDIAN_MODERATION_TIMEOUT_MS:-4000}
       GUARDIAN_MODERATION_THRESHOLD: ${GUARDIAN_MODERATION_THRESHOLD:-3}
       GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
-      GUARDIAN_REQUIRE_PORTAL_SECRETS: "true"
       GUARDIAN_DIRECT_INGRESS: ${GUARDIAN_DIRECT_INGRESS:-false}
       GUARDIAN_MCP: ${GUARDIAN_MCP:-false}
       GUARDIAN_ADMIN_TOKEN_FILE: /run/secrets/op_guardian_admin_token
@@ -124,6 +123,16 @@ services:
       # Forwards to the gateway server on localhost:8080 (same process group).
       GUARDIAN_OPENAI_PORT: "8182"
       OPENCODE_BASE_URL: ${API_OPENCODE_BASE_URL:-http://localhost:8080/oc}
+      # The OpenAI/Anthropic-compatible edge authenticates to /oc as the seeded
+      # `api` principal (PORTAL_API_SECRET_FILE above seeds it), so it must present
+      # the SAME secret as that principal's token. Without this the edge sends
+      # `Basic api:<empty>` and every request 401s.
+      PRINCIPAL_ID: api
+      PRINCIPAL_SECRET_FILE: /run/secrets/portal_api_secret
+      # The API key end users paste into OpenAI-compatible clients. A dedicated
+      # secret (not the principal secret) so the two are rotated and audited
+      # independently. No key configured ⇒ the edge fails closed (401).
+      OPENAI_COMPAT_API_KEY_FILE: /run/secrets/op_api_key
     ports:
       - "${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830"
       - "127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}:3831"
@@ -154,6 +163,7 @@ services:
       - portal_slack_secret
       - op_guardian_admin_token
       - op_guardian_mcp_token
+      - op_api_key
     networks: [portal_net, assistant_net]
     depends_on:
       assistant:
@@ -184,6 +194,8 @@ secrets:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_admin_token
   op_guardian_mcp_token:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_mcp_token
+  op_api_key:
+    file: ${OP_HOME}/knowledge/secrets/op_api_key
 
 volumes:
   # Named volumes for npm artifact caches (/opt/openpalm).

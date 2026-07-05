@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildEnvFiles } from './config-persistence.js';
 import { assertNoSecretLikeStackEnvKeys, patchSecretsEnvFile } from './secrets.js';
-import { listSecretNames, readSecret, resolveSecretsDir, secretPath, writeSecret, listSecretFiles, readSecretFile, writeSecretFile, removeSecretFile, assertSafeSecretFilename } from './secrets-files.js';
+import { listSecretNames, readSecret, resolveSecretsDir, secretPath, writeSecret, ensureSecret, listSecretFiles, readSecretFile, writeSecretFile, removeSecretFile, assertSafeSecretFilename } from './secrets-files.js';
 import type { ControlPlaneState } from './types.js';
 
 function tempStackDir(): string {
@@ -56,6 +56,19 @@ describe('file-based control-plane secrets', () => {
 
     expect(readSecret(stackDir, 'op_ui_login_password')).toBe('pw\n');
     expect(listSecretNames(stackDir)).toContain('op_ui_login_password');
+  });
+
+  it('treats a zero-byte (torn) secret file as missing and re-seeds it (0.1)', () => {
+    const homeDir = tempStackDir();
+    // Simulate a write that was interrupted mid-flight, leaving a 0-byte file.
+    const path = secretPath(homeDir, 'op_guardian_admin_token');
+    writeFileSync(path, '');
+    expect(statSync(path).size).toBe(0);
+
+    const value = ensureSecret(homeDir, 'op_guardian_admin_token', () => 'freshly-seeded-value');
+
+    expect(value).toBe('freshly-seeded-value');
+    expect(readSecret(homeDir, 'op_guardian_admin_token')).toBe('freshly-seeded-value');
   });
 });
 

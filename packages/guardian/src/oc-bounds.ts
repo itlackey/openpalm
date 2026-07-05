@@ -35,8 +35,7 @@ import { FixedWindowLimiter } from "./bounded-map";
  * Max /event opens per principal per window. Loose by default: a healthy portal
  * holds ONE shared subscription (OcEventHub), but reconnects (gateway flaps,
  * idle-close/reopen between turns, multiple portal processes) legitimately
- * reopen, and we do NOT want stream opens 429'd in normal use. The nonce store
- * keeps its own hard cap, so this is the only thing this bounds. Set to 0 to
+ * reopen, and we do NOT want stream opens 429'd in normal use. Set to 0 to
  * disable the reconnect cap entirely.
  */
 export const OC_EVENT_RECONNECT_LIMIT = Number(Bun.env.GUARDIAN_OC_EVENT_RECONNECT_LIMIT ?? 600);
@@ -71,7 +70,7 @@ export const OC_MAX_INFLIGHT_TURNS = Number(Bun.env.GUARDIAN_OC_MAX_INFLIGHT_TUR
  */
 export const OC_TURN_WALL_CLOCK_MS = Number(Bun.env.GUARDIAN_OC_TURN_WALL_CLOCK_MS ?? 10 * 60_000);
 
-/** Hard size caps — same discipline as replay.ts/rate-limit.ts/ownership.ts. */
+/** Hard size caps — same discipline as rate-limit.ts/ownership.ts. */
 const RECONNECT_BUCKETS_MAX = 10_000;
 const PRINCIPAL_STREAMS_MAX = 10_000;
 const PRINCIPAL_TURNS_MAX = 10_000;

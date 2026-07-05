@@ -6,6 +6,8 @@
  * the correct response shape at the route boundary.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 type ApplyStackFn = (scope: unknown, opts: unknown) => Promise<{
   ok: boolean;
@@ -33,6 +35,7 @@ vi.mock('@openpalm/lib', async () => {
 });
 
 import { resetState } from '$lib/server/test-helpers.js';
+import { getState } from '$lib/server/state.js';
 import { POST } from './+server.js';
 
 function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
@@ -62,6 +65,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  // The lock-contention test writes a foreign-held .install.lock into the
+  // (test-shared) dataDir; remove it so it can't wedge later tests.
+  rmSync(join(getState().dataDir, '.install.lock'), { force: true });
 });
 
 describe('POST /admin/install', () => {
@@ -103,6 +109,23 @@ describe('POST /admin/install', () => {
     expect(body.dockerAvailable).toBe(false);
     expect(body.started).toEqual([]);
     // applyStack must NOT have been called when docker is unavailable
+    expect(applyStackMock).not.toHaveBeenCalled();
+  });
+
+  test('returns install_in_progress and skips applyStack when the install lock is held', async () => {
+    // A concurrent install (e.g. a CLI deploy or another process) holds the
+    // lock across its whole applyInstall + applyStack phase. PID 1 is always
+    // alive but foreign, so acquireInstallLock returns null here.
+    const dataDir = getState().dataDir;
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, '.install.lock'), `1\n${Date.now()}\n`);
+
+    const res = await POST(makePostEvent());
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('install_in_progress');
+    // Neither the file apply nor the container apply may run under contention.
+    expect(applyInstallMock).not.toHaveBeenCalled();
     expect(applyStackMock).not.toHaveBeenCalled();
   });
 

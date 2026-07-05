@@ -9,6 +9,7 @@ import {
   dismissSecretStripNotice,
   secretStripNoticePath,
 } from './config-persistence.js';
+import { readSecret } from './secrets-files.js';
 
 let homeDir: string;
 let savedHome: string | undefined;
@@ -77,5 +78,21 @@ describe('#502 secret-strip notice', () => {
 
     dismissSecretStripNotice(state);
     expect(readSecretStripNotice(state)).toBeNull();
+  });
+
+  it('relocates a stripped secret value to knowledge/secrets/<key> instead of destroying it (0.1)', () => {
+    const state = createState();
+    writeFileSync(
+      join(homeDir, 'knowledge', 'env', 'stack.env'),
+      `OP_HOME=${homeDir}\nOPENAI_API_KEY=sk-leaked-value\nOP_LOG_LEVEL=info\n`,
+    );
+
+    writeSystemEnv(state);
+
+    // The value must survive somewhere the user (and the app) can recover it —
+    // not just the key name in the notice.
+    expect(readSecret(state.homeDir, 'openai_api_key')).toBe('sk-leaked-value\n');
+    const notice = readSecretStripNotice(state);
+    expect(notice?.keys).toContain('OPENAI_API_KEY');
   });
 });

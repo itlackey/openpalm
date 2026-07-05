@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { moderateMessage, parseModeratorVerdict, buildModerationPrompt } from "./moderation.ts";
 
 const CLEAN = "what time is the standup tomorrow?";
@@ -9,6 +9,52 @@ describe("moderateMessage — disabled", () => {
     const r = await moderateMessage(MALICIOUS, undefined, { enabled: false });
     expect(r.verdict).toBe("allow");
     expect(r.source).toBe("disabled");
+  });
+});
+
+// The content-validation stage is ON by default: an UNSET flag means moderate,
+// so the guardian's security posture never depends on a compose interpolation
+// default that an env override could silently flip. Only an explicit falsy value
+// opts out. These tests exercise the code default (no deps.enabled override).
+describe("moderateMessage — default posture (unset flag → ON)", () => {
+  const KEY = "GUARDIAN_CONTENT_VALIDATION";
+  let saved: string | undefined;
+  beforeEach(() => { saved = Bun.env[KEY]; });
+  afterEach(() => {
+    if (saved === undefined) delete Bun.env[KEY];
+    else Bun.env[KEY] = saved;
+  });
+
+  test("flag UNSET → traffic is moderated (not bypassed)", async () => {
+    delete Bun.env[KEY];
+    const r = await moderateMessage(MALICIOUS, undefined, {
+      callModerator: async () => '{"verdict":"block","reason":"prompt injection"}',
+    });
+    expect(r.source).not.toBe("disabled");
+    expect(r.verdict).toBe("block");
+  });
+
+  test('flag "0" → validation bypassed (explicit opt-out)', async () => {
+    Bun.env[KEY] = "0";
+    const r = await moderateMessage(MALICIOUS, undefined, {});
+    expect(r.source).toBe("disabled");
+    expect(r.verdict).toBe("allow");
+  });
+
+  test('explicit falsy values ("false"/"off"/"no", case-insensitive) → bypassed', async () => {
+    for (const v of ["false", "off", "no", "FALSE"]) {
+      Bun.env[KEY] = v;
+      const r = await moderateMessage(MALICIOUS, undefined, {});
+      expect(r.source).toBe("disabled");
+    }
+  });
+
+  test('truthy values ("1"/"true") → moderated', async () => {
+    for (const v of ["1", "true"]) {
+      Bun.env[KEY] = v;
+      const r = await moderateMessage(CLEAN, undefined, {});
+      expect(r.source).toBe("heuristic"); // enabled + clean → heuristic allow
+    }
   });
 });
 

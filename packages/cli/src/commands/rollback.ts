@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
+import { promptYesNo } from '../lib/prompt.ts';
 import { defineAction } from '../lib/action.ts';
 import {
   buildManagedServices,
@@ -8,6 +9,8 @@ import {
   restoreSnapshot,
   hasSnapshot,
   snapshotTimestamp,
+  acquireInstallLock,
+  releaseInstallLock,
 } from '@openpalm/lib';
 
 export default defineCommand({
@@ -15,17 +18,51 @@ export default defineCommand({
     name: 'rollback',
     description: 'Restore the most recent configuration snapshot and restart services',
   },
-  run: defineAction(async () => {
-    if (!hasSnapshot()) {
-      throw new Error('No rollback snapshot available.');
+  args: {
+    yes: {
+      type: 'boolean',
+      alias: 'y',
+      description: 'Skip the confirmation prompt',
+      default: false,
+    },
+  },
+  run: defineAction(async ({ args }) => {
+    await runRollbackAction({ yes: !!args.yes });
+  }),
+});
+
+export async function runRollbackAction(opts: { yes?: boolean } = {}): Promise<void> {
+  if (!hasSnapshot()) {
+    throw new Error('No rollback snapshot available.');
+  }
+
+  const ts = snapshotTimestamp();
+  console.log(`Rollback will overwrite live config with the snapshot from ${ts ?? 'unknown'}.`);
+  console.log('The files it overwrites are backed up first under data/backups/<timestamp>-pre-rollback/.');
+
+  if (!opts.yes) {
+    const ok = await promptYesNo('Restore this snapshot? [y/N]');
+    if (!ok) {
+      console.log('Rollback aborted. Re-run with --yes to skip confirmation.');
+      return;
     }
+  }
 
-    const ts = snapshotTimestamp();
-    console.log(`Restoring snapshot from ${ts ?? 'unknown'}...`);
+  console.log(`Restoring snapshot from ${ts ?? 'unknown'}...`);
 
-    // Create state without persisting so we don't overwrite live config
-    // before the snapshot is restored.
-    const rollbackState = createState();
+  // Create state without persisting so we don't overwrite live config
+  // before the snapshot is restored.
+  const rollbackState = createState();
+
+  // Hold the install lock across the snapshot restore AND the compose recreate
+  // so a concurrent install/update can't race the config swap or the restart.
+  const lock = acquireInstallLock(rollbackState.dataDir);
+  if (!lock) {
+    throw new Error(
+      "install_in_progress: Another install or update is already running. Wait for it to finish, or run 'openpalm unlock' to clear a stale lock.",
+    );
+  }
+  try {
     restoreSnapshot(rollbackState);
 
     console.log('Snapshot restored. Rebuilding configuration...');
@@ -38,7 +75,9 @@ export default defineCommand({
     await runComposeWithPreflight(state, [
       'up', '-d', '--remove-orphans', ...managedServices,
     ]);
+  } finally {
+    releaseInstallLock(lock);
+  }
 
-    console.log('Rollback complete.');
-  }),
-});
+  console.log('Rollback complete.');
+}

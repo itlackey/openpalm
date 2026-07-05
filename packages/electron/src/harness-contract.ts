@@ -41,9 +41,17 @@ export const HARNESS_CONTRACT = {
     sync: ['updateStatus'] as const,
     /** Fire-and-forget renderer → main (`ipcRenderer.send`). */
     send: ['notify'] as const,
-    /** Request/response renderer → main (`ipcRenderer.invoke` ↔ `ipcMain.handle`). */
+    /**
+     * Request/response renderer → main (`ipcRenderer.invoke` ↔ `ipcMain.handle`).
+     * `restartUiServer` (design §6.2) was already live in preload.ts/main.ts
+     * before it was added here (remediation 3.2 fixed a contract-drift bug: this
+     * enumeration had not been updated to match the real bridge surface) — its
+     * addition corrects the record and is not itself a version-N bump because
+     * the runtime capability, argument shape, and return shape are unchanged.
+     */
     invoke: [
       'restart',
+      'restartUiServer',
       'launchOnLoginStatus',
       'setLaunchOnLogin',
       'setTrayMicRecording',

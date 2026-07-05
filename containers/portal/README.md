@@ -38,9 +38,9 @@ services:
     environment:
       PORTAL_PACKAGE: "@openpalm/discord-portal"
       PRINCIPAL_ID: discord
-      PRINCIPAL_SECRET_FILE: /run/secrets/channel_discord_secret
+      PRINCIPAL_SECRET_FILE: /run/secrets/portal_discord_secret
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
-    secrets: [channel_discord_secret, discord_bot_token]
+    secrets: [portal_discord_secret, discord_bot_token]
 ```
 
 ## Building

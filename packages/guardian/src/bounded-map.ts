@@ -131,7 +131,8 @@ interface WindowBucket {
  * Fixed-window admission control: at most `limit` calls per `windowMs` per key.
  *
  * NOTE: fixed-window (not sliding) — a caller can burst up to 2x across a window
- * boundary. Acceptable for the guardian's LAN-first, HMAC-secondary use.
+ * boundary. Acceptable for the guardian's LAN-first use, secondary to HTTP
+ * Basic + sha256 auth.
  *
  * Shares the same bounded discipline as BoundedTtlMap: a hard key cap with
  * oldest-first eviction and an optional `.unref()`'d prune timer. Buckets older

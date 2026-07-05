@@ -70,13 +70,43 @@ describe('#500 install lock recovery', () => {
     expect(existsSync(lockPath)).toBe(false);
   });
 
-  it('unlock removes a lock older than the staleness window', () => {
+  it('does NOT declare a live-holder lock stale just because it is old', () => {
+    // A genuinely-running deploy can exceed the staleness window (large image
+    // pulls, slow hosts). A live holder PID must NEVER be declared stale on age
+    // alone — only a dead PID (or an unparseable file) makes a lock reclaimable.
+    // Dead-PID detection + `openpalm unlock` cover every genuine stuck-lock case.
     const old = Date.now() - INSTALL_LOCK_STALE_AFTER_MS - 60_000;
-    // Use our own (live) PID but an old timestamp — timestamp-staleness wins.
+    // Use our own (live) PID with an old timestamp — the holder is alive.
     writeFileSync(lockPath, `${process.pid}\n${old}\n`);
+
+    const status = inspectInstallLock(dataDir);
+    expect(status.present).toBe(true);
+    if (status.present) expect(status.stale).toBe(false);
+
+    // unlock must refuse to remove a live-holder lock, no matter how old.
     const result = unlockInstallLock(dataDir);
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.removed).toBe(true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('live');
+    expect(existsSync(lockPath)).toBe(true);
+  });
+
+  it('unlock --force removes a live-holder lock (reused-PID recovery)', () => {
+    // The escape hatch for the one case liveness cannot resolve: the recorded
+    // PID belonged to a crashed holder but the OS reused it for an unrelated
+    // live process, so the lock is "live" forever. Without force it is
+    // unrecoverable; with force the operator can clear it.
+    const old = Date.now() - INSTALL_LOCK_STALE_AFTER_MS - 60_000;
+    writeFileSync(lockPath, `${process.pid}\n${old}\n`);
+
+    // Sanity: the default (non-forced) path still refuses this live lock.
+    const refused = unlockInstallLock(dataDir);
+    expect(refused.ok).toBe(false);
+    expect(existsSync(lockPath)).toBe(true);
+
+    // Force clears it.
+    const forced = unlockInstallLock(dataDir, { force: true });
+    expect(forced.ok).toBe(true);
+    if (forced.ok) expect(forced.removed).toBe(true);
     expect(existsSync(lockPath)).toBe(false);
   });
 

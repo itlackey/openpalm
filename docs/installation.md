@@ -137,6 +137,7 @@ Default host ports are documented in [system-requirements.md](system-requirement
 | Guide | Description |
 |---|---|
 | [operations/manual-compose-runbook.md](operations/manual-compose-runbook.md) | Fully explicit compose workflow |
+| [operations/manual-headless-install.md](operations/manual-headless-install.md) | Hand-built install disk contract + scripted `openpalm install --file` (no wizard) |
 | [setup-guide.md](setup-guide.md) | Convenience-oriented setup flow |
 | [password-management.md](password-management.md) | Secret layout and token handling |
 | [troubleshooting.md](troubleshooting.md) | Common problems and fixes |

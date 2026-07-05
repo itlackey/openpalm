@@ -254,11 +254,13 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
-      expect(stackEnv).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
-      expect(stackEnv).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
-      expect(stackEnv).toMatch(/^OP_PORTAL_VERSION=latest$/m);
-      expect(stackEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
+      // state/stack.state.env is the sole pin location (never the legacy
+      // knowledge/env/stack.env).
+      const stateEnv = readFileSync(join(base, 'state', 'stack.state.env'), 'utf-8');
+      expect(stateEnv).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
+      expect(stateEnv).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
+      expect(stateEnv).toMatch(/^OP_PORTAL_VERSION=latest$/m);
+      expect(stateEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -280,11 +282,13 @@ describe('cli main', () => {
       // An explicit --version is honored verbatim. A legacy `v`-prefixed pin is
       // preserved (not stripped) so a pre-0.12.41 `v`-tagged image stays pullable.
       await main(['install', '--no-start', '--version', 'v0.11.0', '--file', specFile]);
-      const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
-      expect(stackEnv).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.0$/m);
-      expect(stackEnv).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.0$/m);
-      expect(stackEnv).toMatch(/^OP_PORTAL_VERSION=v0\.11\.0$/m);
-      expect(stackEnv).toMatch(/^OP_VOICE_VERSION=v0\.11\.0$/m);
+      // state/stack.state.env is the sole pin location (never the legacy
+      // knowledge/env/stack.env).
+      const stateEnv = readFileSync(join(base, 'state', 'stack.state.env'), 'utf-8');
+      expect(stateEnv).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.0$/m);
+      expect(stateEnv).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.0$/m);
+      expect(stateEnv).toMatch(/^OP_PORTAL_VERSION=v0\.11\.0$/m);
+      expect(stateEnv).toMatch(/^OP_VOICE_VERSION=v0\.11\.0$/m);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

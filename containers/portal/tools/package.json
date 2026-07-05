@@ -2,7 +2,7 @@
   "name": "@openpalm/portal-tools",
   "private": true,
   "dependencies": {
-    "@openpalm/discord-portal": "^0.12.0",
-    "@openpalm/slack-portal":   "^0.12.0"
+    "@openpalm/discord-portal": "0.12.44",
+    "@openpalm/slack-portal":   "0.12.44"
   }
 }

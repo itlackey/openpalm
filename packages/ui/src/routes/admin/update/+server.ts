@@ -14,6 +14,8 @@ import {
   applyStack,
   patchSecretsEnvFile,
   isVersionKey,
+  acquireInstallLock,
+  releaseInstallLock,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -56,8 +58,27 @@ export const POST: RequestHandler = async (event) => {
   }
 
   return withSerialQueue("admin:update", async () => {
+    const state = getState();
+
+    // Hold the install lock across the file apply (applyUpdate) AND the container
+    // apply (applyStack), for both the full-update and scoped-service branches.
+    // Acquire once and pass {lock} to applyUpdate so it neither re-acquires nor
+    // early-releases — mirroring runDeploy's pattern. Without this, applyUpdate
+    // released the lock internally and a concurrent install could slip into the
+    // applyStack window.
+    const lock = acquireInstallLock(state.dataDir);
+    if (!lock) {
+      logger.info("update rejected — another install/update is in progress", { requestId });
+      return errorResponse(
+        409,
+        "install_in_progress",
+        "Another install or update is already running. Wait for it to finish, or run 'openpalm unlock' to clear a stale lock.",
+        {},
+        requestId,
+      );
+    }
+
     try {
-      const state = getState();
       const composeOpts = buildComposeOptions(state);
 
       const dockerCheck = await checkDocker();
@@ -75,21 +96,32 @@ export const POST: RequestHandler = async (event) => {
         }, requestId);
       }
 
-      // Advance the APPLIED version before recreate: write each component's target
-      // (the channel-latest the UI resolved, or a deliberate pin) into the legacy
-      // stack.env that `docker compose --env-file` reads, so applyStack pulls the
-      // NEW tag instead of re-applying the current one. Written to legacy (the
-      // applied/current tracker) — never state/, which is reserved for deliberate
-      // pins (an applied version in state would read back as a pin and re-freeze).
-      if (Object.keys(targetVersions).length > 0) {
+      // Advance the APPLIED version right before whichever compose recreate call
+      // actually consumes it, so `applyStack` pulls the NEW tag instead of
+      // re-applying the current one. Written to legacy stack.env (the
+      // applied/current tracker) — never state/, which is reserved for
+      // deliberate pins (an applied version in state would read back as a pin
+      // and re-freeze).
+      //
+      // Ordering is the point: for the full-update branch below, this MUST run
+      // AFTER applyUpdate()'s own transactional file-write boundary succeeds —
+      // advancing the pin before that boundary would leave stack.env pointing
+      // at a version whose managed files were never actually written if
+      // applyUpdate throws partway through.
+      const advanceTargetVersions = (): void => {
+        if (Object.keys(targetVersions).length === 0) return;
         patchSecretsEnvFile(state.homeDir, targetVersions);
-        logger.info("advanced versions before update", { requestId, targetVersions });
-      }
+        logger.info("advanced versions before recreate", { requestId, targetVersions });
+      };
 
       if (service) {
         // Scoped single-service update (§4, §7 "Update <container>"):
         // pull + recreate ONLY this service; do NOT run applyUpdate (no file changes).
         // Pull failure is FATAL — never falls through to a stale local image (§6).
+        // No applyUpdate precedes this branch, so there's no transactional
+        // file-write boundary to sequence around — advance right before the
+        // one mutation this branch performs.
+        advanceTargetVersions();
         logger.info("scoped service update", { requestId, service });
         const stackResult = await applyStack({ kind: "service", service }, composeOpts);
         const overallSuccess = stackResult.ok;
@@ -117,11 +149,16 @@ export const POST: RequestHandler = async (event) => {
       // managed system/ tree, seed user/data once, OpenCode config — all idempotent)
       // and writes runtime files. It does NOT compose; the compose phase below is
       // the sole stack driver (pull-then-recreate; pull failure is FATAL per §6).
-      const result = await applyUpdate(state);
+      const result = await applyUpdate(state, { lock });
       logger.info("update applied, running applyStack", {
         requestId,
         intended: result.restarted,
       });
+
+      // Only NOW — after applyUpdate's transactional file-write boundary has
+      // actually succeeded — advance the version pin applyStack is about to
+      // read (see advanceTargetVersions above for why the ordering matters).
+      advanceTargetVersions();
 
       // applyStack: pull the whole set first (§4.3), then recreate.
       // Pull failure is FATAL — never falls through to a stale local image (§6).
@@ -155,6 +192,8 @@ export const POST: RequestHandler = async (event) => {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("update failed", { requestId, error: msg });
       return errorResponse(500, "update_failed", msg, {}, requestId);
+    } finally {
+      releaseInstallLock(lock);
     }
   });
 };

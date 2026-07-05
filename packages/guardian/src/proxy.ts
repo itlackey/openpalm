@@ -48,6 +48,7 @@ import { audit } from "./audit";
 import { moderateMessage, type ModerationResult } from "./moderation";
 import {
   allow,
+  allowPreAuth,
   USER_RATE_LIMIT,
   USER_RATE_WINDOW_MS,
   PORTAL_RATE_LIMIT,
@@ -138,6 +139,7 @@ export async function handleProxy(
   req: Request,
   rid: string,
   expectedKind?: 'portal' | 'direct',
+  clientIp = '',
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -152,7 +154,23 @@ export async function handleProxy(
 
   const method = req.method;
 
-  // ── Read the body (bounded) BEFORE signature so SHA256(body) can be checked ──
+  // ── Gate 0: coarse per-IP pre-auth budget (rev3-F3) ──────────────────────
+  // Runs before authenticate() AND before the body is read, so a single source
+  // cannot credential-stuff or body-flood the pipeline. Generous by design; the
+  // authenticated per-user / per-portal limiter below stays authoritative.
+  if (!allowPreAuth(clientIp)) {
+    return deny(rid, 429, "rate_limited", { reason: "preauth_ip" });
+  }
+
+  const authenticated = await authenticate(req, expectedKind);
+  if (!authenticated) {
+    return deny(rid, 401, 'unauthorized', {});
+  }
+
+  // ── Read the body (bounded) AFTER authenticate() (rev3-F3) ────────────────
+  // An unauthenticated flood is rejected above without ever buffering a body.
+  // Auth is a Basic token compare (auth.ts) that does not read the body, so
+  // nothing before this point consumes it.
   let body = "";
   if (method !== "GET" && method !== "HEAD") {
     body = await req.text();
@@ -161,14 +179,9 @@ export async function handleProxy(
     }
   }
 
-  const authenticated = await authenticate(req, expectedKind);
-  if (!authenticated) {
-    return deny(rid, 401, 'unauthorized', {});
-  }
-
   // ── Gate 1c: per-user / per-portal rate limit (§3.6) — counts discrete ──
-  // signed calls (a GET /event open counts as one). BEFORE the nonce check (H3
-  // discipline: a rate-limited flood must not burn nonce-store capacity).
+  // signed calls (a GET /event open counts as one), enforced AFTER
+  // authenticate() so an unauthenticated flood is rejected by auth first.
   // Bucket keys carry an explicit `user:` / `portal:` prefix so rate-limit.ts
   // classifies them by prefix rather than by counting `:` segments — userIds
   // may themselves contain colons (e.g. `discord:<id>`), which broke the old
@@ -307,8 +320,8 @@ async function routeAllowed(
   // frame (event-fanout.ts), so only the principal that was SHOWN the request
   // can answer it. A reply for an unrelayed/foreign requestID is fail-closed
   // denied (principal A cannot answer principal B's request). The reply itself
-  // carries fresh per-call Basic auth verified above — never
-  // the originating prompt_async nonce (§3.1).
+  // carries fresh per-call Basic auth verified above (§3.1) — there is no
+  // token tied to the originating prompt_async call to check it against.
   if (template === "/permission/{requestID}/reply") {
     if (!requestID || !ownsPermission(requestID, principal)) {
       return deny(rid, 403, "forbidden_permission", { principalId: principal.id, userId: principal.userId, requestID });
@@ -415,7 +428,8 @@ async function routeAllowed(
   // requestID→principal so the reply gate can authorize it (§3.4).
   if (template === "/event") {
     // §3.6 reconnect cap: bound /event opens per principal per window so a
-    // reconnect loop cannot churn nonces and pressure the replay store.
+    // reconnect loop cannot grow the reconnect-tracking map without bound
+    // (oc-bounds.ts).
     if (!allowEventReconnect(principal)) {
       return deny(rid, 429, "event_reconnect_limited", { principalId: principal.id, userId: principal.userId });
     }
@@ -442,12 +456,13 @@ async function routeAllowed(
 /**
  * Gate 4 — content moderation of a prompt-bearing body (§3.5). WRITE-PATH ONLY.
  *
- * Parses the `message`/`prompt_async` body, extracts every `parts[].text`,
- * concatenates them, and runs the EXISTING heuristic-screen → local-moderator
- * pipeline (moderation.ts) fail-closed. Returns the {@link ModerationResult}; the
- * caller (routeAllowed) owns the block-vs-rewrite decision so that policy stays
- * EXPLICIT at the call site. `flag` verdicts are logged here and treated as
- * forward by the caller.
+ * Parses the `message`/`prompt_async` body, extracts every `parts[].text` PLUS
+ * the optional `system` field (the only other free-text field the pinned body
+ * accepts — rev3-F2), concatenates them, and runs the EXISTING heuristic-screen
+ * → local-moderator pipeline (moderation.ts) fail-closed. Returns the
+ * {@link ModerationResult}; the caller (routeAllowed) owns the block-vs-rewrite
+ * decision so that policy stays EXPLICIT at the call site. `flag` verdicts are
+ * logged here and treated as forward by the caller.
  *
  * DELIBERATE POLICY — block vs rewrite by principal kind:
  *   - portal principals: a `block` verdict is a hard 403 (assistant never
@@ -460,11 +475,15 @@ async function routeAllowed(
  *
  * ── OPENCODE REQUEST-BODY SCHEMA COUPLING — pinned to OPENCODE_VERSION ──
  * This is the SINGLE place the proxy reaches inside an OpenCode request body
- * (design §3.5/§5). The shape is `{ parts: [{ type: "text", text: string }, …] }`
- * for both POST /session/{id}/message and POST /session/{id}/prompt_async on the
- * pinned OpenCode version. If OpenCode changes this shape on a version bump, the
- * drift guard (§5, Stage 7) fails the proxy route closed; keep this isolated and
- * update it in lockstep with OPENCODE_VERSION. Nothing else here parses bodies.
+ * (design §3.5/§5). The shape is
+ * `{ parts: [{ type: "text", text: string }, …], system?: string, … }` for both
+ * POST /session/{id}/message and POST /session/{id}/prompt_async on the pinned
+ * OpenCode version — `parts[].text` and `system` are the only free-text fields;
+ * the rest (`messageID`, `model`, `agent`, `noReply`) are routing values, not
+ * prose, so they are screened only for the rewrite whitelist, not moderated. If
+ * OpenCode changes this shape on a version bump, the drift guard (§5, Stage 7)
+ * fails the proxy route closed; keep this isolated and update it in lockstep
+ * with OPENCODE_VERSION. Nothing else here parses bodies.
  *
  * Fail-closed posture: an unparseable body is treated as having no extractable
  * text and screened as "" — moderation of empty text allows, so the upstream
@@ -494,6 +513,14 @@ async function screenPromptBody(
   return moderation;
 }
 
+// rev3-F5: only these fields may survive a moderation-block rewrite. Each is a
+// routing/selection value (which model/agent to use, an idempotency id, a
+// reply-suppression flag) — never free text that could carry an instruction.
+// `system` and any other field the pinned body accepts are deliberately dropped:
+// spreading the untrusted body would let attacker-controlled prose outside
+// `parts[]` survive the rewrite unscreened.
+const REWRITE_SAFE_FIELDS = ['messageID', 'model', 'agent', 'noReply'] as const;
+
 export function rewritePromptBody(body: string): string {
   let parsed: unknown;
   try {
@@ -502,9 +529,13 @@ export function rewritePromptBody(body: string): string {
     return JSON.stringify({ parts: [{ type: 'text', text: refusalText() }] });
   }
   const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? parsed as { parts?: unknown }
+    ? parsed as Record<string, unknown>
     : {};
-  return JSON.stringify({ ...record, parts: [{ type: 'text', text: refusalText() }] });
+  const safe: Record<string, unknown> = {};
+  for (const field of REWRITE_SAFE_FIELDS) {
+    if (record[field] !== undefined) safe[field] = record[field];
+  }
+  return JSON.stringify({ ...safe, parts: [{ type: 'text', text: refusalText() }] });
 }
 
 function refusalText(): string {
@@ -512,9 +543,11 @@ function refusalText(): string {
 }
 
 /**
- * Extract and concatenate the text of every `parts[].text` entry from a
- * message/prompt_async body. Returns "" for any body that is not the pinned
- * OpenCode shape (see the schema-coupling note on screenPromptBody).
+ * Extract and concatenate the text of every `parts[].text` entry AND the
+ * optional `system` field from a message/prompt_async body (rev3-F2 — `system`
+ * is the only other free-text field the pinned schema accepts; every remaining
+ * field is a routing value, not prose). Returns "" for any body that is not the
+ * pinned OpenCode shape (see the schema-coupling note on screenPromptBody).
  */
 function extractPromptText(body: string): string {
   let parsed: unknown;
@@ -523,9 +556,11 @@ function extractPromptText(body: string): string {
   } catch {
     return "";
   }
-  const parts = (parsed as { parts?: unknown })?.parts;
-  if (!Array.isArray(parts)) return "";
+  const record = parsed as { parts?: unknown; system?: unknown } | null;
   const texts: string[] = [];
+  if (typeof record?.system === "string" && record.system) texts.push(record.system);
+  const parts = record?.parts;
+  if (!Array.isArray(parts)) return texts.join("\n");
   for (const part of parts) {
     const t = (part as { text?: unknown })?.text;
     if (typeof t === "string" && t) texts.push(t);

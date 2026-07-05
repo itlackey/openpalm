@@ -71,6 +71,27 @@ contract live in `config/guardian/instructions/moderation.md`.
 | `GUARDIAN_ADMIN_TOKEN_FILE` | — | Admin CRUD bearer token file |
 | `GUARDIAN_MCP_TOKEN_FILE` | — | MCP bearer token file |
 
+## Downstream distribution (build-your-own-image)
+
+These are **not runtime features of the shipped stack** — the shipped image
+bakes `@openpalm/guardian` and `@openpalm/skeleton` at build time and boots
+with zero operator configuration and zero network access. They exist so a
+downstream distribution can build its own guardian image on top of the same
+published library seams, without forking the Dockerfile or entrypoint:
+
+| Variable / file | Purpose |
+|---|---|
+| `OP_GUARDIAN_NPM_VERSION` | Overrides the npm version installed at boot (semver ranges supported). Only meaningful if it differs from the version baked at build time — otherwise the existing-version check in `entrypoint.sh` skips the install as a no-op. |
+| `OP_GUARDIAN_PACKAGE` | Installs a different npm package in place of `@openpalm/guardian` (e.g. a private fork that composes its own transports/auth via the `@openpalm/guardian` library seams in `src/index.ts`). |
+| `OP_GUARDIAN_ENTRY` | The file inside `OP_GUARDIAN_PACKAGE` that `entrypoint.sh` executes (default `src/server.ts`). |
+| `OP_GUARDIAN_NPMRC_FILE` / `OP_GUARDIAN_NPMRC` | Supplies a private-registry `.npmrc` so `OP_GUARDIAN_PACKAGE` can resolve from a non-public registry. |
+| `setAuthStrategy()` (`src/index.ts`) | Installs a custom `AuthStrategy` (e.g. SSO/OIDC) in place of the built-in HTTP Basic + principal-token check, from a custom `OP_GUARDIAN_ENTRY`. |
+
+Using any of these means the image no longer boots from baked, build-time-reviewed
+code — the override path re-introduces the network-dependent install that S.4
+removed from the default path. That tradeoff is the point: it is how a
+downstream distribution swaps in its own code, at its own risk.
+
 ## Development
 
 ```bash

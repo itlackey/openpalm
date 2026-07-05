@@ -6,15 +6,12 @@ import type { DockerResult } from "@openpalm/lib";
 import {
   checkDocker as _checkDocker,
   checkDockerCompose as _checkDockerCompose,
-  composeUp as _composeUp,
   composeDown as _composeDown,
   composeRestart as _composeRestart,
   composeStop as _composeStop,
   composeStart as _composeStart,
   composePs as _composePs,
   composeLogs as _composeLogs,
-  composePullService as _composePullService,
-  composePull as _composePull,
   composeStats as _composeStats,
   getDockerEvents as _getDockerEvents,
   composePreflight,
@@ -51,13 +48,6 @@ async function runPreflight(options: ComposeOptions): Promise<void> {
 
 // Mutation operations — preflight runs first
 
-export async function composeUp(
-  options: Parameters<typeof _composeUp>[0]
-): Promise<DockerResult> {
-  await runPreflight(options);
-  return _composeUp(options);
-}
-
 export async function composeDown(
   options: Parameters<typeof _composeDown>[0]
 ): Promise<DockerResult> {
@@ -87,20 +77,5 @@ export async function composeStart(
 ): Promise<DockerResult> {
   await runPreflight(options);
   return _composeStart(services, options);
-}
-
-export async function composePullService(
-  service: string,
-  options: { files: string[]; envFiles?: string[] }
-): Promise<DockerResult> {
-  await runPreflight(options);
-  return _composePullService(service, options);
-}
-
-export async function composePull(
-  options: { files: string[]; envFiles?: string[] }
-): Promise<DockerResult> {
-  await runPreflight(options);
-  return _composePull(options);
 }
 
