@@ -8,7 +8,7 @@ import {
   resolveUiBuildDir, readUiBuildVersion, UI_VERSION_STAMP,
   applyHomeSeed, SKELETON_VERSION_STAMP,
   uiUpdateChannel, checkAndUpdateUiBuild, checkAndUpdateSkeleton,
-  readSkeletonVersion, declaredUiChannel,
+  readSkeletonVersion, declaredUiChannel, seedUiBuild,
 } from "./ui-assets.js";
 
 let root = "";
@@ -376,6 +376,92 @@ describe("npm integrity verification (fail-closed)", () => {
     const result = await checkAndUpdateUiBuild("0.11.0", join(dataUi, ".."));
     expect(result.updated).toBe(false);
     expect(result.error).toMatch(/integrity mismatch/i);
+  });
+});
+
+// ── seedUiBuild — harness contract gate (remediation plan 3.2) ───────────────
+// checkAndUpdateUiBuild's §5.3 gate only protects the SELF-UPDATE path (an
+// existing, working UI build stays in place if the newer one needs a harness
+// this app doesn't provide). The fresh-seed path (no data/ui present yet —
+// first launch, or a wiped install) called the npm manifest fetch directly
+// with no such gate: a first-run Electron harness could download a UI build
+// requiring IPC/env it does not implement, with no older working build to fall
+// back to. These tests thread the same harness contract into seedUiBuild and
+// require FAIL-CLOSED behavior (refuse, don't silently proceed) when the
+// manifest doesn't declare a comparable minHarnessContract at all.
+describe("seedUiBuild — harness contract gate (remediation 3.2)", () => {
+  let savedFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+  });
+
+  function manifestResponse(version: string, minHarnessContract?: number) {
+    return new Response(
+      JSON.stringify({
+        version,
+        ...(minHarnessContract !== undefined ? { minHarnessContract } : {}),
+        // integrity intentionally omitted: if the gate is bypassed and the
+        // download is attempted, it fails non-fatally on "no integrity hash"
+        // rather than needing a real tarball — that failure mode proves the
+        // gate let the call through, distinguishing it from the gate's own
+        // fail-closed rejection.
+        dist: { tarball: "https://registry.npmjs.org/tarball.tgz" },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  it("refuses a fresh remote seed when the manifest's minHarnessContract exceeds the provided harness contract", async () => {
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org")) return manifestResponse("0.13.0", 5);
+      return new Response("not-reached", { status: 200 });
+    };
+    await expect(
+      seedUiBuild("latest", join(opHome, "data"), { forceRemote: true }, 1),
+    ).rejects.toThrow(/harness/i);
+  });
+
+  it("fail-closed: refuses a fresh remote seed when the manifest OMITS minHarnessContract and a harness contract was supplied", async () => {
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org")) return manifestResponse("0.13.0"); // no minHarnessContract at all
+      return new Response("not-reached", { status: 200 });
+    };
+    await expect(
+      seedUiBuild("latest", join(opHome, "data"), { forceRemote: true }, 1),
+    ).rejects.toThrow(/harness/i);
+  });
+
+  it("proceeds past the gate when the manifest's minHarnessContract fits the provided harness contract", async () => {
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org")) return manifestResponse("0.13.0", 1);
+      return new Response("", { status: 200 });
+    };
+    // Gate passes (1 <= 1); proceeds to the download, which fails non-fatally
+    // on the missing integrity hash (thrown BEFORE the tarball is fetched) —
+    // a DIFFERENT error than the gate's own "harness"-worded rejection,
+    // proving the gate let this manifest through rather than refusing it.
+    await expect(
+      seedUiBuild("latest", join(opHome, "data"), { forceRemote: true }, 1),
+    ).rejects.toThrow(/no integrity hash/i);
+  });
+
+  it("skips the gate entirely when no harness contract is supplied (e.g. CLI/non-Electron caller)", async () => {
+    globalThis.fetch = async (_url: string | URL | Request) => {
+      const url = String(typeof _url === "string" ? _url : (_url as Request).url ?? _url);
+      if (url.includes("registry.npmjs.org")) return manifestResponse("0.13.0"); // no minHarnessContract
+      return new Response("", { status: 200 });
+    };
+    await expect(
+      seedUiBuild("latest", join(opHome, "data"), { forceRemote: true }),
+    ).rejects.toThrow(/no integrity hash/i);
   });
 });
 

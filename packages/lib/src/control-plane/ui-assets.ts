@@ -306,9 +306,19 @@ interface NpmUiManifest extends NpmBundleManifest {
    * contract N declares `minHarnessContract: N` in its package.json. The harness
    * refuses to self-update onto a build whose minHarnessContract exceeds the
    * contract it provides (it prompts a re-download instead of failing at
-   * runtime). Absent ⇒ 0 (pre-contract / no native dependency).
+   * runtime).
+   *
+   * `null` when the manifest doesn't declare the field at all (pre-contract
+   * package.json) or declares a non-numeric/non-positive value. Callers decide
+   * their own policy for `null`:
+   *   - `checkAndUpdateUiBuild`'s self-update gate treats it as "no declared
+   *     requirement" and skips the check (there's an existing, working UI
+   *     build to fall back to if the assumption is wrong).
+   *   - `seedUiBuild`'s fresh-install gate (remediation 3.2) treats it as
+   *     fail-closed instead — there is no existing build to fall back to on a
+   *     first launch, so an unverifiable requirement must not be assumed safe.
    */
-  minHarnessContract: number;
+  minHarnessContract: number | null;
 }
 
 /** A declared platform update channel — the two npm dist-tags the UI publishes on. */
@@ -360,7 +370,7 @@ async function fetchNpmUiManifest(versionOrTag: string): Promise<NpmUiManifest> 
     throw new Error(`npm manifest for ${UI_PACKAGE}@${versionOrTag} is missing version/dist.tarball`);
   }
   const rawMin = typeof m.minHarnessContract === 'number' ? m.minHarnessContract : Number(m.minHarnessContract);
-  const minHarnessContract = Number.isFinite(rawMin) && rawMin > 0 ? rawMin : 0;
+  const minHarnessContract = Number.isFinite(rawMin) && rawMin > 0 ? rawMin : null;
   return { version: m.version, tarball: m.dist.tarball, integrity: m.dist.integrity ?? null, minHarnessContract };
 }
 
@@ -429,8 +439,26 @@ async function downloadNpmUiBundle(manifest: NpmUiManifest, uiDir: string, dataD
  * be a tag like `latest`/`next` via the admin route). Always replaces existing
  * content. data/ui/ is included in backups because backupOpenPalmHome() copies
  * all of OP_HOME/data/.
+ *
+ * `harnessContract`: the native harness contract version this caller provides
+ * (design §5.3), same meaning as `checkAndUpdateUiBuild`'s parameter of the
+ * same name. Only meaningful for the REMOTE-download branch — a local/bundled
+ * build comes from the same source tree as the harness, so there is no
+ * cross-version compatibility question. Fresh-install FAIL-CLOSED (remediation
+ * 3.2): unlike `checkAndUpdateUiBuild`'s self-update gate, which falls back to
+ * the existing working build on an undeclared `minHarnessContract`, a fresh
+ * seed has no existing build to fall back to — so when a harness contract is
+ * supplied, a manifest that doesn't declare a comparable `minHarnessContract`
+ * is refused rather than assumed compatible. Omit `harnessContract` (CLI /
+ * non-Electron callers) to skip the gate entirely, matching
+ * `checkAndUpdateUiBuild`.
  */
-export async function seedUiBuild(repoRef: string, dataDir: string, options?: { forceRemote?: boolean }): Promise<void> {
+export async function seedUiBuild(
+  repoRef: string,
+  dataDir: string,
+  options?: { forceRemote?: boolean },
+  harnessContract?: number | null,
+): Promise<void> {
   const uiDir = join(dataDir, 'ui');
   mkdirSync(uiDir, { recursive: true });
 
@@ -451,6 +479,20 @@ export async function seedUiBuild(repoRef: string, dataDir: string, options?: { 
   // normalizeVersion strips a leading 'v' so a release ref (v1.2.3) becomes the
   // npm version (1.2.3) the registry manifest endpoint expects.
   const manifest = await fetchNpmUiManifest(normalizeVersion(repoRef));
+
+  if (typeof harnessContract === 'number') {
+    if (manifest.minHarnessContract === null) {
+      throw new Error(
+        `npm manifest for @openpalm/ui@${manifest.version} does not declare minHarnessContract — refusing to fresh-seed onto harness contract v${harnessContract} without a verifiable compatibility declaration`,
+      );
+    }
+    if (manifest.minHarnessContract > harnessContract) {
+      throw new Error(
+        `@openpalm/ui@${manifest.version} needs harness contract v${manifest.minHarnessContract}, but this harness only provides v${harnessContract} — re-download the app instead of fresh-seeding an incompatible UI build`,
+      );
+    }
+  }
+
   logger.debug('downloading UI build from npm', { version: manifest.version });
   await downloadNpmUiBundle(manifest, uiDir, dataDir);
 }
@@ -526,7 +568,12 @@ export async function checkAndUpdateUiBuild(
     // the app — never run newer-UI-on-older-harness (undefined IPC → TypeError;
     // missing env → 503).
     preflight: (manifest) => {
-      if (typeof harnessContract === 'number' && manifest.minHarnessContract > harnessContract) {
+      // manifest.minHarnessContract === null means the manifest doesn't declare
+      // a requirement (pre-contract package.json) — this self-update path has an
+      // existing, working build to fall back to, so an undeclared requirement is
+      // treated as "no requirement" rather than refused (contrast seedUiBuild's
+      // fresh-install gate below, which has no existing build to fall back to).
+      if (typeof harnessContract === 'number' && manifest.minHarnessContract !== null && manifest.minHarnessContract > harnessContract) {
         logger.warn('UI build requires a newer harness — re-download required', {
           latest: manifest.version,
           minHarnessContract: manifest.minHarnessContract,
