@@ -8,9 +8,9 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync, rmSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
-import { parseComposeServices, type ComposeService, type ComposeVolumeMount } from "./compose-services.js";
+import { composeConfigJsonSync, type ComposeConfigJsonResult } from "./docker.js";
 import { createLogger } from "../logger.js";
-import { parseEnvContent, parseEnvFile, mergeEnvContent, expandEnvVars } from './env.js';
+import { parseEnvContent, parseEnvFile, mergeEnvContent } from './env.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { ensureSecret, writeSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
@@ -348,43 +348,48 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
   }
 }
 
-export function discoverHomeBindMountSources(state: ControlPlaneState): Array<{ path: string; isFile: boolean }> {
+export function discoverHomeBindMountSources(
+  state: ControlPlaneState,
+  resolveConfig: (
+    options: { files: string[]; envFiles?: string[] },
+  ) => ComposeConfigJsonResult = composeConfigJsonSync,
+): Array<{ path: string; isFile: boolean }> {
   const composeFiles = discoverStackOverlays(state.homeDir);
   if (composeFiles.length === 0) return [];
 
-  const envVars: Record<string, string> = {
-    ...(process.env as Record<string, string>),
-    ...parseEnvFile(stackEnvPath(state)),
-  };
+  // Docker's `compose config --format json` is the single source of truth for
+  // volume/env resolution: `source` is already absolute and fully
+  // `${VAR}`-interpolated (including nested `${VAR:-${VAR}}` defaults the old
+  // hand-rolled regex mangled), and `type` distinguishes a host bind from a
+  // named volume. Every service is included, profiled or not — `config` renders
+  // profile-gated services too — so a disabled addon's dir is still pre-created
+  // (issue #452). Best-effort: if compose can't resolve, skip pre-creation.
+  const { ok, config, stderr } = resolveConfig({
+    files: composeFiles,
+    envFiles: [stackEnvPath(state)],
+  });
+  if (!ok || !config?.services) {
+    logger.warn(`Could not resolve compose config for bind-mount pre-creation: ${stderr}`);
+    return [];
+  }
+
   const homeRoot = resolvePath(state.homeDir);
   const seen = new Set<string>();
   const mounts: Array<{ path: string; isFile: boolean }> = [];
 
-  for (const file of composeFiles) {
-    let services: ComposeService[];
-    try {
-      services = parseComposeServices(readFileSync(file, 'utf-8'));
-    } catch {
-      continue;
-    }
+  for (const svc of Object.values(config.services)) {
+    for (const vol of svc?.volumes ?? []) {
+      // Only host bind mounts point at OP_HOME paths; named volumes (`type:
+      // volume`) carry a volume name, not a path.
+      if (vol.type && vol.type !== 'bind') continue;
+      const source = vol.source;
+      if (!source || !source.startsWith('/')) continue;
+      const resolvedHostPath = resolvePath(source);
+      if (!resolvedHostPath.startsWith(`${homeRoot}/`) && resolvedHostPath !== homeRoot) continue;
 
-    // Every service's mounts are included, profiled or not: an empty dir for a
-    // disabled addon costs nothing, while a missing dir when the addon is later
-    // enabled (hand-edited stack.env, `openpalm start voice`) gets created
-    // root-owned by dockerd and the rootless container EACCESes (issue #452).
-    for (const svc of services) {
-      for (const vol of svc.volumes) {
-        if (!vol.source) continue;
-
-        const hostPath = expandEnvVars(vol.source, envVars);
-        if (!hostPath?.startsWith('/')) continue;
-        const resolvedHostPath = resolvePath(hostPath);
-        if (!resolvedHostPath.startsWith(`${homeRoot}/`) && resolvedHostPath !== homeRoot) continue;
-
-        if (seen.has(resolvedHostPath)) continue;
-        seen.add(resolvedHostPath);
-        mounts.push({ path: resolvedHostPath, isFile: isFileMount(vol, resolvedHostPath) });
-      }
+      if (seen.has(resolvedHostPath)) continue;
+      seen.add(resolvedHostPath);
+      mounts.push({ path: resolvedHostPath, isFile: isFileMount(resolvedHostPath) });
     }
   }
 
@@ -393,20 +398,17 @@ export function discoverHomeBindMountSources(state: ControlPlaneState): Array<{ 
 
 /**
  * Decide whether a bind-mount target should be pre-created as a file vs a
- * directory.
+ * directory, from the resolved host path alone.
  *
- * A compose long-form entry with `type: bind` carries explicit semantics:
- * Docker creates a missing bind SOURCE as a directory (this is exactly what
- * `bind.create_host_path` requests), so a typed bind mount is always a
- * directory target — never a file. We trust that over any name-based guess.
- *
- * Short-form (`source:target`) entries carry no type, so we fall back to a
- * last-resort heuristic: treat a basename containing a dot as a file. This is
- * imperfect (it misclassifies dotted directory names like `data.v2`); prefer
- * long-form `type: bind` in compose files to avoid relying on it.
+ * Docker's resolved project view normalizes every host mount to `type: bind`
+ * (short- and long-form alike), so it carries no file-vs-directory signal —
+ * that distinction is inherently ours. We use a basename heuristic: a dot in
+ * the basename means a file (e.g. `auth.json`, the only file mounts the shipped
+ * stack declares). It is imperfect for dotted *directory* names like `data.v2`
+ * (none exist in the shipped stack); prefer dotless directory names in compose
+ * files to avoid relying on it.
  */
-function isFileMount(vol: ComposeVolumeMount, resolvedHostPath: string): boolean {
-  if (vol.type === 'bind') return false;
+function isFileMount(resolvedHostPath: string): boolean {
   const basename = resolvedHostPath.split('/').pop() ?? '';
   return basename.includes('.');
 }

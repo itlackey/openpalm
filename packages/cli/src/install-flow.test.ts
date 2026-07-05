@@ -19,8 +19,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { parse as yamlParse } from 'yaml';
-import { parseEnvFile, expandEnvVars, type SetupSpec } from '@openpalm/lib';
+import { parseEnvFile, type SetupSpec } from '@openpalm/lib';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -120,39 +119,6 @@ function makeSetupSpec(): SetupSpec {
   };
 }
 
-/** Minimal shape of a compose document needed to walk volume mounts. */
-type ComposeVolume = string | { source?: string };
-type ComposeService = { volumes?: ComposeVolume[] } | null | undefined;
-type ComposeDoc = { services?: Record<string, ComposeService> };
-
-/** Extract all host-side volume mount paths from compose files. */
-function extractVolumeMountPaths(
-  composeFiles: string[],
-  vars: Record<string, string>,
-): { path: string; isFile: boolean }[] {
-  const results: { path: string; isFile: boolean }[] = [];
-  for (const file of composeFiles) {
-    if (!existsSync(file)) continue;
-    let doc: ComposeDoc | undefined;
-    try { doc = yamlParse(readFileSync(file, 'utf-8')) as ComposeDoc; } catch { continue; }
-    if (!doc?.services) continue;
-    for (const svc of Object.values(doc.services)) {
-      const volumes = svc?.volumes;
-      if (!Array.isArray(volumes)) continue;
-      for (const vol of volumes) {
-        const raw = typeof vol === 'string' ? vol.split(':')[0] : (vol?.source ?? '');
-        if (!raw || typeof raw !== 'string') continue;
-        const resolved = expandEnvVars(raw, vars);
-        if (!resolved.startsWith('/')) continue;
-        const basename = resolved.split('/').pop() ?? '';
-        const isFile = basename.includes('.');
-        results.push({ path: resolved, isFile });
-      }
-    }
-  }
-  return results;
-}
-
 // ── Tier 1: File Structure Validation ─────────────────────────────────────
 
 describe('install flow — tier 1 (file validation)', () => {
@@ -215,40 +181,32 @@ describe('install flow — tier 1 (file validation)', () => {
     expect(existsSync(join(homeDir, 'system/stack/guardian.env'))).toBe(false);
 
     // ── Validate all volume mount targets exist as user-owned ────────
-    const stackEnvVars = {
-      ...parseEnvFile(join(homeDir, 'knowledge/env/stack.env')),
-      ...process.env as Record<string, string>,
-    };
-    // OP_HOME must resolve to absolute path
-    stackEnvVars.OP_HOME = homeDir;
+    // Bind-mount discovery + pre-creation both route through Docker's
+    // `compose config --format json` now, so this block needs a real daemon;
+    // it is the authoritative resolver of the mount source paths, so the test
+    // must not re-derive them with its own compose parser (that duplication
+    // was exactly the fragile split(':')/${VAR} logic this change deleted).
+    if (DOCKER_AVAILABLE) {
+      const { ensureComposeVolumeTargets, discoverHomeBindMountSources, createState } =
+        await import('@openpalm/lib');
+      const state = createState();
+      ensureComposeVolumeTargets(state);
+      const homeMounts = discoverHomeBindMountSources(state).filter((m) =>
+        m.path.startsWith(homeDir),
+      );
+      expect(homeMounts.length).toBeGreaterThan(0);
 
-    const allComposeFiles = [
-      join(homeDir, 'system/stack/core.compose.yml'),
-      join(homeDir, 'system/stack/services.compose.yml'),
-      join(homeDir, 'system/stack/portals.compose.yml'),
-      join(homeDir, 'config/stack/custom.compose.yml'),
-    ];
-    const mounts = extractVolumeMountPaths(allComposeFiles, stackEnvVars);
-    expect(mounts.length).toBeGreaterThan(0);
-
-    // Ensure they all exist first via the canonical lib helper. Only mounts
-    // under homeDir are touched; external paths (Docker socket, etc.) are left
-    // alone by ensureComposeVolumeTargets itself, but we also filter the
-    // verification loop below to homeDir to keep the assertion local.
-    const { ensureComposeVolumeTargets, createState } = await import('@openpalm/lib');
-    ensureComposeVolumeTargets(createState());
-    const homeMounts = mounts.filter(m => m.path.startsWith(homeDir));
-
-    for (const mount of homeMounts) {
-      expect(existsSync(mount.path)).toBe(true);
-      const stat = lstatSync(mount.path);
-      if (mount.isFile) {
-        expect(stat.isFile()).toBe(true);
-      } else {
-        expect(stat.isDirectory()).toBe(true);
+      for (const mount of homeMounts) {
+        expect(existsSync(mount.path)).toBe(true);
+        const stat = lstatSync(mount.path);
+        if (mount.isFile) {
+          expect(stat.isFile()).toBe(true);
+        } else {
+          expect(stat.isDirectory()).toBe(true);
+        }
+        // Must be owned by current user, not root
+        expect(stat.uid).toBe((process.getuid as () => number)());
       }
-      // Must be owned by current user, not root
-      expect(stat.uid).toBe((process.getuid as () => number)());
     }
 
     // ── Validate no root-owned files ─────────────────────────────────
