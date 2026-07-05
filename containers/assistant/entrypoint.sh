@@ -155,6 +155,12 @@ seed_default_agents_md() {
   fi
 }
 
+run_akm_command() {
+  # Keep akm invocations anchored to the assistant's persistent home rather than
+  # inheriting a bootstrap-time HOME (e.g. /root) from the shell environment.
+  env HOME="${HOME:-/home/opencode}" "$@"
+}
+
 run_akm_schema_migration() {
   # akm auto-migrates its db/stash schema whenever it opens the database.
   # Run a deterministic db-opening command HERE — as the opencode user, with
@@ -171,7 +177,7 @@ run_akm_schema_migration() {
   # Anything else means the db could not be opened/migrated — surface it loudly
   # but keep booting.
   local rc=0
-  akm health >&2 || rc=$?
+  run_akm_command akm health >&2 || rc=$?
   if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
     echo "entrypoint: akm schema migration check complete (exit $rc)" >&2
   else
@@ -244,7 +250,7 @@ start_cron_and_sync_tasks() {
   # Sync automation tasks from the akm stash into cron, then start cron.
   local tasks_dir="${AKM_STASH_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! akm tasks sync >&2; then
+    if ! run_akm_command akm tasks sync >&2; then
       echo "warning: initial akm tasks sync failed; continuing startup" >&2
     fi
   fi
@@ -261,7 +267,7 @@ start_cron_and_sync_tasks() {
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! akm tasks sync >&2; then
+        if ! run_akm_command akm tasks sync >&2; then
           echo "warning: background akm tasks sync failed; retrying in 60s" >&2
         fi
       fi
