@@ -180,6 +180,10 @@ mock.module(${JSON.stringify(moduleUrls.lifecycle)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
   acquireInstallLock: () => ({ path: 'test-lock' }),
   releaseInstallLock: () => {},
+  // deploy.ts imports isProcessAlive to detect a dead prior holder; the mock
+  // must re-export it or the wholesale module replacement drops the binding
+  // and every subprocess dies with "Export named 'isProcessAlive' not found".
+  isProcessAlive: () => true,
 }));
 
 async function main() {
