@@ -98,6 +98,23 @@ function makeAuthedEvent(): Parameters<Handler>[0] {
   return event;
 }
 
+/** Same shape as makeAuthedEvent but with a caller-supplied (or absent) cookie header. */
+function makeEventWithCookie(cookie?: string): Parameters<Handler>[0] {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (cookie !== undefined) headers.cookie = cookie;
+  const request = new Request(`http://localhost:8100/proxy/assistant/event`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  const event = {
+    request,
+    params: { path: 'event' },
+    url: new URL(request.url),
+  } as unknown as Parameters<Handler>[0];
+  return event;
+}
+
 describe('proxy/assistant streaming passthrough', () => {
   it('proxy streams response body incrementally (does not buffer)', async () => {
     const event = makeAuthedEvent();
@@ -148,5 +165,32 @@ describe('proxy/assistant streaming passthrough', () => {
     expect(res.headers.get('x-endpoint-label')).toBeTruthy();
     // Drain the body so the upstream socket closes cleanly.
     await res.body?.cancel();
+  });
+});
+
+// ── Auth-negative coverage (3.4) ──────────────────────────────────────────
+//
+// Previously this file only exercised the streaming-passthrough path with a
+// pre-seeded valid op_session cookie — the proxy's own auth gate (the same
+// requireAdmin() gate every /admin/* route uses) had no direct test here.
+describe('proxy/assistant auth gate', () => {
+  it('returns 401 with no cookie at all (never reaches the upstream fetch)', async () => {
+    const event = makeEventWithCookie(undefined);
+    const res = await POST(event);
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe('unauthorized');
+  });
+
+  it('returns 401 with an invalid/forged cookie', async () => {
+    const event = makeEventWithCookie('op_session=definitely-not-a-valid-token');
+    const res = await POST(event);
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 401 with an empty cookie value', async () => {
+    const event = makeEventWithCookie('op_session=');
+    const res = await POST(event);
+    expect(res.status).toBe(401);
   });
 });
