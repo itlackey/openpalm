@@ -205,6 +205,7 @@ export type {
 
 export {
   runDeploy,
+  auditApplyState,
   writeJournal,
   readDeployJournal,
   resolveDeployJournalPath,

@@ -43,6 +43,8 @@ type DeployScenario = {
   expectedServices?: string[];
   /** Simulate a `--wait` health-gate failure: composeUp mock returns ok:false. */
   composeUpFails?: boolean;
+  /** Seed a custom overlay that grants an unauthorized secret (S.2.2 refusal). */
+  badOverlay?: boolean;
 };
 
 function runDeployScenario(scenario: DeployScenario): {
@@ -66,10 +68,21 @@ const scenario = ${JSON.stringify(scenario)};
 function makeState() {
   const home = mkdtempSync(join(tmpdir(), 'openpalm-deploy-ac-'));
   mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+  mkdirSync(join(home, 'knowledge', 'secrets'), { recursive: true });
   mkdirSync(join(home, 'config', 'stack'), { recursive: true });
   mkdirSync(join(home, 'data'), { recursive: true });
   // Use a non-dev tag so composeUp is invoked with pull:'missing' (mocked).
   writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.12.0\\n');
+  // S.2.2: runDeploy now runs auditApplyState (validateProposedState) before
+  // touching containers; a missing login password would block the deploy.
+  writeFileSync(join(home, 'knowledge', 'secrets', 'op_ui_login_password'), 'test-password\\n');
+  // S.2.2: an overlay that grants an unauthorized secret must refuse the deploy.
+  if (scenario.badOverlay) {
+    writeFileSync(
+      join(home, 'config', 'stack', 'custom.compose.yml'),
+      'services:\\n  myaddon:\\n    image: example/myaddon:1.0\\n    secrets:\\n      - guardian_admin_token\\n',
+    );
+  }
   process.env.OP_HOME = home;
   process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
   return {
@@ -148,7 +161,9 @@ mock.module(${JSON.stringify(moduleUrls.composeArgs)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.configPersistence)}, () => ({
   resolveRuntimeFiles: () => ({ compose: '' }),
   writeRuntimeFiles: () => {},
-  discoverStackOverlays: () => [],
+  discoverStackOverlays: () => scenario.badOverlay
+    ? [join(process.env.OP_HOME, 'config', 'stack', 'custom.compose.yml')]
+    : [],
   ensureComposeVolumeTargets: () => {},
 }));
 
@@ -244,6 +259,20 @@ describe('A2b(a): collision detection fails closed with retry', () => {
     // No collision error; deploy completed successfully.
     expect(output.deployError).toBeFalsy();
     expect(output.phase).toBe('ready');
+  });
+});
+
+// ── (a2) S.2.2: apply refuses an unauthorized secret grant ───────────────────
+
+describe('S.2.2: deploy refuses a compose overlay that grants an unauthorized secret', () => {
+  it('surfaces the boundary violation through deployError and does not reach ready', () => {
+    const result = runDeployScenario({ badOverlay: true, expectedServices: ['assistant'] });
+    expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
+
+    const output = JSON.parse(result.stdout.trim().split('\n').filter((l) => l.startsWith('{')).at(-1) ?? '{}');
+    expect(output.deployError).toMatch(/not allowed to mount secret guardian_admin_token/);
+    expect(output.deploying).toBe(false);
+    expect(output.phase).not.toBe('ready');
   });
 });
 

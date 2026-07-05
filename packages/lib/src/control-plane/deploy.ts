@@ -12,6 +12,12 @@ import { patchStateEnvFile } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 import { stackEnvPath } from './paths.js';
+import { discoverStackOverlays } from './config-persistence.js';
+import { auditComposeSecrets } from './secret-audit.js';
+import { validateProposedState } from './validate.js';
+import { createLogger } from '../logger.js';
+
+const deployLogger = createLogger('deploy');
 
 export type DeployEntry = {
   service: string;
@@ -215,6 +221,36 @@ export function backupSetupInputs(state: ControlPlaneState): string | null {
   return backupDir;
 }
 
+/**
+ * Secret-boundary + runtime-config gate the deploy runs before it touches any
+ * container (S.2.2). Before this, neither `auditComposeSecrets` nor
+ * `validateProposedState` was invoked outside the manual `openpalm audit-secrets`
+ * command, so an apply could grant a secret across the boundary unchecked. Runs
+ * `auditComposeSecrets` over the on-disk compose overlays plus
+ * `validateProposedState`; `error`-severity audit issues and validation errors
+ * block the deploy, warnings are returned for the caller to log and continue.
+ */
+export async function auditApplyState(
+  state: ControlPlaneState,
+): Promise<{ errors: string[]; warnings: string[] }> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  for (const file of discoverStackOverlays(state.homeDir)) {
+    for (const auditIssue of auditComposeSecrets(readFileSync(file, 'utf-8'))) {
+      const where = auditIssue.path ? `${file}:${auditIssue.path}` : file;
+      const line = `${auditIssue.code}: ${auditIssue.message} (${where})`;
+      (auditIssue.severity === 'error' ? errors : warnings).push(line);
+    }
+  }
+
+  const validation = await validateProposedState(state);
+  errors.push(...validation.errors);
+  warnings.push(...validation.warnings);
+
+  return { errors, warnings };
+}
+
 export async function runDeploy(state: ControlPlaneState, options: RunDeployOptions = {}): Promise<DeployProgress> {
   const progress = cloneProgress(DEFAULT_DEPLOY_PROGRESS);
   progress.deploying = true;
@@ -242,6 +278,18 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     progress.phase = 'writing-config';
     emitProgress(options, progress);
     await applyInstall(state, { lock });
+
+    // Validate the written config BEFORE touching containers (S.2.2). Route a
+    // blocking failure through deployError — the same user-visible surface as a
+    // compose failure — so an unauthorized secret grant refuses the deploy.
+    const audit = await auditApplyState(state);
+    for (const warning of audit.warnings) deployLogger.warn(warning);
+    if (audit.errors.length > 0) {
+      progress.deployError = `Refusing to deploy: configuration validation failed.\n${audit.errors.join('\n')}`;
+      progress.deploying = false;
+      emitProgress(options, progress);
+      return progress;
+    }
 
     const services = await buildManagedServices(state);
     progress.deployStatus = services.map((service) => ({ service, status: 'pending', label: 'Waiting...' }));
