@@ -1,5 +1,5 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
 import { mapDockerError } from "./compose-errors.js";
@@ -397,6 +397,68 @@ export async function composeConfigServices(
   if (!result.ok) return { ok: false, services: [] };
   const services = result.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
   return { ok: true, services };
+}
+
+/**
+ * A single volume entry from Docker's fully-resolved project view. Short-form
+ * (`source:target:mode`) entries are normalized by Docker to this long form, so
+ * `source` is already absolute and fully `${VAR}`-interpolated and `type`
+ * distinguishes a host `bind` from a named `volume`. Consumers therefore never
+ * hand-parse compose volume strings themselves.
+ */
+export interface ResolvedComposeVolume {
+  type?: string;
+  source?: string;
+  target?: string;
+  read_only?: boolean;
+  bind?: { create_host_path?: boolean };
+}
+
+/** Docker's resolved project view (subset consumed by the control plane). */
+export interface ResolvedComposeProject {
+  services?: Record<string, { volumes?: ResolvedComposeVolume[] } | null>;
+}
+
+export type ComposeConfigJsonResult = {
+  ok: boolean;
+  config: ResolvedComposeProject | null;
+  stderr: string;
+};
+
+/**
+ * Run `docker compose config --format json` and return Docker's fully-resolved
+ * project view. This is the SINGLE SOURCE OF TRUTH for compose volume/env
+ * resolution — callers that need a service's real bind-mount source paths use
+ * this instead of re-implementing `${VAR}` interpolation or `split(':')`, both
+ * of which are fragile (Windows drive paths, nested `${VAR:-${VAR}}` defaults).
+ *
+ * Synchronous (`execFileSync`, arg array — never a shell string) on purpose:
+ * the sole consumer is the fully-synchronous bind-mount pre-creation path
+ * (`ensureComposeVolumeTargets` → mkdirSync/chownSync) reached from synchronous
+ * `setAddonEnabled` and the synchronous ownership-repair path resolver. Making
+ * this async would force an async cascade through those and their many
+ * synchronous UI/CLI callers for no benefit — this runs during a blocking
+ * install/addon mutation where a short subprocess wait is already the norm.
+ *
+ * Best-effort: a compose or JSON-parse failure returns `{ ok:false, config:null }`.
+ */
+export function composeConfigJsonSync(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
+): ComposeConfigJsonResult {
+  const args = buildComposeArgs(options);
+  args.push("config", "--format", "json");
+  try {
+    const stdout = execFileSync("docker", args, {
+      timeout: 30_000,
+      encoding: "utf-8",
+      env: { ...process.env, ...collectComposeEnvOverrides(options.envFiles) },
+    });
+    return { ok: true, config: JSON.parse(stdout) as ResolvedComposeProject, stderr: "" };
+  } catch (error) {
+    const stderr =
+      (error as { stderr?: Buffer | string })?.stderr?.toString() ?? String(error);
+    return { ok: false, config: null, stderr };
+  }
 }
 
 /**

@@ -111,7 +111,6 @@ export * from "./control-plane/paths.js";
 export {
   parseEnvContent,
   parseEnvFile,
-  expandEnvVars,
   mergeEnvContent,
   removeEnvKey,
   upsertEnvValue,
