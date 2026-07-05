@@ -7,9 +7,10 @@
  *
  * Self-healing rules:
  *  - On EEXIST, parse the holder PID. If the process is gone (`process.kill(pid, 0)`
- *    throws ESRCH) the lock is stale and we remove + retry once.
- *  - If the timestamp is older than STALE_AFTER_MS the lock is stale and we
- *    remove + retry once.
+ *    throws ESRCH) the lock is stale and we remove + retry once. A LIVE holder is
+ *    never stale — a genuinely-running deploy can exceed any age window, so age
+ *    alone must not steal the lock from it (`openpalm unlock` handles the rare
+ *    dead-holder-without-signal case).
  *  - If the file is unparseable (e.g. written by an older version) fall back to
  *    mtime > STALE_AFTER_MS.
  *
@@ -37,7 +38,7 @@ export type InstallLockHandle = {
   reentrant?: boolean;
 };
 
-function isProcessAlive(pid: number): boolean {
+export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -65,11 +66,13 @@ function isStale(path: string): boolean {
     // Can't read — assume held; caller will surface error.
     return false;
   }
-  const { pid, timestamp } = parseLockContent(content);
+  const { pid } = parseLockContent(content);
   if (pid !== null) {
-    if (!isProcessAlive(pid)) return true;
-    if (timestamp !== null && Date.now() - timestamp > STALE_AFTER_MS) return true;
-    return false;
+    // A live holder is NEVER stale — only a dead PID reclaims the lock. A
+    // genuinely-running deploy can exceed any age window (large pulls, slow
+    // hosts); age alone must not steal the lock from it. `openpalm unlock`
+    // covers the rare case where a dead holder left no reclaimable signal.
+    return !isProcessAlive(pid);
   }
   // Unparseable — fall back to mtime.
   try {
@@ -225,10 +228,11 @@ export type UnlockResult =
   | { ok: false; reason: "live"; status: InstallLockStatus };
 
 /**
- * Remove the install lock ONLY if it is stale (dead holder PID or older than
- * the 30-minute staleness window). Never blind-removes a lock held by a live,
- * recent install. Returns `{ ok: false, reason: "live" }` when the lock is
- * still active so the caller can surface a clear message instead of forcing.
+ * Remove the install lock ONLY if it is stale (dead holder PID, or an
+ * unparseable file older than the mtime fallback window). Never blind-removes a
+ * lock held by a live install, however old. Returns `{ ok: false, reason: "live" }`
+ * when the lock is still active so the caller can surface a clear message instead
+ * of forcing.
  */
 export function unlockInstallLock(dataDir: string): UnlockResult {
   const status = inspectInstallLock(dataDir);

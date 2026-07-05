@@ -12,6 +12,8 @@ import {
   buildComposeOptions,
   checkDocker,
   applyStack,
+  acquireInstallLock,
+  releaseInstallLock,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -24,12 +26,29 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   return withSerialQueue("admin:install", async () => {
-    try {
-      const state = getState();
+    const state = getState();
 
+    // Hold the install lock across BOTH the file apply AND the container apply
+    // (applyStack). Previously applyInstall acquired-then-released internally, so
+    // a concurrent install could slip in during the applyStack window. Acquire
+    // once here and pass {lock} down so the lifecycle call neither re-acquires
+    // nor early-releases — mirroring runDeploy's pattern.
+    const lock = acquireInstallLock(state.dataDir);
+    if (!lock) {
+      logger.info("install rejected — another install/update is in progress", { requestId });
+      return errorResponse(
+        409,
+        "install_in_progress",
+        "Another install or update is already running. Wait for it to finish, or run 'openpalm unlock' to clear a stale lock.",
+        {},
+        requestId,
+      );
+    }
+
+    try {
       // Apply OP_HOME: dir tree, secrets, overwrite the managed system/ tree, seed
       // the user/data trees once, OpenCode config — all idempotent. Does NOT compose.
-      await applyInstall(state);
+      await applyInstall(state, { lock });
 
       const dockerCheck = await checkDocker();
       if (!dockerCheck.ok) {
@@ -75,6 +94,8 @@ export const POST: RequestHandler = async (event) => {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("install failed", { requestId, error: msg });
       return errorResponse(500, "install_failed", msg, {}, requestId);
+    } finally {
+      releaseInstallLock(lock);
     }
   });
 };

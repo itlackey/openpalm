@@ -7,6 +7,8 @@
  * at the route boundary.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Mock @openpalm/lib BEFORE importing the route.
 type ApplyStackFn = (scope: unknown, opts: unknown) => Promise<{
@@ -36,7 +38,15 @@ vi.mock('@openpalm/lib', async () => {
 });
 
 import { resetState } from '$lib/server/test-helpers.js';
+import { getState } from '$lib/server/state.js';
 import { POST } from './+server.js';
+
+/** Hold the install lock via a foreign live PID (1 = init, always alive). */
+function holdInstallLock(): void {
+  const dataDir = getState().dataDir;
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(join(dataDir, '.install.lock'), `1\n${Date.now()}\n`);
+}
 
 function makePostEvent(token = 'admin-token', body: unknown = {}): Parameters<typeof POST>[0] {
   return {
@@ -67,6 +77,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  // The lock-contention tests write a foreign-held .install.lock into the
+  // (test-shared) dataDir; remove it so it can't wedge later tests.
+  rmSync(join(getState().dataDir, '.install.lock'), { force: true });
 });
 
 describe('POST /admin/update', () => {
@@ -225,6 +238,31 @@ describe('POST /admin/update', () => {
     expect(body.restarted).toEqual([]);
     expect(body.failed).toEqual([]);
     // applyStack must NOT have been called when docker is unavailable
+    expect(applyStackMock).not.toHaveBeenCalled();
+  });
+
+  test('full update: returns install_in_progress and touches nothing when the lock is held', async () => {
+    holdInstallLock();
+
+    const res = await POST(makePostEvent('admin-token', {
+      versions: { OP_ASSISTANT_VERSION: '0.12.44-beta.2' },
+    }));
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('install_in_progress');
+    // No file apply, no pin advance, no container apply under contention.
+    expect(applyUpdateMock).not.toHaveBeenCalled();
+    expect(patchSecretsEnvFileMock).not.toHaveBeenCalled();
+    expect(applyStackMock).not.toHaveBeenCalled();
+  });
+
+  test('scoped service update: returns install_in_progress and skips applyStack when the lock is held', async () => {
+    holdInstallLock();
+
+    const res = await POST(makePostEvent('admin-token', { service: 'assistant' }));
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('install_in_progress');
     expect(applyStackMock).not.toHaveBeenCalled();
   });
 
