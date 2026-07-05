@@ -6,8 +6,13 @@
  *
  * Responsibilities:
  *   - Docker image inspection + resolution (dockerImagePresent / resolveServiceImage)
- *   - Host probes (TCP port, container health, rootless / nvidia-runtime detection)
- *   - Compose-overlay generation (CDI fallback, rootless fallback)
+ *   - UI-local host probes (TCP port, container health) — the rootless /
+ *     nvidia-runtime host-fact probes live in lib (control-plane/voice-host-probes.ts)
+ *     beside hardware-detect.ts, since they inspect the host, not addon/UI state.
+ *   - Fallback-overlay SELECTION only: voice.compose.cdi.yml and
+ *     voice.compose.rootless.yml ship as static files in the skeleton's
+ *     managed system/stack/ tree (packages/skeleton/system/stack/) — nothing
+ *     here generates compose YAML.
  *   - The in-memory background-job registry (activeJobs)
  *   - The compose-up + /health poll lifecycle (runBringUp / runBringUpJob)
  *   - The engageVoiceAddon orchestration that the route delegates to
@@ -16,9 +21,8 @@
  * node:fs) and returns plain data — the route maps the results to HTTP
  * responses.
  */
-import { execFile } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { getState } from '$lib/server/state.js';
 import {
@@ -27,6 +31,9 @@ import {
   buildComposeOptions,
   composeStop,
   composeUp,
+  detectRootlessDocker,
+  dockerHasNvidiaRuntime,
+  execFileNoThrow,
   getAddonProfiles,
   getAddonProfileAvailability,
   getAddonProfileSelection,
@@ -130,35 +137,6 @@ export function openpalmVoiceBaseURL(): string {
 }
 
 // ── Helpers: docker image inspect, port probe, container probe ─────
-
-function execFileNoThrow(
-  cmd: string,
-  args: string[],
-  timeoutMs: number,
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
-      // ENOENT (binary missing) lands here with no stderr because the
-      // child never executed. Synthesise stderr that matches the
-      // translateDockerError ENOENT regex so the operator sees the
-      // "Docker isn't installed" copy rather than "unknown error".
-      let mergedStderr = stderr?.toString() ?? '';
-      const code = (error as NodeJS.ErrnoException | null)?.code;
-      if (code && !mergedStderr) {
-        if (code === 'ENOENT') {
-          mergedStderr = `spawn ${cmd} ENOENT: command not found`;
-        } else {
-          mergedStderr = `spawn ${cmd} ${code}`;
-        }
-      }
-      resolve({
-        ok: !error,
-        stdout: stdout?.toString() ?? '',
-        stderr: mergedStderr,
-      });
-    });
-  });
-}
 
 /**
  * True when the local docker daemon already has the named image cached.
@@ -266,145 +244,25 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
   return inspect.stdout.trim();
 }
 
-// ── CDI fallback overlay ─────────────────────────────────────────────
+// ── Host fallback overlays (CDI, rootless Docker) ─────────────────────
+//
+// voice.compose.cdi.yml / voice.compose.rootless.yml ship as STATIC files in
+// the skeleton's managed system/stack/ tree (packages/skeleton/system/stack/)
+// — applyHomeSeed materializes them into every OP_HOME on install/update, the
+// same as core/services/portals.compose.yml. There is nothing to generate
+// here; we only decide (via the lib host-fact probes) whether to include the
+// already-present file in this one composeUp's file list.
 
-/**
- * The CDI overlay YAML — switches `voice-cuda` from the legacy
- * `runtime: nvidia` form to the CDI `driver: cdi` form. Pure string
- * builder so it can be unit-tested without touching the filesystem.
- */
-export function buildCdiOverlayYaml(): string {
-  return [
-    '# Generated overlay — switches voice-cuda from runtime:nvidia to CDI.',
-    '# Applied only when the host probe shows the legacy NVIDIA runtime is',
-    '# missing but /etc/cdi/nvidia.yaml is present.',
-    'services:',
-    '  voice-cuda:',
-    '    runtime: ""',
-    '    deploy:',
-    '      resources:',
-    '        reservations:',
-    '          devices:',
-    '            - driver: cdi',
-    '              device_ids:',
-    '                - nvidia.com/gpu=all',
-    '',
-  ].join('\n');
+/** Path of the static CDI overlay, or null when the managed tree isn't seeded yet. */
+function voiceCdiOverlayPath(homeDir: string): string | null {
+  const overlayPath = join(stackDirFor(homeDir), 'voice.compose.cdi.yml');
+  return existsSync(overlayPath) ? overlayPath : null;
 }
 
-/**
- * Write a sibling compose overlay that switches `voice-cuda` from the
- * legacy `runtime: nvidia` form to the CDI `driver: cdi` form. Caller
- * includes it in the composeUp file list ONLY when the host probe
- * indicates the runtime is missing but a CDI spec exists.
- *
- * The canonical compose.yml stays as the runtime-nvidia form (the case
- * that needs no manual setup beyond installing nvidia-container-toolkit).
- *
- * Returns the absolute path of the overlay, or null when there is no
- * voice compose overlay to patch.
- */
-function writeCdiOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = stackDirFor(homeDir);
-  if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
-  const overlayPath = join(stackDir, 'voice.compose.cdi.yml');
-  writeFileSync(overlayPath, buildCdiOverlayYaml());
-  return overlayPath;
-}
-
-// ── Rootless Docker fallback ─────────────────────────────────────────
-
-/**
- * Detect rootless Docker. The compose `user: "${OP_UID:-1000}:${OP_GID:-1000}"`
- * directive bakes the host UID into the container — but on a rootless
- * daemon the bind-mount UID inside the container is subuid-remapped, so
- * the resulting container UID has no write permission against
- * `${OP_HOME}/data/voice/models`. Removing the `user:` directive lets
- * Docker pick whatever UID the rootless mapping translates to inside the
- * user namespace, which DOES have write access to the bind-mount.
- *
- * `docker info` is the authoritative source: rootless daemons advertise
- * `SecurityOptions: ... name=rootless` and `CgroupDriver: ... rootless`.
- * We accept either signal.
- */
-async function detectRootlessDocker(): Promise<boolean> {
-  const res = await execFileNoThrow(
-    'docker',
-    ['info', '--format', '{{json .}}'],
-    5_000,
-  );
-  if (!res.ok || !res.stdout) return false;
-  try {
-    const parsed = JSON.parse(res.stdout) as {
-      SecurityOptions?: unknown;
-      CgroupDriver?: unknown;
-    };
-    const sec = Array.isArray(parsed.SecurityOptions)
-      ? parsed.SecurityOptions.map((s) => String(s))
-      : [];
-    if (sec.some((s) => /name=rootless/i.test(s))) return true;
-    if (typeof parsed.CgroupDriver === 'string' && /rootless/i.test(parsed.CgroupDriver)) {
-      return true;
-    }
-    return false;
-  } catch {
-    // Fall back to a stringy contains-check if the JSON shape changes.
-    return /name=rootless|cgroup\s*driver:.*rootless/i.test(res.stdout);
-  }
-}
-
-/**
- * The rootless overlay YAML — drops the `user:` directive from each voice
- * service. Pure string builder so it can be unit-tested without touching
- * the filesystem.
- */
-export function buildRootlessOverlayYaml(): string {
-  // `user: null` in YAML drops the directive when compose merges files.
-  // We cover all three voice service variants so the overlay works no
-  // matter which profile is active.
-  return [
-    '# Generated overlay — removes the `user:` directive from voice services.',
-    '# Applied only when `docker info` reports a rootless daemon. On rootless',
-    '# Docker the compose-baked UID has no write access to the bind-mounted',
-    '# state directory; letting Docker pick the namespaced UID restores it.',
-    'services:',
-    '  voice:',
-    '    user: null',
-    '  voice-cuda:',
-    '    user: null',
-    '  voice-rocm:',
-    '    user: null',
-    '',
-  ].join('\n');
-}
-
-/**
- * Write a sibling overlay that drops the `user:` directive from each
- * voice service. Mirrors writeCdiOverlayIfNeeded: caller includes the
- * returned path in composeUp's file list. Returns null when there is
- * no voice compose overlay to patch (so the file list stays valid and Docker
- * doesn't blow up on a missing -f arg).
- */
-function writeRootlessOverlayIfNeeded(homeDir: string): string | null {
-  const stackDir = stackDirFor(homeDir);
-  if (!existsSync(join(stackDir, 'services.compose.yml'))) return null;
-  const overlayPath = join(stackDir, 'voice.compose.rootless.yml');
-  writeFileSync(overlayPath, buildRootlessOverlayYaml());
-  return overlayPath;
-}
-
-/**
- * Lightweight wrapper around `docker info` to check whether the
- * `nvidia` runtime is registered. Used as a second signal alongside the
- * cached canonical CUDA profile availability result.
- */
-async function dockerHasNvidiaRuntime(): Promise<boolean> {
-  const res = await execFileNoThrow(
-    'docker',
-    ['info', '--format', '{{json .Runtimes}}'],
-    2_000,
-  );
-  return res.ok && res.stdout.includes('"nvidia"');
+/** Path of the static rootless overlay, or null when the managed tree isn't seeded yet. */
+function voiceRootlessOverlayPath(homeDir: string): string | null {
+  const overlayPath = join(stackDirFor(homeDir), 'voice.compose.rootless.yml');
+  return existsSync(overlayPath) ? overlayPath : null;
 }
 
 // ── Bring-up lifecycle ───────────────────────────────────────────────
@@ -715,10 +573,11 @@ export async function engageVoiceAddon(input: {
 
   // ── CDI fallback for canonical CUDA profile ─────────────────────
   // When the operator picks `cuda` but the host has only CDI (no
-  // legacy nvidia runtime), generate a sibling overlay that rewrites
-  // voice-cuda to use deploy.resources.reservations.devices+driver:cdi.
-  // The canonical compose stays the runtime-nvidia form (no manual
-  // setup case). Overlay is applied only for this one composeUp.
+  // legacy nvidia runtime), include the static voice.compose.cdi.yml
+  // overlay (ships in system/stack/, rewrites voice-cuda to use
+  // deploy.resources.reservations.devices+driver:cdi). The canonical
+  // compose stays the runtime-nvidia form (no manual setup case).
+  // Overlay is applied only for this one composeUp.
   //
   // Skipped on Windows: the operator must use Docker Desktop with WSL2
   // GPU integration there, and CDI specs live inside WSL2 — the Node
@@ -731,7 +590,7 @@ export async function engageVoiceAddon(input: {
       || !await dockerHasNvidiaRuntime();
     const cdiSpecPresent = existsSync('/etc/cdi/nvidia.yaml');
     if (runtimeMissing && cdiSpecPresent) {
-      const overlay = writeCdiOverlayIfNeeded(state.homeDir);
+      const overlay = voiceCdiOverlayPath(state.homeDir);
       if (overlay) {
         extraFiles.push(overlay);
         steps.push({ step: 'cdi-fallback', ok: true, detail: 'using CDI device reservation' });
@@ -742,14 +601,15 @@ export async function engageVoiceAddon(input: {
   // ── Rootless Docker fallback ─────────────────────────────────────
   // On rootless Docker the compose-baked `user: ${OP_UID}:${OP_GID}`
   // directive resolves to a UID that the namespaced container can't use
-  // to write the bind-mounted models directory. Drop the directive via
-  // a sibling overlay; Docker then picks the in-namespace UID, which
-  // has the right permission against the subuid-remapped bind mount.
+  // to write the bind-mounted models directory. Include the static
+  // voice.compose.rootless.yml overlay (ships in system/stack/) to drop
+  // the directive; Docker then picks the in-namespace UID, which has the
+  // right permission against the subuid-remapped bind mount.
   if (!inVitest) {
     try {
       const rootless = await detectRootlessDocker();
       if (rootless) {
-        const overlay = writeRootlessOverlayIfNeeded(state.homeDir);
+        const overlay = voiceRootlessOverlayPath(state.homeDir);
         if (overlay) {
           extraFiles.push(overlay);
           steps.push({

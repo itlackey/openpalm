@@ -133,6 +133,7 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
   pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
+  migrateProfileOnlyAddonEnablement: () => ({ changed: false, migratedAddons: [] }),
 }));
 ${PIN_PLATFORM_VERSION_SNIPPET}
 
@@ -326,6 +327,7 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
   pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
+  migrateProfileOnlyAddonEnablement: () => ({ changed: false, migratedAddons: [] }),
 }));
 
 async function main() {
@@ -452,6 +454,7 @@ mock.module(${JSON.stringify(moduleUrls.registry)}, () => ({
   getAddonServiceNames: () => [],
   listEnabledAddonIds: () => [],
   pruneRemovedAddonState: () => ({ changed: false, removedAddons: [], removedEnvKeys: [] }),
+  migrateProfileOnlyAddonEnablement: () => ({ changed: false, migratedAddons: [] }),
 }));
 
 function makeState(home) {

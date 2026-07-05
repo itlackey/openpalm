@@ -28,7 +28,7 @@ import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
-import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from "./addons.js";
+import { getAddonServiceNames, listEnabledAddonIds, migrateProfileOnlyAddonEnablement, pruneRemovedAddonState } from "./addons.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { PLATFORM_VERSION, formatForDisplay } from "./versioning.js";
 import { stackEnvPath } from "./paths.js";
@@ -156,6 +156,11 @@ async function applyHome(
   // the rootless branch). Idempotent no-op when clean; runs on every reconcile
   // so an upgraded install self-heals without the user touching an addon.
   pruneRemovedAddonState(state.homeDir);
+  // One-time upgrade guard (2.2): persist any addon enablement that today only
+  // exists as a derived OP_VOICE_PROFILE/OP_OLLAMA_PROFILE reverse-parse, so it
+  // survives once that reverse-parse is eventually removed. Idempotent no-op
+  // once migrated.
+  migrateProfileOnlyAddonEnablement(state.homeDir);
   const seed = await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();

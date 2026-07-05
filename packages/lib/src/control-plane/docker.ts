@@ -848,9 +848,13 @@ export async function applyStack(
   }
 
   // ── 2. Compose up ────────────────────────────────────────────────────────
-  const upArgs = [...base, "up", "-d"];
+  // --force-recreate is REQUIRED on both scopes: a container whose managed
+  // compose config is unchanged would otherwise stay on its old image even
+  // after a fresh pull landed a new one (#450 — portal containers silently
+  // stayed stale across an update).
+  const upArgs = [...base, "up", "-d", "--force-recreate"];
   if (scope.kind === "service") {
-    upArgs.push("--force-recreate", "--no-deps", scope.service);
+    upArgs.push("--no-deps", scope.service);
   } else {
     upArgs.push("--remove-orphans");
   }

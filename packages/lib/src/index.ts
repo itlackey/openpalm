@@ -69,13 +69,17 @@ export {
   listEnabledAddonIds,
   setAddonEnabled,
   pruneRemovedAddonState,
+  migrateProfileOnlyAddonEnablement,
   installAutomationFromRegistry,
   uninstallAutomation,
 } from "./control-plane/addons.js";
 
 // ── Addon host-capability availability ───────────────────────────────────
 export type { AddonProfileAvailability } from "./control-plane/addon-availability.js";
-export { getAddonProfileAvailability } from "./control-plane/addon-availability.js";
+export { getAddonProfileAvailability, execFileNoThrow } from "./control-plane/addon-availability.js";
+
+// ── Voice addon host-fact probes (rootless docker, nvidia runtime) ───────
+export { detectRootlessDocker, dockerHasNvidiaRuntime } from "./control-plane/voice-host-probes.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {

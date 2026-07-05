@@ -129,6 +129,23 @@ describe("applyStack — DockerClient + FileStore seam", () => {
     expect(docker.indexOfArg("up")).toBe(-1);
   });
 
+  it("(5) kind:'all' issues up with --force-recreate --remove-orphans, so an unchanged-config " +
+    "container still restarts onto a newly pulled image (#450 — verified precisely by 2.2)", async () => {
+    const docker = new FakeDocker((args) => {
+      if (args.includes("pull")) return ok();
+      if (args.includes("up")) return ok();
+      return ok();
+    });
+    const deps: StackDeps = { docker, files: makeFiles([]) };
+
+    await applyStack({ kind: "all" }, OPTS, deps);
+
+    const upCall = docker.calls[docker.indexOfArg("up")];
+    expect(upCall).toBeTruthy();
+    expect(upCall).toContain("--remove-orphans");
+    expect(upCall).toContain("--force-recreate");
+  });
+
   it("(3) health-gate: a running-but-unhealthy container fails the service", async () => {
     const docker = new FakeDocker((args) => {
       if (args.includes("pull")) return ok();

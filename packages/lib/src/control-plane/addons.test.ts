@@ -13,6 +13,7 @@ import {
   installAutomationFromRegistry,
   listAvailableAddonIds,
   listEnabledAddonIds,
+  migrateProfileOnlyAddonEnablement,
   pruneRemovedAddonState,
   setAddonEnabled,
   setAddonProfileSelection,
@@ -217,6 +218,77 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
     seedStateEnv('OP_ENABLED_ADDONS=voice\n');
     const result = setAddonEnabled(homeDir, 'ssh', false);
     expect(result).toEqual({ ok: true, enabled: false, changed: false, services: [] });
+  });
+});
+
+describe('profile-only addon enablement migration (2.2 R2-R8 upgrade guard)', () => {
+  it('upgrade path: an install that only ever set OP_VOICE_PROFILE (never OP_ENABLED_ADDONS) keeps voice enabled after migration', () => {
+    // Simulate a pre-existing install that enabled voice ONLY by picking a
+    // hardware profile (e.g. via the old wizard flow) — OP_ENABLED_ADDONS was
+    // never written. listEnabledAddonIds already reverse-parses this at READ
+    // time, but nothing has ever persisted "voice" into OP_ENABLED_ADDONS.
+    const envDir = join(homeDir, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
+
+    expect(listEnabledAddonIds(homeDir)).toEqual(['voice']);
+
+    const result = migrateProfileOnlyAddonEnablement(homeDir);
+    expect(result.changed).toBe(true);
+    expect(result.migratedAddons).toEqual(['voice']);
+
+    // The addon id must now be durably recorded in OP_ENABLED_ADDONS (state/),
+    // NOT only derivable via the reverse-parse — so it survives even after the
+    // reverse-parse is eventually deleted.
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_ENABLED_ADDONS=voice');
+    expect(listEnabledAddonIds(homeDir)).toEqual(['voice']);
+  });
+
+  it('migrates OP_OLLAMA_PROFILE the same way', () => {
+    const envDir = join(homeDir, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), 'OP_OLLAMA_PROFILE=addon.ollama.cpu\n');
+
+    const result = migrateProfileOnlyAddonEnablement(homeDir);
+    expect(result.changed).toBe(true);
+    expect(result.migratedAddons).toEqual(['ollama']);
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_ENABLED_ADDONS=ollama');
+  });
+
+  it('is idempotent — a second migration pass is a no-op that writes nothing', () => {
+    const envDir = join(homeDir, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cpu\n');
+
+    expect(migrateProfileOnlyAddonEnablement(homeDir).changed).toBe(true);
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const contentAfterFirst = readFileSync(stateEnv, 'utf-8');
+
+    const second = migrateProfileOnlyAddonEnablement(homeDir);
+    expect(second.changed).toBe(false);
+    expect(second.migratedAddons).toEqual([]);
+    expect(readFileSync(stateEnv, 'utf-8')).toBe(contentAfterFirst);
+  });
+
+  it('is a no-op when OP_ENABLED_ADDONS already lists the addon', () => {
+    const envDir = join(homeDir, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(stateEnv, 'OP_ENABLED_ADDONS=voice\n');
+    const before = readFileSync(stateEnv, 'utf-8');
+
+    const result = migrateProfileOnlyAddonEnablement(homeDir);
+    expect(result).toEqual({ changed: false, migratedAddons: [] });
+    expect(readFileSync(stateEnv, 'utf-8')).toBe(before);
+  });
+
+  it('is a no-op on a fresh install with no profile vars set', () => {
+    const result = migrateProfileOnlyAddonEnablement(homeDir);
+    expect(result).toEqual({ changed: false, migratedAddons: [] });
   });
 });
 

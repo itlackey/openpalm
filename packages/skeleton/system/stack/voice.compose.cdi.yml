@@ -1,0 +1,15 @@
+# Static fallback overlay — switches voice-cuda from runtime:nvidia to CDI.
+# Applied only when the host probe (lib control-plane/voice-host-probes.ts)
+# shows the legacy NVIDIA runtime is missing but /etc/cdi/nvidia.yaml is
+# present. Included in the compose file list by the voice bring-up engine
+# (packages/ui/.../voice/bring-up.ts) only for that one composeUp call.
+services:
+  voice-cuda:
+    runtime: ""
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              device_ids:
+                - nvidia.com/gpu=all

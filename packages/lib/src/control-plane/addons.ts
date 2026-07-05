@@ -352,6 +352,47 @@ export function pruneRemovedAddonState(
   };
 }
 
+/**
+ * Env keys read by the OP_VOICE_PROFILE/OP_OLLAMA_PROFILE reverse-parse in
+ * listEnabledAddonIds (above): a hardware-profile selection implies the addon
+ * is enabled even when OP_ENABLED_ADDONS never named it.
+ */
+const PROFILE_ONLY_ENV_KEYS = ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE'] as const;
+
+/**
+ * One-time upgrade guard (2.2, verification correction #4): an install that
+ * enabled voice/ollama ONLY by picking a hardware profile — never through
+ * OP_ENABLED_ADDONS — has its addon enablement derived solely by the
+ * listEnabledAddonIds reverse-parse below, at READ time. Nothing has ever
+ * persisted the addon id into OP_ENABLED_ADDONS. If that reverse-parse is ever
+ * removed, such an install would silently lose the addon.
+ *
+ * Idempotent and skip-if-already-enabled, so it is safe to run on every
+ * reconcile (mirrors pruneRemovedAddonState): write the derived addon id into
+ * OP_ENABLED_ADDONS (app-written → state/) whenever a profile var names one
+ * that isn't already listed.
+ */
+export function migrateProfileOnlyAddonEnablement(
+  homeDir: string,
+): { changed: boolean; migratedAddons: string[] } {
+  const env = readStackEnv(homeDir);
+  const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
+  const missing = new Set<string>();
+  for (const key of PROFILE_ONLY_ENV_KEYS) {
+    const profile = env[key]?.trim();
+    if (!profile) continue;
+    const match = profile.match(/^addon\.([a-z0-9-]+)(?:\.|$)/);
+    const addonId = match?.[1];
+    if (addonId && !enabled.has(addonId)) missing.add(addonId);
+  }
+
+  if (missing.size === 0) return { changed: false, migratedAddons: [] };
+
+  const migratedAddons = [...missing].sort();
+  setEnabledAddonState(homeDir, migratedAddons, true);
+  return { changed: true, migratedAddons };
+}
+
 export function setAddonEnabled(homeDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {
   if (!VALID_NAME_RE.test(name)) {
     return { ok: false, error: `Invalid addon name: ${name}` };
