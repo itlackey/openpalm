@@ -43,8 +43,13 @@ mock.module(dockerUrl, () => ({
     runCalls.push(args);
     if (args[0] === 'volume' && args[1] === 'inspect') {
       const volumeName = args[2];
+      // Generic inspect failure (daemon down / permission / timeout) — NOT a
+      // missing volume. Must be treated as "could not verify", not success.
+      if (volumeName.includes('inspect-fail')) {
+        return { ok: false, stdout: '', stderr: 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock' };
+      }
       const ok = !volumeName.includes('missing-volume');
-      return { ok, stdout: '', stderr: ok ? '' : 'no such volume' };
+      return { ok, stdout: '', stderr: ok ? '' : 'Error: No such volume: ' + volumeName };
     }
     // chown run — fail for anything tagged 'fail-chown' (ad hoc dirs/volumes
     // the test names explicitly) or the real 'assistant-artifacts' named
@@ -146,6 +151,36 @@ describe('repairRootOwnedBindMounts / repairManagedNamedVolumes success reportin
     ${assert('ok === false')}
     const chownCalls = runCalls.filter((a) => a[0] === 'run');
     ${assert('chownCalls.length === 3')}
+    `);
+    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
+  test('repairNamedVolumeOwnership treats a genuinely-missing volume as a benign skip (true) and does not chown', () => {
+    const result = runScenario(`
+    const ok = await repairNamedVolumeOwnership('openpalm-test_missing-volume-cache', { uid: 1000, gid: 1000 });
+    ${assert('ok === true')}
+    const chownCalls = runCalls.filter((a) => a[0] === 'run');
+    ${assert('chownCalls.length === 0')}
+    `);
+    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
+  test('repairNamedVolumeOwnership returns false (non-strict) when inspect fails for a NON-missing reason, and does not chown', () => {
+    const result = runScenario(`
+    const ok = await repairNamedVolumeOwnership('openpalm-test_inspect-fail-cache', { uid: 1000, gid: 1000 });
+    ${assert('ok === false')}
+    const chownCalls = runCalls.filter((a) => a[0] === 'run');
+    ${assert('chownCalls.length === 0')}
+    `);
+    expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
+  test('repairNamedVolumeOwnership throws in strict mode when inspect fails for a NON-missing reason', () => {
+    const result = runScenario(`
+    let threw = false;
+    try { await repairNamedVolumeOwnership('openpalm-test_inspect-fail-cache', { uid: 1000, gid: 1000 }, { strict: true }); }
+    catch { threw = true; }
+    ${assert('threw === true')}
     `);
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   });

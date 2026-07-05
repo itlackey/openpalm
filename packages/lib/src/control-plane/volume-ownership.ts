@@ -95,7 +95,20 @@ export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid:
   // and a fresh volume gets seeded from the (already uid-agnostic) image
   // content on first mount, so it needs no repair.
   const inspect = await run(['volume', 'inspect', volumeName], undefined, 15_000);
-  if (!inspect.ok) return true;
+  if (!inspect.ok) {
+    // A genuinely-missing volume is a benign skip (see the note above: a fresh
+    // volume seeds uid-agnostically from image content on first mount, so it
+    // needs no repair). But ANY OTHER inspect failure — docker down, a
+    // permission error, a timeout — means we never inspected or repaired
+    // anything; reporting success here would let the caller write the
+    // ownership-repair marker having repaired nothing. Only "no such volume"
+    // is safe to treat as done.
+    if (/no such volume/i.test(inspect.stderr)) return true;
+    const message = `Could not inspect named volume ${volumeName}: ${inspect.stderr.trim()}`;
+    if (opts?.strict) throw new Error(message);
+    logger.warn(message);
+    return false;
+  }
 
   const result = await run([
     'run', '--rm',
