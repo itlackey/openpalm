@@ -72,15 +72,18 @@ install_artifact() {
 install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian
 install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
-# ── Range-versioned tools via bun update ──────────────────────────────────
-# /opt/openpalm/tools/package.json declares tool semver ranges (baked as
-# image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose).
-# bun update installs missing packages and advances within declared ranges.
+# ── Exact-pinned tools ──────────────────────────────────────────────────────
+# /opt/openpalm/tools/package.json declares exact tool versions (baked as
+# image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose so
+# operators can edit package.json directly — bun install picks up the edit on
+# next boot). Versions are pinned exactly, not ranges: semver advance now
+# happens by bumping the pinned version at release time, where it is reviewed
+# and tested, not silently via a boot-time `bun update`.
 if [ -f "/opt/openpalm/tools/package.json" ]; then
-  bun update --cwd /opt/openpalm/tools --production \
-    || echo "WARN: tool update had errors; check logs above" >&2
+  bun install --cwd /opt/openpalm/tools --production \
+    || echo "WARN: tool install had errors; check logs above" >&2
 else
-  echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool update" >&2
+  echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool install" >&2
 fi
 
 # ── Hard-fail when content validation is enabled but opencode is missing ───────

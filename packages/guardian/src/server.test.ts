@@ -330,3 +330,77 @@ describe('Guardian portal secret startup contract', () => {
     }
   });
 });
+
+describe('Guardian boot receipt (S.4 reproducibility receipt)', () => {
+  it('emits one structured boot line naming package@version + entry + auth strategy', async () => {
+    const port = await getAvailablePort();
+    const direct = await getAvailablePort();
+    const admin = await getAvailablePort();
+    const localTmpDir = mkdtempSync(join(tmpdir(), 'guardian-boot-receipt-'));
+    const proc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
+      cwd: join(import.meta.dir, '..'),
+      env: {
+        PATH: process.env.PATH ?? '',
+        PORT: String(port),
+        GUARDIAN_DIRECT_PORT: String(direct),
+        GUARDIAN_ADMIN_PORT: String(admin),
+        GUARDIAN_STATE_DB_PATH: join(localTmpDir, 'state.db'),
+        OP_ASSISTANT_URL: 'http://127.0.0.1:1',
+        GUARDIAN_AUDIT_PATH: join(localTmpDir, 'audit.log'),
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    try {
+      const url = `http://127.0.0.1:${port}`;
+      let stdout = '';
+      let ready = false;
+      for (let i = 0; i < 50; i++) {
+        if (proc.exitCode !== null) break;
+        try {
+          const resp = await fetch(`${url}/health`);
+          if (resp.ok) {
+            ready = true;
+            break;
+          }
+        } catch {
+          // not ready yet
+        }
+        await Bun.sleep(100);
+      }
+      expect(ready).toBe(true);
+
+      // Kill (SIGKILL) before reading stdout to EOF: the process is still
+      // running at this point, and awaiting the full stream would otherwise
+      // hang until process exit. SIGKILL, not the default SIGTERM, because
+      // audit.ts installs a SIGTERM/SIGINT handler that does not call
+      // process.exit() (pre-existing, unrelated to S.4) — SIGTERM is a no-op
+      // here. The boot line is written well before /health responds, so it
+      // is already flushed to the pipe.
+      proc.kill(9);
+      await proc.exited;
+      stdout = await new Response(proc.stdout).text();
+      const bootLine = stdout
+        .split('\n')
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .find((entry) => entry?.msg === 'started');
+
+      expect(bootLine).toBeTruthy();
+      expect(bootLine.extra.package).toBe('@openpalm/guardian');
+      expect(typeof bootLine.extra.version).toBe('string');
+      expect(bootLine.extra.version.length).toBeGreaterThan(0);
+      expect(typeof bootLine.extra.entry).toBe('string');
+      expect(bootLine.extra.authStrategy).toBe('basic-token');
+    } finally {
+      proc.kill();
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
+  });
+});

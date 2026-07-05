@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 import { createLogger } from './logger.ts';
+import guardianPkg from '../package.json' with { type: 'json' };
 
 import { json } from './http-util.ts';
 import { handleAdminRequest } from './admin';
 import { audit } from './audit';
+import { basicTokenAuthStrategy, getAuthStrategy } from './auth.ts';
 import { eventSubscriberCount } from './event-fanout';
 import { handleMcpRequest, seedMcpPrincipalFromToken } from './mcp';
 import { sessionOwnerCount, permissionOwnerCount } from './ownership';
@@ -190,7 +192,16 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     status: 'ok',
   });
 
+  // Reproducibility receipt (S.4): the one structured line that names exactly
+  // which package@version + entry file + auth strategy is enforcing the trust
+  // boundary for this running guardian, regardless of which OP_GUARDIAN_PACKAGE
+  // / OP_GUARDIAN_ENTRY the operator booted (this module is always the real
+  // @openpalm/guardian core doing the request handling).
   logger.info('started', {
+    package: guardianPkg.name,
+    version: guardianPkg.version,
+    entry: Bun.main,
+    authStrategy: getAuthStrategy() === basicTokenAuthStrategy ? 'basic-token' : 'custom',
     internalPort: INTERNAL_PORT,
     directPort: DIRECT_PORT,
     adminPort: ADMIN_PORT,

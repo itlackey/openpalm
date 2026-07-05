@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# guardian-image-offline-smoke.sh — proves the guardian image boots with
+# ZERO registry access (S.4, docs/reviews/fable-security-remediation-plan.md).
+#
+# The guardian is the trust boundary. Before S.4 it fetched its own code
+# (@openpalm/guardian, @openpalm/skeleton) from npm at first boot via
+# `bun add` in entrypoint.sh — an unpinned, unverified, network-dependent
+# install of the very code that enforces the security boundary. This script
+# builds the image (registry access allowed at BUILD time, where it is
+# reviewable) and then boots a container with `--network none`: if the
+# guardian package is genuinely baked into the image layers, boot is a
+# no-op install-skip and the server reaches healthy with no network at all.
+#
+# Run locally: ./scripts/guardian-image-offline-smoke.sh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
+IMAGE="openpalm-guardian-offline-smoke:test"
+CONTAINER="guardian-offline-smoke-$$"
+
+cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+echo "Building guardian image (registry access permitted at build time) GUARDIAN_VERSION=${GUARDIAN_VERSION}..."
+docker build -f containers/guardian/Dockerfile --build-arg GUARDIAN_VERSION="${GUARDIAN_VERSION}" -t "$IMAGE" .
+
+echo "Booting with --network none (no DNS, no registry, no assistant reachability)..."
+docker run -d --network none --name "$CONTAINER" \
+  -e GUARDIAN_AUDIT_PATH=/opt/openpalm/guardian/logs/audit.log \
+  "$IMAGE" >/dev/null
+
+ok=0
+for _ in $(seq 1 30); do
+  if docker exec "$CONTAINER" curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+    ok=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$ok" != "1" ]; then
+  echo "FAIL: guardian did not reach healthy within 30s under --network none" >&2
+  echo "--- container logs ---" >&2
+  docker logs "$CONTAINER" >&2 || true
+  exit 1
+fi
+echo "PASS: guardian reached healthy under --network none."
+
+# The reproducibility receipt (package@version + entry + auth strategy in one
+# structured boot line) is asserted against LOCAL source in
+# packages/guardian/src/server.test.ts ("Guardian boot receipt"), not here:
+# this script builds from the currently-PUBLISHED @openpalm/guardian npm
+# package, which only carries the receipt once this change ships a release.
+# What this script verifies is the install itself: the baked package is used
+# as-is with no re-fetch, which the "already installed, skipping" lines below
+# confirm.
+if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/guardian@${GUARDIAN_VERSION} already installed, skipping"; then
+  echo "FAIL: entrypoint did not skip the guardian install (baked package was re-fetched or missing)" >&2
+  docker logs "$CONTAINER" >&2 || true
+  exit 1
+fi
+if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/skeleton@${GUARDIAN_VERSION} already installed, skipping"; then
+  echo "FAIL: entrypoint did not skip the skeleton install (baked package was re-fetched or missing)" >&2
+  docker logs "$CONTAINER" >&2 || true
+  exit 1
+fi
+echo "PASS: baked package@version installs were no-ops at boot (no re-fetch)."
+
+echo "guardian-image-offline-smoke: OK"

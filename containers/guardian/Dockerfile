@@ -7,8 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY containers/guardian/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Baked at build time so the thin host boots with no operator configuration.
-# Operators may override at runtime with OP_GUARDIAN_NPM_VERSION.
+# Baked at build time so the thin host boots with NO operator configuration
+# AND no network access: the trust boundary's own code (@openpalm/guardian
+# and its co-released @openpalm/skeleton) is installed into the image layers
+# right here, not fetched by entrypoint.sh on first boot. entrypoint.sh's
+# install_artifact() already-at-version check then makes that boot-time step
+# a no-op in the default case; it remains the explicit-override path for
+# downstream distributions that set OP_GUARDIAN_NPM_VERSION / OP_GUARDIAN_PACKAGE
+# to a different package/version (see containers/guardian/README.md).
 ARG GUARDIAN_VERSION
 ENV GUARDIAN_VERSION=${GUARDIAN_VERSION}
 
@@ -30,8 +36,11 @@ COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # ids. World-writable is the only image-side mode that works for an arbitrary
 # uid. This applies ONLY to these app/cache trees; the secret tree
 # (knowledge/secrets, 0600) is a bind mount and is never touched here.
-RUN bun install --cwd /opt/openpalm/tools --production \
+RUN test -n "$GUARDIAN_VERSION" \
     && mkdir -p /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/skeleton \
+    && (cd /opt/openpalm/guardian && bun add "@openpalm/guardian@${GUARDIAN_VERSION}" --production) \
+    && (cd /opt/openpalm/skeleton && bun add "@openpalm/skeleton@${GUARDIAN_VERSION}" --production) \
+    && bun install --cwd /opt/openpalm/tools --production \
     && chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/skeleton /opt/openpalm/tools
 
 EXPOSE 8080
