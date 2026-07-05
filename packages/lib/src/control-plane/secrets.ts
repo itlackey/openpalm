@@ -8,6 +8,7 @@ import { resolveConfigDir, legacyStackEnvFile, stateEnvFile } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath, stackEnvPath } from "./paths.js";
 import { dirname } from "node:path";
 import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
+import { writeFileAtomic } from './fs-atomic.js';
 
 const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
 const logger = createLogger("secrets");
@@ -67,7 +68,7 @@ function enforceVaultDirMode(vaultDir: string): void {
 }
 
 function writeVaultFile(path: string, content: string): void {
-  writeFileSync(path, content, { mode: VAULT_FILE_MODE });
+  writeFileAtomic(path, content, VAULT_FILE_MODE);
   try {
     chmodSync(path, VAULT_FILE_MODE);
   } catch (error) {
