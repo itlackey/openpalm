@@ -794,6 +794,7 @@ export async function waitForContainerHealthy(
 
 export type ApplyStackScope =
   | { kind: "service"; service: string }
+  | { kind: "services"; services: string[] }
   | { kind: "all" };
 
 export type ApplyStackResult = {
@@ -804,6 +805,22 @@ export type ApplyStackResult = {
   failed: { service: string; reason: string }[];
   /** Top-level error string (when compose itself fails). */
   error?: string;
+  /**
+   * True only when the `up` invocation itself failed (no service in scope
+   * ever started) — the early-return branch below. Undefined/false means
+   * `up` succeeded but at least one service failed its post-up health wait.
+   * Lets callers with their own domain-specific stderr translation (e.g. the
+   * voice addon's operator-facing hints) distinguish the two failure classes
+   * without string-sniffing `error`.
+   */
+  upFailed?: boolean;
+  /**
+   * Raw compose stderr from the `up` invocation, present only when
+   * `upFailed` is true. `error` is already {@link mapDockerError}-translated
+   * for the generic admin UI; this is for callers that need to run their own
+   * translation over the untouched stderr.
+   */
+  rawStderr?: string;
 };
 
 /**
@@ -834,8 +851,16 @@ export type ApplyStackProgress = {
  * (§4.3 "profiles on every command"). Success = running AND healthy
  * (waitForContainerHealthy).
  *
- * scope = { kind:"service", service:"assistant" }  →  up --pull missing --force-recreate --no-deps <svc>
- * scope = { kind:"all" }                           →  up --pull missing --force-recreate --remove-orphans
+ * scope = { kind:"service", service:"assistant" }    →  up --pull missing --force-recreate --no-deps <svc>
+ * scope = { kind:"services", services:["a","b"] }     →  up --pull missing --force-recreate --no-deps <a> <b>
+ * scope = { kind:"all" }                              →  up --pull missing --force-recreate --remove-orphans
+ *
+ * `services` (plural) is the multi-service sibling of `service` — a named,
+ * pre-resolved subset (e.g. every service in one addon profile) recreated
+ * together with no `--remove-orphans`, exactly like the singular form. It
+ * exists so a caller that owns a named group of services (e.g. the voice
+ * addon's bring-up flow) can route through this single driver instead of
+ * reimplementing its own up + health-wait orchestration.
  *
  * Callers (install and update endpoints) pass the resolved ComposeOptions so
  * this function never builds them itself — profiles are already resolved.
@@ -858,6 +883,8 @@ export async function applyStack(
   const upArgs = [...base, "up", "-d", "--pull", "missing", "--force-recreate"];
   if (scope.kind === "service") {
     upArgs.push("--no-deps", scope.service);
+  } else if (scope.kind === "services") {
+    upArgs.push("--no-deps", ...scope.services);
   } else {
     upArgs.push("--remove-orphans");
   }
@@ -871,13 +898,19 @@ export async function applyStack(
     // Map the full stderr to a named, friendly message (§6) — rate_limited /
     // manifest_unknown / network_error / image_auth / healthcheck_failed / etc.
     // No per-service stderr parsing here: `up` failing outright means nothing
-    // in this scope came up, so there is exactly one failure to report.
+    // in this scope came up, so there is exactly one failure to report (one
+    // entry per named service for "service"/"services"; a "stack" sentinel
+    // for "all", whose service list is only resolved after a successful up).
     const mapped = mapDockerError(upResult.stderr || `docker compose exited with code ${upResult.code}`);
+    const failedServices =
+      scope.kind === "service" ? [scope.service] : scope.kind === "services" ? scope.services : ["stack"];
     return {
       ok: false,
       started: [],
-      failed: [{ service: scope.kind === "service" ? scope.service : "stack", reason: mapped.message }],
+      failed: failedServices.map((service) => ({ service, reason: mapped.message })),
       error: mapped.message,
+      upFailed: true,
+      rawStderr: upResult.stderr,
     };
   }
 
@@ -885,11 +918,13 @@ export async function applyStack(
   const targetServices =
     scope.kind === "service"
       ? [scope.service]
-      : await (async () => {
-          const configArgs = [...base, "config", "--services"];
-          const r = await docker.run(configArgs, { timeoutMs: 15_000, env: envOverrides });
-          return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
-        })();
+      : scope.kind === "services"
+        ? scope.services
+        : await (async () => {
+            const configArgs = [...base, "config", "--services"];
+            const r = await docker.run(configArgs, { timeoutMs: 15_000, env: envOverrides });
+            return r.ok ? r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
+          })();
 
   const started: string[] = [];
   const failed: { service: string; reason: string }[] = [];

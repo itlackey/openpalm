@@ -207,4 +207,73 @@ describe("applyStack — DockerClient + FileStore seam", () => {
     const result = await applyStack({ kind: "service", service: "assistant" }, OPTS, deps);
     expect(result.ok).toBe(true);
   });
+
+  it("(7) kind:'services' brings up a named multi-service subset with --no-deps, no --remove-orphans", async () => {
+    const docker = new FakeDocker((args) => {
+      if (args.includes("up")) return ok();
+      if (args.includes("ps") && args.includes("-q")) return ok("container-123");
+      if (args.includes("inspect")) return ok(HEALTHY_INSPECT);
+      return ok();
+    });
+    const deps: StackDeps = { docker, files: makeFiles([]) };
+
+    const result = await applyStack({ kind: "services", services: ["voice", "voice-cuda"] }, OPTS, deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.started).toEqual(["voice", "voice-cuda"]);
+    expect(result.failed).toEqual([]);
+
+    const upCall = docker.calls[docker.indexOfArg("up")];
+    expect(upCall).toContain("--no-deps");
+    expect(upCall).toContain("voice");
+    expect(upCall).toContain("voice-cuda");
+    expect(upCall).not.toContain("--remove-orphans");
+  });
+
+  it("(8) kind:'services' up-failure reports upFailed + rawStderr + one failed entry per named service", async () => {
+    const docker = new FakeDocker((args) => {
+      if (args.includes("up")) return fail("pull access denied for openpalm/voice");
+      return ok();
+    });
+    const deps: StackDeps = { docker, files: makeFiles([]) };
+
+    const result = await applyStack({ kind: "services", services: ["voice"] }, OPTS, deps);
+
+    expect(result.ok).toBe(false);
+    expect(result.upFailed).toBe(true);
+    expect(result.rawStderr).toBe("pull access denied for openpalm/voice");
+    expect(result.failed).toEqual([{ service: "voice", reason: result.error }]);
+    // No ps/inspect health-check calls — up never succeeded.
+    expect(docker.calls.some((c) => c.includes("inspect"))).toBe(false);
+  });
+
+  it("(9) a health-wait failure (up succeeded) does NOT set upFailed/rawStderr", async () => {
+    const docker = new FakeDocker((args) => {
+      if (args.includes("up")) return ok();
+      if (args.includes("ps") && args.includes("-q")) return ok("container-123");
+      if (args.includes("inspect")) return ok(UNHEALTHY_INSPECT);
+      return ok();
+    });
+    const deps: StackDeps = { docker, files: makeFiles([]) };
+
+    const result = await applyStack({ kind: "services", services: ["voice"] }, OPTS, deps);
+
+    expect(result.ok).toBe(false);
+    expect(result.upFailed).toBeFalsy();
+    expect(result.rawStderr).toBeUndefined();
+    expect(result.failed[0].reason).toContain("unhealthy");
+  });
+
+  it("(10) kind:'service' up-failure also sets upFailed + rawStderr (single-service form)", async () => {
+    const docker = new FakeDocker((args) => {
+      if (args.includes("up")) return fail("Bind for 127.0.0.1:8880 failed: port is already allocated");
+      return ok();
+    });
+    const deps: StackDeps = { docker, files: makeFiles([]) };
+
+    const result = await applyStack({ kind: "service", service: "assistant" }, OPTS, deps);
+
+    expect(result.upFailed).toBe(true);
+    expect(result.rawStderr).toBe("Bind for 127.0.0.1:8880 failed: port is already allocated");
+  });
 });

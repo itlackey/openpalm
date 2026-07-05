@@ -14,8 +14,12 @@
  *     managed system/stack/ tree (packages/skeleton/system/stack/) — nothing
  *     here generates compose YAML.
  *   - The in-memory background-job registry (activeJobs)
- *   - The compose-up + /health poll lifecycle (runBringUp / runBringUpJob)
- *   - The engageVoiceAddon orchestration that the route delegates to
+ *   - The engageVoiceAddon orchestration that the route delegates to; the
+ *     actual compose-up + health-wait lifecycle (runBringUp) is a thin
+ *     shim over `@openpalm/lib`'s single `applyStack` driver (plan 2.2) —
+ *     this file keeps only job registry + progress-step rendering, plus the
+ *     "warming" re-probe and voice-specific error-copy translation that
+ *     applyStack's generic result doesn't carry.
  *
  * Everything here is server-only (uses node:child_process / node:net /
  * node:fs) and returns plain data — the route maps the results to HTTP
@@ -28,9 +32,9 @@ import type { getState } from '$lib/server/state.js';
 import {
   annotateAddonProfileAvailability,
   addonProfileId,
+  applyStack,
   buildComposeOptions,
   composeStop,
-  composeUp,
   detectRootlessDocker,
   dockerHasNvidiaRuntime,
   execFileNoThrow,
@@ -46,10 +50,9 @@ import type { AddonProfile } from '@openpalm/lib';
 import { translateDockerError } from '$lib/server/voice-errors.js';
 
 export const VOICE_ADDON = 'voice';
-// compose.yml advertises start_period: 180s. The probe must wait at least
-// that long on a cold-disk first launch (model download + warm-up).
+// compose.yml advertises start_period: 180s. The health-wait must tolerate at
+// least that long on a cold-disk first launch (model download + warm-up).
 const VOICE_PROBE_TIMEOUT_MS = 180_000;
-const VOICE_PROBE_INTERVAL_MS = 1_000;
 const PORT_PROBE_TIMEOUT_MS = 750;
 
 // ── Background-pull job state ────────────────────────────────────────
@@ -58,7 +61,7 @@ const PORT_PROBE_TIMEOUT_MS = 750;
 // poll both fire long before a 2–8 GB pull finishes — operators end up
 // staring at a "network error" while the pull is still running. To
 // decouple, when we detect an absent large-tag image we kick off the
-// long work (composeUp + health poll) in the background, return 202
+// long work (the applyStack compose-up + health-wait) in the background, return 202
 // immediately, and have the UI poll GET /admin/voice for status.
 type VoiceJobState = 'pulling' | 'starting' | 'healthy' | 'error';
 export type VoiceJobStep = { step: string; ok: boolean; detail?: string };
@@ -250,7 +253,7 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
 // — applyHomeSeed materializes them into every OP_HOME on install/update, the
 // same as core/services/portals.compose.yml. There is nothing to generate
 // here; we only decide (via the lib host-fact probes) whether to include the
-// already-present file in this one composeUp's file list.
+// already-present file in this one applyStack call's file list.
 
 /** Path of the static CDI overlay, or null when the managed tree isn't seeded yet. */
 function voiceCdiOverlayPath(homeDir: string): string | null {
@@ -284,15 +287,24 @@ type BringUpOutcome = {
 };
 
 /**
- * Inline composeStop-other-profiles + composeUp + /health poll. Returns
- * the terminal state. Pushed `steps` get mutated in place so the caller
- * (sync or background) can read progress as it happens.
+ * Stops services from OTHER profiles, then routes the actual compose-up +
+ * health-wait through `@openpalm/lib`'s single {@link applyStack} driver
+ * (plan 2.2) — this function no longer runs its own composeUp or /health
+ * poll. `applyStack`'s health-wait reads the SAME docker HEALTHCHECK every
+ * voice compose service already declares (`curl .../health` inside the
+ * container, `start_period: 180s`), so it observes exactly what the removed
+ * manual HTTP poll observed, just via `docker inspect` instead of a
+ * host-side fetch loop.
+ *
+ * Returns the terminal state. Pushed `steps` get mutated in place so the
+ * caller (sync or background) can read progress as it happens.
  */
 async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
   const { state, services, activeProfile, extraFiles, availableProfiles, steps } = input;
 
   let composeOk: boolean;
   let composeErr: string | undefined;
+  let healthy = false;
   try {
     // Profile switch: stop services from OTHER profiles so they release
     // their host port binding (all variants share 8880) before we bring
@@ -311,20 +323,32 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
     }
 
     const baseOpts = buildComposeOptions(state);
-    const result = await composeUp({
-      ...baseOpts,
-      files: [...baseOpts.files, ...extraFiles],
-      services,
-      forceRecreate: true,
-      ...(activeProfile ? { profiles: [activeProfile] } : {}),
-    });
-    composeOk = result.ok;
-    if (!result.ok) {
-      // No per-service stderr split needed here (plan 2.2 — parseComposeStderr
-      // is no longer a public seam): this composeUp only ever targets voice's
-      // OWN services, so the raw stderr is already scoped to this addon.
-      const rawDetail = result.stderr || `compose up exited ${result.code}`;
-      composeErr = translateDockerError(rawDetail);
+    const result = await applyStack(
+      { kind: 'services', services },
+      {
+        files: [...baseOpts.files, ...extraFiles],
+        envFiles: baseOpts.envFiles,
+        profiles: activeProfile ? [activeProfile] : baseOpts.profiles,
+      },
+      undefined,
+      // 180s matches the voice compose services' own start_period, so a
+      // cold-disk first launch (model download + warm-up) gets the same
+      // grace window the removed manual poll used.
+      { healthTimeoutMs: VOICE_PROBE_TIMEOUT_MS },
+    );
+
+    if (result.upFailed) {
+      // Only an `up`-command failure carries raw stderr worth re-translating
+      // through voice's own operator-facing hints (CPU-profile suggestion,
+      // CDI/NVIDIA runtime copy, port-in-use) — applyStack's own `error` is
+      // already mapDockerError-translated for the generic admin UI, which
+      // doesn't know about voice profiles.
+      composeOk = false;
+      composeErr = translateDockerError(result.rawStderr || result.error || 'compose up failed');
+    } else {
+      // `up` succeeded; `result.ok` also folds in the post-up health wait.
+      composeOk = true;
+      healthy = result.ok;
     }
   } catch (e) {
     composeOk = false;
@@ -340,24 +364,11 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
     return { composeOk, composeErr, healthy: false, warming: false, steps };
   }
 
-  // Poll /health until ready (or timeout).
-  const probeBase = openpalmVoiceBaseURL();
-  const probeUrl = `${probeBase}/health`;
-  const deadline = Date.now() + VOICE_PROBE_TIMEOUT_MS;
-  let healthy = false;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1500) });
-      if (res.ok) {
-        healthy = true;
-        break;
-      }
-    } catch {
-      /* keep polling until deadline */
-    }
-    await new Promise((r) => setTimeout(r, VOICE_PROBE_INTERVAL_MS));
-  }
-
+  // applyStack's health-wait already timed out above if `healthy` is false
+  // here. Re-probe the container's OWN health status once more to tell a
+  // still-cold-booting container ("starting") from a harder failure — the
+  // same distinction the removed manual poll made, now sourced from Docker's
+  // healthcheck state instead of a duplicate HTTP probe.
   let warming = false;
   if (!healthy) {
     try {
@@ -375,7 +386,7 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
       ? {}
       : warming
         ? { detail: 'still warming up — refresh in a moment' }
-        : { detail: `did not respond at ${probeUrl} within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` }),
+        : { detail: `did not become healthy within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` }),
   });
 
   return { composeOk, healthy, warming, steps };
@@ -545,7 +556,7 @@ export async function engageVoiceAddon(input: {
 
   // ── Pre-flight image inspect ─────────────────────────────────────
   // If the image is missing locally AND its tag is a known large one,
-  // we'll fork the long work (composeUp + healthcheck) into a
+  // we'll fork the long work (the applyStack compose-up + healthcheck) into a
   // background job so the UI can return immediately and poll
   // GET /admin/voice for progress.
   const profileServices = activeProfile
@@ -577,7 +588,7 @@ export async function engageVoiceAddon(input: {
   // overlay (ships in system/stack/, rewrites voice-cuda to use
   // deploy.resources.reservations.devices+driver:cdi). The canonical
   // compose stays the runtime-nvidia form (no manual setup case).
-  // Overlay is applied only for this one composeUp.
+  // Overlay is applied only for this one applyStack call.
   //
   // Skipped on Windows: the operator must use Docker Desktop with WSL2
   // GPU integration there, and CDI specs live inside WSL2 — the Node
@@ -630,7 +641,7 @@ export async function engageVoiceAddon(input: {
 
   // ── Background-pull short-circuit ────────────────────────────────
   // When the image is missing AND large, fork the rest of the work
-  // (composeStop, composeUp, /health poll) into a job that updates the
+  // (composeStop, then applyStack's compose-up + health-wait) into a job that updates the
   // module-level activeJobs map. Return so the route replies 202
   // immediately and the browser/SvelteKit fetch doesn't time out during
   // the multi-minute pull. UI polls GET /admin/voice for the activeJob.
