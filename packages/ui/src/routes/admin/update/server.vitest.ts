@@ -97,6 +97,39 @@ describe('POST /admin/update', () => {
     expect(patchSecretsEnvFileMock).not.toHaveBeenCalled();
   });
 
+  // ── 2.1: version-pin advance moved INSIDE applyUpdate's transactional boundary ──
+  //
+  // Advancing OP_*_VERSION pins before applyUpdate's own file-write step meant a
+  // partial/failed applyUpdate could leave stack.env pointing at a version whose
+  // managed files were never actually written. The pin advance must happen AFTER
+  // applyUpdate succeeds (still before applyStack, which needs the new pin).
+
+  test('full update: advances versions AFTER applyUpdate succeeds, still before applyStack', async () => {
+    const res = await POST(makePostEvent('admin-token', {
+      versions: { OP_ASSISTANT_VERSION: '0.12.44-beta.2' },
+    }));
+    expect(res.status).toBe(200);
+    expect(applyUpdateMock).toHaveBeenCalledOnce();
+    expect(patchSecretsEnvFileMock).toHaveBeenCalledOnce();
+    expect(patchSecretsEnvFileMock.mock.invocationCallOrder[0])
+      .toBeGreaterThan(applyUpdateMock.mock.invocationCallOrder[0]);
+    expect(patchSecretsEnvFileMock.mock.invocationCallOrder[0])
+      .toBeLessThan(applyStackMock.mock.invocationCallOrder[0]);
+  });
+
+  test('full update: does NOT advance versions when applyUpdate throws (transactional boundary)', async () => {
+    applyUpdateMock.mockRejectedValue(new Error('applyUpdate failed mid-write'));
+
+    const res = await POST(makePostEvent('admin-token', {
+      versions: { OP_ASSISTANT_VERSION: '0.12.44-beta.2' },
+    }));
+    expect(res.status).toBe(500);
+    expect(applyUpdateMock).toHaveBeenCalledOnce();
+    // The pin must NOT advance — applyUpdate's file-write transaction never committed.
+    expect(patchSecretsEnvFileMock).not.toHaveBeenCalled();
+    expect(applyStackMock).not.toHaveBeenCalled();
+  });
+
   test('returns 200 with all services when applyStack succeeds', async () => {
     const res = await POST(makePostEvent());
     expect(res.status).toBe(200);

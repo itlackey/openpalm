@@ -75,21 +75,32 @@ export const POST: RequestHandler = async (event) => {
         }, requestId);
       }
 
-      // Advance the APPLIED version before recreate: write each component's target
-      // (the channel-latest the UI resolved, or a deliberate pin) into the legacy
-      // stack.env that `docker compose --env-file` reads, so applyStack pulls the
-      // NEW tag instead of re-applying the current one. Written to legacy (the
-      // applied/current tracker) — never state/, which is reserved for deliberate
-      // pins (an applied version in state would read back as a pin and re-freeze).
-      if (Object.keys(targetVersions).length > 0) {
+      // Advance the APPLIED version right before whichever compose recreate call
+      // actually consumes it, so `applyStack` pulls the NEW tag instead of
+      // re-applying the current one. Written to legacy stack.env (the
+      // applied/current tracker) — never state/, which is reserved for
+      // deliberate pins (an applied version in state would read back as a pin
+      // and re-freeze).
+      //
+      // Ordering is the point: for the full-update branch below, this MUST run
+      // AFTER applyUpdate()'s own transactional file-write boundary succeeds —
+      // advancing the pin before that boundary would leave stack.env pointing
+      // at a version whose managed files were never actually written if
+      // applyUpdate throws partway through.
+      const advanceTargetVersions = (): void => {
+        if (Object.keys(targetVersions).length === 0) return;
         patchSecretsEnvFile(state.homeDir, targetVersions);
-        logger.info("advanced versions before update", { requestId, targetVersions });
-      }
+        logger.info("advanced versions before recreate", { requestId, targetVersions });
+      };
 
       if (service) {
         // Scoped single-service update (§4, §7 "Update <container>"):
         // pull + recreate ONLY this service; do NOT run applyUpdate (no file changes).
         // Pull failure is FATAL — never falls through to a stale local image (§6).
+        // No applyUpdate precedes this branch, so there's no transactional
+        // file-write boundary to sequence around — advance right before the
+        // one mutation this branch performs.
+        advanceTargetVersions();
         logger.info("scoped service update", { requestId, service });
         const stackResult = await applyStack({ kind: "service", service }, composeOpts);
         const overallSuccess = stackResult.ok;
@@ -122,6 +133,11 @@ export const POST: RequestHandler = async (event) => {
         requestId,
         intended: result.restarted,
       });
+
+      // Only NOW — after applyUpdate's transactional file-write boundary has
+      // actually succeeded — advance the version pin applyStack is about to
+      // read (see advanceTargetVersions above for why the ordering matters).
+      advanceTargetVersions();
 
       // applyStack: pull the whole set first (§4.3), then recreate.
       // Pull failure is FATAL — never falls through to a stale local image (§6).

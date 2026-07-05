@@ -421,8 +421,8 @@ export async function performSetup(
       // before the Docker deploy succeeds would mark setup "complete" even
       // when containers fail to start, sending the user to a broken admin UI
       // with no path back to the wizard. The flag is now written by
-      // setup-deploy.ts:startDeploy AFTER pollContainerHealth confirms every
-      // container is healthy.
+      // setup-deploy.ts:startDeploy AFTER `compose up --wait` (§2.1's single
+      // health gate) confirms every CORE service is healthy.
     } catch (err) {
       const message = errMessage(err);
       logger.error("failed to complete setup persistence", { error: message });

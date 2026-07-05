@@ -26,8 +26,12 @@ describe("parseComposeStderr", () => {
     expect(failures[0].reason).toMatch(/pull access denied/);
   });
 
-  it("handles spinner / status prefix glyphs", () => {
-    const stderr = " ⠿ voice Error    pull access denied for openpalm/voice";
+  it("parses a plain-progress line with leading whitespace (§2.1: no braille spinner frames to tolerate)", () => {
+    // §2.1: every non-interactive compose call now runs with `--progress
+    // plain`, so the default renderer's braille spinner-frame prefixes
+    // (⠋⠙⠹…) never appear here — plain output is just `<service> <verb>
+    // <detail>`, optionally indented.
+    const stderr = "   voice Error    pull access denied for openpalm/voice";
     const failures = parseComposeStderr(stderr);
     expect(failures).toHaveLength(1);
     expect(failures[0].service).toBe("voice");
@@ -122,16 +126,20 @@ describe("mapDockerError", () => {
     });
   });
 
-  it("maps platform mismatches", () => {
-    expect(mapDockerError("no matching manifest for linux/arm64/v8 in the manifest list entries").code).toBe("platform_mismatch");
+  it("falls back to docker_error (raw passthrough) for a platform mismatch — no longer its own class", () => {
+    // §2.1 shrink: platform_mismatch was deleted as a distinct class; the raw
+    // stderr line still surfaces via the docker_error fallback passthrough.
+    const mapped = mapDockerError("no matching manifest for linux/arm64/v8 in the manifest list entries");
+    expect(mapped.code).toBe("docker_error");
+    expect(mapped.message).toContain("no matching manifest for linux/arm64/v8");
   });
 
-  it("maps image auth failures", () => {
-    expect(mapDockerError("pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'").code).toBe("image_auth");
+  it("maps image pull failures (auth)", () => {
+    expect(mapDockerError("pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'").code).toBe("image_pull_failed");
   });
 
-  it("maps OOM failures", () => {
-    expect(mapDockerError("container exited: OOMKilled").code).toBe("out_of_memory");
+  it("maps resource-exhaustion (OOM) failures", () => {
+    expect(mapDockerError("container exited: OOMKilled").code).toBe("resource_exhausted");
   });
 
   it("maps healthcheck failures from parsed service errors", () => {
@@ -181,65 +189,69 @@ describe("mapDockerError — table of representative stderr fixtures", () => {
       expectedCode: "port_in_use",
       expectedMessageContains: "Port 8080",
     },
+    // ── §2.1 shrink: these four used to be their own classes (missing_file,
+    //    permission_denied, platform_mismatch ×2) — now raw-stderr-passthrough
+    //    fallback (docker_error). The remedy copy is gone; the specific stderr
+    //    line is still surfaced via `summary`.
     {
-      name: "missing file — no such file or directory",
+      name: "fallback — missing file (no such file or directory)",
       stderr: "open /home/user/.openpalm/config/stack/core.compose.yml: no such file or directory",
-      expectedCode: "missing_file",
-      expectedMessageContains: "missing",
+      expectedCode: "docker_error",
+      expectedMessageContains: "no such file or directory",
     },
     {
-      name: "permission denied — EACCES",
+      name: "fallback — permission denied (EACCES)",
       stderr: "Error response from daemon: permission denied while trying to connect to the Docker daemon socket",
-      expectedCode: "permission_denied",
-      expectedMessageContains: "Permission denied",
+      expectedCode: "docker_error",
+      expectedMessageContains: "permission denied",
     },
     {
-      name: "no space left on device — ENOSPC",
-      stderr: "write /var/lib/docker/tmp/GetImageBlob123: no space left on device",
-      expectedCode: "no_space",
-      expectedMessageContains: "disk is full",
-    },
-    {
-      name: "platform mismatch — no matching manifest",
+      name: "fallback — platform mismatch (no matching manifest)",
       stderr: "no matching manifest for linux/arm64/v8 in the manifest list entries",
-      expectedCode: "platform_mismatch",
-      expectedMessageContains: "platform",
+      expectedCode: "docker_error",
+      expectedMessageContains: "no matching manifest",
     },
     {
-      name: "platform mismatch — requested image platform",
+      name: "fallback — platform mismatch (requested image platform)",
       stderr: "The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64)",
-      expectedCode: "platform_mismatch",
-      expectedMessageContains: "platform",
+      expectedCode: "docker_error",
+      expectedMessageContains: "does not match the detected host platform",
     },
     {
-      name: "image auth — pull access denied",
+      name: "resource_exhausted — no space left on device (ENOSPC)",
+      stderr: "write /var/lib/docker/tmp/GetImageBlob123: no space left on device",
+      expectedCode: "resource_exhausted",
+      expectedMessageContains: "critical resource",
+    },
+    {
+      name: "image_pull_failed — pull access denied",
       stderr: "pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'",
-      expectedCode: "image_auth",
-      expectedMessageContains: "private",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "could not pull",
     },
     {
-      name: "image auth — unauthorized",
+      name: "image_pull_failed — unauthorized",
       stderr: "Error response from daemon: unauthorized: authentication required",
-      expectedCode: "image_auth",
-      expectedMessageContains: "authentication",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "could not pull",
     },
     {
-      name: "image auth — denied requested access",
+      name: "image_pull_failed — denied requested access",
       stderr: "Error response from daemon: pull access denied for openpalm/voice: denied: requested access to the resource is denied",
-      expectedCode: "image_auth",
-      expectedMessageContains: "private",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "could not pull",
     },
     {
-      name: "OOM — container exited OOMKilled",
+      name: "resource_exhausted — container exited OOMKilled",
       stderr: "container exited: OOMKilled",
-      expectedCode: "out_of_memory",
-      expectedMessageContains: "memory",
+      expectedCode: "resource_exhausted",
+      expectedMessageContains: "critical resource",
     },
     {
-      name: "OOM — cannot allocate memory",
+      name: "resource_exhausted — cannot allocate memory",
       stderr: "failed to start container: cannot allocate memory",
-      expectedCode: "out_of_memory",
-      expectedMessageContains: "memory",
+      expectedCode: "resource_exhausted",
+      expectedMessageContains: "critical resource",
     },
     {
       name: "healthcheck failure — parsed from service error",
@@ -277,41 +289,42 @@ describe("mapDockerError — table of representative stderr fixtures", () => {
       expectedCode: "docker_error",
       expectedMessageContains: "unknown error",
     },
-    // ── Phase 3: new named registry errors (§6) ─────────────────────────────
+    // ── §2.1: rate-limit / bad-tag / network pull failures all collapse into
+    //    image_pull_failed (raw-stderr passthrough carries the specifics) ────
     {
-      name: "rate limit — Docker Hub toomanyrequests",
+      name: "image_pull_failed — Docker Hub rate limit (toomanyrequests)",
       stderr: "toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit",
-      expectedCode: "rate_limited",
-      expectedMessageContains: "rate limit",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "toomanyrequests",
     },
     {
-      name: "manifest unknown — bad tag",
+      name: "image_pull_failed — manifest unknown (bad tag)",
       stderr: "Error response from daemon: manifest for openpalm/assistant:does-not-exist-9999 not found: manifest unknown: manifest unknown",
-      expectedCode: "manifest_unknown",
-      expectedMessageContains: "tag does not exist",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "manifest",
     },
     {
-      name: "manifest unknown — plain",
+      name: "image_pull_failed — manifest unknown (plain)",
       stderr: "manifest unknown: manifest unknown",
-      expectedCode: "manifest_unknown",
-      expectedMessageContains: "tag does not exist",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "manifest unknown",
     },
     {
-      name: "network error — dial tcp",
+      name: "image_pull_failed — network error (dial tcp)",
       stderr: "error pulling image: dial tcp: lookup registry-1.docker.io on 8.8.8.8:53: i/o timeout",
-      expectedCode: "network_error",
-      expectedMessageContains: "network error",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "dial tcp",
     },
     {
-      name: "network error — connection reset by peer",
+      name: "image_pull_failed — network error (connection reset by peer)",
       stderr: "Error response from daemon: Get \"https://registry-1.docker.io/v2/\": connection reset by peer",
-      expectedCode: "network_error",
-      expectedMessageContains: "network error",
+      expectedCode: "image_pull_failed",
+      expectedMessageContains: "connection reset by peer",
     },
     {
-      name: "image auth — includes offending image",
+      name: "image_pull_failed — includes offending image via raw passthrough",
       stderr: "pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'",
-      expectedCode: "image_auth",
+      expectedCode: "image_pull_failed",
       expectedMessageContains: "openpalm/assistant",
     },
   ];

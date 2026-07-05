@@ -3,6 +3,8 @@ import {
   buildComposePreflightError,
   detectExistingProject,
   isProjectOurs,
+  meetsComposeWaitFloor,
+  parseComposePsRows,
   resolveComposeProjectName,
   toDockerResult,
 } from "./docker.js";
@@ -166,5 +168,60 @@ describe("toDockerResult (execFile error → DockerResult code normalization)", 
   it("reports code 0 and ok on a clean run", () => {
     const result = toDockerResult(null, "hello", "");
     expect(result).toEqual({ ok: true, stdout: "hello", stderr: "", code: 0 });
+  });
+});
+
+describe("meetsComposeWaitFloor (§2.1 precondition: Compose version floor for --wait)", () => {
+  it("accepts a version at or above the v2.14.0 floor", () => {
+    expect(meetsComposeWaitFloor("Docker Compose version v2.14.0")).toBe(true);
+    expect(meetsComposeWaitFloor("Docker Compose version v2.29.1")).toBe(true);
+    expect(meetsComposeWaitFloor("Docker Compose version v3.0.0")).toBe(true);
+  });
+
+  it("rejects a version below the floor", () => {
+    expect(meetsComposeWaitFloor("Docker Compose version v2.13.9")).toBe(false);
+    expect(meetsComposeWaitFloor("Docker Compose version v2.0.0")).toBe(false);
+    expect(meetsComposeWaitFloor("Docker Compose version v1.29.2")).toBe(false);
+  });
+
+  it("fails OPEN (treats as new enough) when the version string is unparsable", () => {
+    expect(meetsComposeWaitFloor("")).toBe(true);
+    expect(meetsComposeWaitFloor("some unexpected output")).toBe(true);
+  });
+});
+
+describe("parseComposePsRows (`compose ps --format json` parser)", () => {
+  it("parses one JSON object per line, keyed by the Service field", () => {
+    const stdout = [
+      JSON.stringify({ Service: "assistant", State: "running", Health: "" }),
+      JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy" }),
+    ].join("\n");
+    expect(parseComposePsRows(stdout)).toEqual([
+      { service: "assistant", state: "running", health: "" },
+      { service: "guardian", state: "running", health: "unhealthy" },
+    ]);
+  });
+
+  it("matches by the Service field, NEVER a container-name suffix like assistant-1", () => {
+    const stdout = JSON.stringify({ Name: "openpalm-assistant-1", Service: "assistant", State: "running", Health: "" });
+    const rows = parseComposePsRows(stdout);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].service).toBe("assistant");
+  });
+
+  it("returns an empty array for empty or unparsable input", () => {
+    expect(parseComposePsRows("")).toEqual([]);
+    expect(parseComposePsRows("not json\n\nalso not json")).toEqual([]);
+  });
+
+  it("handles a JSON array on a single line (some Compose versions emit this shape)", () => {
+    const stdout = JSON.stringify([
+      { Service: "assistant", State: "running", Health: "" },
+      { Service: "guardian", State: "exited", Health: "" },
+    ]);
+    expect(parseComposePsRows(stdout)).toEqual([
+      { service: "assistant", state: "running", health: "" },
+      { service: "guardian", state: "exited", health: "" },
+    ]);
   });
 });

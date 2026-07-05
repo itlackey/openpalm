@@ -13,19 +13,24 @@ export type ComposeServiceFailure = {
   reason: string;
 };
 
+/**
+ * §2.1 shrink: 6 stable-substring classes, down from the prior 12. Only
+ * distinctions with a genuinely different remedy get their own code
+ * (`docker_unavailable`→start Docker, `port_in_use`→free the port,
+ * `image_pull_failed`→registry/network/tag/auth issue, `resource_exhausted`→
+ * free disk/memory, `healthcheck_failed`→check container logs). Everything
+ * else (missing files, permission errors, platform mismatches, and any truly
+ * novel daemon error) falls through to `docker_error`, whose message is a
+ * RAW-STDERR PASSTHROUGH (the first non-empty line) rather than bespoke
+ * copy per pattern — nothing outside this file switches on the removed codes
+ * (verified: only `.message` is consumed by callers).
+ */
 export type DockerErrorMapping = {
   code:
     | "docker_unavailable"
     | "port_in_use"
-    | "missing_file"
-    | "permission_denied"
-    | "no_space"
-    | "platform_mismatch"
-    | "image_auth"
-    | "rate_limited"
-    | "manifest_unknown"
-    | "network_error"
-    | "out_of_memory"
+    | "image_pull_failed"
+    | "resource_exhausted"
     | "healthcheck_failed"
     | "docker_error";
   message: string;
@@ -33,16 +38,20 @@ export type DockerErrorMapping = {
 
 /**
  * Lines we recognise as per-service failure indicators. The compose CLI
- * has rendered these in a few different shapes across versions:
+ * renders these as:
  *
  *   "voice Error pull access denied for openpalm/voice ..."
- *   " ⠿ voice Error    pull access denied for openpalm/voice ..."
  *   "Service \"voice\" failed to build: ..."
  *
  * We also pick up the bare daemon error and attribute it to the service
  * named in nearby lines when no service-prefixed line is present.
+ *
+ * §2.1: every non-interactive compose invocation now runs with
+ * `--progress plain`, so this never has to tolerate the braille spinner-frame
+ * prefixes (⠋⠙⠹…) the default renderer used to emit — plain output is a
+ * deterministic `<service> <verb> <detail>` line.
  */
-const SERVICE_ERROR_RE = /^[\s⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠿✔✘×]*\s*([A-Za-z0-9._-]+)\s+(Error|Failed|failed)\s+(.+)$/;
+const SERVICE_ERROR_RE = /^\s*([A-Za-z0-9._-]+)\s+(Error|Failed|failed)\s+(.+)$/;
 const SERVICE_FAILED_QUOTED_RE = /Service\s+["']([A-Za-z0-9._-]+)["']\s+failed[^:]*:\s*(.+)$/i;
 const SERVICE_NOT_FOUND_RE = /no such service:\s*([A-Za-z0-9._-]+)/i;
 const PULL_ACCESS_DENIED_RE = /pull access denied for\s+([^\s,]+)/i;
@@ -168,82 +177,23 @@ export function mapDockerError(stderr: string): DockerErrorMapping {
     };
   }
 
-  if (/cannot find specified .* file|no such file or directory|ENOTDIR|EISDIR/i.test(stderr)) {
+  // image_pull_failed — auth / rate-limit / bad tag / network, collapsed into
+  // ONE class: the remedy is always "check the registry/network/tag", and the
+  // raw stderr line (passed through in `summary`) already carries the specifics.
+  if (RATE_LIMIT_RE.test(stderr) || MANIFEST_UNKNOWN_RE.test(stderr) || NETWORK_ERROR_RE.test(stderr)
+    || /pull access denied|unauthorized|authentication required|requested access to the resource is denied|denied: requested access/i.test(stderr)) {
     return {
-      code: "missing_file",
-      message: "A required OpenPalm file or path is missing. Re-run setup or repair the install path, then retry.",
+      code: "image_pull_failed",
+      message: `Docker could not pull the required image: ${summary}`,
     };
   }
 
-  if (/permission denied|EACCES|EPERM/i.test(stderr)) {
+  // resource_exhausted — disk or memory; the fix is the same either way (free
+  // up the resource), so one class covers both raw-stderr-passthrough.
+  if (/no space left on device|ENOSPC|out of memory|cannot allocate memory|ENOMEM|oom killed|oomkilled/i.test(stderr)) {
     return {
-      code: "permission_denied",
-      message: "Permission denied. Check that OpenPalm and Docker can read and write the required files.",
-    };
-  }
-
-  if (/no space left on device|ENOSPC/i.test(stderr)) {
-    return {
-      code: "no_space",
-      message: "Your disk is full. Free up space, then retry.",
-    };
-  }
-
-  if (/no matching manifest for|platform .* does not match the detected host platform|requested image's platform/i.test(stderr)) {
-    return {
-      code: "platform_mismatch",
-      message: "The requested image does not support this machine's platform. Check the selected image tag or runtime architecture.",
-    };
-  }
-
-  // Rate limit (Docker Hub toomanyrequests) — check before generic image_auth
-  if (RATE_LIMIT_RE.test(stderr)) {
-    // Try to extract the offending image:tag from context lines
-    const imageMatch = /toomanyrequests.*?(\S+:\S+)/i.exec(stderr)
-      ?? /pull\s+(\S+:\S+)/i.exec(stderr);
-    const imagePart = imageMatch ? ` for ${imageMatch[1]}` : "";
-    return {
-      code: "rate_limited",
-      message: `Docker Hub rate limit reached${imagePart}. Wait a few minutes and retry, or log in to Docker Hub (docker login) for a higher limit.`,
-    };
-  }
-
-  // manifest unknown — bad tag (pull requested a tag that does not exist)
-  if (MANIFEST_UNKNOWN_RE.test(stderr)) {
-    const m = MANIFEST_UNKNOWN_RE.exec(stderr);
-    const imagePart = m?.[1] ? ` (${m[1]})` : "";
-    // Also try to pick up image:tag from nearby context if the regex didn't
-    const tagMatch = imagePart ? null : /(?:pull|manifest for)\s+(\S+:\S+)/i.exec(stderr);
-    const extra = imagePart || (tagMatch ? ` (${tagMatch[1]})` : "");
-    return {
-      code: "manifest_unknown",
-      message: `The requested image tag does not exist in the registry${extra}. Check your version pin or channel setting, then retry.`,
-    };
-  }
-
-  // Network-level pull failure
-  if (NETWORK_ERROR_RE.test(stderr)) {
-    return {
-      code: "network_error",
-      message: "A network error interrupted the image pull. Check your internet connection and retry.",
-    };
-  }
-
-  if (/pull access denied|unauthorized|authentication required|requested access to the resource is denied|denied: requested access/i.test(stderr)) {
-    // Try to extract the offending image:tag
-    const imageMatch = /pull access denied for\s+(\S+)/i.exec(stderr)
-      ?? /unauthorized.*?(\S+:\S+)/i.exec(stderr);
-    const imagePart = imageMatch ? ` (${imageMatch[1]})` : "";
-    return {
-      code: "image_auth",
-      message: `Docker could not pull one or more images${imagePart} because the image is private, missing, or requires authentication.`,
-    };
-  }
-
-  if (/out of memory|cannot allocate memory|ENOMEM|oom killed|oomkilled/i.test(stderr)) {
-    return {
-      code: "out_of_memory",
-      message: "Docker ran out of memory while starting containers. Free memory or lower the workload, then retry.",
+      code: "resource_exhausted",
+      message: `Docker ran out of a critical resource (disk space or memory): ${summary}`,
     };
   }
 
@@ -261,6 +211,9 @@ export function mapDockerError(stderr: string): DockerErrorMapping {
     };
   }
 
+  // docker_error — the fallback for everything else (missing files,
+  // permission errors, platform mismatches, and any novel daemon error):
+  // raw-stderr passthrough rather than bespoke copy per pattern (§2.1 shrink).
   return {
     code: "docker_error",
     message: summary,
