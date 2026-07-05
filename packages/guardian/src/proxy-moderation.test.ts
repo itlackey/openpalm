@@ -276,4 +276,21 @@ describe("/oc proxy — content moderation (§3.5, write-path only, fail-closed)
     const data = (await resp.json()) as { title?: string };
     expect(data.title).toBe(MALICIOUS);
   });
+
+  // rev3-F2 gap: the pinned /session/{id}/message and /prompt_async request body
+  // also accepts an optional `system` field (a free-text override of the system
+  // prompt) alongside `parts`. Malicious text placed ONLY in `system` must still
+  // be screened and blocked — not silently forwarded because extractPromptText
+  // once looked at parts[].text alone.
+  test("malicious content in the `system` field (non-parts[].text location) is screened and blocked", async () => {
+    const id = await createSessionFor("mal-user-3");
+    const before = messageHits;
+    const resp = await ocCall("POST", `/session/${id}/message`, {
+      userId: "mal-user-3",
+      body: JSON.stringify({ system: MALICIOUS, parts: [{ type: "text", text: "hello" }] }),
+    });
+    expect(resp.status).toBe(403);
+    expect((await resp.json()).error).toBe("content_blocked");
+    expect(messageHits).toBe(before);
+  });
 });
