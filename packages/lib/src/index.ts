@@ -553,6 +553,7 @@ export {
 // ── Canonical version vocabulary (Docker `v`-tag / npm version / dist-tag) ───
 export {
   PLATFORM_VERSION,
+  ELECTRON_ASSET_PATTERN,
   isComparableSemver,
   compareComparableVersions,
   majorVersionOf,
