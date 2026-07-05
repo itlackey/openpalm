@@ -106,7 +106,7 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
     return /^(assistant|opencode|provider|llm|embedding|akm|user)_/.test(secretId);
   }
   if (serviceName === 'guardian') {
-    return secretId.startsWith('guardian_') || secretId.startsWith('portal_');
+    return secretId.startsWith('guardian_') || secretId.startsWith('portal_') || secretId.startsWith('op_guardian_');
   }
   if (serviceName === 'admin') {
     return /^(admin|ui|openpalm)_/.test(secretId);
