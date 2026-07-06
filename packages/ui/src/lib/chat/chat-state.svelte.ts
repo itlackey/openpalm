@@ -19,6 +19,7 @@
  * reassignment is what fires re-renders in the SessionPicker.
  */
 import {
+	abortChatTurn,
 	createSession,
 	getSessionMessages,
 	listSessions,
@@ -53,12 +54,9 @@ import type { ToolStripEntry } from './tool-strip.js';
 import { isUserFacingTool } from './tool-strip.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
-import {
-	speakText,
-	stopSpeaking,
-	voiceState,
-	type SpeakTextOptions,
-} from '$lib/voice/voice-state.svelte.js';
+import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
+import { playAck } from '$lib/voice/earcon.js';
+import { extractSpeakableChunks } from '$lib/voice/sentence-stream.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
 import { mapAssistantError } from './assistant-error.js';
 
@@ -83,7 +81,8 @@ export type PendingQuestionState = QuestionAsk & {
 type PendingTurn = {
 	endpointId: EndpointId;
 	sessionId: SessionId;
-	userText: string;
+	/** How far into pendingAssistantText streamed TTS has already spoken. */
+	spokenOffset: number;
 	reasoningPartIds: Set<string>;
 	resolve: () => void;
 	reject: (error: Error) => void;
@@ -118,6 +117,13 @@ class ChatService {
 	entriesLoading = $state(false);
 	sending = $state(false);
 	error = $state('');
+	/**
+	 * Text of the most recent send() call that failed before reaching the
+	 * assistant. Cleared at the start of every send() (success or not) so it
+	 * only ever reflects the latest failure. Drives the error banner's retry
+	 * button.
+	 */
+	lastFailedText = $state('');
 	pendingAssistantText = $state('');
 	pendingToolStates = $state<LiveToolState[]>([]);
 	pendingPermission = $state<PendingPermissionState | null>(null);
@@ -343,12 +349,12 @@ class ChatService {
 
 	/**
 	 * Speak `text` via auto-TTS iff the browser supports it and the operator
-	 * has enabled auto-speak. Single guard shared by the ack and the reply so
-	 * the `ttsSupported && ttsAutoEnabled` check lives in one place.
+	 * has enabled auto-speak. Single guard for spoken replies so the
+	 * `ttsSupported && ttsAutoEnabled` check lives in one place.
 	 */
-	private maybeSpeak(text: string, opts: SpeakTextOptions): void {
+	private maybeSpeak(text: string): void {
 		if (!voiceState.ttsSupported || !voiceState.ttsAutoEnabled) return;
-		void speakText(text, opts);
+		void speakText(text);
 	}
 
 	/**
@@ -360,10 +366,14 @@ class ChatService {
 	 */
 	private finalizeTurn(args: {
 		sessionId: SessionId;
-		userText: string;
 		replyText?: string;
+		/** How much of the reply streamed TTS already spoke sentence-by-sentence. */
+		spokenOffset?: number;
+		/** Skip auto-TTS — used when the user stopped the turn mid-reply. */
+		suppressSpeech?: boolean;
 	}): void {
-		const text = (args.replyText ?? this.pendingAssistantText).trim() || '(no response)';
+		const raw = args.replyText ?? this.pendingAssistantText;
+		const text = raw.trim() || '(no response)';
 
 		// Preserve answered-question acknowledgment as a transcript note so
 		// "Answer sent." isn't lost when pendingQuestion is cleared below.
@@ -384,12 +394,12 @@ class ChatService {
 		this._appendAssistantReply(text, capturedToolStates);
 		this._resetPendingRenderState();
 		this._bumpSession(args.sessionId);
-		if (text !== '(no response)') {
-			this.maybeSpeak(text, {
-				mode: 'chat_reply',
-				userText: args.userText,
-				assistantText: text,
-			});
+		if (text !== '(no response)' && !args.suppressSpeech) {
+			// Streaming TTS already spoke everything before spokenOffset — only
+			// the unspoken remainder goes to the queue here. Non-streaming paths
+			// pass no offset and speak the whole reply.
+			const remainder = raw.slice(args.spokenOffset ?? 0).trim();
+			if (remainder) this.maybeSpeak(remainder);
 		}
 		notifyAssistantReply(text === '(no response)' ? '' : text);
 	}
@@ -399,8 +409,8 @@ class ChatService {
 		if (!pending) return;
 		this.finalizeTurn({
 			sessionId: pending.sessionId,
-			userText: pending.userText,
 			replyText,
+			spokenOffset: pending.spokenOffset,
 		});
 		pending.resolve();
 	}
@@ -439,6 +449,18 @@ class ChatService {
 		const textDelta = extractTextDelta(raw, pending.sessionId, pending.reasoningPartIds);
 		if (textDelta) {
 			this.pendingAssistantText += textDelta;
+			// Speak complete sentences as they stream in (same guard as
+			// maybeSpeak). finalizeTurn speaks only the remainder past
+			// spokenOffset; stopSpeaking (stop button, toggle off) drops the
+			// queue so already-extracted chunks go silent with everything else.
+			if (voiceState.ttsSupported && voiceState.ttsAutoEnabled) {
+				const { chunks, nextOffset } = extractSpeakableChunks(
+					this.pendingAssistantText,
+					pending.spokenOffset
+				);
+				for (const chunk of chunks) void speakText(chunk);
+				pending.spokenOffset = nextOffset;
+			}
 		}
 
 		const toolUpdate = extractToolUpdate(raw, pending.sessionId);
@@ -661,6 +683,7 @@ class ChatService {
 	async send(text: string): Promise<void> {
 		const trimmed = text.trim();
 		if (!trimmed) return;
+		this.lastFailedText = '';
 		if (this.pendingQuestion && this.pendingQuestion.questions.length === 1 && this.sending) {
 			await this.answerQuestion(trimmed);
 			return;
@@ -691,10 +714,11 @@ class ChatService {
 		this._resetPendingRenderState();
 		this.error = '';
 		this.sending = true;
-		this.maybeSpeak('Working on it.', {
-			mode: 'chat_ack',
-			userText: trimmed,
-		});
+		// Audible "message sent" ack. Gated on the spoken-responses toggle only
+		// (it governs all audible feedback) — not on ttsSupported, since the
+		// earcon needs no TTS engine. Playing inside the send-click gesture
+		// also primes the autoplay policy for the reply's TTS audio.
+		if (voiceState.ttsAutoEnabled) playAck();
 
 		try {
 			if (this._unsubscribeEvents && this.liveConnected) {
@@ -705,7 +729,7 @@ class ChatService {
 					this._pendingTurn = {
 						endpointId: this.activeEndpointId,
 						sessionId,
-						userText: trimmed,
+						spokenOffset: 0,
 						reasoningPartIds: new Set(),
 						resolve,
 						reject,
@@ -721,10 +745,14 @@ class ChatService {
 					.filter((p) => p.type === 'text' && p.text)
 					.map((p) => p.text ?? '')
 					.join('');
-				this.finalizeTurn({ sessionId, userText: trimmed, replyText });
+				this.finalizeTurn({ sessionId, replyText });
 			}
 		} catch (e) {
 			this._resetPendingRenderState();
+			// The turn never reached the assistant — drop the optimistic user
+			// entry and remember the text so the error banner can offer retry.
+			this.entries = this.entries.filter((entry) => entry.id !== userEntry.id);
+			this.lastFailedText = trimmed;
 			const status = (e as { status?: number } | null)?.status;
 			if (status === 503 || status === 502) {
 				// Clear active session so a retry can re-establish.
@@ -738,6 +766,82 @@ class ChatService {
 		} finally {
 			this.sending = false;
 		}
+	}
+
+	/**
+	 * Conversation-mode entry point — barge-in aware. The composer's submit
+	 * path keeps calling send() directly (no-op while sending unless a
+	 * question is pending); a spoken utterance must never be silently dropped
+	 * by that guard. If a reply is mid-generation, stop it first — stopTurn()
+	 * halts TTS and finalizes the partial text unspoken — then send the
+	 * utterance. When a question is pending, send() already routes the text
+	 * as the answer, so no stop is needed.
+	 */
+	async sendUtterance(text: string): Promise<void> {
+		const trimmed = text.trim();
+		if (!trimmed) return;
+		if (this.sending && !this.pendingQuestion) {
+			await this.stopTurn();
+			// stopTurn() resolves the pending-turn promise, but send()'s
+			// `finally` clears `sending` in a later continuation. Wait for the
+			// flag to actually clear rather than relying on microtask ordering.
+			// Bounded so a turn that refuses to end can't wedge the mic loop.
+			for (let i = 0; this.sending && i < 20; i++) {
+				await new Promise<void>((resolve) => setTimeout(resolve, 10));
+			}
+			if (this.sending) {
+				// The turn refused to end (e.g. the non-SSE fallback path has no
+				// pending-turn promise for stopTurn to resolve). send()'s guard
+				// would swallow the utterance silently — surface it as a failed
+				// send so the error banner offers retry instead.
+				this.lastFailedText = trimmed;
+				this.error =
+					'The assistant is still finishing the previous reply — use retry to send your message.';
+				return;
+			}
+		}
+		await this.send(trimmed);
+	}
+
+	/**
+	 * Stop the in-flight turn. No-op if nothing is sending. The upstream abort
+	 * is best-effort — OpenCode may have already finished or the endpoint may
+	 * be unreachable — the turn is always finished locally regardless so the
+	 * UI never gets stuck waiting on `sending`.
+	 *
+	 * Clearing `_pendingTurn` before resolving is what makes a late SSE
+	 * turn-end for the aborted turn a no-op: `_onLiveEvent` bails out as soon
+	 * as `_pendingTurn` is null.
+	 */
+	async stopTurn(): Promise<void> {
+		if (!this.sending) return;
+		const sessionId = this.activeSessionId;
+		if (sessionId) {
+			try {
+				await abortChatTurn(sessionId);
+			} catch {
+				// Best-effort — finish the turn locally below either way.
+			}
+		}
+		stopSpeaking();
+		const pending = this._clearPendingTurn();
+		if (this.pendingAssistantText) {
+			this.finalizeTurn({
+				sessionId: pending?.sessionId ?? sessionId ?? '',
+				suppressSpeech: true,
+			});
+		} else {
+			this._resetPendingRenderState();
+			const stoppedNote = {
+				id: crypto.randomUUID(),
+				type: 'note' as const,
+				label: 'Stopped',
+				text: 'Stopped.',
+				timestamp: Date.now(),
+			};
+			this.entries = [...this.entries, stoppedNote];
+		}
+		pending?.resolve();
 	}
 
 	async answerPermission(reply: 'once' | 'always' | 'reject'): Promise<void> {
@@ -850,6 +954,7 @@ class ChatService {
 		this._clearPendingTurn();
 		this.entries = [];
 		this.error = '';
+		this.lastFailedText = '';
 		this._resetPendingRenderState();
 		// Reassign to a fresh Map so subscribers re-render to empty state.
 		this.byEndpoint = new SvelteMap();

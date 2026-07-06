@@ -121,6 +121,22 @@ export async function startChatMessageTurn(
   }
 }
 
+/**
+ * Abort the in-flight turn on an existing session via the SvelteKit broker.
+ * Best-effort from the caller's perspective — OpenCode exposes this as
+ * `POST /session/{id}/abort` (see `@opencode-ai/sdk` `session.abort`).
+ */
+export async function abortChatTurn(sessionId: string): Promise<void> {
+  const res = await requireOk(
+    await request(
+      'POST',
+      `/proxy/assistant/session/${encodeURIComponent(sessionId)}/abort`,
+      {}
+    )
+  );
+  await res.text().catch(() => '');
+}
+
 export async function replyChatPermission(
   requestId: string,
   reply: 'once' | 'always' | 'reject'

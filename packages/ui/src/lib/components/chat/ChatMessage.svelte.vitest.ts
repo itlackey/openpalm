@@ -127,3 +127,70 @@ describe('ChatMessage — tool activity is panel-only (not inline)', () => {
     expect(container.textContent?.trim()).toBe('');
   });
 });
+
+describe('ChatMessage — copy affordances', () => {
+  /** Stubs navigator.clipboard.writeText, capturing writes; returns a restore fn. */
+  function stubClipboard(written: string[]): () => void {
+    const original = navigator.clipboard.writeText.bind(navigator.clipboard);
+    navigator.clipboard.writeText = async (text: string) => {
+      written.push(text);
+    };
+    return () => {
+      navigator.clipboard.writeText = original;
+    };
+  }
+
+  test('assistant message renders a "Copy message" button near the mark', async () => {
+    const { container } = await render(ChatMessage, { props: { entry: assistantMsg('copy me') } });
+    await expect.element(page.getByRole('button', { name: 'Copy message' })).toBeInTheDocument();
+    expect(container.querySelector('.mark-row .msg-copy')).not.toBeNull();
+  });
+
+  test('user message has no copy button', async () => {
+    const { container } = await render(ChatMessage, { props: { entry: userMsg('mine') } });
+    await expect.element(page.getByText('mine')).toBeVisible();
+    expect(container.querySelector('.msg-copy')).toBeNull();
+  });
+
+  test('clicking copy writes the message text and swaps the label to "Copied"', async () => {
+    const written: string[] = [];
+    const restore = stubClipboard(written);
+    try {
+      await render(ChatMessage, { props: { entry: assistantMsg('copy me') } });
+      const btn = page.getByRole('button', { name: 'Copy message' });
+      await expect.element(btn).toBeInTheDocument();
+      await btn.click();
+      await expect.element(page.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      expect(written).toEqual(['copy me']);
+      // Confirmation is transient — the label reverts after ~1.5s.
+      await expect.element(page.getByRole('button', { name: 'Copy message' }), {
+        timeout: 3000,
+      }).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  test('each code block gets a "Copy code" button copying its text', async () => {
+    const written: string[] = [];
+    const restore = stubClipboard(written);
+    try {
+      const md = 'Run this:\n\n```\nconst a = 1;\n```\n';
+      const { container } = await render(ChatMessage, { props: { entry: assistantMsg(md) } });
+      const btn = page.getByRole('button', { name: 'Copy code' });
+      await expect.element(btn).toBeInTheDocument();
+      expect(container.querySelector('pre .code-copy')).not.toBeNull();
+      await btn.click();
+      await expect.element(page.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      expect(written).toEqual(['const a = 1;\n']);
+    } finally {
+      restore();
+    }
+  });
+
+  test('assistant message without code blocks has no code-copy buttons', async () => {
+    const { container } = await render(ChatMessage, { props: { entry: assistantMsg('plain words') } });
+    await expect.element(page.getByText('plain words')).toBeVisible();
+    expect(container.querySelector('.code-copy')).toBeNull();
+  });
+});

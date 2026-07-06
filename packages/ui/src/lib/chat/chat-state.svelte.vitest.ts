@@ -15,7 +15,12 @@ vi.mock('$lib/voice/voice-state.svelte.js', () => ({
   stopSpeaking: vi.fn(),
 }));
 
+vi.mock('$lib/voice/earcon.js', () => ({
+  playAck: vi.fn(),
+}));
+
 vi.mock('$lib/api.js', () => ({
+  abortChatTurn: vi.fn(),
   createSession: vi.fn(),
   getSessionMessages: vi.fn(),
   listSessions: vi.fn(),
@@ -43,12 +48,14 @@ vi.mock('./session-events.js', () => ({
 
 import * as api from '$lib/api.js';
 import * as voice from '$lib/voice/voice-state.svelte.js';
+import * as earcon from '$lib/voice/earcon.js';
 import * as sse from './session-events.js';
 import type { SessionSummary, ChatMessage } from '$lib/types.js';
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 import { chat } from './chat-state.svelte.js';
 
 const mocked = {
+  abortChatTurn: vi.mocked(api.abortChatTurn),
   createSession: vi.mocked(api.createSession),
   getSessionMessages: vi.mocked(api.getSessionMessages),
   listSessions: vi.mocked(api.listSessions),
@@ -68,11 +75,13 @@ beforeEach(() => {
   chat.sending = false;
   chat.error = '';
   chat.entriesLoading = false;
+  mocked.abortChatTurn.mockReset();
   mocked.createSession.mockReset();
   mocked.getSessionMessages.mockReset();
   mocked.listSessions.mockReset();
 	mocked.sendChatMessage.mockReset();
 	vi.mocked(voice.speakText).mockReset();
+	vi.mocked(earcon.playAck).mockReset();
 	voice.voiceState.ttsSupported = false;
 	voice.voiceState.ttsAutoEnabled = false;
 	sseCaptured.handlers = null;
@@ -213,7 +222,7 @@ describe('send', () => {
 		expect(second.text).toBe('pong');
 	});
 
-	it('speaks an acknowledgement and then a persona-shaped final reply when auto-TTS is enabled', async () => {
+	it('plays the ack earcon and speaks the full reply on the non-streaming path when auto-TTS is enabled', async () => {
 		voice.voiceState.ttsSupported = true;
 		voice.voiceState.ttsAutoEnabled = true;
 		mocked.listSessions.mockResolvedValueOnce([]);
@@ -226,15 +235,90 @@ describe('send', () => {
 
 		await chat.send('Please help.');
 
-		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Working on it.', {
-			mode: 'chat_ack',
-			userText: 'Please help.',
+		// The ack is the earcon — never a spoken phrase. The first speakText
+		// in a turn is reply text.
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
+		// Nothing streamed, so the whole reply is spoken at finalize — text
+		// only, no options (the LLM speech-prep plumbing is gone).
+		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Here is the answer.');
+	});
+
+	it('speaks completed sentences as they stream and only the remainder at turn end', async () => {
+		voice.voiceState.ttsSupported = true;
+		voice.voiceState.ttsAutoEnabled = true;
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('tell me a story');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'The first sentence is finished here. And then ' },
 		});
-		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(2, 'Here is the answer.', {
-			mode: 'chat_reply',
-			userText: 'Please help.',
-			assistantText: 'Here is the answer.',
+		// The completed sentence is spoken immediately (the ack is the earcon,
+		// so the first speakText is the first reply chunk).
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(
+			1,
+			'The first sentence is finished here.'
+		);
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'the tail arrives without punctuation' },
 		});
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.idle',
+			properties: { sessionID: 'sess1' },
+		});
+		await sendPromise;
+
+		// finalizeTurn speaks only the unspoken remainder — never the full
+		// reply again.
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(
+			2,
+			'And then the tail arrives without punctuation'
+		);
+		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(2);
+
+		const assistantEntry = chat.entries.find(
+			(e) => !e.type && (e as ChatMessage).role === 'assistant'
+		) as ChatMessage | undefined;
+		expect(assistantEntry?.text).toBe(
+			'The first sentence is finished here. And then the tail arrives without punctuation'
+		);
+	});
+
+	it('does not run the sentence streamer when auto-TTS is off', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('tell me a story');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'A whole completed sentence right here. ' },
+		});
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.idle',
+			properties: { sessionID: 'sess1' },
+		});
+		await sendPromise;
+
+		expect(vi.mocked(voice.speakText)).not.toHaveBeenCalled();
+		// The toggle governs all audible feedback — the earcon stays silent too.
+		expect(vi.mocked(earcon.playAck)).not.toHaveBeenCalled();
 	});
 
 	it('is rejected when already sending', async () => {
@@ -243,10 +327,43 @@ describe('send', () => {
     expect(mocked.sendChatMessage).not.toHaveBeenCalled();
   });
 
+	it('removes the optimistic user entry and records lastFailedText when the send fails', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockRejectedValueOnce(new Error('boom'));
+
+		await chat.send('will fail');
+
+		// The turn never reached the assistant — no optimistic user entry left behind.
+		expect(chat.entries).toEqual([]);
+		expect(chat.lastFailedText).toBe('will fail');
+		expect(chat.error).toBeTruthy();
+	});
+
+	it('clears lastFailedText on the next successful send', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockRejectedValueOnce(new Error('boom'));
+		await chat.send('will fail');
+		expect(chat.lastFailedText).toBe('will fail');
+
+		mocked.sendChatMessage.mockResolvedValueOnce({
+			parts: [{ type: 'text', text: 'pong' }],
+		});
+		await chat.send('will fail');
+
+		expect(chat.lastFailedText).toBe('');
+		expect(chat.entries.length).toBe(2); // user + assistant, no leftover failed entry
+	});
+
 	// finalizeTurn decision: an empty reply collapses to '(no response)' and
-	// must NOT be spoken even with auto-TTS on (only the ack is spoken). This
-	// is the same guard the streaming path uses, now shared via finalizeTurn.
-	it('renders (no response) and speaks only the ack for an empty non-streaming reply', async () => {
+	// must NOT be spoken even with auto-TTS on (only the earcon ack fires).
+	// This is the same guard the streaming path uses, shared via finalizeTurn.
+	it('renders (no response) and speaks nothing for an empty non-streaming reply', async () => {
 		voice.voiceState.ttsSupported = true;
 		voice.voiceState.ttsAutoEnabled = true;
 		mocked.listSessions.mockResolvedValueOnce([]);
@@ -262,12 +379,262 @@ describe('send', () => {
 		) as ChatMessage | undefined;
 		expect(assistantEntry?.text).toBe('(no response)');
 
-		// Only the ack is spoken; the '(no response)' reply is suppressed.
-		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Working on it.', {
-			mode: 'chat_ack',
-			userText: 'anything',
+		// Only the earcon ack fires; the '(no response)' reply is suppressed
+		// and speakText is never called for an ack.
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).not.toHaveBeenCalled();
+	});
+});
+
+describe('stopTurn', () => {
+	it('is a no-op when nothing is sending', async () => {
+		expect(chat.sending).toBe(false);
+		await chat.stopTurn();
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+		expect(chat.entries).toEqual([]);
+	});
+
+	it('finalizes partial streamed text unspoken and resolves the pending send', async () => {
+		voice.voiceState.ttsSupported = true;
+		voice.voiceState.ttsAutoEnabled = true;
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('tell me a long story');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'Once upon a time' },
 		});
+		expect(chat.pendingAssistantText).toBe('Once upon a time');
+
+		await chat.stopTurn();
+		// Never throws / rejects — a user-initiated stop is not an error.
+		await expect(sendPromise).resolves.toBeUndefined();
+
+		expect(mocked.abortChatTurn).toHaveBeenCalledWith('sess1');
+		expect(chat.sending).toBe(false);
+
+		const assistantEntry = chat.entries.find(
+			(e) => !e.type && (e as ChatMessage).role === 'assistant'
+		) as ChatMessage | undefined;
+		expect(assistantEntry?.text).toBe('Once upon a time');
+
+		// Only the earcon ack fired — the partial reply is never sent to TTS.
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).not.toHaveBeenCalled();
+	});
+
+	it('appends a "Stopped." note and drops no assistant entry when nothing streamed yet', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		expect(chat.pendingAssistantText).toBe('');
+		await chat.stopTurn();
+		await expect(sendPromise).resolves.toBeUndefined();
+
+		expect(chat.sending).toBe(false);
+		const assistantEntries = chat.entries.filter(
+			(e) => !e.type && (e as ChatMessage).role === 'assistant'
+		);
+		expect(assistantEntries.length).toBe(0);
+
+		const note = chat.entries.find((e) => (e as { type?: string }).type === 'note') as
+			| { type: 'note'; label: string; text: string }
+			| undefined;
+		expect(note?.label).toBe('Stopped');
+		expect(note?.text).toBe('Stopped.');
+	});
+
+	it('finishes locally even when the upstream abort call fails', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockRejectedValueOnce(new Error('endpoint unreachable'));
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		await chat.stopTurn();
+		await expect(sendPromise).resolves.toBeUndefined();
+		expect(chat.sending).toBe(false);
+	});
+
+	it('ignores a late turn-end SSE event for the already-stopped turn', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		await chat.stopTurn();
+		await sendPromise;
+		const entriesAfterStop = [...chat.entries];
+
+		// A turn-end event that arrives after the stop must be a no-op: the
+		// null-guard at the top of _onLiveEvent bails out once _pendingTurn
+		// has been cleared by stopTurn().
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.idle',
+			properties: { sessionID: 'sess1' },
+		});
+
+		expect(chat.entries).toEqual(entriesAfterStop);
+	});
+});
+
+describe('sendUtterance', () => {
+	it('barge-in during a streaming turn stops it (partial finalized unspoken) and sends the utterance', async () => {
+		voice.voiceState.ttsSupported = true;
+		voice.voiceState.ttsAutoEnabled = true;
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValue(undefined);
+
+		const firstSend = chat.send('tell me a long story');
+		await new Promise<void>((r) => setTimeout(r, 0));
+		expect(chat.sending).toBe(true);
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: {
+				sessionID: 'sess1',
+				delta: 'The first sentence is done. And the rest is coming',
+			},
+		});
+		// Streamed TTS spoke the completed sentence (the ack is the earcon,
+		// so call 1 is the first reply chunk).
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(
+			1,
+			'The first sentence is done.'
+		);
+
+		// Barge-in: the user speaks while the reply is still generating.
+		const bargePromise = chat.sendUtterance('actually do this instead');
+		await expect(firstSend).resolves.toBeUndefined();
+
+		// Wait for the second turn to register, then finish it over SSE.
+		while (vi.mocked(api.startChatMessageTurn).mock.calls.length < 2) {
+			await new Promise<void>((r) => setTimeout(r, 0));
+		}
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'New reply.' },
+		});
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.idle',
+			properties: { sessionID: 'sess1' },
+		});
+		await bargePromise;
+
+		// The interrupted turn was aborted upstream and TTS was halted.
+		expect(mocked.abortChatTurn).toHaveBeenCalledWith('sess1');
+		expect(vi.mocked(voice.stopSpeaking)).toHaveBeenCalled();
+
+		// The utterance was NOT lost — it went out as the second turn.
+		expect(vi.mocked(api.startChatMessageTurn)).toHaveBeenNthCalledWith(
+			2,
+			'sess1',
+			'actually do this instead'
+		);
+
+		// Transcript order: user, partial assistant, barge-in user, new assistant.
+		const texts = chat.entries
+			.filter((e): e is ChatMessage => !e.type)
+			.map((e) => `${e.role}:${e.text}`);
+		expect(texts).toEqual([
+			'user:tell me a long story',
+			'assistant:The first sentence is done. And the rest is coming',
+			'user:actually do this instead',
+			'assistant:New reply.',
+		]);
+
+		// The interrupted reply's unspoken remainder is never sent to TTS.
+		const spoken = vi.mocked(voice.speakText).mock.calls.map((c) => c[0]);
+		expect(spoken.some((t) => String(t).includes('And the rest is coming'))).toBe(false);
+		expect(chat.sending).toBe(false);
+	});
+
+	it('sends normally (no stop) when nothing is in flight', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockResolvedValueOnce({
+			parts: [{ type: 'text', text: 'pong' }],
+		});
+
+		await chat.sendUtterance('ping');
+
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+		expect(mocked.sendChatMessage).toHaveBeenCalledWith('fresh', 'ping');
+		expect(chat.entries.length).toBe(2); // user + assistant
+	});
+
+	it('routes the utterance as the answer (no stop) when a question is pending', async () => {
+		chat.sending = true;
+		chat.pendingQuestion = {
+			requestID: 'q1',
+			questions: [{ question: 'Proceed?', header: '', options: [] }],
+			status: 'pending',
+			answers: [''],
+			message: '',
+		};
+		vi.mocked(api.replyChatQuestion).mockResolvedValueOnce(undefined);
+
+		await chat.sendUtterance('yes please');
+
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+		expect(vi.mocked(api.replyChatQuestion)).toHaveBeenCalledWith('q1', [['yes please']]);
+		chat.sending = false;
+	});
+
+	it('surfaces a retry instead of silently dropping the utterance when sending never clears', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		// No onConnect(): the non-SSE fallback path has no pending-turn promise
+		// for stopTurn() to resolve, so `sending` stays true past the wait loop.
+		mocked.sendChatMessage.mockReturnValueOnce(new Promise(() => {}));
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+
+		void chat.send('slow question');
+		await new Promise<void>((r) => setTimeout(r, 0));
+		expect(chat.sending).toBe(true);
+
+		await chat.sendUtterance('barge in text');
+
+		expect(chat.lastFailedText).toBe('barge in text');
+		expect(chat.error).toContain('retry');
+		// The utterance was not silently forwarded into send()'s no-op guard.
+		expect(mocked.sendChatMessage).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(api.startChatMessageTurn)).not.toHaveBeenCalled();
 	});
 });
 
