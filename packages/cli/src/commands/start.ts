@@ -4,6 +4,7 @@ import {
   reconcileHostOwnership,
   acquireInstallLock,
   releaseInstallLock,
+  teardownRenamedProject,
 } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
@@ -61,6 +62,16 @@ export async function runStartAction(
   }
   try {
     if (services.length === 0) {
+      // Project rename (#540): if OP_PROJECT_NAME changed since the stack
+      // last came up, stop the recorded outgoing project first — otherwise
+      // its containers keep running (and holding host ports) under the old
+      // name while this `up` creates a second stack under the new one.
+      const renameTeardown = await teardownRenamedProject(state);
+      if (renameTeardown.warning) console.warn(renameTeardown.warning);
+      if (renameTeardown.downed) {
+        console.log(`Project rename: stopped previous docker project "${renameTeardown.downed}".`);
+      }
+
       // Stage artifacts and start all managed services (admin included if enabled)
       await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
       return;

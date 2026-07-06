@@ -13,6 +13,7 @@ import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './instal
 import { resolveBackupsDir } from './home.js';
 import { stackEnvPath } from './paths.js';
 import { discoverStackOverlays } from './config-persistence.js';
+import { teardownRenamedProject } from './project-rename.js';
 import { auditComposeSecrets } from './secret-audit.js';
 import { validateProposedState } from './validate.js';
 import { createLogger } from '../logger.js';
@@ -287,6 +288,17 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     emitProgress(options, progress);
 
     const composeOpts = buildComposeOptions(state);
+
+    // Project rename (#540): if OP_PROJECT_NAME changed since the last apply,
+    // the composeDown below only targets the NEW name — the still-running old
+    // project would keep its containers (and host ports) forever. Tear the
+    // recorded outgoing project down first, before anything comes up.
+    const renameTeardown = await teardownRenamedProject(state);
+    if (renameTeardown.warning) deployLogger.warn(renameTeardown.warning);
+    if (renameTeardown.downed) {
+      deployLogger.info(`project rename: stopped previous docker project "${renameTeardown.downed}"`);
+    }
+
     try {
       await composeDown({ ...composeOpts, removeVolumes: false, removeOrphans: true });
     } catch {

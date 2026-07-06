@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RequestHandler } from './$types';
-import { patchSecretsEnvFile, readStackEnv, writeFileAtomic } from '@openpalm/lib';
+import { patchSecretsEnvFile, readStackEnv, recordProjectRename, writeFileAtomic } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
@@ -80,10 +80,19 @@ export const PUT: RequestHandler = async (event) =>
     }
 
     const state = getState();
+    // Capture the outgoing project name BEFORE the patch overwrites it — a
+    // rename must be recorded so the next locked apply (deploy/update/start)
+    // tears the old compose project down instead of leaving it running
+    // unaddressed beside the new one (#540).
+    const previousProjectName = readStackEnv(state.homeDir).OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
     patchSecretsEnvFile(state.homeDir, {
       OP_PROJECT_NAME: projectName,
       OP_ASSISTANT_BIND_ADDRESS: body.lanExposureEnabled ? LAN_ASSISTANT_BIND_ADDRESS : DEFAULT_ASSISTANT_BIND_ADDRESS,
     });
+    const projectRenamed = previousProjectName !== projectName;
+    if (projectRenamed) {
+      recordProjectRename(state.homeDir, previousProjectName, projectName);
+    }
 
     const path = personaPath(state.configDir);
     mkdirSync(join(state.configDir, 'assistant'), { recursive: true });
@@ -97,6 +106,7 @@ export const PUT: RequestHandler = async (event) =>
       {
         ok: true,
         projectName,
+        projectRenamed,
         lanExposureEnabled: body.lanExposureEnabled,
         stackEnvPath: 'knowledge/env/stack.env',
         personaPath: 'config/assistant/persona.md',

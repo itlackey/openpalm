@@ -286,11 +286,11 @@ export function collectComposeEnvOverrides(envFiles?: string[]): Record<string, 
 
 /** Build common docker compose args: -f ... --project-name ... --env-file ... --profile ... */
 export function buildComposeCommandArgs(
-  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  options: { files: string[]; envFiles?: string[]; profiles?: string[]; projectName?: string },
   files: FileStore = realFileStore,
 ): string[] {
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
-  const args = ["--project-name", resolveComposeProjectName(envOverrides), ...options.files.flatMap((f) => ["-f", f])];
+  const args = ["--project-name", options.projectName ?? resolveComposeProjectName(envOverrides), ...options.files.flatMap((f) => ["-f", f])];
   for (const ef of options.envFiles ?? []) {
     if (files.exists(ef)) args.push("--env-file", ef);
   }
@@ -300,7 +300,7 @@ export function buildComposeCommandArgs(
 
 /** Build common prefix: compose --progress plain -f ... --project-name ... --env-file ... --profile ... */
 function buildComposeArgs(
-  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+  options: { files: string[]; envFiles?: string[]; profiles?: string[]; projectName?: string },
   files: FileStore = realFileStore,
 ): string[] {
   // --progress plain on every non-interactive (captured, non-tty) invocation —
@@ -553,6 +553,37 @@ export async function composeDown(
   const args = buildComposeArgs(options);
   args.push("down");
   if (options.removeVolumes) args.push("-v");
+  if (options.removeOrphans) args.push("--remove-orphans");
+  return run(args, undefined);
+}
+
+/**
+ * Run `docker compose down` against an EXPLICIT project name instead of the
+ * one resolved from env files. Exists for the project-rename flow (#540):
+ * once OP_PROJECT_NAME changes in stack.env, every normal compose call
+ * resolves the NEW name, so the outgoing project's containers can never be
+ * addressed again and would keep running forever. The rename teardown is the
+ * only caller that may target a project other than the current one — callers
+ * MUST verify ownership (working_dir label) before invoking this.
+ *
+ * No preflight: the compose config is validated by the surrounding apply
+ * flow, and this teardown must stay best-effort — a preflight hiccup must not
+ * strand the old project.
+ */
+export async function composeDownProject(
+  projectName: string,
+  options: {
+    files: string[];
+    profiles?: string[];
+    envFiles?: string[];
+    removeOrphans?: boolean;
+  }
+): Promise<DockerResult> {
+  if (!existsSync(options.files[0])) {
+    return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
+  }
+  const args = buildComposeArgs({ ...options, projectName });
+  args.push("down");
   if (options.removeOrphans) args.push("--remove-orphans");
   return run(args, undefined);
 }
