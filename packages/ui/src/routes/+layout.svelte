@@ -5,6 +5,8 @@
   import Toast from '$lib/components/common/Toast.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
   import { featuresService } from '$lib/features.svelte.js';
+  import { detectClientDisplayMode } from '$lib/client-context.js';
+  import { initializeRuntimeContext } from '$lib/runtime-context.svelte.js';
 
   interface Props {
     data: import('./$types').LayoutData;
@@ -19,6 +21,16 @@
 
   onMount(() => {
     themeService.init();
+    // Runtime context (plan ui-runtime-modes-plan.md Phase 1, #509): the
+    // client display mode is browser-detected — never server-computed — so it
+    // is initialized in onMount (client-only; also avoids mutating the
+    // module-level store during SSR, which is shared across requests). Like
+    // `features`, the server context is env-derived and constant at runtime,
+    // so a one-time init is correct; effectiveCapabilities is (re)derived
+    // inside initializeRuntimeContext.
+    initializeRuntimeContext(data.serverRuntimeContext, {
+      displayMode: detectClientDisplayMode(),
+    });
   });
 </script>
 
