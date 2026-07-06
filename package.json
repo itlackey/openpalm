@@ -7,6 +7,7 @@
     "packages/lib",
     "packages/portal-sdk",
     "packages/ui",
+    "packages/ui-kit",
     "packages/skeleton",
     "packages/guardian",
     "packages/cli",

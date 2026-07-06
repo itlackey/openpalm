@@ -122,6 +122,10 @@
         "yaml": "^2.8.0",
       },
     },
+    "packages/ui-kit": {
+      "name": "@openpalm/ui-kit",
+      "version": "0.12.52",
+    },
     "portals/discord": {
       "name": "@openpalm/discord-portal",
       "version": "0.12.44",
@@ -293,6 +297,8 @@
     "@openpalm/slack-portal": ["@openpalm/slack-portal@workspace:portals/slack"],
 
     "@openpalm/ui": ["@openpalm/ui@workspace:packages/ui"],
+
+    "@openpalm/ui-kit": ["@openpalm/ui-kit@workspace:packages/ui-kit"],
 
     "@oxc-project/types": ["@oxc-project/types@0.132.0", "", {}, "sha512-FESMOxil5Se014ui/Eq8fT5uHJo6nIRwH0PfJrZJXs6Gek3ZVFOrpUv3YIZT20m+extU98Hg1Ym72U58rlsxUQ=="],
 
