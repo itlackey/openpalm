@@ -26,7 +26,7 @@ describe('EndpointList', () => {
   test('renames the connections management link', async () => {
     render(EndpointList);
 
-    await expect.element(page.getByRole('link', { name: 'Manage assistant connections…' })).toHaveAttribute('href', '/admin/endpoints');
+    await expect.element(page.getByRole('link', { name: 'Manage assistant connections…' })).toHaveAttribute('href', '/connections');
   });
 
   test('shows the local assistant management link above assistant connections', async () => {

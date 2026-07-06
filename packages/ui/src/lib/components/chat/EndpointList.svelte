@@ -67,7 +67,7 @@
     </a>
   {/if}
 
-  <a class="list-item link" href={resolve('/admin/endpoints')} onclick={() => onChosen?.()}>
+  <a class="list-item link" href={resolve('/connections')} onclick={() => onChosen?.()}>
     Manage assistant connections…
   </a>
 </div>
