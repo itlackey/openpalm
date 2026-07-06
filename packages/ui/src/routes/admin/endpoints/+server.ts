@@ -64,7 +64,11 @@ export const POST: RequestHandler = async (event) =>
 
     try {
       const entry = addEndpoint({ label, url: urlCheck.url, password });
-      return jsonResponse(201, { endpoint: publish({ ...entry, isDefault: false }) }, requestId);
+      return jsonResponse(
+        201,
+        { endpoint: publish({ ...entry, kind: entry.kind ?? 'remote-opencode', isDefault: false }) },
+        requestId,
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'failed to create endpoint';
       return errorResponse(400, 'invalid_endpoint', msg, {}, requestId);

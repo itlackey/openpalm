@@ -1,13 +1,18 @@
 /**
- * Assistant endpoints — list of OpenCode servers the UI can target, with
- * one marked active. The "default" entry is synthesized from environment
- * (OP_OPENCODE_URL / OP_ASSISTANT_URL / OP_ASSISTANT_PORT) and cannot be
- * deleted. User-added endpoints are persisted to a JSON file in the
- * config directory (it's user-owned configuration, not service state —
- * see Phase 5 / D4 in docs/technical/auth-and-proxy-refactor-plan.md).
+ * Assistant connections — list of OpenCode servers the UI can target, with
+ * one marked active. The internal model uses "connection" language (plan
+ * ui-runtime-modes-plan.md §6.6, Phase 2 / #486); the on-disk file keeps its
+ * historical name and schema keys — `endpoints.json` with
+ * `{ activeId, endpoints }` — and is NEVER renamed or migrated.
+ *
+ * The "default" entry is synthesized from environment (OP_OPENCODE_URL /
+ * OP_ASSISTANT_URL / OP_ASSISTANT_PORT) and cannot be deleted. User-added
+ * connections are persisted to a JSON file in the config directory (it's
+ * user-owned configuration, not service state — see Phase 5 / D4 in
+ * docs/technical/auth-and-proxy-refactor-plan.md).
  *
  * File: ${configDir}/endpoints.json (mode 0600)
- * Shape: { activeId: string | null, endpoints: EndpointEntry[] }
+ * Shape: { activeId: string | null, endpoints: ConnectionEntry[] }
  *   - activeId === null or "default" → use the env-derived default
  *   - activeId === "<id>" → use the matching user entry (falls back to default if not found)
  *
@@ -19,11 +24,19 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getState } from './state.js';
 import type { RemoteStatus } from '@openpalm/lib';
+import type { ConnectionKind } from '$lib/types.js';
 
-export type EndpointEntry = {
+export type ConnectionEntry = {
   id: string;
   label: string;
   url: string;
+  /**
+   * Connection kind (plan §6.6). OPTIONAL on disk: legacy records carry no
+   * `kind` key and are defaulted at READ time — never rewritten in place (the
+   * Phase 2 acceptance is "no data migration"). An explicitly persisted kind
+   * always passes through untouched.
+   */
+  kind?: ConnectionKind;
   /**
    * Basic-auth username forwarded as Authorization header. Defaults to
    * `"openpalm"` for synthesized entries; user-added entries may override.
@@ -36,7 +49,12 @@ export type EndpointEntry = {
   password?: string;
 };
 
-export type ActiveEndpoint = EndpointEntry & {
+/** Legacy name — kept until every consumer migrates to connection language. */
+export type EndpointEntry = ConnectionEntry;
+
+export type ActiveConnection = ConnectionEntry & {
+  /** Always present after read-time defaulting (legacy records → 'remote-opencode'). */
+  kind: ConnectionKind;
   /** True for the env-derived default entry (cannot be edited or deleted). */
   isDefault: boolean;
   /**
@@ -47,10 +65,22 @@ export type ActiveEndpoint = EndpointEntry & {
   isLocal?: boolean;
 };
 
+/** Legacy name — kept until every consumer migrates to connection language. */
+export type ActiveEndpoint = ActiveConnection;
+
 type EndpointsFile = {
   activeId: string | null;
-  endpoints: EndpointEntry[];
+  endpoints: ConnectionEntry[];
 };
+
+/**
+ * Read-time kind defaulting (plan §6.6): a user-persisted record without a
+ * `kind` key is a remote OpenCode connection — that is the only thing the
+ * pre-Phase-2 UI let users add. Explicit kinds pass through untouched.
+ */
+function kindOf(entry: ConnectionEntry): ConnectionKind {
+  return entry.kind ?? 'remote-opencode';
+}
 
 const DEFAULT_ID = 'default';
 const LOCAL_ELECTRON_ID = 'local-electron';
@@ -148,7 +178,7 @@ function readLocalRuntime(): LocalRuntime | null {
   }
 }
 
-function localEndpoint(): ActiveEndpoint | null {
+function localEndpoint(): ActiveConnection | null {
   const rt = readLocalRuntime();
   if (!rt) return null;
   return {
@@ -157,6 +187,7 @@ function localEndpoint(): ActiveEndpoint | null {
     url: normalizeBrowserFacingUrl(rt.url),
     username: rt.username || 'openpalm',
     ...(rt.password ? { password: rt.password } : {}),
+    kind: 'local-opencode',
     isDefault: false,
     isLocal: true,
   };
@@ -217,7 +248,7 @@ function writeFile(data: EndpointsFile): void {
   try { chmodSync(path, 0o600); } catch { /* best effort */ }
 }
 
-function defaultEndpoint(): ActiveEndpoint {
+function defaultEndpoint(): ActiveConnection {
   const url =
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
@@ -230,6 +261,7 @@ function defaultEndpoint(): ActiveEndpoint {
     url: normalizeBrowserFacingUrl(url),
     username,
     password,
+    kind: 'local-opencode',
     isDefault: true,
   };
 }
@@ -278,23 +310,23 @@ export function normalizeEndpointUrl(input: string): string | null {
  * The local-electron entry is synthesized at call time from
  * state/local-opencode.runtime.json — never persisted to endpoints.json.
  */
-export function listEndpoints(): ActiveEndpoint[] {
+export function listConnections(): ActiveConnection[] {
   const { endpoints } = readFile();
   const local = localEndpoint();
   return [
     ...(local ? [local] : []),
     defaultEndpoint(),
-    ...endpoints.map((e) => ({ ...e, isDefault: false })),
+    ...endpoints.map((e) => ({ ...e, kind: kindOf(e), isDefault: false })),
   ];
 }
 
 /**
- * Returns the active endpoint, falling back to the default if no active id is
- * set OR if the active id is `local-electron` but the runtime.json isn't there
- * (e.g. the Electron child died). Re-reads runtime.json each call so a
+ * Returns the active connection, falling back to the default if no active id
+ * is set OR if the active id is `local-electron` but the runtime.json isn't
+ * there (e.g. the Electron child died). Re-reads runtime.json each call so a
  * password rotated by a new Electron launch is picked up immediately.
  */
-export function getActiveEndpoint(): ActiveEndpoint {
+export function getActiveConnection(): ActiveConnection {
   const { activeId, endpoints } = readFile();
   if (activeId === LOCAL_ELECTRON_ID) {
     const local = localEndpoint();
@@ -305,12 +337,12 @@ export function getActiveEndpoint(): ActiveEndpoint {
   if (!activeId || activeId === DEFAULT_ID) return defaultEndpoint();
   const found = endpoints.find((e) => e.id === activeId);
   if (!found) return defaultEndpoint();
-  return { ...found, isDefault: false };
+  return { ...found, kind: kindOf(found), isDefault: false };
 }
 
 // ── Write API ────────────────────────────────────────────────────────────────
 
-export function setActiveId(id: string | null): ActiveEndpoint {
+export function setActiveConnectionId(id: string | null): ActiveConnection {
   const data = readFile();
   if (!id || id === DEFAULT_ID) {
     data.activeId = null;
@@ -328,19 +360,21 @@ export function setActiveId(id: string | null): ActiveEndpoint {
     data.activeId = id;
   }
   writeFile(data);
-  return getActiveEndpoint();
+  return getActiveConnection();
 }
 
-export type EndpointInput = { label: string; url: string; password?: string };
+export type ConnectionInput = { label: string; url: string; password?: string };
+/** Legacy name — kept until every consumer migrates to connection language. */
+export type EndpointInput = ConnectionInput;
 
-export function addEndpoint(input: EndpointInput): EndpointEntry {
+export function addConnection(input: ConnectionInput): ConnectionEntry {
   const label = input.label.trim();
   if (!label) throw new Error('Label is required');
   const url = normalizeEndpointUrl(input.url);
   if (!url) throw new Error('URL must be a valid http(s) URL');
 
   const data = readFile();
-  const entry: EndpointEntry = {
+  const entry: ConnectionEntry = {
     id: randomUUID(),
     label,
     url,
@@ -351,14 +385,16 @@ export function addEndpoint(input: EndpointInput): EndpointEntry {
   return entry;
 }
 
-export type EndpointPatch = {
+export type ConnectionPatch = {
   label?: string;
   url?: string;
   /** undefined = leave unchanged; null = clear; string = set */
   password?: string | null;
 };
+/** Legacy name — kept until every consumer migrates to connection language. */
+export type EndpointPatch = ConnectionPatch;
 
-export function updateEndpoint(id: string, patch: EndpointPatch): EndpointEntry {
+export function updateConnection(id: string, patch: ConnectionPatch): ConnectionEntry {
   if (id === DEFAULT_ID) throw new Error('Cannot edit the default endpoint');
   if (id === LOCAL_ELECTRON_ID) {
     throw new Error('Cannot edit the local Electron OpenCode entry (it is ephemeral and per-launch)');
@@ -369,7 +405,7 @@ export function updateEndpoint(id: string, patch: EndpointPatch): EndpointEntry 
   if (idx === -1) throw new Error(`Endpoint not found: ${id}`);
   const current = data.endpoints[idx];
 
-  const next: EndpointEntry = { ...current };
+  const next: ConnectionEntry = { ...current };
   if (patch.label !== undefined) {
     const label = patch.label.trim();
     if (!label) throw new Error('Label cannot be empty');
@@ -391,7 +427,7 @@ export function updateEndpoint(id: string, patch: EndpointPatch): EndpointEntry 
   return next;
 }
 
-export function deleteEndpoint(id: string): void {
+export function deleteConnection(id: string): void {
   if (id === DEFAULT_ID) throw new Error('Cannot delete the default endpoint');
   if (id === LOCAL_ELECTRON_ID) {
     throw new Error('Cannot delete the local Electron OpenCode entry (managed by Electron lifecycle)');
@@ -404,7 +440,7 @@ export function deleteEndpoint(id: string): void {
   writeFile(data);
 }
 
-async function probeEndpoint(endpoint: ActiveEndpoint): Promise<RemoteStatus> {
+async function probeEndpoint(endpoint: ActiveConnection): Promise<RemoteStatus> {
   const headers = new Headers();
   if (endpoint.password) {
     const username = endpoint.username ?? 'openpalm';
@@ -439,7 +475,22 @@ export async function listRemoteStatuses(): Promise<RemoteStatus[]> {
   if (remoteStatusCache && remoteStatusCache.expiresAt > Date.now()) {
     return remoteStatusCache.value.map((status) => ({ ...status }));
   }
-  const statuses = await Promise.all(listEndpoints().map((endpoint) => probeEndpoint(endpoint)));
+  const statuses = await Promise.all(listConnections().map((endpoint) => probeEndpoint(endpoint)));
   remoteStatusCache = { value: statuses, expiresAt: Date.now() + 5_000 };
   return statuses.map((status) => ({ ...status }));
 }
+
+// ── Legacy endpoint-language aliases ─────────────────────────────────────────
+// Phase 2 (#486) renamed the internal model to "connection" (plan §6.6). The
+// pre-Phase-2 admin routes and tests still import these names; they are the
+// same functions and go away with `/admin/*` in Phase 4.
+export {
+  listConnections as listEndpoints,
+  getActiveConnection as getActiveEndpoint,
+  setActiveConnectionId as setActiveId,
+  addConnection as addEndpoint,
+  updateConnection as updateEndpoint,
+  deleteConnection as deleteEndpoint,
+  validateEndpointUrl as validateConnectionUrl,
+  normalizeEndpointUrl as normalizeConnectionUrl,
+};
