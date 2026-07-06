@@ -48,7 +48,15 @@ function send(res, path, status = 200) {
 }
 
 const server = createServer((req, res) => {
-  const pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
+  } catch {
+    // Malformed percent-escapes (e.g. /%zz) throw; a bad request must never
+    // take down the co-process the harness and assistant container rely on.
+    res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+    return res.end('bad request');
+  }
   // normalize() collapses any ../ segments; the join stays inside dir.
   const candidate = join(dir, normalize(join('/', pathname)));
   if (existsSync(candidate) && statSync(candidate).isFile()) return send(res, candidate);
