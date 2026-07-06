@@ -6,6 +6,8 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import { getActiveEndpoint } from "./endpoints.js";
 import { createOpenCodeClient, isRemoteSetupAllowed } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
+import { computeServerRuntimeContext } from "./features.js";
+import type { Capability } from "$lib/types.js";
 
 /**
  * Lazy OpenCode client bound to the currently active endpoint. The client is
@@ -108,6 +110,36 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
       "Missing or invalid credentials",
       {},
       requestId
+    );
+  }
+  return null;
+}
+
+/**
+ * Server-side capability guard (plan ui-runtime-modes-plan.md §6.4, §8.5).
+ *
+ * Returns a 403 JSON error Response when the resolved host mode does not
+ * expose `capability`, or null when it does. This is the SECURITY boundary —
+ * the browser-side `hasCapability()` is UX only. The check is deliberately
+ * capability-based, not session-based: a valid admin session in a mode
+ * without the capability (e.g. `connections:manage` in assistant-container)
+ * is still refused. Capability→mode logic itself lives ONLY in
+ * computeServerRuntimeContext / resolveCapabilities (plan §8.6); this helper
+ * just reads the advertised server capability set.
+ */
+export function requireCapability(
+  event: RequestEvent,
+  capability: Capability,
+  requestId: string,
+): Response | null {
+  const ctx = computeServerRuntimeContext(event);
+  if (!ctx.serverCapabilities.includes(capability)) {
+    return errorResponse(
+      403,
+      "capability_not_available",
+      `This deployment (${ctx.hostMode}) does not provide the '${capability}' capability.`,
+      { capability, hostMode: ctx.hostMode },
+      requestId,
     );
   }
   return null;
