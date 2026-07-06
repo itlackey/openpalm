@@ -785,10 +785,19 @@ class ChatService {
 			// stopTurn() resolves the pending-turn promise, but send()'s
 			// `finally` clears `sending` in a later continuation. Wait for the
 			// flag to actually clear rather than relying on microtask ordering.
-			// Bounded so a turn that refuses to end can't wedge the mic loop —
-			// if it never clears, send() below no-ops (its existing guard).
+			// Bounded so a turn that refuses to end can't wedge the mic loop.
 			for (let i = 0; this.sending && i < 20; i++) {
 				await new Promise<void>((resolve) => setTimeout(resolve, 10));
+			}
+			if (this.sending) {
+				// The turn refused to end (e.g. the non-SSE fallback path has no
+				// pending-turn promise for stopTurn to resolve). send()'s guard
+				// would swallow the utterance silently — surface it as a failed
+				// send so the error banner offers retry instead.
+				this.lastFailedText = trimmed;
+				this.error =
+					'The assistant is still finishing the previous reply — use retry to send your message.';
+				return;
 			}
 		}
 		await this.send(trimmed);

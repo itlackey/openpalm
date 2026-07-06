@@ -107,6 +107,11 @@ export function toSpeakableText(text: string): string {
 
   out = decodeEntities(out);
 
+  // Entity decoding can reintroduce tag-shaped text (&lt;b&gt; -> <b>), which
+  // would break the no-markup-reaches-TTS guarantee. Strip tags again with a
+  // tag-specific pattern (name must start with a letter) so "<3" survives.
+  out = out.replace(/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>/g, '');
+
   // Collapse 3+ newlines to 2 (paragraph break), repeated spaces to one.
   out = out.replace(/\n{3,}/g, '\n\n');
   out = out.replace(/[^\S\n]{2,}/g, ' ');

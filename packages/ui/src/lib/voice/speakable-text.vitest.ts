@@ -123,4 +123,15 @@ describe('toSpeakableText', () => {
       ].join('\n'),
     );
   });
+
+  test('entity decoding cannot reintroduce markup', () => {
+    expect(
+      toSpeakableText('&lt;b&gt;bold&lt;/b&gt; and &lt;script&gt;alert(1)&lt;/script&gt;'),
+    ).toBe('bold and alert(1)');
+  });
+
+  test('non-tag angle-bracket text like "<3" survives the post-decode strip', () => {
+    expect(toSpeakableText('I &lt;3 markdown')).toBe('I <3 markdown');
+    expect(toSpeakableText('I <3 markdown')).toBe('I <3 markdown');
+  });
 });

@@ -614,6 +614,28 @@ describe('sendUtterance', () => {
 		expect(vi.mocked(api.replyChatQuestion)).toHaveBeenCalledWith('q1', [['yes please']]);
 		chat.sending = false;
 	});
+
+	it('surfaces a retry instead of silently dropping the utterance when sending never clears', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		// No onConnect(): the non-SSE fallback path has no pending-turn promise
+		// for stopTurn() to resolve, so `sending` stays true past the wait loop.
+		mocked.sendChatMessage.mockReturnValueOnce(new Promise(() => {}));
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+
+		void chat.send('slow question');
+		await new Promise<void>((r) => setTimeout(r, 0));
+		expect(chat.sending).toBe(true);
+
+		await chat.sendUtterance('barge in text');
+
+		expect(chat.lastFailedText).toBe('barge in text');
+		expect(chat.error).toContain('retry');
+		// The utterance was not silently forwarded into send()'s no-op guard.
+		expect(mocked.sendChatMessage).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(api.startChatMessageTurn)).not.toHaveBeenCalled();
+	});
 });
 
 describe('byEndpoint Map reactivity', () => {
