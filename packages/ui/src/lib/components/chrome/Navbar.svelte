@@ -1,85 +1,62 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import type { Snippet } from 'svelte';
   import { page } from '$app/state';
   import IconButton from '$lib/components/common/IconButton.svelte';
-  import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
-  import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
-  import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
-  import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
-  import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
-  import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
-  import { featuresService } from '$lib/features.svelte.js';
+  import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
   import IconChat from '$lib/components/icons/IconChat.svelte';
   import IconLogo from '$lib/components/icons/IconLogo.svelte';
   import IconSettings from '$lib/components/icons/IconSettings.svelte';
 
-  // GLOBAL top chrome, mounted on EVERY page. These controls must be present and
-  // usable everywhere:
-  //   - assistant switcher (EndpointSwitcher)
-  //   - session picker (SessionPicker)
-  //   - mic + speaker (VoiceControl) — VoiceControl.initVoice() runs here so STT
-  //     and TTS work globally; this component LIVING IN THE NAVBAR is what makes
-  //     voice global. Do not move it into a page-scoped toolbar.
-  // The Chat↔Advanced mode switch appears here (left of the global controls)
-  // only on the chat surfaces.
+  // Top chrome SHELL: brand, the chat↔host utility button, and the theme
+  // toggle. Deliberately free of chat components and chat stores (plan
+  // ui-runtime-modes-plan.md Phase 3 step 4, #555) so the admin surface can
+  // mount it without dragging chat modules into the host bundle. Conversation
+  // surfaces mount ChatNavbar.svelte, which composes this shell with the
+  // global chat controls (assistant switcher, session picker, voice).
+  //
+  // Navigation is capability-driven (plan §8.6): destinations come from
+  // runtimeContext.routes and visibility from hasCapability() — never the
+  // legacy admin feature flag.
+  interface Props {
+    /** Brand destination; defaults to the mode's chat route. */
+    brandHref?: string;
+    /** Surface-specific controls rendered after the theme toggle. */
+    children?: Snippet;
+  }
+
+  let { brandHref, children }: Props = $props();
+
+  const chatRoute = $derived(runtimeContext.routes.chat ?? '/chat');
+  const hostRoute = $derived(runtimeContext.routes.host);
   const pathname = $derived(page.url?.pathname ?? '');
-  const onAdmin = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
-  // The Chat↔Advanced mode switch lives in the global navbar so it's always a
-  // stable, top-level destination. Only the left-most utility button swaps:
-  // settings on most pages, chat on admin.
-  const onChatSurface = $derived(
-    pathname === '/chat' ||
-    pathname.startsWith('/chat/')
+  const onHostSurface = $derived(
+    hostRoute !== undefined && (pathname === hostRoute || pathname.startsWith(`${hostRoute}/`))
   );
-  const onAdvancedSurface = $derived(
-    pathname === '/advanced' ||
-    pathname.startsWith('/advanced/')
-  );
-  const onConversationSurface = $derived(onChatSurface || onAdvancedSurface);
-
-  const preferredChatHref = $derived.by(() => {
-    const sessionId = page.url.searchParams.get('session') ?? currentChatSessionId();
-    return advancedModeService.enabled ? buildAdvancedPath(sessionId) : buildChatPath(sessionId);
-  });
-
-  onMount(() => {
-    advancedModeService.init();
-  });
+  const resolvedBrandHref = $derived(brandHref ?? chatRoute);
 </script>
 
 <header class="navbar">
   <div class="navbar-inner">
     <!-- Brand -->
-    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session-aware chat path built internally, not a static route id -->
-    <a class="navbar-brand" href={preferredChatHref} aria-label="OpenPalm — go to chat">
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes / a session-aware path, not a static route id -->
+    <a class="navbar-brand" href={resolvedBrandHref} aria-label="OpenPalm — go to chat">
       <span class="brand-icon" aria-hidden="true">
         <IconLogo size={28} />
       </span>
       <span class="brand-text">OpenPalm</span>
     </a>
 
-
-
-    <!-- Global controls, left→right: chat/settings · assistant · session ·
-         advanced · speaker · mic (speaker+mic come from VoiceControl). Present
-         on every page, every width. -->
+    <!-- Utility cluster, left→right: chat/host button · theme · surface
+         controls (from children). -->
     <div class="navbar-actions">
-      {#if onAdmin}
-        <IconButton href={preferredChatHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
-      {:else if featuresService.admin}
-        <IconButton href="/admin" ariaLabel="Manage assistant" title="Admin" icon={settingsIcon} />
+      {#if onHostSurface}
+        <IconButton href={resolvedBrandHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
+      {:else if hostRoute !== undefined && hasCapability('host:stack:read')}
+        <IconButton href={hostRoute} ariaLabel="Manage assistant" title="Admin" icon={settingsIcon} />
       {/if}
       <ThemeToggle />
-      {#if onConversationSurface}
-        <!-- Hidden ≥1024px: the chat side panel hosts these selectors there. -->
-        <span class="chat-selectors">
-          <EndpointSwitcher />
-          <SessionPicker />
-        </span>
-      {/if}
-      <ModeSwitch />
-      <VoiceControl />
+      {@render children?.()}
     </div>
   </div>
 </header>
@@ -149,24 +126,12 @@
     margin-left: auto;
     min-width: 0;
   }
-  /* The assistant + session triggers may shrink (truncate label) but never
-     disappear — at narrow widths they go icon-only via the rule below. */
+  /* The assistant + session triggers (rendered by ChatNavbar's children) may
+     shrink (truncate label) but never disappear — at narrow widths they go
+     icon-only via the rule below. */
   .navbar-actions :global(.switcher),
   .navbar-actions :global(.trigger) {
     min-width: 0;
-  }
-
-  /* The assistant + session selectors live in the navbar only below 1024px;
-     at wider widths the chat side panel hosts them, so hide the triggers. */
-  .chat-selectors {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s-sp-2);
-  }
-  @media (min-width: 1024px) {
-    .chat-selectors {
-      display: none;
-    }
   }
 
   /* ── Responsive: shed labels, keep every control visible. ── */

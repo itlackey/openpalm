@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import { page } from '$app/state';
+  import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
   import IconLock from '$lib/components/icons/IconLock.svelte';
   import { endpointsService as connectionsService } from '$lib/endpoints-state.svelte.js';
   import {
@@ -33,6 +34,9 @@
 
   onMount(() => {
     void connectionsService.load(true);
+    // The /connections/new landing (plan §6.5, Phase 3) aliases here with
+    // ?new=1 — open the add form so "no connections yet" starts at the form.
+    if (page.url.searchParams.get('new') === '1') openAddForm();
   });
 
   function openAddForm(): void {
@@ -130,7 +134,7 @@
   <title>Connections — OpenPalm</title>
 </svelte:head>
 
-<Navbar />
+<ChatNavbar />
 
 <main class="page">
     <header class="page-header">

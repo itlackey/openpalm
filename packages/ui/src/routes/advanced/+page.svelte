@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { afterNavigate } from '$app/navigation';
   import { onMount } from 'svelte';
-  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
   import { buildAdvancedIframeUrl } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
@@ -106,7 +106,7 @@
   <title>Advanced Chat — OpenPalm</title>
 </svelte:head>
 
-<Navbar />
+<ChatNavbar />
 
 <div class="advanced-layout">
   {#if probeState === 'ready'}

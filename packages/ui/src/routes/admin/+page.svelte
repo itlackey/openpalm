@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
   import { formatTime } from '$lib/format-date.js';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
@@ -265,6 +266,12 @@
   // ── Mount ────────────────────────────────────────────────────────────────────
 
   onMount(() => {
+    // Landing deep-link (plan ui-runtime-modes-plan.md §6.5): installed_broken
+    // lands on ?tab=diagnostics — the Systems tab is where unhealthy services
+    // and their state are listed.
+    if (page.url.searchParams.get('tab') === 'diagnostics') {
+      handleTabSelect('containers');
+    }
     startContainerPolling();
     // Auto-hydrate key data so tabs show meaningful state without manual refresh.
     // UpdatesTab fetches its own version data on mount.

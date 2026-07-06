@@ -12,7 +12,10 @@
 	import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
 	import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
 	import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
-	import { probeChatBackend } from '$lib/api.js';
+	// Direct domain-client import (plan Phase 3 step 4, #555): the chat page
+	// must not import the $lib/api.js barrel, which re-exports every admin
+	// domain client and would drag them all into the chat chunk.
+	import { probeChatBackend } from '$lib/api/chat.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
 	import { buildAdvancedPath } from '$lib/chat/navigation.js';
 	import { chat } from '$lib/chat/chat-state.svelte.js';

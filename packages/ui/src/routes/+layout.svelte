@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount } from 'svelte';
   import "../app.css";
   import UpdateBanner from '$lib/components/common/UpdateBanner.svelte';
   import Toast from '$lib/components/common/Toast.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
-  import { featuresService } from '$lib/features.svelte.js';
   import { detectClientDisplayMode } from '$lib/client-context.js';
   import { initializeRuntimeContext } from '$lib/runtime-context.svelte.js';
 
@@ -15,9 +14,9 @@
 
   let { children, data }: Props = $props();
 
-  // Feature flags come from server env vars — constant at runtime. untrack() signals
-  // this is an intentional one-time read, not a reactive subscription.
-  untrack(() => featuresService.init(data.features));
+  // Components read capabilities via hasCapability()/runtimeContext only
+  // (plan §8.6) — the legacy admin feature-flag alias survives solely in
+  // server code (hooks.server.ts / +layout.server.ts) pending Phase 4.
 
   onMount(() => {
     themeService.init();
