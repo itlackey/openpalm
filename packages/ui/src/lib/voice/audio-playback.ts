@@ -45,6 +45,20 @@ export class AudioPlaybackController {
 
   private readonly speakQueue: string[] = [];
 
+  // True from playOne entry until the utterance reaches a terminal state
+  // (ended, errored, skipped as unspeakable, or no engine available).
+  // `host.status` only flips to 'speaking' AFTER the /api/speak synthesis
+  // fetch resolves, so it cannot serialize streamed chunks — a burst of
+  // speakText calls during synthesis would otherwise start overlapping
+  // playOne pipelines. Autoplay-blocked audio keeps this true as well:
+  // later chunks must queue behind the stashed utterance until resume().
+  private busy = false;
+
+  // Bumped by stop() so a playOne suspended on the synthesis fetch can
+  // detect the cancellation when it resumes and discard the audio instead
+  // of playing an utterance the user already silenced.
+  private generation = 0;
+
   // Have we already toasted the user about an overflow drop in the current
   // burst? Reset back to false when the queue drains so a NEW burst can
   // surface a fresh notification (rather than the user getting spammed
@@ -144,7 +158,10 @@ export class AudioPlaybackController {
     this.host.autoplayBlocked = false;
     this.host.errorMessage = '';
     this.host.status = 'speaking';
-    // Promote pending → active so onended/onerror/teardown work.
+    this.busy = true;
+    // Promote pending → active so onended/onerror/teardown work. The
+    // handlers attached in playOne are still wired, so the queue (which
+    // kept accumulating while blocked) drains when this utterance ends.
     this.activeAudio = a;
     this.activeAudioUrl = this.pendingAutoplayUrl;
     this.pendingAutoplayAudio = null;
@@ -153,6 +170,7 @@ export class AudioPlaybackController {
       this.host.status = 'idle';
       this.host.errorMessage = 'Audio playback failed.';
       this.teardownActiveAudio();
+      this.drainNext();
     });
   }
 
@@ -161,15 +179,17 @@ export class AudioPlaybackController {
    * configured engine is openpalm-voice or remote); falls back to browser
    * speech synthesis. Silent no-op if neither path is available.
    *
-   * If a previous utterance is still playing, queues this one (FIFO, cap 20)
-   * instead of cutting it off mid-sentence.
+   * If a previous utterance is still synthesizing, playing, or stashed
+   * behind an autoplay block, queues this one (FIFO, cap 20) instead of
+   * cutting it off mid-sentence.
    */
   async speak(text: string): Promise<void> {
     if (typeof window === 'undefined' || !text.trim()) return;
 
-    // Queue if something else is already speaking. The onended handler
-    // drains the queue.
-    if (this.host.status === 'speaking') {
+    // Queue if the pipeline is occupied (synthesis in flight, audio
+    // playing, or autoplay-blocked). drainNext advances the queue from
+    // every terminal path.
+    if (this.busy) {
       this.speakQueue.push(text);
       // Drop oldest if over cap, and let the user know once per burst
       // so they understand WHY they're missing replies.
@@ -191,9 +211,27 @@ export class AudioPlaybackController {
     await this.playOne(text);
   }
 
+  /**
+   * Advance the pump: play the next queued utterance, or release the busy
+   * flag so a future speak() can start a fresh burst. Every terminal path
+   * of an utterance must land here (or hold `busy` deliberately, as the
+   * autoplay-block stash does).
+   */
+  private drainNext(): void {
+    const next = this.speakQueue.shift();
+    if (next) {
+      void this.playOne(next);
+    } else {
+      this.busy = false;
+      this.overflowNoticed = false;
+    }
+  }
+
   /** Internal: actually trigger the audio for one text chunk. */
   private async playOne(text: string): Promise<void> {
-    if (typeof window === 'undefined' || !text.trim()) return;
+    if (typeof window === 'undefined') return;
+    this.busy = true;
+    const gen = this.generation;
 
     // Strip markdown once, up front, so neither the server request body nor
     // the browser-TTS fallback ever speaks raw markdown syntax aloud. The
@@ -203,15 +241,10 @@ export class AudioPlaybackController {
       // Nothing left to say (e.g. a reply that was pure markdown noise) —
       // skip straight to the next queued utterance instead of stalling
       // the queue on a chunk that would never fire onended/onerror.
-      const next = this.speakQueue.shift();
-      if (next) void this.playOne(next);
-      else this.overflowNoticed = false;
+      this.drainNext();
       return;
     }
 
-    // We're about to start fresh — any pending autoplay-retry from a
-    // previous reply is now stale.
-    this.teardownPendingAutoplay();
     this.teardownActiveAudio();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     this.host.errorMessage = '';
@@ -231,9 +264,14 @@ export class AudioPlaybackController {
       } catch {
         // Network/CORS — fall through to browser TTS if available.
       }
+      // stop() ran while the synthesis request was in flight — the
+      // utterance is cancelled; stop() already dropped the queue and
+      // released `busy`.
+      if (gen !== this.generation) return;
 
       if (res?.ok && res.headers.get('content-type')?.startsWith('audio/')) {
         const blob = await res.blob();
+        if (gen !== this.generation) return;
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         this.activeAudio = audio;
@@ -241,18 +279,13 @@ export class AudioPlaybackController {
         audio.onended = () => {
           this.host.status = 'idle';
           this.teardownActiveAudio();
-          // Drain the queue.
-          const next = this.speakQueue.shift();
-          if (next) void this.playOne(next);
-          else this.overflowNoticed = false;
+          this.drainNext();
         };
         audio.onerror = () => {
           this.host.status = 'idle';
           this.host.errorMessage = 'Audio playback failed.';
           this.teardownActiveAudio();
-          const next = this.speakQueue.shift();
-          if (next) void this.playOne(next);
-          else this.overflowNoticed = false;
+          this.drainNext();
         };
         this.host.status = 'speaking';
         try {
@@ -266,7 +299,9 @@ export class AudioPlaybackController {
           // deliberately do NOT register a document-wide click
           // handler — any click anywhere would otherwise trigger
           // stale audio at the wrong moment (Save buttons, tabs,
-          // etc.).
+          // etc.). `busy` stays true: streamed chunks that arrive
+          // while blocked queue behind this utterance and drain
+          // after resume() (or are dropped by stop()).
           this.host.status = 'idle';
           // Hand ownership of the blob to the pending-autoplay slot.
           this.pendingAutoplayAudio = audio;
@@ -288,7 +323,9 @@ export class AudioPlaybackController {
 
     if (!('speechSynthesis' in window)) {
       // No browser TTS available — keep whatever errorMessage we already
-      // set so the user understands why nothing happened.
+      // set so the user understands why nothing happened, but keep the
+      // pump moving so queued chunks don't strand behind a dead engine.
+      this.drainNext();
       return;
     }
     // Clear the error if we have a viable browser fallback.
@@ -297,15 +334,11 @@ export class AudioPlaybackController {
     utterance.onstart = () => { this.host.status = 'speaking'; };
     utterance.onend = () => {
       this.host.status = 'idle';
-      const next = this.speakQueue.shift();
-      if (next) void this.playOne(next);
-      else this.overflowNoticed = false;
+      this.drainNext();
     };
     utterance.onerror = () => {
       this.host.status = 'idle';
-      const next = this.speakQueue.shift();
-      if (next) void this.playOne(next);
-      else this.overflowNoticed = false;
+      this.drainNext();
     };
     window.speechSynthesis.speak(utterance);
   }
@@ -335,6 +368,8 @@ export class AudioPlaybackController {
   /** Cancel speech synthesis. Drops the entire queue. */
   stop(): void {
     this.speakQueue.length = 0;
+    this.busy = false;
+    this.generation += 1;
     this.overflowNoticed = false;
     this.teardownPendingAutoplay();
     this.teardownActiveAudio();

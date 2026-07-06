@@ -136,26 +136,67 @@ describe('voice-state speakText error surfacing', () => {
 });
 
 describe('voice-state queue', () => {
+	const originalFetch = globalThis.fetch;
+
+	/**
+	 * Install a /api/speak mock whose synthesis fetch never resolves — the
+	 * first speakText occupies the playback pipeline (busy) for the rest of
+	 * the test, exactly like a chunk mid-synthesis while later streamed
+	 * chunks arrive.
+	 */
+	function hangSynthesis(): ReturnType<typeof vi.fn> {
+		const mock = vi.fn(() => new Promise<Response>(() => {}));
+		globalThis.fetch = mock as unknown as typeof fetch;
+		return mock;
+	}
+
 	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		voiceState.ttsEngine = 'disabled';
 		voiceState.status = 'idle';
 		voiceState.errorMessage = '';
 		stopSpeaking();
 		notifications.clear();
 	});
 
-	test('speakText returns without playing when status is already speaking', async () => {
-		// If status is "speaking", speakText queues silently. We can't easily
-		// observe the internal queue, but we CAN confirm that calling
-		// speakText doesn't blow up and doesn't mutate status.
-		voiceState.ttsEngine = 'browser';
-		voiceState.status = 'speaking';
-		await speakText('queued one');
-		expect(voiceState.status).toBe('speaking');
+	test('speakText queues while a prior synthesis fetch is unresolved', async () => {
+		// The busy window opens at playOne entry, BEFORE the /api/speak fetch
+		// resolves — status is still 'idle' at that point, so serialization
+		// must not key off status. A second speakText during synthesis has to
+		// queue, not open a concurrent synthesis fetch.
+		voiceState.ttsEngine = 'remote';
+		const fetchMock = hangSynthesis();
+		void speakText('first streamed sentence');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		await speakText('second streamed sentence');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	test('stopSpeaking during an in-flight synthesis discards the result', async () => {
+		voiceState.ttsEngine = 'remote';
+		let resolveFetch: ((res: Response) => void) | undefined;
+		globalThis.fetch = vi.fn(
+			() => new Promise<Response>((resolve) => { resolveFetch = resolve; }),
+		) as unknown as typeof fetch;
+		const spoken = speakText('stopped mid-synthesis');
+		stopSpeaking();
+		resolveFetch?.(
+			new Response(new Blob(['audio-bytes']), {
+				status: 200,
+				headers: { 'content-type': 'audio/mpeg' },
+			}),
+		);
+		await spoken;
+		// The cancelled utterance must not start playing (or stash itself
+		// behind an autoplay block) after the fetch finally resolves.
+		expect(voiceState.status).toBe('idle');
+		expect(voiceState.autoplayBlocked).toBe(false);
 	});
 
 	test('queue overflow pushes an info notification once per burst', async () => {
-		voiceState.ttsEngine = 'browser';
-		voiceState.status = 'speaking';
+		voiceState.ttsEngine = 'remote';
+		hangSynthesis();
+		void speakText('active utterance');
 		// Queue cap is 20. Twenty-two enqueues = two drops from the FIFO. The
 		// user should see exactly one toast (not two), to avoid spamming.
 		for (let i = 0; i < 22; i++) {
@@ -169,8 +210,9 @@ describe('voice-state queue', () => {
 	});
 
 	test('queue overflow notification re-arms after the queue drains', async () => {
-		voiceState.ttsEngine = 'browser';
-		voiceState.status = 'speaking';
+		voiceState.ttsEngine = 'remote';
+		hangSynthesis();
+		void speakText('active utterance');
 		// First burst — drop once.
 		for (let i = 0; i < 21; i++) {
 			await speakText(`utterance ${i}`);
@@ -183,7 +225,7 @@ describe('voice-state queue', () => {
 		stopSpeaking();
 
 		// New burst should be able to surface a fresh toast.
-		voiceState.status = 'speaking';
+		void speakText('active utterance');
 		for (let i = 0; i < 21; i++) {
 			await speakText(`utterance ${i}`);
 		}
