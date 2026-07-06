@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/client",
   "version": "0.12.52",
-  "description": "OpenPalm client app — the unprivileged chat/connections static PWA (plan ui-runtime-modes-plan.md §6.11). P5b test-first scaffolding: this package currently carries only the red test suite; the SvelteKit app, transport, connection store, and serve script land with the P5b feature commits. §8.10 rule: this package NEVER depends on @openpalm/lib and never holds host credentials; runtime dependencies stay empty or near-empty (document any exception here).",
+  "description": "OpenPalm client app — the unprivileged chat/connections static SPA (plan ui-runtime-modes-plan.md §6.11). Talks directly to per-connection OpenCode/guardian base URLs; connections persist in IndexedDB. §8.10 rule: this package NEVER depends on @openpalm/lib and never holds host credentials; runtime dependencies stay empty (the adapter-static build is fully self-contained, and bin/serve.mjs is zero-dependency) — document any exception here.",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
@@ -10,7 +10,31 @@
     "url": "https://github.com/itlackey/openpalm.git",
     "directory": "packages/client"
   },
+  "files": [
+    "build",
+    "bin"
+  ],
+  "bin": {
+    "openpalm-client-serve": "bin/serve.mjs"
+  },
   "scripts": {
-    "test": "bun test"
+    "dev": "PORT=${PORT:-5174} vite dev",
+    "build": "svelte-kit sync && vite build && node scripts/stamp-version.mjs",
+    "clean:build": "rm -rf .svelte-kit build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "bun test",
+    "serve": "node bin/serve.mjs"
+  },
+  "devDependencies": {
+    "@openpalm/ui-kit": "workspace:*",
+    "@sveltejs/adapter-static": "^3.0.10",
+    "@types/node": "^25.9.1",
+    "@sveltejs/kit": "^2.53.3",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "svelte": "^5.53.5",
+    "svelte-check": "^4.1.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
   }
 }
