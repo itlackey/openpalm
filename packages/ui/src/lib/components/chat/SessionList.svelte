@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Spinner from '$lib/components/common/Spinner.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
   import SessionTitle from '$lib/components/chat/SessionTitle.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';

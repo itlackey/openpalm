@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import IconButton from '$lib/components/common/IconButton.svelte';
+  import IconButton from './IconButton.svelte';
 
   // A two-state button built on IconButton. When `pressed` it adopts the
   // selected colour (primary, or danger via `tone`) and, if provided, swaps to

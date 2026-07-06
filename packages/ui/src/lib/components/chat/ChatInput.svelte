@@ -1,6 +1,6 @@
 <script lang="ts">
-  import IconMic from '$lib/components/icons/IconMic.svelte';
-  import IconSend from '$lib/components/icons/IconSend.svelte';
+  import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
+  import IconSend from '@openpalm/ui-kit/components/icons/IconSend.svelte';
 
   interface Props {
     sending: boolean;

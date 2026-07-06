@@ -1,5 +1,5 @@
 <script lang="ts">
-	import PasswordInput from '$lib/components/common/PasswordInput.svelte';
+	import PasswordInput from '@openpalm/ui-kit/components/common/PasswordInput.svelte';
 	import type { LlmProfile } from './profile-types';
 
 	// Slide-in editor for one LLM profile. The parent (AkmTab) owns the draft

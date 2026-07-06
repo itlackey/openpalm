@@ -55,8 +55,10 @@ export default defineConfig(({ mode }) => {
       // to evaluate CJS packages itself. Only `yaml` is force-bundled
       // because the server code does `import { parse } from 'yaml'`
       // directly and yaml@2.x ships pure CJS (Vite's ESM runner can't
-      // evaluate raw `require()` calls).
-      noExternal: mode === "production" ? true : ["yaml"],
+      // evaluate raw `require()` calls). `@openpalm/ui-kit` is raw
+      // .svelte/.ts source (no build step) — Node cannot load it, so it
+      // must always go through Vite's Svelte pipeline.
+      noExternal: mode === "production" ? true : ["yaml", "@openpalm/ui-kit"],
       // SSR-side dep optimizer: esbuild pre-bundles these into ESM so the
       // module runner can evaluate them. Mirrors the client-side
       // optimizeDeps.include below — both lists must include yaml.
@@ -66,6 +68,9 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       include: ["yaml"],
+      // Raw-source Svelte package — esbuild cannot prebundle .svelte files;
+      // vite-plugin-svelte compiles it as part of the app instead.
+      exclude: ["@openpalm/ui-kit"],
     },
     test: {
       expect: { requireAssertions: true },
@@ -79,7 +84,14 @@ export default defineConfig(({ mode }) => {
               provider: playwright(),
               instances: [{ browser: "chromium", name: "chromium", headless: true }]
             },
-            include: ["src/**/*.svelte.vitest.{js,ts}"],
+            // The shared components moved to @openpalm/ui-kit (P5a, #555);
+            // their co-located browser tests still run through THIS project
+            // because ui-kit deliberately has no vitest/browser setup of its
+            // own (raw-source package, compiled by the consuming app).
+            include: [
+              "src/**/*.svelte.vitest.{js,ts}",
+              "../ui-kit/src/**/*.svelte.vitest.{js,ts}"
+            ],
             exclude: ["src/lib/server/**"]
           }
         },

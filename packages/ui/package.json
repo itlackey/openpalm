@@ -39,6 +39,7 @@
     "@eslint/compat": "^2.0.2",
     "@eslint/js": "^10.0.1",
     "@openpalm/lib": "workspace:*",
+    "@openpalm/ui-kit": "workspace:*",
     "@playwright/test": "^1.58.1",
     "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "^2.53.3",

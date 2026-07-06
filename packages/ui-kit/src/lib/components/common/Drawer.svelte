@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import IconClose from '$lib/components/icons/IconClose.svelte';
+  import IconClose from '../icons/IconClose.svelte';
   import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
 
   // Reusable slide-in drawer (right edge). The app-wide replacement for inline

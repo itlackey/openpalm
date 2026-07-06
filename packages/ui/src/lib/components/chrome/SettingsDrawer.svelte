@@ -2,10 +2,10 @@
   import type { ThemePreference } from '$lib/theme-state.svelte.js';
   import { afterNavigate } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import Drawer from '$lib/components/common/Drawer.svelte';
-  import IconButton from '$lib/components/common/IconButton.svelte';
+  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+  import IconButton from '@openpalm/ui-kit/components/common/IconButton.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
-  import IconSettings from '$lib/components/icons/IconSettings.svelte';
+  import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
 
   interface Props {
     showManageAssistant?: boolean;

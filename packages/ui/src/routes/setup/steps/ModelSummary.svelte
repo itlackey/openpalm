@@ -14,7 +14,7 @@
    */
 
   import type { Snippet } from 'svelte';
-  import Drawer from '$lib/components/common/Drawer.svelte';
+  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
 
   type ModelMode = 'cloud' | 'local' | 'both';
 

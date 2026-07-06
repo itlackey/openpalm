@@ -2,8 +2,8 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { chat } from '$lib/chat/chat-state.svelte.js';
-  import IconButton from '$lib/components/common/IconButton.svelte';
-  import IconAdd from '$lib/components/icons/IconAdd.svelte';
+  import IconButton from '@openpalm/ui-kit/components/common/IconButton.svelte';
+  import IconAdd from '@openpalm/ui-kit/components/icons/IconAdd.svelte';
 
   // Global "new chat" action (lives in the navbar next to the session picker).
   // On the chat page it starts a fresh session in place; from anywhere else

@@ -1,11 +1,11 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import ToggleButton from '$lib/components/common/ToggleButton.svelte';
+  import ToggleButton from '@openpalm/ui-kit/components/common/ToggleButton.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
-  import IconAdvanced from '$lib/components/icons/IconAdvanced.svelte';
+  import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
 
   // Single "Advanced" toggle for the chat surface: off on /chat, on
   // (selected) on /advanced. Clicking flips between the two. Rendering through

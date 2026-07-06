@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Spinner from '$lib/components/common/Spinner.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
   import {
     fetchAssistantPersona,
     fetchHostStackSettings,

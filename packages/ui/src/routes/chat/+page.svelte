@@ -28,15 +28,15 @@
 		stopListening,
 		initVoice
 	} from '$lib/voice/voice-state.svelte.js';
-	import IconSoundOn from '$lib/components/icons/IconSoundOn.svelte';
-	import IconSoundOff from '$lib/components/icons/IconSoundOff.svelte';
-	import IconConversations from '$lib/components/icons/IconConversations.svelte';
-	import IconActivity from '$lib/components/icons/IconActivity.svelte';
-	import IconClose from '$lib/components/icons/IconClose.svelte';
-	import IconThemeSystem from '$lib/components/icons/IconThemeSystem.svelte';
-	import IconThemeLight from '$lib/components/icons/IconThemeLight.svelte';
-	import IconThemeDark from '$lib/components/icons/IconThemeDark.svelte';
-	import IconAdvanced from '$lib/components/icons/IconAdvanced.svelte';
+	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
+	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
+	import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
+	import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
+	import IconClose from '@openpalm/ui-kit/components/icons/IconClose.svelte';
+	import IconThemeSystem from '@openpalm/ui-kit/components/icons/IconThemeSystem.svelte';
+	import IconThemeLight from '@openpalm/ui-kit/components/icons/IconThemeLight.svelte';
+	import IconThemeDark from '@openpalm/ui-kit/components/icons/IconThemeDark.svelte';
+	import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 

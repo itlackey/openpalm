@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import IconDownload from '$lib/components/icons/IconDownload.svelte';
+  import IconDownload from '../icons/IconDownload.svelte';
 
   interface UpdateStatus {
     inElectron: boolean;

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Spinner from '$lib/components/common/Spinner.svelte';
-  import IconHide from '$lib/components/icons/IconHide.svelte';
-  import IconReveal from '$lib/components/icons/IconReveal.svelte';
+  import Spinner from './Spinner.svelte';
+  import IconHide from '../icons/IconHide.svelte';
+  import IconReveal from '../icons/IconReveal.svelte';
   interface Props {
     onSuccess: (token: string) => Promise<boolean>;
     loading: boolean;

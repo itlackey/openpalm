@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import "../app.css";
-  import UpdateBanner from '$lib/components/common/UpdateBanner.svelte';
-  import Toast from '$lib/components/common/Toast.svelte';
+  import UpdateBanner from '@openpalm/ui-kit/components/common/UpdateBanner.svelte';
+  import Toast from '@openpalm/ui-kit/components/common/Toast.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
   import { detectClientDisplayMode } from '$lib/client-context.js';
   import { initializeRuntimeContext } from '$lib/runtime-context.svelte.js';

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
 	import type { AgentProfile } from './profile-types';
-	import IconAgent from '$lib/components/icons/IconAgent.svelte';
+	import IconAgent from '@openpalm/ui-kit/components/icons/IconAgent.svelte';
 
 	// Presentation-only list of agent-runner profiles. Parent owns array +
 	// default-name via $bindable; this raises edit/add/remove. Each row gets a

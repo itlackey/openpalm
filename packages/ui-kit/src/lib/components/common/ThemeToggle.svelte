@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { ThemePreference } from '$lib/theme-state.svelte.js';
   import { themeService } from '$lib/theme-state.svelte.js';
-  import IconButton from '$lib/components/common/IconButton.svelte';
-  import IconThemeSystem from '$lib/components/icons/IconThemeSystem.svelte';
-  import IconThemeLight from '$lib/components/icons/IconThemeLight.svelte';
-  import IconThemeDark from '$lib/components/icons/IconThemeDark.svelte';
+  import IconButton from './IconButton.svelte';
+  import IconThemeSystem from '../icons/IconThemeSystem.svelte';
+  import IconThemeLight from '../icons/IconThemeLight.svelte';
+  import IconThemeDark from '../icons/IconThemeDark.svelte';
 
   // Cycles: system → light → dark → system
   const CYCLE: ThemePreference[] = ['system', 'light', 'dark'];

@@ -93,6 +93,7 @@
         "@eslint/compat": "^2.0.2",
         "@eslint/js": "^10.0.1",
         "@openpalm/lib": "workspace:*",
+        "@openpalm/ui-kit": "workspace:*",
         "@playwright/test": "^1.58.1",
         "@sveltejs/adapter-node": "^5.5.4",
         "@sveltejs/kit": "^2.53.3",
@@ -125,6 +126,14 @@
     "packages/ui-kit": {
       "name": "@openpalm/ui-kit",
       "version": "0.12.52",
+      "devDependencies": {
+        "svelte": "^5.53.5",
+        "vitest": "^4.0.18",
+        "vitest-browser-svelte": "^2.0.2",
+      },
+      "peerDependencies": {
+        "svelte": "^5.0.0",
+      },
     },
     "portals/discord": {
       "name": "@openpalm/discord-portal",

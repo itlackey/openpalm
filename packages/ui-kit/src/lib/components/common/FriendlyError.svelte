@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FriendlyErrorView } from '$lib/client/error-messages.js';
-  import IconAlert from '$lib/components/icons/IconAlert.svelte';
+  import IconAlert from '../icons/IconAlert.svelte';
 
   interface Props {
     error: FriendlyErrorView | null | undefined;

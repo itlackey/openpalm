@@ -1,21 +1,23 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import EmptyState from '$lib/components/common/EmptyState.svelte';
+  import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
   import {
     fetchAddons,
     toggleAddon,
     fetchAddonCredentials,
     saveAddonCredentials,
     fetchSecretFile,
+    fetchSecretFiles,
+    saveSecretFile,
     type AddonCredentialField,
   } from '$lib/api.js';
   import { isAuthError, toMessage } from '$lib/api/errors.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import { type TabId } from '$lib/components/chrome/TabBar.svelte';
-  import SecretSelect from '$lib/components/common/SecretSelect.svelte';
-  import Spinner from '$lib/components/common/Spinner.svelte';
-  import IconAddons from '$lib/components/icons/IconAddons.svelte';
-  import Drawer from '$lib/components/common/Drawer.svelte';
+  import SecretSelect from '@openpalm/ui-kit/components/common/SecretSelect.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import IconAddons from '@openpalm/ui-kit/components/icons/IconAddons.svelte';
+  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
 
   interface Props {
     onAuthError: () => void;
@@ -264,6 +266,8 @@
                 id="cred-{aid}-{field.key}"
                 bind:value={credSecretRef[aid][field.key]}
                 onChange={(secretName) => void onSecretChosen(aid, field.key, secretName)}
+                {fetchSecretFiles}
+                {saveSecretFile}
               />
               {#if field.set}<p class="creds-desc">A value is already set — choose a secret to replace it.</p>{/if}
             {:else}

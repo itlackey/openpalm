@@ -11,8 +11,8 @@
   import { afterUpdate } from 'svelte';
   import { voiceState } from '$lib/voice/voice-state.svelte.js';
   import { notifications, type Toast } from '$lib/notifications.svelte.js';
-  import IconDone from '$lib/components/icons/IconDone.svelte';
-  import IconInfo from '$lib/components/icons/IconInfo.svelte';
+  import IconDone from '../icons/IconDone.svelte';
+  import IconInfo from '../icons/IconInfo.svelte';
 
   // Track the toast id for the current voice error so consecutive
   // errors update in place instead of stacking.

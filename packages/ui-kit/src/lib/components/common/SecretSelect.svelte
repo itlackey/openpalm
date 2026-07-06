@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchSecretFiles, saveSecretFile } from '$lib/api.js';
-  import IconAdd from '$lib/components/icons/IconAdd.svelte';
+  import IconAdd from '../icons/IconAdd.svelte';
 
   // Reusable secret picker: choose an EXISTING secret by name, or quick-add a
-  // new one that is written through the shared /admin/secrets store and becomes
+  // new one that is written through the injected secret store and becomes
   // immediately selectable. Never displays secret values. Uses a native <select>
   // so keyboard/focus/target-size come for free (rubric F3/F5).
+  //
+  // The store operations are injected as props (rather than imported from the
+  // app's API client) so this component stays presentational — ui-kit source
+  // must not depend on $lib/api (plan ui-runtime-modes-plan.md §6.11).
   interface Props {
     /** Selected secret NAME (bindable). */
     value?: string;
@@ -14,8 +17,18 @@
     id?: string;
     /** Called whenever the selection changes (including after quick-add). */
     onChange?: (name: string) => void;
+    /** Lists the available secrets (names only; values never surface here). */
+    fetchSecretFiles: () => Promise<{ files: { name: string }[] }>;
+    /** Persists a new secret so it becomes selectable. */
+    saveSecretFile: (name: string, value: string) => Promise<unknown>;
   }
-  let { value = $bindable(''), id = 'secret-select', onChange }: Props = $props();
+  let {
+    value = $bindable(''),
+    id = 'secret-select',
+    onChange,
+    fetchSecretFiles,
+    saveSecretFile
+  }: Props = $props();
 
   let names = $state<string[]>([]);
   let loading = $state(true);

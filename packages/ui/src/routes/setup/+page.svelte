@@ -8,7 +8,7 @@
   import Screen2ExtrasStep from './steps/Screen2ExtrasStep.svelte';
   import ReviewStep from './steps/ReviewStep.svelte';
   import DeployStep from './steps/DeployStep.svelte';
-  import IconLogo from '$lib/components/icons/IconLogo.svelte';
+  import IconLogo from '@openpalm/ui-kit/components/icons/IconLogo.svelte';
 
   // All wizard state + logic lives in the setup-state store (Svelte 5 runes
   // class), mirroring the store-per-domain pattern (endpoints-state /

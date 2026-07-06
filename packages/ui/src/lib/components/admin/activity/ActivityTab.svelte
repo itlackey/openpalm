@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import Spinner from '$lib/components/common/Spinner.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import ToolStrip from '$lib/components/chat/ToolStrip.svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';

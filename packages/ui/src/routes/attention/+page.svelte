@@ -7,7 +7,7 @@
   // migration; sessions that land here with nothing blocking are redirected
   // back to the resolved landing by the hooks.server launch-routing guard.
   import { resolve } from '$app/paths';
-  import IconLogo from '$lib/components/icons/IconLogo.svelte';
+  import IconLogo from '@openpalm/ui-kit/components/icons/IconLogo.svelte';
 </script>
 
 <svelte:head><title>OpenPalm — needs attention</title></svelte:head>

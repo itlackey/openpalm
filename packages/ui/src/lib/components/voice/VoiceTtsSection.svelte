@@ -8,9 +8,9 @@
   parent (read via `value`, mutated via `onchange`).
 -->
 <script lang="ts">
-	import Spinner from '$lib/components/common/Spinner.svelte';
-	import IconDone from '$lib/components/icons/IconDone.svelte';
-	import IconClose from '$lib/components/icons/IconClose.svelte';
+	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+	import IconDone from '@openpalm/ui-kit/components/icons/IconDone.svelte';
+	import IconClose from '@openpalm/ui-kit/components/icons/IconClose.svelte';
 	import VoiceEngineSelector from '$lib/components/voice/VoiceEngineSelector.svelte';
 	import type {
 		TtsOption,

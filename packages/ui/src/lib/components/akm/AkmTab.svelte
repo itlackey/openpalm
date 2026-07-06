@@ -9,7 +9,7 @@
 	} from '$lib/api.js';
 	import { hasCapability } from '$lib/runtime-context.svelte.js';
 	import { notifications } from '$lib/notifications.svelte.js';
-	import Spinner from '$lib/components/common/Spinner.svelte';
+	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
 	import AkmKnowledgeStatsSection from '$lib/components/akm/AkmKnowledgeStatsSection.svelte';
 	import EmbeddingSection from '$lib/components/akm/EmbeddingSection.svelte';
 	import BehaviorSection from '$lib/components/akm/BehaviorSection.svelte';

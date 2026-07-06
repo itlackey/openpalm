@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
-  import IconLock from '$lib/components/icons/IconLock.svelte';
+  import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import { endpointsService as connectionsService } from '$lib/endpoints-state.svelte.js';
   import {
     createConnection,

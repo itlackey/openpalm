@@ -1,6 +1,6 @@
 <script lang="ts">
-  import PasswordInput from '$lib/components/common/PasswordInput.svelte';
-  import Spinner from '$lib/components/common/Spinner.svelte';
+  import PasswordInput from '@openpalm/ui-kit/components/common/PasswordInput.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
 
   // Embedding / semantic-search connection. All fields are bound back to the
   // parent's state (which load()/save() own) — this component is presentation

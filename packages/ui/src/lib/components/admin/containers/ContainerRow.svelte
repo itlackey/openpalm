@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ServiceEntry } from '$lib/types.js';
   import { parseImageTag, containerStatusColor, fmtState } from './container-format.js';
-  import IconExpand from '$lib/components/icons/IconExpand.svelte';
+  import IconExpand from '@openpalm/ui-kit/components/icons/IconExpand.svelte';
 
   interface Props {
     entry: ServiceEntry;
