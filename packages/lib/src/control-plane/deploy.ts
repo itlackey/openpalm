@@ -292,9 +292,17 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     // Project rename (#540): if OP_PROJECT_NAME changed since the last apply,
     // the composeDown below only targets the NEW name — the still-running old
     // project would keep its containers (and host ports) forever. Tear the
-    // recorded outgoing project down first, before anything comes up.
+    // recorded outgoing project down first, before anything comes up. A
+    // blocked teardown (down failed, old project still holding ports) must
+    // abort the deploy — continuing would bring up a colliding second stack.
     const renameTeardown = await teardownRenamedProject(state);
     if (renameTeardown.warning) deployLogger.warn(renameTeardown.warning);
+    if (renameTeardown.blocked) {
+      progress.deployError = renameTeardown.warning ?? 'Project rename teardown failed.';
+      progress.deploying = false;
+      emitProgress(options, progress);
+      return progress;
+    }
     if (renameTeardown.downed) {
       deployLogger.info(`project rename: stopped previous docker project "${renameTeardown.downed}"`);
     }

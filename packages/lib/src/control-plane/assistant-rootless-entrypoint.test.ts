@@ -91,6 +91,9 @@ describe('assistant rootless entrypoint regressions', () => {
     expect(assistantEntrypoint).toContain('passwd_home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6 || true)"');
     // Existing configs are merged, never clobbered.
     expect(assistantEntrypoint).toContain('|| Array.isArray(cfg) || cfg.stashDir) process.exit(0);');
+    // Fresh configs JSON-escape the stash path (backslashes, double quotes).
+    expect(assistantEntrypoint).toContain('local stash_dir_json="${stash_dir//\\\\/\\\\\\\\}"');
+    expect(assistantEntrypoint).toContain('printf \'{\\n  "stashDir": "%s"\\n}\\n\' "$stash_dir_json"');
     // Wired into the boot sequence.
     expect(assistantEntrypoint).toMatch(/run_akm_schema_migration\npersist_akm_stash_dir_fallback\nstart_cron_and_sync_tasks/);
   });

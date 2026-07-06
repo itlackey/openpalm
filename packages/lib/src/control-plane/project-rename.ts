@@ -66,8 +66,17 @@ export function clearRecordedProjectRename(homeDir: string): void {
 export type ProjectRenameTeardown = {
 	/** The old project that was actually downed, or null when nothing ran. */
 	downed: string | null;
-	/** Non-fatal problem the caller should log; null on clean runs. */
+	/** Problem the caller should surface; null on clean runs. */
 	warning: string | null;
+	/**
+	 * True when the outgoing project is still running but could not be
+	 * stopped (the `down` failed). The marker is kept for retry, and bringing
+	 * the stack up under the NEW name would collide with the old project's
+	 * containers and host ports — callers must ABORT the apply and surface
+	 * `warning` instead of continuing. The foreign-project case is NOT
+	 * blocking: that project was never ours to stop.
+	 */
+	blocked: boolean;
 };
 
 /**
@@ -80,7 +89,9 @@ export type ProjectRenameTeardown = {
  * - Only a project whose `com.docker.compose.project.working_dir` label
  *   matches THIS install is downed. A foreign project with the same name is
  *   skipped (marker cleared — retrying would never become safe).
- * - A failed `down` KEEPS the marker so the next apply retries.
+ * - A failed `down` KEEPS the marker so the next apply retries, and returns
+ *   `blocked: true` — the old project is still holding host ports, so the
+ *   caller must abort rather than bring up a colliding second stack.
  * - No recorded rename, or a marker equal to the current name (rename
  *   reverted), is a cheap no-op.
  */
@@ -90,7 +101,7 @@ export async function teardownRenamedProject(
 ): Promise<ProjectRenameTeardown> {
 	const env = readStackEnv(state.homeDir);
 	const previous = env[PREVIOUS_PROJECT_NAME_KEY]?.trim() ?? '';
-	if (!previous) return { downed: null, warning: null };
+	if (!previous) return { downed: null, warning: null, blocked: false };
 
 	const docker = await import('./docker.js');
 	const { buildComposeOptions } = await import('./compose-args.js');
@@ -102,7 +113,7 @@ export async function teardownRenamedProject(
 	const current = docker.resolveComposeProjectName(env);
 	if (previous === current) {
 		clearRecordedProjectRename(state.homeDir);
-		return { downed: null, warning: null };
+		return { downed: null, warning: null, blocked: false };
 	}
 
 	const existing = await resolvedDeps.detectExistingProject({
@@ -115,7 +126,7 @@ export async function teardownRenamedProject(
 		// no running containers there are no port conflicts, and stopped old
 		// containers are harmless leftovers, not a split stack.
 		clearRecordedProjectRename(state.homeDir);
-		return { downed: null, warning: null };
+		return { downed: null, warning: null, blocked: false };
 	}
 	if (!existing.isOurs) {
 		clearRecordedProjectRename(state.homeDir);
@@ -123,7 +134,8 @@ export async function teardownRenamedProject(
 			downed: null,
 			warning:
 				`Project rename: previous docker project "${previous}" is owned by another install ` +
-				`(${existing.workingDir}); skipping teardown.`
+				`(${existing.workingDir}); skipping teardown.`,
+			blocked: false
 		};
 	}
 
@@ -136,10 +148,12 @@ export async function teardownRenamedProject(
 			downed: null,
 			warning:
 				`Project rename: failed to stop previous docker project "${previous}" ` +
-				`(${result.stderr.trim() || `exit ${result.code}`}); will retry on the next apply.`
+				`(${result.stderr.trim() || `exit ${result.code}`}); it is still running and would ` +
+				`collide with the new project name. Aborting; the rename will be retried on the next apply.`,
+			blocked: true
 		};
 	}
 
 	clearRecordedProjectRename(state.homeDir);
-	return { downed: previous, warning: null };
+	return { downed: previous, warning: null, blocked: false };
 }

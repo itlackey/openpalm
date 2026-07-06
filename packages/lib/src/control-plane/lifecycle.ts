@@ -277,8 +277,13 @@ function reconcileStack(
       // Project rename (#540): stop the recorded outgoing project before the
       // stack comes up under the new name, or the old containers keep running
       // (and holding host ports) unaddressable by any further compose call.
+      // A blocked teardown aborts the upgrade — continuing would bring up a
+      // second stack colliding with the still-running old project.
       const renameTeardown = await teardownRenamedProject(state);
       if (renameTeardown.warning) lifecycleLogger.warn(renameTeardown.warning);
+      if (renameTeardown.blocked) {
+        throw new Error(renameTeardown.warning ?? 'Project rename teardown failed.');
+      }
       if (renameTeardown.downed) {
         lifecycleLogger.info(`project rename: stopped previous docker project "${renameTeardown.downed}"`);
       }

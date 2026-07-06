@@ -65,8 +65,12 @@ export async function runStartAction(
       // Project rename (#540): if OP_PROJECT_NAME changed since the stack
       // last came up, stop the recorded outgoing project first — otherwise
       // its containers keep running (and holding host ports) under the old
-      // name while this `up` creates a second stack under the new one.
+      // name while this `up` creates a second stack under the new one. A
+      // blocked teardown aborts the start rather than creating that collision.
       const renameTeardown = await teardownRenamedProject(state);
+      if (renameTeardown.blocked) {
+        throw new Error(renameTeardown.warning ?? 'Project rename teardown failed.');
+      }
       if (renameTeardown.warning) console.warn(renameTeardown.warning);
       if (renameTeardown.downed) {
         console.log(`Project rename: stopped previous docker project "${renameTeardown.downed}".`);

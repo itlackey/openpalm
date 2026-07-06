@@ -579,7 +579,7 @@ export async function composeDownProject(
     removeOrphans?: boolean;
   }
 ): Promise<DockerResult> {
-  if (!existsSync(options.files[0])) {
+  if (options.files.length === 0 || !existsSync(options.files[0])) {
     return { ok: false, stdout: "", stderr: "Compose file not found", code: 1 };
   }
   const args = buildComposeArgs({ ...options, projectName });

@@ -227,7 +227,12 @@ persist_akm_stash_dir_fallback() {
         || echo "warning: could not merge stashDir into $config_file; continuing" >&2
     else
       mkdir -p "$config_dir" 2>/dev/null || continue
-      printf '{\n  "stashDir": "%s"\n}\n' "$stash_dir" > "$config_file" 2>/dev/null \
+      # JSON-escape backslashes and double quotes so an unusual stash path
+      # cannot produce an invalid config.json (which would re-break stash
+      # resolution under cron — the exact failure this fallback guards against).
+      local stash_dir_json="${stash_dir//\\/\\\\}"
+      stash_dir_json="${stash_dir_json//\"/\\\"}"
+      printf '{\n  "stashDir": "%s"\n}\n' "$stash_dir_json" > "$config_file" 2>/dev/null \
         || echo "warning: could not write stashDir fallback to $config_file; continuing" >&2
     fi
   done

@@ -117,7 +117,7 @@ describe('teardownRenamedProject', () => {
 		writeStackEnv('OP_PROJECT_NAME=my-agent\n');
 		const { deps, calls } = makeDeps({});
 		const result = await teardownRenamedProject(makeState(), deps);
-		expect(result).toEqual({ downed: null, warning: null });
+		expect(result).toEqual({ downed: null, warning: null, blocked: false });
 		expect(calls.detect.length).toBe(0);
 		expect(calls.down.length).toBe(0);
 	});
@@ -132,6 +132,7 @@ describe('teardownRenamedProject', () => {
 		const result = await teardownRenamedProject(state, deps);
 		expect(result.downed).toBe('openpalm');
 		expect(result.warning).toBeNull();
+		expect(result.blocked).toBe(false);
 		expect(calls.detect).toEqual([{ projectName: 'openpalm', expectedWorkingDir: state.stackDir }]);
 		expect(calls.down).toEqual(['openpalm']);
 		expect(recordedMarker()).toBe('');
@@ -146,6 +147,7 @@ describe('teardownRenamedProject', () => {
 		const result = await teardownRenamedProject(makeState(), deps);
 		expect(result.downed).toBeNull();
 		expect(result.warning).toContain('another install');
+		expect(result.blocked).toBe(false);
 		expect(calls.down.length).toBe(0);
 		expect(recordedMarker()).toBe('');
 	});
@@ -157,12 +159,12 @@ describe('teardownRenamedProject', () => {
 			existing: { exists: false, isOurs: false, workingDir: '' }
 		});
 		const result = await teardownRenamedProject(makeState(), deps);
-		expect(result).toEqual({ downed: null, warning: null });
+		expect(result).toEqual({ downed: null, warning: null, blocked: false });
 		expect(calls.down.length).toBe(0);
 		expect(recordedMarker()).toBe('');
 	});
 
-	it('KEEPS the marker when the down fails, so the next apply retries', async () => {
+	it('KEEPS the marker and BLOCKS when the down fails, so callers abort and the next apply retries', async () => {
 		writeStackEnv('OP_PROJECT_NAME=my-agent\n');
 		recordProjectRename(home, 'openpalm', 'my-agent');
 		const state = makeState();
@@ -173,6 +175,7 @@ describe('teardownRenamedProject', () => {
 		const result = await teardownRenamedProject(state, deps);
 		expect(result.downed).toBeNull();
 		expect(result.warning).toContain('daemon exploded');
+		expect(result.blocked).toBe(true);
 		expect(recordedMarker()).toBe('openpalm');
 	});
 
@@ -182,7 +185,7 @@ describe('teardownRenamedProject', () => {
 		writeFileSync(stateEnvFile(home), `${PREVIOUS_PROJECT_NAME_KEY}=openpalm\n`);
 		const { deps, calls } = makeDeps({});
 		const result = await teardownRenamedProject(makeState(), deps);
-		expect(result).toEqual({ downed: null, warning: null });
+		expect(result).toEqual({ downed: null, warning: null, blocked: false });
 		expect(calls.detect.length).toBe(0);
 		expect(calls.down.length).toBe(0);
 		expect(recordedMarker()).toBe('');

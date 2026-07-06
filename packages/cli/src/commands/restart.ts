@@ -31,8 +31,12 @@ export async function runRestartAction(services: string[]): Promise<void> {
     // Project rename (#540): after OP_PROJECT_NAME changes, no containers
     // exist under the new name yet — a plain `restart` would no-op while the
     // old project keeps running. Stop the recorded outgoing project, then
-    // `up -d` so the stack is (re)created under the new name.
+    // `up -d` so the stack is (re)created under the new name. A blocked
+    // teardown aborts instead of reporting a restart that never migrated.
     const renameTeardown = await teardownRenamedProject(state);
+    if (renameTeardown.blocked) {
+      throw new Error(renameTeardown.warning ?? 'Project rename teardown failed.');
+    }
     if (renameTeardown.warning) console.warn(renameTeardown.warning);
     if (renameTeardown.downed) {
       console.log(`Project rename: stopped previous docker project "${renameTeardown.downed}".`);
