@@ -31,10 +31,9 @@
  *      pwa-static, ≥1 connection  → /chat
  *      anything else              → /chat
  *
- * Phase 3 does NOT create /host (that is Phase 4): the host admin landing
- * stays at the existing /admin, encoded in the implementation as a TODO
- * constant so Phase 4 flips exactly one value. When Phase 4 lands, update
- * HOST_ADMIN_LANDING below to '/host' (and nothing else in this file).
+ * Phase 4 moved the host admin landing from /admin to /host; the
+ * HOST_ADMIN_LANDING constant below flipped with it (and nothing else in
+ * this file).
  *
  * The module is loaded through a computed-specifier dynamic import so
  * svelte-check stays clean while the suite is red (same convention as the
@@ -45,8 +44,8 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Capability, RuntimeContext, UiHostMode } from '$lib/types.js';
 
-// Phase 3 value. TODO(phase-4): flip to '/host' when /admin is renamed.
-const HOST_ADMIN_LANDING = '/admin';
+// Phase 4 value: the host admin surface moved from /admin to /host.
+const HOST_ADMIN_LANDING = '/host';
 
 // ── module loading (red-state safe) ──────────────────────────────────────────
 
@@ -202,7 +201,7 @@ describe('resolveLanding — host:setup capability present (plan §6.5)', () => 
     expect(resolveLanding(hostCtx, state)).toBe('/setup');
   });
 
-  test(`installed_offline lands on the host admin surface (${HOST_ADMIN_LANDING} until Phase 4)`, async () => {
+  test(`installed_offline lands on the host admin surface (${HOST_ADMIN_LANDING})`, async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'installed_offline' } });
     expect(resolveLanding(hostCtx, state)).toBe(HOST_ADMIN_LANDING);

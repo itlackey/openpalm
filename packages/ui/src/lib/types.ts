@@ -1,14 +1,8 @@
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
-export interface FeatureFlags {
-  /** Control-plane tools (Docker compose management, stack orchestration).
-   *  DERIVED ALIAS (plan ui-runtime-modes-plan.md Phase 1): true exactly when
-   *  the resolved hostMode is host-capable ('electron-host' | 'host-ui').
-   *  Legacy envs map in via computeServerRuntimeContext: OP_INSIDE_ELECTRON=1
-   *  → electron-host, OP_ENABLE_ADMIN=1 → host-ui. Kept until the
-   *  features.admin → hasCapability() migration completes. */
-  admin: boolean;
-}
+// The legacy FeatureFlags { admin } alias was deleted in Phase 4 (plan
+// ui-runtime-modes-plan.md §6.4): nothing read it anymore — capability checks
+// live in computeServerRuntimeContext/resolveCapabilities + hasCapability().
 
 // ── RuntimeContext v2 (plan §6.1, issue #509) ──────────────────────────
 

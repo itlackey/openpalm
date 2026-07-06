@@ -42,11 +42,11 @@ function noAuth(): Record<string, string> {
 
 // Endpoints that must be gated by admin auth (GET unless noted)
 const PROTECTED_ENDPOINTS = [
-  '/admin/health',
-  '/admin/providers',
-  '/admin/secrets/user-env',
-  '/admin/containers/list',
-  '/admin/automations',
+  '/api/host/health',
+  '/api/host/providers',
+  '/api/host/secrets/user-env',
+  '/api/host/containers/list',
+  '/api/host/automations',
 ];
 
 test.describe('Auth boundary — protected endpoints', () => {
@@ -78,24 +78,24 @@ test.describe('Auth boundary — write endpoints', () => {
   test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
   test.setTimeout(30_000);
 
-  test('POST /admin/secrets/user-env returns 401 without auth', async ({ request }) => {
-    const res = await request.post(`${ADMIN_URL}/admin/secrets/user-env`, {
+  test('POST /api/host/secrets/user-env returns 401 without auth', async ({ request }) => {
+    const res = await request.post(`${ADMIN_URL}/api/host/secrets/user-env`, {
       headers: { ...noAuth(), 'content-type': 'application/json' },
       data: { key: 'E2E_TEST', value: 'test' },
     });
     expect(res.status()).toBe(401);
   });
 
-  test('POST /admin/secrets/user-env returns 401 with wrong cookie', async ({ request }) => {
-    const res = await request.post(`${ADMIN_URL}/admin/secrets/user-env`, {
+  test('POST /api/host/secrets/user-env returns 401 with wrong cookie', async ({ request }) => {
+    const res = await request.post(`${ADMIN_URL}/api/host/secrets/user-env`, {
       headers: { ...wrongCookie(), 'content-type': 'application/json' },
       data: { key: 'E2E_TEST', value: 'test' },
     });
     expect(res.status()).toBe(401);
   });
 
-  test('DELETE /admin/secrets/user-env returns 401 without auth', async ({ request }) => {
-    const res = await request.delete(`${ADMIN_URL}/admin/secrets/user-env?key=E2E_TEST`, {
+  test('DELETE /api/host/secrets/user-env returns 401 without auth', async ({ request }) => {
+    const res = await request.delete(`${ADMIN_URL}/api/host/secrets/user-env?key=E2E_TEST`, {
       headers: noAuth(),
     });
     expect(res.status()).toBe(401);

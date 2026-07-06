@@ -6,7 +6,7 @@ import type { ConnectionKind } from '$lib/types.js';
 // Phase 2 (#486): the internal model uses "connection" language (plan
 // ui-runtime-modes-plan.md §6.6) and the client talks to /api/connections/*,
 // which is guarded by the `connections:manage` capability instead of the
-// host-admin-only /admin/* namespace — so connection management works in
+// host-admin-only legacy /admin namespace — so connection management works in
 // every mode that advertises the capability (host-ui, electron-host,
 // pwa-static). This module keeps its historical file name (api/endpoints.ts)
 // until the Phase 5 client extraction relocates it.

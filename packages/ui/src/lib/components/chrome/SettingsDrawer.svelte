@@ -55,7 +55,7 @@
 
     <nav class="settings-links" aria-label="Settings links">
       {#if showManageAssistant}
-        <a class="settings-link" href={resolve('/admin')} onclick={() => (open = false)}>
+        <a class="settings-link" href={resolve('/host')} onclick={() => (open = false)}>
           Manage this assistant...
         </a>
       {/if}

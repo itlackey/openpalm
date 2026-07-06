@@ -62,7 +62,7 @@
   <div class="divider"></div>
 
   {#if showManageAssistant}
-    <a class="list-item link" href={resolve('/admin')} onclick={() => onChosen?.()}>
+    <a class="list-item link" href={resolve('/host')} onclick={() => onChosen?.()}>
       Manage this assistant…
     </a>
   {/if}

@@ -1,7 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { PLATFORM_VERSION } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
-import type { Capability, FeatureFlags, ServerRuntimeContext, UiHostMode } from '$lib/types.js';
+import type { Capability, ServerRuntimeContext, UiHostMode } from '$lib/types.js';
 
 /**
  * Server runtime context — RuntimeContext v2 (plan ui-runtime-modes-plan.md
@@ -84,9 +84,9 @@ const SERVER_CAPABILITIES: Record<UiHostMode, readonly Capability[]> = {
   ],
 };
 
-/** Route pointers per mode — current-truth URLs (pre-Phase-3 route split).
- *  Phase 2 (#486) moved connections to /connections (the /admin/endpoints
- *  alias redirects there for 0.13.0); Phase 4 moves /admin to /host. */
+/** Route pointers per mode — current-truth URLs. Phase 2 (#486) moved
+ *  connections to /connections; Phase 4 moved the host dashboard to /host
+ *  (/admin/* is a dead namespace — router 404, no alias). */
 function routesForMode(mode: UiHostMode): ServerRuntimeContext['routes'] {
   switch (mode) {
     case 'electron-host':
@@ -94,7 +94,7 @@ function routesForMode(mode: UiHostMode): ServerRuntimeContext['routes'] {
       return {
         chat: '/chat',
         connections: '/connections',
-        host: '/admin',
+        host: '/host',
         setup: '/setup',
       };
     case 'assistant-container':
@@ -113,7 +113,9 @@ export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeC
     version: 2,
     hostMode,
     serverCapabilities: [...SERVER_CAPABILITIES[hostMode]],
-    publicBaseUrl: event.url.origin,
+    // Only publicBaseUrl depends on the event; requireCapability() calls this
+    // from route handlers whose test event stubs may omit `url`.
+    publicBaseUrl: event.url?.origin ?? '',
     uiVersion: uiPkg.version,
     // Skeleton version equals platform version in production (plan §8.2);
     // OP_SKELETON_VERSION is the explicit exact-pin override (plan §3).
@@ -135,17 +137,6 @@ export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeC
   };
 }
 
-/**
- * Legacy feature flags — kept as a DERIVED ALIAS of the runtime context until
- * the features.admin → hasCapability() migration completes (plan Phase 1).
- *
- * admin: true exactly when the resolved hostMode is host-capable, which
- * preserves the pre-Phase-1 behavior (OP_INSIDE_ELECTRON=1 → electron-host,
- * OP_ENABLE_ADMIN=1 → host-ui, both → admin).
- */
-export function computeFeatureFlags(): FeatureFlags {
-  const hostMode = resolveHostMode();
-  return {
-    admin: hostMode === 'electron-host' || hostMode === 'host-ui',
-  };
-}
+// The legacy computeFeatureFlags() derived alias was deleted in Phase 4: its
+// last readers (the hooks.server.ts route gate and the +layout.server.ts
+// payload) migrated to capability checks, and grep found no other consumer.

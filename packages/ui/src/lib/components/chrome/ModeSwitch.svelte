@@ -11,7 +11,7 @@
   // (selected) on /advanced. Clicking flips between the two. Rendering through
   // ToggleButton keeps it aligned with the other chrome toggles.
   const pathname = $derived(page.url?.pathname ?? '');
-  const onAdmin = $derived(pathname === '/admin' || pathname.startsWith('/admin/'));
+  const onAdmin = $derived(pathname === '/host' || pathname.startsWith('/host/'));
 
   function toggle(): void {
     const enabled = advancedModeService.toggle();

@@ -31,7 +31,7 @@
 
       <div class="attention-actions">
         <button class="btn btn-primary btn-lg" onclick={() => window.location.reload()}>Reload</button>
-        <a class="btn btn-outline btn-lg" href={resolve('/admin')}>Open dashboard</a>
+        <a class="btn btn-outline btn-lg" href={resolve('/host')}>Open dashboard</a>
       </div>
     </div>
   </main>

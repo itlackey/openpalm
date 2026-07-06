@@ -541,7 +541,7 @@
 							<div class="s-endpoint-url">{ep.url}</div>
 						</button>
 						{#if ep.url && isLocalAssistantUrl(ep.url)}
-							<a class="s-endpoint-manage" href={resolve('/admin')} onclick={closeGarden}
+							<a class="s-endpoint-manage" href={resolve('/host')} onclick={closeGarden}
 								>manage this assistant</a
 							>
 						{/if}

@@ -17,14 +17,14 @@ export async function applyChanges(versions: Record<string, string> = {}): Promi
   // so parse it before requireOk would throw.
   // `versions` carries the target each component should advance to (the resolved
   // channel-latest or a pin) so the update actually moves forward (see UpdatesTab).
-  const res = await request('POST', '/admin/update', { versions });
+  const res = await request('POST', '/api/host/update', { versions });
   return requireJsonBody<ApplyChangesResult>(res, `Apply failed (HTTP ${res.status})`);
 }
 
 /** Scoped single-service update (§4, §7 "Update <container>"):
  *  pull + recreate ONLY the named compose service. Pull failure is FATAL (§6). */
 export async function applyServiceUpdate(service: string, versions: Record<string, string> = {}): Promise<ApplyChangesResult> {
-  const res = await request('POST', '/admin/update', { service, versions });
+  const res = await request('POST', '/api/host/update', { service, versions });
   return requireJsonBody<ApplyChangesResult>(res, `Update failed (HTTP ${res.status})`);
 }
 
@@ -47,7 +47,7 @@ export interface ComponentVersionInfo {
   available: string | null;
 }
 
-/** GET /admin/versions response (Phase 5 shape + backward-compat legacy fields). */
+/** GET /api/host/versions response (Phase 5 shape + backward-compat legacy fields). */
 export interface VersionsResponse {
   /** Phase-5 per-component detail (three distinct values per key, §5). */
   components: Record<string, ComponentVersionInfo>;
@@ -60,18 +60,18 @@ export interface VersionsResponse {
 }
 
 export async function fetchVersions(): Promise<VersionsResponse> {
-  const res = await requireOk(await request('GET', '/admin/versions'));
+  const res = await requireOk(await request('GET', '/api/host/versions'));
   return (await res.json()) as VersionsResponse;
 }
 
 /** Persist version pins to stack.env. Only SERVICE_VERSION_KEYS + OP_AUTO_UPDATE
- *  are accepted; the change takes effect on the next POST /admin/update. */
+ *  are accepted; the change takes effect on the next POST /api/host/update. */
 export async function patchVersions(versions: Record<string, string>): Promise<{ ok: boolean; versions: Record<string, string> }> {
-  const res = await requireOk(await request('PATCH', '/admin/versions', { versions }));
+  const res = await requireOk(await request('PATCH', '/api/host/versions', { versions }));
   return (await res.json()) as { ok: boolean; versions: Record<string, string> };
 }
 
-/** Response from GET /admin/versions/latest — resolved latest versions from
+/** Response from GET /api/host/versions/latest — resolved latest versions from
  *  GitHub releases (images) and npm registry (packages). null means the registry
  *  was unreachable for that key. */
 export interface LatestVersionsResponse {
@@ -83,13 +83,13 @@ export interface LatestVersionsResponse {
 /** Query the latest available versions from GitHub releases + npm registry.
  *  Called only on explicit user action; never auto-polled. */
 export async function fetchLatestVersions(): Promise<LatestVersionsResponse> {
-  const res = await requireOk(await request('GET', '/admin/versions/latest'));
+  const res = await requireOk(await request('GET', '/api/host/versions/latest'));
   return (await res.json()) as LatestVersionsResponse;
 }
 
 export async function downloadUiVersion(
   tag: string,
 ): Promise<{ ok: boolean; tag: string; restarting: boolean; pendingRestart: boolean }> {
-  const res = await requireOk(await request('POST', '/admin/ui-version', { tag }));
+  const res = await requireOk(await request('POST', '/api/host/ui-version', { tag }));
   return (await res.json()) as { ok: boolean; tag: string; restarting: boolean; pendingRestart: boolean };
 }

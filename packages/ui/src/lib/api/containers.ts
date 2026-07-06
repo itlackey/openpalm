@@ -4,7 +4,7 @@ import { request, requireOk } from './core.js';
 // ── Containers ───────────────────────────────────────────────────────────────
 
 export async function fetchContainers(): Promise<ContainerListResponse> {
-  const res = await requireOk(await request('GET', '/admin/containers/list'));
+  const res = await requireOk(await request('GET', '/api/host/containers/list'));
   return (await res.json()) as ContainerListResponse;
 }
 
@@ -13,9 +13,9 @@ export async function containerAction(
   containerId: string
 ): Promise<void> {
   const pathMap = {
-    start: '/admin/containers/up',
-    stop: '/admin/containers/down',
-    restart: '/admin/containers/restart'
+    start: '/api/host/containers/up',
+    stop: '/api/host/containers/down',
+    restart: '/api/host/containers/restart'
   } as const;
   await requireOk(await request('POST', pathMap[action], { service: containerId }));
 }
@@ -23,5 +23,5 @@ export async function containerAction(
 // ── Docker Pull ──────────────────────────────────────────────────────────────
 
 export async function pullImages(): Promise<void> {
-  await requireOk(await request('POST', '/admin/containers/pull', {}));
+  await requireOk(await request('POST', '/api/host/containers/pull', {}));
 }

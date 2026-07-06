@@ -15,7 +15,7 @@ import { getState } from "$lib/server/state.js";
 import { checkHostHeader, checkOriginHeader, identifyCallerByToken } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
-import { computeFeatureFlags } from '$lib/server/features.js';
+import { computeServerRuntimeContext } from '$lib/server/features.js';
 import {
   createLogger,
   isSetupComplete,
@@ -113,12 +113,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   const path = event.url.pathname;
 
-  // Feature gate: /admin/* requires admin flag (Electron or OP_ENABLE_ADMIN=1).
-  // Redirect to /chat so the user lands somewhere useful instead of a 404/403.
-  // /admin/endpoints is the Phase 2 alias for /connections (#486) — honor the
-  // alias in every mode so stale links land on the capability-guarded page.
-  if (path.startsWith('/admin') && !computeFeatureFlags().admin) {
-    redirect(302, path === '/admin/endpoints' ? '/connections' : '/chat');
+  // Capability gate: the /host control plane only renders where the server
+  // advertises the host:* capability set (plan Phase 4 step 4 — the old
+  // admin feature-flag gate, re-expressed as a capability check; the SECURITY
+  // boundary stays server-side in every /api/host/* route via
+  // requireCapability). Redirect to /chat so the user lands somewhere useful.
+  // /admin/* is deliberately NOT gated or aliased: the tree is deleted, so
+  // requests fall through to the router's 404 (plan §6.4 "No /admin alias").
+  if (
+    (path === '/host' || path.startsWith('/host/')) &&
+    !computeServerRuntimeContext(event).serverCapabilities.includes('host:stack:read')
+  ) {
+    redirect(302, '/chat');
   }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
 
@@ -152,9 +158,12 @@ export const handle: Handle = async ({ event, resolve }) => {
     const [landingPath] = landing.split('?');
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
       || path.startsWith('/connections');
+    // '/host' is the admin surface itself; '/admin' stays exempt so requests
+    // into the dead namespace fall through to the router 404 instead of
+    // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).
     const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
-      || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/admin')
-      || usageRoute;
+      || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/host')
+      || path.startsWith('/admin') || usageRoute;
     if (path === '/' || (path !== landingPath && !exempt)) {
       redirect(302, landing);
     }
@@ -166,9 +175,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   // any HTML is sent.
   //
   // Only *document* navigations (GET + `Accept: text/html`) are redirected to
-  // /login. API/data requests are left alone: every `/admin/*` endpoint enforces
-  // auth itself via requireAdmin() and must return JSON 401, not an HTML 302
-  // (browser fetch() sends `Accept: */*`, so it never matches here).
+  // /login. API/data requests are left alone: every /api/host/* and
+  // /api/assistant/* endpoint enforces auth itself via requireAdmin() and must
+  // return JSON 401, not an HTML 302 (browser fetch() sends `Accept: */*`, so
+  // it never matches here).
   event.locals.role = identifyCallerByToken(event);
 
   // ── Sliding renewal: a valid cookie was just resolved to a role, so push its
@@ -208,7 +218,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   response.headers.set(
     "X-Frame-Options",
-    path === '/admin/akm/health-report' ? 'SAMEORIGIN' : 'DENY',
+    path === '/api/host/akm/health-report' ? 'SAMEORIGIN' : 'DENY',
   );
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "no-referrer");

@@ -2,13 +2,13 @@
  * Tests for lib/server/features.ts — Phase 1 RuntimeContext v2 (issue #509).
  *
  * TDD status:
- *  - `computeServerRuntimeContext(event)` describes the NOT-YET-IMPLEMENTED
- *    replacement for `FeatureFlags` (plan §6.1 / Phase 1). Those tests are RED
- *    until the implementation lands.
- *  - `computeFeatureFlags` tests are CHARACTERIZATION of the existing
- *    `features.admin` behavior. They pass pre-change and MUST keep passing:
- *    Phase 1 keeps `features.admin` as a derived alias so existing code and
- *    routes work unchanged.
+ *  - `computeServerRuntimeContext(event)` describes the Phase 1 replacement
+ *    for the legacy feature flags (plan §6.1).
+ *  - The `computeFeatureFlags` characterization block that protected the
+ *    `features.admin` derived alias through Phases 1–3 was retired with the
+ *    alias itself in Phase 4 (plan Phase 4 step 4: delete when grep finds no
+ *    reader — the env → hostMode mapping it pinned is covered by the
+ *    `resolveHostMode` tests below).
  *
  * env → hostMode mapping under test (plan Phase 1):
  *   OP_UI_HOST_MODE (explicit) → that mode
@@ -19,7 +19,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { Capability, UiHostMode } from '$lib/types.js';
-import { computeFeatureFlags, computeServerRuntimeContext } from './features.js';
+import { computeServerRuntimeContext } from './features.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -218,23 +218,7 @@ describe('computeServerRuntimeContext — serverCapabilities per hostMode (plan 
   });
 });
 
-// ── features.admin alias (CHARACTERIZATION — green pre-change) ───────────────
-// Phase 1 keeps `features.admin` as a derived alias; these pin the legacy
-// env behavior that existing code and routes rely on. Do NOT delete when the
-// implementation lands — they must stay green.
-
-describe('computeFeatureFlags — features.admin alias (characterization)', () => {
-  test('admin is true under OP_INSIDE_ELECTRON=1', () => {
-    process.env.OP_INSIDE_ELECTRON = '1';
-    expect(computeFeatureFlags().admin).toBe(true);
-  });
-
-  test('admin is true under OP_ENABLE_ADMIN=1', () => {
-    process.env.OP_ENABLE_ADMIN = '1';
-    expect(computeFeatureFlags().admin).toBe(true);
-  });
-
-  test('admin is false when neither legacy env is set', () => {
-    expect(computeFeatureFlags().admin).toBe(false);
-  });
-});
+// The features.admin alias characterization block lived here through Phases
+// 1–3. Phase 4 deleted computeFeatureFlags() with its last readers; the
+// legacy env mapping it pinned (OP_INSIDE_ELECTRON / OP_ENABLE_ADMIN) stays
+// covered by the resolveHostMode tests above.

@@ -7,9 +7,9 @@
  * The scheduler runs as a co-process inside the assistant container and has
  * no HTTP API. All control flows through the admin API onto the filesystem:
  *
- *   GET  /admin/automations                — list automations (loadAutomations)
- *   POST /admin/automations/:name/run      — runs akm tasks run <name> directly
- *   GET  /admin/automations/:name/log      — reads from data/akm/cache/tasks/logs/<name>/
+ *   GET  /api/host/automations                — list automations (loadAutomations)
+ *   POST /api/host/automations/:name/run      — runs akm tasks run <name> directly
+ *   GET  /api/host/automations/:name/log      — reads from data/akm/cache/tasks/logs/<name>/
  *
  * These tests hit the host admin process (default test port 9100) and
  * require a running stack and admin process.
@@ -36,8 +36,8 @@ test.describe("Automation Scheduler (file-based control plane)", () => {
   const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
   test.skip(!!SKIP, "Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack");
 
-  test("GET /admin/automations returns valid structure", async ({ request }) => {
-    const response = await request.get(`${ADMIN_URL}/admin/automations`, {
+  test("GET /api/host/automations returns valid structure", async ({ request }) => {
+    const response = await request.get(`${ADMIN_URL}/api/host/automations`, {
       headers: adminHeaders(),
       timeout: 10_000,
     });
@@ -48,8 +48,8 @@ test.describe("Automation Scheduler (file-based control plane)", () => {
     expect(Array.isArray(data.automations)).toBe(true);
   });
 
-  test("GET /admin/automations requires auth", async ({ request }) => {
-    const response = await request.get(`${ADMIN_URL}/admin/automations`, {
+  test("GET /api/host/automations requires auth", async ({ request }) => {
+    const response = await request.get(`${ADMIN_URL}/api/host/automations`, {
       headers: { "x-request-id": crypto.randomUUID() },
       timeout: 10_000,
     });
@@ -57,7 +57,7 @@ test.describe("Automation Scheduler (file-based control plane)", () => {
   });
 
   test("automation entries have required fields", async ({ request }) => {
-    const response = await request.get(`${ADMIN_URL}/admin/automations`, {
+    const response = await request.get(`${ADMIN_URL}/api/host/automations`, {
       headers: adminHeaders(),
       timeout: 10_000,
     });
@@ -75,24 +75,24 @@ test.describe("Automation Scheduler (file-based control plane)", () => {
     }
   });
 
-  test("POST /admin/automations/:name/run rejects invalid names", async ({ request }) => {
-    const response = await request.post(`${ADMIN_URL}/admin/automations/..%2Fetc%2Fpasswd/run`, {
+  test("POST /api/host/automations/:name/run rejects invalid names", async ({ request }) => {
+    const response = await request.post(`${ADMIN_URL}/api/host/automations/..%2Fetc%2Fpasswd/run`, {
       headers: adminHeaders(),
       timeout: 10_000,
     });
     expect([400, 404]).toContain(response.status());
   });
 
-  test("POST /admin/automations/:name/run returns 404 for unknown automation", async ({ request }) => {
-    const response = await request.post(`${ADMIN_URL}/admin/automations/does-not-exist.yml/run`, {
+  test("POST /api/host/automations/:name/run returns 404 for unknown automation", async ({ request }) => {
+    const response = await request.post(`${ADMIN_URL}/api/host/automations/does-not-exist.yml/run`, {
       headers: adminHeaders(),
       timeout: 10_000,
     });
     expect(response.status()).toBe(404);
   });
 
-  test("POST /admin/automations/:name/run queues an existing automation", async ({ request }) => {
-    const list = await request.get(`${ADMIN_URL}/admin/automations`, {
+  test("POST /api/host/automations/:name/run queues an existing automation", async ({ request }) => {
+    const list = await request.get(`${ADMIN_URL}/api/host/automations`, {
       headers: adminHeaders(),
       timeout: 10_000,
     });
@@ -105,7 +105,7 @@ test.describe("Automation Scheduler (file-based control plane)", () => {
 
     const target = data.automations[0].fileName as string;
     const response = await request.post(
-      `${ADMIN_URL}/admin/automations/${encodeURIComponent(target)}/run`,
+      `${ADMIN_URL}/api/host/automations/${encodeURIComponent(target)}/run`,
       { headers: adminHeaders(), timeout: 10_000 },
     );
     expect(response.status()).toBe(202);
@@ -115,8 +115,8 @@ test.describe("Automation Scheduler (file-based control plane)", () => {
     expect(body.queued).toBe(true);
   });
 
-  test("GET /admin/automations/:name/log returns a structured response", async ({ request }) => {
-    const list = await request.get(`${ADMIN_URL}/admin/automations`, {
+  test("GET /api/host/automations/:name/log returns a structured response", async ({ request }) => {
+    const list = await request.get(`${ADMIN_URL}/api/host/automations`, {
       headers: adminHeaders(),
       timeout: 10_000,
     });
@@ -129,7 +129,7 @@ test.describe("Automation Scheduler (file-based control plane)", () => {
 
     const target = data.automations[0].fileName as string;
     const response = await request.get(
-      `${ADMIN_URL}/admin/automations/${encodeURIComponent(target)}/log?limit=10`,
+      `${ADMIN_URL}/api/host/automations/${encodeURIComponent(target)}/log?limit=10`,
       { headers: adminHeaders(), timeout: 10_000 },
     );
     expect(response.ok()).toBeTruthy();

@@ -13,9 +13,8 @@
  *    exactly like the existing '/' redirect (a stale /splash bookmark must
  *    not bounce through /login first).
  *  - /attention exists as the new migration/blocking surface split out of
- *    /splash. /host is NOT created in Phase 3 — until Phase 4 renames
- *    /admin, the installed_offline/broken landing stays '/admin' (a TODO
- *    constant in the implementation; flip HOST_ADMIN_LANDING here with it).
+ *    /splash. Phase 4 renamed /admin to /host; the installed_offline/broken
+ *    landing (HOST_ADMIN_LANDING here) flipped with it.
  *
  * RED until Phase 3 lands, EXCEPT the test explicitly labeled
  * CHARACTERIZATION (healthy stack → /chat), which passes today and must
@@ -46,8 +45,8 @@ vi.mock('@openpalm/lib', async (orig) => ({
 import { composePs } from '@openpalm/lib';
 import { handle, _resetLaunchCache } from './hooks.server.js';
 
-// Phase 3 value. TODO(phase-4): flip to '/host' when /admin is renamed.
-const HOST_ADMIN_LANDING = '/admin';
+// Phase 4 value: the host admin surface moved from /admin to /host.
+const HOST_ADMIN_LANDING = '/host';
 
 // ── helpers (same conventions as hooks.server.vitest.ts) ─────────────────────
 

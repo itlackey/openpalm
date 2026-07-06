@@ -86,7 +86,7 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
 
 /**
  * Resolve the landing path for a request via resolveLanding() (plan §6.5).
- * May return a path with a query string (e.g. '/admin?tab=diagnostics').
+ * May return a path with a query string (e.g. '/host?tab=diagnostics').
  */
 export async function resolveRequestLanding(event: RequestEvent): Promise<string> {
   const serverCtx = computeServerRuntimeContext(event);

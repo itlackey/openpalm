@@ -4,7 +4,7 @@
  * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
  * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
- * Tests the /admin/secrets/user-env API end-to-end:
+ * Tests the /api/host/secrets/user-env API end-to-end:
  *  - POST: write a test key
  *  - GET: verify key appears in the list (value is never returned)
  *  - DELETE: remove the key
@@ -22,7 +22,7 @@ const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
 const TEST_KEY = 'E2E_SECRETS_TEST_KEY';
-const VAULT_URL = `${ADMIN_URL}/admin/secrets/user-env`;
+const VAULT_URL = `${ADMIN_URL}/api/host/secrets/user-env`;
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
   return {
@@ -43,7 +43,7 @@ test.describe('Secrets CRUD', () => {
     await request.delete(`${VAULT_URL}?key=${TEST_KEY}`, { headers: headers() }).catch(() => {});
   });
 
-  test('GET /admin/secrets/user-env returns env metadata', async ({ request }) => {
+  test('GET /api/host/secrets/user-env returns env metadata', async ({ request }) => {
     const res = await request.get(VAULT_URL, { headers: headers() });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();

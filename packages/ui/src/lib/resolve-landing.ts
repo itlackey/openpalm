@@ -30,11 +30,10 @@ import type { LocalStackState } from '@openpalm/lib';
 import type { RuntimeContext } from '$lib/types.js';
 
 /**
- * Where the host admin surface lives. Phase 3 keeps the existing /admin.
- * TODO(phase-4): flip to '/host' when /admin is renamed — this constant is
- * the only value that changes.
+ * Where the host admin surface lives. Phase 4 moved it from /admin to /host
+ * (/admin/* is a dead namespace — router 404, no alias).
  */
-export const HOST_ADMIN_LANDING = '/admin';
+export const HOST_ADMIN_LANDING = '/host';
 
 /** Blocking-migration gate: 'pending' blocks; anything else does not.
  *  Nothing produces 'pending' yet — the gate (and the /attention surface it

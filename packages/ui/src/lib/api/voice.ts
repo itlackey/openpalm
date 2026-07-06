@@ -33,7 +33,7 @@ export async function fetchVoiceConfig(): Promise<{
   stt: Record<string, unknown>;
   addon?: VoiceAddonInfo;
 }> {
-  const res = await requireOk(await request('GET', '/admin/voice'));
+  const res = await requireOk(await request('GET', '/api/host/voice'));
   return (await res.json()) as {
     tts: Record<string, unknown>;
     stt: Record<string, unknown>;
@@ -58,13 +58,13 @@ export type SaveVoiceResult = {
 };
 
 export async function saveVoiceConfig(config: { tts?: unknown; stt?: unknown; profile?: string }): Promise<SaveVoiceResult> {
-  const res = await request('PUT', '/admin/voice', config);
+  const res = await request('PUT', '/api/host/voice', config);
   // 401 still throws so the auth gate can re-arm.
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid password.'), { status: 401 });
   }
   // 200 (saved + voice ready), 202 (saved, voice still pulling/starting
-  // in background — caller polls /admin/voice for activeJob), and 502
+  // in background — caller polls /api/host/voice for activeJob), and 502
   // (saved, voice failed) all carry a structured `voiceAddon` payload.
   if (res.status === 200 || res.status === 202 || res.status === 502) {
     const body = (await res.json()) as Omit<SaveVoiceResult, 'status'>;

@@ -7,6 +7,7 @@
 		saveAkmConfig,
 		testAkmEmbedding,
 	} from '$lib/api.js';
+	import { hasCapability } from '$lib/runtime-context.svelte.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import AkmKnowledgeStatsSection from '$lib/components/akm/AkmKnowledgeStatsSection.svelte';
@@ -40,6 +41,13 @@
 
 	// Host AKM sharing now lives in its own Knowledge sub-tab
 	// (akm/HostSharingSection.svelte) — moved out of this megaform.
+
+	// Phase 4 AkmTab split: the config megaform is ASSISTANT-scoped
+	// (/api/assistant/akm), while index maintenance + diagnostics run docker
+	// commands on the HOST (/api/host/akm/*) — show them only with host
+	// capabilities. hasCapability() is UX only; the endpoints enforce
+	// capabilities server-side.
+	const hostMaintenance = hasCapability('host:containers');
 
 	// ── LLM Profiles ─────────────────────────────────────────────────────────────
 	let llmProfiles = $state<LlmProfile[]>([]);
@@ -358,10 +366,12 @@
 				{#if loading}<Spinner />{/if}
 				Refresh
 			</button>
-			<button class="btn btn-secondary btn-sm" onclick={() => void reindexKnowledge()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing}>
-				{#if reindexing}<Spinner />{/if}
-				Re-index
-			</button>
+			{#if hostMaintenance}
+				<button class="btn btn-secondary btn-sm" onclick={() => void reindexKnowledge()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing}>
+					{#if reindexing}<Spinner />{/if}
+					Re-index
+				</button>
+			{/if}
 			<button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing}>
 				{#if saving}<Spinner />{/if}
 				Save
@@ -389,18 +399,22 @@
 				aria-selected={knowledgeSection === 'behavior'}
 				onclick={() => { knowledgeSection = 'behavior'; }}
 			>Behavior</button>
-			<button
-				role="tab"
-				class="k-tab"
-				class:k-tab--active={knowledgeSection === 'health-report'}
-				aria-selected={knowledgeSection === 'health-report'}
-				onclick={() => { knowledgeSection = 'health-report'; }}
-			>Health Report</button>
+			{#if hostMaintenance}
+				<button
+					role="tab"
+					class="k-tab"
+					class:k-tab--active={knowledgeSection === 'health-report'}
+					aria-selected={knowledgeSection === 'health-report'}
+					onclick={() => { knowledgeSection = 'health-report'; }}
+				>Health Report</button>
+			{/if}
 		</div>
 
 		<!-- ── AI Services group (model/agent/improve connections + embedding) ── -->
 		{#if knowledgeSection === 'ai-services'}
-		<AkmKnowledgeStatsSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing} />
+		{#if hostMaintenance}
+			<AkmKnowledgeStatsSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing} />
+		{/if}
 
 		<p class="section-note section-note--lead">The AI services your assistant uses to build and search its memory — the language models that organize memories, the embedding provider for semantic search, and the maintenance pipeline.</p>
 
@@ -476,7 +490,7 @@
 
 		{/if}<!-- end behavior group -->
 
-		{#if knowledgeSection === 'health-report'}
+		{#if knowledgeSection === 'health-report' && hostMaintenance}
 		<AkmHealthReportSection disabled={loading || saving || detectingEmbedding || testingEmbedding || reindexing} />
 		{/if}
 

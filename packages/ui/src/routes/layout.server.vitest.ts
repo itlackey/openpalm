@@ -2,11 +2,13 @@
  * Tests for routes/+layout.server.ts — Phase 1 RuntimeContext v2 (issue #509).
  *
  * TDD status:
- *  - The `features.admin` tests are CHARACTERIZATION: they pass pre-change and
- *    MUST keep passing — Phase 1 keeps `features.admin` as a derived alias so
- *    all existing code and routes work unchanged (zero behavior change).
- *  - The `serverRuntimeContext` tests are RED until #509 lands: the layout
- *    load must additionally return the ServerRuntimeContext computed by
+ *  - The `features.admin` characterization block that protected the derived
+ *    alias through Phases 1–3 was retired with the alias itself in Phase 4
+ *    (plan Phase 4 step 4: delete when grep finds no reader — nothing
+ *    consumed `data.features` anymore). The env → hostMode mapping it pinned
+ *    is covered by the serverRuntimeContext tests below.
+ *  - The `serverRuntimeContext` tests describe the #509 layout payload: the
+ *    load returns the ServerRuntimeContext computed by
  *    computeServerRuntimeContext(event) (plan Phase 1 step 3).
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -50,28 +52,11 @@ afterEach(() => {
   }
 });
 
-// ── features.admin alias (CHARACTERIZATION — green pre-change) ───────────────
+// The features.admin alias characterization block lived here through Phases
+// 1–3. Phase 4 deleted the alias with its last readers; the layout payload
+// now carries only serverRuntimeContext.
 
-describe('+layout.server load — features.admin alias (characterization)', () => {
-  test('features.admin is true under OP_INSIDE_ELECTRON=1', async () => {
-    process.env.OP_INSIDE_ELECTRON = '1';
-    const data = await runLoad();
-    expect((data.features as { admin: boolean }).admin).toBe(true);
-  });
-
-  test('features.admin is true under OP_ENABLE_ADMIN=1', async () => {
-    process.env.OP_ENABLE_ADMIN = '1';
-    const data = await runLoad();
-    expect((data.features as { admin: boolean }).admin).toBe(true);
-  });
-
-  test('features.admin is false when neither legacy env is set', async () => {
-    const data = await runLoad();
-    expect((data.features as { admin: boolean }).admin).toBe(false);
-  });
-});
-
-// ── serverRuntimeContext (RED until #509 lands) ──────────────────────────────
+// ── serverRuntimeContext (#509 layout payload) ────────────────────────────────
 
 describe('+layout.server load — serverRuntimeContext (plan Phase 1)', () => {
   test('layout data includes serverRuntimeContext with contract version 2', async () => {

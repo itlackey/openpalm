@@ -10,7 +10,7 @@
  * ADMIN_URL. The route logic these checks cover (compose orchestration,
  * error translation, OP_TTS_* env resolution, /api/speak proxy behavior)
  * is already covered by the vitest suites in
- * src/routes/admin/voice/server.vitest.ts and
+ * src/routes/api/host/voice/server.vitest.ts and
  * src/routes/api/transcribe/server.vitest.ts with mocked docker. This
  * file is for pre-release smoke against the real stack.
  *
@@ -21,11 +21,11 @@
  * Validates the full happy-path of OpenPalm Voice (Kokoro TTS + Whisper STT
  * via the openpalm/voice container) plus error / edge paths:
  *
- *   - Auth gate on GET /admin/voice
- *   - POST /admin/auth/login (bad + good password)
- *   - GET /admin/voice returns the new addon.profiles[] annotation (id +
+ *   - Auth gate on GET /api/host/voice
+ *   - POST /api/auth/login (bad + good password)
+ *   - GET /api/host/voice returns the new addon.profiles[] annotation (id +
  *     available + reason)
- *   - PUT /admin/voice validation (missing baseURL, unknown profile id)
+ *   - PUT /api/host/voice validation (missing baseURL, unknown profile id)
  *   - PUT engine=browser stops the running voice container (auto-stop)
  *   - PUT engine=openpalm-voice + profile=addon.voice.cuda brings the container back up
  *   - POST /api/speak with text returns audio/wav
@@ -116,23 +116,23 @@ function ensureVoiceUp(): void {
 test.describe('Voice addon — auth gate', () => {
   test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-  test('GET /admin/voice unauthenticated → 401', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/admin/voice`, {
+  test('GET /api/host/voice unauthenticated → 401', async ({ request }) => {
+    const res = await request.get(`${ADMIN_URL}/api/host/voice`, {
       headers: { 'x-request-id': crypto.randomUUID() },
     });
     expect(res.status()).toBe(401);
   });
 
-  test('POST /admin/auth/login with wrong password → 401', async ({ request }) => {
-    const res = await request.post(`${ADMIN_URL}/admin/auth/login`, {
+  test('POST /api/auth/login with wrong password → 401', async ({ request }) => {
+    const res = await request.post(`${ADMIN_URL}/api/auth/login`, {
       data: { password: 'definitely-not-the-password' },
       headers: { 'content-type': 'application/json' },
     });
     expect(res.status()).toBe(401);
   });
 
-  test('POST /admin/auth/login with correct password → 200 + Set-Cookie op_session', async ({ request }) => {
-    const res = await request.post(`${ADMIN_URL}/admin/auth/login`, {
+  test('POST /api/auth/login with correct password → 200 + Set-Cookie op_session', async ({ request }) => {
+    const res = await request.post(`${ADMIN_URL}/api/auth/login`, {
       data: { password: OP_UI_LOGIN_PASSWORD },
       headers: { 'content-type': 'application/json' },
     });
@@ -142,11 +142,11 @@ test.describe('Voice addon — auth gate', () => {
   });
 });
 
-test.describe('Voice addon — GET /admin/voice response shape', () => {
+test.describe('Voice addon — GET /api/host/voice response shape', () => {
   test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
   test('returns addon.profiles[] annotated with id/available/reason', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/admin/voice`, { headers: authHeaders() });
+    const res = await request.get(`${ADMIN_URL}/api/host/voice`, { headers: authHeaders() });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
 
@@ -176,7 +176,7 @@ test.describe('Voice addon — GET /admin/voice response shape', () => {
   });
 
   test('exposes selectedProfile (null or a known id)', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/admin/voice`, { headers: authHeaders() });
+    const res = await request.get(`${ADMIN_URL}/api/host/voice`, { headers: authHeaders() });
     const body = await res.json();
     const profileIds = body.addon.profiles.map((p: { id: string }) => p.id);
     expect(
@@ -190,7 +190,7 @@ test.describe('Voice addon — PUT validation', () => {
   test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
   test('engine=remote without baseURL → 400 invalid_stt', async ({ request }) => {
-    const res = await request.put(`${ADMIN_URL}/admin/voice`, {
+    const res = await request.put(`${ADMIN_URL}/api/host/voice`, {
       headers: authHeaders(),
       data: { stt: { engine: 'remote', model: 'whisper-1' } },
     });
@@ -201,7 +201,7 @@ test.describe('Voice addon — PUT validation', () => {
   });
 
   test('unknown profile id → 400 invalid_profile with actionable list', async ({ request }) => {
-    const res = await request.put(`${ADMIN_URL}/admin/voice`, {
+    const res = await request.put(`${ADMIN_URL}/api/host/voice`, {
       headers: authHeaders(),
       data: {
         tts: { engine: 'openpalm-voice' },
@@ -227,7 +227,7 @@ test.describe('Voice addon — engine switch lifecycle', () => {
     ensureVoiceUp();
     expect(runningVoiceContainer()).toMatch(/^openpalm-voice/);
 
-    const res = await request.put(`${ADMIN_URL}/admin/voice`, {
+    const res = await request.put(`${ADMIN_URL}/api/host/voice`, {
       headers: authHeaders(),
       data: {
         tts: { enabled: true, engine: 'browser' },
@@ -241,7 +241,7 @@ test.describe('Voice addon — engine switch lifecycle', () => {
   });
 
   test('switching back to engine=openpalm-voice with profile=addon.voice.cuda starts the container', async ({ request }) => {
-    const res = await request.put(`${ADMIN_URL}/admin/voice`, {
+    const res = await request.put(`${ADMIN_URL}/api/host/voice`, {
       headers: authHeaders(),
       data: {
         tts: { enabled: true, engine: 'openpalm-voice' },
@@ -269,8 +269,8 @@ test.describe('Voice addon — engine switch lifecycle', () => {
     expect(runningVoiceContainer()).toMatch(/^openpalm-voice/);
   });
 
-  test('GET /admin/voice after save persists OP_VOICE_PROFILE', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/admin/voice`, { headers: authHeaders() });
+  test('GET /api/host/voice after save persists OP_VOICE_PROFILE', async ({ request }) => {
+    const res = await request.get(`${ADMIN_URL}/api/host/voice`, { headers: authHeaders() });
     const body = await res.json();
     // Whatever profile we just saved (addon.voice.cuda from the previous test) should
     // come back as the selectedProfile.

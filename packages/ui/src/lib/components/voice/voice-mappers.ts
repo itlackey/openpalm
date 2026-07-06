@@ -1,5 +1,5 @@
 /**
- * Pure mappers between the server's `/admin/voice` config shape and the
+ * Pure mappers between the server's `/api/host/voice` config shape and the
  * VoiceTab form's simplified 3-engine model (openpalm-voice / remote /
  * browser). Extracted from VoiceTab.svelte so they can be unit-tested
  * without mounting the component.

@@ -10,9 +10,9 @@
  * pattern) because the invariant is about where capability logic lives, not
  * runtime behavior: components must consult runtimeContext.routes +
  * hasCapability() so that adding a capability rule stays a one-function
- * change (plan §11). The legacy alias may survive Phase 3 only in
- * hooks.server.ts (computeFeatureFlags) pending Phase 4 — that is server
- * code, deliberately outside this scan.
+ * change (plan §11). Phase 4 deleted the legacy alias entirely
+ * (computeFeatureFlags/FeatureFlags are gone); this scan keeps the read
+ * pattern from ever coming back into components.
  */
 import { describe, expect, test } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';

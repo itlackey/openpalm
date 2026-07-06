@@ -482,8 +482,9 @@ export async function listRemoteStatuses(): Promise<RemoteStatus[]> {
 
 // ── Legacy endpoint-language aliases ─────────────────────────────────────────
 // Phase 2 (#486) renamed the internal model to "connection" (plan §6.6). The
-// pre-Phase-2 admin routes and tests still import these names; they are the
-// same functions and go away with `/admin/*` in Phase 4.
+// Legacy endpoint-language aliases: the active-connection consumers (helpers,
+// opencode/http, the assistant proxy) still import these names; they are the
+// same functions. Retire them when those call sites adopt connection language.
 export {
   listConnections as listEndpoints,
   getActiveConnection as getActiveEndpoint,
