@@ -105,4 +105,29 @@ describe('VoiceStatusStrip — autoplay recovery', () => {
 		expect(voiceState.autoplayBlocked).toBe(false);
 		await expect.element(page.getByRole('button', { name: 'Resume paused audio' })).not.toBeInTheDocument();
 	});
+
+	// Conversation mode must never shadow the resume affordance: this strip
+	// is the only resume surface on /chat, and a blocked first utterance
+	// stalls every queued reply until resumed.
+	test('shows the resume button alongside the conversation state while hands-free', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'recording';
+		voiceState.autoplayBlocked = true;
+		render(VoiceStatusStrip);
+		await expect.element(page.getByText('listening…', { exact: true })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'End conversation mode' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'Resume paused audio' })).toBeVisible();
+	});
+
+	test('clicking resume during conversation mode clears the block and keeps the conversation armed', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'recording';
+		voiceState.autoplayBlocked = true;
+		render(VoiceStatusStrip);
+		await page.getByRole('button', { name: 'Resume paused audio' }).click();
+		expect(voiceState.autoplayBlocked).toBe(false);
+		expect(voiceState.conversationActive).toBe(true);
+		await expect.element(page.getByRole('button', { name: 'Resume paused audio' })).not.toBeInTheDocument();
+		await expect.element(page.getByText('listening…', { exact: true })).toBeVisible();
+	});
 });

@@ -29,6 +29,24 @@
 				: 'listening…'
 	);
 	let visible = $derived(conversation || showInterim || showTranscribing || showAutoplayBlocked);
+	// Autoplay recovery must never be shadowed by conversation mode: this
+	// strip is the only resume surface on /chat, and a blocked first
+	// utterance keeps the playback pipeline busy so every queued reply
+	// stalls until the user clicks resume.
+	let srMessage = $derived(
+		[
+			conversation
+				? `Conversation: ${voiceState.interimTranscript || conversationLabel}`
+				: showInterim
+					? `Recording: ${voiceState.interimTranscript}`
+					: showTranscribing
+						? 'Transcribing'
+						: '',
+			showAutoplayBlocked ? 'Audio paused — click to resume' : ''
+		]
+			.filter(Boolean)
+			.join('. ')
+	);
 </script>
 
 <!-- Renders nothing when idle so the composer layout never shifts. -->
@@ -49,6 +67,8 @@
 		{:else if showTranscribing}
 			<span class="voice-status-transcribing">transcribing…</span>
 		{/if}
+		<!-- Deliberately outside the branch chain above: the resume button
+		     must stay reachable while conversation mode is active. -->
 		{#if showAutoplayBlocked}
 			<button
 				type="button"
@@ -64,17 +84,7 @@
 	</div>
 {/if}
 
-<span class="sr-only" aria-live="polite">
-	{conversation
-		? `Conversation: ${voiceState.interimTranscript || conversationLabel}`
-		: showInterim
-			? `Recording: ${voiceState.interimTranscript}`
-			: showTranscribing
-				? 'Transcribing'
-				: showAutoplayBlocked
-					? 'Audio paused — click to resume'
-					: ''}
-</span>
+<span class="sr-only" aria-live="polite">{srMessage}</span>
 
 <style>
 	.voice-status-strip {
