@@ -167,8 +167,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   // Feature gate: /admin/* requires admin flag (Electron or OP_ENABLE_ADMIN=1).
   // Redirect to /chat so the user lands somewhere useful instead of a 404/403.
+  // /admin/endpoints is the Phase 2 alias for /connections (#486) — honor the
+  // alias in every mode so stale links land on the capability-guarded page.
   if (path.startsWith('/admin') && !computeFeatureFlags().admin) {
-    redirect(302, '/chat');
+    redirect(302, path === '/admin/endpoints' ? '/connections' : '/chat');
   }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
 
@@ -199,7 +201,8 @@ export const handle: Handle = async ({ event, resolve }) => {
       : launch.recommendedRoute === 'chat'
         ? '/chat'
         : '/splash';
-    const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced');
+    const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
+      || path.startsWith('/connections');
     const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/admin')
       || path.startsWith('/splash')

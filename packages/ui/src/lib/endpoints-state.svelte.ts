@@ -4,8 +4,8 @@
  * ui-runtime-modes-plan.md §6.6).
  *
  * Loaded lazily on first access. Other components ($lib/components/Navbar)
- * and pages share this state so a change anywhere is reflected everywhere
- * without a full reload.
+ * and pages (/connections) share this state so a change anywhere is
+ * reflected everywhere without a full reload.
  *
  * NOTE on naming: the file name and the `endpointsService` export (and its
  * `endpoints`/`activeId` fields) are pinned by existing components and their
@@ -17,20 +17,20 @@
  * subscribes (and registers its "not while sending" guard) from its own side.
  */
 import {
-  fetchEndpoints,
-  setActiveEndpoint,
-  type AssistantEndpoint,
+  fetchConnections,
+  setActiveConnection,
+  type AssistantConnection,
 } from './api.js';
 import { activationBlockReason, emitConnectionActivated } from './connection-events.js';
 
 class ConnectionsService {
-  endpoints = $state<AssistantEndpoint[]>([]);
+  endpoints = $state<AssistantConnection[]>([]);
   activeId = $state<string>('default');
   loading = $state(false);
   loaded = $state(false);
   error = $state('');
 
-  active = $derived<AssistantEndpoint | null>(
+  active = $derived<AssistantConnection | null>(
     this.endpoints.find((e) => e.id === this.activeId) ?? this.endpoints[0] ?? null
   );
 
@@ -40,8 +40,8 @@ class ConnectionsService {
     this.loading = true;
     this.error = '';
     try {
-      const { endpoints, activeId } = await fetchEndpoints();
-      this.endpoints = endpoints;
+      const { connections, activeId } = await fetchConnections();
+      this.endpoints = connections;
       this.activeId = activeId;
       this.loaded = true;
     } catch (e) {
@@ -68,7 +68,7 @@ class ConnectionsService {
     const previous = this.activeId;
     this.activeId = id;
     try {
-      await setActiveEndpoint(id);
+      await setActiveConnection(id);
       // Hand off to subscribers (the chat store loads this connection's
       // sessions, restores the previously-open one, and fetches messages —
       // see docs/technical/multi-endpoint-session-ux.md). Awaited so a

@@ -1,49 +1,64 @@
 import { request, requireOk } from './core.js';
+import type { ConnectionKind } from '$lib/types.js';
 
-// ── Assistant Endpoints ───────────────────────────────────────────────────────
+// ── Assistant Connections ─────────────────────────────────────────────────────
+//
+// Phase 2 (#486): the internal model uses "connection" language (plan
+// ui-runtime-modes-plan.md §6.6) and the client talks to /api/connections/*,
+// which is guarded by the `connections:manage` capability instead of the
+// host-admin-only /admin/* namespace — so connection management works in
+// every mode that advertises the capability (host-ui, electron-host,
+// pwa-static). This module keeps its historical file name (api/endpoints.ts)
+// until the Phase 5 client extraction relocates it.
 
-export type AssistantEndpoint = {
+export type AssistantConnection = {
   id: string;
   label: string;
   url: string;
+  kind: ConnectionKind;
   isDefault: boolean;
   hasPassword: boolean;
 };
 
-export type EndpointListResponse = {
-  endpoints: AssistantEndpoint[];
+/** Legacy name — kept until every consumer migrates to connection language. */
+export type AssistantEndpoint = AssistantConnection;
+
+export type ConnectionListResponse = {
+  connections: AssistantConnection[];
   activeId: string;
 };
 
-export async function fetchEndpoints(): Promise<EndpointListResponse> {
-  const res = await requireOk(await request('GET', '/admin/endpoints'));
-  return (await res.json()) as EndpointListResponse;
+export async function fetchConnections(): Promise<ConnectionListResponse> {
+  const res = await requireOk(await request('GET', '/api/connections'));
+  return (await res.json()) as ConnectionListResponse;
 }
 
-export async function createEndpoint(input: {
+export async function createConnection(input: {
   label: string;
   url: string;
   password?: string;
-}): Promise<{ endpoint: AssistantEndpoint }> {
-  const res = await requireOk(await request('POST', '/admin/endpoints', input));
-  return (await res.json()) as { endpoint: AssistantEndpoint };
+}): Promise<{ connection: AssistantConnection }> {
+  const res = await requireOk(await request('POST', '/api/connections', input));
+  return (await res.json()) as { connection: AssistantConnection };
 }
 
-export async function updateEndpoint(
+export async function updateConnection(
   id: string,
   patch: { label?: string; url?: string; password?: string | null }
-): Promise<{ endpoint: AssistantEndpoint }> {
+): Promise<{ connection: AssistantConnection }> {
   const res = await requireOk(
-    await request('PATCH', `/admin/endpoints/${encodeURIComponent(id)}`, patch)
+    await request('PATCH', `/api/connections/${encodeURIComponent(id)}`, patch)
   );
-  return (await res.json()) as { endpoint: AssistantEndpoint };
+  return (await res.json()) as { connection: AssistantConnection };
 }
 
-export async function deleteEndpoint(id: string): Promise<void> {
-  await requireOk(await request('DELETE', `/admin/endpoints/${encodeURIComponent(id)}`));
+export async function deleteConnection(id: string): Promise<void> {
+  await requireOk(await request('DELETE', `/api/connections/${encodeURIComponent(id)}`));
 }
 
-export async function setActiveEndpoint(id: string): Promise<{ activeId: string; endpoint: AssistantEndpoint }> {
-  const res = await requireOk(await request('POST', '/admin/endpoints/active', { id }));
-  return (await res.json()) as { activeId: string; endpoint: AssistantEndpoint };
+export async function setActiveConnection(
+  id: string
+): Promise<{ activeId: string; connection: AssistantConnection }> {
+  const res = await requireOk(await request('POST', '/api/connections/active', { id }));
+  return (await res.json()) as { activeId: string; connection: AssistantConnection };
 }

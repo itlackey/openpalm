@@ -59,7 +59,7 @@
           Manage this assistant...
         </a>
       {/if}
-      <a class="settings-link" href={resolve('/admin/endpoints')} onclick={() => (open = false)}>
+      <a class="settings-link" href={resolve('/connections')} onclick={() => (open = false)}>
         Manage assistant connections...
       </a>
     </nav>

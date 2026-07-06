@@ -85,21 +85,24 @@ const SERVER_CAPABILITIES: Record<UiHostMode, readonly Capability[]> = {
 };
 
 /** Route pointers per mode — current-truth URLs (pre-Phase-3 route split).
- *  Phase 2 moves connections to /connections; Phase 4 moves /admin to /host. */
+ *  Phase 2 (#486) moved connections to /connections (the /admin/endpoints
+ *  alias redirects there for 0.13.0); Phase 4 moves /admin to /host. */
 function routesForMode(mode: UiHostMode): ServerRuntimeContext['routes'] {
   switch (mode) {
     case 'electron-host':
     case 'host-ui':
       return {
         chat: '/chat',
-        connections: '/admin/endpoints',
+        connections: '/connections',
         host: '/admin',
         setup: '/setup',
       };
     case 'assistant-container':
       return { chat: '/chat' };
     case 'pwa-static':
-      return { chat: '/chat' };
+      // Connection management is capability-guarded, not host-admin-gated —
+      // reachable in pwa-static (plan §4.3).
+      return { chat: '/chat', connections: '/connections' };
   }
 }
 
