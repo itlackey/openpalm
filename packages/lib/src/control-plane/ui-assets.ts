@@ -41,9 +41,11 @@ import {
 
 const logger = createLogger('lib:ui-assets');
 
-// ── Private helpers ──────────────────────────────────────────────────────────
+// ── Shared helpers ───────────────────────────────────────────────────────────
+// Exported for the sibling asset modules (client-assets.ts) — not part of the
+// package barrel.
 
-function copyTree(
+export function copyTree(
   src: string,
   dest: string,
   opts?: { skipExisting?: boolean },
@@ -387,7 +389,7 @@ async function fetchNpmUiManifest(versionOrTag: string): Promise<NpmUiManifest> 
  * resolver (which lists tags and picks the newest on-channel), take max(dist-tags)
  * = the true bleeding edge (latest beta/rc/stable, whichever is newest).
  */
-async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise<string> {
+export async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise<string> {
   if (channel === 'latest') return 'latest';
   const res = await fetchWithRetry(`${NPM_REGISTRY}/-/package/${encodeURIComponent(pkg)}/dist-tags`);
   if (!res.ok) throw new Error(`npm registry returned HTTP ${res.status} for ${pkg} dist-tags`);
