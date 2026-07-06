@@ -1,0 +1,293 @@
+/**
+ * Phase 3 — resolveLanding(ctx, launchState) landing matrix (plan
+ * ui-runtime-modes-plan.md §6.5, Phase 3 step 1).
+ *
+ * ALL RED until the implementation lands: the module under test does not
+ * exist yet. The contract pinned here:
+ *
+ *  - `resolveLanding` lives in its own module at $lib/resolve-landing.ts
+ *    (see CANDIDATE_MODULE_BASES for the accepted names), together with the
+ *    LaunchState type derived from the existing splash launch-state logic:
+ *    `local.state` is @openpalm/lib's LocalStackState, `connections` is the
+ *    connection list, and `migration.status` is the blocking-migration gate
+ *    ('pending' blocks; anything else does not).
+ *  - `resolveLanding` is PURE: it consults ctx.effectiveCapabilities — never
+ *    the global runtimeContext store — so hooks.server.ts can call it
+ *    per-request on the server, where no client store exists. Capability
+ *    RESOLUTION still lives only in resolveCapabilities() (plan §8.6);
+ *    resolveLanding merely reads the already-resolved list.
+ *
+ *  Landing matrix (plan §6.5, exactly):
+ *    host:setup capability present:
+ *      migration pending          → /attention
+ *      local not_installed        → /setup
+ *      local setup_incomplete     → /setup
+ *      local installed_offline    → host admin landing
+ *      local installed_broken     → host admin landing + ?tab=diagnostics
+ *      otherwise (running)        → /chat
+ *    no host:setup capability:
+ *      assistant-container        → /chat (always)
+ *      pwa-static, 0 connections  → /connections/new
+ *      pwa-static, ≥1 connection  → /chat
+ *      anything else              → /chat
+ *
+ * Phase 3 does NOT create /host (that is Phase 4): the host admin landing
+ * stays at the existing /admin, encoded in the implementation as a TODO
+ * constant so Phase 4 flips exactly one value. When Phase 4 lands, update
+ * HOST_ADMIN_LANDING below to '/host' (and nothing else in this file).
+ *
+ * The module is loaded through a computed-specifier dynamic import so
+ * svelte-check stays clean while the suite is red (same convention as the
+ * Phase 2 red tests).
+ */
+import { describe, expect, test } from 'vitest';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import type { Capability, RuntimeContext, UiHostMode } from '$lib/types.js';
+
+// Phase 3 value. TODO(phase-4): flip to '/host' when /admin is renamed.
+const HOST_ADMIN_LANDING = '/admin';
+
+// ── module loading (red-state safe) ──────────────────────────────────────────
+
+/** Accepted file names for "its own module" in $lib (implementation picks one). */
+const CANDIDATE_MODULE_BASES = ['resolve-landing', 'landing', 'resolve-landing.svelte'] as const;
+
+type ResolveLandingFn = (ctx: RuntimeContext, launchState: unknown) => string;
+
+async function loadResolveLanding(): Promise<ResolveLandingFn> {
+  for (const base of CANDIDATE_MODULE_BASES) {
+    if (!existsSync(fileURLToPath(new URL(`./${base}.ts`, import.meta.url)))) continue;
+    const specifier = `./${base}.js`;
+    const mod = (await import(/* @vite-ignore */ specifier)) as { resolveLanding?: unknown };
+    if (typeof mod.resolveLanding !== 'function') {
+      throw new Error(`$lib/${base}.ts exists but does not export resolveLanding()`);
+    }
+    return mod.resolveLanding as ResolveLandingFn;
+  }
+  throw new Error(
+    `resolveLanding module not found — expected packages/ui/src/lib/<${CANDIDATE_MODULE_BASES.join(
+      '|',
+    )}>.ts exporting resolveLanding(ctx, launchState) per plan §6.5`,
+  );
+}
+
+// ── fixtures ──────────────────────────────────────────────────────────────────
+
+/** Effective capabilities of a host-capable session (electron / host-ui browser). */
+const HOST_EFFECTIVE: Capability[] = [
+  'chat',
+  'connections:read',
+  'connections:manage',
+  'connections:switch',
+  'assistant-settings:read',
+  'assistant-settings:write',
+  'host:setup',
+  'host:stack:read',
+  'host:stack:write',
+  'host:containers',
+  'host:addons',
+  'host:updates',
+  'host:logs',
+  'host:secrets',
+  'host:recovery',
+  'host:akm-sharing',
+];
+
+/** assistant-container effective set (resolveCapabilities output, plan §4.3). */
+const ASSISTANT_CONTAINER_EFFECTIVE: Capability[] = [
+  'chat',
+  'assistant-settings:read',
+  'assistant-settings:write',
+];
+
+/** pwa-static effective baseline (resolveCapabilities output, plan §4.3). */
+const PWA_EFFECTIVE: Capability[] = [
+  'chat',
+  'connections:read',
+  'connections:manage',
+  'connections:switch',
+  'pwa:install',
+];
+
+function makeCtx(hostMode: UiHostMode, effectiveCapabilities: Capability[]): RuntimeContext {
+  return {
+    version: 2,
+    hostMode,
+    serverCapabilities: [...effectiveCapabilities],
+    publicBaseUrl: 'http://127.0.0.1:3880',
+    uiVersion: '0.0.0-test',
+    skeletonVersion: '0.0.0-test',
+    activeConnectionMode: hostMode === 'assistant-container' ? 'single' : 'multi',
+    routes: {},
+    security: {
+      hostAdminLoopbackOnly: true,
+      requiresHttpsForRemoteConnections: hostMode === 'pwa-static',
+      csrfMode: 'loopback-origin',
+    },
+    clientContext: { displayMode: 'browser' },
+    effectiveCapabilities,
+  };
+}
+
+type TestLocalState =
+  | 'not_installed'
+  | 'setup_incomplete'
+  | 'installed_offline'
+  | 'installed_broken'
+  | 'running';
+
+type TestLaunchState = {
+  migration: { status: 'pending' | 'none' };
+  local: { state: TestLocalState };
+  connections: Array<{ id: string }>;
+};
+
+function makeLaunchState(overrides: Partial<TestLaunchState> = {}): TestLaunchState {
+  return {
+    migration: { status: 'none' },
+    local: { state: 'running' },
+    connections: [{ id: 'local' }],
+    ...overrides,
+  };
+}
+
+// ── module contract ───────────────────────────────────────────────────────────
+
+describe('resolveLanding — module contract', () => {
+  test('exports resolveLanding(ctx, launchState) from its own $lib module', async () => {
+    const resolveLanding = await loadResolveLanding();
+    expect(typeof resolveLanding).toBe('function');
+  });
+});
+
+// ── host:setup rows (electron-host / host-ui with full capabilities) ──────────
+
+describe('resolveLanding — host:setup capability present (plan §6.5)', () => {
+  const hostCtx = makeCtx('host-ui', HOST_EFFECTIVE);
+
+  test('pending migration lands on /attention', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ migration: { status: 'pending' } });
+    expect(resolveLanding(hostCtx, state)).toBe('/attention');
+  });
+
+  test('pending migration takes precedence over not_installed', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({
+      migration: { status: 'pending' },
+      local: { state: 'not_installed' },
+    });
+    expect(resolveLanding(hostCtx, state)).toBe('/attention');
+  });
+
+  test('pending migration takes precedence over installed_broken', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({
+      migration: { status: 'pending' },
+      local: { state: 'installed_broken' },
+    });
+    expect(resolveLanding(hostCtx, state)).toBe('/attention');
+  });
+
+  test('not_installed lands on /setup', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
+    expect(resolveLanding(hostCtx, state)).toBe('/setup');
+  });
+
+  test('setup_incomplete lands on /setup', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ local: { state: 'setup_incomplete' } });
+    expect(resolveLanding(hostCtx, state)).toBe('/setup');
+  });
+
+  test(`installed_offline lands on the host admin surface (${HOST_ADMIN_LANDING} until Phase 4)`, async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ local: { state: 'installed_offline' } });
+    expect(resolveLanding(hostCtx, state)).toBe(HOST_ADMIN_LANDING);
+  });
+
+  test('installed_broken lands on the host admin diagnostics tab', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ local: { state: 'installed_broken' } });
+    expect(resolveLanding(hostCtx, state)).toBe(`${HOST_ADMIN_LANDING}?tab=diagnostics`);
+  });
+
+  test('running (healthy) lands on /chat', async () => {
+    const resolveLanding = await loadResolveLanding();
+    expect(resolveLanding(hostCtx, makeLaunchState())).toBe('/chat');
+  });
+
+  test('electron-host resolves through the same host rows', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const electronCtx = makeCtx('electron-host', HOST_EFFECTIVE);
+    expect(resolveLanding(electronCtx, makeLaunchState())).toBe('/chat');
+    expect(
+      resolveLanding(electronCtx, makeLaunchState({ local: { state: 'installed_offline' } })),
+    ).toBe(HOST_ADMIN_LANDING);
+  });
+
+  test('the gate is CAPABILITY-driven, not hostMode-driven: a host-capable server viewed without host:setup falls through to /chat', async () => {
+    const resolveLanding = await loadResolveLanding();
+    // host-ui × standalone-pwa display: resolveCapabilities strips host:* per
+    // plan §4.2, so even a broken local stack must not land this session on
+    // the host admin surface it cannot use.
+    const restrictedCtx = makeCtx('host-ui', [
+      'chat',
+      'connections:read',
+      'connections:manage',
+      'connections:switch',
+    ]);
+    const state = makeLaunchState({ local: { state: 'installed_broken' } });
+    expect(resolveLanding(restrictedCtx, state)).toBe('/chat');
+  });
+});
+
+// ── assistant-container row ───────────────────────────────────────────────────
+
+describe('resolveLanding — assistant-container (plan §6.5)', () => {
+  const ctx = makeCtx('assistant-container', ASSISTANT_CONTAINER_EFFECTIVE);
+
+  test('always lands on /chat', async () => {
+    const resolveLanding = await loadResolveLanding();
+    expect(resolveLanding(ctx, makeLaunchState())).toBe('/chat');
+  });
+
+  test('lands on /chat regardless of local stack state or connection count', async () => {
+    const resolveLanding = await loadResolveLanding();
+    // The co-process has no view of a host stack — local state is meaningless.
+    const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
+    expect(resolveLanding(ctx, state)).toBe('/chat');
+  });
+
+  test('a pending migration does not divert it (no host:setup → gate skipped)', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ migration: { status: 'pending' } });
+    expect(resolveLanding(ctx, state)).toBe('/chat');
+  });
+});
+
+// ── pwa-static row ────────────────────────────────────────────────────────────
+
+describe('resolveLanding — pwa-static (plan §6.5)', () => {
+  const ctx = makeCtx('pwa-static', PWA_EFFECTIVE);
+
+  test('zero connections lands on /connections/new', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ connections: [] });
+    expect(resolveLanding(ctx, state)).toBe('/connections/new');
+  });
+
+  test('one or more connections lands on /chat', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ connections: [{ id: 'r1' }] });
+    expect(resolveLanding(ctx, state)).toBe('/chat');
+  });
+
+  test('a pending migration does not divert it (no host:setup → gate skipped)', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ migration: { status: 'pending' }, connections: [] });
+    expect(resolveLanding(ctx, state)).toBe('/connections/new');
+  });
+});
