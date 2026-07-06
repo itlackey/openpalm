@@ -12,7 +12,8 @@ export function getState(): ControlPlaneState {
   // Pure read: resolve paths/config from disk only. Secrets and other OP_HOME
   // assets are written ONLY by install/update/apply (applyHome) — serving
   // the UI never mutates the home. A home that needs reconciling is detected
-  // read-only and routed to /splash, where the user clicks "apply".
+  // read-only and routed to the resolved landing (resolveLanding(), plan
+  // §6.5), where the user clicks "apply".
   if (!_state) _state = createState();
   return _state;
 }

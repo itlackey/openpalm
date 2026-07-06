@@ -119,7 +119,10 @@ describe('hooks.server — sliding renewal', () => {
     expect(setCookie).not.toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
-  test('first-run document navigation routes to splash instead of setup', async () => {
+  test('first-run document navigation routes to /setup (resolveLanding, plan §6.5)', async () => {
+    // Pre-Phase-3 this pinned '/' → /splash; the Phase 3 landing matrix sends
+    // not_installed straight to /setup (same scenario is also pinned in
+    // hooks.server.landing.vitest.ts).
     const state = resetState('test-admin-pw');
     const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
     mkdirSync(kvDir, { recursive: true });
@@ -127,7 +130,7 @@ describe('hooks.server — sliding renewal', () => {
 
     const event = makeEvent('/', null, 'text/html');
 
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/splash' });
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/setup' });
   });
 
   test('not_installed + an accessible remote skips splash → /chat', async () => {

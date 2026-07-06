@@ -18,37 +18,23 @@ import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-co
 import { computeFeatureFlags } from '$lib/server/features.js';
 import {
   createLogger,
-  composePs,
-  deriveLaunchStatus,
-  deriveLocalStackState,
   isSetupComplete,
   resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
-  classifyLocalInstall,
-  detectRuntime,
-  buildComposeOptions,
   collectBindAddressWarnings,
   isRemoteSetupAllowed,
-  type ComposeServiceStatus,
 } from "@openpalm/lib";
-import { listRemoteStatuses } from "$lib/server/endpoints.js";
+import { resolveRequestLanding } from "$lib/server/landing.js";
+
+// Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
+// reset hook is re-exported here so tests keep one import site.
+export { _resetLaunchCache } from "$lib/server/landing.js";
 
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
 let setupCompleteMemo = false;
-type LaunchRouting = {
-  installState: ReturnType<typeof classifyLocalInstall>;
-  launch: ReturnType<typeof deriveLaunchStatus>;
-};
-
-let localStatusCache: { expiresAt: number; value: LaunchRouting } | null = null;
-
-/** Test-only: clear the 5s launch-routing cache so each test resolves fresh. */
-export function _resetLaunchCache(): void {
-  localStatusCache = null;
-}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -119,44 +105,6 @@ function isLocalhostAddress(ip: string): boolean {
   return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 }
 
-function parseComposePsServices(stdout: string): ComposeServiceStatus[] {
-  const services: ComposeServiceStatus[] = [];
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-      services.push({
-        service: String(parsed.Service ?? parsed.Name ?? ''),
-        state: String(parsed.State ?? ''),
-        health: String(parsed.Health ?? ''),
-      });
-    } catch {
-    }
-  }
-  return services;
-}
-
-async function resolveLaunchRouting(): Promise<LaunchRouting> {
-  if (localStatusCache && localStatusCache.expiresAt > Date.now()) return localStatusCache.value;
-  const state = getState();
-  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
-  const composeResult = await composePs(buildComposeOptions(state));
-  const services = composeResult.ok ? parseComposePsServices(composeResult.stdout) : [];
-  const localState = deriveLocalStackState(installState, services);
-  const launch = deriveLaunchStatus({
-    local: {
-      state: localState,
-      runtime: installState === 'not_installed' ? await detectRuntime() : undefined,
-      detail: { installState },
-    },
-    remotes: await listRemoteStatuses(),
-  });
-  const value = { installState, launch };
-  localStatusCache = { value, expiresAt: Date.now() + 5_000 };
-  return value;
-}
-
 export const handle: Handle = async ({ event, resolve }) => {
   const hostError = checkHostHeader(event.request);
   if (hostError) return hostError;
@@ -194,21 +142,21 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
+  // ── Launch routing: document navigations land where resolveLanding() says
+  // (plan ui-runtime-modes-plan.md §6.5, Phase 3). Fires BEFORE the auth guard
+  // so `/` and stale `/splash` bookmarks never bounce through /login first.
+  // The /splash ROUTE is gone (Phase 3 split it into /attention + the §6.5
+  // landings); the /splash PATH keeps redirecting here for this release.
   if (!isSetupPath) {
-    const { installState, launch } = await resolveLaunchRouting();
-    const desiredPath = installState === 'setup_incomplete' && launch.local.state === 'running'
-      ? '/splash'
-      : launch.recommendedRoute === 'chat'
-        ? '/chat'
-        : '/splash';
+    const landing = await resolveRequestLanding(event);
+    const [landingPath] = landing.split('?');
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
       || path.startsWith('/connections');
     const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/admin')
-      || path.startsWith('/splash')
       || usageRoute;
-    if (path === '/' || (path !== desiredPath && !exempt)) {
-      redirect(302, desiredPath);
+    if (path === '/' || (path !== landingPath && !exempt)) {
+      redirect(302, landing);
     }
   }
 

@@ -4,7 +4,7 @@
  *
  * Connection management moved to the capability-guarded /connections surface.
  * This alias is kept for the 0.13.0 release only — Phase 4 turns /admin/*
- * into 404s. Same convention as the routes/+page.ts → /splash redirect.
+ * into 404s. Same convention as the routes/connections/new/+page.ts alias.
  * (The sibling +server.ts JSON API remains for out-of-process callers this
  * release; SvelteKit content-negotiates HTML navigations to this page.)
  */
