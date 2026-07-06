@@ -13,6 +13,7 @@
 /** Known per-service bind address env var names (mirrors compose files). */
 const PER_SERVICE_BIND_VARS: readonly string[] = [
   "OP_ASSISTANT_BIND_ADDRESS",
+  "OP_CLIENT_BIND_ADDRESS",
   "OP_CHAT_BIND_ADDRESS",
   "OP_API_BIND_ADDRESS",
   "OP_VOICE_BIND_ADDRESS",

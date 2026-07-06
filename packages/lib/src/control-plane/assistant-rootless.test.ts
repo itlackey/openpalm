@@ -38,12 +38,15 @@ describe('assistant rootless conversion', () => {
 
   test('assistant image does not recursively chmod the baked tools tree (no duplicate giant layer)', () => {
     // /opt/openpalm/tools holds the multi-hundred-MB node_modules + model cache
-    // split across COPY layers; the seed-dir chmod must target the empty ui/skeleton
-    // dirs, never bare /opt/openpalm (which would re-materialize the whole tree).
+    // split across COPY layers; the seed-dir chmod must target the empty
+    // client/skeleton dirs, never bare /opt/openpalm (which would re-materialize
+    // the whole tree). (P5d, #510: the co-process artifact dir renamed from
+    // /opt/openpalm/ui to /opt/openpalm/client when @openpalm/client replaced
+    // @openpalm/ui in the assistant image — same seed-dir invariant.)
     const chmodLine = assistantDockerfile.split('\n').find((l) => l.includes('chmod -R a+rwX'));
     expect(chmodLine).toBeDefined();
     expect(chmodLine).not.toMatch(/\/opt\/openpalm(\s|$)/);
-    expect(chmodLine).toContain('/opt/openpalm/ui');
+    expect(chmodLine).toContain('/opt/openpalm/client');
     expect(chmodLine).toContain('/opt/openpalm/skeleton');
   });
 });

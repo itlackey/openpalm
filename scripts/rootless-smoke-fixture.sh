@@ -77,7 +77,7 @@ OP_ASSISTANT_VERSION=dev
 OP_GUARDIAN_VERSION=dev
 OP_PORTAL_VERSION=dev
 OP_GUARDIAN_NPM_VERSION=${platform_version}
-OP_UI_VERSION=${platform_version}
+OP_CLIENT_VERSION=${platform_version}
 OP_SKELETON_VERSION=${platform_version}
 OP_ASSISTANT_PORT=${assistant_port}
 OP_GUARDIAN_PORT=${guardian_port}
@@ -97,7 +97,7 @@ smoke_ensure_home_dirs() {
 }
 
 # Write the version-pinning compose override both stacks use to force the
-# dev-built UI/skeleton/guardian versions. The caller chooses the file path
+# dev-built client/skeleton/guardian versions. The caller chooses the file path
 # (the two scripts intentionally place it differently), so this single-sources
 # only the content. Usage: smoke_write_version_override <file> <platform_version>
 smoke_write_version_override() {
@@ -107,7 +107,7 @@ smoke_write_version_override() {
 services:
   assistant:
     environment:
-      OP_UI_VERSION: "${platform_version}"
+      OP_CLIENT_VERSION: "${platform_version}"
       OP_SKELETON_VERSION: "${platform_version}"
   guardian:
     environment:

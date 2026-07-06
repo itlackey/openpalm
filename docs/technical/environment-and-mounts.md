@@ -93,9 +93,20 @@ Ports and networks:
 
 | Item | Value |
 |---|---|
-| Container port | `4096` |
-| Host bind | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}` |
+| Container port | `4096` (OpenCode), `3000` (chat client co-process) |
+| Host bind | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}` (OpenCode) |
+| Client host bind | `${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CLIENT_PORT:-3810}` (chat client) |
 | Networks | `assistant_net` |
+
+The chat client co-process serves the static `@openpalm/client` build (P5d,
+#510). It binds `0.0.0.0` **inside** the container on port `3000`; host
+exposure is governed solely by the compose mapping above, which defaults to
+loopback and honors the global `OP_BIND_ADDRESS` policy with a per-service
+`OP_CLIENT_BIND_ADDRESS` override. At startup the entrypoint writes a
+`runtime-config.json` beside the build with one locked default connection
+pointing the browser at the host-published OpenCode URL
+(`http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}`, full-URL override via
+`OP_CLIENT_DEFAULT_ASSISTANT_URL`).
 
 Key env:
 
@@ -110,6 +121,9 @@ Key env:
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache directory |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data directory |
 | `OP_UID` / `OP_GID` | `stack.env` | Direct runtime uid/gid mapping |
+| `OP_CLIENT_VERSION` | `stack.env` (empty = image `PLATFORM_VERSION`) | Exact-pin override for the `@openpalm/client` artifact the entrypoint installs |
+| `OP_ASSISTANT_PORT` | `stack.env` (default `3800`) | Host-published OpenCode port; used to build the client's default connection URL |
+| `OP_CLIENT_DEFAULT_ASSISTANT_URL` | `stack.env` (optional) | Full-URL override for the client's locked default connection |
 
 Notes:
 
@@ -237,6 +251,9 @@ These variables are consumed by Compose and service env blocks.
 | `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
 | `OP_HOST_UI_PORT` | Admin UI host port (default `3880`); the admin UI runs as a host process, not a container |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
+| `OP_CLIENT_BIND_ADDRESS`, `OP_CLIENT_PORT` | Assistant chat-client co-process host bind (default `127.0.0.1:3810`) |
+| `OP_CLIENT_VERSION` | Exact-pin override for the `@openpalm/client` artifact installed in the assistant container |
+| `OP_CLIENT_DEFAULT_ASSISTANT_URL` | Full-URL override for the chat client's locked default connection |
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
