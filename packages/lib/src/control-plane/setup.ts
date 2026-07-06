@@ -16,10 +16,8 @@ import {
   PROVIDER_KEY_MAP,
 } from "../provider-constants.js";
 import { buildAkmEndpoint } from './akm-endpoints.js';
-import { mergeEnvContent } from "./env.js";
-import { SERVICE_VERSION_KEYS } from "./versions.js";
+import { SERVICE_VERSION_KEYS, writeVersions } from "./versions.js";
 import { ensureHomeDirs } from "./home.js";
-import { stackEnvPath } from "./paths.js";
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "./install-lock.js";
 import {
   ensureSecrets,
@@ -347,20 +345,17 @@ export async function performSetup(
     // single try/catch so that a disk-full or permission-denied mid-way returns a
     // clean error rather than leaving a broken half-installed ~/.openpalm/.
     try {
-      // Write image tag and AKM mount paths to stack.env — atomic to avoid
-      // partial writes if the process is interrupted mid-write.
-      const systemEnvForAkm = existsSync(stackEnvPath(state))
-        ? readFileSync(stackEnvPath(state), "utf-8")
-        : "";
-      const akmUpdates: Record<string, string> = {};
       // Reconcile the per-image version pins on EVERY setup run. A non-empty
       // wizard value pins every service image to that exact tag deliberately; a
       // BLANK field means "track the moving default", so write `latest` rather
-      // than silently preserving a stale pin left in an existing stack.env.
+      // than silently preserving a stale pin left over from a previous run.
       // Without this, re-running setup over an OP_HOME whose versions were pinned
       // to an old release kept deploying a months-old image. Each image now has
       // its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade); the Advanced
       // field pins all four to the same tag.
+      // state/stack.state.env is the SOLE pin location (never the legacy
+      // knowledge/env/stack.env) — writeVersions() writes there exclusively.
+      const akmUpdates: Record<string, string> = {};
       const requestedTag = imageTag?.trim() ? imageTag.trim() : "latest";
       for (const key of SERVICE_VERSION_KEYS) {
         akmUpdates[key] = requestedTag;
@@ -369,9 +364,7 @@ export async function performSetup(
       // (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is
       // wired as a read-write SECONDARY source — see configureHostAkmSharing()
       // below (Phase 4) and the host-akm.compose.yml overlay.
-      if (Object.keys(akmUpdates).length > 0) {
-        writeFileAtomic(stackEnvPath(state), mergeEnvContent(systemEnvForAkm, akmUpdates), 0o600);
-      }
+      writeVersions(state, akmUpdates);
 
       // Write akm config with LLM and embedding settings from setup — atomic.
       persistAkmConfig(state, { llm, embedding });
@@ -421,8 +414,8 @@ export async function performSetup(
       // before the Docker deploy succeeds would mark setup "complete" even
       // when containers fail to start, sending the user to a broken admin UI
       // with no path back to the wizard. The flag is now written by
-      // setup-deploy.ts:startDeploy AFTER pollContainerHealth confirms every
-      // container is healthy.
+      // setup-deploy.ts:startDeploy AFTER `compose up --wait` (§2.1's single
+      // health gate) confirms every CORE service is healthy.
     } catch (err) {
       const message = errMessage(err);
       logger.error("failed to complete setup persistence", { error: message });

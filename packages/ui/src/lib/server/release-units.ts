@@ -12,6 +12,10 @@
  * after fetching the raw release list.
  */
 
+// Single source of truth for "is this asset an Electron installer" — shared with
+// the desktop app's update check (packages/electron/src/update-check.ts).
+import { ELECTRON_ASSET_PATTERN } from '@openpalm/lib';
+
 export interface ReleaseEntry {
   tag: string;
   prerelease: boolean;
@@ -36,10 +40,6 @@ export type RawGitHubRelease = {
   published_at: string;
   assets: Array<{ name: string }>;
 };
-
-// Match Electron installer assets only. Anchored to ^OpenPalm- to exclude
-// deploy bundles and CLI binaries. Includes .zip for the Windows installer.
-const ELECTRON_ASSET_PATTERN = /^OpenPalm-.*\.(dmg|AppImage|zip|deb|rpm|pkg)$/i;
 
 // unit-prefixed semver tag: <unit>-X.Y.Z (with optional pre-release/build).
 // `portals` is the git-tag unit name; the Docker image is `portal` (singular).

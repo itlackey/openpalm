@@ -6,8 +6,9 @@ import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir, legacyStackEnvFile, stateEnvFile } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath, stackEnvPath } from "./paths.js";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
+import { writeFileAtomic } from './fs-atomic.js';
 
 const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
 const logger = createLogger("secrets");
@@ -67,7 +68,7 @@ function enforceVaultDirMode(vaultDir: string): void {
 }
 
 function writeVaultFile(path: string, content: string): void {
-  writeFileSync(path, content, { mode: VAULT_FILE_MODE });
+  writeFileAtomic(path, content, VAULT_FILE_MODE);
   try {
     chmodSync(path, VAULT_FILE_MODE);
   } catch (error) {
@@ -154,6 +155,9 @@ export function ensureSecrets(state: ControlPlaneState): void {
   ensureAuthJson(state);
   ensureSecret(state.homeDir, 'op_guardian_admin_token', () => crypto.randomUUID().replace(/-/g, ''));
   ensureSecret(state.homeDir, 'op_guardian_mcp_token', () => crypto.randomUUID().replace(/-/g, ''));
+  // The API key end users paste into OpenAI-compatible clients (guardian edge,
+  // OPENAI_COMPAT_API_KEY_FILE). Without it the shipped edge fails closed (401).
+  ensureSecret(state.homeDir, 'op_api_key', () => crypto.randomUUID().replace(/-/g, ''));
 }
 
 function ensureAuthJson(state: ControlPlaneState): void {
@@ -163,7 +167,29 @@ function ensureAuthJson(state: ControlPlaneState): void {
   if (existsSync(authJsonPath)) {
     try {
       if (lstatSync(authJsonPath).isDirectory()) {
-        rmSync(authJsonPath, { recursive: true, force: true });
+        // A previous bug could leave auth.json as a directory. Move it aside
+        // into data/backups/ instead of deleting it outright — whatever an
+        // operator or a previous OpenCode run put there stays recoverable —
+        // and always log the repair (previously only the failure path below
+        // logged anything, so a successful repair silently destroyed data).
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const movedTo = join(state.dataDir, "backups", `auth.json-dir-${timestamp}`);
+        try {
+          mkdirSync(dirname(movedTo), { recursive: true });
+          renameSync(authJsonPath, movedTo);
+          logger.warn("auth.json was unexpectedly a directory — moved aside for recovery and replaced with a fresh file", {
+            path: authJsonPath,
+            movedTo,
+          });
+        } catch (moveError) {
+          // Cross-device rename or other failure — fall back to deleting so
+          // setup can proceed, but still log what happened.
+          rmSync(authJsonPath, { recursive: true, force: true });
+          logger.warn("auth.json was unexpectedly a directory — could not move it aside, deleted it and replaced with a fresh file", {
+            path: authJsonPath,
+            error: errMessage(moveError),
+          });
+        }
       } else {
         chmodSync(authJsonPath, VAULT_FILE_MODE);
         return;

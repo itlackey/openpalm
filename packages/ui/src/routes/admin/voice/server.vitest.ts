@@ -10,6 +10,13 @@ import { tmpdir } from 'node:os';
 // auto-fill, validation, writeVoiceVars) live in the route itself
 // and are exercised below; whether docker actually starts the voice
 // container is covered by the integration tests, not unit tests.
+//
+// (plan 2.2) bring-up.ts's compose-up + health-wait now goes through the
+// single `applyStack` driver instead of a bespoke composeUp + /health poll —
+// mock applyStack directly rather than composeUp; the fetch stub below no
+// longer needs to answer a health poll (applyStack's health-wait is a
+// `docker inspect` call the route never makes in tests), only GET's
+// reachability probe.
 vi.mock('@openpalm/lib', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('@openpalm/lib')>();
 	const voiceCpu = actual.addonProfileId('voice', 'cpu');
@@ -18,7 +25,7 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 		...actual,
 		listEnabledAddonIds: vi.fn(() => ['voice']),
 		setAddonEnabled: vi.fn(() => ({ changed: false } as never)),
-		composeUp: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
+		applyStack: vi.fn(async () => ({ ok: true, started: ['voice'], failed: [] })),
 		composeStop: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
 		// Voice addon profiles for the GET response + PUT routing. The route
 		// re-runs annotateAddonProfileAvailability over these.
@@ -90,9 +97,9 @@ beforeEach(() => {
 	process.env.OP_HOME = makeTempDir();
 	process.env.OP_VOICE_PORT_HOST = '18980';
 	resetState('admin-token');
-	// Stub fetch so the reachability probe in GET doesn't reach the network,
-	// and the /health poll in PUT returns 200 immediately. Both reachability
-	// and health calls land here.
+	// Stub fetch so GET's reachability probe doesn't reach the network. PUT no
+	// longer polls /health itself (plan 2.2 — that's applyStack's mocked job
+	// now), but other server-availability checks in GET still go through fetch.
 	fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
 		return new Response('', { status: 200 });
 	});

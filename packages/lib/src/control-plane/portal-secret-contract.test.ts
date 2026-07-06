@@ -12,8 +12,8 @@
  *
  * Each is unit-tested in isolation, but nothing binds them together. If they
  * drift (e.g. the prefix is renamed in compose but not in portalSecretName), a
- * user's portal breaks — Compose can't materialise the secret, or the guardian
- * rejects the portal's HMAC auth (GUARDIAN_REQUIRE_PORTAL_SECRETS is true) —
+ * user's portal breaks — Compose can't materialise the secret, so the portal
+ * adapter never gets a HMAC secret to authenticate to the guardian with —
  * while every isolated unit test stays green. This test reproduces that coupling
  * so the drift is caught at build time, not in production.
  */
@@ -85,6 +85,40 @@ describe("portal verification-secret contract (compose ↔ portalSecretName ↔ 
       });
     });
   }
+
+  // S.1b: the guardian's co-hosted OpenAI/Anthropic-compatible edge must ship
+  // BOTH credentials wired, or it fails closed (S.1a) and is unusable:
+  //   - PRINCIPAL_SECRET_FILE → the already-mounted portal_api_secret, so the
+  //     edge presents a valid `api` principal to /oc (§0.2.4 near-miss closed).
+  //   - OPENAI_COMPAT_API_KEY_FILE → a dedicated op_api_key the user pastes into
+  //     OpenAI-compatible clients (kept distinct from the principal secret so the
+  //     audit trail is unambiguous).
+  describe("guardian OpenAI-compatible edge (S.1b)", () => {
+    const guardian = services.guardian;
+
+    it("mounts PRINCIPAL_SECRET_FILE as the already-mounted portal_api_secret", () => {
+      expect(secretFromMount(guardian?.environment?.PRINCIPAL_SECRET_FILE)).toBe("portal_api_secret");
+    });
+
+    it("presents the 'api' principal id the portal_api_secret seeds", () => {
+      expect(guardian?.environment?.PRINCIPAL_ID).toBe("api");
+    });
+
+    it("mounts OPENAI_COMPAT_API_KEY_FILE as a dedicated op_api_key secret", () => {
+      expect(secretFromMount(guardian?.environment?.OPENAI_COMPAT_API_KEY_FILE)).toBe("op_api_key");
+    });
+
+    it("lists op_api_key in the guardian service secrets:", () => {
+      expect(guardian?.secrets ?? []).toContain("op_api_key");
+    });
+
+    it("declares op_api_key at the top level, file-backed under knowledge/secrets/", () => {
+      const decl = topLevelSecrets["op_api_key"];
+      expect(decl, "top-level secrets: must declare op_api_key").toBeDefined();
+      expect(basename(decl?.file ?? "")).toBe("op_api_key");
+      expect(decl?.file).toContain("/knowledge/secrets/");
+    });
+  });
 
   it("every secret a service references is declared at the top level (else Compose fails to start)", () => {
     const declared = new Set(Object.keys(topLevelSecrets));

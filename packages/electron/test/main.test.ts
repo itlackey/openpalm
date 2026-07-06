@@ -281,6 +281,7 @@ describe('harness contract', () => {
     expect(HARNESS_CONTRACT.ipc.send).toEqual(['notify']);
     expect(HARNESS_CONTRACT.ipc.invoke).toEqual([
       'restart',
+      'restartUiServer',
       'launchOnLoginStatus',
       'setLaunchOnLogin',
       'setTrayMicRecording',

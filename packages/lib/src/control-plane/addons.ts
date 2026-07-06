@@ -66,18 +66,14 @@ export function listAvailableAddonIds(): string[] {
 }
 
 export function listEnabledAddonIds(homeDir: string): string[] {
+  // OP_ENABLED_ADDONS is the SOLE source of addon enablement (plan 2.2). A
+  // profile-var-only install (voice/ollama enabled purely by an OP_*_PROFILE
+  // hardware pick, never named here) is reconciled into OP_ENABLED_ADDONS once
+  // by migrateProfileOnlyAddonEnablement — this read no longer reverse-parses
+  // profile vars.
   const env = readStackEnv(homeDir);
   const available = new Set(BUILTIN_ADDON_IDS);
   const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
-  const profiles = new Set<string>();
-  for (const key of ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE']) {
-    const profile = env[key]?.trim();
-    if (profile) profiles.add(profile);
-  }
-  for (const profile of profiles) {
-    const match = profile.match(/^addon\.([a-z0-9-]+)(?:\.|$)/);
-    if (match?.[1]) enabled.add(match[1]);
-  }
   return [...enabled].filter((name) => available.has(name)).sort();
 }
 
@@ -350,6 +346,47 @@ export function pruneRemovedAddonState(
     removedAddons,
     removedEnvKeys,
   };
+}
+
+/**
+ * Hardware-profile env keys that, before plan 2.2, implied an addon was enabled
+ * even when OP_ENABLED_ADDONS never named it. Now read ONLY by the one-time
+ * migration below — listEnabledAddonIds no longer reverse-parses them.
+ */
+const PROFILE_ONLY_ENV_KEYS = ['OP_VOICE_PROFILE', 'OP_OLLAMA_PROFILE'] as const;
+
+/**
+ * One-time upgrade guard (2.2, verification correction #4): an install that
+ * enabled voice/ollama ONLY by picking a hardware profile — never through
+ * OP_ENABLED_ADDONS — used to have its addon enablement derived at READ time by
+ * a reverse-parse in listEnabledAddonIds. That reverse-parse is now deleted (a
+ * single source of truth), so this migration persists the derived addon id into
+ * OP_ENABLED_ADDONS; without it such an install would silently lose the addon.
+ *
+ * Idempotent and skip-if-already-enabled, so it is safe to run on every
+ * reconcile (mirrors pruneRemovedAddonState): write the derived addon id into
+ * OP_ENABLED_ADDONS (app-written → state/) whenever a profile var names one
+ * that isn't already listed.
+ */
+export function migrateProfileOnlyAddonEnablement(
+  homeDir: string,
+): { changed: boolean; migratedAddons: string[] } {
+  const env = readStackEnv(homeDir);
+  const enabled = new Set(parseEnabledAddons(env.OP_ENABLED_ADDONS));
+  const missing = new Set<string>();
+  for (const key of PROFILE_ONLY_ENV_KEYS) {
+    const profile = env[key]?.trim();
+    if (!profile) continue;
+    const match = profile.match(/^addon\.([a-z0-9-]+)(?:\.|$)/);
+    const addonId = match?.[1];
+    if (addonId && !enabled.has(addonId)) missing.add(addonId);
+  }
+
+  if (missing.size === 0) return { changed: false, migratedAddons: [] };
+
+  const migratedAddons = [...missing].sort();
+  setEnabledAddonState(homeDir, migratedAddons, true);
+  return { changed: true, migratedAddons };
 }
 
 export function setAddonEnabled(homeDir: string, name: string, enabled: boolean, state?: ControlPlaneState): AddonMutationResult {

@@ -190,7 +190,7 @@ beforeAll(async () => {
   let proxyOn = false;
   const internalUrl = `http://127.0.0.1:${internalPort}`;
   for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${internalUrl}/stats`);
+    const r = await fetch(`${internalUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
     if (r.ok && (await r.json()).oc_proxy?.enabled === true) { proxyOn = true; break; }
     await Bun.sleep(100);
   }

@@ -4,13 +4,15 @@
  * Verifies:
  * 1. checkDocker handles version output, warnings, daemon errors, missing binary
  * 2. checkDockerCompose reports availability
- * 3. composeUp validates file existence, builds correct args with options
- * 4. composeDown handles volumes flag
- * 5. composeRestart, composeStop, composeStart build correct commands
- * 6. composePs handles missing compose file fallback
- * 7. composeLogs respects tail and service filters
- * 8. composePull builds pull command
- * 9. All commands use execFile (no shell injection — core security invariant)
+ * 3. composeDown handles volumes flag
+ * 4. composeRestart, composeStop, composeStart build correct commands
+ * 5. composePs handles missing compose file fallback
+ * 6. composeLogs respects tail and service filters
+ * 7. All commands use execFile (no shell injection — core security invariant)
+ *
+ * The mutation drivers composeUp/composePull were collapsed into the single
+ * @openpalm/lib `applyStack` driver (plan 2.2); the UI wrapper no longer
+ * re-exports them, so this file no longer tests them.
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
@@ -140,153 +142,6 @@ describe("checkDockerCompose", () => {
     const { checkDockerCompose } = await import("./docker.js");
     const result = await checkDockerCompose();
     expect(result.ok).toBe(false);
-  });
-});
-
-describe("composeUp", () => {
-  beforeEach(() => {
-    execFileMock.mockReset();
-    existsSyncMock.mockReset();
-  });
-
-  test("returns error when compose file not found", async () => {
-    existsSyncMock.mockReturnValue(false);
-    const { composeUp } = await import("./docker.js");
-    const result = await composeUp({ files: ["/data/core.compose.yml"] });
-    expect(result.ok).toBe(false);
-    expect(result.stderr).toContain("Compose file not found");
-  });
-
-  test("builds correct args with default options", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess("Creating containers...");
-
-    const { composeUp } = await import("./docker.js");
-    const result = await composeUp({ files: ["/data/core.compose.yml"] });
-    expect(result.ok).toBe(true);
-
-    const args = capturedArgs();
-    expect(args).toContain("compose");
-    expect(args).toContain("-f");
-    expect(args).toContain("--project-name");
-    expect(args).toContain("openpalm");
-    expect(args).toContain("up");
-    expect(args).toContain("-d");
-  });
-
-  test("includes profile flags when specified", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/data/core.compose.yml"], profiles: ["dev", "debug"] });
-
-    const args = capturedArgs();
-    expect(args).toContain("--profile");
-    // Should have both profiles
-    const profileIndices = args.reduce<number[]>((acc, a, i) => {
-      if (a === "--profile") acc.push(i);
-      return acc;
-    }, []);
-    expect(profileIndices).toHaveLength(2);
-  });
-
-  test("appends specific services when provided", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/data/core.compose.yml"], services: ["admin", "guardian"] });
-
-    const args = capturedArgs();
-    const upIdx = args.indexOf("up");
-    // Services should come after "up" and "-d"
-    expect(args.slice(upIdx + 2)).toEqual(expect.arrayContaining(["admin", "guardian"]));
-  });
-
-  test("uses custom files when provided", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/a/compose.yml", "/b/overlay.yml"] });
-
-    const args = capturedArgs();
-    expect(args).toContain("/a/compose.yml");
-    expect(args).toContain("/b/overlay.yml");
-  });
-
-  test("includes --force-recreate when forceRecreate is true", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/data/core.compose.yml"], forceRecreate: true });
-
-    const args = capturedArgs();
-    expect(args).toContain("--force-recreate");
-    // Should appear after "up" and "-d"
-    const upIdx = args.indexOf("up");
-    const forceIdx = args.indexOf("--force-recreate");
-    expect(forceIdx).toBeGreaterThan(upIdx);
-  });
-
-  test("omits --force-recreate by default", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/data/core.compose.yml"] });
-
-    const args = capturedArgs();
-    expect(args).not.toContain("--force-recreate");
-  });
-
-  test("includes --remove-orphans when removeOrphans is true", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/data/core.compose.yml"], removeOrphans: true });
-
-    const args = capturedArgs();
-    expect(args).toContain("--remove-orphans");
-    // Should appear after "up" and "-d"
-    const upIdx = args.indexOf("up");
-    const orphanIdx = args.indexOf("--remove-orphans");
-    expect(orphanIdx).toBeGreaterThan(upIdx);
-  });
-
-  test("omits --remove-orphans by default", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/data/core.compose.yml"] });
-
-    const args = capturedArgs();
-    expect(args).not.toContain("--remove-orphans");
-  });
-
-  test("merges env file values into process env for compose", async () => {
-    // Create a real env file on disk (existsSyncMock only controls docker.ts internal checks)
-    const tmpEnvFile = `/tmp/docker-test-${Date.now()}.env`;
-    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    realFs.writeFileSync(tmpEnvFile, "OP_PROJECT_NAME=test-project\nOP_OWNER_NAME=alice\n");
-
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composeUp } = await import("./docker.js");
-    await composeUp({ files: ["/data/core.compose.yml"], envFiles: [tmpEnvFile] });
-
-    // The env passed to execFile should contain the env file values
-    const call = execFileMock.mock.calls[0];
-    const opts = call[2] as { env: Record<string, string> };
-    expect(opts.env.OP_PROJECT_NAME).toBe("test-project");
-    expect(opts.env.OP_OWNER_NAME).toBe("alice");
-
-    realFs.unlinkSync(tmpEnvFile);
   });
 });
 
@@ -471,47 +326,6 @@ describe("composeLogs", () => {
   });
 });
 
-describe("composePull", () => {
-  beforeEach(() => {
-    execFileMock.mockReset();
-    existsSyncMock.mockReset();
-  });
-
-  test("builds pull command", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess("Pulling images...");
-
-    const { composePull } = await import("./docker.js");
-    await composePull({ files: ["/data/core.compose.yml"] });
-
-    const args = capturedArgs();
-    expect(args).toContain("compose");
-    expect(args).toContain("pull");
-    expect(args).toContain("--project-name");
-    expect(args).toContain("openpalm");
-  });
-
-  test("merges env file values into process env for pull", async () => {
-    const tmpEnvFile = `/tmp/docker-pull-test-${Date.now()}.env`;
-    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    realFs.writeFileSync(tmpEnvFile, "OP_ASSISTANT_VERSION=v1.2.3\nOP_IMAGE_NAMESPACE=myns\n");
-
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    const { composePull } = await import("./docker.js");
-    await composePull({ files: ["/data/core.compose.yml"], envFiles: [tmpEnvFile] });
-
-    // The env passed to execFile should contain the env file values
-    const call = execFileMock.mock.calls[0];
-    const opts = call[2] as { env: Record<string, string> };
-    expect(opts.env.OP_ASSISTANT_VERSION).toBe("v1.2.3");
-    expect(opts.env.OP_IMAGE_NAMESPACE).toBe("myns");
-
-    realFs.unlinkSync(tmpEnvFile);
-  });
-});
-
 describe("security: no shell injection", () => {
   beforeEach(() => {
     execFileMock.mockReset();
@@ -522,7 +336,7 @@ describe("security: no shell injection", () => {
     mockExecSuccess();
 
     const docker = await import("./docker.js");
-    await docker.composeUp({ files: ["/data/core.compose.yml"] });
+    await docker.composeDown({ files: ["/data/core.compose.yml"] });
 
     // Verify execFile is called with "docker" as first arg (not a shell string)
     expect(execFileMock).toHaveBeenCalled();

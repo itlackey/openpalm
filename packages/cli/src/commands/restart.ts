@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { buildManagedServices } from '@openpalm/lib';
+import { buildManagedServices, teardownRenamedProject } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { defineAction } from '../lib/action.ts';
@@ -27,6 +27,23 @@ export async function runRestartAction(services: string[]): Promise<void> {
     // Restart all managed services (admin included if enabled)
     const state = ensureValidState();
     const managedServices = await buildManagedServices(state);
+
+    // Project rename (#540): after OP_PROJECT_NAME changes, no containers
+    // exist under the new name yet — a plain `restart` would no-op while the
+    // old project keeps running. Stop the recorded outgoing project, then
+    // `up -d` so the stack is (re)created under the new name. A blocked
+    // teardown aborts instead of reporting a restart that never migrated.
+    const renameTeardown = await teardownRenamedProject(state);
+    if (renameTeardown.blocked) {
+      throw new Error(renameTeardown.warning ?? 'Project rename teardown failed.');
+    }
+    if (renameTeardown.warning) console.warn(renameTeardown.warning);
+    if (renameTeardown.downed) {
+      console.log(`Project rename: stopped previous docker project "${renameTeardown.downed}".`);
+      await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
+      return;
+    }
+
     await runComposeWithPreflight(state, ['restart', ...managedServices]);
     return;
   }

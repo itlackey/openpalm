@@ -40,6 +40,10 @@ smoke_seed_secrets() {
   openssl rand -hex 16 > "$home/knowledge/secrets/op_guardian_mcp_token"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_chat_secret"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_api_secret"
+  # op_api_key: the OpenAI-compat edge key (S.1b). Seeded on real installs by
+  # ensureSecrets(); the guardian container bind-mounts it, so the fixture must
+  # provide it too or the container fails to start.
+  openssl rand -hex 16 > "$home/knowledge/secrets/op_api_key"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_discord_secret"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_slack_secret"
   printf '%s\n' 'discord-smoke-token' > "$home/knowledge/secrets/discord_bot_token"
@@ -126,7 +130,12 @@ smoke_build_images() {
   fi
   echo "Building UI..." >&2
   bun run ui:build >/dev/null
-  echo "Building images: $* ..." >&2
+  # The guardian Dockerfile bakes @openpalm/guardian@${GUARDIAN_VERSION} at
+  # build time and fails if it is unset (see compose.dev.yml guardian args).
+  # Bake the repo's exact version so the smoke image matches the source tree.
+  GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
+  export GUARDIAN_VERSION
+  echo "Building images: $* (GUARDIAN_VERSION=${GUARDIAN_VERSION}) ..." >&2
   # --profile addon.chat makes the profiled guardian visible; addon.discord makes
   # the portal build target visible. compose.dev.yml supplies the build contexts.
   docker compose --project-directory . \

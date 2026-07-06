@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { legacyStackEnvFile, stateEnvFile } from "./home.js";
+import { legacyStackEnvFile, secretsDir, stateEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
 
 export type LocalStackState =
@@ -153,9 +153,21 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
 /**
  * Classify the on-disk local install WITHOUT a live health probe:
  *   - not_installed:    no materialized stack (no core.compose.yml)
- *   - setup_incomplete: stack present but OP_SETUP_COMPLETE !== 'true'
- *   - installed:        OP_SETUP_COMPLETE === 'true' (caller maps to
- *                       running/offline/broken via a container-health probe)
+ *   - setup_incomplete: stack present but OP_SETUP_COMPLETE !== 'true' and no
+ *                       other observable evidence of a completed install
+ *   - installed:        OP_SETUP_COMPLETE === 'true', OR (cheap observable
+ *                       fallback, docs/reviews/fable-remediation-plan.md §1.5)
+ *                       core.compose.yml is present AND both guardian tokens
+ *                       performSetup mints exist. Caller maps "installed" to
+ *                       running/offline/broken via a container-health probe.
+ *
+ * The fallback exists because a hand-built install (copy the skeleton, run
+ * `docker compose up -d` yourself) never runs `performSetup` and so never gets
+ * the stamp — without it, a stack a user hand-assembled and is already running
+ * gets shunted back into the setup wizard. Guardian tokens are cheap
+ * (existsSync, no I/O beyond two stat calls) and, combined with the compose
+ * file, are strong evidence the layout was actually assembled rather than
+ * merely a stray core.compose.yml sitting on disk.
  *
  * Edge case (deliberate): OP_SETUP_COMPLETE === 'true' with core.compose.yml
  * MISSING still classifies as "installed" — the user DID complete setup, and
@@ -172,6 +184,10 @@ export function classifyLocalInstall(stackDir: string, homeDir: string): "not_in
   const env = { ...legacy, ...state };
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
+  const secrets = secretsDir(homeDir);
+  const hasGuardianTokens =
+    existsSync(join(secrets, "op_guardian_admin_token")) && existsSync(join(secrets, "op_guardian_mcp_token"));
+  if (hasCompose && hasGuardianTokens) return "installed";
   return "setup_incomplete";
 }
 

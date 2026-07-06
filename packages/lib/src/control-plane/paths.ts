@@ -66,10 +66,9 @@ export const guardianAkmDir        = (s: ControlPlaneState): string => `${s.data
 export const akmDataDir            = (s: ControlPlaneState): string => `${s.dataDir}/akm/data`;
 export const taskLogDir            = (s: ControlPlaneState, id: string): string => `${s.dataDir}/akm/cache/tasks/logs/${id}`;
 export const taskLogsRootDir       = (s: ControlPlaneState): string => `${s.dataDir}/akm/cache/tasks/logs`;
-export const secretsDir            = (s: ControlPlaneState): string => `${s.dataDir}/secrets`;
-export const secretProviderPath    = (s: ControlPlaneState): string => `${s.dataDir}/secrets/provider.json`;
-export const secretsIndexPath      = (s: ControlPlaneState): string => `${s.dataDir}/secrets/plaintext-index.json`;
-export const passStoreDir          = (s: ControlPlaneState): string => `${s.dataDir}/secrets/pass-store`;
+// (Removed the dataDir-scoped secretsDir/secretProviderPath/secretsIndexPath/
+//  passStoreDir helpers — zero consumers, and secretsDir here name-collided
+//  with the live knowledge/secrets `home.ts` secretsDir().)
 
 // ── Knowledge directory ─────────────────────────────────────────────────────
 // The akm env:user file path (`knowledge/env/user.env`) is owned by

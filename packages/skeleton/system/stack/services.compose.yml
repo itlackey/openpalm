@@ -1,10 +1,19 @@
 # OpenPalm first-party optional services.
 # Services are gated by Compose profiles (addon.ollama.*, addon.voice.*).
+#
+# Addon trust boundary (S.6b / D3(b)): addon services join addon_net, NOT
+# assistant_net, so a compromised addon image cannot reach the assistant's
+# OpenCode API (:4096) over a shared bridge. The only exception is ollama, which
+# the assistant reaches as its LLM provider over the Docker DNS name ollama:11434
+# — that inference path needs shared-network reachability, so ollama is granted
+# assistant_net per service. voice needs no assistant reachability at all: the UI
+# host process reaches it over its published loopback port (127.0.0.1:8880), so
+# voice stays on addon_net only.
 
 services:
   ollama:
     profiles: ["addon.ollama.cpu"]
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.31.1@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
@@ -16,6 +25,8 @@ services:
       HOME: /home/ollama
     volumes:
       - ${OP_HOME}/data/ollama:/home/ollama/.ollama
+    # Per-service exception: the assistant reaches ollama as its LLM provider over
+    # ollama:11434, so ollama needs assistant_net reachability (S.6b / D3(b)).
     networks: [assistant_net]
     healthcheck:
       test: ["CMD", "ollama", "list"]
@@ -29,7 +40,7 @@ services:
 
   ollama-cuda:
     profiles: ["addon.ollama.cuda"]
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.31.1@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     runtime: nvidia
@@ -56,7 +67,7 @@ services:
 
   ollama-rocm:
     profiles: ["addon.ollama.rocm"]
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.31.1@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
     restart: unless-stopped
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
@@ -99,7 +110,10 @@ services:
       - "${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
       - ${OP_HOME}/data/voice/models:/models
-    networks: [assistant_net]
+    # Segmented off the assistant trust network: voice is reached only by the UI
+    # host over its published loopback port (127.0.0.1:8880), never in-container by
+    # the assistant, so it needs no assistant reachability (S.6b / D3(b)).
+    networks: [addon_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
       interval: 10s
@@ -127,8 +141,10 @@ services:
       - "${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
       - ${OP_HOME}/data/voice/models:/models
+    # Segmented off the assistant trust network (S.6b / D3(b)); reached only by the
+    # UI host over the published loopback port 127.0.0.1:8880.
     networks:
-      assistant_net:
+      addon_net:
         aliases: [voice]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8880/health || exit 1"]
@@ -155,8 +171,10 @@ services:
       - "${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
       - ${OP_HOME}/data/voice/models:/models
+    # Segmented off the assistant trust network (S.6b / D3(b)); reached only by the
+    # UI host over the published loopback port 127.0.0.1:8880.
     networks:
-      assistant_net:
+      addon_net:
         aliases: [voice]
     devices:
       - "/dev/kfd"

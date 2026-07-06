@@ -1,18 +1,24 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
-import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from './types.js';
+import { CORE_SERVICES } from './types.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall } from './lifecycle.js';
 import { buildManagedServices } from './lifecycle.js';
-import { buildComposeCommandArgs, composeDown, composePs, composePull, composeUp, detectExistingProject, resolveComposeProjectName } from './docker.js';
-import { mapDockerError } from './compose-errors.js';
+import { applyStack, composeDown, composePs, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile } from './secrets.js';
-import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
+import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 import { stackEnvPath } from './paths.js';
+import { discoverStackOverlays } from './config-persistence.js';
+import { teardownRenamedProject } from './project-rename.js';
+import { auditComposeSecrets } from './secret-audit.js';
+import { validateProposedState } from './validate.js';
+import { createLogger } from '../logger.js';
+
+const deployLogger = createLogger('deploy');
 
 export type DeployEntry = {
   service: string;
@@ -35,12 +41,6 @@ export type DeployJournal = {
 };
 
 export type DeployProgress = DeployJournal;
-
-type ComposeContainerState = {
-  service: string;
-  state: string;
-  health: string;
-};
 
 type RunDeployOptions = {
   journalPath?: string;
@@ -89,7 +89,7 @@ export function readDeployJournal(path: string): DeployProgress {
       startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : null,
       pid: typeof parsed.pid === 'number' ? parsed.pid : null,
     });
-    if (state.deploying && state.pid && !isPidAlive(state.pid)) {
+    if (state.deploying && state.pid && !isProcessAlive(state.pid)) {
       state.deploying = false;
       state.interrupted = true;
       state.deployError = state.deployError ?? 'Deployment was interrupted. Retry to resume Docker deploy.';
@@ -109,35 +109,8 @@ function emitProgress(options: RunDeployOptions, state: DeployProgress): void {
   options.onUpdate?.(cloneProgress(state));
 }
 
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function projectNameForState(state: ControlPlaneState): string {
   return resolveComposeProjectName(parseEnvFile(stackEnvPath(state)));
-}
-
-function parseComposePsOutput(stdout: string): ComposeContainerState[] {
-  const results: ComposeContainerState[] = [];
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const obj = JSON.parse(trimmed) as Record<string, unknown>;
-      results.push({
-        service: String(obj.Service ?? obj.Name ?? ''),
-        state: String(obj.State ?? ''),
-        health: String(obj.Health ?? ''),
-      });
-    } catch {
-    }
-  }
-  return results;
 }
 
 function resolveImageTag(state: ControlPlaneState): string {
@@ -147,39 +120,6 @@ function resolveImageTag(state: ControlPlaneState): string {
   // install whose stack.env predates the version migration.
   const env = parseEnvFile(stackEnvPath(state));
   return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
-}
-
-async function missingServiceImages(composeOpts: ReturnType<typeof buildComposeOptions>, services: string[]): Promise<string[]> {
-  if (services.length === 0) return [];
-  const args = [
-    'compose',
-    ...buildComposeCommandArgs(composeOpts),
-    'config', '--format', 'json',
-  ];
-  const config = await new Promise<{ services?: Record<string, { image?: string }> }>((resolve) => {
-    execFile('docker', args, { timeout: 30_000 }, (error, stdout) => {
-      if (error) return resolve({});
-      try {
-        resolve(JSON.parse(stdout.toString()) as { services?: Record<string, { image?: string }> });
-      } catch {
-        resolve({});
-      }
-    });
-  });
-  const serviceConfig = config.services ?? {};
-  const missing: string[] = [];
-  for (const service of services) {
-    const image = serviceConfig[service]?.image;
-    if (!image) {
-      missing.push(`${service} (image unknown)`);
-      continue;
-    }
-    const present = await new Promise<boolean>((resolve) => {
-      execFile('docker', ['image', 'inspect', image], { timeout: 5_000 }, (error) => resolve(!error));
-    });
-    if (!present) missing.push(image);
-  }
-  return missing;
 }
 
 async function detectProjectCollision(state: ControlPlaneState): Promise<string | null> {
@@ -200,37 +140,42 @@ function buildLogHint(state: ControlPlaneState, services: string[]): string {
   return `Check logs: docker compose -p ${projectNameForState(state)} logs ${services.join(' ')}.`;
 }
 
-async function pollContainerHealth(state: ControlPlaneState, progress: DeployProgress, services: string[], options: RunDeployOptions): Promise<string | null> {
+/**
+ * §2.1: `compose up -d --wait` IS the health gate now — this no longer polls
+ * or decides pass/fail. Demoted + renamed from the old pollContainerHealth
+ * gate: ONE `compose ps` call refreshes the per-service display labels the UI
+ * shows. On a successful `up`, `--wait` already confirmed every requested
+ * service is healthy, so every entry is marked running regardless of what
+ * this best-effort ps call sees. On a failed `up`, the same single call NAMES
+ * which services didn't come up (§2.1's "one compose ps --format json call
+ * names the failed services"), split into CORE_SERVICES vs everything else —
+ * runDeploy gates setup-completion on core only.
+ */
+async function refreshDeployStatus(
+  state: ControlPlaneState,
+  progress: DeployProgress,
+  upFailed: boolean,
+): Promise<{ failedCore: string[]; failedOptional: string[] }> {
   const composeOpts = buildComposeOptions(state);
-  const deadline = Date.now() + 5 * 60_000;
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
-    const psResult = await composePs(composeOpts);
-    if (!psResult.ok) continue;
-    const containers = parseComposePsOutput(psResult.stdout);
-    progress.deployStatus = progress.deployStatus.map((entry) => {
-      const found = containers.find((container) => container.service === entry.service);
-      if (!found) return { ...entry, status: 'pending', label: 'Starting...' };
-      if (found.state === 'running') {
-        if (found.health === 'unhealthy') return { ...entry, status: 'error', label: 'Unhealthy' };
-        if (found.health === 'starting') return { ...entry, status: 'pending', label: 'Health check running...' };
-        return { ...entry, status: 'running', label: 'Running' };
-      }
-      if (found.state === 'exited' || found.state === 'dead') return { ...entry, status: 'error', label: `Exited (${found.state})` };
-      return { ...entry, status: 'pending', label: `Starting (${found.state})...` };
-    });
-    emitProgress(options, progress);
+  const psResult = await composePs(composeOpts);
+  const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
+  const coreServices: string[] = CORE_SERVICES;
 
-    const failed = progress.deployStatus.filter((entry) => entry.status === 'error').map((entry) => entry.service);
-    if (failed.length > 0) {
-      return `Services started but the following did not become healthy: ${failed.join(', ')}. ${buildLogHint(state, failed)}`;
+  const failedCore: string[] = [];
+  const failedOptional: string[] = [];
+
+  progress.deployStatus = progress.deployStatus.map((entry) => {
+    const row = rows.find((r) => r.service === entry.service);
+    const healthy = row?.state === 'running' && row.health !== 'unhealthy';
+    if (healthy || !upFailed) {
+      return { ...entry, status: 'running', label: 'Running' };
     }
-    const allReady = services.every((service) => progress.deployStatus.find((entry) => entry.service === service)?.status === 'running');
-    if (allReady) return null;
-  }
+    (coreServices.includes(entry.service) ? failedCore : failedOptional).push(entry.service);
+    const label = !row ? 'Did not start' : row.health === 'unhealthy' ? 'Unhealthy' : `Exited (${row.state || 'unknown'})`;
+    return { ...entry, status: 'error', label };
+  });
 
-  const unhealthy = progress.deployStatus.filter((entry) => entry.status !== 'running').map((entry) => entry.service);
-  return `Services started but some did not become healthy in time: ${unhealthy.join(', ')}. ${buildLogHint(state, unhealthy)}`;
+  return { failedCore, failedOptional };
 }
 
 export function markSetupComplete(state: ControlPlaneState): void {
@@ -268,6 +213,36 @@ export function backupSetupInputs(state: ControlPlaneState): string | null {
   return backupDir;
 }
 
+/**
+ * Secret-boundary + runtime-config gate the deploy runs before it touches any
+ * container (S.2.2). Before this, neither `auditComposeSecrets` nor
+ * `validateProposedState` was invoked outside the manual `openpalm audit-secrets`
+ * command, so an apply could grant a secret across the boundary unchecked. Runs
+ * `auditComposeSecrets` over the on-disk compose overlays plus
+ * `validateProposedState`; `error`-severity audit issues and validation errors
+ * block the deploy, warnings are returned for the caller to log and continue.
+ */
+export async function auditApplyState(
+  state: ControlPlaneState,
+): Promise<{ errors: string[]; warnings: string[] }> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  for (const file of discoverStackOverlays(state.homeDir)) {
+    for (const auditIssue of auditComposeSecrets(readFileSync(file, 'utf-8'))) {
+      const where = auditIssue.path ? `${file}:${auditIssue.path}` : file;
+      const line = `${auditIssue.code}: ${auditIssue.message} (${where})`;
+      (auditIssue.severity === 'error' ? errors : warnings).push(line);
+    }
+  }
+
+  const validation = await validateProposedState(state);
+  errors.push(...validation.errors);
+  warnings.push(...validation.warnings);
+
+  return { errors, warnings };
+}
+
 export async function runDeploy(state: ControlPlaneState, options: RunDeployOptions = {}): Promise<DeployProgress> {
   const progress = cloneProgress(DEFAULT_DEPLOY_PROGRESS);
   progress.deploying = true;
@@ -296,68 +271,91 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     emitProgress(options, progress);
     await applyInstall(state, { lock });
 
+    // Validate the written config BEFORE touching containers (S.2.2). Route a
+    // blocking failure through deployError — the same user-visible surface as a
+    // compose failure — so an unauthorized secret grant refuses the deploy.
+    const audit = await auditApplyState(state);
+    for (const warning of audit.warnings) deployLogger.warn(warning);
+    if (audit.errors.length > 0) {
+      progress.deployError = `Refusing to deploy: configuration validation failed.\n${audit.errors.join('\n')}`;
+      progress.deploying = false;
+      emitProgress(options, progress);
+      return progress;
+    }
+
     const services = await buildManagedServices(state);
     progress.deployStatus = services.map((service) => ({ service, status: 'pending', label: 'Waiting...' }));
     emitProgress(options, progress);
 
     const composeOpts = buildComposeOptions(state);
+
+    // Project rename (#540): if OP_PROJECT_NAME changed since the last apply,
+    // the composeDown below only targets the NEW name — the still-running old
+    // project would keep its containers (and host ports) forever. Tear the
+    // recorded outgoing project down first, before anything comes up. A
+    // blocked teardown (down failed, old project still holding ports) must
+    // abort the deploy — continuing would bring up a colliding second stack.
+    const renameTeardown = await teardownRenamedProject(state);
+    if (renameTeardown.warning) deployLogger.warn(renameTeardown.warning);
+    if (renameTeardown.blocked) {
+      progress.deployError = renameTeardown.warning ?? 'Project rename teardown failed.';
+      progress.deploying = false;
+      emitProgress(options, progress);
+      return progress;
+    }
+    if (renameTeardown.downed) {
+      deployLogger.info(`project rename: stopped previous docker project "${renameTeardown.downed}"`);
+    }
+
     try {
       await composeDown({ ...composeOpts, removeVolumes: false, removeOrphans: true });
     } catch {
       // Best-effort cleanup only.
     }
 
-    progress.phase = 'pulling-images';
+    progress.phase = 'starting';
+    progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'pending', label: 'Starting...' }));
     emitProgress(options, progress);
+
+    // The single compose driver (§4.3, plan 2.2): ONE `up --pull missing --wait
+    // --force-recreate --remove-orphans` call — no separate pull step. `--pull
+    // missing` never makes a network call for a locally-built dev image (a
+    // present image is not "missing"); a changed pin makes its tag "missing" so
+    // compose pulls it in the same `up` and a pull failure is fatal. `--wait` is
+    // the health gate; a wider health timeout tolerates a first install's slow
+    // cold boot of multi-GB images.
     const imageTag = resolveImageTag(state);
     const isDevTag = imageTag.startsWith('dev');
-    let pullResult: Awaited<ReturnType<typeof composePull>> | null = null;
-    if (!isDevTag) {
-      for (const delay of [0, 5_000, 15_000]) {
-        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-        pullResult = await composePull(composeOpts);
-        if (pullResult.ok) break;
-        if (/manifest unknown|manifest for .* not found|unauthorized|authentication required|access denied/i.test(pullResult.stderr ?? '')) break;
-      }
-    }
+    const stackResult = await applyStack({ kind: 'all' }, composeOpts, undefined, { pull: 'missing', healthTimeoutMs: 5 * 60_000 });
 
-    if (isDevTag || !pullResult || !pullResult.ok) {
-      const missing = await missingServiceImages(composeOpts, services);
-      if (missing.length > 0) {
-        progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'error', label: 'Image pull failed' }));
+    if (!stackResult.ok) {
+      // ONE `compose ps` refreshes the per-service display labels and splits the
+      // failures into CORE vs OPTIONAL — setup-completion gates on core only, so
+      // an addon/portal hiccup can't wedge a fresh install (§2.1). `upFailed`
+      // means nothing came up at all, always a hard failure.
+      const { failedCore, failedOptional } = await refreshDeployStatus(state, progress, true);
+      if (failedCore.length > 0 || stackResult.upFailed) {
+        const allFailed = [...failedCore, ...failedOptional];
         progress.deployError = isDevTag
-          ? `Dev images not found locally (tag: ${imageTag}): ${missing.join(', ')}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
-          : mapDockerError(pullResult?.stderr?.trim() || 'Image pull failed').message;
+          ? `Dev images not found locally or failed to start (tag: ${imageTag}): ${allFailed.join(', ')}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
+          : `Services started but the following did not become healthy: ${allFailed.join(', ')}. ${buildLogHint(state, allFailed)}`;
         progress.deploying = false;
         emitProgress(options, progress);
         return progress;
       }
-      if (!isDevTag && pullResult && !pullResult.ok) {
-        progress.imageWarning = `Couldn't download the latest images (network or registry issue), so the install used the images already on your machine — these may be out of date. Check your connection and re-run setup or Update to pull the newest versions.`;
-        emitProgress(options, progress);
-      }
-    }
-
-    progress.phase = 'starting';
-    progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'pending', label: 'Starting...' }));
-    emitProgress(options, progress);
-    const upResult = await composeUp({ ...composeOpts, services, forceRecreate: true, removeOrphans: true });
-    if (!upResult.ok) {
-      progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'error', label: mapDockerError(upResult.stderr ?? 'compose up failed').message }));
-      progress.deployError = mapDockerError(upResult.stderr ?? 'compose up failed').message;
+      // Only OPTIONAL (non-core) services failed — setup completes anyway
+      // (§2.1: markSetupComplete gates on CORE_SERVICES only, never the full
+      // managed set, so an addon/portal hiccup can't wedge a fresh install).
+      progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
+      options.markSetupComplete?.();
       progress.deploying = false;
+      progress.setupComplete = true;
+      progress.phase = 'ready';
       emitProgress(options, progress);
       return progress;
     }
 
-    const healthError = await pollContainerHealth(state, progress, services, options);
-    if (healthError) {
-      progress.deployError = healthError;
-      progress.deploying = false;
-      emitProgress(options, progress);
-      return progress;
-    }
-
+    await refreshDeployStatus(state, progress, false);
     options.markSetupComplete?.();
     progress.deploying = false;
     progress.setupComplete = true;

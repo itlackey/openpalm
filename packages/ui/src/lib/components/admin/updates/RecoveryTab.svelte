@@ -92,11 +92,13 @@
       <!-- #502: secret-looking keys were removed from stack.env. -->
       <div class="secret-notice" role="status">
         <div class="secret-notice-text">
-          <p class="secret-notice-title">Secret-looking values were removed from stack.env</p>
+          <p class="secret-notice-title">Secret-looking values were moved out of stack.env</p>
           <p>
-            {secretNotice.keys.join(', ')} {secretNotice.keys.length === 1 ? 'was' : 'were'} removed
-            because secrets don't belong in stack.env. Re-add {secretNotice.keys.length === 1 ? 'it' : 'them'}
-            via the <strong>Connections</strong> tab (or as a secret) so your provider keeps working.
+            {secretNotice.keys.join(', ')} {secretNotice.keys.length === 1 ? 'was' : 'were'} moved
+            to <strong>knowledge/secrets/</strong> because secrets don't belong in stack.env — the
+            value{secretNotice.keys.length === 1 ? '' : 's'} were not deleted. Re-add
+            {secretNotice.keys.length === 1 ? 'it' : 'them'} via the <strong>Connections</strong> tab
+            if you'd rather manage {secretNotice.keys.length === 1 ? 'it' : 'them'} there.
           </p>
         </div>
         <button class="btn btn-sm btn-secondary" onclick={onDismissSecretNotice}>Dismiss</button>

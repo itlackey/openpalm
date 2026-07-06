@@ -26,12 +26,21 @@ const logger = createLogger("guardian-moderation");
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-function envFlag(name: string): boolean {
-  const v = (Bun.env[name] ?? "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
+/**
+ * Resolve the content-validation posture from GUARDIAN_CONTENT_VALIDATION.
+ *
+ * ON by default: an UNSET flag means ON so the guardian's posture is a property
+ * of the CODE, not of a compose interpolation default that any env override
+ * could silently flip to off. Only an explicit falsy value ("0"/"false"/"no"/
+ * "off") opts out. Read live (not captured at module load) so the resolved
+ * posture always reflects the current environment. Fail-closed semantics on
+ * moderator unreachability are unchanged.
+ */
+export function contentValidationEnabled(): boolean {
+  const v = (Bun.env.GUARDIAN_CONTENT_VALIDATION ?? "").trim().toLowerCase();
+  if (v === "") return true; // unset → ON
+  return !(v === "0" || v === "false" || v === "no" || v === "off");
 }
-
-const ENABLED = envFlag("GUARDIAN_CONTENT_VALIDATION");
 const MODERATOR_URL = Bun.env.GUARDIAN_MODERATION_URL ?? "http://127.0.0.1:4097";
 const TIMEOUT_MS = Number(Bun.env.GUARDIAN_MODERATION_TIMEOUT_MS ?? 4_000);
 const ESCALATE_THRESHOLD = Number(Bun.env.GUARDIAN_MODERATION_THRESHOLD ?? 3);
@@ -75,7 +84,7 @@ export async function moderateMessage(
   metadata: unknown,
   deps: ModerateDeps = {},
 ): Promise<ModerationResult> {
-  const enabled = deps.enabled ?? ENABLED;
+  const enabled = deps.enabled ?? contentValidationEnabled();
   if (!enabled) {
     return { verdict: "allow", reason: "validation disabled", source: "disabled", signals: [], score: 0 };
   }

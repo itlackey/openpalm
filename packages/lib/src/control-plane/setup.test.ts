@@ -547,12 +547,16 @@ describe("performSetup", () => {
   });
 
   // ── Per-image version reconcile (A1: stop preserving a stale pinned tag) ──
-  const stackEnvPath = () => join(homeDir, "knowledge", "env", "stack.env");
+  // state/stack.state.env is the SOLE pin location (1.4): setup must never write
+  // OP_*_VERSION into the legacy knowledge/env/stack.env, only into state/.
+  const legacyStackEnvPath = () => join(homeDir, "knowledge", "env", "stack.env");
+  const stateEnvPath = () => join(homeDir, "state", "stack.state.env");
 
   it("blank imageTag RESETS stale per-image version pins to the moving default (latest)", async () => {
-    // Simulate an old OP_HOME whose stack.env pinned now-stale per-image versions.
+    // Simulate an old OP_HOME whose legacy stack.env pinned now-stale per-image
+    // versions (pre-1.4 installs wrote pins there).
     writeFileSync(
-      stackEnvPath(),
+      legacyStackEnvPath(),
       [
         "OP_SETUP_COMPLETE=false",
         "OP_ASSISTANT_VERSION=v0.11.1",
@@ -562,7 +566,7 @@ describe("performSetup", () => {
     );
     const result = await performSetup(makeValidSpec()); // no imageTag => blank
     expect(result.ok).toBe(true);
-    const env = readFileSync(stackEnvPath(), "utf-8");
+    const env = readFileSync(stateEnvPath(), "utf-8");
     // Each image rides its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade).
     expect(env).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
     expect(env).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
@@ -572,7 +576,7 @@ describe("performSetup", () => {
   it("a non-empty imageTag pins every per-image version deliberately (kept verbatim)", async () => {
     const result = await performSetup(makeValidSpec({ imageTag: "v0.11.1" }));
     expect(result.ok).toBe(true);
-    const env = readFileSync(stackEnvPath(), 'utf-8');
+    const env = readFileSync(stateEnvPath(), 'utf-8');
     expect(env).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.1$/m);
     expect(env).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.1$/m);
     expect(env).toMatch(/^OP_PORTAL_VERSION=v0\.11\.1$/m);
@@ -582,7 +586,7 @@ describe("performSetup", () => {
   it("imageTag is trimmed before writing", async () => {
     const result = await performSetup(makeValidSpec({ imageTag: "  dev  " }));
     expect(result.ok).toBe(true);
-    const env = readFileSync(stackEnvPath(), 'utf-8');
+    const env = readFileSync(stateEnvPath(), 'utf-8');
     expect(env).toMatch(/^OP_ASSISTANT_VERSION=dev$/m);
   });
 
@@ -590,8 +594,15 @@ describe("performSetup", () => {
     // beforeEach's stub stack.env has no per-image version pins.
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
-    const env = readFileSync(stackEnvPath(), 'utf-8');
+    const env = readFileSync(stateEnvPath(), 'utf-8');
     expect(env).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
+  });
+
+  it("never writes OP_*_VERSION into the legacy knowledge/env/stack.env (state/ is the sole pin authority)", async () => {
+    const result = await performSetup(makeValidSpec({ imageTag: "v0.11.1" }));
+    expect(result.ok).toBe(true);
+    const legacy = readFileSync(legacyStackEnvPath(), 'utf-8');
+    expect(legacy).not.toMatch(/OP_(ASSISTANT|GUARDIAN|PORTAL|VOICE)_VERSION=/);
   });
 
   it("writes the UI login password to knowledge/secrets", async () => {

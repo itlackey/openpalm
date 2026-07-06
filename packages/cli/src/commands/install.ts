@@ -45,7 +45,10 @@ export default defineCommand({
   args: {
     force: {
       type: 'boolean',
-      description: 'Skip "already installed" check',
+      description:
+        'Skip "already installed" check. Backs up the existing OP_HOME to ' +
+        'data/backups/<timestamp> first, then prunes old backups down to the 3 ' +
+        'most recent (pre-rollback/pre-update safety snapshots are never pruned).',
       default: false,
     },
     version: {
@@ -167,7 +170,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const interactive = process.stdin.isTTY && process.stdout.isTTY;
     if (!options.assumeYes && interactive) {
       const proceed = await promptYesNo(
-        `--force will back up (copy) the existing OpenPalm install at ${homeDir} to ${plannedBackup}. Continue? [y/N]`,
+        `--force will back up (copy) the existing OpenPalm install at ${homeDir} to ${plannedBackup}, ` +
+        'then prune old backups down to the 3 most recent. Continue? [y/N]',
       );
       if (!proceed) {
         console.log('Install aborted. Re-run with --yes (or -y) to skip this confirmation in non-interactive use.');

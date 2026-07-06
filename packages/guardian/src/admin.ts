@@ -37,7 +37,13 @@ async function readAdminToken(): Promise<string> {
   return cachedToken;
 }
 
-async function authorize(req: Request): Promise<boolean> {
+/**
+ * Verify the caller presented the guardian admin bearer token
+ * (`GUARDIAN_ADMIN_TOKEN_FILE`). Exported so the internal `/stats` endpoint
+ * (server.ts) can gate on the same secret the admin listener already enforces,
+ * rather than duplicating token handling.
+ */
+export async function authorizeAdminToken(req: Request): Promise<boolean> {
   const expected = await readAdminToken();
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() ?? '';
   // Constant-time compare to avoid a timing side-channel on the admin token.
@@ -47,7 +53,7 @@ async function authorize(req: Request): Promise<boolean> {
 }
 
 export async function handleAdminRequest(req: Request, requestId: string): Promise<Response> {
-  if (!(await authorize(req))) {
+  if (!(await authorizeAdminToken(req))) {
     return json(401, { error: 'unauthorized', requestId });
   }
 

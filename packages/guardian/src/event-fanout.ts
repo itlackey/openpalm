@@ -17,7 +17,9 @@
  *   - HARD DROP RULE (§3.2 F2a): forward the RAW UNMODIFIED frame ONLY when
  *     sessionID is a non-empty string owned by the principal; otherwise DROP.
  *     Do NOT rely on Map.has(undefined). Global events (server.*, installation.*)
- *     carry no sessionID and thus never reach a portal.
+ *     carry no sessionID and thus never reach ANY principal — there is no owner
+ *     to scope them to, so the safe default (drop) applies uniformly regardless
+ *     of principal kind (rev3-F8: no direct-principal carve-out).
  *   - On permission.asked, record requestID→principal (ownership.ts) so a later
  *     POST /permission/{requestID}/reply can be authorized (§3.4).
  *   - Assistant restart mid-stream (§3.2, medium): if the upstream /event drops,
@@ -59,12 +61,6 @@ interface Subscriber {
 const subscribers = new Set<Subscriber>();
 
 const encoder = new TextEncoder();
-const DIRECT_GLOBAL_EVENT_ALLOWLIST = new Set(['server.heartbeat', 'server.connected']);
-
-function isDirectGlobalFrame(frameJson: string): boolean {
-  const type = frameType(frameJson);
-  return type !== undefined && (DIRECT_GLOBAL_EVENT_ALLOWLIST.has(type) || type.startsWith('installation.'));
-}
 
 // Keepalive: the guardian drops upstream server.heartbeat frames (no sessionID,
 // §3.2), so a turn whose model is quiet would send NO bytes to the portal for a
@@ -155,7 +151,9 @@ function frameIsTurnEnd(frameJson: string): boolean {
  * Route ONE parsed SSE frame (raw JSON text) to the subscribers that own its
  * sessionID. Exported for unit tests (no upstream needed).
  *
- * - sessionID absent/null/empty → drop (global events never reach a portal).
+ * - sessionID absent/null/empty → drop for EVERY principal, portal or direct
+ *   (rev3-F8: a global frame has no owner to scope it to, so it is never
+ *   broadcast — the same hard-drop rule applies uniformly).
  * - For each owning subscriber, write the RAW UNMODIFIED frame.
  * - On permission.asked, record requestID→principal for each owner so the reply
  *   gate can authorize it.
@@ -164,15 +162,11 @@ function frameIsTurnEnd(frameJson: string): boolean {
  */
 export function routeFrame(frameJson: string): void {
   const sessionId = frameSessionId(frameJson);
-  if (sessionId === undefined) {
-    if (!isDirectGlobalFrame(frameJson)) return;
-    const sseBytes = encoder.encode(`data: ${frameJson}\n\n`);
-    for (const sub of subscribers) {
-      if (sub.closed || sub.principal.kind !== 'direct') continue;
-      writeTo(sub, sseBytes);
-    }
-    return;
-  }
+  // rev3-F8: a frame with no sessionID (server.*, installation.*) has no owner
+  // to scope it to, so it is dropped for EVERY principal — portal AND direct.
+  // There is no direct-principal carve-out: the HARD DROP RULE applies
+  // uniformly, so a global broadcast never fans out to any stream.
+  if (sessionId === undefined) return;
 
   // permission.asked AND question.asked both carry their reply id at
   // properties.id (per_… / que_…) and are answered by requestID; record

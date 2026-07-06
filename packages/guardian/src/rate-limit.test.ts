@@ -7,11 +7,13 @@
 import { describe, it, expect } from "bun:test";
 import {
   allow,
+  allowPreAuth,
   activeRateLimiters,
   USER_RATE_LIMIT,
   USER_RATE_WINDOW_MS,
   PORTAL_RATE_LIMIT,
   PORTAL_RATE_WINDOW_MS,
+  PREAUTH_RATE_LIMIT,
 } from "./rate-limit";
 
 function uniqueKey(prefix = "user"): string {
@@ -54,6 +56,39 @@ describe("Rate limiting (allow)", () => {
     expect(USER_RATE_WINDOW_MS).toBe(60_000);
     expect(PORTAL_RATE_LIMIT).toBe(200);
     expect(PORTAL_RATE_WINDOW_MS).toBe(60_000);
+  });
+});
+
+describe("allowPreAuth (coarse per-IP pre-auth budget, rev3-F3)", () => {
+  it("allows up to PREAUTH_RATE_LIMIT from one IP, then rejects", () => {
+    const ip = `10.0.0.${Math.floor(Math.random() * 250) + 1}-${crypto.randomUUID()}`;
+    for (let i = 0; i < PREAUTH_RATE_LIMIT; i++) {
+      expect(allowPreAuth(ip)).toBe(true);
+    }
+    expect(allowPreAuth(ip)).toBe(false);
+  });
+
+  it("meters each source IP independently", () => {
+    const ipA = `a-${crypto.randomUUID()}`;
+    const ipB = `b-${crypto.randomUUID()}`;
+    for (let i = 0; i < PREAUTH_RATE_LIMIT; i++) allowPreAuth(ipA);
+    expect(allowPreAuth(ipA)).toBe(false);
+    // A different source is unaffected by A exhausting its budget.
+    expect(allowPreAuth(ipB)).toBe(true);
+  });
+
+  it("never limits when the source IP is unavailable (empty string)", () => {
+    for (let i = 0; i < PREAUTH_RATE_LIMIT + 10; i++) {
+      expect(allowPreAuth("")).toBe(true);
+    }
+  });
+
+  it("pre-auth buckets do not pollute the user/portal limiter counts", () => {
+    const before = activeRateLimiters();
+    allowPreAuth(`iso-${crypto.randomUUID()}`);
+    const after = activeRateLimiters();
+    expect(after.activeUserLimiters).toBe(before.activeUserLimiters);
+    expect(after.activePortalLimiters).toBe(before.activePortalLimiters);
   });
 });
 

@@ -2,7 +2,7 @@ import { checkPermissions as evaluatePermissions, createLogger, parseIdList } fr
 import type { PermissionResult } from './types.ts';
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
-const log = createLogger("channel-slack");
+const log = createLogger("portal-slack");
 
 export function loadPermissionConfig(env: Record<string, string | undefined> = Bun.env): PermissionConfig {
   const config: PermissionConfig = {

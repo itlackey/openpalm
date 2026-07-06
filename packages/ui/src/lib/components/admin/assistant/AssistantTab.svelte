@@ -42,7 +42,12 @@
       lanExposureEnabled = data.lanExposureEnabled;
       personaContent = data.personaContent;
       savedPersonaContent = data.personaContent;
-      notifications.push('success', 'Assistant settings saved. Restart the assistant container to apply them.');
+      notifications.push(
+        'success',
+        data.projectRenamed
+          ? 'Assistant settings saved. Project name changed — run `openpalm restart` (or `openpalm update`) to move the whole stack to the new project name.'
+          : 'Assistant settings saved. Restart the assistant container to apply them.',
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to save assistant settings.';
       error = msg;

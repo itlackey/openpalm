@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   auditComposeSecrets,
   auditFileBasedSecrets,
@@ -9,6 +10,8 @@ import {
   auditStackEnv,
   isSecretLikeKey,
 } from './secret-audit.js';
+
+const SHIPPED_STACK_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'skeleton', 'system', 'stack');
 
 let tempDir: string;
 
@@ -110,6 +113,20 @@ services:
       'compose-secret-boundary',
       'compose-secret-boundary',
     ]);
+  });
+});
+
+describe('auditComposeSecrets against shipped stack compose files', () => {
+  it('reports zero issues auditing the actual shipped compose files', () => {
+    const composeFiles = readdirSync(SHIPPED_STACK_DIR).filter((name) => name.endsWith('.compose.yml'));
+    expect(composeFiles.length).toBeGreaterThan(0);
+
+    const issues = composeFiles.flatMap((name) => {
+      const path = join(SHIPPED_STACK_DIR, name);
+      return auditComposeSecrets(readFileSync(path, 'utf-8')).map((entry) => ({ ...entry, path: `${name}:${entry.path}` }));
+    });
+
+    expect(issues).toEqual([]);
   });
 });
 

@@ -368,7 +368,10 @@ async function startUIServer(): Promise<void> {
     try {
       // @openpalm/ui is independently versioned — seed the channel (latest/next)
       // for the PLATFORM release stream, not the harness marketing version.
-      await seedUiBuild(uiUpdateChannel(platformVersion), dataDir);
+      // Thread this harness's contract version (§5.3) so a fresh install can't
+      // silently seed a UI build this harness can't run (remediation 3.2) —
+      // mirrors the checkAndUpdateUiBuild call above.
+      await seedUiBuild(uiUpdateChannel(platformVersion), dataDir, undefined, HARNESS_CONTRACT_VERSION);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error('Failed to seed UI build:', err instanceof Error ? err.message : String(err));
