@@ -38,6 +38,16 @@ const SPEAK_QUEUE_MAX = 20;
 export class AudioPlaybackController {
   private readonly host: AudioPlaybackHost;
 
+  /**
+   * Optional hook fired when the speak queue fully drains (the last
+   * utterance reached a terminal state with nothing queued behind it).
+   * Conversation mode uses this to re-arm listening — an explicit
+   * callback instead of polling reactive status. Deliberately NOT fired
+   * from stop(): an explicit stop (barge-in, toggle off) must not re-arm
+   * anything by itself.
+   */
+  onQueueDrained: (() => void) | null = null;
+
   // Holds the currently-playing server-TTS audio element so stop() can
   // cancel it. Browser TTS is cancelled via window.speechSynthesis.
   private activeAudio: HTMLAudioElement | null = null;
@@ -224,6 +234,7 @@ export class AudioPlaybackController {
     } else {
       this.busy = false;
       this.overflowNoticed = false;
+      this.onQueueDrained?.();
     }
   }
 

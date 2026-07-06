@@ -89,6 +89,49 @@ describe('ChatInput — stop button', () => {
   });
 });
 
+describe('ChatInput — bindable draft', () => {
+  test('an initial draft prop prefills the textarea and enables send', async () => {
+    await render(ChatInput, { props: { sending: false, onSend: vi.fn(), draft: 'dictated text' } });
+    await expect.element(page.getByRole('textbox', { name: 'Message input' })).toHaveValue('dictated text');
+    await expect.element(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
+  });
+});
+
+describe('ChatInput — conversation mode toggle', () => {
+  test('hidden unless conversationEnabled is set', async () => {
+    await render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: 'Start conversation mode' })).not.toBeInTheDocument();
+  });
+
+  test('renders next to the mic and calls onConversationToggle', async () => {
+    const onConversationToggle = vi.fn();
+    await render(ChatInput, {
+      props: {
+        sending: false,
+        onSend: vi.fn(),
+        voiceEnabled: true,
+        conversationEnabled: true,
+        onConversationToggle,
+      },
+    });
+    await page.getByRole('button', { name: 'Start conversation mode' }).click();
+    expect(onConversationToggle).toHaveBeenCalledOnce();
+  });
+
+  test('shows the end-conversation label while active', async () => {
+    await render(ChatInput, {
+      props: {
+        sending: false,
+        onSend: vi.fn(),
+        conversationEnabled: true,
+        conversationActive: true,
+        onConversationToggle: vi.fn(),
+      },
+    });
+    await expect.element(page.getByRole('button', { name: 'End conversation mode' })).toBeVisible();
+  });
+});
+
 describe('ChatInput — send behaviour', () => {
   test('calls onSend with trimmed text when button is clicked', async () => {
     const onSend = vi.fn();

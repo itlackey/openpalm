@@ -15,6 +15,7 @@ afterEach(() => {
 	voiceState.status = 'idle';
 	voiceState.interimTranscript = '';
 	voiceState.autoplayBlocked = false;
+	voiceState.conversationActive = false;
 });
 
 describe('VoiceStatusStrip — idle', () => {
@@ -46,6 +47,47 @@ describe('VoiceStatusStrip — transcribing', () => {
 		voiceState.status = 'transcribing';
 		render(VoiceStatusStrip);
 		await expect.element(page.getByText('transcribing…')).toBeVisible();
+	});
+});
+
+describe('VoiceStatusStrip — conversation mode', () => {
+	test('shows listening… with an End button while the conversation is armed', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'recording';
+		render(VoiceStatusStrip);
+		await expect.element(page.getByText('listening…', { exact: true })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'End conversation mode' })).toBeVisible();
+	});
+
+	test('shows speaking… while TTS is playing', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'speaking';
+		render(VoiceStatusStrip);
+		await expect.element(page.getByText('speaking…', { exact: true })).toBeVisible();
+	});
+
+	test('shows thinking… while the assistant is composing a reply', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'recording';
+		render(VoiceStatusStrip, { thinking: true });
+		await expect.element(page.getByText('thinking…', { exact: true })).toBeVisible();
+	});
+
+	test('prefers the live interim transcript over the state label', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'recording';
+		voiceState.interimTranscript = 'so about that';
+		render(VoiceStatusStrip);
+		await expect.element(page.getByText('so about that', { exact: true })).toBeVisible();
+	});
+
+	test('clicking End exits conversation mode', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'recording';
+		render(VoiceStatusStrip);
+		await page.getByRole('button', { name: 'End conversation mode' }).click();
+		expect(voiceState.conversationActive).toBe(false);
+		await expect.element(page.getByText('listening…', { exact: true })).not.toBeInTheDocument();
 	});
 });
 

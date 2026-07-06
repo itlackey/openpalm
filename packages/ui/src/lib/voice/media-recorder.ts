@@ -49,6 +49,23 @@ export async function startRecording(): Promise<RecordingSession> {
 		throw new Error(`Microphone error: ${(err as Error)?.message ?? String(err)}`, { cause: err });
 	}
 
+	return createRecorderSession(stream, true);
+}
+
+/**
+ * Record from an existing MediaStream. Conversation mode records many
+ * short utterance segments from one long-lived capture stream, so the
+ * caller owns the stream — stop()/cancel() end the recorder but leave
+ * the tracks live.
+ */
+export function recordFromStream(stream: MediaStream): RecordingSession {
+	if (typeof MediaRecorder === 'undefined') {
+		throw new Error('Recording is not supported in this browser.');
+	}
+	return createRecorderSession(stream, false);
+}
+
+function createRecorderSession(stream: MediaStream, ownsStream: boolean): RecordingSession {
 	const mimeType = pickMimeType();
 	const recorder: MediaRecorder = mimeType
 		? new MediaRecorder(stream, { mimeType })
@@ -66,6 +83,7 @@ export async function startRecording(): Promise<RecordingSession> {
 	let stopReject: ((err: Error) => void) | null = null;
 
 	function releaseTracks(): void {
+		if (!ownsStream) return;
 		for (const track of stream.getTracks()) {
 			try {
 				track.stop();

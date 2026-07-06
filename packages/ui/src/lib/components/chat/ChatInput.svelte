@@ -2,6 +2,7 @@
   import IconMic from '$lib/components/icons/IconMic.svelte';
   import IconSend from '$lib/components/icons/IconSend.svelte';
   import IconStop from '$lib/components/icons/IconStop.svelte';
+  import IconWaves from '$lib/components/icons/IconWaves.svelte';
 
   interface Props {
     sending: boolean;
@@ -11,18 +12,34 @@
     voiceEnabled?: boolean;
     voiceActive?: boolean;
     onMicToggle?: () => void;
+    /** Composer text — bindable so dictation can insert into the draft. */
+    draft?: string;
+    conversationEnabled?: boolean;
+    conversationActive?: boolean;
+    onConversationToggle?: () => void;
   }
 
-  let { sending, questionPending = false, onSend, onStop, voiceEnabled = false, voiceActive = false, onMicToggle }: Props = $props();
+  let {
+    sending,
+    questionPending = false,
+    onSend,
+    onStop,
+    voiceEnabled = false,
+    voiceActive = false,
+    onMicToggle,
+    draft = $bindable(''),
+    conversationEnabled = false,
+    conversationActive = false,
+    onConversationToggle,
+  }: Props = $props();
 
-  let inputText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
 
   // Drafting the next message is always allowed; only submitting a turn
   // while the assistant is replying (and no single-question ask is pending)
   // is blocked.
   const submitBlocked = $derived(sending && !questionPending);
-  const isActive = $derived(inputText.trim().length > 0);
+  const isActive = $derived(draft.trim().length > 0);
   // While a turn is in flight (and no single-question ask needs the
   // composer for its answer), swap the send button for a stop button.
   const showStop = $derived(submitBlocked && !!onStop);
@@ -38,10 +55,10 @@
   }
 
   function submit(): void {
-    const text = inputText.trim();
+    const text = draft.trim();
     if (!text || submitBlocked) return;
     onSend(text);
-    inputText = '';
+    draft = '';
     if (textareaEl) {
       textareaEl.style.height = 'auto';
     }
@@ -62,7 +79,7 @@
 >
   <textarea
     bind:this={textareaEl}
-    bind:value={inputText}
+    bind:value={draft}
     onkeydown={handleKeydown}
     oninput={handleInput}
     placeholder="Write a message..."
@@ -83,6 +100,18 @@
         onclick={onMicToggle}
       >
         <IconMic size={16} />
+      </button>
+    {/if}
+    {#if conversationEnabled}
+      <button
+        class="s-mic-btn"
+        class:active={conversationActive}
+        type="button"
+        aria-label={conversationActive ? 'End conversation mode' : 'Start conversation mode'}
+        aria-pressed={conversationActive}
+        onclick={onConversationToggle}
+      >
+        <IconWaves size={16} />
       </button>
     {/if}
     {#if showStop}

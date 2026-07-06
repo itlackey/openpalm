@@ -26,6 +26,8 @@
 		setTtsAutoEnabled,
 		startListening,
 		stopListening,
+		startConversation,
+		stopConversation,
 		initVoice
 	} from '$lib/voice/voice-state.svelte.js';
 	import IconSoundOn from '$lib/components/icons/IconSoundOn.svelte';
@@ -186,19 +188,44 @@
 
 	// ── Voice / TTS ───────────────────────────────────────────────────────
 
+	// Mic pulse tracks single-shot dictation only — conversation mode has
+	// its own toggle + strip and would otherwise light both buttons.
 	const voiceActive = $derived(
-		voiceState.status === 'recording' || voiceState.status === 'transcribing'
+		!voiceState.conversationActive &&
+			(voiceState.status === 'recording' || voiceState.status === 'transcribing')
 	);
 	const ttsEnabled = $derived(voiceState.ttsAutoEnabled);
 	const voiceEnabled = $derived(voiceState.sttEngine !== 'disabled' && voiceState.sttSupported);
 	const ttsAvailable = $derived(voiceState.ttsSupported);
 
+	// Composer draft — dictation inserts here instead of auto-sending, so
+	// the user reviews spoken text before it goes out. (The navbar
+	// VoiceControl keeps its auto-send behavior on other pages.)
+	let draft = $state('');
+
 	function toggleVoice(): void {
+		// Single-shot dictation and conversation mode are mutually exclusive.
+		if (voiceState.conversationActive) {
+			stopConversation();
+			return;
+		}
 		if (voiceActive) {
 			stopListening();
 		} else {
 			startListening((transcript) => {
-				void chat.send(transcript);
+				const trimmed = transcript.trim();
+				if (!trimmed) return;
+				draft = draft.trim().length > 0 ? `${draft.trimEnd()} ${trimmed}` : trimmed;
+			});
+		}
+	}
+
+	function toggleConversation(): void {
+		if (voiceState.conversationActive) {
+			stopConversation();
+		} else {
+			startConversation((text) => {
+				void chat.send(text);
 			});
 		}
 	}
@@ -243,6 +270,7 @@
 
 		function onKey(e: KeyboardEvent): void {
 			if (e.key === 'Escape') {
+				stopConversation();
 				closeGarden();
 				closeToolDrawer();
 			}
@@ -290,6 +318,9 @@
 
 		return () => {
 			visDestroyed = true;
+			// Leaving the page ends the hands-free loop — the mic must not
+			// stay hot on other routes.
+			stopConversation();
 			document.documentElement.classList.remove('chat-locked');
 			document.body.classList.remove('chat-locked', 'stillness-mode');
 			document.removeEventListener('keydown', onKey);
@@ -517,8 +548,9 @@
 
 <!-- composer -->
 <div class="s-base" inert={toolDrawerOpen || gardenOpen}>
-	<VoiceStatusStrip />
+	<VoiceStatusStrip thinking={chat.sending} />
 	<ChatInput
+		bind:draft
 		sending={chat.sending}
 		questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
 		onSend={handleSend}
@@ -526,6 +558,9 @@
 		{voiceEnabled}
 		{voiceActive}
 		onMicToggle={toggleVoice}
+		conversationEnabled={voiceEnabled}
+		conversationActive={voiceState.conversationActive}
+		onConversationToggle={toggleConversation}
 	/>
 </div>
 
