@@ -103,6 +103,7 @@ const subCommands = {
   automations: () => import('./commands/automations.ts').then((m) => m.default),
   unlock: () => import('./commands/unlock.ts').then((m) => m.default),
   ui: () => import('./commands/ui.ts').then((m) => m.default),
+  'client-serve': () => import('./commands/client-serve.ts').then((m) => m.default),
 };
 
 export const mainCommand = defineCommand({

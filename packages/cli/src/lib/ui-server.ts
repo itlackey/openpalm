@@ -16,6 +16,7 @@ import {
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
 import { DEFAULT_UI_PORT } from './ports.ts';
+import { startClientServer } from './client-server.ts';
 
 const logger = createLogger('cli:ui');
 const DEFAULT_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
@@ -291,6 +292,13 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   if (!await supervisor.start()) return; // onStartFailure already exited
 
   console.log(`UI server running at ${uiUrl}`);
+
+  // Serve the @openpalm/client static app beside the UI on its stable loopback
+  // port (P5c, #555; plan Phase 5 item 3). Both the default serve path and
+  // `openpalm admin` come through here. Non-fatal: absent build → log + skip
+  // (null handle), and the UI keeps serving.
+  const clientHandle = await startClientServer();
+
   if (opts.open !== false) await openBrowser(uiUrl);
 
   // Supervisor restart (§4.4): the UI child (admin "install UI version" route)
@@ -304,6 +312,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     supervisor.markShuttingDown();
     console.log(`\nReceived ${signal}. Shutting down...`);
     try {
+      if (clientHandle) await clientHandle.stop();
       const proc = supervisor.current;
       if (proc) await stopUiProc(proc);
       console.log('Shutdown complete.');
