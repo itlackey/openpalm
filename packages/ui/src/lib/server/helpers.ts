@@ -80,7 +80,7 @@ export { getUiLoginPassword };
  * removed the legacy `x-admin-token` / `Authorization: Bearer` header fallbacks.
  * The cookie is HttpOnly + SameSite=Strict and is the ONLY credential the browser
  * holds; XSS cannot read it and out-of-process callers must obtain a session via
- * `POST /admin/auth/login` (or `/session`) and present the cookie on subsequent
+ * `POST /api/auth/login` (or `/session`) and present the cookie on subsequent
  * requests.
  */
 function extractToken(event: RequestEvent): string {

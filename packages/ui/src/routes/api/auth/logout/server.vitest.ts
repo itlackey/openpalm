@@ -1,5 +1,5 @@
 /**
- * Route-level tests for POST /admin/auth/logout.
+ * Route-level tests for POST /api/auth/logout.
  *
  * Previously untested anywhere (3.4). Logout must always succeed (idempotent
  * — no auth required, matching a browser that may already be logged out) and
@@ -16,7 +16,7 @@ function makeLogoutEvent(cookie?: string): Parameters<typeof POST>[0] {
   const headers: Record<string, string> = {};
   if (cookie !== undefined) headers.cookie = cookie;
   return {
-    request: new Request('http://localhost/admin/auth/logout', { method: 'POST', headers }),
+    request: new Request('http://localhost/api/auth/logout', { method: 'POST', headers }),
   } as Parameters<typeof POST>[0];
 }
 
@@ -32,7 +32,7 @@ afterEach(() => {
   _clearSessions();
 });
 
-describe('POST /admin/auth/logout', () => {
+describe('POST /api/auth/logout', () => {
   test('returns 200 ok and clears the cookie even with no cookie presented', async () => {
     const res = await POST(makeLogoutEvent());
     expect(res.status).toBe(200);

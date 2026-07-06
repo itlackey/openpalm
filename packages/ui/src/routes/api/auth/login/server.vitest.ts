@@ -1,8 +1,8 @@
 /**
- * Route-level tests for POST /admin/auth/login.
+ * Route-level tests for POST /api/auth/login.
  *
  * Previously untested anywhere (3.4) — the route mints the `op_session`
- * cookie operators authenticate with for every subsequent /admin/* call, so
+ * cookie operators authenticate with for every subsequent privileged API call, so
  * its four branches (misconfigured, bad body, wrong password, success) are
  * the entire login contract.
  */
@@ -16,12 +16,12 @@ let savedEnv: string | undefined;
 function makeLoginEvent(body: unknown, asJson = true): Parameters<typeof POST>[0] {
   return {
     request: asJson
-      ? new Request('http://localhost/admin/auth/login', {
+      ? new Request('http://localhost/api/auth/login', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
         })
-      : new Request('http://localhost/admin/auth/login', {
+      : new Request('http://localhost/api/auth/login', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: 'not-json{{{',
@@ -40,7 +40,7 @@ afterEach(() => {
   _clearSessions();
 });
 
-describe('POST /admin/auth/login', () => {
+describe('POST /api/auth/login', () => {
   test('returns 503 admin_not_configured when no login password is set', async () => {
     delete process.env[ENV_KEY];
     const res = await POST(makeLoginEvent({ password: 'anything' }));

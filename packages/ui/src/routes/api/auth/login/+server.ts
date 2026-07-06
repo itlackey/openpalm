@@ -1,5 +1,5 @@
 /**
- * POST /admin/auth/login
+ * POST /api/auth/login
  *
  * Issues the `op_session` cookie (HttpOnly, SameSite=Lax, Secure-on-HTTPS,
  * Max-Age=14d — see session-cookie.ts) after verifying the operator-supplied

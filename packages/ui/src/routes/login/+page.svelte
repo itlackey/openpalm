@@ -16,7 +16,7 @@
     loading = true;
     error = '';
     try {
-      const res = await fetch('/admin/auth/login', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ password: token }),

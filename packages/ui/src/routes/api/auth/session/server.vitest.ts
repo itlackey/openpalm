@@ -1,5 +1,5 @@
 /**
- * Route-level tests for POST /admin/auth/session.
+ * Route-level tests for POST /api/auth/session.
  *
  * Previously untested anywhere (3.4). Kept as a login alias (same password
  * check, same cookie issuance) — these tests mirror the login route's,
@@ -15,12 +15,12 @@ let savedEnv: string | undefined;
 function makeSessionEvent(body: unknown, asJson = true): Parameters<typeof POST>[0] {
   return {
     request: asJson
-      ? new Request('http://localhost/admin/auth/session', {
+      ? new Request('http://localhost/api/auth/session', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
         })
-      : new Request('http://localhost/admin/auth/session', {
+      : new Request('http://localhost/api/auth/session', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: 'not-json{{{',
@@ -39,7 +39,7 @@ afterEach(() => {
   _clearSessions();
 });
 
-describe('POST /admin/auth/session', () => {
+describe('POST /api/auth/session', () => {
   test('returns 503 admin_not_configured when no login password is set', async () => {
     delete process.env[ENV_KEY];
     const res = await POST(makeSessionEvent({ password: 'anything' }));

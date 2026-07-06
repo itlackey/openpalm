@@ -1,11 +1,11 @@
 /**
- * POST /admin/auth/session
+ * POST /api/auth/session
  *
  * Issues an `op_session` cookie after verifying the operator-supplied password
  * against `process.env.OP_UI_LOGIN_PASSWORD`.
  *
  * The cookie value is a random UUID session token — NOT the plaintext password.
- * Kept alongside `/admin/auth/login` as an alias; both verify the same
+ * Kept alongside `/api/auth/login` as an alias; both verify the same
  * `password` body field and issue the `op_session` cookie.
  */
 import { safeTokenCompare, getRequestId, errorResponse, getUiLoginPassword } from "$lib/server/helpers.js";
