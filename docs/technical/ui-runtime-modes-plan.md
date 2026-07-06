@@ -1,7 +1,7 @@
 # UI Host/Client Runtime Refactor Plan
 
 **Date:** 2026-06-19 (revised 2026-07-06)
-**Status:** RATIFIED — Phases 0 landed; Phases 1–4 as designed; Phases 5–6 re-scoped per `docs/technical/ui-client-split-assessment.md`
+**Status:** RATIFIED — Phases 0–4 (+1.5) landed; Phases 5–6 re-scoped per `docs/technical/ui-client-split-assessment.md`
 **Repo:** `itlackey/openpalm`, branch `main`
 **Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling), #509 (RuntimeContext), #510 (assistant-container), #511 (PWA), #555 (client extraction), #556 (openpalm admin), #557 (guardian TLS + CORS)
 
@@ -570,7 +570,11 @@ GitHub raw fallback). Outstanding from the original Track A: Playwright smoke te
 `docs/technical/ui-route-map.md` were **not** produced — fold them into Phase 3, where the
 route structure they document actually changes.
 
-### Phase 1 — RuntimeContext v2, no UI change (#509)
+### Phase 1 — RuntimeContext v2, no UI change (#509) — ✅ DONE
+
+**As-built:** `ServerRuntimeContext` + `resolveCapabilities()` landed inside the existing
+`lib/server/features.ts` (filename kept; `FeatureFlags` replaced). The interim
+`features.admin` alias was carried through Phases 1–3 and removed entirely in Phase 4.
 
 **Files:** `lib/server/features.ts`, `lib/types.ts`, `routes/+layout.server.ts`, `lib/runtime-context.svelte.ts`, `lib/client-context.ts`, `routes/api/runtime/+server.ts`
 
@@ -583,7 +587,11 @@ route structure they document actually changes.
 
 Acceptance: existing routes unchanged; `features.admin` alias works; capability matrix correct for all current combinations.
 
-### Phase 1.5 — `openpalm admin` (host-ui mode) (#556) — NEW, small
+### Phase 1.5 — `openpalm admin` (host-ui mode) (#556) — ✅ DONE
+
+**As-built:** as designed; how-it-works docs now record the three admin access paths
+(Electron, `openpalm admin`, dev-only `OP_ENABLE_ADMIN=1`) and drop the stale
+`openpalm ui serve` reference.
 
 1. CLI: `openpalm admin` (and/or a flag on the default serve path) launches the existing
    UI server with the admin capability enabled (today: `OP_ENABLE_ADMIN=1`; after Phase 1:
@@ -596,7 +604,10 @@ Acceptance: full host management from a browser on the host machine without Elec
 remains loopback-only; `openpalm admin` on a machine without the stack installed lands on
 `/setup`.
 
-### Phase 2 — Connection management out of `/admin` (#486)
+### Phase 2 — Connection management out of `/admin` (#486) — ✅ DONE
+
+**As-built:** as designed; the `/admin/endpoints` → `/connections` redirect alias shipped
+here as planned but was deleted with the rest of `/admin/*` in Phase 4 (§6.4 no-alias rule).
 
 1. Rename internal model "endpoint" → "connection" in UI layer. `endpoints.json` unchanged.
 2. Add `kind` to `ConnectionEntry`; default existing records.
@@ -609,7 +620,11 @@ remains loopback-only; `openpalm admin` on a machine without the stack installed
 
 Acceptance: connection management reachable without `/admin`; host mode unchanged; no data migration; `endpoints-state` no longer imports `chat-state`.
 
-### Phase 3 — Capability-driven landing and navigation
+### Phase 3 — Capability-driven landing and navigation — ✅ DONE
+
+**As-built:** `/splash` became `/attention` (the other landing targets already existed as
+routes); `docs/technical/ui-route-map.md` produced. New Playwright smoke tests were not
+added — the existing e2e stack suites were updated for the new routes instead.
 
 1. Add `resolveLanding(ctx, launchState)`.
 2. Split `/splash` into `/attention`, `/setup`, `/host`, `/chat`, `/connections`.
@@ -621,7 +636,11 @@ Acceptance: connection management reachable without `/admin`; host mode unchange
 
 Acceptance: Electron healthy → chat; capability-driven nav; chat chunk free of admin API clients (verify bundle); route map doc exists.
 
-### Phase 4 — Split Host and Assistant Control Planes
+### Phase 4 — Split Host and Assistant Control Planes (#555) — ✅ DONE
+
+**As-built:** session auth also moved to `/api/auth/{login,logout,session}`; the assistant
+namespace split into `/api/assistant/{persona,model,akm}`; `/admin/*` 404s via router
+fall-through (route tree deleted, deliberately no hooks alias per §6.4).
 
 1. Move `/admin` → `/host`. No alias — remove immediately. With <10 installs there's no upgrade audience to protect.
 2. Split Assistant tab: host stack settings (`host:stack:write`) vs. assistant settings (`assistant-settings:write`).
@@ -746,11 +765,11 @@ launch shows the shell + saved connections, not a blank page.
 
 ```
 Phase 0 (skeleton package)        ✅ DONE (#508)
-Phase 1 (RuntimeContext)          ─────────────► prerequisite for everything below
-Phase 1.5 (openpalm admin)        ─ tiny, ships with Phase 1
-Phase 2 (connections + untangle)  ──┐
-Phase 3 (landing + chrome untangle)─┼─► parallelizable ─► prerequisite for 5
-Phase 4 (control plane split)     ──┘
+Phase 1 (RuntimeContext)          ✅ DONE (#509)
+Phase 1.5 (openpalm admin)        ✅ DONE (#556)
+Phase 2 (connections + untangle)  ✅ DONE (#486) ──┐
+Phase 3 (landing + chrome untangle) ✅ DONE       ─┼─► Phase 5 prerequisites met
+Phase 4 (control plane split)     ✅ DONE (#555) ──┘
 Phase 5 (client + ui-kit extraction, assistant-container) ─► prerequisite for 6
 Phase 6 (PWA, two install origins) ─ needs 5
 Phase 6.5 (guardian TLS + CORS)   ─ parallel to 5/6; gates the phone story
@@ -758,9 +777,10 @@ Phase 7 (security tests)          ─ needs 1–6.5
 Phase 8 (release integration)     ─ needs all
 ```
 
-0.13.0 target: Phases 1–4 + 1.5. Phases 5–6.5 land in 0.13.0 only if it stays light;
-otherwise they open 0.14.0. (The original "all phases in 0.13.0" call predates the
-client-split re-scope; re-evaluated at Phase 4 completion.)
+0.13.0 target: Phases 1–4 + 1.5 — **complete**. Phases 5–6.5 land in 0.13.0 only if it
+stays light; otherwise they open 0.14.0. (The original "all phases in 0.13.0" call
+predates the client-split re-scope; the Phase 4 completion re-evaluation point has now
+been reached.)
 
 ---
 
