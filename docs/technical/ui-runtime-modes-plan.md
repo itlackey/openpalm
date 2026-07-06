@@ -3,7 +3,7 @@
 **Date:** 2026-06-19 (revised 2026-07-06)
 **Status:** RATIFIED — Phases 0 landed; Phases 1–4 as designed; Phases 5–6 re-scoped per `docs/technical/ui-client-split-assessment.md`
 **Repo:** `itlackey/openpalm`, branch `main`
-**Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling), #509 (RuntimeContext), #510 (assistant-container), #511 (PWA)
+**Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling), #509 (RuntimeContext), #510 (assistant-container), #511 (PWA), #555 (client extraction), #556 (openpalm admin), #557 (guardian TLS + CORS)
 
 > **Revision note (2026-07-06).** The original draft shipped one `adapter-node` build to
 > every runtime mode. That scope is revised: the product is still **one UI**, but it ships
@@ -583,7 +583,7 @@ route structure they document actually changes.
 
 Acceptance: existing routes unchanged; `features.admin` alias works; capability matrix correct for all current combinations.
 
-### Phase 1.5 — `openpalm admin` (host-ui mode) — NEW, small
+### Phase 1.5 — `openpalm admin` (host-ui mode) (#556) — NEW, small
 
 1. CLI: `openpalm admin` (and/or a flag on the default serve path) launches the existing
    UI server with the admin capability enabled (today: `OP_ENABLE_ADMIN=1`; after Phase 1:
@@ -630,7 +630,7 @@ Acceptance: Electron healthy → chat; capability-driven nav; chat chunk free of
 
 Acceptance: assistant-container can edit persona/AKM but not project name or bind address; host mode unchanged; `/admin/*` returns 404.
 
-### Phase 5 — Extract `packages/client` + `packages/ui-kit`; assistant-container serves it
+### Phase 5 — Extract `packages/client` + `packages/ui-kit` (#555); assistant-container serves it (#510)
 
 *Depends on Phases 2–4 (the untangling steps).*
 
@@ -668,7 +668,7 @@ Acceptance: install prompt on desktop from localhost with zero TLS setup; instal
 phone from the official URL; add/switch connections via paste-or-scan pairing; offline
 launch shows the shell + saved connections, not a blank page.
 
-### Phase 6.5 — Guardian edge TLS workstream — NEW (own issue)
+### Phase 6.5 — Guardian edge TLS + CORS workstream (#557) — NEW
 
 *Parallel to Phases 5–6; hard prerequisite for hosted-origin → LAN connections.*
 
