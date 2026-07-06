@@ -1,0 +1,16 @@
+{
+  "name": "@openpalm/client",
+  "version": "0.12.52",
+  "description": "OpenPalm client app — the unprivileged chat/connections static PWA (plan ui-runtime-modes-plan.md §6.11). P5b test-first scaffolding: this package currently carries only the red test suite; the SvelteKit app, transport, connection store, and serve script land with the P5b feature commits. §8.10 rule: this package NEVER depends on @openpalm/lib and never holds host credentials; runtime dependencies stay empty or near-empty (document any exception here).",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm.git",
+    "directory": "packages/client"
+  },
+  "scripts": {
+    "test": "bun test"
+  }
+}

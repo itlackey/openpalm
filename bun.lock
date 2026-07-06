@@ -25,6 +25,10 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/client": {
+      "name": "@openpalm/client",
+      "version": "0.12.52",
+    },
     "packages/electron": {
       "name": "@openpalm/electron",
       "version": "0.12.52",
@@ -292,6 +296,8 @@
     "@opencode-ai/sdk": ["@opencode-ai/sdk@1.17.7", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-7q7StGM+N0OwUgRsmDc8Gyz3hMIH1XGig+qZ4lzWUpmSgFEjLx8U7R14GXY7KiMJVdbVf6FeaYloRz2Rcsma4A=="],
 
     "@openpalm/admin-tools-plugin": ["@openpalm/admin-tools-plugin@workspace:packages/electron/admin-tools"],
+
+    "@openpalm/client": ["@openpalm/client@workspace:packages/client"],
 
     "@openpalm/discord-portal": ["@openpalm/discord-portal@workspace:portals/discord"],
 
