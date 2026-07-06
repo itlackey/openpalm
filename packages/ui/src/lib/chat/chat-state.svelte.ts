@@ -792,6 +792,32 @@ class ChatService {
 	}
 
 	/**
+	 * Conversation-mode entry point — barge-in aware. The composer's submit
+	 * path keeps calling send() directly (no-op while sending unless a
+	 * question is pending); a spoken utterance must never be silently dropped
+	 * by that guard. If a reply is mid-generation, stop it first — stopTurn()
+	 * halts TTS and finalizes the partial text unspoken — then send the
+	 * utterance. When a question is pending, send() already routes the text
+	 * as the answer, so no stop is needed.
+	 */
+	async sendUtterance(text: string): Promise<void> {
+		const trimmed = text.trim();
+		if (!trimmed) return;
+		if (this.sending && !this.pendingQuestion) {
+			await this.stopTurn();
+			// stopTurn() resolves the pending-turn promise, but send()'s
+			// `finally` clears `sending` in a later continuation. Wait for the
+			// flag to actually clear rather than relying on microtask ordering.
+			// Bounded so a turn that refuses to end can't wedge the mic loop —
+			// if it never clears, send() below no-ops (its existing guard).
+			for (let i = 0; this.sending && i < 20; i++) {
+				await new Promise<void>((resolve) => setTimeout(resolve, 10));
+			}
+		}
+		await this.send(trimmed);
+	}
+
+	/**
 	 * Stop the in-flight turn. No-op if nothing is sending. The upstream abort
 	 * is best-effort — OpenCode may have already finished or the endpoint may
 	 * be unreachable — the turn is always finished locally regardless so the

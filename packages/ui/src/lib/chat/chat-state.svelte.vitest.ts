@@ -494,6 +494,116 @@ describe('stopTurn', () => {
 	});
 });
 
+describe('sendUtterance', () => {
+	it('barge-in during a streaming turn stops it (partial finalized unspoken) and sends the utterance', async () => {
+		voice.voiceState.ttsSupported = true;
+		voice.voiceState.ttsAutoEnabled = true;
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValue(undefined);
+
+		const firstSend = chat.send('tell me a long story');
+		await new Promise<void>((r) => setTimeout(r, 0));
+		expect(chat.sending).toBe(true);
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: {
+				sessionID: 'sess1',
+				delta: 'The first sentence is done. And the rest is coming',
+			},
+		});
+		// Streamed TTS spoke the completed sentence (call 1 is the ack).
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(
+			2,
+			'The first sentence is done.'
+		);
+
+		// Barge-in: the user speaks while the reply is still generating.
+		const bargePromise = chat.sendUtterance('actually do this instead');
+		await expect(firstSend).resolves.toBeUndefined();
+
+		// Wait for the second turn to register, then finish it over SSE.
+		while (vi.mocked(api.startChatMessageTurn).mock.calls.length < 2) {
+			await new Promise<void>((r) => setTimeout(r, 0));
+		}
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'New reply.' },
+		});
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.idle',
+			properties: { sessionID: 'sess1' },
+		});
+		await bargePromise;
+
+		// The interrupted turn was aborted upstream and TTS was halted.
+		expect(mocked.abortChatTurn).toHaveBeenCalledWith('sess1');
+		expect(vi.mocked(voice.stopSpeaking)).toHaveBeenCalled();
+
+		// The utterance was NOT lost — it went out as the second turn.
+		expect(vi.mocked(api.startChatMessageTurn)).toHaveBeenNthCalledWith(
+			2,
+			'sess1',
+			'actually do this instead'
+		);
+
+		// Transcript order: user, partial assistant, barge-in user, new assistant.
+		const texts = chat.entries
+			.filter((e): e is ChatMessage => !e.type)
+			.map((e) => `${e.role}:${e.text}`);
+		expect(texts).toEqual([
+			'user:tell me a long story',
+			'assistant:The first sentence is done. And the rest is coming',
+			'user:actually do this instead',
+			'assistant:New reply.',
+		]);
+
+		// The interrupted reply's unspoken remainder is never sent to TTS.
+		const spoken = vi.mocked(voice.speakText).mock.calls.map((c) => c[0]);
+		expect(spoken.some((t) => String(t).includes('And the rest is coming'))).toBe(false);
+		expect(chat.sending).toBe(false);
+	});
+
+	it('sends normally (no stop) when nothing is in flight', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockResolvedValueOnce({
+			parts: [{ type: 'text', text: 'pong' }],
+		});
+
+		await chat.sendUtterance('ping');
+
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+		expect(mocked.sendChatMessage).toHaveBeenCalledWith('fresh', 'ping');
+		expect(chat.entries.length).toBe(2); // user + assistant
+	});
+
+	it('routes the utterance as the answer (no stop) when a question is pending', async () => {
+		chat.sending = true;
+		chat.pendingQuestion = {
+			requestID: 'q1',
+			questions: [{ question: 'Proceed?', header: '', options: [] }],
+			status: 'pending',
+			answers: [''],
+			message: '',
+		};
+		vi.mocked(api.replyChatQuestion).mockResolvedValueOnce(undefined);
+
+		await chat.sendUtterance('yes please');
+
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+		expect(vi.mocked(api.replyChatQuestion)).toHaveBeenCalledWith('q1', [['yes please']]);
+		chat.sending = false;
+	});
+});
+
 describe('byEndpoint Map reactivity', () => {
   it('reassigns the Map (not mutating it in place) so $state fires', async () => {
     const initial = chat.byEndpoint;

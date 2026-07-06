@@ -225,7 +225,9 @@
 			stopConversation();
 		} else {
 			startConversation((text) => {
-				void chat.send(text);
+				// Barge-in aware: stops an in-flight reply before sending so the
+				// utterance is never dropped by send()'s sending-guard.
+				void chat.sendUtterance(text);
 			});
 		}
 	}
