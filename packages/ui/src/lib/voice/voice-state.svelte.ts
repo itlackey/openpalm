@@ -22,11 +22,6 @@ import { AudioPlaybackController } from './audio-playback.js';
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 export type TtsEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
-export type SpeakTextOptions = {
-	mode?: 'plain' | 'chat_reply';
-	userText?: string;
-	assistantText?: string;
-};
 
 /** Wall-clock cap on a single recording, regardless of engine. */
 const MAX_RECORDING_MS = 60_000;
@@ -437,11 +432,11 @@ export function resumeAutoplay(): void {
  * configured engine is openpalm-voice or remote); falls back to browser
  * speech synthesis. Silent no-op if neither path is available.
  *
- * If a previous utterance is still playing, queues this one (FIFO, cap 3)
+ * If a previous utterance is still playing, queues this one (FIFO, cap 20)
  * instead of cutting it off mid-sentence.
  */
-export function speakText(text: string, options?: SpeakTextOptions): Promise<void> {
-	return audioPlayback.speak(text, options);
+export function speakText(text: string): Promise<void> {
+	return audioPlayback.speak(text);
 }
 
 /** Cancel speech synthesis. Drops the entire queue. */

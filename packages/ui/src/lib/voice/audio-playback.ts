@@ -15,7 +15,7 @@
  */
 import { notifications } from '$lib/notifications.svelte.js';
 import { toSpeakableText } from './speakable-text.js';
-import type { SpeakTextOptions, TtsEngine, VoiceStatus } from './voice-state.svelte.js';
+import type { TtsEngine, VoiceStatus } from './voice-state.svelte.js';
 
 /**
  * The slice of the reactive voice store the audio engine reads and writes.
@@ -30,11 +30,10 @@ export interface AudioPlaybackHost {
   readonly ttsEngine: TtsEngine;
 }
 
-type SpeakQueueEntry = { text: string; options?: SpeakTextOptions };
-
-// Cap on queued utterances. Three replies in flight = drop the oldest.
-// Keeps memory bounded if the assistant streams a flurry of short messages.
-const SPEAK_QUEUE_MAX = 3;
+// Cap on queued utterances. Streamed replies arrive one short sentence at a
+// time, so a long reply can legitimately queue a dozen entries; past the cap
+// the oldest drops. Keeps memory bounded if the assistant streams a flurry.
+const SPEAK_QUEUE_MAX = 20;
 
 export class AudioPlaybackController {
   private readonly host: AudioPlaybackHost;
@@ -44,7 +43,7 @@ export class AudioPlaybackController {
   private activeAudio: HTMLAudioElement | null = null;
   private activeAudioUrl: string | null = null;
 
-  private readonly speakQueue: SpeakQueueEntry[] = [];
+  private readonly speakQueue: string[] = [];
 
   // Have we already toasted the user about an overflow drop in the current
   // burst? Reset back to false when the queue drains so a NEW burst can
@@ -162,16 +161,16 @@ export class AudioPlaybackController {
    * configured engine is openpalm-voice or remote); falls back to browser
    * speech synthesis. Silent no-op if neither path is available.
    *
-   * If a previous utterance is still playing, queues this one (FIFO, cap 3)
+   * If a previous utterance is still playing, queues this one (FIFO, cap 20)
    * instead of cutting it off mid-sentence.
    */
-  async speak(text: string, options?: SpeakTextOptions): Promise<void> {
+  async speak(text: string): Promise<void> {
     if (typeof window === 'undefined' || !text.trim()) return;
 
     // Queue if something else is already speaking. The onended handler
     // drains the queue.
     if (this.host.status === 'speaking') {
-      this.speakQueue.push({ text, options });
+      this.speakQueue.push(text);
       // Drop oldest if over cap, and let the user know once per burst
       // so they understand WHY they're missing replies.
       let dropped = 0;
@@ -189,24 +188,23 @@ export class AudioPlaybackController {
       return;
     }
 
-    await this.playOne(text, options);
+    await this.playOne(text);
   }
 
   /** Internal: actually trigger the audio for one text chunk. */
-  private async playOne(text: string, options?: SpeakTextOptions): Promise<void> {
+  private async playOne(text: string): Promise<void> {
     if (typeof window === 'undefined' || !text.trim()) return;
 
     // Strip markdown once, up front, so neither the server request body nor
     // the browser-TTS fallback ever speaks raw markdown syntax aloud. The
-    // server applies its own (LLM-based) speech prep on top of this when a
-    // mode is given, but falls back to the same deterministic stripping.
+    // server applies the same deterministic stripping defensively.
     const speakableText = toSpeakableText(text);
     if (!speakableText) {
       // Nothing left to say (e.g. a reply that was pure markdown noise) —
       // skip straight to the next queued utterance instead of stalling
       // the queue on a chunk that would never fire onended/onerror.
       const next = this.speakQueue.shift();
-      if (next) void this.playOne(next.text, next.options);
+      if (next) void this.playOne(next);
       else this.overflowNoticed = false;
       return;
     }
@@ -228,12 +226,7 @@ export class AudioPlaybackController {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({
-            text: speakableText,
-            ...(options?.mode && options.mode !== 'plain' ? { mode: options.mode } : {}),
-            ...(options?.userText ? { userText: options.userText } : {}),
-            ...(options?.assistantText ? { assistantText: options.assistantText } : {}),
-          }),
+          body: JSON.stringify({ text: speakableText }),
         });
       } catch {
         // Network/CORS — fall through to browser TTS if available.
@@ -250,7 +243,7 @@ export class AudioPlaybackController {
           this.teardownActiveAudio();
           // Drain the queue.
           const next = this.speakQueue.shift();
-          if (next) void this.playOne(next.text, next.options);
+          if (next) void this.playOne(next);
           else this.overflowNoticed = false;
         };
         audio.onerror = () => {
@@ -258,7 +251,7 @@ export class AudioPlaybackController {
           this.host.errorMessage = 'Audio playback failed.';
           this.teardownActiveAudio();
           const next = this.speakQueue.shift();
-          if (next) void this.playOne(next.text, next.options);
+          if (next) void this.playOne(next);
           else this.overflowNoticed = false;
         };
         this.host.status = 'speaking';
@@ -305,13 +298,13 @@ export class AudioPlaybackController {
     utterance.onend = () => {
       this.host.status = 'idle';
       const next = this.speakQueue.shift();
-      if (next) void this.playOne(next.text, next.options);
+      if (next) void this.playOne(next);
       else this.overflowNoticed = false;
     };
     utterance.onerror = () => {
       this.host.status = 'idle';
       const next = this.speakQueue.shift();
-      if (next) void this.playOne(next.text, next.options);
+      if (next) void this.playOne(next);
       else this.overflowNoticed = false;
     };
     window.speechSynthesis.speak(utterance);

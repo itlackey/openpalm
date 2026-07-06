@@ -54,12 +54,8 @@ import type { ToolStripEntry } from './tool-strip.js';
 import { isUserFacingTool } from './tool-strip.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
-import {
-	speakText,
-	stopSpeaking,
-	voiceState,
-	type SpeakTextOptions,
-} from '$lib/voice/voice-state.svelte.js';
+import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
+import { extractSpeakableChunks } from '$lib/voice/sentence-stream.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
 import { mapAssistantError } from './assistant-error.js';
 
@@ -112,7 +108,8 @@ export type PendingQuestionState = QuestionAsk & {
 type PendingTurn = {
 	endpointId: EndpointId;
 	sessionId: SessionId;
-	userText: string;
+	/** How far into pendingAssistantText streamed TTS has already spoken. */
+	spokenOffset: number;
 	reasoningPartIds: Set<string>;
 	resolve: () => void;
 	reject: (error: Error) => void;
@@ -382,9 +379,9 @@ class ChatService {
 	 * has enabled auto-speak. Single guard shared by the ack and the reply so
 	 * the `ttsSupported && ttsAutoEnabled` check lives in one place.
 	 */
-	private maybeSpeak(text: string, opts?: SpeakTextOptions): void {
+	private maybeSpeak(text: string): void {
 		if (!voiceState.ttsSupported || !voiceState.ttsAutoEnabled) return;
-		void speakText(text, opts);
+		void speakText(text);
 	}
 
 	/**
@@ -396,12 +393,14 @@ class ChatService {
 	 */
 	private finalizeTurn(args: {
 		sessionId: SessionId;
-		userText: string;
 		replyText?: string;
+		/** How much of the reply streamed TTS already spoke sentence-by-sentence. */
+		spokenOffset?: number;
 		/** Skip auto-TTS — used when the user stopped the turn mid-reply. */
 		suppressSpeech?: boolean;
 	}): void {
-		const text = (args.replyText ?? this.pendingAssistantText).trim() || '(no response)';
+		const raw = args.replyText ?? this.pendingAssistantText;
+		const text = raw.trim() || '(no response)';
 
 		// Preserve answered-question acknowledgment as a transcript note so
 		// "Answer sent." isn't lost when pendingQuestion is cleared below.
@@ -423,11 +422,11 @@ class ChatService {
 		this._resetPendingRenderState();
 		this._bumpSession(args.sessionId);
 		if (text !== '(no response)' && !args.suppressSpeech) {
-			this.maybeSpeak(text, {
-				mode: 'chat_reply',
-				userText: args.userText,
-				assistantText: text,
-			});
+			// Streaming TTS already spoke everything before spokenOffset — only
+			// the unspoken remainder goes to the queue here. Non-streaming paths
+			// pass no offset and speak the whole reply.
+			const remainder = raw.slice(args.spokenOffset ?? 0).trim();
+			if (remainder) this.maybeSpeak(remainder);
 		}
 		notifyAssistantReply(text === '(no response)' ? '' : text);
 	}
@@ -437,8 +436,8 @@ class ChatService {
 		if (!pending) return;
 		this.finalizeTurn({
 			sessionId: pending.sessionId,
-			userText: pending.userText,
 			replyText,
+			spokenOffset: pending.spokenOffset,
 		});
 		pending.resolve();
 	}
@@ -477,6 +476,18 @@ class ChatService {
 		const textDelta = extractTextDelta(raw, pending.sessionId, pending.reasoningPartIds);
 		if (textDelta) {
 			this.pendingAssistantText += textDelta;
+			// Speak complete sentences as they stream in (same guard as
+			// maybeSpeak). finalizeTurn speaks only the remainder past
+			// spokenOffset; stopSpeaking (stop button, toggle off) drops the
+			// queue so already-extracted chunks go silent with everything else.
+			if (voiceState.ttsSupported && voiceState.ttsAutoEnabled) {
+				const { chunks, nextOffset } = extractSpeakableChunks(
+					this.pendingAssistantText,
+					pending.spokenOffset
+				);
+				for (const chunk of chunks) void speakText(chunk);
+				pending.spokenOffset = nextOffset;
+			}
 		}
 
 		const toolUpdate = extractToolUpdate(raw, pending.sessionId);
@@ -741,7 +752,7 @@ class ChatService {
 					this._pendingTurn = {
 						endpointId: this.activeEndpointId,
 						sessionId,
-						userText: trimmed,
+						spokenOffset: 0,
 						reasoningPartIds: new Set(),
 						resolve,
 						reject,
@@ -757,7 +768,7 @@ class ChatService {
 					.filter((p) => p.type === 'text' && p.text)
 					.map((p) => p.text ?? '')
 					.join('');
-				this.finalizeTurn({ sessionId, userText: trimmed, replyText });
+				this.finalizeTurn({ sessionId, replyText });
 			}
 		} catch (e) {
 			this._resetPendingRenderState();
@@ -805,7 +816,6 @@ class ChatService {
 		if (this.pendingAssistantText) {
 			this.finalizeTurn({
 				sessionId: pending?.sessionId ?? sessionId ?? '',
-				userText: pending?.userText ?? '',
 				suppressSpeech: true,
 			});
 		} else {

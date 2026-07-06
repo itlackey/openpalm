@@ -109,7 +109,7 @@ describe('voice-state speakText error surfacing', () => {
 		}
 	});
 
-	test('forwards chat speech-prep options to /api/speak', async () => {
+	test('posts only { text } (markdown-stripped) to /api/speak', async () => {
 		voiceState.ttsEngine = 'remote';
 		let capturedBody = '';
 		const mockFetch = vi.fn(async (_url, init) => {
@@ -124,15 +124,9 @@ describe('voice-state speakText error surfacing', () => {
 		const ss = (window as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
 		try {
 			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
-			await speakText('Here is the answer.', {
-				mode: 'chat_reply',
-				userText: 'Plan the work.',
-				assistantText: 'Here is the answer.',
-			});
+			await speakText('Here is **the** answer.');
 			const parsed = JSON.parse(capturedBody) as Record<string, unknown>;
-			expect(parsed.text).toBe('Here is the answer.');
-			expect(parsed.mode).toBe('chat_reply');
-			expect(parsed.userText).toBe('Plan the work.');
+			expect(parsed).toEqual({ text: 'Here is the answer.' });
 		} finally {
 			if (ss !== undefined) {
 				(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = ss;
@@ -162,13 +156,11 @@ describe('voice-state queue', () => {
 	test('queue overflow pushes an info notification once per burst', async () => {
 		voiceState.ttsEngine = 'browser';
 		voiceState.status = 'speaking';
-		// Queue cap is 3. Five enqueues = two drops from the FIFO. The
+		// Queue cap is 20. Twenty-two enqueues = two drops from the FIFO. The
 		// user should see exactly one toast (not two), to avoid spamming.
-		await speakText('a');
-		await speakText('b');
-		await speakText('c');
-		await speakText('d');
-		await speakText('e');
+		for (let i = 0; i < 22; i++) {
+			await speakText(`utterance ${i}`);
+		}
 
 		const infos = notifications.toasts.filter((t) => t.kind === 'info');
 		expect(infos.length).toBe(1);
@@ -180,10 +172,9 @@ describe('voice-state queue', () => {
 		voiceState.ttsEngine = 'browser';
 		voiceState.status = 'speaking';
 		// First burst — drop once.
-		await speakText('a');
-		await speakText('b');
-		await speakText('c');
-		await speakText('d');
+		for (let i = 0; i < 21; i++) {
+			await speakText(`utterance ${i}`);
+		}
 		expect(notifications.toasts.filter((t) => t.kind === 'info').length).toBe(1);
 
 		// Simulate the queue draining (and the active utterance ending).
@@ -193,10 +184,9 @@ describe('voice-state queue', () => {
 
 		// New burst should be able to surface a fresh toast.
 		voiceState.status = 'speaking';
-		await speakText('a');
-		await speakText('b');
-		await speakText('c');
-		await speakText('d');
+		for (let i = 0; i < 21; i++) {
+			await speakText(`utterance ${i}`);
+		}
 		expect(notifications.toasts.filter((t) => t.kind === 'info').length).toBe(1);
 	});
 });
