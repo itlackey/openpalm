@@ -1,15 +1,22 @@
 # UI Host/Client Runtime Refactor Plan
 
-**Date:** 2026-06-19
-**Status:** DRAFT — decisions recorded, ready for implementation
+**Date:** 2026-06-19 (revised 2026-07-06)
+**Status:** RATIFIED — Phases 0 landed; Phases 1–4 as designed; Phases 5–6 re-scoped per `docs/technical/ui-client-split-assessment.md`
 **Repo:** `itlackey/openpalm`, branch `main`
-**Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling)
+**Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling), #509 (RuntimeContext), #510 (assistant-container), #511 (PWA)
+
+> **Revision note (2026-07-06).** The original draft shipped one `adapter-node` build to
+> every runtime mode. That scope is revised: the product is still **one UI**, but it ships
+> as **two artifacts** — the host control plane (`@openpalm/ui`, unchanged) and a thin
+> static client (`@openpalm/client`) for chat/connections/PWA. Rationale, options
+> considered, and evidence: `docs/technical/ui-client-split-assessment.md`. Phases 1–4
+> are unchanged. Sections marked **[as-landed]** correct implementation details that
+> drifted between the 2026-06-19 draft and the code that actually shipped in Phase 0 /
+> the entrypoint scaffolding.
 
 ---
 
 ## 1. TL;DR
-
-The right design is **one UI product with multiple runtime modes and a consistent artifact delivery pattern** across every component of the stack.
 
 OpenPalm splits the UI into three capability-scoped surfaces:
 
@@ -19,33 +26,59 @@ OpenPalm splits the UI into three capability-scoped surfaces:
 
 The current code collapses all of this into `features.admin`, `/admin/*`, `/splash`. That cannot express "chat + assistant settings but no host management" or "PWA connection manager."
 
+**Two artifacts, one product:**
+
+- **`@openpalm/ui`** (existing, `adapter-node`) — the **host app**: setup wizard, `/host`
+  admin, connection CRUD, Docker lifecycle. Privileged, loopback-only, served by the
+  harness (Electron or `openpalm admin`). Bundles `@openpalm/lib`.
+- **`@openpalm/client`** (new, `adapter-static` + `@vite-pwa/sveltekit`) — the **client
+  app**: chat, connection switching, assistant settings views. Unprivileged, no
+  `@openpalm/lib`, one transport: talk to a guardian/OpenCode base URL with credentials.
+  Installable as a PWA from two origins (localhost, official hosted URL — §6.10).
+- **`packages/ui-kit`** — shared components/icons/theme, raw-source workspace package,
+  inlined at build time by both apps. Not published.
+
+### Simplicity guardrails (non-negotiable UX constraints)
+
+- **Default flows never make TLS a user task.** Desktop installs from
+  `http://127.0.0.1:<port>` (secure context, no certificates). Phones install from the
+  official hosted URL, which is TLS-terminated centrally.
+- **"Install → open → chat."** Adding a connection is paste-a-URL-and-code (or scan a QR
+  from the host app); no config files, no cert stores, no port math.
+- **Two apps, not N.** No further UI packages beyond `client` and `ui-kit`. The
+  assistant-settings write API in container mode is a minimal shim, not a third app —
+  and it is an optional follow-up slice, not a launch requirement.
+
 ### Standard artifact delivery pattern
 
 Every updatable component follows the same pattern. This is the design standard for the whole stack:
 
 | Component | Package | Version strategy | Runtime install | Containers |
 |---|---|---|---|---|
-| UI | `@openpalm/ui` | Exact pin: `OP_UI_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | assistant |
+| Host UI | `@openpalm/ui` | Exact pin: `OP_UI_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | — (host process) |
+| Client UI | `@openpalm/client` | Exact pin: `OP_CLIENT_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | assistant |
 | Skeleton / OP_HOME seed | `@openpalm/skeleton` | Exact pin: `OP_SKELETON_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | assistant, guardian |
 | Guardian | `@openpalm/guardian` | Exact pin: `OP_GUARDIAN_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | guardian |
 | Portal (discord) | `@openpalm/portal-discord` | Exact pin: `OP_PORTAL_DISCORD_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | portal |
 | Portal (slack) | `@openpalm/portal-slack` | Exact pin: `OP_PORTAL_SLACK_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | portal |
-| opencode | `opencode` (npm) | Range: `^minor`, `OP_TOOL_OPENCODE_VERSION` override, from `tools.json` | `bun add -g` | assistant, guardian |
-| akm-cli | `akm-cli` | Range: `^minor`, `OP_TOOL_AKM_VERSION` override, from `tools.json` | `bun add -g` | guardian |
-| claude-code, codex, … | per-tool npm packages | Range: `^minor`, `OP_TOOL_*_VERSION` override, from `tools.json` | `bun add -g` | assistant |
+| opencode, akm-cli, claude-code, … | per-tool npm packages | Range (`^minor`) via the baked tools `package.json`, per-tool env override | `bun update` | assistant, guardian |
 
 **Two version strategies, one delivery mechanism:**
 
-- **Exact pin** — components where a specific version must be matched at the API or data level: UI (RuntimeContext contract version), skeleton (`SHIPPED_DEFAULT_HASHES` hash values), guardian (security boundary, operator must explicitly choose a version). Fail loudly if version cannot be resolved.
-- **Range (`^minor`)** — all tools: opencode, akm-cli, claude-code, codex, and any future additions. No correctness coupling; auto-updating within minor is desirable and aligns with npm semver expectations. Both containers reading the same `tools.json` from the same skeleton version naturally resolve opencode to the same version — no special lockstep handling needed. Per-tool `OP_TOOL_*_VERSION` env var overrides when an operator needs to pin or skip a specific tool.
-
-**Deviation from range requires written justification in the issue.** If a tool ever needs exact-pinning, document why the `^minor` contract is insufficient before adding the exception.
+- **Exact pin** — components where a specific version must be matched at the API or data level: UI/client (RuntimeContext contract version), skeleton (`SHIPPED_DEFAULT_HASHES` hash values), guardian (security boundary, operator must explicitly choose a version). Fail loudly if version cannot be resolved.
+- **Range (`^minor`)** — all tools. **[as-landed]** Tool ranges are declared in a
+  `package.json` baked into the image at `/opt/openpalm/tools/package.json` (source:
+  `containers/assistant/tools/package.json`), bind-mounted from
+  `OP_HOME/data/assistant/tools` at runtime, and advanced with `bun update --production`.
+  This supersedes the draft's `tools.json`-in-skeleton + `bun add -g` design — the
+  landed pattern gets lockfile semantics and per-tool pinning by editing one file, with
+  no magic env-key normalization.
 
 **Key principles:**
-- One UI. The PWA is the same SvelteKit app (adapter-node + service worker), features hidden by resolved capabilities.
-- Assistant image is a thin host — pulls `@openpalm/ui` and `@openpalm/skeleton` from npm at startup.
+- One UI *product*, two *artifacts*. The host app is the privileged control plane; the client app is a pure API consumer. Neither ships the other's code.
+- Assistant image is a thin host — pulls `@openpalm/client` and `@openpalm/skeleton` from npm at startup.
 - Containers carry no bundled content; content is versioned and delivered separately.
-- Capabilities are resolved from server context + client context by one function. That function is the only extension point.
+- Capabilities are resolved from server context + client context by one function per app. The client app can never resolve `host:*` capabilities — structurally, not by branching.
 
 ---
 
@@ -53,19 +86,22 @@ Every updatable component follows the same pattern. This is the design standard 
 
 | Question | Decision |
 |---|---|
-| Skeleton delivery | `@openpalm/skeleton` npm package, no-code, no-build, published alongside platform release |
+| Skeleton delivery | `@openpalm/skeleton` npm package — **landed** (#508); see §6.7 for the as-landed resolution chain |
 | Skeleton version coupling | Hard: skeleton version === platform version. No `latest` in production. `isUnmodifiedDefault` hashes depend on this. |
-| Skeleton 0.13.0 scope | Full unification in 0.13.0: create package, replace GitHub raw fallback, drop Electron extraResources skeleton, add manifest.json |
-| `assistant-container` UI deployment | `@openpalm/ui` pulled from npm at container startup |
-| `assistant-container` skeleton deployment | `@openpalm/skeleton` pulled from npm at container startup (same startup script, same version chain) |
-| `assistant-container` process model | One image, two co-processes: UI server + OpenCode |
-| PWA build approach | One adapter-node build, service worker + manifest in `static/`. Full UI, capabilities hide features. No new pages. |
-| PWA/remote auth | Guardian Basic auth matching OpenCode implementation. Coordinate with #435. No parallel credential mechanism. |
+| Host/client split | **Ratified 2026-07-06** — extract `packages/client` + `packages/ui-kit`; `packages/ui` remains the host control plane. See `ui-client-split-assessment.md`. |
+| `assistant-container` UI deployment | `@openpalm/client` pulled from npm at container startup (was: `@openpalm/ui`) |
+| `assistant-container` skeleton deployment | `@openpalm/skeleton` pulled from npm at container startup — **landed** in `entrypoint.sh` |
+| `assistant-container` process model | One image, co-processes: static client (+ optional settings shim) + OpenCode |
+| PWA build approach | `packages/client`: `adapter-static` + `@vite-pwa/sveltekit`. Full client UI; host features are absent from the artifact, not hidden. |
+| PWA install origins | **Two primary paths:** (1) localhost — harness/CLI serves the client on a stable loopback port (secure context, zero TLS setup); (2) official hosted URL (e.g. `app.openpalm.dev`) — canonical TLS-terminated origin, one install for phones/tablets. |
+| Guardian TLS + CORS | Own workstream. Hard prerequisite for hosted-origin → LAN connections (mixed content) and for any phone → guardian connection. Never a manual user task on default paths. |
+| PWA/remote auth | Guardian Basic auth matching the OpenCode implementation. Coordinate with #435. No parallel credential mechanism. |
+| `host-ui` mode / `openpalm admin` | Ship **early** (Phase 1.5): CLI serves the host app with admin enabled, loopback-only, existing password auth. |
 | `clientMode` detection | Client-side only: `matchMedia('(display-mode: standalone)')` + `navigator.userAgent`. Not server-computed. |
-| Capability resolution | `effectiveCapabilities = resolve(serverCaps, clientCtx)`. One function, one file. |
+| Capability resolution | `effectiveCapabilities = resolve(serverCaps, clientCtx)`. One function, one file (per app). |
 | Legacy `/admin` route lifetime | No alias. `/admin/*` → 404 when `/host/*` ships. <10 installs, no audience to protect. |
 | `endpoints.json` rename | Do not rename. Add `kind` field. Internal model uses "connection" language. |
-| Milestones | 0.13.0: Phases 0–4 + skeleton package. 0.14.0: Phases 5–8 (assistant-container + PWA). |
+| Milestones | 0.13.0: Phases 0–4 + 1.5. 0.14.0 candidates: Phases 5–6 (client extraction, assistant-container, PWA) + TLS workstream — re-split if 0.13.0 gets heavy. |
 
 ---
 
@@ -89,48 +125,41 @@ function resolveArtifactVersion(
 }
 ```
 
-### Source resolution (skeleton / all file-seeding packages)
+### Source resolution (skeleton / all file-seeding packages) — **[as-landed]**
 
-Three steps. No more.
+The landed chain (`packages/lib/src/control-plane/ui-assets.ts`, `resolveLocalOpenpalmDir()`)
+has five strategies, not the draft's three:
 
 ```
-1. OPENPALM_REPO_ROOT env var → dev/source mode (keep forever)
-2. require.resolve('@openpalm/skeleton/package.json') → resolved package dir (CLI bundled dep, Electron)
-3. npm install --prefix <tmpdir> @openpalm/skeleton@<version> → cold start / upgrade path
+1. OPENPALM_REPO_ROOT env var → ${root}/packages/skeleton/   (dev mode — keep forever)
+2. OPENPALM_SKELETON_DIR env var → Electron extraResources dir (set by Electron main)
+3. require.resolve('@openpalm/skeleton/package.json') → package dir (CLI bundled dep)
+4. import.meta.url source-relative → repo tree (bun run / bun test)
+5. null → applyHomeSeed downloads @openpalm/skeleton from the npm registry
 ```
 
-Steps that are gone: `import.meta.url` relative chains, GitHub `raw.githubusercontent.com` download.
+The GitHub `raw.githubusercontent.com` fallback is **gone** (replaced by the npm registry
+download in step 5). The draft's "remove Electron extraResources skeleton" item was **not**
+adopted — the extraResources bundle was kept as step 2 so a fresh Electron install works
+offline before any npm fetch. This is deliberate; do not "clean it up."
 
-### Install script shape (entrypoint.sh)
+### Install script shape (entrypoint.sh) — **[as-landed]**
 
-```sh
-# ── Exact-pinned components ───────────────────────────────────────────────────
-install_artifact() {
-  local pkg="$1" version="$2" prefix="$3"
-  echo "Installing ${pkg}@${version}..."
-  npm install --prefix "$prefix" "${pkg}@${version}" --omit=dev --prefer-offline
-}
+`containers/assistant/entrypoint.sh` implements `install_runtime_artifacts()` with these
+properties (which supersede the draft sketch):
 
-install_artifact "@openpalm/ui"       "$OP_UI_VERSION"       /opt/openpalm/ui
-install_artifact "@openpalm/skeleton" "$OP_SKELETON_VERSION" /opt/openpalm/skeleton
-
-# ── Range-versioned tools (opencode, akm-cli, claude-code, codex, …) ─────────
-# tools.json in the skeleton defines defaults; per-tool env vars override.
-# BUN_INSTALL is on the cache volume — warm restarts with unchanged ranges are instant.
-export BUN_INSTALL=/opt/openpalm/tools
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-TOOL_SECTION="${CONTAINER_ROLE:-global}"   # 'global' for assistant, 'guardian' for guardian
-TOOL_PKGS=$(bun -e "
-  const tools = require('/opt/openpalm/skeleton/node_modules/@openpalm/skeleton/tools.json')['${TOOL_SECTION}'] || [];
-  const pkgs = tools.map(t => t.package + '@' + (process.env[t.envKey] || t.default));
-  console.log(pkgs.join(' '));
-")
-
-[ -n "\$TOOL_PKGS" ] && bun add -g \$TOOL_PKGS || echo "WARN: some tool installs failed; continuing"
-```
-
-Hard error if any exact-pinned artifact install fails. Tool install failures log a warning and do not block the container — one unavailable tool should not prevent the assistant or guardian from starting.
+- Exact-pinned artifacts (`@openpalm/ui` today → `@openpalm/client` after Phase 5;
+  `@openpalm/skeleton`) resolve `OP_*_VERSION` → `PLATFORM_VERSION` → **hard error**.
+- An install **failure after version resolution** logs an ERROR and continues with the
+  existing on-disk artifact if present (warm restart resilience) — the draft's
+  "hard error on any install failure" was softened deliberately: a registry blip must not
+  brick a previously-working container. Cold start with no artifact still fails visibly
+  (the co-process is skipped with a loud log line).
+- npm cache lives under the bind-mounted assistant HOME
+  (`/home/opencode/.cache/openpalm-npm`), so `--prefer-offline` hits a persistent cache.
+  The draft's named `openpalm-artifact-cache` volume was not needed.
+- Tools: `bun update --cwd /opt/openpalm/tools --production` against the baked/bind-mounted
+  `package.json` (see §1). Tool failures warn and never block container start.
 
 ---
 
@@ -138,12 +167,12 @@ Hard error if any exact-pinned artifact install fails. Tool install failures log
 
 ### 4.1 Server host modes
 
-| `hostMode` | What it is | What the server provides |
-|---|---|---|
-| `electron-host` | Electron launches/supervises the SvelteKit Node process on the local machine | Host + Assistant + Connections |
-| `host-ui` | CLI/host process serves SvelteKit without Electron chrome | Host + Assistant + Connections (no Electron IPC) |
-| `assistant-container` | SvelteKit UI pulled from npm at startup, co-runs with OpenCode | Assistant settings + single locked local connection |
-| `pwa-static` | The same SvelteKit build served to browser/PWA clients connecting remotely | Connections management only |
+| `hostMode` | Artifact | What it is | What it provides |
+|---|---|---|---|
+| `electron-host` | `@openpalm/ui` | Electron launches/supervises the SvelteKit Node process on the local machine | Host + Assistant + Connections |
+| `host-ui` | `@openpalm/ui` | `openpalm admin` serves the same process without Electron chrome | Host + Assistant + Connections (no Electron IPC) |
+| `assistant-container` | `@openpalm/client` | Static client served from the assistant image, co-running with OpenCode | Chat + assistant settings (single locked local connection) |
+| `pwa-static` | `@openpalm/client` | Static client served from localhost (harness) or the official hosted URL | Connections management + chat |
 
 ### 4.2 Client display modes
 
@@ -162,7 +191,14 @@ Hard error if any exact-pinned artifact install fails. Tool install failures log
 | `assistant-container` | `browser` / `standalone-pwa` | `chat`, `assistant-settings:read/write` |
 | `pwa-static` | `standalone-pwa` / `browser` | `connections:manage`, `connections:switch`, `chat` (if connected), `pwa:install` |
 
-**Future extension point (not 0.13.0):** `pwa-static` + remote connection with `grantedCapabilities` → add `assistant-settings:read/write` for that connection.
+**Future extension point:** `pwa-static` + remote connection with `grantedCapabilities` → add `assistant-settings:read/write` for that connection. `grantedCapabilities` must be verified server-side by the connected instance — the client cannot self-grant.
+
+**Note on the client app:** the client has no privileged server of its own. Its "server
+capabilities" come from the *connected instance's* `/api/runtime` response (assistant-
+container mode) or are the static `pwa-static` baseline. `resolveCapabilities()` in the
+client therefore operates on (baseline ∪ connection-granted) × display mode — same
+function shape, smaller input space, and `host:*` capabilities do not exist in its
+type-space at all.
 
 ---
 
@@ -180,7 +216,14 @@ Hard error if any exact-pinned artifact install fails. Tool install failures log
 
 **F — assistant settings mix host and assistant concerns.** Persona (assistant-scoped) and `OP_PROJECT_NAME` / bind address (host-scoped) are in the same tab.
 
-**G — skeleton delivery is fragile.** Five-step fallback ladder in `ui-assets.ts` ending in a GitHub raw URL tied to an exact git tag. Does not resolve `latest`. Breaks in air-gapped environments. `import.meta.url`-relative paths break when lib is bundled. This is the only remaining component not following the standard artifact delivery pattern.
+**G — skeleton delivery is fragile.** ~~Five-step fallback ladder ending in a GitHub raw URL.~~ **RESOLVED** by #508 (Phase 0): `@openpalm/skeleton` npm package + the §3 resolution chain.
+
+**H — chat transport assumes a privileged same-origin server.** The chat client calls
+`/proxy/assistant/*` on its own origin with the `op_session` cookie; the server resolves
+the active endpoint per request. A PWA on a phone has no such server: it needs client-held
+connections and direct cross-origin calls to a guardian with Basic/Bearer auth. This is
+the structural reason the client is a separate artifact — one app would carry both
+transports behind mode branches.
 
 ---
 
@@ -256,6 +299,9 @@ export type RuntimeContext = ServerRuntimeContext & {
 };
 ```
 
+In the **client app**, the `host:*` members are absent from its local `Capability` union —
+the narrowing is enforced by the type system, not by runtime filtering.
+
 ### 6.2 Capability resolution — one function
 
 ```ts
@@ -319,13 +365,16 @@ Initialized in `+layout.svelte`. Never server-computed.
 
 ### 6.4 API namespace split
 
-| Namespace | Purpose | Auth |
-|---|---|---|
-| `/api/runtime` | Server runtime context | Public — no auth |
-| `/api/connections/*` | Connection list, active connection, validation | `connections:manage` capability |
-| `/api/assistant/*` | Assistant-owned settings | `assistant-settings:write` capability |
-| `/api/host/*` | Host stack lifecycle, privileged ops | `host:stack:write` + loopback-only |
-| `/proxy/assistant/*` | Same-origin assistant broker | Same-origin cookie |
+| Namespace | Purpose | Served by | Auth |
+|---|---|---|---|
+| `/api/runtime` | Server runtime context (+ contract-version handshake for remote clients) | host app; assistant-container shim | Public — no auth |
+| `/api/connections/*` | Connection list, active connection, validation | host app | `connections:manage` capability |
+| `/api/assistant/*` | Assistant-owned settings | host app; assistant-container shim (optional slice) | `assistant-settings:write` capability |
+| `/api/host/*` | Host stack lifecycle, privileged ops | host app only | `host:stack:write` + loopback-only |
+| `/proxy/assistant/*` | Same-origin assistant broker | host app only | Same-origin cookie |
+
+The client app calls guardian/OpenCode APIs **directly** (Basic/Bearer per connection);
+it has no privileged namespaces of its own.
 
 **No `/admin/*` alias.** With <10 installs the alias-for-one-release hedge is unnecessary overhead. `/admin/*` becomes 404 when `/host/*` ships.
 
@@ -367,58 +416,37 @@ export type ConnectionEntry = {
 ```
 
 `endpoints.json` is NOT renamed. `kind` field added. Internal model uses "connection" language.
+In the client app, connections live in IndexedDB (offline-readable); in the host app they
+stay in `endpoints.json` under `OP_HOME/config/`.
 
-### 6.7 `@openpalm/skeleton` package
+**Pairing UX (simplicity guardrail):** the host app's `/connections` page can mint a
+one-time pairing payload (guardian URL + short-lived code, rendered as QR + copyable
+string); the client's `/connections/new` accepts paste-or-scan. No manual credential
+assembly for non-technical users. (Design detail lands with Phase 6; guardian side
+coordinates with #435.)
+
+### 6.7 `@openpalm/skeleton` package — **[as-landed]**
+
+Landed in #508. What shipped (differences from the draft noted):
 
 ```
 packages/skeleton/
-  package.json          # name: "@openpalm/skeleton", no main, no exports, no build, no deps
+  package.json          # name: "@openpalm/skeleton", no main, no build, no deps
   manifest.json         # [{relPath, category: 'managed'|'guardian-managed'|'seeded'}]
-  tools.json            # global CLI tool defaults; per-tool env key + default version range
-  config/
-    stack/              # core.compose.yml, services.compose.yml, portals.compose.yml, custom.compose.yml
-    assistant/          # opencode.jsonc (seeded), persona.md (seeded), instructions/, themes/
-    guardian/           # opencode.jsonc (guardian-managed), instructions/moderation.md (guardian-managed)
-  knowledge/
-    skills/             # bundled skills
-    tasks/              # automation task YAML files
+  config/ knowledge/ system/ data/ workspace/   # full OP_HOME seed trees
+  openpalm.sh openpalm.ps1
 ```
 
-**`tools.json` schema:**
-
-```json
-{
-  "global": [
-    { "package": "opencode",                  "envKey": "OP_TOOL_OPENCODE_VERSION",    "default": "^1.2.3" },
-    { "package": "@anthropic-ai/claude-code", "envKey": "OP_TOOL_CLAUDE_CODE_VERSION", "default": "^1.5.0" },
-    { "package": "@openai/codex",             "envKey": "OP_TOOL_CODEX_VERSION",       "default": "^0.1.0" }
-  ]
-}
-```
-
-The `envKey` field is explicit — no magic normalization of `@scope/package-name`. Adding a new tool is one line + a skeleton publish. Removing a tool is one line + a skeleton publish. No image rebuild. The default range (`^minor`) keeps tools on the latest patch/minor automatically; operators pin exact versions via env vars when needed.
-
-`.openpalm/` in the repo root becomes a README-only stub: "skeleton assets moved to `packages/skeleton/`."
-
-**`manifest.json` schema:**
-```json
-[
-  { "relPath": "config/stack/core.compose.yml", "category": "managed" },
-  { "relPath": "config/guardian/instructions/moderation.md", "category": "guardian-managed" },
-  { "relPath": "config/assistant/opencode.jsonc", "category": "seeded" }
-]
-```
-
-`core-assets.ts` reads from `manifest.json` instead of hard-coded `MANAGED_ASSETS`, `GUARDIAN_MANAGED_ASSETS`, `SEEDED_ASSETS` arrays. Write policy logic (`SHIPPED_DEFAULT_HASHES`, `isUnmodifiedDefault`) preserved byte-for-byte.
-
-**Source resolution (replaces 5-step ladder in `ui-assets.ts`):**
-```
-1. OPENPALM_REPO_ROOT env var → ${root}/packages/skeleton/ (dev mode)
-2. require.resolve('@openpalm/skeleton/package.json') → package dir (CLI bundled dep, Electron)
-3. npm install --prefix <tmpdir> @openpalm/skeleton@<platformVersion> → upgrade / cold start
-```
-
-GitHub raw fallback deleted. Electron `extraResources` skeleton bundle removed (Electron resolves via step 2).
+- `manifest.json` drives asset categories in `core-assets.ts`; `SHIPPED_DEFAULT_HASHES`
+  and `isUnmodifiedDefault()` preserved byte-for-byte. ✅ (as designed)
+- Source resolution: the five-strategy chain in §3 (**not** the draft's three-step chain;
+  Electron extraResources retained deliberately).
+- `tools.json` was **not** added to the skeleton — tool ranges live in the baked
+  `containers/assistant/tools/package.json` instead (§1, §3).
+- `.openpalm/` in the repo root is a README-only stub. ✅
+- `@openpalm/skeleton` is a pinned dep of `packages/cli`. **Follow-up:** the pin
+  (`0.12.18` at time of writing) must be advanced by the release process in lockstep with
+  `PLATFORM_VERSION` — verify `platform-release.yml` does this before each release.
 
 ### 6.8 Authentication model
 
@@ -426,90 +454,123 @@ GitHub raw fallback deleted. Electron `extraResources` skeleton bundle removed (
 |---|---|
 | Host Control Plane | Existing `op_session` cookie, `HttpOnly`, `SameSite=Strict`, loopback-only. Unchanged. |
 | Assistant Control Plane | Guardian Basic auth (matching OpenCode's auth model) |
-| Connection Control Plane | Host admin session for writes; capability-gated reads |
-| PWA / remote clients | Guardian Basic auth aligned with #435 Bearer seam |
+| Connection Control Plane | Host app: host admin session for writes. Client app: per-connection credentials in IndexedDB, capability-gated reads |
+| PWA / remote clients | Guardian Basic auth aligned with #435 Bearer seam; HTTPS required for non-loopback targets from the hosted origin |
 
-### 6.9 `assistant-container` mode
+### 6.9 `assistant-container` mode — **[as-landed + re-scoped]**
 
-One image, two co-processes. UI and skeleton pulled from npm at startup:
+**Already landed in `containers/assistant/entrypoint.sh`:** `install_runtime_artifacts()`
+(exact-pin resolution, npm install of UI + skeleton, tools via `bun update`) and
+`start_ui()` (co-process launch, `OP_UI_PORT` default 3000). Boot order:
+`install_runtime_artifacts → … → start_ui → start_opencode`.
 
-```sh
-# entrypoint.sh — version resolution
-resolve_version() {
-  local override="$1" platform="$2" name="$3"
-  if [ -n "$override" ]; then echo "$override"; return; fi
-  if [ -n "$platform" ]; then echo "$platform"; return; fi
-  echo "ERROR: Cannot resolve version for $name. Set OP_${name}_VERSION." >&2; exit 1
-}
+**Not yet landed / known gaps (tracked in #510):**
 
-# ── Exact-pinned artifacts ────────────────────────────────────────────────────
-UI_VERSION=$(resolve_version "$OP_UI_VERSION" "$PLATFORM_VERSION" "UI")
-SKELETON_VERSION=$(resolve_version "$OP_SKELETON_VERSION" "$PLATFORM_VERSION" "SKELETON")
+1. The co-process port is **not published** in any compose file — the UI runs but is
+   unreachable from outside the container.
+2. `start_ui` exports `OPENCODE_API_URL`, but the UI reads `OP_OPENCODE_URL` /
+   `OP_ASSISTANT_URL` — the co-process therefore points at the default
+   `http://127.0.0.1:3800` instead of the in-container OpenCode at `:4096`. Wiring bug;
+   fix regardless of the re-scope.
+3. No mode env (`OP_UI_HOST_MODE`, `OP_UI_SINGLE_CONNECTION`) is set, and no
+   skeleton-seed call runs for assistant-scoped config (`seedFromSkeleton()` from the
+   draft does not exist in lib).
 
-npm install --prefer-offline --omit=dev --prefix /opt/openpalm/ui       "@openpalm/ui@${UI_VERSION}"
-npm install --prefer-offline --omit=dev --prefix /opt/openpalm/skeleton  "@openpalm/skeleton@${SKELETON_VERSION}"
+**Re-scope (ratified):** after Phase 5, the co-process serves **`@openpalm/client`**
+(static files) instead of the full host app:
 
-# Seed OP_HOME from skeleton (migrations + backups applied by lib)
-node -e "require('@openpalm/lib').seedFromSkeleton('/opt/openpalm/skeleton', process.env.OP_HOME)"
+- Slice A (launch): chat with a single locked connection to the local OpenCode. Serving
+  the static bundle needs only a minimal static file server (bun is present in the image).
+  `/api/host/*` does not exist in the artifact — nothing to 403.
+- Slice B (optional follow-up): a **settings shim** — a small co-process endpoint set
+  (`/api/runtime`, `/api/assistant/*`) that performs assistant-scoped file writes
+  (persona, AKM runtime config). Only this slice needs anything beyond static serving.
+  Ship it only when assistant-settings-from-browser is actually wanted.
 
-# ── Range-versioned CLI tools (from tools.json) ───────────────────────────────
-export BUN_INSTALL=/opt/openpalm/tools
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-TOOL_PKGS=$(bun -e "
-  const tools = require('/opt/openpalm/skeleton/node_modules/@openpalm/skeleton/tools.json').global;
-  const pkgs = tools.map(t => t.package + '@' + (process.env[t.envKey] || t.default));
-  console.log(pkgs.join(' '));
-")
-bun add -g $TOOL_PKGS || echo "WARN: some tool installs failed; continuing"
-
-# ── Start UI co-process ───────────────────────────────────────────────────────
-OP_UI_HOST_MODE=assistant-container \
-OP_UI_SINGLE_CONNECTION=1 \
-OP_UI_DEFAULT_ASSISTANT_URL=http://127.0.0.1:4096 \
-node /opt/openpalm/ui/node_modules/@openpalm/ui/build/index.js &
-
-exec opencode ...
-```
-
-**Mounts in assistant-container mode:**
+**Mounts in assistant-container mode (unchanged):**
 - `config/assistant/` — read/write
 - `config/akm/` — read/write
 - No Docker socket
 - No broad `OP_HOME` access
 
-### 6.10 PWA mode
+### 6.10 PWA mode — **[re-scoped]**
 
-Same adapter-node build. `static/manifest.webmanifest` + `src/service-worker.ts`. When resolved capabilities exclude `host:*`, host tabs/nav absent via `hasCapability()`. No new pages. No duplicate UI. IndexedDB connection store for offline-capable connection records.
+The PWA is `packages/client` (`adapter-static` + `@vite-pwa/sveltekit`: manifest, icons,
+Workbox precache of the app shell). Host features are **absent from the artifact**, not
+hidden by capability checks.
+
+**Two primary install origins:**
+
+1. **Localhost (desktop, zero-setup).** The harness serves the built client on a stable
+   loopback port (stable because PWA identity = origin incl. port). `http://127.0.0.1` is
+   a secure context → installable with no certificates. A loopback origin is also exempt
+   from mixed-content blocking and sits in the most-trusted Private Network Access tier,
+   so it may call plain-HTTP LAN guardians. Entry points: Electron menu / host app button
+   ("Install OpenPalm app") and `openpalm app` on the CLI.
+2. **Official hosted URL** (e.g. `https://app.openpalm.dev`). CI publishes the same static
+   build to a canonical TLS-terminated origin. One install works on any phone/tablet and
+   connects to any of the user's instances. Constraints that follow from the platform,
+   not from our code:
+   - an HTTPS origin cannot call plain-HTTP guardians (mixed content) → **guardian TLS
+     workstream is a hard prerequisite for this path** (Tailscale `ts.net` certs are the
+     recommended default; Caddy with a user domain as the alternative);
+   - guardian must send CORS headers for the official origin (allowlist, configurable);
+   - version skew is handled by the `/api/runtime` contract-version handshake — the
+     hosted client degrades gracefully against older instances.
+
+Offline behavior: app shell + connection records (IndexedDB) available offline; chat
+requires connectivity. Since the client is static and unauthenticated at the origin level,
+the service worker never caches credentialed responses.
+
+**Phone reality check:** a phone can only reach a guardian over TLS (both install paths —
+the hosted origin because of mixed content; and any non-loopback origin is not installable
+over plain HTTP anyway). The desktop/localhost path is the only truly TLS-free path, which
+is why it is the default for the machine that runs the stack, and the hosted path + TLS
+workstream is the mobile story.
+
+### 6.11 `packages/client` and `packages/ui-kit`
+
+```
+packages/client/            # @openpalm/client — published, exact-pin delivery
+  svelte.config.js          # adapter-static, SPA fallback
+  vite.config.ts            # @vite-pwa/sveltekit
+  src/routes/
+    chat/                   # moved from packages/ui (after Phase 3/4 decoupling)
+    connections/            # client-side connection manager (IndexedDB)
+    assistant/settings/     # visible only when the connection grants it
+  src/lib/
+    transport/              # ONE transport: guardian/OpenCode base URL + credentials
+
+packages/ui-kit/            # raw-source workspace package — NOT published
+  src/lib/components/       # common/, icons/, chrome primitives shared by ui + client
+  src/lib/theme/            # tokens, app.css design vocabulary (coordinates with #506)
+```
+
+Rules:
+- `client` has **no dependency on `@openpalm/lib`** and no `src/lib/server/`.
+- `ui-kit` contains no stores with server assumptions — presentational components,
+  icons, and theme only. The `endpoints-state` ↔ `chat-state` coupling gets untangled in
+  Phases 2–3 *before* extraction, so the move is file relocation, not surgery.
+- `packages/ui` keeps its chat surface only until the client reaches parity inside
+  Electron (the harness serves the client build alongside the host app), then deletes it.
 
 ---
 
 ## 7. Implementation phases
 
-All phases ship in **0.13.0**. The prior 0.13.0/0.14.0 split was a staged-rollout hedge for large user bases. With fewer than 10 installs, mostly owner-operated, the constraint doesn't apply. The phases below are implementation ordering (code dependencies), not release milestones.
+Phases are implementation ordering (code dependencies), not release milestones. 0.13.0
+carries Phases 1–4 + 1.5; the client extraction (5–6) and TLS workstream follow — pull
+them into 0.13.0 only if it stays light.
 
-### Phase 0 — Baseline + skeleton package
+### Phase 0 — Baseline + skeleton package — ✅ DONE (#508)
 
-Two tracks merged into one phase. Both are non-behavior-changing foundation work.
+Landed with the deltas recorded in §3/§6.7 (five-strategy resolution, extraResources
+retained, tools via baked `package.json`, npm-registry cold-start download replacing the
+GitHub raw fallback). Outstanding from the original Track A: Playwright smoke tests and
+`docs/technical/ui-route-map.md` were **not** produced — fold them into Phase 3, where the
+route structure they document actually changes.
 
-**Track A: Baseline tests (partially complete)**
-- Already done: unit tests for `computeFeatureFlags()` and `hooks.server.ts` route decisions
-- Still needed: Playwright smoke tests (host mode, admin redirect, chat route), `docs/technical/ui-route-map.md`
-
-**Track B: `@openpalm/skeleton` package**
-1. Create `packages/skeleton/package.json` — no main, no exports, no build, no deps. `files` field restricts to `config/`, `knowledge/`, `manifest.json`.
-2. Move `.openpalm/` contents into `packages/skeleton/`. Leave `.openpalm/README.md` stub.
-3. Write `packages/skeleton/manifest.json` listing all files with their category.
-4. Update `core-assets.ts`: read `MANAGED_ASSETS`, `GUARDIAN_MANAGED_ASSETS`, `SEEDED_ASSETS` from `manifest.json` instead of hard-coded arrays. `bundledAssetPath()` → `require.resolve('@openpalm/skeleton/package.json')`. `SHIPPED_DEFAULT_HASHES` preserved exactly.
-5. Update `ui-assets.ts`: three-step resolution chain (§6.7). Delete GitHub raw fallback. Delete Electron extraResources skeleton path.
-6. Add `@openpalm/skeleton` as pinned exact-version dep in `packages/cli/package.json`.
-7. Remove Electron extraResources skeleton bundle from `packages/electron/electron-builder.yml` / `forge.config.ts`. Electron now resolves via step 2 (bundled npm dep).
-8. Add `@openpalm/skeleton` as first entry in `platform-release.yml` publish DAG (must publish before `@openpalm/lib` since lib will import/resolve it).
-9. Update dev-setup.sh / `OPENPALM_REPO_ROOT` override to point to `packages/skeleton/` instead of `.openpalm/`.
-
-Acceptance: skeleton resolves from npm dep in all non-dev paths; dev still works via `OPENPALM_REPO_ROOT`; `SHIPPED_DEFAULT_HASHES` hashes still match the same file content; existing installs upgrade correctly; GitHub raw fallback is gone.
-
-### Phase 1 — RuntimeContext v2, no UI change
+### Phase 1 — RuntimeContext v2, no UI change (#509)
 
 **Files:** `lib/server/features.ts`, `lib/types.ts`, `routes/+layout.server.ts`, `lib/runtime-context.svelte.ts`, `lib/client-context.ts`, `routes/api/runtime/+server.ts`
 
@@ -518,29 +579,47 @@ Acceptance: skeleton resolves from npm dep in all non-dev paths; dev still works
 3. Return `serverRuntimeContext` from `+layout.server.ts`.
 4. Initialize `clientContext` in `+layout.svelte` (client-only; detect display mode; wire active connection).
 5. Derive `effectiveCapabilities` reactively.
-6. Add `/api/runtime` endpoint (public, no auth).
+6. Add `/api/runtime` endpoint (public, no auth) — include the contract version used by the future hosted-client handshake.
 
 Acceptance: existing routes unchanged; `features.admin` alias works; capability matrix correct for all current combinations.
 
-### Phase 2 — Connection management out of `/admin`
+### Phase 1.5 — `openpalm admin` (host-ui mode) — NEW, small
 
-**Closes #486.**
+1. CLI: `openpalm admin` (and/or a flag on the default serve path) launches the existing
+   UI server with the admin capability enabled (today: `OP_ENABLE_ADMIN=1`; after Phase 1:
+   `hostMode: 'host-ui'`), loopback-only, existing `op_session` password auth. Opens the
+   browser.
+2. No new UI. No new auth. Refuse `OP_ALLOW_REMOTE_SETUP`-style non-loopback binds for
+   this mode.
+
+Acceptance: full host management from a browser on the host machine without Electron;
+remains loopback-only; `openpalm admin` on a machine without the stack installed lands on
+`/setup`.
+
+### Phase 2 — Connection management out of `/admin` (#486)
 
 1. Rename internal model "endpoint" → "connection" in UI layer. `endpoints.json` unchanged.
 2. Add `kind` to `ConnectionEntry`; default existing records.
 3. New routes: `/connections`, `/api/connections/*`. Guard with `connections:manage`.
 4. Update chat page link: `/admin/endpoints` → `/connections`.
 5. `/admin/endpoints` → redirect to `/connections` (0.13.0 alias).
+6. **Untangle for extraction:** break the `endpoints-state` ↔ `chat-state` bidirectional
+   import (connection activation emits an event; chat subscribes). This is a hard
+   prerequisite for Phase 5.
 
-Acceptance: PWA-mode clients can manage connections without `/admin`; host mode unchanged; no data migration.
+Acceptance: connection management reachable without `/admin`; host mode unchanged; no data migration; `endpoints-state` no longer imports `chat-state`.
 
 ### Phase 3 — Capability-driven landing and navigation
 
 1. Add `resolveLanding(ctx, launchState)`.
 2. Split `/splash` into `/attention`, `/setup`, `/host`, `/chat`, `/connections`.
 3. Nav reads `runtimeContext.routes` + `hasCapability()`. No `if (features.admin)` checks.
+4. **Untangle for extraction:** give the chat surface its own minimal chrome — `Navbar`
+   must stop importing chat components/stores into the admin surface. Chat stops importing
+   the `$lib/api.js` barrel (direct domain-client imports only).
+5. Produce `docs/technical/ui-route-map.md` + Playwright smoke tests (carried from Phase 0).
 
-Acceptance: Electron healthy → chat; assistant-container → chat; PWA no-connections → `/connections/new`.
+Acceptance: Electron healthy → chat; capability-driven nav; chat chunk free of admin API clients (verify bundle); route map doc exists.
 
 ### Phase 4 — Split Host and Assistant Control Planes
 
@@ -551,48 +630,74 @@ Acceptance: Electron healthy → chat; assistant-container → chat; PWA no-conn
 
 Acceptance: assistant-container can edit persona/AKM but not project name or bind address; host mode unchanged; `/admin/*` returns 404.
 
-### Phase 5 — `assistant-container` mode
+### Phase 5 — Extract `packages/client` + `packages/ui-kit`; assistant-container serves it
 
-*Depends on Phases 0, 1, 4.*
+*Depends on Phases 2–4 (the untangling steps).*
 
-1. Add UI + skeleton install to `containers/assistant/entrypoint.sh` (see §6.9).
-2. `npm install --prefer-offline` for both packages; fail fast if version unresolvable.
-3. `seedFromSkeleton()` call to seed assistant-scoped `OP_HOME` paths.
-4. Start SvelteKit UI co-process.
-5. Add `PLATFORM_VERSION` build arg to Dockerfile; wire `OP_SKELETON_VERSION` and `OP_UI_VERSION` defaults.
-6. Add locked default connection to local OpenCode (port 4096).
-7. Add named Docker volume `openpalm-artifact-cache` mounted at `/opt/openpalm` (covers UI, skeleton, and tools cache in one volume).
-8. Add `tools.json` to `@openpalm/skeleton` with initial tool list and `^minor` defaults.
-9. Wire `BUN_INSTALL=/opt/openpalm/tools` in entrypoint before tool install step.
+1. Create `packages/ui-kit` (raw-source workspace package); move `components/common/`,
+   `icons/`, theme tokens. Both apps consume it.
+2. Create `packages/client` per §6.11; move chat + connections views; implement the single
+   transport (direct guardian/OpenCode calls, IndexedDB connections).
+3. Harness serves the client build on a stable loopback port; Electron window offers it;
+   `packages/ui` chat stays until parity, then dies.
+4. Assistant container: `install_runtime_artifacts` pulls `@openpalm/client`
+   (`OP_CLIENT_VERSION` → `PLATFORM_VERSION` → error); co-process serves the static bundle
+   (Slice A). Fix the `OP_OPENCODE_URL` wiring bug (§6.9). Publish the port in compose
+   behind the existing bind-address policy.
+5. Release: `@openpalm/client` joins the publish DAG and the exact-pin table.
+6. (Optional Slice B, separate issue) settings shim for `/api/assistant/*` writes.
 
-Acceptance: `docker restart` with new `OP_UI_VERSION` or `OP_SKELETON_VERSION` picks up new artifact; `OP_TOOL_CLAUDE_CODE_VERSION=^2.0.0` overrides that tool's range; tool install failure logs a warning and does not block container start; tools available on PATH; `/api/host/*` returns 403; assistant settings editable; skeleton correctly seeds assistant config on first start.
+Acceptance: chat in Electron runs from the client build; assistant-container URL serves
+chat against local OpenCode with zero host-admin code in the artifact; `docker restart`
+with a new `OP_CLIENT_VERSION` picks up the new client.
 
-### Phase 6 — PWA mode
+### Phase 6 — PWA (two install origins) (#511)
 
-*Depends on Phases 1, 2, 3.*
+*Depends on Phase 5.*
 
-1. `static/manifest.webmanifest` + `src/service-worker.ts`.
-2. When resolved capabilities exclude `host:*`, host routes absent — no new pages.
-3. IndexedDB connection store for offline operation.
-4. Remote auth: Guardian Basic auth aligned with #435.
+1. `@vite-pwa/sveltekit` in `packages/client`: manifest, icons (192/512 + maskable),
+   Workbox app-shell precache.
+2. Localhost install path: stable port, install affordances in Electron/host app/CLI
+   (`openpalm app`).
+3. Hosted install path: CI deploy of the static build to the official URL; `/api/runtime`
+   contract-version handshake; connection pairing UX (§6.6).
+4. Guardian CORS allowlist for the official origin.
+5. IndexedDB connection store; offline shell.
+
+Acceptance: install prompt on desktop from localhost with zero TLS setup; install on a
+phone from the official URL; add/switch connections via paste-or-scan pairing; offline
+launch shows the shell + saved connections, not a blank page.
+
+### Phase 6.5 — Guardian edge TLS workstream — NEW (own issue)
+
+*Parallel to Phases 5–6; hard prerequisite for hosted-origin → LAN connections.*
+
+1. Recommended default: Tailscale integration docs + `ts.net` cert flow (guided, no cert
+   management for the user).
+2. Alternative: Caddy front for guardian with a user-owned domain (DNS challenge).
+3. Explicit non-goal: asking non-technical users to install a private CA on iOS/Android.
+4. `requiresHttpsForRemoteConnections` enforced: the hosted client refuses plain-HTTP
+   non-loopback targets with a clear, actionable message (deep-link to the TLS guide).
 
 ### Phase 7 — Security hardening
 
 *Depends on Phases 1–6.*
 
 1. Host admin loopback-only checks unchanged.
-2. Context-aware origin checks per mode.
+2. Context-aware origin checks per mode; guardian CORS tests (allowlist enforced).
 3. Route guard tests for every `/api/host/*` endpoint (must 403 in non-host modes).
-4. Negative tests: assistant-container and PWA cannot reach host APIs.
-5. CSP review.
+4. Negative tests: assistant-container artifact contains no host-admin code (build
+   assertion, not just runtime 403); hosted client cannot reach host APIs.
+5. CSP review for both apps; service worker never caches credentialed responses.
 
 ### Phase 8 — Release integration
 
 *Depends on all prior phases.*
 
-1. Add `OP_UI_VERSION`, `OP_SKELETON_VERSION` to compose env-file docs and release notes.
-2. New docs: `docs/technical/ui-runtime-modes.md` (replaces this plan), `docs/technical/artifact-delivery-pattern.md`.
-3. Release checklist: smoke-test electron-host, assistant-container (with version overrides), pwa-static before publishing.
+1. Add `OP_CLIENT_VERSION`, `OP_SKELETON_VERSION` to compose env-file docs and release notes.
+2. Verify the release process advances the CLI's pinned `@openpalm/skeleton` dep (§6.7 follow-up).
+3. New docs: `docs/technical/ui-runtime-modes.md` (replaces this plan), `docs/technical/artifact-delivery-pattern.md`.
+4. Release checklist: smoke-test electron-host, host-ui (`openpalm admin`), assistant-container (with version overrides), localhost PWA install, hosted PWA install.
 
 ---
 
@@ -602,11 +707,13 @@ Acceptance: `docker restart` with new `OP_UI_VERSION` or `OP_SKELETON_VERSION` p
 2. **`isUnmodifiedDefault` and `SHIPPED_DEFAULT_HASHES` are preserved byte-for-byte.** Skeleton version must equal platform version in production or these hashes diverge and the guardian-managed write policy silently misfires.
 3. **Host admin remains loopback-only.** Never weakened.
 4. **Assistant container gets no Docker socket and no broad OP_HOME write access.**
-5. **APIs enforce capabilities server-side.** `hasCapability()` is UX, not the security boundary.
-6. **`resolveCapabilities()` is the only place capability logic lives.** No scattered `if (features.admin)`.
+5. **APIs enforce capabilities server-side.** `hasCapability()` is UX, not the security boundary. In the client app the stronger form applies: host capabilities are absent from the artifact.
+6. **`resolveCapabilities()` is the only place capability logic lives** (one per app). No scattered `if (features.admin)`.
 7. **`OPENPALM_REPO_ROOT` dev override is preserved forever.** Essential for local dev loop.
 8. **Backup-before-overwrite for managed assets is preserved.** User recovery path for bad skeleton releases.
 9. **`grantedCapabilities` on connections must be server-verified at connection-add time.** The client cannot self-grant capabilities.
+10. **The client app never bundles `@openpalm/lib` and never holds host credentials.**
+11. **TLS is never a manual task on default install paths.** Desktop = localhost (none needed); phone = hosted origin + guided guardian TLS (Tailscale default).
 
 ---
 
@@ -614,57 +721,50 @@ Acceptance: `docker restart` with new `OP_UI_VERSION` or `OP_SKELETON_VERSION` p
 
 | Area | Current | Change |
 |---|---|---|
-| Skeleton source | `.openpalm/` (repo root) | Move to `packages/skeleton/`; leave README stub |
-| Skeleton path resolution | `ui-assets.ts` 5-step ladder + GitHub raw | Three-step chain; delete GitHub raw; delete Electron extraResources path |
-| Skeleton asset arrays | Hard-coded in `core-assets.ts` | Read from `packages/skeleton/manifest.json` |
-| Skeleton bundled path | `import.meta.url` relative | `require.resolve('@openpalm/skeleton/package.json')` |
-| CLI deps | (skeleton not listed) | Add `@openpalm/skeleton` pinned exact dep |
-| Electron extraResources | Bundles skeleton dir | Remove; Electron resolves via npm dep |
-| Feature flags | `lib/server/features.ts`, `lib/types.ts` | Replace with `ServerRuntimeContext` + `resolveCapabilities()` |
-| Client context | (none) | New `lib/client-context.ts` |
-| Layout data | `routes/+layout.server.ts`, `+layout.svelte` | Pass server context; initialize client context + resolved caps |
-| Landing | `routes/+page.ts`, `routes/splash/*`, `hooks.server.ts` | `resolveLanding()` |
-| Host admin | `routes/admin/*` | Move/alias to `/host`; `host:*` guards |
-| Connections | `routes/admin/endpoints/*`, `endpoints-state.svelte.ts` | Move to `/connections`; rename internal model |
-| Assistant settings | `AssistantTab.svelte` | Split host stack vs. assistant-owned |
-| AKM | `AkmTab.svelte` | Split assistant-scoped vs. host-only |
-| Assistant image | `containers/assistant/entrypoint.sh`, `Dockerfile` | Runtime npm pull for UI + skeleton; co-process start |
-| Electron main | `packages/electron/src/main.ts` | Pass `OP_UI_HOST_MODE=electron-host` |
-| Release DAG | `platform-release.yml` | `@openpalm/skeleton` first in publish order |
+| Skeleton package | ✅ landed (#508) | Follow-up only: release-time advance of the CLI's pinned dep |
+| Feature flags | `lib/server/features.ts`, `lib/types.ts` | Replace with `ServerRuntimeContext` + `resolveCapabilities()` (Phase 1) |
+| Client context | (none) | New `lib/client-context.ts` (Phase 1) |
+| Layout data | `routes/+layout.server.ts`, `+layout.svelte` | Pass server context; initialize client context + resolved caps (Phase 1) |
+| CLI admin | (admin unreachable via CLI) | `openpalm admin` — host-ui mode (Phase 1.5) |
+| Landing | `routes/+page.ts`, `routes/splash/*`, `hooks.server.ts` | `resolveLanding()` (Phase 3) |
+| Host admin | `routes/admin/*` | Move to `/host`; `host:*` guards (Phase 4) |
+| Connections | `routes/admin/endpoints/*`, `endpoints-state.svelte.ts` | Move to `/connections`; rename internal model; break chat-state coupling (Phase 2) |
+| Chat chrome | `Navbar.svelte` imports chat stores | Chat gets its own chrome; barrel imports removed (Phase 3) |
+| Assistant settings | `AssistantTab.svelte` | Split host stack vs. assistant-owned (Phase 4) |
+| AKM | `AkmTab.svelte` | Split assistant-scoped vs. host-only (Phase 4) |
+| Shared components | `packages/ui/src/lib/components/{common,icons}` | Move to `packages/ui-kit` (Phase 5) |
+| Chat + connections views | `packages/ui/src/routes/{chat,advanced}`, `/connections` | Move to `packages/client` (Phase 5) |
+| Assistant image | `containers/assistant/entrypoint.sh`, `Dockerfile` | Pull `@openpalm/client`; fix `OP_OPENCODE_URL` wiring; publish port (Phase 5) |
+| PWA | (none) | `@vite-pwa/sveltekit` in `packages/client`; hosted deploy pipeline (Phase 6) |
+| Guardian edge | plain HTTP, no CORS | CORS allowlist + TLS workstream (Phases 6, 6.5) |
+| Electron main | `packages/electron/src/main.ts` | Pass `OP_UI_HOST_MODE=electron-host`; serve/point at client build (Phases 1, 5) |
+| Release DAG | `platform-release.yml` | Add `@openpalm/client`; skeleton pin advance check (Phase 8) |
 
 ---
 
 ## 10. Milestone summary
 
-**0.13.0 — All phases**
-
-Implementation order (phases are code-dependency ordering, not release gates):
-
 ```
-Phase 0 (skeleton package) ──────────────────────────────► prerequisite for all
-Phase 1 (RuntimeContext)   ──────────────────────────────► prerequisite for 2–8
-Phase 2 (connections)      ──┐
-Phase 3 (landing)          ──┼─► parallelizable ──────────► prerequisite for 5–8
-Phase 4 (control plane split) ┘
-Phase 5 (assistant-container) ─ needs 0, 1, 4 ──────────► prerequisite for 7–8
-Phase 6 (PWA)              ─── needs 1, 2, 3 ────────────► prerequisite for 7–8
-Phase 7 (security tests)   ─── needs 1–6 ───────────────► prerequisite for 8
-Phase 8 (release cleanup)  ─── needs all ───────────────► ships in 0.13.0
+Phase 0 (skeleton package)        ✅ DONE (#508)
+Phase 1 (RuntimeContext)          ─────────────► prerequisite for everything below
+Phase 1.5 (openpalm admin)        ─ tiny, ships with Phase 1
+Phase 2 (connections + untangle)  ──┐
+Phase 3 (landing + chrome untangle)─┼─► parallelizable ─► prerequisite for 5
+Phase 4 (control plane split)     ──┘
+Phase 5 (client + ui-kit extraction, assistant-container) ─► prerequisite for 6
+Phase 6 (PWA, two install origins) ─ needs 5
+Phase 6.5 (guardian TLS + CORS)   ─ parallel to 5/6; gates the phone story
+Phase 7 (security tests)          ─ needs 1–6.5
+Phase 8 (release integration)     ─ needs all
 ```
 
-No 0.14.0 split. The split was a staged-rollout hedge for large installs; it does not apply here.
+0.13.0 target: Phases 1–4 + 1.5. Phases 5–6.5 land in 0.13.0 only if it stays light;
+otherwise they open 0.14.0. (The original "all phases in 0.13.0" call predates the
+client-split re-scope; re-evaluated at Phase 4 completion.)
 
 ---
 
 ## 11. Acceptance criteria
-
-**Skeleton delivery:**
-- `@openpalm/skeleton` resolves from bundled npm dep in CLI and Electron (no network call needed for CLI path)
-- `OPENPALM_REPO_ROOT` still works for local dev
-- GitHub raw fallback is gone; Electron extraResources skeleton is gone
-- `SHIPPED_DEFAULT_HASHES` values are unchanged; `isUnmodifiedDefault` still works correctly
-- `manifest.json` drives asset category logic in `core-assets.ts`
-- `@openpalm/skeleton` publishes before `@openpalm/lib` in the release DAG
 
 **Capability system:**
 - `resolveCapabilities()` is the only capability logic; all components call `hasCapability()` only
@@ -673,14 +773,16 @@ No 0.14.0 split. The split was a staged-rollout hedge for large installs; it doe
 
 **Host modes:**
 - Electron app: full host management, all features
-- Browser to host UI: full host management when authenticated
-- Browser to assistant-container URL: chat + assistant settings only; `/api/host/*` returns 403
-- PWA: install prompt works; add/switch remote connections; no host controls visible or callable
+- `openpalm admin`: full host management from a browser on the host, loopback-only, no Electron
+- Browser to assistant-container URL: chat (+ assistant settings when Slice B ships); no host-admin code in the artifact
+- PWA (localhost): installable on the host machine with zero TLS setup
+- PWA (hosted): installable on a phone from the official URL; connects only to HTTPS guardians; pairing is paste-or-scan
 
 **Versioning:**
-- `OP_UI_VERSION` and `OP_SKELETON_VERSION` override the version used by the assistant container
+- `OP_CLIENT_VERSION` / `OP_SKELETON_VERSION` override the versions used by the assistant container
 - Neither ever silently falls back to `latest`
 - `docker restart` with a new version env var picks up the new artifact
+- Hosted client ↔ instance skew is handled by the `/api/runtime` contract handshake
 
 **Release:**
-- All three host modes smoke-tested before publishing each release
+- electron-host, host-ui, assistant-container, and both PWA install paths smoke-tested before publishing each release
