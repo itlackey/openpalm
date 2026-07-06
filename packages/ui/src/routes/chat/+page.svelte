@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
+	import VoiceStatusStrip from '$lib/components/chat/VoiceStatusStrip.svelte';
 	import SessionList from '$lib/components/chat/SessionList.svelte';
 	import ToolLog from '$lib/components/chat/ToolLog.svelte';
 	import Presence from '$lib/components/chat/Presence.svelte';
@@ -453,6 +454,7 @@
 
 <!-- composer -->
 <div class="s-base" inert={toolDrawerOpen || gardenOpen}>
+	<VoiceStatusStrip />
 	<ChatInput
 		sending={chat.sending}
 		questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
