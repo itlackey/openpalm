@@ -55,6 +55,7 @@ import { isUserFacingTool } from './tool-strip.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
+import { playAck } from '$lib/voice/earcon.js';
 import { extractSpeakableChunks } from '$lib/voice/sentence-stream.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
 import { mapAssistantError } from './assistant-error.js';
@@ -62,34 +63,6 @@ import { mapAssistantError } from './assistant-error.js';
 type EndpointId = string;
 type SessionId = string;
 const STREAM_TURN_TIMEOUT_MS = 150_000;
-
-/**
- * Spoken acknowledgements read while a turn is in flight. Plain strings —
- * no LLM round trip. Kept short so they finish well before the real reply.
- */
-export const ACK_PHRASES = [
-	'On it.',
-	'Let me take a look.',
-	'One moment.',
-	'Sure — checking now.',
-	'Give me a second.',
-	'Looking into it.',
-	'Right — on it.',
-	'Let me work on that.',
-];
-
-let lastAckIndex = -1;
-
-/** Random ack phrase, never the same one twice in a row. */
-function nextAckPhrase(): string {
-	if (ACK_PHRASES.length === 1) return ACK_PHRASES[0];
-	let index = lastAckIndex;
-	while (index === lastAckIndex) {
-		index = Math.floor(Math.random() * ACK_PHRASES.length);
-	}
-	lastAckIndex = index;
-	return ACK_PHRASES[index];
-}
 
 export type LiveToolState = ToolStripEntry;
 
@@ -376,8 +349,8 @@ class ChatService {
 
 	/**
 	 * Speak `text` via auto-TTS iff the browser supports it and the operator
-	 * has enabled auto-speak. Single guard shared by the ack and the reply so
-	 * the `ttsSupported && ttsAutoEnabled` check lives in one place.
+	 * has enabled auto-speak. Single guard for spoken replies so the
+	 * `ttsSupported && ttsAutoEnabled` check lives in one place.
 	 */
 	private maybeSpeak(text: string): void {
 		if (!voiceState.ttsSupported || !voiceState.ttsAutoEnabled) return;
@@ -741,7 +714,11 @@ class ChatService {
 		this._resetPendingRenderState();
 		this.error = '';
 		this.sending = true;
-		this.maybeSpeak(nextAckPhrase());
+		// Audible "message sent" ack. Gated on the spoken-responses toggle only
+		// (it governs all audible feedback) — not on ttsSupported, since the
+		// earcon needs no TTS engine. Playing inside the send-click gesture
+		// also primes the autoplay policy for the reply's TTS audio.
+		if (voiceState.ttsAutoEnabled) playAck();
 
 		try {
 			if (this._unsubscribeEvents && this.liveConnected) {

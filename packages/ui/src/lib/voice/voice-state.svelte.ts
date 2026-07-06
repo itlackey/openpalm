@@ -113,6 +113,32 @@ const CONVERSATION_UTTERANCE_SILENCE_MS = 800;
 /** Hard cap on a single VAD-detected speech segment (remote engine). */
 const CONVERSATION_SEGMENT_MAX_MS = 30_000;
 
+// Once per page load — the voice container's first synthesis is slow while
+// it loads its model, so without a warm-up the first real utterance falls
+// back to the OS browser voice.
+let ttsWarmupFired = false;
+
+/**
+ * Fire-and-forget one priming POST to /api/speak so the voice container is
+ * warm before the first real utterance. The response body is discarded and
+ * the audio never plays. Server-TTS engines only — browser TTS has no
+ * container to warm.
+ */
+function warmUpTts(): void {
+	if (ttsWarmupFired) return;
+	if (voiceState.ttsEngine !== 'remote' && voiceState.ttsEngine !== 'openpalm-voice') return;
+	if (typeof window === 'undefined') return;
+	ttsWarmupFired = true;
+	void fetch('/api/speak', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		credentials: 'include',
+		body: JSON.stringify({ text: 'ok' }),
+	}).catch(() => {
+		/* warm-up is best-effort */
+	});
+}
+
 /** Toggle the global auto-TTS flag and persist to localStorage. */
 export function setTtsAutoEnabled(value: boolean): void {
 	const wasEnabled = voiceState.ttsAutoEnabled;
@@ -136,6 +162,7 @@ export function setTtsAutoEnabled(value: boolean): void {
 	// the toggle was already on.
 	if (!wasEnabled) {
 		audioPlayback.primeForAutoplay();
+		warmUpTts();
 	}
 }
 
@@ -503,6 +530,7 @@ export function startConversation(onUtterance: (text: string) => void): void {
 	}
 
 	cancelSingleShot();
+	warmUpTts();
 	voiceState.errorMessage = '';
 	voiceState.conversationActive = true;
 	conversationOnUtterance = onUtterance;
@@ -655,6 +683,11 @@ async function startConversationVad(): Promise<void> {
 			onSpeechEnd: () => {
 				void finishConversationSegment();
 			},
+			// While the assistant is speaking the VAD applies its strict config
+			// (higher threshold, longer sustain) so TTS bleed and brief noise
+			// can't open segments mid-reply. Injected as a callback so vad.ts
+			// stays free of store imports.
+			isAssistantSpeaking: () => voiceState.status === 'speaking',
 		});
 	} catch (err) {
 		voiceState.errorMessage = err instanceof Error ? err.message : 'Failed to start listening.';
@@ -673,9 +706,10 @@ async function startConversationVad(): Promise<void> {
 
 function handleConversationSpeechStart(): void {
 	if (!voiceState.conversationActive || !conversationVad || conversationSegment) return;
-	// Barge-in: speech over TTS playback cuts the assistant off and the
-	// segment is captured normally.
-	if (voiceState.status === 'speaking') stopSpeaking();
+	// Barge-in is transcript-confirmed: playback is NOT cut here — a VAD
+	// speech-start can be background noise. The segment is captured and
+	// transcribed; only a non-empty transcript stops playback (see
+	// finishConversationSegment).
 	try {
 		conversationSegment = recordFromStream(conversationVad.stream);
 	} catch (err) {
@@ -724,6 +758,15 @@ async function finishConversationSegment(): Promise<void> {
 		});
 		const trimmed = transcript.trim();
 		if (trimmed && conversationOnUtterance && voiceState.conversationActive) {
+			// Transcript-confirmed barge-in: only now that real speech is
+			// confirmed does playback stop. This also covers queued TTS chunks
+			// still playing after the turn ended — sendUtterance's stopTurn
+			// path only stops speech while a turn is in flight. A noise-only
+			// segment (empty transcript) never touches playback.
+			stopSpeaking();
+			// stopSpeaking forced status to 'idle'; the mic never stopped, so
+			// re-arm before delivering.
+			voiceState.status = 'recording';
 			conversationOnUtterance(trimmed);
 		}
 	} catch (err) {

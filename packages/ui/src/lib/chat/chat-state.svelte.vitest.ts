@@ -15,6 +15,10 @@ vi.mock('$lib/voice/voice-state.svelte.js', () => ({
   stopSpeaking: vi.fn(),
 }));
 
+vi.mock('$lib/voice/earcon.js', () => ({
+  playAck: vi.fn(),
+}));
+
 vi.mock('$lib/api.js', () => ({
   abortChatTurn: vi.fn(),
   createSession: vi.fn(),
@@ -44,10 +48,11 @@ vi.mock('./session-events.js', () => ({
 
 import * as api from '$lib/api.js';
 import * as voice from '$lib/voice/voice-state.svelte.js';
+import * as earcon from '$lib/voice/earcon.js';
 import * as sse from './session-events.js';
 import type { SessionSummary, ChatMessage } from '$lib/types.js';
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
-import { chat, ACK_PHRASES } from './chat-state.svelte.js';
+import { chat } from './chat-state.svelte.js';
 
 const mocked = {
   abortChatTurn: vi.mocked(api.abortChatTurn),
@@ -76,6 +81,7 @@ beforeEach(() => {
   mocked.listSessions.mockReset();
 	mocked.sendChatMessage.mockReset();
 	vi.mocked(voice.speakText).mockReset();
+	vi.mocked(earcon.playAck).mockReset();
 	voice.voiceState.ttsSupported = false;
 	voice.voiceState.ttsAutoEnabled = false;
 	sseCaptured.handlers = null;
@@ -216,7 +222,7 @@ describe('send', () => {
 		expect(second.text).toBe('pong');
 	});
 
-	it('speaks an acknowledgement and then the full reply on the non-streaming path when auto-TTS is enabled', async () => {
+	it('plays the ack earcon and speaks the full reply on the non-streaming path when auto-TTS is enabled', async () => {
 		voice.voiceState.ttsSupported = true;
 		voice.voiceState.ttsAutoEnabled = true;
 		mocked.listSessions.mockResolvedValueOnce([]);
@@ -229,11 +235,13 @@ describe('send', () => {
 
 		await chat.send('Please help.');
 
-		const ackCall = vi.mocked(voice.speakText).mock.calls[0];
-		expect(ACK_PHRASES).toContain(ackCall[0]);
+		// The ack is the earcon — never a spoken phrase. The first speakText
+		// in a turn is reply text.
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
 		// Nothing streamed, so the whole reply is spoken at finalize — text
 		// only, no options (the LLM speech-prep plumbing is gone).
-		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(2, 'Here is the answer.');
+		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(1, 'Here is the answer.');
 	});
 
 	it('speaks completed sentences as they stream and only the remainder at turn end', async () => {
@@ -253,9 +261,11 @@ describe('send', () => {
 			type: 'message.part.delta',
 			properties: { sessionID: 'sess1', delta: 'The first sentence is finished here. And then ' },
 		});
-		// The completed sentence is spoken immediately (call 1 is the ack).
+		// The completed sentence is spoken immediately (the ack is the earcon,
+		// so the first speakText is the first reply chunk).
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(
-			2,
+			1,
 			'The first sentence is finished here.'
 		);
 
@@ -272,10 +282,10 @@ describe('send', () => {
 		// finalizeTurn speaks only the unspoken remainder — never the full
 		// reply again.
 		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(
-			3,
+			2,
 			'And then the tail arrives without punctuation'
 		);
-		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(3);
+		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(2);
 
 		const assistantEntry = chat.entries.find(
 			(e) => !e.type && (e as ChatMessage).role === 'assistant'
@@ -307,6 +317,8 @@ describe('send', () => {
 		await sendPromise;
 
 		expect(vi.mocked(voice.speakText)).not.toHaveBeenCalled();
+		// The toggle governs all audible feedback — the earcon stays silent too.
+		expect(vi.mocked(earcon.playAck)).not.toHaveBeenCalled();
 	});
 
 	it('is rejected when already sending', async () => {
@@ -349,9 +361,9 @@ describe('send', () => {
 	});
 
 	// finalizeTurn decision: an empty reply collapses to '(no response)' and
-	// must NOT be spoken even with auto-TTS on (only the ack is spoken). This
-	// is the same guard the streaming path uses, now shared via finalizeTurn.
-	it('renders (no response) and speaks only the ack for an empty non-streaming reply', async () => {
+	// must NOT be spoken even with auto-TTS on (only the earcon ack fires).
+	// This is the same guard the streaming path uses, shared via finalizeTurn.
+	it('renders (no response) and speaks nothing for an empty non-streaming reply', async () => {
 		voice.voiceState.ttsSupported = true;
 		voice.voiceState.ttsAutoEnabled = true;
 		mocked.listSessions.mockResolvedValueOnce([]);
@@ -367,10 +379,10 @@ describe('send', () => {
 		) as ChatMessage | undefined;
 		expect(assistantEntry?.text).toBe('(no response)');
 
-		// Only the ack is spoken; the '(no response)' reply is suppressed.
-		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
-		const ackCall = vi.mocked(voice.speakText).mock.calls[0];
-		expect(ACK_PHRASES).toContain(ackCall[0]);
+		// Only the earcon ack fires; the '(no response)' reply is suppressed
+		// and speakText is never called for an ack.
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).not.toHaveBeenCalled();
 	});
 });
 
@@ -414,10 +426,9 @@ describe('stopTurn', () => {
 		) as ChatMessage | undefined;
 		expect(assistantEntry?.text).toBe('Once upon a time');
 
-		// Only the ack was spoken — the partial reply is never sent to TTS.
-		expect(vi.mocked(voice.speakText)).toHaveBeenCalledTimes(1);
-		const ackCall = vi.mocked(voice.speakText).mock.calls[0];
-		expect(ACK_PHRASES).toContain(ackCall[0]);
+		// Only the earcon ack fired — the partial reply is never sent to TTS.
+		expect(vi.mocked(earcon.playAck)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(voice.speakText)).not.toHaveBeenCalled();
 	});
 
 	it('appends a "Stopped." note and drops no assistant entry when nothing streamed yet', async () => {
@@ -517,9 +528,10 @@ describe('sendUtterance', () => {
 				delta: 'The first sentence is done. And the rest is coming',
 			},
 		});
-		// Streamed TTS spoke the completed sentence (call 1 is the ack).
+		// Streamed TTS spoke the completed sentence (the ack is the earcon,
+		// so call 1 is the first reply chunk).
 		expect(vi.mocked(voice.speakText)).toHaveBeenNthCalledWith(
-			2,
+			1,
 			'The first sentence is done.'
 		);
 

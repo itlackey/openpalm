@@ -38,6 +38,37 @@ export const DEFAULT_VAD_CONFIG: VadConfig = {
 	frameIntervalMs: 50,
 };
 
+/**
+ * Ambient RMS frames collected before detection goes live (~1s at the
+ * default 50ms frame interval). No speech events fire during this window.
+ */
+export const CALIBRATION_FRAMES = 20;
+
+/**
+ * Derive the effective speech threshold from ambient RMS samples collected
+ * during the calibration window. Uses the 20th percentile of the samples as
+ * the noise floor so a user who starts talking during calibration cannot
+ * inflate it — loud speech frames land in the upper percentiles and are
+ * ignored. The base threshold is a hard lower bound, so a very quiet room
+ * never loosens the gate below the tuned default.
+ */
+export function calibrateThreshold(samples: number[], base: number): number {
+	if (samples.length === 0) return base;
+	const sorted = [...samples].sort((a, b) => a - b);
+	const floor = sorted[Math.floor((sorted.length - 1) * 0.2)];
+	return Math.max(base, floor * 2.75);
+}
+
+/**
+ * Stricter gate applied while the assistant is speaking: 3x the effective
+ * (calibrated) threshold and ~400ms of sustained speech (8 frames at 50ms)
+ * before a start fires, so TTS bleed and brief noise cannot open a segment
+ * mid-reply. End detection keeps the same silence window.
+ */
+export function deriveStrictVadConfig(base: VadConfig): VadConfig {
+	return { ...base, threshold: base.threshold * 3, startFrames: 8 };
+}
+
 export interface VadTrackerState {
 	speaking: boolean;
 	/** Consecutive above-threshold frames observed while not speaking. */
@@ -105,6 +136,11 @@ export interface VadSession {
 export async function startVad(opts: {
 	onSpeechStart: () => void;
 	onSpeechEnd: () => void;
+	/**
+	 * Probed once per frame; while true the strict (while-speaking) config
+	 * applies. A callback keeps this module free of store imports.
+	 */
+	isAssistantSpeaking?: () => boolean;
 	config?: VadConfig;
 }): Promise<VadSession> {
 	if (typeof window === 'undefined' || !navigator?.mediaDevices?.getUserMedia) {
@@ -130,7 +166,7 @@ export async function startVad(opts: {
 		throw new Error(`Microphone error: ${(err as Error)?.message ?? String(err)}`, { cause: err });
 	}
 
-	const config = opts.config ?? DEFAULT_VAD_CONFIG;
+	const baseConfig = opts.config ?? DEFAULT_VAD_CONFIG;
 	const ctx = new Ctor();
 	const source = ctx.createMediaStreamSource(stream);
 	const analyser = ctx.createAnalyser();
@@ -139,13 +175,34 @@ export async function startVad(opts: {
 
 	const samples = new Uint8Array(analyser.fftSize);
 	let state = initialVadState();
+	// Noise-floor calibration: the first CALIBRATION_FRAMES frames only
+	// collect ambient RMS — no detection runs — then the effective config
+	// (and the strict while-speaking config derived from it) takes over.
+	const calibrationSamples: number[] = [];
+	let config = baseConfig;
+	let strictConfig = deriveStrictVadConfig(baseConfig);
+	let calibrated = false;
 	const timer = setInterval(() => {
 		analyser.getByteTimeDomainData(samples);
-		const next = advanceVad(state, computeRms(samples), config);
+		const rms = computeRms(samples);
+		if (!calibrated) {
+			calibrationSamples.push(rms);
+			if (calibrationSamples.length >= CALIBRATION_FRAMES) {
+				config = {
+					...baseConfig,
+					threshold: calibrateThreshold(calibrationSamples, baseConfig.threshold),
+				};
+				strictConfig = deriveStrictVadConfig(config);
+				calibrated = true;
+			}
+			return;
+		}
+		const active = opts.isAssistantSpeaking?.() ? strictConfig : config;
+		const next = advanceVad(state, rms, active);
 		state = next.state;
 		if (next.event === 'speech-start') opts.onSpeechStart();
 		else if (next.event === 'speech-end') opts.onSpeechEnd();
-	}, config.frameIntervalMs);
+	}, baseConfig.frameIntervalMs);
 
 	return {
 		stream,

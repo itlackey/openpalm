@@ -11,13 +11,18 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Captures the callbacks voice-state hands to the VAD so tests can drive
 // speech-start / speech-end directly.
+type CapturedVadOpts = {
+	onSpeechStart: () => void;
+	onSpeechEnd: () => void;
+	isAssistantSpeaking?: () => boolean;
+};
 const vadCaptured: {
-	opts: { onSpeechStart: () => void; onSpeechEnd: () => void } | null;
+	opts: CapturedVadOpts | null;
 	stop: ReturnType<typeof vi.fn>;
 } = { opts: null, stop: vi.fn() };
 
 vi.mock('./vad.js', () => ({
-	startVad: vi.fn(async (opts: { onSpeechStart: () => void; onSpeechEnd: () => void }) => {
+	startVad: vi.fn(async (opts: CapturedVadOpts) => {
 		vadCaptured.opts = opts;
 		return { stream: {} as MediaStream, stop: vadCaptured.stop };
 	}),
@@ -324,13 +329,71 @@ describe('conversation mode — remote engine', () => {
 		expect(onUtterance).not.toHaveBeenCalled();
 	});
 
-	test('barge-in: speech start while speaking cuts playback and records', async () => {
+	test('passes an isAssistantSpeaking probe that tracks status', async () => {
 		await startRemote();
-
+		const probe = vadCaptured.opts!.isAssistantSpeaking;
+		expect(probe).toBeTypeOf('function');
 		voiceState.status = 'speaking';
-		vadCaptured.opts!.onSpeechStart();
-		expect(voiceState.status).toBe('recording');
-		expect(recorderCaptured.segments.length).toBe(1);
+		expect(probe!()).toBe(true);
+		voiceState.status = 'recording';
+		expect(probe!()).toBe(false);
+	});
+
+	test('speech start while speaking captures a segment without touching playback', async () => {
+		const cancelSpy = vi.spyOn(window.speechSynthesis, 'cancel');
+		try {
+			await startRemote();
+
+			voiceState.status = 'speaking';
+			vadCaptured.opts!.onSpeechStart();
+			// The segment opens, but barge-in is transcript-confirmed — playback
+			// is left alone until the transcript proves it was real speech.
+			expect(recorderCaptured.segments.length).toBe(1);
+			expect(cancelSpy).not.toHaveBeenCalled();
+		} finally {
+			cancelSpy.mockRestore();
+		}
+	});
+
+	test('a noise-only cycle while speaking never stops playback and sends nothing', async () => {
+		vi.mocked(api.transcribeAudio).mockResolvedValueOnce('   ');
+		const cancelSpy = vi.spyOn(window.speechSynthesis, 'cancel');
+		try {
+			const onUtterance = await startRemote();
+
+			voiceState.status = 'speaking';
+			vadCaptured.opts!.onSpeechStart();
+			vadCaptured.opts!.onSpeechEnd();
+			await vi.waitFor(() => {
+				expect(api.transcribeAudio).toHaveBeenCalledOnce();
+				expect(voiceState.status).toBe('recording');
+			});
+			// Empty transcript = noise: discarded silently, playback untouched.
+			expect(onUtterance).not.toHaveBeenCalled();
+			expect(cancelSpy).not.toHaveBeenCalled();
+		} finally {
+			cancelSpy.mockRestore();
+		}
+	});
+
+	test('a confirmed transcript while speaking stops playback and delivers', async () => {
+		const cancelSpy = vi.spyOn(window.speechSynthesis, 'cancel');
+		try {
+			const onUtterance = await startRemote();
+
+			voiceState.status = 'speaking';
+			vadCaptured.opts!.onSpeechStart();
+			vadCaptured.opts!.onSpeechEnd();
+			await vi.waitFor(() => {
+				expect(onUtterance).toHaveBeenCalledWith('hello from vad');
+			});
+			// stopSpeaking ran (speechSynthesis.cancel is part of stop()) and
+			// the loop re-armed.
+			expect(cancelSpy).toHaveBeenCalled();
+			expect(voiceState.status).toBe('recording');
+		} finally {
+			cancelSpy.mockRestore();
+		}
 	});
 
 	test('the 30s hard cap finishes a stuck segment', async () => {

@@ -55,6 +55,36 @@ describe('voice-state auto-TTS toggle', () => {
 	});
 });
 
+describe('voice-state TTS warm-up', () => {
+	const originalFetch = globalThis.fetch;
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		voiceState.ttsEngine = 'disabled';
+		voiceState.ttsAutoEnabled = false;
+	});
+
+	// The warm-up fires at most once per page load (module-level flag). This
+	// is the only test that consumes it — the toggle tests above run with the
+	// 'disabled' engine, where the warm-up is skipped without consuming it.
+	test('enabling auto-TTS with a server engine fires one warm-up POST per page load', () => {
+		voiceState.ttsEngine = 'openpalm-voice';
+		voiceState.ttsAutoEnabled = false;
+		const fetchMock = vi.fn(async () => new Response('', { status: 404 }));
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		setTtsAutoEnabled(true);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(String(url)).toBe('/api/speak');
+		expect(JSON.parse(String(init?.body))).toEqual({ text: 'ok' });
+
+		// Toggling off and back on must not fire a second warm-up.
+		setTtsAutoEnabled(false);
+		setTtsAutoEnabled(true);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('voice-state speakText error surfacing', () => {
 	const originalFetch = globalThis.fetch;
 	afterEach(() => {
