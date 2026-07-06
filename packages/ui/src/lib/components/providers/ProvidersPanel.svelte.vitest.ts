@@ -79,14 +79,14 @@ describe('ProvidersPanel — assistant available', () => {
 });
 
 describe('ProvidersPanel — OpenAI-compatible edge API key (S.1b)', () => {
-  // URL-aware fetch: /admin/providers returns the provider list; the secret-file
+  // URL-aware fetch: /api/host/providers returns the provider list; the secret-file
   // endpoint returns the op_api_key value only when explicitly requested.
   function mockFetchWithSecret(secretValue: string) {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((input: string | URL) => {
         const url = typeof input === 'string' ? input : input.toString();
-        if (url.includes('/admin/secrets/op_api_key')) {
+        if (url.includes('/api/host/secrets/op_api_key')) {
           return Promise.resolve({ ok: true, json: async () => ({ name: 'op_api_key', value: secretValue }) });
         }
         return Promise.resolve({ ok: true, json: async () => availableResponse });

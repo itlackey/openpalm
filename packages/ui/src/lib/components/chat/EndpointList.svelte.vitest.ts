@@ -32,7 +32,7 @@ describe('EndpointList', () => {
   test('shows the local assistant management link above assistant connections', async () => {
     render(EndpointList);
 
-    await expect.element(page.getByRole('link', { name: 'Manage this assistant…' })).toHaveAttribute('href', '/admin');
+    await expect.element(page.getByRole('link', { name: 'Manage this assistant…' })).toHaveAttribute('href', '/host');
 
     const linkLabels = Array.from(document.querySelectorAll<HTMLElement>('.endpoint-list a.list-item.link'))
       .map((el) => el.textContent?.trim() ?? '');
