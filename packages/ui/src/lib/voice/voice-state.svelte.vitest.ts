@@ -193,6 +193,62 @@ describe('voice-state queue', () => {
 		expect(voiceState.autoplayBlocked).toBe(false);
 	});
 
+	test('a stale browser-TTS onend after stopSpeaking does not pump the queue or flip status', async () => {
+		// Minimal SpeechSynthesisUtterance/speechSynthesis stand-ins — jsdom
+		// ships neither, and the test needs to fire a captured utterance's
+		// handlers by hand (mirrors the speechSynthesis hide/restore pattern
+		// in the error-surfacing suite above).
+		class FakeUtterance {
+			text: string;
+			onstart: (() => void) | null = null;
+			onend: (() => void) | null = null;
+			onerror: (() => void) | null = null;
+			constructor(text: string) {
+				this.text = text;
+			}
+		}
+		const spoken: FakeUtterance[] = [];
+		const fakeSynth = {
+			speak: vi.fn((u: FakeUtterance) => { spoken.push(u); }),
+			cancel: vi.fn(),
+		};
+		const g = globalThis as unknown as Record<string, unknown>;
+		const originalUtterance = g.SpeechSynthesisUtterance;
+		const originalSynth = (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+		g.SpeechSynthesisUtterance = FakeUtterance;
+		(window as unknown as { speechSynthesis: unknown }).speechSynthesis = fakeSynth;
+		try {
+			voiceState.ttsEngine = 'browser';
+			await speakText('first utterance, later cancelled');
+			expect(fakeSynth.speak).toHaveBeenCalledTimes(1);
+			const stale = spoken[0];
+
+			// stop() bumps the generation and cancels — the browser will still
+			// deliver the cancelled utterance's onend asynchronously.
+			stopSpeaking();
+
+			// A NEW burst starts: one playing, one queued behind it.
+			await speakText('second utterance after the stop');
+			await speakText('third utterance held in the queue');
+			expect(fakeSynth.speak).toHaveBeenCalledTimes(2);
+			spoken[1].onstart?.();
+			expect(voiceState.status).toBe('speaking');
+
+			// The stale onend fires late: it must not pump the queued third
+			// utterance under the playing second one, nor flip status to idle.
+			stale.onend?.();
+			expect(fakeSynth.speak).toHaveBeenCalledTimes(2);
+			expect(voiceState.status).toBe('speaking');
+		} finally {
+			g.SpeechSynthesisUtterance = originalUtterance;
+			if (originalSynth !== undefined) {
+				(window as unknown as { speechSynthesis: unknown }).speechSynthesis = originalSynth;
+			} else {
+				delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+			}
+		}
+	});
+
 	test('queue overflow pushes an info notification once per burst', async () => {
 		voiceState.ttsEngine = 'remote';
 		hangSynthesis();

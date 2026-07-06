@@ -73,6 +73,49 @@ describe('extractSpeakableChunks', () => {
     expect(third).toEqual({ chunks: [], nextOffset: second.nextOffset });
   });
 
+  test('does not cut after a title abbreviation mid-sentence', () => {
+    // Without the guard this cut after "Dr." — the fragment before it is
+    // past MIN_CHUNK_CHARS, so the short-fragment merge would not save it.
+    const { chunks } = extractSpeakableChunks(
+      'The patient finally saw Dr. Smith about it yesterday. And a tail',
+      0,
+    );
+    expect(chunks).toEqual(['The patient finally saw Dr. Smith about it yesterday.']);
+  });
+
+  test('does not cut at the final period of a multi-part abbreviation', () => {
+    const { chunks } = extractSpeakableChunks(
+      'There are several good options here, e.g. the blue one works fine. ',
+      0,
+    );
+    expect(chunks).toEqual(['There are several good options here, e.g. the blue one works fine.']);
+  });
+
+  test('the numero abbreviation is case-sensitive — "No." holds, "no." cuts', () => {
+    const held = extractSpeakableChunks(
+      'The winning entry was listed as No. 5 in the official catalog. ',
+      0,
+    );
+    expect(held.chunks).toEqual(['The winning entry was listed as No. 5 in the official catalog.']);
+
+    // Lowercase "no" is an ordinary word that really ends the sentence.
+    const cutBuffer = 'The final answer to that question is no. Moving on';
+    const cut = extractSpeakableChunks(cutBuffer, 0);
+    expect(cut.chunks).toEqual(['The final answer to that question is no.']);
+    expect(cutBuffer.slice(cut.nextOffset).trim()).toBe('Moving on');
+  });
+
+  test('the abbreviation guard does not suppress a real sentence end', () => {
+    // "doctor" ends with the same letters as no abbreviation in the list —
+    // whole-token matching must let this genuine boundary cut.
+    const buffer = 'I finally saw the doctor today. He waved back at me from across the room. ';
+    const { chunks } = extractSpeakableChunks(buffer, 0);
+    expect(chunks).toEqual([
+      'I finally saw the doctor today.',
+      'He waved back at me from across the room.',
+    ]);
+  });
+
   test('empty and boundary-free buffers are no-ops', () => {
     expect(extractSpeakableChunks('', 0)).toEqual({ chunks: [], nextOffset: 0 });
     expect(extractSpeakableChunks('no terminal punctuation yet', 0)).toEqual({

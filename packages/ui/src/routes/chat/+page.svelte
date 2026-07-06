@@ -541,9 +541,17 @@
 	</div>
 {/if}
 
-<!-- jump-to-latest pill: shown when the user has scrolled away mid-stream -->
+<!-- jump-to-latest pill: shown when the user has scrolled away mid-stream.
+     Inert while the drawer or veil owns the top layer, like <main> and .s-base —
+     the fixed pill must not stay clickable/focusable underneath them. -->
 {#if !followingLatest && chat.sending}
-	<button class="s-jump-latest" type="button" aria-label="Jump to latest" onclick={jumpToLatest}>
+	<button
+		class="s-jump-latest"
+		type="button"
+		aria-label="Jump to latest"
+		inert={toolDrawerOpen || gardenOpen}
+		onclick={jumpToLatest}
+	>
 		↓ latest
 	</button>
 {/if}

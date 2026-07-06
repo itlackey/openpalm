@@ -66,7 +66,9 @@ export class AudioPlaybackController {
 
   // Bumped by stop() so a playOne suspended on the synthesis fetch can
   // detect the cancellation when it resumes and discard the audio instead
-  // of playing an utterance the user already silenced.
+  // of playing an utterance the user already silenced. Browser-TTS
+  // utterance callbacks carry the same check: a cancelled utterance's
+  // late onend/onerror must not touch state owned by a newer generation.
   private generation = 0;
 
   // Have we already toasted the user about an overflow drop in the current
@@ -342,12 +344,21 @@ export class AudioPlaybackController {
     // Clear the error if we have a viable browser fallback.
     if (useServer) this.host.errorMessage = '';
     const utterance = new SpeechSynthesisUtterance(speakableText);
-    utterance.onstart = () => { this.host.status = 'speaking'; };
+    // speechSynthesis.cancel() (from stop() or a later playOne) still
+    // delivers onend/onerror for the cancelled utterance asynchronously —
+    // the same generation check as the server path keeps a stale utterance
+    // from pumping the queue under a newer one or flipping host.status.
+    utterance.onstart = () => {
+      if (gen !== this.generation) return;
+      this.host.status = 'speaking';
+    };
     utterance.onend = () => {
+      if (gen !== this.generation) return;
       this.host.status = 'idle';
       this.drainNext();
     };
     utterance.onerror = () => {
+      if (gen !== this.generation) return;
       this.host.status = 'idle';
       this.drainNext();
     };
