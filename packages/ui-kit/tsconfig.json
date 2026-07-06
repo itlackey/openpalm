@@ -1,0 +1,25 @@
+{
+	"// purpose": "Type-check config for `bun run check` (svelte-check). ui-kit is a raw-source package with no build step, so this tsconfig is the ONLY thing giving its ~86 source files TS coverage — the consuming apps' vite builds strip types without checking, and packages/ui's svelte-check only validates ui-kit's public prop surface at usage sites (review finding on P5a, #555).",
+	"// paths": "ui-kit source references a small, deliberately app-provided contract via $lib (notifications/theme-state/focus-trap/error-messages — all client-only modules with zero imports of their own). For type-checking we resolve that contract against packages/ui's implementations; every consuming app must supply the same shapes at the same aliases. This is a types-only mapping — no runtime coupling, and the no-app-coupling hygiene test keeps server-assuming modules out of the allowed set.",
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"lib": ["esnext", "DOM", "DOM.Iterable"],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"strict": true,
+		"allowJs": true,
+		"checkJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"paths": {
+			"$lib": ["../ui/src/lib"],
+			"$lib/*": ["../ui/src/lib/*"]
+		}
+	},
+	"include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
+}

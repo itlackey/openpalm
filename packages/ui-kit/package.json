@@ -18,7 +18,9 @@
     },
     "./theme/*": "./src/lib/theme/*"
   },
+  "//check": "svelte-check gives the raw-source files their ONLY TS coverage: the consuming apps' vite builds strip types without checking, and packages/ui's check only validates ui-kit's public prop surface at usage sites. Must stay 0 errors / 0 warnings (--fail-on-warnings enforces both).",
   "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "bun test"
   },
   "peerDependencies": {
@@ -27,6 +29,8 @@
   "//devDependencies": "svelte/vitest/vitest-browser-svelte back the co-located *.svelte.vitest.ts browser tests, which run through packages/ui's vitest browser project (bun's isolated linker gives each workspace its own node_modules, so the test files' bare imports must resolve from here).",
   "devDependencies": {
     "svelte": "^5.53.5",
+    "svelte-check": "^4.1.1",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.18",
     "vitest-browser-svelte": "^2.0.2"
   }

@@ -11,6 +11,10 @@
  *   - chat state (chat-state or anything under a chat/ module dir)
  *   - the connections store (endpoints-state / connections-state /
  *     connection-state, any rename the store has carried)
+ *   - voice state (voice-state or anything under a voice/ module dir —
+ *     the voice subsystem imports transcribeAudio/fetchVoiceConfig from
+ *     $lib/api, so importing it drags the app's API client into ui-kit
+ *     one hop out; review finding on P5a)
  *
  * CHARACTERIZATION NOTE: this test is GREEN before the P5a move lands
  * (src/ is empty, so the scan has nothing to flag). It is written ahead of
@@ -73,11 +77,19 @@ const FORBIDDEN: { name: string; pattern: RegExp }[] = [
   {
     name: 'connections store',
     pattern: /endpoints-state|connections-state|connection-state/
+  },
+  {
+    // The voice subsystem (voice-state, media-recorder, audio-playback)
+    // imports $lib/api — a server assumption one transitive hop away that
+    // the direct-specifier scan above cannot see. Forbid the whole module
+    // dir so the coupling cannot be reintroduced under a rename.
+    name: 'voice state',
+    pattern: /voice-state|(^|\/)voice\//
   }
 ];
 
 describe('ui-kit source has no app coupling (plan §6.11, §8.10)', () => {
-  test('no source file imports $lib/api, $lib/server, @openpalm/lib, chat state, or the connections store', () => {
+  test('no source file imports $lib/api, $lib/server, @openpalm/lib, chat state, the connections store, or voice state', () => {
     const offenders: string[] = [];
     for (const file of sourceFiles()) {
       const source = readFileSync(file, 'utf-8');

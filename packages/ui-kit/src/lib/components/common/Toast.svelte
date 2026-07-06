@@ -3,33 +3,20 @@
    * Global toast renderer — bottom-right stack of transient notifications.
    *
    * Mounted once in the root layout. Reads from the `notifications`
-   * singleton ($lib/notifications.svelte.ts); any code can push toasts
-   * without owning a component. Also mirrors `voiceState.errorMessage`
-   * into the queue so the voice control's existing error surface keeps
-   * working without a separate code path.
+   * singleton ($lib/notifications.svelte.ts — an app-provided, client-only
+   * queue with no server assumptions); any code can push toasts without
+   * owning a component. Error surfaces that live outside the queue are
+   * mirrored INTO it by app code (e.g. packages/ui's root layout mirrors
+   * `voiceState.errorMessage`) — never from here: this component must stay
+   * presentational, with no reach into app subsystems that carry server
+   * assumptions (plan ui-runtime-modes-plan.md §6.11).
    */
-  import { afterUpdate } from 'svelte';
-  import { voiceState } from '$lib/voice/voice-state.svelte.js';
   import { notifications, type Toast } from '$lib/notifications.svelte.js';
   import IconDone from '../icons/IconDone.svelte';
   import IconInfo from '../icons/IconInfo.svelte';
 
-  // Track the toast id for the current voice error so consecutive
-  // errors update in place instead of stacking.
-  let voiceErrorToastId: string | null = null;
-
-  afterUpdate(() => {
-    const msg = voiceState.errorMessage;
-    if (!msg) return;
-    voiceErrorToastId = notifications.push('error', msg, {
-      replaceId: voiceErrorToastId ?? undefined,
-    });
-    voiceState.errorMessage = '';
-  });
-
   function dismiss(t: Toast): void {
     notifications.dismiss(t.id);
-    if (t.id === voiceErrorToastId) voiceErrorToastId = null;
   }
 
   function kindLabel(t: Toast): string {

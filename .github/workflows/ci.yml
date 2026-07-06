@@ -107,6 +107,9 @@ jobs:
       - name: Type check admin UI
         run: cd packages/ui && bun run check
 
+      - name: Type check UI kit
+        run: cd packages/ui-kit && bun run check
+
       - name: Type check CLI
         run: cd packages/cli && bun run typecheck
 

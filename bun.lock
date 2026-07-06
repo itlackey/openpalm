@@ -128,6 +128,8 @@
       "version": "0.12.52",
       "devDependencies": {
         "svelte": "^5.53.5",
+        "svelte-check": "^4.1.1",
+        "typescript": "^6.0.3",
         "vitest": "^4.0.18",
         "vitest-browser-svelte": "^2.0.2",
       },
