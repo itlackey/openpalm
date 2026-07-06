@@ -41,8 +41,8 @@ async function isAssistantHealthy(): Promise<boolean> {
  *  - Installed, stack up → starts the UI host server (foreground)
  *
  * The UI server runs in the foreground until SIGINT/SIGTERM. This is
- * the canonical way to "run OpenPalm" — no separate `ui`/`admin`
- * subcommand.
+ * the canonical way to "run OpenPalm". `openpalm admin` serves the same
+ * UI with the host admin capability enabled (host-ui mode, loopback-only).
  */
 async function autoRun(opts: BareRunOpts = {}): Promise<void> {
   const isInstalled = classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed';
@@ -83,6 +83,7 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
 // derived from these keys below so adding a subcommand here can never drift
 // out of sync with the bare-command routing table.
 const subCommands = {
+  admin: () => import('./commands/admin.ts').then((m) => m.default),
   install: () => import('./commands/install.ts').then((m) => m.default),
   uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
   update: () => import('./commands/update.ts').then((m) => m.default),

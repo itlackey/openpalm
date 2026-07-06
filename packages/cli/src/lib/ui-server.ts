@@ -13,7 +13,7 @@ import {
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   isRemoteSetupAllowed, waitForReady, restoreUiBackup, UiSupervisor,
 } from '@openpalm/lib';
-import { ensureValidState } from './cli-state.ts';
+import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
 import { DEFAULT_UI_PORT } from './ports.ts';
 
@@ -24,6 +24,14 @@ const STOP_TIMEOUT_MS  = 5_000;
 export interface UIServerOptions {
   port?: number;
   open?: boolean;
+  /**
+   * host-ui admin mode (`openpalm admin`, plan Phase 1.5): enable the admin
+   * capability in the spawned UI child (OP_ENABLE_ADMIN=1 + OP_UI_HOST_MODE=
+   * host-ui) and pin the bind to loopback ALWAYS — OP_ALLOW_REMOTE_SETUP is
+   * ignored and neutralized in the child env, so no non-loopback bind is
+   * possible in this mode (plan §8.3: host admin is never reachable remotely).
+   */
+  adminHostUi?: boolean;
 }
 
 /**
@@ -41,6 +49,7 @@ async function spawnUiChild(
   port: number,
   homeDir: string,
   state: ReturnType<typeof ensureValidState>,
+  adminHostUi = false,
 ): Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }> {
   // Hot-swap the skeleton (managed system/ tree) before spawning.
   console.log('Checking for skeleton update...');
@@ -92,11 +101,20 @@ async function spawnUiChild(
   // Default: bind loopback with a pinned ORIGIN. With OP_ALLOW_REMOTE_SETUP the
   // server binds all interfaces and lets adapter-node derive the origin from the
   // request Host header (HOST_HEADER), so it works under whatever LAN host/IP the
-  // operator reaches it by.
-  const remote = isRemoteSetupAllowed();
+  // operator reaches it by. Admin (host-ui) mode is loopback ALWAYS: the
+  // remote-setup escape hatch never applies to the host admin surface (§8.3).
+  const remote = !adminHostUi && isRemoteSetupAllowed();
   const networkEnv = remote
     ? { HOST: '0.0.0.0', PORT: String(port), HOST_HEADER: 'host', PROTOCOL_HEADER: 'x-forwarded-proto' }
     : { HOST: '127.0.0.1', PORT: String(port), ORIGIN: `http://127.0.0.1:${port}` };
+  // Admin (host-ui) mode: enable the admin capability in the UI child and
+  // neutralize OP_ALLOW_REMOTE_SETUP (spread in from process.env below) so
+  // neither the respawned `openpalm ui` child nor the UI server's own
+  // remote-setup relaxations (Host/Origin allowlist, setup gate) can re-derive
+  // a remote bind.
+  const adminEnv = adminHostUi
+    ? { OP_ENABLE_ADMIN: '1', OP_UI_HOST_MODE: 'host-ui', OP_ALLOW_REMOTE_SETUP: '0' }
+    : {};
   const proc = Bun.spawn(
     [process.execPath, ...childArgs],
     {
@@ -108,6 +126,7 @@ async function spawnUiChild(
         // own cwd (packages/ui/build/).
         OP_HOME:                homeDir,
         ...networkEnv,
+        ...adminEnv,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
         // Tell the UI child it has a supervisor that can respawn it on demand
         // (design §6.2). The admin "install UI version" route signals SIGUSR2 to
@@ -257,12 +276,15 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   const homeDir = resolveOpenPalmHome();
 
-  const state = ensureValidState();
+  // Admin (host-ui) mode serves even on a machine with no install — the UI's
+  // existing setup guard lands on /setup (the CLI does not reimplement wizard
+  // logic). The bare serve path keeps requiring a valid install.
+  const state = opts.adminHostUi ? resolveServeState() : ensureValidState();
   const uiUrl = `http://localhost:${port}`;
 
   const { supervisor, stop: stopUiProc } = createCliUiSupervisor({
     port,
-    spawnChild: () => spawnUiChild(port, homeDir, state),
+    spawnChild: () => spawnUiChild(port, homeDir, state, opts.adminHostUi === true),
     restoreBackup: (backupDir) => restoreUiBackup(state.dataDir, backupDir),
   });
 
