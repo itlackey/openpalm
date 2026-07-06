@@ -66,9 +66,9 @@ export async function saveAssistantSettings(input: {
   projectName: string;
   lanExposureEnabled: boolean;
   personaContent: string;
-}): Promise<{ ok: boolean; projectName: string; lanExposureEnabled: boolean; stackEnvPath: string; personaPath: string; personaContent: string }> {
+}): Promise<{ ok: boolean; projectName: string; projectRenamed: boolean; lanExposureEnabled: boolean; stackEnvPath: string; personaPath: string; personaContent: string }> {
   const res = await requireOk(await request('PUT', '/admin/assistant', input));
-  return (await res.json()) as { ok: boolean; projectName: string; lanExposureEnabled: boolean; stackEnvPath: string; personaPath: string; personaContent: string };
+  return (await res.json()) as { ok: boolean; projectName: string; projectRenamed: boolean; lanExposureEnabled: boolean; stackEnvPath: string; personaPath: string; personaContent: string };
 }
 
 // ── AKM Health (dashboard metrics) ────────────────────────────────────────────

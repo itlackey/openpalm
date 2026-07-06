@@ -196,7 +196,7 @@ ENV PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/openco
 # and drops the managed tool dirs from the ENV PATH above. Re-prepend them via
 # profile.d so agent CLIs (opencode/akm/claude/codex/copilot/pi) resolve in
 # login shells too.
-RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:$PATH"\n' \
+RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/opt/assistant-tools/bin:/opt/google-cloud-sdk/bin:$PATH"\n' \
       > /etc/profile.d/openpalm-tools.sh
 
 # OpenCode config (opencode.jsonc, openpalm.md, system.md) lives in

@@ -27,6 +27,10 @@ import { hasArmedSnapshot, snapshotCurrentState, clearArmedSnapshot } from "./ro
 import { checkDocker, composePreflight, applyStack, composeConfigServices, buildComposePreflightError } from "./docker.js";
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
+import { teardownRenamedProject } from "./project-rename.js";
+import { createLogger } from "../logger.js";
+
+const lifecycleLogger = createLogger("lifecycle");
 import { acquireInstallLock, releaseInstallLock } from "./install-lock.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import { getAddonServiceNames, listEnabledAddonIds, migrateProfileOnlyAddonEnablement, pruneRemovedAddonState } from "./addons.js";
@@ -270,6 +274,20 @@ function reconcileStack(
     });
 
     if (activating && composes) {
+      // Project rename (#540): stop the recorded outgoing project before the
+      // stack comes up under the new name, or the old containers keep running
+      // (and holding host ports) unaddressable by any further compose call.
+      // A blocked teardown aborts the upgrade — continuing would bring up a
+      // second stack colliding with the still-running old project.
+      const renameTeardown = await teardownRenamedProject(state);
+      if (renameTeardown.warning) lifecycleLogger.warn(renameTeardown.warning);
+      if (renameTeardown.blocked) {
+        throw new Error(renameTeardown.warning ?? 'Project rename teardown failed.');
+      }
+      if (renameTeardown.downed) {
+        lifecycleLogger.info(`project rename: stopped previous docker project "${renameTeardown.downed}"`);
+      }
+
       // The single compose driver (§4.3, plan 2.2): ONE `up --pull missing
       // --force-recreate --remove-orphans` call. --force-recreate is REQUIRED
       // so portal containers restart onto a newly pulled baked image even

@@ -348,6 +348,7 @@ export {
   composeWaitTimeoutSec,
   runComposeStreaming,
   composeDown,
+  composeDownProject,
   composeRestart,
   composeStop,
   composeStart,
@@ -361,6 +362,15 @@ export {
   getRunningImages,
   applyStack,
 } from "./control-plane/docker.js";
+
+// ── Compose project rename (#540) ────────────────────────────────────────
+export {
+  PREVIOUS_PROJECT_NAME_KEY,
+  recordProjectRename,
+  clearRecordedProjectRename,
+  teardownRenamedProject,
+} from "./control-plane/project-rename.js";
+export type { ProjectRenameDeps, ProjectRenameTeardown } from "./control-plane/project-rename.js";
 
 // ── Volume ownership repair (privileged chown subsystem) ─────────────────
 export {

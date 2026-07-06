@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -107,6 +107,32 @@ describe('PUT /admin/assistant', () => {
 
     const personaPath = join(rootDir, 'config', 'assistant', 'persona.md');
     expect(readFileSync(personaPath, 'utf-8')).toBe('# Updated persona\n');
+  });
+
+  test('records a project rename so the next apply can tear down the old project (#540)', async () => {
+    const res = await PUT(makePutEvent({ projectName: 'my-agent', lanExposureEnabled: false, personaContent: '# P' }));
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.projectRenamed).toBe(true);
+
+    const stateEnv = readFileSync(join(rootDir, 'state', 'stack.state.env'), 'utf-8');
+    expect(stateEnv).toContain('OP_PREVIOUS_PROJECT_NAME=openpalm');
+  });
+
+  test('does not record a rename when the project name is unchanged', async () => {
+    const res = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false, personaContent: '# P' }));
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.projectRenamed).toBe(false);
+    expect(existsSync(join(rootDir, 'state', 'stack.state.env'))).toBe(false);
+  });
+
+  test('renaming back to the still-running project clears the recorded marker (#540)', async () => {
+    await PUT(makePutEvent({ projectName: 'my-agent', lanExposureEnabled: false, personaContent: '# P' }));
+    await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false, personaContent: '# P' }));
+
+    const stateEnv = readFileSync(join(rootDir, 'state', 'stack.state.env'), 'utf-8');
+    expect(stateEnv).toContain('OP_PREVIOUS_PROJECT_NAME=\n');
   });
 
   test('disables LAN exposure by restoring loopback bind address', async () => {
