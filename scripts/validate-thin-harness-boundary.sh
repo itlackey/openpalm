@@ -81,6 +81,14 @@ ALLOWED_IMPORTS=(
   waitForReady
   restoreUiBackup
   UiSupervisor
+  # Client static-app bootstrap (P5c): resolve the already-seeded client build,
+  # write the browser runtime config, and compute the stable localhost client
+  # origin/port. These support the Electron-spawned client child only; they do
+  # not run install/update/uninstall lifecycle operations.
+  resolveClientBuildDir
+  resolveClientAppPort
+  resolveClientAppUrl
+  writeClientRuntimeConfig
   # Pure version-compare helpers (update-check.ts's notify-only GitHub update
   # poll): no state mutation, no migration — just string comparison.
   normalizeVersion

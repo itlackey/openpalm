@@ -33,7 +33,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderUsage, runCommand, type CommandDef } from 'citty';
 import { isRemoteSetupAllowed } from '@openpalm/lib';
 import { mainCommand } from '../main.ts';
@@ -43,6 +44,7 @@ import { startUIServer, type UIServerOptions } from '../lib/ui-server.ts';
 // module") instead of at typecheck time — src/commands/admin.ts does not
 // exist until the implementation lands.
 const adminModuleUrl = new URL('./admin.ts', import.meta.url).href;
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 const ESC = String.fromCharCode(27);
 /** Strip ANSI color codes from citty usage output. */
@@ -66,7 +68,13 @@ const SAVED_ENV_KEYS = [
   'OP_ENABLE_ADMIN',
   'OP_UI_HOST_MODE',
   'OP_ALLOW_REMOTE_SETUP',
-  'OP_HOST_UI_PORT'
+  'OP_HOST_UI_PORT',
+  'OPENPALM_REPO_ROOT',
+  'OPENPALM_SKELETON_DIR',
+  'OP_CLIENT_PORT',
+  'OP_HOST_CLIENT_PORT',
+  'OP_CLIENT_DEFAULT_ASSISTANT_URL',
+  'OP_ASSISTANT_PORT'
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
 for (const key of SAVED_ENV_KEYS) savedEnv[key] = process.env[key];
@@ -151,6 +159,12 @@ function seedServeHome(opts: { installed: boolean }): string {
   delete process.env.OP_UI_HOST_MODE;
   delete process.env.OP_ALLOW_REMOTE_SETUP;
   delete process.env.OP_HOST_UI_PORT;
+  delete process.env.OPENPALM_SKELETON_DIR;
+  delete process.env.OP_CLIENT_PORT;
+  delete process.env.OP_HOST_CLIENT_PORT;
+  delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
+  delete process.env.OP_ASSISTANT_PORT;
+  process.env.OPENPALM_REPO_ROOT = repoRoot;
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.endsWith('/health')) return new Response('ok', { status: 200 });
