@@ -1,7 +1,7 @@
 # UI Host/Client Runtime Refactor Plan
 
-**Date:** 2026-06-19 (revised 2026-07-06)
-**Status:** RATIFIED — Phases 0–4 (+1.5) landed; Phases 5–6 re-scoped per `docs/technical/ui-client-split-assessment.md`
+**Date:** 2026-06-19 (revised 2026-07-06; Phase 5 as-built recorded 2026-07-07)
+**Status:** RATIFIED — Phases 0–5 (+1.5) landed; Phases 5–6 re-scoped per `docs/technical/ui-client-split-assessment.md`
 **Repo:** `itlackey/openpalm`, branch `main`
 **Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling), #509 (RuntimeContext), #510 (assistant-container), #511 (PWA), #555 (client extraction), #556 (openpalm admin), #557 (guardian TLS + CORS)
 
@@ -148,7 +148,7 @@ offline before any npm fetch. This is deliberate; do not "clean it up."
 `containers/assistant/entrypoint.sh` implements `install_runtime_artifacts()` with these
 properties (which supersede the draft sketch):
 
-- Exact-pinned artifacts (`@openpalm/ui` today → `@openpalm/client` after Phase 5;
+- Exact-pinned artifacts (`@openpalm/client` since Phase 5 — was `@openpalm/ui`;
   `@openpalm/skeleton`) resolve `OP_*_VERSION` → `PLATFORM_VERSION` → **hard error**.
 - An install **failure after version resolution** logs an ERROR and continues with the
   existing on-disk artifact if present (warm restart resilience) — the draft's
@@ -459,22 +459,24 @@ packages/skeleton/
 
 ### 6.9 `assistant-container` mode — **[as-landed + re-scoped]**
 
-**Already landed in `containers/assistant/entrypoint.sh`:** `install_runtime_artifacts()`
-(exact-pin resolution, npm install of UI + skeleton, tools via `bun update`) and
-`start_ui()` (co-process launch, `OP_UI_PORT` default 3000). Boot order:
-`install_runtime_artifacts → … → start_ui → start_opencode`.
+**Landed in `containers/assistant/entrypoint.sh`:** `install_runtime_artifacts()`
+(exact-pin resolution, npm install of client + skeleton, tools via `bun update`) and —
+since Phase 5 (P5d) — `start_client()` (static co-process via the client's `serve.mjs`,
+`OP_CLIENT_PORT` default 3000; replaces the pre-Phase-5 `start_ui()`/`OP_UI_PORT`).
+Boot order: `install_runtime_artifacts → … → start_client → start_opencode`.
 
-**Not yet landed / known gaps (tracked in #510):**
+**Known gaps (tracked in #510) — all CLOSED by Phase 5 (P5d):**
 
-1. The co-process port is **not published** in any compose file — the UI runs but is
-   unreachable from outside the container.
-2. `start_ui` exports `OPENCODE_API_URL`, but the UI reads `OP_OPENCODE_URL` /
-   `OP_ASSISTANT_URL` — the co-process therefore points at the default
-   `http://127.0.0.1:3800` instead of the in-container OpenCode at `:4096`. Wiring bug;
-   fix regardless of the re-scope.
-3. No mode env (`OP_UI_HOST_MODE`, `OP_UI_SINGLE_CONNECTION`) is set, and no
-   skeleton-seed call runs for assistant-scoped config (`seedFromSkeleton()` from the
-   draft does not exist in lib).
+1. ~~The co-process port is not published in any compose file.~~ Compose now publishes
+   `OP_CLIENT_PORT` (in-container default 3000) behind the existing bind-address policy.
+2. ~~`start_ui` exports `OPENCODE_API_URL`, but the UI reads `OP_OPENCODE_URL`.~~ Moot
+   after the re-scope: `start_ui` is gone; `start_client` writes `runtime-config.json`
+   beside the build with one **locked default connection** pointing at the OpenCode port
+   as published on the host (`http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}` — the browser,
+   not the container, dials it), overridable via `OP_CLIENT_DEFAULT_ASSISTANT_URL`.
+3. ~~No mode env / skeleton-seed for assistant-scoped config.~~ The static client needs
+   no mode env — single-connection behavior comes from the seeded locked connection
+   (`runtime-config.json`), not a server flag.
 
 **Re-scope (ratified):** after Phase 5, the co-process serves **`@openpalm/client`**
 (static files) instead of the full host app:
@@ -649,9 +651,46 @@ fall-through (route tree deleted, deliberately no hooks alias per §6.4).
 
 Acceptance: assistant-container can edit persona/AKM but not project name or bind address; host mode unchanged; `/admin/*` returns 404.
 
-### Phase 5 — Extract `packages/client` + `packages/ui-kit` (#555); assistant-container serves it (#510)
+### Phase 5 — Extract `packages/client` + `packages/ui-kit` (#555); assistant-container serves it (#510) — ✅ DONE
 
 *Depends on Phases 2–4 (the untangling steps).*
+
+**As-built (2026-07-07, sub-phases P5a–P5e; details in
+`docs/technical/phase-5-completion-guide.md`):**
+
+- **P5a — `packages/ui-kit`:** `components/common/`, `icons/`, and theme tokens moved
+  into a raw-source, unpublished workspace package with its own
+  `svelte-check --fail-on-warnings` gate (the raw sources' only TS coverage).
+  `Toast.svelte` was decoupled from voice-state during the move (voice errors are
+  mirrored from app code) so ui-kit holds no store with server/app assumptions.
+- **P5b — `packages/client`:** adapter-static SPA (`/chat`, `/connections`,
+  `/connections/new`) with one transport module (request shaping, SSE parsing, health
+  probe), an IndexedDB connection store seeded from an optional `runtime-config.json`,
+  its own `resolveLanding`, a zero-dependency `bin/serve.mjs` static server (loopback
+  by default), and a build-time version stamp. A **bundle purity test**
+  (`tests/purity.test.ts`, runs in CI) greps every file of the built bundle for the
+  forbidden markers `@openpalm/lib` and `/api/host` (and fails loudly on a missing
+  build) — §8.5/§8.10 enforced structurally, plus source hygiene (no lib dependency in
+  any group, no `src/lib/server/`). `@vite-pwa/sveltekit` is NOT yet added (Phase 6).
+- **P5c — harness serving:** lib gained `control-plane/client-assets.ts`
+  (resolve/seed/update, sibling of `ui-assets.ts`); the CLI serves the client build on
+  the **stable loopback port 3890** (`DEFAULT_CLIENT_PORT` in
+  `packages/cli/src/lib/ports.ts`, override `OP_CLIENT_PORT`); Electron spawns a client
+  server child and the window prefers the client chat, with a health probe falling back
+  to the host UI when the client build is absent or dead.
+- **P5d — assistant container (#510):** entrypoint installs `@openpalm/client`
+  (exact pin `OP_CLIENT_VERSION` → `PLATFORM_VERSION` → hard error), writes
+  `runtime-config.json` with one locked default connection, and serves the static build
+  via `serve.mjs`; compose publishes `OP_CLIENT_PORT` behind the bind-address policy.
+  All three §6.9 gaps closed (see §6.9 as-built notes). Slice A only.
+- **P5e — release:** item 5 below (landed as written).
+- **Deferred, deliberately:**
+  - **`packages/ui` chat is NOT yet deleted** — the client's parity inside Electron has
+    not been confirmed, so per §6.11 the host app keeps its chat surface (Electron falls
+    back to it) until parity is verified in real use. Deletion is a follow-up.
+  - **Slice B (assistant-settings shim) is NOT built** — assistant-container mode is
+    chat-only against the single locked connection; `/api/assistant/*` writes from the
+    container's browser surface remain an optional future slice (§6.9).
 
 1. Create `packages/ui-kit` (raw-source workspace package); move `components/common/`,
    `icons/`, theme tokens. Both apps consume it.
@@ -773,17 +812,17 @@ Phase 1.5 (openpalm admin)        ✅ DONE (#556)
 Phase 2 (connections + untangle)  ✅ DONE (#486) ──┐
 Phase 3 (landing + chrome untangle) ✅ DONE       ─┼─► Phase 5 prerequisites met
 Phase 4 (control plane split)     ✅ DONE (#555) ──┘
-Phase 5 (client + ui-kit extraction, assistant-container) ─► prerequisite for 6
-Phase 6 (PWA, two install origins) ─ needs 5
-Phase 6.5 (guardian TLS + CORS)   ─ parallel to 5/6; gates the phone story
+Phase 5 (client + ui-kit extraction, assistant-container) ✅ DONE (#555/#510)
+Phase 6 (PWA, two install origins) ─ needs 5 (met)
+Phase 6.5 (guardian TLS + CORS)   ─ parallel to 6; gates the phone story
 Phase 7 (security tests)          ─ needs 1–6.5
 Phase 8 (release integration)     ─ needs all
 ```
 
-0.13.0 target: Phases 1–4 + 1.5 — **complete**. Phases 5–6.5 land in 0.13.0 only if it
-stays light; otherwise they open 0.14.0. (The original "all phases in 0.13.0" call
-predates the client-split re-scope; the Phase 4 completion re-evaluation point has now
-been reached.)
+0.13.0 target: Phases 1–4 + 1.5 — **complete**. Phase 5 is now **complete** as well
+(P5a–P5e; see §7 as-built notes — `packages/ui` chat retained pending Electron parity
+confirmation, Slice B shim not built). Phases 6–6.5 remain; they land in 0.13.0 only if
+it stays light, otherwise they open 0.14.0.
 
 ---
 
