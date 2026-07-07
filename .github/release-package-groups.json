@@ -6,6 +6,7 @@
       "packages/lib/package.json",
       "packages/cli/package.json",
       "packages/ui/package.json",
+      "packages/client/package.json",
       "packages/electron/package.json",
       "packages/electron/admin-tools/package.json"
     ],

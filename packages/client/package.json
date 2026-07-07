@@ -2,13 +2,15 @@
   "name": "@openpalm/client",
   "version": "0.12.52",
   "description": "OpenPalm client app — the unprivileged chat/connections static SPA (plan ui-runtime-modes-plan.md §6.11). Talks directly to per-connection OpenCode/guardian base URLs; connections persist in IndexedDB. §8.10 rule: this package NEVER depends on @openpalm/lib and never holds host credentials; runtime dependencies stay empty (the adapter-static build is fully self-contained, and bin/serve.mjs is zero-dependency) — document any exception here.",
-  "private": true,
   "license": "MPL-2.0",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "https://github.com/itlackey/openpalm.git",
     "directory": "packages/client"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "build",

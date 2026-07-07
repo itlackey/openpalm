@@ -6,8 +6,8 @@ name: Release
 # its own slice. A partial unit will silently leave the other units behind (e.g.
 # `platform` does NOT touch the portal image or the discord/slack npm adapters).
 # For a complete, coordinated release of the whole platform, use `all`.
-#   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) + admin-tools +
-#               CLI native binaries + optional Electron + git tag + GitHub release
+#   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui + @openpalm/client (npm) +
+#               admin-tools + CLI native binaries + optional Electron + git tag + GitHub release
 #               (add include_images=true to also rebuild guardian + assistant images).
 #               PARTIAL: no portal image, no portal npm, no voice.
 #   portals   — @openpalm/discord-portal + @openpalm/slack-portal npm packages
@@ -26,7 +26,7 @@ name: Release
 #               Always pass version explicitly (the version the existing npm packages are at). PARTIAL.
 #   all       — COMPLETE coordinated release. Publishes EVERY unit at one version,
 #               flag-free (no include_images / include_electron needed):
-#                 npm: @openpalm/{lib,ui,guardian,skeleton} + openpalm (CLI)
+#                 npm: @openpalm/{lib,ui,client,guardian,skeleton} + openpalm (CLI)
 #                      + @openpalm/{discord,slack}-portal
 #                 images: openpalm/{assistant,guardian,portal}  (+ :latest when stable)
 #                 electron installers (mac/linux/win) + CLI native binaries
@@ -172,8 +172,8 @@ jobs:
             // platform release can never compute a next version at or below an
             // already-published skeleton/guardian, which npm rejects.
             const npmPackages = {
-              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
-              all: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
+              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/client', '@openpalm/skeleton', '@openpalm/guardian'],
+              all: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/client', '@openpalm/skeleton', '@openpalm/guardian'],
               guardian: ['@openpalm/guardian', '@openpalm/skeleton'],
             };
             const packages = npmPackages[unit] || [];
@@ -253,9 +253,13 @@ jobs:
         if: inputs.unit == 'platform' || inputs.unit == 'all'
         run: |
           bun install --frozen-lockfile
+          # The client purity gate greps the BUILT bundle (packages/client/tests/
+          # purity.test.ts fails when build/ is absent), so build before bun run test.
+          bun run client:build
           bun run test
           bun run ui:check
           bun run ui-kit:check
+          bun run client:check
           bun run --cwd packages/ui test:browsers
           bun run ui:test:unit
           bun run electron:test
@@ -305,7 +309,8 @@ jobs:
               platform)
                 for f in package.json packages/lib/package.json packages/skeleton/package.json \
                           packages/guardian/package.json packages/cli/package.json \
-                          packages/ui/package.json packages/electron/package.json \
+                          packages/ui/package.json packages/client/package.json \
+                          packages/electron/package.json \
                           packages/electron/admin-tools/package.json; do
                   node scripts/set-version.mjs "$f" "$V"
                 done
@@ -315,7 +320,8 @@ jobs:
               all)
                 for f in package.json packages/lib/package.json packages/skeleton/package.json \
                           packages/guardian/package.json packages/cli/package.json \
-                          packages/ui/package.json packages/electron/package.json \
+                          packages/ui/package.json packages/client/package.json \
+                          packages/electron/package.json \
                           packages/electron/admin-tools/package.json; do
                   node scripts/set-version.mjs "$f" "$V"
                 done
@@ -383,7 +389,7 @@ jobs:
   # ── npm layer ─────────────────────────────────────────────────────────────────
   # skeleton + guardian: published for unit=guardian (thin-host needs both at runtime)
   #                      and unit=platform + unit=all (full coordinated release)
-  # lib + cli + ui:      platform + all only (guardian npm pkg has no lib dep)
+  # lib + cli + ui + client: platform + all only (guardian npm pkg has no lib dep)
   # NOTE: guardian and skeleton are published independently of lib to avoid
   # blocking the platform regression guard. lib is platform-managed.
   npm-skeleton:
@@ -458,6 +464,28 @@ jobs:
     with:
       package-dir: packages/ui
       package-name: '@openpalm/ui'
+      needs-build: true
+      version: ${{ needs.compute-version.outputs.new_version }}
+      ref: ${{ github.ref_name }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
+  # Client app (@openpalm/client): exact-pin delivered like @openpalm/ui — the
+  # assistant container installs @openpalm/client@<platform version> at startup
+  # (ui-runtime-modes-plan.md §1 exact-pin table, Phase 5 item 5). needs-build
+  # compiles the adapter-static bundle; @openpalm/ui-kit is inlined from the
+  # workspace at build time (raw-source, NEVER published). Unlike npm-ui there
+  # is no npm-lib ordering dependency: the client never bundles @openpalm/lib
+  # (§8.10 purity rule, enforced by packages/client/tests/purity.test.ts in CI).
+  npm-client:
+    name: npm @openpalm/client
+    needs: [compute-version, bump]
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/client
+      package-name: '@openpalm/client'
       needs-build: true
       version: ${{ needs.compute-version.outputs.new_version }}
       ref: ${{ github.ref_name }}
@@ -782,6 +810,7 @@ jobs:
       - npm-guardian
       - npm-cli
       - npm-ui
+      - npm-client
       - npm-discord-portal
       - npm-slack-portal
       - docker-portal
