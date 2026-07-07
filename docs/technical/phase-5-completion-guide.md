@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-06
 **Branch:** `claude/ui-runtime-modes-phases-1-4`
-**Status:** P5a + P5b DONE (gates passed). P5c, P5d, P5e + final sweep REMAIN.
+**Status:** HISTORICAL — Phase 5 completed in full (P5a–P5e + final sweep, all gates passed) on 2026-07-07. This document is preserved as the working record; for current remaining work see `ui-runtime-modes-plan.md` §12.
 **Plan:** `docs/technical/ui-runtime-modes-plan.md` (§6.9–§6.11, Phase 5, §8 rules, §1 simplicity guardrails)
 **Decision record:** `docs/technical/ui-client-split-assessment.md`
 **Tracking issues:** #555 (client extraction), #510 (assistant-container Slice A)

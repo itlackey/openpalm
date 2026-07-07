@@ -1,7 +1,7 @@
 # UI Host/Client Runtime Refactor Plan
 
 **Date:** 2026-06-19 (revised 2026-07-06; Phase 5 as-built recorded 2026-07-07)
-**Status:** RATIFIED — Phases 0–5 (+1.5) landed; Phases 5–6 re-scoped per `docs/technical/ui-client-split-assessment.md`
+**Status:** RATIFIED — Phases 0–5 (+1.5) landed; Phases 6–8 remain — see **§12 Remaining work** for the complete handoff (verified against code 2026-07-07, post-merge with main/#554)
 **Repo:** `itlackey/openpalm`, branch `main`
 **Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling), #509 (RuntimeContext), #510 (assistant-container), #511 (PWA), #555 (client extraction), #556 (openpalm admin), #557 (guardian TLS + CORS)
 
@@ -848,3 +848,118 @@ it stays light, otherwise they open 0.14.0.
 
 **Release:**
 - electron-host, host-ui, assistant-container, and both PWA install paths smoke-tested before publishing each release
+
+---
+
+## 12. Remaining work — detailed handoff (verified 2026-07-07)
+
+Everything below was verified against the code on branch
+`claude/ui-runtime-modes-phases-1-4` (PR #559) after merging `origin/main`
+(commit `49bab70` + import fix `ac1c5ea`). Statuses here are checked facts, not
+assumptions.
+
+### 12.1 Merge reconciliation (2026-07-07)
+
+`origin/main` brought PR #554 (chat voice/streaming UX: streaming markdown +
+autoscroll, sentence-stream TTS, hands-free conversation mode, earcons, VAD,
+barge-in, copy affordances, stop-generation, composer resilience) into
+`packages/ui`'s chat. Conflicts were resolved by routing main's new icon imports
+through `@openpalm/ui-kit` (`ChatInput`, `ChatMessage`, `VoiceStatusStrip`;
+`IconWaves.svelte` relocated to ui-kit). All suites re-verified at parity
+post-merge (ui:check 0/0 across 1,203 files; UI vitest 1,139/1,139 node-project).
+
+**Consequence:** the client app's chat copies did NOT receive these features —
+the parity gap that gates deleting `packages/ui` chat grew substantially. See §12.2.
+
+### 12.2 Chat parity contract — gates deleting `packages/ui` chat (§6.11 rule 3)
+
+Measured delta: `packages/client/src/routes/chat/+page.svelte` is 328 LOC vs the
+host chat's 1,597. Missing in the client (all present in `packages/ui` after #554):
+
+- streaming markdown rendering + the `$lib/chat/autoscroll.ts` module
+- stop-generation control for in-flight turns
+- copy affordances on messages/code blocks (`IconCopy`/`IconDone` in `ChatMessage`)
+- composer resilience (IME guard, draft-while-sending, failed-send retry)
+- the entire voice stack: `VoiceStatusStrip`, conversation mode, earcons,
+  VAD calibration, sentence-stream TTS, barge-in (`packages/ui/src/lib/voice/*`)
+- session history browsing (`SessionPicker`)
+
+**Decision required before porting** (file as its own issue):
+(a) full parity port — progressively move shared chat components into `ui-kit`
+and port the voice stack into the client; heavy, and drags voice/media concerns
+into the unprivileged client; or
+(b) **recommended per §1 simplicity guardrails:** define client-chat parity as a
+subset contract — text chat + streaming render + stop + copy + failed-send retry;
+voice remains host-chat-only for now. Either way, `packages/ui` chat is deleted
+only when the written contract is met AND Electron has been verified running the
+client chat in a real browser.
+
+### 12.3 Phase 6 — PWA (#511). All prerequisites met. Work items:
+
+1. `@vite-pwa/sveltekit` in `packages/client`: manifest, icons (192/512 +
+   maskable), Workbox app-shell precache. SW rules: never cache credentialed
+   responses; `runtime-config.json` must be NetworkFirst (a stale locked
+   connection URL must not outlive a container reconfigure).
+2. Localhost origin: the harness already serves the client on stable loopback
+   port 3890 (P5c). Add install affordances: Electron menu item, host-app
+   button, and an `openpalm app` CLI command that opens the browser there.
+3. Hosted origin: CI deploy of the static build to the official URL
+   (`app.openpalm.dev`; hosting provider TBD). Client-side contract-version
+   handshake against `/api/runtime` with graceful degradation.
+4. Pairing UX (§6.6): host app `/connections` mints QR + one-time code; client
+   `/connections/new` accepts paste-or-scan. Guardian side coordinates with
+   #435/#557.
+5. Offline shell: the IndexedDB store landed in P5b — verify the offline boot
+   path end-to-end once the SW exists.
+
+### 12.4 Phase 6.5 — guardian TLS + CORS (#557)
+
+As specced in §7 Phase 6.5. Hard prerequisite for any phone → guardian
+connection (secure-context + mixed-content rules). CORS allowlist must include
+the hosted origin; the hosted client refuses plain-HTTP non-loopback targets
+with an actionable deep-link to the TLS guide. Tailscale `ts.net` is the
+recommended default; Caddy + user domain the alternative; installing a private
+CA on phones is an explicit non-goal.
+
+### 12.5 Phase 7 — security hardening (updated for as-built state)
+
+Already covered by earlier phases: `/api/host/*` guard hygiene tests (Phase 4),
+client bundle purity gate in CI (P5e), `serve.mjs` hostile-request tests (P5b).
+Remaining: guardian CORS enforcement tests; SW caching-rule review (with Phase 6);
+context-aware origin checks per mode; CSP review for BOTH apps — note
+`packages/client/svelte.config.js` has no `kit.csp` yet (add during Phase 6);
+verify the purity assertion also runs against the container-pulled artifact path.
+
+### 12.6 Phase 8 — release remainder
+
+- Verify the release process advances the CLI's pinned `@openpalm/skeleton` dep
+  in lockstep with `PLATFORM_VERSION` (§6.7 follow-up — still open).
+- Replacement docs: `ui-runtime-modes.md` (successor to this plan) +
+  `artifact-delivery-pattern.md`.
+- Release checklist: smoke-test electron-host, host-ui (`openpalm admin`),
+  assistant-container, and both PWA install origins.
+- **Before merging PR #559:** one real-browser run of the 30 browser-project
+  `*.svelte.vitest.ts` files (`cd packages/ui && npm run test:unit`) — they
+  cannot execute in the dev container (Playwright browser download is
+  proxy-blocked); they are updated for the new routes and type-check clean.
+
+### 12.7 Open code-level items (each verified in code, with pointers)
+
+1. **Locked-entry pruning not implemented** —
+   `packages/client/src/lib/connections/index.ts`: `seedFromRuntimeConfig` is
+   upsert-only and `deleteConnection` rejects locked entries (~line 225), so a
+   locked entry removed from a later `runtime-config.json` is stuck forever.
+   Fix: prune locked entries absent from the current config during seed.
+   Owner: the entrypoint/store pair (#510 follow-up).
+2. **`pickStorage()` async-failure gap** — only synchronous `indexedDB` access
+   errors fall back to memory; an async `open()` rejection (e.g. Firefox
+   private mode) caches a rejected boot promise. Add async fallback.
+3. **`createConnectionStore(options: { storage: unknown })`** weakens typing at
+   the single construction site — tighten to `ConnectionStorage`.
+4. **Slice B settings shim** (§6.9, optional): not built — assistant-container
+   mode is chat-only. Ship only when browser-editable assistant settings are
+   actually wanted.
+5. Resolved for the record: CI wiring for client/ui-kit suites ✅ (P5e),
+   `@openpalm/client` `private` flag removed ✅ (P5e), `serve.mjs`
+   percent-escape hardening ✅ (P5b gate), `runtime-config.json` offline
+   resilience ✅ (`loadRuntimeConfig` never throws).
