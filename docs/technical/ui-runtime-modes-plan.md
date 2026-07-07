@@ -56,7 +56,7 @@ Every updatable component follows the same pattern. This is the design standard 
 | Component | Package | Version strategy | Runtime install | Containers |
 |---|---|---|---|---|
 | Host UI | `@openpalm/ui` | Exact pin: `OP_UI_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | — (host process) |
-| Client UI | `@openpalm/client` | Exact pin: `OP_CLIENT_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | assistant |
+| Client UI — **landed** (#555/#510) | `@openpalm/client` | Exact pin: `OP_CLIENT_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | assistant |
 | Skeleton / OP_HOME seed | `@openpalm/skeleton` | Exact pin: `OP_SKELETON_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | assistant, guardian |
 | Guardian | `@openpalm/guardian` | Exact pin: `OP_GUARDIAN_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | guardian |
 | Portal (discord) | `@openpalm/portal-discord` | Exact pin: `OP_PORTAL_DISCORD_VERSION` → `PLATFORM_VERSION` → **error** | `npm install` | portal |
@@ -663,7 +663,10 @@ Acceptance: assistant-container can edit persona/AKM but not project name or bin
    (`OP_CLIENT_VERSION` → `PLATFORM_VERSION` → error); co-process serves the static bundle
    (Slice A). Fix the `OP_OPENCODE_URL` wiring bug (§6.9). Publish the port in compose
    behind the existing bind-address policy.
-5. Release: `@openpalm/client` joins the publish DAG and the exact-pin table.
+5. Release: `@openpalm/client` joins the publish DAG and the exact-pin table. — **landed**
+   (P5e: `release.yml` `npm-client` job mirrors `npm-ui`, exact-pin/`needs-build`,
+   platform+all stamp/regression-guard/version-sync membership; the client-bundle
+   purity gate runs in CI; `@openpalm/ui-kit` stays unpublished).
 6. (Optional Slice B, separate issue) settings shim for `/api/assistant/*` writes.
 
 Acceptance: chat in Electron runs from the client build; assistant-container URL serves
@@ -757,7 +760,7 @@ launch shows the shell + saved connections, not a blank page.
 | PWA | (none) | `@vite-pwa/sveltekit` in `packages/client`; hosted deploy pipeline (Phase 6) |
 | Guardian edge | plain HTTP, no CORS | CORS allowlist + TLS workstream (Phases 6, 6.5) |
 | Electron main | `packages/electron/src/main.ts` | Pass `OP_UI_HOST_MODE=electron-host`; serve/point at client build (Phases 1, 5) |
-| Release DAG | `platform-release.yml` | Add `@openpalm/client`; skeleton pin advance check (Phase 8) |
+| Release DAG | `.github/workflows/release.yml` (the plan's "platform-release.yml") | Add `@openpalm/client` — **landed** (Phase 5/P5e); skeleton pin advance check remains (Phase 8) |
 
 ---
 

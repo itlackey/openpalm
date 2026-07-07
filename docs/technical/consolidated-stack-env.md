@@ -39,6 +39,7 @@ baked layer. One file should answer "what is this stack, and at what versions?".
 | `OP_IMAGE_TAG` | host — selects all server images | yes (already) |
 | layout (`OP_LAYOUT_VERSION`) | host — migration harness | yes (new) |
 | UI build (`OP_UI_VERSION`) | host — npm, independent of image | yes (new) |
+| client app (`OP_CLIENT_VERSION`) | host — npm, installed by the assistant container at startup (added with `@openpalm/client`, Phase 5 of `ui-runtime-modes-plan.md`) | optional (empty = the image's `PLATFORM_VERSION`; never `latest`) |
 | enabled addons (`OP_ENABLED_ADDONS`) | host — compose profiles | yes (new; was `stack.yml`) |
 | OpenCode / akm-cli / bun / gws | **build-time, baked into the image** | **no (deferred)** — fixed by `OP_IMAGE_TAG` |
 

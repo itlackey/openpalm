@@ -9,6 +9,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **New `@openpalm/client` npm package** — the unprivileged chat/connections
+  static app extracted from the admin UI (host/client split, #555). It joins the
+  platform release exactly like `@openpalm/ui`: published by `platform`/`all`
+  releases, always exact-pinned to the platform version. The assistant container
+  installs it at startup as a co-process next to OpenCode (#510), pinned via
+  **`OP_CLIENT_VERSION`** in `stack.env` (empty = the image's `PLATFORM_VERSION`;
+  never `latest` — the same contract as `OP_UI_VERSION` for the host UI), and
+  serves it on **`OP_CLIENT_PORT`** (default host bind `127.0.0.1:3810`, behind
+  the existing `OP_CLIENT_BIND_ADDRESS`/`OP_BIND_ADDRESS` loopback policy).
+  `docker restart` with a new `OP_CLIENT_VERSION` picks up the new client. CI now
+  enforces a client-bundle purity gate: the built artifact must contain no
+  `@openpalm/lib` and no host control-plane (`/api/host`) code. The shared
+  `@openpalm/ui-kit` workspace package is inlined at build time and is never
+  published.
 - The guardian thin-host entrypoint can now install and boot a configurable
   guardian composition package via `OP_GUARDIAN_PACKAGE` (default
   `@openpalm/guardian`) with an overridable boot entry `OP_GUARDIAN_ENTRY`
