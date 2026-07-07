@@ -54,7 +54,8 @@ MUTATION_SENTINEL="reconcileStack"
 # The ONLY @openpalm/lib symbols packages/electron/src may import (design §2.1
 # bootstrap allowlist, extended in 0.12.0 with PLATFORM_VERSION + the Docker
 # preflight probes §6.5/§5, in Phase 4 with checkAndUpdateSkeleton for skeleton
-# self-update bootstrap, and covering update-check.ts's pure version-compare
+# self-update bootstrap, in Phase 5 with checkAndUpdateClientBuild for the
+# static client artifact, and covering update-check.ts's pure version-compare
 # helpers now that the scan is repo-wide instead of main.ts-only).
 # waitForReady + restoreUiBackup are the shared UI-supervisor primitives (§6.2/§6.3):
 # waiting on the spawned UI's /health, and rolling back a failed checkAndUpdateUiBuild
@@ -67,6 +68,7 @@ ALLOWED_IMPORTS=(
   seedUiBuild
   ensureHomeDirs
   checkAndUpdateUiBuild
+  checkAndUpdateClientBuild
   checkAndUpdateSkeleton
   uiUpdateChannel
   parseEnvFile
