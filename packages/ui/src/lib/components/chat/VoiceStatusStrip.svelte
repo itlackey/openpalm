@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { voiceState, resumeAutoplay, stopConversation } from '$lib/voice/voice-state.svelte.js';
-	import IconSoundOff from '$lib/components/icons/IconSoundOff.svelte';
+	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
 
 	interface Props {
 		/** True while the assistant is composing a reply (chat.sending). */
