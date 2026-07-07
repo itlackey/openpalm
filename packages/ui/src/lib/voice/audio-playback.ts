@@ -14,7 +14,8 @@
  * from methods — never at construction — for SSR safety.
  */
 import { notifications } from '$lib/notifications.svelte.js';
-import type { SpeakTextOptions, TtsEngine, VoiceStatus } from './voice-state.svelte.js';
+import { toSpeakableText } from './speakable-text.js';
+import type { TtsEngine, VoiceStatus } from './voice-state.svelte.js';
 
 /**
  * The slice of the reactive voice store the audio engine reads and writes.
@@ -29,21 +30,46 @@ export interface AudioPlaybackHost {
   readonly ttsEngine: TtsEngine;
 }
 
-type SpeakQueueEntry = { text: string; options?: SpeakTextOptions };
-
-// Cap on queued utterances. Three replies in flight = drop the oldest.
-// Keeps memory bounded if the assistant streams a flurry of short messages.
-const SPEAK_QUEUE_MAX = 3;
+// Cap on queued utterances. Streamed replies arrive one short sentence at a
+// time, so a long reply can legitimately queue a dozen entries; past the cap
+// the oldest drops. Keeps memory bounded if the assistant streams a flurry.
+const SPEAK_QUEUE_MAX = 20;
 
 export class AudioPlaybackController {
   private readonly host: AudioPlaybackHost;
+
+  /**
+   * Optional hook fired when the speak queue fully drains (the last
+   * utterance reached a terminal state with nothing queued behind it).
+   * Conversation mode uses this to re-arm listening — an explicit
+   * callback instead of polling reactive status. Deliberately NOT fired
+   * from stop(): an explicit stop (barge-in, toggle off) must not re-arm
+   * anything by itself.
+   */
+  onQueueDrained: (() => void) | null = null;
 
   // Holds the currently-playing server-TTS audio element so stop() can
   // cancel it. Browser TTS is cancelled via window.speechSynthesis.
   private activeAudio: HTMLAudioElement | null = null;
   private activeAudioUrl: string | null = null;
 
-  private readonly speakQueue: SpeakQueueEntry[] = [];
+  private readonly speakQueue: string[] = [];
+
+  // True from playOne entry until the utterance reaches a terminal state
+  // (ended, errored, skipped as unspeakable, or no engine available).
+  // `host.status` only flips to 'speaking' AFTER the /api/speak synthesis
+  // fetch resolves, so it cannot serialize streamed chunks — a burst of
+  // speakText calls during synthesis would otherwise start overlapping
+  // playOne pipelines. Autoplay-blocked audio keeps this true as well:
+  // later chunks must queue behind the stashed utterance until resume().
+  private busy = false;
+
+  // Bumped by stop() so a playOne suspended on the synthesis fetch can
+  // detect the cancellation when it resumes and discard the audio instead
+  // of playing an utterance the user already silenced. Browser-TTS
+  // utterance callbacks carry the same check: a cancelled utterance's
+  // late onend/onerror must not touch state owned by a newer generation.
+  private generation = 0;
 
   // Have we already toasted the user about an overflow drop in the current
   // burst? Reset back to false when the queue drains so a NEW burst can
@@ -144,7 +170,10 @@ export class AudioPlaybackController {
     this.host.autoplayBlocked = false;
     this.host.errorMessage = '';
     this.host.status = 'speaking';
-    // Promote pending → active so onended/onerror/teardown work.
+    this.busy = true;
+    // Promote pending → active so onended/onerror/teardown work. The
+    // handlers attached in playOne are still wired, so the queue (which
+    // kept accumulating while blocked) drains when this utterance ends.
     this.activeAudio = a;
     this.activeAudioUrl = this.pendingAutoplayUrl;
     this.pendingAutoplayAudio = null;
@@ -153,6 +182,7 @@ export class AudioPlaybackController {
       this.host.status = 'idle';
       this.host.errorMessage = 'Audio playback failed.';
       this.teardownActiveAudio();
+      this.drainNext();
     });
   }
 
@@ -161,16 +191,18 @@ export class AudioPlaybackController {
    * configured engine is openpalm-voice or remote); falls back to browser
    * speech synthesis. Silent no-op if neither path is available.
    *
-   * If a previous utterance is still playing, queues this one (FIFO, cap 3)
-   * instead of cutting it off mid-sentence.
+   * If a previous utterance is still synthesizing, playing, or stashed
+   * behind an autoplay block, queues this one (FIFO, cap 20) instead of
+   * cutting it off mid-sentence.
    */
-  async speak(text: string, options?: SpeakTextOptions): Promise<void> {
+  async speak(text: string): Promise<void> {
     if (typeof window === 'undefined' || !text.trim()) return;
 
-    // Queue if something else is already speaking. The onended handler
-    // drains the queue.
-    if (this.host.status === 'speaking') {
-      this.speakQueue.push({ text, options });
+    // Queue if the pipeline is occupied (synthesis in flight, audio
+    // playing, or autoplay-blocked). drainNext advances the queue from
+    // every terminal path.
+    if (this.busy) {
+      this.speakQueue.push(text);
       // Drop oldest if over cap, and let the user know once per burst
       // so they understand WHY they're missing replies.
       let dropped = 0;
@@ -188,16 +220,44 @@ export class AudioPlaybackController {
       return;
     }
 
-    await this.playOne(text, options);
+    await this.playOne(text);
+  }
+
+  /**
+   * Advance the pump: play the next queued utterance, or release the busy
+   * flag so a future speak() can start a fresh burst. Every terminal path
+   * of an utterance must land here (or hold `busy` deliberately, as the
+   * autoplay-block stash does).
+   */
+  private drainNext(): void {
+    const next = this.speakQueue.shift();
+    if (next) {
+      void this.playOne(next);
+    } else {
+      this.busy = false;
+      this.overflowNoticed = false;
+      this.onQueueDrained?.();
+    }
   }
 
   /** Internal: actually trigger the audio for one text chunk. */
-  private async playOne(text: string, options?: SpeakTextOptions): Promise<void> {
-    if (typeof window === 'undefined' || !text.trim()) return;
+  private async playOne(text: string): Promise<void> {
+    if (typeof window === 'undefined') return;
+    this.busy = true;
+    const gen = this.generation;
 
-    // We're about to start fresh — any pending autoplay-retry from a
-    // previous reply is now stale.
-    this.teardownPendingAutoplay();
+    // Strip markdown once, up front, so neither the server request body nor
+    // the browser-TTS fallback ever speaks raw markdown syntax aloud. The
+    // server applies the same deterministic stripping defensively.
+    const speakableText = toSpeakableText(text);
+    if (!speakableText) {
+      // Nothing left to say (e.g. a reply that was pure markdown noise) —
+      // skip straight to the next queued utterance instead of stalling
+      // the queue on a chunk that would never fire onended/onerror.
+      this.drainNext();
+      return;
+    }
+
     this.teardownActiveAudio();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     this.host.errorMessage = '';
@@ -212,19 +272,19 @@ export class AudioPlaybackController {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({
-            text,
-            ...(options?.mode && options.mode !== 'plain' ? { mode: options.mode } : {}),
-            ...(options?.userText ? { userText: options.userText } : {}),
-            ...(options?.assistantText ? { assistantText: options.assistantText } : {}),
-          }),
+          body: JSON.stringify({ text: speakableText }),
         });
       } catch {
         // Network/CORS — fall through to browser TTS if available.
       }
+      // stop() ran while the synthesis request was in flight — the
+      // utterance is cancelled; stop() already dropped the queue and
+      // released `busy`.
+      if (gen !== this.generation) return;
 
       if (res?.ok && res.headers.get('content-type')?.startsWith('audio/')) {
         const blob = await res.blob();
+        if (gen !== this.generation) return;
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         this.activeAudio = audio;
@@ -232,18 +292,13 @@ export class AudioPlaybackController {
         audio.onended = () => {
           this.host.status = 'idle';
           this.teardownActiveAudio();
-          // Drain the queue.
-          const next = this.speakQueue.shift();
-          if (next) void this.playOne(next.text, next.options);
-          else this.overflowNoticed = false;
+          this.drainNext();
         };
         audio.onerror = () => {
           this.host.status = 'idle';
           this.host.errorMessage = 'Audio playback failed.';
           this.teardownActiveAudio();
-          const next = this.speakQueue.shift();
-          if (next) void this.playOne(next.text, next.options);
-          else this.overflowNoticed = false;
+          this.drainNext();
         };
         this.host.status = 'speaking';
         try {
@@ -257,7 +312,9 @@ export class AudioPlaybackController {
           // deliberately do NOT register a document-wide click
           // handler — any click anywhere would otherwise trigger
           // stale audio at the wrong moment (Save buttons, tabs,
-          // etc.).
+          // etc.). `busy` stays true: streamed chunks that arrive
+          // while blocked queue behind this utterance and drain
+          // after resume() (or are dropped by stop()).
           this.host.status = 'idle';
           // Hand ownership of the blob to the pending-autoplay slot.
           this.pendingAutoplayAudio = audio;
@@ -279,24 +336,31 @@ export class AudioPlaybackController {
 
     if (!('speechSynthesis' in window)) {
       // No browser TTS available — keep whatever errorMessage we already
-      // set so the user understands why nothing happened.
+      // set so the user understands why nothing happened, but keep the
+      // pump moving so queued chunks don't strand behind a dead engine.
+      this.drainNext();
       return;
     }
     // Clear the error if we have a viable browser fallback.
     if (useServer) this.host.errorMessage = '';
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.onstart = () => { this.host.status = 'speaking'; };
+    const utterance = new SpeechSynthesisUtterance(speakableText);
+    // speechSynthesis.cancel() (from stop() or a later playOne) still
+    // delivers onend/onerror for the cancelled utterance asynchronously —
+    // the same generation check as the server path keeps a stale utterance
+    // from pumping the queue under a newer one or flipping host.status.
+    utterance.onstart = () => {
+      if (gen !== this.generation) return;
+      this.host.status = 'speaking';
+    };
     utterance.onend = () => {
+      if (gen !== this.generation) return;
       this.host.status = 'idle';
-      const next = this.speakQueue.shift();
-      if (next) void this.playOne(next.text, next.options);
-      else this.overflowNoticed = false;
+      this.drainNext();
     };
     utterance.onerror = () => {
+      if (gen !== this.generation) return;
       this.host.status = 'idle';
-      const next = this.speakQueue.shift();
-      if (next) void this.playOne(next.text, next.options);
-      else this.overflowNoticed = false;
+      this.drainNext();
     };
     window.speechSynthesis.speak(utterance);
   }
@@ -326,6 +390,8 @@ export class AudioPlaybackController {
   /** Cancel speech synthesis. Drops the entire queue. */
   stop(): void {
     this.speakQueue.length = 0;
+    this.busy = false;
+    this.generation += 1;
     this.overflowNoticed = false;
     this.teardownPendingAutoplay();
     this.teardownActiveAudio();

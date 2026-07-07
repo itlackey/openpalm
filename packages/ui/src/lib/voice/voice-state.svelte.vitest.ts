@@ -55,6 +55,36 @@ describe('voice-state auto-TTS toggle', () => {
 	});
 });
 
+describe('voice-state TTS warm-up', () => {
+	const originalFetch = globalThis.fetch;
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		voiceState.ttsEngine = 'disabled';
+		voiceState.ttsAutoEnabled = false;
+	});
+
+	// The warm-up fires at most once per page load (module-level flag). This
+	// is the only test that consumes it — the toggle tests above run with the
+	// 'disabled' engine, where the warm-up is skipped without consuming it.
+	test('enabling auto-TTS with a server engine fires one warm-up POST per page load', () => {
+		voiceState.ttsEngine = 'openpalm-voice';
+		voiceState.ttsAutoEnabled = false;
+		const fetchMock = vi.fn(async () => new Response('', { status: 404 }));
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		setTtsAutoEnabled(true);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(String(url)).toBe('/api/speak');
+		expect(JSON.parse(String(init?.body))).toEqual({ text: 'ok' });
+
+		// Toggling off and back on must not fire a second warm-up.
+		setTtsAutoEnabled(false);
+		setTtsAutoEnabled(true);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('voice-state speakText error surfacing', () => {
 	const originalFetch = globalThis.fetch;
 	afterEach(() => {
@@ -109,7 +139,7 @@ describe('voice-state speakText error surfacing', () => {
 		}
 	});
 
-	test('forwards chat speech-prep options to /api/speak', async () => {
+	test('posts only { text } (markdown-stripped) to /api/speak', async () => {
 		voiceState.ttsEngine = 'remote';
 		let capturedBody = '';
 		const mockFetch = vi.fn(async (_url, init) => {
@@ -124,11 +154,9 @@ describe('voice-state speakText error surfacing', () => {
 		const ss = (window as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
 		try {
 			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
-			await speakText('Working on it.', { mode: 'chat_ack', userText: 'Plan the work.' });
+			await speakText('Here is **the** answer.');
 			const parsed = JSON.parse(capturedBody) as Record<string, unknown>;
-			expect(parsed.text).toBe('Working on it.');
-			expect(parsed.mode).toBe('chat_ack');
-			expect(parsed.userText).toBe('Plan the work.');
+			expect(parsed).toEqual({ text: 'Here is the answer.' });
 		} finally {
 			if (ss !== undefined) {
 				(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = ss;
@@ -138,33 +166,128 @@ describe('voice-state speakText error surfacing', () => {
 });
 
 describe('voice-state queue', () => {
+	const originalFetch = globalThis.fetch;
+
+	/**
+	 * Install a /api/speak mock whose synthesis fetch never resolves — the
+	 * first speakText occupies the playback pipeline (busy) for the rest of
+	 * the test, exactly like a chunk mid-synthesis while later streamed
+	 * chunks arrive.
+	 */
+	function hangSynthesis(): ReturnType<typeof vi.fn> {
+		const mock = vi.fn(() => new Promise<Response>(() => {}));
+		globalThis.fetch = mock as unknown as typeof fetch;
+		return mock;
+	}
+
 	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		voiceState.ttsEngine = 'disabled';
 		voiceState.status = 'idle';
 		voiceState.errorMessage = '';
 		stopSpeaking();
 		notifications.clear();
 	});
 
-	test('speakText returns without playing when status is already speaking', async () => {
-		// If status is "speaking", speakText queues silently. We can't easily
-		// observe the internal queue, but we CAN confirm that calling
-		// speakText doesn't blow up and doesn't mutate status.
-		voiceState.ttsEngine = 'browser';
-		voiceState.status = 'speaking';
-		await speakText('queued one');
-		expect(voiceState.status).toBe('speaking');
+	test('speakText queues while a prior synthesis fetch is unresolved', async () => {
+		// The busy window opens at playOne entry, BEFORE the /api/speak fetch
+		// resolves — status is still 'idle' at that point, so serialization
+		// must not key off status. A second speakText during synthesis has to
+		// queue, not open a concurrent synthesis fetch.
+		voiceState.ttsEngine = 'remote';
+		const fetchMock = hangSynthesis();
+		void speakText('first streamed sentence');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		await speakText('second streamed sentence');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	test('stopSpeaking during an in-flight synthesis discards the result', async () => {
+		voiceState.ttsEngine = 'remote';
+		let resolveFetch: ((res: Response) => void) | undefined;
+		globalThis.fetch = vi.fn(
+			() => new Promise<Response>((resolve) => { resolveFetch = resolve; }),
+		) as unknown as typeof fetch;
+		const spoken = speakText('stopped mid-synthesis');
+		stopSpeaking();
+		resolveFetch?.(
+			new Response(new Blob(['audio-bytes']), {
+				status: 200,
+				headers: { 'content-type': 'audio/mpeg' },
+			}),
+		);
+		await spoken;
+		// The cancelled utterance must not start playing (or stash itself
+		// behind an autoplay block) after the fetch finally resolves.
+		expect(voiceState.status).toBe('idle');
+		expect(voiceState.autoplayBlocked).toBe(false);
+	});
+
+	test('a stale browser-TTS onend after stopSpeaking does not pump the queue or flip status', async () => {
+		// Minimal SpeechSynthesisUtterance/speechSynthesis stand-ins — jsdom
+		// ships neither, and the test needs to fire a captured utterance's
+		// handlers by hand (mirrors the speechSynthesis hide/restore pattern
+		// in the error-surfacing suite above).
+		class FakeUtterance {
+			text: string;
+			onstart: (() => void) | null = null;
+			onend: (() => void) | null = null;
+			onerror: (() => void) | null = null;
+			constructor(text: string) {
+				this.text = text;
+			}
+		}
+		const spoken: FakeUtterance[] = [];
+		const fakeSynth = {
+			speak: vi.fn((u: FakeUtterance) => { spoken.push(u); }),
+			cancel: vi.fn(),
+		};
+		const g = globalThis as unknown as Record<string, unknown>;
+		const originalUtterance = g.SpeechSynthesisUtterance;
+		const originalSynth = (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+		g.SpeechSynthesisUtterance = FakeUtterance;
+		(window as unknown as { speechSynthesis: unknown }).speechSynthesis = fakeSynth;
+		try {
+			voiceState.ttsEngine = 'browser';
+			await speakText('first utterance, later cancelled');
+			expect(fakeSynth.speak).toHaveBeenCalledTimes(1);
+			const stale = spoken[0];
+
+			// stop() bumps the generation and cancels — the browser will still
+			// deliver the cancelled utterance's onend asynchronously.
+			stopSpeaking();
+
+			// A NEW burst starts: one playing, one queued behind it.
+			await speakText('second utterance after the stop');
+			await speakText('third utterance held in the queue');
+			expect(fakeSynth.speak).toHaveBeenCalledTimes(2);
+			spoken[1].onstart?.();
+			expect(voiceState.status).toBe('speaking');
+
+			// The stale onend fires late: it must not pump the queued third
+			// utterance under the playing second one, nor flip status to idle.
+			stale.onend?.();
+			expect(fakeSynth.speak).toHaveBeenCalledTimes(2);
+			expect(voiceState.status).toBe('speaking');
+		} finally {
+			g.SpeechSynthesisUtterance = originalUtterance;
+			if (originalSynth !== undefined) {
+				(window as unknown as { speechSynthesis: unknown }).speechSynthesis = originalSynth;
+			} else {
+				delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+			}
+		}
 	});
 
 	test('queue overflow pushes an info notification once per burst', async () => {
-		voiceState.ttsEngine = 'browser';
-		voiceState.status = 'speaking';
-		// Queue cap is 3. Five enqueues = two drops from the FIFO. The
+		voiceState.ttsEngine = 'remote';
+		hangSynthesis();
+		void speakText('active utterance');
+		// Queue cap is 20. Twenty-two enqueues = two drops from the FIFO. The
 		// user should see exactly one toast (not two), to avoid spamming.
-		await speakText('a');
-		await speakText('b');
-		await speakText('c');
-		await speakText('d');
-		await speakText('e');
+		for (let i = 0; i < 22; i++) {
+			await speakText(`utterance ${i}`);
+		}
 
 		const infos = notifications.toasts.filter((t) => t.kind === 'info');
 		expect(infos.length).toBe(1);
@@ -173,13 +296,13 @@ describe('voice-state queue', () => {
 	});
 
 	test('queue overflow notification re-arms after the queue drains', async () => {
-		voiceState.ttsEngine = 'browser';
-		voiceState.status = 'speaking';
+		voiceState.ttsEngine = 'remote';
+		hangSynthesis();
+		void speakText('active utterance');
 		// First burst — drop once.
-		await speakText('a');
-		await speakText('b');
-		await speakText('c');
-		await speakText('d');
+		for (let i = 0; i < 21; i++) {
+			await speakText(`utterance ${i}`);
+		}
 		expect(notifications.toasts.filter((t) => t.kind === 'info').length).toBe(1);
 
 		// Simulate the queue draining (and the active utterance ending).
@@ -188,11 +311,10 @@ describe('voice-state queue', () => {
 		stopSpeaking();
 
 		// New burst should be able to surface a fresh toast.
-		voiceState.status = 'speaking';
-		await speakText('a');
-		await speakText('b');
-		await speakText('c');
-		await speakText('d');
+		void speakText('active utterance');
+		for (let i = 0; i < 21; i++) {
+			await speakText(`utterance ${i}`);
+		}
 		expect(notifications.toasts.filter((t) => t.kind === 'info').length).toBe(1);
 	});
 });

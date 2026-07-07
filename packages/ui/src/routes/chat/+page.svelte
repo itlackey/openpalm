@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
+	import VoiceStatusStrip from '$lib/components/chat/VoiceStatusStrip.svelte';
 	import SessionList from '$lib/components/chat/SessionList.svelte';
 	import ToolLog from '$lib/components/chat/ToolLog.svelte';
 	import Presence from '$lib/components/chat/Presence.svelte';
@@ -18,7 +19,9 @@
 	import { probeChatBackend } from '$lib/api/chat.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
 	import { buildAdvancedPath } from '$lib/chat/navigation.js';
+	import { nextFollowState } from '$lib/chat/autoscroll.js';
 	import { chat } from '$lib/chat/chat-state.svelte.js';
+	import { renderMarkdown } from '$lib/markdown.js';
 	import { endpointsService } from '$lib/endpoints-state.svelte.js';
 	import { themeService } from '$lib/theme-state.svelte.js';
 	import {
@@ -26,6 +29,8 @@
 		setTtsAutoEnabled,
 		startListening,
 		stopListening,
+		startConversation,
+		stopConversation,
 		initVoice
 	} from '$lib/voice/voice-state.svelte.js';
 	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
@@ -75,6 +80,13 @@
 		await chat.onEndpointChanged(endpointsService.activeId);
 	}
 
+	async function retryFailedSend(): Promise<void> {
+		const text = chat.lastFailedText;
+		if (!text) return;
+		chat.error = '';
+		await chat.send(text);
+	}
+
 	async function handleSend(text: string): Promise<void> {
 		await chat.send(text);
 	}
@@ -106,11 +118,55 @@
 		await chat.rejectQuestion();
 	}
 
+	// Whether the viewport is following the newest content. Mirrored out of the
+	// autoscroll action so the "↓ latest" pill can render (and force-resume).
+	let followingLatest = $state(true);
+
+	function onFollowChange(following: boolean): void {
+		followingLatest = following;
+	}
+
+	function scrollToLatest(): void {
+		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		scrollAnchorEl?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
+	}
+
+	function jumpToLatest(): void {
+		followingLatest = true;
+		scrollToLatest();
+	}
+
+	interface AutoscrollParams {
+		isFollowing: () => boolean;
+		onFollowChange: (following: boolean) => void;
+	}
+
 	// MutationObserver-based autoscroll: fires whenever the thread DOM changes
 	// (new message, streaming text, loading spinners, permission cards, etc.)
-	// — no $effect or afterUpdate needed.
-	function autoscroll(node: HTMLElement): { destroy(): void } {
+	// — no $effect or afterUpdate needed. Auto-follow is conditional: a scroll
+	// listener on the .s-scroll ancestor detaches on an upward scroll and
+	// re-attaches near the bottom (see nextFollowState), so the user can read
+	// earlier messages while a reply streams. Follow-state lives in page $state,
+	// read through params.isFollowing so the pill can force-resume.
+	function autoscroll(node: HTMLElement, params: AutoscrollParams): { destroy(): void } {
+		const scroller = node.closest('.s-scroll') as HTMLElement | null;
+		let prevScrollTop = scroller?.scrollTop ?? 0;
+		function handleScroll(): void {
+			if (!scroller) return;
+			const following = params.isFollowing();
+			const next = nextFollowState(
+				following,
+				prevScrollTop,
+				scroller.scrollTop,
+				scroller.clientHeight,
+				scroller.scrollHeight
+			);
+			prevScrollTop = scroller.scrollTop;
+			if (next !== following) params.onFollowChange(next);
+		}
+		scroller?.addEventListener('scroll', handleScroll, { passive: true });
 		const observer = new MutationObserver(() => {
+			if (!params.isFollowing()) return;
 			const reduceMotion =
 				typeof window !== 'undefined' &&
 				window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -119,7 +175,12 @@
 			);
 		});
 		observer.observe(node, { childList: true, subtree: true, characterData: true });
-		return { destroy() { observer.disconnect(); } };
+		return {
+			destroy() {
+				observer.disconnect();
+				scroller?.removeEventListener('scroll', handleScroll);
+			}
+		};
 	}
 
 	// ── Modal focus management ─────────────────────────────────────────────
@@ -130,19 +191,46 @@
 
 	// ── Voice / TTS ───────────────────────────────────────────────────────
 
+	// Mic pulse tracks single-shot dictation only — conversation mode has
+	// its own toggle + strip and would otherwise light both buttons.
 	const voiceActive = $derived(
-		voiceState.status === 'recording' || voiceState.status === 'transcribing'
+		!voiceState.conversationActive &&
+			(voiceState.status === 'recording' || voiceState.status === 'transcribing')
 	);
 	const ttsEnabled = $derived(voiceState.ttsAutoEnabled);
 	const voiceEnabled = $derived(voiceState.sttEngine !== 'disabled' && voiceState.sttSupported);
 	const ttsAvailable = $derived(voiceState.ttsSupported);
 
+	// Composer draft — dictation inserts here instead of auto-sending, so
+	// the user reviews spoken text before it goes out. (The navbar
+	// VoiceControl keeps its auto-send behavior on other pages.)
+	let draft = $state('');
+
 	function toggleVoice(): void {
+		// Single-shot dictation and conversation mode are mutually exclusive.
+		if (voiceState.conversationActive) {
+			stopConversation();
+			return;
+		}
 		if (voiceActive) {
 			stopListening();
 		} else {
 			startListening((transcript) => {
-				void chat.send(transcript);
+				const trimmed = transcript.trim();
+				if (!trimmed) return;
+				draft = draft.trim().length > 0 ? `${draft.trimEnd()} ${trimmed}` : trimmed;
+			});
+		}
+	}
+
+	function toggleConversation(): void {
+		if (voiceState.conversationActive) {
+			stopConversation();
+		} else {
+			startConversation((text) => {
+				// Barge-in aware: stops an in-flight reply before sending so the
+				// utterance is never dropped by send()'s sending-guard.
+				void chat.sendUtterance(text);
 			});
 		}
 	}
@@ -187,6 +275,7 @@
 
 		function onKey(e: KeyboardEvent): void {
 			if (e.key === 'Escape') {
+				stopConversation();
 				closeGarden();
 				closeToolDrawer();
 			}
@@ -234,6 +323,9 @@
 
 		return () => {
 			visDestroyed = true;
+			// Leaving the page ends the hands-free loop — the mic must not
+			// stay hot on other routes.
+			stopConversation();
 			document.documentElement.classList.remove('chat-locked');
 			document.body.classList.remove('chat-locked', 'stillness-mode');
 			document.removeEventListener('keydown', onKey);
@@ -378,7 +470,11 @@
 	aria-label="Chat history"
 	inert={toolDrawerOpen || gardenOpen}
 >
-	<div class="s-thread" id="s-thread" use:autoscroll>
+	<div
+		class="s-thread"
+		id="s-thread"
+		use:autoscroll={{ isFollowing: () => followingLatest, onFollowChange }}
+	>
 		{#if sessionsLoading || entriesLoading}
 			<div class="s-loading" aria-live="polite">
 				<span class="s-loading-text">loading…</span>
@@ -394,7 +490,8 @@
 				{#if chat.pendingAssistantText}
 					<div class="turn master">
 						<div class="master-words settled s-streaming">
-							<p>{chat.pendingAssistantText}</p>
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false, so raw HTML in assistant output is escaped (not rendered); only generated formatting markup reaches here -->
+							<div class="markdown-body">{@html renderMarkdown(chat.pendingAssistantText)}</div>
 						</div>
 					</div>
 				{:else if !chat.pendingPermission && !chat.pendingQuestion}
@@ -432,6 +529,9 @@
 {#if chat.error}
 	<div class="s-error-banner" role="alert">
 		<span class="s-error-msg">{chat.error}</span>
+		{#if chat.lastFailedText}
+			<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
+		{/if}
 		<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
 		<button
 			class="s-error-dismiss"
@@ -444,15 +544,36 @@
 	</div>
 {/if}
 
+<!-- jump-to-latest pill: shown when the user has scrolled away mid-stream.
+     Inert while the drawer or veil owns the top layer, like <main> and .s-base —
+     the fixed pill must not stay clickable/focusable underneath them. -->
+{#if !followingLatest && chat.sending}
+	<button
+		class="s-jump-latest"
+		type="button"
+		aria-label="Jump to latest"
+		inert={toolDrawerOpen || gardenOpen}
+		onclick={jumpToLatest}
+	>
+		↓ latest
+	</button>
+{/if}
+
 <!-- composer -->
 <div class="s-base" inert={toolDrawerOpen || gardenOpen}>
+	<VoiceStatusStrip thinking={chat.sending} />
 	<ChatInput
+		bind:draft
 		sending={chat.sending}
 		questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
 		onSend={handleSend}
+		onStop={() => void chat.stopTurn()}
 		{voiceEnabled}
 		{voiceActive}
 		onMicToggle={toggleVoice}
+		conversationEnabled={voiceEnabled}
+		conversationActive={voiceState.conversationActive}
+		onConversationToggle={toggleConversation}
 	/>
 </div>
 
@@ -915,8 +1036,10 @@
 	}
 
 	.s-streaming {
+		/* Streamed text arrives as rendered markdown — block markup carries its
+		   own line structure, so pre-wrap would double every source newline in
+		   the generated HTML. */
 		color: var(--s-ink) !important;
-		white-space: pre-wrap;
 	}
 
 	.s-thinking {
@@ -1028,6 +1151,39 @@
 	}
 	.s-error-dismiss:hover {
 		color: var(--s-seal);
+	}
+
+	/* ── Jump-to-latest pill ──────────────────────────────────────────── */
+
+	.s-jump-latest {
+		position: fixed;
+		z-index: 40;
+		bottom: clamp(6.5rem, 18vh, 9rem);
+		left: 50%;
+		transform: translateX(-50%);
+		appearance: none;
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: lowercase;
+		color: var(--s-ink-2);
+		padding: 0.35rem 0.9rem;
+		border-radius: var(--s-radius-seal);
+		white-space: nowrap;
+	}
+
+	.s-jump-latest:hover {
+		color: var(--s-ink);
+	}
+
+	.s-jump-latest:focus-visible {
+		outline: none;
+		box-shadow:
+			0 0 0 1px var(--s-paper),
+			0 0 0 2px var(--s-ink-3);
 	}
 
 	/* ── Garden veil ──────────────────────────────────────────────────── */

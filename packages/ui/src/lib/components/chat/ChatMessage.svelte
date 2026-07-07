@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import type { ChatEntry } from '$lib/types.js';
   import { renderMarkdown } from '$lib/markdown.js';
+  import IconCopy from '$lib/components/icons/IconCopy.svelte';
+  import IconDone from '$lib/components/icons/IconDone.svelte';
 
   interface Props {
     entry: ChatEntry;
@@ -16,13 +18,82 @@
 
   let settled = $state(false);
 
+  /* Copy affordances render only when the Clipboard API exists (checked once on mount). */
+  let clipboardAvailable = $state(false);
+  let copied = $state(false);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
   onMount(() => {
+    clipboardAvailable =
+      typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function';
     if (entry.type !== 'divider' && entry.type !== 'note' && entry.type !== 'tool-group' && entry.role === 'assistant') {
       requestAnimationFrame(() => {
         settled = true;
       });
     }
+    return () => {
+      if (copiedTimer !== undefined) clearTimeout(copiedTimer);
+    };
   });
+
+  async function copyMessage() {
+    if (entry.type === 'divider' || entry.type === 'tool-group') return;
+    try {
+      await navigator.clipboard.writeText(entry.text);
+    } catch {
+      // Clipboard write denied — keep the label as-is rather than claim success.
+      return;
+    }
+    copied = true;
+    if (copiedTimer !== undefined) clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => {
+      copied = false;
+    }, 1500);
+  }
+
+  /* Inline SVG for buttons created outside the Svelte template (mirrors IconCopy.svelte). */
+  const COPY_SVG =
+    '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" x="9" y="9" width="11" height="11" rx="2"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M5 15a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>';
+
+  /** Appends a copy button to each <pre>. Rendered markdown is static per
+   *  message, so a one-time pass at mount suffices — no observer needed. */
+  function decorateCodeCopy(node: HTMLElement) {
+    if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const pre of node.querySelectorAll('pre')) {
+      // Capture before appending the button so the copied text stays clean.
+      const text = pre.textContent ?? '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'code-copy';
+      btn.setAttribute('aria-label', 'Copy code');
+      btn.title = 'Copy code';
+      btn.innerHTML = COPY_SVG;
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          return;
+        }
+        btn.setAttribute('aria-label', 'Copied');
+        btn.title = 'Copied';
+        btn.classList.add('is-copied');
+        timers.push(
+          setTimeout(() => {
+            btn.setAttribute('aria-label', 'Copy code');
+            btn.title = 'Copy code';
+            btn.classList.remove('is-copied');
+          }, 1500)
+        );
+      });
+      pre.appendChild(btn);
+    }
+    return {
+      destroy() {
+        for (const t of timers) clearTimeout(t);
+      },
+    };
+  }
 </script>
 
 {#if entry.type === 'divider'}
@@ -46,14 +117,32 @@
     {#if renderedHtml !== null}
       <div class="master-words" class:settled>
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false, so raw HTML in assistant output is escaped (not rendered); only generated formatting markup reaches here -->
-        <div class="markdown-body">{@html renderedHtml}</div>
+        <div class="markdown-body" use:decorateCodeCopy>{@html renderedHtml}</div>
       </div>
     {:else}
       <div class="master-words" class:settled>
         <p>{entry.text}</p>
       </div>
     {/if}
-    <div class="mark">Assistant</div>
+    <div class="mark-row">
+      <div class="mark">Assistant</div>
+      {#if clipboardAvailable}
+        <button
+          type="button"
+          class="msg-copy"
+          class:is-copied={copied}
+          aria-label={copied ? 'Copied' : 'Copy message'}
+          title={copied ? 'Copied' : 'Copy message'}
+          onclick={copyMessage}
+        >
+          {#if copied}
+            <IconDone size={14} />
+          {:else}
+            <IconCopy size={14} />
+          {/if}
+        </button>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -182,6 +271,7 @@
     color: var(--s-ink-2);
   }
   .master-words :global(pre) {
+    position: relative;
     margin: 0.7rem 0;
     padding: 0.8rem 1rem;
     border-left: var(--s-hair) solid var(--s-line);
@@ -220,6 +310,93 @@
     margin: 0.8rem 0;
     border: 0;
     border-top: var(--s-hair) solid var(--s-line);
+  }
+
+  /* ── Copy affordances ── */
+
+  .mark-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    margin-top: var(--s-sp-3);
+  }
+
+  .mark-row .mark {
+    margin-top: 0;
+  }
+
+  .msg-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.15rem;
+    border: 0;
+    background: none;
+    color: var(--s-ink-3);
+    cursor: pointer;
+    border-radius: var(--s-radius-focus);
+    transition:
+      color var(--s-t-instant) var(--s-ease),
+      opacity var(--s-t-instant) var(--s-ease);
+  }
+
+  .msg-copy:hover,
+  .msg-copy:focus-visible {
+    color: var(--s-ink);
+  }
+
+  .msg-copy.is-copied {
+    color: var(--s-seal);
+  }
+
+  /* Quiet until the turn is hovered or holds focus; touch devices always show it. */
+  @media (hover: hover) {
+    .msg-copy {
+      opacity: 0;
+    }
+    .turn.master:hover .msg-copy,
+    .turn.master:focus-within .msg-copy {
+      opacity: 1;
+    }
+  }
+
+  /* Code-block copy buttons are appended by decorateCodeCopy, outside the
+     Svelte template — style through :global under the scoped ancestor. */
+  .master-words :global(.code-copy) {
+    position: absolute;
+    top: var(--s-sp-2);
+    right: var(--s-sp-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: var(--s-radius-focus);
+    background: var(--s-paper);
+    color: var(--s-ink-3);
+    cursor: pointer;
+    transition:
+      color var(--s-t-instant) var(--s-ease),
+      opacity var(--s-t-instant) var(--s-ease);
+  }
+
+  .master-words :global(.code-copy:hover),
+  .master-words :global(.code-copy:focus-visible) {
+    color: var(--s-ink);
+  }
+
+  .master-words :global(.code-copy.is-copied) {
+    color: var(--s-seal);
+  }
+
+  @media (hover: hover) {
+    .master-words :global(.code-copy) {
+      opacity: 0;
+    }
+    .master-words :global(pre:hover .code-copy),
+    .master-words :global(pre:focus-within .code-copy) {
+      opacity: 1;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

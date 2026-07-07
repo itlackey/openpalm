@@ -1,25 +1,53 @@
 <script lang="ts">
   import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
   import IconSend from '@openpalm/ui-kit/components/icons/IconSend.svelte';
+  import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
+  import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
 
   interface Props {
     sending: boolean;
     questionPending?: boolean;
     onSend: (text: string) => void;
+    onStop?: () => void;
     voiceEnabled?: boolean;
     voiceActive?: boolean;
     onMicToggle?: () => void;
+    /** Composer text — bindable so dictation can insert into the draft. */
+    draft?: string;
+    conversationEnabled?: boolean;
+    conversationActive?: boolean;
+    onConversationToggle?: () => void;
   }
 
-  let { sending, questionPending = false, onSend, voiceEnabled = false, voiceActive = false, onMicToggle }: Props = $props();
+  let {
+    sending,
+    questionPending = false,
+    onSend,
+    onStop,
+    voiceEnabled = false,
+    voiceActive = false,
+    onMicToggle,
+    draft = $bindable(''),
+    conversationEnabled = false,
+    conversationActive = false,
+    onConversationToggle,
+  }: Props = $props();
 
-  let inputText = $state('');
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
 
-  const inputDisabled = $derived(sending && !questionPending);
-  const isActive = $derived(inputText.trim().length > 0);
+  // Drafting the next message is always allowed; only submitting a turn
+  // while the assistant is replying (and no single-question ask is pending)
+  // is blocked.
+  const submitBlocked = $derived(sending && !questionPending);
+  const isActive = $derived(draft.trim().length > 0);
+  // While a turn is in flight (and no single-question ask needs the
+  // composer for its answer), swap the send button for a stop button.
+  const showStop = $derived(submitBlocked && !!onStop);
 
   function handleKeydown(e: KeyboardEvent): void {
+    // IME composition (e.g. CJK input methods) commits candidates with
+    // Enter — never treat that as a submit.
+    if (e.isComposing) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -27,10 +55,10 @@
   }
 
   function submit(): void {
-    const text = inputText.trim();
-    if (!text || inputDisabled) return;
+    const text = draft.trim();
+    if (!text || submitBlocked) return;
     onSend(text);
-    inputText = '';
+    draft = '';
     if (textareaEl) {
       textareaEl.style.height = 'auto';
     }
@@ -51,12 +79,11 @@
 >
   <textarea
     bind:this={textareaEl}
-    bind:value={inputText}
+    bind:value={draft}
     onkeydown={handleKeydown}
     oninput={handleInput}
-    placeholder={sending && !questionPending ? '' : 'Write a message...'}
+    placeholder="Write a message..."
     rows="1"
-    disabled={inputDisabled}
     aria-label="Message input"
     autocomplete="off"
     spellcheck="false"
@@ -75,14 +102,37 @@
         <IconMic size={16} />
       </button>
     {/if}
-    <button
-      class="s-send-btn"
-      type="submit"
-      aria-label="Send message"
-      disabled={!isActive || inputDisabled}
-    >
-      <IconSend size={16} />
-    </button>
+    {#if conversationEnabled}
+      <button
+        class="s-mic-btn"
+        class:active={conversationActive}
+        type="button"
+        aria-label={conversationActive ? 'End conversation mode' : 'Start conversation mode'}
+        aria-pressed={conversationActive}
+        onclick={onConversationToggle}
+      >
+        <IconWaves size={16} />
+      </button>
+    {/if}
+    {#if showStop}
+      <button
+        class="s-send-btn"
+        type="button"
+        aria-label="Stop generating"
+        onclick={onStop}
+      >
+        <IconStop size={16} />
+      </button>
+    {:else}
+      <button
+        class="s-send-btn"
+        type="submit"
+        aria-label="Send message"
+        disabled={!isActive || submitBlocked}
+      >
+        <IconSend size={16} />
+      </button>
+    {/if}
   </div>
 </form>
 
@@ -185,11 +235,6 @@
   .s-composer textarea::placeholder {
     color: var(--s-ink-3);
     opacity: 1;
-  }
-
-  .s-composer textarea:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
 
   .s-rule {

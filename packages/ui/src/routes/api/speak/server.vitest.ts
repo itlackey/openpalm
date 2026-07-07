@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -29,17 +29,14 @@ function makePostEvent(body: unknown, token = 'admin-token'): Parameters<typeof 
 
 let originalHome: string | undefined;
 let originalTtsBase: string | undefined;
-let originalOpencodeUrl: string | undefined;
 let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 beforeEach(() => {
   originalHome = process.env.OP_HOME;
   originalTtsBase = process.env.OP_TTS_BASE_URL;
-  originalOpencodeUrl = process.env.OP_OPENCODE_URL;
 
   process.env.OP_HOME = makeTempDir();
   process.env.OP_TTS_BASE_URL = 'http://tts.local';
-  process.env.OP_OPENCODE_URL = 'http://assistant.local';
   resetState('admin-token');
 });
 
@@ -47,48 +44,18 @@ afterEach(() => {
   process.env.OP_HOME = originalHome;
   if (originalTtsBase === undefined) delete process.env.OP_TTS_BASE_URL;
   else process.env.OP_TTS_BASE_URL = originalTtsBase;
-  if (originalOpencodeUrl === undefined) delete process.env.OP_OPENCODE_URL;
-  else process.env.OP_OPENCODE_URL = originalOpencodeUrl;
   fetchSpy?.mockRestore();
   fetchSpy = undefined;
   cleanupTempDirs();
   rmSync(getState().homeDir, { recursive: true, force: true });
 });
 
-describe('POST /api/speak speech prep', () => {
-  test('uses the small model plus persona to generate a working-on-it acknowledgement', async () => {
-    mkdirSync(join(getState().configDir, 'assistant'), { recursive: true });
-    writeFileSync(join(getState().configDir, 'assistant', 'persona.md'), 'Be warm and relaxed.\n');
-    writeFileSync(
-      join(getState().configDir, 'assistant', 'opencode.json'),
-      `${JSON.stringify({ small_model: 'openai/gpt-4.1-mini', model: 'openai/gpt-4.1' })}\n`,
-    );
-
+describe('POST /api/speak markdown stripping', () => {
+  test('markdown is stripped before hitting the TTS endpoint', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
       const target = String(url);
       calls.push({ url: target, init });
-      if (target === 'http://assistant.local/config') {
-        return new Response(JSON.stringify({ small_model: 'openai/gpt-4.1-mini', model: 'openai/gpt-4.1' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (target === 'http://assistant.local/session') {
-        return new Response(JSON.stringify({ id: 'prep-1' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (target === 'http://assistant.local/session/prep-1/message') {
-        return new Response(JSON.stringify({ parts: [{ type: 'text', text: 'Sure, I am on it.' }] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (target === 'http://assistant.local/session/prep-1') {
-        return new Response(null, { status: 204 });
-      }
       if (target === 'http://tts.local/v1/audio/speech') {
         return new Response(new Uint8Array([1, 2, 3]), {
           status: 200,
@@ -98,77 +65,40 @@ describe('POST /api/speak speech prep', () => {
       throw new Error(`Unexpected fetch ${target}`);
     });
 
-    const res = await POST(makePostEvent({ text: 'Working on it.', mode: 'chat_ack', userText: 'Write a poem.' }));
+    const res = await POST(makePostEvent({ text: '**Bold** reply with `code` and a [link](https://example.com).' }));
     expect(res.status).toBe(200);
-
-    const messageCall = calls.find((call) => call.url.endsWith('/session/prep-1/message'));
-    expect(messageCall).toBeDefined();
-    const messageBody = JSON.parse(String(messageCall?.init?.body)) as Record<string, unknown>;
-    expect(messageBody.model).toBe('openai/gpt-4.1-mini');
-    expect(JSON.stringify(messageBody.parts)).toContain('Be warm and relaxed.');
-    expect(JSON.stringify(messageBody.parts)).toContain('Write a poem.');
 
     const ttsCall = calls.find((call) => call.url === 'http://tts.local/v1/audio/speech');
     expect(ttsCall).toBeDefined();
     const ttsBody = JSON.parse(String(ttsCall?.init?.body)) as Record<string, unknown>;
-    expect(ttsBody.input).toBe('Sure, I am on it.');
+    expect(ttsBody.input).toBe('Bold reply with code and a link.');
   });
 
-  test('falls back to the main chat model for final reply summaries', async () => {
-    mkdirSync(join(getState().configDir, 'assistant'), { recursive: true });
-    writeFileSync(join(getState().configDir, 'assistant', 'persona.md'), 'Be crisp and friendly.\n');
-    writeFileSync(
-      join(getState().configDir, 'assistant', 'opencode.json'),
-      `${JSON.stringify({ model: 'openai/gpt-4.1' })}\n`,
-    );
-
+  test('legacy speech-prep fields are ignored — no LLM round trip, text still stripped', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
       const target = String(url);
       calls.push({ url: target, init });
-      if (target === 'http://assistant.local/config') {
-        return new Response(JSON.stringify({ model: 'openai/gpt-4.1' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (target === 'http://assistant.local/session') {
-        return new Response(JSON.stringify({ id: 'prep-2' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (target === 'http://assistant.local/session/prep-2/message') {
-        return new Response(JSON.stringify({ parts: [{ type: 'text', text: 'Here is the short spoken version.' }] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (target === 'http://assistant.local/session/prep-2') {
-        return new Response(null, { status: 204 });
-      }
       if (target === 'http://tts.local/v1/audio/speech') {
         return new Response(new Uint8Array([1, 2, 3]), {
           status: 200,
           headers: { 'content-type': 'audio/wav' },
         });
       }
+      // Any OpenCode call (the removed speech-prep session flow) fails the test.
       throw new Error(`Unexpected fetch ${target}`);
     });
 
     const res = await POST(makePostEvent({
-      text: 'Full agent answer.',
+      text: '# Heading\n- one\n- two',
       mode: 'chat_reply',
       userText: 'Explain the plan.',
-      assistantText: 'Full agent answer.',
+      assistantText: '# Heading\n- one\n- two',
     }));
     expect(res.status).toBe(200);
 
-    const messageCall = calls.find((call) => call.url.endsWith('/session/prep-2/message'));
-    expect(messageCall).toBeDefined();
-    const messageBody = JSON.parse(String(messageCall?.init?.body)) as Record<string, unknown>;
-    expect(messageBody.model).toBe('openai/gpt-4.1');
-    expect(JSON.stringify(messageBody.parts)).toContain('Explain the plan.');
-    expect(JSON.stringify(messageBody.parts)).toContain('Full agent answer.');
+    expect(calls.map((call) => call.url)).toEqual(['http://tts.local/v1/audio/speech']);
+    const ttsBody = JSON.parse(String(calls[0]?.init?.body)) as Record<string, unknown>;
+    expect(ttsBody.input).toBe('Heading\none.\ntwo.');
   });
 });

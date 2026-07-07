@@ -44,9 +44,91 @@ describe('ChatInput — send button disabled state', () => {
 
   test('send button is disabled while sending=true regardless of input', async () => {
     await render(ChatInput, { props: { sending: true, onSend: vi.fn() } });
-    // Input is also disabled when sending=true, so we can't type into it here.
-    // The send button is disabled independently via the sending prop.
+    // The textarea stays enabled during sending (draft-while-sending) but the
+    // send button is disabled independently via the sending prop.
     await expect.element(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+});
+
+describe('ChatInput — draft while sending', () => {
+  test('textarea stays enabled and typable while sending=true', async () => {
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn() } });
+    const input = page.getByRole('textbox', { name: 'Message input' });
+    await expect.element(input).toBeEnabled();
+    await userEvent.type(input, 'drafting next message');
+    await expect.element(input).toHaveValue('drafting next message');
+  });
+});
+
+describe('ChatInput — stop button', () => {
+  test('shows a stop button instead of send while sending, when onStop is provided', async () => {
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn(), onStop: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: 'Stop generating' })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
+  });
+
+  test('calls onStop when the stop button is clicked', async () => {
+    const onStop = vi.fn();
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn(), onStop } });
+    await page.getByRole('button', { name: 'Stop generating' }).click();
+    expect(onStop).toHaveBeenCalledOnce();
+  });
+
+  test('falls back to the (disabled) send button while sending when onStop is not provided', async () => {
+    await render(ChatInput, { props: { sending: true, onSend: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    await expect.element(page.getByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument();
+  });
+
+  test('does not show the stop button for a single-question pending state (questionPending=true)', async () => {
+    await render(ChatInput, {
+      props: { sending: true, questionPending: true, onSend: vi.fn(), onStop: vi.fn() },
+    });
+    await expect.element(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ChatInput — bindable draft', () => {
+  test('an initial draft prop prefills the textarea and enables send', async () => {
+    await render(ChatInput, { props: { sending: false, onSend: vi.fn(), draft: 'dictated text' } });
+    await expect.element(page.getByRole('textbox', { name: 'Message input' })).toHaveValue('dictated text');
+    await expect.element(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
+  });
+});
+
+describe('ChatInput — conversation mode toggle', () => {
+  test('hidden unless conversationEnabled is set', async () => {
+    await render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
+    await expect.element(page.getByRole('button', { name: 'Start conversation mode' })).not.toBeInTheDocument();
+  });
+
+  test('renders next to the mic and calls onConversationToggle', async () => {
+    const onConversationToggle = vi.fn();
+    await render(ChatInput, {
+      props: {
+        sending: false,
+        onSend: vi.fn(),
+        voiceEnabled: true,
+        conversationEnabled: true,
+        onConversationToggle,
+      },
+    });
+    await page.getByRole('button', { name: 'Start conversation mode' }).click();
+    expect(onConversationToggle).toHaveBeenCalledOnce();
+  });
+
+  test('shows the end-conversation label while active', async () => {
+    await render(ChatInput, {
+      props: {
+        sending: false,
+        onSend: vi.fn(),
+        conversationEnabled: true,
+        conversationActive: true,
+        onConversationToggle: vi.fn(),
+      },
+    });
+    await expect.element(page.getByRole('button', { name: 'End conversation mode' })).toBeVisible();
   });
 });
 
@@ -75,5 +157,18 @@ describe('ChatInput — send behaviour', () => {
     // Disabled button — verify state rather than clicking (Playwright waits for enabled before click)
     await expect.element(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test('Enter during IME composition does not submit', async () => {
+    const onSend = vi.fn();
+    const { container } = render(ChatInput, { props: { sending: false, onSend } });
+    const input = container.querySelector('textarea')!;
+    input.value = 'こんにちは';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true })
+    );
+    expect(onSend).not.toHaveBeenCalled();
+    await expect.element(input).toHaveValue('こんにちは');
   });
 });
