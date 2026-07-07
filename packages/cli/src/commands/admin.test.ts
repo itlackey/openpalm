@@ -47,6 +47,7 @@ import type { UIServerOptions } from '../lib/ui-server.ts';
 const adminModuleUrl = new URL('./admin.ts', import.meta.url).href;
 const mainModuleUrl = new URL('../main.ts', import.meta.url).href;
 const uiServerModuleUrl = new URL('../lib/ui-server.ts', import.meta.url).href;
+const cliStateModuleUrl = new URL('../lib/cli-state.ts', import.meta.url).href;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 const ESC = String.fromCharCode(27);
@@ -85,7 +86,7 @@ const tmpDirs: string[] = [];
 
 afterEach(() => {
   mock.restore();
-  mock.module('@openpalm/lib', () => ({ ...realLib }));
+  restoreOpenPalmLib();
   Bun.spawn = originalBunSpawn;
   globalThis.fetch = originalFetch;
   console.log = originalLog;
@@ -100,6 +101,22 @@ afterEach(() => {
 function restoreOpenPalmLib(): void {
   mock.restore();
   mock.module('@openpalm/lib', () => ({ ...realLib }));
+  mock.module(cliStateModuleUrl, () => ({
+    ensureValidState: () => {
+      const state = realLib.createState();
+      if (realLib.classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
+        throw new Error('OpenPalm is not installed in this OP_HOME yet. Run `openpalm install` first.');
+      }
+      state.artifacts = realLib.resolveRuntimeFiles();
+      return state;
+    },
+    resolveServeState: () => {
+      const state = realLib.createState();
+      if (realLib.classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') return state;
+      state.artifacts = realLib.resolveRuntimeFiles();
+      return state;
+    },
+  }));
 }
 
 /** Capture every Bun.spawn call; no real process is ever launched. */
