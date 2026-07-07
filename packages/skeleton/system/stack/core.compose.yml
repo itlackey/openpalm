@@ -83,6 +83,9 @@ services:
       OP_CLIENT_HOST_PORT: ${OP_CLIENT_PORT:-3810}
       OP_HOST_CLIENT_PORT: ${OP_HOST_CLIENT_PORT:-3890}
       OP_CLIENT_CORS_ALLOWED_ORIGINS: ${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}
+      OP_BIND_ADDRESS: ${OP_BIND_ADDRESS:-127.0.0.1}
+      OP_ASSISTANT_BIND_ADDRESS: ${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
+      OP_CLIENT_BIND_ADDRESS: ${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks

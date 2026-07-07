@@ -12,6 +12,7 @@ import {
   seedUiBuild,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
+  checkAndUpdateClientBuild,
   checkAndUpdateSkeleton,
   uiUpdateChannel,
   parseEnvFile,
@@ -640,6 +641,19 @@ function stopUIServer(): void {
 // HARNESS_CONTRACT_VERSION is untouched. Non-fatal when the build is absent:
 // log + skip, and resolveInitialUrl falls back to the host UI chat on 3880.
 
+async function ensureClientAppBuild(): Promise<void> {
+  try {
+    const result = await checkAndUpdateClientBuild(PLATFORM_VERSION, resolveDataDir());
+    if (result.updated) {
+      console.log(`Client app updated to v${result.latestVersion}`);
+    } else if (result.error) {
+      console.log(`Client app update check skipped: ${result.error}`);
+    }
+  } catch (err) {
+    console.log('Client app update check skipped:', err instanceof Error ? err.message : String(err));
+  }
+}
+
 function startClientAppServer(): void {
   try {
     const buildDir = resolveClientBuildDir();
@@ -916,6 +930,7 @@ app.whenReady().then(async () => {
   // Start the @openpalm/client static server child after the UI server (P5c,
   // #555). Non-fatal by design: absent build or spawn failure → log + skip,
   // and resolveInitialUrl lands the window on the host UI chat instead.
+  await ensureClientAppBuild();
   startClientAppServer();
 
   // Spawn the ephemeral local OpenCode (Phase 3). Non-fatal: if the binary

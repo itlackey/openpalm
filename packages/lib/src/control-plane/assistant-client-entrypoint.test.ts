@@ -49,6 +49,14 @@ mkdir -p "$WORK/bin"
 cat > "$WORK/bin/npm" <<'STUB'
 #!/usr/bin/env bash
 printf 'npm %s\\n' "$*" >> "$NPM_LOG"
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--prefix" ] && [ ! -d "$arg" ]; then
+    echo "npm error missing prefix directory: $arg" >&2
+    exit 13
+  fi
+  prev="$arg"
+done
 if [ -n "\${STUB_NPM_FAIL_PATTERN:-}" ] && [[ "$*" == *"\${STUB_NPM_FAIL_PATTERN}"* ]]; then
   echo "npm error simulated registry failure" >&2
   exit 1
@@ -78,6 +86,7 @@ export PATH="$WORK/bin:$PATH"
 # Strip the top-level boot-sequence invocations (bare function-name lines at
 # column 0); keep unindented bash keywords so syntax cannot break.
 awk '!/^[a-z_][a-z0-9_]*$/ || /^(fi|done|esac|then|else|do)$/' "$ENTRYPOINT" > "$WORK/functions.sh"
+sed -i "s#/opt/openpalm#$WORK/artifacts#g" "$WORK/functions.sh"
 
 # shellcheck disable=SC1091
 source "$WORK/functions.sh"
@@ -162,6 +171,17 @@ describe('P5d install_runtime_artifacts — @openpalm/client version resolution 
     expect(result.stderr).toMatch(/@openpalm\/client@9\.9\.9-test install failed/);
   });
 
+  test('creates current artifact prefixes before npm install so old named volumes can upgrade', () => {
+    const result = runInstallScenario({
+      OP_CLIENT_VERSION: '9.9.9-test',
+      OP_SKELETON_VERSION: '2.2.2-test',
+      PLATFORM_VERSION: '1.1.1-platform',
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.npmLog).toContain('--prefix');
+    expect(result.stderr).not.toContain('missing prefix directory');
+  });
+
   // CHARACTERIZATION (green before AND after P5d): the skeleton pull is
   // untouched by this phase. OP_UI_VERSION is supplied only so the pre-P5d
   // entrypoint gets past its (to-be-removed) UI version gate; after P5d it is
@@ -242,6 +262,9 @@ describe('P5d entrypoint — client co-process (static-only)', () => {
     expect(startOpencode).toContain('OP_CLIENT_CORS_ALLOWED_ORIGINS');
     expect(startOpencode).toContain('http://127.0.0.1:${client_host_port}');
     expect(startOpencode).toContain('http://127.0.0.1:${host_client_port}');
+    expect(startOpencode).toContain('OP_CLIENT_BIND_ADDRESS');
+    expect(startOpencode).toContain('OP_ASSISTANT_BIND_ADDRESS');
+    expect(startOpencode).toContain('cors_origins+=("*")');
     expect(startOpencode).toContain('cmd+=(--cors "$origin")');
   });
 

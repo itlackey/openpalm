@@ -86,6 +86,9 @@ describe('P5d compose — stack env plumbing for the exact-pin client artifact',
     expect(environmentHas(assistant, 'OP_CLIENT_HOST_PORT')).toBe(true);
     expect(environmentHas(assistant, 'OP_HOST_CLIENT_PORT')).toBe(true);
     expect(environmentHas(assistant, 'OP_CLIENT_CORS_ALLOWED_ORIGINS')).toBe(true);
+    expect(environmentHas(assistant, 'OP_BIND_ADDRESS')).toBe(true);
+    expect(environmentHas(assistant, 'OP_ASSISTANT_BIND_ADDRESS')).toBe(true);
+    expect(environmentHas(assistant, 'OP_CLIENT_BIND_ADDRESS')).toBe(true);
   });
 
   // CHARACTERIZATION (green today): the client artifact installs under

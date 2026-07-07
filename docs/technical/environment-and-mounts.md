@@ -128,11 +128,13 @@ Key env:
 | `OP_CLIENT_HOST_PORT` | compose-derived from `OP_CLIENT_PORT` | Host-published assistant-container client port used to add OpenCode CORS origins |
 | `OP_HOST_CLIENT_PORT` | `stack.env`/host env (default `3890`) | Host-local client app/PWA port used by `openpalm app` and Electron; also added to OpenCode CORS origins |
 | `OP_CLIENT_CORS_ALLOWED_ORIGINS` | `stack.env` (optional) | Extra comma-separated exact origins passed to OpenCode `--cors` for custom client deployments |
+| `OP_BIND_ADDRESS` / `OP_ASSISTANT_BIND_ADDRESS` / `OP_CLIENT_BIND_ADDRESS` | compose env interpolation | Passed through so the entrypoint can detect explicit LAN exposure and widen OpenCode CORS only for that opt-in path |
 
 Notes:
 
 - The assistant has no Docker socket mount.
 - The assistant reads user secrets via `akm env:user` — there is no `/etc/vault/` container mount.
+- If both the assistant and assistant-container client are explicitly bound off loopback, the entrypoint allows browser client origins for the LAN path. Wildcard host binds (`0.0.0.0`/`::`) cannot reveal the operator's chosen LAN hostname to the container, so the entrypoint adds OpenCode `--cors "*"` only in that already-LAN-exposed mode.
 - The entrypoint starts as root only long enough to normalize permissions and optional SSH setup, then drops privileges.
 
 ### Guardian

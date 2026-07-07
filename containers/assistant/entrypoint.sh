@@ -85,6 +85,11 @@ install_runtime_artifacts() {
   local npm_cache_dir="/home/opencode/.cache/openpalm-npm"
   local bun_cache_dir="/home/opencode/.cache/bun/install"
 
+  # Existing assistant-artifacts named volumes shadow Dockerfile-created paths.
+  # Older images only created /opt/openpalm/{ui,skeleton}; create the current
+  # prefixes here so upgrades can install @openpalm/client as the node user.
+  mkdir -p /opt/openpalm/client /opt/openpalm/skeleton
+
   # `grep -v` exits 1 when npm produced only warnings (or nothing), so the
   # pipeline's own exit code can't distinguish "npm failed" from "no output".
   # Capture npm's exit via PIPESTATUS and surface real failures — a silent
@@ -389,12 +394,25 @@ start_opencode() {
   # comma-separated origins for custom reverse-proxy/client deployments.
   local client_host_port="${OP_CLIENT_HOST_PORT:-${OP_CLIENT_PORT:-3810}}"
   local host_client_port="${OP_HOST_CLIENT_PORT:-3890}"
+  local client_bind_address="${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
+  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
   local cors_origins=(
     "http://127.0.0.1:${client_host_port}"
     "http://localhost:${client_host_port}"
     "http://127.0.0.1:${host_client_port}"
     "http://localhost:${host_client_port}"
   )
+  if [ "$client_bind_address" != "127.0.0.1" ] && [ "$client_bind_address" != "localhost" ] \
+     && [ "$assistant_bind_address" != "127.0.0.1" ] && [ "$assistant_bind_address" != "localhost" ]; then
+    if [ "$client_bind_address" = "0.0.0.0" ] || [ "$client_bind_address" = "::" ]; then
+      # With wildcard binds the real browser Origin is the operator-chosen LAN
+      # hostname/IP, which the container cannot know. The assistant itself is
+      # already explicitly LAN-exposed in this mode, so allow browser origins.
+      cors_origins+=("*")
+    else
+      cors_origins+=("http://${client_bind_address}:${client_host_port}")
+    fi
+  fi
   if [ -n "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
     local old_ifs="$IFS"
     IFS=','
