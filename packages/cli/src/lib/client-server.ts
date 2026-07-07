@@ -17,7 +17,14 @@
  */
 import { join, basename } from 'node:path';
 import { existsSync as nodeExistsSync } from 'node:fs';
-import { resolveClientBuildDir } from '@openpalm/lib';
+import {
+  parseEnvFile,
+  resolveClientAppPort,
+  resolveClientBuildDir,
+  resolveDataDir,
+  resolveOpenPalmHome,
+  writeClientRuntimeConfig,
+} from '@openpalm/lib';
 import { DEFAULT_CLIENT_PORT } from './ports.ts';
 
 const STOP_TIMEOUT_MS = 5_000;
@@ -36,6 +43,26 @@ export function resolveClientServeScript(buildDir: string): string {
   return join(buildDir, '..', 'bin', 'serve.mjs');
 }
 
+export function resolveHostClientRuntimeConfigPath(dataDir = resolveDataDir()): string {
+  return join(dataDir, 'client', 'runtime-config.json');
+}
+
+function readPersistedStackEnv(): Record<string, string> {
+  try {
+    return parseEnvFile(join(resolveOpenPalmHome(), 'knowledge', 'env', 'stack.env'));
+  } catch {
+    return {};
+  }
+}
+
+export function resolveDefaultAssistantUrl(
+  env: NodeJS.ProcessEnv = process.env,
+  persistedEnv: Record<string, string> = readPersistedStackEnv(),
+): string {
+  const merged = { ...persistedEnv, ...env };
+  return merged.OP_CLIENT_DEFAULT_ASSISTANT_URL || `http://127.0.0.1:${merged.OP_ASSISTANT_PORT || '3800'}`;
+}
+
 /** Running client-server handle: stop() kills the child and ends supervision. */
 export interface ClientServerHandle {
   stop: () => Promise<void>;
@@ -43,7 +70,7 @@ export interface ClientServerHandle {
 
 /** Injectable dependencies for {@link startClientServer} (real process/fs by default). */
 export interface ClientServerDeps {
-  /** Port to serve on (default: OP_CLIENT_PORT env or DEFAULT_CLIENT_PORT). */
+  /** Port to serve on (default: OP_HOST_CLIENT_PORT env or DEFAULT_CLIENT_PORT). */
   port?: number;
   /** Resolve the client build dir (defaults to the shared lib resolver). */
   resolveBuildDir?: () => string;
@@ -51,6 +78,9 @@ export interface ClientServerDeps {
   existsSync?: (path: string) => boolean;
   /** Spawn the serve child (defaults to Bun.spawn with inherited stdio). */
   spawnFn?: (cmd: string[], opts: { env: Record<string, string | undefined> }) => ClientChildProc;
+  resolveRuntimeConfigPath?: () => string;
+  resolveAssistantUrl?: () => string;
+  writeRuntimeConfig?: (path: string, assistantUrl: string) => void;
   log?: (...args: unknown[]) => void;
   logError?: (...args: unknown[]) => void;
   /** Sleep for the respawn delay and the stop grace window. */
@@ -66,7 +96,7 @@ export interface ClientServerDeps {
  * client app.
  */
 export async function startClientServer(deps: ClientServerDeps = {}): Promise<ClientServerHandle | null> {
-  const port = deps.port ?? (Number(process.env.OP_CLIENT_PORT) || DEFAULT_CLIENT_PORT);
+  const port = deps.port ?? resolveClientAppPort(process.env);
   const resolveBuildDir = deps.resolveBuildDir ?? resolveClientBuildDir;
   const exists = deps.existsSync ?? nodeExistsSync;
   const spawnFn = deps.spawnFn
@@ -76,12 +106,22 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
   const logError = deps.logError ?? console.error;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const stopTimeoutMs = deps.stopTimeoutMs ?? STOP_TIMEOUT_MS;
+  const resolveRuntimeConfigPath = deps.resolveRuntimeConfigPath ?? (() => resolveHostClientRuntimeConfigPath());
+  const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl(process.env));
+  const writeRuntimeConfig = deps.writeRuntimeConfig ?? writeClientRuntimeConfig;
 
   const buildDir = resolveBuildDir();
   const serveScript = resolveClientServeScript(buildDir);
   if (!exists(join(buildDir, 'index.html')) || !exists(serveScript)) {
     log(`Client app build not found at ${buildDir} — skipping the client server (the UI keeps serving).`);
     return null;
+  }
+
+  const runtimeConfigPath = resolveRuntimeConfigPath();
+  try {
+    writeRuntimeConfig(runtimeConfigPath, resolveAssistantUrl());
+  } catch (err) {
+    logError(`Failed to write client runtime config at ${runtimeConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // The child runs on THIS binary's embedded runtime (no system `node`
@@ -101,6 +141,7 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
     PORT: String(port),
     HOST: '127.0.0.1',
     OP_CLIENT_DIR: buildDir,
+    OP_CLIENT_RUNTIME_CONFIG: runtimeConfigPath,
   };
 
   let stopping = false;

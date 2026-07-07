@@ -32,7 +32,7 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 import { join } from 'node:path';
 import * as ports from './ports.ts';
-import { startClientServer, resolveClientServeScript } from './client-server.ts';
+import { startClientServer, resolveClientServeScript, resolveDefaultAssistantUrl } from './client-server.ts';
 
 // ── fakes ─────────────────────────────────────────────────────────────────────
 
@@ -80,6 +80,7 @@ function harness(opts: {
   const procs = opts.procs ?? [fakeClientProc()];
   const spawns: SpawnRecord[] = [];
   const logs: string[] = [];
+  const runtimeConfigWrites: Array<{ path: string; assistantUrl: string }> = [];
   const handlePromise = startClientServer({
     port: opts.port,
     resolveBuildDir: () => buildDir,
@@ -90,10 +91,13 @@ function harness(opts: {
     },
     log: (...a: unknown[]) => { logs.push(a.map(String).join(' ')); },
     logError: (...a: unknown[]) => { logs.push(a.map(String).join(' ')); },
+    resolveRuntimeConfigPath: () => '/op-home/data/client/runtime-config.json',
+    resolveAssistantUrl: () => process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL || `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT || '3800'}`,
+    writeRuntimeConfig: (path: string, assistantUrl: string) => { runtimeConfigWrites.push({ path, assistantUrl }); },
     sleep: () => Promise.resolve(),
     stopTimeoutMs: 5,
   });
-  return { handlePromise, spawns, logs, buildDir, procs };
+  return { handlePromise, spawns, logs, buildDir, procs, runtimeConfigWrites };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 10));
@@ -119,23 +123,58 @@ describe('resolveClientServeScript', () => {
   });
 });
 
+describe('resolveDefaultAssistantUrl', () => {
+  it('uses persisted stack env when process env does not override it', () => {
+    expect(resolveDefaultAssistantUrl({}, { OP_ASSISTANT_PORT: '4800' })).toBe('http://127.0.0.1:4800');
+    expect(resolveDefaultAssistantUrl({}, { OP_CLIENT_DEFAULT_ASSISTANT_URL: 'https://assistant.example' }))
+      .toBe('https://assistant.example');
+  });
+
+  it('lets process env override persisted stack env', () => {
+    expect(resolveDefaultAssistantUrl(
+      { OP_ASSISTANT_PORT: '4900' } as NodeJS.ProcessEnv,
+      { OP_ASSISTANT_PORT: '4800' }
+    )).toBe('http://127.0.0.1:4900');
+  });
+});
+
 // ── spawn env/args ────────────────────────────────────────────────────────────
 
 describe('startClientServer spawn env/args', () => {
   const savedRemote = { value: undefined as string | undefined };
+  const savedClientPort = { value: undefined as string | undefined };
+  const savedHostClientPort = { value: undefined as string | undefined };
+  const savedAssistantPort = { value: undefined as string | undefined };
+  const savedDefaultAssistantUrl = { value: undefined as string | undefined };
 
   beforeEach(() => {
     savedRemote.value = process.env.OP_ALLOW_REMOTE_SETUP;
+    savedClientPort.value = process.env.OP_CLIENT_PORT;
+    savedHostClientPort.value = process.env.OP_HOST_CLIENT_PORT;
+    savedAssistantPort.value = process.env.OP_ASSISTANT_PORT;
+    savedDefaultAssistantUrl.value = process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
     delete process.env.OP_ALLOW_REMOTE_SETUP;
+    delete process.env.OP_CLIENT_PORT;
+    delete process.env.OP_HOST_CLIENT_PORT;
+    delete process.env.OP_ASSISTANT_PORT;
+    delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
   });
 
   afterEach(() => {
     if (savedRemote.value === undefined) delete process.env.OP_ALLOW_REMOTE_SETUP;
     else process.env.OP_ALLOW_REMOTE_SETUP = savedRemote.value;
+    if (savedClientPort.value === undefined) delete process.env.OP_CLIENT_PORT;
+    else process.env.OP_CLIENT_PORT = savedClientPort.value;
+    if (savedHostClientPort.value === undefined) delete process.env.OP_HOST_CLIENT_PORT;
+    else process.env.OP_HOST_CLIENT_PORT = savedHostClientPort.value;
+    if (savedAssistantPort.value === undefined) delete process.env.OP_ASSISTANT_PORT;
+    else process.env.OP_ASSISTANT_PORT = savedAssistantPort.value;
+    if (savedDefaultAssistantUrl.value === undefined) delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
+    else process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL = savedDefaultAssistantUrl.value;
   });
 
   it('spawns the serve script with PORT=3890 (default), HOST=127.0.0.1, and OP_CLIENT_DIR=<resolved build>', async () => {
-    const { handlePromise, spawns, buildDir } = harness({});
+    const { handlePromise, spawns, buildDir, runtimeConfigWrites } = harness({});
     const handle = await handlePromise;
     expect(handle).not.toBeNull();
     expect(spawns.length).toBe(1);
@@ -144,6 +183,10 @@ describe('startClientServer spawn env/args', () => {
     expect(env.PORT).toBe('3890');
     expect(env.HOST).toBe('127.0.0.1');
     expect(env.OP_CLIENT_DIR).toBe(buildDir);
+    expect(env.OP_CLIENT_RUNTIME_CONFIG).toBe('/op-home/data/client/runtime-config.json');
+    expect(runtimeConfigWrites).toEqual([
+      { path: '/op-home/data/client/runtime-config.json', assistantUrl: 'http://127.0.0.1:3800' },
+    ]);
     // The child IS the serve script from the resolved client build.
     expect(cmd).toContain(resolveClientServeScript(buildDir));
     await handle?.stop();
@@ -153,6 +196,32 @@ describe('startClientServer spawn env/args', () => {
     const { handlePromise, spawns } = harness({ port: 4001 });
     const handle = await handlePromise;
     expect((spawns[0] as SpawnRecord).env.PORT).toBe('4001');
+    await handle?.stop();
+  });
+
+  it('seeds runtime-config.json with the assistant URL override when configured', async () => {
+    process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL = 'https://assistant.example/oc';
+    const { handlePromise, runtimeConfigWrites } = harness({});
+    const handle = await handlePromise;
+    expect(runtimeConfigWrites).toEqual([
+      { path: '/op-home/data/client/runtime-config.json', assistantUrl: 'https://assistant.example/oc' },
+    ]);
+    await handle?.stop();
+  });
+
+  it('uses OP_HOST_CLIENT_PORT when no explicit port is passed', async () => {
+    process.env.OP_HOST_CLIENT_PORT = '4011';
+    const { handlePromise, spawns } = harness({});
+    const handle = await handlePromise;
+    expect((spawns[0] as SpawnRecord).env.PORT).toBe('4011');
+    await handle?.stop();
+  });
+
+  it('does not let OP_CLIENT_PORT override the stable host localhost app port', async () => {
+    process.env.OP_CLIENT_PORT = '4810';
+    const { handlePromise, spawns } = harness({});
+    const handle = await handlePromise;
+    expect((spawns[0] as SpawnRecord).env.PORT).toBe('3890');
     await handle?.stop();
   });
 

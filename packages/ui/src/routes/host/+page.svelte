@@ -20,6 +20,7 @@
   import AkmTab from '$lib/components/akm/AkmTab.svelte';
   import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
   import VoiceTab from '$lib/components/voice/VoiceTab.svelte';
+  import { openLocalClientApp } from '$lib/local-client-app.js';
 
   import {
     fetchHealth,
@@ -29,6 +30,12 @@
     pullImages,
   } from '$lib/api.js';
   import type { ContainerListResponse, AutomationsResponse, ServiceEntry } from '$lib/types.js';
+
+  interface Props {
+    data: import('./$types').PageData;
+  }
+
+  let { data }: Props = $props();
 
   // Auth is enforced server-side in hooks.server.ts; this page only renders for
   // an authenticated admin. A session that expires mid-operation surfaces as a
@@ -263,6 +270,10 @@
     applyInvalidTokenState();
   }
 
+  function openLocalApp(): void {
+    openLocalClientApp(data.localClientAppUrl, window.openpalm, window.open);
+  }
+
   // ── Mount ────────────────────────────────────────────────────────────────────
 
   onMount(() => {
@@ -289,7 +300,14 @@
 
 <TabBar active={activeTab} onSelect={handleTabSelect} />
 
-<main>
+  <main>
+    <section class="app-install-banner" aria-label="Open localhost app">
+      <div>
+        <h2>Open the localhost app</h2>
+        <p>Install or open the loopback-only OpenPalm app from its stable localhost origin.</p>
+      </div>
+      <button type="button" class="btn btn-primary" onclick={openLocalApp}>Install OpenPalm app</button>
+    </section>
     {#if activeTab === 'overview'}
       <OverviewTab
         {healthLoading}
@@ -365,9 +383,36 @@
     min-height: calc(100vh - 52px - 36px);
   }
 
+  .app-install-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-sp-4);
+    padding: var(--s-sp-4);
+    margin-bottom: var(--s-sp-5);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
+  }
+
+  .app-install-banner h2,
+  .app-install-banner p {
+    margin: 0;
+  }
+
+  .app-install-banner p {
+    color: var(--s-ink-3);
+    margin-top: var(--s-sp-1);
+  }
+
   @media (max-width: 768px) {
     main {
       padding: var(--s-sp-4) var(--s-sp-4) var(--s-sp-6);
+    }
+
+    .app-install-banner {
+      align-items: stretch;
+      flex-direction: column;
     }
   }
 </style>

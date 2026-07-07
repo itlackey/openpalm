@@ -12,6 +12,8 @@ const RECORDING_ALPHAS = [1, 0.72, 0.42, 0.72];
 export interface TrayCallbacks {
   /** "Open OpenPalm" — show/focus the main window. */
   onOpen: () => void;
+  /** "Open Local App" — open the localhost client app in the system browser. */
+  onOpenLocalApp: () => void;
   /** "Show Logs" — reveal the log directory. */
   onShowLogs: () => void;
   /** Current launch-on-login status (drives the checkbox state + enablement). */
@@ -108,6 +110,7 @@ export class TrayController {
     const loginSettings = cb.getLaunchOnLoginStatus();
     const contextMenu = Menu.buildFromTemplate([
       { label: 'Open OpenPalm', click: () => cb.onOpen() },
+      { label: 'Open Local App', click: () => cb.onOpenLocalApp() },
       { label: 'Show Logs', click: () => cb.onShowLogs() },
       { type: 'separator' },
       {

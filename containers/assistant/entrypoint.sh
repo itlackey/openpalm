@@ -384,6 +384,36 @@ start_opencode() {
   # --log-level sets verbosity (override via OPENCODE_LOG_LEVEL).
   local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
 
+  # Browser clients are served from separate loopback origins and call OpenCode
+  # directly. Allow the shipped origins by default, and let operators add exact
+  # comma-separated origins for custom reverse-proxy/client deployments.
+  local client_host_port="${OP_CLIENT_HOST_PORT:-${OP_CLIENT_PORT:-3810}}"
+  local host_client_port="${OP_HOST_CLIENT_PORT:-3890}"
+  local cors_origins=(
+    "http://127.0.0.1:${client_host_port}"
+    "http://localhost:${client_host_port}"
+    "http://127.0.0.1:${host_client_port}"
+    "http://localhost:${host_client_port}"
+  )
+  if [ -n "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
+    local old_ifs="$IFS"
+    IFS=','
+    read -ra extra_origins <<< "${OP_CLIENT_CORS_ALLOWED_ORIGINS}"
+    IFS="$old_ifs"
+    local origin
+    for origin in "${extra_origins[@]}"; do
+      origin="${origin#${origin%%[![:space:]]*}}"
+      origin="${origin%${origin##*[![:space:]]}}"
+      if [ -n "$origin" ]; then
+        cors_origins+=("$origin")
+      fi
+    done
+  fi
+  local origin
+  for origin in "${cors_origins[@]}"; do
+    cmd+=(--cors "$origin")
+  done
+
   exec "${cmd[@]}"
 }
 

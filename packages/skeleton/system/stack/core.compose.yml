@@ -76,6 +76,13 @@ services:
       # non-default topologies (e.g. a reverse proxy in front of the stack).
       OP_ASSISTANT_PORT: ${OP_ASSISTANT_PORT:-3800}
       OP_CLIENT_DEFAULT_ASSISTANT_URL: ${OP_CLIENT_DEFAULT_ASSISTANT_URL:-}
+      # Browser clients are separate origins from OpenCode. These host-side
+      # ports are passed only so the entrypoint can add exact CORS origins when
+      # launching OpenCode; OP_CLIENT_PORT inside the container remains the
+      # static client's in-container listen port default (3000).
+      OP_CLIENT_HOST_PORT: ${OP_CLIENT_PORT:-3810}
+      OP_HOST_CLIENT_PORT: ${OP_HOST_CLIENT_PORT:-3890}
+      OP_CLIENT_CORS_ALLOWED_ORIGINS: ${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks

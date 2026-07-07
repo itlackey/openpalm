@@ -131,6 +131,9 @@ vi.mock('@openpalm/lib', () => ({
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
   PLATFORM_VERSION: 'v0.12.0',
+  resolveClientAppPort: vi.fn(() => 3890),
+  resolveClientAppUrl: vi.fn(() => 'http://127.0.0.1:3890/chat'),
+  writeClientRuntimeConfig: vi.fn(),
   checkDocker: vi.fn(() => new Promise(() => { /* hang: freeze the boot flow */ })),
   checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   // Faithful reimplementation of lib's waitForReady (poll /health; 200 or 401 ==
@@ -264,13 +267,10 @@ describe('resolveInitialUrl — prefers the client app, falls back to the host a
   });
 });
 
-// ── characterization: harness contract untouched by P5c ──────────────────────
+// ── characterization: harness contract version ───────────────────────────────
 
-describe('harness contract stays untouched by P5c (characterization — already green)', () => {
-  it('HARNESS_CONTRACT_VERSION remains 1 — client-child work is spawn-env only, not bridge surface', () => {
-    // The client server child and the initial-URL preference add NO IPC methods
-    // and NO renderer-facing env keys; the derived-surface drift tests
-    // (harness-contract-drift.test.ts) enforce the same invariant structurally.
-    expect(HARNESS_CONTRACT_VERSION).toBe(1);
+describe('harness contract version', () => {
+  it('HARNESS_CONTRACT_VERSION is 2 after adding the open-local-app bridge surface', () => {
+    expect(HARNESS_CONTRACT_VERSION).toBe(2);
   });
 });

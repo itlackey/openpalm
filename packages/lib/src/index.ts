@@ -554,6 +554,17 @@ export {
   seedClientBuild,
   checkAndUpdateClientBuild,
 } from "./control-plane/client-assets.js";
+export {
+  DEFAULT_CLIENT_PORT,
+  resolveClientAppPort,
+  resolveClientAppUrl,
+} from './control-plane/client-app-url.js';
+export {
+  buildLockedAssistantRuntimeConfig,
+  writeClientRuntimeConfig,
+  type ClientRuntimeConfig,
+  type ClientRuntimeConnection,
+} from './control-plane/client-runtime-config.js';
 
 // ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
 export type {

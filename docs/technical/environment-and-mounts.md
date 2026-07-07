@@ -122,8 +122,12 @@ Key env:
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data directory |
 | `OP_UID` / `OP_GID` | `stack.env` | Direct runtime uid/gid mapping |
 | `OP_CLIENT_VERSION` | `stack.env` (empty = image `PLATFORM_VERSION`) | Exact-pin override for the `@openpalm/client` artifact the entrypoint installs |
+| `OP_SKELETON_VERSION` | `stack.env` (empty = image `PLATFORM_VERSION`) | Exact-pin override for the `@openpalm/skeleton` artifact the assistant entrypoint installs |
 | `OP_ASSISTANT_PORT` | `stack.env` (default `3800`) | Host-published OpenCode port; used to build the client's default connection URL |
 | `OP_CLIENT_DEFAULT_ASSISTANT_URL` | `stack.env` (optional) | Full-URL override for the client's locked default connection |
+| `OP_CLIENT_HOST_PORT` | compose-derived from `OP_CLIENT_PORT` | Host-published assistant-container client port used to add OpenCode CORS origins |
+| `OP_HOST_CLIENT_PORT` | `stack.env`/host env (default `3890`) | Host-local client app/PWA port used by `openpalm app` and Electron; also added to OpenCode CORS origins |
+| `OP_CLIENT_CORS_ALLOWED_ORIGINS` | `stack.env` (optional) | Extra comma-separated exact origins passed to OpenCode `--cors` for custom client deployments |
 
 Notes:
 
@@ -165,6 +169,7 @@ Key env:
 | `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
 | `PORTAL_<NAME>_SECRET_FILE` | `/run/secrets/portal_<name>_secret` | Portal principal seed secret file |
 | `GUARDIAN_CONTENT_VALIDATION` | `0` | Enable opt-in, fail-closed content validation of inbound messages |
+| `GUARDIAN_CORS_ALLOWED_ORIGINS` | empty | Comma-separated exact browser origins allowed on guardian direct ingress CORS responses |
 | `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local OpenCode moderator endpoint |
 | `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
 | `GUARDIAN_MODERATION_THRESHOLD` | `3` | Heuristic risk score at/above which a message escalates to the model |
@@ -209,6 +214,7 @@ Key env (host process, not container):
 | Variable | Value / source | Purpose |
 |---|---|---|
 | `PORT` | `OP_HOST_UI_PORT` or `3880` | Admin HTTP listen port |
+| `OP_HOST_CLIENT_PORT` | host env (default `3890`) | Stable localhost client-app/PWA origin used by `openpalm app` and Electron's preferred client chat URL |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
 | `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/knowledge/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
 | `OP_ALLOW_REMOTE_SETUP` | unset (`0`) | When `1`/`true`/`yes`: bind `0.0.0.0`, allow any Host/same-origin, and permit remote access to the setup wizard. Off by default (loopback-only). |
@@ -250,10 +256,13 @@ These variables are consumed by Compose and service env blocks.
 | `OP_UID`, `OP_GID` | Runtime UID/GID for bind-mounted file ownership |
 | `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
 | `OP_HOST_UI_PORT` | Admin UI host port (default `3880`); the admin UI runs as a host process, not a container |
+| `OP_HOST_CLIENT_PORT` | Stable host-local client app/PWA port for `openpalm app` and Electron (default `3890`); intentionally separate from the assistant container's `OP_CLIENT_PORT` |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
 | `OP_CLIENT_BIND_ADDRESS`, `OP_CLIENT_PORT` | Assistant chat-client co-process host bind (default `127.0.0.1:3810`) |
 | `OP_CLIENT_VERSION` | Exact-pin override for the `@openpalm/client` artifact installed in the assistant container |
+| `OP_SKELETON_VERSION` | Exact-pin override for the `@openpalm/skeleton` artifact installed in the assistant container (and used by the guardian thin-host entrypoint when set) |
 | `OP_CLIENT_DEFAULT_ASSISTANT_URL` | Full-URL override for the chat client's locked default connection |
+| `OP_CLIENT_CORS_ALLOWED_ORIGINS` | Extra exact browser origins to allow when the assistant launches OpenCode |
 | `OP_CHAT_BIND_ADDRESS`, `OP_CHAT_PORT` | Chat addon host bind |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | API addon host bind |
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |

@@ -26,23 +26,37 @@ export type ClientBoot = {
 
 let bootPromise: Promise<ClientBoot> | null = null;
 
-function pickStorage(): ConnectionStorage {
+function pickStorage(): { storage: ConnectionStorage; persistent: boolean } {
   // Some private-browsing modes refuse IndexedDB entirely; degrade to a
   // session-only in-memory backend rather than a blank page.
   try {
-    if (typeof indexedDB !== 'undefined') return createIndexedDbStorage();
+    if (typeof indexedDB !== 'undefined') {
+      return { storage: createIndexedDbStorage(), persistent: true };
+    }
   } catch {
     // fall through
   }
-  return createMemoryStorage();
+  return { storage: createMemoryStorage(), persistent: false };
+}
+
+async function bootWithStorage(storage: ConnectionStorage): Promise<ClientBoot> {
+  const store = createConnectionStore({ storage });
+  await store.seedFromRuntimeConfig(await loadRuntimeConfig());
+  return { store, secrets: createSecretStore(storage) };
 }
 
 export function getClientBoot(): Promise<ClientBoot> {
   bootPromise ??= (async () => {
-    const storage = pickStorage();
-    const store = createConnectionStore({ storage });
-    await store.seedFromRuntimeConfig(await loadRuntimeConfig());
-    return { store, secrets: createSecretStore(storage) };
-  })();
+    const selected = pickStorage();
+    try {
+      return await bootWithStorage(selected.storage);
+    } catch (error) {
+      if (!selected.persistent) throw error;
+      return bootWithStorage(createMemoryStorage());
+    }
+  })().catch((error) => {
+    bootPromise = null;
+    throw error;
+  });
   return bootPromise;
 }

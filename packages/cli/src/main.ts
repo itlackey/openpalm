@@ -84,6 +84,7 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
 // out of sync with the bare-command routing table.
 const subCommands = {
   admin: () => import('./commands/admin.ts').then((m) => m.default),
+  app: () => import('./commands/app.ts').then((m) => m.default),
   install: () => import('./commands/install.ts').then((m) => m.default),
   uninstall: () => import('./commands/uninstall.ts').then((m) => m.default),
   update: () => import('./commands/update.ts').then((m) => m.default),

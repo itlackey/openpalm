@@ -42,6 +42,32 @@ export type RuntimeConfig = {
   connections: ConnectionEntry[];
 };
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+}
+
+function rewriteLoopbackUrlForBrowserHost(rawUrl: string): string {
+  const locationLike = globalThis.location;
+  if (!locationLike || isLoopbackHost(locationLike.hostname)) return rawUrl;
+  try {
+    const url = new URL(rawUrl);
+    if (!isLoopbackHost(url.hostname)) return rawUrl;
+    url.hostname = locationLike.hostname;
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
+  return {
+    connections: config.connections.map((entry) => ({
+      ...entry,
+      url: entry.locked ? rewriteLoopbackUrlForBrowserHost(entry.url) : entry.url,
+    })),
+  };
+}
+
 /**
  * Storage backend contract: connection records by id plus a small string
  * meta area (active selection, secret material). Implemented by
@@ -194,8 +220,8 @@ export function createIndexedDbStorage(): ConnectionStorage {
 
 // ── Store ────────────────────────────────────────────────────────────────
 
-export function createConnectionStore(options: { storage: unknown }): ConnectionStore {
-  const storage = options.storage as ConnectionStorage;
+export function createConnectionStore(options: { storage: ConnectionStorage }): ConnectionStore {
+  const { storage } = options;
 
   async function requireEntry(id: string): Promise<ConnectionEntry> {
     const entry = await storage.get(id);
@@ -253,6 +279,15 @@ export function createConnectionStore(options: { storage: unknown }): Connection
 
     async seedFromRuntimeConfig(config) {
       if (!config) return;
+      const activeId = await storage.getMeta(ACTIVE_ID_KEY);
+      const configIds = new Set(config.connections.map((entry) => entry.id));
+      for (const existing of await storage.getAll()) {
+        if (!existing.locked || configIds.has(existing.id)) continue;
+        await storage.delete(existing.id);
+        if (activeId === existing.id) {
+          await storage.setMeta(ACTIVE_ID_KEY, null);
+        }
+      }
       for (const entry of config.connections) {
         const existing = await storage.get(entry.id);
         // Config wins for the entries it owns (locked), including on
@@ -286,11 +321,12 @@ export async function loadRuntimeConfig(
     const response = await fetchImpl('/runtime-config.json', {
       method: 'GET',
       headers: { accept: 'application/json' },
+      credentials: 'omit',
     });
     if (!response.ok) return null;
     const parsed = (await response.json()) as { connections?: unknown } | null;
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.connections)) return null;
-    return parsed as RuntimeConfig;
+    return adaptRuntimeConfigForBrowser(parsed as RuntimeConfig);
   } catch {
     return null;
   }

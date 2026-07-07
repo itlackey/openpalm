@@ -10,8 +10,8 @@ import { join, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret,
-  checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  isRemoteSetupAllowed, waitForReady, restoreUiBackup, UiSupervisor,
+  checkAndUpdateClientBuild, checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
+  isRemoteSetupAllowed, resolveClientAppUrl, restoreUiBackup, UiSupervisor, waitForReady,
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -21,10 +21,13 @@ import { startClientServer } from './client-server.ts';
 const logger = createLogger('cli:ui');
 const DEFAULT_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
 const STOP_TIMEOUT_MS  = 5_000;
+const CLIENT_READY_TIMEOUT_MS = 5_000;
+const CLIENT_READY_POLL_MS = 200;
 
 export interface UIServerOptions {
   port?: number;
   open?: boolean;
+  openTarget?: 'ui' | 'client';
   /**
    * host-ui admin mode (`openpalm admin`, plan Phase 1.5): enable the admin
    * capability in the spawned UI child (OP_ENABLE_ADMIN=1 + OP_UI_HOST_MODE=
@@ -33,6 +36,22 @@ export interface UIServerOptions {
    * possible in this mode (plan §8.3: host admin is never reachable remotely).
    */
   adminHostUi?: boolean;
+}
+
+export async function waitForClientApp(url: string, timeoutMs = CLIENT_READY_TIMEOUT_MS): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(1_000),
+      });
+      if (response.ok) return true;
+    } catch {
+      // Not ready yet.
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, CLIENT_READY_POLL_MS));
+  }
+  return false;
 }
 
 /**
@@ -282,6 +301,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   // logic). The bare serve path keeps requiring a valid install.
   const state = opts.adminHostUi ? resolveServeState() : ensureValidState();
   const uiUrl = `http://localhost:${port}`;
+  const clientUrl = resolveClientAppUrl(process.env);
 
   const { supervisor, stop: stopUiProc } = createCliUiSupervisor({
     port,
@@ -297,9 +317,26 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   // port (P5c, #555; plan Phase 5 item 3). Both the default serve path and
   // `openpalm admin` come through here. Non-fatal: absent build → log + skip
   // (null handle), and the UI keeps serving.
+  console.log('Checking for client app update...');
+  const clientResult = await checkAndUpdateClientBuild(PLATFORM_VERSION, state.dataDir);
+  if (clientResult.updated) {
+    console.log(`Client app updated to v${clientResult.latestVersion}.`);
+  } else if (clientResult.error) {
+    console.warn(`Warning: client app update skipped — ${clientResult.error}. Existing build still active.`);
+  }
   const clientHandle = await startClientServer();
 
-  if (opts.open !== false) await openBrowser(uiUrl);
+  if (opts.open !== false) {
+    if (opts.openTarget === 'client') {
+      if (!clientHandle || !await waitForClientApp(clientUrl)) {
+        console.error(`Localhost client app is not reachable at ${clientUrl}`);
+        process.exit(1);
+      }
+      await openBrowser(clientUrl);
+    } else {
+      await openBrowser(uiUrl);
+    }
+  }
 
   // Supervisor restart (§4.4): the UI child (admin "install UI version" route)
   // sends SIGUSR2/SIGHUP to this parent after seeding a newer data/ui. The

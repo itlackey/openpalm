@@ -234,6 +234,17 @@ describe('P5d entrypoint — client co-process (static-only)', () => {
     expect(entrypoint).toContain('OP_CLIENT_DEFAULT_ASSISTANT_URL');
   });
 
+  test('OpenCode is launched with CORS for the shipped browser client origins', () => {
+    const startOpencode = extractFunction(entrypoint, 'start_opencode') ?? '';
+    expect(startOpencode, 'expected start_opencode() to be defined').not.toBe('');
+    expect(startOpencode).toContain('OP_CLIENT_HOST_PORT');
+    expect(startOpencode).toContain('OP_HOST_CLIENT_PORT');
+    expect(startOpencode).toContain('OP_CLIENT_CORS_ALLOWED_ORIGINS');
+    expect(startOpencode).toContain('http://127.0.0.1:${client_host_port}');
+    expect(startOpencode).toContain('http://127.0.0.1:${host_client_port}');
+    expect(startOpencode).toContain('cmd+=(--cors "$origin")');
+  });
+
   // CHARACTERIZATION (green today): syntax gate. shellcheck is unavailable in
   // this environment (documented limitation) — bash -n is the floor.
   test('entrypoint stays bash -n clean (characterization)', () => {

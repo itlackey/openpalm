@@ -15,7 +15,24 @@ const config = {
       assets: "build",
       fallback: "index.html",
     }),
+    serviceWorker: {
+      register: false,
+    },
     version: { name: pkg.version },
+    csp: {
+      mode: 'hash',
+      directives: {
+        'default-src': ['self'],
+        'script-src': ['self'],
+        'style-src': ['self', 'unsafe-inline', 'https://fonts.googleapis.com'],
+        'font-src': ['self', 'https://fonts.gstatic.com'],
+        'img-src': ['self', 'data:'],
+        'connect-src': ['self', 'http:', 'https:'],
+        'object-src': ['none'],
+        'base-uri': ['none'],
+        'frame-ancestors': ['none'],
+      },
+    },
   },
 };
 

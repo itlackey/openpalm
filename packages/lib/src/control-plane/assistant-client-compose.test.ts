@@ -82,6 +82,12 @@ describe('P5d compose — stack env plumbing for the exact-pin client artifact',
     expect(environmentHas(assistant, 'OP_CLIENT_VERSION')).toBe(true);
   });
 
+  test('assistant receives host client ports for OpenCode CORS origin defaults', () => {
+    expect(environmentHas(assistant, 'OP_CLIENT_HOST_PORT')).toBe(true);
+    expect(environmentHas(assistant, 'OP_HOST_CLIENT_PORT')).toBe(true);
+    expect(environmentHas(assistant, 'OP_CLIENT_CORS_ALLOWED_ORIGINS')).toBe(true);
+  });
+
   // CHARACTERIZATION (green today): the client artifact installs under
   // /opt/openpalm, which is the persistent assistant-artifacts named volume —
   // warm restarts must keep reusing the installed client.

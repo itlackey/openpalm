@@ -27,6 +27,9 @@ const host = arg('host') ?? process.env.HOST ?? '127.0.0.1';
 const dir = resolve(
   arg('dir') ?? process.env.OP_CLIENT_DIR ?? join(fileURLToPath(new URL('..', import.meta.url)), 'build')
 );
+const runtimeConfigPath = process.env.OP_CLIENT_RUNTIME_CONFIG
+  ? resolve(process.env.OP_CLIENT_RUNTIME_CONFIG)
+  : '';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -42,9 +45,16 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-function send(res, path, status = 200) {
-  res.writeHead(status, { 'content-type': MIME[extname(path)] ?? 'application/octet-stream' });
+function send(res, path, status = 200, extraHeaders = {}) {
+  res.writeHead(status, {
+    'content-type': MIME[extname(path)] ?? 'application/octet-stream',
+    ...extraHeaders,
+  });
   createReadStream(path).pipe(res);
+}
+
+function runtimeConfigHeaders() {
+  return { 'cache-control': 'no-store' };
 }
 
 const server = createServer((req, res) => {
@@ -59,13 +69,25 @@ const server = createServer((req, res) => {
   }
   // normalize() collapses any ../ segments; the join stays inside dir.
   const candidate = join(dir, normalize(join('/', pathname)));
-  if (existsSync(candidate) && statSync(candidate).isFile()) return send(res, candidate);
+  if (existsSync(candidate) && statSync(candidate).isFile()) {
+    if (pathname === '/runtime-config.json') {
+      return send(res, candidate, 200, runtimeConfigHeaders());
+    }
+    return send(res, candidate);
+  }
   // runtime-config.json may live beside the build dir instead of inside it
   // (the assistant container writes it next to the extracted bundle, P5d).
   if (pathname === '/runtime-config.json') {
-    const sibling = join(dir, '..', 'runtime-config.json');
-    if (existsSync(sibling) && statSync(sibling).isFile()) return send(res, sibling);
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    const candidates = [runtimeConfigPath, join(dir, '..', 'runtime-config.json')].filter(Boolean);
+    for (const path of candidates) {
+      if (existsSync(path) && statSync(path).isFile()) {
+        return send(res, path, 200, runtimeConfigHeaders());
+      }
+    }
+    res.writeHead(404, {
+      'content-type': 'text/plain; charset=utf-8',
+      ...runtimeConfigHeaders(),
+    });
     return res.end('no runtime-config.json');
   }
   // SPA fallback: every route is client-rendered from index.html.

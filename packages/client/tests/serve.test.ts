@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,13 +12,23 @@ const SERVE = fileURLToPath(new URL('../bin/serve.mjs', import.meta.url));
 const PORT = 41000 + Math.floor(Math.random() * 1000);
 const BASE = `http://127.0.0.1:${PORT}`;
 
+let rootDir: string;
 let dir: string;
+let runtimeConfigDir: string;
+let explicitRuntimeConfig: string;
 let child: ReturnType<typeof Bun.spawn>;
 
 beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'op-client-serve-'));
+  rootDir = mkdtempSync(join(tmpdir(), 'op-client-serve-'));
+  dir = join(rootDir, 'build');
+  runtimeConfigDir = rootDir;
+  explicitRuntimeConfig = join(rootDir, 'explicit-runtime-config.json');
+  mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'index.html'), '<!doctype html><title>ok</title>');
+  writeFileSync(join(runtimeConfigDir, 'runtime-config.json'), '{"connections":[]}');
+  writeFileSync(explicitRuntimeConfig, '{"connections":[{"id":"explicit"}]}');
   child = Bun.spawn(['node', SERVE, '--port', String(PORT), '--dir', dir], {
+    env: { ...process.env, OP_CLIENT_RUNTIME_CONFIG: explicitRuntimeConfig },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -37,7 +47,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   child?.kill();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(rootDir, { recursive: true, force: true });
 });
 
 describe('serve.mjs resilience', () => {
@@ -57,5 +67,25 @@ describe('serve.mjs resilience', () => {
     const res = await fetch(`${BASE}/connections/new`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
+  });
+
+  it('serves runtime-config.json with no-store caching', async () => {
+    const res = await fetch(`${BASE}/runtime-config.json`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(await res.text()).toContain('explicit');
+  });
+
+  it('also serves runtime-config.json from the build dir with no-store caching', async () => {
+    unlinkSync(join(runtimeConfigDir, 'runtime-config.json'));
+    unlinkSync(explicitRuntimeConfig);
+    writeFileSync(join(dir, 'runtime-config.json'), '{"connections":[{"id":"build"}]}');
+
+    const res = await fetch(`${BASE}/runtime-config.json`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(await res.text()).toContain('build');
   });
 });

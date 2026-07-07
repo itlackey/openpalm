@@ -110,6 +110,9 @@ Publishes: @openpalm/skeleton → @openpalm/lib → (@openpalm/guardian, openpal
 
 Stamps: root, lib, skeleton, guardian, cli, ui, client, electron, admin-tools package.json files + `scripts/setup.sh` `SCRIPT_VERSION` + `scripts/setup.ps1` `$ScriptVersion`.
 
+The shared `scripts/set-version.mjs` helper is also responsible for rewriting the CLI's exact `@openpalm/skeleton` dependency pin to the release version during this stamp. That keeps the published CLI's bundled skeleton source in lockstep with `PLATFORM_VERSION`.
+
+
 Preflight: full test suite (`bun run client:build` then `bun run test` — which includes the client-bundle purity gate — plus `ui:check`, `ui-kit:check`, `client:check`, `ui:test:unit`, `electron:test`).
 
 ### `portals`

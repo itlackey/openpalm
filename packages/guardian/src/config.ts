@@ -27,6 +27,41 @@ export const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_
 /** Guardian direct-ingress port. Read once at module load. */
 export const DIRECT_PORT = Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830);
 
+function normalizeExactOrigin(value: string): string {
+  if (value === '*') throw new Error('GUARDIAN_CORS_ALLOWED_ORIGINS must not contain wildcard origins');
+  const url = new URL(value);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`GUARDIAN_CORS_ALLOWED_ORIGINS entry must use http or https: ${value}`);
+  }
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error(`GUARDIAN_CORS_ALLOWED_ORIGINS entry must be an exact origin with no path/query/hash: ${value}`);
+  }
+  return url.origin;
+}
+
+function parseAllowedOrigins(value: string): ReadonlySet<string> {
+  const origins = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map(normalizeExactOrigin);
+  return new Set(origins);
+}
+
+/** Exact browser origins allowed to receive CORS headers on direct ingress. */
+export const CORS_ALLOWED_ORIGINS = parseAllowedOrigins(Bun.env.GUARDIAN_CORS_ALLOWED_ORIGINS ?? '');
+
+export function resolveCorsAllowedOrigin(origin: string | null): string | null {
+  if (!origin || origin === 'null') return null;
+  let normalized: string;
+  try {
+    normalized = normalizeExactOrigin(origin);
+  } catch {
+    return null;
+  }
+  return CORS_ALLOWED_ORIGINS.has(normalized) ? normalized : null;
+}
+
 /**
  * Guardian's own base URL as seen by API clients. Read lazily to preserve the
  * per-instance read semantics of `GuardianOpenAiApi.guardianUrl`.

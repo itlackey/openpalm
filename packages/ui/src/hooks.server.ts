@@ -106,9 +106,10 @@ function isLocalhostAddress(ip: string): boolean {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+  const runtimeContext = computeServerRuntimeContext(event);
   const hostError = checkHostHeader(event.request);
   if (hostError) return hostError;
-  const originError = checkOriginHeader(event.request);
+  const originError = checkOriginHeader(event.request, runtimeContext.security.csrfMode);
   if (originError) return originError;
 
   const path = event.url.pathname;
@@ -122,7 +123,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   // requests fall through to the router's 404 (plan §6.4 "No /admin alias").
   if (
     (path === '/host' || path.startsWith('/host/')) &&
-    !computeServerRuntimeContext(event).serverCapabilities.includes('host:stack:read')
+    !runtimeContext.serverCapabilities.includes('host:stack:read')
   ) {
     redirect(302, '/chat');
   }

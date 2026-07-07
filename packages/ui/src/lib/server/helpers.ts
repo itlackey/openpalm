@@ -7,7 +7,7 @@ import { getActiveEndpoint } from "./endpoints.js";
 import { createOpenCodeClient, isRemoteSetupAllowed } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
 import { computeServerRuntimeContext } from "./features.js";
-import type { Capability } from "$lib/types.js";
+import type { Capability, ServerRuntimeContext } from "$lib/types.js";
 
 /**
  * Lazy OpenCode client bound to the currently active endpoint. The client is
@@ -206,7 +206,8 @@ export async function withAdminBody(
   handler: (ctx: { requestId: string; body: Record<string, unknown> }) => Promise<Response>
 ): Promise<Response> {
   const requestId = getRequestId(event);
-  const originError = checkOriginHeader(event.request);
+  const { security } = computeServerRuntimeContext(event);
+  const originError = checkOriginHeader(event.request, security.csrfMode);
   if (originError) return originError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
@@ -230,15 +231,28 @@ export async function withAdminBody(
  * differs from the server's port when reached through an SSH tunnel
  * (`ssh -L 5880:localhost:3880` → Host: localhost:5880).
  */
-function isLoopbackHost(hostHeader: string): boolean {
+type CsrfMode = ServerRuntimeContext['security']['csrfMode'];
+
+function hostNameFromHeader(hostHeader: string): string | null {
   const normalized = hostHeader.trim().replace(/\.$/, "");
-  let hostname: string;
   try {
-    hostname = new URL(`http://${normalized}`).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return new URL(`http://${normalized}`).hostname.toLowerCase().replace(/^\[|\]$/g, "");
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isLoopbackHost(hostHeader: string): boolean {
+  const hostname = hostNameFromHeader(hostHeader);
+  if (!hostname) return false;
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isSameSite(request: Request, origin: URL): boolean {
+  const host = request.headers.get("host") ?? "";
+  const requestHost = hostNameFromHeader(host);
+  if (!requestHost) return false;
+  return requestHost === origin.hostname.toLowerCase();
 }
 
 export function checkHostHeader(request: Request): Response | null {
@@ -265,7 +279,7 @@ export function checkHostHeader(request: Request): Response | null {
  * @param request  Incoming Request
  * @returns        A 403 Response if the origin is rejected; null if allowed
  */
-export function checkOriginHeader(request: Request): Response | null {
+export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopback-origin'): Response | null {
   const method = request.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
 
@@ -274,11 +288,25 @@ export function checkOriginHeader(request: Request): Response | null {
 
   try {
     const u = new URL(origin);
-    // Loopback origin on any port (e.g. via SSH tunnel) is always allowed.
-    if (isLoopbackHost(u.host)) return null;
-    // With remote access opted in, accept same-origin requests — the Origin's
-    // host matches the Host the request was served on (standard CSRF defense).
-    if (isRemoteSetupAllowed() && u.host === (request.headers.get("host") ?? "").trim()) return null;
+    switch (csrfMode) {
+      case 'loopback-origin': {
+        // Loopback origin on any port (e.g. via SSH tunnel) is always allowed.
+        if (isLoopbackHost(u.host)) return null;
+        // With remote access opted in, accept same-origin requests — the Origin's
+        // host matches the Host the request was served on (standard CSRF defense).
+        if (isRemoteSetupAllowed() && u.host === (request.headers.get("host") ?? "").trim()) return null;
+        break;
+      }
+      case 'same-site':
+        if (isSameSite(request, u)) return null;
+        break;
+      case 'bearer-token':
+        // In bearer-mode, allow requests carrying explicit auth headers
+        // in addition to same-site traffic.
+        if (request.headers.get('authorization')) return null;
+        if (isSameSite(request, u)) return null;
+        break;
+    }
   } catch {
     // Unparseable Origin is treated as hostile
   }

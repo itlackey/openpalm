@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createCliUiSupervisor, type CliChildProc } from './ui-server.ts';
+import { createCliUiSupervisor, type CliChildProc, waitForClientApp } from './ui-server.ts';
 
 // Behavioral coverage for the CLI's thin UiSupervisor adapter, driven through
 // injected fakes (no real processes). Locks the exit-based failure policy
@@ -92,5 +92,36 @@ describe('createCliUiSupervisor exit policy', () => {
     expect(await supervisor.restart()).toBe(true);
     expect(restores).toEqual([]);
     expect(exits).toEqual([]);
+  });
+});
+
+describe('waitForClientApp', () => {
+  it('returns true once the localhost client app becomes reachable', async () => {
+    let attempts = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      attempts += 1;
+      if (attempts < 2) throw new Error('not ready');
+      return new Response('<html></html>', { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      expect(await waitForClientApp('http://127.0.0.1:3890/chat', 1500)).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('returns false when the localhost client app never becomes reachable', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('still down');
+    }) as typeof fetch;
+
+    try {
+      expect(await waitForClientApp('http://127.0.0.1:3890/chat', 250)).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

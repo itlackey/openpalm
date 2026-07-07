@@ -671,11 +671,12 @@ Acceptance: assistant-container can edit persona/AKM but not project name or bin
   (`tests/purity.test.ts`, runs in CI) greps every file of the built bundle for the
   forbidden markers `@openpalm/lib` and `/api/host` (and fails loudly on a missing
   build) — §8.5/§8.10 enforced structurally, plus source hygiene (no lib dependency in
-  any group, no `src/lib/server/`). `@vite-pwa/sveltekit` is NOT yet added (Phase 6).
+  any group, no `src/lib/server/`). Phase 6 later added `@vite-pwa/sveltekit`.
 - **P5c — harness serving:** lib gained `control-plane/client-assets.ts`
   (resolve/seed/update, sibling of `ui-assets.ts`); the CLI serves the client build on
   the **stable loopback port 3890** (`DEFAULT_CLIENT_PORT` in
-  `packages/cli/src/lib/ports.ts`, override `OP_CLIENT_PORT`); Electron spawns a client
+  `packages/cli/src/lib/ports.ts`, override `OP_HOST_CLIENT_PORT`; intentionally separate
+  from assistant-container `OP_CLIENT_PORT`); Electron spawns a client
   server child and the window prefers the client chat, with a health probe falling back
   to the host UI when the client build is absent or dead.
 - **P5d — assistant container (#510):** entrypoint installs `@openpalm/client`

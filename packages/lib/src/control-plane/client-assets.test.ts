@@ -33,10 +33,11 @@
 // Test patterns follow ui-assets.test.ts (env pinning, makeBuild, mocked fetch,
 // real tarball for the happy path).
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from 'node:url';
 import {
   CLIENT_VERSION_STAMP,
   readClientBuildVersion,
@@ -56,6 +57,14 @@ let dataClientRoot = "";
 /** Dev-override build dir: $OPENPALM_REPO_ROOT/packages/client/build */
 let bundledClient = "";
 const saved: Record<string, string | undefined> = {};
+
+function walk(dir: string): string[] {
+  return (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }) : [])
+    .flatMap((entry) => {
+      const path = join(dir, entry.name);
+      return entry.isDirectory() ? walk(path) : [path];
+    });
+}
 
 /** Materialize a static client build: index.html + optional version stamp. */
 function makeBuild(dir: string, version: string | null): void {
@@ -362,5 +371,43 @@ describe("checkAndUpdateClientBuild", () => {
       .find((p) => existsSync(p));
     expect(backedUpIndex, "backup must contain the old index.html").toBeDefined();
     if (backedUpIndex) expect(readFileSync(backedUpIndex, "utf8")).toContain("old");
+  });
+
+  it("container-pulled artifact path preserves client purity markers after the npm swap", async () => {
+    const repoClientBuild = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'client', 'build');
+    expect(existsSync(join(repoClientBuild, 'index.html'))).toBe(true);
+
+    const pkgRoot = mkdtempSync(join(tmpdir(), 'client-purity-pkg-'));
+    mkdirSync(join(pkgRoot, 'package', 'build'), { recursive: true });
+    mkdirSync(join(pkgRoot, 'package', 'bin'), { recursive: true });
+    cpSync(repoClientBuild, join(pkgRoot, 'package', 'build'), { recursive: true });
+    writeFileSync(join(pkgRoot, 'package', 'bin', 'serve.mjs'), '// new serve\n');
+    const tarPath = join(pkgRoot, 'client.tgz');
+    const { exited } = Bun.spawn(['tar', '-czf', tarPath, '-C', pkgRoot, 'package'], { stdout: 'pipe', stderr: 'pipe' });
+    await exited;
+    const tarBytes = new Uint8Array(await Bun.file(tarPath).arrayBuffer());
+    const integrity = `sha512-${createHash('sha512').update(tarBytes).digest('base64')}`;
+    rmSync(pkgRoot, { recursive: true, force: true });
+
+    globalThis.fetch = (async (_url: string | URL | Request) => {
+      const url = String(typeof _url === 'string' ? _url : (_url as Request).url ?? _url);
+      if (url.includes('registry.npmjs.org')) {
+        return new Response(
+          JSON.stringify({ version: '0.13.0', dist: { tarball: 'https://r.npm/client.tgz', integrity } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response(tarBytes, { status: 200 });
+    }) as typeof globalThis.fetch;
+
+    const result = await checkAndUpdateClientBuild('0.12.0', dataDir);
+
+    expect(result.updated).toBe(true);
+    const installedFiles = walk(dataClient);
+    const forbiddenMarkers = ['@openpalm/lib', '/api/host'];
+    for (const marker of forbiddenMarkers) {
+      const offenders = installedFiles.filter((file) => readFileSync(file).toString('latin1').includes(marker));
+      expect(offenders, `installed artifact must not contain ${marker}`).toEqual([]);
+    }
   });
 });

@@ -16,6 +16,9 @@ import {
   uiUpdateChannel,
   parseEnvFile,
   PLATFORM_VERSION,
+  resolveClientAppPort,
+  resolveClientAppUrl,
+  writeClientRuntimeConfig,
   waitForReady as libWaitForReady,
   restoreUiBackup,
   UiSupervisor,
@@ -130,12 +133,8 @@ function resolveAdminToolsPluginPath(): string {
 // URL and OP_ASSISTANT_PORT is read as an env string.
 const DEFAULT_UI_PORT = 3880;
 const DEFAULT_ASSISTANT_PORT = '3800';
-// The @openpalm/client static app's STABLE loopback port (P5c, #555): the
-// localhost PWA identity is origin-including-port (plan §6.10), so this number
-// must not drift between releases. Mirrors the CLI's DEFAULT_CLIENT_PORT.
-const DEFAULT_CLIENT_PORT = 3890;
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
-const CLIENT_PORT = Number(process.env.OP_CLIENT_PORT) || DEFAULT_CLIENT_PORT;
+const CLIENT_PORT = resolveClientAppPort(process.env);
 const READY_TIMEOUT_MS = 60_000;
 // Bound on the client-health probe in resolveInitialUrl — a dead client must
 // not stall window creation (the fallback to the host UI chat covers it).
@@ -649,6 +648,8 @@ function startClientAppServer(): void {
       console.log(`Client app build not found at ${buildDir} — skipping the client server (chat falls back to the host UI).`);
       return;
     }
+    const runtimeConfigPath = join(resolveDataDir(), 'client', 'runtime-config.json');
+    writeClientRuntimeConfig(runtimeConfigPath, resolveAssistantUrl(resolveOpenPalmHome()));
     // Same bundled-Node spawn as the UI child (no system `node` required).
     // serve.mjs reads PORT / HOST / OP_CLIENT_DIR from the environment; HOST is
     // pinned to loopback unconditionally — the client server has no remote
@@ -660,6 +661,7 @@ function startClientAppServer(): void {
         PORT: String(CLIENT_PORT),
         HOST: '127.0.0.1',
         OP_CLIENT_DIR: buildDir,
+        OP_CLIENT_RUNTIME_CONFIG: runtimeConfigPath,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -792,6 +794,10 @@ function showWindow(): void {
   }
 }
 
+function openLocalApp(): void {
+  void shell.openExternal(resolveClientAppUrl(process.env));
+}
+
 // ── Docker preflight (deployment-review P0 #493) ──────────────────────────────
 // Thin wrapper around the extracted DockerPreflight so existing importers/tests
 // keep calling `ensureDockerReady()` from main.ts.
@@ -870,6 +876,7 @@ async function setCheckPrerelease(enabled: boolean): Promise<void> {
 function createTray(): void {
   trayController.create({
     onOpen: showWindow,
+    onOpenLocalApp: openLocalApp,
     onShowLogs: () => { void shell.openPath(app.getPath('logs')); },
     getLaunchOnLoginStatus: () => getLaunchOnLoginStatus(),
     onSetLaunchOnLogin: (enabled) => { setLaunchOnLogin(enabled); },
@@ -953,6 +960,10 @@ ipcMain.handle('restart-app', () => {
 // control-plane lib loads. Returns true once the new child is ready.
 ipcMain.handle('restart-ui-server', async (): Promise<boolean> => {
   return restartUIServer();
+});
+
+ipcMain.handle('open-local-app', async (): Promise<void> => {
+  openLocalApp();
 });
 
 // The UI child (admin "install UI version" route) sends SIGUSR2 to this parent

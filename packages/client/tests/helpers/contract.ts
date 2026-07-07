@@ -131,10 +131,19 @@ export type ConnectionStore = {
   seedFromRuntimeConfig(config: RuntimeConfig | null): Promise<void>;
 };
 
+export type ConnectionStorage = {
+  getAll(): Promise<ConnectionEntry[]>;
+  get(id: string): Promise<ConnectionEntry | null>;
+  put(entry: ConnectionEntry): Promise<void>;
+  delete(id: string): Promise<void>;
+  getMeta(key: string): Promise<string | null>;
+  setMeta(key: string, value: string | null): Promise<void>;
+};
+
 export type ConnectionsModule = {
   /** In-memory storage backend (same semantics as the IndexedDB one). */
-  createMemoryStorage(): unknown;
-  createConnectionStore(options: { storage: unknown }): ConnectionStore;
+  createMemoryStorage(): ConnectionStorage;
+  createConnectionStore(options: { storage: ConnectionStorage }): ConnectionStore;
   /**
    * Fetch '/runtime-config.json' from the app's own origin. Absent (404),
    * unreachable, or malformed file -> null (no default connection; offline

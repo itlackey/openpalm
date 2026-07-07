@@ -673,6 +673,14 @@ describe('UI host server', () => {
     const cmd = (await sub()) as { meta?: { name?: string } };
     expect(cmd.meta?.name).toBe("ui");
   });
+
+  it("the `app` subcommand is registered", async () => {
+    const { mainCommand } = await import("./main.ts");
+    const sub = (mainCommand.subCommands as Record<string, () => Promise<unknown>>).app;
+    expect(typeof sub).toBe("function");
+    const cmd = (await sub()) as { meta?: { name?: string } };
+    expect(cmd.meta?.name).toBe("app");
+  });
 });
 
 describe('secrets.env generation', () => {

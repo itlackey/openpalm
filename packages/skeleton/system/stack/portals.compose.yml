@@ -112,6 +112,7 @@ services:
       GUARDIAN_MODERATION_THRESHOLD: ${GUARDIAN_MODERATION_THRESHOLD:-3}
       GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
       GUARDIAN_DIRECT_INGRESS: ${GUARDIAN_DIRECT_INGRESS:-false}
+      GUARDIAN_CORS_ALLOWED_ORIGINS: ${GUARDIAN_CORS_ALLOWED_ORIGINS:-}
       GUARDIAN_MCP: ${GUARDIAN_MCP:-false}
       GUARDIAN_ADMIN_TOKEN_FILE: /run/secrets/op_guardian_admin_token
       GUARDIAN_MCP_TOKEN_FILE: /run/secrets/op_guardian_mcp_token

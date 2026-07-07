@@ -31,6 +31,22 @@ import {
 } from './helpers/contract.ts';
 import { jsonResponse, recordingFetch, rejectingFetch } from './helpers/mocks.ts';
 
+async function withLocationHost<T>(hostname: string, run: () => Promise<T>): Promise<T> {
+  const originalLocation = globalThis.location;
+  Object.defineProperty(globalThis, 'location', {
+    configurable: true,
+    value: { hostname }
+  });
+  try {
+    return await run();
+  } finally {
+    Object.defineProperty(globalThis, 'location', {
+      configurable: true,
+      value: originalLocation
+    });
+  }
+}
+
 function seededEntry(overrides: Partial<ConnectionEntry> = {}): ConnectionEntry {
   return {
     id: 'seed-local-opencode',
@@ -61,6 +77,7 @@ describe('loadRuntimeConfig (P5b item 2)', () => {
     // connection URL — the client holds no other trusted origin at boot.
     expect(calls[0].url).toBe('/runtime-config.json');
     expect(calls[0].method).toBe('GET');
+    expect(calls[0].credentials).toBe('omit');
     expect(loaded).toEqual(config);
   });
 
@@ -87,6 +104,32 @@ describe('loadRuntimeConfig (P5b item 2)', () => {
     const { loadRuntimeConfig } = await loadConnectionsModule();
     const { fetch } = recordingFetch(() => jsonResponse({ unexpected: true }));
     expect(await loadRuntimeConfig(fetch)).toBeNull();
+  });
+
+  test('rewrites locked loopback default URLs to the current LAN browser host', async () => {
+    const { loadRuntimeConfig } = await loadConnectionsModule();
+    const config: RuntimeConfig = {
+      connections: [
+        seededEntry({ url: 'http://127.0.0.1:3800' }),
+        seededEntry({ id: 'remote', locked: false, url: 'http://127.0.0.1:4900' })
+      ]
+    };
+    const { fetch } = recordingFetch(() => jsonResponse(config));
+
+    const loaded = await withLocationHost('192.168.1.10', () => loadRuntimeConfig(fetch));
+
+    expect(loaded?.connections[0]?.url).toBe('http://192.168.1.10:3800/');
+    expect(loaded?.connections[1]?.url).toBe('http://127.0.0.1:4900');
+  });
+
+  test('keeps locked loopback default URLs unchanged on localhost clients', async () => {
+    const { loadRuntimeConfig } = await loadConnectionsModule();
+    const config: RuntimeConfig = { connections: [seededEntry({ url: 'http://127.0.0.1:3800' })] };
+    const { fetch } = recordingFetch(() => jsonResponse(config));
+
+    const loaded = await withLocationHost('127.0.0.1', () => loadRuntimeConfig(fetch));
+
+    expect(loaded?.connections[0]?.url).toBe('http://127.0.0.1:3800');
   });
 });
 
@@ -152,6 +195,31 @@ describe('seedFromRuntimeConfig (P5b item 2 — locked default)', () => {
     await store.seedFromRuntimeConfig({ connections: [seededEntry()] });
     expect(await store.get('conn-user')).toEqual(mine);
     expect((await store.list()).length).toBe(2);
+  });
+
+  test('re-seeding prunes locked entries that disappeared from runtime-config.json', async () => {
+    const { store } = await storeWithBackend();
+    await store.seedFromRuntimeConfig({
+      connections: [seededEntry(), seededEntry({ id: 'seed-removed', label: 'Old lock' })]
+    });
+
+    await store.seedFromRuntimeConfig({ connections: [seededEntry()] });
+
+    expect(await store.get('seed-local-opencode')).toEqual(seededEntry());
+    expect(await store.get('seed-removed')).toBeNull();
+    expect(await store.list()).toEqual([seededEntry()]);
+  });
+
+  test('re-seeding prunes a removed locked active entry and clears the active selection', async () => {
+    const { store } = await storeWithBackend();
+    const removed = seededEntry({ id: 'seed-removed', label: 'Old lock', isDefault: false });
+    await store.seedFromRuntimeConfig({ connections: [removed] });
+    await store.setActive(removed.id);
+
+    await store.seedFromRuntimeConfig({ connections: [seededEntry({ isDefault: false })] });
+
+    expect(await store.get(removed.id)).toBeNull();
+    expect(await store.getActiveId()).toBeNull();
   });
 
   test('seeded locked entries stay immutable through the store API', async () => {
