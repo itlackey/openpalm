@@ -20,30 +20,33 @@
  *  - On a machine with no install it still serves — the UI's existing setup
  *    guard lands on /setup; the CLI does NOT reimplement wizard logic.
  *
- * Harness: no module mocks. Real @openpalm/lib + cli-state against a seeded
- * temp OP_HOME; global fetch answers /health (ready) and fails registry
- * fetches (checkAndUpdate* degrade non-fatally by design); Bun.spawn is
- * captured so no real process is launched. The serve promise intentionally
- * never resolves (foreground supervisor) — tests poll the spawn capture.
+ * Harness: real @openpalm/lib + cli-state against a seeded temp OP_HOME;
+ * global fetch answers /health (ready) and fails registry fetches
+ * (checkAndUpdate* degrade non-fatally by design); Bun.spawn is captured so no
+ * real process is launched. The serve promise intentionally never resolves
+ * (foreground supervisor) — tests poll the spawn capture. The package import is
+ * explicitly restored before dynamic imports because other aggregate CLI tests
+ * use mock.module('@openpalm/lib') and Bun module mocks can leak across files.
  *
  * The two "parity" tests at the bottom are CHARACTERIZATION tests: they pass
  * before the Phase 1.5 change and pin the existing bare-serve spawn env so
  * loopback-always is scoped to admin mode only.
  */
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderUsage, runCommand, type CommandDef } from 'citty';
-import { isRemoteSetupAllowed } from '@openpalm/lib';
-import { mainCommand } from '../main.ts';
-import { startUIServer, type UIServerOptions } from '../lib/ui-server.ts';
+import * as realLib from '../../../lib/src/index.ts';
+import type { UIServerOptions } from '../lib/ui-server.ts';
 
 // Resolved as a plain string so the red state fails at runtime ("Cannot find
 // module") instead of at typecheck time — src/commands/admin.ts does not
 // exist until the implementation lands.
 const adminModuleUrl = new URL('./admin.ts', import.meta.url).href;
+const mainModuleUrl = new URL('../main.ts', import.meta.url).href;
+const uiServerModuleUrl = new URL('../lib/ui-server.ts', import.meta.url).href;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 const ESC = String.fromCharCode(27);
@@ -81,6 +84,8 @@ for (const key of SAVED_ENV_KEYS) savedEnv[key] = process.env[key];
 const tmpDirs: string[] = [];
 
 afterEach(() => {
+  mock.restore();
+  mock.module('@openpalm/lib', () => ({ ...realLib }));
   Bun.spawn = originalBunSpawn;
   globalThis.fetch = originalFetch;
   console.log = originalLog;
@@ -91,6 +96,11 @@ afterEach(() => {
   }
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+function restoreOpenPalmLib(): void {
+  mock.restore();
+  mock.module('@openpalm/lib', () => ({ ...realLib }));
+}
 
 /** Capture every Bun.spawn call; no real process is ever launched. */
 function captureSpawns(): CapturedSpawn[] {
@@ -212,8 +222,9 @@ function browserSpawn(calls: CapturedSpawn[], port: number): CapturedSpawn | und
  * until SIGINT/SIGTERM, so the returned promise never resolves on success.
  */
 async function runAdmin(rawArgs: string[]): Promise<{ error?: unknown }> {
+  restoreOpenPalmLib();
   const state: { error?: unknown } = {};
-  const mod = (await import(adminModuleUrl)) as { default: CommandDef };
+  const mod = (await import(`${adminModuleUrl}?t=${Math.random()}`)) as { default: CommandDef };
   void runCommand(mod.default, { rawArgs }).catch((e: unknown) => {
     state.error = e ?? new Error('admin command rejected');
   });
@@ -224,6 +235,8 @@ async function runAdmin(rawArgs: string[]): Promise<{ error?: unknown }> {
 
 describe('admin subcommand registration (#556)', () => {
   it('registers `admin` in the main subCommands map', async () => {
+    restoreOpenPalmLib();
+    const { mainCommand } = await import(`${mainModuleUrl}?t=${Math.random()}`) as { mainCommand: CommandDef };
     const sub = (mainCommand.subCommands as Record<string, () => Promise<unknown>>).admin;
     expect(typeof sub).toBe('function');
     const cmd = (await sub()) as { meta?: { name?: string; description?: string } };
@@ -233,6 +246,8 @@ describe('admin subcommand registration (#556)', () => {
   });
 
   it('lists `admin` in the CLI help output', async () => {
+    restoreOpenPalmLib();
+    const { mainCommand } = await import(`${mainModuleUrl}?t=${Math.random()}`) as { mainCommand: CommandDef };
     const usage = stripAnsi(await renderUsage(mainCommand));
     // The COMMANDS table renders each entry as "  <name>  <description>".
     expect(usage).toMatch(/^\s*admin\b/m);
@@ -309,7 +324,7 @@ describe('openpalm admin serve mode (#556)', () => {
       // The flag itself must be neutralized in the child env: the `openpalm ui`
       // respawn and the UI server's own OP_ALLOW_REMOTE_SETUP relaxations
       // (Host/Origin allowlist, setup gate) must not see it enabled.
-      expect(isRemoteSetupAllowed(child.env ?? {})).toBe(false);
+      expect(realLib.isRemoteSetupAllowed(child.env ?? {})).toBe(false);
 
       // --no-open: URL is printed but no browser opener is spawned.
       await waitFor(
@@ -363,6 +378,10 @@ describe('bare serve path spawn env (characterization — green pre-change)', ()
       captureLogs();
 
       const failure: { error?: unknown } = {};
+      restoreOpenPalmLib();
+      const { startUIServer } = await import(`${uiServerModuleUrl}?t=${Math.random()}`) as {
+        startUIServer: (opts?: UIServerOptions) => Promise<void>;
+      };
       void startUIServer({ port: 4614, open: false } satisfies UIServerOptions).catch(
         (e: unknown) => {
           failure.error = e ?? new Error('startUIServer rejected');
@@ -393,6 +412,10 @@ describe('bare serve path spawn env (characterization — green pre-change)', ()
       captureLogs();
 
       const failure: { error?: unknown } = {};
+      restoreOpenPalmLib();
+      const { startUIServer } = await import(`${uiServerModuleUrl}?t=${Math.random()}`) as {
+        startUIServer: (opts?: UIServerOptions) => Promise<void>;
+      };
       void startUIServer({ port: 4615, open: false } satisfies UIServerOptions).catch(
         (e: unknown) => {
           failure.error = e ?? new Error('startUIServer rejected');
