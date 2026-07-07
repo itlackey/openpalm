@@ -1,5 +1,3 @@
-<img src="packages/ui/static/banner.png" alt="OpenPalm" width="500" />
-
 <p>
   <strong>Your own AI assistant. Private, self-hosted, no hype required.</strong>
 </p>
@@ -96,7 +94,6 @@ This downloads the CLI binary for your platform, seeds `~/.openpalm/`, opens the
 ## How it works
 
 <div>
-<img src="packages/ui/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
 <p>Clients talk to portals or guardian-hosted ingress surfaces. Portals authenticate to the guardian, the guardian validates and forwards to the assistant, and the assistant does the work. That's it.</p>
 </div>
 
