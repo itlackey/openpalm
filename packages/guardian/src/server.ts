@@ -23,7 +23,7 @@ import { activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE
 import { runDriftCheckWithRetry, startProxyRecovery, stopProxyRecovery, isProxyEnabled } from './drift';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { matchTransport, registerTransport, type Transport } from './transport';
-import { DIRECT_PORT } from './config';
+import { DIRECT_PORT, resolveCorsAllowedOrigin } from './config';
 
 const logger = createLogger('guardian');
 
@@ -46,9 +46,67 @@ const requestCounters = {
   byStatus: new Map<string, number>(),
 };
 
+const CORS_ALLOW_METHODS = 'GET, POST, DELETE, PATCH, OPTIONS';
+const CORS_ALLOW_HEADERS = 'authorization, content-type, x-openpalm-user, x-openpalm-session-key, last-event-id';
+
 function countRequest(status: string) {
   requestCounters.total += 1;
   requestCounters.byStatus.set(status, (requestCounters.byStatus.get(status) ?? 0) + 1);
+}
+
+function appendVary(headers: Headers, value: string): void {
+  const current = headers.get('vary');
+  if (!current) {
+    headers.set('vary', value);
+    return;
+  }
+  const values = current.split(',').map((entry) => entry.trim().toLowerCase());
+  if (!values.includes(value.toLowerCase())) headers.set('vary', `${current}, ${value}`);
+}
+
+function isCorsPreflight(req: Request): boolean {
+  return req.method === 'OPTIONS' && req.headers.has('origin') && req.headers.has('access-control-request-method');
+}
+
+function isDirectBrowserSurface(url: URL): boolean {
+  return url.pathname === '/mcp' || url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`);
+}
+
+function applyCorsHeaders(response: Response, origin: string | null): Response {
+  if (!origin) return response;
+  const headers = new Headers(response.headers);
+  headers.set('access-control-allow-origin', origin);
+  headers.set('access-control-allow-credentials', 'true');
+  appendVary(headers, 'Origin');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function corsPreflightResponse(req: Request, requestId: string, origin: string | null): Response {
+  if (!origin) {
+    const response = json(403, { error: 'cors_origin_denied', requestId });
+    const headers = new Headers(response.headers);
+    appendVary(headers, 'Origin');
+    if (req.headers.has('access-control-request-headers')) appendVary(headers, 'Access-Control-Request-Headers');
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+  const headers = new Headers({
+    'access-control-allow-origin': origin,
+    'access-control-allow-credentials': 'true',
+    'access-control-allow-methods': CORS_ALLOW_METHODS,
+    'access-control-allow-headers': req.headers.get('access-control-request-headers')?.trim() || CORS_ALLOW_HEADERS,
+    'access-control-max-age': '600',
+  });
+  appendVary(headers, 'Origin');
+  if (req.headers.has('access-control-request-headers')) appendVary(headers, 'Access-Control-Request-Headers');
+  return new Response(null, { status: 204, headers });
 }
 
 function statsResponse(): Response {
@@ -132,23 +190,30 @@ async function handleInternalRequest(req: Request, clientIp = ''): Promise<Respo
 async function handleDirectRequest(req: Request, clientIp = ''): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
+  const corsOrigin = resolveCorsAllowedOrigin(req.headers.get('origin'));
+  const browserSurface = isDirectBrowserSurface(url);
 
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
-  if (!DIRECT_INGRESS_ENABLED) return json(404, { error: 'not_found', requestId });
+  if (!DIRECT_INGRESS_ENABLED) {
+    return browserSurface ? applyCorsHeaders(json(404, { error: 'not_found', requestId }), corsOrigin) : json(404, { error: 'not_found', requestId });
+  }
+  if (browserSurface && isCorsPreflight(req)) return corsPreflightResponse(req, requestId, corsOrigin);
+
   if (url.pathname === '/mcp') {
-    if (!MCP_ENABLED) return json(404, { error: 'not_found', requestId });
+    if (!MCP_ENABLED) return applyCorsHeaders(json(404, { error: 'not_found', requestId }), corsOrigin);
     const response = await handleMcpRequest(req, requestId);
     countRequest(`mcp:${response.status}`);
-    return response;
+    return applyCorsHeaders(response, corsOrigin);
   }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    return handleOcRequest(req, requestId, 'direct', clientIp);
+    const response = await handleOcRequest(req, requestId, 'direct', clientIp);
+    return applyCorsHeaders(response, corsOrigin);
   }
   const transport = matchTransport(url, req);
   if (transport) {
     const response = await transport.handle(req, requestId);
     countRequest(`${transport.name}:${response.status}`);
-    return response;
+    return applyCorsHeaders(response, corsOrigin);
   }
   return json(404, { error: 'not_found', requestId });
 }

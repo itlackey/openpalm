@@ -7,7 +7,7 @@
     type HostAkmSharing,
   } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
-  import Spinner from '$lib/components/common/Spinner.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
 
   let hostSharing = $state<HostAkmSharing | null>(null);
   let loading = $state(true);

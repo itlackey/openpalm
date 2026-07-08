@@ -18,34 +18,34 @@
       "path": "/chat",
       "waitFor": "header.navbar"
     },
-    { "id": "admin-overview", "path": "/admin", "waitFor": "header.navbar" },
+    { "id": "admin-overview", "path": "/host", "waitFor": "header.navbar" },
     {
       "id": "admin-providers",
-      "path": "/admin",
+      "path": "/host",
       "waitFor": "header.navbar",
       "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Mind')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
     },
     {
       "id": "admin-knowledge",
-      "path": "/admin",
+      "path": "/host",
       "waitFor": "header.navbar",
       "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Knowledge')?.click(); await new Promise(r => setTimeout(r, 300)); f('Memory')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
     },
     {
       "id": "admin-voice",
-      "path": "/admin",
+      "path": "/host",
       "waitFor": "header.navbar",
       "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Voice')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
     },
     {
       "id": "admin-secrets",
-      "path": "/admin",
+      "path": "/host",
       "waitFor": "header.navbar",
       "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Knowledge')?.click(); await new Promise(r => setTimeout(r, 300)); f('Secrets')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
     },
     {
       "id": "admin-addons",
-      "path": "/admin",
+      "path": "/host",
       "waitFor": "header.navbar",
       "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Capabilities')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
     }

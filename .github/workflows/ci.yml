@@ -107,10 +107,23 @@ jobs:
       - name: Type check admin UI
         run: cd packages/ui && bun run check
 
+      - name: Type check UI kit
+        run: cd packages/ui-kit && bun run check
+
+      - name: Type check client app
+        run: cd packages/client && bun run check
+
       - name: Type check CLI
         run: cd packages/cli && bun run typecheck
 
-      - name: Test (sdk + guardian + portals)
+      # Client-bundle purity gate (plan §8.5/§8.10): packages/client/tests/
+      # purity.test.ts greps the BUILT bundle for '@openpalm/lib' and
+      # '/api/host' and deliberately FAILS when build/ is absent — so the
+      # client must be built before `bun run test` runs packages/client.
+      - name: Build client app (input to the client purity gate)
+        run: bun run client:build
+
+      - name: Test (sdk + guardian + portals + client purity gate)
         run: bun run test
 
       - name: Validate Docker Compose manifests

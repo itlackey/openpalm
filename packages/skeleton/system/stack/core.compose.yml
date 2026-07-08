@@ -16,9 +16,10 @@
 # (bind-mounted into the assistant + guardian).
 #
 # Directory model:
-#   ~/.openpalm/config/       — user-editable + system config (akm/)
-#   ~/.openpalm/config/stack/ — compose assembly only (core/services/portals/custom
-#                               compose files) — no secrets, no env
+#   ~/.openpalm/system/       — managed release assets, including system/stack/
+#                               core/services/portals compose files
+#   ~/.openpalm/config/       — user-editable config, including only the
+#                               config/stack/custom.compose.yml stack overlay
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
 #   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents);
 #                               env:user, env:stack, and auth.json live here
@@ -63,12 +64,42 @@ services:
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096
+      # @openpalm/client co-process (P5d, #510). OP_CLIENT_VERSION is the
+      # exact-pin override for the client artifact the entrypoint installs;
+      # empty falls back to the image's baked PLATFORM_VERSION. It must reach
+      # the container ENVIRONMENT (not just compose interpolation) so a
+      # restart with a new pin picks up the new client.
+      OP_CLIENT_VERSION: ${OP_CLIENT_VERSION:-}
+      # The assistant entrypoint installs @openpalm/skeleton alongside the
+      # client artifact using the same exact-pin override/fallback chain.
+      OP_SKELETON_VERSION: ${OP_SKELETON_VERSION:-}
+      # The entrypoint writes the client's runtime-config.json pointing the
+      # BROWSER at the host-published OpenCode URL — that is the assistant
+      # port mapping below, NOT the in-container :4096 (unreachable from a
+      # browser). OP_CLIENT_DEFAULT_ASSISTANT_URL overrides the full URL for
+      # non-default topologies (e.g. a reverse proxy in front of the stack).
+      OP_ASSISTANT_PORT: ${OP_ASSISTANT_PORT:-3800}
+      OP_CLIENT_DEFAULT_ASSISTANT_URL: ${OP_CLIENT_DEFAULT_ASSISTANT_URL:-}
+      # Browser clients are separate origins from OpenCode. These host-side
+      # ports are passed only so the entrypoint can add exact CORS origins when
+      # launching OpenCode; OP_CLIENT_PORT inside the container remains the
+      # static client's in-container listen port default (3000).
+      OP_CLIENT_HOST_PORT: ${OP_CLIENT_PORT:-3810}
+      OP_HOST_CLIENT_PORT: ${OP_HOST_CLIENT_PORT:-3890}
+      OP_CLIENT_CORS_ALLOWED_ORIGINS: ${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}
+      OP_BIND_ADDRESS: ${OP_BIND_ADDRESS:-127.0.0.1}
+      OP_ASSISTANT_BIND_ADDRESS: ${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
+      OP_CLIENT_BIND_ADDRESS: ${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks
       # the key up via OpenCode at call time.
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
+      # Chat client (@openpalm/client static co-process, in-container port
+      # 3000). Loopback by default; honors the global OP_BIND_ADDRESS policy
+      # with a per-service override, same as the addon listeners.
+      - "${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CLIENT_PORT:-3810}:3000"
     volumes:
       # data/assistant is HOME (runtime). config/assistant is the power-user's
       # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).
@@ -96,8 +127,8 @@ services:
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
       - assistant-persistent:/opt/persistent
-      # Platform artifact cache — persists @openpalm/ui and @openpalm/skeleton
-      # across restarts so warm starts don't re-download.
+      # Platform artifact cache — persists @openpalm/client and
+      # @openpalm/skeleton across restarts so warm starts don't re-download.
       - assistant-artifacts:/opt/openpalm
       # Tool packages managed via package.json. Edit OP_HOME/data/assistant/tools/package.json
       # to pin or update individual tool versions; bun update applies changes on next start.
@@ -138,6 +169,6 @@ networks:
 
 volumes:
   assistant-persistent:
-  # Named volume for @openpalm/ui and @openpalm/skeleton artifacts.
+  # Named volume for @openpalm/client and @openpalm/skeleton artifacts.
   # The tools subpath (/opt/openpalm/tools) is overlaid by the bind-mount above.
   assistant-artifacts:

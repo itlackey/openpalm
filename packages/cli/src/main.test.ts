@@ -14,12 +14,15 @@ function writeMinimalSetupSpec(dir: string): string {
   const specPath = join(dir, 'setup-spec.yaml');
   const yaml = [
     'version: 2',
-    'capabilities:',
-    '  llm: openai/gpt-4o',
-    '  embeddings:',
-    '    provider: openai',
-    '    model: text-embedding-3-small',
-    '    dims: 1536',
+    'llm:',
+    '  provider: openai',
+    '  model: gpt-4o',
+    '  baseUrl: https://api.openai.com/v1',
+    'embedding:',
+    '  provider: openai',
+    '  model: text-embedding-3-small',
+    '  dims: 1536',
+    '  baseUrl: https://api.openai.com/v1',
     'security:',
     '  uiLoginPassword: test-admin-token-12345',
     'owner:',
@@ -337,6 +340,99 @@ describe('cli main', () => {
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
       expect(readFileSync(join(backupsDir, backups[0], 'knowledge', 'env', 'stack.env'), 'utf8')).toContain('OP_OWNER_NAME=existing-owner');
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('persists install-time project and port overrides into stack.env for later start', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-overrides-'));
+    const workDir = join(base, 'work');
+    const specFile = writeMinimalSetupSpec(base);
+    const originalProject = process.env.OP_PROJECT_NAME;
+    const originalAssistantPort = process.env.OP_ASSISTANT_PORT;
+    const originalHostUiPort = process.env.OP_HOST_UI_PORT;
+    const originalHostClientPort = process.env.OP_HOST_CLIENT_PORT;
+    const originalClientPort = process.env.OP_CLIENT_PORT;
+
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
+    process.env.OP_PROJECT_NAME = 'openpalm-test-install';
+    process.env.OP_ASSISTANT_PORT = '4802';
+    process.env.OP_HOST_UI_PORT = '9300';
+    process.env.OP_HOST_CLIENT_PORT = '9390';
+    process.env.OP_CLIENT_PORT = '3842';
+
+    mockDockerCli();
+    globalThis.fetch = mock(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) return new Response('ok', { status: 200 });
+      if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) return new Response('services: {}\n', { status: 200 });
+      if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+      if (url.includes('/opencode.jsonc')) return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
+      return new Response('', { status: 503 });
+    }) as unknown as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+    console.warn = mock(() => {}) as typeof console.warn;
+
+    try {
+      await main(['install', '--no-start', '--file', specFile]);
+      const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
+      expect(stackEnv).toContain('OP_PROJECT_NAME=openpalm-test-install');
+      expect(stackEnv).toContain('OP_ASSISTANT_PORT=4802');
+      expect(stackEnv).toContain('OP_HOST_UI_PORT=9300');
+      expect(stackEnv).toContain('OP_HOST_CLIENT_PORT=9390');
+      expect(stackEnv).toContain('OP_CLIENT_PORT=3842');
+    } finally {
+      if (originalProject === undefined) delete process.env.OP_PROJECT_NAME;
+      else process.env.OP_PROJECT_NAME = originalProject;
+      if (originalAssistantPort === undefined) delete process.env.OP_ASSISTANT_PORT;
+      else process.env.OP_ASSISTANT_PORT = originalAssistantPort;
+      if (originalHostUiPort === undefined) delete process.env.OP_HOST_UI_PORT;
+      else process.env.OP_HOST_UI_PORT = originalHostUiPort;
+      if (originalHostClientPort === undefined) delete process.env.OP_HOST_CLIENT_PORT;
+      else process.env.OP_HOST_CLIENT_PORT = originalHostClientPort;
+      if (originalClientPort === undefined) delete process.env.OP_CLIENT_PORT;
+      else process.env.OP_CLIENT_PORT = originalClientPort;
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects the legacy capabilities wrapper for install --file', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-legacy-'));
+    const workDir = join(base, 'work');
+    const specFile = join(base, 'setup-spec-legacy.yaml');
+    const mainPath = join(fileURLToPath(new URL('./', import.meta.url)), 'main.ts');
+    const yaml = [
+      'version: 2',
+      'capabilities:',
+      '  llm: openai/gpt-4o',
+      '  embeddings:',
+      '    provider: openai',
+      '    model: text-embedding-3-small',
+      '    dims: 1536',
+      'security:',
+      '  uiLoginPassword: test-admin-token-12345',
+      'connections: []',
+      '',
+    ].join('\n');
+    writeFileSync(specFile, yaml);
+
+    process.env.OP_HOME = base;
+    process.env.OP_WORK_DIR = workDir;
+
+    try {
+      const proc = Bun.spawn(['bun', mainPath, 'install', '--no-start', '--file', specFile], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, OP_HOME: base, OP_WORK_DIR: workDir },
+      });
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      const code = await proc.exited;
+      expect(code).not.toBe(0);
+      expect(stdout + stderr).toContain('modern flat shape');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -672,6 +768,14 @@ describe('UI host server', () => {
     expect(typeof sub).toBe("function");
     const cmd = (await sub()) as { meta?: { name?: string } };
     expect(cmd.meta?.name).toBe("ui");
+  });
+
+  it("the `app` subcommand is registered", async () => {
+    const { mainCommand } = await import("./main.ts");
+    const sub = (mainCommand.subCommands as Record<string, () => Promise<unknown>>).app;
+    expect(typeof sub).toBe("function");
+    const cmd = (await sub()) as { meta?: { name?: string } };
+    expect(cmd.meta?.name).toBe("app");
   });
 });
 

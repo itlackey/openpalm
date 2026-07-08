@@ -1,9 +1,9 @@
 <script lang="ts">
   import { PORTALS, friendlyProviderName } from '$lib/client/constants.js';
-  import IconAgent from '$lib/components/icons/IconAgent.svelte';
-  import IconMic from '$lib/components/icons/IconMic.svelte';
+  import IconAgent from '@openpalm/ui-kit/components/icons/IconAgent.svelte';
+  import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
   import { isPortalEnabled as _isPortalEnabled } from '$lib/client/helpers.js';
-  import FriendlyError from '$lib/components/common/FriendlyError.svelte';
+  import FriendlyError from '@openpalm/ui-kit/components/common/FriendlyError.svelte';
   import { friendlyError } from '$lib/client/error-messages.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
 

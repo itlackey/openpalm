@@ -31,11 +31,13 @@ guardian_port_default=3930
 guardian_admin_port_default=3931
 chat_port_default=3920
 api_port_default=3921
+client_port_default=3910
 if [[ "$TARGET" == "portal-discord" ]]; then
   guardian_port_default=3940
   guardian_admin_port_default=3941
   chat_port_default=3942
   api_port_default=3943
+  client_port_default=3911
 fi
 
 usage() {
@@ -89,13 +91,17 @@ cleanup() {
     return
   fi
 
-  dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+  if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
+    dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+  fi
   docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 echo "Preparing isolated smoke OP_HOME at ${SMOKE_HOME}..."
-dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
+  dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+fi
 docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 smoke_copy_skeleton "$SMOKE_HOME"
 smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
@@ -103,7 +109,8 @@ smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}" \
   "${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}" \
-  "${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}"
+  "${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}" \
+  "${OP_ROOTLESS_SMOKE_CLIENT_PORT:-${client_port_default}}"
 printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/knowledge/env/stack.env"
 smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
 

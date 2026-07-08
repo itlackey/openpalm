@@ -24,10 +24,11 @@ test.describe('Setup guard — fresh instance (mocked-lib)', () => {
   test('GET / never serves raw admin/chat content unauthenticated', async ({ page }) => {
     const res = await page.goto('/');
     expect(res?.status()).toBeLessThan(400);
-    // Whatever the guard's recommended landing page is (splash, setup, or a
-    // bounce through chat straight to the login gate), it must be one of
-    // these — never a bare admin page rendered with no session.
-    await expect(page).toHaveURL(/\/(splash|setup|login)/);
+    // Whatever landing resolveLanding() picks (plan §6.5: setup, attention,
+    // connections, or a bounce through chat/admin straight to the login
+    // gate), it must be one of these — never a bare admin page rendered with
+    // no session.
+    await expect(page).toHaveURL(/\/(setup|attention|connections|login)/);
   });
 
   test('GET /setup is directly reachable, unauthenticated, from localhost', async ({ page }) => {

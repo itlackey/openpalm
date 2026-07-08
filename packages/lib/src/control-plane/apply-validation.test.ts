@@ -24,7 +24,11 @@ const SHIPPED_STACK_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '.
 const homes: string[] = [];
 
 afterEach(() => {
-  while (homes.length) rmSync(homes.pop()!, { recursive: true, force: true });
+  let home = homes.pop();
+  while (home) {
+    rmSync(home, { recursive: true, force: true });
+    home = homes.pop();
+  }
 });
 
 /** A temp OP_HOME seeded with the shipped compose overlays + a valid stack env. */

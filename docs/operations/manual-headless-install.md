@@ -147,12 +147,26 @@ wizard drives.
 
 ```yaml
 version: 2
+llm:
+  provider: openai
+  model: gpt-4o
+  baseUrl: https://api.openai.com/v1
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  dims: 1536
+  baseUrl: https://api.openai.com/v1
 security:
   uiLoginPassword: change-me-please # min 8 characters
-connections: []
+connections:
+  - id: openai
+    name: OpenAI
+    provider: openai
+    baseUrl: https://api.openai.com/v1
+    apiKey: sk-...
 ```
 
-`connections` is required (may be empty). Everything else is optional:
+Everything else is optional:
 
 ```yaml
 version: 2
@@ -192,6 +206,38 @@ openpalm install --file ./setup-spec.yaml               # write config and start
 `--no-start` is the option to reach for in CI or any scripted context where
 you want to assert the config was assembled correctly without needing a
 Docker daemon to bring services up.
+
+### Persisting isolated runtime overrides
+
+When scripting an isolated install, set runtime overrides in the install shell.
+The CLI now persists the following non-secret overrides into
+`knowledge/env/stack.env` so a later `openpalm start` reuses the same isolated
+project and port layout automatically:
+
+- `OP_PROJECT_NAME`
+- `OP_ASSISTANT_PORT`
+- `OP_HOST_UI_PORT`
+- `OP_HOST_CLIENT_PORT`
+- `OP_CLIENT_PORT`
+
+Example:
+
+```bash
+OP_HOME="$PWD/.tmp-openpalm-install/home" \
+OP_PROJECT_NAME=openpalm-test-install \
+OP_ASSISTANT_PORT=4802 \
+OP_HOST_UI_PORT=9302 \
+OP_HOST_CLIENT_PORT=9392 \
+OP_CLIENT_PORT=3842 \
+openpalm install --file ./setup-spec.yaml --no-start
+
+# Later, the same install can be started without re-specifying those overrides:
+OP_HOME="$PWD/.tmp-openpalm-install/home" openpalm start
+```
+
+Without those persisted overrides, a later `openpalm start` falls back to the
+default project name and default ports, which can collide with a live local
+stack.
 
 ### Test coverage (the CI exercise)
 

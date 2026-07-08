@@ -69,7 +69,7 @@ function maxPublished(name) {
 // root package.json on disk. Anchoring on the max prevents the platform release
 // from computing a next version that collides with an already-published
 // skeleton/guardian (the "cannot publish over previously published" failure).
-const PLATFORM_NPM_PACKAGES = ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'];
+const PLATFORM_NPM_PACKAGES = ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/client', '@openpalm/skeleton', '@openpalm/guardian'];
 
 // Bump a disk-version anchor up to the highest version published across the
 // given npm package names. npm failures return null and are ignored, so this
@@ -167,6 +167,7 @@ const UNITS = {
         'packages/guardian/package.json',
         'packages/cli/package.json',
         'packages/ui/package.json',
+        'packages/client/package.json',
         'packages/electron/package.json',
         'packages/electron/admin-tools/package.json',
       ], version);

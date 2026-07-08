@@ -1,5 +1,5 @@
 <script lang="ts">
-  import IconClose from '$lib/components/icons/IconClose.svelte';
+  import IconClose from '@openpalm/ui-kit/components/icons/IconClose.svelte';
 
   interface Props {
     operationResult: string;

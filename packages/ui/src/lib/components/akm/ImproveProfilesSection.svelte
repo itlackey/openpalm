@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
 	import type { ImproveProfile } from './profile-types';
-	import IconFlame from '$lib/components/icons/IconFlame.svelte';
+	import IconFlame from '@openpalm/ui-kit/components/icons/IconFlame.svelte';
 
 	// Presentation-only list of memory-maintenance (improve) profiles. Parent owns
 	// array + default-name via $bindable; this raises edit/add/remove. Each row

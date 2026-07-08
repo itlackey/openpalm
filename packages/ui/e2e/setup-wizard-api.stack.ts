@@ -4,16 +4,16 @@
  * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
  * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
- * Resets stack.env to the pre-setup state, hits every wizard API
- * endpoint in the same order the browser flow does, and asserts the
- * deploy finishes with setupComplete=true. ~30s on a warm dev stack.
+ * Resets stack.env to the pre-setup state, hits the wizard API endpoints,
+ * and validates the minimum setup payload through the non-destructive dry-run
+ * path. The actual deploy path is covered by CLI/install stack checks; this
+ * suite must not clobber a running shared Playwright stack.
  *
  * Covers:
  *   - GET /api/setup/status → not complete after reset
  *   - GET /api/setup/system-check → docker available
- *   - POST /api/setup/complete with minimum-viable payload
- *   - GET /api/setup/deploy-status polled until terminal
- *   - GET /api/setup/status → complete after deploy
+ *   - POST /api/setup/complete dryRun with minimum-viable payload
+ *   - GET /api/setup/status → still incomplete after dry-run
  *
  * Run with:
  *   RUN_DOCKER_STACK_TESTS=1 \
@@ -23,8 +23,6 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
 import {
 	resetWizardState,
 	restoreWizardState,
@@ -34,8 +32,6 @@ import {
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
-const DEPLOY_DEADLINE_MS = 5 * 60_000; // 5 min — covers warm container restarts; cold pulls go through the slow suite
-const POLL_INTERVAL_MS = 1_500;
 
 const E2E_PASSWORD = 'wizard-e2e-test-password';
 
@@ -56,31 +52,7 @@ test.describe('Setup wizard — API walkthrough (fast)', () => {
 	});
 
 	test.afterAll(() => {
-		// Tear the wizard-installed stack back down so the next test file
-		// starts clean. Without this, subsequent runs collide on
-		// container names + ports + the project-name-collision guard.
-		// Best-effort — failures here are logged but don't fail the suite.
-		const home = resolveOpHome();
-		const stackDir = resolve(home, 'config/stack');
-		const composeFile = resolve(stackDir, 'core.compose.yml');
-		const stackEnv = resolve(stackDir, 'stack.env');
-		try {
-			execFileSync(
-				'docker',
-				[
-					'compose',
-					'--project-directory', home,
-					'--project-name', process.env.OP_PROJECT_NAME ?? 'openpalm-dev',
-					'-f', composeFile,
-					'--env-file', stackEnv,
-					'down',
-				],
-				{ stdio: 'ignore', timeout: 60_000 },
-			);
-		} catch (err) {
-			console.warn('[wizard-api] composeDown cleanup failed:', err);
-		}
-		restoreWizardState(home);
+		restoreWizardState(resolveOpHome());
 	});
 
 	test('GET /api/setup/status reports not complete after reset', async ({ request }) => {
@@ -101,8 +73,8 @@ test.describe('Setup wizard — API walkthrough (fast)', () => {
 		expect(body).not.toBeNull();
 	});
 
-	test('POST /api/setup/complete then poll deploy-status until ready', async ({ request }) => {
-		const payload = minimalSetupPayload(E2E_PASSWORD);
+	test('POST /api/setup/complete dry-run validates the minimum payload without deploying', async ({ request }) => {
+		const payload = { ...minimalSetupPayload(E2E_PASSWORD), dryRun: true };
 		const completeRes = await request.post(`${ADMIN_URL}/api/setup/complete`, {
 			headers: headers(),
 			data: payload,
@@ -113,43 +85,13 @@ test.describe('Setup wizard — API walkthrough (fast)', () => {
 		const completeBody = await completeRes.json();
 		expect(completeRes.status(), `POST /api/setup/complete failed: ${JSON.stringify(completeBody).slice(0, 500)}`).toBe(200);
 		expect(completeBody.ok).toBe(true);
-
-		// Poll deploy-status until terminal (setupComplete=true OR deployError set).
-		const deadline = Date.now() + DEPLOY_DEADLINE_MS;
-		let lastStatus: unknown = null;
-		while (Date.now() < deadline) {
-			const res = await request.get(`${ADMIN_URL}/api/setup/deploy-status`, { headers: headers() });
-			if (res.ok()) {
-				lastStatus = await res.json();
-				const s = lastStatus as { setupComplete?: boolean; deployError?: string | null; deployStatus?: Array<{ status: string }> };
-				if (s.deployError) {
-					throw new Error(`Deploy failed: ${s.deployError}`);
-				}
-				if (
-					s.setupComplete &&
-					s.deployStatus &&
-					s.deployStatus.length > 0 &&
-					s.deployStatus.every((entry) => entry.status === 'running')
-				) {
-					break;
-				}
-			}
-			await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-		}
-
-		expect(lastStatus, 'deploy-status never returned a usable body').not.toBeNull();
-		const s = lastStatus as { setupComplete: boolean; deployStatus: Array<{ service: string; status: string }> };
-		expect(s.setupComplete).toBe(true);
-		// browser-tts/browser-stt means voice services should NOT have come up
-		// — the deploy should be core services only.
-		const voiceUp = s.deployStatus.filter((e) => /^voice(-cuda|-rocm)?$/.test(e.service));
-		expect(voiceUp.length).toBe(0);
+		expect(completeBody.dryRun).toBe(true);
 	});
 
-	test('GET /api/setup/status reports complete after deploy', async ({ request }) => {
+	test('GET /api/setup/status still reports incomplete after dry-run setup', async ({ request }) => {
 		const res = await request.get(`${ADMIN_URL}/api/setup/status`, { headers: headers() });
 		expect(res.ok()).toBeTruthy();
 		const body = await res.json();
-		expect(body.setupComplete).toBe(true);
+		expect(body.setupComplete).toBe(false);
 	});
 });

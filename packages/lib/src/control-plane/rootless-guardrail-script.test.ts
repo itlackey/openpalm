@@ -69,4 +69,15 @@ describe('rootless phase-0 script guardrails', () => {
     expect(fixtureHelper).toContain('smoke_write_stack_env');
     expect(fixtureHelper).toContain('smoke_ensure_home_dirs');
   });
+
+  test('rootless smoke fixtures assign an isolated assistant-container client port', () => {
+    expect(fixtureHelper).toContain('OP_CLIENT_PORT=${client_port}');
+    expect(smokeScript).toContain('OP_ROOTLESS_SMOKE_CLIENT_PORT');
+    expect(hostSwapSmokeScript).toContain('3994');
+  });
+
+  test('rootless smokes only run compose down when the prior stack env still exists', () => {
+    expect(smokeScript).toContain('if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]');
+    expect(hostSwapSmokeScript).toContain('if [[ -f "$SWAP_HOME/knowledge/env/stack.env" ]]');
+  });
 });

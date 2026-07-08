@@ -1,0 +1,16 @@
+/**
+ * GET /api/runtime — public runtime-context endpoint (plan
+ * ui-runtime-modes-plan.md §6.4, issue #509).
+ *
+ * PUBLIC by design: no auth is consulted. The body is the ServerRuntimeContext
+ * whose `version` field is the contract-version handshake remote/hosted
+ * clients use to detect version skew before enabling features. It carries no
+ * secrets — mode, capability names, versions, and route pointers only.
+ */
+import { json } from '@sveltejs/kit';
+import { computeServerRuntimeContext } from '$lib/server/features.js';
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = (event) => {
+  return json(computeServerRuntimeContext(event));
+};

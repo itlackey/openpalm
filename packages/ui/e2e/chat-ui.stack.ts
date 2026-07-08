@@ -10,6 +10,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginBrowserContext } from './auth-helpers';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
@@ -27,30 +28,19 @@ test.describe('Chat UI', () => {
     expect(status).toBe('complete');
   });
 
-  test('chat page renders message input after auth', async ({ page }) => {
-    // Set session cookie directly so we skip the auth gate form.
-    await page.context().addCookies([{
-      name: 'op_session',
-      value: PASSWORD,
-      domain: new URL(ADMIN_URL).hostname,
-      path: '/',
-    }]);
+  test('chat page renders message input after auth', async ({ page, request }) => {
+    await loginBrowserContext(request, page.context(), ADMIN_URL, PASSWORD);
 
-    await page.goto(`${ADMIN_URL}/chat`, { waitUntil: 'networkidle' });
+    await page.goto(`${ADMIN_URL}/chat`, { waitUntil: 'domcontentloaded' });
 
     // The message input is always rendered (even with no sessions).
     await expect(page.locator('[aria-label="Message input"]')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('message input accepts text and enables send button', async ({ page }) => {
-    await page.context().addCookies([{
-      name: 'op_session',
-      value: PASSWORD,
-      domain: new URL(ADMIN_URL).hostname,
-      path: '/',
-    }]);
+  test('message input accepts text and enables send button', async ({ page, request }) => {
+    await loginBrowserContext(request, page.context(), ADMIN_URL, PASSWORD);
 
-    await page.goto(`${ADMIN_URL}/chat`, { waitUntil: 'networkidle' });
+    await page.goto(`${ADMIN_URL}/chat`, { waitUntil: 'domcontentloaded' });
 
     const input = page.locator('[aria-label="Message input"]');
     await expect(input).toBeVisible({ timeout: 10_000 });
@@ -62,17 +52,12 @@ test.describe('Chat UI', () => {
     await expect(sendBtn).toBeEnabled({ timeout: 5_000 });
   });
 
-  test('session picker is visible in the nav', async ({ page }) => {
-    await page.context().addCookies([{
-      name: 'op_session',
-      value: PASSWORD,
-      domain: new URL(ADMIN_URL).hostname,
-      path: '/',
-    }]);
+  test('session picker is visible in the nav', async ({ page, request }) => {
+    await loginBrowserContext(request, page.context(), ADMIN_URL, PASSWORD);
 
-    await page.goto(`${ADMIN_URL}/chat`, { waitUntil: 'networkidle' });
+    await page.goto(`${ADMIN_URL}/chat`, { waitUntil: 'domcontentloaded' });
 
-    // The Sessions dropdown button is always present in the nav header.
-    await expect(page.getByRole('button', { name: /sessions/i })).toBeVisible({ timeout: 10_000 });
+    // The conversation picker button is always present in the nav header.
+    await expect(page.getByRole('button', { name: /conversations/i })).toBeVisible({ timeout: 10_000 });
   });
 });

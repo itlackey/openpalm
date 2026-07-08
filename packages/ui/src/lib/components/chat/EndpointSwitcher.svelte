@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
-  import Drawer from '$lib/components/common/Drawer.svelte';
+  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import EndpointList from '$lib/components/chat/EndpointList.svelte';
-  import IconServer from '$lib/components/icons/IconServer.svelte';
+  import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
 
   // Navbar trigger that opens the assistant-endpoint chooser in a drawer.
   // The list body itself lives in EndpointList, shared with the chat side panel.

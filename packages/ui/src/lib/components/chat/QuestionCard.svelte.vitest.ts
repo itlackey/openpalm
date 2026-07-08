@@ -86,7 +86,9 @@ describe('QuestionCard — multiple questions', () => {
   test('typing in a question input calls onDraft with index and value', async () => {
     const h = handlers();
     const { container } = render(QuestionCard, { props: { question: multi(), ...h } });
-    const input = container.querySelectorAll<HTMLInputElement>('input.s-question-input')[1]!;
+    const input = container.querySelectorAll<HTMLInputElement>('input.s-question-input')[1];
+    expect(input).toBeInstanceOf(HTMLInputElement);
+    if (!(input instanceof HTMLInputElement)) throw new Error('question input not found');
     input.value = 'hello';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(h.onDraft).toHaveBeenCalledWith(1, 'hello');

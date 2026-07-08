@@ -20,14 +20,14 @@ Unit/integration coverage (~1130 tests, no Docker required):
 Collected by `testMatch: '*.pw.ts'`. Run via `bun run ui:test:e2e:mocked`.
 Must pass with no live stack and no host-side env vars — `playwright.config.ts`
 points the preview webServer at a throwaway `mkdtemp` OP_HOME with a fixed
-`OP_UI_LOGIN_PASSWORD` and `OP_ENABLE_ADMIN=1` so `/admin/*` and the auth
+`OP_UI_LOGIN_PASSWORD` and `OP_ENABLE_ADMIN=1` so `/host` + `/api/host/*` and the auth
 routes are reachable without Docker or a real install. Routes under test
 either never reach the docker layer (auth checks run first) or degrade
 gracefully when docker/compose files are absent.
 
 | File | What it covers |
 |------|---------------|
-| `auth-flow.pw.ts` | login → protected read → logout → protected read is 401 again; wrong password rejected; a mutating `/admin/containers/*` endpoint's auth gate (no-auth / forged-cookie → 401) |
+| `auth-flow.pw.ts` | login → protected read → logout → protected read is 401 again; wrong password rejected; a mutating `/api/host/containers/*` endpoint's auth gate (no-auth / forged-cookie → 401) |
 | `setup-guard.pw.ts` | `GET /` redirects a fresh not-yet-installed instance away from raw admin content; `/setup` is reachable unauthenticated from localhost; the wizard renders its System Check step |
 
 These do NOT progress past System Check or exercise a real container
@@ -44,7 +44,7 @@ Current stack tests:
 
 | File | What it covers |
 |------|---------------|
-| `admin-health.stack.ts` | `/admin/health` auth + `/admin/providers` with live assistant + guardian liveness via proxy |
+| `admin-health.stack.ts` | `/api/host/health` auth + `/api/host/providers` with live assistant + guardian liveness via proxy |
 | `opencode-ui.stack.ts` | OpenCode web UI reachability on assistant port |
 | `setup-wizard-api.stack.ts` | Full wizard API contract: reset → system-check → POST /complete → deploy poll |
 | `setup-wizard-browser.stack.ts` | Wizard browser rendering: System Check step loads, Continue works |

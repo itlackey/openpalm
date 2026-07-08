@@ -39,9 +39,10 @@ interface Member {
 function extractMembers(objSrc: string): Member[] {
   const memberStartRe = /^ {2}(\w+)\(/gm;
   const starts: Array<{ name: string; idx: number }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = memberStartRe.exec(objSrc))) {
+  let m = memberStartRe.exec(objSrc);
+  while (m) {
     starts.push({ name: m[1], idx: m.index });
+    m = memberStartRe.exec(objSrc);
   }
   return starts.map(({ name, idx }) => {
     const endMarker = objSrc.indexOf('\n  },', idx);

@@ -15,40 +15,27 @@ import { getState } from "$lib/server/state.js";
 import { checkHostHeader, checkOriginHeader, identifyCallerByToken } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
-import { computeFeatureFlags } from '$lib/server/features.js';
+import { computeServerRuntimeContext } from '$lib/server/features.js';
 import {
   createLogger,
-  composePs,
-  deriveLaunchStatus,
-  deriveLocalStackState,
   isSetupComplete,
   resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
-  classifyLocalInstall,
-  detectRuntime,
-  buildComposeOptions,
   collectBindAddressWarnings,
   isRemoteSetupAllowed,
-  type ComposeServiceStatus,
+  classifyLocalInstall,
+  stackDirFor,
 } from "@openpalm/lib";
-import { listRemoteStatuses } from "$lib/server/endpoints.js";
+import { resolveRequestLanding } from "$lib/server/landing.js";
+
+// Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
+// reset hook is re-exported here so tests keep one import site.
+export { _resetLaunchCache } from "$lib/server/landing.js";
 
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
-let setupCompleteMemo = false;
-type LaunchRouting = {
-  installState: ReturnType<typeof classifyLocalInstall>;
-  launch: ReturnType<typeof deriveLaunchStatus>;
-};
-
-let localStatusCache: { expiresAt: number; value: LaunchRouting } | null = null;
-
-/** Test-only: clear the 5s launch-routing cache so each test resolves fresh. */
-export function _resetLaunchCache(): void {
-  localStatusCache = null;
-}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -119,55 +106,30 @@ function isLocalhostAddress(ip: string): boolean {
   return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 }
 
-function parseComposePsServices(stdout: string): ComposeServiceStatus[] {
-  const services: ComposeServiceStatus[] = [];
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-      services.push({
-        service: String(parsed.Service ?? parsed.Name ?? ''),
-        state: String(parsed.State ?? ''),
-        health: String(parsed.Health ?? ''),
-      });
-    } catch {
-    }
-  }
-  return services;
-}
-
-async function resolveLaunchRouting(): Promise<LaunchRouting> {
-  if (localStatusCache && localStatusCache.expiresAt > Date.now()) return localStatusCache.value;
-  const state = getState();
-  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
-  const composeResult = await composePs(buildComposeOptions(state));
-  const services = composeResult.ok ? parseComposePsServices(composeResult.stdout) : [];
-  const localState = deriveLocalStackState(installState, services);
-  const launch = deriveLaunchStatus({
-    local: {
-      state: localState,
-      runtime: installState === 'not_installed' ? await detectRuntime() : undefined,
-      detail: { installState },
-    },
-    remotes: await listRemoteStatuses(),
-  });
-  const value = { installState, launch };
-  localStatusCache = { value, expiresAt: Date.now() + 5_000 };
-  return value;
-}
-
 export const handle: Handle = async ({ event, resolve }) => {
+  const runtimeContext = computeServerRuntimeContext(event);
   const hostError = checkHostHeader(event.request);
   if (hostError) return hostError;
-  const originError = checkOriginHeader(event.request);
+  const originError = checkOriginHeader(event.request, runtimeContext.security.csrfMode);
   if (originError) return originError;
 
   const path = event.url.pathname;
+  const isAuthPath = path === "/login" || path.startsWith("/login/");
+  const wantsHtml =
+    event.request.method === "GET" &&
+    (event.request.headers.get("accept") ?? "").includes("text/html");
 
-  // Feature gate: /admin/* requires admin flag (Electron or OP_ENABLE_ADMIN=1).
-  // Redirect to /chat so the user lands somewhere useful instead of a 404/403.
-  if (path.startsWith('/admin') && !computeFeatureFlags().admin) {
+  // Capability gate: the /host control plane only renders where the server
+  // advertises the host:* capability set (plan Phase 4 step 4 — the old
+  // admin feature-flag gate, re-expressed as a capability check; the SECURITY
+  // boundary stays server-side in every /api/host/* route via
+  // requireCapability). Redirect to /chat so the user lands somewhere useful.
+  // /admin/* is deliberately NOT gated or aliased: the tree is deleted, so
+  // requests fall through to the router's 404 (plan §6.4 "No /admin alias").
+  if (
+    (path === '/host' || path.startsWith('/host/')) &&
+    !runtimeContext.serverCapabilities.includes('host:stack:read')
+  ) {
     redirect(302, '/chat');
   }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
@@ -176,8 +138,20 @@ export const handle: Handle = async ({ event, resolve }) => {
   // by design (first-run). Restrict them to the local machine so a remote actor
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
-  const setupComplete = setupCompleteMemo || isSetupComplete(resolveOpenPalmHome());
-  if (setupComplete) setupCompleteMemo = true;
+  const homeDir = resolveOpenPalmHome();
+  const setupComplete = isSetupComplete(homeDir);
+  const localInstallState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
+
+  if (
+    wantsHtml &&
+    !setupComplete &&
+    localInstallState !== 'not_installed' &&
+    !isSetupPath &&
+    !isAuthPath &&
+    !path.startsWith('/admin')
+  ) {
+    redirect(302, '/setup');
+  }
 
   if (isSetupPath && !setupComplete && !isRemoteSetupAllowed()) {
     const clientIp = event.getClientAddress();
@@ -192,20 +166,24 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
+  // ── Launch routing: document navigations land where resolveLanding() says
+  // (plan ui-runtime-modes-plan.md §6.5, Phase 3). Fires BEFORE the auth guard
+  // so `/` and stale `/splash` bookmarks never bounce through /login first.
+  // The /splash ROUTE is gone (Phase 3 split it into /attention + the §6.5
+  // landings); the /splash PATH keeps redirecting here for this release.
   if (!isSetupPath) {
-    const { installState, launch } = await resolveLaunchRouting();
-    const desiredPath = installState === 'setup_incomplete' && launch.local.state === 'running'
-      ? '/splash'
-      : launch.recommendedRoute === 'chat'
-        ? '/chat'
-        : '/splash';
-    const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced');
+    const landing = await resolveRequestLanding(event);
+    const [landingPath] = landing.split('?');
+    const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
+      || path.startsWith('/connections');
+    // '/host' is the admin surface itself; '/admin' stays exempt so requests
+    // into the dead namespace fall through to the router 404 instead of
+    // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).
     const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
-      || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/admin')
-      || path.startsWith('/splash')
-      || usageRoute;
-    if (path === '/' || (path !== desiredPath && !exempt)) {
-      redirect(302, desiredPath);
+      || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/host')
+      || path.startsWith('/admin') || usageRoute;
+    if (path === '/' || (path !== landingPath && !exempt)) {
+      redirect(302, landing);
     }
   }
 
@@ -215,9 +193,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   // any HTML is sent.
   //
   // Only *document* navigations (GET + `Accept: text/html`) are redirected to
-  // /login. API/data requests are left alone: every `/admin/*` endpoint enforces
-  // auth itself via requireAdmin() and must return JSON 401, not an HTML 302
-  // (browser fetch() sends `Accept: */*`, so it never matches here).
+  // /login. API/data requests are left alone: every /api/host/* and
+  // /api/assistant/* endpoint enforces auth itself via requireAdmin() and must
+  // return JSON 401, not an HTML 302 (browser fetch() sends `Accept: */*`, so
+  // it never matches here).
   event.locals.role = identifyCallerByToken(event);
 
   // ── Sliding renewal: a valid cookie was just resolved to a role, so push its
@@ -236,10 +215,6 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  const isAuthPath = path === "/login" || path.startsWith("/login/");
-  const wantsHtml =
-    event.request.method === "GET" &&
-    (event.request.headers.get("accept") ?? "").includes("text/html");
   if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath) {
     const redirectTo = path + event.url.search;
     redirect(302, `/login?redirectTo=${encodeURIComponent(redirectTo)}`);
@@ -257,7 +232,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   response.headers.set(
     "X-Frame-Options",
-    path === '/admin/akm/health-report' ? 'SAMEORIGIN' : 'DENY',
+    path === '/api/host/akm/health-report' ? 'SAMEORIGIN' : 'DENY',
   );
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "no-referrer");

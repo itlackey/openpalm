@@ -52,7 +52,8 @@ describe("guardian moderation.md doc contract (fable 1.2)", () => {
   test("core-principles.md's config/ guardian/ subtree bullet does not claim to hold moderation.md", () => {
     const configSectionMatch = doc.match(/### 1\) Config[\s\S]*?### 1b\)/);
     expect(configSectionMatch).not.toBeNull();
-    const configSection = configSectionMatch![0];
+    if (!configSectionMatch) throw new Error('Config section not found');
+    const configSection = configSectionMatch[0];
     const guardianBullet = configSection.split("\n").find((line) => line.startsWith("- `guardian/`"));
     expect(guardianBullet).toBeDefined();
     expect(guardianBullet).not.toContain("instructions/moderation.md");

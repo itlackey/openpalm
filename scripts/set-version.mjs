@@ -3,10 +3,11 @@
 //
 // Sets `version` and keeps any internal `@openpalm/lib` *floor range* dependency
 // (e.g. ">=X <N.0.0") in lockstep so the floor never goes stale (CI enforces
-// this; the test suite covers it). Also stamps any `@openpalm/skeleton` range
-// dependency (e.g. ">=X.Y.0 <N.0.0") to an exact pin matching the new version
-// so the CLI and skeleton are always shipped in lockstep. `workspace:*` and
-// exact/non-range refs for other packages are left untouched. Used by
+// this; the test suite covers it). Also stamps any `@openpalm/skeleton`
+// dependency except `workspace:*` to an exact pin matching the new version so
+// the CLI and skeleton are always shipped in lockstep. Exact refs are rewritten
+// too because the published CLI intentionally carries an exact skeleton pin.
+// Exact/non-range refs for other packages are left untouched. Used by
 // scripts/bump-platform.sh and the release workflows so there is exactly one
 // place that understands how a version is written.
 //
@@ -31,10 +32,10 @@ export function setVersion(file, version) {
     if (typeof libDep === 'string' && libDep.startsWith('>=')) {
       pkg[field]['@openpalm/lib'] = `>=${version} <${major + 1}.0.0`;
     }
-    // Stamp @openpalm/skeleton range to an exact pin matching this version so
-    // the CLI and skeleton are always published and consumed in lockstep.
+    // Stamp @openpalm/skeleton to an exact pin matching this version so the
+    // CLI and skeleton are always published and consumed in lockstep.
     const skeletonDep = pkg[field]?.['@openpalm/skeleton'];
-    if (typeof skeletonDep === 'string' && skeletonDep.startsWith('>=')) {
+    if (typeof skeletonDep === 'string' && skeletonDep !== 'workspace:*') {
       pkg[field]['@openpalm/skeleton'] = version;
     }
   }

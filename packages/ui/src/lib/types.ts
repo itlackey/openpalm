@@ -1,11 +1,82 @@
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
-export interface FeatureFlags {
-  /** Control-plane tools (Docker compose management, stack orchestration).
-   *  Enabled when running inside Electron (OP_INSIDE_ELECTRON=1) or
-   *  explicitly via OP_ENABLE_ADMIN=1 for local dev. Defaults to false. */
-  admin: boolean;
-}
+// The legacy FeatureFlags { admin } alias was deleted in Phase 4 (plan
+// ui-runtime-modes-plan.md §6.4): nothing read it anymore — capability checks
+// live in computeServerRuntimeContext/resolveCapabilities + hasCapability().
+
+// ── RuntimeContext v2 (plan §6.1, issue #509) ──────────────────────────
+
+export type UiHostMode =
+  | 'electron-host'
+  | 'host-ui'
+  | 'assistant-container'
+  | 'pwa-static';
+
+export type Capability =
+  | 'chat'
+  | 'connections:read'
+  | 'connections:manage'
+  | 'connections:switch'
+  | 'connections:single'
+  | 'assistant-settings:read'
+  | 'assistant-settings:write'
+  | 'host:setup'
+  | 'host:stack:read'
+  | 'host:stack:write'
+  | 'host:containers'
+  | 'host:addons'
+  | 'host:updates'
+  | 'host:logs'
+  | 'host:secrets'
+  | 'host:recovery'
+  | 'host:akm-sharing'
+  | 'pwa:install';
+
+export type ServerRuntimeContext = {
+  /** Contract version — the /api/runtime handshake for remote/hosted clients. */
+  version: 2;
+  hostMode: UiHostMode;
+  serverCapabilities: Capability[];
+  publicBaseUrl: string;
+  uiVersion: string;
+  skeletonVersion: string;
+  activeConnectionMode: 'single' | 'multi';
+  routes: {
+    chat?: string;
+    connections?: string;
+    assistantSettings?: string;
+    host?: string;
+    setup?: string;
+  };
+  security: {
+    hostAdminLoopbackOnly: boolean;
+    requiresHttpsForRemoteConnections: boolean;
+    csrfMode: 'loopback-origin' | 'same-site' | 'bearer-token';
+  };
+};
+
+export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';
+
+/** Connection kinds (plan §6.6). `endpoints.json` is not renamed; the
+ *  internal model uses "connection" language. */
+export type ConnectionKind = 'local-opencode' | 'remote-opencode' | 'openpalm-client-api';
+
+export type ActiveConnectionContext = {
+  kind: ConnectionKind;
+  id: string;
+  /** Server-verified at connection-add time (plan §8.9) — never self-granted. */
+  grantedCapabilities?: Capability[];
+};
+
+export type ClientContext = {
+  displayMode: ClientDisplayMode;
+  activeConnection?: ActiveConnectionContext;
+};
+
+export type RuntimeContext = ServerRuntimeContext & {
+  clientContext: ClientContext;
+  effectiveCapabilities: Capability[];
+};
 
 export type { ToolStripEntry };
 

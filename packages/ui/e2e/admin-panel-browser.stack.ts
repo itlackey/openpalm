@@ -12,59 +12,58 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginBrowserContext } from './auth-helpers';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
+const HOST_URL = `${ADMIN_URL}/host`;
 const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
-async function withAuth(page: import('@playwright/test').Page) {
-  await page.context().addCookies([{
-    name: 'op_session',
-    value: PASSWORD,
-    domain: new URL(ADMIN_URL).hostname,
-    path: '/',
-  }]);
+async function withAuth(page: import('@playwright/test').Page, request: import('@playwright/test').APIRequestContext) {
+  await loginBrowserContext(request, page.context(), ADMIN_URL, PASSWORD);
 }
 
 test.describe('Admin panel browser smoke', () => {
   test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
   test.setTimeout(45_000);
 
-  test('admin panel loads and shows the Overview tab by default', async ({ page }) => {
-    await withAuth(page);
-    await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
+  test('admin panel loads and shows the Overview tab by default', async ({ page, request }) => {
+    await withAuth(page, request);
+    await page.goto(HOST_URL, { waitUntil: 'networkidle' });
 
-    // Overview / containers section is the default landing tab
-    await expect(page.locator('[data-testid="containers-overview"]')).toBeVisible({ timeout: 15_000 });
+    // Overview status is the default host-console landing view.
+    const statusCard = page.getByRole('status');
+    await expect(statusCard).toBeVisible({ timeout: 15_000 });
+    await expect(statusCard.getByRole('button', { name: /check for updates/i })).toBeVisible();
   });
 
-  test('Overview tab shows at least one running container', async ({ page }) => {
-    await withAuth(page);
-    await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
+  test('Overview tab shows at least one running container', async ({ page, request }) => {
+    await withAuth(page, request);
+    await page.goto(HOST_URL, { waitUntil: 'networkidle' });
 
-    await expect(page.locator('[data-testid="containers-overview"]')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('tab', { name: /systems/i }).click();
+    await expect(page.getByRole('heading', { name: /container status/i })).toBeVisible({ timeout: 15_000 });
 
-    // At least one container card or row must be visible
-    const containers = page.locator('[data-testid^="container-"]');
-    await expect(containers.first()).toBeVisible({ timeout: 10_000 });
+    // At least the core assistant row must be visible in a running stack.
+    await expect(page.getByRole('button', { name: /assistant/i })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Logs tab shows output after Load Logs — not raw error text', async ({ page }) => {
-    await withAuth(page);
-    await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
+  test('Logs tab shows output after Load Logs — not raw error text', async ({ page, request }) => {
+    await withAuth(page, request);
+    await page.goto(HOST_URL, { waitUntil: 'networkidle' });
 
-    // Navigate to the Logs tab
-    const logsTab = page.getByRole('tab', { name: /logs/i });
+    // Navigate to the Journal tab
+    const logsTab = page.getByRole('tab', { name: /journal/i });
     await expect(logsTab).toBeVisible({ timeout: 10_000 });
     await logsTab.click();
 
     // Pick any service from the selector
-    const serviceSelect = page.locator('select[name="service"], [data-testid="log-service-select"]');
+    const serviceSelect = page.locator('#log-service');
     await expect(serviceSelect).toBeVisible({ timeout: 5_000 });
     await serviceSelect.selectOption({ index: 1 });
 
     // Click Load Logs
-    const loadBtn = page.getByRole('button', { name: /load logs/i });
+    const loadBtn = page.getByRole('button', { name: /load service logs/i });
     await expect(loadBtn).toBeVisible();
     await loadBtn.click();
 
@@ -77,11 +76,11 @@ test.describe('Admin panel browser smoke', () => {
     await expect(page.locator('[data-testid="log-output"], .log-output, pre')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Connections tab renders provider list — not raw error text', async ({ page }) => {
-    await withAuth(page);
-    await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
+  test('Connections tab renders provider list — not raw error text', async ({ page, request }) => {
+    await withAuth(page, request);
+    await page.goto(HOST_URL, { waitUntil: 'networkidle' });
 
-    const connectionsTab = page.getByRole('tab', { name: /connections/i });
+    const connectionsTab = page.getByRole('tab', { name: /mind/i });
     await expect(connectionsTab).toBeVisible({ timeout: 10_000 });
     await connectionsTab.click();
 
@@ -90,29 +89,29 @@ test.describe('Admin panel browser smoke', () => {
     await expect(page.locator('text=fetch failed')).not.toBeVisible({ timeout: 5_000 });
     await expect(page.locator('text=[object Object]')).not.toBeVisible();
 
-    const providersOrMessage = page.locator('[data-testid="providers-panel"], [data-testid="providers-unavailable"]');
-    await expect(providersOrMessage).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: /connections/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /add provider/i })).toBeVisible();
   });
 
-  test('Secrets tab renders the vault key list', async ({ page }) => {
-    await withAuth(page);
-    await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
+  test('Secrets tab renders the vault key list', async ({ page, request }) => {
+    await withAuth(page, request);
+    await page.goto(HOST_URL, { waitUntil: 'networkidle' });
 
+    await page.getByRole('tab', { name: /knowledge/i }).click();
     const secretsTab = page.getByRole('tab', { name: /secrets/i });
     await expect(secretsTab).toBeVisible({ timeout: 10_000 });
     await secretsTab.click();
 
-    // The secrets panel or an "add your first secret" empty state must render
-    const secretsPanel = page.locator('[data-testid="secrets-panel"], [data-testid="secrets-empty"]');
-    await expect(secretsPanel).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /secrets/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /refresh/i })).toBeVisible();
   });
 
   test('unauthenticated request to admin panel is redirected to auth gate', async ({ page }) => {
     // No cookie set
-    await page.goto(ADMIN_URL);
+    await page.goto(HOST_URL);
     // Should land on a login/auth page, not show admin content
     await expect(page).not.toHaveURL(/\/setup/);
     // The message input or containers overview must NOT be visible without auth
-    await expect(page.locator('[data-testid="containers-overview"]')).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('heading', { name: /container status/i })).not.toBeVisible({ timeout: 5_000 });
   });
 });

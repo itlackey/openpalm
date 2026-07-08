@@ -1,0 +1,76 @@
+/**
+ * GET /api/host/logs — Retrieve docker compose service logs.
+ */
+import type { RequestHandler } from "./$types";
+import { getState } from "$lib/server/state.js";
+import {
+  jsonResponse,
+  errorResponse,
+  requireAdmin,
+  requireCapability,
+  getRequestId,
+} from "$lib/server/helpers.js";
+import { buildComposeOptions, isAllowedService } from "@openpalm/lib";
+import { composeLogs, checkDocker } from "@openpalm/lib";
+
+export const GET: RequestHandler = async (event) => {
+  const requestId = getRequestId(event);
+  const capabilityError = requireCapability(event, 'host:logs', requestId);
+  if (capabilityError) return capabilityError;
+  const authError = requireAdmin(event, requestId);
+  if (authError) return authError;
+
+  const state = getState();
+  const url = new URL(event.request.url);
+
+  // Parse query parameters
+  const serviceParam = url.searchParams.get("service");
+  const tailParam = url.searchParams.get("tail");
+  const sinceParam = url.searchParams.get("since");
+
+  // Parse and validate tail
+  const tail = tailParam ? Number(tailParam) : 100;
+  if (tailParam && (!Number.isInteger(tail) || tail < 1 || tail > 10000)) {
+    return errorResponse(400, "invalid_parameter", "tail must be an integer between 1 and 10000", {}, requestId);
+  }
+
+  // Parse and validate service names
+  let services: string[] | undefined;
+  if (serviceParam) {
+    services = serviceParam.split(",").map((s) => s.trim()).filter(Boolean);
+    const invalid = services.filter((s) => !isAllowedService(s, state.configDir));
+    if (invalid.length > 0) {
+      return errorResponse(
+        400,
+        "invalid_service",
+        `Invalid service name(s): ${invalid.join(", ")}`,
+        { invalid },
+        requestId
+      );
+    }
+  }
+
+  // Validate since format (basic sanity check — docker handles the actual parsing)
+  if (sinceParam && !/^[a-zA-Z0-9.:+\-T]+$/.test(sinceParam)) {
+    return errorResponse(400, "invalid_parameter", "since contains invalid characters", {}, requestId);
+  }
+
+  // Check Docker availability
+  const dockerCheck = await checkDocker();
+  if (!dockerCheck.ok) {
+    return errorResponse(503, "docker_unavailable", "Docker is not available", {}, requestId);
+  }
+
+  const result = await composeLogs(services, tail, {
+    ...buildComposeOptions(state),
+    since: sinceParam ?? undefined
+  });
+
+  if (!result.ok) {
+    return jsonResponse(500, { ok: false, logs: "", error: result.stderr }, requestId);
+  }
+
+  // docker compose logs writes to stderr by default, combine both streams
+  const logs = (result.stdout + result.stderr).trim();
+  return jsonResponse(200, { ok: true, logs }, requestId);
+};

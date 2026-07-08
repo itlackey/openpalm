@@ -10,11 +10,11 @@
 		setTtsAutoEnabled,
 		resumeAutoplay,
 	} from '$lib/voice/voice-state.svelte.js';
-	import IconMic from '$lib/components/icons/IconMic.svelte';
-	import IconMicOff from '$lib/components/icons/IconMicOff.svelte';
-	import IconSoundOff from '$lib/components/icons/IconSoundOff.svelte';
-	import IconSoundOn from '$lib/components/icons/IconSoundOn.svelte';
-	import IconStop from '$lib/components/icons/IconStop.svelte';
+	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
+	import IconMicOff from '@openpalm/ui-kit/components/icons/IconMicOff.svelte';
+	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
+	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
+	import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
 
 	const MAX_INTERIM_CHARS = 48;
 	import { chat } from '$lib/chat/chat-state.svelte.js';

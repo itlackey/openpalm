@@ -30,7 +30,9 @@ dev_compose() {
 }
 
 cleanup() {
-  dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+  if [[ -f "$SWAP_HOME/knowledge/env/stack.env" ]]; then
+    dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+  fi
   docker run --rm -v "$(dirname "$SWAP_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SWAP_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -53,7 +55,7 @@ PLATFORM_VERSION="$(smoke_platform_version)"
 
 smoke_copy_skeleton "$SWAP_HOME"
 smoke_write_stack_env "$SWAP_HOME" "$PLATFORM_VERSION" \
-  3996 3990 3991 3992 3993
+  3996 3990 3991 3992 3993 3994
 printf 'OP_ENABLED_ADDONS=%s\n' 'chat' >> "$SWAP_HOME/knowledge/env/stack.env"
 smoke_seed_secrets "$SWAP_HOME" 'swap-smoke-password'
 

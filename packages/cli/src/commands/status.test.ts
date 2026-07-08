@@ -44,7 +44,7 @@ async function runStatusCommand(): Promise<{ stdout: string; stderr: string }> {
 describe('openpalm status — deriveLaunchStatus snapshot', () => {
   test('prints a valid LaunchStatus JSON when the stack is running', async () => {
     mock.module(libUrl, () => ({
-      createState: () => ({ stackDir: '/fake/config/stack', homeDir: '/fake', configDir: '/fake/config', stashDir: '/fake/knowledge', dataDir: '/fake/data', workspaceDir: '/fake/workspace', services: {}, artifacts: { compose: '' }, artifactMeta: [] }),
+      ...realLib,
       classifyLocalInstall: () => 'installed',
       composePs: async () => ({
         ok: true,
@@ -81,7 +81,7 @@ describe('openpalm status — deriveLaunchStatus snapshot', () => {
 
   test('prints splash route when stack is not installed', async () => {
     mock.module(libUrl, () => ({
-      createState: () => ({ stackDir: '/fake/config/stack', homeDir: '/fake', configDir: '/fake/config', stashDir: '/fake/knowledge', dataDir: '/fake/data', workspaceDir: '/fake/workspace', services: {}, artifacts: { compose: '' }, artifactMeta: [] }),
+      ...realLib,
       classifyLocalInstall: () => 'not_installed',
       composePs: async () => ({ ok: false, stdout: '', stderr: '', exitCode: 1 }),
       buildComposeOptions: () => ({}),
@@ -113,7 +113,7 @@ describe('openpalm status — deriveLaunchStatus snapshot', () => {
 
   test('prints splash with localInstalledButUnhealthy when stack is offline', async () => {
     mock.module(libUrl, () => ({
-      createState: () => ({ stackDir: '/fake/config/stack', homeDir: '/fake', configDir: '/fake/config', stashDir: '/fake/knowledge', dataDir: '/fake/data', workspaceDir: '/fake/workspace', services: {}, artifacts: { compose: '' }, artifactMeta: [] }),
+      ...realLib,
       classifyLocalInstall: () => 'installed',
       composePs: async () => ({ ok: true, stdout: '', stderr: '', exitCode: 0 }),
       buildComposeOptions: () => ({}),

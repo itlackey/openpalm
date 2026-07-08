@@ -59,6 +59,10 @@ import { playAck } from '$lib/voice/earcon.js';
 import { extractSpeakableChunks } from '$lib/voice/sentence-stream.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
 import { mapAssistantError } from './assistant-error.js';
+import {
+	onConnectionActivated,
+	registerActivationGuard,
+} from '$lib/connection-events.js';
 
 type EndpointId = string;
 type SessionId = string;
@@ -972,3 +976,12 @@ class ChatService {
 }
 
 export const chat = new ChatService();
+
+// ── Connection-activation subscription (plan Phase 2 step 6, #486) ──────────
+// The chat side subscribes to connection activation; the connections store
+// never imports chat modules. The guard preserves the pre-Phase-2 behavior:
+// mid-generation switches are refused with the same user-facing message.
+registerActivationGuard(() =>
+	chat.sending ? 'Wait for the current reply to finish before switching.' : null
+);
+onConnectionActivated((id) => chat.onEndpointChanged(id));

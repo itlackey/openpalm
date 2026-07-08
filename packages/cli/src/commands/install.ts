@@ -23,6 +23,7 @@ import {
   PLATFORM_VERSION,
   runDeploy,
   writeSystemEnv,
+  patchSecretsEnvFile,
   collectBindAddressWarnings,
   type SetupSpec,
 } from '@openpalm/lib';
@@ -308,20 +309,9 @@ async function runFileInstall(filePath: string, noStart: boolean, explicitImageT
   }
   const config = await parseConfigFile(filePath, await Bun.file(filePath).text());
 
-  // Normalize old wrapped format: { spec: { version, capabilities }, capabilities: [...] }
-  // into flat format:              { version, capabilities: {...}, connections: [...] }
-  if (config.spec && typeof config.spec === 'object') {
-    const spec = config.spec as Record<string, unknown>;
-    // Old format had connections array as top-level "capabilities"
-    if (Array.isArray(config.capabilities)) config.connections = config.capabilities;
-    config.version = spec.version;
-    config.capabilities = spec.capabilities;
-    delete config.spec;
-  }
-
   if (config.version !== 2) throw new Error('Setup config must be version 2. See example.spec.yaml for the format.');
-  if (!config.capabilities || typeof config.capabilities !== 'object' || Array.isArray(config.capabilities)) {
-    throw new Error('Setup config must contain a "capabilities" object (llm, embeddings).');
+  if ('spec' in config || 'capabilities' in config) {
+    throw new Error('Setup config must use the modern flat shape (`llm`, `embedding`, `security`, `connections`) — legacy `spec`/`capabilities` forms are no longer supported.');
   }
 
   // A deliberate --version pins the image tag; thread it into the spec so
@@ -342,6 +332,24 @@ async function runFileInstall(filePath: string, noStart: boolean, explicitImageT
 
   const result = await performSetup(config as unknown as SetupSpec);
   if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
+
+  // Persist intentional non-secret runtime overrides from the install shell so
+  // a later `openpalm start` reuses the same isolated project/port shape instead
+  // of falling back to the live-stack defaults.
+  const runtimeOverrides = Object.fromEntries(
+    [
+      'OP_PROJECT_NAME',
+      'OP_ASSISTANT_PORT',
+      'OP_HOST_UI_PORT',
+      'OP_HOST_CLIENT_PORT',
+      'OP_CLIENT_PORT',
+    ].flatMap((key) => {
+      const value = process.env[key]?.trim();
+      return value ? [[key, value]] : [];
+    }),
+  );
+  patchSecretsEnvFile(process.env.OP_HOME ?? resolveOpenPalmHome(), runtimeOverrides);
+
   console.log('Setup complete.');
   if (noStart) { console.log('Config written. Run `openpalm start` to start services.'); return; }
   await requireDocker();

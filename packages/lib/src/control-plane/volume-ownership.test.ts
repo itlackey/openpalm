@@ -13,10 +13,9 @@
  * in a fresh subprocess.
  */
 import { describe, test, expect } from 'bun:test';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const dockerUrl = new URL('./docker.js', import.meta.url).href;

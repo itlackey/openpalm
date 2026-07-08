@@ -10,7 +10,7 @@
     clearInstallLock,
     type InstallLockStatusView,
   } from '$lib/api.js';
-  import Spinner from '$lib/components/common/Spinner.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
   import { formatBytes, formatDate } from '$lib/format-date.js';
   import { resource, runAction, type ActionHandle } from '$lib/actions.svelte.js';
 

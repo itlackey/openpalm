@@ -1,10 +1,10 @@
 <script lang="ts">
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
-  import Drawer from '$lib/components/common/Drawer.svelte';
+  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import SessionList from '$lib/components/chat/SessionList.svelte';
   import { resolveSessionTitle } from '$lib/session-title.js';
-  import IconConversations from '$lib/components/icons/IconConversations.svelte';
+  import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
 
   // Navbar trigger that opens the session chooser in a drawer. The list body
   // lives in SessionList, shared with the chat side panel.

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light" />
+    <script>
+      // Theme boot — same storage key and resolution order as the host app
+      // so a browser that uses both stays on one theme.
+      (() => {
+        const storageKey = 'openpalm.theme';
+        const darkThemeColor = '#161c22';
+        const lightThemeColor = '#f9fafb';
+
+        try {
+          const stored = window.localStorage.getItem(storageKey);
+          const preference = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+          const resolved = preference === 'system'
+            ? (window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light')
+            : preference;
+          const root = document.documentElement;
+          root.setAttribute('data-theme', resolved);
+          root.style.colorScheme = resolved;
+
+          const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+          if (themeColorMeta) {
+            themeColorMeta.setAttribute('content', resolved === 'dark' ? darkThemeColor : lightThemeColor);
+          }
+
+          const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+          if (colorSchemeMeta) {
+            colorSchemeMeta.setAttribute('content', resolved);
+          }
+        } catch {
+          // Keep the default light metadata if storage access is unavailable.
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script defer src="/registerSW.js"></script>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

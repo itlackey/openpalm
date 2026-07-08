@@ -1,19 +1,19 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
-	import IconOverview from '$lib/components/icons/IconOverview.svelte';
-	import IconServer from '$lib/components/icons/IconServer.svelte';
-	import IconJournal from '$lib/components/icons/IconJournal.svelte';
-	import IconLink from '$lib/components/icons/IconLink.svelte';
-	import IconMemory from '$lib/components/icons/IconMemory.svelte';
-	import IconAgent from '$lib/components/icons/IconAgent.svelte';
-	import IconSharing from '$lib/components/icons/IconSharing.svelte';
-	import IconActivity from '$lib/components/icons/IconActivity.svelte';
-	import IconMic from '$lib/components/icons/IconMic.svelte';
-	import IconAddons from '$lib/components/icons/IconAddons.svelte';
-	import IconAutomations from '$lib/components/icons/IconAutomations.svelte';
-	import IconLock from '$lib/components/icons/IconLock.svelte';
-	import IconCloudDownload from '$lib/components/icons/IconCloudDownload.svelte';
-	import IconHome from '$lib/components/icons/IconHome.svelte';
+	import IconOverview from '@openpalm/ui-kit/components/icons/IconOverview.svelte';
+	import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
+	import IconJournal from '@openpalm/ui-kit/components/icons/IconJournal.svelte';
+	import IconLink from '@openpalm/ui-kit/components/icons/IconLink.svelte';
+	import IconMemory from '@openpalm/ui-kit/components/icons/IconMemory.svelte';
+	import IconAgent from '@openpalm/ui-kit/components/icons/IconAgent.svelte';
+	import IconSharing from '@openpalm/ui-kit/components/icons/IconSharing.svelte';
+	import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
+	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
+	import IconAddons from '@openpalm/ui-kit/components/icons/IconAddons.svelte';
+	import IconAutomations from '@openpalm/ui-kit/components/icons/IconAutomations.svelte';
+	import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
+	import IconCloudDownload from '@openpalm/ui-kit/components/icons/IconCloudDownload.svelte';
+	import IconHome from '@openpalm/ui-kit/components/icons/IconHome.svelte';
 
 	export type TabId =
 		| 'overview'

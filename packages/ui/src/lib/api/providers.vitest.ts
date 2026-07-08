@@ -42,10 +42,10 @@ afterEach(() => {
 });
 
 describe('providers client — request shaping', () => {
-  test('fetchProviders GETs /admin/providers with the shared UI headers', async () => {
+  test('fetchProviders GETs /api/host/providers with the shared UI headers', async () => {
     const calls = mockFetch(200, { available: true, providers: [] });
     const state = await fetchProviders();
-    expect(calls[0].url).toBe('/admin/providers');
+    expect(calls[0].url).toBe('/api/host/providers');
     expect(calls[0].init?.method).toBe('GET');
     expect(calls[0].init?.body).toBeUndefined();
     expect(headerOf(calls[0].init, 'x-requested-by')).toBe('ui');
@@ -56,14 +56,14 @@ describe('providers client — request shaping', () => {
   test('fetchAssistantCliTools returns tools array (defaulting to [])', async () => {
     const calls = mockFetch(200, {});
     expect(await fetchAssistantCliTools()).toEqual([]);
-    expect(calls[0].url).toBe('/admin/providers/assistant-clis');
+    expect(calls[0].url).toBe('/api/host/providers/assistant-clis');
     expect(calls[0].init?.method).toBe('GET');
   });
 
   test('saveOpencodeModel POSTs the target field, coercing empty to null', async () => {
     const calls = mockFetch(200, { ok: true });
     await saveOpencodeModel('model', 'openai/gpt-4o');
-    expect(calls[0].url).toBe('/admin/opencode/model');
+    expect(calls[0].url).toBe('/api/assistant/model');
     expect(calls[0].init?.method).toBe('POST');
     expect(headerOf(calls[0].init, 'content-type')).toBe('application/json');
     expect(JSON.parse(calls[0].init?.body as string)).toEqual({ model: 'openai/gpt-4o' });
@@ -76,21 +76,21 @@ describe('providers client — request shaping', () => {
   test('disconnectProvider DELETEs the URL-encoded auth endpoint', async () => {
     const calls = mockFetch(200, { ok: true });
     await disconnectProvider('a/b');
-    expect(calls[0].url).toBe('/admin/opencode/providers/a%2Fb/auth');
+    expect(calls[0].url).toBe('/api/host/opencode/providers/a%2Fb/auth');
     expect(calls[0].init?.method).toBe('DELETE');
   });
 
-  test('fetchHostStatus GETs /admin/providers/host-status', async () => {
+  test('fetchHostStatus GETs /api/host/providers/host-status', async () => {
     const calls = mockFetch(200, { detected: true, providerCount: 3, credentialCount: 2, configPath: null, authPath: null });
     const status = await fetchHostStatus();
-    expect(calls[0].url).toBe('/admin/providers/host-status');
+    expect(calls[0].url).toBe('/api/host/providers/host-status');
     expect(status.providerCount).toBe(3);
   });
 
   test('useAssistantCliProvider POSTs providerId to the encoded tool endpoint', async () => {
     const calls = mockFetch(200, { ok: true });
     await useAssistantCliProvider('codex', 'openai');
-    expect(calls[0].url).toBe('/admin/providers/assistant-clis/codex/use-provider');
+    expect(calls[0].url).toBe('/api/host/providers/assistant-clis/codex/use-provider');
     expect(calls[0].init?.method).toBe('POST');
     expect(JSON.parse(calls[0].init?.body as string)).toEqual({ providerId: 'openai' });
   });
@@ -98,7 +98,7 @@ describe('providers client — request shaping', () => {
   test('startProviderOauth POSTs providerId + stringified methodIndex, returns body', async () => {
     const calls = mockFetch(200, { ok: true, oauth: { url: 'u', mode: 'code', providerId: 'p', methodIndex: 0 } });
     const result = await startProviderOauth('p', 0);
-    expect(calls[0].url).toBe('/admin/providers/oauth/start');
+    expect(calls[0].url).toBe('/api/host/providers/oauth/start');
     expect(JSON.parse(calls[0].init?.body as string)).toEqual({ providerId: 'p', methodIndex: '0' });
     expect(result.oauth?.url).toBe('u');
   });
@@ -108,7 +108,7 @@ describe('providers client — request shaping', () => {
     const controller = new AbortController();
     const res = await oauthCallback('gh', 1, controller.signal);
     expect(res).toBeInstanceOf(Response);
-    expect(calls[0].url).toBe('/admin/providers/oauth/gh/callback');
+    expect(calls[0].url).toBe('/api/host/providers/oauth/gh/callback');
     expect(JSON.parse(calls[0].init?.body as string)).toEqual({ method: 1 });
     expect(calls[0].init?.signal).toBe(controller.signal);
   });
@@ -116,7 +116,7 @@ describe('providers client — request shaping', () => {
   test('submitProviderApiKey POSTs the api_key payload', async () => {
     const calls = mockFetch(200, { ok: true });
     await submitProviderApiKey('openai', 'sk-x');
-    expect(calls[0].url).toBe('/admin/opencode/providers/openai/auth');
+    expect(calls[0].url).toBe('/api/host/opencode/providers/openai/auth');
     expect(calls[0].init?.method).toBe('POST');
     expect(JSON.parse(calls[0].init?.body as string)).toEqual({ mode: 'api_key', apiKey: 'sk-x' });
   });
@@ -124,14 +124,14 @@ describe('providers client — request shaping', () => {
   test('finishProviderOauth POSTs providerId/methodIndex/code', async () => {
     const calls = mockFetch(200, { ok: true });
     await finishProviderOauth('p', 2, 'code123');
-    expect(calls[0].url).toBe('/admin/providers/oauth/finish');
+    expect(calls[0].url).toBe('/api/host/providers/oauth/finish');
     expect(JSON.parse(calls[0].init?.body as string)).toEqual({ providerId: 'p', methodIndex: 2, code: 'code123' });
   });
 
-  test('registerCustomProvider PATCHes /admin/providers/{id} with the register-custom payload', async () => {
+  test('registerCustomProvider PATCHes /api/host/providers/{id} with the register-custom payload', async () => {
     const calls = mockFetch(200, { ok: true, selectedProviderId: 'my-p' });
     const result = await registerCustomProvider('my-p', { displayName: 'My P', baseURL: 'https://x/v1', apiKey: 'k' });
-    expect(calls[0].url).toBe('/admin/providers/my-p');
+    expect(calls[0].url).toBe('/api/host/providers/my-p');
     expect(calls[0].init?.method).toBe('PATCH');
     expect(JSON.parse(calls[0].init?.body as string)).toEqual({
       kind: 'register-custom',
@@ -145,10 +145,10 @@ describe('providers client — request shaping', () => {
     expect(result.selectedProviderId).toBe('my-p');
   });
 
-  test('importHostProviders POSTs /admin/providers/import-host', async () => {
+  test('importHostProviders POSTs /api/host/providers/import-host', async () => {
     const calls = mockFetch(200, { ok: true, imported: { providers: 1, credentials: 2 }, conflicts: [] });
     const body = await importHostProviders();
-    expect(calls[0].url).toBe('/admin/providers/import-host');
+    expect(calls[0].url).toBe('/api/host/providers/import-host');
     expect(calls[0].init?.method).toBe('POST');
     expect(body.imported.providers).toBe(1);
   });

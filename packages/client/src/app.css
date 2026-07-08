@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Poor+Story&family=Iosevka+Charon+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
+/* Stillness design-system tokens live in the shared ui-kit (plan §6.11).
+   Vite resolves the package specifier and inlines the file at build time.
+   Must stay above all style rules — CSS ignores @import after the first
+   rule. The reset/base/button rules below are the client's subset of
+   packages/ui/src/app.css (host-app-only chrome omitted). */
+@import '@openpalm/ui-kit/theme/tokens.css';
+
+/* Brushed icon filter — applied to all .s-icon SVGs. The #ibrush filter is
+   defined once in the root layout. */
+.s-icon { filter: url(#ibrush); }
+
+/* ── Reset & Base ──────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-size: 16px;
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--s-font-display);
+  font-size: var(--s-type-whisper);
+  line-height: 1.6;
+  color: var(--s-ink);
+  background: var(--s-paper);
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--s-font-header);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--s-line) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--s-line);
+  border-radius: 0;
+}
+
+/* ── Focus & Accessibility ─────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--s-seal);
+  outline-offset: 2px;
+}
+
+/* ── Shared Utility: Buttons ───────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  min-height: 2rem;
+  font-family: var(--s-font-mono);
+  font-size: var(--s-type-mark);
+  letter-spacing: var(--s-track-label);
+  text-transform: uppercase;
+  font-weight: 400;
+  border: var(--s-hair) solid var(--s-line);
+  border-radius: 2px;
+  background: none;
+  color: var(--s-ink-3);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  border-color: var(--s-seal);
+  color: var(--s-seal);
+  background: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--s-seal) 8%, transparent);
+  border-color: var(--s-seal);
+}
+
+.btn-secondary {
+  background: none;
+  color: var(--s-ink-3);
+  border-color: var(--s-line);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  color: var(--s-ink-2);
+  border-color: var(--s-line);
+}
+
+.btn-danger {
+  border-color: color-mix(in srgb, var(--s-error) 50%, transparent);
+  color: var(--s-error);
+  background: none;
+  opacity: 0.8;
+}
+
+.btn-danger:hover:not(:disabled) {
+  opacity: 1;
+  border-color: var(--s-error);
+}
+
+.btn-sm {
+  padding: 0.3rem 0.7rem;
+  min-height: 1.6rem;
+  font-size: 0.58rem;
+}

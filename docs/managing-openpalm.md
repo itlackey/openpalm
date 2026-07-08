@@ -114,15 +114,15 @@ Current shipped network model:
 
 ### Enable/disable an addon
 
-Addons are managed via `/admin/addons` routes. Example:
+Addons are managed via `/api/host/addons` routes. Example:
 
 ```bash
 # Authenticate first to obtain an op_session cookie (Phase 2+).
-curl -c cookies.txt -X POST http://localhost:3880/admin/auth/login \
+curl -c cookies.txt -X POST http://localhost:3880/api/auth/login \
   -H "Content-Type: application/json" \
   -d "{\"password\":\"$OP_UI_LOGIN_PASSWORD\"}"
 
-curl -b cookies.txt -X POST http://localhost:3880/admin/addons/chat \
+curl -b cookies.txt -X POST http://localhost:3880/api/host/addons/chat \
   -H "Content-Type: application/json" \
   -d '{"enabled":true}'
 ```
@@ -428,13 +428,13 @@ ls ~/.openpalm/data/admin-opencode/log/              # Electron-spawned OpenCode
 **Check container status:**
 ```bash
 docker compose ps
-# Or via API (requires op_session cookie from /admin/auth/login):
-curl -b cookies.txt http://localhost:3880/admin/containers/list
+# Or via API (requires op_session cookie from /api/auth/login):
+curl -b cookies.txt http://localhost:3880/api/host/containers/list
 ```
 
 **Pull latest images and recreate containers:**
 ```bash
-curl -b cookies.txt -X POST http://localhost:3880/admin/containers/pull
+curl -b cookies.txt -X POST http://localhost:3880/api/host/containers/pull
 ```
 
 This runs `docker compose pull` followed by `docker compose up` to recreate

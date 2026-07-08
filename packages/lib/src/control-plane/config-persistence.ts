@@ -383,7 +383,7 @@ export function discoverHomeBindMountSources(
       // volume`) carry a volume name, not a path.
       if (vol.type && vol.type !== 'bind') continue;
       const source = vol.source;
-      if (!source || !source.startsWith('/')) continue;
+      if (!source?.startsWith('/')) continue;
       const resolvedHostPath = resolvePath(source);
       if (!resolvedHostPath.startsWith(`${homeRoot}/`) && resolvedHostPath !== homeRoot) continue;
 

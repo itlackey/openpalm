@@ -136,9 +136,14 @@ vi.mock('@openpalm/lib', () => ({
   seedUiBuild: vi.fn(() => Promise.resolve()),
   ensureHomeDirs: vi.fn(),
   checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
+  checkAndUpdateClientBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
+  checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
   PLATFORM_VERSION: 'v0.11.0',
+  resolveClientAppPort: vi.fn(() => 3890),
+  resolveClientAppUrl: vi.fn(() => 'http://127.0.0.1:3890/chat'),
+  writeClientRuntimeConfig: vi.fn(),
   checkDocker: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   // Faithful reimplementation of lib's waitForReady (poll /health; 200 or 401 ==
@@ -272,7 +277,7 @@ describe('buildUIServerEnv', () => {
 
 describe('harness contract', () => {
   it('is at the expected version', () => {
-    expect(HARNESS_CONTRACT_VERSION).toBe(1);
+    expect(HARNESS_CONTRACT_VERSION).toBe(2);
     expect(HARNESS_CONTRACT.version).toBe(HARNESS_CONTRACT_VERSION);
   });
 
@@ -282,6 +287,7 @@ describe('harness contract', () => {
     expect(HARNESS_CONTRACT.ipc.invoke).toEqual([
       'restart',
       'restartUiServer',
+      'openLocalApp',
       'launchOnLoginStatus',
       'setLaunchOnLogin',
       'setTrayMicRecording',
@@ -631,6 +637,21 @@ describe('Docker preflight', () => {
     vi.mocked(shell.openExternal).mockClear();
     open?.();
     expect(shell.openExternal).toHaveBeenCalledWith('https://docs.docker.com/get-docker/');
+  });
+});
+
+describe('localhost client app affordance', () => {
+  beforeEach(() => {
+    vi.mocked(shell.openExternal).mockClear();
+  });
+
+  it('registers an open-local-app handler that opens the stable loopback client origin', async () => {
+    const handler = ipcMainHandleHandlers.get('open-local-app');
+    expect(handler).toBeDefined();
+
+    await handler?.();
+
+    expect(shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3890/chat');
   });
 });
 

@@ -251,8 +251,8 @@ describe("/oc proxy — content moderation (§3.5, write-path only, fail-closed)
       await Bun.sleep(50);
     }
     expect(line).toBeDefined();
-    expect(line!.extra.error).toBe("content_blocked");
-    expect(line!.extra.reason).toBeTruthy();
+    expect(line?.extra.error).toBe("content_blocked");
+    expect(line?.extra.reason).toBeTruthy();
   });
 
   test("malicious /prompt_async body → 403 content_blocked (fail-closed)", async () => {

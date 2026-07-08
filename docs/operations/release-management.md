@@ -1,12 +1,16 @@
 # Release Management
 
-> **Last updated 2026-06-21** against the live codebase at 0.12.22. This supersedes the pre-0.12 `platform-release.yml` documentation.
+> **Last updated 2026-07-07** against the live codebase at 0.12.52. This supersedes the pre-0.12 `platform-release.yml` documentation.
 
 ---
 
 ## Release system overview
 
 All releases run through `.github/workflows/release.yml` (manual `workflow_dispatch` only). Version computation and file stamping are handled by `scripts/bump-unit.mjs`. npm publishing flows through the reusable `.github/workflows/publish-npm-package.yml` (OIDC provenance, single trusted publisher).
+
+For an operator-grade, repeatable RC procedure with merge gates, exact commands,
+evidence capture, and post-publish verification, use the
+[RC release runbook](release-rc-runbook.md).
 
 **TAG-LAST:** The git tag and GitHub release are created as the very last step. "Tag exists = fully published." This makes releases safe to retry — re-running a failed release replays only the failed jobs.
 
@@ -18,7 +22,7 @@ All releases run through `.github/workflows/release.yml` (manual `workflow_dispa
 
 | Unit | What it publishes | Version anchor |
 |---|---|---|
-| `platform` | @openpalm/lib, openpalm (CLI), @openpalm/ui, @openpalm/skeleton, @openpalm/guardian (all npm) + CLI binaries + optional Electron | root `package.json` |
+| `platform` | @openpalm/lib, openpalm (CLI), @openpalm/ui, @openpalm/client, @openpalm/skeleton, @openpalm/guardian (all npm) + CLI binaries + optional Electron | root `package.json` |
 | `portals` | `openpalm/portal` Docker image | `portals/discord/package.json` |
 | `assistant` | `openpalm/assistant` Docker image | `containers/assistant/VERSION` |
 | `guardian` | @openpalm/guardian + @openpalm/skeleton (npm) + optional Docker image | `packages/guardian/package.json` |
@@ -50,7 +54,7 @@ gh workflow run release.yml \
   -f dry_run=true
 ```
 
-Review the workflow output. Verify the computed version, the files that will be stamped, and the npm regression guard output.
+Review the workflow output. Verify the computed version, the files that will be stamped, and the npm regression guard output. For `platform` and `all`, confirm the stamp includes `packages/cli/package.json` and rewrites its exact `@openpalm/skeleton` pin to the release version.
 
 ### Step 2 — real release
 
@@ -149,7 +153,7 @@ All npm publishes flow through `publish-npm-package.yml` as the single OIDC trus
 - Workflow: `release.yml`
 - Environment: (none)
 
-Set this for: `@openpalm/lib`, `openpalm`, `@openpalm/ui`, `@openpalm/skeleton`, `@openpalm/guardian`.
+Set this for: `@openpalm/lib`, `openpalm`, `@openpalm/ui`, `@openpalm/client`, `@openpalm/skeleton`, `@openpalm/guardian`.
 
 ---
 
@@ -159,9 +163,39 @@ When promoting a `0.X.Y-rc.N` or `0.X.Y-beta.N` line to stable `0.X.Y`:
 
 - [ ] Cut the stable platform release (no `-` suffix) — publishes npm under `latest`, creates Docker `latest` tags
 - [ ] Verify `@openpalm/ui@latest` resolves to the current UI (it ships with `platform`)
+- [ ] Verify `@openpalm/client@latest` resolves to the current client (it ships with `platform`)
 - [ ] Verify guardian and skeleton `latest` dist-tags are current
 - [ ] Confirm Docker `latest` tags exist for all images (first ever `latest` for a new major line)
 - [ ] Update `CHANGELOG.md`
+
+## Runtime artifact env pins
+
+These non-secret `stack.env` vars control the exact npm artifacts the running platform installs or serves:
+
+| Variable | Used by | Resolution | Notes |
+|---|---|---|---|
+| `OP_UI_VERSION` | Host UI updater / seeding path | `OP_UI_VERSION` -> channel/default logic in the host control plane | Host-side UI artifact only |
+| `OP_CLIENT_VERSION` | Assistant container entrypoint | `OP_CLIENT_VERSION` -> image `PLATFORM_VERSION` -> hard error | Exact-pins `@openpalm/client`; no `latest` fallback |
+| `OP_SKELETON_VERSION` | Assistant + guardian entrypoints | Assistant: `OP_SKELETON_VERSION` -> image `PLATFORM_VERSION` -> hard error. Guardian: `OP_SKELETON_VERSION` -> guardian package version. | Exact-pins `@openpalm/skeleton`; keep equal to the platform version in normal releases |
+
+`OP_CLIENT_PORT` and `OP_CLIENT_BIND_ADDRESS` are separate: they control the assistant container's published client co-process listener (`127.0.0.1:3810` by default), not the host-local PWA/dev origin.
+
+## Release Smoke Checklist
+
+For a full coordinated release candidate, use the dedicated
+[`unit=all` RC checklist](unit-all-rc-checklist.md). It expands this smoke list
+into a pre-publish and post-publish worksheet covering packaging, deployment,
+permissions, upgrade, rootless ownership, browser-backed flows, and shipped
+artifact verification.
+
+For the ordered execution procedure that drives that checklist, use the
+[RC release runbook](release-rc-runbook.md).
+
+- [ ] `electron-host`: launch Electron against a seeded install; verify the window lands on the client chat at `http://127.0.0.1:3890/chat`, and host routes remain available.
+- [ ] `host-ui`: run `openpalm admin`; verify the browser opens on the loopback host UI and `/host`, `/connections`, and `/chat` all load.
+- [ ] `assistant-container`: boot the assistant with `OP_CLIENT_VERSION` and `OP_SKELETON_VERSION` overrides; verify the container installs those exact versions, serves the static client on the assistant's published client port, and chat reaches the locked default assistant connection.
+- [ ] `localhost PWA install`: from the harness-served client origin `http://127.0.0.1:3890`, verify installability and that the installed app reopens on the same origin.
+- [ ] `hosted PWA install`: from the hosted client origin (currently `https://app.openpalm.dev` in tests/docs), verify installability, `/api/runtime` compatibility, and that remote connections require HTTPS guardians plus the expected guardian CORS allowlist.
 
 ---
 

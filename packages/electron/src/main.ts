@@ -8,13 +8,18 @@ import {
   resolveOpenPalmHome,
   resolveDataDir,
   resolveUiBuildDir,
+  resolveClientBuildDir,
   seedUiBuild,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
+  checkAndUpdateClientBuild,
   checkAndUpdateSkeleton,
   uiUpdateChannel,
   parseEnvFile,
   PLATFORM_VERSION,
+  resolveClientAppPort,
+  resolveClientAppUrl,
+  writeClientRuntimeConfig,
   waitForReady as libWaitForReady,
   restoreUiBackup,
   UiSupervisor,
@@ -130,12 +135,17 @@ function resolveAdminToolsPluginPath(): string {
 const DEFAULT_UI_PORT = 3880;
 const DEFAULT_ASSISTANT_PORT = '3800';
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+const CLIENT_PORT = resolveClientAppPort(process.env);
 const READY_TIMEOUT_MS = 60_000;
+// Bound on the client-health probe in resolveInitialUrl — a dead client must
+// not stall window creation (the fallback to the host UI chat covers it).
+const CLIENT_PROBE_TIMEOUT_MS = 1_500;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 const APP_USER_MODEL_ID = 'com.openpalm.app';
 
 let mainWindow: BrowserWindow | null = null;
 let uiProcess: ChildProcess | null = null;
+let clientProcess: ChildProcess | null = null;
 let localOpencode: LocalOpencodeHandle | null = null;
 let registeredMicShortcut: string | null = null;
 // Whether the GitHub update check should surface prereleases (#504). Loaded from
@@ -624,9 +634,94 @@ function stopUIServer(): void {
   try { rmSync(join(resolveDataDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
 }
 
+// ── Client app static server (P5c, #555) ─────────────────────────────────────
+// The @openpalm/client static SPA is served by its zero-dependency serve script
+// (bin/serve.mjs, a sibling of the resolved build) on the stable loopback
+// CLIENT_PORT. Spawn-env/child work only — no bridge surface, no IPC, so
+// HARNESS_CONTRACT_VERSION is untouched. Non-fatal when the build is absent:
+// log + skip, and resolveInitialUrl falls back to the host UI chat on 3880.
+
+async function ensureClientAppBuild(): Promise<void> {
+  try {
+    const result = await checkAndUpdateClientBuild(PLATFORM_VERSION, resolveDataDir());
+    if (result.updated) {
+      console.log(`Client app updated to v${result.latestVersion}`);
+    } else if (result.error) {
+      console.log(`Client app update check skipped: ${result.error}`);
+    }
+  } catch (err) {
+    console.log('Client app update check skipped:', err instanceof Error ? err.message : String(err));
+  }
+}
+
+function startClientAppServer(): void {
+  try {
+    const buildDir = resolveClientBuildDir();
+    const serveScript = join(buildDir, '..', 'bin', 'serve.mjs');
+    if (!existsSync(join(buildDir, 'index.html')) || !existsSync(serveScript)) {
+      console.log(`Client app build not found at ${buildDir} — skipping the client server (chat falls back to the host UI).`);
+      return;
+    }
+    const runtimeConfigPath = join(resolveDataDir(), 'client', 'runtime-config.json');
+    writeClientRuntimeConfig(runtimeConfigPath, resolveAssistantUrl(resolveOpenPalmHome()));
+    // Same bundled-Node spawn as the UI child (no system `node` required).
+    // serve.mjs reads PORT / HOST / OP_CLIENT_DIR from the environment; HOST is
+    // pinned to loopback unconditionally — the client server has no remote
+    // escape hatch.
+    clientProcess = spawn(process.execPath, [serveScript], {
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        PORT: String(CLIENT_PORT),
+        HOST: '127.0.0.1',
+        OP_CLIENT_DIR: buildDir,
+        OP_CLIENT_RUNTIME_CONFIG: runtimeConfigPath,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    clientProcess.stdout?.on('data', (chunk: Buffer) => { writeChildLog(chunk.toString()); });
+    clientProcess.stderr?.on('data', (chunk: Buffer) => { writeChildLog(chunk.toString()); });
+    clientProcess.on('error', (err) => {
+      // Non-fatal: the window falls back to the host UI chat.
+      console.warn('Client app server process error:', err.message);
+      clientProcess = null;
+    });
+    clientProcess.on('exit', (code) => {
+      if (code !== 0 && code !== null) console.warn(`Client app server exited with code ${code}`);
+      clientProcess = null;
+    });
+    console.log(`Client app served at http://127.0.0.1:${CLIENT_PORT} (from ${buildDir})`);
+  } catch (err) {
+    console.warn('Client app server failed to start (non-fatal):', err instanceof Error ? err.message : String(err));
+    clientProcess = null;
+  }
+}
+
+function stopClientAppServer(): void {
+  const proc = clientProcess;
+  clientProcess = null;
+  // Plain kill — serve.mjs spawns no children of its own.
+  if (proc?.pid) {
+    try { proc.kill('SIGTERM'); } catch { /* already dead */ }
+  }
+}
+
 // ── Window management ────────────────────────────────────────────────────────
 
-async function resolveInitialUrl(): Promise<string> {
+/**
+ * Decide which page the window opens on (exported for tests — P5c, #555):
+ *
+ *   setup complete + client server healthy → the CLIENT app chat
+ *     (http://127.0.0.1:CLIENT_PORT/chat)
+ *   setup complete + client unreachable    → the HOST APP chat on UI_PORT
+ *     (dumb fallback: probe, and on any failure use the host UI — e.g. no
+ *     client build on disk; startClientAppServer's skip is non-fatal)
+ *   setup incomplete                       → the host app's /setup wizard
+ *     (ALWAYS the host app — the client artifact has no setup wizard, §8.10)
+ *   setup-status probe failure             → host app root (its landing guard
+ *     redirects — existing behavior, unchanged)
+ */
+export async function resolveInitialUrl(): Promise<string> {
   // Try to read setup status so we can land directly on the right page.
   // Falls back to root (which itself redirects appropriately).
   try {
@@ -635,7 +730,13 @@ async function resolveInitialUrl(): Promise<string> {
     });
     if (res.ok) {
       const data = await res.json() as { setupComplete?: boolean };
-      return `http://127.0.0.1:${UI_PORT}/${data.setupComplete ? 'chat' : 'setup'}`;
+      if (!data.setupComplete) return `http://127.0.0.1:${UI_PORT}/setup`;
+      // Prefer the client app chat when its server responds; the probe is
+      // short/bounded so a dead client never stalls window creation.
+      if (await waitForReady(CLIENT_PORT, CLIENT_PROBE_TIMEOUT_MS)) {
+        return `http://127.0.0.1:${CLIENT_PORT}/chat`;
+      }
+      return `http://127.0.0.1:${UI_PORT}/chat`;
     }
   } catch {
     // ignore; fall through to root
@@ -705,6 +806,10 @@ function showWindow(): void {
   } else {
     void createWindow();
   }
+}
+
+function openLocalApp(): void {
+  void shell.openExternal(resolveClientAppUrl(process.env));
 }
 
 // ── Docker preflight (deployment-review P0 #493) ──────────────────────────────
@@ -785,6 +890,7 @@ async function setCheckPrerelease(enabled: boolean): Promise<void> {
 function createTray(): void {
   trayController.create({
     onOpen: showWindow,
+    onOpenLocalApp: openLocalApp,
     onShowLogs: () => { void shell.openPath(app.getPath('logs')); },
     getLaunchOnLoginStatus: () => getLaunchOnLoginStatus(),
     onSetLaunchOnLogin: (enabled) => { setLaunchOnLogin(enabled); },
@@ -820,6 +926,12 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+
+  // Start the @openpalm/client static server child after the UI server (P5c,
+  // #555). Non-fatal by design: absent build or spawn failure → log + skip,
+  // and resolveInitialUrl lands the window on the host UI chat instead.
+  await ensureClientAppBuild();
+  startClientAppServer();
 
   // Spawn the ephemeral local OpenCode (Phase 3). Non-fatal: if the binary
   // is missing or spawn fails, the UI shows a sentinel and remote endpoints
@@ -863,6 +975,10 @@ ipcMain.handle('restart-app', () => {
 // control-plane lib loads. Returns true once the new child is ready.
 ipcMain.handle('restart-ui-server', async (): Promise<boolean> => {
   return restartUIServer();
+});
+
+ipcMain.handle('open-local-app', async (): Promise<void> => {
+  openLocalApp();
 });
 
 // The UI child (admin "install UI version" route) sends SIGUSR2 to this parent
@@ -933,6 +1049,7 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   globalShortcut.unregisterAll();
   trayController.stopAnimation();
+  stopClientAppServer();
   stopUIServer();
   const handle = localOpencode;
   localOpencode = null;

@@ -79,6 +79,26 @@ describe("set-version", () => {
     expect(read(f).dependencies["@openpalm/lib"]).toBe(">=2.3.4 <3.0.0");
   });
 
+  it("rewrites an exact @openpalm/skeleton pin in lockstep", () => {
+    const f = write({
+      name: "x",
+      version: "0.10.0",
+      dependencies: { "@openpalm/skeleton": "0.10.0" },
+    });
+    setVersion(f, "0.11.0");
+    expect(read(f).dependencies["@openpalm/skeleton"]).toBe("0.11.0");
+  });
+
+  it("leaves workspace @openpalm/skeleton refs untouched", () => {
+    const f = write({
+      name: "x",
+      version: "0.10.0",
+      dependencies: { "@openpalm/skeleton": "workspace:*" },
+    });
+    setVersion(f, "0.11.0");
+    expect(read(f).dependencies["@openpalm/skeleton"]).toBe("workspace:*");
+  });
+
   it("SEMVER_RE matches stable + prerelease, rejects junk", () => {
     expect(SEMVER_RE.test("0.11.0")).toBe(true);
     expect(SEMVER_RE.test("0.11.0-rc.17")).toBe(true);

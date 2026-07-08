@@ -8,6 +8,7 @@ CLAUDE.md
 packages/ui/.svelte-kit/
 packages/ui/build/
 packages/ui/dist/
+packages/client/build/
 packages/ui/undefined/
 packages/ui/.env
 packages/ui/.env.local

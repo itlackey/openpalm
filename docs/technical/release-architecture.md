@@ -1,6 +1,6 @@
 # Release Architecture
 
-> **Last updated 2026-06-21** against the live codebase at 0.12.22.
+> **Last updated 2026-07-06** against the live codebase at 0.12.52.
 
 ## Goals
 
@@ -18,7 +18,7 @@ Each unit has a single canonical version anchor. All packages/images within a un
 
 | Unit | Artifacts | Canonical version anchor |
 |---|---|---|
-| `platform` | @openpalm/lib (npm), openpalm CLI (npm + binaries), @openpalm/ui (npm), @openpalm/skeleton (npm), @openpalm/guardian (npm) | root `package.json` (max with npm-published) |
+| `platform` | @openpalm/lib (npm), openpalm CLI (npm + binaries), @openpalm/ui (npm), @openpalm/client (npm), @openpalm/skeleton (npm), @openpalm/guardian (npm) | root `package.json` (max with npm-published) |
 | `portals` | @openpalm/discord-portal + @openpalm/slack-portal (npm), optional `openpalm/portal` Docker image (`include_images=true`) | `portals/discord/package.json` |
 | `assistant` | `openpalm/assistant` Docker image | `containers/assistant/VERSION` |
 | `guardian` | @openpalm/guardian (npm), @openpalm/skeleton (npm), optional guardian Docker image | `packages/guardian/package.json` (max with npm-published) |
@@ -106,11 +106,14 @@ For `unit=all`, `bump` determines the version increment (patch/minor/major all v
 
 ### `platform`
 
-Publishes: @openpalm/skeleton → @openpalm/lib → (@openpalm/guardian, openpalm CLI, @openpalm/ui) → CLI binaries → optional Electron.
+Publishes: @openpalm/skeleton → @openpalm/lib → (@openpalm/guardian, openpalm CLI, @openpalm/ui) → CLI binaries → optional Electron. @openpalm/client publishes in parallel (exact-pin, `needs-build`, like @openpalm/ui) — it deliberately has **no** @openpalm/lib ordering dependency because the client never bundles the host library (ui-runtime-modes-plan.md §8.10; `@openpalm/ui-kit` is inlined from the workspace at build time and is **never published**).
 
-Stamps: root, lib, skeleton, guardian, cli, ui, electron, admin-tools package.json files + `scripts/setup.sh` `SCRIPT_VERSION` + `scripts/setup.ps1` `$ScriptVersion`.
+Stamps: root, lib, skeleton, guardian, cli, ui, client, electron, admin-tools package.json files + `scripts/setup.sh` `SCRIPT_VERSION` + `scripts/setup.ps1` `$ScriptVersion`.
 
-Preflight: full test suite (`bun run test`, `ui:check`, `ui:test:unit`, `electron:test`).
+The shared `scripts/set-version.mjs` helper is also responsible for rewriting the CLI's exact `@openpalm/skeleton` dependency pin to the release version during this stamp. That keeps the published CLI's bundled skeleton source in lockstep with `PLATFORM_VERSION`.
+
+
+Preflight: full test suite (`bun run client:build` then `bun run test` — which includes the client-bundle purity gate — plus `ui:check`, `ui-kit:check`, `client:check`, `ui:test:unit`, `electron:test`).
 
 ### `portals`
 
@@ -150,7 +153,7 @@ Preflight: `bun run electron:test`.
 
 The **complete** release. Stamps every unit's files simultaneously to the same version (any bump type or explicit override) and publishes everything, flag-free:
 
-- **npm**: `@openpalm/{lib,ui,guardian,skeleton}` + `openpalm` (CLI) + `@openpalm/{discord,slack}-portal`
+- **npm**: `@openpalm/{lib,ui,client,guardian,skeleton}` + `openpalm` (CLI) + `@openpalm/{discord,slack}-portal`
 - **Docker**: `openpalm/{assistant,guardian,portal}` (+ `:latest` for stable)
 - **Electron** installers (mac/linux/win) + CLI native binaries
 - Per-unit tags + bare `X.Y.Z` summary tag + GitHub release

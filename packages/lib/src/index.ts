@@ -544,6 +544,28 @@ export {
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";
 
+// ── Client app (static SPA) asset seeding and resolution (#555 P5c) ─────────
+export type { ClientBuildUpdateResult } from "./control-plane/client-assets.js";
+export {
+  CLIENT_VERSION_STAMP,
+  readClientBuildVersion,
+  resolveLocalClientBuild,
+  resolveClientBuildDir,
+  seedClientBuild,
+  checkAndUpdateClientBuild,
+} from "./control-plane/client-assets.js";
+export {
+  DEFAULT_CLIENT_PORT,
+  resolveClientAppPort,
+  resolveClientAppUrl,
+} from './control-plane/client-app-url.js';
+export {
+  buildLockedAssistantRuntimeConfig,
+  writeClientRuntimeConfig,
+  type ClientRuntimeConfig,
+  type ClientRuntimeConnection,
+} from './control-plane/client-runtime-config.js';
+
 // ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
 export type {
   WaitForReadyDeps,

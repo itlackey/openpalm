@@ -42,12 +42,10 @@ test.describe('Setup wizard — browser smoke', () => {
 		await expect(page).toHaveURL(/\/setup$/);
 	});
 
-	test('loads /setup directly and renders the System Check step', async ({ page }) => {
+	test('loads /setup directly and renders the Connect step', async ({ page }) => {
 		await page.goto(`${ADMIN_URL}/setup`);
-		await expect(page.locator('[data-testid="step-system-check"]')).toBeVisible({ timeout: 10_000 });
-		// btn-syscheck-next exists on the page even before docker probes
-		// finish — its `disabled` state is what changes, but the element
-		// is always rendered.
-		await expect(page.locator('#btn-syscheck-next')).toBeAttached();
+		await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole('heading', { name: /connect your ai brain/i })).toBeVisible();
+		await expect(page.locator('#btn-screen1-next')).toBeAttached();
 	});
 });

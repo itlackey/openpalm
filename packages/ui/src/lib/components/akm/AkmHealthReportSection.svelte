@@ -23,7 +23,7 @@
 	let frameSrc = $state<string | null>(null);
 	let loadError = $state('');
 
-	let reportUrl = $derived(`/admin/akm/health-report?since=${encodeURIComponent(reportWindow)}&refresh=${refreshKey}`);
+	let reportUrl = $derived(`/api/host/akm/health-report?since=${encodeURIComponent(reportWindow)}&refresh=${refreshKey}`);
 
 	async function loadReport(): Promise<void> {
 		loading = true;

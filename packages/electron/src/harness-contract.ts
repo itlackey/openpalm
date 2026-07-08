@@ -22,7 +22,7 @@
  * update the `HARNESS_CONTRACT` description in the same commit. A snapshot test
  * fails CI until the bump is intentional.
  */
-export const HARNESS_CONTRACT_VERSION = 1;
+export const HARNESS_CONTRACT_VERSION = 2;
 
 /**
  * Enumerated description of the §5.1 native contract surface. Kept as data (not
@@ -52,6 +52,7 @@ export const HARNESS_CONTRACT = {
     invoke: [
       'restart',
       'restartUiServer',
+      'openLocalApp',
       'launchOnLoginStatus',
       'setLaunchOnLogin',
       'setTrayMicRecording',

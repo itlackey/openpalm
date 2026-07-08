@@ -9,3 +9,5 @@ export const DEFAULT_UI_PORT = 3880;
 
 /** Default published host port for the assistant (override via OP_ASSISTANT_PORT). */
 export const DEFAULT_ASSISTANT_PORT = 3800;
+
+export { DEFAULT_CLIENT_PORT } from '@openpalm/lib';

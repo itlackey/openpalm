@@ -1,31 +1,58 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Spinner from '$lib/components/common/Spinner.svelte';
-  import { fetchAssistantSettings, saveAssistantSettings } from '$lib/api.js';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import {
+    fetchAssistantPersona,
+    fetchHostStackSettings,
+    saveAssistantPersona,
+    saveHostStackSettings,
+  } from '$lib/api.js';
+  import { hasCapability } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
 
+  // Phase 4 split (plan ui-runtime-modes-plan.md §5.F, Phase 4 step 2): host
+  // STACK settings (project name, bind address → /api/host/stack) are a
+  // separate concern from ASSISTANT settings (persona → /api/assistant/persona)
+  // with separate capabilities, endpoints, and save actions. hasCapability()
+  // is UX only — both endpoints enforce their capability server-side.
+
   let loading = $state(false);
-  let saving = $state(false);
   let error = $state('');
+
+  // ── Host stack settings (host:stack:write) ─────────────────────────────────
+  let stackSaving = $state(false);
   let projectName = $state('openpalm');
   let lanExposureEnabled = $state(false);
-  let personaPath = $state('config/assistant/persona.md');
   let stackEnvPath = $state('knowledge/env/stack.env');
+
+  // ── Assistant persona (assistant-settings:write) ───────────────────────────
+  let personaSaving = $state(false);
+  let personaPath = $state('config/assistant/persona.md');
   let personaContent = $state('');
   // Snapshot of last-saved persona content for dirty detection.
   let savedPersonaContent = $state('');
+
+  const showStack = hasCapability('host:stack:read');
+  const canEditStack = hasCapability('host:stack:write');
+  const showPersona = hasCapability('assistant-settings:read');
+  const canEditPersona = hasCapability('assistant-settings:write');
 
   async function load(): Promise<void> {
     loading = true;
     error = '';
     try {
-      const data = await fetchAssistantSettings();
-      projectName = data.projectName;
-      lanExposureEnabled = data.lanExposureEnabled;
-      personaPath = data.personaPath;
-      stackEnvPath = data.stackEnvPath;
-      personaContent = data.personaContent;
-      savedPersonaContent = data.personaContent;
+      if (showStack) {
+        const stack = await fetchHostStackSettings();
+        projectName = stack.projectName;
+        lanExposureEnabled = stack.lanExposureEnabled;
+        stackEnvPath = stack.stackEnvPath;
+      }
+      if (showPersona) {
+        const persona = await fetchAssistantPersona();
+        personaPath = persona.personaPath;
+        personaContent = persona.personaContent;
+        savedPersonaContent = persona.personaContent;
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load assistant settings.';
     } finally {
@@ -33,31 +60,47 @@
     }
   }
 
-  async function save(): Promise<void> {
-    saving = true;
+  async function saveStack(): Promise<void> {
+    stackSaving = true;
     error = '';
     try {
-      const data = await saveAssistantSettings({ projectName, lanExposureEnabled, personaContent });
+      const data = await saveHostStackSettings({ projectName, lanExposureEnabled });
       projectName = data.projectName;
       lanExposureEnabled = data.lanExposureEnabled;
-      personaContent = data.personaContent;
-      savedPersonaContent = data.personaContent;
       notifications.push(
         'success',
         data.projectRenamed
-          ? 'Assistant settings saved. Project name changed — run `openpalm restart` (or `openpalm update`) to move the whole stack to the new project name.'
-          : 'Assistant settings saved. Restart the assistant container to apply them.',
+          ? 'Stack settings saved. Project name changed — run `openpalm restart` (or `openpalm update`) to move the whole stack to the new project name.'
+          : 'Stack settings saved. Restart the assistant container to apply them.',
       );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to save assistant settings.';
+      const msg = e instanceof Error ? e.message : 'Failed to save stack settings.';
       error = msg;
       notifications.push('error', msg);
     } finally {
-      saving = false;
+      stackSaving = false;
     }
   }
 
-  let isDirty = $derived(personaContent !== savedPersonaContent);
+  async function savePersona(): Promise<void> {
+    personaSaving = true;
+    error = '';
+    try {
+      const data = await saveAssistantPersona({ personaContent });
+      personaContent = data.personaContent;
+      savedPersonaContent = data.personaContent;
+      notifications.push('success', 'Persona saved. Restart the assistant container to apply it.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to save persona.';
+      error = msg;
+      notifications.push('error', msg);
+    } finally {
+      personaSaving = false;
+    }
+  }
+
+  let saving = $derived(stackSaving || personaSaving);
+  let personaDirty = $derived(personaContent !== savedPersonaContent);
 
   onMount(() => { void load(); });
 </script>
@@ -73,45 +116,61 @@
         {#if loading}<Spinner />{/if}
         Refresh
       </button>
-      {#if isDirty}
-        <span class="unsaved-hint" aria-live="polite">Unsaved changes</span>
-      {/if}
-      <button class="btn btn-primary btn-sm" onclick={() => void save()} disabled={loading || saving || !isDirty}>
-        {#if saving}<Spinner />{/if}
-        Save
-      </button>
     </div>
   </div>
 
   {#if error}<div class="error-banner"><span>{error}</span></div>{/if}
 
   <div class="settings-grid">
-    <section class="settings-card">
-      <h3>Compose Project Name</h3>
-      <p class="section-note">This writes <code>OP_PROJECT_NAME</code> in <code>{stackEnvPath}</code>. If unset, OpenPalm defaults to <code>openpalm</code>.</p>
-      <label class="field" for="project-name">
-        <span>Project name</span>
-        <input id="project-name" class="control-input mono" type="text" spellcheck="false" placeholder="openpalm" bind:value={projectName} disabled={loading || saving} />
-      </label>
-      <p class="field-hint">Lowercase letters, numbers, dashes, and underscores only. This affects Docker Compose naming and collision detection.</p>
-    </section>
+    {#if showStack}
+      <section class="settings-card">
+        <h3>Compose Project Name</h3>
+        <p class="section-note">This writes <code>OP_PROJECT_NAME</code> in <code>{stackEnvPath}</code>. If unset, OpenPalm defaults to <code>openpalm</code>.</p>
+        <label class="field" for="project-name">
+          <span>Project name</span>
+          <input id="project-name" class="control-input mono" type="text" spellcheck="false" placeholder="openpalm" bind:value={projectName} disabled={loading || saving || !canEditStack} />
+        </label>
+        <p class="field-hint">Lowercase letters, numbers, dashes, and underscores only. This affects Docker Compose naming and collision detection.</p>
+      </section>
 
-    <section class="settings-card">
-      <h3>LAN Exposure</h3>
-      <p class="section-note">This writes <code>OP_ASSISTANT_BIND_ADDRESS</code> in <code>{stackEnvPath}</code>.</p>
-      <label class="field-inline" for="assistant-lan-exposure">
-        <input id="assistant-lan-exposure" type="checkbox" bind:checked={lanExposureEnabled} disabled={loading || saving} />
-        <span>Expose the assistant OpenCode server on the host LAN</span>
-      </label>
-      <p class="field-hint">Off keeps the host bind on <code>127.0.0.1</code>. On switches it to <code>0.0.0.0</code> so other devices on your LAN can reach the host port.</p>
-    </section>
+      <section class="settings-card">
+        <h3>LAN Exposure</h3>
+        <p class="section-note">This writes <code>OP_ASSISTANT_BIND_ADDRESS</code> in <code>{stackEnvPath}</code>.</p>
+        <label class="field-inline" for="assistant-lan-exposure">
+          <input id="assistant-lan-exposure" type="checkbox" bind:checked={lanExposureEnabled} disabled={loading || saving || !canEditStack} />
+          <span>Expose the assistant OpenCode server on the host LAN</span>
+        </label>
+        <p class="field-hint">Off keeps the host bind on <code>127.0.0.1</code>. On switches it to <code>0.0.0.0</code> so other devices on your LAN can reach the host port.</p>
+        {#if canEditStack}
+          <div class="card-actions">
+            <button class="btn btn-primary btn-sm" onclick={() => void saveStack()} disabled={loading || saving}>
+              {#if stackSaving}<Spinner />{/if}
+              Save stack settings
+            </button>
+          </div>
+        {/if}
+      </section>
+    {/if}
 
-    <section class="settings-card">
-      <h3>Persona</h3>
-      <p class="section-note">Edit the assistant persona markdown mounted into the assistant OpenCode instance.</p>
-      <div class="path-chip">{personaPath}</div>
-      <textarea class="control-input persona-editor mono" rows="20" spellcheck="false" bind:value={personaContent} disabled={loading || saving}></textarea>
-    </section>
+    {#if showPersona}
+      <section class="settings-card">
+        <h3>Persona</h3>
+        <p class="section-note">Edit the assistant persona markdown mounted into the assistant OpenCode instance.</p>
+        <div class="path-chip">{personaPath}</div>
+        <textarea class="control-input persona-editor mono" rows="20" spellcheck="false" bind:value={personaContent} disabled={loading || saving || !canEditPersona}></textarea>
+        {#if canEditPersona}
+          <div class="card-actions">
+            {#if personaDirty}
+              <span class="unsaved-hint" aria-live="polite">Unsaved changes</span>
+            {/if}
+            <button class="btn btn-primary btn-sm" onclick={() => void savePersona()} disabled={loading || saving || !personaDirty}>
+              {#if personaSaving}<Spinner />{/if}
+              Save persona
+            </button>
+          </div>
+        {/if}
+      </section>
+    {/if}
   </div>
 </div>
 
@@ -130,6 +189,7 @@
   .path-chip { display: inline-flex; align-items: center; margin-bottom: var(--s-sp-3); padding: var(--s-sp-1) var(--s-sp-2); border-radius: 2px; border: var(--s-hair) solid var(--s-line-soft); background: var(--s-paper-deep); color: var(--s-ink-3); font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); }
   .persona-editor { min-height: 26rem; resize: vertical; font-family: var(--s-font-mono) !important; font-size: var(--s-type-mark-sm) !important; background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper)) !important; border: var(--s-hair) solid var(--s-line-soft) !important; border-bottom: var(--s-hair) solid var(--s-line-soft) !important; border-radius: 2px !important; padding: var(--s-sp-3) !important; color: var(--s-ink-2) !important; }
   .unsaved-hint { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-seal); }
+  .card-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-sp-3); margin-top: var(--s-sp-3); }
   input[type="checkbox"] {
     appearance: none;
     width: 1rem; height: 1rem;

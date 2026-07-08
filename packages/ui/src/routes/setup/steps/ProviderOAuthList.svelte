@@ -12,7 +12,7 @@
 
   import { WIZARD_EXCLUDED_PROVIDERS } from '$lib/client/constants.js';
   import type { ProviderState } from '$lib/client/types.js';
-  import Spinner from '$lib/components/common/Spinner.svelte';
+  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
 
   const s = setupState;

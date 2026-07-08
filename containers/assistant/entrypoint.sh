@@ -63,14 +63,14 @@ maybe_source_akm_user_env() {
 
 install_runtime_artifacts() {
   # ── Exact-pinned npm artifacts ──────────────────────────────────────────────
-  # UI and skeleton versions come from OP_*_VERSION env overrides, then fall
-  # back to PLATFORM_VERSION (set at image build time via ARG). Hard error if
-  # neither is set — no 'latest' fallback for exact-pinned components.
-  local ui_version="${OP_UI_VERSION:-${PLATFORM_VERSION:-}}"
+  # Client and skeleton versions come from OP_*_VERSION env overrides, then
+  # fall back to PLATFORM_VERSION (set at image build time via ARG). Hard error
+  # if neither is set — no 'latest' fallback for exact-pinned components.
+  local client_version="${OP_CLIENT_VERSION:-${PLATFORM_VERSION:-}}"
   local skeleton_version="${OP_SKELETON_VERSION:-${PLATFORM_VERSION:-}}"
 
-  if [ -z "$ui_version" ]; then
-    echo "ERROR: set OP_UI_VERSION or PLATFORM_VERSION to install @openpalm/ui" >&2
+  if [ -z "$client_version" ]; then
+    echo "ERROR: set OP_CLIENT_VERSION or PLATFORM_VERSION to install @openpalm/client" >&2
     exit 1
   fi
   if [ -z "$skeleton_version" ]; then
@@ -85,17 +85,22 @@ install_runtime_artifacts() {
   local npm_cache_dir="/home/opencode/.cache/openpalm-npm"
   local bun_cache_dir="/home/opencode/.cache/bun/install"
 
+  # Existing assistant-artifacts named volumes shadow Dockerfile-created paths.
+  # Older images only created /opt/openpalm/{ui,skeleton}; create the current
+  # prefixes here so upgrades can install @openpalm/client as the node user.
+  mkdir -p /opt/openpalm/client /opt/openpalm/skeleton
+
   # `grep -v` exits 1 when npm produced only warnings (or nothing), so the
   # pipeline's own exit code can't distinguish "npm failed" from "no output".
   # Capture npm's exit via PIPESTATUS and surface real failures — a silent
-  # EACCES here would leave the stack serving stale ui/skeleton forever.
+  # EACCES here would leave the stack serving stale client/skeleton forever.
   local npm_rc
-  echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
+  echo "entrypoint: installing @openpalm/client@${client_version}..." >&2
   npm_rc=0
-  npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
+  npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/client "@openpalm/client@${client_version}" \
     --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
   if [ "$npm_rc" != "0" ]; then
-    echo "ERROR: @openpalm/ui@${ui_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
+    echo "ERROR: @openpalm/client@${client_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
   fi
 
   echo "entrypoint: installing @openpalm/skeleton@${skeleton_version}..." >&2
@@ -125,26 +130,57 @@ install_runtime_artifacts() {
   fi
 }
 
-start_ui() {
-  local ui_build="/opt/openpalm/ui/node_modules/@openpalm/ui/build/index.js"
-  if [ ! -f "$ui_build" ]; then
-    echo "entrypoint: @openpalm/ui build not found — UI co-process skipped" >&2
+start_client() {
+  # Static chat client (@openpalm/client, plan §6.9 Slice A). The co-process
+  # only serves bytes — the BROWSER talks to OpenCode directly at the
+  # host-published assistant URL, so there is no server-side API base URL to
+  # wire into this process (the old adapter-node co-process env plumbing, and
+  # its wiring bug, are gone with it).
+  local client_pkg="/opt/openpalm/client/node_modules/@openpalm/client"
+  local serve_script="${client_pkg}/bin/serve.mjs"
+  local client_build="${client_pkg}/build"
+  if [ ! -f "$serve_script" ] || [ ! -f "${client_build}/index.html" ]; then
+    echo "entrypoint: @openpalm/client build not found — client co-process skipped" >&2
     return 0
   fi
 
-  local ui_port="${OP_UI_PORT:-3000}"
-  echo "entrypoint: starting UI co-process on port ${ui_port}..." >&2
+  # Write runtime-config.json beside the build BEFORE serving (serve.mjs looks
+  # for it next to the build dir). It seeds the browser's connection store with
+  # ONE locked default connection: the assistant's OpenCode as published on the
+  # HOST — compose maps ${OP_ASSISTANT_PORT:-3800} -> in-container 4096, and
+  # the in-container :4096 would be unreachable from a browser. Non-default
+  # topologies override the full URL via OP_CLIENT_DEFAULT_ASSISTANT_URL.
+  # JSON is emitted via node (present in the base image) so an unusual URL
+  # value can never produce a malformed file.
+  local assistant_url="${OP_CLIENT_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}}"
+  node -e '
+    const fs = require("fs");
+    const [file, url] = process.argv.slice(1);
+    const config = {
+      connections: [
+        {
+          id: "assistant-container-opencode",
+          label: "This assistant",
+          kind: "local-opencode",
+          url,
+          auth: { mode: "none" },
+          isDefault: true,
+          locked: true,
+        },
+      ],
+    };
+    fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+  ' "${client_pkg}/runtime-config.json" "$assistant_url" \
+    || echo "warning: could not write runtime-config.json; client starts with no default connection" >&2
 
-  local ui_cmd=(
-    node "$ui_build"
-  )
+  local client_port="${OP_CLIENT_PORT:-3000}"
+  echo "entrypoint: starting client co-process on port ${client_port}..." >&2
 
-  OPENCODE_API_URL="http://127.0.0.1:${PORT}" \
-  PORT="$ui_port" \
-  ORIGIN="${OP_UI_ORIGIN:-http://localhost:${ui_port}}" \
-    "${ui_cmd[@]}" &
+  # Bind 0.0.0.0 INSIDE the container only: host exposure is governed by the
+  # compose port mapping, which defaults to loopback (OP_BIND_ADDRESS policy).
+  node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build" &
 
-  echo "entrypoint: UI co-process PID $! started" >&2
+  echo "entrypoint: client co-process PID $! started" >&2
 }
 
 seed_default_agents_md() {
@@ -353,6 +389,49 @@ start_opencode() {
   # --log-level sets verbosity (override via OPENCODE_LOG_LEVEL).
   local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
 
+  # Browser clients are served from separate loopback origins and call OpenCode
+  # directly. Allow the shipped origins by default, and let operators add exact
+  # comma-separated origins for custom reverse-proxy/client deployments.
+  local client_host_port="${OP_CLIENT_HOST_PORT:-${OP_CLIENT_PORT:-3810}}"
+  local host_client_port="${OP_HOST_CLIENT_PORT:-3890}"
+  local client_bind_address="${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
+  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
+  local cors_origins=(
+    "http://127.0.0.1:${client_host_port}"
+    "http://localhost:${client_host_port}"
+    "http://127.0.0.1:${host_client_port}"
+    "http://localhost:${host_client_port}"
+  )
+  if [ "$client_bind_address" != "127.0.0.1" ] && [ "$client_bind_address" != "localhost" ] \
+     && [ "$assistant_bind_address" != "127.0.0.1" ] && [ "$assistant_bind_address" != "localhost" ]; then
+    if [ "$client_bind_address" = "0.0.0.0" ] || [ "$client_bind_address" = "::" ]; then
+      # With wildcard binds the real browser Origin is the operator-chosen LAN
+      # hostname/IP, which the container cannot know. The assistant itself is
+      # already explicitly LAN-exposed in this mode, so allow browser origins.
+      cors_origins+=("*")
+    else
+      cors_origins+=("http://${client_bind_address}:${client_host_port}")
+    fi
+  fi
+  if [ -n "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
+    local old_ifs="$IFS"
+    IFS=','
+    read -ra extra_origins <<< "${OP_CLIENT_CORS_ALLOWED_ORIGINS}"
+    IFS="$old_ifs"
+    local origin
+    for origin in "${extra_origins[@]}"; do
+      origin="${origin#${origin%%[![:space:]]*}}"
+      origin="${origin%${origin##*[![:space:]]}}"
+      if [ -n "$origin" ]; then
+        cors_origins+=("$origin")
+      fi
+    done
+  fi
+  local origin
+  for origin in "${cors_origins[@]}"; do
+    cmd+=(--cors "$origin")
+  done
+
   exec "${cmd[@]}"
 }
 
@@ -364,5 +443,5 @@ seed_default_agents_md
 run_akm_schema_migration
 persist_akm_stash_dir_fallback
 start_cron_and_sync_tasks
-start_ui
+start_client
 start_opencode

@@ -69,6 +69,10 @@ contextBridge.exposeInMainWorld('openpalm', {
     return ipcRenderer.invoke('restart-ui-server');
   },
 
+  openLocalApp(): Promise<void> {
+    return ipcRenderer.invoke('open-local-app');
+  },
+
   launchOnLoginStatus(): Promise<LaunchOnLoginStatus> {
     return ipcRenderer.invoke('launch-on-login-status');
   },

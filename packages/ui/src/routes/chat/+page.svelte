@@ -13,7 +13,10 @@
 	import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
 	import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
 	import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
-	import { probeChatBackend } from '$lib/api.js';
+	// Direct domain-client import (plan Phase 3 step 4, #555): the chat page
+	// must not import the $lib/api.js barrel, which re-exports every admin
+	// domain client and would drag them all into the chat chunk.
+	import { probeChatBackend } from '$lib/api/chat.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
 	import { buildAdvancedPath } from '$lib/chat/navigation.js';
 	import { nextFollowState } from '$lib/chat/autoscroll.js';
@@ -30,15 +33,15 @@
 		stopConversation,
 		initVoice
 	} from '$lib/voice/voice-state.svelte.js';
-	import IconSoundOn from '$lib/components/icons/IconSoundOn.svelte';
-	import IconSoundOff from '$lib/components/icons/IconSoundOff.svelte';
-	import IconConversations from '$lib/components/icons/IconConversations.svelte';
-	import IconActivity from '$lib/components/icons/IconActivity.svelte';
-	import IconClose from '$lib/components/icons/IconClose.svelte';
-	import IconThemeSystem from '$lib/components/icons/IconThemeSystem.svelte';
-	import IconThemeLight from '$lib/components/icons/IconThemeLight.svelte';
-	import IconThemeDark from '$lib/components/icons/IconThemeDark.svelte';
-	import IconAdvanced from '$lib/components/icons/IconAdvanced.svelte';
+	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
+	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
+	import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
+	import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
+	import IconClose from '@openpalm/ui-kit/components/icons/IconClose.svelte';
+	import IconThemeSystem from '@openpalm/ui-kit/components/icons/IconThemeSystem.svelte';
+	import IconThemeLight from '@openpalm/ui-kit/components/icons/IconThemeLight.svelte';
+	import IconThemeDark from '@openpalm/ui-kit/components/icons/IconThemeDark.svelte';
+	import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
@@ -608,7 +611,7 @@
 		<section class="s-veil-section">
 			<div class="s-section-head">
 				<div class="s-veil-section-label">assistant</div>
-				<a class="s-new-convo" href={resolve('/admin/endpoints')} onclick={closeGarden}>
+				<a class="s-new-convo" href={resolve('/connections')} onclick={closeGarden}>
 					<span class="s-new-mark" aria-hidden="true">
 						<svg width="11" height="11" viewBox="0 0 12 12" fill="none">
 							<circle cx="6" cy="6" r="2.4" stroke="currentColor" stroke-width="1.1" />
@@ -659,7 +662,7 @@
 							<div class="s-endpoint-url">{ep.url}</div>
 						</button>
 						{#if ep.url && isLocalAssistantUrl(ep.url)}
-							<a class="s-endpoint-manage" href={resolve('/admin')} onclick={closeGarden}
+							<a class="s-endpoint-manage" href={resolve('/host')} onclick={closeGarden}
 								>manage this assistant</a
 							>
 						{/if}

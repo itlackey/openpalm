@@ -113,7 +113,7 @@ describe("portal verification-secret contract (compose ↔ portalSecretName ↔ 
     });
 
     it("declares op_api_key at the top level, file-backed under knowledge/secrets/", () => {
-      const decl = topLevelSecrets["op_api_key"];
+      const decl = topLevelSecrets.op_api_key;
       expect(decl, "top-level secrets: must declare op_api_key").toBeDefined();
       expect(basename(decl?.file ?? "")).toBe("op_api_key");
       expect(decl?.file).toContain("/knowledge/secrets/");

@@ -4,7 +4,7 @@
  * Renamed from `.pw.ts` to `.manual.ts`. Requires a live dev stack +
  * standalone UI listening on ADMIN_URL. See e2e/README.md.
  *
- * Tests the /admin/akm GET and PATCH routes end-to-end:
+ * Tests the /api/host/akm GET and PATCH routes end-to-end:
  * - Auth enforcement
  * - Config read (GET returns current state)
  * - Config write (PATCH updates fields and persists to OP_HOME/config/akm/config.json)
@@ -54,15 +54,15 @@ test.describe("AKM Config API", () => {
 
   // ── Auth ───────────────────────────────────────────────────────────────────
 
-  test("GET /admin/akm requires auth", async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/admin/akm`, {
+  test("GET /api/host/akm requires auth", async ({ request }) => {
+    const res = await request.get(`${ADMIN_URL}/api/host/akm`, {
       headers: { "x-request-id": crypto.randomUUID() },
     });
     expect(res.status()).toBe(401);
   });
 
-  test("PATCH /admin/akm requires auth", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+  test("PATCH /api/host/akm requires auth", async ({ request }) => {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: { "x-request-id": crypto.randomUUID(), "content-type": "application/json" },
       data: { semanticSearchMode: "off" },
     });
@@ -71,16 +71,16 @@ test.describe("AKM Config API", () => {
 
   // ── GET ─────────────────────────────────────────────────────────────────────
 
-  test("GET /admin/akm returns config object", async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/admin/akm`, { headers: adminHeaders() });
+  test("GET /api/host/akm returns config object", async ({ request }) => {
+    const res = await request.get(`${ADMIN_URL}/api/host/akm`, { headers: adminHeaders() });
     expect(res.ok()).toBeTruthy();
     const body = await res.json() as Record<string, unknown>;
     expect(body).toHaveProperty("config");
     expect(typeof body.config).toBe("object");
   });
 
-  test("GET /admin/akm config matches disk file", async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/admin/akm`, { headers: adminHeaders() });
+  test("GET /api/host/akm config matches disk file", async ({ request }) => {
+    const res = await request.get(`${ADMIN_URL}/api/host/akm`, { headers: adminHeaders() });
     expect(res.ok()).toBeTruthy();
     const body = await res.json() as { config: Record<string, unknown> };
     const onDisk = readConfigFile();
@@ -99,7 +99,7 @@ test.describe("AKM Config API", () => {
     const before = readConfigFile().semanticSearchMode;
     const newMode = before === "off" ? "auto" : "off";
 
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { semanticSearchMode: newMode },
     });
@@ -112,14 +112,14 @@ test.describe("AKM Config API", () => {
     expect(onDisk.semanticSearchMode).toBe(newMode);
 
     // Restore
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { semanticSearchMode: before ?? "auto" },
     });
   });
 
   test("PATCH updates archiveRetentionDays and persists to disk", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { archiveRetentionDays: 45 },
     });
@@ -130,7 +130,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH updates output.format and output.detail", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { output: { format: "yaml", detail: "full" } },
     });
@@ -142,21 +142,21 @@ test.describe("AKM Config API", () => {
     expect(output.detail).toBe("full");
 
     // Restore
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { output: { format: "json", detail: "brief" } },
     });
   });
 
   test("PATCH updates stashInheritance", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { stashInheritance: "replace" },
     });
     expect(res.ok()).toBeTruthy();
     expect((readConfigFile()).stashInheritance).toBe("replace");
 
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { stashInheritance: "merge" },
     });
@@ -166,13 +166,13 @@ test.describe("AKM Config API", () => {
 
   test("PATCH preserves unrelated fields when updating one field", async ({ request }) => {
     // Set a known value for embedding first
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { embedding: { endpoint: "https://api.openai.com/v1/embeddings", model: "text-embedding-3-small", dimension: 1536 } },
     });
 
     // Now PATCH only semanticSearchMode
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { semanticSearchMode: "auto" },
     });
@@ -189,7 +189,7 @@ test.describe("AKM Config API", () => {
 
   test("PATCH writes LLM profile to profiles.llm", async ({ request }) => {
     const profileName = "test-e2e-profile";
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         profiles: {
@@ -216,14 +216,14 @@ test.describe("AKM Config API", () => {
     expect(profile.temperature).toBe(0.5);
 
     // Cleanup
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { profiles: { llm: {}, agent: {} } },
     });
   });
 
   test("PATCH supports multiple LLM profiles simultaneously", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         profiles: {
@@ -245,7 +245,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH writes agent profile with platform", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         profiles: {
@@ -264,7 +264,7 @@ test.describe("AKM Config API", () => {
     expect((agentProfiles["test-agent"] as Record<string, unknown>).platform).toBe("opencode");
 
     // Cleanup
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { profiles: { llm: {}, agent: {} } },
     });
@@ -273,7 +273,7 @@ test.describe("AKM Config API", () => {
   // ── Features tree ───────────────────────────────────────────────────────────
 
   test("PATCH writes features.improve operation as boolean", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         features: {
@@ -290,7 +290,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH writes features.improve operation as ProcessEntry with mode", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         features: {
@@ -310,7 +310,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH writes all three features sections", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         features: {
@@ -331,13 +331,13 @@ test.describe("AKM Config API", () => {
 
   test("PATCH features merge preserves sibling operations", async ({ request }) => {
     // Set two operations
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { features: { improve: { reflect: true, distill: true } } },
     });
 
     // Update only one
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { features: { improve: { distill: false } } },
     });
@@ -351,7 +351,7 @@ test.describe("AKM Config API", () => {
   // ── Reflect cooldowns ───────────────────────────────────────────────────────
 
   test("PATCH writes reflectCooldownByType for specific asset types", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         improve: {
@@ -369,7 +369,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH utilityDecay values persist to disk", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         improve: {
@@ -385,7 +385,7 @@ test.describe("AKM Config API", () => {
     expect(decay.feedbackStabilityBoost).toBe(2.0);
 
     // Restore
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { improve: { utilityDecay: { halfLifeDays: 30, feedbackStabilityBoost: 1.5 } } },
     });
@@ -394,7 +394,7 @@ test.describe("AKM Config API", () => {
   // ── Embedding ───────────────────────────────────────────────────────────────
 
   test("PATCH updates embedding connection and persists all fields", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         embedding: {
@@ -415,7 +415,7 @@ test.describe("AKM Config API", () => {
     expect(emb.dimension).toBe(768);
 
     // Restore original
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         embedding: {
@@ -431,7 +431,7 @@ test.describe("AKM Config API", () => {
   // ── Search ──────────────────────────────────────────────────────────────────
 
   test("PATCH updates search.minScore and graphBoost settings", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         search: {
@@ -458,14 +458,14 @@ test.describe("AKM Config API", () => {
   // ── Feedback ────────────────────────────────────────────────────────────────
 
   test("PATCH updates feedback.requireReason", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { feedback: { requireReason: false } },
     });
     expect(res.ok()).toBeTruthy();
     expect((readConfigFile().feedback as Record<string, unknown>).requireReason).toBe(false);
 
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { feedback: { requireReason: true } },
     });
@@ -473,7 +473,7 @@ test.describe("AKM Config API", () => {
 
   test("PATCH updates feedback.allowedFailureModes", async ({ request }) => {
     const modes = ["incorrect", "outdated", "custom-mode"];
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { feedback: { allowedFailureModes: modes } },
     });
@@ -487,7 +487,7 @@ test.describe("AKM Config API", () => {
   // ── Defaults ────────────────────────────────────────────────────────────────
 
   test("PATCH updates defaults.improve.limit and preset", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { defaults: { improve: { limit: 50, preset: "thorough" } } },
     });
@@ -499,7 +499,7 @@ test.describe("AKM Config API", () => {
     expect(improve.preset).toBe("thorough");
 
     // Restore
-    await request.patch(`${ADMIN_URL}/admin/akm`, {
+    await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { defaults: { improve: { limit: 25, preset: "custom" } } },
     });
@@ -508,7 +508,7 @@ test.describe("AKM Config API", () => {
   // ── Validation ──────────────────────────────────────────────────────────────
 
   test("PATCH rejects invalid semanticSearchMode", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { semanticSearchMode: "invalid-mode" },
     });
@@ -516,7 +516,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects invalid output.format", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { output: { format: "xml" } },
     });
@@ -524,7 +524,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects invalid output.detail", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { output: { detail: "verbose" } },
     });
@@ -532,7 +532,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects negative archiveRetentionDays", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { archiveRetentionDays: -1 },
     });
@@ -540,7 +540,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects invalid stashInheritance", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { stashInheritance: "override" },
     });
@@ -548,7 +548,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects invalid agent profile platform", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         profiles: { llm: {}, agent: { "bad-agent": { platform: "chatgpt" } } },
@@ -558,7 +558,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects invalid feature mode", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         features: { improve: { reflect: { enabled: true, mode: "http" } } },
@@ -568,7 +568,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects negative cooldown values", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { improve: { reflectCooldownByType: { memory: -1 } } },
     });
@@ -576,7 +576,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects invalid LLM profile temperature out of range", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: {
         profiles: {
@@ -589,7 +589,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects non-integer search.graphBoost.maxHops", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { search: { graphBoost: { maxHops: 1.5 } } },
     });
@@ -598,7 +598,7 @@ test.describe("AKM Config API", () => {
   });
 
   test("PATCH rejects utilityDecay.halfLifeDays < 0.1", async ({ request }) => {
-    const res = await request.patch(`${ADMIN_URL}/admin/akm`, {
+    const res = await request.patch(`${ADMIN_URL}/api/host/akm`, {
       headers: adminHeaders(),
       data: { improve: { utilityDecay: { halfLifeDays: 0.05 } } },
     });

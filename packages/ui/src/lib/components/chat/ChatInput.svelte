@@ -1,8 +1,8 @@
 <script lang="ts">
-  import IconMic from '$lib/components/icons/IconMic.svelte';
-  import IconSend from '$lib/components/icons/IconSend.svelte';
-  import IconStop from '$lib/components/icons/IconStop.svelte';
-  import IconWaves from '$lib/components/icons/IconWaves.svelte';
+  import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
+  import IconSend from '@openpalm/ui-kit/components/icons/IconSend.svelte';
+  import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
+  import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
 
   interface Props {
     sending: boolean;

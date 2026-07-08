@@ -18,25 +18,25 @@ export interface BackupSummaryView {
 }
 
 export async function fetchBackups(): Promise<BackupSummaryView> {
-  const res = await requireOk(await request('GET', '/admin/backups'));
+  const res = await requireOk(await request('GET', '/api/host/backups'));
   return (await res.json()) as BackupSummaryView;
 }
 
 /** Drives the confirm-gated prune — keeps the newest `keep`, deletes older. */
 export async function pruneBackups(keep: number): Promise<{ ok: boolean; deleted: string[]; kept: number }> {
-  const res = await requireOk(await request('POST', '/admin/backups', { keep }));
+  const res = await requireOk(await request('POST', '/api/host/backups', { keep }));
   return (await res.json()) as { ok: boolean; deleted: string[]; kept: number };
 }
 
 // ── Secret-strip notice (#502) ───────────────────────────────────────────────
 
 export async function fetchSecretStripNotice(): Promise<{ ok: boolean; notice: { keys: string[]; at: string } | null }> {
-  const res = await requireOk(await request('GET', '/admin/secret-notice'));
+  const res = await requireOk(await request('GET', '/api/host/secret-notice'));
   return (await res.json()) as { ok: boolean; notice: { keys: string[]; at: string } | null };
 }
 
 export async function dismissSecretStripNotice(): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('DELETE', '/admin/secret-notice'));
+  const res = await requireOk(await request('DELETE', '/api/host/secret-notice'));
   return (await res.json()) as { ok: boolean };
 }
 
@@ -54,7 +54,7 @@ export interface InstallLockStatusView {
 }
 
 export async function fetchInstallLockStatus(): Promise<InstallLockStatusView> {
-  const res = await requireOk(await request('GET', '/admin/unlock'));
+  const res = await requireOk(await request('GET', '/api/host/unlock'));
   return (await res.json()) as InstallLockStatusView;
 }
 
@@ -63,6 +63,6 @@ export async function fetchInstallLockStatus(): Promise<InstallLockStatusView> {
  * a live install is still holding it (HTTP 409) — never forces.
  */
 export async function clearInstallLock(): Promise<{ ok: boolean; removed: boolean }> {
-  const res = await requireOk(await request('POST', '/admin/unlock'));
+  const res = await requireOk(await request('POST', '/api/host/unlock'));
   return (await res.json()) as { ok: boolean; removed: boolean };
 }

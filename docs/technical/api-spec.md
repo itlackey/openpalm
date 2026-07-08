@@ -6,8 +6,15 @@ This document describes the Admin API routes currently implemented in
 ## Conventions
 
 - Base URL: `http://localhost:3880`
+- Namespaces (Phase 4 of `ui-runtime-modes-plan.md`): privileged host
+  endpoints live under `/api/host/*` (requireAdmin + a server-side
+  `requireCapability('host:…')` guard — 403 `capability_not_available` in
+  modes without host capabilities), assistant-owned settings under
+  `/api/assistant/*` (`assistant-settings:*` capabilities), session lifecycle
+  under `/api/auth/*`, connections under `/api/connections/*`. The legacy
+  `/admin/*` namespace is a router 404 since Phase 4 (no alias).
 - Protected endpoints require the `op_session` cookie (HttpOnly, SameSite=Strict).
-  The browser obtains the cookie via `POST /admin/auth/login` (password in body).
+  The browser obtains the cookie via `POST /api/auth/login` (password in body).
   The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
   removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
   `OP_UI_LOGIN_PASSWORD` is supplied to the admin process from
@@ -97,14 +104,14 @@ Response:
 Policy for this section:
 
 - `config/` is the user-owned persistent source of truth.
-- `POST /admin/install`, `POST /admin/update`, and startup auto-apply are
+- `POST /api/host/install`, `POST /api/host/update`, and startup auto-apply are
   automatic lifecycle operations: non-destructive for existing user config files
   in `config/`; they only seed missing defaults.
-- Explicit mutation endpoints (`POST /admin/addons`, `POST /admin/addons/:name`,
-  `POST /api/setup/complete`, `PATCH /admin/akm`) are the allowed write path
+- Explicit mutation endpoints (`POST /api/host/addons`, `POST /api/host/addons/:name`,
+  `POST /api/setup/complete`, `PATCH /api/assistant/akm`) are the allowed write path
   for requested config changes.
 
-### `POST /admin/install`
+### `POST /api/host/install`
 
 - Ensures directories + OpenCode starter config + starter user secrets.
 - Seeds only missing defaults in `config/`; never overwrites existing user files.
@@ -122,7 +129,7 @@ Response:
 }
 ```
 
-### `POST /admin/update`
+### `POST /api/host/update`
 
 - Non-destructive for existing user config; seeds missing defaults only.
 - Writes configuration files to their final locations.
@@ -134,7 +141,7 @@ Response:
 { "ok": true, "restarted": ["guardian"], "dockerAvailable": true }
 ```
 
-### `POST /admin/uninstall`
+### `POST /api/host/uninstall`
 
 - Runs compose down.
 - Does not delete or rewrite existing user config in `config/`.
@@ -146,14 +153,14 @@ Response:
 { "ok": true, "stopped": ["assistant"], "dockerAvailable": true }
 ```
 
-> The former `POST /admin/upgrade` endpoint was removed in 0.12.36. Updates now
-> run through `POST /admin/update` (above) plus `POST /admin/migrate-apply`,
+> The former `POST /api/host/upgrade` endpoint was removed in 0.12.36. Updates now
+> run through `POST /api/host/update` (above) plus `POST /api/host/migrate-apply`,
 > which performs the full reconcile under lock when a home is detected stale (see
 > the splash apply flow).
 
 ## Container Operations
 
-### `GET /admin/containers/list`
+### `GET /api/host/containers/list`
 
 Returns in-memory service state synced with live Docker container data when
 Docker is available.
@@ -168,7 +175,7 @@ Response:
 }
 ```
 
-### `POST /admin/containers/pull`
+### `POST /api/host/containers/pull`
 
 - Pulls the latest images for all services in the current compose file list.
 - After a successful pull, recreates containers with the updated images via `compose up`.
@@ -187,9 +194,9 @@ Error responses:
 - `502 pull_failed` — `docker compose pull` failed.
 - `502 up_failed` — Images pulled but container recreation failed.
 
-### `POST /admin/containers/up`
-### `POST /admin/containers/down`
-### `POST /admin/containers/restart`
+### `POST /api/host/containers/up`
+### `POST /api/host/containers/down`
+### `POST /api/host/containers/restart`
 
 Body:
 
@@ -211,7 +218,7 @@ Success response:
 { "ok": true, "service": "chat", "status": "running" }
 ```
 
-### `GET /admin/containers/stats`
+### `GET /api/host/containers/stats`
 
 Returns live Docker container resource usage (CPU, memory, network I/O) for managed services.
 Each entry is one JSON object from `docker compose stats --format json --no-stream`.
@@ -234,7 +241,7 @@ Error responses:
 - `500 docker_error` -- `docker compose stats` failed.
 - `500 parse_error` -- Failed to parse stats output.
 
-### `GET /admin/containers/events`
+### `GET /api/host/containers/events`
 
 Returns recent Docker engine events (container start/stop/restart/die) filtered to managed services.
 
@@ -260,7 +267,7 @@ Error responses:
 - `500 docker_error` -- `docker events` failed.
 - `500 parse_error` -- Failed to parse events output.
 
-### `GET /admin/network/check`
+### `GET /api/host/network/check`
 
 Checks inter-container connectivity by probing each core service health endpoint from the host admin process.
 
@@ -281,7 +288,7 @@ Response:
 
 ## Addon Management
 
-### `GET /admin/addons`
+### `GET /api/host/addons`
 
 Returns all available addons with enabled status.
 
@@ -297,7 +304,7 @@ Response:
 }
 ```
 
-### `POST /admin/addons`
+### `POST /api/host/addons`
 
 Enable or disable an addon.
 
@@ -322,7 +329,7 @@ Error responses:
 - `404 not_found` -- Addon name is not a built-in optional service.
 - `500 internal_error` -- Failed to update addon state on disk.
 
-### `GET /admin/addons/:name`
+### `GET /api/host/addons/:name`
 
 Returns detail for a single addon.
 
@@ -344,7 +351,7 @@ Error responses:
 
 - `404 not_found` -- Addon name is not a built-in optional service.
 
-### `POST /admin/addons/:name`
+### `POST /api/host/addons/:name`
 
 Enable or disable a specific addon.
 
@@ -374,10 +381,10 @@ Error responses:
 
 Automation task files live under `~/.openpalm/knowledge/tasks/` and are owned by AKM.
 
-### `GET /admin/automations/catalog`
+### `GET /api/host/automations/catalog`
 
 Lists available automation tasks from `~/.openpalm/knowledge/tasks/`. Portal addons
-are managed via `/admin/addons` and Compose profiles.
+are managed via `/api/host/addons` and Compose profiles.
 
 Response:
 
@@ -393,10 +400,10 @@ Response:
 `source` is `"remote"` when loaded from a cloned registry repo, `"bundled"`
 when using build-time bundled stack assets.
 
-### `POST /admin/automations/catalog/install`
+### `POST /api/host/automations/catalog/install`
 
 Install a registry automation. Portal addons are managed via
-`POST /admin/addons/:name`.
+`POST /api/host/addons/:name`.
 
 Body:
 
@@ -421,7 +428,7 @@ Error responses:
 - `400 invalid_input` -- Invalid name, type is not `"automation"`, item not
   found in registry, or item already installed.
 
-### `POST /admin/automations/catalog/refresh`
+### `POST /api/host/automations/catalog/refresh`
 
 Refreshes the registry index from the configured registry source.
 
@@ -435,10 +442,10 @@ Error responses:
 
 - `500 registry_sync_error` — Refresh failed.
 
-### `POST /admin/automations/catalog/uninstall`
+### `POST /api/host/automations/catalog/uninstall`
 
 Uninstall a registry automation. Portal addons are managed via
-`POST /admin/addons/:name`.
+`POST /api/host/addons/:name`.
 
 Body:
 
@@ -460,7 +467,7 @@ Response:
 
 ## Automations
 
-### `GET /admin/automations`
+### `GET /api/host/automations`
 
 Lists all automation configs from `~/.openpalm/knowledge/tasks/`.
 
@@ -478,7 +485,7 @@ Response:
       "action": {
         "type": "http",
         "method": "POST",
-        "path": "/admin/...",
+        "path": "/api/host/...",
         "url": null,
         "content": null,
         "agent": null
@@ -490,7 +497,7 @@ Response:
 }
 ```
 
-### `POST /admin/automations/:name/run`
+### `POST /api/host/automations/:name/run`
 
 Manually trigger an automation. The admin spawns `akm tasks run <name>` directly;
 execution logs are written to `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` and history
@@ -510,7 +517,7 @@ Error responses:
 - `404 not_found` -- Automation is not installed in `knowledge/tasks/`.
 - `500 internal_error` -- `akm tasks run` exited non-zero.
 
-### `GET /admin/automations/:name/log`
+### `GET /api/host/automations/:name/log`
 
 Returns recent execution log lines from `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` (newest first).
 
@@ -531,7 +538,7 @@ Response:
 
 ## Configuration Endpoints
 
-### `GET /admin/config/validate`
+### `GET /api/host/config/validate`
 
 Run the in-house key-presence and secret-audit checks against non-secret
 `knowledge/env/stack.env`, resolved Compose config, and `knowledge/secrets/`.
@@ -571,24 +578,24 @@ When validation finds issues:
 
 ## Artifact and Audit APIs
 
-### `GET /admin/artifacts`
+### `GET /api/host/artifacts`
 
 ```json
 { "artifacts": [{ "name": "compose", "sha256": "...", "generatedAt": "...", "bytes": 1234 }] }
 ```
 
-### `GET /admin/artifacts/manifest`
+### `GET /api/host/artifacts/manifest`
 
 ```json
 { "manifest": [{ "name": "compose", "sha256": "...", "generatedAt": "...", "bytes": 1234 }] }
 ```
 
-### `GET /admin/artifacts/:name`
+### `GET /api/host/artifacts/:name`
 
 - Allowed names: `compose`.
 - Returns `text/plain` and may include `x-artifact-sha256` header.
 
-### `GET /admin/audit?limit=<n>&source=<source>`
+### `GET /api/host/audit?limit=<n>&source=<source>`
 
 Query parameters:
 
@@ -604,7 +611,7 @@ Query parameters:
 
 ## Installed Services
 
-### `GET /admin/installed`
+### `GET /api/host/installed`
 
 ```json
 {
@@ -619,7 +626,7 @@ The UI (`@openpalm/ui`) is independently versioned and distributed via npm, not
 as a GitHub release asset. These endpoints let the operator browser and CLI
 discover available UI versions and install a specific one.
 
-### `GET /admin/versions/ui`
+### `GET /api/host/versions/ui`
 
 Lists published `@openpalm/ui` npm versions for the admin UI build picker.
 Returns newest-first (by npm publish time); a 404 from the registry (package not
@@ -666,7 +673,7 @@ Fields:
 
 Up to 20 versions are returned.
 
-### `GET /admin/versions/releases`
+### `GET /api/host/versions/releases`
 
 Lists GitHub platform release tags (newest first). Used to display the platform
 release history in the admin UI. UI build information is **not** included — UI
@@ -693,9 +700,9 @@ On error:
 
 Note: The `hasUiBuild` field that previously appeared on each release entry has
 been removed; UI builds are now sourced independently from the `@openpalm/ui`
-npm package via `GET /admin/versions/ui`.
+npm package via `GET /api/host/versions/ui`.
 
-### `POST /admin/ui-version`
+### `POST /api/host/ui-version`
 
 Seeds a specific `@openpalm/ui` npm version (or dist-tag) into `data/ui/`. The
 build is downloaded from the npm registry, integrity-verified (sha512, fail-
@@ -712,7 +719,7 @@ Body:
 
 - `tag` (required) — An `@openpalm/ui` npm version (e.g. `"0.11.0-rc.2"`) or
   dist-tag (e.g. `"latest"`, `"next"`). **This is no longer a GitHub platform
-  release tag**; use `GET /admin/versions/ui` to list installable versions.
+  release tag**; use `GET /api/host/versions/ui` to list installable versions.
   Must match `^[a-zA-Z0-9._\-]+$`.
 
 Response:
@@ -731,7 +738,7 @@ Error responses:
 
 ## Local Provider Detection
 
-### `GET /admin/providers/local`
+### `GET /api/host/providers/local`
 
 Probes well-known local LLM provider endpoints to detect which are running.
 Requires admin auth.
@@ -760,7 +767,7 @@ Response:
 
 Manage secrets via the detected secret backend (env-file or pass-based).
 
-### `GET /admin/secrets`
+### `GET /api/host/secrets`
 
 Lists secret entry names (values are never returned in full).
 
@@ -782,7 +789,7 @@ Response:
 }
 ```
 
-### `POST /admin/secrets`
+### `POST /api/host/secrets`
 
 Set or update a secret value.
 
@@ -809,7 +816,7 @@ Error responses:
 - `400 invalid_key` -- Key fails `validatePassEntryName` validation.
 - `500 internal_error` -- Failed to write secret.
 
-### `DELETE /admin/secrets`
+### `DELETE /api/host/secrets`
 
 Delete a secret entry.
 
@@ -830,7 +837,7 @@ Error responses:
 - `400 bad_request` -- `key` query parameter missing.
 - `500 internal_error` -- Failed to remove secret.
 
-### `POST /admin/secrets/generate`
+### `POST /api/host/secrets/generate`
 
 Generate a random secret and store it under the given key.
 
@@ -860,7 +867,7 @@ Error responses:
 
 ## OpenCode Management
 
-### `GET /admin/opencode/status`
+### `GET /api/host/opencode/status`
 
 Returns whether the OpenCode process is reachable.
 
@@ -878,7 +885,7 @@ When unreachable:
 { "status": "unavailable", "url": "http://localhost:4096/" }
 ```
 
-### `GET /admin/opencode/model`
+### `GET /api/assistant/model`
 
 Returns the current model from OpenCode's live config.
 
@@ -894,7 +901,7 @@ Error responses:
 
 - `503 opencode_unavailable` -- OpenCode is not reachable.
 
-### `POST /admin/opencode/model`
+### `POST /api/assistant/model`
 
 Update the active model. Persists to the assistant OpenCode config and attempts
 live-apply via OpenCode's config API.
@@ -924,7 +931,7 @@ Error responses:
 - `400 bad_request` -- `model` is missing or empty.
 - `500 internal_error` -- persisting the OpenCode model selection failed.
 
-### `GET /admin/opencode/providers`
+### `GET /api/host/opencode/providers`
 
 Lists all OpenCode providers with auth status and available models.
 
@@ -948,7 +955,7 @@ Response:
 }
 ```
 
-### `GET /admin/opencode/providers/:id/auth`
+### `GET /api/host/opencode/providers/:id/auth`
 
 Poll an OAuth authorization session for a provider.
 
@@ -971,7 +978,7 @@ Error responses:
 - `400 bad_request` -- `pollToken` missing or provider ID mismatch.
 - `404 not_found` -- Poll session not found or expired.
 
-### `POST /admin/opencode/providers/:id/auth`
+### `POST /api/host/opencode/providers/:id/auth`
 
 Start an auth flow for a provider (API key or OAuth).
 
@@ -1014,7 +1021,7 @@ Error responses:
   unsupported provider, or invalid `methodIndex`.
 - `500 internal_error` -- Failed to write API key to the user env.
 
-### `GET /admin/opencode/providers/:id/models`
+### `GET /api/host/opencode/providers/:id/models`
 
 Lists available models for a specific provider.
 
@@ -1241,7 +1248,7 @@ Error responses:
 
 ## Logs
 
-### `GET /admin/logs`
+### `GET /api/host/logs`
 
 Retrieves Docker Compose service logs via `docker compose logs`.
 

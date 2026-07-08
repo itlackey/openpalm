@@ -48,8 +48,8 @@ RUN npm install --omit=dev --no-fund --no-audit \
 FROM node:22-trixie-slim
 
 ARG BUN_VERSION=bun-v1.3.10
-# Platform version — drives OP_UI_VERSION and OP_SKELETON_VERSION defaults in
-# the entrypoint when no per-component env var override is set.
+# Platform version — drives OP_CLIENT_VERSION and OP_SKELETON_VERSION defaults
+# in the entrypoint when no per-component env var override is set.
 ARG PLATFORM_VERSION
 
 # Re-export for runtime introspection.
@@ -170,9 +170,9 @@ RUN set -e; \
 # layer. The tools tree is bind-mounted (host-owned) at runtime, so its baked
 # mode is moot. Secrets (knowledge/secrets, 0600) are a separate bind-mount tree.
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
-    && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
-    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton \
-    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
+    && mkdir -p /opt/openpalm/client /opt/openpalm/skeleton /opt/openpalm/tools \
+    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/client /opt/openpalm/skeleton \
+    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/client /opt/openpalm/skeleton
 
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

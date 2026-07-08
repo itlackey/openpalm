@@ -301,13 +301,19 @@ describe('conversation mode — remote engine', () => {
 		return onUtterance;
 	}
 
+	function getVadOpts(): CapturedVadOpts {
+		const opts = vadCaptured.opts;
+		if (!opts) throw new Error('VAD options not captured');
+		return opts;
+	}
+
 	test('speech start opens a segment; speech end transcribes and delivers', async () => {
 		const onUtterance = await startRemote();
 
-		vadCaptured.opts!.onSpeechStart();
+		getVadOpts().onSpeechStart();
 		expect(recorderCaptured.segments.length).toBe(1);
 
-		vadCaptured.opts!.onSpeechEnd();
+		getVadOpts().onSpeechEnd();
 		await vi.waitFor(() => {
 			expect(onUtterance).toHaveBeenCalledWith('hello from vad');
 		});
@@ -320,8 +326,8 @@ describe('conversation mode — remote engine', () => {
 		vi.mocked(api.transcribeAudio).mockResolvedValueOnce('   ');
 		const onUtterance = await startRemote();
 
-		vadCaptured.opts!.onSpeechStart();
-		vadCaptured.opts!.onSpeechEnd();
+		getVadOpts().onSpeechStart();
+		getVadOpts().onSpeechEnd();
 		await vi.waitFor(() => {
 			expect(api.transcribeAudio).toHaveBeenCalledOnce();
 			expect(voiceState.status).toBe('recording');
@@ -331,12 +337,13 @@ describe('conversation mode — remote engine', () => {
 
 	test('passes an isAssistantSpeaking probe that tracks status', async () => {
 		await startRemote();
-		const probe = vadCaptured.opts!.isAssistantSpeaking;
+		const probe = getVadOpts().isAssistantSpeaking;
 		expect(probe).toBeTypeOf('function');
+		if (!probe) throw new Error('isAssistantSpeaking probe not captured');
 		voiceState.status = 'speaking';
-		expect(probe!()).toBe(true);
+		expect(probe()).toBe(true);
 		voiceState.status = 'recording';
-		expect(probe!()).toBe(false);
+		expect(probe()).toBe(false);
 	});
 
 	test('speech start while speaking captures a segment without touching playback', async () => {
@@ -345,7 +352,7 @@ describe('conversation mode — remote engine', () => {
 			await startRemote();
 
 			voiceState.status = 'speaking';
-			vadCaptured.opts!.onSpeechStart();
+			getVadOpts().onSpeechStart();
 			// The segment opens, but barge-in is transcript-confirmed — playback
 			// is left alone until the transcript proves it was real speech.
 			expect(recorderCaptured.segments.length).toBe(1);
@@ -362,8 +369,8 @@ describe('conversation mode — remote engine', () => {
 			const onUtterance = await startRemote();
 
 			voiceState.status = 'speaking';
-			vadCaptured.opts!.onSpeechStart();
-			vadCaptured.opts!.onSpeechEnd();
+			getVadOpts().onSpeechStart();
+			getVadOpts().onSpeechEnd();
 			await vi.waitFor(() => {
 				expect(api.transcribeAudio).toHaveBeenCalledOnce();
 				expect(voiceState.status).toBe('recording');
@@ -382,8 +389,8 @@ describe('conversation mode — remote engine', () => {
 			const onUtterance = await startRemote();
 
 			voiceState.status = 'speaking';
-			vadCaptured.opts!.onSpeechStart();
-			vadCaptured.opts!.onSpeechEnd();
+			getVadOpts().onSpeechStart();
+			getVadOpts().onSpeechEnd();
 			await vi.waitFor(() => {
 				expect(onUtterance).toHaveBeenCalledWith('hello from vad');
 			});
@@ -400,7 +407,7 @@ describe('conversation mode — remote engine', () => {
 		await startRemote();
 
 		vi.useFakeTimers();
-		vadCaptured.opts!.onSpeechStart();
+		getVadOpts().onSpeechStart();
 		expect(recorderCaptured.segments[0].stop).not.toHaveBeenCalled();
 
 		await vi.advanceTimersByTimeAsync(30_000);
@@ -409,7 +416,7 @@ describe('conversation mode — remote engine', () => {
 
 	test('stopConversation stops the VAD and cancels an open segment', async () => {
 		await startRemote();
-		vadCaptured.opts!.onSpeechStart();
+		getVadOpts().onSpeechStart();
 
 		stopConversation();
 		expect(voiceState.conversationActive).toBe(false);

@@ -19,7 +19,7 @@ export type ProviderHostStatus = {
   authPath: string | null;
 };
 
-/** Result body of POST /admin/providers/import-host. */
+/** Result body of POST /api/host/providers/import-host. */
 export type HostImportResult = {
   ok: boolean;
   imported: { providers: number; credentials: number };
@@ -28,41 +28,41 @@ export type HostImportResult = {
   livePushFailed?: string[];
 };
 
-/** GET /admin/providers — full connections page state. */
+/** GET /api/host/providers — full connections page state. */
 export async function fetchProviders(): Promise<ProviderPageState> {
-  const res = await requireOk(await request('GET', '/admin/providers'));
+  const res = await requireOk(await request('GET', '/api/host/providers'));
   return (await res.json()) as ProviderPageState;
 }
 
-/** GET /admin/providers/assistant-clis — assistant CLI tool statuses. */
+/** GET /api/host/providers/assistant-clis — assistant CLI tool statuses. */
 export async function fetchAssistantCliTools(): Promise<AssistantCliToolStatus[]> {
-  const res = await requireOk(await request('GET', '/admin/providers/assistant-clis'));
+  const res = await requireOk(await request('GET', '/api/host/providers/assistant-clis'));
   const body = (await res.json()) as { tools?: AssistantCliToolStatus[] };
   return body.tools ?? [];
 }
 
-/** POST /admin/opencode/model — set the default `model` or `small_model`. */
+/** POST /api/assistant/model — set the default `model` or `small_model`. */
 export async function saveOpencodeModel(
   target: 'model' | 'small_model',
   value: string
 ): Promise<void> {
-  await requireOk(await request('POST', '/admin/opencode/model', { [target]: value || null }));
+  await requireOk(await request('POST', '/api/assistant/model', { [target]: value || null }));
 }
 
-/** DELETE /admin/opencode/providers/{id}/auth — remove stored credentials. */
+/** DELETE /api/host/opencode/providers/{id}/auth — remove stored credentials. */
 export async function disconnectProvider(providerId: string): Promise<void> {
   await requireOk(
-    await request('DELETE', `/admin/opencode/providers/${encodeURIComponent(providerId)}/auth`)
+    await request('DELETE', `/api/host/opencode/providers/${encodeURIComponent(providerId)}/auth`)
   );
 }
 
-/** GET /admin/providers/host-status — detected host OpenCode summary. */
+/** GET /api/host/providers/host-status — detected host OpenCode summary. */
 export async function fetchHostStatus(): Promise<ProviderHostStatus> {
-  const res = await requireOk(await request('GET', '/admin/providers/host-status'));
+  const res = await requireOk(await request('GET', '/api/host/providers/host-status'));
   return (await res.json()) as ProviderHostStatus;
 }
 
-/** POST /admin/providers/assistant-clis/{toolId}/use-provider — seed a CLI's creds. */
+/** POST /api/host/providers/assistant-clis/{toolId}/use-provider — seed a CLI's creds. */
 export async function useAssistantCliProvider(
   toolId: AssistantCliToolStatus['id'],
   providerId: string
@@ -70,19 +70,19 @@ export async function useAssistantCliProvider(
   await requireOk(
     await request(
       'POST',
-      `/admin/providers/assistant-clis/${encodeURIComponent(toolId)}/use-provider`,
+      `/api/host/providers/assistant-clis/${encodeURIComponent(toolId)}/use-provider`,
       { providerId }
     )
   );
 }
 
-/** POST /admin/providers/oauth/start — begin an OAuth flow; body branches on result. */
+/** POST /api/host/providers/oauth/start — begin an OAuth flow; body branches on result. */
 export async function startProviderOauth(
   providerId: string,
   methodIndex: number
 ): Promise<ProviderActionResult> {
   return requireJsonBody<ProviderActionResult>(
-    await request('POST', '/admin/providers/oauth/start', {
+    await request('POST', '/api/host/providers/oauth/start', {
       providerId,
       methodIndex: String(methodIndex),
     }),
@@ -91,7 +91,7 @@ export async function startProviderOauth(
 }
 
 /**
- * POST /admin/providers/oauth/{providerId}/callback — the long-poll that blocks
+ * POST /api/host/providers/oauth/{providerId}/callback — the long-poll that blocks
  * server-side until the OAuth flow completes. Returns the raw Response so the
  * caller can inspect status and abort via `signal`.
  */
@@ -102,39 +102,39 @@ export async function oauthCallback(
 ): Promise<Response> {
   return request(
     'POST',
-    `/admin/providers/oauth/${encodeURIComponent(providerId)}/callback`,
+    `/api/host/providers/oauth/${encodeURIComponent(providerId)}/callback`,
     { method: methodIndex },
     { signal }
   );
 }
 
-/** POST /admin/opencode/providers/{id}/auth — save an API key credential. */
+/** POST /api/host/opencode/providers/{id}/auth — save an API key credential. */
 export async function submitProviderApiKey(providerId: string, apiKey: string): Promise<void> {
   await requireOk(
-    await request('POST', `/admin/opencode/providers/${encodeURIComponent(providerId)}/auth`, {
+    await request('POST', `/api/host/opencode/providers/${encodeURIComponent(providerId)}/auth`, {
       mode: 'api_key',
       apiKey,
     })
   );
 }
 
-/** POST /admin/providers/oauth/finish — submit an OAuth authorization code. */
+/** POST /api/host/providers/oauth/finish — submit an OAuth authorization code. */
 export async function finishProviderOauth(
   providerId: string,
   methodIndex: number,
   code: string
 ): Promise<void> {
   await requireOk(
-    await request('POST', '/admin/providers/oauth/finish', { providerId, methodIndex, code })
+    await request('POST', '/api/host/providers/oauth/finish', { providerId, methodIndex, code })
   );
 }
 
-/** PATCH /admin/providers/{id} — register a custom OpenAI-compatible provider. */
+/** PATCH /api/host/providers/{id} — register a custom OpenAI-compatible provider. */
 export async function registerCustomProvider(
   id: string,
   input: { displayName: string; baseURL: string; apiKey?: string }
 ): Promise<ProviderActionResult> {
-  const res = await request('PATCH', `/admin/providers/${encodeURIComponent(id)}`, {
+  const res = await request('PATCH', `/api/host/providers/${encodeURIComponent(id)}`, {
     kind: 'register-custom',
     displayName: input.displayName,
     baseURL: input.baseURL,
@@ -150,9 +150,9 @@ export async function registerCustomProvider(
   return result;
 }
 
-/** POST /admin/providers/import-host — copy host OpenCode providers/credentials. */
+/** POST /api/host/providers/import-host — copy host OpenCode providers/credentials. */
 export async function importHostProviders(): Promise<HostImportResult> {
-  const res = await request('POST', '/admin/providers/import-host');
+  const res = await request('POST', '/api/host/providers/import-host');
   const body = await requireJsonBody<HostImportResult>(res, 'Import failed.');
   if (!res.ok) {
     throw Object.assign(

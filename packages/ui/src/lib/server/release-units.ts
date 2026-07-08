@@ -8,7 +8,7 @@
  * under the platform list for backward compat with pre-unit releases.
  *
  * Pure + side-effect free so it can be unit-tested without mocking the GitHub
- * API. The `/admin/versions/releases` route calls {@link groupReleasesByUnit}
+ * API. The `/api/host/versions/releases` route calls {@link groupReleasesByUnit}
  * after fetching the raw release list.
  */
 

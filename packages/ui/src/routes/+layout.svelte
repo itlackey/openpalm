@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount } from 'svelte';
   import "../app.css";
-  import UpdateBanner from '$lib/components/common/UpdateBanner.svelte';
-  import Toast from '$lib/components/common/Toast.svelte';
+  import UpdateBanner from '@openpalm/ui-kit/components/common/UpdateBanner.svelte';
+  import Toast from '@openpalm/ui-kit/components/common/Toast.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
-  import { featuresService } from '$lib/features.svelte.js';
+  import { detectClientDisplayMode } from '$lib/client-context.js';
+  import { initializeRuntimeContext } from '$lib/runtime-context.svelte.js';
+  import { notifications } from '$lib/notifications.svelte.js';
+  import { voiceState } from '$lib/voice/voice-state.svelte.js';
 
   interface Props {
     data: import('./$types').LayoutData;
@@ -13,12 +16,39 @@
 
   let { children, data }: Props = $props();
 
-  // Feature flags come from server env vars — constant at runtime. untrack() signals
-  // this is an intentional one-time read, not a reactive subscription.
-  untrack(() => featuresService.init(data.features));
+  // Components read capabilities via hasCapability()/runtimeContext only
+  // (plan §8.6) — the legacy admin feature-flag alias survives solely in
+  // server code (hooks.server.ts / +layout.server.ts) pending Phase 4.
 
   onMount(() => {
     themeService.init();
+    // Runtime context (plan ui-runtime-modes-plan.md Phase 1, #509): the
+    // client display mode is browser-detected — never server-computed — so it
+    // is initialized in onMount (client-only; also avoids mutating the
+    // module-level store during SSR, which is shared across requests). Like
+    // `features`, the server context is env-derived and constant at runtime,
+    // so a one-time init is correct; effectiveCapabilities is (re)derived
+    // inside initializeRuntimeContext.
+    initializeRuntimeContext(data.serverRuntimeContext, {
+      displayMode: detectClientDisplayMode(),
+    });
+  });
+
+  // Mirror voice errors into the toast queue so the voice subsystem's
+  // error surface renders through the single <Toast /> outlet below. This
+  // lives in APP code — not in ui-kit's Toast — because voice-state depends
+  // on $lib/api (POST /api/transcribe), a server assumption ui-kit source
+  // must never carry (plan ui-runtime-modes-plan.md §6.11; enforced by
+  // packages/ui-kit/tests/no-app-coupling.test.ts). Consecutive errors
+  // reuse the same toast id so they update in place instead of stacking.
+  let voiceErrorToastId: string | null = null;
+  $effect(() => {
+    const msg = voiceState.errorMessage;
+    if (!msg) return;
+    voiceErrorToastId = notifications.push('error', msg, {
+      replaceId: voiceErrorToastId ?? undefined,
+    });
+    voiceState.errorMessage = '';
   });
 </script>
 

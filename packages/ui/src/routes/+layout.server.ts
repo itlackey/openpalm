@@ -1,8 +1,8 @@
 import type { LayoutServerLoad } from './$types';
-import { computeFeatureFlags } from '$lib/server/features.js';
+import { computeServerRuntimeContext } from '$lib/server/features.js';
 
-export const load: LayoutServerLoad = () => {
+export const load: LayoutServerLoad = (event) => {
   return {
-    features: computeFeatureFlags(),
+    serverRuntimeContext: computeServerRuntimeContext(event),
   };
 };

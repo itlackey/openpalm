@@ -19,7 +19,7 @@
 		setTtsAutoEnabled,
 		speakText,
 	} from '$lib/voice/voice-state.svelte.js';
-	import Spinner from '$lib/components/common/Spinner.svelte';
+	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
 	import VoiceAddonProfileSection from '$lib/components/voice/VoiceAddonProfileSection.svelte';
 	import type { TtsOption, SttOption, VoiceEngineConfig } from '$lib/client/types.js';
 	import { pollUntil } from '$lib/poll-until.js';

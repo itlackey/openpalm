@@ -35,13 +35,15 @@ describe('guardian rootless entrypoint regressions', () => {
       /install_artifact "\$OP_GUARDIAN_PACKAGE" "\$VERSION" (\S+)/,
     );
     expect(installMatch).not.toBeNull();
-    const installPrefix = installMatch![1];
+    if (!installMatch) throw new Error('guardian entrypoint install prefix not found');
+    const installPrefix = installMatch[1];
 
     const bakeMatch = guardianDockerfile.match(
-      /\(cd (\S+) && bun add "@openpalm\/guardian@\$\{GUARDIAN_VERSION\}"/,
+      /\(cd (\S+) && bun add "\$guardian_spec"/,
     );
     expect(bakeMatch).not.toBeNull();
-    const bakePrefix = bakeMatch![1];
+    if (!bakeMatch) throw new Error('guardian Dockerfile bake prefix not found');
+    const bakePrefix = bakeMatch[1];
 
     // Both build-time bake and boot-time install/skip-check must agree on
     // the same prefix, or the already-at-version check in install_artifact()
@@ -53,7 +55,8 @@ describe('guardian rootless entrypoint regressions', () => {
     // top-level `secrets:`/`volumes:` key).
     const guardianServiceMatch = portalsCompose.match(/\n {2}guardian:\n([\s\S]*?)\n(?=\S)/);
     expect(guardianServiceMatch).not.toBeNull();
-    const guardianServiceBlock = guardianServiceMatch![1];
+    if (!guardianServiceMatch) throw new Error('guardian service block not found');
+    const guardianServiceBlock = guardianServiceMatch[1];
     const mountTargets = [...guardianServiceBlock.matchAll(/- \S+:(\/opt\/openpalm\S*)/g)].map(
       (m) => m[1],
     );

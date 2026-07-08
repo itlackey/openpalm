@@ -28,3 +28,18 @@ export function ensureValidState(): ControlPlaneState {
   state.artifacts = resolveRuntimeFiles();
   return state;
 }
+
+/**
+ * Like {@link ensureValidState}, but tolerates a not-installed OP_HOME:
+ * returns the bootstrap state (no runtime artifacts) instead of throwing, so
+ * the UI server can still come up and its setup guard lands on /setup.
+ * Used by `openpalm admin`, which must serve on a machine with no install.
+ */
+export function resolveServeState(): ControlPlaneState {
+  const state = createState();
+  if (classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
+    return state;
+  }
+  state.artifacts = resolveRuntimeFiles();
+  return state;
+}

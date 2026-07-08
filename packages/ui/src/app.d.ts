@@ -26,6 +26,7 @@ declare global {
       notify?: (title: string, body: string) => void;
       restart?: () => Promise<void>;
       restartUiServer?: () => Promise<boolean>;
+      openLocalApp?: () => Promise<void>;
       launchOnLoginStatus?: () => Promise<{
         supported: boolean;
         enabled: boolean;

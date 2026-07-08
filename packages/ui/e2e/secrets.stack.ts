@@ -4,7 +4,7 @@
  * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
  * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
- * Tests the /admin/secrets/user-env API end-to-end:
+ * Tests the /api/host/secrets/user-env API end-to-end:
  *  - POST: write a test key
  *  - GET: verify key appears in the list (value is never returned)
  *  - DELETE: remove the key
@@ -16,22 +16,17 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginHeaders } from './auth-helpers';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
 const TEST_KEY = 'E2E_SECRETS_TEST_KEY';
-const VAULT_URL = `${ADMIN_URL}/admin/secrets/user-env`;
+const VAULT_URL = `${ADMIN_URL}/api/host/secrets/user-env`;
 
-function headers(extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    cookie: `op_session=${PASSWORD}`,
-    'x-requested-by': 'e2e-test',
-    'x-request-id': crypto.randomUUID(),
-    'content-type': 'application/json',
-    ...extra,
-  };
+async function headers(request: import('@playwright/test').APIRequestContext, extra: Record<string, string> = {}): Promise<Record<string, string>> {
+  return { ...(await loginHeaders(request, ADMIN_URL, PASSWORD)), ...extra };
 }
 
 test.describe('Secrets CRUD', () => {
@@ -40,11 +35,11 @@ test.describe('Secrets CRUD', () => {
 
   test.afterAll(async ({ request }) => {
     // Best-effort cleanup in case a test failed mid-way.
-    await request.delete(`${VAULT_URL}?key=${TEST_KEY}`, { headers: headers() }).catch(() => {});
+    await request.delete(`${VAULT_URL}?key=${TEST_KEY}`, { headers: await headers(request) }).catch(() => {});
   });
 
-  test('GET /admin/secrets/user-env returns env metadata', async ({ request }) => {
-    const res = await request.get(VAULT_URL, { headers: headers() });
+  test('GET /api/host/secrets/user-env returns env metadata', async ({ request }) => {
+    const res = await request.get(VAULT_URL, { headers: await headers(request) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.provider).toBe('akm');
@@ -54,7 +49,7 @@ test.describe('Secrets CRUD', () => {
 
   test('POST writes a key and returns ok:true', async ({ request }) => {
     const res = await request.post(VAULT_URL, {
-      headers: headers(),
+      headers: await headers(request),
       data: { key: TEST_KEY, value: 'e2e-test-value' },
     });
     expect(res.ok(), `POST failed: ${res.status()}`).toBeTruthy();
@@ -64,14 +59,14 @@ test.describe('Secrets CRUD', () => {
   });
 
   test('GET after POST includes the new key in the list', async ({ request }) => {
-    const res = await request.get(VAULT_URL, { headers: headers() });
+    const res = await request.get(VAULT_URL, { headers: await headers(request) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.keys).toContain(TEST_KEY);
   });
 
   test('GET never returns secret values — only key names', async ({ request }) => {
-    const res = await request.get(VAULT_URL, { headers: headers() });
+    const res = await request.get(VAULT_URL, { headers: await headers(request) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     // The response shape must only have: provider, envRef, keys
@@ -83,7 +78,7 @@ test.describe('Secrets CRUD', () => {
   });
 
   test('DELETE removes the key and returns ok:true', async ({ request }) => {
-    const res = await request.delete(`${VAULT_URL}?key=${TEST_KEY}`, { headers: headers() });
+    const res = await request.delete(`${VAULT_URL}?key=${TEST_KEY}`, { headers: await headers(request) });
     expect(res.ok(), `DELETE failed: ${res.status()}`).toBeTruthy();
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -91,7 +86,7 @@ test.describe('Secrets CRUD', () => {
   });
 
   test('GET after DELETE does not include the key', async ({ request }) => {
-    const res = await request.get(VAULT_URL, { headers: headers() });
+    const res = await request.get(VAULT_URL, { headers: await headers(request) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.keys).not.toContain(TEST_KEY);
@@ -104,7 +99,7 @@ test.describe('Secrets — input validation', () => {
 
   test('POST returns 400 for key with invalid characters', async ({ request }) => {
     const res = await request.post(VAULT_URL, {
-      headers: headers(),
+      headers: await headers(request),
       data: { key: 'invalid-key-with-dashes', value: 'somevalue' },
     });
     expect(res.status()).toBe(400);
@@ -112,7 +107,7 @@ test.describe('Secrets — input validation', () => {
 
   test('POST returns 400 for key starting with a digit', async ({ request }) => {
     const res = await request.post(VAULT_URL, {
-      headers: headers(),
+      headers: await headers(request),
       data: { key: '1_STARTS_WITH_DIGIT', value: 'somevalue' },
     });
     expect(res.status()).toBe(400);
@@ -120,14 +115,14 @@ test.describe('Secrets — input validation', () => {
 
   test('POST returns 400 for empty value', async ({ request }) => {
     const res = await request.post(VAULT_URL, {
-      headers: headers(),
+      headers: await headers(request),
       data: { key: 'VALID_KEY', value: '' },
     });
     expect(res.status()).toBe(400);
   });
 
   test('DELETE returns 400 for missing key parameter', async ({ request }) => {
-    const res = await request.delete(VAULT_URL, { headers: headers() });
+    const res = await request.delete(VAULT_URL, { headers: await headers(request) });
     expect(res.status()).toBe(400);
   });
 });

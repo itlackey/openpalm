@@ -1,9 +1,9 @@
 # Manual Compose Runbook
 
 This runbook is for operators who want to manage their OpenPalm stack directly
-using `docker compose` without the CLI or admin tooling. The generated
-`$OP_HOME/run.sh` is the operator-facing entrypoint; it reproduces the live
-compose invocation used by the stack.
+using `docker compose` without the CLI or admin tooling. The live compose
+assembly is the managed file set under `$OP_HOME/system/stack/` plus the
+user-owned overlay at `$OP_HOME/config/stack/custom.compose.yml`.
 
 ---
 
@@ -27,9 +27,9 @@ variable). The relevant files for running the stack are:
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/config/stack/core.compose.yml` | Core assistant runtime services; assistant also runs the scheduler co-process |
-| `~/.openpalm/config/stack/services.compose.yml` | First-party optional services, profile-gated |
-| `~/.openpalm/config/stack/portals.compose.yml` | First-party optional portals, profile-gated |
+| `~/.openpalm/system/stack/core.compose.yml` | Core assistant runtime services; assistant also runs the scheduler co-process |
+| `~/.openpalm/system/stack/services.compose.yml` | First-party optional services, profile-gated |
+| `~/.openpalm/system/stack/portals.compose.yml` | First-party optional portals, profile-gated |
 | `~/.openpalm/config/stack/custom.compose.yml` | User custom services and overlays |
 | `~/.openpalm/knowledge/env/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
@@ -47,15 +47,14 @@ grep '^OP_ENABLED_ADDONS=' ~/.openpalm/knowledge/env/stack.env
 
 ## Building the Compose Command
 
-Use the generated `run.sh` for the exact live stack command. It already
-includes the correct compose files, non-secret env file, and profile selection.
+Use the same managed/user compose file list for every command. First-party
+addons are enabled with Compose profiles such as `addon.chat`.
 
 ### Helper: `op` shell function
 
 Typing the full command every time is tedious. Add this shell function to your
-`~/.bashrc` or `~/.zshrc` for ad hoc compose operations with core plus custom
-overlays. Use generated `run.sh` when you need the exact first-party addon list
-and profiles selected by OpenPalm tooling:
+`~/.bashrc` or `~/.zshrc` for ad hoc compose operations with the managed stack
+files plus your custom overlay:
 
 ```bash
 op() {
@@ -72,9 +71,9 @@ op() {
   docker compose \
     --project-name "$PROJECT_NAME" \
     --env-file "$OP_HOME/knowledge/env/stack.env" \
-    -f "$OP_HOME/config/stack/core.compose.yml" \
-    -f "$OP_HOME/config/stack/services.compose.yml" \
-    -f "$OP_HOME/config/stack/portals.compose.yml" \
+    -f "$OP_HOME/system/stack/core.compose.yml" \
+    -f "$OP_HOME/system/stack/services.compose.yml" \
+    -f "$OP_HOME/system/stack/portals.compose.yml" \
     -f "$OP_HOME/config/stack/custom.compose.yml" \
     "$@"
 }
@@ -82,9 +81,10 @@ op() {
 
 Pass manual profile flags before the compose subcommand when needed, for example `op --profile addon.chat config`.
 
-The generated `run.sh` remains the primary operator-facing entrypoint for
-starting/restarting the stack. It records the fixed compose file list and the
-profile selection derived from `OP_ENABLED_ADDONS` in one place.
+When bypassing the CLI/admin tooling, pass the active addon profiles yourself.
+`OP_ENABLED_ADDONS` is an OpenPalm state record; Docker Compose only sees it if
+the command also passes matching `--profile addon.<name>` flags or a
+`COMPOSE_PROFILES` value.
 
 ### Manual command (without the helper)
 
@@ -97,9 +97,9 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
-  -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/portals.compose.yml" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   <command>
@@ -119,9 +119,9 @@ misconfiguration early — before containers are affected.
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
-  -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/portals.compose.yml" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   config --quiet
@@ -130,9 +130,9 @@ docker compose \
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
-  -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/portals.compose.yml" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   config --services
@@ -145,9 +145,9 @@ docker compose \
 docker compose \
   --project-name "$PROJECT_NAME" \
   --env-file "$OP_HOME/knowledge/env/stack.env" \
-  -f "$OP_HOME/config/stack/core.compose.yml" \
-  -f "$OP_HOME/config/stack/services.compose.yml" \
-  -f "$OP_HOME/config/stack/portals.compose.yml" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile "$OP_VOICE_PROFILE" \
   --profile "$OP_OLLAMA_PROFILE" \
@@ -253,6 +253,200 @@ op up -d --remove-orphans
 ```
 
 Containers from addons no longer in the file list are stopped and removed.
+
+---
+
+## Temporary Isolated Stack Verification
+
+Use this flow before a release or after stack/entrypoint changes. It exercises a
+real Compose stack without touching `~/.openpalm`, production ports, or the
+default `openpalm` project name. It does not require live LLM provider
+credentials; chat/model calls may fail, but health, client artifact
+installation, static client serving, runtime config, CORS/preflight, and common
+operator mistakes are covered.
+
+Important host caveat: some Docker daemons cannot bind source files from
+`/tmp` because the daemon runs in a private mount namespace. If Docker reports a
+secret file under `/tmp` as missing, use `/var/tmp` or a repo-local temporary
+directory instead. The stack is still temporary; the key safety requirement is a
+unique `OP_HOME`, `OP_PROJECT_NAME`, and non-production ports.
+
+Artifact boundary: this tarball path verifies an unpublished `@openpalm/client`
+because the assistant mounts `knowledge/` at `/stash`. The guardian and skeleton
+entrypoints still resolve `@openpalm/guardian` and `@openpalm/skeleton` from npm
+by version. If local guardian or skeleton source differs from the npm artifact at
+the same semver, this stack follows the npm artifact, not your working tree.
+
+### 1. Choose an isolated home and build the unpublished client tarball
+
+For a feature branch where `@openpalm/client@<version>` is not on npm yet, build
+and pack it locally, then install that tarball through the same assistant
+entrypoint path by using a `file:/stash/...` version spec.
+
+```bash
+REPO="$PWD"
+VERIFY_ROOT="${VERIFY_ROOT:-$REPO/.tmp-openpalm-verify}"
+VERIFY_HOME="$VERIFY_ROOT/home"
+VERIFY_PROJECT="openpalm-verify"
+VERIFY_VERSION="$(node -p "require('./package.json').version")"
+
+rm -rf "$VERIFY_ROOT"
+mkdir -p "$VERIFY_HOME"
+
+bun run client:build
+bun pm pack --cwd packages/client --destination "$VERIFY_ROOT" --quiet
+CLIENT_TARBALL="$(ls "$VERIFY_ROOT"/openpalm-client-*.tgz | tail -1)"
+```
+
+Expected: the tarball contains at least `package/build/index.html`,
+`package/build/.openpalm-client-version`, and `package/bin/serve.mjs`.
+
+```bash
+tar -tf "$CLIENT_TARBALL" | grep -E 'package/(build/index.html|build/.openpalm-client-version|bin/serve.mjs)'
+```
+
+### 2. Seed the isolated OP_HOME
+
+```bash
+rsync -a \
+  --exclude=/package.json \
+  --exclude=/manifest.json \
+  --exclude=/tools.json \
+  --exclude=/README.md \
+  "$REPO/packages/skeleton/" "$VERIFY_HOME/"
+
+OP_HOME="$VERIFY_HOME" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
+mkdir -p "$VERIFY_HOME/knowledge/env" "$VERIFY_HOME/knowledge/secrets"
+cp "$CLIENT_TARBALL" "$VERIFY_HOME/knowledge/$(basename "$CLIENT_TARBALL")"
+printf '{}\n' > "$VERIFY_HOME/knowledge/secrets/auth.json"
+chmod 600 "$VERIFY_HOME/knowledge/secrets/auth.json"
+
+for name in portal_chat_secret portal_api_secret portal_discord_secret portal_slack_secret op_guardian_admin_token op_guardian_mcp_token op_api_key; do
+  openssl rand -hex 16 > "$VERIFY_HOME/knowledge/secrets/$name"
+  chmod 600 "$VERIFY_HOME/knowledge/secrets/$name"
+done
+```
+
+### 3. Write an isolated `stack.env`
+
+```bash
+cat > "$VERIFY_HOME/knowledge/env/stack.env" <<EOF
+OP_HOME=$VERIFY_HOME
+OP_UID=$(id -u)
+OP_GID=$(id -g)
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=dev
+OP_ASSISTANT_VERSION=dev
+OP_GUARDIAN_VERSION=dev
+OP_PORTAL_VERSION=dev
+OP_GUARDIAN_NPM_VERSION=$VERIFY_VERSION
+OP_CLIENT_VERSION=file:/stash/$(basename "$CLIENT_TARBALL")
+OP_SKELETON_VERSION=$VERIFY_VERSION
+OP_PROJECT_NAME=$VERIFY_PROJECT
+OP_SETUP_COMPLETE=true
+OP_ASSISTANT_PORT=4820
+OP_GUARDIAN_PORT=9190
+OP_GUARDIAN_ADMIN_PORT=9181
+OP_CHAT_PORT=9220
+OP_API_PORT=9221
+OP_CLIENT_PORT=3840
+OP_ENABLED_ADDONS=chat
+COMPOSE_PROFILES=addon.chat
+GUARDIAN_DIRECT_INGRESS=true
+GUARDIAN_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3840
+EOF
+chmod 600 "$VERIFY_HOME/knowledge/env/stack.env"
+```
+
+Common user error: setting `OP_CLIENT_VERSION=$VERIFY_VERSION` before the client
+package is published makes the assistant try npm and skip the client co-process
+when npm returns 404. Use the `file:/stash/...` tarball spec for unpublished
+feature-branch verification, then use the plain semver after release.
+
+The same npm availability rule applies to `OP_GUARDIAN_NPM_VERSION` and
+`OP_SKELETON_VERSION`. This runbook only provides local-tarball plumbing for the
+client artifact; do not trust it to validate unpublished guardian or skeleton
+package code unless you add equivalent local artifact plumbing first.
+
+### 4. Validate and start
+
+```bash
+compose_verify() {
+  docker compose \
+    --project-name "$VERIFY_PROJECT" \
+    --project-directory "$REPO" \
+    -f "$VERIFY_HOME/system/stack/core.compose.yml" \
+    -f "$VERIFY_HOME/system/stack/services.compose.yml" \
+    -f "$VERIFY_HOME/system/stack/portals.compose.yml" \
+    -f "$VERIFY_HOME/config/stack/custom.compose.yml" \
+    -f "$REPO/compose.dev.yml" \
+    --env-file "$VERIFY_HOME/knowledge/env/stack.env" \
+    "$@"
+}
+
+compose_verify config --quiet
+compose_verify config --services
+compose_verify up -d --build
+compose_verify ps -a
+```
+
+Expected: `assistant` becomes healthy, `guardian` becomes healthy when the chat
+profile is enabled, and the client port is published on `127.0.0.1:3840`.
+
+### 5. Manual assertions
+
+```bash
+# Assistant OpenCode health
+curl -fsS http://127.0.0.1:4820/health >/dev/null
+
+# Static client: HEAD must return headers and no body
+curl -sS -o /dev/null -D - -X HEAD http://127.0.0.1:3840/
+
+# Static client: SPA fallback
+curl -fsS http://127.0.0.1:3840/connections/new | grep '<!doctype html>'
+
+# Static client: runtime config is no-store and points at the host-published assistant URL
+curl -fsS -D - http://127.0.0.1:3840/runtime-config.json
+
+# Guardian direct listener health
+curl -fsS http://127.0.0.1:9190/health
+
+# Allowed-origin browser preflight reaches the direct listener path.
+# Expected: HTTP 204 with access-control-allow-origin: http://127.0.0.1:3840.
+# A 401 without CORS headers usually means the runtime installed a stale
+# published guardian package instead of the local source you expected.
+curl -i -sS -X OPTIONS http://127.0.0.1:9190/oc/session \
+  -H 'Origin: http://127.0.0.1:3840' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization, content-type, x-openpalm-user'
+```
+
+### 6. Edge cases to deliberately check
+
+| Case | How to test | Expected result |
+|---|---|---|
+| Production collision | Run `docker compose ls` and inspect ports before start | No `openpalm-verify` command uses project `openpalm` or production ports |
+| Wrong compose tree | Replace `system/stack/core.compose.yml` with `config/stack/core.compose.yml` in a dry command | Command fails because managed compose files live under `system/stack` |
+| Missing secret file | Move one `portal_*_secret` aside, run `compose_verify config --quiet` or `up -d` | Compose fails before guardian starts; restore the file and rerun |
+| `/tmp` bind-source trap | Put `VERIFY_HOME` under `/tmp` on a snap/private-tmp Docker host | Docker may report existing secret files as missing; move to `/var/tmp` or repo-local tmp |
+| Unpublished client package | Set `OP_CLIENT_VERSION=$VERIFY_VERSION` before npm publish | Assistant logs npm 404 and skips client co-process; use `file:/stash/<tarball>.tgz` |
+| Published package drift | Set `OP_GUARDIAN_NPM_VERSION` or `OP_SKELETON_VERSION` to a semver that exists on npm while local source has newer same-version commits | Stack boots from the npm artifact; behavior may differ from local source, such as stale CORS/preflight handling |
+| Port already allocated | Pre-bind `3840`/`4820`/`9190` or reuse an old project | Docker fails port programming; choose new ports and rerun `compose_verify up -d` |
+| Direct ingress disabled | Set `GUARDIAN_DIRECT_INGRESS=false`, recreate guardian, retry browser preflight | `/oc/*` preflight returns `404 not_found`, not `204`; current guardian code also keeps allowed-origin CORS headers on the error |
+
+### 7. Teardown
+
+```bash
+compose_verify down --volumes --remove-orphans
+
+# Container-created files may be root-owned. Use Docker to repair ownership
+# before deleting the temporary tree.
+docker run --rm -v "$VERIFY_ROOT:/cleanup" alpine sh -c "chown -R $(id -u):$(id -g) /cleanup && rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?*"
+rmdir "$VERIFY_ROOT"
+```
+
+Record all failures with: command, exit code, relevant `compose_verify ps -a`,
+and the shortest useful `compose_verify logs --tail 100 <service>` excerpt.
 
 ---
 
@@ -387,4 +581,4 @@ directly — extract and start.
 | [troubleshooting.md](../troubleshooting.md) | Common problems and fixes |
 | [core-principles.md](../technical/core-principles.md) | Architectural rules and filesystem contract |
 | [environment-and-mounts.md](../technical/environment-and-mounts.md) | Per-service mount and env details |
-| `.openpalm/config/stack/README.md` | Stack directory quick reference |
+| `$OP_HOME/system/stack/` and `$OP_HOME/config/stack/custom.compose.yml` | Managed compose files plus user overlay |

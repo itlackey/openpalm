@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
 	import type { ProviderView } from '$lib/types/providers.js';
-	import Drawer from '$lib/components/common/Drawer.svelte';
+	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
 
 	let {
 		providers,
