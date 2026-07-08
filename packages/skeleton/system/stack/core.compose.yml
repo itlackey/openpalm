@@ -69,6 +69,9 @@ services:
       # the container ENVIRONMENT (not just compose interpolation) so a
       # restart with a new pin picks up the new client.
       OP_CLIENT_VERSION: ${OP_CLIENT_VERSION:-}
+      # The assistant entrypoint installs @openpalm/skeleton alongside the
+      # client artifact using the same exact-pin override/fallback chain.
+      OP_SKELETON_VERSION: ${OP_SKELETON_VERSION:-}
       # The entrypoint writes the client's runtime-config.json pointing the
       # BROWSER at the host-published OpenCode URL — that is the assistant
       # port mapping below, NOT the in-container :4096 (unreachable from a

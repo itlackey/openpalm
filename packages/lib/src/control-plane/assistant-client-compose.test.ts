@@ -82,6 +82,13 @@ describe('P5d compose — stack env plumbing for the exact-pin client artifact',
     expect(environmentHas(assistant, 'OP_CLIENT_VERSION')).toBe(true);
   });
 
+  test('OP_SKELETON_VERSION also passes through to the assistant container', () => {
+    // The assistant entrypoint installs both @openpalm/client and
+    // @openpalm/skeleton. A stack env override must reach the runtime
+    // environment or the container hard-fails before OpenCode starts.
+    expect(environmentHas(assistant, 'OP_SKELETON_VERSION')).toBe(true);
+  });
+
   test('assistant receives host client ports for OpenCode CORS origin defaults', () => {
     expect(environmentHas(assistant, 'OP_CLIENT_HOST_PORT')).toBe(true);
     expect(environmentHas(assistant, 'OP_HOST_CLIENT_PORT')).toBe(true);
