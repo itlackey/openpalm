@@ -23,7 +23,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSy
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getState } from './state.js';
-import type { RemoteStatus } from '@openpalm/lib';
+import { readStackEnv, type RemoteStatus } from '@openpalm/lib';
 import type { ConnectionKind } from '$lib/types.js';
 
 export type ConnectionEntry = {
@@ -249,10 +249,11 @@ function writeFile(data: EndpointsFile): void {
 }
 
 function defaultEndpoint(): ActiveConnection {
+  const persisted = readStackEnv(getState().homeDir);
   const url =
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
-    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
+    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3800'}`;
   const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
   const password = process.env.OPENCODE_SERVER_PASSWORD || undefined;
   return {
