@@ -39,63 +39,48 @@ test.describe('Install flow — wizard browser walk-through', () => {
     await expect(page).toHaveURL(/\/setup$/);
   });
 
-  test('System Check step renders and Docker shows as available', async ({ page }) => {
+  test('Connect step renders after the hidden System Check passes', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/setup`);
-    await expect(page.locator('[data-testid="step-system-check"]')).toBeVisible({ timeout: 10_000 });
-
-    // Wait for the docker probe to complete (the step transitions to pass state).
-    await expect(page.locator('[data-testid="step-system-check"]')).toContainText('Docker', { timeout: 15_000 });
-
-    // Continue button becomes enabled once system check passes.
-    const continueBtn = page.locator('#btn-syscheck-next');
-    await expect(continueBtn).toBeEnabled({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: /connect your ai brain/i })).toBeVisible();
+    await expect(page.locator('#btn-screen1-next')).toBeAttached();
   });
 
-  test('Continue from System Check advances to Get Started step', async ({ page }) => {
+  test('Continue from Connect advances to Add-ons step', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/setup`);
-    await expect(page.locator('[data-testid="step-system-check"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
 
-    const continueBtn = page.locator('#btn-syscheck-next');
-    await expect(continueBtn).toBeEnabled({ timeout: 15_000 });
+    await page.getByRole('button', { name: /i'll set this up later/i }).click();
+    const continueBtn = page.locator('#btn-screen1-next');
+    await expect(continueBtn).toBeEnabled();
     await continueBtn.click();
 
-    await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#step-2')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /optional extras/i })).toBeVisible();
   });
 
-  test('Get Started step shows welcome content and Continue button', async ({ page }) => {
+  test('Add-ons step shows optional extras and Continue button', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/setup`);
 
-    const continueBtn = page.locator('#btn-syscheck-next');
-    await expect(continueBtn).toBeEnabled({ timeout: 15_000 });
-    await continueBtn.click();
+    await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: /i'll set this up later/i }).click();
+    await page.locator('#btn-screen1-next').click();
 
-    await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /continue/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /use recommended defaults/i })).toBeVisible();
+    await expect(page.locator('#step-2')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /^continue$/i })).toBeVisible();
   });
 
   test('Review step shows Install button when reached via Continue', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/setup`);
 
-    // Step 0: System Check → Continue
-    const sysContinue = page.locator('#btn-syscheck-next');
-    await expect(sysContinue).toBeEnabled({ timeout: 15_000 });
-    await sysContinue.click();
-    await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible({ timeout: 10_000 });
-
-    // Step 1: Get Started → Continue (auto-imports providers, may jump to Models)
-    await page.getByRole('button', { name: /^continue$/i }).click();
-
-    // Models step (step index 3) — wait for it regardless of provider auto-skip.
+    // Step 1: Connect → Add-ons
     await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: /i'll set this up later/i }).click();
+    await page.locator('#btn-screen1-next').click();
 
-    // Advance through remaining steps to Review.
-    // Step 3: Models → Voice Setup
-    await page.getByRole('button', { name: /voice setup/i }).click();
-    // Step 4: Voice → Continue
+    // Step 2: Add-ons → Finish
+    await expect(page.locator('#step-2')).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: /^continue$/i }).click();
-    // Step 5: Options → Review
-    await page.getByRole('button', { name: /^review$/i }).click();
 
     // Review & Install step must show the Install button.
     await expect(page.getByRole('button', { name: /^install$/i })).toBeVisible({ timeout: 10_000 });

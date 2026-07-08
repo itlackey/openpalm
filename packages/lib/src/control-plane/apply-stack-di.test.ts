@@ -51,8 +51,6 @@ class FakeDocker implements DockerClient {
   }
 }
 
-/** `compose ps --format json` row: running, no healthcheck ⇒ healthy. */
-const HEALTHY_PS_ROW = JSON.stringify({ Service: "assistant", State: "running", Health: "" });
 /** Running but explicitly unhealthy. */
 const UNHEALTHY_PS_ROW = JSON.stringify({ Service: "assistant", State: "running", Health: "unhealthy" });
 

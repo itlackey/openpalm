@@ -24,6 +24,8 @@ import {
   readSecret,
   collectBindAddressWarnings,
   isRemoteSetupAllowed,
+  classifyLocalInstall,
+  stackDirFor,
 } from "@openpalm/lib";
 import { resolveRequestLanding } from "$lib/server/landing.js";
 
@@ -34,7 +36,6 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
-let setupCompleteMemo = false;
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -113,6 +114,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (originError) return originError;
 
   const path = event.url.pathname;
+  const isAuthPath = path === "/login" || path.startsWith("/login/");
+  const wantsHtml =
+    event.request.method === "GET" &&
+    (event.request.headers.get("accept") ?? "").includes("text/html");
 
   // Capability gate: the /host control plane only renders where the server
   // advertises the host:* capability set (plan Phase 4 step 4 — the old
@@ -133,8 +138,20 @@ export const handle: Handle = async ({ event, resolve }) => {
   // by design (first-run). Restrict them to the local machine so a remote actor
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
-  const setupComplete = setupCompleteMemo || isSetupComplete(resolveOpenPalmHome());
-  if (setupComplete) setupCompleteMemo = true;
+  const homeDir = resolveOpenPalmHome();
+  const setupComplete = isSetupComplete(homeDir);
+  const localInstallState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
+
+  if (
+    wantsHtml &&
+    !setupComplete &&
+    localInstallState !== 'not_installed' &&
+    !isSetupPath &&
+    !isAuthPath &&
+    !path.startsWith('/admin')
+  ) {
+    redirect(302, '/setup');
+  }
 
   if (isSetupPath && !setupComplete && !isRemoteSetupAllowed()) {
     const clientIp = event.getClientAddress();
@@ -198,10 +215,6 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  const isAuthPath = path === "/login" || path.startsWith("/login/");
-  const wantsHtml =
-    event.request.method === "GET" &&
-    (event.request.headers.get("accept") ?? "").includes("text/html");
   if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath) {
     const redirectTo = path + event.url.search;
     redirect(302, `/login?redirectTo=${encodeURIComponent(redirectTo)}`);

@@ -118,9 +118,7 @@ export function createTransport(options: TransportOptions): Transport {
           if (typeof payload === 'object' && payload !== null && 'parts' in payload) {
             return payload;
           }
-        } catch {
-          continue;
-        }
+        } catch {}
       }
     } catch (error) {
       throw error instanceof Error

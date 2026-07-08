@@ -31,11 +31,12 @@ export default defineConfig({
 	globalSetup: './e2e/global-setup.ts',
 	globalTeardown: './e2e/global-teardown.ts',
 	reporter: [['list'], ['./e2e/no-skip-reporter.mjs']],
+	workers: STACK_TESTS ? 1 : undefined,
 	use: { baseURL },
 	webServer: STACK_TESTS
 		? undefined
 		: { command: 'npm run build && npm run preview', port: 4173, env: MOCKED_ENV },
 	testDir: 'e2e',
-	testMatch: STACK_TESTS ? ['*.pw.ts', '*.stack.ts'] : '*.pw.ts',
+	testMatch: STACK_TESTS ? ['*.stack.ts', 'auth-flow.pw.ts'] : '*.pw.ts',
 	timeout: 60000,
 });

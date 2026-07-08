@@ -13,13 +13,22 @@ const REPO_ROOT = resolve(HERE, "../../..");
 const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/knowledge/env/stack.env");
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
+const STATE_ENV = resolve(OP_HOME_DIR, "state/stack.state.env");
+const STATE_BACKUP = `${STATE_ENV}.e2e-backup`;
 
+function patchEnvContent(content: string, key: string, value: string): string {
+	const lines = content.split("\n").filter((line) => !line.trim().startsWith(`${key}=`));
+	lines.push(`${key}=${value}`);
+	return `${lines.filter(Boolean).join("\n")}\n`;
+}
 
 export default async function globalSetup() {
+	if (process.env.RUN_DOCKER_STACK_TESTS !== "1") return;
+
 	// Backfill the admin login from the file-based stack secret (via lib's
 	// readSecret — the single source of truth for the secret path).
 	if (!process.env.OP_UI_LOGIN_PASSWORD) {
-		const password = readSecret(resolve(OP_HOME_DIR, "config/stack"), "op_ui_login_password");
+		const password = readSecret(OP_HOME_DIR, "op_ui_login_password");
 		if (password) process.env.OP_UI_LOGIN_PASSWORD = password.trimEnd();
 	}
 
@@ -51,4 +60,17 @@ export default async function globalSetup() {
 	// so the override is no longer necessary and broke post-setup tests by
 	// triggering the setup guard's redirect to /setup.)
 	writeFileSync(BACKUP, content);
+
+	// Stack browser tests assume an installed stack unless they explicitly reset
+	// through wizard-reset.ts. A prior interrupted wizard run can leave
+	// OP_SETUP_COMPLETE stripped; make the baseline self-healing and let
+	// global-teardown restore the caller's original state.
+	if (process.env.RUN_DOCKER_STACK_TESTS === "1" && existsSync(STATE_ENV)) {
+		const stateContent = readFileSync(STATE_ENV, "utf8");
+		writeFileSync(STATE_BACKUP, stateContent);
+		writeFileSync(STATE_ENV, patchEnvContent(stateContent, "OP_SETUP_COMPLETE", "true"), {
+			encoding: "utf8",
+			mode: 0o600,
+		});
+	}
 }

@@ -25,7 +25,6 @@ import {
   resolveOpenPalmHome,
   writeClientRuntimeConfig,
 } from '@openpalm/lib';
-import { DEFAULT_CLIENT_PORT } from './ports.ts';
 
 const STOP_TIMEOUT_MS = 5_000;
 const RESPAWN_DELAY_MS = 1_000;
@@ -96,7 +95,8 @@ export interface ClientServerDeps {
  * client app.
  */
 export async function startClientServer(deps: ClientServerDeps = {}): Promise<ClientServerHandle | null> {
-  const port = deps.port ?? resolveClientAppPort(process.env);
+  const persistedEnv = readPersistedStackEnv();
+  const port = deps.port ?? resolveClientAppPort({ ...persistedEnv, ...process.env });
   const resolveBuildDir = deps.resolveBuildDir ?? resolveClientBuildDir;
   const exists = deps.existsSync ?? nodeExistsSync;
   const spawnFn = deps.spawnFn

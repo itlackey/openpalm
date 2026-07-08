@@ -162,7 +162,9 @@ describe('ChatInput — send behaviour', () => {
   test('Enter during IME composition does not submit', async () => {
     const onSend = vi.fn();
     const { container } = render(ChatInput, { props: { sending: false, onSend } });
-    const input = container.querySelector('textarea')!;
+    const input = container.querySelector('textarea');
+    expect(input).toBeInstanceOf(HTMLTextAreaElement);
+    if (!(input instanceof HTMLTextAreaElement)) throw new Error('textarea not found');
     input.value = 'こんにちは';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(

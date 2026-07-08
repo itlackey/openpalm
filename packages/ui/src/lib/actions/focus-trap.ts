@@ -46,7 +46,7 @@ export interface FocusTrapOptions {
  * `<body>`.
  */
 export function createFocusTrap(options: FocusTrapOptions = {}) {
-  return (node: HTMLElement): (() => void) | void => {
+  return (node: HTMLElement): (() => void) | undefined => {
     if (options.active === false) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const container = options.initialFocus
@@ -84,8 +84,9 @@ export function handleTrapKeydown(
     event.currentTarget.focus();
     return;
   }
-  const first = items[0]!;
-  const last = items[items.length - 1]!;
+  const first = items[0];
+  const last = items.at(-1);
+  if (!first || !last) return;
   const active = document.activeElement;
   if (event.shiftKey && (active === first || active === event.currentTarget)) {
     event.preventDefault();

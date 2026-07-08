@@ -150,7 +150,7 @@ describe('transport request shaping (P5b item 1)', () => {
 
   test('sendMessage parses text/event-stream responses', async () => {
     const { createTransport } = await loadTransportModule();
-    const { fetch, calls } = recordingFetch((request) =>
+    const { fetch, calls } = recordingFetch(() =>
       new Response(byteStream(['event: message\ndata: {"parts":[{"type":"text","text":"via sse"}]}\n\n']), {
         headers: { 'content-type': 'text/event-stream' },
       })

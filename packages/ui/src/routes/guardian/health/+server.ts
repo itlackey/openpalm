@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { listEnabledAddonIds } from "@openpalm/lib";
+import { listEnabledAddonIds, readStackEnv, resolveComposeProjectName } from "@openpalm/lib";
 import { getRequestId, jsonResponse } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import type { RequestHandler } from "./$types";
@@ -10,6 +10,25 @@ const execFileAsync = promisify(execFile);
 // Guardian is portal ingress — it is profile-gated to these addons and is NOT
 // deployed when none are enabled. Mirrors PORTAL_ADDON_IDS in lifecycle.ts.
 const PORTAL_ADDON_IDS = ["api", "chat", "discord", "slack"];
+
+async function findGuardianContainerId(projectName: string): Promise<string | null> {
+  const { stdout } = await execFileAsync(
+    "docker",
+    [
+      "container",
+      "ls",
+      "--all",
+      "--filter",
+      `label=com.docker.compose.project=${projectName}`,
+      "--filter",
+      "label=com.docker.compose.service=guardian",
+      "--format",
+      "{{.ID}}",
+    ],
+    { timeout: 5000 },
+  );
+  return stdout.trim().split("\n").find(Boolean) ?? null;
+}
 
 /**
  * Guardian health — queries the running container directly.
@@ -32,7 +51,8 @@ export const GET: RequestHandler = async (event) => {
   // that cleanly (200) instead of letting a `docker inspect` miss 503-spam the
   // console. (Guardian is only deployed as portal ingress.)
   try {
-    const portalsEnabled = listEnabledAddonIds(getState().homeDir).some((a) =>
+    const homeDir = getState().homeDir;
+    const portalsEnabled = listEnabledAddonIds(homeDir).some((a) =>
       PORTAL_ADDON_IDS.includes(a),
     );
     if (!portalsEnabled) {
@@ -43,12 +63,17 @@ export const GET: RequestHandler = async (event) => {
   }
 
   try {
+    const projectName = resolveComposeProjectName(readStackEnv(getState().homeDir));
+    const containerId = await findGuardianContainerId(projectName);
+    if (!containerId) {
+      return jsonResponse(503, { status: "unreachable", service: "guardian" }, requestId);
+    }
     const { stdout } = await execFileAsync(
       "docker",
       [
         "container",
         "inspect",
-        "openpalm-guardian-1",
+        containerId,
         "--format",
         "{{.State.Health.Status}}",
       ],

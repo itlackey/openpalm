@@ -18,7 +18,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-const PASSWORD = 'e2e-mocked-password'; // must match playwright.config.ts's MOCKED_ENV
+const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? 'e2e-mocked-password';
 
 test.describe('Auth flow — login / session / logout (mocked-lib)', () => {
   test('wrong password is rejected with 401 and no cookie', async ({ request }) => {

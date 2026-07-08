@@ -5,8 +5,8 @@
  * hooks.server.ts returns false and the wizard re-runs end-to-end:
  *   - backs up stack.env (caller restores after the test via
  *     restoreWizardState)
- *   - rewrites stack.env without OP_SETUP_COMPLETE (the only setup-complete
- *     sentinel; login secrets live in knowledge/secrets/)
+ *   - rewrites state/stack.state.env with OP_SETUP_COMPLETE=false so state
+ *     overrides any legacy true value still present in knowledge/env/stack.env
  *   - removes any persisted voice profile selection so the wizard
  *     starts from a known blank state
  *
@@ -30,10 +30,6 @@ export function resolveOpHome(): string {
 	return process.env.OP_HOME ?? resolve(REPO_ROOT, '.dev');
 }
 
-function stackEnvPath(homeDir: string): string {
-	return resolve(homeDir, 'knowledge/env/stack.env');
-}
-
 function stateEnvPath(homeDir: string): string {
 	return resolve(homeDir, 'state/stack.state.env');
 }
@@ -53,9 +49,9 @@ function assertSafeHome(homeDir: string): void {
 }
 
 /**
- * Capture the current stack.env to a sibling backup file and rewrite
- * stack.env so the next isSetupComplete() check returns false. Idempotent
- * — calling it twice without restore in between only backs up once.
+ * Capture the current state env to a sibling backup file and rewrite it so the
+ * next isSetupComplete() check returns false. Idempotent — calling it twice
+ * without restore in between only backs up once.
  */
 export function resetWizardState(homeDir: string = resolveOpHome()): void {
 	assertSafeHome(homeDir);
@@ -77,12 +73,14 @@ export function resetWizardState(homeDir: string = resolveOpHome()): void {
 			if (trimmed.startsWith('OP_VOICE_PROFILE=')) return false;
 			return true;
 		})
+		.filter(Boolean)
 		.join('\n');
+	const next = `${stripped ? `${stripped}\n` : ''}OP_SETUP_COMPLETE=false\n`;
 
 	// Note: writeFileSync changes inode. The setup wizard isn't running
 	// inside a container; the UI server reads stack.env via Node fs each
 	// time isSetupComplete() is called, so a new inode is fine here.
-	writeFileSync(envPath, stripped, { encoding: 'utf-8', mode: 0o600 });
+	writeFileSync(envPath, next, { encoding: 'utf-8', mode: 0o600 });
 }
 
 /**
