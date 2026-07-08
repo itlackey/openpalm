@@ -12,34 +12,30 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginBrowserContext } from './auth-helpers';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
-async function withAuth(page: import('@playwright/test').Page) {
-  await page.context().addCookies([{
-    name: 'op_session',
-    value: PASSWORD,
-    domain: new URL(ADMIN_URL).hostname,
-    path: '/',
-  }]);
+async function withAuth(page: import('@playwright/test').Page, request: import('@playwright/test').APIRequestContext) {
+  await loginBrowserContext(request, page.context(), ADMIN_URL, PASSWORD);
 }
 
 test.describe('Admin panel browser smoke', () => {
   test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
   test.setTimeout(45_000);
 
-  test('admin panel loads and shows the Overview tab by default', async ({ page }) => {
-    await withAuth(page);
+  test('admin panel loads and shows the Overview tab by default', async ({ page, request }) => {
+    await withAuth(page, request);
     await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
 
     // Overview / containers section is the default landing tab
     await expect(page.locator('[data-testid="containers-overview"]')).toBeVisible({ timeout: 15_000 });
   });
 
-  test('Overview tab shows at least one running container', async ({ page }) => {
-    await withAuth(page);
+  test('Overview tab shows at least one running container', async ({ page, request }) => {
+    await withAuth(page, request);
     await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
 
     await expect(page.locator('[data-testid="containers-overview"]')).toBeVisible({ timeout: 15_000 });
@@ -49,8 +45,8 @@ test.describe('Admin panel browser smoke', () => {
     await expect(containers.first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Logs tab shows output after Load Logs — not raw error text', async ({ page }) => {
-    await withAuth(page);
+  test('Logs tab shows output after Load Logs — not raw error text', async ({ page, request }) => {
+    await withAuth(page, request);
     await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
 
     // Navigate to the Logs tab
@@ -77,8 +73,8 @@ test.describe('Admin panel browser smoke', () => {
     await expect(page.locator('[data-testid="log-output"], .log-output, pre')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Connections tab renders provider list — not raw error text', async ({ page }) => {
-    await withAuth(page);
+  test('Connections tab renders provider list — not raw error text', async ({ page, request }) => {
+    await withAuth(page, request);
     await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
 
     const connectionsTab = page.getByRole('tab', { name: /connections/i });
@@ -94,8 +90,8 @@ test.describe('Admin panel browser smoke', () => {
     await expect(providersOrMessage).toBeVisible({ timeout: 15_000 });
   });
 
-  test('Secrets tab renders the vault key list', async ({ page }) => {
-    await withAuth(page);
+  test('Secrets tab renders the vault key list', async ({ page, request }) => {
+    await withAuth(page, request);
     await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
 
     const secretsTab = page.getByRole('tab', { name: /secrets/i });

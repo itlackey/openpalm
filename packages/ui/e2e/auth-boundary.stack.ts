@@ -13,18 +13,11 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginHeaders } from './auth-helpers';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
-
-function authCookie(): Record<string, string> {
-  return {
-    cookie: `op_session=${PASSWORD}`,
-    'x-requested-by': 'e2e-test',
-    'x-request-id': crypto.randomUUID(),
-  };
-}
 
 function wrongCookie(): Record<string, string> {
   return {
@@ -65,7 +58,7 @@ test.describe('Auth boundary — protected endpoints', () => {
     });
 
     test(`GET ${endpoint} returns 200 with valid cookie`, async ({ request }) => {
-      const res = await request.get(`${ADMIN_URL}${endpoint}`, { headers: authCookie() });
+      const res = await request.get(`${ADMIN_URL}${endpoint}`, { headers: await loginHeaders(request, ADMIN_URL, PASSWORD) });
       // Allow 200 or 503 (service unavailable is OK — just not an auth failure)
       expect(res.status()).not.toBe(401);
       expect(res.status()).not.toBe(403);

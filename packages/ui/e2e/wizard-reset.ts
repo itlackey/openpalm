@@ -34,8 +34,12 @@ function stackEnvPath(homeDir: string): string {
 	return resolve(homeDir, 'knowledge/env/stack.env');
 }
 
+function stateEnvPath(homeDir: string): string {
+	return resolve(homeDir, 'state/stack.state.env');
+}
+
 function backupPath(homeDir: string): string {
-	return resolve(homeDir, 'knowledge/env/stack.env.wizard-test-backup');
+	return resolve(homeDir, 'state/stack.state.env.wizard-test-backup');
 }
 
 function assertSafeHome(homeDir: string): void {
@@ -55,10 +59,10 @@ function assertSafeHome(homeDir: string): void {
  */
 export function resetWizardState(homeDir: string = resolveOpHome()): void {
 	assertSafeHome(homeDir);
-	const envPath = stackEnvPath(homeDir);
+	const envPath = stateEnvPath(homeDir);
 	const bak = backupPath(homeDir);
 	if (!existsSync(envPath)) {
-		throw new Error(`stack.env not found at ${envPath}; the dev stack must be set up first.`);
+		throw new Error(`state env not found at ${envPath}; the dev stack must be set up first.`);
 	}
 
 	// First reset wins: backup only if no backup yet.
@@ -87,7 +91,7 @@ export function resetWizardState(homeDir: string = resolveOpHome()): void {
  */
 export function restoreWizardState(homeDir: string = resolveOpHome()): void {
 	assertSafeHome(homeDir);
-	const envPath = stackEnvPath(homeDir);
+	const envPath = stateEnvPath(homeDir);
 	const bak = backupPath(homeDir);
 	if (!existsSync(bak)) return;
 	copyFileSync(bak, envPath);

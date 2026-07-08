@@ -10,23 +10,10 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { loginHeaders } from './auth-helpers';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
-
-// Phase 2 (auth/proxy refactor): x-admin-token header fallback removed.
-// E2E tests authenticate via the op_session cookie. The cookie value is the
-// admin secret (same value the operator types into the wizard); the host UI
-// server treats a request bearing the correct cookie as an authenticated
-// admin session.
-function headers(): Record<string, string> {
-  return {
-    cookie: `op_session=${OP_UI_LOGIN_PASSWORD}`,
-    'x-requested-by': 'e2e-test',
-    'x-request-id': crypto.randomUUID(),
-    'content-type': 'application/json',
-  };
-}
 
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
@@ -41,21 +28,21 @@ test.describe('Admin Health Endpoint', () => {
   });
 
   test('GET /api/host/health returns 200 with valid token', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: headers() });
+    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: await loginHeaders(request, ADMIN_URL, OP_UI_LOGIN_PASSWORD) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.ok).toBe(true);
   });
 
   test('GET /api/host/health includes opencode availability flag', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: headers() });
+    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: await loginHeaders(request, ADMIN_URL, OP_UI_LOGIN_PASSWORD) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(typeof body.opencode).toBe('boolean');
   });
 
   test('GET /api/host/health reports opencode reachable when assistant is running', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: headers() });
+    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: await loginHeaders(request, ADMIN_URL, OP_UI_LOGIN_PASSWORD) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     // Assistant container is running — opencode should be true
@@ -74,7 +61,7 @@ test.describe('Connections Tab — Providers', () => {
   });
 
   test('GET /api/host/providers returns available:true when assistant is running', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/api/host/providers`, { headers: headers() });
+    const res = await request.get(`${ADMIN_URL}/api/host/providers`, { headers: await loginHeaders(request, ADMIN_URL, OP_UI_LOGIN_PASSWORD) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     // Assistant is running so providers page should be available
@@ -82,7 +69,7 @@ test.describe('Connections Tab — Providers', () => {
   });
 
   test('GET /api/host/providers returns providers array', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/api/host/providers`, { headers: headers() });
+    const res = await request.get(`${ADMIN_URL}/api/host/providers`, { headers: await loginHeaders(request, ADMIN_URL, OP_UI_LOGIN_PASSWORD) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(Array.isArray(body.providers)).toBe(true);
@@ -90,7 +77,7 @@ test.describe('Connections Tab — Providers', () => {
   });
 
   test('GET /api/host/providers includes stats', async ({ request }) => {
-    const res = await request.get(`${ADMIN_URL}/api/host/providers`, { headers: headers() });
+    const res = await request.get(`${ADMIN_URL}/api/host/providers`, { headers: await loginHeaders(request, ADMIN_URL, OP_UI_LOGIN_PASSWORD) });
     const body = await res.json();
     expect(typeof body.stats?.total).toBe('number');
     expect(typeof body.stats?.connected).toBe('number');
@@ -121,7 +108,7 @@ test.describe('Guardian liveness', () => {
   test('GET /api/host/health includes opencode field (guardian has no separate health field)', async ({ request }) => {
     // Admin health covers the OpenCode assistant. Guardian liveness is separate
     // (proxied above). Verify the admin health response shape hasn't regressed.
-    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: headers() });
+    const res = await request.get(`${ADMIN_URL}/api/host/health`, { headers: await loginHeaders(request, ADMIN_URL, OP_UI_LOGIN_PASSWORD) });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.ok).toBe(true);
