@@ -32,6 +32,7 @@ Repo layout convention:
 | Document | Description |
 |---|---|
 | [release-management.md](operations/release-management.md) | Authoritative release guide: platform release boundaries, image/package versioning, and beta→stable cutover |
+| [unit-all-rc-checklist.md](operations/unit-all-rc-checklist.md) | Coordinated `unit=all` release-candidate worksheet with commands, pass criteria, and evidence capture |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [manual-headless-install.md](operations/manual-headless-install.md) | Hand-built install disk contract (tokens, auth.json, setup stamp) + scripted `openpalm install --file` |
 | [diagnostic-playbook.md](operations/diagnostic-playbook.md) | Layer-by-layer debugging workflow for UI, admin API, OpenCode, and container/config issues |

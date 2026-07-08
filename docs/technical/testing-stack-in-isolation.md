@@ -58,12 +58,18 @@ Or use the dev-setup script (which seeds `.dev/` with dev ports) and manually ad
 
 ### 2. Start the Docker stack (assistant + guardian)
 
+Managed compose files live under `.dev/system/stack/`; `.dev/config/stack/`
+contains only the user-owned `custom.compose.yml` overlay.
+
 ```bash
 bun run dev:build
 # or with test ports:
 OP_ASSISTANT_PORT=4800 \
 docker compose --project-directory . \
-  -f .dev/config/stack/core.compose.yml \
+  -f .dev/system/stack/core.compose.yml \
+  -f .dev/system/stack/services.compose.yml \
+  -f .dev/system/stack/portals.compose.yml \
+  -f .dev/config/stack/custom.compose.yml \
   -f compose.dev.yml \
   --env-file .dev/knowledge/env/stack.env \
   --project-name openpalm-test \

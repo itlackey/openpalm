@@ -5,13 +5,16 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f .openpalm/config/stack/core.compose.yml \
+#     -f .dev/system/stack/core.compose.yml \
+#     -f .dev/system/stack/services.compose.yml \
+#     -f .dev/system/stack/portals.compose.yml \
+#     -f .dev/config/stack/custom.compose.yml \
 #     -f compose.dev.yml \
 #     --env-file .dev/knowledge/env/stack.env \
 #     up --build -d
 #
-# The --project-directory . flag is REQUIRED when the core compose file lives
-# in a different directory (.openpalm/config/stack/ or .dev/config/stack/).
+# The --project-directory . flag is REQUIRED when the managed compose files live
+# in a different directory (.openpalm/system/stack/ or .dev/system/stack/).
 # Without it, Docker Compose resolves build contexts relative to the first -f
 # file's directory, which breaks builds.
 

@@ -178,6 +178,12 @@ These non-secret `stack.env` vars control the exact npm artifacts the running pl
 
 ## Release Smoke Checklist
 
+For a full coordinated release candidate, use the dedicated
+[`unit=all` RC checklist](unit-all-rc-checklist.md). It expands this smoke list
+into a pre-publish and post-publish worksheet covering packaging, deployment,
+permissions, upgrade, rootless ownership, browser-backed flows, and shipped
+artifact verification.
+
 - [ ] `electron-host`: launch Electron against a seeded install; verify the window lands on the client chat at `http://127.0.0.1:3890/chat`, and host routes remain available.
 - [ ] `host-ui`: run `openpalm admin`; verify the browser opens on the loopback host UI and `/host`, `/connections`, and `/chat` all load.
 - [ ] `assistant-container`: boot the assistant with `OP_CLIENT_VERSION` and `OP_SKELETON_VERSION` overrides; verify the container installs those exact versions, serves the static client on the assistant's published client port, and chat reaches the locked default assistant connection.

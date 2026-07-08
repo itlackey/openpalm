@@ -1,42 +1,47 @@
-# config/stack/
+# system/stack/
 
-This directory contains the runtime stack composition and configuration. OpenPalm runs from the fixed compose file set: `core.compose.yml`, `services.compose.yml`, `portals.compose.yml`, and `custom.compose.yml`.
+This directory contains the managed runtime stack composition. OpenPalm runs
+from the fixed managed file set here plus the user-owned overlay at
+`$OP_HOME/config/stack/custom.compose.yml`.
 
 ## Quick start
 
 ```bash
 # Run the core stack by hand
-cd ~/.openpalm/config/stack
+OP_HOME="${OP_HOME:-$HOME/.openpalm}"
 docker compose \
   --project-name openpalm \
-  --env-file ../../knowledge/env/stack.env \
-  -f core.compose.yml \
-  -f services.compose.yml \
-  -f portals.compose.yml \
-  -f custom.compose.yml \
+  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
   up -d
 
 # Enable built-in optional services with profiles
 docker compose \
   --project-name openpalm \
-  --env-file ../../knowledge/env/stack.env \
-  -f core.compose.yml \
-  -f services.compose.yml \
-  -f portals.compose.yml \
-  -f custom.compose.yml \
+  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
   up -d
 ```
 
-See the [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md) for preflight,
+See the [Manual Compose Runbook](../../../../docs/operations/manual-compose-runbook.md) for preflight,
 status, logs, and all other operations.
 
-## Core services
+## Common services
 
-| Service | Host port | Purpose |
-|---------|-----------|---------|
-| `assistant` | `3800 -> 4096` | OpenCode runtime without Docker socket; also hosts the automation scheduler co-process (no port) |
-| `guardian` | `3830 -> 3830` and `3831 -> 3831` (localhost by default) | Principal-authenticated ingress, direct listener, and admin listener |
+The assistant is the only always-on core container. The guardian is enabled by
+portal-style addon profiles such as `addon.chat` or `addon.api`.
+
+| Service | Activation | Host port | Purpose |
+|---------|------------|-----------|---------|
+| `assistant` | Always on | `3800 -> 4096` | OpenCode runtime without Docker socket; also hosts the automation scheduler co-process (no port) |
+| `guardian` | Portal/addon profiles | `3830 -> 3830` and `3831 -> 3831` (localhost by default) | Principal-authenticated ingress, direct listener, and admin listener |
 
 ## Addons
 
@@ -69,14 +74,15 @@ overlays.
 | `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
 | `services.compose.yml` | Optional first-party services | System (managed via CLI/admin) |
 | `portals.compose.yml` | Optional first-party portals | System (managed via CLI/admin) |
-| `custom.compose.yml` | User custom services and overlays | User |
+| `$OP_HOME/config/stack/custom.compose.yml` | User custom services and overlays | User |
 
-This directory holds compose assembly only — **no secrets and no env files**.
+This directory holds managed compose assembly only — **no secrets, no env files,
+and no user-owned overlays**.
 
 ## Env files
 
 Compose receives **only one env file**, from outside this directory:
-- `../../knowledge/env/stack.env` (akm `env:stack`) — Non-secret runtime configuration only
+- `$OP_HOME/knowledge/env/stack.env` (akm `env:stack`) — Non-secret runtime configuration only
 
 Secrets live in `knowledge/secrets/` (including OpenCode `auth.json`) and are
 granted to services through Compose `secrets:` entries or direct bind mounts. Do

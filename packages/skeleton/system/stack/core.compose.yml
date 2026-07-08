@@ -16,9 +16,10 @@
 # (bind-mounted into the assistant + guardian).
 #
 # Directory model:
-#   ~/.openpalm/config/       — user-editable + system config (akm/)
-#   ~/.openpalm/config/stack/ — compose assembly only (core/services/portals/custom
-#                               compose files) — no secrets, no env
+#   ~/.openpalm/system/       — managed release assets, including system/stack/
+#                               core/services/portals compose files
+#   ~/.openpalm/config/       — user-editable config, including only the
+#                               config/stack/custom.compose.yml stack overlay
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
 #   ~/.openpalm/knowledge/    — akm knowledge (skills, env, secrets, agents);
 #                               env:user, env:stack, and auth.json live here
