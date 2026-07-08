@@ -537,6 +537,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref_name }}
+      - name: Stamp local guardian/skeleton sources for dry-run image build
+        if: ${{ inputs.dry_run }}
+        run: |
+          node scripts/set-version.mjs packages/guardian/package.json "${{ needs.compute-version.outputs.new_version }}"
+          node scripts/set-version.mjs packages/skeleton/package.json "${{ needs.compute-version.outputs.new_version }}"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -592,6 +597,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref_name }}
+      - name: Stamp local guardian/skeleton sources for dry-run image build
+        if: ${{ inputs.dry_run }}
+        run: |
+          node scripts/set-version.mjs packages/guardian/package.json "${{ needs.compute-version.outputs.new_version }}"
+          node scripts/set-version.mjs packages/skeleton/package.json "${{ needs.compute-version.outputs.new_version }}"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -622,6 +632,8 @@ jobs:
           file: containers/guardian/Dockerfile
           build-args: |
             GUARDIAN_VERSION=${{ needs.compute-version.outputs.new_version }}
+            GUARDIAN_USE_LOCAL_SOURCE=${{ inputs.dry_run && 'true' || 'false' }}
+            SKELETON_USE_LOCAL_SOURCE=${{ inputs.dry_run && 'true' || 'false' }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
           # Provenance/SBOM attestations add extra manifests + blobs that make

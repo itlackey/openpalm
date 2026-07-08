@@ -38,7 +38,7 @@ describe('guardian rootless entrypoint regressions', () => {
     const installPrefix = installMatch![1];
 
     const bakeMatch = guardianDockerfile.match(
-      /\(cd (\S+) && bun add "@openpalm\/guardian@\$\{GUARDIAN_VERSION\}"/,
+      /\(cd (\S+) && bun add "\$guardian_spec"/,
     );
     expect(bakeMatch).not.toBeNull();
     const bakePrefix = bakeMatch![1];

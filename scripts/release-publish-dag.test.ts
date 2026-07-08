@@ -23,7 +23,7 @@ const RELEASE_WORKFLOW = join(WORKFLOWS_DIR, "release.yml");
 const CI_WORKFLOW = join(WORKFLOWS_DIR, "ci.yml");
 const PUBLISH_REUSABLE = "publish-npm-package.yml";
 
-type Step = { name?: string; run?: string };
+type Step = { name?: string; run?: string; with?: Record<string, unknown> };
 type Job = {
 	uses?: string;
 	needs?: string | string[];
@@ -182,5 +182,31 @@ describe("P5e — client-bundle purity gate wired into CI (RED until P5e item 3)
 			return runs.slice(buildIdx + 1).some(runsClientTests);
 		});
 		expect(gated).toBe(true);
+	});
+});
+
+describe("guardian image dry-run stays buildable before npm publish", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+	const guardianJob = jobs["docker-guardian"];
+
+	test("dry-run stamps local guardian and skeleton sources before the image build", () => {
+		const stampStep = (guardianJob?.steps ?? []).find((s) =>
+			s.name?.includes("Stamp local guardian/skeleton sources for dry-run image build"),
+		);
+		expect(stampStep).toBeDefined();
+		expect(stampStep?.run ?? "").toContain("packages/guardian/package.json");
+		expect(stampStep?.run ?? "").toContain("packages/skeleton/package.json");
+	});
+
+	test("guardian image build switches to local source packages in dry-run mode", () => {
+		const buildStep = (guardianJob?.steps ?? []).find((s) => s.name === "Build and push");
+		expect(buildStep).toBeDefined();
+		expect(String(buildStep?.with?.["build-args"] ?? buildStep?.run ?? "")).toContain(
+			"GUARDIAN_USE_LOCAL_SOURCE",
+		);
+		expect(String(buildStep?.with?.["build-args"] ?? buildStep?.run ?? "")).toContain(
+			"SKELETON_USE_LOCAL_SOURCE",
+		);
 	});
 });

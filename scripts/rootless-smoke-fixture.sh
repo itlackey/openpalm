@@ -58,7 +58,7 @@ smoke_seed_secrets() {
 # OP_HOST_UI_PORT, OP_ENABLED_ADDONS) after this returns.
 # Usage: smoke_write_stack_env <home> <platform_version> \
 #          <assistant_port> <guardian_port> <guardian_admin_port> \
-#          <chat_port> <api_port>
+#          <chat_port> <api_port> <client_port>
 smoke_write_stack_env() {
   local home="$1"
   local platform_version="$2"
@@ -67,6 +67,7 @@ smoke_write_stack_env() {
   local guardian_admin_port="$5"
   local chat_port="$6"
   local api_port="$7"
+  local client_port="$8"
 
   cat >"$home/knowledge/env/stack.env" <<EOF
 OP_HOME=${home}
@@ -84,6 +85,7 @@ OP_GUARDIAN_PORT=${guardian_port}
 OP_GUARDIAN_ADMIN_PORT=${guardian_admin_port}
 OP_CHAT_PORT=${chat_port}
 OP_API_PORT=${api_port}
+OP_CLIENT_PORT=${client_port}
 OP_SETUP_COMPLETE=true
 EOF
   chmod 600 "$home/knowledge/env/stack.env"
@@ -134,7 +136,11 @@ smoke_build_images() {
   # build time and fails if it is unset (see compose.dev.yml guardian args).
   # Bake the repo's exact version so the smoke image matches the source tree.
   GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
+  GUARDIAN_USE_LOCAL_SOURCE=true
+  SKELETON_USE_LOCAL_SOURCE=true
   export GUARDIAN_VERSION
+  export GUARDIAN_USE_LOCAL_SOURCE
+  export SKELETON_USE_LOCAL_SOURCE
   echo "Building images: $* (GUARDIAN_VERSION=${GUARDIAN_VERSION}) ..." >&2
   # --profile addon.chat makes the profiled guardian visible; addon.discord makes
   # the portal build target visible. compose.dev.yml supplies the build contexts.

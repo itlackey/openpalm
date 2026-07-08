@@ -27,11 +27,19 @@ RUN chmod +x /entrypoint.sh
 # so the baked install actually survives under the real stack.
 ARG GUARDIAN_VERSION
 ENV GUARDIAN_VERSION=${GUARDIAN_VERSION}
+ARG GUARDIAN_USE_LOCAL_SOURCE=false
+ARG SKELETON_USE_LOCAL_SOURCE=false
 
 ENV HOME=/opt/openpalm/guardian \
     PORT=8080 \
     OPENCODE_CONFIG_DIR=/etc/opencode \
     PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Optional dry-run/smoke path: copy the local guardian/skeleton workspaces into
+# the build context so callers can bake unpublished source at the target version
+# without needing it to exist on npm yet.
+COPY packages/guardian /opt/openpalm/local-src/guardian
+COPY packages/skeleton /opt/openpalm/local-src/skeleton
 
 # Bake default tool packages at /opt/openpalm/tools. In compose,
 # OP_HOME/data/guardian/tools is bind-mounted over this path so operators
@@ -47,11 +55,23 @@ COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # uid. This applies ONLY to these app/cache trees; the secret tree
 # (knowledge/secrets, 0600) is a bind mount and is never touched here.
 RUN test -n "$GUARDIAN_VERSION" \
-    && mkdir -p /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/guardian-pkg /opt/openpalm/skeleton \
-    && (cd /opt/openpalm/guardian-pkg && bun add "@openpalm/guardian@${GUARDIAN_VERSION}" --production) \
-    && (cd /opt/openpalm/skeleton && bun add "@openpalm/skeleton@${GUARDIAN_VERSION}" --production) \
+    && guardian_spec="@openpalm/guardian@${GUARDIAN_VERSION}" \
+    && skeleton_spec="@openpalm/skeleton@${GUARDIAN_VERSION}" \
+    && mkdir -p /opt/openpalm/local-artifacts \
+    && if [ "$GUARDIAN_USE_LOCAL_SOURCE" = "true" ]; then \
+         (cd /opt/openpalm/local-src/guardian && bun pm pack --destination /opt/openpalm/local-artifacts --quiet); \
+         guardian_spec="$(find /opt/openpalm/local-artifacts -maxdepth 1 -name 'openpalm-guardian-*.tgz' | head -n 1)"; \
+       fi \
+    && if [ "$SKELETON_USE_LOCAL_SOURCE" = "true" ]; then \
+         (cd /opt/openpalm/local-src/skeleton && bun pm pack --destination /opt/openpalm/local-artifacts --quiet); \
+         skeleton_spec="$(find /opt/openpalm/local-artifacts -maxdepth 1 -name 'openpalm-skeleton-*.tgz' | head -n 1)"; \
+       fi \
+    && mkdir -p /opt/openpalm /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/guardian-pkg /opt/openpalm/skeleton \
+    && (cd /opt/openpalm/guardian-pkg && bun add "$guardian_spec" --production) \
+    && (cd /opt/openpalm/skeleton && bun add "$skeleton_spec" --production) \
     && bun install --cwd /opt/openpalm/tools --production \
-    && chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/guardian-pkg /opt/openpalm/skeleton /opt/openpalm/tools
+    && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts \
+    && chmod -R a+rwX /opt/openpalm /opt/openpalm/guardian /opt/openpalm/guardian-pkg /opt/openpalm/skeleton /opt/openpalm/tools
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
