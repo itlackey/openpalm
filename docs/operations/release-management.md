@@ -8,6 +8,10 @@
 
 All releases run through `.github/workflows/release.yml` (manual `workflow_dispatch` only). Version computation and file stamping are handled by `scripts/bump-unit.mjs`. npm publishing flows through the reusable `.github/workflows/publish-npm-package.yml` (OIDC provenance, single trusted publisher).
 
+For an operator-grade, repeatable RC procedure with merge gates, exact commands,
+evidence capture, and post-publish verification, use the
+[RC release runbook](release-rc-runbook.md).
+
 **TAG-LAST:** The git tag and GitHub release are created as the very last step. "Tag exists = fully published." This makes releases safe to retry — re-running a failed release replays only the failed jobs.
 
 **Always dry-run first:** `dry_run=true` (the default) validates the entire plan, builds every artifact, and runs the test gate without publishing, committing, or tagging.
@@ -183,6 +187,9 @@ For a full coordinated release candidate, use the dedicated
 into a pre-publish and post-publish worksheet covering packaging, deployment,
 permissions, upgrade, rootless ownership, browser-backed flows, and shipped
 artifact verification.
+
+For the ordered execution procedure that drives that checklist, use the
+[RC release runbook](release-rc-runbook.md).
 
 - [ ] `electron-host`: launch Electron against a seeded install; verify the window lands on the client chat at `http://127.0.0.1:3890/chat`, and host routes remain available.
 - [ ] `host-ui`: run `openpalm admin`; verify the browser opens on the loopback host UI and `/host`, `/connections`, and `/chat` all load.
