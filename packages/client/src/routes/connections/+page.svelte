@@ -49,16 +49,16 @@
   async function probeAll(entries: ConnectionEntry[]): Promise<void> {
     if (!boot) return;
     const { secrets } = boot;
-    await Promise.all(
+    const updates = await Promise.all(
       entries.map(async (entry) => {
         const transport = createTransport({
           baseUrl: entry.url,
           auth: await secrets.resolveAuth(entry),
         });
-        const result = await transport.probeHealth();
-        health = { ...health, [entry.id]: result };
+        return { id: entry.id, result: await transport.probeHealth() };
       })
     );
+    health = Object.fromEntries(updates.map((u) => [u.id, u.result]));
   }
 
   function healthLabel(id: string): { text: string; tone: 'ok' | 'warn' | 'bad' | 'idle' } {

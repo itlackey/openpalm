@@ -19,7 +19,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { loadTransportModule } from './helpers/contract.ts';
-import { jsonResponse, recordingFetch } from './helpers/mocks.ts';
+import { byteStream, jsonResponse, recordingFetch } from './helpers/mocks.ts';
 
 const BASE = 'http://gw.example:8443';
 
@@ -146,6 +146,19 @@ describe('transport request shaping (P5b item 1)', () => {
     const transport = createTransport({ baseUrl: BASE, fetch });
     await transport.sendMessage('ses/../etc', 'x');
     expect(calls[0].url).toBe(`${BASE}/session/${encodeURIComponent('ses/../etc')}/message`);
+  });
+
+  test('sendMessage parses text/event-stream responses', async () => {
+    const { createTransport } = await loadTransportModule();
+    const { fetch, calls } = recordingFetch((request) =>
+      new Response(byteStream(['event: message\ndata: {"parts":[{"type":"text","text":"via sse"}]}\n\n']), {
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    );
+    const transport = createTransport({ baseUrl: BASE, fetch });
+    const response = await transport.sendMessage('ses_abc', 'hi there');
+    expect(calls[0].headers.get('content-type')).toContain('application/json');
+    expect(response).toEqual({ parts: [{ type: 'text', text: 'via sse' }] });
   });
 
   test('listSessions maps OpenCode sessions and sorts desc by updatedAt (title fallback "")', async () => {

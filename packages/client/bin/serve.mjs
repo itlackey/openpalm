@@ -45,11 +45,12 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-function send(res, path, status = 200, extraHeaders = {}) {
+function send(res, path, status = 200, extraHeaders = {}, includeBody = true) {
   res.writeHead(status, {
     'content-type': MIME[extname(path)] ?? 'application/octet-stream',
     ...extraHeaders,
   });
+  if (!includeBody) return res.end();
   createReadStream(path).pipe(res);
 }
 
@@ -58,6 +59,9 @@ function runtimeConfigHeaders() {
 }
 
 const server = createServer((req, res) => {
+  const method = req.method ?? 'GET';
+  const supportsBody = method !== 'HEAD';
+
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
@@ -71,9 +75,9 @@ const server = createServer((req, res) => {
   const candidate = join(dir, normalize(join('/', pathname)));
   if (existsSync(candidate) && statSync(candidate).isFile()) {
     if (pathname === '/runtime-config.json') {
-      return send(res, candidate, 200, runtimeConfigHeaders());
+      return send(res, candidate, 200, runtimeConfigHeaders(), supportsBody);
     }
-    return send(res, candidate);
+    return send(res, candidate, 200, {}, supportsBody);
   }
   // runtime-config.json may live beside the build dir instead of inside it
   // (the assistant container writes it next to the extracted bundle, P5d).
@@ -81,7 +85,7 @@ const server = createServer((req, res) => {
     const candidates = [runtimeConfigPath, join(dir, '..', 'runtime-config.json')].filter(Boolean);
     for (const path of candidates) {
       if (existsSync(path) && statSync(path).isFile()) {
-        return send(res, path, 200, runtimeConfigHeaders());
+        return send(res, path, 200, runtimeConfigHeaders(), supportsBody);
       }
     }
     res.writeHead(404, {
@@ -92,7 +96,7 @@ const server = createServer((req, res) => {
   }
   // SPA fallback: every route is client-rendered from index.html.
   const fallback = join(dir, 'index.html');
-  if (existsSync(fallback)) return send(res, fallback);
+  if (existsSync(fallback)) return send(res, fallback, 200, {}, supportsBody);
   res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
   res.end('client build not found — run `bun run client:build`');
 });

@@ -198,6 +198,7 @@ async function handleDirectRequest(req: Request, clientIp = ''): Promise<Respons
     return browserSurface ? applyCorsHeaders(json(404, { error: 'not_found', requestId }), corsOrigin) : json(404, { error: 'not_found', requestId });
   }
   if (browserSurface && isCorsPreflight(req)) return corsPreflightResponse(req, requestId, corsOrigin);
+
   if (url.pathname === '/mcp') {
     if (!MCP_ENABLED) return applyCorsHeaders(json(404, { error: 'not_found', requestId }), corsOrigin);
     const response = await handleMcpRequest(req, requestId);

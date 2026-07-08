@@ -127,6 +127,48 @@ function startMockAssistant(): ReturnType<typeof Bun.serve> {
   });
 }
 
+async function withDirectIngressDisabled<T>(run: (directUrl: string) => Promise<T>): Promise<T> {
+  const disabledInternalPort = await getAvailablePort();
+  const disabledDirectPort = await getAvailablePort();
+  const disabledAdminPort = await getAvailablePort();
+  const disabledProc = Bun.spawn(['bun', 'run', 'src/server.ts'], {
+    cwd: join(import.meta.dir, '..'),
+    env: {
+      ...process.env,
+      PORT: String(disabledInternalPort),
+      GUARDIAN_DIRECT_PORT: String(disabledDirectPort),
+      GUARDIAN_ADMIN_PORT: String(disabledAdminPort),
+      GUARDIAN_DIRECT_INGRESS: 'false',
+      GUARDIAN_CORS_ALLOWED_ORIGINS: ALLOWED_ORIGIN,
+      GUARDIAN_STATE_DB_PATH: join(tmpDir, `state-disabled-${disabledDirectPort}.db`),
+      GUARDIAN_ADMIN_TOKEN_FILE: join(tmpDir, 'admin-token'),
+      GUARDIAN_INTERNAL_HOST: '127.0.0.1',
+      OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
+      GUARDIAN_AUDIT_PATH: join(tmpDir, `audit-disabled-${disabledDirectPort}.log`),
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const disabledUrl = `http://127.0.0.1:${disabledDirectPort}`;
+  try {
+    for (let i = 0; i < 50; i++) {
+      if (disabledProc.exitCode !== null) {
+        throw new Error(`guardian (direct disabled) exited before ready with code ${disabledProc.exitCode}`);
+      }
+      try {
+        const resp = await fetch(`${disabledUrl}/health`);
+        if (resp.ok) break;
+      } catch {
+        // not ready yet
+      }
+      await Bun.sleep(100);
+    }
+    return await run(disabledUrl);
+  } finally {
+    disabledProc.kill();
+  }
+}
+
 beforeAll(async () => {
   assistantPort = await getAvailablePort();
   internalPort = await getAvailablePort();
@@ -284,5 +326,23 @@ describe('Guardian direct-ingress CORS', () => {
 
     expect(resp.status).not.toBe(204);
     expect(resp.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('does not answer browser preflight when direct ingress is disabled', async () => {
+    await withDirectIngressDisabled(async (disabledUrl) => {
+      const resp = await fetch(`${disabledUrl}/oc/session`, {
+        method: 'OPTIONS',
+        headers: {
+          origin: ALLOWED_ORIGIN,
+          'access-control-request-method': 'POST',
+          'access-control-request-headers': 'authorization, content-type, x-openpalm-user',
+        },
+      });
+
+      expect(resp.status).toBe(404);
+      expect((await resp.json()).error).toBe('not_found');
+      expect(resp.headers.get('access-control-allow-origin')).toBe(ALLOWED_ORIGIN);
+      expect(resp.headers.get('access-control-allow-credentials')).toBe('true');
+    });
   });
 });

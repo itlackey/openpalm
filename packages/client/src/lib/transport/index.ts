@@ -106,6 +106,30 @@ export function createTransport(options: TransportOptions): Transport {
     return response;
   }
 
+  async function parseSseMessage(response: Response): Promise<unknown> {
+    if (!response.body) return null;
+    let lastPayload: unknown = null;
+    try {
+      for await (const frame of parseSseStream(response.body)) {
+        if (!frame.data) continue;
+        try {
+          const payload = JSON.parse(frame.data) as unknown;
+          lastPayload = payload;
+          if (typeof payload === 'object' && payload !== null && 'parts' in payload) {
+            return payload;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch (error) {
+      throw error instanceof Error
+        ? error
+        : Object.assign(new Error(String(error)), { status: 502 });
+    }
+    return lastPayload;
+  }
+
   return {
     /**
      * List sessions on the connection. OpenCode returns `Array<Session>`
@@ -142,6 +166,10 @@ export function createTransport(options: TransportOptions): Transport {
         { parts: [{ type: 'text', text }] },
         AbortSignal.timeout(MESSAGE_TIMEOUT_MS)
       );
+      const contentType = res.headers.get('content-type')?.toLowerCase() ?? '';
+      if (contentType.startsWith('text/event-stream')) {
+        return parseSseMessage(res);
+      }
       return (await res.json()) as unknown;
     },
 

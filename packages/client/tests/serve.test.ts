@@ -69,6 +69,13 @@ describe('serve.mjs resilience', () => {
     expect(res.headers.get('content-type')).toContain('text/html');
   });
 
+  it('supports HEAD requests with no response body', async () => {
+    const res = await fetch(`${BASE}/`, { method: 'HEAD' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(await res.text()).toBe('');
+  });
+
   it('serves runtime-config.json with no-store caching', async () => {
     const res = await fetch(`${BASE}/runtime-config.json`);
     expect(res.status).toBe(200);

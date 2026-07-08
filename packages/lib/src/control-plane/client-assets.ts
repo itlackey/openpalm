@@ -285,6 +285,6 @@ export async function checkAndUpdateClientBuild(
     onBlockedMajor: (latestVersion) => ({ updated: false, latestVersion }),
     onUpToDate: (latestVersion) => ({ updated: false, latestVersion }),
     onSuccess: (latestVersion, backupDir) => ({ updated: true, latestVersion, backupDir }),
-    onError: (error) => ({ updated: false, latestVersion: null, error }),
+    onError: (error, backupDir) => ({ updated: false, latestVersion: null, error, backupDir }),
   });
 }
