@@ -129,3 +129,55 @@ describe('P5d docs — new env vars are documented (static-only)', () => {
     ).toBe(true);
   });
 });
+
+// ── I2 (review): compose healthcheck coverage for the client co-process ─────
+// A boot-time `npm install @openpalm/client` failure previously left
+// OP_CLIENT_PORT published with nothing listening while the healthcheck only
+// probed OpenCode (:4096) — the stack reported healthy regardless. The
+// healthcheck must also probe the client, skippable only via the
+// entrypoint's deliberate I3 safety-skip marker (not a generic escape hatch).
+describe('I2 — assistant healthcheck also probes the client co-process', () => {
+  const healthcheckTest = String(assistant?.healthcheck?.test ?? []);
+
+  test('the healthcheck command probes the client port, not just OpenCode', () => {
+    expect(healthcheckTest).toContain('4096');
+    expect(healthcheckTest).toMatch(/OP_CLIENT_PORT/);
+  });
+
+  test('the healthcheck exempts the I3 deliberate client-skip marker rather than treating every skip as unhealthy', () => {
+    expect(healthcheckTest).toContain('openpalm-client-skip');
+  });
+});
+
+// ── I4 (review): guardian CORS defaults mirror the assistant's own defaults ─
+const portals = yamlParse(
+  readFileSync(join(STACK_DIR, 'portals.compose.yml'), 'utf8'),
+) as ComposeDoc;
+const guardian = portals.services?.guardian;
+
+describe('I4 — guardian CORS default mirrors the shipped client origins', () => {
+  test('GUARDIAN_CORS_ALLOWED_ORIGINS defaults to the assistant/host client origins instead of empty', () => {
+    expect(guardian, 'guardian service must exist in portals.compose.yml').toBeTruthy();
+    const value = String(
+      (guardian?.environment as Record<string, unknown> | undefined)?.GUARDIAN_CORS_ALLOWED_ORIGINS ?? '',
+    );
+    // Must reference BOTH the assistant-container client port and the
+    // host-local client app port — the same two ports start_opencode already
+    // auto-seeds into OpenCode's CORS allowlist.
+    expect(value).toContain('OP_CLIENT_PORT');
+    expect(value).toContain('OP_HOST_CLIENT_PORT');
+    // Still an operator override, not a hardcoded replacement.
+    expect(value).toMatch(/^\$\{GUARDIAN_CORS_ALLOWED_ORIGINS:-/);
+    // I3 posture applies here too: never a wildcard default.
+    expect(value).not.toContain('*');
+  });
+
+  test('GUARDIAN_DIRECT_INGRESS and GUARDIAN_CORS_ALLOWED_ORIGINS are documented together in environment-and-mounts.md', () => {
+    const envAndMounts = readFileSync(
+      join(REPO_ROOT, 'docs/technical/environment-and-mounts.md'),
+      'utf8',
+    );
+    expect(envAndMounts.includes('GUARDIAN_DIRECT_INGRESS')).toBe(true);
+    expect(envAndMounts.includes('GUARDIAN_CORS_ALLOWED_ORIGINS')).toBe(true);
+  });
+});

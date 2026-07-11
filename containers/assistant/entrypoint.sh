@@ -130,12 +130,48 @@ install_runtime_artifacts() {
   fi
 }
 
+# ── LAN-exposure helpers ─────────────────────────────────────────────────────
+# Shared by start_client (I3 safety gate, below) and start_opencode (I3
+# explicit-origin CORS, further down).
+is_loopback_address() {
+  case "$1" in
+    127.0.0.1|localhost) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+opencode_auth_enabled() {
+  case "${OPENCODE_AUTH:-false}" in
+    true|TRUE|True|1|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 start_client() {
   # Static chat client (@openpalm/client, plan §6.9 Slice A). The co-process
   # only serves bytes — the BROWSER talks to OpenCode directly at the
   # host-published assistant URL, so there is no server-side API base URL to
   # wire into this process (the old adapter-node co-process env plumbing, and
   # its wiring bug, are gone with it).
+
+  # ── I3: LAN-exposure safety gate ─────────────────────────────────────────
+  # Never publish an unauthenticated chat client onto a network the assistant
+  # itself made reachable. When OpenCode is bound off loopback
+  # (OP_ASSISTANT_BIND_ADDRESS / OP_BIND_ADDRESS) AND OpenCode auth is
+  # disabled (OPENCODE_AUTH, default "false"), any web page a LAN visitor
+  # opens could script the assistant cross-origin through this client port.
+  # Warn loudly, naming the exact knobs, and refuse to start the client
+  # surface — this is a deliberate degrade (the rest of the stack, including
+  # OpenCode itself, keeps running), never a hard failure of the container.
+  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
+  rm -f /tmp/openpalm-client-skip
+  if ! is_loopback_address "$assistant_bind_address" && ! opencode_auth_enabled; then
+    echo "WARNING: OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated." >&2
+    echo "WARNING: refusing to start the unauthenticated client chat co-process on OP_CLIENT_PORT — set OPENCODE_AUTH=true (with real OpenCode credentials) before exposing this stack beyond loopback." >&2
+    : > /tmp/openpalm-client-skip
+    return 0
+  fi
+
   local client_pkg="/opt/openpalm/client/node_modules/@openpalm/client"
   local serve_script="${client_pkg}/bin/serve.mjs"
   local client_build="${client_pkg}/build"
@@ -156,13 +192,21 @@ start_client() {
   node -e '
     const fs = require("fs");
     const [file, url] = process.argv.slice(1);
+    // E1: never let a wildcard bind host leak into a browser-facing URL — an
+    // operator override may itself be derived from a bind-address setting
+    // upstream. Mirrors packages/lib/src/control-plane/url-normalize.ts
+    // normalizeLoopbackUrl exactly (see assistant-client-entrypoint.test.ts).
+    const normalizedUrl = url.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
     const config = {
       connections: [
         {
-          id: "assistant-container-opencode",
+          // I5: literal id/label must match packages/lib/src/control-plane/
+          // client-runtime-config.ts ASSISTANT_LOCKED_CONNECTION_ID / _LABEL —
+          // pinned by a static test in assistant-client-entrypoint.test.ts.
+          id: "openpalm-assistant-opencode",
           label: "This assistant",
           kind: "local-opencode",
-          url,
+          url: normalizedUrl,
           auth: { mode: "none" },
           isDefault: true,
           locked: true,
@@ -176,11 +220,40 @@ start_client() {
   local client_port="${OP_CLIENT_PORT:-3000}"
   echo "entrypoint: starting client co-process on port ${client_port}..." >&2
 
-  # Bind 0.0.0.0 INSIDE the container only: host exposure is governed by the
-  # compose port mapping, which defaults to loopback (OP_BIND_ADDRESS policy).
-  node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build" &
+  # ── I2: supervise + respawn with capped exponential backoff ──────────────
+  # Mirrors packages/cli/src/lib/client-server.ts's host-side supervision
+  # semantics: an unexpected exit respawns the co-process instead of leaving
+  # the published port silently dead (the compose healthcheck now probes it —
+  # see core.compose.yml), but a crash loop backs off (1s, 2s, 4s, 8s, 16s,
+  # capped at 30s) and gives up after max_attempts so a persistently broken
+  # client can't spin the container's CPU/log forever. Bind 0.0.0.0 INSIDE the
+  # container only: host exposure is governed by the compose port mapping,
+  # which defaults to loopback (OP_BIND_ADDRESS policy).
+  (
+    local attempt=0
+    local max_attempts=5
+    local delay=1
+    local max_delay=30
+    while true; do
+      local exit_code
+      if node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build"; then
+        exit_code=0
+      else
+        exit_code=$?
+      fi
+      attempt=$((attempt + 1))
+      if [ "$attempt" -ge "$max_attempts" ]; then
+        echo "warning: client co-process exited $attempt times (last exit $exit_code); giving up on respawn — the assistant keeps serving without it" >&2
+        break
+      fi
+      echo "warning: client co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2
+      sleep "$delay"
+      delay=$((delay * 2))
+      if [ "$delay" -gt "$max_delay" ]; then delay=$max_delay; fi
+    done
+  ) &
 
-  echo "entrypoint: client co-process PID $! started" >&2
+  echo "entrypoint: client co-process supervisor PID $! started" >&2
 }
 
 seed_default_agents_md() {
@@ -402,16 +475,20 @@ start_opencode() {
     "http://127.0.0.1:${host_client_port}"
     "http://localhost:${host_client_port}"
   )
+  # I3: EXPLICIT ORIGINS ONLY — never emit a wildcard CORS grant. When the
+  # client bind address is a concrete non-loopback host/IP (an operator
+  # opting a specific LAN address into the client's origin set), add that
+  # exact origin; it is still one named origin, never a wildcard grant. A
+  # wildcard client bind (0.0.0.0/::) cannot be turned into the one true
+  # browser Origin a LAN visitor's browser will actually send, so nothing is
+  # auto-derived for it — operators add the exact origin(s) they expect via
+  # OP_CLIENT_CORS_ALLOWED_ORIGINS below. See also start_client's LAN-exposure
+  # safety gate, which refuses to serve the client surface at all when auth
+  # stays disabled on a non-loopback assistant bind.
   if [ "$client_bind_address" != "127.0.0.1" ] && [ "$client_bind_address" != "localhost" ] \
+     && [ "$client_bind_address" != "0.0.0.0" ] && [ "$client_bind_address" != "::" ] \
      && [ "$assistant_bind_address" != "127.0.0.1" ] && [ "$assistant_bind_address" != "localhost" ]; then
-    if [ "$client_bind_address" = "0.0.0.0" ] || [ "$client_bind_address" = "::" ]; then
-      # With wildcard binds the real browser Origin is the operator-chosen LAN
-      # hostname/IP, which the container cannot know. The assistant itself is
-      # already explicitly LAN-exposed in this mode, so allow browser origins.
-      cors_origins+=("*")
-    else
-      cors_origins+=("http://${client_bind_address}:${client_host_port}")
-    fi
+    cors_origins+=("http://${client_bind_address}:${client_host_port}")
   fi
   if [ -n "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
     local old_ifs="$IFS"

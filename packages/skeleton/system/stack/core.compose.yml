@@ -135,8 +135,15 @@ services:
       # Declared after the named volume so the bind-mount wins on all platforms.
       - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
     networks: [ assistant_net ]
+    # I2: probe the client co-process too, not just OpenCode — a boot-time
+    # `npm install @openpalm/client` failure previously left port
+    # OP_CLIENT_PORT published with nothing listening while this healthcheck
+    # still reported the container healthy. Skipped (not failed) when the
+    # entrypoint's I3 LAN-exposure safety gate deliberately did not start the
+    # client (marker file /tmp/openpalm-client-skip) — that is an intentional
+    # security degrade, not a health problem.
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1; if [ ! -f /tmp/openpalm-client-skip ]; then curl -sf http://localhost:${OP_CLIENT_PORT:-3000}/ >/dev/null || exit 1; fi" ]
       interval: 30s
       timeout: 10s
       retries: 5

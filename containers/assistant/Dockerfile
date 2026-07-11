@@ -174,6 +174,28 @@ RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/a
     && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/client /opt/openpalm/skeleton \
     && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/client /opt/openpalm/skeleton
 
+# ── Fallback @openpalm/client bake (review finding I2) ──────────────────────
+# Same approach as containers/guardian/Dockerfile's baked guardian/skeleton
+# install: put a real @openpalm/client build at its runtime path INSIDE the
+# image, so an offline/air-gapped/npm-outage first boot still has a chat
+# surface to serve on OP_CLIENT_PORT instead of silently publishing an empty
+# port (the entrypoint's boot-time `npm install` in install_runtime_artifacts
+# then upgrades this in place on every boot that CAN reach the registry — this
+# bake is only the floor, not the steady-state install path). This works
+# because assistant-artifacts (the named volume compose mounts at
+# /opt/openpalm) is seeded from this image path the FIRST time the volume is
+# created — unlike a bind mount, it does not shadow the baked content with an
+# empty host directory. Skipped when PLATFORM_VERSION is unset (local/dev
+# builds with no resolvable exact pin) so the image still builds without one;
+# every versioned release build gets the fallback.
+RUN if [ -n "$PLATFORM_VERSION" ]; then \
+      npm install --prefix /opt/openpalm/client "@openpalm/client@${PLATFORM_VERSION}" \
+        --omit=dev --no-fund --no-audit \
+      && chmod -R a+rwX /opt/openpalm/client; \
+    else \
+      echo "WARN: PLATFORM_VERSION unset at build time — no fallback @openpalm/client baked (dev/local build only)" >&2; \
+    fi
+
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
@@ -207,8 +229,12 @@ COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 3000
 
+# Probes OpenCode unconditionally, plus the client co-process (I2) UNLESS the
+# entrypoint's I3 LAN-exposure safety gate deliberately skipped starting it
+# (marker file /tmp/openpalm-client-skip) — that security-motivated skip must
+# not itself register as a healthcheck failure.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-4096}' || exit 1
+  CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-4096} && { [ -f /tmp/openpalm-client-skip ] || echo > /dev/tcp/localhost/${OP_CLIENT_PORT:-3000}; }' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 USER node
