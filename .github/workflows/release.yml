@@ -492,13 +492,36 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
+  # Portal SDK: shared base class + OpenCode client the discord/slack adapters
+  # depend on via `"@openpalm/portal-sdk": "workspace:*"` in `dependencies`
+  # (NOT devDependencies — this is a real runtime dependency, unlike ui-kit's
+  # workspace:* into ui/client). `bun pm pack` resolves workspace:* to the
+  # on-disk version of packages/portal-sdk at pack time, so portal-sdk MUST be
+  # published in lockstep with the adapters, and published FIRST (C1, review
+  # 2026-07-10: portal-sdk was never added to the DAG, leaving the published
+  # 0.13.0-beta.1 discord/slack adapters pinned to an unpublished
+  # @openpalm/portal-sdk@0.12.52 — uninstallable).
+  npm-portal-sdk:
+    name: npm @openpalm/portal-sdk
+    needs: [compute-version, bump]
+    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
+    with:
+      package-dir: packages/portal-sdk
+      package-name: '@openpalm/portal-sdk'
+      version: ${{ needs.compute-version.outputs.new_version }}
+      ref: ${{ github.ref_name }}
+      exact-version: true
+      dry-run: ${{ inputs.dry_run }}
+
   # Portal adapters: the portal image bun-installs these from npm at runtime
   # (data/portal/tools/package.json + bun update), so a published patch reaches
   # running portals without an image rebuild. Published as `src` only (no build).
   npm-discord-portal:
     name: npm @openpalm/discord-portal
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    needs: [compute-version, bump, npm-portal-sdk]
+    if: always() && needs.bump.result == 'success' && needs.npm-portal-sdk.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -511,8 +534,8 @@ jobs:
 
   npm-slack-portal:
     name: npm @openpalm/slack-portal
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    needs: [compute-version, bump, npm-portal-sdk]
+    if: always() && needs.bump.result == 'success' && needs.npm-portal-sdk.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -823,6 +846,7 @@ jobs:
       - npm-cli
       - npm-ui
       - npm-client
+      - npm-portal-sdk
       - npm-discord-portal
       - npm-slack-portal
       - docker-portal

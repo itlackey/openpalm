@@ -11,6 +11,7 @@
       "packages/electron/admin-tools/package.json"
     ],
     "portals": [
+      "packages/portal-sdk/package.json",
       "portals/discord/package.json",
       "portals/slack/package.json"
     ],

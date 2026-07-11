@@ -185,6 +185,94 @@ describe("P5e — client-bundle purity gate wired into CI (RED until P5e item 3)
 	});
 });
 
+// ── C1 (2026-07-10 review): @openpalm/portal-sdk was never added to the
+// publish DAG. The live 0.13.0-beta.1 discord/slack portal packages pin
+// @openpalm/portal-sdk@0.12.52 exact (baked in by `bun pm pack` resolving the
+// workspace:* dependency at pack time) — but portal-sdk was never published,
+// so the adapters are uninstallable (E404). Fix: add an npm-portal-sdk job
+// mirroring the other npm-* jobs, needs-ed by both portal adapters + tag-release.
+describe("C1 — @openpalm/portal-sdk joins the publish DAG (RED until C1 fix)", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+	const portalSdkEntry = publishJobs(release).find(
+		([, job]) => job.with?.["package-name"] === "@openpalm/portal-sdk",
+	);
+
+	test("a job publishes @openpalm/portal-sdk via the reusable publish-npm-package.yml", () => {
+		expect(portalSdkEntry).toBeDefined();
+	});
+
+	test("portal-sdk publish mirrors the discord/slack portal jobs: package-dir, exact-version pin, computed version", () => {
+		const w = portalSdkEntry?.[1].with ?? {};
+		expect(w["package-dir"]).toBe("packages/portal-sdk");
+		expect(w["exact-version"]).toBe(true);
+		expect(String(w.version ?? "")).toContain("compute-version.outputs.new_version");
+	});
+
+	test("portal-sdk publish is gated on the same units as the discord/slack portals (portals | all)", () => {
+		const cond = String(portalSdkEntry?.[1].if ?? "");
+		expect(cond).toContain("inputs.unit == 'portals'");
+		expect(cond).toContain("inputs.unit == 'all'");
+	});
+
+	test("portal-sdk publish depends on compute-version + bump", () => {
+		const needs = needsList(portalSdkEntry?.[1] ?? {});
+		expect(needs).toContain("compute-version");
+		expect(needs).toContain("bump");
+	});
+
+	test("both discord-portal and slack-portal publish jobs need npm-portal-sdk (sdk before adapters)", () => {
+		const portalSdkJobId = portalSdkEntry?.[0] ?? "<missing @openpalm/portal-sdk publish job>";
+		const discordEntry = publishJobs(release).find(
+			([, job]) => job.with?.["package-name"] === "@openpalm/discord-portal",
+		);
+		const slackEntry = publishJobs(release).find(
+			([, job]) => job.with?.["package-name"] === "@openpalm/slack-portal",
+		);
+		expect(needsList(discordEntry?.[1] ?? {})).toContain(portalSdkJobId);
+		expect(needsList(slackEntry?.[1] ?? {})).toContain(portalSdkJobId);
+	});
+
+	test("tag-release (TAG-LAST invariant) waits on the portal-sdk publish job", () => {
+		const portalSdkJobId = portalSdkEntry?.[0] ?? "<missing @openpalm/portal-sdk publish job>";
+		expect(needsList(jobs["tag-release"] ?? {})).toContain(portalSdkJobId);
+	});
+});
+
+// The generic DAG-completeness invariant the review calls out as "THE KEY
+// REGRESSION TEST": every RUNTIME (dependencies, not devDependencies)
+// workspace:* dependency of a published package must itself be published in
+// the same DAG. devDependencies workspace:* refs (e.g. @openpalm/ui-kit into
+// @openpalm/ui / @openpalm/client) are build-time-only and get inlined by the
+// consuming app's bundler — they are NOT baked into the tarball as a runtime
+// dependency by `bun pm pack`, unlike a `dependencies` entry, which bun
+// resolves to the workspace package's on-disk version at pack time. This is
+// exactly the shape of the C1 bug: portals/{discord,slack}/package.json list
+// @openpalm/portal-sdk under `dependencies` as workspace:*.
+describe("C1 — every workspace:* runtime dependency of a published package is a published DAG node", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const nodes = publishJobs(release);
+	const publishedNames = new Set(nodes.map(([, job]) => String(job.with?.["package-name"])));
+
+	for (const [id, job] of nodes) {
+		const packageDir = job.with?.["package-dir"];
+		if (typeof packageDir !== "string") continue;
+		const manifestPath = join(ROOT, packageDir, "package.json");
+		if (!existsSync(manifestPath)) continue;
+		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
+			dependencies?: Record<string, string>;
+		};
+		const workspaceRuntimeDeps = Object.entries(manifest.dependencies ?? {}).filter(
+			([, range]) => range === "workspace:*",
+		);
+		for (const [depName] of workspaceRuntimeDeps) {
+			test(`${id} (${String(job.with?.["package-name"])}) declares runtime workspace:* dep ${depName}, which must be a published node`, () => {
+				expect(publishedNames.has(depName)).toBe(true);
+			});
+		}
+	}
+});
+
 describe("guardian image dry-run stays buildable before npm publish", () => {
 	const release = parseWorkflow(RELEASE_WORKFLOW);
 	const jobs = jobsOf(release);
