@@ -94,6 +94,27 @@ export async function requestDesktopNotifyPermission(): Promise<NotificationPerm
   }
 }
 
+/**
+ * F7 (review 2026-07-11): flip the desktop-notify preference and, when
+ * turning it ON, request the browser Notification permission — the pure
+ * logic behind the client's reachable notify-toggle control (routes/
+ * +layout.svelte). Before this, nothing in packages/client ever WROTE
+ * 'openpalm.desktop.notify', so `desktopNotifyEnabled()` (and therefore
+ * `shouldNotifyDesktop()`, which every notify call is gated on) could never
+ * become true — the whole feature was inert regardless of how a turn ended.
+ * Mirrors the host app's UpdatesTab.svelte onchange handler, adapted from a
+ * checkbox to a toggle button. Permission is requested fire-and-forget
+ * (never awaited) since this runs from a click handler, not an async flow —
+ * the toggle's own visible state already reflects the stored preference
+ * immediately regardless of what the browser's permission prompt decides.
+ */
+export function toggleDesktopNotify(current: boolean): boolean {
+  const next = !current;
+  setDesktopNotifyEnabled(next);
+  if (next) void requestDesktopNotifyPermission();
+  return next;
+}
+
 export function notifyAssistantReply(replyText: string): void {
   if (!shouldNotifyDesktop()) return;
   const body =

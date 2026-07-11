@@ -57,6 +57,7 @@ import {
   extractTextDelta,
   extractToolUpdate,
   isTurnEnd,
+  partSnapshotType,
   type FlattenedEntry,
   type PermissionAsk,
   type QuestionAsk,
@@ -202,10 +203,23 @@ function entryFromFlattened(entry: FlattenedEntry): ChatEntry | null {
   };
 }
 
+/** §F3: the hard ceiling send() applies on top of (not instead of) a caller
+ *  AbortSignal — mirrors `git show 455d8728:packages/ui/src/lib/chat/
+ *  chat-state.svelte.ts`'s `STREAM_TURN_TIMEOUT_MS`. Configurable per
+ *  controller instance so tests can shorten it instead of waiting 150s. */
+export type ChatControllerOptions = {
+  /** Default: 150_000 (150s, matching the transport's own no-signal default). */
+  sendCeilingMs?: number;
+};
+
+const DEFAULT_SEND_CEILING_MS = 150_000;
+
 export function createChatController(
   transport: Transport,
-  notifier: ChatNotifier = defaultNotifier
+  notifier: ChatNotifier = defaultNotifier,
+  options: ChatControllerOptions = {}
 ): ChatController {
+  const sendCeilingMs = options.sendCeilingMs ?? DEFAULT_SEND_CEILING_MS;
   const state: ChatControllerState = {
     sessions: [],
     sessionId: null,
@@ -226,9 +240,19 @@ export function createChatController(
   }
 
   let unsubscribeEvents: (() => void) | null = null;
-  /** The session id + abort controller for the turn currently in flight, if any. */
-  type ActiveTurn = { sessionId: string; abort: AbortController };
+  /** The session id + abort controller for the turn currently in flight, if
+   *  any. `reasoningPartIds` (§F10) is the per-turn set of part ids the
+   *  stream has told us are reasoning/thinking parts (via a preceding
+   *  `message.part.updated` snapshot) — extractTextDelta uses it to exclude
+   *  those parts' deltas from the rendered assistant reply. */
+  type ActiveTurn = { sessionId: string; abort: AbortController; reasoningPartIds: Set<string> };
   let activeTurn: ActiveTurn | null = null;
+  /** §F12: fallback ids for callID-less tool updates, keyed by tool name so
+   *  repeated lifecycle updates for the SAME tool call collapse into one
+   *  row instead of a new row per update (a length-derived fallback id
+   *  shifts every time the array grows). Reset per turn alongside the rest
+   *  of the pending-render state. */
+  let toolFallbackIds = new Map<string, string>();
 
   /** Clears every pending-render field (§B4/§B9) — called whenever a turn ends. */
   function resetPendingRenderState(): void {
@@ -236,6 +260,22 @@ export function createChatController(
     state.pendingToolStates = [];
     state.pendingPermission = null;
     state.pendingQuestion = null;
+    toolFallbackIds = new Map();
+  }
+
+  /**
+   * Abort and clear whatever turn is in flight, if any (§F1/§F9) — used by
+   * selectSession()/newSession() (switching away must not let the old
+   * turn's SSE deltas or POST response land in the new session) and by
+   * destroy() (unmounting mid-turn must not leak the in-flight POST).
+   * Idempotent: a no-op when nothing is sending.
+   */
+  function cancelActiveTurn(): void {
+    if (!activeTurn) return;
+    activeTurn.abort.abort();
+    activeTurn = null;
+    state.sending = false;
+    resetPendingRenderState();
   }
 
   function finalizeTurn(turn: ActiveTurn, replyTextOverride?: string): void {
@@ -250,7 +290,15 @@ export function createChatController(
     // Cancels the POST if it's still in flight (the SSE-driven finalize path
     // below never awaited it) — idempotent if stop() already aborted it.
     turn.abort.abort();
-    const raw = replyTextOverride ?? state.pendingText;
+    // §F8: `replyTextOverride ?? state.pendingText` used to let an
+    // EMPTY-STRING override win outright — nullish coalescing only rejects
+    // `undefined`/`null`, not `''` — so a text-less POST body resolving
+    // before session.idle (override === '') discarded whatever had already
+    // streamed in via SSE. Prefer whichever side actually has text; only
+    // fall through to the "no text" placeholder when BOTH are empty.
+    const overrideTrimmed = replyTextOverride?.trim();
+    const pendingTrimmed = state.pendingText.trim();
+    const raw = overrideTrimmed ? replyTextOverride! : pendingTrimmed ? state.pendingText : (replyTextOverride ?? state.pendingText);
     const text = raw.trim() || '(The assistant sent no text.)';
     const capturedToolStates = state.pendingToolStates.length > 0 ? [...state.pendingToolStates] : undefined;
     state.entries = [
@@ -289,7 +337,17 @@ export function createChatController(
     output?: string;
     error?: string;
   }): void {
-    const id = update.callID || `${update.tool}:${state.pendingToolStates.length}`;
+    // §F12: a length-derived fallback (`${tool}:${pendingToolStates.length}`)
+    // shifts to a NEW id every time the array grows, so successive
+    // lifecycle updates for the same callID-less tool used to duplicate
+    // instead of upsert. Assign a stable id once per (tool, first-seen) via
+    // a per-turn map instead.
+    let id = update.callID;
+    if (!id) {
+      const existingFallback = toolFallbackIds.get(update.tool);
+      id = existingFallback ?? `${update.tool}:${randomId()}`;
+      if (!existingFallback) toolFallbackIds.set(update.tool, id);
+    }
     const next: ToolStateSnapshot = {
       id,
       tool: update.tool,
@@ -310,7 +368,18 @@ export function createChatController(
     if (!state.sending || !activeTurn) return;
     const turn = activeTurn;
     const sessionId = turn.sessionId;
-    const delta = extractTextDelta(event, sessionId);
+
+    // §F10: learn which part ids are reasoning/thinking parts from their
+    // `message.part.updated` snapshot BEFORE their deltas arrive, mirroring
+    // `git show 455d8728:packages/ui/src/lib/chat/chat-state.svelte.ts`
+    // `_onLiveEvent()`'s `partSnapshotType` use — without this, a reasoning
+    // model's thinking-token deltas render as the assistant reply.
+    const snapshot = partSnapshotType(event);
+    if (snapshot?.type === 'reasoning') {
+      turn.reasoningPartIds.add(snapshot.partID);
+    }
+
+    const delta = extractTextDelta(event, sessionId, turn.reasoningPartIds);
     if (delta) {
       state.pendingText += delta;
       notify();
@@ -377,12 +446,22 @@ export function createChatController(
     resetPendingRenderState();
     state.error = '';
     const abort = new AbortController();
-    const turn: ActiveTurn = { sessionId, abort };
+    const turn: ActiveTurn = { sessionId, abort, reasoningPartIds: new Set() };
     activeTurn = turn;
     notify();
 
+    // §F3: passing ONLY the caller-owned `abort.signal` here used to
+    // suppress the transport's own 150s `AbortSignal.timeout` default (it
+    // applies only when `options.signal` is omitted) with no replacement
+    // ceiling of our own — a POST that never settles, with no SSE turn-end
+    // either, wedged `sending` forever. Combine the caller signal WITH a
+    // hard ceiling so stop()/session-switch cancellation still works AND a
+    // hung request still gets cut off (mirrors `git show 455d8728:packages/
+    // ui/src/lib/chat/chat-state.svelte.ts`'s STREAM_TURN_TIMEOUT_MS).
+    const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(sendCeilingMs)]);
+
     try {
-      const response = await transport.sendMessage(sessionId, trimmed, { signal: abort.signal });
+      const response = await transport.sendMessage(sessionId, trimmed, { signal });
       finalizeTurn(turn, assistantTextFromResponse(response));
     } catch (e) {
       // stop() or an SSE-driven finalizeTurn() aborted this POST — the turn
@@ -421,6 +500,17 @@ export function createChatController(
           state.connected = false;
           notify();
         },
+        // §F6: a 401/403 on the /event stream is not a transient
+        // disconnect — it will never self-heal by reconnecting, so the
+        // transport stops retrying and hands it here instead of looping
+        // forever. Surfaced through the same `state.error` the alert banner
+        // already renders (friendlyMessage() gives 401/403 its own
+        // "check your credentials" copy).
+        onAuthError: (error) => {
+          state.connected = false;
+          state.error = friendlyMessage(error, 'The live update stream failed.');
+          notify();
+        },
       });
       await refreshSessions();
     },
@@ -428,12 +518,23 @@ export function createChatController(
     destroy() {
       unsubscribeEvents?.();
       unsubscribeEvents = null;
+      // §F9: unsubscribing from events left an in-flight turn's POST
+      // running with nothing left to ever finalize it — abort it too.
+      cancelActiveTurn();
     },
 
     refreshSessions,
 
     async selectSession(id: string): Promise<void> {
       if (id === state.sessionId) return;
+      // §F1: switching sessions mid-stream used to leave the OLD turn's
+      // AbortController un-aborted and `sending`/`pendingText` untouched —
+      // its SSE deltas and/or POST response could still land (finalizeTurn
+      // appends unconditionally to `state.entries`), corrupting the NEW
+      // session's transcript. Cancel it first; finalizeTurn/handleEvent's
+      // `activeTurn !== turn` identity guard then no-ops anything the stale
+      // turn does afterwards.
+      cancelActiveTurn();
       state.sessionId = id;
       state.entries = [];
       state.error = '';
@@ -448,6 +549,9 @@ export function createChatController(
     },
 
     newSession() {
+      // §F1: same guard as selectSession() above — New chat mid-stream must
+      // not let the old turn's reply land once a new session starts.
+      cancelActiveTurn();
       state.sessionId = null;
       state.entries = [];
       state.error = '';
@@ -461,11 +565,12 @@ export function createChatController(
       const turn = activeTurn;
       const { sessionId, abort } = turn;
       abort.abort();
-      try {
-        await transport.abortTurn(sessionId);
-      } catch {
-        // Best-effort — the turn finishes locally below regardless.
-      }
+      // §F5: finalize LOCALLY first — `transport.abortTurn()` is a fetch
+      // with no timeout of its own; awaiting it before finalizing used to
+      // strand `sending=true` forever if the remote POST /abort hung, even
+      // though the local turn was already aborted above. Finalizing first
+      // makes stop() always resolve the turn; the remote abort is now
+      // best-effort and fire-and-forget so a hang there can never block it.
       if (state.pendingText) {
         finalizeTurn(turn, state.pendingText);
       } else if (activeTurn === turn) {
@@ -475,6 +580,9 @@ export function createChatController(
         state.entries = [...state.entries, { id: randomId(), kind: 'note', text: 'Stopped.', timestamp: Date.now() }];
         notify();
       }
+      void transport.abortTurn(sessionId).catch(() => {
+        // Best-effort — the turn already finished locally above regardless.
+      });
     },
 
     async retryFailedSend(): Promise<void> {

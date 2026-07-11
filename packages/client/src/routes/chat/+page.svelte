@@ -310,7 +310,17 @@
 {#snippet sessionsList()}
   <div class="sessions-head">
     <span class="sessions-title">Sessions</span>
-    <button type="button" class="new-chat" onclick={newSession} aria-label="New chat">
+    <!-- F1 (review 2026-07-11): the controller now cancels an in-flight turn
+         cleanly on newSession()/selectSession() (aborts the POST, drops the
+         old turn's SSE deltas), but disabling these while sending too avoids
+         a mid-abort visual flash and accidental rapid-fire switching. -->
+    <button
+      type="button"
+      class="new-chat"
+      onclick={newSession}
+      aria-label="New chat"
+      disabled={chatState.sending}
+    >
       <IconAdd size={14} />
     </button>
   </div>
@@ -323,6 +333,7 @@
           class:current={session.id === chatState.sessionId}
           aria-current={session.id === chatState.sessionId ? 'true' : undefined}
           onclick={() => selectSession(session.id)}
+          disabled={chatState.sending && session.id !== chatState.sessionId}
         >
           {sessionLabel(session)}{#if session.id === chatState.sessionId}<span class="sr-only"> (current)</span>{/if}
         </button>
@@ -547,6 +558,12 @@
   .new-chat:hover {
     color: var(--s-ink);
     border-color: var(--s-seal);
+  }
+
+  .new-chat:disabled,
+  .session:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .sessions ul {

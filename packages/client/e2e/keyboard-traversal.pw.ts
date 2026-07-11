@@ -57,6 +57,9 @@ test.describe('desktop keyboard-only traversal', () => {
       'Connections',
       /Theme:/,
       'Reset app cache and reload',
+      // F7 (review 2026-07-11): the client's new reachable desktop-notify
+      // toggle, right after the reset-cache button in the topbar.
+      /Desktop notifications:/,
       'New chat',
       /Untitled/,
       /via Stub assistant/,

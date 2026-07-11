@@ -8,8 +8,10 @@
   import IconThemeLight from '@openpalm/ui-kit/components/icons/IconThemeLight.svelte';
   import IconThemeDark from '@openpalm/ui-kit/components/icons/IconThemeDark.svelte';
   import IconRefresh from '@openpalm/ui-kit/components/icons/IconRefresh.svelte';
+  import IconBell from '@openpalm/ui-kit/components/icons/IconBell.svelte';
   import { getClientBoot } from '$lib/boot.js';
   import { resetAppCache } from '$lib/reset-app-cache.js';
+  import { desktopNotifyEnabled, toggleDesktopNotify } from '$lib/desktop-notifications.js';
   import {
     THEME_STORAGE_KEY,
     isThemePreference,
@@ -38,6 +40,18 @@
   // user flips it mid-session (app.html's own matchMedia listener handles
   // the "OS changed, preference is 'system'" case).
   let themePreference = $state<ThemePreference>('system');
+
+  // F7 (review 2026-07-11): the client's only reachable control for the
+  // B12 desktop-notifications feature — before this, nothing in
+  // packages/client ever wrote the 'openpalm.desktop.notify' preference, so
+  // it could never be anything but off. `toggleDesktopNotify()` (the pure
+  // logic) both persists the preference and requests the browser
+  // Notification permission when turning it on.
+  let desktopNotifyOn = $state(false);
+
+  function handleToggleDesktopNotify(): void {
+    desktopNotifyOn = toggleDesktopNotify(desktopNotifyOn);
+  }
 
   function applyTheme(preference: ThemePreference): void {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -77,6 +91,8 @@
     } catch {
       themePreference = 'system';
     }
+
+    desktopNotifyOn = desktopNotifyEnabled();
 
     void (async () => {
       const boot = await getClientBoot();
@@ -144,6 +160,20 @@
         title="Reset app cache and reload"
       >
         <IconRefresh size={14} />
+      </button>
+      <!-- F7: the client's only reachable control for desktop notifications
+           on turn completion/error — off by default (content-free even when
+           on; see desktop-notifications.ts). -->
+      <button
+        type="button"
+        class="theme-toggle notify-toggle"
+        class:active={desktopNotifyOn}
+        onclick={handleToggleDesktopNotify}
+        aria-pressed={desktopNotifyOn}
+        aria-label={desktopNotifyOn ? 'Desktop notifications: on (click to turn off)' : 'Desktop notifications: off (click to turn on)'}
+        title={desktopNotifyOn ? 'Desktop notifications: on' : 'Desktop notifications: off'}
+      >
+        <IconBell size={14} />
       </button>
     </nav>
   </header>
@@ -225,6 +255,11 @@
 
   .theme-toggle:hover {
     color: var(--s-ink);
+    border-color: var(--s-seal);
+  }
+
+  .notify-toggle.active {
+    color: var(--s-seal);
     border-color: var(--s-seal);
   }
 
