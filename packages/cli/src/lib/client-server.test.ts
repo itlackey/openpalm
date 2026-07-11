@@ -30,9 +30,14 @@
 //   • Supervision: an unexpected child exit respawns it; stop() SIGTERMs the
 //     child and suppresses any further respawn.
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as ports from './ports.ts';
-import { startClientServer, resolveClientServeScript, resolveDefaultAssistantUrl } from './client-server.ts';
+import {
+  startClientServer, resolveClientServeScript, resolveDefaultAssistantUrl,
+  resolveClientServePort, resolveClientServeUrl,
+} from './client-server.ts';
 
 // ── fakes ─────────────────────────────────────────────────────────────────────
 
@@ -75,6 +80,10 @@ function harness(opts: {
   /** false = the resolved client build is absent (skip-when-absent path). */
   present?: boolean;
   port?: number;
+  /** Records every ms a respawn/stop `sleep` call was made with (D1 backoff test). */
+  sleepDelays?: number[];
+  /** Fake clock for the respawn-counter reset test (advisory fix). */
+  now?: () => number;
 }) {
   const buildDir = opts.buildDir ?? '/op-home/data/client/build';
   const procs = opts.procs ?? [fakeClientProc()];
@@ -94,8 +103,9 @@ function harness(opts: {
     resolveRuntimeConfigPath: () => '/op-home/data/client/runtime-config.json',
     resolveAssistantUrl: () => process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL || `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT || '3800'}`,
     writeRuntimeConfig: (path: string, assistantUrl: string) => { runtimeConfigWrites.push({ path, assistantUrl }); },
-    sleep: () => Promise.resolve(),
+    sleep: (ms: number) => { opts.sleepDelays?.push(ms); return Promise.resolve(); },
     stopTimeoutMs: 5,
+    now: opts.now,
   });
   return { handlePromise, spawns, logs, buildDir, procs, runtimeConfigWrites };
 }
@@ -123,18 +133,70 @@ describe('resolveClientServeScript', () => {
   });
 });
 
-describe('resolveDefaultAssistantUrl', () => {
-  it('uses persisted stack env when process env does not override it', () => {
-    expect(resolveDefaultAssistantUrl({}, { OP_ASSISTANT_PORT: '4800' })).toBe('http://127.0.0.1:4800');
-    expect(resolveDefaultAssistantUrl({}, { OP_CLIENT_DEFAULT_ASSISTANT_URL: 'https://assistant.example' }))
-      .toBe('https://assistant.example');
+// E1: resolveDefaultAssistantUrl now delegates to @openpalm/lib's
+// resolveAssistantEndpoint(homeDir, env), so it picks up the SAME
+// OP_OPENCODE_URL / OP_ASSISTANT_URL overrides the host UI honors — before
+// this fix the CLI only ever looked at OP_CLIENT_DEFAULT_ASSISTANT_URL and
+// silently ignored the other two, producing "chat works in the host UI but
+// not the CLI-served client app" for operators who set them.
+describe('resolveDefaultAssistantUrl (E1: shared @openpalm/lib resolver)', () => {
+  let tmpHome: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV_KEYS = ['OP_HOME', 'OP_CLIENT_DEFAULT_ASSISTANT_URL', 'OP_OPENCODE_URL', 'OP_ASSISTANT_URL', 'OP_ASSISTANT_PORT'];
+
+  beforeEach(() => {
+    for (const key of ENV_KEYS) { saved[key] = process.env[key]; delete process.env[key]; }
+    tmpHome = mkdtempSync(join(tmpdir(), 'openpalm-e1-'));
+    process.env.OP_HOME = tmpHome;
   });
 
-  it('lets process env override persisted stack env', () => {
-    expect(resolveDefaultAssistantUrl(
-      { OP_ASSISTANT_PORT: '4900' } as NodeJS.ProcessEnv,
-      { OP_ASSISTANT_PORT: '4800' }
-    )).toBe('http://127.0.0.1:4900');
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it('falls back to the loopback assistant port when nothing overrides it', () => {
+    expect(resolveDefaultAssistantUrl()).toBe('http://127.0.0.1:3800');
+    process.env.OP_ASSISTANT_PORT = '4800';
+    expect(resolveDefaultAssistantUrl()).toBe('http://127.0.0.1:4800');
+  });
+
+  it('honors OP_CLIENT_DEFAULT_ASSISTANT_URL', () => {
+    process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL = 'https://assistant.example';
+    expect(resolveDefaultAssistantUrl()).toBe('https://assistant.example');
+  });
+
+  it('honors OP_OPENCODE_URL (previously ignored by the CLI)', () => {
+    process.env.OP_OPENCODE_URL = 'https://oc.example.internal';
+    expect(resolveDefaultAssistantUrl()).toBe('https://oc.example.internal');
+  });
+
+  it('honors OP_ASSISTANT_URL (previously ignored by the CLI)', () => {
+    process.env.OP_ASSISTANT_URL = 'https://assistant2.example.internal';
+    expect(resolveDefaultAssistantUrl()).toBe('https://assistant2.example.internal');
+  });
+});
+
+// ── D2: one authoritative client port/URL resolver ────────────────────────────
+
+describe('resolveClientServePort / resolveClientServeUrl (D2)', () => {
+  it('uses OP_HOST_CLIENT_PORT from persisted stack.env when process.env has none — the SAME merge startClientServer spawns on', () => {
+    expect(resolveClientServePort({}, { OP_HOST_CLIENT_PORT: '9392' })).toBe(9392);
+    expect(resolveClientServeUrl({}, { OP_HOST_CLIENT_PORT: '9392' })).toBe('http://127.0.0.1:9392/chat');
+  });
+
+  it('lets process.env override the persisted value', () => {
+    expect(resolveClientServePort(
+      { OP_HOST_CLIENT_PORT: '9400' } as NodeJS.ProcessEnv,
+      { OP_HOST_CLIENT_PORT: '9392' },
+    )).toBe(9400);
+  });
+
+  it('falls back to DEFAULT_CLIENT_PORT (3890) when nothing is set', () => {
+    expect(resolveClientServePort({}, {})).toBe(3890);
   });
 });
 
@@ -267,6 +329,64 @@ describe('startClientServer supervision', () => {
     await tick();
 
     expect(spawns.length).toBe(2); // supervised: a fresh child was spawned
+    await handle?.stop();
+  });
+
+  // D1: an immediately-crashing child (e.g. EADDRINUSE) must not respawn at a
+  // flat 1/s forever — cap the attempts and back off exponentially between them.
+  it('caps the respawn loop and backs off exponentially instead of respawning forever', async () => {
+    const procs = Array.from({ length: 6 }, () => fakeClientProc());
+    const sleepDelays: number[] = [];
+    const { handlePromise, spawns, logs } = harness({ procs, sleepDelays });
+    const handle = await handlePromise;
+    expect(spawns.length).toBe(1);
+
+    for (const proc of procs) {
+      proc.die(1);
+      await tick();
+    }
+
+    // 1 initial spawn + 5 respawns (MAX_RESPAWN_ATTEMPTS) = 6 total; the 6th
+    // exit does NOT trigger a 7th respawn — the loop gave up.
+    expect(spawns.length).toBe(6);
+    expect(sleepDelays).toEqual([1000, 2000, 4000, 8000, 16000]);
+    expect(logs.join('\n')).toMatch(/giving up/i);
+
+    await handle?.stop();
+  });
+
+  // Advisory (review): respawnAttempt used to never reset once incremented, so
+  // a child that crashed MAX_RESPAWN_ATTEMPTS times cumulatively over the
+  // ENTIRE process lifetime — even hours apart, with long healthy stretches
+  // in between — permanently gave up. A sustained healthy run should reset
+  // the counter so only a PERSISTENTLY-broken child exhausts the cap.
+  it('resets the respawn-attempt counter after a sustained healthy run instead of accumulating forever', async () => {
+    const procs = Array.from({ length: 4 }, () => fakeClientProc());
+    const sleepDelays: number[] = [];
+    let clock = 0;
+    const { handlePromise, spawns, logs } = harness({ procs, sleepDelays, now: () => clock });
+    const handle = await handlePromise;
+    expect(spawns.length).toBe(1); // initial spawn, spawnedAt = clock (0)
+
+    // Two quick crashes (uptime 0 both times): attempts 1 and 2, exponential backoff.
+    procs[0].die(1);
+    await tick();
+    procs[1].die(1);
+    await tick();
+    expect(spawns.length).toBe(3);
+    expect(sleepDelays).toEqual([1000, 2000]);
+
+    // The third child runs healthy for a full minute before crashing — long
+    // enough to reset the give-up counter.
+    clock += 60_000;
+    procs[2].die(1);
+    await tick();
+    // Reset happened: back to the BASE delay (1000ms), not the next
+    // exponential step (4000ms) an un-reset counter would have used.
+    expect(sleepDelays).toEqual([1000, 2000, 1000]);
+    expect(spawns.length).toBe(4);
+    expect(logs.join('\n')).not.toMatch(/giving up/i);
+
     await handle?.stop();
   });
 

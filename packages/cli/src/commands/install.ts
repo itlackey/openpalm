@@ -7,7 +7,7 @@ import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
+import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, seedClientBuild, uiUpdateChannel } from '../lib/io.ts';
 import {
   backupOpenPalmHome,
   pruneBackupDirs,
@@ -233,7 +233,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await deployServices('update', false);
 }
 
-async function prepareInstallFiles(
+// Exported (not just internal) so it's independently testable — see
+// install-prepare.test.ts's "seeds the client build" coverage (C3) — without
+// exercising the rest of bootstrapInstall (wizard/deploy/docker).
+export async function prepareInstallFiles(
   homeDir: string, configDir: string, dataDir: string, workDir: string, version: string,
 ): Promise<void> {
   console.log('Preparing directories...');
@@ -270,6 +273,15 @@ async function prepareInstallFiles(
     await seedUiBuild(uiUpdateChannel(version), dataDir);
   } catch (err) {
     logger.warn('UI build not seeded; it will be installed on first `ui serve`/update', { error: String(err) });
+  }
+  // Install the client app build to data/client/ ({build,bin}) the SAME way
+  // (C3): before this, the client artifact was only ever fetched lazily at
+  // `openpalm ui serve` time, so an air-gapped/offline install never got one
+  // at all. NON-FATAL for the same reason as the UI build above.
+  try {
+    await seedClientBuild(uiUpdateChannel(version), dataDir);
+  } catch (err) {
+    logger.warn('Client build not seeded; it will be installed on first `ui serve`/update', { error: String(err) });
   }
 
   console.log('Configuring secrets...');

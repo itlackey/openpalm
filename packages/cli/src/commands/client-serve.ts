@@ -11,9 +11,58 @@
  * OP_CLIENT_DIR to the resolved build before spawning.
  */
 import { defineCommand } from 'citty';
-import { existsSync } from 'node:fs';
-import { resolveClientBuildDir } from '@openpalm/lib';
+import { existsSync as nodeExistsSync } from 'node:fs';
+import { resolveClientAppPort, resolveClientBuildDir } from '@openpalm/lib';
 import { resolveClientServeScript } from '../lib/client-server.ts';
+
+/** Injectable dependencies for {@link runClientServeCommand} (real fs/import/exit by default). */
+export interface RunClientServeDeps {
+  existsSync?: (path: string) => boolean;
+  resolveBuildDir?: () => string;
+  /** Import (and thereby start) the resolved serve script — the listening
+   *  socket keeps the process alive. Defaults to a real dynamic import. */
+  importServeScript?: (path: string) => Promise<unknown>;
+  exit?: (code: number) => void;
+  logError?: (...args: unknown[]) => void;
+}
+
+/**
+ * Run the client static server directly in the foreground. Exported (with
+ * injectable deps) so the D4 port-default fix is unit-testable without
+ * actually importing/starting serve.mjs.
+ *
+ * D4: a direct `openpalm client-serve` invocation (no supervisor) left PORT
+ * unset, so serve.mjs fell back to ITS OWN default (4180) instead of the
+ * platform's stable client port (3890, OP_HOST_CLIENT_PORT) — every OTHER
+ * path to the client app (the CLI supervisor, Electron, the docs) agrees on
+ * 3890/OP_HOST_CLIENT_PORT; only this direct-invocation path diverged.
+ */
+export async function runClientServeCommand(deps: RunClientServeDeps = {}): Promise<void> {
+  const exists = deps.existsSync ?? nodeExistsSync;
+  const resolveBuildDir = deps.resolveBuildDir ?? resolveClientBuildDir;
+  const importServeScript = deps.importServeScript ?? ((path: string) => import(path));
+  const exit = deps.exit ?? ((code: number) => process.exit(code));
+  const logError = deps.logError ?? console.error;
+
+  // OP_CLIENT_DIR (set by the supervisor) pins the served build; a direct
+  // invocation falls back to the shared resolver.
+  const buildDir = process.env.OP_CLIENT_DIR ?? resolveBuildDir();
+  const serveScript = resolveClientServeScript(buildDir);
+  if (!exists(serveScript)) {
+    logError(`Client serve script not found at ${serveScript}`);
+    logError('Run: bun run client:build');
+    exit(1);
+    return;
+  }
+  process.env.OP_CLIENT_DIR ??= buildDir;
+  // D4: default PORT to the platform's client port resolution (OP_HOST_CLIENT_PORT
+  // / DEFAULT_CLIENT_PORT=3890) BEFORE importing serve.mjs, which only applies
+  // its own 4180 fallback when PORT is unset.
+  process.env.PORT ??= String(resolveClientAppPort(process.env));
+  // Importing the script starts the HTTP server; the listening socket keeps
+  // the process alive.
+  await importServeScript(serveScript);
+}
 
 export default defineCommand({
   meta: {
@@ -23,18 +72,6 @@ export default defineCommand({
       'This is the child process the bare `openpalm` supervisor spawns.',
   },
   async run() {
-    // OP_CLIENT_DIR (set by the supervisor) pins the served build; a direct
-    // invocation falls back to the shared resolver.
-    const buildDir = process.env.OP_CLIENT_DIR ?? resolveClientBuildDir();
-    const serveScript = resolveClientServeScript(buildDir);
-    if (!existsSync(serveScript)) {
-      console.error(`Client serve script not found at ${serveScript}`);
-      console.error('Run: bun run client:build');
-      process.exit(1);
-    }
-    process.env.OP_CLIENT_DIR ??= buildDir;
-    // Importing the script starts the HTTP server; the listening socket keeps
-    // the process alive.
-    await import(serveScript);
+    await runClientServeCommand();
   },
 });
