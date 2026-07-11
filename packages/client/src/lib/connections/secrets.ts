@@ -100,16 +100,44 @@ function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+// F2 (review 2026-07-10 §F2, PR #562 fix round): the naive check-then-act
+// below (read storage.getCryptoKey() -> if absent, generate+persist) has an
+// `await` between the read and the write. probeAll() on the connections
+// page runs resolveAuth() for every connection in ONE Promise.all, and on a
+// pre-E7 install every entry lazily migrates via writeMaterial ->
+// getOrCreateKey concurrently — without serialization each concurrent
+// first-time caller sees "no key yet", generates its OWN key, and the last
+// storage.setCryptoKey() wins: every record encrypted under a losing key
+// becomes permanently undecryptable (silent credential loss).
+//
+// Fixed by memoizing the in-flight generation Promise per storage backend
+// in this WeakMap. The get-then-set of `pendingKeys` below has NO `await`
+// between them, so whichever concurrent caller's continuation resumes
+// first (after its own `await storage.getCryptoKey()`) wins the memo
+// atomically — JS never interleaves two synchronous stretches of code — and
+// every other concurrent caller awaits that SAME promise/key instead of
+// racing its own. The memo is keyed by the storage instance (not global) so
+// unrelated storage backends — e.g. two independent stores in tests — never
+// share a key.
+const pendingKeys = new WeakMap<ConnectionStorage, Promise<CryptoKey>>();
+
 /** Generate-once, reuse-forever non-extractable AES-GCM key for this storage backend. */
 async function getOrCreateKey(storage: ConnectionStorage): Promise<CryptoKey> {
   const existing = await storage.getCryptoKey();
   if (existing) return existing;
-  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: AES_GCM_LENGTH }, false, [
-    'encrypt',
-    'decrypt',
-  ]);
-  await storage.setCryptoKey(key);
-  return key;
+  let pending = pendingKeys.get(storage);
+  if (!pending) {
+    pending = (async () => {
+      const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: AES_GCM_LENGTH }, false, [
+        'encrypt',
+        'decrypt',
+      ]);
+      await storage.setCryptoKey(key);
+      return key;
+    })();
+    pendingKeys.set(storage, pending);
+  }
+  return pending;
 }
 
 async function encryptMaterial(key: CryptoKey, material: SecretMaterial): Promise<EncryptedRecord> {
