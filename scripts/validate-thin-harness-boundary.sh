@@ -91,6 +91,11 @@ ALLOWED_IMPORTS=(
   resolveClientAppPort
   resolveClientAppUrl
   writeClientRuntimeConfig
+  # Pure assistant-endpoint resolver (E1, review 2026-07-10): reads persisted
+  # stack.env merged under process.env and normalizes wildcard bind hosts to
+  # 127.0.0.1 for the browser-facing seeded connection URL. Read-only — no
+  # state mutation, no migrations; bootstrap needs it to write runtime-config.
+  resolveAssistantEndpoint
   # Pure version-compare helpers (update-check.ts's notify-only GitHub update
   # poll): no state mutation, no migration — just string comparison.
   normalizeVersion
