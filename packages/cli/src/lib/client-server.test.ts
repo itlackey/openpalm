@@ -82,6 +82,8 @@ function harness(opts: {
   port?: number;
   /** Records every ms a respawn/stop `sleep` call was made with (D1 backoff test). */
   sleepDelays?: number[];
+  /** Fake clock for the respawn-counter reset test (advisory fix). */
+  now?: () => number;
 }) {
   const buildDir = opts.buildDir ?? '/op-home/data/client/build';
   const procs = opts.procs ?? [fakeClientProc()];
@@ -103,6 +105,7 @@ function harness(opts: {
     writeRuntimeConfig: (path: string, assistantUrl: string) => { runtimeConfigWrites.push({ path, assistantUrl }); },
     sleep: (ms: number) => { opts.sleepDelays?.push(ms); return Promise.resolve(); },
     stopTimeoutMs: 5,
+    now: opts.now,
   });
   return { handlePromise, spawns, logs, buildDir, procs, runtimeConfigWrites };
 }
@@ -348,6 +351,41 @@ describe('startClientServer supervision', () => {
     expect(spawns.length).toBe(6);
     expect(sleepDelays).toEqual([1000, 2000, 4000, 8000, 16000]);
     expect(logs.join('\n')).toMatch(/giving up/i);
+
+    await handle?.stop();
+  });
+
+  // Advisory (review): respawnAttempt used to never reset once incremented, so
+  // a child that crashed MAX_RESPAWN_ATTEMPTS times cumulatively over the
+  // ENTIRE process lifetime — even hours apart, with long healthy stretches
+  // in between — permanently gave up. A sustained healthy run should reset
+  // the counter so only a PERSISTENTLY-broken child exhausts the cap.
+  it('resets the respawn-attempt counter after a sustained healthy run instead of accumulating forever', async () => {
+    const procs = Array.from({ length: 4 }, () => fakeClientProc());
+    const sleepDelays: number[] = [];
+    let clock = 0;
+    const { handlePromise, spawns, logs } = harness({ procs, sleepDelays, now: () => clock });
+    const handle = await handlePromise;
+    expect(spawns.length).toBe(1); // initial spawn, spawnedAt = clock (0)
+
+    // Two quick crashes (uptime 0 both times): attempts 1 and 2, exponential backoff.
+    procs[0].die(1);
+    await tick();
+    procs[1].die(1);
+    await tick();
+    expect(spawns.length).toBe(3);
+    expect(sleepDelays).toEqual([1000, 2000]);
+
+    // The third child runs healthy for a full minute before crashing — long
+    // enough to reset the give-up counter.
+    clock += 60_000;
+    procs[2].die(1);
+    await tick();
+    // Reset happened: back to the BASE delay (1000ms), not the next
+    // exponential step (4000ms) an un-reset counter would have used.
+    expect(sleepDelays).toEqual([1000, 2000, 1000]);
+    expect(spawns.length).toBe(4);
+    expect(logs.join('\n')).not.toMatch(/giving up/i);
 
     await handle?.stop();
   });

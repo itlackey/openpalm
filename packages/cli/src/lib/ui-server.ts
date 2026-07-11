@@ -549,6 +549,13 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   }
   const clientHandle = await startClientServer();
 
+  // D2 caution for future edits: "stop both children on every failure path"
+  // is satisfied today only because there IS no failure path here anymore —
+  // A4 removed the only early-return/exit(1) that used to orphan the UI child
+  // after this point. If a future change reintroduces an early return (or a
+  // process.exit) between here and the end of this function, it MUST also
+  // tear down `stopUiProc`/`clientHandle` explicitly — don't assume this
+  // block stays exit-free.
   if (opts.open !== false) {
     if (opts.openTarget === 'client') {
       // A4/J1: probe the host UI's landing (setup-incomplete/offline/broken →

@@ -36,6 +36,13 @@ const RESPAWN_BASE_DELAY_MS = 1_000;
 // (leaving the UI to keep serving without the client) after the cap.
 const MAX_RESPAWN_ATTEMPTS = 5;
 const RESPAWN_MAX_DELAY_MS = 30_000;
+// Advisory (review): respawnAttempt used to never reset once incremented, so a
+// child that crashed MAX_RESPAWN_ATTEMPTS times cumulatively over the ENTIRE
+// process lifetime — even hours apart, with long healthy stretches in
+// between — permanently gave up. A sustained healthy run resets the counter,
+// so only a PERSISTENTLY-broken child (repeated crashes with no healthy
+// stretch between them) exhausts the cap.
+const HEALTHY_UPTIME_MS = 60_000;
 
 /** Minimal child-process surface the supervisor drives (injectable for tests). */
 export type ClientChildProc = Pick<Bun.Subprocess, 'kill' | 'exited' | 'killed'>;
@@ -126,6 +133,8 @@ export interface ClientServerDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Force-kill grace window, ms (defaults to STOP_TIMEOUT_MS). */
   stopTimeoutMs?: number;
+  /** Clock for the respawn-counter "sustained healthy run" reset (defaults to Date.now). */
+  now?: () => number;
 }
 
 /**
@@ -144,6 +153,7 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
   const log = deps.log ?? console.log;
   const logError = deps.logError ?? console.error;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = deps.now ?? Date.now;
   const stopTimeoutMs = deps.stopTimeoutMs ?? STOP_TIMEOUT_MS;
   const resolveRuntimeConfigPath = deps.resolveRuntimeConfigPath ?? (() => resolveHostClientRuntimeConfigPath());
   const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl(process.env));
@@ -185,6 +195,7 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
 
   let stopping = false;
   let proc = spawnFn(cmd, { env });
+  let spawnedAt = now();
   log(`Client app served at http://127.0.0.1:${port} (from ${buildDir})`);
 
   // Supervision loop: respawn on any unexpected exit; an intentional stop()
@@ -197,6 +208,11 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
     while (!stopping) {
       const code = await proc.exited;
       if (stopping) break;
+      // Advisory: a child that ran HEALTHY_UPTIME_MS or longer before dying
+      // resets the give-up counter — only a persistently-broken child (no
+      // healthy stretch between crashes) should exhaust MAX_RESPAWN_ATTEMPTS,
+      // not one that crashes rarely across the whole process lifetime.
+      if (now() - spawnedAt >= HEALTHY_UPTIME_MS) respawnAttempt = 0;
       respawnAttempt += 1;
       if (respawnAttempt > MAX_RESPAWN_ATTEMPTS) {
         logError(
@@ -213,6 +229,7 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
       await sleep(delayMs);
       if (stopping) break;
       proc = spawnFn(cmd, { env });
+      spawnedAt = now();
     }
   })();
 
