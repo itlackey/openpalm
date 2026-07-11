@@ -503,7 +503,13 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   // just open the browser and return (nothing of ours to keep alive or shut
   // down; the OTHER process owns the lifecycle).
   if (existing.status === 'match') {
-    console.log(`Reusing already-running UI server at ${uiUrl} (hostMode=${existing.hostMode}).`);
+    // A3: the printed reuse-path URL must point at `/host` in admin mode too
+    // (not just the browser-open call below) — mirrors the fix at the
+    // non-reuse "UI server running at" log further down.
+    console.log(
+      `Reusing already-running UI server at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true)} ` +
+      `(hostMode=${existing.hostMode}).`
+    );
     if (opts.open !== false) {
       if (opts.openTarget === 'client') {
         const target = await resolveClientOpenTarget(uiUrl, clientUrl, true);
@@ -524,7 +530,11 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   if (!await supervisor.start()) return; // onStartFailure already exited
 
-  console.log(`UI server running at ${uiUrl}`);
+  // A3: point the printed URL at `/host` in admin mode too — before this fix
+  // only the browser-open call below (via resolveAdminUrl) honored
+  // opts.adminHostUi; this log line still printed the root URL, which the
+  // UI's own landing guard resolves to `/chat` on a healthy install.
+  console.log(`UI server running at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true)}`);
 
   // Serve the @openpalm/client static app beside the UI on its stable loopback
   // port (P5c, #555; plan Phase 5 item 3). Both the default serve path and
