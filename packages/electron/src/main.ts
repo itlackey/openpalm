@@ -873,7 +873,22 @@ export async function resolveInitialUrl(): Promise<string> {
  * window that was actually opened.
  */
 export function isClientAppUrl(url: string, clientPort: number): boolean {
-  return url.startsWith(`http://127.0.0.1:${clientPort}`);
+  // Parse rather than prefix-match: startsWith('http://127.0.0.1:3890')
+  // also matched a host UI on port 38900 (mistaking it for the client SPA and
+  // killing the voice hotkey) and would admit look-alikes like
+  // `127.0.0.1:3890.evil.com` — same bypass class isAllowedInAppWindowUrl
+  // was hardened against below. Exact loopback host + exact port only.
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return (
+    parsed.protocol === 'http:' &&
+    parsed.hostname === '127.0.0.1' &&
+    parsed.port === String(clientPort)
+  );
 }
 
 /**

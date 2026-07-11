@@ -460,6 +460,21 @@ describe('isClientAppUrl', () => {
     expect(isClientAppUrl('http://127.0.0.1:3880/host?tab=diagnostics', 3890)).toBe(false);
     expect(isClientAppUrl('http://127.0.0.1:3880', 3890)).toBe(false);
   });
+
+  it('is false for a host UI port that merely shares the client port as a prefix (Codex review of PR #562)', () => {
+    // A prefix startsWith('http://127.0.0.1:3890') matched 38900 too, so a
+    // host UI on OP_HOST_UI_PORT=38900 was mistaken for the client SPA and had
+    // its voice hotkey disabled. Exact port comparison, not prefix.
+    expect(isClientAppUrl('http://127.0.0.1:38900/chat', 3890)).toBe(false);
+    expect(isClientAppUrl('http://127.0.0.1:38901', 3890)).toBe(false);
+  });
+
+  it('is false for a look-alike host that only starts with the loopback prefix', () => {
+    // Same subdomain/userinfo bypass class the in-app window gate was hardened
+    // against — a prefix check would admit these.
+    expect(isClientAppUrl('http://127.0.0.1:3890.evil.com/chat', 3890)).toBe(false);
+    expect(isClientAppUrl('http://127.0.0.1:3890@evil.com/chat', 3890)).toBe(false);
+  });
 });
 
 // ── set-tray-mic-recording IPC handler (E5) ─────────────────────────────────
