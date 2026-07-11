@@ -562,9 +562,17 @@ export {
 export {
   buildLockedAssistantRuntimeConfig,
   writeClientRuntimeConfig,
+  ASSISTANT_LOCKED_CONNECTION_ID,
+  ASSISTANT_LOCKED_CONNECTION_LABEL,
   type ClientRuntimeConfig,
   type ClientRuntimeConnection,
+  type WriteClientRuntimeConfigOptions,
 } from './control-plane/client-runtime-config.js';
+
+// ── Shared assistant endpoint resolution (E1) — one precedence chain for ────
+// Electron / CLI / container writers instead of three divergent ones. ───────
+export { resolveAssistantEndpoint } from './control-plane/assistant-endpoint.js';
+export { normalizeLoopbackUrl } from './control-plane/url-normalize.js';
 
 // ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
 export type {
