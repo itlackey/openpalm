@@ -116,22 +116,29 @@ release.
 
 Use this only if a new adapter cut (path A) isn't feasible immediately and
 the already-published `0.13.0-beta.1` adapters must be made installable
-without republishing them. `packages/portal-sdk` is byte-for-byte unchanged
-between the pre-migration reference commit (`455d8728`) and the current
-`main` tip — there is nothing to check out from history; publishing straight
-from `main` at its current on-disk version (`0.12.52`) exactly matches what
-`@openpalm/{discord,slack}-portal@0.13.0-beta.1` already pinned.
+without republishing them. `packages/portal-sdk`'s *source* is byte-for-byte
+unchanged between the pre-migration reference commit (`455d8728`) and this
+branch, but its manifest version was stamped to `0.13.0-beta.1` when it
+joined the `portals` release unit (CI's per-unit version sync requires unit
+members to agree) — so publishing `0.12.52` requires a one-line local
+version edit that is **not committed**:
 
 ```bash
 git checkout main && git pull
 cd packages/portal-sdk
+# Temporarily restore the version the beta-1 adapters pinned. Do NOT commit
+# this — the in-repo version must stay in sync with the portals unit.
+npm pkg set version=0.12.52
 node -p "require('./package.json').version"   # sanity check: expect 0.12.52
-bun install --frozen-lockfile
+bun install
 
 # Provenance attestation (--provenance) requires GitHub Actions OIDC — it is
 # not available from a local/manual publish. Drop it here; publish via the
 # Release workflow (path A) instead whenever provenance matters.
 npm publish --access public
+
+# Discard the uncommitted version edit.
+git checkout -- package.json ../../bun.lock
 ```
 
 Verify:
