@@ -135,8 +135,32 @@ services:
       # Declared after the named volume so the bind-mount wins on all platforms.
       - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
     networks: [ assistant_net ]
+    # I2: probe the client co-process too, not just OpenCode — a boot-time
+    # `npm install @openpalm/client` failure previously left port
+    # OP_CLIENT_PORT published with nothing listening while this healthcheck
+    # still reported the container healthy. Skipped (not failed) when the
+    # entrypoint's I3 LAN-exposure safety gate deliberately did not start the
+    # client (marker file /tmp/openpalm-client-skip) — that is an intentional
+    # security degrade, not a health problem.
+    #
+    # IMPORTANT: the probe targets the FIXED in-container port 3000, not the
+    # host-facing OP_CLIENT_PORT knob (default 3810; operators routinely
+    # override it, see docs/operations/manual-compose-runbook.md). Compose
+    # interpolates a bare `${OP_CLIENT_PORT:-3000}` using the HOST env at
+    # config-load time — but OP_CLIENT_PORT is deliberately NEVER passed into
+    # the container's own environment (the client co-process always serves on
+    # 3000 in-container regardless of the host port mapping). Using the bare
+    # form here would bake the operator's HOST port into the container-side
+    # curl target, hitting a dead port on any customized deployment and
+    # perpetually failing this healthcheck (which cascades: guardian's
+    # `depends_on: assistant: condition: service_healthy` would then fail the
+    # whole stack). The `$${...}` below is the Compose escape for a literal
+    # `$` — it is left untouched by Compose and expanded by the CONTAINER's
+    # own shell instead, where OP_CLIENT_PORT is unset and so also correctly
+    # defaults to 3000 (mirroring the Dockerfile's own HEALTHCHECK, which gets
+    # this right via container-side shell expansion).
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1; if [ ! -f /tmp/openpalm-client-skip ]; then curl -sf http://localhost:$${OP_CLIENT_PORT:-3000}/ >/dev/null || exit 1; fi" ]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -96,3 +96,41 @@ export function initializeRuntimeContext(
     clientCtx,
   );
 }
+
+/**
+ * Populate ONLY the server half of the store (everything ServerRuntimeContext
+ * carries — capabilities, routes, hostMode, security, versions) and re-derive
+ * `effectiveCapabilities` against whatever clientContext is already in the
+ * store (the 'browser' baseline until the client half runs).
+ *
+ * Review 2026-07-10 K2: pre-migration, the equivalent `featuresService.init()`
+ * ran directly in +layout.svelte's script body (an `untrack()`-wrapped call,
+ * not inside `onMount`) — so it executed during SSR too, and the FIRST
+ * server-rendered HTML already reflected the real capabilities (e.g. the
+ * admin button was present in SSR output). At HEAD, `initializeRuntimeContext`
+ * only ran in `onMount`, which never fires during SSR — every full/hard load
+ * server-rendered with the store still at its all-capabilities-empty default,
+ * producing a flash of missing chrome until client-side hydration ran.
+ *
+ * `detectClientDisplayMode()` (the other half) still genuinely needs the
+ * browser (matchMedia / navigator), so it stays client-only in `onMount` —
+ * only the server half moves earlier. The 'browser' clientContext default is
+ * correct for the common case (regular browser tab), so capabilities
+ * resolved here already match what `onMount` would (re)compute for that case;
+ * `onMount` only changes the outcome for electron / standalone-pwa displays.
+ *
+ * `publicBaseUrl` is deliberately EXCLUDED: it is the one request-derived
+ * field (`event.url.origin`), and during SSR this store is process-global
+ * under adapter-node — writing it here would leak one request's Host-derived
+ * origin to every later reader (PR #562 review). SSR chrome only needs
+ * capabilities/hostMode/routes; the browser writes publicBaseUrl per-tab via
+ * `initializeRuntimeContext` in `onMount`.
+ */
+export function initializeServerRuntimeContext(serverCtx: ServerRuntimeContext): void {
+  const { publicBaseUrl: _requestDerived, ...envDerived } = serverCtx;
+  Object.assign(runtimeContext, envDerived);
+  runtimeContext.effectiveCapabilities = resolveCapabilities(
+    serverCtx.serverCapabilities,
+    runtimeContext.clientContext,
+  );
+}

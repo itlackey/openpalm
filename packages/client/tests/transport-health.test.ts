@@ -92,4 +92,18 @@ describe('transport health probe status mapping (P5b item 1)', () => {
     expect(calls[0].headers.get('authorization')).toBe('Bearer tok_1');
     expect(calls[0].credentials).toBe('omit');
   });
+
+  // H1 (review 2026-07-10 §H1): probeHealth() feeds the connection-health
+  // badge (/connections) and the chat page's reachability probe — a
+  // service-worker-cached probe response would keep both showing "reachable"
+  // through a real outage. cache: 'no-store' is a header/directive the SW's
+  // openpalm-public-get NetworkFirst urlPattern doesn't need to special-case
+  // (no-store requests never enter any Cache Storage bucket at all).
+  test('probeHealth() is cache-proof: every probe request sets cache: "no-store"', async () => {
+    const { createTransport } = await loadTransportModule();
+    const { fetch, calls } = recordingFetch(() => statusResponse(200));
+    await createTransport({ baseUrl: BASE, fetch }).probeHealth();
+    expect(calls.length).toBe(1);
+    expect(calls[0].cache).toBe('no-store');
+  });
 });

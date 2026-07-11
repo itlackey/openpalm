@@ -304,10 +304,60 @@ describe('openpalm admin serve mode (#556)', () => {
         'admin URL printed',
         () => run.error
       );
+      // …and it must be the `/host` URL, not the root (which the landing guard
+      // resolves to `/chat` on a healthy install) — A3. The "UI server running
+      // at ..." log (ui-server.ts) previously printed the root URL even in
+      // admin mode; only the browser-open call was fixed.
+      expect(
+        logs.some((l) => /UI server running at http:\/\/(localhost|127\.0\.0\.1):4611\/host\b/.test(l))
+      ).toBe(true);
       // …and opens the browser by default (existing open-browser helper).
       await waitFor(
         () => browserSpawn(calls, 4611),
         'browser opener spawn',
+        () => run.error
+      );
+    },
+    15000
+  );
+
+  it(
+    'prints the /host URL on the reuse path too, when a matching instance is already running (A3 reuse)',
+    async () => {
+      seedServeHome({ installed: true });
+      // A different (or a previous) `openpalm admin` invocation is already
+      // listening on this port and reports the same hostMode — checkExistingUiInstance
+      // should call this a 'match' and skip spawning a second UI child.
+      globalThis.fetch = (async (input: string | URL | Request) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.endsWith('/api/runtime')) {
+          return new Response(JSON.stringify({ hostMode: 'host-ui' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/health')) return new Response('ok', { status: 200 });
+        throw new TypeError('fetch failed');
+      }) as unknown as typeof fetch;
+      const calls = captureSpawns();
+      const logs = captureLogs();
+
+      const run = await runAdmin(['--port', '4616']);
+
+      await waitFor(
+        () => (logs.some((l) => l.startsWith('Reusing already-running UI server at')) ? true : undefined),
+        'reuse-path log line',
+        () => run.error
+      );
+      const reuseLine = logs.find((l) => l.startsWith('Reusing already-running UI server at'));
+      expect(reuseLine).toContain('http://localhost:4616/host');
+
+      // Reuse means no second UI child is spawned for this port.
+      expect(uiChildSpawn(calls, 4616)).toBeUndefined();
+
+      await waitFor(
+        () => browserSpawn(calls, 4616),
+        'browser opener spawn (reuse path)',
         () => run.error
       );
     },

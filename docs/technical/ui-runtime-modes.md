@@ -106,8 +106,65 @@ The PWA build excludes `runtime-config.json` from precache and treats it as `Net
 
 - Host admin remains loopback-only.
 - The client artifact does not bundle `@openpalm/lib` and exposes no host APIs.
-- Hosted-origin remote connections require HTTPS guardians and matching `GUARDIAN_CORS_ALLOWED_ORIGINS` entries.
+- The guardian CORS allowlist (`GUARDIAN_CORS_ALLOWED_ORIGINS`) is the only
+  **shipped, code-enforced** boundary on browser-direct remote connections —
+  a request from an origin not on the allowlist is rejected.
+- HTTPS for remote (non-loopback) guardian connections is **policy, not yet
+  enforcement**: `features.ts` computes a `requiresHttpsForRemoteConnections`
+  flag (true for `pwa-static`) but it has zero consumers today — no client
+  code refuses a plain-HTTP remote connection. Client-side enforcement +
+  refusal UX is unshipped Phase 6.5 work (review 2026-07-10 finding F3;
+  `docs/technical/ui-runtime-modes-plan.md` §12.4/§12).
+- LAN posture (review 2026-07-10 finding I3, fixed): the stack never emits
+  `--cors *`; binding a service to a non-loopback address without auth
+  configured produces a prominent warning and the client chat co-process is
+  not started.
 - Assistant-container mode remains isolated from Docker and broad `OP_HOME` access.
+
+## Electron Default Surface (A1/J2/J3)
+
+Electron's `resolveInitialUrl` (`packages/electron/src/main.ts`) defaults every
+launch to the full host chat (`@openpalm/ui` at `UI_PORT/chat`). The client SPA
+chat is reachable only via an explicit opt-in (`OP_CLIENT_CHAT_OPT_IN=1` or the
+desktop settings checkbox, surfaced from the tray) — and even then only once
+its own health probe answers; a dead/missing client build silently falls back
+to the host chat. This is deliberate: the client chat does not yet meet the
+§12.2 chat-parity subset contract in full (see
+`docs/technical/ui-runtime-modes-plan.md` §12.2 and
+`docs/reviews/ui-admin-migration-review-2026-07-10.md`).
+
+The routing decision itself is delegated to the same landing resolver the host
+UI's own navigation guard uses (public `GET /api/runtime/landing`): any landing
+other than `/chat` (setup, `/host`, `/host?tab=diagnostics`, `/attention`)
+always wins and opens the host app, opt-in or not, because the client artifact
+has none of those surfaces. A pending blocking migration (`/attention`) is not
+yet reachable in practice because nothing produces the `pending` status —
+see `ui-runtime-modes-plan.md` §12 for the follow-up to wire host-UI route
+gating ahead of the first real migration.
+
+## Not Yet Shipped (deliberate, scheduled — not regressions)
+
+The following are known Phase 6-8 deferrals, called out explicitly so a user
+or reviewer doesn't misreport their absence as something that broke. None of
+them regressed from a prior working state; they were never built:
+
+- **Assistant-settings editing from the container surface** (the optional
+  "Slice B" settings shim, plan §6.9) — `assistant-container` mode is
+  chat-only; ship only when browser-editable assistant settings are actually
+  wanted.
+- **Phone / hosted install** at `app.openpalm.dev` — CI deploy of the static
+  client build to a canonical hosted origin (plan §12.3 item 3).
+- **Pairing / QR connection setup** (plan §6.6) — host app `/connections`
+  minting a QR + one-time code, client `/connections/new` accepting
+  paste-or-scan.
+- **Client-side HTTPS-for-remote enforcement + refusal UX** (Phase 6.5, see
+  Security Boundaries above) and the accompanying **TLS guide** (Tailscale
+  `ts.net` default, Caddy + user domain alternative).
+- **Protocol validation** for guardian TLS/CORS hardening (Phase 6.5, #557).
+
+Tracking: #511 (PWA/hosted install, pairing), #557 (guardian TLS/CORS). See
+`docs/technical/ui-runtime-modes-plan.md` §12.3-12.4 for the full work-item
+breakdown.
 
 ## Related Files
 

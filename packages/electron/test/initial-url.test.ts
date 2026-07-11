@@ -1,28 +1,42 @@
-// ── P5c RED TESTS (#555) — Electron window prefers the client app ─────────────
+// ── A1 — Electron defaults to the HOST chat; client chat is opt-in ──────────
 //
-// Plan Phase 5 item 3 / phase-5-completion-guide §4 P5c item 3: main.ts starts
-// the @openpalm/client static server child after the UI server, and when setup
-// is complete the window loads the CLIENT chat at http://127.0.0.1:3890/chat —
-// FALLING BACK to the host app's chat on 3880 when the client child is not
-// healthy (fallback stays dumb: probe, and on any failure use 3880).
+// Review finding A1 [HIGH, root cause]: resolveInitialUrl used to prefer the
+// client SPA chat whenever its capability-blind health probe answered — but
+// the client chat fails all six items of the plan's §12.2 chat-parity
+// contract (docs/technical/ui-runtime-modes-plan.md §12.2): no voice, no
+// streaming, no stop, no history, no markdown, no copy. This file used to PIN
+// that broken "prefer the client" behavior (see git history / the review) —
+// it is rewritten here to pin the FIXED contract instead:
 //
-// Pinned contract (these tests are the spec):
-//   • `resolveInitialUrl` is EXPORTED from src/main.ts (it exists today as a
-//     module-private function) so the preference/fallback decision is testable.
-//   • Setup complete + client healthy      → http://127.0.0.1:3890/chat
-//   • Setup complete + client unreachable  → http://127.0.0.1:3880/chat
-//   • Setup incomplete                     → http://127.0.0.1:3880/setup
-//     (ALWAYS the host app — the client artifact has no setup wizard.)
-//   • Setup-status probe failure           → http://127.0.0.1:3880 (root; the
-//     host app's own landing guard redirects — existing behavior, unchanged).
-//   • Client health is probed over HTTP against 127.0.0.1:3890 (any path); the
-//     probe must be short/bounded — a dead client must not stall window
-//     creation (enforced here via the test timeout).
-//   • HARNESS_CONTRACT_VERSION stays at 1: P5c is spawn-env/child work, not
-//     bridge surface (characterization — already green; see the drift tests).
+//   • Default (no opt-in)                    → HOST chat, ALWAYS, even when
+//                                                the client server is healthy.
+//   • Opt-in (settings flag OR env var) AND
+//     the client server is healthy           → the CLIENT chat.
+//   • Opt-in but the client server is NOT
+//     healthy                                → HOST chat (dumb fallback,
+//                                                unchanged from before).
+//   • The landing resolver says anything OTHER than /chat (setup incomplete,
+//     installed_offline, installed_broken, a future migration gate, ...)
+//     → the HOST APP at that landing path, UNCONDITIONALLY — this subsumes
+//     the old /api/setup/status probe with one call to the shared
+//     GET /api/runtime/landing endpoint (review J2), and ALWAYS wins over the
+//     client-chat opt-in (the client artifact has no /setup, no /host, no
+//     /attention — plan §8.10).
+//   • Landing-probe failure (network error, non-2xx)  → the dumb root
+//     fallback (http://127.0.0.1:3880), unchanged — the host app's own
+//     landing guard redirects appropriately from there.
+//
+// Pinned contract:
+//   • `resolveInitialUrl` stays EXPORTED from src/main.ts.
+//   • The landing probe hits GET /api/runtime/landing (not the old
+//     /api/setup/status) with a short/bounded (2s) timeout.
+//   • The client-health probe (over HTTP against 127.0.0.1:3890, any path) is
+//     short/bounded too — a dead client must not stall window creation.
+//   • HARNESS_CONTRACT_VERSION stays at 2 (A1 is a routing-policy change, not
+//     a bridge-surface change).
 //
 // Run via vitest (Node), NOT bun test — same reason as main.test.ts.
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -132,9 +146,10 @@ vi.mock('@openpalm/lib', () => ({
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
   PLATFORM_VERSION: 'v0.12.0',
-  resolveClientAppPort: vi.fn(() => 3890),
+  resolveClientAppPort: vi.fn((env: NodeJS.ProcessEnv = process.env) => Number(env.OP_HOST_CLIENT_PORT) || 3890),
   resolveClientAppUrl: vi.fn(() => 'http://127.0.0.1:3890/chat'),
   writeClientRuntimeConfig: vi.fn(),
+  resolveAssistantEndpoint: vi.fn(() => 'http://127.0.0.1:3800'),
   checkDocker: vi.fn(() => new Promise(() => { /* hang: freeze the boot flow */ })),
   checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   // Faithful reimplementation of lib's waitForReady (poll /health; 200 or 401 ==
@@ -182,8 +197,13 @@ vi.mock('../src/update-check.js', () => ({
   checkForElectronUpdate: vi.fn(async () => ({ updateAvailable: false })),
   getCachedUpdateInfo: vi.fn(() => null),
 }));
+// Controllable per-test: the A1 opt-in can come from the desktop-settings
+// flag (loadSettings) as well as the OP_CLIENT_CHAT_OPT_IN env var.
+const { mockLoadSettings } = vi.hoisted(() => ({
+  mockLoadSettings: vi.fn(() => ({ checkPrerelease: false, preferClientChat: false })),
+}));
 vi.mock('../src/settings.js', () => ({
-  loadSettings: vi.fn(() => ({ checkPrerelease: false })),
+  loadSettings: mockLoadSettings,
   saveSettings: vi.fn(),
 }));
 vi.mock('../src/local-opencode.js', () => ({
@@ -203,23 +223,23 @@ const resolveInitialUrl = (main as unknown as Record<string, unknown>).resolveIn
 
 async function callResolveInitialUrl(): Promise<string> {
   if (typeof resolveInitialUrl !== 'function') {
-    throw new Error('resolveInitialUrl is not exported from src/main.ts yet (P5c red test)');
+    throw new Error('resolveInitialUrl is not exported from src/main.ts yet (A1 test)');
   }
   return resolveInitialUrl();
 }
 
 /**
  * Stub global fetch by target:
- *  - 127.0.0.1:3880/api/setup/status → the host app's setup status
- *  - 127.0.0.1:3890 (any path)       → the client static server health
+ *  - 127.0.0.1:3880/api/runtime/landing → the host app's landing resolver
+ *  - 127.0.0.1:3890 (any path)          → the client static server health
  * Everything else fails fast (irrelevant to these assertions).
  */
-function stubFetch(opts: { setup: boolean | 'error'; clientUp: boolean }) {
+function stubFetch(opts: { landing: string | 'error'; clientUp: boolean }) {
   vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
     const url = String(input);
-    if (url.includes('127.0.0.1:3880/api/setup/status')) {
-      if (opts.setup === 'error') throw new Error('ECONNREFUSED');
-      return { ok: true, status: 200, json: async () => ({ setupComplete: opts.setup === true }) };
+    if (url.includes('127.0.0.1:3880/api/runtime/landing')) {
+      if (opts.landing === 'error') throw new Error('ECONNREFUSED');
+      return { ok: true, status: 200, json: async () => ({ landing: opts.landing }) };
     }
     if (url.includes('127.0.0.1:3890')) {
       if (!opts.clientUp) throw new Error('ECONNREFUSED');
@@ -229,41 +249,68 @@ function stubFetch(opts: { setup: boolean | 'error'; clientUp: boolean }) {
   }));
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+beforeEach(() => {
+  mockLoadSettings.mockReturnValue({ checkPrerelease: false, preferClientChat: false });
+  delete process.env.OP_CLIENT_CHAT_OPT_IN;
 });
 
-// ── resolveInitialUrl — client-first with dumb 3880 fallback (P5c) ────────────
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.OP_CLIENT_CHAT_OPT_IN;
+});
 
-describe('resolveInitialUrl — prefers the client app, falls back to the host app', () => {
-  it('is exported from main.ts so the preference/fallback decision is testable', () => {
+describe('resolveInitialUrl — A1: host chat by default, client chat only opted in', () => {
+  it('is exported from main.ts so the routing decision is testable', () => {
     expect(typeof resolveInitialUrl, 'export resolveInitialUrl from src/main.ts').toBe('function');
   });
 
-  it('loads the CLIENT chat (127.0.0.1:3890/chat) when setup is complete and the client child is healthy', async () => {
-    stubFetch({ setup: true, clientUp: true });
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3890/chat');
-  });
-
-  it('falls back to the HOST APP chat (127.0.0.1:3880/chat) when the client server is unreachable', { timeout: 15_000 }, async () => {
-    // Resilience: the client child failed to start (e.g. no client build on
-    // disk — the CLI/harness skip is non-fatal). The window must land on the
-    // packages/ui chat, which is NOT deleted in P5c (parity follow-up).
-    stubFetch({ setup: true, clientUp: false });
+  it('DEFAULT: loads the HOST chat (127.0.0.1:3880/chat) even when the client server is healthy and no opt-in is set', async () => {
+    stubFetch({ landing: '/chat', clientUp: true });
     await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/chat');
   });
 
-  it('always lands on the HOST APP setup wizard when setup is incomplete (the client has no /setup)', async () => {
-    // Even with a healthy client child: the client artifact structurally lacks
-    // host capabilities (plan §8.10) — setup must stay on the host app.
-    stubFetch({ setup: false, clientUp: true });
+  it('OPT-IN (desktop settings flag): loads the CLIENT chat when preferClientChat is on and the client is healthy', async () => {
+    mockLoadSettings.mockReturnValue({ checkPrerelease: false, preferClientChat: true });
+    stubFetch({ landing: '/chat', clientUp: true });
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3890/chat');
+  });
+
+  it('OPT-IN (env var OP_CLIENT_CHAT_OPT_IN=1): loads the CLIENT chat when the client is healthy', async () => {
+    process.env.OP_CLIENT_CHAT_OPT_IN = '1';
+    stubFetch({ landing: '/chat', clientUp: true });
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3890/chat');
+  });
+
+  it('OPT-IN but the client server is unreachable: still falls back to the HOST chat (dumb fallback, unchanged)', { timeout: 15_000 }, async () => {
+    mockLoadSettings.mockReturnValue({ checkPrerelease: false, preferClientChat: true });
+    stubFetch({ landing: '/chat', clientUp: false });
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/chat');
+  });
+
+  it('lands on the HOST APP setup wizard when the landing resolver says /setup, opt-in or not (the client has no /setup)', async () => {
+    mockLoadSettings.mockReturnValue({ checkPrerelease: false, preferClientChat: true });
+    stubFetch({ landing: '/setup', clientUp: true });
     await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/setup');
   });
 
-  it('keeps the dumb root fallback (127.0.0.1:3880) when the setup-status probe fails', { timeout: 15_000 }, async () => {
-    // Existing behavior, unchanged: the host app root re-routes via its own
-    // landing guard. No cleverness on failure paths.
-    stubFetch({ setup: 'error', clientUp: true });
+  it('lands on the HOST admin dashboard when the landing resolver says /host (installed_offline — J2)', async () => {
+    stubFetch({ landing: '/host', clientUp: true });
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/host');
+  });
+
+  it('lands on the HOST diagnostics tab when the landing resolver says /host?tab=diagnostics (installed_broken — J2)', async () => {
+    stubFetch({ landing: '/host?tab=diagnostics', clientUp: true });
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/host?tab=diagnostics');
+  });
+
+  it('lands on /attention when the landing resolver reports a pending migration gate (J3), even with the opt-in on', async () => {
+    mockLoadSettings.mockReturnValue({ checkPrerelease: false, preferClientChat: true });
+    stubFetch({ landing: '/attention', clientUp: true });
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/attention');
+  });
+
+  it('keeps the dumb root fallback (127.0.0.1:3880) when the landing probe fails', { timeout: 15_000 }, async () => {
+    stubFetch({ landing: 'error', clientUp: true });
     await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880');
   });
 });
@@ -271,7 +318,7 @@ describe('resolveInitialUrl — prefers the client app, falls back to the host a
 // ── characterization: harness contract version ───────────────────────────────
 
 describe('harness contract version', () => {
-  it('HARNESS_CONTRACT_VERSION is 2 after adding the open-local-app bridge surface', () => {
+  it('HARNESS_CONTRACT_VERSION is 2 — A1 is a routing-policy change, not a bridge-surface change', () => {
     expect(HARNESS_CONTRACT_VERSION).toBe(2);
   });
 });

@@ -14,8 +14,9 @@
 // Used by .github/workflows/release.yml.
 // Preview locally: UNIT=platform BUMP=patch STAMP=false node scripts/bump-unit.mjs
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, realpathSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { setVersion } from './set-version.mjs';
 
 // Parse a semver into comparable parts (prerelease-aware).
@@ -144,6 +145,29 @@ function stampVersionFile(file, version) {
   console.log(`  ${file} → ${version}`);
 }
 
+// C1 (2026-07-10 review): the operator-managed portal-tools seed
+// (packages/skeleton/data/portal/tools/package.json, copied to
+// OP_HOME/data/portal/tools at install) pins the discord/slack portal
+// adapters with a `^0.12.0` caret range. Caret ranges on a 0.x version only
+// float the PATCH digit (^0.12.0 means >=0.12.0 <0.13.0 per semver), so it
+// silently never picks up a 0.13.x (or later minor) adapter release. Advance
+// the range's floor to the version just published so operators keep getting
+// adapter updates within that minor line, the same way containers/portal/
+// start.sh's own comment describes ("semver advance ... at release time").
+// Regex-replaces in place (not JSON.parse/stringify) to avoid reformatting
+// the file's hand-aligned columns.
+export const PORTAL_TOOLS_SEED_FILE = 'packages/skeleton/data/portal/tools/package.json';
+
+export function stampPortalToolsSeedRanges(version, file = PORTAL_TOOLS_SEED_FILE) {
+  if (!existsSync(file)) throw new Error(`Cannot stamp: file not found: ${file}`);
+  const content = readFileSync(file, 'utf8');
+  const updated = content
+    .replace(/("@openpalm\/discord-portal":\s*")\^[^"]*(")/, `$1^${version}$2`)
+    .replace(/("@openpalm\/slack-portal":\s*")\^[^"]*(")/, `$1^${version}$2`);
+  writeFileSync(file, updated);
+  console.log(`  ${file} → ^${version} (discord/slack-portal ranges)`);
+}
+
 // Unit definitions: anchor file (for reading current version) and files to stamp.
 //
 // IMPORTANT — version anchor semantics:
@@ -168,6 +192,7 @@ const UNITS = {
         'packages/cli/package.json',
         'packages/ui/package.json',
         'packages/client/package.json',
+        'packages/ui-kit/package.json',
         'packages/electron/package.json',
         'packages/electron/admin-tools/package.json',
       ], version);
@@ -178,9 +203,14 @@ const UNITS = {
     anchorFn: () => readJsonVersion('portals/discord/package.json'),
     stamp(version) {
       stampJsonFiles([
+        'packages/portal-sdk/package.json',
         'portals/discord/package.json',
         'portals/slack/package.json',
       ], version);
+      // Advance the operator-managed seed's adapter ranges alongside the
+      // adapters themselves (C1) — otherwise the seed's `^0.12.0` caret range
+      // never reaches a 0.13.x+ adapter for any existing OP_HOME install.
+      stampPortalToolsSeedRanges(version);
     },
   },
   assistant: {
@@ -213,83 +243,100 @@ const UNITS = {
   },
 };
 
-const unit = process.env.UNIT;
-const bump = process.env.BUMP || 'patch';
-const doStamp = process.env.STAMP === 'true';
-
-if (!unit) {
-  console.error('Error: UNIT env var is required (platform|portals|assistant|guardian|images|electron|all)');
-  process.exit(1);
+// Guard the CLI entrypoint so `scripts/bump-unit.mjs` can be imported as a
+// module (e.g. by scripts/portal-tools-seed-range.test.ts, to unit-test
+// stampPortalToolsSeedRanges directly) without executing the "require UNIT or
+// exit(1)" script body. Mirrors the classic `require.main === module` idiom.
+let isMainModule = false;
+try {
+  isMainModule = Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+} catch {
+  isMainModule = false;
 }
 
-let newVersion;
-let currentVersion;
-const out = process.env.GITHUB_OUTPUT;
+if (isMainModule) {
+  runCli();
+}
 
-if (unit === 'images') {
-  // Images-only release: read current platform version, no bump.
-  // Use --version override to tag images at a specific version.
-  currentVersion = UNITS.images.anchorFn();
-  newVersion = currentVersion;
-  console.log(`images: using current platform version ${newVersion} (no bump; use version override for a new tag)`);
-  if (out) {
-    appendFileSync(out, `${[
-      `current_version=${currentVersion}`,
-      `new_version=${newVersion}`,
-      `tag_prefix=images`,
-    ].join('\n')}\n`);
-  }
-} else if (unit === 'all') {
-  // All-units release: stamp every unit to the same version using the specified bump type.
-  // Unlike the old 'major' unit, 'all' accepts any bump type (patch/minor/major) and
-  // accepts an explicit version override for coordinated point releases.
-  currentVersion = UNITS.platform.anchorFn();
-  newVersion = bumpVersion(currentVersion, bump);
-  console.log(`All-units release: ${currentVersion} → ${newVersion} (${bump} bump)`);
-  console.log('Files to stamp:');
-  if (doStamp) {
-    for (const [name, cfg] of Object.entries(UNITS)) {
-      console.log(`\n  [${name}]`);
-      cfg.stamp(newVersion);
-    }
-  } else {
-    console.log('  (STAMP=false — preview only)');
-    for (const name of Object.keys(UNITS)) {
-      const cur = UNITS[name].anchorFn();
-      console.log(`  ${name}: ${cur} → ${newVersion}`);
-    }
-  }
-  // Emit per-unit tag list for the all-units release job
-  const allTags = Object.keys(UNITS).filter(n => n !== 'images').map(n => `${n}-${newVersion}`);
-  if (out) {
-    appendFileSync(out, `${[
-      `current_version=${currentVersion}`,
-      `new_version=${newVersion}`,
-      `tag_prefix=all`,
-      `all_tags=${JSON.stringify(allTags)}`,
-    ].join('\n')}\n`);
-  }
-} else {
-  const cfg = UNITS[unit];
-  if (!cfg) {
-    console.error(`Error: Unknown unit '${unit}'. Must be platform|portals|assistant|guardian|images|electron|all`);
+function runCli() {
+  const unit = process.env.UNIT;
+  const bump = process.env.BUMP || 'patch';
+  const doStamp = process.env.STAMP === 'true';
+
+  if (!unit) {
+    console.error('Error: UNIT env var is required (platform|portals|assistant|guardian|images|electron|all)');
     process.exit(1);
   }
-  currentVersion = cfg.anchorFn();
-  newVersion = bumpVersion(currentVersion, bump);
-  console.log(`${unit}: ${currentVersion} → ${newVersion} (${bump} bump)`);
-  if (doStamp) {
-    cfg.stamp(newVersion);
-  } else {
-    console.log('  (STAMP=false — preview only)');
-  }
-  if (out) {
-    appendFileSync(out, `${[
-      `current_version=${currentVersion}`,
-      `new_version=${newVersion}`,
-      `tag_prefix=${unit}`,
-    ].join('\n')}\n`);
-  }
-}
 
-console.log(`\nResult: ${newVersion}`);
+  let newVersion;
+  let currentVersion;
+  const out = process.env.GITHUB_OUTPUT;
+
+  if (unit === 'images') {
+    // Images-only release: read current platform version, no bump.
+    // Use --version override to tag images at a specific version.
+    currentVersion = UNITS.images.anchorFn();
+    newVersion = currentVersion;
+    console.log(`images: using current platform version ${newVersion} (no bump; use version override for a new tag)`);
+    if (out) {
+      appendFileSync(out, `${[
+        `current_version=${currentVersion}`,
+        `new_version=${newVersion}`,
+        `tag_prefix=images`,
+      ].join('\n')}\n`);
+    }
+  } else if (unit === 'all') {
+    // All-units release: stamp every unit to the same version using the specified bump type.
+    // Unlike the old 'major' unit, 'all' accepts any bump type (patch/minor/major) and
+    // accepts an explicit version override for coordinated point releases.
+    currentVersion = UNITS.platform.anchorFn();
+    newVersion = bumpVersion(currentVersion, bump);
+    console.log(`All-units release: ${currentVersion} → ${newVersion} (${bump} bump)`);
+    console.log('Files to stamp:');
+    if (doStamp) {
+      for (const [name, cfg] of Object.entries(UNITS)) {
+        console.log(`\n  [${name}]`);
+        cfg.stamp(newVersion);
+      }
+    } else {
+      console.log('  (STAMP=false — preview only)');
+      for (const name of Object.keys(UNITS)) {
+        const cur = UNITS[name].anchorFn();
+        console.log(`  ${name}: ${cur} → ${newVersion}`);
+      }
+    }
+    // Emit per-unit tag list for the all-units release job
+    const allTags = Object.keys(UNITS).filter(n => n !== 'images').map(n => `${n}-${newVersion}`);
+    if (out) {
+      appendFileSync(out, `${[
+        `current_version=${currentVersion}`,
+        `new_version=${newVersion}`,
+        `tag_prefix=all`,
+        `all_tags=${JSON.stringify(allTags)}`,
+      ].join('\n')}\n`);
+    }
+  } else {
+    const cfg = UNITS[unit];
+    if (!cfg) {
+      console.error(`Error: Unknown unit '${unit}'. Must be platform|portals|assistant|guardian|images|electron|all`);
+      process.exit(1);
+    }
+    currentVersion = cfg.anchorFn();
+    newVersion = bumpVersion(currentVersion, bump);
+    console.log(`${unit}: ${currentVersion} → ${newVersion} (${bump} bump)`);
+    if (doStamp) {
+      cfg.stamp(newVersion);
+    } else {
+      console.log('  (STAMP=false — preview only)');
+    }
+    if (out) {
+      appendFileSync(out, `${[
+        `current_version=${currentVersion}`,
+        `new_version=${newVersion}`,
+        `tag_prefix=${unit}`,
+      ].join('\n')}\n`);
+    }
+  }
+
+  console.log(`\nResult: ${newVersion}`);
+}

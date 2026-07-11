@@ -1,38 +1,141 @@
 <script lang="ts">
   // One chat turn — adapted from packages/ui ChatMessage.svelte (P5b item 3,
-  // #555). The client renders assistant text as plain text (pre-wrap) for
-  // the thin slice; markdown rendering follows with chat parity.
+  // #555).
+  //
+  // review 2026-07-10 fixes:
+  //   §B6 — assistant text renders through renderMarkdown() (html:false,
+  //     same escaping guarantees as the host chat) instead of plain
+  //     pre-wrapped text.
+  //   §B7 — message-copy button + per-code-block copy buttons, ported from
+  //     ChatMessage.svelte's copyMessage/decorateCodeCopy. The clipboard
+  //     write itself is the pure, unit-tested $lib/chat/copy.js; this
+  //     component only owns DOM wiring (button creation, transient labels).
   import { onMount } from 'svelte';
+  import { renderMarkdown } from '$lib/markdown.js';
+  import { isClipboardAvailable, writeClipboardText } from '$lib/chat/copy.js';
+  import type { ChatEntry } from '$lib/chat/chat-controller.js';
+  import IconCopy from '@openpalm/ui-kit/components/icons/IconCopy.svelte';
+  import IconDone from '@openpalm/ui-kit/components/icons/IconDone.svelte';
 
   interface Props {
-    role: 'user' | 'assistant';
-    text: string;
+    entry: ChatEntry;
   }
 
-  let { role, text }: Props = $props();
+  let { entry }: Props = $props();
+
+  const isAssistantMessage = $derived(entry.kind === 'message' && entry.role === 'assistant');
+  const renderedHtml = $derived(isAssistantMessage ? renderMarkdown(entry.text) : null);
 
   let settled = $state(false);
+  let clipboardAvailable = $state(false);
+  let copied = $state(false);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
   onMount(() => {
-    if (role === 'assistant') {
+    clipboardAvailable = isClipboardAvailable(
+      typeof navigator !== 'undefined' ? navigator.clipboard : undefined
+    );
+    if (isAssistantMessage) {
       requestAnimationFrame(() => {
         settled = true;
       });
     }
+    return () => {
+      if (copiedTimer !== undefined) clearTimeout(copiedTimer);
+    };
   });
+
+  async function copyMessage(): Promise<void> {
+    if (entry.kind !== 'message') return;
+    const ok = await writeClipboardText(
+      typeof navigator !== 'undefined' ? navigator.clipboard : undefined,
+      entry.text
+    );
+    if (!ok) return;
+    copied = true;
+    if (copiedTimer !== undefined) clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => {
+      copied = false;
+    }, 1500);
+  }
+
+  /* Inline SVG for buttons created outside the Svelte template (mirrors IconCopy.svelte). */
+  const COPY_SVG =
+    '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" x="9" y="9" width="11" height="11" rx="2"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M5 15a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>';
+
+  /** Appends a copy button to each <pre>. Rendered markdown is static per
+   *  message, so a one-time pass at mount suffices — no observer needed. */
+  function decorateCodeCopy(node: HTMLElement) {
+    const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (!isClipboardAvailable(clipboard)) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const pre of node.querySelectorAll('pre')) {
+      // Capture before appending the button so the copied text stays clean.
+      const text = pre.textContent ?? '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'code-copy';
+      btn.setAttribute('aria-label', 'Copy code');
+      btn.title = 'Copy code';
+      btn.innerHTML = COPY_SVG;
+      btn.addEventListener('click', async () => {
+        const ok = await writeClipboardText(clipboard, text);
+        if (!ok) return;
+        btn.setAttribute('aria-label', 'Copied');
+        btn.title = 'Copied';
+        btn.classList.add('is-copied');
+        timers.push(
+          setTimeout(() => {
+            btn.setAttribute('aria-label', 'Copy code');
+            btn.title = 'Copy code';
+            btn.classList.remove('is-copied');
+          }, 1500)
+        );
+      });
+      pre.appendChild(btn);
+    }
+    return {
+      destroy() {
+        for (const t of timers) clearTimeout(t);
+      },
+    };
+  }
 </script>
 
-{#if role === 'user'}
+{#if entry.kind === 'note'}
+  <div class="s-note" aria-label={entry.text}>
+    <span class="s-note-text">{entry.text}</span>
+  </div>
+{:else if entry.role === 'user'}
   <div class="turn you">
-    <div class="you-words">{text}</div>
+    <div class="you-words">{entry.text}</div>
     <div class="mark">You</div>
   </div>
 {:else}
   <div class="turn master">
     <div class="master-words" class:settled>
-      <p>{text}</p>
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false, so raw HTML in assistant output is escaped (not rendered); only generated formatting markup reaches here -->
+      <div class="markdown-body" use:decorateCodeCopy>{@html renderedHtml}</div>
     </div>
-    <div class="mark">Assistant</div>
+    <div class="mark-row">
+      <div class="mark">Assistant</div>
+      {#if clipboardAvailable}
+        <button
+          type="button"
+          class="msg-copy"
+          class:is-copied={copied}
+          aria-label={copied ? 'Copied' : 'Copy message'}
+          title={copied ? 'Copied' : 'Copy message'}
+          onclick={copyMessage}
+        >
+          {#if copied}
+            <IconDone size={14} />
+          {:else}
+            <IconCopy size={14} />
+          {/if}
+        </button>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -40,6 +143,20 @@
   .turn {
     display: flex;
     flex-direction: column;
+  }
+
+  .s-note {
+    display: flex;
+    justify-content: center;
+    padding: calc(var(--s-sp-3) * 0.5) 0;
+  }
+
+  .s-note-text {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+    color: var(--s-ink-3);
   }
 
   /* The person — small, soft, whispered — sits right */
@@ -87,7 +204,6 @@
     letter-spacing: 0.002em;
     color: var(--s-ink);
     text-wrap: pretty;
-    white-space: pre-wrap;
     max-width: 80%;
     opacity: 0;
     filter: blur(7px);
@@ -109,8 +225,154 @@
     transform: none;
   }
 
-  .master-words p {
-    margin: 0;
+  /* Markdown inside master-words */
+  .master-words :global(p) {
+    margin: 0 0 0.6rem 0;
+  }
+  .master-words :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .master-words :global(ul),
+  .master-words :global(ol) {
+    margin: 0 0 0.6rem 0;
+    padding-left: 1.4rem;
+  }
+  .master-words :global(li) {
+    margin: 0.3rem 0;
+    font-size: var(--s-type-whisper);
+    color: var(--s-ink-2);
+  }
+  .master-words :global(code) {
+    font-family: var(--s-font-mono);
+    font-size: 0.78em;
+    color: var(--s-ink-2);
+  }
+  .master-words :global(pre) {
+    position: relative;
+    margin: 0.7rem 0;
+    padding: 0.8rem 1rem;
+    border-left: var(--s-hair) solid var(--s-line);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-2);
+    overflow-x: auto;
+    white-space: pre-wrap;
+  }
+  .master-words :global(pre code) {
+    font-size: inherit;
+    color: inherit;
+  }
+  .master-words :global(a) {
+    color: var(--s-ink);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    text-decoration-color: var(--s-line);
+  }
+  .master-words :global(blockquote) {
+    margin: 0.6rem 0;
+    padding-left: 1rem;
+    border-left: var(--s-hair) solid var(--s-seal);
+    color: var(--s-ink-2);
+  }
+  .master-words :global(h1),
+  .master-words :global(h2),
+  .master-words :global(h3),
+  .master-words :global(h4) {
+    margin: 0.8rem 0 0.4rem;
+    font-family: var(--s-font-header);
+    font-weight: 400;
+    color: var(--s-ink);
+  }
+  .master-words :global(hr) {
+    margin: 0.8rem 0;
+    border: 0;
+    border-top: var(--s-hair) solid var(--s-line);
+  }
+
+  /* ── Copy affordances ── */
+
+  .mark-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    margin-top: var(--s-sp-3);
+  }
+
+  .mark-row .mark {
+    margin-top: 0;
+  }
+
+  .msg-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.15rem;
+    border: 0;
+    background: none;
+    color: var(--s-ink-3);
+    cursor: pointer;
+    border-radius: 4px;
+    transition:
+      color var(--s-t-instant) var(--s-ease),
+      opacity var(--s-t-instant) var(--s-ease);
+  }
+
+  .msg-copy:hover,
+  .msg-copy:focus-visible {
+    color: var(--s-ink);
+  }
+
+  .msg-copy.is-copied {
+    color: var(--s-seal);
+  }
+
+  @media (hover: hover) {
+    .msg-copy {
+      opacity: 0;
+    }
+    .turn.master:hover .msg-copy,
+    .turn.master:focus-within .msg-copy {
+      opacity: 1;
+    }
+  }
+
+  /* Code-block copy buttons are appended by decorateCodeCopy, outside the
+     Svelte template — style through :global under the scoped ancestor. */
+  .master-words :global(.code-copy) {
+    position: absolute;
+    top: var(--s-sp-2);
+    right: var(--s-sp-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 4px;
+    background: var(--s-paper);
+    color: var(--s-ink-3);
+    cursor: pointer;
+    transition:
+      color var(--s-t-instant) var(--s-ease),
+      opacity var(--s-t-instant) var(--s-ease);
+  }
+
+  .master-words :global(.code-copy:hover),
+  .master-words :global(.code-copy:focus-visible) {
+    color: var(--s-ink);
+  }
+
+  .master-words :global(.code-copy.is-copied) {
+    color: var(--s-seal);
+  }
+
+  @media (hover: hover) {
+    .master-words :global(.code-copy) {
+      opacity: 0;
+    }
+    .master-words :global(pre:hover .code-copy),
+    .master-words :global(pre:focus-within .code-copy) {
+      opacity: 1;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

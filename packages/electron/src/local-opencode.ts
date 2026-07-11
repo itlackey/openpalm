@@ -38,6 +38,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { spawn, spawnSync, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { normalizeLoopbackUrl } from "@openpalm/lib";
 
 export type LocalOpencodeRuntime = {
   url: string;
@@ -96,10 +97,13 @@ export function buildRuntimeJson(
  * address, so rewrite the host to loopback for the CLIENT-facing URL (the UI
  * embeds it in an iframe and the broker proxies to it). The server is reachable
  * on 127.0.0.1 regardless of the printed bind address.
+ *
+ * Re-exported from @openpalm/lib (review finding E4): this used to be a
+ * byte-for-byte local copy of packages/lib/src/control-plane/url-normalize.ts,
+ * which the same migration relocated FROM this file — re-export the shared
+ * helper instead of maintaining two copies of the same regex.
  */
-export function normalizeLoopbackUrl(raw: string): string {
-  return raw.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
-}
+export { normalizeLoopbackUrl };
 
 /**
  * Probe whether the given pid is alive. Returns false if the process is

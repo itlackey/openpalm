@@ -36,7 +36,7 @@ class VoiceState {
 	/** Partial transcript text while browser STT is mid-utterance. Cleared on stop/error. */
 	interimTranscript = $state('');
 
-	/** Active engine resolved from /admin/voice. */
+	/** Active engine resolved from /api/host/voice. */
 	sttEngine = $state<SttEngine>('disabled');
 	ttsEngine = $state<TtsEngine>('disabled');
 

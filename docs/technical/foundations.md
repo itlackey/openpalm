@@ -213,7 +213,7 @@ network port and no Docker socket.
 Control plane:
 
 - Definitions: `${OP_HOME}/knowledge/tasks/*.yml` (AKM YAML task files; `akm tasks sync` registers with OS cron)
-- Manual triggers: `POST /admin/automations/<name>/run` spawns `akm tasks run <name>` directly
+- Manual triggers: `POST /api/host/automations/<name>/run` spawns `akm tasks run <name>` directly
 - Per-run logs: `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` (written by akm)
 - Sync output is emitted to container stdout/stderr.
 

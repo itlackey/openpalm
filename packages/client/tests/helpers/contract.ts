@@ -129,6 +129,12 @@ export type ConnectionStore = {
    * (label/url updates apply on re-seed); user-added entries are untouched.
    */
   seedFromRuntimeConfig(config: RuntimeConfig | null): Promise<void>;
+  /**
+   * E6 (review 2026-07-10 §E6): attach/clear credentials on ANY entry,
+   * including locked ones — bypasses ONLY the locked check, and ONLY for
+   * `auth`. Rejects for unknown ids.
+   */
+  setSecretRef(id: string, auth: ConnectionEntry['auth']): Promise<ConnectionEntry>;
 };
 
 export type ConnectionStorage = {
@@ -138,6 +144,9 @@ export type ConnectionStorage = {
   delete(id: string): Promise<void>;
   getMeta(key: string): Promise<string | null>;
   setMeta(key: string, value: string | null): Promise<void>;
+  /** E7 (review 2026-07-10 §E7): structured-clone area for the secret store's non-extractable AES-GCM key. */
+  getCryptoKey(): Promise<CryptoKey | null>;
+  setCryptoKey(key: CryptoKey): Promise<void>;
 };
 
 export type ConnectionsModule = {

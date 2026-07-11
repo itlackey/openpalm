@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/ui-kit",
-  "version": "0.12.52",
-  "description": "OpenPalm shared UI kit — presentational components, icons, and theme tokens consumed as raw Svelte/TS source by the ui and client apps (plan ui-runtime-modes-plan.md §6.11). NOT published; no build step.",
+  "version": "0.13.0-beta.1",
+  "description": "OpenPalm shared UI kit \u2014 presentational components, icons, and theme tokens consumed as raw Svelte/TS source by the ui and client apps (plan ui-runtime-modes-plan.md \u00a76.11). NOT published; no build step.",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
@@ -10,13 +10,14 @@
     "url": "https://github.com/itlackey/openpalm.git",
     "directory": "packages/ui-kit"
   },
-  "//exports": "Raw-source package: every export points at .svelte/.ts/.css source under src/lib. The consuming app's Vite/Svelte pipeline compiles it as part of the app build — there is deliberately no build step here.",
+  "//exports": "Raw-source package: every export points at .svelte/.ts/.css source under src/lib. The consuming app's Vite/Svelte pipeline compiles it as part of the app build \u2014 there is deliberately no build step here.",
   "exports": {
     "./components/*": {
       "svelte": "./src/lib/components/*",
       "default": "./src/lib/components/*"
     },
-    "./theme/*": "./src/lib/theme/*"
+    "./theme/*": "./src/lib/theme/*",
+    "./actions/*": "./src/lib/actions/*"
   },
   "//check": "svelte-check gives the raw-source files their ONLY TS coverage: the consuming apps' vite builds strip types without checking, and packages/ui's check only validates ui-kit's public prop surface at usage sites. Must stay 0 errors / 0 warnings (--fail-on-warnings enforces both).",
   "scripts": {

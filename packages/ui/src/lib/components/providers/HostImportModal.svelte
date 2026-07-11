@@ -1,6 +1,6 @@
 <!--
   HostImportModal — sheet showing detected host OpenCode counts; runs
-  POST /admin/providers/import-host on confirm.
+  POST /api/host/providers/import-host on confirm.
 -->
 <script lang="ts">
 	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';

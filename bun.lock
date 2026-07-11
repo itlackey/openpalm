@@ -10,7 +10,7 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
@@ -27,17 +27,21 @@
     },
     "packages/client": {
       "name": "@openpalm/client",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
       "bin": {
         "openpalm-client-serve": "bin/serve.mjs",
       },
       "devDependencies": {
+        "@axe-core/playwright": "^4.11.3",
         "@openpalm/ui-kit": "workspace:*",
+        "@playwright/test": "^1.58.1",
         "@sveltejs/adapter-static": "^3.0.10",
         "@sveltejs/kit": "^2.53.3",
         "@sveltejs/vite-plugin-svelte": "^7.1.2",
+        "@types/markdown-it": "^14.1.2",
         "@types/node": "^25.9.1",
         "@vite-pwa/sveltekit": "^1.1.0",
+        "markdown-it": "^14.1.1",
         "svelte": "^5.53.5",
         "svelte-check": "^4.1.1",
         "typescript": "^6.0.3",
@@ -46,7 +50,7 @@
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^25.9.1",
@@ -58,14 +62,14 @@
     },
     "packages/electron/admin-tools": {
       "name": "@openpalm/admin-tools-plugin",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
       "dependencies": {
         "@opencode-ai/plugin": "^1.17.7",
       },
     },
     "packages/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
       "bin": {
         "openpalm-guardian": "./src/server.ts",
       },
@@ -79,7 +83,7 @@
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
       "dependencies": {
         "dotenv": "^17.4.2",
         "tar": "^7.5.15",
@@ -102,11 +106,11 @@
     },
     "packages/skeleton": {
       "name": "@openpalm/skeleton",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
     },
     "packages/ui": {
       "name": "@openpalm/ui",
-      "version": "0.12.52",
+      "version": "0.13.0-beta.1",
       "devDependencies": {
         "@axe-core/playwright": "^4.11.3",
         "@eslint/compat": "^2.0.2",
@@ -158,7 +162,7 @@
     },
     "portals/discord": {
       "name": "@openpalm/discord-portal",
-      "version": "0.12.44",
+      "version": "0.13.0-beta.1",
       "dependencies": {
         "@openpalm/portal-sdk": "workspace:*",
         "discord.js": "^14.16.3",
@@ -166,7 +170,7 @@
     },
     "portals/slack": {
       "name": "@openpalm/slack-portal",
-      "version": "0.12.44",
+      "version": "0.13.0-beta.1",
       "dependencies": {
         "@openpalm/portal-sdk": "workspace:*",
         "@slack/bolt": "^4.1.0",

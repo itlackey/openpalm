@@ -18,16 +18,33 @@
 import { join, basename } from 'node:path';
 import { existsSync as nodeExistsSync } from 'node:fs';
 import {
-  parseEnvFile,
+  readStackEnv,
+  resolveAssistantEndpoint,
   resolveClientAppPort,
   resolveClientBuildDir,
   resolveDataDir,
   resolveOpenPalmHome,
   writeClientRuntimeConfig,
+  type WriteClientRuntimeConfigOptions,
 } from '@openpalm/lib';
+import { resolveHostUiPortFromEnv } from './ports.ts';
 
 const STOP_TIMEOUT_MS = 5_000;
-const RESPAWN_DELAY_MS = 1_000;
+const RESPAWN_BASE_DELAY_MS = 1_000;
+// D1: cap the respawn loop instead of retrying once a second forever — an
+// EADDRINUSE or otherwise immediately-crashing child would otherwise log at
+// 1/s indefinitely (the review's "leaves a respawn loop logging every
+// second"). Backs off exponentially between attempts, capped, and gives up
+// (leaving the UI to keep serving without the client) after the cap.
+const MAX_RESPAWN_ATTEMPTS = 5;
+const RESPAWN_MAX_DELAY_MS = 30_000;
+// Advisory (review): respawnAttempt used to never reset once incremented, so a
+// child that crashed MAX_RESPAWN_ATTEMPTS times cumulatively over the ENTIRE
+// process lifetime — even hours apart, with long healthy stretches in
+// between — permanently gave up. A sustained healthy run resets the counter,
+// so only a PERSISTENTLY-broken child (repeated crashes with no healthy
+// stretch between them) exhausts the cap.
+const HEALTHY_UPTIME_MS = 60_000;
 
 /** Minimal child-process surface the supervisor drives (injectable for tests). */
 export type ClientChildProc = Pick<Bun.Subprocess, 'kill' | 'exited' | 'killed'>;
@@ -48,18 +65,80 @@ export function resolveHostClientRuntimeConfigPath(dataDir = resolveDataDir()): 
 
 function readPersistedStackEnv(): Record<string, string> {
   try {
-    return parseEnvFile(join(resolveOpenPalmHome(), 'knowledge', 'env', 'stack.env'));
+    return readStackEnv(resolveOpenPalmHome());
   } catch {
     return {};
   }
 }
 
-export function resolveDefaultAssistantUrl(
+/**
+ * Resolve the port the client static server ACTUALLY serves on: persisted
+ * stack.env merged under process.env (process.env wins), same precedence
+ * `startClientServer` uses to build the spawned child's PORT. Exported so
+ * OTHER callers building a client-reachability probe (ui-server.ts) target
+ * the port the child was actually spawned on rather than re-deriving it from
+ * process.env alone (review finding D2 — an install with a persisted
+ * OP_HOST_CLIENT_PORT served on one port while the probe checked another,
+ * timed out, and orphaned both children).
+ */
+export function resolveClientServePort(
+  env: NodeJS.ProcessEnv = process.env,
+  persistedEnv: Record<string, string> = readPersistedStackEnv(),
+): number {
+  return resolveClientAppPort({ ...persistedEnv, ...env });
+}
+
+/** The client app's chat URL, built from {@link resolveClientServePort} (D2). */
+export function resolveClientServeUrl(
   env: NodeJS.ProcessEnv = process.env,
   persistedEnv: Record<string, string> = readPersistedStackEnv(),
 ): string {
-  const merged = { ...persistedEnv, ...env };
-  return merged.OP_CLIENT_DEFAULT_ASSISTANT_URL || `http://127.0.0.1:${merged.OP_ASSISTANT_PORT || '3800'}`;
+  return `http://127.0.0.1:${resolveClientServePort(env, persistedEnv)}/chat`;
+}
+
+/**
+ * Resolve the assistant (OpenCode) URL to seed into the client's
+ * runtime-config.json. Delegates to @openpalm/lib's `resolveAssistantEndpoint`
+ * (review finding E1) — before this, the CLI only honored
+ * OP_CLIENT_DEFAULT_ASSISTANT_URL and silently ignored OP_OPENCODE_URL /
+ * OP_ASSISTANT_URL, which the host UI DOES honor, producing "chat works in one
+ * surface but not another" for operators who set the latter two.
+ */
+export function resolveDefaultAssistantUrl(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = resolveOpenPalmHome(),
+): string {
+  return resolveAssistantEndpoint(homeDir, env);
+}
+
+/**
+ * Resolve the host UI's own port — same persisted stack.env (OP_HOST_UI_PORT)
+ * + process.env merge precedence as ui-server.ts's resolveUiServePort. Shares
+ * the merge logic via {@link resolveHostUiPortFromEnv} (ports.ts, review
+ * finding U2) rather than byte-duplicating it: both this file and
+ * ui-server.ts already import ports.ts, which imports neither of them, so
+ * there's no import-cycle reason to keep two copies.
+ */
+export function resolveHostUiPort(
+  env: NodeJS.ProcessEnv = process.env,
+  persistedEnv: Record<string, string> = readPersistedStackEnv(),
+): number {
+  return resolveHostUiPortFromEnv(env, persistedEnv);
+}
+
+/**
+ * The host UI's own URL (no path), built from {@link resolveHostUiPort}. Used
+ * to seed runtime-config.json's `hostUrl` (A2/H4 "Manage assistant" escape
+ * hatch — review advisory, LOW, consistency with Electron's
+ * buildClientRuntimeConfigOptions in main.ts). The CLI is a host process
+ * serving the host UI on this same machine, so the client it also serves can
+ * point back at it.
+ */
+export function resolveHostUiUrl(
+  env: NodeJS.ProcessEnv = process.env,
+  persistedEnv: Record<string, string> = readPersistedStackEnv(),
+): string {
+  return `http://127.0.0.1:${resolveHostUiPort(env, persistedEnv)}`;
 }
 
 /** Running client-server handle: stop() kills the child and ends supervision. */
@@ -79,13 +158,23 @@ export interface ClientServerDeps {
   spawnFn?: (cmd: string[], opts: { env: Record<string, string | undefined> }) => ClientChildProc;
   resolveRuntimeConfigPath?: () => string;
   resolveAssistantUrl?: () => string;
-  writeRuntimeConfig?: (path: string, assistantUrl: string) => void;
+  /** Resolve the host UI's own URL (no path) for the runtime-config.json
+   *  `hostUrl` seed (defaults to {@link resolveHostUiUrl}). */
+  resolveUiBaseUrl?: () => string;
+  writeRuntimeConfig?: (path: string, assistantUrl: string, options?: WriteClientRuntimeConfigOptions) => void;
+  /** Read the persisted stack.env record ONCE for this call (defaults to the
+   *  module's readPersistedStackEnv) — injectable so tests can count reads
+   *  (review finding U3: this used to be re-read independently by
+   *  resolveClientServePort, resolveHostUiUrl, AND resolveAssistantEndpoint). */
+  readPersistedEnv?: () => Record<string, string>;
   log?: (...args: unknown[]) => void;
   logError?: (...args: unknown[]) => void;
   /** Sleep for the respawn delay and the stop grace window. */
   sleep?: (ms: number) => Promise<void>;
   /** Force-kill grace window, ms (defaults to STOP_TIMEOUT_MS). */
   stopTimeoutMs?: number;
+  /** Clock for the respawn-counter "sustained healthy run" reset (defaults to Date.now). */
+  now?: () => number;
 }
 
 /**
@@ -95,8 +184,12 @@ export interface ClientServerDeps {
  * client app.
  */
 export async function startClientServer(deps: ClientServerDeps = {}): Promise<ClientServerHandle | null> {
-  const persistedEnv = readPersistedStackEnv();
-  const port = deps.port ?? resolveClientAppPort({ ...persistedEnv, ...process.env });
+  // U3: read the persisted stack.env record ONCE for this whole call and
+  // thread it through every resolver that needs it below, instead of each
+  // resolver re-reading (and re-parsing) stack.env independently at startup.
+  const readPersistedEnv = deps.readPersistedEnv ?? readPersistedStackEnv;
+  const persistedEnv = readPersistedEnv();
+  const port = deps.port ?? resolveClientServePort(process.env, persistedEnv);
   const resolveBuildDir = deps.resolveBuildDir ?? resolveClientBuildDir;
   const exists = deps.existsSync ?? nodeExistsSync;
   const spawnFn = deps.spawnFn
@@ -105,9 +198,18 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
   const log = deps.log ?? console.log;
   const logError = deps.logError ?? console.error;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = deps.now ?? Date.now;
   const stopTimeoutMs = deps.stopTimeoutMs ?? STOP_TIMEOUT_MS;
   const resolveRuntimeConfigPath = deps.resolveRuntimeConfigPath ?? (() => resolveHostClientRuntimeConfigPath());
-  const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl(process.env));
+  // NOTE: resolveAssistantEndpoint (in @openpalm/lib, via resolveDefaultAssistantUrl)
+  // still does its OWN internal readStackEnv(homeDir) call regardless of the
+  // pre-merged env passed in here — eliminating that last read would require
+  // resolveAssistantEndpoint to accept a pre-merged env and skip its internal
+  // read, which is a packages/lib change outside this package's ownership
+  // boundary for this fix. Passing the pre-merged env here at least keeps the
+  // precedence identical and avoids a SEPARATE read of our own for it.
+  const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl({ ...persistedEnv, ...process.env }));
+  const resolveUiBaseUrl = deps.resolveUiBaseUrl ?? (() => resolveHostUiUrl(process.env, persistedEnv));
   const writeRuntimeConfig = deps.writeRuntimeConfig ?? writeClientRuntimeConfig;
 
   const buildDir = resolveBuildDir();
@@ -119,7 +221,12 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
 
   const runtimeConfigPath = resolveRuntimeConfigPath();
   try {
-    writeRuntimeConfig(runtimeConfigPath, resolveAssistantUrl());
+    // A2/H4: seed hostUrl so the CLI-served client gets the same "Manage
+    // assistant" affordance Electron writes (buildClientRuntimeConfigOptions,
+    // main.ts) — the CLI is a host process serving the host UI on this same
+    // machine's UI port.
+    const uiUrl = resolveUiBaseUrl();
+    writeRuntimeConfig(runtimeConfigPath, resolveAssistantUrl(), { hostUrl: `${uiUrl}/host` });
   } catch (err) {
     logError(`Failed to write client runtime config at ${runtimeConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -146,18 +253,41 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
 
   let stopping = false;
   let proc = spawnFn(cmd, { env });
+  let spawnedAt = now();
   log(`Client app served at http://127.0.0.1:${port} (from ${buildDir})`);
 
   // Supervision loop: respawn on any unexpected exit; an intentional stop()
   // flips `stopping` first, which both breaks the loop and suppresses respawn.
+  // D1: capped + backed off — an immediately-crashing child (e.g. EADDRINUSE)
+  // must not respawn at a flat 1/s forever; give up after MAX_RESPAWN_ATTEMPTS
+  // and leave the UI serving without the client (non-fatal by contract).
+  let respawnAttempt = 0;
   void (async () => {
     while (!stopping) {
       const code = await proc.exited;
       if (stopping) break;
-      logError(`Client app server exited unexpectedly (code ${code}) — restarting.`);
-      await sleep(RESPAWN_DELAY_MS);
+      // Advisory: a child that ran HEALTHY_UPTIME_MS or longer before dying
+      // resets the give-up counter — only a persistently-broken child (no
+      // healthy stretch between crashes) should exhaust MAX_RESPAWN_ATTEMPTS,
+      // not one that crashes rarely across the whole process lifetime.
+      if (now() - spawnedAt >= HEALTHY_UPTIME_MS) respawnAttempt = 0;
+      respawnAttempt += 1;
+      if (respawnAttempt > MAX_RESPAWN_ATTEMPTS) {
+        logError(
+          `Client app server exited unexpectedly (code ${code}) — giving up after ` +
+          `${MAX_RESPAWN_ATTEMPTS} respawn attempts (the UI keeps serving without it).`
+        );
+        break;
+      }
+      const delayMs = Math.min(RESPAWN_BASE_DELAY_MS * 2 ** (respawnAttempt - 1), RESPAWN_MAX_DELAY_MS);
+      logError(
+        `Client app server exited unexpectedly (code ${code}) — restarting in ${delayMs}ms ` +
+        `(attempt ${respawnAttempt}/${MAX_RESPAWN_ATTEMPTS}).`
+      );
+      await sleep(delayMs);
       if (stopping) break;
       proc = spawnFn(cmd, { env });
+      spawnedAt = now();
     }
   })();
 

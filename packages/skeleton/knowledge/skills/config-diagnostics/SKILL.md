@@ -1,7 +1,7 @@
 ---
 name: config-diagnostics
 type: skill
-description: Diagnose OpenPalm configuration issues (missing API keys, validation errors, connection problems) using the admin /admin/config/validate endpoint and secret presence metadata, without exposing any actual secret values.
+description: Diagnose OpenPalm configuration issues (missing API keys, validation errors, connection problems) using the admin /api/host/config/validate endpoint and secret presence metadata, without exposing any actual secret values.
 when_to_use: Use when the user reports configuration issues, missing API keys, validation errors, or connection problems and needs guidance on what to fix without leaking secrets.
 license: Proprietary
 metadata:
@@ -17,11 +17,11 @@ and guide them — without ever exposing actual secret values.
 
 ## Procedure
 
-1. **Call `GET /admin/config/validate`** to get the current validation result
+1. **Call `GET /api/host/config/validate`** to get the current validation result
    (authenticated via the `op_session` cookie — the legacy `x-admin-token`
    header was removed):
    ```
-   GET /admin/config/validate
+   GET /api/host/config/validate
    ```
    Response: `{ ok: boolean, errors: string[], warnings: string[] }`
 
@@ -52,7 +52,7 @@ and guide them — without ever exposing actual secret values.
 **User:** "Why isn't my AI connection working?"
 
 **Assistant:**
-1. Calls `GET /admin/config/validate`
+1. Calls `GET /api/host/config/validate`
 2. Reads non-secret provider configuration and secret presence metadata
 3. Responds: "Validation shows OPENAI_API_KEY is not set. This variable holds
    your OpenAI API key — set it in Settings > Secrets in the admin UI, or write

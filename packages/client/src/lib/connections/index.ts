@@ -40,6 +40,15 @@ export type NewConnectionInput = Omit<ConnectionEntry, 'id'> & { id?: string };
 /** Shape of the runtime-config.json written beside the static build (P5d). */
 export type RuntimeConfig = {
   connections: ConnectionEntry[];
+  /**
+   * Optional link back to the host UI (review 2026-07-10 §A2/H4), e.g.
+   * `http://127.0.0.1:3880/host`. Written by Electron/CLI
+   * (`writeClientRuntimeConfig`'s `hostUrl` option) when a host process
+   * exists alongside the client server; absent for container-only
+   * deployments with no host UI to point at. `+layout.svelte` renders a
+   * "Manage assistant" link only when this is present.
+   */
+  hostUrl?: string;
 };
 
 function isLoopbackHost(hostname: string): boolean {
@@ -65,6 +74,11 @@ function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
       ...entry,
       url: entry.locked ? rewriteLoopbackUrlForBrowserHost(entry.url) : entry.url,
     })),
+    // hostUrl is Electron/CLI-written and always a loopback URL local to the
+    // machine running the host process — same rewrite as locked connection
+    // entries, so a LAN-accessed client still points the link at the visited
+    // hostname rather than an unreachable 127.0.0.1.
+    ...(config.hostUrl ? { hostUrl: rewriteLoopbackUrlForBrowserHost(config.hostUrl) } : {}),
   };
 }
 
@@ -82,6 +96,15 @@ export type ConnectionStorage = {
   getMeta(key: string): Promise<string | null>;
   /** null deletes the key. */
   setMeta(key: string, value: string | null): Promise<void>;
+  /**
+   * Structured-clone value area for the secret store's non-extractable
+   * AES-GCM wrapping key (E7, review 2026-07-10 §E7). `getMeta`/`setMeta`
+   * round-trip JSON strings and cannot carry an actual CryptoKey object —
+   * IndexedDB's structured-clone algorithm can, so this is a distinct area
+   * rather than an overload. Returns null until a key has been generated.
+   */
+  getCryptoKey(): Promise<CryptoKey | null>;
+  setCryptoKey(key: CryptoKey): Promise<void>;
 };
 
 export type ConnectionStore = {
@@ -104,6 +127,15 @@ export type ConnectionStore = {
    * (label/url updates apply on re-seed); user-added entries are untouched.
    */
   seedFromRuntimeConfig(config: RuntimeConfig | null): Promise<void>;
+  /**
+   * Attach/clear credentials on ANY entry, including locked ones (E6, review
+   * 2026-07-10 §E6): a locked, config-owned default assistant URL can be
+   * auth-fronted, and update()/remove() rejecting locked entries wholesale
+   * left no path to supply credentials for it. This bypasses ONLY the
+   * locked check, and ONLY for `auth` — url/label/kind/locked are untouched
+   * even when the target is locked. Rejects for unknown ids.
+   */
+  setSecretRef(id: string, auth: ConnectionEntry['auth']): Promise<ConnectionEntry>;
 };
 
 const ACTIVE_ID_KEY = 'activeId';
@@ -116,6 +148,7 @@ function clone<T>(value: T): T {
 export function createMemoryStorage(): ConnectionStorage {
   const entries = new Map<string, ConnectionEntry>();
   const meta = new Map<string, string>();
+  let cryptoKey: CryptoKey | null = null;
   return {
     async getAll() {
       return [...entries.values()].map(clone);
@@ -137,15 +170,28 @@ export function createMemoryStorage(): ConnectionStorage {
       if (value === null) meta.delete(key);
       else meta.set(key, value);
     },
+    async getCryptoKey() {
+      return cryptoKey;
+    },
+    async setCryptoKey(key) {
+      cryptoKey = key;
+    },
   };
 }
 
 // ── IndexedDB backend (browser) ──────────────────────────────────────────
 
 const IDB_NAME = 'openpalm-client';
-const IDB_VERSION = 1;
+// Bumped 1 -> 2 for E7 (review 2026-07-10 §E7): STORE_KEYS holds the secret
+// store's non-extractable AES-GCM key as an actual CryptoKey object (only
+// IndexedDB's structured-clone area can carry one — getMeta/setMeta are
+// JSON strings). onupgradeneeded fires for existing v1 databases too, so
+// upgrading installs gain the store with no data loss.
+const IDB_VERSION = 2;
 const STORE_CONNECTIONS = 'connections';
 const STORE_META = 'meta';
+const STORE_KEYS = 'keys';
+const CRYPTO_KEY_ID = 'secret-store-aes-gcm-key';
 
 function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -154,7 +200,22 @@ function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-function openDatabase(): Promise<IDBDatabase> {
+/**
+ * F11 (review 2026-07-10 §F11, PR #562 fix round): IDB_VERSION was bumped
+ * 1 -> 2 for E7 with no `onblocked` handler and no `versionchange` listener
+ * on the opened connection. If another tab holds an older-version
+ * connection open, the upgrade transaction can't start: `onupgradeneeded`/
+ * `onsuccess`/`onerror` never fire — only `onblocked` does — and without a
+ * handler for it this Promise never settled, so getClientBoot() hung
+ * forever with no error surfaced anywhere.
+ *
+ * `onVersionChange` is invoked once a successfully-opened connection later
+ * receives its OWN `versionchange` event (some other tab needs a further
+ * upgrade): the connection closes itself immediately so it can't go on to
+ * block that upgrade in turn, and the caller uses the callback to drop its
+ * cached db promise so the NEXT storage operation reopens fresh.
+ */
+function openDatabase(onVersionChange: () => void): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(IDB_NAME, IDB_VERSION);
     request.onupgradeneeded = () => {
@@ -165,9 +226,25 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_META)) {
         db.createObjectStore(STORE_META);
       }
+      if (!db.objectStoreNames.contains(STORE_KEYS)) {
+        db.createObjectStore(STORE_KEYS);
+      }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        onVersionChange();
+      };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'));
+    request.onblocked = () =>
+      reject(
+        new Error(
+          'IndexedDB upgrade blocked by another open connection (close other tabs of this app and retry)'
+        )
+      );
   });
 }
 
@@ -177,8 +254,11 @@ function openDatabase(): Promise<IDBDatabase> {
  */
 export function createIndexedDbStorage(): ConnectionStorage {
   let db: Promise<IDBDatabase> | null = null;
+  const invalidate = (): void => {
+    db = null;
+  };
   const database = (): Promise<IDBDatabase> => {
-    db ??= openDatabase();
+    db ??= openDatabase(invalidate);
     return db;
   };
   const store = async (name: string, mode: IDBTransactionMode): Promise<IDBObjectStore> =>
@@ -214,6 +294,15 @@ export function createIndexedDbStorage(): ConnectionStorage {
       const metaStore = await store(STORE_META, 'readwrite');
       if (value === null) await idbRequest(metaStore.delete(key));
       else await idbRequest(metaStore.put(value, key));
+    },
+    async getCryptoKey() {
+      const found = await idbRequest<CryptoKey | undefined>(
+        (await store(STORE_KEYS, 'readonly')).get(CRYPTO_KEY_ID) as IDBRequest<CryptoKey | undefined>
+      );
+      return found ?? null;
+    },
+    async setCryptoKey(key) {
+      await idbRequest((await store(STORE_KEYS, 'readwrite')).put(key, CRYPTO_KEY_ID));
     },
   };
 }
@@ -263,6 +352,13 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
       }
     },
 
+    async setSecretRef(id, auth) {
+      const entry = await requireEntry(id);
+      const updated: ConnectionEntry = { ...entry, auth, id };
+      await storage.put(updated);
+      return clone(updated);
+    },
+
     getActiveId() {
       return storage.getMeta(ACTIVE_ID_KEY);
     },
@@ -292,7 +388,18 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
         const existing = await storage.get(entry.id);
         // Config wins for the entries it owns (locked), including on
         // re-seed; a same-id entry the user somehow owns is left alone.
-        if (!existing || existing.locked) await storage.put(clone(entry));
+        if (!existing) {
+          await storage.put(clone(entry));
+        } else if (existing.locked) {
+          // Config refreshes the fields it owns (url/label/…), but a user may
+          // have attached credentials to this locked entry via setSecretRef
+          // (E6); the config's locked entries always ship auth:{mode:'none'},
+          // so a wholesale rewrite would silently drop those creds on every
+          // reload. Preserve a user-supplied non-none auth across the reseed.
+          const seeded = clone(entry);
+          const preserveAuth = existing.auth && existing.auth.mode !== 'none';
+          await storage.put(preserveAuth ? { ...seeded, auth: existing.auth } : seeded);
+        }
       }
       if ((await storage.getMeta(ACTIVE_ID_KEY)) !== null) return;
       const fallback = config.connections.find((entry) => entry.isDefault);

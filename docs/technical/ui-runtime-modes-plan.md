@@ -1,7 +1,7 @@
 # UI Host/Client Runtime Refactor Plan
 
-**Date:** 2026-06-19 (revised 2026-07-06; Phase 5 as-built recorded 2026-07-07)
-**Status:** RATIFIED — Phases 0–5 (+1.5) landed; Phases 6–8 remain — see **§12 Remaining work** for the complete handoff (verified against code 2026-07-07, post-merge with main/#554)
+**Date:** 2026-06-19 (revised 2026-07-06; Phase 5 as-built recorded 2026-07-07; §12 refreshed 2026-07-11 post-review)
+**Status:** RATIFIED — Phases 0–5 (+1.5) landed; Phases 6–8 remain — see **§12 Remaining work** for the complete handoff (verified against code 2026-07-07, post-merge with main/#554; §12.2/§12.7 re-verified against HEAD 2026-07-11 per `docs/reviews/ui-admin-migration-review-2026-07-10.md`)
 **Repo:** `itlackey/openpalm`, branch `main`
 **Related issues:** #486 (remote-only install), #435 (guardian authn), #433 (guardian state), #488 (mDNS), #506 (styling), #509 (RuntimeContext), #510 (assistant-container), #511 (PWA), #555 (client extraction), #556 (openpalm admin), #557 (guardian TLS + CORS)
 
@@ -874,26 +874,54 @@ the parity gap that gates deleting `packages/ui` chat grew substantially. See §
 
 ### 12.2 Chat parity contract — gates deleting `packages/ui` chat (§6.11 rule 3)
 
-Measured delta: `packages/client/src/routes/chat/+page.svelte` is 328 LOC vs the
-host chat's 1,597. Missing in the client (all present in `packages/ui` after #554):
+**RATIFIED 2026-07-11 — option (b).** The critical post-merge review
+(`docs/reviews/ui-admin-migration-review-2026-07-10.md`) confirmed the parity
+gap this section flagged had become a live regression: Electron's
+`resolveInitialUrl` was defaulting to the feature-poor client chat over the
+intact host chat, in violation of this very gate. The decision below resolves
+that review's B-section findings and root-cause finding A1.
 
-- streaming markdown rendering + the `$lib/chat/autoscroll.ts` module
-- stop-generation control for in-flight turns
-- copy affordances on messages/code blocks (`IconCopy`/`IconDone` in `ChatMessage`)
-- composer resilience (IME guard, draft-while-sending, failed-send retry)
-- the entire voice stack: `VoiceStatusStrip`, conversation mode, earcons,
-  VAD calibration, sentence-stream TTS, barge-in (`packages/ui/src/lib/voice/*`)
-- session history browsing (`SessionPicker`)
+**Decision taken: (b), the subset contract — recommended per §1 simplicity
+guardrails.** Client-chat parity is defined as six items: **streaming render,
+stop, copy, composer resilience (IME guard/draft-while-sending/failed-send
+retry), history, markdown.** Voice remains **host-chat-only** — full parity
+port (option (a): moving the voice stack into `ui-kit`/client) is explicitly
+NOT taken at this time; see §12.7a below for why and what it would take.
 
-**Decision required before porting** (file as its own issue):
-(a) full parity port — progressively move shared chat components into `ui-kit`
-and port the voice stack into the client; heavy, and drags voice/media concerns
-into the unprivileged client; or
-(b) **recommended per §1 simplicity guardrails:** define client-chat parity as a
-subset contract — text chat + streaming render + stop + copy + failed-send retry;
-voice remains host-chat-only for now. Either way, `packages/ui` chat is deleted
-only when the written contract is met AND Electron has been verified running the
-client chat in a real browser.
+**Status of the six-item contract: MET and pinned.** Following the review,
+the client stage-2/3/4 work (`92036bf` chat UI core parity — streaming, stop,
+history, markdown, copy, a11y; `570157b` chat cards/tool log/notifications;
+`153b118` transport SSE streaming) implemented all six items in
+`packages/client`. The contract is pinned end-to-end by
+`packages/client/e2e/parity-contract.pw.ts` (added in `b3d860f`, the client
+lane's Playwright + axe e2e suite) — see that file for the current
+subset-contract assertions; **all six items are green.**
+
+**Consequence for Electron's default surface:** per the review's A1 fix
+(`e8581d4`), Electron's default remains the HOST chat regardless of the
+contract's status — `packages/electron/src/main.ts`'s `resolveInitialUrl`
+only ever opens the client chat when the operator has explicitly opted in
+(`OP_CLIENT_CHAT_OPT_IN=1` or the desktop settings checkbox), and even then
+only once the client server's own health probe answers. This is intentional
+and does not change now that the contract is met: the plan requires **both**
+(i) the contract met **and** (ii) Electron verified running the client chat in
+a real browser (browser-project Playwright, not just the unit/e2e suite)
+before flipping the default — and the review separately raised the voice
+question (B1/B10) as a prerequisite the six-item subset contract does not
+resolve. See the decision issue drafted per the line below.
+
+`packages/ui` chat is **NOT deleted yet.** Per the original rule: it is
+deleted only when (a) the written contract is met — done — AND (b) Electron
+has been verified running the client chat as the DEFAULT (not opt-in) in a
+real browser, which additionally requires the opt-in to have soaked in
+production and the voice decision (B10) to be revisited. Until both hold, the
+host chat remains the safety net.
+
+**Decision required before porting** (file as its own issue — see
+`docs/technical/client-voice-design.md` for the voice-port design and the
+decision-issue draft in the fix-round scratchpad): the six-item text-chat
+subset is resolved; the OPEN question is strictly the voice port (option (a)
+for voice specifically) versus continuing host-chat-only voice indefinitely.
 
 ### 12.3 Phase 6 — PWA (#511). All prerequisites met. Work items:
 
@@ -946,21 +974,71 @@ verify the purity assertion also runs against the container-pulled artifact path
 
 ### 12.7 Open code-level items (each verified in code, with pointers)
 
-1. **Locked-entry pruning not implemented** —
-   `packages/client/src/lib/connections/index.ts`: `seedFromRuntimeConfig` is
-   upsert-only and `deleteConnection` rejects locked entries (~line 225), so a
-   locked entry removed from a later `runtime-config.json` is stuck forever.
-   Fix: prune locked entries absent from the current config during seed.
-   Owner: the entrypoint/store pair (#510 follow-up).
-2. **`pickStorage()` async-failure gap** — only synchronous `indexedDB` access
-   errors fall back to memory; an async `open()` rejection (e.g. Firefox
-   private mode) caches a rejected boot promise. Add async fallback.
-3. **`createConnectionStore(options: { storage: unknown })`** weakens typing at
-   the single construction site — tighten to `ConnectionStorage`.
-4. **Slice B settings shim** (§6.9, optional): not built — assistant-container
-   mode is chat-only. Ship only when browser-editable assistant settings are
-   actually wanted.
-5. Resolved for the record: CI wiring for client/ui-kit suites ✅ (P5e),
-   `@openpalm/client` `private` flag removed ✅ (P5e), `serve.mjs`
+**Refreshed 2026-07-11** (review 2026-07-10 finding F5): the five items below
+were stale in the completed direction — all five are DONE at HEAD, verified
+against code and pinned to the commits that shipped them, so this section no
+longer invites duplicate work.
+
+1. ✅ **DONE — Locked-entry pruning** (`bb237d2` "fix(runtime): address
+   client app review fixes"). `packages/client/src/lib/connections/index.ts`
+   `seedFromRuntimeConfig` now deletes any stored `locked` entry whose id is
+   absent from the current `runtime-config.json` (and clears the active-id
+   pointer if it pointed at the pruned entry) before re-upserting the
+   config's own entries.
+2. ✅ **DONE — `pickStorage()` / `getClientBoot()` async-failure fallback**
+   (`bb237d2`). `packages/client/src/lib/boot.ts`: `getClientBoot()` now
+   catches an async `bootWithStorage()` rejection (e.g. a synchronous-looking
+   `indexedDB` reference that rejects on `open()`, as in Firefox private
+   mode) and retries once against `createMemoryStorage()` before propagating;
+   only a persistent-backend failure retries, so a genuine memory-storage
+   failure still surfaces.
+3. ✅ **DONE — storage typing tightened** (`bb237d2`).
+   `createConnectionStore(options: { storage: ConnectionStorage })` — the
+   `unknown` weakening this item flagged is gone.
+4. ✅ **DONE — kit CSP** (`bb237d2`, refined by `dd6a4f9` "fix(client):
+   PWA/serve hardening"). `packages/client/svelte.config.js` ships a full
+   `kit.csp` block (`mode: 'hash'`; `default-src`/`script-src: [self]`;
+   `style-src: [self, unsafe-inline]`; `font-src: [self]` after `dd6a4f9`
+   self-hosted the fonts; `img-src: [self, data:]`; `connect-src: [self,
+   http:, https:]` for arbitrary guardian origins; `object-src`/`base-uri:
+   [none]`; `frame-ancestors: [none]`).
+5. ✅ **DONE — skeleton-pin advance** (`d8b3fe0` "chore(release): stamp all
+   to 0.13.0-beta.1"). `packages/cli/package.json`'s
+   `@openpalm/skeleton` dependency is pinned to `0.13.0-beta.1`, matching
+   `PLATFORM_VERSION`; `packages/ui-kit` is in `units.platform` in
+   `release-package-groups.json` and `UNITS.platform.stamp`.
+6. **Slice B settings shim** (§6.9, optional) — still not built;
+   assistant-container mode is chat-only. Ship only when browser-editable
+   assistant settings are actually wanted. **Still open.**
+7. Resolved for the record (unchanged): CI wiring for client/ui-kit suites ✅
+   (P5e), `@openpalm/client` `private` flag removed ✅ (P5e), `serve.mjs`
    percent-escape hardening ✅ (P5b gate), `runtime-config.json` offline
    resilience ✅ (`loadRuntimeConfig` never throws).
+
+#### True remainder (as of 2026-07-11)
+
+With items 1-5 above confirmed done, the actual outstanding Phase 6-8 work is:
+
+- **Hosted origin** (§12.3 item 3) — CI deploy of the static client build to
+  `app.openpalm.dev`; client-side `/api/runtime` contract-version handshake.
+- **Pairing / QR connection setup** (§12.3 item 4, §6.6).
+- **HTTPS-refusal UX** (§12.4/§7 Phase 6.5) — `requiresHttpsForRemoteConnections`
+  is computed (`features.ts`) but has zero consumers; no client code actually
+  refuses a plain-HTTP remote connection yet. See `docs/technical/ui-runtime-modes.md`
+  Security Boundaries for the current (unenforced) state.
+- **TLS guide** (§12.4) — Tailscale `ts.net` default, Caddy + user domain
+  alternative.
+- **Slice B settings shim** (§6.9, optional — item 6 above).
+- **B15 — in-chat connection switcher**: `packages/client/src/routes/chat/+page.svelte`
+  only reads the active connection once in `onMount` — switching the active
+  connection doesn't re-point the existing chat-controller/transport without a
+  full route change, and each connection needs its own retained
+  `ChatControllerState` so switching back restores the prior transcript. Not
+  yet built (review 2026-07-10 finding B15).
+- **Voice port decision (B10)** — see §12.2's ratified decision above and
+  `docs/technical/client-voice-design.md`: the six-item text-chat subset
+  contract is met, but voice stays host-chat-only pending a design-first port
+  (a new `@openpalm/voice` package + a per-connection speak/transcribe edge on
+  the guardian). Deliberately deferred, not merely unstarted.
+- Anything else verified still open at HEAD by a future pass over this
+  section — §12.7 is a living handoff, not a one-time snapshot.

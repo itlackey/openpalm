@@ -7,10 +7,12 @@
       "packages/cli/package.json",
       "packages/ui/package.json",
       "packages/client/package.json",
+      "packages/ui-kit/package.json",
       "packages/electron/package.json",
       "packages/electron/admin-tools/package.json"
     ],
     "portals": [
+      "packages/portal-sdk/package.json",
       "portals/discord/package.json",
       "portals/slack/package.json"
     ],

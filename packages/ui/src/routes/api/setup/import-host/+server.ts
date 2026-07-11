@@ -1,7 +1,7 @@
 /**
  * POST /api/setup/import-host
  *
- * Setup-phase equivalent of POST /admin/providers/import-host.
+ * Setup-phase equivalent of POST /api/host/providers/import-host.
  * No admin auth required — the admin token hasn't been written yet during setup.
  *
  * Copies host OpenCode config + auth into OP_HOME and live-pushes credentials
