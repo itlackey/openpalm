@@ -6,11 +6,14 @@ import { dirname } from 'node:path';
  * entrypoint (containers/assistant/entrypoint.sh) writes runtime-config.json
  * via its own inline JS and must use the SAME id/label as this lib writer —
  * exporting them as named constants lets that lane pin its literal against
- * this value instead of the two copies silently drifting. Today the two
- * writers disagree (`assistant-container-opencode` vs
- * `openpalm-assistant-opencode`); this is harmless only because they write
- * to distinct origins with per-origin IndexedDB isolation. Do not change
- * this value without also updating the entrypoint.
+ * this value instead of the two copies silently drifting. The two writers are
+ * pinned equal: the entrypoint writes this exact `openpalm-assistant-opencode`
+ * id (containers/assistant/entrypoint.sh:206), and
+ * assistant-client-entrypoint.test.ts's "entrypoint embeds the SAME
+ * locked-connection id/label the lib writer exports (I5)" test asserts the
+ * entrypoint embeds this constant's value and that the old, divergent
+ * `assistant-container-opencode` literal is gone. Do not change this value
+ * without also updating the entrypoint.
  */
 export const ASSISTANT_LOCKED_CONNECTION_ID = 'openpalm-assistant-opencode';
 export const ASSISTANT_LOCKED_CONNECTION_LABEL = 'This assistant';
