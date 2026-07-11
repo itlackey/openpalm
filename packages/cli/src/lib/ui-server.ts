@@ -15,7 +15,7 @@ import {
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
-import { DEFAULT_UI_PORT } from './ports.ts';
+import { resolveHostUiPortFromEnv } from './ports.ts';
 import { startClientServer, resolveClientServeUrl } from './client-server.ts';
 
 const logger = createLogger('cli:ui');
@@ -43,8 +43,7 @@ export function resolveUiServePort(
   persistedEnv: Record<string, string> = readStackEnv(homeDir),
 ): number {
   if (portOpt !== undefined) return portOpt;
-  const merged = { ...persistedEnv, ...env };
-  return Number(merged.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+  return resolveHostUiPortFromEnv(env, persistedEnv);
 }
 
 /**
@@ -58,13 +57,41 @@ export function resolveAdminUrl(uiUrl: string, adminHostUi: boolean): string {
 }
 
 /**
- * The `OP_UI_HOST_MODE` a freshly-spawned UI child of THIS invocation would
- * report at `/api/runtime` (mirrors the adminEnv branch in {@link spawnUiChild}).
- * Used by {@link checkExistingUiInstance} (D1) to detect when something else
- * is already answering on the target port.
+ * Valid `OP_UI_HOST_MODE` values — mirrors HOST_MODES in
+ * packages/ui/src/lib/server/features.ts. Duplicated (not imported): the CLI
+ * has no dependency on @openpalm/ui (a SvelteKit app, not a library), so this
+ * is kept in sync by hand with that module's resolveHostMode() precedence.
  */
-export function resolveExpectedHostMode(adminHostUi: boolean): string {
-  return adminHostUi ? 'host-ui' : 'pwa-static';
+const UI_HOST_MODES = ['electron-host', 'host-ui', 'assistant-container', 'pwa-static'] as const;
+
+/**
+ * The `OP_UI_HOST_MODE` a freshly-spawned UI child of THIS invocation would
+ * report at `/api/runtime`. Used by {@link checkExistingUiInstance} (D1) to
+ * detect when something else is already answering on the target port.
+ *
+ * In admin (host-ui) mode, {@link spawnUiChild}'s `adminEnv` ALWAYS forces
+ * `OP_UI_HOST_MODE=host-ui` in the child regardless of inherited env, so the
+ * expected mode is unconditionally 'host-ui'.
+ *
+ * Otherwise `adminEnv` is `{}` — the child inherits `env` (defaults to
+ * `process.env`) UNTOUCHED, and packages/ui/src/lib/server/features.ts's
+ * `resolveHostMode()` ALSO honors `OP_UI_HOST_MODE` / `OP_INSIDE_ELECTRON` /
+ * `OP_ENABLE_ADMIN` from that inherited env. F14: before this, a non-admin
+ * reuse computed 'pwa-static' unconditionally, so e.g. a shell with
+ * `OP_ENABLE_ADMIN=1` set made a legitimate `openpalm` reuse see its own
+ * already-running child (which correctly reports 'host-ui') as a 'mismatch'
+ * — "Refusing to attach" + `process.exit(1)`. Replicates resolveHostMode's
+ * exact precedence (explicit valid OP_UI_HOST_MODE > OP_INSIDE_ELECTRON=1 >
+ * OP_ENABLE_ADMIN=1 > 'pwa-static') so the identity probe matches what the
+ * child actually reports.
+ */
+export function resolveExpectedHostMode(adminHostUi: boolean, env: NodeJS.ProcessEnv = process.env): string {
+  if (adminHostUi) return 'host-ui';
+  const explicit = env.OP_UI_HOST_MODE?.trim() ?? '';
+  if ((UI_HOST_MODES as readonly string[]).includes(explicit)) return explicit;
+  if (env.OP_INSIDE_ELECTRON === '1') return 'electron-host';
+  if (env.OP_ENABLE_ADMIN === '1') return 'host-ui';
+  return 'pwa-static';
 }
 
 export interface UIServerOptions {

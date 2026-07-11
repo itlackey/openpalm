@@ -27,7 +27,7 @@ import {
   writeClientRuntimeConfig,
   type WriteClientRuntimeConfigOptions,
 } from '@openpalm/lib';
-import { DEFAULT_UI_PORT } from './ports.ts';
+import { resolveHostUiPortFromEnv } from './ports.ts';
 
 const STOP_TIMEOUT_MS = 5_000;
 const RESPAWN_BASE_DELAY_MS = 1_000;
@@ -113,17 +113,17 @@ export function resolveDefaultAssistantUrl(
 
 /**
  * Resolve the host UI's own port — same persisted stack.env (OP_HOST_UI_PORT)
- * + process.env merge precedence as ui-server.ts's resolveUiServePort.
- * Duplicated (not imported) to avoid a client-server.ts <-> ui-server.ts
- * import cycle: ui-server.ts already imports startClientServer /
- * resolveClientServeUrl from this file.
+ * + process.env merge precedence as ui-server.ts's resolveUiServePort. Shares
+ * the merge logic via {@link resolveHostUiPortFromEnv} (ports.ts, review
+ * finding U2) rather than byte-duplicating it: both this file and
+ * ui-server.ts already import ports.ts, which imports neither of them, so
+ * there's no import-cycle reason to keep two copies.
  */
 export function resolveHostUiPort(
   env: NodeJS.ProcessEnv = process.env,
   persistedEnv: Record<string, string> = readPersistedStackEnv(),
 ): number {
-  const merged = { ...persistedEnv, ...env };
-  return Number(merged.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+  return resolveHostUiPortFromEnv(env, persistedEnv);
 }
 
 /**
@@ -162,6 +162,11 @@ export interface ClientServerDeps {
    *  `hostUrl` seed (defaults to {@link resolveHostUiUrl}). */
   resolveUiBaseUrl?: () => string;
   writeRuntimeConfig?: (path: string, assistantUrl: string, options?: WriteClientRuntimeConfigOptions) => void;
+  /** Read the persisted stack.env record ONCE for this call (defaults to the
+   *  module's readPersistedStackEnv) — injectable so tests can count reads
+   *  (review finding U3: this used to be re-read independently by
+   *  resolveClientServePort, resolveHostUiUrl, AND resolveAssistantEndpoint). */
+  readPersistedEnv?: () => Record<string, string>;
   log?: (...args: unknown[]) => void;
   logError?: (...args: unknown[]) => void;
   /** Sleep for the respawn delay and the stop grace window. */
@@ -179,7 +184,12 @@ export interface ClientServerDeps {
  * client app.
  */
 export async function startClientServer(deps: ClientServerDeps = {}): Promise<ClientServerHandle | null> {
-  const port = deps.port ?? resolveClientServePort();
+  // U3: read the persisted stack.env record ONCE for this whole call and
+  // thread it through every resolver that needs it below, instead of each
+  // resolver re-reading (and re-parsing) stack.env independently at startup.
+  const readPersistedEnv = deps.readPersistedEnv ?? readPersistedStackEnv;
+  const persistedEnv = readPersistedEnv();
+  const port = deps.port ?? resolveClientServePort(process.env, persistedEnv);
   const resolveBuildDir = deps.resolveBuildDir ?? resolveClientBuildDir;
   const exists = deps.existsSync ?? nodeExistsSync;
   const spawnFn = deps.spawnFn
@@ -191,8 +201,15 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
   const now = deps.now ?? Date.now;
   const stopTimeoutMs = deps.stopTimeoutMs ?? STOP_TIMEOUT_MS;
   const resolveRuntimeConfigPath = deps.resolveRuntimeConfigPath ?? (() => resolveHostClientRuntimeConfigPath());
-  const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl(process.env));
-  const resolveUiBaseUrl = deps.resolveUiBaseUrl ?? (() => resolveHostUiUrl());
+  // NOTE: resolveAssistantEndpoint (in @openpalm/lib, via resolveDefaultAssistantUrl)
+  // still does its OWN internal readStackEnv(homeDir) call regardless of the
+  // pre-merged env passed in here — eliminating that last read would require
+  // resolveAssistantEndpoint to accept a pre-merged env and skip its internal
+  // read, which is a packages/lib change outside this package's ownership
+  // boundary for this fix. Passing the pre-merged env here at least keeps the
+  // precedence identical and avoids a SEPARATE read of our own for it.
+  const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl({ ...persistedEnv, ...process.env }));
+  const resolveUiBaseUrl = deps.resolveUiBaseUrl ?? (() => resolveHostUiUrl(process.env, persistedEnv));
   const writeRuntimeConfig = deps.writeRuntimeConfig ?? writeClientRuntimeConfig;
 
   const buildDir = resolveBuildDir();

@@ -356,6 +356,59 @@ describe('resolveHostUiPort / resolveHostUiUrl', () => {
   });
 });
 
+// ── U3: read the persisted stack.env record ONCE per startClientServer() call ─
+//
+// Before this fix, startClientServer's default resolvers each independently
+// re-read (and re-parsed) the persisted stack.env: resolveClientServePort()
+// (for `port`), resolveHostUiUrl() -> resolveHostUiPort() (for
+// `resolveUiBaseUrl`'s default), and resolveDefaultAssistantUrl() ->
+// resolveAssistantEndpoint() (for `resolveAssistantUrl`'s default) — three
+// reads of the same file at startup. This reads it ONCE and threads the
+// resulting record through resolveClientServePort and the resolveUiBaseUrl
+// default (the resolveAssistantUrl default still goes through
+// resolveAssistantEndpoint in @openpalm/lib, which does its own internal
+// readStackEnv call — out of this package's ownership boundary to change).
+describe('startClientServer reads the persisted stack.env record ONCE (U3)', () => {
+  it('calls the injected persisted-env reader exactly once and threads its record through the port + host-UI-URL resolvers', async () => {
+    let calls = 0;
+    const readPersistedEnv = () => {
+      calls += 1;
+      return { OP_HOST_CLIENT_PORT: '5001', OP_HOST_UI_PORT: '5002' };
+    };
+    const proc = fakeClientProc();
+    const spawns: SpawnRecord[] = [];
+    const runtimeConfigWrites: Array<{ path: string; assistantUrl: string; hostUrl?: string }> = [];
+    const handle = await startClientServer({
+      readPersistedEnv,
+      resolveBuildDir: () => '/op-home/data/client/build',
+      existsSync: () => true,
+      spawnFn: (cmd: string[], o: { env: Record<string, string | undefined> }) => {
+        spawns.push({ cmd: [...cmd], env: { ...o.env } });
+        return proc;
+      },
+      resolveRuntimeConfigPath: () => '/op-home/data/client/runtime-config.json',
+      writeRuntimeConfig: (path: string, assistantUrl: string, options?: { hostUrl?: string }) => {
+        runtimeConfigWrites.push({ path, assistantUrl, ...(options?.hostUrl ? { hostUrl: options.hostUrl } : {}) });
+      },
+      log: () => {},
+      logError: () => {},
+      sleep: () => Promise.resolve(),
+      stopTimeoutMs: 5,
+    });
+
+    // ONE read of the persisted record for this whole startClientServer() call.
+    expect(calls).toBe(1);
+    // The single read's OP_HOST_CLIENT_PORT reached the spawned child's PORT
+    // (via the default `port`, since deps.port was not overridden here).
+    expect(spawns[0]?.env.PORT).toBe('5001');
+    // The same single read's OP_HOST_UI_PORT reached the seeded hostUrl (via
+    // the default resolveUiBaseUrl, not overridden here either).
+    expect(runtimeConfigWrites.at(-1)?.hostUrl).toBe('http://127.0.0.1:5002/host');
+
+    await handle?.stop();
+  });
+});
+
 // ── skip-when-absent ──────────────────────────────────────────────────────────
 
 describe('startClientServer skip-when-absent', () => {
