@@ -147,6 +147,19 @@ opencode_auth_enabled() {
   esac
 }
 
+# I3 residual (review, SECURITY): validate an OP_CLIENT_CORS_ALLOWED_ORIGINS
+# entry before start_opencode ever appends it to cors_origins — operator input
+# is otherwise appended to OpenCode's --cors verbatim, so
+# OP_CLIENT_CORS_ALLOWED_ORIGINS=* would silently reintroduce a wildcard CORS
+# grant. Mirrors guardian's normalizeExactOrigin (packages/guardian/src/
+# config.ts): never a wildcard, never anything but an EXACT http(s) origin —
+# no userinfo, no path beyond an optional trailing slash, no query, no
+# fragment.
+is_allowed_cors_origin() {
+  local origin="$1"
+  [[ "$origin" =~ ^https?://[^/@?#[:space:]]+/?$ ]]
+}
+
 start_client() {
   # Static chat client (@openpalm/client, plan §6.9 Slice A). The co-process
   # only serves bytes — the BROWSER talks to OpenCode directly at the
@@ -500,7 +513,11 @@ start_opencode() {
       origin="${origin#${origin%%[![:space:]]*}}"
       origin="${origin%${origin##*[![:space:]]}}"
       if [ -n "$origin" ]; then
-        cors_origins+=("$origin")
+        if is_allowed_cors_origin "$origin"; then
+          cors_origins+=("$origin")
+        else
+          echo "warning: rejecting invalid OP_CLIENT_CORS_ALLOWED_ORIGINS entry (must be an exact http(s) origin — no wildcard, userinfo, path, query, or fragment): $origin" >&2
+        fi
       fi
     done
   fi

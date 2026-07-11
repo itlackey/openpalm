@@ -275,6 +275,22 @@ describe('P5d entrypoint — client co-process (static-only)', () => {
     expect(startOpencode).toContain('cmd+=(--cors "$origin")');
   });
 
+  // I3 RESIDUAL (review, SECURITY): the array-literal-scoped checks above
+  // catch every origin the entrypoint itself constructs, but
+  // OP_CLIENT_CORS_ALLOWED_ORIGINS entries are OPERATOR-supplied and were
+  // appended to cors_origins with no validation — an operator setting
+  // OP_CLIENT_CORS_ALLOWED_ORIGINS=* would reintroduce a wildcard grant on
+  // OpenCode through the one knob the fix directs operators toward. Pin that
+  // every entry is validated (mirroring guardian's normalizeExactOrigin,
+  // packages/guardian/src/config.ts:31) before it ever reaches cors_origins,
+  // and that a rejection is logged loudly, naming the value.
+  test('start_opencode validates every OP_CLIENT_CORS_ALLOWED_ORIGINS entry and loudly rejects anything invalid (I3 residual, SECURITY)', () => {
+    const startOpencode = extractFunction(entrypoint, 'start_opencode') ?? '';
+    expect(startOpencode, 'expected start_opencode() to be defined').not.toBe('');
+    expect(startOpencode).toContain('is_allowed_cors_origin');
+    expect(startOpencode).toMatch(/rejecting/i);
+  });
+
   // I3 (review, security-critical, DECIDED POSTURE): "never emit `--cors *`
   // anywhere — explicit origins only" is a repo-wide invariant, not just a
   // property of one branch in start_opencode. Grep the WHOLE entrypoint (not
@@ -488,6 +504,75 @@ function runFunctionScenario(
     rmSync(tempDir, { recursive: true, force: true });
   }
 }
+
+// ── I3 residual (SECURITY): is_allowed_cors_origin behavioral harness ───────
+// A minimal driver, distinct from FUNCTION_DRIVER above: it sources ONLY the
+// entrypoint's function definitions (same awk strip) and calls
+// is_allowed_cors_origin directly with one candidate origin — no docker/
+// opencode boot, no /work or /home/opencode side effects (start_opencode
+// itself is not invoked).
+function checkCorsOrigin(origin: string): { exitCode: number; stderr: string } {
+  const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-cors-origin-'));
+  try {
+    const functionsPath = join(tempDir, 'functions.sh');
+    const driverPath = join(tempDir, 'driver.sh');
+    writeFileSync(driverPath, [
+      '#!/usr/bin/env bash',
+      'set -uo pipefail',
+      'awk \'!/^[a-z_][a-z0-9_]*$/ || /^(fi|done|esac|then|else|do)$/\' "$1" > "$2"',
+      '# shellcheck disable=SC1090',
+      'source "$2"',
+      'is_allowed_cors_origin "$3"',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    const proc = spawnSync('bash', [driverPath, ENTRYPOINT_PATH, functionsPath, origin], { encoding: 'utf8' });
+    return { exitCode: proc.status ?? 1, stderr: proc.stderr ?? '' };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+describe('I3 residual — is_allowed_cors_origin (behavioral): mirrors guardian normalizeExactOrigin', () => {
+  test('rejects a bare wildcard', () => {
+    expect(checkCorsOrigin('*').exitCode).not.toBe(0);
+  });
+
+  test('accepts an exact http origin (with port)', () => {
+    expect(checkCorsOrigin('http://example.com:1234').exitCode).toBe(0);
+  });
+
+  test('accepts an exact https origin', () => {
+    expect(checkCorsOrigin('https://example.com').exitCode).toBe(0);
+  });
+
+  test('accepts an origin with a bare trailing slash (still an exact origin)', () => {
+    expect(checkCorsOrigin('http://example.com/').exitCode).toBe(0);
+  });
+
+  test('rejects a non-http(s) scheme', () => {
+    expect(checkCorsOrigin('ftp://example.com').exitCode).not.toBe(0);
+  });
+
+  test('rejects an origin with a path', () => {
+    expect(checkCorsOrigin('http://example.com/path').exitCode).not.toBe(0);
+  });
+
+  test('rejects an origin with userinfo', () => {
+    expect(checkCorsOrigin('http://user@example.com').exitCode).not.toBe(0);
+  });
+
+  test('rejects an origin with a query string', () => {
+    expect(checkCorsOrigin('http://example.com?x=1').exitCode).not.toBe(0);
+  });
+
+  test('rejects an origin with a fragment', () => {
+    expect(checkCorsOrigin('http://example.com#frag').exitCode).not.toBe(0);
+  });
+
+  test('rejects garbage input', () => {
+    expect(checkCorsOrigin('not a url').exitCode).not.toBe(0);
+  });
+});
 
 describe('I3 — start_client LAN-exposure safety gate (behavioral)', () => {
   test('refuses to start the client co-process when the assistant binds non-loopback AND OpenCode auth is disabled', () => {
